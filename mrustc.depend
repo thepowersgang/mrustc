@@ -1,0 +1,42 @@
+# depslib dependency file v1.0
+1416665497 source:c:\users\new\documents\code\mrustc\main.cpp
+	<iostream>
+	"parse/lex.hpp"
+
+1416669570 source:c:\users\new\documents\code\mrustc\parse\lex.cpp
+	"lex.hpp"
+	"parseerror.hpp"
+	<cassert>
+	<iostream>
+	<cstdlib>
+
+1416668008 c:\users\new\documents\code\mrustc\parse\lex.hpp
+	"../types.hpp"
+	<string>
+	<fstream>
+
+1416650017 c:\users\new\documents\code\mrustc\types.hpp
+
+1416669842 c:\users\new\documents\code\mrustc\parse\parseerror.hpp
+	<stdexcept>
+	"lex.hpp"
+
+1416669869 source:c:\users\new\documents\code\mrustc\parse\parseerror.cpp
+	"parseerror.hpp"
+	<iostream>
+
+1416669782 source:c:\users\new\documents\code\mrustc\parse\preproc.cpp
+	"preproc.hpp"
+	<iostream>
+
+1416668029 c:\users\new\documents\code\mrustc\parse\preproc.hpp
+	"lex.hpp"
+
+1416669832 source:c:\users\new\documents\code\mrustc\parse\root.cpp
+	"preproc.hpp"
+	"../ast/ast.hpp"
+	"parseerror.hpp"
+	<cassert>
+
+1416669475 c:\users\new\documents\code\mrustc\ast\ast.hpp
+
