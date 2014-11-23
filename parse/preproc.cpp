@@ -2,8 +2,8 @@
 #include <iostream>
 
 Preproc::Preproc(::std::string path):
-    m_cache_valid(false),
-    m_lex(path)
+    m_lex(path),
+    m_cache_valid(false)
 {
     //ctor
 }

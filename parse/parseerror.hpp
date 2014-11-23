@@ -10,7 +10,7 @@ class Base:
     public ::std::exception
 {
 public:
-    ~Base() throw();
+    virtual ~Base() throw();
 };
 
 class Todo:
@@ -19,7 +19,7 @@ class Todo:
     ::std::string   m_message;
 public:
     Todo(::std::string message);
-    ~Todo() throw ();
+    virtual ~Todo() throw ();
 
 };
 
@@ -29,7 +29,7 @@ class BadChar:
     char    m_char;
 public:
     BadChar(char character);
-    ~BadChar() throw ();
+    virtual ~BadChar() throw ();
 
 };
 
@@ -40,7 +40,7 @@ class Unexpected:
 public:
     Unexpected(Token tok);
     Unexpected(Token tok, Token exp);
-    ~Unexpected() throw ();
+    virtual ~Unexpected() throw ();
 
 };
 

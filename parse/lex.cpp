@@ -28,7 +28,7 @@ Lexer::Lexer(::std::string filename):
 
 // NOTE: This array must be kept reverse sorted
 #define TOKENT(str, sym)    {sizeof(str)-1, str, sym}
-const struct {
+static const struct {
     unsigned char len;
     const char* chars;
     signed int type;
@@ -85,13 +85,6 @@ const struct {
   TOKENT("^",  TOK_CARET),
   TOKENT("`",  TOK_BACKTICK),
 
-  TOKENT("as",    TOK_RWORD_AS),
-  TOKENT("const", TOK_RWORD_CONST),
-  TOKENT("fn",    TOK_RWORD_FN),
-  TOKENT("for",   TOK_RWORD_FOR),
-  TOKENT("static",TOK_RWORD_STATIC),
-  TOKENT("use",   TOK_RWORD_USE),
-
   TOKENT("{",  TOK_BRACE_OPEN),
   TOKENT("|",  TOK_PIPE),
   TOKENT("|=", TOK_PIPE_EQUAL),
@@ -100,6 +93,63 @@ const struct {
   TOKENT("~",  TOK_TILDE),
 };
 #define LEN(arr)    (sizeof(arr)/sizeof(arr[0]))
+static const struct {
+    unsigned char len;
+    const char* chars;
+    signed int type;
+} RWORDS[] = {
+  TOKENT("abstract",TOK_RWORD_ABSTRACT),
+  TOKENT("alignof", TOK_RWORD_ALIGNOF),
+  TOKENT("as",      TOK_RWORD_AS),
+  TOKENT("be",      TOK_RWORD_BE),
+  TOKENT("box",     TOK_RWORD_BOX),
+  TOKENT("break",   TOK_RWORD_BREAK),
+  TOKENT("const",   TOK_RWORD_CONST),
+  TOKENT("continue",TOK_RWORD_CONTINUE),
+  TOKENT("crate",   TOK_RWORD_CRATE),
+  TOKENT("do",      TOK_RWORD_DO),
+  TOKENT("else",    TOK_RWORD_ELSE),
+  TOKENT("enum",    TOK_RWORD_ENUM),
+  TOKENT("extern",  TOK_RWORD_EXTERN),
+  TOKENT("false",   TOK_RWORD_FALSE),
+  TOKENT("final",   TOK_RWORD_FINAL),
+  TOKENT("fn",      TOK_RWORD_FN),
+  TOKENT("for",     TOK_RWORD_FOR),
+  TOKENT("if",      TOK_RWORD_IF),
+  TOKENT("impl",    TOK_RWORD_IMPL),
+  TOKENT("in",      TOK_RWORD_IN),
+  TOKENT("let",     TOK_RWORD_LET),
+  TOKENT("loop",    TOK_RWORD_LOOP),
+  TOKENT("match",   TOK_RWORD_MATCH),
+  TOKENT("mod",     TOK_RWORD_MOD),
+  TOKENT("move",    TOK_RWORD_MOVE),
+  TOKENT("mut",     TOK_RWORD_MUT),
+  TOKENT("offsetof",TOK_RWORD_OFFSETOF),
+  TOKENT("once",    TOK_RWORD_ONCE),
+  TOKENT("override",TOK_RWORD_OVERRIDE),
+  TOKENT("priv",    TOK_RWORD_PRIV),
+  TOKENT("proc",    TOK_RWORD_PROC),
+  TOKENT("pub",     TOK_RWORD_PUB),
+  TOKENT("pure",    TOK_RWORD_PURE),
+  TOKENT("ref",     TOK_RWORD_REF),
+  TOKENT("return",  TOK_RWORD_RETURN),
+  TOKENT("sizeof",  TOK_RWORD_SIZEOF),
+  TOKENT("static",  TOK_RWORD_STATIC),
+  TOKENT("self",    TOK_RWORD_SELF),
+  TOKENT("struct",  TOK_RWORD_STRUCT),
+  TOKENT("super",   TOK_RWORD_SUPER),
+  TOKENT("true",    TOK_RWORD_TRUE),
+  TOKENT("trait",   TOK_RWORD_TRAIT),
+  TOKENT("type",    TOK_RWORD_TYPE),
+  TOKENT("typeof",  TOK_RWORD_TYPEOF),
+  TOKENT("unsafe",  TOK_RWORD_UNSAFE),
+  TOKENT("unsized", TOK_RWORD_UNSIZED),
+  TOKENT("use",     TOK_RWORD_USE),
+  TOKENT("virtual", TOK_RWORD_VIRTUAL),
+  TOKENT("where",   TOK_RWORD_WHERE),
+  TOKENT("while",   TOK_RWORD_WHILE),
+  TOKENT("yield",   TOK_RWORD_YIELD),
+};
 
 signed int Lexer::getSymbol()
 {
@@ -183,6 +233,11 @@ Token Lexer::getToken()
                 }
                 else
                 {
+                    for( unsigned int i = 0; i < LEN(RWORDS); i ++ )
+                    {
+                        if( str < RWORDS[i].chars ) break;
+                        if( str == RWORDS[i].chars )    return Token((enum eTokenType)RWORDS[i].type);
+                    }
                     return Token(TOK_IDENT, str);
                 }
             }
@@ -311,7 +366,7 @@ char Lexer::getc()
 		if( m_istream.eof() )
 			throw Lexer::EndOfFile();
     }
-//    ::std::cout << "getc(): '" << m_last_char << "'" << ::std::endl;
+    //::std::cout << "getc(): '" << m_last_char << "'" << ::std::endl;
     return m_last_char;
 }
 
@@ -418,30 +473,65 @@ const char* Token::typestr(enum eTokenType type)
 
     // Reserved Words
     case TOK_RWORD_PUB: return "TOK_RWORD_PUB";
+    case TOK_RWORD_PRIV: return "TOK_RWORD_PRIV";
     case TOK_RWORD_MUT: return "TOK_RWORD_MUT";
     case TOK_RWORD_CONST: return "TOK_RWORD_CONST";
     case TOK_RWORD_STATIC: return "TOK_RWORD_STATIC";
     case TOK_RWORD_UNSAFE: return "TOK_RWORD_UNSAFE";
+    case TOK_RWORD_EXTERN: return "TOK_RWORD_EXTERN";
 
+    case TOK_RWORD_CRATE: return "TOK_RWORD_CRATE";
+    case TOK_RWORD_MOD: return "TOK_RWORD_MOD";
     case TOK_RWORD_STRUCT: return "TOK_RWORD_STRUCT";
     case TOK_RWORD_ENUM: return "TOK_RWORD_ENUM";
     case TOK_RWORD_TRAIT: return "TOK_RWORD_TRAIT";
     case TOK_RWORD_FN: return "TOK_RWORD_FN";
     case TOK_RWORD_USE: return "TOK_RWORD_USE";
+    case TOK_RWORD_IMPL: return "TOK_RWORD_IMPL";
+    case TOK_RWORD_TYPE: return "TOK_RWORD_TYPE";
 
-    case TOK_RWORD_SELF: return "TOK_RWORD_SELF";
+    case TOK_RWORD_WHERE: return "TOK_RWORD_WHERE";
     case TOK_RWORD_AS: return "TOK_RWORD_AS";
 
     case TOK_RWORD_LET: return "TOK_RWORD_LET";
     case TOK_RWORD_MATCH: return "TOK_RWORD_MATCH";
     case TOK_RWORD_IF: return "TOK_RWORD_IF";
     case TOK_RWORD_ELSE: return "TOK_RWORD_ELSE";
+    case TOK_RWORD_LOOP: return "TOK_RWORD_LOOP";
     case TOK_RWORD_WHILE: return "TOK_RWORD_WHILE";
     case TOK_RWORD_FOR: return "TOK_RWORD_FOR";
+    case TOK_RWORD_IN: return "TOK_RWORD_IN";
+    case TOK_RWORD_DO: return "TOK_RWORD_DO";
 
     case TOK_RWORD_CONTINUE: return "TOK_RWORD_CONTINUE";
     case TOK_RWORD_BREAK: return "TOK_RWORD_BREAK";
     case TOK_RWORD_RETURN: return "TOK_RWORD_RETURN";
+    case TOK_RWORD_YIELD: return "TOK_RWORD_YIELD";
+    case TOK_RWORD_BOX: return "TOK_RWORD_BOX";
+    case TOK_RWORD_REF: return "TOK_RWORD_REF";
+
+    case TOK_RWORD_FALSE: return "TOK_RWORD_FALSE";
+    case TOK_RWORD_TRUE: return "TOK_RWORD_TRUE";
+    case TOK_RWORD_SELF: return "TOK_RWORD_SELF";
+    case TOK_RWORD_SUPER: return "TOK_RWORD_SUPER";
+
+    case TOK_RWORD_PROC: return "TOK_RWORD_PROC";
+    case TOK_RWORD_MOVE: return "TOK_RWORD_MOVE";
+    case TOK_RWORD_ONCE: return "TOK_RWORD_ONCE";
+
+    case TOK_RWORD_ABSTRACT: return "TOK_RWORD_ABSTRACT";
+    case TOK_RWORD_FINAL: return "TOK_RWORD_FINAL";
+    case TOK_RWORD_PURE: return "TOK_RWORD_PURE";
+    case TOK_RWORD_OVERRIDE: return "TOK_RWORD_OVERRIDE";
+    case TOK_RWORD_VIRTUAL: return "TOK_RWORD_VIRTUAL";
+
+    case TOK_RWORD_ALIGNOF: return "TOK_RWORD_ALIGNOF";
+    case TOK_RWORD_OFFSETOF: return "TOK_RWORD_OFFSETOF";
+    case TOK_RWORD_SIZEOF: return "TOK_RWORD_SIZEOF";
+    case TOK_RWORD_TYPEOF: return "TOK_RWORD_TYPEOF";
+
+    case TOK_RWORD_BE: return "TOK_RWORD_BE";
+    case TOK_RWORD_UNSIZED: return "TOK_RWORD_UNSIZED";
     }
     return ">>BUGCHECK: BADTOK<<";
 }

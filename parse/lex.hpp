@@ -77,30 +77,65 @@ enum eTokenType
 
     // Reserved Words
     TOK_RWORD_PUB,
+    TOK_RWORD_PRIV,
     TOK_RWORD_MUT,
     TOK_RWORD_CONST,
     TOK_RWORD_STATIC,
     TOK_RWORD_UNSAFE,
+    TOK_RWORD_EXTERN,
 
+    TOK_RWORD_CRATE,
+    TOK_RWORD_MOD,
     TOK_RWORD_STRUCT,
     TOK_RWORD_ENUM,
     TOK_RWORD_TRAIT,
     TOK_RWORD_FN,
     TOK_RWORD_USE,
+    TOK_RWORD_IMPL,
+    TOK_RWORD_TYPE,
 
-    TOK_RWORD_SELF,
+    TOK_RWORD_WHERE,
     TOK_RWORD_AS,
 
     TOK_RWORD_LET,
     TOK_RWORD_MATCH,
     TOK_RWORD_IF,
     TOK_RWORD_ELSE,
+    TOK_RWORD_LOOP,
     TOK_RWORD_WHILE,
     TOK_RWORD_FOR,
+    TOK_RWORD_IN,
+    TOK_RWORD_DO,
 
     TOK_RWORD_CONTINUE,
     TOK_RWORD_BREAK,
     TOK_RWORD_RETURN,
+    TOK_RWORD_YIELD,
+    TOK_RWORD_BOX,
+    TOK_RWORD_REF,
+
+    TOK_RWORD_FALSE,
+    TOK_RWORD_TRUE,
+    TOK_RWORD_SELF,
+    TOK_RWORD_SUPER,
+
+    TOK_RWORD_PROC,
+    TOK_RWORD_MOVE,
+    TOK_RWORD_ONCE,
+
+    TOK_RWORD_ABSTRACT,
+    TOK_RWORD_FINAL,
+    TOK_RWORD_PURE,
+    TOK_RWORD_OVERRIDE,
+    TOK_RWORD_VIRTUAL,
+
+    TOK_RWORD_ALIGNOF,
+    TOK_RWORD_OFFSETOF,
+    TOK_RWORD_SIZEOF,
+    TOK_RWORD_TYPEOF,
+
+    TOK_RWORD_BE,
+    TOK_RWORD_UNSIZED,
 };
 
 class Token
@@ -121,6 +156,9 @@ public:
 
     enum eTokenType type() { return m_type; }
     const ::std::string& str() { return m_str; }
+    enum eCoreType  datatype() { return m_datatype; }
+    uint64_t intval() { return m_intval; }
+    double floatval() { return m_floatval; }
 
     static const char* typestr(enum eTokenType type);
 };

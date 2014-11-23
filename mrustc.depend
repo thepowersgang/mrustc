@@ -3,21 +3,24 @@
 	<iostream>
 	"parse/lex.hpp"
 
-1416669570 source:c:\users\new\documents\code\mrustc\parse\lex.cpp
+1416726665 source:c:\users\new\documents\code\mrustc\parse\lex.cpp
 	"lex.hpp"
 	"parseerror.hpp"
 	<cassert>
 	<iostream>
 	<cstdlib>
 
-1416668008 c:\users\new\documents\code\mrustc\parse\lex.hpp
+1416736249 c:\users\new\documents\code\mrustc\parse\lex.hpp
 	"../types.hpp"
 	<string>
 	<fstream>
 
-1416650017 c:\users\new\documents\code\mrustc\types.hpp
+1416744265 c:\users\new\documents\code\mrustc\types.hpp
+	<vector>
+	"coretypes.hpp"
+	"ast/ast.hpp"
 
-1416669842 c:\users\new\documents\code\mrustc\parse\parseerror.hpp
+1416716101 c:\users\new\documents\code\mrustc\parse\parseerror.hpp
 	<stdexcept>
 	"lex.hpp"
 
@@ -25,18 +28,38 @@
 	"parseerror.hpp"
 	<iostream>
 
-1416669782 source:c:\users\new\documents\code\mrustc\parse\preproc.cpp
+1416715711 source:c:\users\new\documents\code\mrustc\parse\preproc.cpp
 	"preproc.hpp"
 	<iostream>
 
 1416668029 c:\users\new\documents\code\mrustc\parse\preproc.hpp
 	"lex.hpp"
 
-1416669832 source:c:\users\new\documents\code\mrustc\parse\root.cpp
+1416748458 source:c:\users\new\documents\code\mrustc\parse\root.cpp
 	"preproc.hpp"
 	"../ast/ast.hpp"
 	"parseerror.hpp"
+	"common.hpp"
 	<cassert>
 
-1416669475 c:\users\new\documents\code\mrustc\ast\ast.hpp
+1416748030 c:\users\new\documents\code\mrustc\ast\ast.hpp
+	<string>
+	<vector>
+	"../coretypes.hpp"
+
+1416748091 source:c:\users\new\documents\code\mrustc\ast\ast.cpp
+	"ast.hpp"
+	"../types.hpp"
+	<iostream>
+
+1416731433 c:\users\new\documents\code\mrustc\parse\common.hpp
+
+1416739817 source:c:\users\new\documents\code\mrustc\parse\expr.cpp
+	"preproc.hpp"
+	"parseerror.hpp"
+	"../ast/ast.hpp"
+	"common.hpp"
+	<iostream>
+
+1416737315 c:\users\new\documents\code\mrustc\coretypes.hpp
 
