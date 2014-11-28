@@ -225,8 +225,7 @@ AST::Module Parse_ModRoot(bool is_own_file, Preproc& lex)
                 is_mut = true;
                 tok = lex.getToken();
             }
-            if(tok.type() != TOK_IDENT)
-                throw ParseError::Unexpected(tok, Token(TOK_IDENT));
+            CHECK_TOK(tok, TOK_IDENT);
             ::std::string name = tok.str();
 
             GET_CHECK_TOK(tok, lex, TOK_COLON);
@@ -240,15 +239,64 @@ AST::Module Parse_ModRoot(bool is_own_file, Preproc& lex)
             mod.add_global(is_public, is_mut, name, type, val);
             break; }
 
-        case TOK_RWORD_FN:
-            throw ParseError::Todo("modroot fn");
+        case TOK_RWORD_FN: {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            ::std::string name = tok.str();
+            tok = lex.getToken();
+            AST::TypeParams params;
+            if( tok.type() == TOK_LT )
+            {
+                params = Parse_TypeParams(lex);
+                GET_CHECK_TOK(tok, lex, TOK_GT);
+                tok = lex.getToken();
+                if(tok.type() == TOK_RWORD_WHERE)
+                {
+                    Parse_TypeConds(lex, params);
+                    tok = lex.getToken();
+                }
+            }
+            CHECK_TOK(tok, TOK_PAREN_OPEN);
+            tok = lex.getToken();
+            ::std::vector<AST::StructItem>  args;
+            if( tok.type() != TOK_PAREN_CLOSE )
+            {
+                // Argument list
+                lex.putback(tok);
+                do {
+                    GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                    ::std::string   name = tok.str();
+                    GET_CHECK_TOK(tok, lex, TOK_COLON);
+                    TypeRef type = Parse_Type(lex);
+                    args.push_back( ::std::make_pair(name, type) );
+                    tok = lex.getToken();
+                } while( tok.type() == TOK_COMMA );
+                CHECK_TOK(tok, TOK_PAREN_CLOSE);
+            }
+
+            TypeRef ret_type;
+            tok = lex.getToken();
+            if( tok.type() == TOK_THINARROW )
+            {
+                // Return type
+                ret_type = Parse_Type(lex);
+            }
+            else
+            {
+                lex.putback(tok);
+            }
+
+            AST::Expr   code = Parse_ExprBlock(lex);
+
+            mod.add_function(is_public, name, params, ret_type, args, code);
+            break; }
         case TOK_RWORD_STRUCT: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string name = tok.str();
             tok = lex.getToken();
+            AST::TypeParams params;
             if( tok.type() == TOK_LT )
             {
-                AST::TypeParams params = Parse_TypeParams(lex);
+                params = Parse_TypeParams(lex);
                 GET_CHECK_TOK(tok, lex, TOK_GT);
                 tok = lex.getToken();
                 if(tok.type() == TOK_RWORD_WHERE)
@@ -259,6 +307,20 @@ AST::Module Parse_ModRoot(bool is_own_file, Preproc& lex)
             }
             if(tok.type() == TOK_PAREN_OPEN)
             {
+                TypeRef inner = Parse_Type(lex);
+                tok = lex.getToken();
+                if(tok.type() != TOK_PAREN_CLOSE)
+                {
+                    ::std::vector<TypeRef>  refs;
+                    refs.push_back(inner);
+                    while( (tok = lex.getToken()).type() == TOK_COMMA )
+                    {
+                        refs.push_back( Parse_Type(lex) );
+                    }
+                    if( tok.type() != TOK_PAREN_CLOSE )
+                        throw ParseError::Unexpected(tok, Token(TOK_PAREN_CLOSE));
+                    inner = TypeRef(TypeRef::TagTuple(), refs);
+                }
                 throw ParseError::Todo("tuple struct");
             }
             else if(tok.type() == TOK_SEMICOLON)
@@ -267,14 +329,27 @@ AST::Module Parse_ModRoot(bool is_own_file, Preproc& lex)
             }
             else if(tok.type() == TOK_BRACE_OPEN)
             {
-                throw ParseError::Todo("full struct");
+                ::std::vector<AST::StructItem>  items;
+                while( (tok = lex.getToken()).type() != TOK_BRACE_CLOSE )
+                {
+                    CHECK_TOK(tok, TOK_IDENT);
+                    ::std::string   name = tok.str();
+                    GET_CHECK_TOK(tok, lex, TOK_COLON);
+                    TypeRef type = Parse_Type(lex);
+                    items.push_back( ::std::make_pair(name, type) );
+                    tok = lex.getToken();
+                    if(tok.type() == TOK_BRACE_CLOSE)
+                        break;
+                    if(tok.type() != TOK_COMMA)
+                        throw ParseError::Unexpected(tok, Token(TOK_COMMA));
+                }
+                mod.add_struct(is_public, name, params, items);
             }
             else
             {
                 throw ParseError::Unexpected(tok);
             }
-
-            throw ParseError::Todo("modroot struct"); }
+            break; }
         case TOK_RWORD_ENUM:
             throw ParseError::Todo("modroot enum");
         case TOK_RWORD_IMPL:

@@ -13,6 +13,7 @@
 				<Option compiler="gcc" />
 				<Compiler>
 					<Add option="-g" />
+					<Add directory="parse" />
 				</Compiler>
 			</Target>
 			<Target title="Release">
@@ -22,6 +23,7 @@
 				<Option compiler="gcc" />
 				<Compiler>
 					<Add option="-O2" />
+					<Add directory="parse" />
 				</Compiler>
 				<Linker>
 					<Add option="-s" />
@@ -32,7 +34,21 @@
 			<Add option="-Wall" />
 			<Add option="-fexceptions" />
 		</Compiler>
+		<Unit filename="ast/ast.cpp" />
+		<Unit filename="ast/ast.hpp" />
+		<Unit filename="coretypes.hpp" />
 		<Unit filename="main.cpp" />
+		<Unit filename="parse/common.hpp" />
+		<Unit filename="parse/expr.cpp" />
+		<Unit filename="parse/lex.cpp" />
+		<Unit filename="parse/lex.hpp" />
+		<Unit filename="parse/parseerror.cpp" />
+		<Unit filename="parse/parseerror.hpp" />
+		<Unit filename="parse/preproc.cpp" />
+		<Unit filename="parse/preproc.hpp" />
+		<Unit filename="parse/root.cpp" />
+		<Unit filename="samples/1.rs" />
+		<Unit filename="types.hpp" />
 		<Extensions>
 			<code_completion />
 			<envvars />
