@@ -104,9 +104,14 @@ AST::ExprNode Parse_ExprBlocks(TokenStream& lex)
     Token tok = lex.getToken();
     switch( tok.type() )
     {
-    case TOK_RWORD_MATCH:
-        throw ParseError::Todo("match");
-        break;
+    case TOK_RWORD_MATCH: {
+        // 1. Get expression
+        AST::ExprNode   switch_val = Parse_Expr1(lex);
+        GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
+        throw ParseError::Todo("match arms");
+        GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
+        //return AST::ExprNode(ExprNode::TagMatch, switch_val, );
+        }
     case TOK_RWORD_IF:
         throw ParseError::Todo("if");
         break;
@@ -208,7 +213,7 @@ LEFTASSOC(Parse_Expr11, Parse_Expr12,
         throw ParseError::Todo("expr - modulo");
 )
 // 12: Unaries
-AST::ExprNode Parse_ExprVal(TokenStream& lex);
+AST::ExprNode Parse_ExprFC(TokenStream& lex);
 AST::ExprNode Parse_Expr12(TokenStream& lex)
 {
     Token   tok;
@@ -226,7 +231,27 @@ AST::ExprNode Parse_Expr12(TokenStream& lex)
         throw ParseError::Todo("expr - borrow");
     default:
         lex.putback(tok);
-        return Parse_ExprVal(lex);
+        return Parse_ExprFC(lex);
+    }
+}
+
+AST::ExprNode Parse_ExprVal(TokenStream& lex);
+AST::ExprNode Parse_ExprFC(TokenStream& lex)
+{
+    AST::ExprNode   val = Parse_ExprVal(lex);
+    while(true)
+    {
+        switch((tok = lex.getToken()).type())
+        {
+        case TOK_PAREN_OPEN:
+            // Function call
+            break;
+        case TOK_DOT:
+            // Field access
+            break;
+        default:
+            return val;
+        }
     }
 }
 
@@ -251,7 +276,7 @@ AST::ExprNode Parse_ExprVal(TokenStream& lex)
             break;
         case TOK_PAREN_OPEN:
             // Function call
-            throw ParseError::Todo("Function call");
+            throw ParseError::Todo("Function call / structure literal");
             break;
         default:
             // Value
