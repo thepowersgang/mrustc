@@ -245,6 +245,7 @@ AST::ExprNode Parse_ExprFC(TokenStream& lex)
         {
         case TOK_PAREN_OPEN:
             // Function call
+            throw ParseError::Todo("Function call / structure literal");
             break;
         case TOK_DOT:
             // Field access
