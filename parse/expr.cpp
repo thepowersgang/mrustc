@@ -23,6 +23,58 @@ AST::Expr Parse_ExprBlock(TokenStream& lex)
     return AST::Expr(Parse_ExprBlockNode(lex));
 }
 
+AST::Pattern Parse_Pattern(TokenStream& lex)
+{
+    AST::Path   path;
+    Token   tok;
+    tok = lex.getToken();
+    if( tok.type() == TOK_RWORD_REF )
+    {
+        throw ParseError::Todo("ref bindings");
+        tok = lex.getToken();
+    }
+    switch( tok.type() )
+    {
+    case TOK_IDENT:
+        // 1. Identifiers could be either a bind or a value
+        // - If the path resolves to a single node, either a local enum value, or a binding
+        lex.putback(tok);
+        path = Parse_Path(lex, false, true);
+        if( path.length() == 1 && path[0].args().size() == 0 )
+        {
+            // Could be a name binding, check the next token
+            GET_TOK(tok, lex);
+            if(tok.type() != TOK_PAREN_OPEN) {
+                lex.putback(tok);
+                return AST::Pattern(AST::Pattern::TagMaybeBind(), path[0].name());
+            }
+            lex.putback(tok);
+        }
+        // otherwise, it's a value check
+        if(0)
+    case TOK_DOUBLE_COLON:
+        // 2. Paths are enum/struct names
+        {
+            lex.putback(tok);
+            path = Parse_Path(lex, true, true);
+        }
+        switch( GET_TOK(tok, lex) )
+        {
+        case TOK_PAREN_OPEN:
+            // A list of internal patterns
+            throw ParseError::Todo("nested patterns");
+        default:
+            lex.putback(tok);
+            return AST::Pattern(AST::Pattern::TagValue(), ExprNode(ExprNode::TagNamedValue(), path));
+        }
+        break;
+    case TOK_INTEGER:
+        return AST::Pattern( AST::Pattern::TagValue(), ExprNode(ExprNode::TagInteger(), tok.intval(), tok.datatype()) );
+    default:
+        throw ParseError::Unexpected(tok);
+    }
+}
+
 ExprNode Parse_ExprBlockNode(TokenStream& lex)
 {
     ::std::vector<ExprNode> nodes;
@@ -81,6 +133,22 @@ ExprNode Parse_ExprBlockNode(TokenStream& lex)
     return AST::ExprNode(ExprNode::TagBlock(), nodes);
 }
 
+::std::vector<AST::ExprNode> Parse_ParenList(TokenStream& lex)
+{
+    ::std::vector<ExprNode> rv;
+    Token   tok;
+    GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
+    if( (tok = lex.getToken()).type() != TOK_PAREN_CLOSE )
+    {
+        lex.putback(tok);
+        do {
+            rv.push_back( Parse_Expr1(lex) );
+        } while( (tok = lex.getToken()).type() == TOK_COMMA );
+        CHECK_TOK(tok, TOK_PAREN_CLOSE);
+    }
+    return rv;
+}
+
 // 0: Assign
 AST::ExprNode Parse_Expr0(TokenStream& lex)
 {
@@ -108,9 +176,18 @@ AST::ExprNode Parse_ExprBlocks(TokenStream& lex)
         // 1. Get expression
         AST::ExprNode   switch_val = Parse_Expr1(lex);
         GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
-        throw ParseError::Todo("match arms");
-        GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
-        //return AST::ExprNode(ExprNode::TagMatch, switch_val, );
+        ::std::vector< ::std::pair<AST::Pattern, ExprNode> >    arms;
+        if( (tok = lex.getToken()).type() == TOK_BRACE_CLOSE )
+            throw ParseError::Unexpected(tok, Token(TOK_BRACE_CLOSE));
+        lex.putback(tok);
+        do {
+            AST::Pattern    pat = Parse_Pattern(lex);
+            GET_CHECK_TOK(tok, lex, TOK_FATARROW);
+            AST::ExprNode   val = Parse_Expr0(lex);
+            arms.push_back( ::std::make_pair(pat, val) );
+        } while( GET_TOK(tok, lex) == TOK_COMMA );
+        CHECK_TOK(tok, TOK_BRACE_CLOSE);
+        return AST::ExprNode(ExprNode::TagMatch(), switch_val, arms);
         }
     case TOK_RWORD_IF:
         throw ParseError::Todo("if");
@@ -241,6 +318,7 @@ AST::ExprNode Parse_ExprFC(TokenStream& lex)
     AST::ExprNode   val = Parse_ExprVal(lex);
     while(true)
     {
+        Token   tok;
         switch((tok = lex.getToken()).type())
         {
         case TOK_PAREN_OPEN:
@@ -249,8 +327,10 @@ AST::ExprNode Parse_ExprFC(TokenStream& lex)
             break;
         case TOK_DOT:
             // Field access
+            throw ParseError::Todo("Field access");
             break;
         default:
+            lex.putback(tok);
             return val;
         }
     }
@@ -269,20 +349,22 @@ AST::ExprNode Parse_ExprVal(TokenStream& lex)
         if(0)
     case TOK_DOUBLE_COLON:
         path = Parse_Path(lex, true, true);
-        switch( (tok = lex.getToken()).type() )
+        switch( GET_TOK(tok, lex) )
         {
         case TOK_BRACE_OPEN:
             // Structure literal
             throw ParseError::Todo("Structure literal");
             break;
-        case TOK_PAREN_OPEN:
+        case TOK_PAREN_OPEN: {
+            lex.putback(tok);
             // Function call
-            throw ParseError::Todo("Function call / structure literal");
-            break;
+            ::std::vector<AST::ExprNode> args = Parse_ParenList(lex);
+            return ExprNode(ExprNode::TagCallPath(), path, args);
+            }
         default:
             // Value
             lex.putback(tok);
-            throw ParseError::Todo("Variable/Constant");
+            return ExprNode(ExprNode::TagNamedValue(), path);
         }
     case TOK_INTEGER:
         return ExprNode(ExprNode::TagInteger(), tok.intval(), tok.datatype());

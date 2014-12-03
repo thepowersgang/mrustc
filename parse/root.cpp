@@ -6,9 +6,8 @@
 #include "common.hpp"
 #include <cassert>
 
-AST::Path Parse_Path(TokenStream& lex, bool is_abs, bool generic_ok)
+AST::Path Parse_PathFrom(TokenStream& lex, AST::Path path, bool generic_ok)
 {
-    AST::Path   path;
     Token tok;
     do
     {
@@ -25,6 +24,14 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, bool generic_ok)
     } while( tok.type() == TOK_DOUBLE_COLON );
     lex.putback(tok);
     return path;
+}
+
+AST::Path Parse_Path(TokenStream& lex, bool is_abs, bool generic_ok)
+{
+    if( is_abs )
+        return Parse_PathFrom(lex, AST::Path(AST::Path::TagAbsolute()), generic_ok);
+    else
+        return Parse_PathFrom(lex, AST::Path(), generic_ok);
 }
 
 static const struct {

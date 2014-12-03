@@ -3,16 +3,58 @@
 
 #include <string>
 #include <vector>
+#include <stdexcept>
 #include "../coretypes.hpp"
 
 class TypeRef;
 
 namespace AST {
 
+class ExprNode;
+
+class TypeParam
+{
+public:
+    TypeParam(bool is_lifetime, ::std::string name);
+    void addLifetimeBound(::std::string name);
+    void addTypeBound(TypeRef type);
+};
+
+typedef ::std::vector<TypeParam>    TypeParams;
+typedef ::std::pair< ::std::string, TypeRef>    StructItem;
+
+class PathNode
+{
+    ::std::string   m_name;
+    TypeParams  m_params;
+public:
+    const ::std::string& name() const;
+    const TypeParams&   args() const;
+};
+
 class Path
 {
 public:
+    Path();
+    struct TagAbsolute {};
+    Path(TagAbsolute);
+
     void append(::std::string str) {}
+    size_t length() const {return 0;}
+
+    PathNode& operator[](size_t idx) { throw ::std::out_of_range("Path []"); }
+};
+
+class Pattern
+{
+public:
+    Pattern();
+
+    struct TagMaybeBind {};
+    Pattern(TagMaybeBind, ::std::string name);
+
+    struct TagValue {};
+    Pattern(TagValue, ExprNode node);
 };
 
 class ExprNode
@@ -28,6 +70,15 @@ public:
 
     struct TagInteger {};
     ExprNode(TagInteger, uint64_t value, enum eCoreType datatype);
+
+    struct TagCallPath {};
+    ExprNode(TagCallPath, Path path, ::std::vector<ExprNode> args);
+
+    struct TagMatch {};
+    ExprNode(TagMatch, ExprNode val, ::std::vector< ::std::pair<Pattern,ExprNode> > arms);
+
+    struct TagNamedValue {};
+    ExprNode(TagNamedValue, Path path);
 };
 
 class Expr
@@ -36,17 +87,6 @@ public:
     Expr() {}
     Expr(ExprNode node) {}
 };
-
-class TypeParam
-{
-public:
-    TypeParam(bool is_lifetime, ::std::string name);
-    void addLifetimeBound(::std::string name);
-    void addTypeBound(TypeRef type);
-};
-
-typedef ::std::vector<TypeParam>    TypeParams;
-typedef ::std::pair< ::std::string, TypeRef>    StructItem;
 
 class Module
 {

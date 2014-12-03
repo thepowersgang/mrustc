@@ -1,6 +1,7 @@
 #ifndef PARSE_COMMON_HPP_INCLUDED
 #define PARSEERROR_HPP_INCLUDED
 
+#define GET_TOK(tok, lex) ((tok = lex.getToken()).type())
 #define GET_CHECK_TOK(tok, lex, exp) do {\
     if((tok = lex.getToken()).type() != exp) \
             throw ParseError::Unexpected(tok, Token(exp));\
