@@ -1,2 +1,4 @@
 /obj
 /bin
+/mrustc.depend
+/mrustc.layout
