@@ -9,6 +9,10 @@ class TypeRef
 {
 public:
     TypeRef() {}
+
+    struct TagUnit {};  // unit maps to a zero-length tuple, just easier to type
+    TypeRef(TagUnit) {}
+
     struct TagPrimitive {};
     TypeRef(TagPrimitive, enum eCoreType type) {}
     struct TagTuple {};

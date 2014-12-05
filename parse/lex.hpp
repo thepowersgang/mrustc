@@ -41,7 +41,7 @@ enum eTokenType
     TOK_THINARROW,  // ->
 
     TOK_PLUS, TOK_DASH,
-    TOK_EXLAM,
+    TOK_EXCLAM,
     TOK_PERCENT,
     TOK_SLASH,
 
@@ -59,7 +59,7 @@ enum eTokenType
     TOK_PIPE_EQUAL,
 
     TOK_DOUBLE_EQUAL,
-    TOK_EXLAM_EQUAL,
+    TOK_EXCLAM_EQUAL,
     TOK_GTE,
     TOK_LTE,
 

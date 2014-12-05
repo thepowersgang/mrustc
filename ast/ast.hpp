@@ -26,10 +26,11 @@ typedef ::std::pair< ::std::string, TypeRef>    StructItem;
 class PathNode
 {
     ::std::string   m_name;
-    TypeParams  m_params;
+    ::std::vector<TypeRef>  m_params;
 public:
+    PathNode(::std::string name, ::std::vector<TypeRef> args);
     const ::std::string& name() const;
-    const TypeParams&   args() const;
+    const ::std::vector<TypeRef>&   args() const;
 };
 
 class Path
@@ -39,7 +40,7 @@ public:
     struct TagAbsolute {};
     Path(TagAbsolute);
 
-    void append(::std::string str) {}
+    void append(PathNode node) {}
     size_t length() const {return 0;}
 
     PathNode& operator[](size_t idx) { throw ::std::out_of_range("Path []"); }
@@ -55,6 +56,9 @@ public:
 
     struct TagValue {};
     Pattern(TagValue, ExprNode node);
+
+    struct TagEnumVariant {};
+    Pattern(TagEnumVariant, Path path, ::std::vector<Pattern> sub_patterns);
 };
 
 class ExprNode
@@ -88,6 +92,20 @@ public:
     Expr(ExprNode node) {}
 };
 
+class Function
+{
+public:
+    Function(::std::string name, TypeParams params, TypeRef ret_type, ::std::vector<StructItem> args, Expr code);
+};
+
+class Impl
+{
+public:
+    Impl(TypeRef impl_type, TypeRef trait_type);
+
+    void add_function(bool is_public, Function fcn);
+};
+
 class Module
 {
 public:
@@ -95,7 +113,8 @@ public:
     void add_constant(bool is_public, ::std::string name, TypeRef type, Expr val);
     void add_global(bool is_public, bool is_mut, ::std::string name, TypeRef type, Expr val);
     void add_struct(bool is_public, ::std::string name, TypeParams params, ::std::vector<StructItem> items);
-    void add_function(bool is_public, ::std::string name, TypeParams params, TypeRef ret_type, ::std::vector<StructItem> args, Expr code);
+    void add_function(bool is_public, Function func);
+    void add_impl(Impl impl);
 };
 
 }

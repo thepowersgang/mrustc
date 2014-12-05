@@ -13,11 +13,17 @@ Path::Path(Path::TagAbsolute)
 {
 }
 
+
+PathNode::PathNode(::std::string name, ::std::vector<TypeRef> args):
+    m_name(name),
+    m_params(args)
+{
+}
 const ::std::string& PathNode::name() const
 {
     return m_name;
 }
-const TypeParams& PathNode::args() const
+const ::std::vector<TypeRef>& PathNode::args() const
 {
     return m_params;
 }
@@ -26,6 +32,21 @@ Pattern::Pattern(TagMaybeBind, ::std::string name)
 {
 }
 Pattern::Pattern(TagValue, ExprNode node)
+{
+}
+Pattern::Pattern(TagEnumVariant, Path path, ::std::vector<Pattern> sub_patterns)
+{
+}
+
+
+Function::Function(::std::string name, TypeParams params, TypeRef ret_type, ::std::vector<StructItem> args, Expr code)
+{
+}
+
+Impl::Impl(TypeRef impl_type, TypeRef trait_type)
+{
+}
+void Impl::add_function(bool is_public, Function fcn)
 {
 }
 
@@ -41,7 +62,10 @@ void Module::add_global(bool is_public, bool is_mut, ::std::string name, TypeRef
 void Module::add_struct(bool is_public, ::std::string name, TypeParams params, ::std::vector<StructItem> items)
 {
 }
-void Module::add_function(bool is_public, ::std::string name, TypeParams params, TypeRef ret_type, ::std::vector<StructItem> args, Expr code)
+void Module::add_function(bool is_public, Function func)
+{
+}
+void Module::add_impl(Impl impl)
 {
 }
 

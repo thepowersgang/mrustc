@@ -33,8 +33,8 @@ static const struct {
     const char* chars;
     signed int type;
 } TOKENMAP[] = {
-  TOKENT("!" , TOK_EXLAM),
-  TOKENT("!=", TOK_EXLAM_EQUAL),
+  TOKENT("!" , TOK_EXCLAM),
+  TOKENT("!=", TOK_EXCLAM_EQUAL),
   TOKENT("\"", DOUBLEQUOTE),
   TOKENT("#",  0),
   TOKENT("#![",TOK_CATTR_OPEN),
@@ -437,7 +437,7 @@ const char* Token::typestr(enum eTokenType type)
     case TOK_THINARROW: return "TOK_THINARROW";  // ->
 
     case TOK_PLUS: return "TOK_PLUS"; case TOK_DASH: return "TOK_DASH";
-    case TOK_EXLAM: return "TOK_EXLAM";
+    case TOK_EXCLAM: return "TOK_EXCLAM";
     case TOK_PERCENT: return "TOK_PERCENT";
     case TOK_SLASH: return "TOK_SLASH";
 
@@ -455,7 +455,7 @@ const char* Token::typestr(enum eTokenType type)
     case TOK_PIPE_EQUAL: return "TOK_PIPE_EQUAL";
 
     case TOK_DOUBLE_EQUAL: return "TOK_DOUBLE_EQUAL";
-    case TOK_EXLAM_EQUAL: return "TOK_EXLAM_EQUAL";
+    case TOK_EXCLAM_EQUAL: return "TOK_EXCLAM_EQUAL";
     case TOK_GTE: return "TOK_GTE";
     case TOK_LTE: return "TOK_LTE";
 
