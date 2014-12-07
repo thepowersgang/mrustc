@@ -452,6 +452,7 @@ TokenTree Parse_TT_Path(TokenStream& lex)
 {
     throw ParseError::Todo("TokenTree path");
 }
+/// Parse a token tree path
 TokenTree Parse_TT_Val(TokenStream& lex)
 {
     Token   tok;
@@ -493,10 +494,11 @@ TokenTree Parse_TT_Val(TokenStream& lex)
         break;
     default:
         // Oh, fail :(
-        break;
+        throw ParseError::Unexpected(tok);
     }
     return TokenTree(ret);
 }
+/// Parse a token tree expression
 TokenTree Parse_TT_Expr(TokenStream& lex)
 {
     Token   tok;

@@ -6,5 +6,6 @@
 
 extern TokenTree Parse_TT(TokenStream& lex);
 extern TokenTree Parse_TT_Expr(TokenStream& lex);
+extern TokenTree Parse_TT_Stmt(TokenStream& lex);
 
 #endif // TOKENTREE_HPP_INCLUDED

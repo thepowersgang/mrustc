@@ -200,16 +200,20 @@ private:
 class TokenTree
 {
 public:
+    TokenTree();
     TokenTree(Token tok);
     TokenTree(::std::vector<TokenTree> subtrees);
+
+    const unsigned int size() const;
+    const TokenTree& operator[](unsigned int) const;
+    const Token& tok() const;
 };
 
 class TTStream:
     public TokenStream
 {
     const TokenTree&    m_input_tt;
-    const TokenTree*    m_cur_layer;
-    ::std::vector<unsigned int> m_index_stack;
+    ::std::vector< ::std::pair<unsigned int, const TokenTree*> > m_stack;
 public:
     TTStream(const TokenTree& input_tt);
     ~TTStream();

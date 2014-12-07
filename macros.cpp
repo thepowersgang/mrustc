@@ -3,6 +3,7 @@
 #include "macros.hpp"
 #include "parse/parseerror.hpp"
 #include "parse/tokentree.hpp"
+#include "parse/common.hpp"
 
 #define FOREACH(basetype, it, src)  for(basetype::const_iterator it = src.begin(); it != src.end(); ++ it)
 
@@ -71,25 +72,35 @@ MacroExpander Macro_Invoke(const char* name, TokenTree input)
             bool fail = false;
             FOREACH(::std::vector<MacroPatEnt>, pat_it, rule_it->m_pattern)
             {
+                Token   tok;
+                TokenTree   val;
                 const MacroPatEnt& pat = *pat_it;
-                switch(pat.type)
+                try
                 {
-                case MacroPatEnt::PAT_TOKEN:
-                    if( lex.getToken().type() != pat.tok.type() ) {
-                        fail = true;
+                    switch(pat.type)
+                    {
+                    case MacroPatEnt::PAT_TOKEN:
+                        GET_CHECK_TOK(tok, lex, pat.tok.type());
                         break;
+                    case MacroPatEnt::PAT_EXPR:
+                        val = Parse_TT_Expr(lex);
+                        if(0)
+                    case MacroPatEnt::PAT_STMT:
+                        val = Parse_TT_Stmt(lex);
+                        bound_tts.insert( std::make_pair(pat.name.c_str(), val) );
+                        break;
+                    default:
+                        throw ParseError::Todo("macro pattern matching");
                     }
-                    break;
-                case MacroPatEnt::PAT_EXPR:
-                    bound_tts.insert( std::make_pair(pat.name.c_str(), Parse_TT_Expr(lex)) );
-                    break;
-                default:
-                    throw ParseError::Todo("macro pattern matching");
                 }
-                if( fail )
+                catch(const ParseError::Base& e)
+                {
+                    fail = true;
                     break;
+                }
             }
-            if( !fail ) {
+            if( !fail && lex.getToken().type() == TOK_EOF )
+            {
                 throw ParseError::Todo("Macro expansions");
             }
         }

@@ -541,6 +541,10 @@ const char* Token::typestr(enum eTokenType type)
     return os;
 }
 
+TokenTree::TokenTree()
+{
+
+}
 TokenTree::TokenTree(Token tok)
 {
 
@@ -551,15 +555,34 @@ TokenTree::TokenTree(::std::vector<TokenTree> subtrees)
 }
 
 TTStream::TTStream(const TokenTree& input_tt):
-    m_input_tt(input_tt),
-    m_cur_layer(&input_tt)
+    m_input_tt(input_tt)
 {
+    m_stack.push_back( ::std::make_pair(0, &input_tt) );
 }
 TTStream::~TTStream()
 {
 }
 Token TTStream::realGetToken()
 {
+    while(m_stack.size() > 0)
+    {
+        // If current index is above TT size, go up
+        unsigned int& idx = m_stack.back().first;
+        const TokenTree& tree = *m_stack.back().second;
+        if(idx < tree.size())
+        {
+            if( tree[idx].size() == 0 ) {
+                idx ++;
+                return tree[idx-1].tok();
+            }
+            else {
+                m_stack.push_back( ::std::make_pair(0, &tree[idx] ) );
+            }
+        }
+        else {
+            m_stack.pop_back();
+        }
+    }
     return Token(TOK_EOF);
 }
 
