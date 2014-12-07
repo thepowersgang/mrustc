@@ -199,14 +199,28 @@ private:
 
 class TokenTree
 {
+    Token   m_tok;
+    ::std::vector<TokenTree>    m_subtrees;
 public:
-    TokenTree();
-    TokenTree(Token tok);
-    TokenTree(::std::vector<TokenTree> subtrees);
+    TokenTree() {}
+    TokenTree(Token tok):
+        m_tok(tok)
+    {
+    }
+    TokenTree(::std::vector<TokenTree> subtrees):
+        m_subtrees(subtrees)
+    {
+    }
 
-    const unsigned int size() const;
-    const TokenTree& operator[](unsigned int) const;
-    const Token& tok() const;
+    const unsigned int size() const {
+        return m_subtrees.size();
+    }
+    const TokenTree& operator[](unsigned int idx) const {
+        return m_subtrees[idx];
+    }
+    const Token& tok() const {
+        return m_tok;
+    }
 };
 
 class TTStream:

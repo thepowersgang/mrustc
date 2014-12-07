@@ -65,14 +65,17 @@ MacroExpander Macro_Invoke(const char* name, TokenTree input)
         // 4. Return expander
         FOREACH(MacroRules, rule_it, rules)
         {
+            Token   tok;
             // Create token stream for input tree
             TTStream    lex(input);
-            ::std::map<const char*,TokenTree>   bound_tts;
+            if(GET_TOK(tok, lex) == TOK_EOF) {
+                throw ParseError::Unexpected(tok);
+            }
+            ::std::map<const char*,TokenTree,cmp_str>   bound_tts;
             // Parse according to rules
             bool fail = false;
             FOREACH(::std::vector<MacroPatEnt>, pat_it, rule_it->m_pattern)
             {
-                Token   tok;
                 TokenTree   val;
                 const MacroPatEnt& pat = *pat_it;
                 try
@@ -99,9 +102,13 @@ MacroExpander Macro_Invoke(const char* name, TokenTree input)
                     break;
                 }
             }
+            // TODO: Actually check if the final token is the closer to the first
+            if( !fail && GET_TOK(tok, lex) == TOK_EOF) {
+                throw ParseError::Unexpected(tok);
+            }
             if( !fail && lex.getToken().type() == TOK_EOF )
             {
-                throw ParseError::Todo("Macro expansions");
+                return MacroExpander(rule_it->m_contents, bound_tts);
             }
         }
         throw ParseError::Todo("Error when macro fails to match");
@@ -112,5 +119,26 @@ MacroExpander Macro_Invoke(const char* name, TokenTree input)
 
 Token MacroExpander::realGetToken()
 {
-    throw ParseError::Todo("MacroExpander");
+    if( m_ttstream.get() )
+    {
+        Token rv = m_ttstream->getToken();
+        if( rv.type() != TOK_EOF )
+            return rv;
+        m_ttstream.reset();
+    }
+    if( m_ofs < m_contents.size() )
+    {
+        const MacroRuleEnt& ent = m_contents[m_ofs];
+        m_ofs ++;
+        if( ent.name.size() != 0 ) {
+            // Binding!
+            m_ttstream.reset( new TTStream(m_mappings.at(ent.name.c_str())) );
+            return m_ttstream->getToken();
+        }
+        else {
+            return ent.tok;
+        }
+        throw ParseError::Todo("MacroExpander - realGetToken");
+    }
+    return Token(TOK_EOF);
 }

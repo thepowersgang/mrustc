@@ -3,9 +3,15 @@
 
 #include "parse/lex.hpp"
 #include <map>
+#include <memory>
+#include <cstring>
+
+class MacroExpander;
 
 class MacroRuleEnt
 {
+    friend class MacroExpander;
+
     Token   tok;
     ::std::string   name;
 public:
@@ -44,11 +50,6 @@ struct MacroPatEnt
 /// A rule within a macro_rules! blcok
 class MacroRule
 {
-    struct MacroRuleState
-    {
-        ::std::map< ::std::string, TokenTree>   m_mappings;
-        size_t  ofs;
-    };
 public:
     ::std::vector<MacroPatEnt>  m_pattern;
     ::std::vector<MacroRuleEnt> m_contents;
@@ -57,10 +58,34 @@ public:
 /// A sigle 'macro_rules!' block
 typedef ::std::vector<MacroRule>    MacroRules;
 
+struct cmp_str {
+    bool operator()(const char* a, const char* b) const {
+        return ::std::strcmp(a, b) < 0;
+    }
+};
+
 class MacroExpander:
     public TokenStream
 {
+    typedef ::std::map<const char*, TokenTree, cmp_str>    t_mappings;
+    const t_mappings    m_mappings;
+    const ::std::vector<MacroRuleEnt>&  m_contents;
+    size_t  m_ofs;
+
+    ::std::auto_ptr<TTStream>   m_ttstream;
 public:
+    MacroExpander(const MacroExpander& x):
+        m_mappings(x.m_mappings),
+        m_contents(x.m_contents),
+        m_ofs(0)
+    {
+    }
+    MacroExpander(const ::std::vector<MacroRuleEnt>& contents, t_mappings mappings):
+        m_mappings(mappings),
+        m_contents(contents),
+        m_ofs(0)
+    {
+    }
     virtual Token realGetToken();
 };
 

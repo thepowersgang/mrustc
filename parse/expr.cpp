@@ -406,6 +406,11 @@ AST::ExprNode Parse_ExprVal(TokenStream& lex)
         return ExprNode(ExprNode::TagInteger(), tok.intval(), tok.datatype());
     case TOK_FLOAT:
         throw ParseError::Todo("Float");
+    case TOK_RWORD_SELF: {
+        AST::Path   path;
+        path.append( AST::PathNode("self", ::std::vector<TypeRef>()) );
+        return ExprNode(ExprNode::TagNamedValue(), path);
+        }
     case TOK_MACRO: {
         // Need to create a token tree, pass to the macro, then pass the result of that to Parse_Expr0
         MacroExpander expanded_macro = Macro_Invoke(tok.str().c_str(), Parse_TT(lex));
@@ -477,6 +482,8 @@ TokenTree Parse_TT_Val(TokenStream& lex)
             return inner;
         }
         break; }
+    case TOK_RWORD_SELF:
+        return TokenTree(tok);
     case TOK_RWORD_MATCH:
         ret.push_back(TokenTree(tok));
         ret.push_back(Parse_TT(lex));
@@ -515,6 +522,23 @@ TokenTree Parse_TT_Expr(TokenStream& lex)
         case TOK_DASH:
             ret.push_back(tok);
             ret.push_back(Parse_TT_Val(lex));
+            break;
+        case TOK_DOT:
+            ret.push_back(tok);
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            ret.push_back(tok);
+            switch(GET_TOK(tok, lex))
+            {
+            case TOK_DOUBLE_COLON:
+                throw ParseError::Todo("Generic type params in TT expr");
+            case TOK_PAREN_OPEN:
+                lex.putback(tok);
+                ret.push_back(Parse_TT(lex));
+                break;
+            default:
+                lex.putback(tok);
+                break;
+            }
             break;
         default:
             lex.putback(tok);

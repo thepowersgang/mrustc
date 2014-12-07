@@ -10,6 +10,7 @@
 #include <cassert>
 #include <iostream>
 #include <cstdlib>  // strtol
+#include <typeinfo>
 
 Lexer::Lexer(::std::string filename):
     m_istream(filename.c_str()),
@@ -225,7 +226,6 @@ Token Lexer::getToken()
                     str.push_back(ch);
                     ch = this->getc();
                 }
-                this->putback();
 
                 if( ch == '!' )
                 {
@@ -233,6 +233,7 @@ Token Lexer::getToken()
                 }
                 else
                 {
+                    this->putback();
                     for( unsigned int i = 0; i < LEN(RWORDS); i ++ )
                     {
                         if( str < RWORDS[i].chars ) break;
@@ -541,19 +542,6 @@ const char* Token::typestr(enum eTokenType type)
     return os;
 }
 
-TokenTree::TokenTree()
-{
-
-}
-TokenTree::TokenTree(Token tok)
-{
-
-}
-TokenTree::TokenTree(::std::vector<TokenTree> subtrees)
-{
-
-}
-
 TTStream::TTStream(const TokenTree& input_tt):
     m_input_tt(input_tt)
 {
@@ -569,14 +557,21 @@ Token TTStream::realGetToken()
         // If current index is above TT size, go up
         unsigned int& idx = m_stack.back().first;
         const TokenTree& tree = *m_stack.back().second;
+
+        if(idx == 0 && tree.size() == 0) {
+            idx ++;
+            return tree.tok();
+        }
+
         if(idx < tree.size())
         {
-            if( tree[idx].size() == 0 ) {
-                idx ++;
-                return tree[idx-1].tok();
+            const TokenTree&    subtree = tree[idx];
+            idx ++;
+            if( subtree.size() == 0 ) {
+                return subtree.tok();
             }
             else {
-                m_stack.push_back( ::std::make_pair(0, &tree[idx] ) );
+                m_stack.push_back( ::std::make_pair(0, &subtree ) );
             }
         }
         else {
@@ -603,7 +598,9 @@ Token TokenStream::getToken()
     }
     else
     {
-        return this->realGetToken();
+        Token ret = this->realGetToken();
+        ::std::cout << "getToken[" << typeid(*this).name() << "] - " << ret << ::std::endl;
+        return ret;
     }
 }
 void TokenStream::putback(Token tok)
