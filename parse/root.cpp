@@ -232,6 +232,8 @@ void Parse_TypeConds(TokenStream& lex, AST::TypeParams& params)
 /// Parse a function definition (after the 'fn')
 AST::Function Parse_FunctionDef(TokenStream& lex)
 {
+    TRACE_FUNCTION;
+
     Token   tok;
 
     // Name
@@ -254,12 +256,45 @@ AST::Function Parse_FunctionDef(TokenStream& lex)
     else {
         lex.putback(tok);
     }
+
+    AST::Function::Class    fcn_class = AST::Function::CLASS_UNBOUND;
     GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
-    ::std::vector<AST::StructItem>  args;
-    if( GET_TOK(tok, lex) != TOK_PAREN_CLOSE )
+    GET_TOK(tok, lex);
+    if( tok.type() == TOK_AMP )
     {
-        // Argument list
+        // By-reference method
+        if( GET_TOK(tok, lex) == TOK_LIFETIME )
+        {
+            throw ParseError::Todo("Lifetimes on self in methods");
+        }
+        if( tok.type() == TOK_RWORD_MUT )
+        {
+            GET_CHECK_TOK(tok, lex, TOK_RWORD_SELF);
+            fcn_class = AST::Function::CLASS_MUTMETHOD;
+        }
+        else
+        {
+            CHECK_TOK(tok, TOK_RWORD_SELF);
+            fcn_class = AST::Function::CLASS_REFMETHOD;
+        }
+        GET_TOK(tok, lex);
+    }
+    else if( tok.type() == TOK_RWORD_SELF )
+    {
+        // By-value method
+        fcn_class = AST::Function::CLASS_VALMETHOD;
+        GET_TOK(tok, lex);
+        throw ParseError::Todo("By-value methods");
+    }
+    else
+    {
+        // Unbound method
+    }
+    ::std::vector<AST::StructItem>  args;
+    if( tok.type() != TOK_PAREN_CLOSE )
+    {
         lex.putback(tok);
+        // Argument list
         do {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string   name = tok.str();
@@ -287,7 +322,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex)
 
     AST::Expr   code = Parse_ExprBlock(lex);
 
-    return AST::Function(name, params, ret_type, args, code);
+    return AST::Function(name, params, fcn_class, ret_type, args, code);
 }
 
 AST::Module Parse_ModRoot(bool is_own_file, Preproc& lex)

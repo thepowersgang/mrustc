@@ -39,7 +39,7 @@ Pattern::Pattern(TagEnumVariant, Path path, ::std::vector<Pattern> sub_patterns)
 }
 
 
-Function::Function(::std::string name, TypeParams params, TypeRef ret_type, ::std::vector<StructItem> args, Expr code)
+Function::Function(::std::string name, TypeParams params, Class fcn_class, TypeRef ret_type, ::std::vector<StructItem> args, Expr code)
 {
 }
 
@@ -76,7 +76,13 @@ ExprNode::ExprNode()
 ExprNode::ExprNode(TagBlock, ::std::vector<ExprNode> nodes)
 {
 }
+ExprNode::ExprNode(TagLetBinding, Pattern pat, ExprNode value)
+{
+}
 ExprNode::ExprNode(TagInteger, uint64_t value, enum eCoreType datatype)
+{
+}
+ExprNode::ExprNode(TagStructLiteral, Path path, ExprNode base_value, ::std::vector< ::std::pair< ::std::string,ExprNode> > values )
 {
 }
 ExprNode::ExprNode(TagCallPath, Path path, ::std::vector<ExprNode> args)

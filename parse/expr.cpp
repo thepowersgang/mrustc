@@ -4,7 +4,9 @@
 #include "parseerror.hpp"
 #include "../ast/ast.hpp"
 #include "common.hpp"
+#include "../macros.hpp"
 #include <iostream>
+#include "tokentree.hpp"
 
 using AST::ExprNode;
 
@@ -82,6 +84,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
     default:
         throw ParseError::Unexpected(tok);
     }
+    throw ParseError::BugCheck("Parse_TT_Stmt should early return");
 }
 
 ExprNode Parse_ExprBlockNode(TokenStream& lex)
@@ -102,12 +105,15 @@ ExprNode Parse_ExprBlockNode(TokenStream& lex)
             nodes.push_back(Parse_ExprBlockNode(lex));
             trailing_value = true;
             break;
-        case TOK_RWORD_LET:
+        case TOK_RWORD_LET: {
             //ret.append();
-            throw ParseError::Todo("block let");
+            AST::Pattern pat = Parse_Pattern(lex);
+            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+            AST::ExprNode val = Parse_Expr1(lex);
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
             trailing_value = false;
-            break;
+            nodes.push_back( ExprNode(ExprNode::TagLetBinding(), pat, val));
+            break; }
         case TOK_RWORD_LOOP:
             throw ParseError::Todo("loop");
             break;
@@ -360,10 +366,31 @@ AST::ExprNode Parse_ExprVal(TokenStream& lex)
         path = Parse_Path(lex, true, PATH_GENERIC_EXPR);
         switch( GET_TOK(tok, lex) )
         {
-        case TOK_BRACE_OPEN:
-            // Structure literal
-            throw ParseError::Todo("Structure literal");
-            break;
+        case TOK_BRACE_OPEN: {
+            // Braced structure literal
+            // - A series of 0 or more pairs of <ident>: <expr>,
+            // - '..' <expr>
+            ::std::vector< ::std::pair< ::std::string, AST::ExprNode> >  items;
+            while( GET_TOK(tok, lex) == TOK_IDENT )
+            {
+                ::std::string   name = tok.str();
+                GET_CHECK_TOK(tok, lex, TOK_COLON);
+                AST::ExprNode   val = Parse_Expr0(lex);
+                items.push_back( ::std::make_pair(name, val) );
+                if( GET_TOK(tok,lex) == TOK_BRACE_CLOSE )
+                    break;
+                CHECK_TOK(tok, TOK_COMMA);
+            }
+            AST::ExprNode   base_val;
+            if( tok.type() == TOK_DOUBLE_DOT )
+            {
+                // default
+                base_val = Parse_Expr0(lex);
+                GET_TOK(tok, lex);
+            }
+            CHECK_TOK(tok, TOK_BRACE_CLOSE);
+            return ExprNode(ExprNode::TagStructLiteral(), path, base_val, items);
+            }
         case TOK_PAREN_OPEN: {
             lex.putback(tok);
             // Function call
@@ -379,7 +406,128 @@ AST::ExprNode Parse_ExprVal(TokenStream& lex)
         return ExprNode(ExprNode::TagInteger(), tok.intval(), tok.datatype());
     case TOK_FLOAT:
         throw ParseError::Todo("Float");
+    case TOK_MACRO: {
+        // Need to create a token tree, pass to the macro, then pass the result of that to Parse_Expr0
+        MacroExpander expanded_macro = Macro_Invoke(tok.str().c_str(), Parse_TT(lex));
+
+        return Parse_Expr0(expanded_macro);
+        }
     default:
         throw ParseError::Unexpected(tok);
     }
+}
+
+// Token Tree Parsing
+TokenTree Parse_TT(TokenStream& lex)
+{
+    Token tok = lex.getToken();
+    eTokenType  closer = TOK_PAREN_CLOSE;
+    switch(tok.type())
+    {
+    case TOK_PAREN_OPEN:
+        closer = TOK_PAREN_CLOSE;
+        break;
+    case TOK_SQUARE_OPEN:
+        closer = TOK_SQUARE_CLOSE;
+        break;
+    case TOK_BRACE_OPEN:
+        closer = TOK_BRACE_CLOSE;
+        break;
+    default:
+        return TokenTree(tok);
+    }
+
+    ::std::vector<TokenTree>   items;
+    items.push_back(tok);
+    while(GET_TOK(tok, lex) != closer && tok.type() != TOK_EOF)
+    {
+        lex.putback(tok);
+        items.push_back(Parse_TT(lex));
+    }
+    items.push_back(tok);
+    return TokenTree(items);
+}
+
+TokenTree Parse_TT_Path(TokenStream& lex)
+{
+    throw ParseError::Todo("TokenTree path");
+}
+TokenTree Parse_TT_Val(TokenStream& lex)
+{
+    Token   tok;
+    ::std::vector<TokenTree>    ret;
+    switch(GET_TOK(tok, lex))
+    {
+    case TOK_PAREN_OPEN:
+        lex.putback(tok);
+        return Parse_TT(lex);
+
+    case TOK_IDENT:
+    case TOK_DOUBLE_COLON: {
+        lex.putback(tok);
+        TokenTree inner = Parse_TT_Path(lex);
+        if(GET_TOK(tok, lex) == TOK_BRACE_OPEN) {
+            lex.putback(tok);
+            ret.push_back(inner);
+            ret.push_back(Parse_TT(lex));
+        }
+        else {
+            lex.putback(tok);
+            return inner;
+        }
+        break; }
+    case TOK_RWORD_MATCH:
+        ret.push_back(TokenTree(tok));
+        ret.push_back(Parse_TT(lex));
+        break;
+    case TOK_RWORD_IF:
+        ret.push_back(TokenTree(tok));
+        ret.push_back(Parse_TT(lex));
+        if( GET_TOK(tok, lex) == TOK_RWORD_ELSE ) {
+            ret.push_back(TokenTree(tok));
+            ret.push_back(Parse_TT(lex));
+        }
+        else {
+            lex.putback(tok);
+        }
+        break;
+    default:
+        // Oh, fail :(
+        break;
+    }
+    return TokenTree(ret);
+}
+TokenTree Parse_TT_Expr(TokenStream& lex)
+{
+    Token   tok;
+    ::std::vector<TokenTree>    ret;
+
+    ret.push_back(Parse_TT_Val(lex));
+    // 1. Get left associative blocks until nothing matches
+    bool cont = true;
+    while(cont)
+    {
+        switch(GET_TOK(tok, lex))
+        {
+        case TOK_PLUS:
+        case TOK_DASH:
+            ret.push_back(tok);
+            ret.push_back(Parse_TT_Val(lex));
+            break;
+        default:
+            lex.putback(tok);
+            cont = false;
+            break;
+        }
+    }
+    return TokenTree(ret);
+
+}
+TokenTree Parse_TT_Stmt(TokenStream& lex)
+{
+    throw ParseError::Todo("Parse_TT_Stmt");
+}
+TokenTree Parse_TT_Block(TokenStream& lex)
+{
+    throw ParseError::Todo("Parse_TT_Block");
 }

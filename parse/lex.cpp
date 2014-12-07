@@ -133,9 +133,9 @@ static const struct {
   TOKENT("pure",    TOK_RWORD_PURE),
   TOKENT("ref",     TOK_RWORD_REF),
   TOKENT("return",  TOK_RWORD_RETURN),
+  TOKENT("self",    TOK_RWORD_SELF),
   TOKENT("sizeof",  TOK_RWORD_SIZEOF),
   TOKENT("static",  TOK_RWORD_STATIC),
-  TOKENT("self",    TOK_RWORD_SELF),
   TOKENT("struct",  TOK_RWORD_STRUCT),
   TOKENT("super",   TOK_RWORD_SUPER),
   TOKENT("true",    TOK_RWORD_TRUE),
@@ -416,7 +416,6 @@ const char* Token::typestr(enum eTokenType type)
     case TOK_INTEGER: return "TOK_INTEGER";
     case TOK_CHAR: return "TOK_CHAR";
     case TOK_FLOAT: return "TOK_FLOAT";
-    case TOK_UNDERSCORE: return "TOK_UNDERSCORE";
 
     case TOK_CATTR_OPEN: return "TOK_CATTR_OPEN";
     case TOK_ATTR_OPEN: return "TOK_ATTR_OPEN";
@@ -542,3 +541,50 @@ const char* Token::typestr(enum eTokenType type)
     return os;
 }
 
+TokenTree::TokenTree(Token tok)
+{
+
+}
+TokenTree::TokenTree(::std::vector<TokenTree> subtrees)
+{
+
+}
+
+TTStream::TTStream(const TokenTree& input_tt):
+    m_input_tt(input_tt),
+    m_cur_layer(&input_tt)
+{
+}
+TTStream::~TTStream()
+{
+}
+Token TTStream::realGetToken()
+{
+    return Token(TOK_EOF);
+}
+
+TokenStream::TokenStream():
+    m_cache_valid(false)
+{
+}
+TokenStream::~TokenStream()
+{
+}
+
+Token TokenStream::getToken()
+{
+    if( m_cache_valid )
+    {
+        m_cache_valid = false;
+        return m_cache;
+    }
+    else
+    {
+        return this->realGetToken();
+    }
+}
+void TokenStream::putback(Token tok)
+{
+    m_cache_valid = true;
+    m_cache = tok;
+}

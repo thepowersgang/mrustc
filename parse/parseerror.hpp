@@ -13,6 +13,24 @@ public:
     virtual ~Base() throw();
 };
 
+class Generic:
+    public Base
+{
+    ::std::string   m_message;
+public:
+    Generic(::std::string message);
+    virtual ~Generic() throw () {}
+};
+
+class BugCheck:
+    public Base
+{
+    ::std::string   m_message;
+public:
+    BugCheck(::std::string message);
+    virtual ~BugCheck() throw () {}
+};
+
 class Todo:
     public Base
 {

@@ -69,11 +69,17 @@ public:
     struct TagBlock {};
     ExprNode(TagBlock, ::std::vector<ExprNode> nodes);
 
+    struct TagLetBinding {};
+    ExprNode(TagLetBinding, Pattern pat, ExprNode value);
+
     struct TagAssign {};
     ExprNode(TagAssign, ExprNode slot, ExprNode value) {}
 
     struct TagInteger {};
     ExprNode(TagInteger, uint64_t value, enum eCoreType datatype);
+
+    struct TagStructLiteral {};
+    ExprNode(TagStructLiteral, Path path, ExprNode base_value, ::std::vector< ::std::pair< ::std::string,ExprNode> > values );
 
     struct TagCallPath {};
     ExprNode(TagCallPath, Path path, ::std::vector<ExprNode> args);
@@ -95,7 +101,16 @@ public:
 class Function
 {
 public:
-    Function(::std::string name, TypeParams params, TypeRef ret_type, ::std::vector<StructItem> args, Expr code);
+
+    enum Class
+    {
+        CLASS_UNBOUND,
+        CLASS_REFMETHOD,
+        CLASS_MUTMETHOD,
+        CLASS_VALMETHOD,
+    };
+
+    Function(::std::string name, TypeParams params, Class fcn_class, TypeRef ret_type, ::std::vector<StructItem> args, Expr code);
 };
 
 class Impl

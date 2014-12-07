@@ -7,6 +7,18 @@ ParseError::Base::~Base() throw()
 {
 }
 
+ParseError::Generic::Generic(::std::string message):
+    m_message(message)
+{
+    ::std::cout << "Generic(" << message << ")" << ::std::endl;
+}
+
+ParseError::BugCheck::BugCheck(::std::string message):
+    m_message(message)
+{
+    ::std::cout << "BugCheck(" << message << ")" << ::std::endl;
+}
+
 ParseError::Todo::Todo(::std::string message):
     m_message(message)
 {

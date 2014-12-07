@@ -2,8 +2,7 @@
 #include <iostream>
 
 Preproc::Preproc(::std::string path):
-    m_lex(path),
-    m_cache_valid(false)
+    m_lex(path)
 {
     //ctor
 }
@@ -31,20 +30,7 @@ Token Preproc::getTokenInt()
     }
 }
 
-Token Preproc::getToken()
+Token Preproc::realGetToken()
 {
-    if( m_cache_valid )
-    {
-        m_cache_valid = false;
-        return m_cache;
-    }
-    else
-    {
-        return this->getTokenInt();
-    }
-}
-void Preproc::putback(Token tok)
-{
-    m_cache_valid = true;
-    m_cache = tok;
+    return getTokenInt();
 }

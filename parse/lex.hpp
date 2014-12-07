@@ -20,7 +20,6 @@ enum eTokenType
     TOK_INTEGER,
     TOK_CHAR,
     TOK_FLOAT,
-    TOK_UNDERSCORE,
 
     TOK_CATTR_OPEN,
     TOK_ATTR_OPEN,
@@ -154,11 +153,11 @@ public:
     Token(uint64_t val, enum eCoreType datatype);
     Token(double val, enum eCoreType datatype);
 
-    enum eTokenType type() { return m_type; }
-    const ::std::string& str() { return m_str; }
-    enum eCoreType  datatype() { return m_datatype; }
-    uint64_t intval() { return m_intval; }
-    double floatval() { return m_floatval; }
+    enum eTokenType type() const { return m_type; }
+    const ::std::string& str() const { return m_str; }
+    enum eCoreType  datatype() const { return m_datatype; }
+    uint64_t intval() const { return m_intval; }
+    double floatval() const { return m_floatval; }
 
     static const char* typestr(enum eTokenType type);
 };
@@ -167,9 +166,15 @@ extern ::std::ostream&  operator<<(::std::ostream& os, Token& tok);
 
 class TokenStream
 {
+    bool    m_cache_valid;
+    Token   m_cache;
 public:
-    virtual Token   getToken() = 0;
-    virtual void    putback(Token tok) = 0;
+    TokenStream();
+    virtual ~TokenStream();
+    Token   getToken();
+    void    putback(Token tok);
+protected:
+    virtual Token   realGetToken() = 0;
 };
 
 class Lexer
@@ -190,6 +195,27 @@ private:
     void putback();
 
     class EndOfFile {};
+};
+
+class TokenTree
+{
+public:
+    TokenTree(Token tok);
+    TokenTree(::std::vector<TokenTree> subtrees);
+};
+
+class TTStream:
+    public TokenStream
+{
+    const TokenTree&    m_input_tt;
+    const TokenTree*    m_cur_layer;
+    ::std::vector<unsigned int> m_index_stack;
+public:
+    TTStream(const TokenTree& input_tt);
+    ~TTStream();
+
+protected:
+    virtual Token realGetToken();
 };
 
 #endif // LEX_HPP_INCLUDED

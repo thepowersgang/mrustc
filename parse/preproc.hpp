@@ -8,15 +8,11 @@ class Preproc:
 {
     Lexer   m_lex;
 
-    bool    m_cache_valid;
-    Token   m_cache;
-
 public:
     Preproc(::std::string path);
     ~Preproc();
 
-    virtual Token getToken();
-    virtual void putback(Token tok);
+    virtual Token realGetToken();
 private:
     Token getTokenInt();
 };
