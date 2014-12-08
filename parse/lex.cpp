@@ -218,7 +218,47 @@ Token Lexer::getToken()
         {
             // No match at all, check for symbol
             char ch = this->getc();
-            if( issym(ch) )
+            if( isdigit(ch) )
+            {
+                // TODO: handle integers/floats
+                uint64_t    val = 0;
+                if( ch == '0' ) {
+                    // Octal/hex handling
+                    ch = this->getc();
+                    if( ch == 'x' ) {
+                        while( isxdigit(ch = this->getc()) ) {
+                            val *= val * 16;
+                            if(ch <= '9')
+                                val += ch - '0';
+                            else if( ch <= 'F' )
+                                val += ch - 'A' + 10;
+                            else if( ch <= 'f' )
+                                val += ch - 'a' + 10;
+                        }
+                    }
+                    else if( isdigit(ch) ) {
+                        throw ParseError::Todo("Lex octal numbers");
+                    }
+                    else {
+                        val = 0;
+                    }
+                }
+                else {
+                    throw ParseError::Todo("Lex decimal numbers");
+                }
+
+                if(ch == 'u' || ch == 'i') {
+                    // Unsigned
+                    throw ParseError::Todo("Lex number suffixes");
+                }
+                else if( ch == '.' ) {
+                    throw ParseError::Todo("Lex floats");
+                }
+                else {
+                    return Token(val, CORETYPE_ANY);
+                }
+            }
+            else if( issym(ch) )
             {
                 ::std::string   str;
                 while( issym(ch) )
@@ -241,11 +281,6 @@ Token Lexer::getToken()
                     }
                     return Token(TOK_IDENT, str);
                 }
-            }
-            else if( isdigit(ch) )
-            {
-                // TODO: handle integers/floats
-                throw ParseError::Todo("Lex Numbers");
             }
             else
             {

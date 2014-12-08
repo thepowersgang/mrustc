@@ -79,6 +79,12 @@ ExprNode::ExprNode(TagBlock, ::std::vector<ExprNode> nodes)
 ExprNode::ExprNode(TagLetBinding, Pattern pat, ExprNode value)
 {
 }
+ExprNode::ExprNode(TagReturn, ExprNode val)
+{
+}
+ExprNode::ExprNode(TagCast, ExprNode value, TypeRef dst_type)
+{
+}
 ExprNode::ExprNode(TagInteger, uint64_t value, enum eCoreType datatype)
 {
 }
@@ -88,10 +94,22 @@ ExprNode::ExprNode(TagStructLiteral, Path path, ExprNode base_value, ::std::vect
 ExprNode::ExprNode(TagCallPath, Path path, ::std::vector<ExprNode> args)
 {
 }
+ExprNode::ExprNode(TagCallObject, ExprNode val, ::std::vector<ExprNode> args)
+{
+}
 ExprNode::ExprNode(TagMatch, ExprNode val, ::std::vector< ::std::pair<Pattern,ExprNode> > arms)
 {
 }
+ExprNode::ExprNode(TagIf, ExprNode cond, ExprNode true_code, ExprNode false_code)
+{
+}
 ExprNode::ExprNode(TagNamedValue, Path path)
+{
+}
+ExprNode::ExprNode(TagField, ::std::string name)
+{
+}
+ExprNode::ExprNode(TagBinOp, BinOpType type, ExprNode left, ExprNode right)
 {
 }
 

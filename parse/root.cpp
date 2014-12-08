@@ -76,18 +76,18 @@ static const struct {
     enum eCoreType  type;
 } CORETYPES[] = {
     {"char", CORETYPE_CHAR},
-    {"uint", CORETYPE_UINT},
-    {"int", CORETYPE_INT},
-    {"u8", CORETYPE_U8},
-    {"i8", CORETYPE_I8},
-    {"u16", CORETYPE_U16},
-    {"i16", CORETYPE_I16},
-    {"u32", CORETYPE_U32},
-    {"i32", CORETYPE_I32},
-    {"u64", CORETYPE_U64},
-    {"i64", CORETYPE_I64},
     {"f32", CORETYPE_F32},
-    {"f64", CORETYPE_F64}
+    {"f64", CORETYPE_F64},
+    {"i16", CORETYPE_I16},
+    {"i32", CORETYPE_I32},
+    {"i64", CORETYPE_I64},
+    {"i8", CORETYPE_I8},
+    {"int", CORETYPE_INT},
+    {"u16", CORETYPE_U16},
+    {"u32", CORETYPE_U32},
+    {"u64", CORETYPE_U64},
+    {"u8",  CORETYPE_U8},
+    {"uint", CORETYPE_UINT},
 };
 
 TypeRef Parse_Type(TokenStream& lex)
@@ -126,11 +126,10 @@ TypeRef Parse_Type(TokenStream& lex)
             // Immutable reference
             return TypeRef(TypeRef::TagReference(), false, Parse_Type(lex));
         }
-        break;
+        throw ParseError::BugCheck("Reached end of Parse_Type:AMP");
     case TOK_STAR:
         // Pointer
-        tok = lex.getToken();
-        switch( tok.type() )
+        switch( GET_TOK(tok, lex) )
         {
         case TOK_RWORD_MUT:
             // Mutable pointer
@@ -141,7 +140,7 @@ TypeRef Parse_Type(TokenStream& lex)
         default:
             throw ParseError::Unexpected(tok, Token(TOK_RWORD_CONST));
         }
-        break;
+        throw ParseError::BugCheck("Reached end of Parse_Type:STAR");
     case TOK_SQUARE_OPEN: {
         // Array
         TypeRef inner = Parse_Type(lex);
@@ -157,7 +156,8 @@ TypeRef Parse_Type(TokenStream& lex)
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
             return TypeRef(TypeRef::TagUnsizedArray(), inner);
         }
-        break; }
+        throw ParseError::BugCheck("Reached end of Parse_Type:SQUARE");
+        }
     case TOK_PAREN_OPEN: {
         ::std::vector<TypeRef>  types;
         if( (tok = lex.getToken()).type() == TOK_PAREN_CLOSE)
@@ -174,6 +174,7 @@ TypeRef Parse_Type(TokenStream& lex)
     default:
         throw ParseError::Unexpected(tok);
     }
+    throw ParseError::BugCheck("Reached end of Parse_Type");
 }
 
 AST::TypeParams Parse_TypeParams(TokenStream& lex)

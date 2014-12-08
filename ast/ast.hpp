@@ -72,8 +72,14 @@ public:
     struct TagLetBinding {};
     ExprNode(TagLetBinding, Pattern pat, ExprNode value);
 
+    struct TagReturn {};
+    ExprNode(TagReturn, ExprNode val);
+
     struct TagAssign {};
     ExprNode(TagAssign, ExprNode slot, ExprNode value) {}
+
+    struct TagCast {};
+    ExprNode(TagCast, ExprNode value, TypeRef dst_type);
 
     struct TagInteger {};
     ExprNode(TagInteger, uint64_t value, enum eCoreType datatype);
@@ -84,11 +90,34 @@ public:
     struct TagCallPath {};
     ExprNode(TagCallPath, Path path, ::std::vector<ExprNode> args);
 
+    struct TagCallObject {};
+    ExprNode(TagCallObject, ExprNode val, ::std::vector<ExprNode> args);
+
     struct TagMatch {};
     ExprNode(TagMatch, ExprNode val, ::std::vector< ::std::pair<Pattern,ExprNode> > arms);
 
+    struct TagIf {};
+    ExprNode(TagIf, ExprNode cond, ExprNode true_code, ExprNode false_code);
+
     struct TagNamedValue {};
     ExprNode(TagNamedValue, Path path);
+
+    struct TagField {};
+    ExprNode(TagField, ::std::string name);
+
+    enum BinOpType {
+        BINOP_CMPEQU,
+        BINOP_CMPNEQU,
+
+        BINOP_BITAND,
+        BINOP_BITOR,
+        BINOP_BITXOR,
+
+        BINOP_SHL,
+        BINOP_SHR,
+    };
+    struct TagBinOp {};
+    ExprNode(TagBinOp, BinOpType type, ExprNode left, ExprNode right);
 };
 
 class Expr
