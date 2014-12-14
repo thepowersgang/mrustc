@@ -3,6 +3,7 @@
 
 #include <vector>
 #include "coretypes.hpp"
+#include "ast/path.hpp"
 
 namespace AST {
 class Expr;

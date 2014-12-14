@@ -7,7 +7,7 @@
 #include "../coretypes.hpp"
 #include <memory>
 
-class TypeRef;
+#include "../types.hpp"
 
 namespace AST {
 
@@ -29,40 +29,6 @@ public:
 };
 
 class ExprNode;
-
-class TypeParam
-{
-public:
-    TypeParam(bool is_lifetime, ::std::string name);
-    void addLifetimeBound(::std::string name);
-    void addTypeBound(TypeRef type);
-};
-
-typedef ::std::vector<TypeParam>    TypeParams;
-typedef ::std::pair< ::std::string, TypeRef>    StructItem;
-
-class PathNode
-{
-    ::std::string   m_name;
-    ::std::vector<TypeRef>  m_params;
-public:
-    PathNode(::std::string name, ::std::vector<TypeRef> args);
-    const ::std::string& name() const;
-    const ::std::vector<TypeRef>&   args() const;
-};
-
-class Path
-{
-public:
-    Path();
-    struct TagAbsolute {};
-    Path(TagAbsolute);
-
-    void append(PathNode node) {}
-    size_t length() const {return 0;}
-
-    PathNode& operator[](size_t idx) { throw ::std::out_of_range("Path []"); }
-};
 
 class Pattern
 {
@@ -156,10 +122,7 @@ public:
 
 class Function
 {
-    Expr    m_code;
-    ::std::auto_ptr<TypeRef> m_rettype;
 public:
-
     enum Class
     {
         CLASS_UNBOUND,
@@ -167,13 +130,22 @@ public:
         CLASS_MUTMETHOD,
         CLASS_VALMETHOD,
     };
+    typedef ::std::vector<StructItem>   Arglist;
 
-    Function(::std::string name, TypeParams params, Class fcn_class, TypeRef ret_type, ::std::vector<StructItem> args, Expr code);
+private:
+    Expr    m_code;
+    TypeRef m_rettype;
+    Arglist m_args;
+public:
+
+    Function(::std::string name, TypeParams params, Class fcn_class, TypeRef ret_type, Arglist args, Expr code);
 
     Expr& code() { return m_code; }
     const Expr code() const { return m_code; }
 
-    TypeRef& rettype() { return *m_rettype; }
+    TypeRef& rettype() { return m_rettype; }
+
+    Arglist& args() { return m_args; }
 };
 
 class Impl

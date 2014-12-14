@@ -1,6 +1,8 @@
 #include <iostream>
+#include <string>
 #include "parse/lex.hpp"
 #include "parse/parseerror.hpp"
+#include "ast/ast.hpp"
 
 using namespace std;
 

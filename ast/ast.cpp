@@ -51,11 +51,14 @@ void Impl::add_function(bool is_public, Function fcn)
 {
 }
 
+void Crate::iterate_functions(Crate::fcn_visitor_t* visitor)
+{
+}
+
 void Module::add_constant(bool is_public, ::std::string name, TypeRef type, Expr val)
 {
     ::std::cout << "add_constant()" << ::std::endl;
 }
-
 void Module::add_global(bool is_public, bool is_mut, ::std::string name, TypeRef type, Expr val)
 {
     ::std::cout << "add_global()" << ::std::endl;

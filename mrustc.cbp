@@ -36,6 +36,9 @@
 		</Compiler>
 		<Unit filename="ast/ast.cpp" />
 		<Unit filename="ast/ast.hpp" />
+		<Unit filename="ast/path.hpp" />
+		<Unit filename="common.hpp" />
+		<Unit filename="convert/resolve.cpp" />
 		<Unit filename="coretypes.hpp" />
 		<Unit filename="macros.cpp" />
 		<Unit filename="main.cpp" />
@@ -49,6 +52,7 @@
 		<Unit filename="parse/preproc.hpp" />
 		<Unit filename="parse/root.cpp" />
 		<Unit filename="samples/1.rs" />
+		<Unit filename="types.cpp" />
 		<Unit filename="types.hpp" />
 		<Extensions>
 			<code_completion />

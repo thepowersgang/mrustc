@@ -17,7 +17,7 @@ Token Preproc::getTokenInt()
     while(true)
     {
         Token tok = m_lex.getToken();
-        ::std::cout << "getTokenInt: tok = " << tok << ::std::endl;
+        //::std::cout << "getTokenInt: tok = " << tok << ::std::endl;
         switch(tok.type())
         {
         case TOK_WHITESPACE:

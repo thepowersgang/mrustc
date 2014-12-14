@@ -1,11 +1,10 @@
 /*
  */
+#include "common.hpp"
 #include "macros.hpp"
 #include "parse/parseerror.hpp"
 #include "parse/tokentree.hpp"
 #include "parse/common.hpp"
-
-#define FOREACH(basetype, it, src)  for(basetype::const_iterator it = src.begin(); it != src.end(); ++ it)
 
 typedef ::std::map< ::std::string, MacroRules>  t_macro_regs;
 
