@@ -17,7 +17,13 @@ unsigned int TraceLog::depth = 0;
     do {
         types.push_back( Parse_Type(lex) );
     } while( GET_TOK(tok, lex) == TOK_COMMA );
-    CHECK_TOK(tok, TOK_GT);
+    // HACK: Split >> into >
+    if(tok.type() == TOK_DOUBLE_GT) {
+        lex.putback(Token(TOK_GT));
+    }
+    else {
+        CHECK_TOK(tok, TOK_GT);
+    }
     return types;
 }
 
@@ -326,29 +332,215 @@ AST::Function Parse_FunctionDef(TokenStream& lex)
     return AST::Function(name, params, fcn_class, ret_type, args, code);
 }
 
-AST::Module Parse_ModRoot(bool is_own_file, Preproc& lex)
+void Parse_Struct(AST::Module& mod, TokenStream& lex, const bool is_public, const ::std::vector<AST::MetaItem> meta_items)
 {
-    AST::Module mod;
-    for(;;)
+    Token   tok;
+
+    GET_CHECK_TOK(tok, lex, TOK_IDENT);
+    ::std::string name = tok.str();
+    tok = lex.getToken();
+    AST::TypeParams params;
+    if( tok.type() == TOK_LT )
     {
-        bool    is_public = false;
-        Token tok = lex.getToken();
+        params = Parse_TypeParams(lex);
+        GET_CHECK_TOK(tok, lex, TOK_GT);
+        tok = lex.getToken();
+        if(tok.type() == TOK_RWORD_WHERE)
+        {
+            Parse_TypeConds(lex, params);
+            tok = lex.getToken();
+        }
+    }
+    if(tok.type() == TOK_PAREN_OPEN)
+    {
+        TypeRef inner = Parse_Type(lex);
+        tok = lex.getToken();
+        if(tok.type() != TOK_PAREN_CLOSE)
+        {
+            ::std::vector<TypeRef>  refs;
+            refs.push_back(inner);
+            while( (tok = lex.getToken()).type() == TOK_COMMA )
+            {
+                refs.push_back( Parse_Type(lex) );
+            }
+            if( tok.type() != TOK_PAREN_CLOSE )
+                throw ParseError::Unexpected(tok, Token(TOK_PAREN_CLOSE));
+            inner = TypeRef(TypeRef::TagTuple(), refs);
+        }
+        throw ParseError::Todo("tuple struct");
+    }
+    else if(tok.type() == TOK_SEMICOLON)
+    {
+        throw ParseError::Todo("unit-like struct");
+    }
+    else if(tok.type() == TOK_BRACE_OPEN)
+    {
+        ::std::vector<AST::StructItem>  items;
+        while( (tok = lex.getToken()).type() != TOK_BRACE_CLOSE )
+        {
+            CHECK_TOK(tok, TOK_IDENT);
+            ::std::string   name = tok.str();
+            GET_CHECK_TOK(tok, lex, TOK_COLON);
+            TypeRef type = Parse_Type(lex);
+            items.push_back( ::std::make_pair(name, type) );
+            tok = lex.getToken();
+            if(tok.type() == TOK_BRACE_CLOSE)
+                break;
+            if(tok.type() != TOK_COMMA)
+                throw ParseError::Unexpected(tok, Token(TOK_COMMA));
+        }
+        mod.add_struct(is_public, name, params, items);
+    }
+    else
+    {
+        throw ParseError::Unexpected(tok);
+    }
+}
+
+/// Parse a meta-item declaration (either #![ or #[)
+AST::MetaItem Parse_MetaItem(TokenStream& lex)
+{
+    Token tok;
+    GET_CHECK_TOK(tok, lex, TOK_IDENT);
+    ::std::string   name = tok.str();
+    switch(GET_TOK(tok, lex))
+    {
+    case TOK_EQUAL:
+        throw ParseError::Todo("Meta item key-value");
+    case TOK_PAREN_OPEN: {
+        ::std::vector<AST::MetaItem>    items;
+        do {
+            items.push_back(Parse_MetaItem(lex));
+        } while(GET_TOK(tok, lex) == TOK_COMMA);
+        CHECK_TOK(tok, TOK_PAREN_CLOSE);
+        return AST::MetaItem(name, items); }
+    default:
+        lex.putback(tok);
+        return AST::MetaItem(name);
+    }
+}
+
+AST::Impl Parse_Impl(TokenStream& lex)
+{
+    Token   tok;
+
+    AST::TypeParams params;
+    // 1. (optional) type parameters
+    if( GET_TOK(tok, lex) == TOK_LT )
+    {
+        params = Parse_TypeParams(lex);
+        GET_CHECK_TOK(tok, lex, TOK_GT);
+    }
+    else {
+        lex.putback(tok);
+    }
+    // 2. Either a trait name (with type params), or the type to impl
+    // - Don't care which at this stage
+    TypeRef trait_type;
+    TypeRef impl_type = Parse_Type(lex);
+    if( GET_TOK(tok, lex) == TOK_RWORD_FOR )
+    {
+        // Implementing a trait for another type, get the target type
+        trait_type = impl_type;
+        impl_type = Parse_Type(lex);
+    }
+    else {
+        lex.putback(tok);
+    }
+    // Where clause
+    if( GET_TOK(tok, lex) == TOK_RWORD_WHERE )
+    {
+        Parse_TypeConds(lex, params);
+    }
+    else {
+        lex.putback(tok);
+    }
+    GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
+
+    AST::Impl   impl(impl_type, trait_type);
+
+    // A sequence of method implementations
+    while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
+    {
+        bool is_public = false;
+        if(tok.type() == TOK_RWORD_PUB) {
+            is_public = true;
+            GET_TOK(tok, lex);
+        }
         switch(tok.type())
         {
+        case TOK_RWORD_FN:
+            impl.add_function(is_public, Parse_FunctionDef(lex));
+            break;
+
+        default:
+            throw ParseError::Unexpected(tok);
+        }
+    }
+
+    return impl;
+}
+
+AST::Module Parse_ModRoot(const ::std::string& path, Preproc& lex)
+{
+    Token   tok;
+
+    AST::Module mod;
+
+    // Attributes on module/crate (will continue loop)
+    while( GET_TOK(tok, lex) == TOK_CATTR_OPEN )
+    {
+        AST::MetaItem item = Parse_MetaItem(lex);
+        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+
+        throw ParseError::Todo("Parent attrs");
+        //mod_attrs.push_back( item );
+    }
+    lex.putback(tok);
+
+    // TODO: Handle known parent attribs if operating on crate root
+
+    for(;;)
+    {
+        // Check 1 - End of module (either via a closing brace, or EOF)
+        switch(GET_TOK(tok, lex))
+        {
         case TOK_BRACE_CLOSE:
-            if( is_own_file )
+            if( path.size() > 0 )
                 throw ParseError::Unexpected(tok);
             return mod;
         case TOK_EOF:
-            if( !is_own_file )
+            if( path.size() == 0 )
                 throw ParseError::Unexpected(tok);
             return mod;
-
-        case TOK_RWORD_PUB:
-            assert(!is_public);
-            is_public = false;
+        default:
+            lex.putback(tok);
             break;
+        }
 
+        // Attributes on the following item
+        ::std::vector<AST::MetaItem>    meta_items;
+        while( GET_TOK(tok, lex) == TOK_ATTR_OPEN )
+        {
+            meta_items.push_back( Parse_MetaItem(lex) );
+            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+        }
+        lex.putback(tok);
+
+        // Module visibility
+        bool    is_public = false;
+        if( GET_TOK(tok, lex) == TOK_RWORD_PUB )
+        {
+            is_public = true;
+        }
+        else
+        {
+            lex.putback(tok);
+        }
+
+        // The actual item!
+        switch( GET_TOK(tok, lex) )
+        {
         case TOK_RWORD_USE:
             // TODO: Do manual path parsing here, as use has its own special set of quirks
             mod.add_alias( is_public, Parse_Path(lex, true, PATH_GENERIC_NONE) );
@@ -390,128 +582,19 @@ AST::Module Parse_ModRoot(bool is_own_file, Preproc& lex)
         case TOK_RWORD_FN:
             mod.add_function(is_public, Parse_FunctionDef(lex));
             break;
-        case TOK_RWORD_STRUCT: {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            ::std::string name = tok.str();
-            tok = lex.getToken();
-            AST::TypeParams params;
-            if( tok.type() == TOK_LT )
-            {
-                params = Parse_TypeParams(lex);
-                GET_CHECK_TOK(tok, lex, TOK_GT);
-                tok = lex.getToken();
-                if(tok.type() == TOK_RWORD_WHERE)
-                {
-                    Parse_TypeConds(lex, params);
-                    tok = lex.getToken();
-                }
-            }
-            if(tok.type() == TOK_PAREN_OPEN)
-            {
-                TypeRef inner = Parse_Type(lex);
-                tok = lex.getToken();
-                if(tok.type() != TOK_PAREN_CLOSE)
-                {
-                    ::std::vector<TypeRef>  refs;
-                    refs.push_back(inner);
-                    while( (tok = lex.getToken()).type() == TOK_COMMA )
-                    {
-                        refs.push_back( Parse_Type(lex) );
-                    }
-                    if( tok.type() != TOK_PAREN_CLOSE )
-                        throw ParseError::Unexpected(tok, Token(TOK_PAREN_CLOSE));
-                    inner = TypeRef(TypeRef::TagTuple(), refs);
-                }
-                throw ParseError::Todo("tuple struct");
-            }
-            else if(tok.type() == TOK_SEMICOLON)
-            {
-                throw ParseError::Todo("unit-like struct");
-            }
-            else if(tok.type() == TOK_BRACE_OPEN)
-            {
-                ::std::vector<AST::StructItem>  items;
-                while( (tok = lex.getToken()).type() != TOK_BRACE_CLOSE )
-                {
-                    CHECK_TOK(tok, TOK_IDENT);
-                    ::std::string   name = tok.str();
-                    GET_CHECK_TOK(tok, lex, TOK_COLON);
-                    TypeRef type = Parse_Type(lex);
-                    items.push_back( ::std::make_pair(name, type) );
-                    tok = lex.getToken();
-                    if(tok.type() == TOK_BRACE_CLOSE)
-                        break;
-                    if(tok.type() != TOK_COMMA)
-                        throw ParseError::Unexpected(tok, Token(TOK_COMMA));
-                }
-                mod.add_struct(is_public, name, params, items);
-            }
-            else
-            {
-                throw ParseError::Unexpected(tok);
-            }
-            break; }
+        case TOK_RWORD_STRUCT:
+            Parse_Struct(mod, lex, is_public, meta_items);
+            break;
         case TOK_RWORD_ENUM:
             throw ParseError::Todo("modroot enum");
-        case TOK_RWORD_IMPL: {
-            AST::TypeParams params;
-            // 1. (optional) type parameters
-            if( GET_TOK(tok, lex) == TOK_LT )
-            {
-                params = Parse_TypeParams(lex);
-                GET_CHECK_TOK(tok, lex, TOK_GT);
-            }
-            else {
-                lex.putback(tok);
-            }
-            // 2. Either a trait name (with type params), or the type to impl
-            // - Don't care which at this stage
-            TypeRef trait_type;
-            TypeRef impl_type = Parse_Type(lex);
-            if( GET_TOK(tok, lex) == TOK_RWORD_FOR )
-            {
-                // Implementing a trait for another type, get the target type
-                trait_type = impl_type;
-                impl_type = Parse_Type(lex);
-            }
-            else {
-                lex.putback(tok);
-            }
-            // Where clause
-            if( GET_TOK(tok, lex) == TOK_RWORD_WHERE )
-            {
-                Parse_TypeConds(lex, params);
-            }
-            else {
-                lex.putback(tok);
-            }
-            GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
-
-            AST::Impl   impl(impl_type, trait_type);
-
-            // A sequence of method implementations
-            while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
-            {
-                bool is_public = false;
-                if(tok.type() == TOK_RWORD_PUB) {
-                    is_public = true;
-                    GET_TOK(tok, lex);
-                }
-                switch(tok.type())
-                {
-                case TOK_RWORD_FN:
-                    impl.add_function(is_public, Parse_FunctionDef(lex));
-                    break;
-
-                default:
-                    throw ParseError::Unexpected(tok);
-                }
-            }
-
-            mod.add_impl(impl);
-            break; }
+        case TOK_RWORD_IMPL:
+            mod.add_impl(Parse_Impl(lex));
+            break;
         case TOK_RWORD_TRAIT:
             throw ParseError::Todo("modroot trait");
+
+        case TOK_RWORD_MOD:
+            throw ParseError::Todo("sub-modules");
 
         default:
             throw ParseError::Unexpected(tok);
@@ -519,8 +602,8 @@ AST::Module Parse_ModRoot(bool is_own_file, Preproc& lex)
     }
 }
 
-void Parse_Crate(::std::string mainfile)
+AST::Crate Parse_Crate(::std::string mainfile)
 {
     Preproc lex(mainfile);
-    AST::Module rootmodule = Parse_ModRoot(true, lex);
+    return AST::Crate( Parse_ModRoot(mainfile, lex) );
 }

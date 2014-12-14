@@ -60,7 +60,6 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
     case TOK_DOUBLE_COLON:
         // 2. Paths are enum/struct names
         {
-            lex.putback(tok);
             path = Parse_Path(lex, true, PATH_GENERIC_EXPR);
         }
         switch( GET_TOK(tok, lex) )
@@ -196,6 +195,8 @@ AST::ExprNode Parse_Expr0(TokenStream& lex)
     return rv;
 }
 
+/// Parse an 'if' statement
+// Note: TOK_RWORD_IF has already been eaten
 AST::ExprNode Parse_IfStmt(TokenStream& lex)
 {
     TRACE_FUNCTION;
@@ -210,19 +211,24 @@ AST::ExprNode Parse_IfStmt(TokenStream& lex)
         cond = Parse_Expr0(lex);
     }
 
+    // Contents
     ExprNode code = Parse_ExprBlockNode(lex);
 
+    // Handle else:
     ExprNode altcode;
     if( GET_TOK(tok, lex) == TOK_RWORD_ELSE )
     {
+        // Recurse for 'else if'
         if( GET_TOK(tok, lex) == TOK_RWORD_IF ) {
             altcode = Parse_IfStmt(lex);
         }
+        // - or get block
         else {
             lex.putback(tok);
             altcode = Parse_ExprBlockNode(lex);
         }
     }
+    // - or nothing
     else {
         lex.putback(tok);
         altcode = ExprNode();
@@ -269,7 +275,6 @@ AST::ExprNode Parse_ExprBlocks(TokenStream& lex)
 AST::ExprNode _next(TokenStream& lex); \
 AST::ExprNode cur(TokenStream& lex) \
 { \
-    ::std::cout << ">>" << #cur << ::std::endl; \
     AST::ExprNode (*next)(TokenStream&) = _next;\
     AST::ExprNode rv = next(lex); \
     while(true) \
@@ -394,7 +399,7 @@ AST::ExprNode Parse_ExprFC(TokenStream& lex)
     while(true)
     {
         Token   tok;
-        switch((tok = lex.getToken()).type())
+        switch(GET_TOK(tok, lex))
         {
         case TOK_PAREN_OPEN:
             // Function call
@@ -474,8 +479,10 @@ AST::ExprNode Parse_ExprVal(TokenStream& lex)
         path.append( AST::PathNode("self", ::std::vector<TypeRef>()) );
         return ExprNode(ExprNode::TagNamedValue(), path);
         }
-    case TOK_PAREN_OPEN:
-        return Parse_Expr0(lex);
+    case TOK_PAREN_OPEN: {
+        ExprNode rv = Parse_Expr0(lex);
+        GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+        return rv; }
     case TOK_MACRO: {
         // Need to create a token tree, pass to the macro, then pass the result of that to Parse_Expr0
         MacroExpander expanded_macro = Macro_Invoke(tok.str().c_str(), Parse_TT(lex));

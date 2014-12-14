@@ -3,6 +3,7 @@
 #include "ast.hpp"
 #include "../types.hpp"
 #include <iostream>
+#include "../parse/parseerror.hpp"
 
 namespace AST {
 
@@ -67,6 +68,11 @@ void Module::add_function(bool is_public, Function func)
 }
 void Module::add_impl(Impl impl)
 {
+}
+
+void Expr::visit_nodes(const NodeVisitor& v)
+{
+    throw ParseError::Todo("Expr::visit_nodes");
 }
 
 ExprNode::ExprNode()

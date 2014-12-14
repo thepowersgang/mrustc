@@ -5,10 +5,28 @@
 #include <vector>
 #include <stdexcept>
 #include "../coretypes.hpp"
+#include <memory>
 
 class TypeRef;
 
 namespace AST {
+
+class MetaItem
+{
+    ::std::string   m_name;
+    ::std::vector<MetaItem> m_items;
+    ::std::string   m_str_val;
+public:
+    MetaItem(::std::string name):
+        m_name(name)
+    {
+    }
+    MetaItem(::std::string name, ::std::vector<MetaItem> items):
+        m_name(name),
+        m_items(items)
+    {
+    }
+};
 
 class ExprNode;
 
@@ -120,15 +138,26 @@ public:
     ExprNode(TagBinOp, BinOpType type, ExprNode left, ExprNode right);
 };
 
+class NodeVisitor
+{
+public:
+    virtual void visit(ExprNode::TagBlock, ExprNode& node) {}
+    virtual void visit(ExprNode::TagNamedValue, ExprNode& node) {}
+};
+
 class Expr
 {
 public:
     Expr() {}
     Expr(ExprNode node) {}
+
+    void visit_nodes(const NodeVisitor& v);
 };
 
 class Function
 {
+    Expr    m_code;
+    ::std::auto_ptr<TypeRef> m_rettype;
 public:
 
     enum Class
@@ -140,6 +169,11 @@ public:
     };
 
     Function(::std::string name, TypeParams params, Class fcn_class, TypeRef ret_type, ::std::vector<StructItem> args, Expr code);
+
+    Expr& code() { return m_code; }
+    const Expr code() const { return m_code; }
+
+    TypeRef& rettype() { return *m_rettype; }
 };
 
 class Impl
@@ -152,6 +186,7 @@ public:
 
 class Module
 {
+    ::std::vector<Function> m_functions;
 public:
     void add_alias(bool is_public, Path path) {}
     void add_constant(bool is_public, ::std::string name, TypeRef type, Expr val);
@@ -159,6 +194,20 @@ public:
     void add_struct(bool is_public, ::std::string name, TypeParams params, ::std::vector<StructItem> items);
     void add_function(bool is_public, Function func);
     void add_impl(Impl impl);
+};
+
+class Crate
+{
+    Module  m_root_module;
+public:
+    Crate(Module root_module):
+        m_root_module(root_module)
+    {
+    }
+
+    typedef void fcn_visitor_t(const AST::Crate& crate, Function& fcn);
+
+    void iterate_functions( fcn_visitor_t* visitor );
 };
 
 }

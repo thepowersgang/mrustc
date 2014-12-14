@@ -37,6 +37,7 @@
 		<Unit filename="ast/ast.cpp" />
 		<Unit filename="ast/ast.hpp" />
 		<Unit filename="coretypes.hpp" />
+		<Unit filename="macros.cpp" />
 		<Unit filename="main.cpp" />
 		<Unit filename="parse/common.hpp" />
 		<Unit filename="parse/expr.cpp" />

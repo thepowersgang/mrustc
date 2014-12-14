@@ -244,7 +244,11 @@ Token Lexer::getToken()
                     }
                 }
                 else {
-                    throw ParseError::Todo("Lex decimal numbers");
+                    while( isdigit(ch) ) {
+                        val *= val * 10;
+                        val += ch - '0';
+                        ch = this->getc();
+                    }
                 }
 
                 if(ch == 'u' || ch == 'i') {
@@ -255,6 +259,7 @@ Token Lexer::getToken()
                     throw ParseError::Todo("Lex floats");
                 }
                 else {
+                    this->putback();
                     return Token(val, CORETYPE_ANY);
                 }
             }
