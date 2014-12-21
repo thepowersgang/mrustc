@@ -29,11 +29,11 @@ void ResolvePaths_Type(TypeRef& type)
     throw ParseError::Todo("ResolvePaths_Type");
 }
 
-void ResolvePaths_HandleFunction(const AST::Crate& crate, AST::Function& fcn)
+void ResolvePaths_HandleFunction(const AST::Crate& crate, const AST::Module& module, AST::Function& fcn)
 {
-    fcn.code().visit_nodes( CResolvePaths_NodeVisitor(crate) );
+    fcn.code().visit_nodes( CResolvePaths_NodeVisitor(crate, module) );
 
-    ResolvePaths_Type(fcn.rettype());
+    ResolvePaths_Type(crate, module, fcn.rettype());
 
     FOREACH_M(AST::Function::Arglist, arg, fcn.args())
     {

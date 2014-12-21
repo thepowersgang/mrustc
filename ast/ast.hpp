@@ -182,6 +182,12 @@ public:
     void iterate_functions( fcn_visitor_t* visitor );
 };
 
+class Flat
+{
+    ::std::vector<Function> m_functions;
+public:
+};
+
 }
 
 #endif // AST_HPP_INCLUDED

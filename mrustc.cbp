@@ -38,6 +38,8 @@
 		<Unit filename="ast/ast.hpp" />
 		<Unit filename="ast/path.hpp" />
 		<Unit filename="common.hpp" />
+		<Unit filename="convert/flatten.cpp" />
+		<Unit filename="convert/render.cpp" />
 		<Unit filename="convert/resolve.cpp" />
 		<Unit filename="coretypes.hpp" />
 		<Unit filename="macros.cpp" />
