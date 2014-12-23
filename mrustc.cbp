@@ -34,28 +34,28 @@
 			<Add option="-Wall" />
 			<Add option="-fexceptions" />
 		</Compiler>
-		<Unit filename="ast/ast.cpp" />
-		<Unit filename="ast/ast.hpp" />
-		<Unit filename="ast/path.hpp" />
-		<Unit filename="common.hpp" />
-		<Unit filename="convert/flatten.cpp" />
-		<Unit filename="convert/render.cpp" />
-		<Unit filename="convert/resolve.cpp" />
-		<Unit filename="coretypes.hpp" />
-		<Unit filename="macros.cpp" />
-		<Unit filename="main.cpp" />
-		<Unit filename="parse/common.hpp" />
-		<Unit filename="parse/expr.cpp" />
-		<Unit filename="parse/lex.cpp" />
-		<Unit filename="parse/lex.hpp" />
-		<Unit filename="parse/parseerror.cpp" />
-		<Unit filename="parse/parseerror.hpp" />
-		<Unit filename="parse/preproc.cpp" />
-		<Unit filename="parse/preproc.hpp" />
-		<Unit filename="parse/root.cpp" />
-		<Unit filename="samples/1.rs" />
-		<Unit filename="types.cpp" />
-		<Unit filename="types.hpp" />
+		<Unit filename="src/ast/ast.cpp" />
+		<Unit filename="src/ast/ast.hpp" />
+		<Unit filename="src/ast/path.hpp" />
+		<Unit filename="src/common.hpp" />
+		<Unit filename="src/convert/flatten.cpp" />
+		<Unit filename="src/convert/render.cpp" />
+		<Unit filename="src/convert/resolve.cpp" />
+		<Unit filename="src/coretypes.hpp" />
+		<Unit filename="src/macros.cpp" />
+		<Unit filename="src/main.cpp" />
+		<Unit filename="src/parse/common.hpp" />
+		<Unit filename="src/parse/expr.cpp" />
+		<Unit filename="src/parse/lex.cpp" />
+		<Unit filename="src/parse/lex.hpp" />
+		<Unit filename="src/parse/parseerror.cpp" />
+		<Unit filename="src/parse/parseerror.hpp" />
+		<Unit filename="src/parse/preproc.cpp" />
+		<Unit filename="src/parse/preproc.hpp" />
+		<Unit filename="src/parse/root.cpp" />
+		<Unit filename="src/samples/1.rs" />
+		<Unit filename="src/types.cpp" />
+		<Unit filename="src/types.hpp" />
 		<Extensions>
 			<code_completion />
 			<envvars />
