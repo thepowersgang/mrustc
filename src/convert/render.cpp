@@ -1,11 +1,15 @@
 /*
  */
+#include "../common.hpp"
 #include "../ast/ast.hpp"
+#include <iostream>
+
+typedef ::std::vector< ::std::pair< ::std::string, TypeRef> >	item_vec_t;
 
 void Render_Type(::std::ostream& os, const TypeRef& type, const char *name)
 {
     /*
-    swicth(type.class())
+    switch(type.class())
     {
     case TYPECLASS_STRUCT:
         os << "struct " << type.struct().mangled_name() << " " << name;
@@ -17,13 +21,13 @@ void Render_Type(::std::ostream& os, const TypeRef& type, const char *name)
 void Render_CStruct(::std::ostream& os, const AST::CStruct& str)
 {
     os << "struct " << str.name() << "{\n";
-    FOREACH(::std::vector<std::pair<std::string,TypeRef> >, f, str.fields())
+    FOREACH(item_vec_t, f, str.fields())
     {
         os << "\t";
-        Render_Type(os, f->second(), f->first().c_str());
+        Render_Type(os, f->second, f->first.c_str());
         os << ";\n";
     }
-    os << "}\n"
+    os << "}\n";
 }
 
 void Render_Crate(::std::ostream& os, const AST::Flat& crate)
@@ -37,12 +41,12 @@ void Render_Crate(::std::ostream& os, const AST::Flat& crate)
         Render_Type(os, fcn->rettype(), nullptr);
         os << " " << fcn->name() << "(";
         bool is_first = true;
-        FOREACH(::std::vector<std::pair<std::string,TypeRef> >, f, fcn.args())
+        FOREACH(item_vec_t, f, fcn->args())
         {
             if( !is_first )
                 os << ", ";
             is_first = false;
-            Render_Type(os, f->second(), f->first().c_str());
+            Render_Type(os, f->second, f->first.c_str());
         }
         os << ")\n{\n";
         // Dump expression AST

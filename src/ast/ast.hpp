@@ -143,9 +143,13 @@ public:
     Expr& code() { return m_code; }
     const Expr code() const { return m_code; }
 
+    const TypeRef& rettype() const { return m_rettype; }
     TypeRef& rettype() { return m_rettype; }
 
+    const Arglist& args() const { return m_args; }
     Arglist& args() { return m_args; }
+    
+    const char* name() const { return "TODO"; }
 };
 
 class Impl
@@ -182,10 +186,23 @@ public:
     void iterate_functions( fcn_visitor_t* visitor );
 };
 
+class CStruct
+{
+    ::std::vector<StructItem>   m_fields;
+public:
+    const char* name() const { return "TODO"; }
+    const char* mangled_name() const { return "TODO"; }
+    const ::std::vector<StructItem>& fields() const { return m_fields; }
+};
+
 class Flat
 {
+    ::std::vector<CStruct>  m_structs;
     ::std::vector<Function> m_functions;
 public:
+    
+    const ::std::vector<Function>& functions() const;
+    const ::std::vector<CStruct>& structs() const;
 };
 
 }

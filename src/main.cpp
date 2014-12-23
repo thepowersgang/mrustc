@@ -21,7 +21,7 @@ int main(int argc, char *argv[])
         // Typecheck / type propagate module (type annotations of all values)
 
         // Flatten modules into "mangled" set
-        AST::Flat flat_crate = Convert_Flattern(crate);
+        AST::Flat flat_crate = Convert_Flatten(crate);
 
         // Convert structures to C structures / tagged enums
         //Convert_Render(flat_crate, stdout);

@@ -1,7 +1,18 @@
-
+/*
+ */
 #include "../common.hpp"
 #include "../ast/ast.hpp"
 #include "../parse/parseerror.hpp"
+
+class CPathResolver
+{
+public:
+    CPathResolver(const AST::Crate& crate, AST::Function& fcn);
+    
+    void resolve_type(TypeRef& type);
+    
+    void handle_function(AST::Function& fcn);
+};
 
 // Path resolution checking
 void ResolvePaths(AST::Crate& crate);
@@ -10,10 +21,10 @@ void ResolvePaths_HandleFunction(const AST::Crate& crate, AST::Function& fcn);
 class CResolvePaths_NodeVisitor:
     public AST::NodeVisitor
 {
-    const AST::Crate& m_crate;
+    const CPathResolver&    m_res;
 public:
-    CResolvePaths_NodeVisitor(const AST::Crate& crate):
-        m_crate(crate)
+    CResolvePaths_NodeVisitor(const CPathResolver& res):
+        m_res(res)
     {
     }
 
@@ -23,21 +34,21 @@ public:
     }
 };
 
-void ResolvePaths_Type(TypeRef& type)
+void CPathResolver::resolve_type(TypeRef& type)
 {
     // TODO: Convert type into absolute
     throw ParseError::Todo("ResolvePaths_Type");
 }
 
-void ResolvePaths_HandleFunction(const AST::Crate& crate, const AST::Module& module, AST::Function& fcn)
+void CPathResolver::handle_function(AST::Function& fcn)
 {
-    fcn.code().visit_nodes( CResolvePaths_NodeVisitor(crate, module) );
+    fcn.code().visit_nodes( CResolvePaths_NodeVisitor(*this) );
 
-    ResolvePaths_Type(crate, module, fcn.rettype());
+    resolve_type(fcn.rettype());
 
     FOREACH_M(AST::Function::Arglist, arg, fcn.args())
     {
-        ResolvePaths_Type(arg->second);
+        resolve_type(arg->second);
     }
 }
 
