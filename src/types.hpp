@@ -26,7 +26,7 @@ public:
     struct TagPointer {};
     TypeRef(TagPointer _, bool is_mut, TypeRef inner_type) {}
     struct TagSizedArray {};
-    TypeRef(TagSizedArray _, TypeRef inner_type, AST::Expr size);
+    TypeRef(TagSizedArray _, TypeRef inner_type, AST::Expr&& size);
     struct TagUnsizedArray {};
     TypeRef(TagUnsizedArray _, TypeRef inner_type) {}
 

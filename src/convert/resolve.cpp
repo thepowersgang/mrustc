@@ -6,8 +6,11 @@
 
 class CPathResolver
 {
+    const AST::Crate&   m_crate;
+    const AST::Module&  m_module;
+    
 public:
-    CPathResolver(const AST::Crate& crate, AST::Function& fcn);
+    CPathResolver(const AST::Crate& crate, const AST::Module& mod);
     
     void resolve_type(TypeRef& type);
     
@@ -16,7 +19,6 @@ public:
 
 // Path resolution checking
 void ResolvePaths(AST::Crate& crate);
-void ResolvePaths_HandleFunction(const AST::Crate& crate, AST::Function& fcn);
 
 class CResolvePaths_NodeVisitor:
     public AST::NodeVisitor
@@ -28,11 +30,17 @@ public:
     {
     }
 
-    void visit(AST::ExprNode::TagNamedValue, AST::ExprNode& node) {
+    void visit(AST::ExprNode_NamedValue& node) {
         // TODO: Convert into a real absolute path
         throw ParseError::Todo("CResolvePaths_NodeVisitor::visit(TagNamedValue)");
     }
 };
+
+CPathResolver::CPathResolver(const AST::Crate& crate, const AST::Module& mod):
+    m_crate(crate),
+    m_module(mod)
+{
+}
 
 void CPathResolver::resolve_type(TypeRef& type)
 {
@@ -42,7 +50,9 @@ void CPathResolver::resolve_type(TypeRef& type)
 
 void CPathResolver::handle_function(AST::Function& fcn)
 {
-    fcn.code().visit_nodes( CResolvePaths_NodeVisitor(*this) );
+    CResolvePaths_NodeVisitor   node_visitor(*this);
+    
+    fcn.code().visit_nodes( node_visitor );
 
     resolve_type(fcn.rettype());
 
@@ -50,6 +60,12 @@ void CPathResolver::handle_function(AST::Function& fcn)
     {
         resolve_type(arg->second);
     }
+}
+
+void ResolvePaths_HandleFunction(const AST::Crate& crate, const AST::Module& mod, AST::Function& fcn)
+{
+	CPathResolver	pr(crate, mod);
+	pr.handle_function(fcn);
 }
 
 void ResolvePaths(AST::Crate& crate)

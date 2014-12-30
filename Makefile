@@ -17,6 +17,15 @@ OBJ += parse/parseerror.o parse/lex.o parse/preproc.o parse/root.o parse/expr.o
 OBJ += convert/flatten.o convert/resolve.o convert/render.o
 OBJ := $(addprefix $(OBJDIR),$(OBJ))
 
+
+all: $(BIN)
+
+clean:
+	$(RM) -r $(BIN) $(OBJ)
+
+test: $(BIN) samples/1.rs
+	time $(BIN) samples/1.rs
+
 $(BIN): $(OBJ)
 	@mkdir -p $(dir $@)
 	$(CXX) -o $@ $(LINKFLAGS) $(OBJ) $(LIBS)
@@ -26,4 +35,6 @@ $(OBJDIR)%.o: src/%.cpp
 	$(CXX) -o $@ -c $< $(CXXFLAGS) $(CPPFLAGS) -MMD -MP -MF $@.dep
 
 -include $(OBJ:%=%.dep)
+
+# vim: noexpandtab ts=4
 

@@ -156,7 +156,7 @@ TypeRef Parse_Type(TokenStream& lex)
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_DOT);
             AST::Expr array_size = Parse_Expr(lex, true);
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-            return TypeRef(TypeRef::TagSizedArray(), inner, array_size);
+            return TypeRef(TypeRef::TagSizedArray(), inner, ::std::move(array_size));
         }
         else {
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);

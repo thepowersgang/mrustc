@@ -32,7 +32,7 @@ const ::std::vector<TypeRef>& PathNode::args() const
 Pattern::Pattern(TagMaybeBind, ::std::string name)
 {
 }
-Pattern::Pattern(TagValue, ExprNode node)
+Pattern::Pattern(TagValue, ::std::unique_ptr<ExprNode> node)
 {
 }
 Pattern::Pattern(TagEnumVariant, Path path, ::std::vector<Pattern> sub_patterns)
@@ -40,9 +40,6 @@ Pattern::Pattern(TagEnumVariant, Path path, ::std::vector<Pattern> sub_patterns)
 }
 
 
-Function::Function(::std::string name, TypeParams params, Class fcn_class, TypeRef ret_type, ::std::vector<StructItem> args, Expr code)
-{
-}
 
 Impl::Impl(TypeRef impl_type, TypeRef trait_type)
 {
@@ -51,8 +48,9 @@ void Impl::add_function(bool is_public, Function fcn)
 {
 }
 
-void Crate::iterate_functions(Crate::fcn_visitor_t* visitor)
+void Crate::iterate_functions(fcn_visitor_t* visitor)
 {
+    m_root_module.iterate_functions(visitor, *this);
 }
 
 void Module::add_constant(bool is_public, ::std::string name, TypeRef type, Expr val)
@@ -68,23 +66,106 @@ void Module::add_struct(bool is_public, ::std::string name, TypeParams params, :
 }
 void Module::add_function(bool is_public, Function func)
 {
+    for( const auto fcn_item : m_functions )
+    {
+        if( fcn_item.first.name() == func.name() ) {
+            throw ParseError::Todo("duplicate function definition");
+        }
+    }
+    m_functions.push_back( ::std::make_pair(func, is_public) );
 }
 void Module::add_impl(Impl impl)
 {
 }
 
-void Expr::visit_nodes(const NodeVisitor& v)
+void Module::iterate_functions(fcn_visitor_t *visitor, const Crate& crate)
 {
-    throw ParseError::Todo("Expr::visit_nodes");
+    for( auto fcn_item : this->m_functions )
+    {
+        visitor(crate, *this, fcn_item.first);
+    }
 }
 
-ExprNode::ExprNode()
+void Expr::visit_nodes(NodeVisitor& v)
 {
+    m_node->visit(v);
+}
 
+ExprNode::~ExprNode() {
 }
-ExprNode::ExprNode(TagBlock, ::std::vector<ExprNode> nodes)
-{
+
+ExprNode_Block::~ExprNode_Block() {
 }
+void ExprNode_Block::visit(NodeVisitor& nv) {
+    for( auto& node : m_nodes ) {
+        if( node.get() )
+            node->visit(nv);
+    }
+    nv.visit(*this);
+}
+
+void ExprNode_Return::visit(NodeVisitor& nv) {
+    if( m_value.get() )
+        m_value->visit(nv);
+    nv.visit(*this);
+}
+
+void ExprNode_LetBinding::visit(NodeVisitor& nv) {
+    if( m_value.get() )
+        m_value->visit(nv);
+    nv.visit(*this);
+}
+
+void ExprNode_Assign::visit(NodeVisitor& nv) {
+    if( m_slot.get() )
+        m_slot->visit(nv);
+    if( m_value.get() )
+        m_value->visit(nv);
+    nv.visit(*this);
+}
+
+void ExprNode_CallPath::visit(NodeVisitor& nv) {
+    nv.visit(*this);
+}
+
+void ExprNode_CallObject::visit(NodeVisitor& nv) {
+    nv.visit(*this);
+}
+
+void ExprNode_Match::visit(NodeVisitor& nv) {
+    nv.visit(*this);
+}
+
+void ExprNode_If::visit(NodeVisitor& nv) {
+    nv.visit(*this);
+}
+
+void ExprNode_Integer::visit(NodeVisitor& nv) {
+    nv.visit(*this);
+}
+
+void ExprNode_StructLiteral::visit(NodeVisitor& nv) {
+    nv.visit(*this);
+}
+
+void ExprNode_NamedValue::visit(NodeVisitor& nv) {
+    nv.visit(*this);
+}
+
+void ExprNode_Field::visit(NodeVisitor& nv) {
+    nv.visit(*this);
+}
+
+void ExprNode_Cast::visit(NodeVisitor& nv) {
+    nv.visit(*this);
+}
+void ExprNode_BinOp::visit(NodeVisitor& nv) {
+    m_left->visit(nv);
+    m_right->visit(nv);
+    nv.visit(*this);
+}
+
+#if 0
 ExprNode::ExprNode(TagLetBinding, Pattern pat, ExprNode value)
 {
 }
@@ -121,6 +202,7 @@ ExprNode::ExprNode(TagField, ::std::string name)
 ExprNode::ExprNode(TagBinOp, BinOpType type, ExprNode left, ExprNode right)
 {
 }
+#endif
 
 TypeParam::TypeParam(bool is_lifetime, ::std::string name)
 {
