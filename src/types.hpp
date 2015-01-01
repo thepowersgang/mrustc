@@ -1,7 +1,7 @@
 #ifndef TYPES_HPP_INCLUDED
 #define TYPES_HPP_INCLUDED
 
-#include <vector>
+#include "common.hpp"
 #include "coretypes.hpp"
 #include "ast/path.hpp"
 
@@ -32,6 +32,11 @@ public:
 
     struct TagPath {};
     TypeRef(TagPath, AST::Path path) {}
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr) {
+        os << "TypeRef(TODO)";
+        return os;
+    }
 };
 
 #endif // TYPES_HPP_INCLUDED

@@ -47,7 +47,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
         // - If the path resolves to a single node, either a local enum value, or a binding
         lex.putback(tok);
         path = Parse_Path(lex, false, PATH_GENERIC_EXPR);
-        if( path.length() == 1 && path[0].args().size() == 0 )
+        if( path.size() == 1 && path[0].args().size() == 0 )
         {
             // Could be a name binding, check the next token
             GET_TOK(tok, lex);
@@ -70,11 +70,10 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
             // A list of internal patterns
             ::std::vector<AST::Pattern> child_pats;
             do {
-                AST::Pattern pat = Parse_Pattern(lex);
-                child_pats.push_back(pat);
+                child_pats.push_back( Parse_Pattern(lex) );
             } while( GET_TOK(tok, lex) == TOK_COMMA );
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
-            return AST::Pattern(AST::Pattern::TagEnumVariant(), path, child_pats);
+            return AST::Pattern(AST::Pattern::TagEnumVariant(), ::std::move(path), ::std::move(child_pats));
             }
         default:
             lex.putback(tok);
@@ -138,7 +137,7 @@ ExprNodeP Parse_Stmt(TokenStream& lex, bool& opt_semicolon)
         GET_CHECK_TOK(tok, lex, TOK_EQUAL);
         ExprNodeP val = Parse_Expr1(lex);
         opt_semicolon = false;
-        return NEWNODE( AST::ExprNode_LetBinding, pat, ::std::move(val) );
+        return NEWNODE( AST::ExprNode_LetBinding, ::std::move(pat), ::std::move(val) );
         }
     case TOK_RWORD_RETURN:
         return NEWNODE( AST::ExprNode_Return, Parse_Expr1(lex) );
@@ -257,7 +256,7 @@ ExprNodeP Parse_ExprBlocks(TokenStream& lex)
             GET_CHECK_TOK(tok, lex, TOK_FATARROW);
             bool opt_semicolon = false;
             ExprNodeP   val = Parse_Stmt(lex, opt_semicolon);
-            arms.push_back( ::std::make_pair(pat, ::std::move(val)) );
+            arms.push_back( ::std::make_pair( ::std::move(pat), ::std::move(val) ) );
         } while( GET_TOK(tok, lex) == TOK_COMMA );
         CHECK_TOK(tok, TOK_BRACE_CLOSE);
         return NEWNODE( AST::ExprNode_Match, ::std::move(switch_val), ::std::move(arms) );

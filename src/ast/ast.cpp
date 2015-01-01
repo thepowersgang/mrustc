@@ -7,13 +7,6 @@
 
 namespace AST {
 
-Path::Path()
-{
-}
-Path::Path(Path::TagAbsolute)
-{
-}
-
 
 PathNode::PathNode(::std::string name, ::std::vector<TypeRef> args):
     m_name(name),
@@ -29,16 +22,27 @@ const ::std::vector<TypeRef>& PathNode::args() const
     return m_params;
 }
 
-Pattern::Pattern(TagMaybeBind, ::std::string name)
-{
-}
-Pattern::Pattern(TagValue, ::std::unique_ptr<ExprNode> node)
-{
-}
-Pattern::Pattern(TagEnumVariant, Path path, ::std::vector<Pattern> sub_patterns)
-{
-}
 
+::std::ostream& operator<<(::std::ostream& os, const Pattern& pat)
+{
+    switch(pat.m_class)
+    {
+    case Pattern::MAYBE_BIND:
+        os << "Pattern(TagMaybeBind, '" << pat.m_path[0].name() << "')";
+        break;
+    case Pattern::VALUE:
+        //os << "Pattern(TagValue, " << *pat.m_node << ")";
+        os << "Pattern(TagValue, TODO:ExprNode)";
+        break;
+    case Pattern::TUPLE:
+        os << "Pattern(TagTuple, " << pat.m_sub_patterns << ")";
+        break;
+    case Pattern::TUPLE_STRUCT:
+        os << "Pattern(TagEnumVariant, " << pat.m_path << ", " << pat.m_sub_patterns << ")";
+        break;
+    }
+    return os;
+}
 
 
 Impl::Impl(TypeRef impl_type, TypeRef trait_type)
@@ -90,6 +94,11 @@ void Expr::visit_nodes(NodeVisitor& v)
 {
     m_node->visit(v);
 }
+::std::ostream& operator<<(::std::ostream& os, const Expr& pat)
+{
+    os << "Expr(TODO)";
+    return os;
+}
 
 ExprNode::~ExprNode() {
 }
@@ -97,30 +106,18 @@ ExprNode::~ExprNode() {
 ExprNode_Block::~ExprNode_Block() {
 }
 void ExprNode_Block::visit(NodeVisitor& nv) {
-    for( auto& node : m_nodes ) {
-        if( node.get() )
-            node->visit(nv);
-    }
     nv.visit(*this);
 }
 
 void ExprNode_Return::visit(NodeVisitor& nv) {
-    if( m_value.get() )
-        m_value->visit(nv);
     nv.visit(*this);
 }
 
 void ExprNode_LetBinding::visit(NodeVisitor& nv) {
-    if( m_value.get() )
-        m_value->visit(nv);
     nv.visit(*this);
 }
 
 void ExprNode_Assign::visit(NodeVisitor& nv) {
-    if( m_slot.get() )
-        m_slot->visit(nv);
-    if( m_value.get() )
-        m_value->visit(nv);
     nv.visit(*this);
 }
 
@@ -160,49 +157,8 @@ void ExprNode_Cast::visit(NodeVisitor& nv) {
     nv.visit(*this);
 }
 void ExprNode_BinOp::visit(NodeVisitor& nv) {
-    m_left->visit(nv);
-    m_right->visit(nv);
     nv.visit(*this);
 }
-
-#if 0
-ExprNode::ExprNode(TagLetBinding, Pattern pat, ExprNode value)
-{
-}
-ExprNode::ExprNode(TagReturn, ExprNode val)
-{
-}
-ExprNode::ExprNode(TagCast, ExprNode value, TypeRef dst_type)
-{
-}
-ExprNode::ExprNode(TagInteger, uint64_t value, enum eCoreType datatype)
-{
-}
-ExprNode::ExprNode(TagStructLiteral, Path path, ExprNode base_value, ::std::vector< ::std::pair< ::std::string,ExprNode> > values )
-{
-}
-ExprNode::ExprNode(TagCallPath, Path path, ::std::vector<ExprNode> args)
-{
-}
-ExprNode::ExprNode(TagCallObject, ExprNode val, ::std::vector<ExprNode> args)
-{
-}
-ExprNode::ExprNode(TagMatch, ExprNode val, ::std::vector< ::std::pair<Pattern,ExprNode> > arms)
-{
-}
-ExprNode::ExprNode(TagIf, ExprNode cond, ExprNode true_code, ExprNode false_code)
-{
-}
-ExprNode::ExprNode(TagNamedValue, Path path)
-{
-}
-ExprNode::ExprNode(TagField, ::std::string name)
-{
-}
-ExprNode::ExprNode(TagBinOp, BinOpType type, ExprNode left, ExprNode right)
-{
-}
-#endif
 
 TypeParam::TypeParam(bool is_lifetime, ::std::string name)
 {

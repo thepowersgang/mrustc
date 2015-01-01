@@ -3,6 +3,7 @@
 #ifndef AST_PATH_HPP_INCLUDED
 #define AST_PATH_HPP_INCLUDED
 
+#include "../common.hpp"
 #include <string>
 #include <stdexcept>
 
@@ -28,20 +29,71 @@ class PathNode
 public:
     PathNode(::std::string name, ::std::vector<TypeRef> args);
     const ::std::string& name() const;
+    ::std::vector<TypeRef>&   args() { return m_params; }
     const ::std::vector<TypeRef>&   args() const;
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const PathNode& pn) {
+        os << pn.m_name;
+        if( pn.m_params.size() )
+        {
+            os << "<";
+            os << pn.m_params;
+            os << ">";
+        }
+        return os;
+    }
 };
 
 class Path
 {
+    enum Class {
+        RELATIVE,
+        ABSOLUTE,
+        LOCAL,
+    };
+    Class   m_class;
+    ::std::vector<PathNode> m_nodes;
 public:
-    Path();
+    Path():
+        m_class(RELATIVE)
+    {}
     struct TagAbsolute {};
-    Path(TagAbsolute);
+    Path(TagAbsolute):
+        m_class(ABSOLUTE)
+    {}
+    struct TagLocal {};
+    Path(TagLocal, ::std::string name):
+        m_class(LOCAL),
+        m_nodes({PathNode(name, {})})
+    {}
 
-    void append(PathNode node) {}
-    size_t length() const {return 0;}
-
-    PathNode& operator[](size_t idx) { throw ::std::out_of_range("Path []"); }
+    void append(PathNode node) {
+        m_nodes.push_back(node);
+    }
+    
+    bool is_relative() const { return m_class == RELATIVE; }
+    size_t size() const { return m_nodes.size(); }
+    ::std::vector<PathNode>& nodes() { return m_nodes; }
+    const ::std::vector<PathNode>& nodes() const { return m_nodes; }
+    
+    PathNode& operator[](size_t idx) { return m_nodes[idx]; }
+    const PathNode& operator[](size_t idx) const { return m_nodes[idx]; }
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const Path& path) {
+        switch(path.m_class)
+        {
+        case RELATIVE:
+            os << "Path({" << path.m_nodes << "})";
+            break;
+        case ABSOLUTE:
+            os << "Path(TagAbsolute, {" << path.m_nodes << "})";
+            break;
+        case LOCAL:
+            os << "Path(TagLocal, " << path.m_nodes[0].name() << ")";
+            break;
+        }
+        return os;
+    }
 };
 
 }   // namespace AST
