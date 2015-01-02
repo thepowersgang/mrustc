@@ -66,6 +66,17 @@ public:
         m_class(LOCAL),
         m_nodes({PathNode(name, {})})
     {}
+    
+    static Path add_tailing(const Path& a, const Path& b) {
+        Path    ret(a);
+        for(const auto& ent : b.m_nodes)
+            ret.m_nodes.push_back(ent);
+        return ret;
+    }
+    Path operator+(const Path& x) const {
+        return Path(*this) += x;
+    }
+    Path& operator+=(const Path& x);
 
     void append(PathNode node) {
         m_nodes.push_back(node);
@@ -79,21 +90,7 @@ public:
     PathNode& operator[](size_t idx) { return m_nodes[idx]; }
     const PathNode& operator[](size_t idx) const { return m_nodes[idx]; }
     
-    friend ::std::ostream& operator<<(::std::ostream& os, const Path& path) {
-        switch(path.m_class)
-        {
-        case RELATIVE:
-            os << "Path({" << path.m_nodes << "})";
-            break;
-        case ABSOLUTE:
-            os << "Path(TagAbsolute, {" << path.m_nodes << "})";
-            break;
-        case LOCAL:
-            os << "Path(TagLocal, " << path.m_nodes[0].name() << ")";
-            break;
-        }
-        return os;
-    }
+    friend ::std::ostream& operator<<(::std::ostream& os, const Path& path);
 };
 
 }   // namespace AST

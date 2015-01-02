@@ -481,11 +481,88 @@ AST::Impl Parse_Impl(TokenStream& lex)
     return impl;
 }
 
-AST::Module Parse_ModRoot(const ::std::string& path, Preproc& lex)
+void Parse_Use_Wildcard(const AST::Path& base_path, ::std::function<void(AST::Path, ::std::string)> fcn)
+{
+    throw ParseError::Todo("Wildcard imports");
+}
+
+void Parse_Use(Preproc& lex, ::std::function<void(AST::Path, ::std::string)> fcn)
 {
     Token   tok;
+    AST::Path   path = AST::Path( AST::Path::TagAbsolute() );
+    
+    switch( GET_TOK(tok, lex) )
+    {
+    case TOK_RWORD_SELF:
+        throw ParseError::Todo("Parse_Use - self");
+        break;
+    case TOK_RWORD_SUPER:
+        throw ParseError::Todo("Parse_Use - super");
+        break;
+    case TOK_IDENT:
+        path.append( AST::PathNode(tok.str(), {}) );
+        break;
+    default:
+        throw ParseError::Unexpected(tok);
+    }
+    // TODO: Use from crate root
+    while( GET_TOK(tok, lex) == TOK_DOUBLE_COLON )
+    {
+        if( GET_TOK(tok, lex) == TOK_IDENT )
+        {
+            path.append( AST::PathNode(tok.str(), {}) );
+        }
+        else
+        {
+            switch( tok.type() )
+            {
+            case TOK_BRACE_OPEN:
+                throw ParseError::Todo("Parse_Use - multiples");
+                break;
+            case TOK_STAR:
+                throw ParseError::Todo("Parse_Use - wildcard/glob");
+                break;
+            default:
+                throw ParseError::Unexpected(tok);
+            }
+            GET_TOK(tok, lex);
+            break;
+        }
+    }
+    
+    ::std::string name;
+    // TODO: This should only be allowed if the last token was an ident
+    if( tok.type() == TOK_RWORD_AS )
+    {
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        name = tok.str();
+    }
+    else
+    {
+        lex.putback(tok);
+        name = path[path.size()-1].name();
+    }
+    
+    fcn(path, name);
+}
 
-    AST::Module mod;
+void Parse_ModRoot(Preproc& lex, AST::Module& mod, const ::std::string& path)
+{
+    const bool nested_module = (path.size() == 0);  // 'mod name { code }', as opposed to 'mod name;'
+    Token   tok;
+
+    if( mod.crate().m_load_std )
+    {
+        // Import the prelude
+        AST::Path   prelude_path = AST::Path(AST::Path::TagAbsolute());
+        prelude_path.append( AST::PathNode("std", {}) );
+        prelude_path.append( AST::PathNode("prelude", {}) );
+        Parse_Use_Wildcard(prelude_path,
+            [&mod](AST::Path p, std::string s) {
+                mod.add_alias(false, p, s);
+                }
+            );
+    }
 
     // Attributes on module/crate (will continue loop)
     while( GET_TOK(tok, lex) == TOK_CATTR_OPEN )
@@ -493,26 +570,25 @@ AST::Module Parse_ModRoot(const ::std::string& path, Preproc& lex)
         AST::MetaItem item = Parse_MetaItem(lex);
         GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
 
-        throw ParseError::Todo("Parent attrs");
-        //mod_attrs.push_back( item );
+        mod.add_attr( item );
     }
     lex.putback(tok);
 
-    // TODO: Handle known parent attribs if operating on crate root
-
+    // TODO: Iterate attributes, and check for handlers on each
+    
     for(;;)
     {
         // Check 1 - End of module (either via a closing brace, or EOF)
         switch(GET_TOK(tok, lex))
         {
         case TOK_BRACE_CLOSE:
-            if( path.size() > 0 )
+            if( !nested_module )
                 throw ParseError::Unexpected(tok);
-            return mod;
+            return ;
         case TOK_EOF:
-            if( path.size() == 0 )
+            if( nested_module )
                 throw ParseError::Unexpected(tok);
-            return mod;
+            return ;
         default:
             lex.putback(tok);
             break;
@@ -542,8 +618,7 @@ AST::Module Parse_ModRoot(const ::std::string& path, Preproc& lex)
         switch( GET_TOK(tok, lex) )
         {
         case TOK_RWORD_USE:
-            // TODO: Do manual path parsing here, as use has its own special set of quirks
-            mod.add_alias( is_public, Parse_Path(lex, true, PATH_GENERIC_NONE) );
+            Parse_Use(lex, [&mod,is_public](AST::Path p, std::string s) { mod.add_alias(is_public, p, s); });
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
             break;
 
@@ -604,6 +679,44 @@ AST::Module Parse_ModRoot(const ::std::string& path, Preproc& lex)
 
 AST::Crate Parse_Crate(::std::string mainfile)
 {
-    Preproc lex(mainfile);
-    return AST::Crate( Parse_ModRoot(mainfile, lex) );
+    Token   tok;
+    
+    Preproc lex(mainfile); 
+    AST::Crate  crate;
+    AST::Module& rootmod = crate.root_module();
+    
+    // Attributes on module/crate
+    while( GET_TOK(tok, lex) == TOK_CATTR_OPEN )
+    {
+        AST::MetaItem item = Parse_MetaItem(lex);
+        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+
+        rootmod.add_attr( item );
+    }
+    lex.putback(tok);
+    
+    // Check for crate attributes
+    for( const auto& attr : rootmod.attrs() )
+    {
+        if( attr.name() == "no_std" ) {
+            crate.m_load_std = false;
+        }
+        else {
+            // TODO:
+        }
+    }
+        
+    if( crate.m_load_std )
+    {
+        // Load the standard library (add 'extern crate std;')
+        rootmod.add_ext_crate("std", "std");
+        // Prelude imports are handled in Parse_ModRoot
+    }
+    
+    // Include the std if the 'no_std' attribute was absent
+    // - First need to load the std macros, then can import the prelude
+    
+    Parse_ModRoot(lex, rootmod, mainfile);
+    
+    return crate;
 }

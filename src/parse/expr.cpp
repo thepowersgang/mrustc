@@ -483,10 +483,10 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         ExprNodeP rv = Parse_Expr0(lex);
         GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
         return rv; }
-    case TOK_MACRO: {
-        // Need to create a token tree, pass to the macro, then pass the result of that to Parse_Expr0
+    case TOK_MACRO:
+        //return NEWNODE( AST::ExprNode_Macro, tok.str(), Parse_TT(lex) );
+        {
         MacroExpander expanded_macro = Macro_Invoke(tok.str().c_str(), Parse_TT(lex));
-
         return Parse_Expr0(expanded_macro);
         }
     default:

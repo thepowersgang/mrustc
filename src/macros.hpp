@@ -2,6 +2,7 @@
 #define MACROS_HPP_INCLUDED
 
 #include "parse/lex.hpp"
+#include "parse/tokentree.hpp"
 #include <map>
 #include <memory>
 #include <cstring>

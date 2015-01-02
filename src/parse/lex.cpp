@@ -6,6 +6,7 @@
  * \brief Low-level lexer
  */
 #include "lex.hpp"
+#include "tokentree.hpp"
 #include "parseerror.hpp"
 #include <cassert>
 #include <iostream>

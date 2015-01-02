@@ -28,6 +28,20 @@ struct ExprNode_Block:
     virtual void visit(NodeVisitor& nv) override;
 };
 
+struct ExprNode_Macro:
+    public ExprNode
+{
+    ::std::string   m_name;
+    ::TokenTree m_tokens;
+    
+    ExprNode_Macro(::std::string name, ::TokenTree&& tokens):
+        m_name(name),
+        m_tokens( move(tokens) )
+    {}
+    
+    virtual void visit(NodeVisitor& nv) override;
+};
+
 // Return a value
 struct ExprNode_Return:
     public ExprNode

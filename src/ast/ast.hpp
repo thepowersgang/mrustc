@@ -7,6 +7,7 @@
 #include "../coretypes.hpp"
 #include <memory>
 
+#include "../parse/tokentree.hpp"
 #include "../types.hpp"
 
 namespace AST {
@@ -31,29 +32,43 @@ public:
         m_items(items)
     {
     }
+    
+    const ::std::string& name() const { return m_name; }
 };
 
 class ExprNode;
 
 class Pattern
 {
+public:
     enum BindType {
         MAYBE_BIND,
+        ANY,
         VALUE,
         TUPLE,
         TUPLE_STRUCT,
     };
+private:
     BindType    m_class;
+    ::std::string   m_binding;
     Path    m_path;
     unique_ptr<ExprNode>    m_node;
     ::std::vector<Pattern>  m_sub_patterns;
 public:
-    Pattern();
+    Pattern():
+        m_class(ANY)
+    {}
+
+    struct TagBind {};
+    Pattern(TagBind, ::std::string name):
+        m_class(ANY),
+        m_binding(name)
+    {}
 
     struct TagMaybeBind {};
     Pattern(TagMaybeBind, ::std::string name):
         m_class(MAYBE_BIND),
-        m_path(Path::TagLocal(), name)
+        m_binding(name)
     {}
 
     struct TagValue {};
@@ -74,6 +89,21 @@ public:
         m_path( ::std::move(path) ),
         m_sub_patterns( ::std::move(sub_patterns) )
     {}
+    
+    // Mutators
+    void set_bind(::std::string name) {
+        m_binding = name;
+    }
+    
+    // Accessors
+    const ::std::string& binding() const { return m_binding; }
+    BindType type() const { return m_class; }
+    ExprNode& node() { return *m_node; }
+    const ExprNode& node() const { return *m_node; }
+    Path& path() { return m_path; }
+    const Path& path() const { return m_path; }
+    ::std::vector<Pattern>& sub_patterns() { return m_sub_patterns; }
+    const ::std::vector<Pattern>& sub_patterns() const { return m_sub_patterns; }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat);
 };
@@ -152,33 +182,65 @@ public:
 };
 
 
+class Crate;
 class Module;
 
 typedef void fcn_visitor_t(const AST::Crate& crate, const AST::Module& mod, Function& fcn);
 
 class Module
 {
-    ::std::vector< ::std::pair<Function,bool> > m_functions;
+    typedef ::std::vector< ::std::pair<Function, bool> >   itemlist_fcn_t;
+    typedef ::std::vector< ::std::pair<Module, bool> >   itemlist_mod_t;
+    typedef ::std::vector< ::std::tuple< ::std::string, Path, bool > >  itemlist_use_t;
+
+    const Crate& m_crate;
+    ::std::string   m_name;
+    ::std::vector<MetaItem> m_attrs;
+    itemlist_fcn_t  m_functions;
+    itemlist_mod_t  m_submods;
+    itemlist_use_t  m_imports;
 public:
-    void add_alias(bool is_public, Path path) {}
+    Module(const Crate& crate, ::std::string name):
+        m_crate(crate),
+        m_name(name)
+    {
+    }
+    void add_ext_crate(::std::string ext_name, ::std::string imp_name);
+    void add_alias(bool is_public, Path path, ::std::string name) {
+        m_imports.push_back( ::std::make_tuple(name, path, is_public) );
+    }
     void add_constant(bool is_public, ::std::string name, TypeRef type, Expr val);
     void add_global(bool is_public, bool is_mut, ::std::string name, TypeRef type, Expr val);
     void add_struct(bool is_public, ::std::string name, TypeParams params, ::std::vector<StructItem> items);
     void add_function(bool is_public, Function func);
     void add_impl(Impl impl);
 
+    void add_attr(MetaItem item) {
+        m_attrs.push_back(item);
+    }
+
     void iterate_functions(fcn_visitor_t* visitor, const Crate& crate);
+
+    const Crate& crate() const { return m_crate; }  
+ 
+    const ::std::string& name() const { return m_name; }
+
+    const ::std::vector<MetaItem>& attrs() const { return m_attrs; } 
+    const itemlist_fcn_t& functions() const { return m_functions; }
+    const itemlist_mod_t& submods() const { return m_submods; }
+    const itemlist_use_t& imports() const { return m_imports; }
 };
 
 class Crate
 {
-    Module  m_root_module;
 public:
-    Crate(Module root_module):
-        m_root_module(root_module)
-    {
-    }
+    Module  m_root_module;
+    bool    m_load_std;
 
+    Crate();
+
+    Module& root_module() { return m_root_module; }
+    
     void iterate_functions( fcn_visitor_t* visitor );
 };
 
