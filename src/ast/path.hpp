@@ -73,6 +73,11 @@ public:
             ret.m_nodes.push_back(ent);
         return ret;
     }
+    Path operator+(const ::std::string& s) const {
+        Path    tmp;
+        tmp.append(PathNode(s, {}));
+        return Path(*this) += tmp;
+    }
     Path operator+(const Path& x) const {
         return Path(*this) += x;
     }

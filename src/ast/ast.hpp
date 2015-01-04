@@ -183,15 +183,33 @@ public:
 
 
 class Crate;
+class ExternCrate;
 class Module;
 
 typedef void fcn_visitor_t(const AST::Crate& crate, const AST::Module& mod, Function& fcn);
 
+template <typename T>
+struct Item
+{
+    ::std::string   name;
+    T   data;
+    bool    is_pub;
+    
+    Item(::std::string&& name, T&& data, bool is_pub):
+        name( move(name) ),
+        data( move(data) ),
+        is_pub( is_pub )
+    {
+    }
+};
+
+/// Representation of a parsed (and being converted) function
 class Module
 {
     typedef ::std::vector< ::std::pair<Function, bool> >   itemlist_fcn_t;
     typedef ::std::vector< ::std::pair<Module, bool> >   itemlist_mod_t;
-    typedef ::std::vector< ::std::tuple< ::std::string, Path, bool > >  itemlist_use_t;
+    typedef ::std::vector< Item<Path> > itemlist_use_t;
+    typedef ::std::vector< Item<ExternCrate> >  itemlist_ext_t;
 
     const Crate& m_crate;
     ::std::string   m_name;
@@ -199,6 +217,7 @@ class Module
     itemlist_fcn_t  m_functions;
     itemlist_mod_t  m_submods;
     itemlist_use_t  m_imports;
+    itemlist_ext_t  m_extern_crates;
 public:
     Module(const Crate& crate, ::std::string name):
         m_crate(crate),
@@ -207,7 +226,7 @@ public:
     }
     void add_ext_crate(::std::string ext_name, ::std::string imp_name);
     void add_alias(bool is_public, Path path, ::std::string name) {
-        m_imports.push_back( ::std::make_tuple(name, path, is_public) );
+        m_imports.push_back( Item<Path>( move(name), move(path), is_public) );
     }
     void add_constant(bool is_public, ::std::string name, TypeRef type, Expr val);
     void add_global(bool is_public, bool is_mut, ::std::string name, TypeRef type, Expr val);
@@ -224,11 +243,18 @@ public:
     const Crate& crate() const { return m_crate; }  
  
     const ::std::string& name() const { return m_name; }
+    
+    ::std::vector<MetaItem>& attrs() { return m_attrs; } 
+    itemlist_fcn_t& functions() { return m_functions; }
+    itemlist_mod_t& submods() { return m_submods; }
+    itemlist_use_t& imports() { return m_imports; }
+    itemlist_ext_t& extern_crates() { return m_extern_crates; }
 
     const ::std::vector<MetaItem>& attrs() const { return m_attrs; } 
     const itemlist_fcn_t& functions() const { return m_functions; }
     const itemlist_mod_t& submods() const { return m_submods; }
     const itemlist_use_t& imports() const { return m_imports; }
+    const itemlist_ext_t& extern_crates() const { return m_extern_crates; }
 };
 
 class Crate
@@ -240,8 +266,21 @@ public:
     Crate();
 
     Module& root_module() { return m_root_module; }
+    const Module& root_module() const { return m_root_module; }
     
     void iterate_functions( fcn_visitor_t* visitor );
+};
+
+/// Representation of an imported crate
+/// - Functions are stored as resolved+typechecked ASTs
+class ExternCrate
+{
+    Crate   m_crate;
+public:
+    ExternCrate();
+    ExternCrate(const char *path);
+    Module& root_module() { return m_crate.root_module(); }
+    const Module& root_module() const { return m_crate.root_module(); }
 };
 
 class CStruct

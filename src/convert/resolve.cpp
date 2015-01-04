@@ -144,9 +144,14 @@ void CPathResolver::resolve_path(AST::Path& path, bool allow_variables) const
         }
         for( const auto& import : m_module.imports() )
         {
-            const ::std::string& bind_name = ::std::get<0>(import);
-            const AST::Path& bind_path = ::std::get<1>(import);
-            if( bind_name == path[0].name() ) {
+            const ::std::string& bind_name = import.name;
+            const AST::Path& bind_path = import.data;
+            if( bind_name == "" ) {
+                // wildcard import!
+                // TODO: Import should be tagged with 
+                throw ParseError::Todo("CPathResolver::resolve_path() - Wildcards");
+            }
+            else if( bind_name == path[0].name() ) {
                 path = AST::Path::add_tailing(bind_path, path);
             }
         }
@@ -243,7 +248,33 @@ void ResolvePaths_HandleFunction(const AST::Crate& crate, const AST::Module& mod
 	pr.handle_function(fcn);
 }
 
+void ResolvePaths_HandleModule(const AST::Crate& crate, const AST::Path& modpath, AST::Module& mod)
+{
+    // TODO: Handle 'use' statements in an earlier pass, to avoid dependency issues?
+    // - Maybe resolve wildcards etc when used?
+    for( auto& imp : mod.imports() )
+    {
+        // TODO: Handle 'super' and 'self' imports
+        
+        if( imp.name == "" )
+        {
+            // Wildcard import
+            throw ParseError::Todo("ResolvePaths_HandleModule - wildcard use");
+        }
+    }
+    
+    for( auto& fcn : mod.functions() )
+    {
+        ResolvePaths_HandleFunction(crate, mod, fcn.first);
+    }
+    
+    for( auto& submod : mod.submods() )
+    {
+        ResolvePaths_HandleModule(crate, modpath + submod.first.name(), submod.first);
+    }
+}
+
 void ResolvePaths(AST::Crate& crate)
 {
-    crate.iterate_functions(ResolvePaths_HandleFunction);
+    ResolvePaths_HandleModule(crate, AST::Path(AST::Path::TagAbsolute()), crate.root_module());
 }

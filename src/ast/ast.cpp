@@ -88,14 +88,37 @@ void Crate::iterate_functions(fcn_visitor_t* visitor)
     m_root_module.iterate_functions(visitor, *this);
 }
 
+ExternCrate::ExternCrate()
+{
+}
+
+ExternCrate::ExternCrate(const char *path)
+{
+    throw ParseError::Todo("Load extern crate from a file");
+}
+
+ExternCrate ExternCrate_std()
+{
+    ExternCrate crate;
+    Module& std_mod = crate.root_module();
+    
+    // TODO: Add modules
+    
+    return crate;
+}
+
 void Module::add_ext_crate(::std::string ext_name, ::std::string int_name)
 {
     DEBUG("add_ext_crate(\"" << ext_name << "\" as " << int_name << ")");
     if( ext_name == "std" )
     {
         // HACK! Load std using a hackjob (included within the compiler)
+        m_extern_crates.push_back( Item<ExternCrate>( ::std::move(int_name), ExternCrate_std(), false ) );
     }
-    throw ParseError::Todo("'extern crate'");
+    else
+    {
+        throw ParseError::Todo("'extern crate' (not hackjob std)");
+    }
 }
 void Module::add_constant(bool is_public, ::std::string name, TypeRef type, Expr val)
 {

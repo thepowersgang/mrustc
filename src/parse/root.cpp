@@ -483,7 +483,7 @@ AST::Impl Parse_Impl(TokenStream& lex)
 
 void Parse_Use_Wildcard(const AST::Path& base_path, ::std::function<void(AST::Path, ::std::string)> fcn)
 {
-    throw ParseError::Todo("Wildcard imports");
+    fcn(base_path, ""); // HACK! Empty path indicates wilcard import
 }
 
 void Parse_Use(Preproc& lex, ::std::function<void(AST::Path, ::std::string)> fcn)
@@ -520,8 +520,9 @@ void Parse_Use(Preproc& lex, ::std::function<void(AST::Path, ::std::string)> fcn
                 throw ParseError::Todo("Parse_Use - multiples");
                 break;
             case TOK_STAR:
-                throw ParseError::Todo("Parse_Use - wildcard/glob");
-                break;
+                Parse_Use_Wildcard(path, fcn);
+                // early return - can't have anything else after
+                return;
             default:
                 throw ParseError::Unexpected(tok);
             }
