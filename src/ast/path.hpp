@@ -11,6 +11,8 @@ class TypeRef;
 
 namespace AST {
 
+class Crate;
+
 class TypeParam
 {
 public:
@@ -73,6 +75,11 @@ public:
             ret.m_nodes.push_back(ent);
         return ret;
     }
+    Path operator+(PathNode&& pn) const {
+        Path    tmp;
+        tmp.append( ::std::move(pn) );
+        return Path(*this) += tmp;
+    }
     Path operator+(const ::std::string& s) const {
         Path    tmp;
         tmp.append(PathNode(s, {}));
@@ -86,6 +93,8 @@ public:
     void append(PathNode node) {
         m_nodes.push_back(node);
     }
+    
+    void resolve(const Crate& crate);
     
     bool is_relative() const { return m_class == RELATIVE; }
     size_t size() const { return m_nodes.size(); }

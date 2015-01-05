@@ -402,7 +402,7 @@ ExprNodeP Parse_ExprFC(TokenStream& lex)
         switch(GET_TOK(tok, lex))
         {
         case TOK_PAREN_OPEN:
-            // Function call
+            // Expression method call
             lex.putback(tok);
             val = NEWNODE( AST::ExprNode_CallObject, ::std::move(val), Parse_ParenList(lex) );
             break;
@@ -411,6 +411,12 @@ ExprNodeP Parse_ExprFC(TokenStream& lex)
             // TODO: What about tuple indexing?
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             val = NEWNODE( AST::ExprNode_Field, ::std::move(val), ::std::string(tok.str()) );
+            //if( GET_TOK(tok, lex) == TOK_PAREN_OPEN || tok.type() == TOK_DOUBLE_COLON ) {
+            //    throw ParseError::Todo("method calls");
+            //}
+            //else {
+            //    lex.putback(tok);
+            //}
             break;
         default:
             lex.putback(tok);

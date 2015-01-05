@@ -4,10 +4,12 @@
 #include "../types.hpp"
 #include <iostream>
 #include "../parse/parseerror.hpp"
+#include <algorithm>
 
 namespace AST {
 
 
+// --- AST::PathNode
 PathNode::PathNode(::std::string name, ::std::vector<TypeRef> args):
     m_name(name),
     m_params(args)
@@ -20,6 +22,36 @@ const ::std::string& PathNode::name() const
 const ::std::vector<TypeRef>& PathNode::args() const
 {
     return m_params;
+}
+
+// --- AST::Path
+void Path::resolve(const Crate& crate)
+{
+    DEBUG("*this = " << *this);
+    if(m_class != ABSOLUTE)
+        throw ParseError::BugCheck("Calling Path::resolve on non-absolute path");
+    
+    const Module* mod = &crate.root_module();
+    for(int i = 0; i < m_nodes.size(); i ++ )
+    {
+        const PathNode& node = m_nodes[i];
+        auto& sms = mod->submods();
+        
+        auto it = ::std::find_if(sms.begin(), sms.end(), [&node](const ::std::pair<Module,bool>& x) {
+                return x.first.name() == node.name();
+            });
+        if( it != sms.end() )
+            continue;
+        
+        // Start searching for:
+        // - Re-exports
+        // - Functions
+        // - Structs
+        // - Enums (and variants)
+        
+    }
+    
+    throw ParseError::Todo("Path::resolve");
 }
 
 Path& Path::operator+=(const Path& other)

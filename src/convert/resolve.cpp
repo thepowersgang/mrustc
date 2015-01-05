@@ -248,21 +248,35 @@ void ResolvePaths_HandleFunction(const AST::Crate& crate, const AST::Module& mod
 	pr.handle_function(fcn);
 }
 
-void ResolvePaths_HandleModule(const AST::Crate& crate, const AST::Path& modpath, AST::Module& mod)
+void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& modpath, AST::Module& mod)
 {
-    // TODO: Handle 'use' statements in an earlier pass, to avoid dependency issues?
-    // - Maybe resolve wildcards etc when used?
     for( auto& imp : mod.imports() )
     {
         // TODO: Handle 'super' and 'self' imports
+        // - Any other type of import will be absolute
+        
         
         if( imp.name == "" )
         {
+            if( imp.is_pub ) {
+                throw ParseError::Generic("Wildcard uses can't be public");
+            }
+            
             // Wildcard import
+            AST::Path& basepath = imp.data;
+            basepath.resolve(crate);
             throw ParseError::Todo("ResolvePaths_HandleModule - wildcard use");
         }
     }
     
+    for( auto& submod : mod.submods() )
+    {
+        ResolvePaths_HandleModule_Use(crate, modpath + submod.first.name(), submod.first);
+    }
+}
+
+void ResolvePaths_HandleModule(const AST::Crate& crate, const AST::Path& modpath, AST::Module& mod)
+{
     for( auto& fcn : mod.functions() )
     {
         ResolvePaths_HandleFunction(crate, mod, fcn.first);
@@ -276,5 +290,9 @@ void ResolvePaths_HandleModule(const AST::Crate& crate, const AST::Path& modpath
 
 void ResolvePaths(AST::Crate& crate)
 {
+    // Handle 'use' statements in an initial parss
+    ResolvePaths_HandleModule_Use(crate, AST::Path(AST::Path::TagAbsolute()), crate.root_module());
+    
+    // Then do path resolution on all other item
     ResolvePaths_HandleModule(crate, AST::Path(AST::Path::TagAbsolute()), crate.root_module());
 }
