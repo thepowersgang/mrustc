@@ -220,6 +220,10 @@ void ExprNode_CallPath::visit(NodeVisitor& nv) {
     nv.visit(*this);
 }
 
+void ExprNode_CallMethod::visit(NodeVisitor& nv) {
+    nv.visit(*this);
+}
+
 void ExprNode_CallObject::visit(NodeVisitor& nv) {
     nv.visit(*this);
 }

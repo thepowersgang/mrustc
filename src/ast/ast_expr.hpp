@@ -97,6 +97,22 @@ struct ExprNode_CallPath:
     
     virtual void visit(NodeVisitor& nv) override;
 };
+struct ExprNode_CallMethod:
+    public ExprNode
+{
+    unique_ptr<ExprNode>    m_val;
+    PathNode    m_method;
+    ::std::vector<unique_ptr<ExprNode>> m_args;
+
+    ExprNode_CallMethod(unique_ptr<ExprNode>&& obj, PathNode&& method, ::std::vector<unique_ptr<ExprNode>>&& args):
+        m_val( move(obj) ),
+        m_method( move(method) ),
+        m_args( move(args) )
+    {
+    }
+    
+    virtual void visit(NodeVisitor& nv) override;
+};
 // Call an object (Fn/FnMut/FnOnce)
 struct ExprNode_CallObject:
     public ExprNode
@@ -269,6 +285,11 @@ public:
         visit(node.m_value);
     }
     virtual void visit(ExprNode_CallPath& node) {
+        for( auto& arg : node.m_args )
+            visit(arg);
+    }
+    virtual void visit(ExprNode_CallMethod& node) {
+        visit(node.m_val);
         for( auto& arg : node.m_args )
             visit(arg);
     }

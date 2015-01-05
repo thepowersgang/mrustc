@@ -406,18 +406,25 @@ ExprNodeP Parse_ExprFC(TokenStream& lex)
             lex.putback(tok);
             val = NEWNODE( AST::ExprNode_CallObject, ::std::move(val), Parse_ParenList(lex) );
             break;
-        case TOK_DOT:
-            // Field access
+        case TOK_DOT: {
+            // Field access / method call
             // TODO: What about tuple indexing?
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            val = NEWNODE( AST::ExprNode_Field, ::std::move(val), ::std::string(tok.str()) );
-            //if( GET_TOK(tok, lex) == TOK_PAREN_OPEN || tok.type() == TOK_DOUBLE_COLON ) {
-            //    throw ParseError::Todo("method calls");
-            //}
-            //else {
-            //    lex.putback(tok);
-            //}
-            break;
+            ::std::string name = tok.str();
+            switch( GET_TOK(tok, lex) )
+            {
+            case TOK_PAREN_OPEN:
+                lex.putback(tok);
+                val = NEWNODE( AST::ExprNode_CallMethod, ::std::move(val), AST::PathNode(name, {}), Parse_ParenList(lex) );
+                break;
+            case TOK_DOUBLE_COLON:
+                throw ParseError::Todo("method calls - generic");
+            default:
+                val = NEWNODE( AST::ExprNode_Field, ::std::move(val), ::std::string(name) );
+                lex.putback(tok);
+                break;
+            }
+            break; }
         default:
             lex.putback(tok);
             return val;
