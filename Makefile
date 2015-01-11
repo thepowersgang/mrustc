@@ -5,14 +5,14 @@ CXX ?= g++
 LINKFLAGS :=
 LIBS :=
 CXXFLAGS := -Wall -std=c++11
-CPPFLAGS :=
+CPPFLAGS := -I src/include/
 
 
 OBJDIR = .obj/
 
 BIN := bin/mrustc$(EXESUF)
 
-OBJ := main.o macros.o types.o ast/ast.o 
+OBJ := main.o macros.o types.o ast/ast.o serialise.o
 OBJ += parse/parseerror.o parse/lex.o parse/preproc.o parse/root.o parse/expr.o
 OBJ += convert/flatten.o convert/resolve.o convert/render.o
 OBJ := $(addprefix $(OBJDIR),$(OBJ))

@@ -9,6 +9,7 @@
 #include <vector>
 #include <initializer_list>
 #include <cassert>
+#include <serialise.hpp>
 
 class TypeRef;
 
@@ -21,7 +22,8 @@ class Struct;
 class Function;
 
 
-class PathNode
+class PathNode:
+    public ::Serialisable
 {
     ::std::string   m_name;
     ::std::vector<TypeRef>  m_params;
@@ -41,9 +43,12 @@ public:
         }
         return os;
     }
+    
+    SERIALISABLE_PROTOTYPES();
 };
 
-class Path
+class Path:
+    public ::Serialisable
 {
 public:
     enum BindingType {
@@ -145,8 +150,10 @@ public:
     
     PathNode& operator[](size_t idx) { return m_nodes[idx]; }
     const PathNode& operator[](size_t idx) const { return m_nodes[idx]; }
-    
+   
+    SERIALISABLE_PROTOTYPES(); 
     friend ::std::ostream& operator<<(::std::ostream& os, const Path& path);
+    friend ::Serialiser& operator<<(Serialiser& s, Path::Class pc);
 private:
     void bind_module(const Module& mod);
     void bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args);

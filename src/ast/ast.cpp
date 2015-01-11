@@ -23,6 +23,10 @@ const ::std::vector<TypeRef>& PathNode::args() const
 {
     return m_params;
 }
+SERIALISE_TYPE(PathNode::, "PathNode", {
+    s << m_name;
+    s << m_params;
+})
 
 // --- AST::Path
 template<typename T>
@@ -216,7 +220,26 @@ Path& Path::operator+=(const Path& other)
     }
     return os;
 }
+::Serialiser& operator<<(Serialiser& s, Path::Class pc)
+{
+    switch(pc)
+    {
+    case Path::RELATIVE:  s << "RELATIVE";    break;
+    case Path::ABSOLUTE:  s << "ABSOLUTE";    break;
+    case Path::LOCAL: s << "LOCAL";   break;
+    }
+    return s;
+}
+SERIALISE_TYPE(Path::, "AST_Path", {
+    s << m_class;
+    s << m_nodes;
+})
 
+SERIALISE_TYPE(MetaItem::, "AST_MetaItem", {
+    s << m_name;
+    s << m_str_val;
+    s << m_items;
+})
 
 ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat)
 {
@@ -259,6 +282,10 @@ void Crate::iterate_functions(fcn_visitor_t* visitor)
 {
     m_root_module.iterate_functions(visitor, *this);
 }
+SERIALISE_TYPE(Crate::, "AST_Crate", {
+    s << m_load_std;
+    s << m_root_module;
+})
 
 ExternCrate::ExternCrate()
 {
@@ -268,6 +295,8 @@ ExternCrate::ExternCrate(const char *path)
 {
     throw ParseError::Todo("Load extern crate from a file");
 }
+SERIALISE_TYPE(ExternCrate::, "AST_ExternCrate", {
+})
 
 ExternCrate ExternCrate_std()
 {
@@ -299,6 +328,15 @@ ExternCrate ExternCrate_std()
     return crate;
 }
 
+SERIALISE_TYPE(Module::, "AST_Module", {
+    s << m_name;
+    s << m_attrs;
+    s << m_extern_crates;
+    s << m_submods;
+    s << m_enums;
+    s << m_structs;
+    s << m_functions;
+})
 void Module::add_ext_crate(::std::string ext_name, ::std::string int_name)
 {
     DEBUG("add_ext_crate(\"" << ext_name << "\" as " << int_name << ")");
@@ -326,7 +364,6 @@ void Module::add_struct(bool is_public, ::std::string name, TypeParams params, :
 void Module::add_impl(Impl impl)
 {
 }
-
 void Module::iterate_functions(fcn_visitor_t *visitor, const Crate& crate)
 {
     for( auto fcn_item : this->m_functions )
@@ -334,6 +371,35 @@ void Module::iterate_functions(fcn_visitor_t *visitor, const Crate& crate)
         visitor(crate, *this, fcn_item.data);
     }
 }
+
+::Serialiser& operator<<(::Serialiser& s, Function::Class fc)
+{
+    switch(fc)
+    {
+    case Function::CLASS_UNBOUND: s << "UNBOUND"; break;
+    case Function::CLASS_REFMETHOD: s << "REFMETHOD"; break;
+    case Function::CLASS_MUTMETHOD: s << "MUTMETHOD"; break;
+    case Function::CLASS_VALMETHOD: s << "VALMETHOD"; break;
+    }
+    return s;
+}
+SERIALISE_TYPE(Function::, "AST_Function", {
+    s << m_fcn_class;
+    s << m_generic_params;
+    s << m_rettype;
+    s << m_args;
+    //s << m_code;
+})
+
+SERIALISE_TYPE(Enum::, "AST_Enum", {
+    s << m_params;
+    s << m_variants;
+})
+
+SERIALISE_TYPE(Struct::, "AST_Struct", {
+    s << m_params;
+    s << m_fields;
+})
 
 void Expr::visit_nodes(NodeVisitor& v)
 {
@@ -421,5 +487,8 @@ void TypeParam::addTypeBound(TypeRef type)
 {
 
 }
+SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
+    // TODO: TypeParam
+})
 
 }

@@ -3,6 +3,7 @@
 #include "parse/lex.hpp"
 #include "parse/parseerror.hpp"
 #include "ast/ast.hpp"
+#include <serialiser_texttree.hpp>
 
 extern AST::Crate Parse_Crate(::std::string mainfile);
 extern void ResolvePaths(AST::Crate& crate);
@@ -15,6 +16,10 @@ int main(int argc, char *argv[])
     {
         AST::Crate crate = Parse_Crate("samples/1.rs");
 
+        Serialiser_TextTree s_tt(::std::cout);
+        Serialiser& s = s_tt;
+        s << crate;
+    
         // Resolve names to be absolute names (include references to the relevant struct/global/function)
         ResolvePaths(crate);
 

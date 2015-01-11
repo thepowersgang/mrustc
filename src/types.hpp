@@ -4,12 +4,14 @@
 #include "common.hpp"
 #include "coretypes.hpp"
 #include "ast/path.hpp"
+#include <serialise.hpp>
 
 namespace AST {
 class Expr;
 }
 
-class TypeRef
+class TypeRef:
+    public Serialisable
 {
 public:
     TypeRef() {}
@@ -40,6 +42,10 @@ public:
         os << "TypeRef(TODO)";
         return os;
     }
+    
+    SERIALISE_TYPE(, "TypeRef", {
+        // TODO: Typeref serialise
+    })
 };
 
 #endif // TYPES_HPP_INCLUDED

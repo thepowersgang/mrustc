@@ -9,25 +9,30 @@
 
 #include "../parse/tokentree.hpp"
 #include "../types.hpp"
+#include <serialise.hpp>
 
 namespace AST {
 
 using ::std::unique_ptr;
 using ::std::move;
 
-class TypeParam
+class TypeParam:
+    public Serialisable
 {
 public:
     TypeParam(bool is_lifetime, ::std::string name);
     void addLifetimeBound(::std::string name);
     void addTypeBound(TypeRef type);
+    
+    SERIALISABLE_PROTOTYPES();
 };
 
 typedef ::std::vector<TypeParam>    TypeParams;
 
 class Crate;
 
-class MetaItem
+class MetaItem:
+    public Serialisable
 {
     ::std::string   m_name;
     ::std::vector<MetaItem> m_items;
@@ -44,6 +49,8 @@ public:
     }
     
     const ::std::string& name() const { return m_name; }
+    
+    SERIALISABLE_PROTOTYPES();
 };
 
 class ExprNode;
@@ -140,7 +147,8 @@ public:
 
 typedef ::std::pair< ::std::string, TypeRef>    StructItem;
 
-class Function
+class Function:
+    public Serialisable
 {
 public:
     enum Class
@@ -153,15 +161,15 @@ public:
     typedef ::std::vector<StructItem>   Arglist;
 
 private:
-    TypeParams  m_generic_params;
     Class   m_fcn_class;
+    TypeParams  m_generic_params;
     Expr    m_code;
     TypeRef m_rettype;
     Arglist m_args;
 public:
     Function(TypeParams params, Class fcn_class, TypeRef ret_type, Arglist args, Expr code):
-        m_generic_params(params),
         m_fcn_class(fcn_class),
+        m_generic_params(params),
         m_code(code),
         m_rettype(ret_type),
         m_args(args)
@@ -169,19 +177,20 @@ public:
     }
     
     TypeParams& generic_params() { return m_generic_params; }
-    const TypeParams& generic_params() const { return m_generic_params; }
-
     Expr& code() { return m_code; }
-    const Expr& code() const { return m_code; }
-
-    const TypeRef& rettype() const { return m_rettype; }
     TypeRef& rettype() { return m_rettype; }
-
-    const Arglist& args() const { return m_args; }
     Arglist& args() { return m_args; }
+
+    const TypeParams& generic_params() const { return m_generic_params; }
+    const Expr& code() const { return m_code; }
+    const TypeRef& rettype() const { return m_rettype; }
+    const Arglist& args() const { return m_args; }
+    
+    SERIALISABLE_PROTOTYPES();
 };
 
-class Enum
+class Enum:
+    public Serialisable
 {
     ::std::vector<TypeParam>    m_params;
     ::std::vector<StructItem>   m_variants;
@@ -193,9 +202,12 @@ public:
     
     const ::std::vector<TypeParam> params() const { return m_params; }
     const ::std::vector<StructItem> variants() const { return m_variants; }
+    
+    SERIALISABLE_PROTOTYPES();
 };
 
-class Struct
+class Struct:
+    public Serialisable
 {
     ::std::vector<TypeParam>    m_params;
     ::std::vector<StructItem>   m_fields;
@@ -206,6 +218,8 @@ public:
     {}
     
     const ::std::vector<StructItem> fields() const { return m_fields; }
+    
+    SERIALISABLE_PROTOTYPES();
 };
 
 class Impl
@@ -224,7 +238,8 @@ class Module;
 typedef void fcn_visitor_t(const AST::Crate& crate, const AST::Module& mod, Function& fcn);
 
 template <typename T>
-struct Item
+struct Item:
+    public Serialisable
 {
     ::std::string   name;
     T   data;
@@ -236,10 +251,17 @@ struct Item
         is_pub( is_pub )
     {
     }
+    
+    SERIALISE_TYPE(, "Item", {
+        s << is_pub;
+        s << name;
+        s << data;
+    })
 };
 
 /// Representation of a parsed (and being converted) function
-class Module
+class Module:
+    public Serialisable
 {
     typedef ::std::vector< Item<Function> >   itemlist_fcn_t;
     typedef ::std::vector< ::std::pair<Module, bool> >   itemlist_mod_t;
@@ -306,9 +328,12 @@ public:
     const itemlist_ext_t& extern_crates() const { return m_extern_crates; }
     const itemlist_enum_t&  enums() const { return m_enums; }
     const itemlist_struct_t&    structs() const { return m_structs; }
+
+    SERIALISABLE_PROTOTYPES();
 };
 
-class Crate
+class Crate:
+    public Serialisable
 {
 public:
     Module  m_root_module;
@@ -320,11 +345,14 @@ public:
     const Module& root_module() const { return m_root_module; }
     
     void iterate_functions( fcn_visitor_t* visitor );
+
+    SERIALISABLE_PROTOTYPES();
 };
 
 /// Representation of an imported crate
 /// - Functions are stored as resolved+typechecked ASTs
-class ExternCrate
+class ExternCrate:
+    public Serialisable
 {
     Crate   m_crate;
 public:
@@ -334,6 +362,8 @@ public:
     const Crate& crate() const { return m_crate; }
     Module& root_module() { return m_crate.root_module(); }
     const Module& root_module() const { return m_crate.root_module(); }
+    
+    SERIALISABLE_PROTOTYPES();
 };
 
 class CStruct
