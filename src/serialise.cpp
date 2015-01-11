@@ -13,7 +13,8 @@ Serialiser& Serialiser::operator<<(const Serialisable& subobj)
 
 
 Serialiser_TextTree::Serialiser_TextTree(::std::ostream& os):
-    m_os(os)
+    m_os(os),
+    m_indent_level(0)
 {
 }
 

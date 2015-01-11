@@ -3,6 +3,18 @@
 #ifndef AST_EXPR_INCLUDED
 #define AST_EXPR_INCLUDED
 
+#include <ostream>
+#include <memory>   // unique_ptr
+#include <vector>
+
+#include "../parse/tokentree.hpp"
+#include "../types.hpp"
+#include "pattern.hpp"
+
+namespace AST {
+
+using ::std::unique_ptr;
+
 class NodeVisitor;
 
 class ExprNode
@@ -332,6 +344,26 @@ public:
         visit(node.m_right);
     }
 };
+
+class Expr
+{
+    ::std::shared_ptr<ExprNode> m_node;
+public:
+    Expr(unique_ptr<ExprNode> node):
+        m_node(node.release())
+    {
+    }
+    Expr(ExprNode* node):
+        m_node(node)
+    {
+    }
+
+    void visit_nodes(NodeVisitor& v);
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const Expr& pat);
+};
+
+}
 
 #endif
 

@@ -104,8 +104,7 @@ void CPathResolver::resolve_path(AST::Path& path, bool allow_variables) const
         // Already absolute, our job is done
         // - However, if the path isn't bound, bind it
         if( !path.is_bound() ) {
-            path.set_crate(m_crate);
-            path.resolve();
+            path.resolve(m_crate);
         }
     } 
     else
@@ -166,7 +165,7 @@ void CPathResolver::resolve_path(AST::Path& path, bool allow_variables) const
         }
         
         DEBUG("path = " << path);
-        path.resolve();
+        path.resolve(m_crate);
         
         
         throw ParseError::Todo("CPathResolver::resolve_path()");
@@ -280,8 +279,8 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
             
             // Wildcard import
             AST::Path& basepath = imp.data;
-            basepath.set_crate(crate);
-            basepath.resolve();
+            basepath.resolve(crate);
+            DEBUG("basepath = " << basepath);
             switch(basepath.binding_type())
             {
             case AST::Path::UNBOUND:
@@ -298,13 +297,21 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
                 {
                     if( imp.is_pub )
                     {
+                        DEBUG("Re-export " << imp.data);
                         if(imp.name == "")
                             throw ParseError::Generic("Wilcard uses can't be public");
-                        new_imports.push_back( imp.data );
+                        AST::Path   path = imp.data;
+                        path.resolve(crate);
+                        DEBUG("Re-export (resolved) " << path);
+                        new_imports.push_back( ::std::move(path) );
                     }
                 }
                 //throw ParseError::Todo("ResolvePaths_HandleModule - wildcard use on module");
                 break;
+            case AST::Path::ENUM:
+                throw ParseError::Todo("ResolvePaths_HandleModule_Use - ENUM");
+            case AST::Path::ENUM_VAR:
+                throw ParseError::Todo("ResolvePaths_HandleModule_Use - ENUM_VAR");
             }
         }
     }
@@ -312,8 +319,7 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
     for( auto& new_imp : new_imports )
     {
         if( not new_imp.is_bound() ) {
-            new_imp.set_crate(crate);
-            new_imp.resolve();
+            new_imp.resolve(crate);
         }
         mod.add_alias(false, new_imp, new_imp[new_imp.size()-1].name());
     }

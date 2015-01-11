@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <string>
+#include <map>
 
 class Serialiser;
 
@@ -51,6 +52,15 @@ public:
         *this << v.first;
         *this << v.second;
         end_array();
+        return *this;
+    }
+    template<typename T1, typename T2>
+    Serialiser& operator<<(const ::std::map<T1,T2>& v)
+    {
+        start_object("map");
+        for(const auto& ent : v)
+            *this << ent;
+        end_object("map");
         return *this;
     }
 };

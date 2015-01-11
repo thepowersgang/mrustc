@@ -9,7 +9,7 @@
 #include <iostream>
 #include <vector>
 
-#define DEBUG(ss)   do{ ::std::cerr << __func__ << ": " << ss << ::std::endl; } while(0)
+#define DEBUG(ss)   do{ ::std::cerr << __FUNCTION__ << ": " << ss << ::std::endl; } while(0)
 
 namespace AST {
 template <typename T>

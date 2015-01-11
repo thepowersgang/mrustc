@@ -6,10 +6,15 @@
 #include <stdexcept>
 #include "../coretypes.hpp"
 #include <memory>
+#include <map>
 
 #include "../parse/tokentree.hpp"
 #include "../types.hpp"
 #include <serialise.hpp>
+
+#include "pattern.hpp"
+
+#include "expr.hpp"
 
 namespace AST {
 
@@ -28,6 +33,7 @@ public:
 };
 
 typedef ::std::vector<TypeParam>    TypeParams;
+typedef ::std::pair< ::std::string, TypeRef>    StructItem;
 
 class Crate;
 
@@ -52,100 +58,6 @@ public:
     
     SERIALISABLE_PROTOTYPES();
 };
-
-class ExprNode;
-
-class Pattern
-{
-public:
-    enum BindType {
-        MAYBE_BIND,
-        ANY,
-        VALUE,
-        TUPLE,
-        TUPLE_STRUCT,
-    };
-private:
-    BindType    m_class;
-    ::std::string   m_binding;
-    Path    m_path;
-    unique_ptr<ExprNode>    m_node;
-    ::std::vector<Pattern>  m_sub_patterns;
-public:
-    Pattern():
-        m_class(ANY)
-    {}
-
-    struct TagBind {};
-    Pattern(TagBind, ::std::string name):
-        m_class(ANY),
-        m_binding(name)
-    {}
-
-    struct TagMaybeBind {};
-    Pattern(TagMaybeBind, ::std::string name):
-        m_class(MAYBE_BIND),
-        m_binding(name)
-    {}
-
-    struct TagValue {};
-    Pattern(TagValue, unique_ptr<ExprNode> node):
-        m_class(VALUE),
-        m_node( ::std::move(node) )
-    {}
-
-    struct TagTuple {};
-    Pattern(TagTuple, ::std::vector<Pattern> sub_patterns):
-        m_class(TUPLE),
-        m_sub_patterns( ::std::move(sub_patterns) )
-    {}
-
-    struct TagEnumVariant {};
-    Pattern(TagEnumVariant, Path path, ::std::vector<Pattern> sub_patterns):
-        m_class(TUPLE_STRUCT),
-        m_path( ::std::move(path) ),
-        m_sub_patterns( ::std::move(sub_patterns) )
-    {}
-    
-    // Mutators
-    void set_bind(::std::string name) {
-        m_binding = name;
-    }
-    
-    // Accessors
-    const ::std::string& binding() const { return m_binding; }
-    BindType type() const { return m_class; }
-    ExprNode& node() { return *m_node; }
-    const ExprNode& node() const { return *m_node; }
-    Path& path() { return m_path; }
-    const Path& path() const { return m_path; }
-    ::std::vector<Pattern>& sub_patterns() { return m_sub_patterns; }
-    const ::std::vector<Pattern>& sub_patterns() const { return m_sub_patterns; }
-
-    friend ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat);
-};
-
-#include "ast_expr.hpp"
-
-class Expr
-{
-    ::std::shared_ptr<ExprNode> m_node;
-public:
-    Expr(unique_ptr<ExprNode> node):
-        m_node(node.release())
-    {
-    }
-    Expr(ExprNode* node):
-        m_node(node)
-    {
-    }
-
-    void visit_nodes(NodeVisitor& v);
-
-    friend ::std::ostream& operator<<(::std::ostream& os, const Expr& pat);
-};
-
-typedef ::std::pair< ::std::string, TypeRef>    StructItem;
 
 class Function:
     public Serialisable
@@ -266,7 +178,7 @@ class Module:
     typedef ::std::vector< Item<Function> >   itemlist_fcn_t;
     typedef ::std::vector< ::std::pair<Module, bool> >   itemlist_mod_t;
     typedef ::std::vector< Item<Path> > itemlist_use_t;
-    typedef ::std::vector< Item<ExternCrate> >  itemlist_ext_t;
+    typedef ::std::vector< Item< ::std::string> >  itemlist_ext_t;
     typedef ::std::vector< Item<Enum> >  itemlist_enum_t;
     typedef ::std::vector< Item<Struct> >  itemlist_struct_t;
 
@@ -337,12 +249,18 @@ class Crate:
 {
 public:
     Module  m_root_module;
+    ::std::map< ::std::string, ExternCrate> m_extern_crates;
     bool    m_load_std;
 
     Crate();
 
     Module& root_module() { return m_root_module; }
     const Module& root_module() const { return m_root_module; }
+    
+    Module& get_root_module(const ::std::string& name);
+    const Module& get_root_module(const ::std::string& name) const;
+    
+    void load_extern_crate(::std::string name);
     
     void iterate_functions( fcn_visitor_t* visitor );
 

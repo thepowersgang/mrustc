@@ -65,7 +65,7 @@ private:
     };
     
     /// The crate defining the root of this path (used for path resolution)
-    const Crate*    m_crate;
+    ::std::string   m_crate;
 
     /// Path class (absolute, relative, local)
     /// - Absolute is "relative" to the crate root
@@ -85,30 +85,28 @@ private:
     } m_binding;
 public:
     Path():
-        m_crate(nullptr),
         m_class(RELATIVE)
     {}
     struct TagAbsolute {};
     Path(TagAbsolute):
-        m_crate(nullptr),
         m_class(ABSOLUTE)
     {}
     struct TagLocal {};
     Path(TagLocal, ::std::string name):
-        m_crate(nullptr),
         m_class(LOCAL),
         m_nodes({PathNode(name, {})})
     {}
     
     Path(::std::initializer_list<PathNode> l):
-        m_crate(nullptr),
         m_class(ABSOLUTE),
         m_nodes(l)
     {}
     
-    void set_crate(const Crate& crate) {
-        if( !m_crate )
-            m_crate = &crate;
+    void set_crate(::std::string crate) {
+        if( m_crate == "" ) {
+            m_crate = crate;
+            DEBUG("crate set to " << m_crate);
+        }
     }
     
     static Path add_tailing(const Path& a, const Path& b) {
@@ -136,7 +134,7 @@ public:
         m_nodes.push_back(node);
     }
     
-    void resolve();
+    void resolve(const Crate& crate);
     
     bool is_relative() const { return m_class == RELATIVE; }
     size_t size() const { return m_nodes.size(); }
