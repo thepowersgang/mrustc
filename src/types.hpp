@@ -30,6 +30,9 @@ public:
     struct TagUnsizedArray {};
     TypeRef(TagUnsizedArray _, TypeRef inner_type) {}
 
+    struct TagArg {};
+    TypeRef(TagArg, ::std::string name) {}
+
     struct TagPath {};
     TypeRef(TagPath, AST::Path path) {}
     

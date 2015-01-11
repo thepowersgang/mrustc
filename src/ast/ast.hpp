@@ -15,6 +15,16 @@ namespace AST {
 using ::std::unique_ptr;
 using ::std::move;
 
+class TypeParam
+{
+public:
+    TypeParam(bool is_lifetime, ::std::string name);
+    void addLifetimeBound(::std::string name);
+    void addTypeBound(TypeRef type);
+};
+
+typedef ::std::vector<TypeParam>    TypeParams;
+
 class Crate;
 
 class MetaItem
@@ -128,6 +138,8 @@ public:
     friend ::std::ostream& operator<<(::std::ostream& os, const Expr& pat);
 };
 
+typedef ::std::pair< ::std::string, TypeRef>    StructItem;
+
 class Function
 {
 public:
@@ -141,15 +153,13 @@ public:
     typedef ::std::vector<StructItem>   Arglist;
 
 private:
-    ::std::string   m_name;
     TypeParams  m_generic_params;
     Class   m_fcn_class;
     Expr    m_code;
     TypeRef m_rettype;
     Arglist m_args;
 public:
-    Function(::std::string name, TypeParams params, Class fcn_class, TypeRef ret_type, Arglist args, Expr code):
-        m_name(name),
+    Function(TypeParams params, Class fcn_class, TypeRef ret_type, Arglist args, Expr code):
         m_generic_params(params),
         m_fcn_class(fcn_class),
         m_code(code),
@@ -157,8 +167,6 @@ public:
         m_args(args)
     {
     }
-    
-    const ::std::string& name() const { return m_name; }
     
     TypeParams& generic_params() { return m_generic_params; }
     const TypeParams& generic_params() const { return m_generic_params; }
@@ -173,12 +181,39 @@ public:
     Arglist& args() { return m_args; }
 };
 
+class Enum
+{
+    ::std::vector<TypeParam>    m_params;
+    ::std::vector<StructItem>   m_variants;
+public:
+    Enum( ::std::vector<TypeParam> params, ::std::vector<StructItem> variants ):
+        m_params( move(params) ),
+        m_variants( move(variants) )
+    {}
+    
+    const ::std::vector<TypeParam> params() const { return m_params; }
+    const ::std::vector<StructItem> variants() const { return m_variants; }
+};
+
+class Struct
+{
+    ::std::vector<TypeParam>    m_params;
+    ::std::vector<StructItem>   m_fields;
+public:
+    Struct( ::std::vector<TypeParam> params, ::std::vector<StructItem> fields ):
+        m_params( move(params) ),
+        m_fields( move(fields) )
+    {}
+    
+    const ::std::vector<StructItem> fields() const { return m_fields; }
+};
+
 class Impl
 {
 public:
     Impl(TypeRef impl_type, TypeRef trait_type);
 
-    void add_function(bool is_public, Function fcn);
+    void add_function(bool is_public, ::std::string name, Function fcn);
 };
 
 
@@ -206,20 +241,25 @@ struct Item
 /// Representation of a parsed (and being converted) function
 class Module
 {
-    typedef ::std::vector< ::std::pair<Function, bool> >   itemlist_fcn_t;
+    typedef ::std::vector< Item<Function> >   itemlist_fcn_t;
     typedef ::std::vector< ::std::pair<Module, bool> >   itemlist_mod_t;
     typedef ::std::vector< Item<Path> > itemlist_use_t;
     typedef ::std::vector< Item<ExternCrate> >  itemlist_ext_t;
+    typedef ::std::vector< Item<Enum> >  itemlist_enum_t;
+    typedef ::std::vector< Item<Struct> >  itemlist_struct_t;
 
-    const Crate& m_crate;
+    Crate& m_crate;
     ::std::string   m_name;
     ::std::vector<MetaItem> m_attrs;
     itemlist_fcn_t  m_functions;
     itemlist_mod_t  m_submods;
     itemlist_use_t  m_imports;
     itemlist_ext_t  m_extern_crates;
+    
+    itemlist_enum_t m_enums;
+    itemlist_struct_t m_structs;
 public:
-    Module(const Crate& crate, ::std::string name):
+    Module(Crate& crate, ::std::string name):
         m_crate(crate),
         m_name(name)
     {
@@ -231,7 +271,15 @@ public:
     void add_constant(bool is_public, ::std::string name, TypeRef type, Expr val);
     void add_global(bool is_public, bool is_mut, ::std::string name, TypeRef type, Expr val);
     void add_struct(bool is_public, ::std::string name, TypeParams params, ::std::vector<StructItem> items);
-    void add_function(bool is_public, Function func);
+    void add_enum(bool is_public, ::std::string name, Enum inst) {
+        m_enums.push_back( Item<Enum>( move(name), move(inst), is_public ) );
+    }
+    void add_function(bool is_public, ::std::string name, Function func) {
+        m_functions.push_back( Item<Function>( move(name), move(func), is_public ) );
+    }
+    void add_submod(bool is_public, Module mod) {
+        m_submods.push_back( ::std::make_pair( move(mod), is_public ) );
+    }
     void add_impl(Impl impl);
 
     void add_attr(MetaItem item) {
@@ -240,6 +288,7 @@ public:
 
     void iterate_functions(fcn_visitor_t* visitor, const Crate& crate);
 
+    Crate& crate() { return m_crate; }  
     const Crate& crate() const { return m_crate; }  
  
     const ::std::string& name() const { return m_name; }
@@ -255,6 +304,8 @@ public:
     const itemlist_mod_t& submods() const { return m_submods; }
     const itemlist_use_t& imports() const { return m_imports; }
     const itemlist_ext_t& extern_crates() const { return m_extern_crates; }
+    const itemlist_enum_t&  enums() const { return m_enums; }
+    const itemlist_struct_t&    structs() const { return m_structs; }
 };
 
 class Crate
@@ -279,6 +330,8 @@ class ExternCrate
 public:
     ExternCrate();
     ExternCrate(const char *path);
+    Crate& crate() { return m_crate; }
+    const Crate& crate() const { return m_crate; }
     Module& root_module() { return m_crate.root_module(); }
     const Module& root_module() const { return m_crate.root_module(); }
 };
@@ -295,10 +348,10 @@ public:
 class Flat
 {
     ::std::vector<CStruct>  m_structs;
-    ::std::vector<Function> m_functions;
+    ::std::vector< ::std::pair< ::std::string,Function> > m_functions;
 public:
     
-    const ::std::vector<Function>& functions() const { return m_functions; }
+    const ::std::vector< ::std::pair<::std::string, Function> >& functions() const { return m_functions; }
     const ::std::vector<CStruct>& structs() const { return m_structs; }
 };
 

@@ -6,23 +6,20 @@
 #include "../common.hpp"
 #include <string>
 #include <stdexcept>
+#include <vector>
+#include <initializer_list>
+#include <cassert>
 
 class TypeRef;
 
 namespace AST {
 
 class Crate;
+class Module;
+class Enum;
+class Struct;
+class Function;
 
-class TypeParam
-{
-public:
-    TypeParam(bool is_lifetime, ::std::string name);
-    void addLifetimeBound(::std::string name);
-    void addTypeBound(TypeRef type);
-};
-
-typedef ::std::vector<TypeParam>    TypeParams;
-typedef ::std::pair< ::std::string, TypeRef>    StructItem;
 
 class PathNode
 {
@@ -48,31 +45,71 @@ public:
 
 class Path
 {
+public:
+    enum BindingType {
+        UNBOUND,
+        MODULE,
+        ENUM,
+        ENUM_VAR,
+    };
+private:
     enum Class {
         RELATIVE,
         ABSOLUTE,
         LOCAL,
     };
+    
+    /// The crate defining the root of this path (used for path resolution)
+    const Crate*    m_crate;
+
+    /// Path class (absolute, relative, local)
+    /// - Absolute is "relative" to the crate root
+    /// - Relative doesn't have a set crate (and can't be resolved)
+    /// - Local is a special case to handle possible use of local varaibles
     Class   m_class;
     ::std::vector<PathNode> m_nodes;
+    
+    BindingType m_binding_type = UNBOUND;
+    union {
+        const Module* module_;
+        const Enum* enum_;
+        struct {
+            const Enum* enum_;
+            unsigned int idx;
+        } enumvar;
+    } m_binding;
 public:
     Path():
+        m_crate(nullptr),
         m_class(RELATIVE)
     {}
     struct TagAbsolute {};
     Path(TagAbsolute):
+        m_crate(nullptr),
         m_class(ABSOLUTE)
     {}
     struct TagLocal {};
     Path(TagLocal, ::std::string name):
+        m_crate(nullptr),
         m_class(LOCAL),
         m_nodes({PathNode(name, {})})
     {}
     
+    Path(::std::initializer_list<PathNode> l):
+        m_crate(nullptr),
+        m_class(ABSOLUTE),
+        m_nodes(l)
+    {}
+    
+    void set_crate(const Crate& crate) {
+        if( !m_crate )
+            m_crate = &crate;
+    }
+    
     static Path add_tailing(const Path& a, const Path& b) {
         Path    ret(a);
-        for(const auto& ent : b.m_nodes)
-            ret.m_nodes.push_back(ent);
+        for(unsigned int i = 1; i < b.m_nodes.size(); i ++)
+            ret.m_nodes.push_back(b.m_nodes[i]);
         return ret;
     }
     Path operator+(PathNode&& pn) const {
@@ -94,10 +131,15 @@ public:
         m_nodes.push_back(node);
     }
     
-    void resolve(const Crate& crate);
+    void resolve();
     
     bool is_relative() const { return m_class == RELATIVE; }
     size_t size() const { return m_nodes.size(); }
+    
+    bool is_bound() const { return m_binding_type != UNBOUND; }
+    BindingType binding_type() const { return m_binding_type; }
+    const Module& bound_module() const { assert(m_binding_type == MODULE); return *m_binding.module_; }
+    
     ::std::vector<PathNode>& nodes() { return m_nodes; }
     const ::std::vector<PathNode>& nodes() const { return m_nodes; }
     
@@ -105,6 +147,11 @@ public:
     const PathNode& operator[](size_t idx) const { return m_nodes[idx]; }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const Path& path);
+private:
+    void bind_module(const Module& mod);
+    void bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args);
+    void bind_enum_var(const Enum& ent, const ::std::string& name, const ::std::vector<TypeRef>& args);
+    void bind_struct(const Struct& ent, const ::std::vector<TypeRef>& args);
 };
 
 }   // namespace AST

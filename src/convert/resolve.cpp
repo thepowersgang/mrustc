@@ -87,6 +87,8 @@ CPathResolver::CPathResolver(const AST::Crate& crate, const AST::Module& mod):
 
 void CPathResolver::resolve_path(AST::Path& path, bool allow_variables) const
 {
+    DEBUG("path = " << path);
+    
     // Handle generic components of the path
     for( auto& ent : path.nodes() )
     {
@@ -100,6 +102,11 @@ void CPathResolver::resolve_path(AST::Path& path, bool allow_variables) const
     if( !path.is_relative() )
     {
         // Already absolute, our job is done
+        // - However, if the path isn't bound, bind it
+        if( !path.is_bound() ) {
+            path.set_crate(m_crate);
+            path.resolve();
+        }
     } 
     else
     {
@@ -133,11 +140,12 @@ void CPathResolver::resolve_path(AST::Path& path, bool allow_variables) const
                 // Check name down?
                 // Add current module path
                 path = m_module_path + path;
+                break;
             }
         }
         for( const auto& item_fcn : m_module.functions() )
         {
-            if( item_fcn.first.name() == path[0].name() ) {
+            if( item_fcn.name == path[0].name() ) {
                 path = m_module_path + path;
                 break;
             }
@@ -149,12 +157,17 @@ void CPathResolver::resolve_path(AST::Path& path, bool allow_variables) const
             if( bind_name == "" ) {
                 // wildcard import!
                 // TODO: Import should be tagged with 
-                throw ParseError::Todo("CPathResolver::resolve_path() - Wildcards");
+                //throw ParseError::Todo("CPathResolver::resolve_path() - Wildcards");
             }
             else if( bind_name == path[0].name() ) {
                 path = AST::Path::add_tailing(bind_path, path);
+                break;
             }
         }
+        
+        DEBUG("path = " << path);
+        path.resolve();
+        
         
         throw ParseError::Todo("CPathResolver::resolve_path()");
     }
@@ -250,6 +263,8 @@ void ResolvePaths_HandleFunction(const AST::Crate& crate, const AST::Module& mod
 
 void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& modpath, AST::Module& mod)
 {
+    DEBUG("modpath = " << modpath);
+    ::std::vector<AST::Path>    new_imports;
     for( auto& imp : mod.imports() )
     {
         // TODO: Handle 'super' and 'self' imports
@@ -258,15 +273,49 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
         
         if( imp.name == "" )
         {
+            DEBUG("Wildcard of " << imp.data);
             if( imp.is_pub ) {
                 throw ParseError::Generic("Wildcard uses can't be public");
             }
             
             // Wildcard import
             AST::Path& basepath = imp.data;
-            basepath.resolve(crate);
-            throw ParseError::Todo("ResolvePaths_HandleModule - wildcard use");
+            basepath.set_crate(crate);
+            basepath.resolve();
+            switch(basepath.binding_type())
+            {
+            case AST::Path::UNBOUND:
+                throw ParseError::BugCheck("path unbound after calling .resolve()");
+            case AST::Path::MODULE:
+                for( auto& submod : basepath.bound_module().submods() )
+                {
+                    if( submod.second == true )
+                    {
+                        new_imports.push_back( basepath + AST::PathNode(submod.first.name(), {}) );
+                    }
+                }
+                for(const auto& imp : basepath.bound_module().imports() )
+                {
+                    if( imp.is_pub )
+                    {
+                        if(imp.name == "")
+                            throw ParseError::Generic("Wilcard uses can't be public");
+                        new_imports.push_back( imp.data );
+                    }
+                }
+                //throw ParseError::Todo("ResolvePaths_HandleModule - wildcard use on module");
+                break;
+            }
         }
+    }
+    
+    for( auto& new_imp : new_imports )
+    {
+        if( not new_imp.is_bound() ) {
+            new_imp.set_crate(crate);
+            new_imp.resolve();
+        }
+        mod.add_alias(false, new_imp, new_imp[new_imp.size()-1].name());
     }
     
     for( auto& submod : mod.submods() )
@@ -279,7 +328,7 @@ void ResolvePaths_HandleModule(const AST::Crate& crate, const AST::Path& modpath
 {
     for( auto& fcn : mod.functions() )
     {
-        ResolvePaths_HandleFunction(crate, mod, fcn.first);
+        ResolvePaths_HandleFunction(crate, mod, fcn.data);
     }
     
     for( auto& submod : mod.submods() )

@@ -36,12 +36,14 @@ void Render_Crate(::std::ostream& os, const AST::Flat& crate)
     FOREACH(::std::vector<AST::CStruct>, s, crate.structs())
         os << "struct " << s->mangled_name() << ";\n";
 
-    FOREACH(::std::vector<AST::Function>, fcn, crate.functions())
+    for(const auto& item : crate.functions())
     {
-        Render_Type(os, fcn->rettype(), nullptr);
-        os << " " << fcn->name() << "(";
+        const auto& name = item.first;
+        const auto& fcn = item.second;
+        Render_Type(os, fcn.rettype(), nullptr);
+        os << " " << name << "(";
         bool is_first = true;
-        FOREACH(item_vec_t, f, fcn->args())
+        FOREACH(item_vec_t, f, fcn.args())
         {
             if( !is_first )
                 os << ", ";

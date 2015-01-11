@@ -25,33 +25,173 @@ const ::std::vector<TypeRef>& PathNode::args() const
 }
 
 // --- AST::Path
-void Path::resolve(const Crate& crate)
+template<typename T>
+typename ::std::vector<Item<T> >::const_iterator find_named(const ::std::vector<Item<T> >& vec, const ::std::string& name)
+{
+    return ::std::find_if(vec.begin(), vec.end(), [&name](const Item<T>& x) {
+        return x.name == name;
+    });
+}
+
+void Path::resolve()
 {
     DEBUG("*this = " << *this);
     if(m_class != ABSOLUTE)
         throw ParseError::BugCheck("Calling Path::resolve on non-absolute path");
+    if(m_crate == nullptr)
+        throw ParseError::BugCheck("Calling Path::resolve on path with no crate");
     
-    const Module* mod = &crate.root_module();
-    for(int i = 0; i < m_nodes.size(); i ++ )
+    const Module* mod = &m_crate->root_module();
+    for(unsigned int i = 0; i < m_nodes.size(); i ++ )
     {
+        const bool is_last = (i+1 == m_nodes.size());
+        const bool is_sec_last = (i+2 == m_nodes.size());
         const PathNode& node = m_nodes[i];
-        auto& sms = mod->submods();
+        DEBUG("node = " << node);
         
-        auto it = ::std::find_if(sms.begin(), sms.end(), [&node](const ::std::pair<Module,bool>& x) {
-                return x.first.name() == node.name();
-            });
-        if( it != sms.end() )
-            continue;
+        // Sub-modules
+        {
+            auto& sms = mod->submods();
+            auto it = ::std::find_if(sms.begin(), sms.end(), [&node](const ::std::pair<Module,bool>& x) {
+                    return x.first.name() == node.name();
+                });
+            if( it != sms.end() )
+            {
+                DEBUG("Sub-module '" << node.name() << "'");
+                if( node.args().size() )
+                    throw ParseError::Generic("Generic params applied to module");
+                mod = &it->first;
+                continue;
+            }
+        }
+        // External crates
+        {
+            auto& crates = mod->extern_crates();
+            auto it = find_named(crates, node.name());
+            if( it != crates.end() )
+            {
+                DEBUG("Extern crate '" << node.name() << "'");
+                if( node.args().size() )
+                    throw ParseError::Generic("Generic params applied to extern crate");
+                mod = &it->data.root_module();
+                continue;
+            }
+        }
         
         // Start searching for:
         // - Re-exports
+        {
+            auto& imp = mod->imports();
+            auto it = find_named(imp, node.name());
+            if( it != imp.end() )
+            {
+                DEBUG("Re-exported path " << it->data);
+                throw ParseError::Todo("Path::resolve() re-export");
+            }
+        }
         // - Functions
+        {
+            auto& items = mod->functions();
+            auto it = find_named(items, node.name());
+            if( it != items.end() )
+            {
+                DEBUG("Found function");
+                if( is_last ) {
+                    throw ParseError::Todo("Path::resolve() bind to function");
+                }
+                else {
+                    throw ParseError::Generic("Import of function, too many extra nodes");
+                }
+            }
+        }
         // - Structs
+        {
+            auto& items = mod->structs();
+            auto it = find_named(items, node.name());
+            if( it != items.end() )
+            {
+                DEBUG("Found struct");
+                if( is_last ) {
+                    bind_struct(it->data, node.args());
+                    return;
+                }
+                else if( is_sec_last ) {
+                    throw ParseError::Todo("Path::resolve() struct method");
+                }
+                else {
+                    throw ParseError::Generic("Import of struct, too many extra nodes");
+                }
+            }
+        }
         // - Enums (and variants)
+        {
+            auto& enums = mod->enums();
+            auto it = find_named(enums, node.name());
+            if( it != enums.end() )
+            {
+                DEBUG("Found enum");
+                if( is_last ) {
+                    bind_enum(it->data, node.args());
+                    return ;
+                }
+                else if( is_sec_last ) {
+                    bind_enum_var(it->data, m_nodes[i+1].name(), node.args());
+                    return ;
+                }
+                else {
+                    throw ParseError::Generic("Import of enum, too many extra nodes");
+                }
+            }
+        }
+        // - Constants / statics
         
+        throw ParseError::Generic("Unable to find component '" + node.name() + "'");
     }
     
-    throw ParseError::Todo("Path::resolve");
+    // We only reach here if the path points to a module
+    bind_module(*mod);
+}
+void Path::bind_module(const Module& mod)
+{
+    m_binding_type = MODULE;
+    m_binding.module_ = &mod;
+}
+void Path::bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args)
+{
+    m_binding_type = ENUM;
+    m_binding.enum_ = &ent;
+    if( args.size() > 0 )
+    {
+        if( args.size() != ent.params().size() )
+            throw ParseError::Generic("Parameter count mismatch");
+        throw ParseError::Todo("Bind enum with params passed");
+    }
+}
+void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std::vector<TypeRef>& args)
+{
+    unsigned int idx = 0;
+    for( idx = 0; idx < ent.variants().size(); idx ++ )
+    {
+        if( ent.variants()[idx].first == name ) {
+            break;
+        }
+    }
+    if( idx == ent.variants().size() )
+        throw ParseError::Generic("Enum variant not found");
+    
+    if( args.size() > 0 )
+    {
+        if( args.size() != ent.params().size() )
+            throw ParseError::Generic("Parameter count mismatch");
+        throw ParseError::Todo("Bind enum variant with params passed");
+    }
+    
+    m_binding_type = ENUM_VAR;
+    m_binding.enumvar = {&ent, idx};
+}
+void Path::bind_struct(const Struct& ent, const ::std::vector<TypeRef>& args)
+{
+    throw ParseError::Todo("Path::resolve() bind to struct type");
 }
 
 Path& Path::operator+=(const Path& other)
@@ -106,7 +246,7 @@ Path& Path::operator+=(const Path& other)
 Impl::Impl(TypeRef impl_type, TypeRef trait_type)
 {
 }
-void Impl::add_function(bool is_public, Function fcn)
+void Impl::add_function(bool is_public, ::std::string name, Function fcn)
 {
 }
 
@@ -132,9 +272,29 @@ ExternCrate::ExternCrate(const char *path)
 ExternCrate ExternCrate_std()
 {
     ExternCrate crate;
+    
     Module& std_mod = crate.root_module();
     
     // TODO: Add modules
+    Module  option(crate.crate(), "option");
+    option.add_enum(true, "Option", Enum(
+        {
+            TypeParam(false, "T"),
+        },
+        {
+            StructItem("None", TypeRef()),
+            StructItem("Some", TypeRef(TypeRef::TagArg(), "T")),
+        }
+        ));
+    std_mod.add_submod(true, ::std::move(option));
+    
+    Module  prelude(crate.crate(), "prelude");
+    // Re-exports
+    #define USE(mod, name, ...)    do{ Path p({__VA_ARGS__}); p.set_crate(crate.crate()); p.resolve(); mod.add_alias(true, ::std::move(p), name); } while(0)
+    USE(prelude, "Option",  PathNode("option", {}), PathNode("Option",{}) );
+    USE(prelude, "Some",  PathNode("option", {}), PathNode("Option",{}), PathNode("Some",{}) );
+    USE(prelude, "None",  PathNode("option", {}), PathNode("Option",{}), PathNode("None",{}) );
+    std_mod.add_submod(true, prelude);
     
     return crate;
 }
@@ -163,16 +323,6 @@ void Module::add_global(bool is_public, bool is_mut, ::std::string name, TypeRef
 void Module::add_struct(bool is_public, ::std::string name, TypeParams params, ::std::vector<StructItem> items)
 {
 }
-void Module::add_function(bool is_public, Function func)
-{
-    for( const auto fcn_item : m_functions )
-    {
-        if( fcn_item.first.name() == func.name() ) {
-            throw ParseError::Todo("duplicate function definition");
-        }
-    }
-    m_functions.push_back( ::std::make_pair(func, is_public) );
-}
 void Module::add_impl(Impl impl)
 {
 }
@@ -181,7 +331,7 @@ void Module::iterate_functions(fcn_visitor_t *visitor, const Crate& crate)
 {
     for( auto fcn_item : this->m_functions )
     {
-        visitor(crate, *this, fcn_item.first);
+        visitor(crate, *this, fcn_item.data);
     }
 }
 

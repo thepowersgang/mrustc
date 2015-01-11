@@ -243,10 +243,6 @@ AST::Function Parse_FunctionDef(TokenStream& lex)
 
     Token   tok;
 
-    // Name
-    GET_CHECK_TOK(tok, lex, TOK_IDENT);
-    ::std::string name = tok.str();
-
     // Parameters
     AST::TypeParams params;
     if( GET_TOK(tok, lex) == TOK_LT )
@@ -329,7 +325,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex)
 
     AST::Expr   code = Parse_ExprBlock(lex);
 
-    return AST::Function(name, params, fcn_class, ret_type, args, code);
+    return AST::Function(params, fcn_class, ret_type, args, code);
 }
 
 void Parse_Struct(AST::Module& mod, TokenStream& lex, const bool is_public, const ::std::vector<AST::MetaItem> meta_items)
@@ -469,9 +465,11 @@ AST::Impl Parse_Impl(TokenStream& lex)
         }
         switch(tok.type())
         {
-        case TOK_RWORD_FN:
-            impl.add_function(is_public, Parse_FunctionDef(lex));
-            break;
+        case TOK_RWORD_FN: {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            ::std::string name = tok.str();
+            impl.add_function(is_public, name, Parse_FunctionDef(lex));
+            break; }
 
         default:
             throw ParseError::Unexpected(tok);
@@ -655,9 +653,11 @@ void Parse_ModRoot(Preproc& lex, AST::Module& mod, const ::std::string& path)
             mod.add_global(is_public, is_mut, name, type, val);
             break; }
 
-        case TOK_RWORD_FN:
-            mod.add_function(is_public, Parse_FunctionDef(lex));
-            break;
+        case TOK_RWORD_FN: {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            ::std::string name = tok.str();
+            mod.add_function(is_public, name, Parse_FunctionDef(lex));
+            break; }
         case TOK_RWORD_STRUCT:
             Parse_Struct(mod, lex, is_public, meta_items);
             break;
