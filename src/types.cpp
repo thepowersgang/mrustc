@@ -3,6 +3,11 @@
 #include "types.hpp"
 #include "ast/ast.hpp"
 
-TypeRef::TypeRef(TypeRef::TagSizedArray, TypeRef inner, AST::Expr&& size_expr)
-{
+::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr) {
+    os << "TypeRef(TODO)";
+    return os;
 }
+
+SERIALISE_TYPE(TypeRef::, "TypeRef", {
+    // TODO: TypeRef serialise
+})

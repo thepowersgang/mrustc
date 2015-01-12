@@ -1,51 +1,99 @@
 #ifndef TYPES_HPP_INCLUDED
 #define TYPES_HPP_INCLUDED
 
+#include <memory>
+
 #include "common.hpp"
 #include "coretypes.hpp"
 #include "ast/path.hpp"
 #include <serialise.hpp>
 
 namespace AST {
+class ExprNode;
 class Expr;
 }
 
 class TypeRef:
     public Serialisable
 {
+    enum Class {
+        ANY,
+        UNIT,
+        PRIMITIVE,
+        TUPLE,
+        REFERENCE,
+        POINTER,
+        ARRAY,
+        GENERIC,
+        PATH,
+    };
+    
+    Class   m_class;
+    enum eCoreType  m_core_type;
+    bool    m_is_inner_mutable;
+    
+    AST::Path   m_path; // local = argument
+    ::std::vector<TypeRef>  m_inner_types;
+    ::std::shared_ptr<AST::ExprNode>    m_size_expr; //< Can be null (unsized array)
 public:
-    TypeRef() {}
+    TypeRef():
+        m_class(ANY)
+    {}
 
     struct TagUnit {};  // unit maps to a zero-length tuple, just easier to type
-    TypeRef(TagUnit) {}
+    TypeRef(TagUnit):
+        m_class(UNIT)
+    {}
 
     struct TagPrimitive {};
-    TypeRef(TagPrimitive, enum eCoreType type) {}
+    TypeRef(TagPrimitive, enum eCoreType type):
+        m_class(PRIMITIVE),
+        m_core_type(type)
+    {}
     struct TagTuple {};
-    TypeRef(TagTuple _, ::std::vector<TypeRef> inner_types) {}
+    TypeRef(TagTuple _, ::std::vector<TypeRef> inner_types):
+        m_class(TUPLE),
+        m_inner_types( ::std::move(inner_types) )
+    {}
     struct TagReference {};
-    TypeRef(TagReference _, bool is_mut, TypeRef inner_type) {}
+    TypeRef(TagReference _, bool is_mut, TypeRef inner_type):
+        m_class(REFERENCE),
+        m_is_inner_mutable(is_mut),
+        m_inner_types({::std::move(inner_type)})
+    {}
     struct TagPointer {};
-    TypeRef(TagPointer _, bool is_mut, TypeRef inner_type) {}
+    TypeRef(TagPointer _, bool is_mut, TypeRef inner_type):
+        m_class(POINTER),
+        m_is_inner_mutable(is_mut),
+        m_inner_types({::std::move(inner_type)})
+    {}
     struct TagSizedArray {};
-    TypeRef(TagSizedArray _, TypeRef inner_type, AST::Expr&& size);
+    TypeRef(TagSizedArray _, TypeRef inner_type, ::std::shared_ptr<AST::ExprNode> size):
+        m_class(ARRAY),
+        m_inner_types({::std::move(inner_type)}),
+        m_size_expr( ::std::move(size) )
+    {}
     struct TagUnsizedArray {};
-    TypeRef(TagUnsizedArray _, TypeRef inner_type) {}
+    TypeRef(TagUnsizedArray _, TypeRef inner_type):
+        m_class(ARRAY),
+        m_inner_types({::std::move(inner_type)})
+    {}
 
     struct TagArg {};
-    TypeRef(TagArg, ::std::string name) {}
+    TypeRef(TagArg, ::std::string name):
+        m_class(GENERIC),
+        m_path({AST::PathNode(name, {})})
+    {}
 
     struct TagPath {};
-    TypeRef(TagPath, AST::Path path) {}
+    TypeRef(TagPath, AST::Path path):
+        m_class(PATH),
+        m_path( ::std::move(path) )
+    {}
     
-    friend ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr) {
-        os << "TypeRef(TODO)";
-        return os;
-    }
-    
-    SERIALISE_TYPE(, "TypeRef", {
-        // TODO: Typeref serialise
-    })
+    friend ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr);
+   
+    SERIALISABLE_PROTOTYPES(); 
 };
 
 #endif // TYPES_HPP_INCLUDED

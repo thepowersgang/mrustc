@@ -358,6 +358,7 @@ public:
     {
     }
 
+    ::std::shared_ptr<ExprNode> take_node() { return ::std::move(m_node); }
     void visit_nodes(NodeVisitor& v);
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Expr& pat);

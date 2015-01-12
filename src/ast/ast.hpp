@@ -106,9 +106,9 @@ public:
     Function(TypeParams params, Class fcn_class, TypeRef ret_type, Arglist args, Expr code):
         m_fcn_class(fcn_class),
         m_generic_params(params),
-        m_code(code),
-        m_rettype(ret_type),
-        m_args(args)
+        m_code( ::std::move(code) ),
+        m_rettype( move(ret_type) ),
+        m_args( move(args) )
     {
     }
     
