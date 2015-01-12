@@ -190,7 +190,7 @@ void CPathResolver::resolve_path(AST::Path& path, ResolvePathMode mode) const
 
 void CPathResolver::resolve_type(TypeRef& type) const
 {
-    // TODO: Convert type into absolute
+    // TODO: Convert type into absolute (and check bindings)
     DEBUG("type = " << type);
     throw ParseError::Todo("CPathResolver::resolve_type()");
 }

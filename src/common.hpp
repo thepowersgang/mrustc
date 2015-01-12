@@ -12,6 +12,7 @@
 #define DEBUG(ss)   do{ ::std::cerr << __FUNCTION__ << ": " << ss << ::std::endl; } while(0)
 
 namespace AST {
+
 template <typename T>
 inline ::std::ostream& operator<<(::std::ostream& os, const ::std::vector<T>& v) {
     if( v.size() > 0 )
@@ -27,6 +28,7 @@ inline ::std::ostream& operator<<(::std::ostream& os, const ::std::vector<T>& v)
     }
     return os;
 }
+
 }
 
 #endif
