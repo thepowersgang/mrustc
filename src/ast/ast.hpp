@@ -59,6 +59,30 @@ public:
     SERIALISABLE_PROTOTYPES();
 };
 
+class Static:
+    public Serialisable
+{
+public:
+    enum Class
+    {
+        CONST,
+        STATIC,
+        MUT,
+    };
+private:
+    Class   m_class;
+    TypeRef m_type;
+    Expr    m_value;
+public:
+    Static(Class s_class, TypeRef type, Expr value):
+        m_class(s_class),
+        m_type( move(type) ),
+        m_value( move(value) )
+    {}
+    
+    SERIALISABLE_PROTOTYPES();
+};
+
 class Function:
     public Serialisable
 {
@@ -179,6 +203,7 @@ class Module:
     typedef ::std::vector< ::std::pair<Module, bool> >   itemlist_mod_t;
     typedef ::std::vector< Item<Path> > itemlist_use_t;
     typedef ::std::vector< Item< ::std::string> >  itemlist_ext_t;
+    typedef ::std::vector< Item<Static> >  itemlist_static_t;
     typedef ::std::vector< Item<Enum> >  itemlist_enum_t;
     typedef ::std::vector< Item<Struct> >  itemlist_struct_t;
 
@@ -190,6 +215,7 @@ class Module:
     itemlist_use_t  m_imports;
     itemlist_ext_t  m_extern_crates;
     
+    itemlist_static_t   m_statics;
     itemlist_enum_t m_enums;
     itemlist_struct_t m_structs;
 public:
@@ -202,9 +228,15 @@ public:
     void add_alias(bool is_public, Path path, ::std::string name) {
         m_imports.push_back( Item<Path>( move(name), move(path), is_public) );
     }
-    void add_constant(bool is_public, ::std::string name, TypeRef type, Expr val);
-    void add_global(bool is_public, bool is_mut, ::std::string name, TypeRef type, Expr val);
-    void add_struct(bool is_public, ::std::string name, TypeParams params, ::std::vector<StructItem> items);
+    void add_constant(bool is_public, ::std::string name, TypeRef type, Expr val) {
+        m_statics.push_back( Item<Static>( move(name), Static(Static::CONST, move(type), move(val)), is_public) );
+    }
+    void add_global(bool is_public, bool is_mut, ::std::string name, TypeRef type, Expr val) {
+        m_statics.push_back( Item<Static>( move(name), Static(is_mut ? Static::MUT : Static::STATIC, move(type), move(val)), is_public) );
+    }
+    void add_struct(bool is_public, ::std::string name, TypeParams params, ::std::vector<StructItem> items) {
+        m_structs.push_back( Item<Struct>( move(name), Struct(move(params), move(items)), is_public) );
+    }
     void add_enum(bool is_public, ::std::string name, Enum inst) {
         m_enums.push_back( Item<Enum>( move(name), move(inst), is_public ) );
     }

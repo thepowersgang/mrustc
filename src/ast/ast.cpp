@@ -119,7 +119,7 @@ ExternCrate ExternCrate_std()
     
     Module  prelude(crate.crate(), "prelude");
     // Re-exports
-    #define USE(mod, name, ...)    do{ Path p({__VA_ARGS__}); mod.add_alias(true, ::std::move(p), name); } while(0)
+    #define USE(mod, name, ...)    do{ Path p({__VA_ARGS__}); p.set_crate("std"); mod.add_alias(true, ::std::move(p), name); } while(0)
     USE(prelude, "Option",  PathNode("option", {}), PathNode("Option",{}) );
     USE(prelude, "Some",  PathNode("option", {}), PathNode("Option",{}), PathNode("Some",{}) );
     USE(prelude, "None",  PathNode("option", {}), PathNode("Option",{}), PathNode("None",{}) );
@@ -144,17 +144,6 @@ void Module::add_ext_crate(::std::string ext_name, ::std::string int_name)
     
     m_extern_crates.push_back( Item< ::std::string>( ::std::move(int_name), ::std::move(ext_name), false ) );
 }
-void Module::add_constant(bool is_public, ::std::string name, TypeRef type, Expr val)
-{
-    ::std::cout << "add_constant()" << ::std::endl;
-}
-void Module::add_global(bool is_public, bool is_mut, ::std::string name, TypeRef type, Expr val)
-{
-    ::std::cout << "add_global()" << ::std::endl;
-}
-void Module::add_struct(bool is_public, ::std::string name, TypeParams params, ::std::vector<StructItem> items)
-{
-}
 void Module::add_impl(Impl impl)
 {
 }
@@ -165,6 +154,22 @@ void Module::iterate_functions(fcn_visitor_t *visitor, const Crate& crate)
         visitor(crate, *this, fcn_item.data);
     }
 }
+
+::Serialiser& operator<<(::Serialiser& s, Static::Class fc)
+{
+    switch(fc)
+    {
+    case Static::CONST:  s << "CONST"; break;
+    case Static::STATIC: s << "STATIC"; break;
+    case Static::MUT:    s << "MUT"; break;
+    }
+    return s;
+}
+SERIALISE_TYPE(Static::, "AST_Static", {
+    s << m_class;
+    s << m_type;
+    //s << m_value;
+})
 
 ::Serialiser& operator<<(::Serialiser& s, Function::Class fc)
 {

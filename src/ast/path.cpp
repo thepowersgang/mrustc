@@ -161,6 +161,7 @@ void Path::bind_module(const Module& mod)
 }
 void Path::bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args)
 {
+    DEBUG("Bound to enum");
     m_binding_type = ENUM;
     m_binding.enum_ = &ent;
     if( args.size() > 0 )
@@ -189,6 +190,7 @@ void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std
         throw ParseError::Todo("Bind enum variant with params passed");
     }
     
+    DEBUG("Bound to enum variant '" << name << "' (#" << idx << ")");
     m_binding_type = ENUM_VAR;
     m_binding.enumvar = {&ent, idx};
 }

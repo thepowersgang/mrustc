@@ -20,7 +20,13 @@ class CPathResolver
 public:
     CPathResolver(const AST::Crate& crate, const AST::Module& mod);
 
-    void resolve_path(AST::Path& path, bool allow_variables) const;
+    enum ResolvePathMode {
+        MODE_EXPR,  // Variables allowed
+        MODE_TYPE,
+        MODE_BIND,  // Failure is allowed
+    };
+    
+    void resolve_path(AST::Path& path, ResolvePathMode mode) const;
     void resolve_type(TypeRef& type) const;
     
     void handle_function(AST::Function& fcn);
@@ -62,7 +68,7 @@ public:
     }
 
     void visit(AST::ExprNode_NamedValue& node) {
-        m_res.resolve_path(node.m_path, true);
+        m_res.resolve_path(node.m_path, CPathResolver::MODE_EXPR);
     }
     
     void visit(AST::ExprNode_Match& node)
@@ -85,7 +91,7 @@ CPathResolver::CPathResolver(const AST::Crate& crate, const AST::Module& mod):
 {
 }
 
-void CPathResolver::resolve_path(AST::Path& path, bool allow_variables) const
+void CPathResolver::resolve_path(AST::Path& path, ResolvePathMode mode) const
 {
     DEBUG("path = " << path);
     
@@ -101,6 +107,7 @@ void CPathResolver::resolve_path(AST::Path& path, bool allow_variables) const
     // Convert to absolute
     if( !path.is_relative() )
     {
+        DEBUG("Absolute - binding");
         // Already absolute, our job is done
         // - However, if the path isn't bound, bind it
         if( !path.is_bound() ) {
@@ -109,7 +116,7 @@ void CPathResolver::resolve_path(AST::Path& path, bool allow_variables) const
     } 
     else
     {
-        if( allow_variables && path.size() == 1 && path[0].args().size() == 0 )
+        if( mode == MODE_EXPR && path.size() == 1 && path[0].args().size() == 0 )
         {
             // One non-generic component, look in the current function for a variable
             const ::std::string& var = path[0].name();
@@ -129,6 +136,7 @@ void CPathResolver::resolve_path(AST::Path& path, bool allow_variables) const
                 return ;
             }
         }
+        
         // Search relative to current module
         // > Search local use definitions (function-level)
         // - TODO: Local use statements (scoped)
@@ -139,14 +147,16 @@ void CPathResolver::resolve_path(AST::Path& path, bool allow_variables) const
                 // Check name down?
                 // Add current module path
                 path = m_module_path + path;
-                break;
+                path.resolve( m_crate );
+                return ;
             }
         }
         for( const auto& item_fcn : m_module.functions() )
         {
             if( item_fcn.name == path[0].name() ) {
                 path = m_module_path + path;
-                break;
+                path.resolve( m_crate );
+                return ;
             }
         }
         for( const auto& import : m_module.imports() )
@@ -154,21 +164,18 @@ void CPathResolver::resolve_path(AST::Path& path, bool allow_variables) const
             const ::std::string& bind_name = import.name;
             const AST::Path& bind_path = import.data;
             if( bind_name == "" ) {
-                // wildcard import!
-                // TODO: Import should be tagged with 
-                //throw ParseError::Todo("CPathResolver::resolve_path() - Wildcards");
             }
             else if( bind_name == path[0].name() ) {
                 path = AST::Path::add_tailing(bind_path, path);
-                break;
+                path.resolve( m_crate );
+                return ;
             }
         }
         
-        DEBUG("path = " << path);
-        path.resolve(m_crate);
-        
-        
-        throw ParseError::Todo("CPathResolver::resolve_path()");
+        DEBUG("no matches found for path = " << path);
+        assert( path.is_relative() );
+        if( mode != MODE_BIND )
+            throw ParseError::Generic("Name resolution failed");
     }
 }
 
@@ -194,7 +201,7 @@ void CPathResolver::handle_pattern(AST::Pattern& pat)
         // - Variables don't count
         AST::Path newpath;
         newpath.append( AST::PathNode(name, {}) );
-        resolve_path(newpath, false);
+        resolve_path(newpath, CPathResolver::MODE_BIND);
         if( newpath.is_relative() )
         {
             // It's a name binding (desugar to 'name @ _')
@@ -203,8 +210,7 @@ void CPathResolver::handle_pattern(AST::Pattern& pat)
         }
         else
         {
-            // It's a constant (value)
-            
+            // It's a constant (enum variant usually)
             pat = AST::Pattern(
                 AST::Pattern::TagValue(),
                 ::std::unique_ptr<AST::ExprNode>( new AST::ExprNode_NamedValue( ::std::move(newpath) ) )
@@ -221,7 +227,7 @@ void CPathResolver::handle_pattern(AST::Pattern& pat)
     case AST::Pattern::TUPLE_STRUCT:
         // Resolve the path!
         // - TODO: Restrict to types and enum variants
-        resolve_path( pat.path(), false );
+        resolve_path( pat.path(), CPathResolver::MODE_TYPE );
         break;
     }
     // Extract bindings and add to namespace
@@ -231,7 +237,7 @@ void CPathResolver::handle_pattern(AST::Pattern& pat)
         handle_pattern(subpat);
     
     
-    throw ParseError::Todo("CPathResolver::handle_pattern()");
+    //throw ParseError::Todo("CPathResolver::handle_pattern()");
 }
 
 /// Perform name resolution in a function
