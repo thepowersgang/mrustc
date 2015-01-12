@@ -270,7 +270,8 @@ public:
     const itemlist_mod_t& submods() const { return m_submods; }
     const itemlist_use_t& imports() const { return m_imports; }
     const itemlist_ext_t& extern_crates() const { return m_extern_crates; }
-    const itemlist_enum_t&  enums() const { return m_enums; }
+    const itemlist_static_t&    statics() const { return m_statics; }
+    const itemlist_enum_t&      enums  () const { return m_enums; }
     const itemlist_struct_t&    structs() const { return m_structs; }
 
     SERIALISABLE_PROTOTYPES();

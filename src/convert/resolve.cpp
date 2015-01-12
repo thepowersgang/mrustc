@@ -18,7 +18,7 @@ class CPathResolver
     // TODO: Maintain a stack of variable scopes
     
 public:
-    CPathResolver(const AST::Crate& crate, const AST::Module& mod);
+    CPathResolver(const AST::Crate& crate, const AST::Module& mod, AST::Path module_path);
 
     enum ResolvePathMode {
         MODE_EXPR,  // Variables allowed
@@ -85,9 +85,10 @@ public:
     }
 };
 
-CPathResolver::CPathResolver(const AST::Crate& crate, const AST::Module& mod):
+CPathResolver::CPathResolver(const AST::Crate& crate, const AST::Module& mod, AST::Path module_path):
     m_crate(crate),
-    m_module(mod)
+    m_module(mod),
+    m_module_path( ::std::move(module_path) )
 {
 }
 
@@ -154,6 +155,14 @@ void CPathResolver::resolve_path(AST::Path& path, ResolvePathMode mode) const
         for( const auto& item_fcn : m_module.functions() )
         {
             if( item_fcn.name == path[0].name() ) {
+                path = m_module_path + path;
+                path.resolve( m_crate );
+                return ;
+            }
+        }
+        for( const auto& item : m_module.statics() )
+        {
+            if( item.name == path[0].name() ) {
                 path = m_module_path + path;
                 path.resolve( m_crate );
                 return ;
@@ -244,26 +253,20 @@ void CPathResolver::handle_pattern(AST::Pattern& pat)
 void CPathResolver::handle_function(AST::Function& fcn)
 {
     CResolvePaths_NodeVisitor   node_visitor(*this);
-    
-    for( auto& arg : fcn.args() )
-        m_locals.push_back(arg.first);
-    
-    fcn.code().visit_nodes( node_visitor );
 
+    DEBUG("Return type");
     resolve_type(fcn.rettype());
-
+    DEBUG("Args");
     for( auto& arg : fcn.args() )
         resolve_type(arg.second);
-    
+
+    DEBUG("Code");
+    for( auto& arg : fcn.args() )
+        m_locals.push_back(arg.first);
+    fcn.code().visit_nodes( node_visitor );
     pop_scope();
     if( m_locals.size() != 0 )
         throw ParseError::BugCheck("m_locals.size() != 0");
-}
-
-void ResolvePaths_HandleFunction(const AST::Crate& crate, const AST::Module& mod, AST::Function& fcn)
-{
-	CPathResolver	pr(crate, mod);
-	pr.handle_function(fcn);
 }
 
 void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& modpath, AST::Module& mod)
@@ -340,7 +343,8 @@ void ResolvePaths_HandleModule(const AST::Crate& crate, const AST::Path& modpath
 {
     for( auto& fcn : mod.functions() )
     {
-        ResolvePaths_HandleFunction(crate, mod, fcn.data);
+        CPathResolver	pr(crate, mod, modpath);
+        pr.handle_function(fcn.data);
     }
     
     for( auto& submod : mod.submods() )

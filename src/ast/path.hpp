@@ -19,6 +19,7 @@ class Crate;
 class Module;
 class Enum;
 class Struct;
+class Static;
 class Function;
 
 
@@ -56,6 +57,10 @@ public:
         MODULE,
         ENUM,
         ENUM_VAR,
+        STRUCT,
+        STRUCT_METHOD,
+        FUNCTION,
+        STATIC,
     };
 private:
     enum Class {
@@ -78,6 +83,9 @@ private:
     union {
         const Module* module_;
         const Enum* enum_;
+        const Struct*   struct_;
+        const Static*   static_;
+        const Function* func_;
         struct {
             const Enum* enum_;
             unsigned int idx;
@@ -157,6 +165,7 @@ private:
     void bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args);
     void bind_enum_var(const Enum& ent, const ::std::string& name, const ::std::vector<TypeRef>& args);
     void bind_struct(const Struct& ent, const ::std::vector<TypeRef>& args);
+    void bind_static(const Static& ent);
 };
 
 }   // namespace AST

@@ -142,11 +142,28 @@ void Path::resolve(const Crate& root_crate)
                     return ;
                 }
                 else {
-                    throw ParseError::Generic("Import of enum, too many extra nodes");
+                    throw ParseError::Generic("Binding path to enum, too many extra nodes");
                 }
             }
         }
         // - Constants / statics
+        {
+            auto& items = mod->statics();
+            auto it = find_named(items, node.name());
+            if( it != items.end() )
+            {
+                DEBUG("Found static/const");
+                if( is_last ) {
+                    if( node.args().size() )
+                        throw ParseError::Generic("Unexpected generic params on static/const");
+                    bind_static(it->data);
+                    return ;
+                }
+                else {
+                    throw ParseError::Generic("Binding path to static, trailing nodes");
+                }
+            }
+        }
         
         throw ParseError::Generic("Unable to find component '" + node.name() + "'");
     }
@@ -198,6 +215,12 @@ void Path::bind_struct(const Struct& ent, const ::std::vector<TypeRef>& args)
 {
     throw ParseError::Todo("Path::resolve() bind to struct type");
 }
+void Path::bind_static(const Static& ent)
+{
+    m_binding_type = STATIC;
+    m_binding.static_ = &ent;
+}
+
 
 Path& Path::operator+=(const Path& other)
 {
