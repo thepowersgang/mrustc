@@ -90,6 +90,10 @@ public:
         m_class(PATH),
         m_path( ::std::move(path) )
     {}
+   
+    bool is_path() const { return m_class == PATH; }
+    AST::Path& path() { assert(is_path()); return m_path; }
+    ::std::vector<TypeRef>& sub_types() { return m_inner_types; }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr);
    

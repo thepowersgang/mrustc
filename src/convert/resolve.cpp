@@ -33,10 +33,13 @@ public:
     void handle_pattern(AST::Pattern& pat);
 
     void push_scope() {
+        DEBUG("");
         m_locals.push_back( ::std::string() );
     }
     void pop_scope() {
-        for( auto it = m_locals.end(); --it != m_locals.begin(); ) {
+        DEBUG(m_locals.size() << " items");
+        for( auto it = m_locals.end(); it-- != m_locals.begin(); )
+        {
             if( *it == "" ) {
                 m_locals.erase(it, m_locals.end());
                 return ;
@@ -68,11 +71,13 @@ public:
     }
 
     void visit(AST::ExprNode_NamedValue& node) {
+        DEBUG("ExprNode_NamedValue");
         m_res.resolve_path(node.m_path, CPathResolver::MODE_EXPR);
     }
     
     void visit(AST::ExprNode_Match& node)
     {
+        DEBUG("ExprNode_Match");
         AST::NodeVisitor::visit(node.m_val);
         
         for( auto& arm : node.m_arms )
@@ -192,7 +197,15 @@ void CPathResolver::resolve_type(TypeRef& type) const
 {
     // TODO: Convert type into absolute (and check bindings)
     DEBUG("type = " << type);
-    throw ParseError::Todo("CPathResolver::resolve_type()");
+    if( type.is_path() )
+    {
+        resolve_path(type.path(), MODE_TYPE);
+    }
+    else
+    {
+        for(auto& subtype : type.sub_types())
+            resolve_type(subtype);
+    }
 }
 
 void CPathResolver::handle_pattern(AST::Pattern& pat)
@@ -321,6 +334,14 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
                 throw ParseError::Todo("ResolvePaths_HandleModule_Use - ENUM");
             case AST::Path::ENUM_VAR:
                 throw ParseError::Todo("ResolvePaths_HandleModule_Use - ENUM_VAR");
+            case AST::Path::STRUCT:
+                throw ParseError::Todo("ResolvePaths_HandleModule_Use - STRUCT");
+            case AST::Path::STRUCT_METHOD:
+                throw ParseError::Todo("ResolvePaths_HandleModule_Use - STRUCT_METHOD");
+            case AST::Path::FUNCTION:
+                throw ParseError::Todo("ResolvePaths_HandleModule_Use - FUNCTION");
+            case AST::Path::STATIC:
+                throw ParseError::Todo("ResolvePaths_HandleModule_Use - STATIC");
             }
         }
     }
@@ -344,11 +365,13 @@ void ResolvePaths_HandleModule(const AST::Crate& crate, const AST::Path& modpath
     for( auto& fcn : mod.functions() )
     {
         CPathResolver	pr(crate, mod, modpath);
+        DEBUG("Handling function '" << fcn.name << "'");
         pr.handle_function(fcn.data);
     }
     
     for( auto& submod : mod.submods() )
     {
+        DEBUG("Handling submod '" << submod.first.name() << "'");
         ResolvePaths_HandleModule(crate, modpath + submod.first.name(), submod.first);
     }
 }
@@ -358,6 +381,6 @@ void ResolvePaths(AST::Crate& crate)
     // Handle 'use' statements in an initial parss
     ResolvePaths_HandleModule_Use(crate, AST::Path(AST::Path::TagAbsolute()), crate.root_module());
     
-    // Then do path resolution on all other item
+    // Then do path resolution on all other items
     ResolvePaths_HandleModule(crate, AST::Path(AST::Path::TagAbsolute()), crate.root_module());
 }
