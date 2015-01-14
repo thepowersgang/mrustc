@@ -453,7 +453,7 @@ AST::Impl Parse_Impl(TokenStream& lex)
     }
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
 
-    AST::Impl   impl(impl_type, trait_type);
+    AST::Impl   impl( ::std::move(params), ::std::move(impl_type), ::std::move(trait_type) );
 
     // A sequence of method implementations
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )

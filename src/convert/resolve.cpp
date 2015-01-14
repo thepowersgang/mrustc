@@ -11,10 +11,28 @@
 
 class CPathResolver
 {
+    struct LocalItem
+    {
+        enum Type {
+            TYPE,
+            VAR,
+        }   type;
+        ::std::string   name;
+        AST::Path   path;
+     
+        LocalItem():
+            type(VAR), name()
+        {}
+        LocalItem(Type t, ::std::string name, AST::Path path=AST::Path()):
+            type(t),
+            name( ::std::move(name) ),
+            path( ::std::move(path) )
+        {}
+    };
     const AST::Crate&   m_crate;
     const AST::Module&  m_module;
     const AST::Path m_module_path;
-    ::std::vector< ::std::string >  m_locals;
+    ::std::vector< LocalItem >  m_locals;
     // TODO: Maintain a stack of variable scopes
     
 public:
@@ -34,18 +52,37 @@ public:
 
     void push_scope() {
         DEBUG("");
-        m_locals.push_back( ::std::string() );
+        m_locals.push_back( LocalItem() );
     }
     void pop_scope() {
         DEBUG(m_locals.size() << " items");
         for( auto it = m_locals.end(); it-- != m_locals.begin(); )
         {
-            if( *it == "" ) {
+            if( it->name == "" ) {
                 m_locals.erase(it, m_locals.end());
                 return ;
             }
         }
         m_locals.clear();
+    }
+    void add_local_type(::std::string name) {
+        m_locals.push_back( LocalItem(LocalItem::TYPE, ::std::move(name)) );
+    }
+    void add_local_var(::std::string name) {
+        m_locals.push_back( LocalItem(LocalItem::VAR, ::std::move(name)) );
+    }
+    void add_local_use(::std::string name, AST::Path path) {
+        throw ParseError::Todo("CPathResolver::add_local_use - Determine type of path (type or value)");
+        m_locals.push_back( LocalItem(LocalItem::VAR, ::std::move(name), path) );
+    }
+    ::rust::option<const AST::Path&> lookup_local(LocalItem::Type type, const ::std::string& name) const {
+        for( auto it = m_locals.end(); it -- != m_locals.begin(); )
+        {
+            if( it->type == type && it->name == name ) {
+                return ::rust::option<const AST::Path&>(it->path);
+            }
+        }
+        return ::rust::option<const AST::Path&>();
     }
 };
 
@@ -122,25 +159,43 @@ void CPathResolver::resolve_path(AST::Path& path, ResolvePathMode mode) const
     } 
     else
     {
-        if( mode == MODE_EXPR && path.size() == 1 && path[0].args().size() == 0 )
+        // If there's a single node, and we're in expresion mode, look for a variable
+        // Otherwise, search for a type
+        bool is_trivial_path = path.size() == 1 && path[0].args().size() == 0;
+        LocalItem::Type search_type = (is_trivial_path && mode == MODE_EXPR ? LocalItem::VAR : LocalItem::TYPE);
+        auto local = lookup_local( search_type, path[0].name() );
+        if( local.is_some() )
         {
-            // One non-generic component, look in the current function for a variable
-            const ::std::string& var = path[0].name();
-            DEBUG("varname = " << var);
-            auto varslot = m_locals.end();
-            for(auto slot = m_locals.begin(); slot != m_locals.end(); ++slot)
-            {
-                if( *slot == var ) {
-                    varslot = slot;
-                }
-            }
+            auto rpath = local.unwrap();
+            DEBUG("Local hit: " << path[0].name() << " = " << rpath);
             
-            if( varslot != m_locals.end() )
+            // Local import?
+            if( rpath.size() > 0 )
             {
-                DEBUG("Located slot");
-                path = AST::Path(AST::Path::TagLocal(), var);
+                path = AST::Path::add_tailing(rpath, path);
+                path.resolve( m_crate );
                 return ;
             }
+            
+            // Local variable?
+            // - TODO: What would happen if MODE_EXPR but path isn't a single ident?
+            if( mode == MODE_EXPR && is_trivial_path )
+            {
+                DEBUG("Local variable " << path[0].name());
+                path = AST::Path(AST::Path::TagLocal(), path[0].name());
+                return ;
+            }
+        
+            // Type parameter, return verbatim?
+            // - TODO: Are extra params/entries valid here?
+            if( mode == MODE_TYPE )
+            {
+                DEBUG("Local type " << path[0].name());
+                return ;
+            }
+        
+            // TODO: What about sub-types and methods on type params?
+            // - Invalid afaik, instead Trait::method() is used
         }
         
         // Search relative to current module
@@ -160,6 +215,14 @@ void CPathResolver::resolve_path(AST::Path& path, ResolvePathMode mode) const
         for( const auto& item_fcn : m_module.functions() )
         {
             if( item_fcn.name == path[0].name() ) {
+                path = m_module_path + path;
+                path.resolve( m_crate );
+                return ;
+            }
+        }
+        for( const auto& item : m_module.structs() )
+        {
+            if( item.name == path[0].name() ) {
                 path = m_module_path + path;
                 path.resolve( m_crate );
                 return ;
@@ -254,7 +317,7 @@ void CPathResolver::handle_pattern(AST::Pattern& pat)
     }
     // Extract bindings and add to namespace
     if( pat.binding().size() > 0 )
-        m_locals.push_back( pat.binding() );
+        add_local_var(pat.binding());
     for( auto& subpat : pat.sub_patterns() )
         handle_pattern(subpat);
     
@@ -275,7 +338,7 @@ void CPathResolver::handle_function(AST::Function& fcn)
 
     DEBUG("Code");
     for( auto& arg : fcn.args() )
-        m_locals.push_back(arg.first);
+        add_local_var(arg.first);
     fcn.code().visit_nodes( node_visitor );
     pop_scope();
     if( m_locals.size() != 0 )
@@ -362,11 +425,40 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
 
 void ResolvePaths_HandleModule(const AST::Crate& crate, const AST::Path& modpath, AST::Module& mod)
 {
+    CPathResolver	pr(crate, mod, modpath);
     for( auto& fcn : mod.functions() )
     {
-        CPathResolver	pr(crate, mod, modpath);
         DEBUG("Handling function '" << fcn.name << "'");
         pr.handle_function(fcn.data);
+    }
+    
+    for( auto& impl : mod.impls() )
+    {
+        DEBUG("Handling impl<" << impl.params() << "> " << impl.trait() << " for " << impl.type());
+        
+        // Params
+        pr.push_scope();
+        for( auto& param : impl.params() )
+        {
+            DEBUG("Param " << param);
+            pr.add_local_type(param.name());
+            for(auto& trait : param.get_bounds())
+                pr.resolve_type(trait);
+        }
+        // Trait
+        pr.resolve_type( impl.trait() );
+        // Type
+        pr.resolve_type( impl.type() );
+        
+        // TODO: Associated types
+        
+        // Functions
+        for( auto& fcn : impl.functions() )
+        {
+            DEBUG("- Function '" << fcn.name << "'");
+            pr.handle_function(fcn.data);
+        }
+        pr.pop_scope();
     }
     
     for( auto& submod : mod.submods() )

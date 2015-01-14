@@ -10,7 +10,6 @@ namespace AST {
 
 ExternCrate ExternCrate_std();
 
-
 SERIALISE_TYPE(MetaItem::, "AST_MetaItem", {
     s << m_name;
     s << m_str_val;
@@ -42,12 +41,12 @@ SERIALISE_TYPE(MetaItem::, "AST_MetaItem", {
 }
 
 
-Impl::Impl(TypeRef impl_type, TypeRef trait_type)
-{
-}
-void Impl::add_function(bool is_public, ::std::string name, Function fcn)
-{
-}
+SERIALISE_TYPE(Impl::, "AST_Impl", {
+    s << m_params;
+    s << m_trait;
+    s << m_type;
+    s << m_functions;
+})
 
 Crate::Crate():
     m_root_module(*this, ""),
@@ -144,9 +143,6 @@ void Module::add_ext_crate(::std::string ext_name, ::std::string int_name)
     
     m_extern_crates.push_back( Item< ::std::string>( ::std::move(int_name), ::std::move(ext_name), false ) );
 }
-void Module::add_impl(Impl impl)
-{
-}
 void Module::iterate_functions(fcn_visitor_t *visitor, const Crate& crate)
 {
     for( auto fcn_item : this->m_functions )
@@ -200,10 +196,6 @@ SERIALISE_TYPE(Struct::, "AST_Struct", {
     s << m_fields;
 })
 
-TypeParam::TypeParam(bool is_lifetime, ::std::string name)
-{
-
-}
 void TypeParam::addLifetimeBound(::std::string name)
 {
 
@@ -211,6 +203,22 @@ void TypeParam::addLifetimeBound(::std::string name)
 void TypeParam::addTypeBound(TypeRef type)
 {
 
+}
+::std::ostream& operator<<(::std::ostream& os, const TypeParam& tp)
+{
+    os << "TypeParam(";
+    switch(tp.m_class)
+    {
+    case TypeParam::LIFETIME:  os << "'";  break;
+    case TypeParam::TYPE:      os << "";   break;
+    }
+    os << tp.m_name;
+    if( tp.m_trait_bounds.size() )
+    {
+        os << ": [" << tp.m_trait_bounds << "]";
+    }
+    os << ")";
+    return os;
 }
 SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
     // TODO: TypeParam

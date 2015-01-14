@@ -24,11 +24,30 @@ using ::std::move;
 class TypeParam:
     public Serialisable
 {
+    enum Class {
+        LIFETIME,
+        TYPE,
+        //INTEGER,
+    };
+    Class   m_class;
+    ::std::string   m_name;
+    ::std::vector<TypeRef>  m_trait_bounds;
 public:
-    TypeParam(bool is_lifetime, ::std::string name);
+    TypeParam(bool is_lifetime, ::std::string name):
+        m_class( is_lifetime ? LIFETIME : TYPE ),
+        m_name( ::std::move(name) )
+    {}
     void addLifetimeBound(::std::string name);
     void addTypeBound(TypeRef type);
+    void setDefault(TypeRef type);
     
+    const ::std::string&    name() const { return m_name; }
+    
+    bool is_type() const { return m_class == TYPE; }
+    //TypeRef& get_default() const { return m_
+    ::std::vector<TypeRef>& get_bounds() { assert(is_type()); return m_trait_bounds; }
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const TypeParam& tp);
     SERIALISABLE_PROTOTYPES();
 };
 
@@ -158,21 +177,6 @@ public:
     SERIALISABLE_PROTOTYPES();
 };
 
-class Impl
-{
-public:
-    Impl(TypeRef impl_type, TypeRef trait_type);
-
-    void add_function(bool is_public, ::std::string name, Function fcn);
-};
-
-
-class Crate;
-class ExternCrate;
-class Module;
-
-typedef void fcn_visitor_t(const AST::Crate& crate, const AST::Module& mod, Function& fcn);
-
 template <typename T>
 struct Item:
     public Serialisable
@@ -194,6 +198,44 @@ struct Item:
         s << data;
     })
 };
+
+class Impl:
+    public Serialisable
+{
+    TypeParams  m_params;
+    TypeRef m_trait;
+    TypeRef m_type;
+    
+    ::std::vector<Item<Function> >  m_functions;
+public:
+    Impl(TypeParams params, TypeRef impl_type, TypeRef trait_type):
+        m_params( move(params) ),
+        m_trait( move(trait_type) ),
+        m_type( move(impl_type) )
+    {}
+
+    void add_function(bool is_public, ::std::string name, Function fcn) {
+        m_functions.push_back( Item<Function>( ::std::move(name), ::std::move(fcn), is_public ) );
+    }
+    
+    const TypeParams& params() const { return m_params; }
+    const TypeRef& trait() const { return m_trait; }
+    const TypeRef& type() const { return m_type; }
+
+    TypeParams& params() { return m_params; }
+    TypeRef& trait() { return m_trait; }
+    TypeRef& type() { return m_type; }
+    ::std::vector<Item<Function> >& functions() { return m_functions; }
+    
+    SERIALISABLE_PROTOTYPES();
+};
+
+
+class Crate;
+class ExternCrate;
+class Module;
+
+typedef void fcn_visitor_t(const AST::Crate& crate, const AST::Module& mod, Function& fcn);
 
 /// Representation of a parsed (and being converted) function
 class Module:
@@ -218,6 +260,7 @@ class Module:
     itemlist_static_t   m_statics;
     itemlist_enum_t m_enums;
     itemlist_struct_t m_structs;
+    ::std::vector<Impl> m_impls;
 public:
     Module(Crate& crate, ::std::string name):
         m_crate(crate),
@@ -246,7 +289,9 @@ public:
     void add_submod(bool is_public, Module mod) {
         m_submods.push_back( ::std::make_pair( move(mod), is_public ) );
     }
-    void add_impl(Impl impl);
+    void add_impl(Impl impl) {
+        m_impls.push_back( ::std::move(impl) );
+    }
 
     void add_attr(MetaItem item) {
         m_attrs.push_back(item);
@@ -264,6 +309,7 @@ public:
     itemlist_mod_t& submods() { return m_submods; }
     itemlist_use_t& imports() { return m_imports; }
     itemlist_ext_t& extern_crates() { return m_extern_crates; }
+    ::std::vector<Impl>&    impls() { return m_impls; }
 
     const ::std::vector<MetaItem>& attrs() const { return m_attrs; } 
     const itemlist_fcn_t& functions() const { return m_functions; }

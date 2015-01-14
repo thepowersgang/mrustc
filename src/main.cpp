@@ -12,16 +12,17 @@ extern AST::Flat Convert_Flatten(const AST::Crate& crate);
 /// main!
 int main(int argc, char *argv[])
 {
+    Serialiser_TextTree s_tt(::std::cout);
+    Serialiser& s = s_tt;
     try
     {
         AST::Crate crate = Parse_Crate("samples/1.rs");
 
-        Serialiser_TextTree s_tt(::std::cout);
-        Serialiser& s = s_tt;
         s << crate;
     
         // Resolve names to be absolute names (include references to the relevant struct/global/function)
         ResolvePaths(crate);
+        s << crate;
 
         // Typecheck / type propagate module (type annotations of all values)
 
