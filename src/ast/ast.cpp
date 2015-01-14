@@ -103,7 +103,8 @@ ExternCrate ExternCrate_std()
     
     Module& std_mod = crate.root_module();
     
-    // TODO: Add modules
+    // === Add modules ===
+    // - option
     Module  option(crate.crate(), "option");
     option.add_enum(true, "Option", Enum(
         {
@@ -115,6 +116,29 @@ ExternCrate ExternCrate_std()
         }
         ));
     std_mod.add_submod(true, ::std::move(option));
+    // - io
+    Module  io(crate.crate(), "io");
+    io.add_typealias(true, "IoResult", TypeAlias(
+        { TypeParam(false, "T") },
+        TypeRef( Path("std", {
+            PathNode("result",{}),
+            PathNode("Result", {TypeRef("T"),TypeRef(Path("std", {PathNode("io"), PathNode("IoError")}))})
+            }) )
+        ));
+    std_mod.add_submod(true, ::std::move(io));
+    // - result
+    Module  result(crate.crate(), "result");
+    result.add_enum(true, "Result", Enum(
+        {
+            TypeParam(false, "R"),
+            TypeParam(false, "E"),
+        },
+        {
+            StructItem("Ok", TypeRef(TypeRef::TagArg(), "R")),
+            StructItem("Err", TypeRef(TypeRef::TagArg(), "E")),
+        }
+        ));
+    std_mod.add_submod(true, ::std::move(result));
     
     Module  prelude(crate.crate(), "prelude");
     // Re-exports
@@ -150,6 +174,11 @@ void Module::iterate_functions(fcn_visitor_t *visitor, const Crate& crate)
         visitor(crate, *this, fcn_item.data);
     }
 }
+
+SERIALISE_TYPE(TypeAlias::, "AST_TypeAlias", {
+    s << m_params;
+    s << m_type;
+})
 
 ::Serialiser& operator<<(::Serialiser& s, Static::Class fc)
 {

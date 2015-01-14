@@ -92,6 +92,21 @@ void Path::resolve(const Crate& root_crate)
                 throw ParseError::Todo("Path::resolve() re-export");
             }
         }
+        // Type Aliases
+        {
+            auto& items = mod->type_aliases();
+            auto it = find_named(items, node.name());
+            if( it != items.end() )
+            {
+                DEBUG("Type alias <"<<it->data.params()<<"> " << it->data.type());
+                if( node.args().size() != it->data.params().size() )
+                    throw ParseError::Generic("Param count mismatch when referencing type alias");
+                // Make a copy of the path, replace params with it, then replace *this?
+                // - Maybe leave that up to other code?
+                throw ParseError::Todo("Path::resolve() type alias");
+            }
+        }
+
         // - Functions
         {
             auto& items = mod->functions();

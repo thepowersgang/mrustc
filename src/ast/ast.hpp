@@ -78,6 +78,23 @@ public:
     SERIALISABLE_PROTOTYPES();
 };
 
+class TypeAlias:
+    public Serialisable
+{
+    TypeParams  m_params;
+    TypeRef m_type;
+public:
+    TypeAlias(TypeParams params, TypeRef type):
+        m_params( move(params) ),
+        m_type( move(type) )
+    {}
+    
+    const TypeParams& params() const { return m_params; }
+    const TypeRef& type() const { return m_type; }
+    
+    SERIALISABLE_PROTOTYPES();
+};
+
 class Static:
     public Serialisable
 {
@@ -256,7 +273,9 @@ class Module:
     itemlist_fcn_t  m_functions;
     itemlist_mod_t  m_submods;
     itemlist_use_t  m_imports;
+    ::std::vector<Item<TypeAlias> > m_type_aliases;
     itemlist_ext_t  m_extern_crates;
+    
     
     itemlist_static_t   m_statics;
     itemlist_enum_t m_enums;
@@ -271,6 +290,9 @@ public:
     void add_ext_crate(::std::string ext_name, ::std::string imp_name);
     void add_alias(bool is_public, Path path, ::std::string name) {
         m_imports.push_back( Item<Path>( move(name), move(path), is_public) );
+    }
+    void add_typealias(bool is_public, ::std::string name, TypeAlias alias) {
+        m_type_aliases.push_back( Item<TypeAlias>( move(name), move(alias), is_public ) );
     }
     void add_constant(bool is_public, ::std::string name, TypeRef type, Expr val) {
         m_statics.push_back( Item<Static>( move(name), Static(Static::CONST, move(type), move(val)), is_public) );
@@ -309,6 +331,7 @@ public:
     itemlist_fcn_t& functions() { return m_functions; }
     itemlist_mod_t& submods() { return m_submods; }
     itemlist_use_t& imports() { return m_imports; }
+    ::std::vector<Item<TypeAlias> >& type_aliases() { return m_type_aliases; }
     itemlist_ext_t& extern_crates() { return m_extern_crates; }
     ::std::vector<Impl>&    impls() { return m_impls; }
 
@@ -316,6 +339,7 @@ public:
     const itemlist_fcn_t& functions() const { return m_functions; }
     const itemlist_mod_t& submods() const { return m_submods; }
     const itemlist_use_t& imports() const { return m_imports; }
+    const ::std::vector<Item<TypeAlias> >& type_aliases() const { return m_type_aliases; }
     const itemlist_ext_t& extern_crates() const { return m_extern_crates; }
     const itemlist_static_t&    statics() const { return m_statics; }
     const itemlist_enum_t&      enums  () const { return m_enums; }

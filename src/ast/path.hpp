@@ -29,7 +29,7 @@ class PathNode:
     ::std::string   m_name;
     ::std::vector<TypeRef>  m_params;
 public:
-    PathNode(::std::string name, ::std::vector<TypeRef> args);
+    PathNode(::std::string name, ::std::vector<TypeRef> args = {});
     const ::std::string& name() const;
     ::std::vector<TypeRef>&   args() { return m_params; }
     const ::std::vector<TypeRef>&   args() const;
@@ -109,6 +109,11 @@ public:
         m_class(ABSOLUTE),
         m_nodes(l)
     {}
+    Path(::std::string crate, ::std::vector<PathNode> nodes):
+        m_crate( ::std::move(crate) ),
+        m_class(ABSOLUTE),
+        m_nodes( ::std::move(nodes) )
+    {}
     
     void set_crate(::std::string crate) {
         if( m_crate == "" ) {
@@ -119,6 +124,7 @@ public:
     
     static Path add_tailing(const Path& a, const Path& b) {
         Path    ret(a);
+        ret[ret.size()-1].args() = b[0].args();
         for(unsigned int i = 1; i < b.m_nodes.size(); i ++)
             ret.m_nodes.push_back(b.m_nodes[i]);
         return ret;

@@ -84,11 +84,17 @@ public:
         m_class(GENERIC),
         m_path({AST::PathNode(name, {})})
     {}
+    TypeRef(::std::string name):
+        TypeRef(TagArg(), ::std::move(name))
+    {}
 
     struct TagPath {};
     TypeRef(TagPath, AST::Path path):
         m_class(PATH),
         m_path( ::std::move(path) )
+    {}
+    TypeRef(AST::Path path):
+        TypeRef(TagPath(), ::std::move(path))
     {}
    
     bool is_path() const { return m_class == PATH; }
