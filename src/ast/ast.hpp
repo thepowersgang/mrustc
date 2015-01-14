@@ -172,6 +172,7 @@ public:
         m_fields( move(fields) )
     {}
     
+    const ::std::vector<TypeParam> params() const { return m_params; }
     const ::std::vector<StructItem> fields() const { return m_fields; }
     
     SERIALISABLE_PROTOTYPES();
