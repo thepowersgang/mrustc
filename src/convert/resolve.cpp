@@ -402,6 +402,8 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
                 }
                 //throw ParseError::Todo("ResolvePaths_HandleModule - wildcard use on module");
                 break;
+            case AST::Path::ALIAS:
+                throw ParseError::Todo("ResolvePaths_HandleModule_Use - ALIAS");
             case AST::Path::ENUM:
                 throw ParseError::Todo("ResolvePaths_HandleModule_Use - ENUM");
             case AST::Path::ENUM_VAR:

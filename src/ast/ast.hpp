@@ -267,7 +267,6 @@ class Module:
     typedef ::std::vector< Item<Enum> >  itemlist_enum_t;
     typedef ::std::vector< Item<Struct> >  itemlist_struct_t;
 
-    Crate& m_crate;
     ::std::string   m_name;
     ::std::vector<MetaItem> m_attrs;
     itemlist_fcn_t  m_functions;
@@ -282,8 +281,7 @@ class Module:
     itemlist_struct_t m_structs;
     ::std::vector<Impl> m_impls;
 public:
-    Module(Crate& crate, ::std::string name):
-        m_crate(crate),
+    Module(::std::string name):
         m_name(name)
     {
     }
@@ -322,9 +320,6 @@ public:
 
     void iterate_functions(fcn_visitor_t* visitor, const Crate& crate);
 
-    Crate& crate() { return m_crate; }  
-    const Crate& crate() const { return m_crate; }  
- 
     const ::std::string& name() const { return m_name; }
     
     ::std::vector<MetaItem>& attrs() { return m_attrs; } 

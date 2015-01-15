@@ -49,7 +49,7 @@ SERIALISE_TYPE(Impl::, "AST_Impl", {
 })
 
 Crate::Crate():
-    m_root_module(*this, ""),
+    m_root_module(""),
     m_load_std(true)
 {
 }
@@ -105,7 +105,7 @@ ExternCrate ExternCrate_std()
     
     // === Add modules ===
     // - option
-    Module  option(crate.crate(), "option");
+    Module  option("option");
     option.add_enum(true, "Option", Enum(
         {
             TypeParam(false, "T"),
@@ -117,7 +117,7 @@ ExternCrate ExternCrate_std()
         ));
     std_mod.add_submod(true, ::std::move(option));
     // - result
-    Module  result(crate.crate(), "result");
+    Module  result("result");
     result.add_enum(true, "Result", Enum(
         {
             TypeParam(false, "R"),
@@ -130,7 +130,7 @@ ExternCrate ExternCrate_std()
         ));
     std_mod.add_submod(true, ::std::move(result));
     // - io
-    Module  io(crate.crate(), "io");
+    Module  io("io");
     io.add_typealias(true, "IoResult", TypeAlias(
         { TypeParam(false, "T") },
         TypeRef( Path("std", {
@@ -141,18 +141,20 @@ ExternCrate ExternCrate_std()
     std_mod.add_submod(true, ::std::move(io));
     // - iter
     {
-        Module  iter(crate.crate(), "iter");
+        Module  iter("iter");
+        #if 0
         {
             Trait   iterator;
             iterator.add_type("Item", TypeRef());
             //iterator.add_function("next", Function({}, Function::CLASS_REFMETHOD, "Option<<Self as Iterator>::Item>", {}, Expr());
             iter.add_trait(true, "Iterator", ::std::move(iterator));
         }
+        #endif
         std_mod.add_submod(true, ::std::move(iter));
     }
     
     // - prelude
-    Module  prelude(crate.crate(), "prelude");
+    Module  prelude("prelude");
     // Re-exports
     #define USE(mod, name, ...)    do{ Path p("std", {__VA_ARGS__}); mod.add_alias(true, ::std::move(p), name); } while(0)
     USE(prelude, "Option",  PathNode("option", {}), PathNode("Option",{}) );
@@ -178,8 +180,6 @@ SERIALISE_TYPE(Module::, "AST_Module", {
 void Module::add_ext_crate(::std::string ext_name, ::std::string int_name)
 {
     DEBUG("add_ext_crate(\"" << ext_name << "\" as " << int_name << ")");
-    m_crate.load_extern_crate(ext_name);
-    
     m_extern_crates.push_back( Item< ::std::string>( ::std::move(int_name), ::std::move(ext_name), false ) );
 }
 void Module::iterate_functions(fcn_visitor_t *visitor, const Crate& crate)

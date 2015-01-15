@@ -1,6 +1,7 @@
 
 EXESUF ?=
 CXX ?= g++
+V ?= @
 
 LINKFLAGS :=
 LIBS :=
@@ -25,15 +26,19 @@ clean:
 	$(RM) -r $(BIN) $(OBJ)
 
 test: $(BIN) samples/1.rs
-	time $(BIN) samples/1.rs
+	mkdir -p output/
+	time $(BIN) samples/std.rs --emit ast -o output/std.ast
+	time $(BIN) samples/1.rs --crate-path output/std.ast
 
 $(BIN): $(OBJ)
 	@mkdir -p $(dir $@)
-	$(CXX) -o $@ $(LINKFLAGS) $(OBJ) $(LIBS)
+	@echo [CXX] -o $@
+	$V$(CXX) -o $@ $(LINKFLAGS) $(OBJ) $(LIBS)
 
 $(OBJDIR)%.o: src/%.cpp
 	@mkdir -p $(dir $@)
-	$(CXX) -o $@ -c $< $(CXXFLAGS) $(CPPFLAGS) -MMD -MP -MF $@.dep
+	@echo [CXX] -o $@
+	$V$(CXX) -o $@ -c $< $(CXXFLAGS) $(CPPFLAGS) -MMD -MP -MF $@.dep
 
 -include $(OBJ:%=%.dep)
 
