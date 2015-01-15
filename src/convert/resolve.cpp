@@ -125,6 +125,15 @@ public:
             m_res.pop_scope();
         }
     }
+    
+    void visit(AST::ExprNode_LetBinding& node)
+    {
+        DEBUG("ExprNode_LetBinding");
+        
+        AST::NodeVisitor::visit(node.m_value);
+        
+        m_res.handle_pattern(node.m_pat);
+    }
 };
 
 CPathResolver::CPathResolver(const AST::Crate& crate, const AST::Module& mod, AST::Path module_path):
@@ -148,7 +157,7 @@ void CPathResolver::resolve_path(AST::Path& path, ResolvePathMode mode) const
     }
     
     // Convert to absolute
-    if( !path.is_relative() )
+    if( path.is_absolute() )
     {
         DEBUG("Absolute - binding");
         // Already absolute, our job is done
@@ -156,8 +165,8 @@ void CPathResolver::resolve_path(AST::Path& path, ResolvePathMode mode) const
         if( !path.is_bound() ) {
             path.resolve(m_crate);
         }
-    } 
-    else
+    }
+    else if( path.is_relative() )
     {
         // If there's a single node, and we're in expresion mode, look for a variable
         // Otherwise, search for a type

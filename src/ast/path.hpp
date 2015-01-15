@@ -17,6 +17,7 @@ namespace AST {
 
 class Crate;
 class Module;
+class TypeAlias;
 class Enum;
 class Struct;
 class Static;
@@ -55,10 +56,12 @@ public:
     enum BindingType {
         UNBOUND,
         MODULE,
+        ALIAS,
         ENUM,
-        ENUM_VAR,
         STRUCT,
+        
         STRUCT_METHOD,
+        ENUM_VAR,
         FUNCTION,
         STATIC,
     };
@@ -90,6 +93,7 @@ private:
             const Enum* enum_;
             unsigned int idx;
         } enumvar;
+        const TypeAlias*    alias;
     } m_binding;
 public:
     Path():
@@ -150,6 +154,7 @@ public:
     
     void resolve(const Crate& crate);
     
+    bool is_absolute() const { return m_class == ABSOLUTE; }
     bool is_relative() const { return m_class == RELATIVE; }
     size_t size() const { return m_nodes.size(); }
     

@@ -116,16 +116,6 @@ ExternCrate ExternCrate_std()
         }
         ));
     std_mod.add_submod(true, ::std::move(option));
-    // - io
-    Module  io(crate.crate(), "io");
-    io.add_typealias(true, "IoResult", TypeAlias(
-        { TypeParam(false, "T") },
-        TypeRef( Path("std", {
-            PathNode("result",{}),
-            PathNode("Result", {TypeRef("T"),TypeRef(Path("std", {PathNode("io"), PathNode("IoError")}))})
-            }) )
-        ));
-    std_mod.add_submod(true, ::std::move(io));
     // - result
     Module  result(crate.crate(), "result");
     result.add_enum(true, "Result", Enum(
@@ -139,13 +129,38 @@ ExternCrate ExternCrate_std()
         }
         ));
     std_mod.add_submod(true, ::std::move(result));
+    // - io
+    Module  io(crate.crate(), "io");
+    io.add_typealias(true, "IoResult", TypeAlias(
+        { TypeParam(false, "T") },
+        TypeRef( Path("std", {
+            PathNode("result",{}),
+            PathNode("Result", {TypeRef("T"),TypeRef(Path("std", {PathNode("io"), PathNode("IoError")}))})
+            }) )
+        ));
+    std_mod.add_submod(true, ::std::move(io));
+    // - iter
+    {
+        Module  iter(crate.crate(), "iter");
+        {
+            Trait   iterator;
+            iterator.add_type("Item", TypeRef());
+            //iterator.add_function("next", Function({}, Function::CLASS_REFMETHOD, "Option<<Self as Iterator>::Item>", {}, Expr());
+            iter.add_trait(true, "Iterator", ::std::move(iterator));
+        }
+        std_mod.add_submod(true, ::std::move(iter));
+    }
     
+    // - prelude
     Module  prelude(crate.crate(), "prelude");
     // Re-exports
-    #define USE(mod, name, ...)    do{ Path p({__VA_ARGS__}); p.set_crate("std"); mod.add_alias(true, ::std::move(p), name); } while(0)
+    #define USE(mod, name, ...)    do{ Path p("std", {__VA_ARGS__}); mod.add_alias(true, ::std::move(p), name); } while(0)
     USE(prelude, "Option",  PathNode("option", {}), PathNode("Option",{}) );
     USE(prelude, "Some",  PathNode("option", {}), PathNode("Option",{}), PathNode("Some",{}) );
     USE(prelude, "None",  PathNode("option", {}), PathNode("Option",{}), PathNode("None",{}) );
+    USE(prelude, "Result", PathNode("result", {}), PathNode("Result",{}) );
+    USE(prelude, "Ok",  PathNode("result", {}), PathNode("Result",{}), PathNode("Ok",{}) );
+    USE(prelude, "Err", PathNode("result", {}), PathNode("Result",{}), PathNode("Err",{}) );
     std_mod.add_submod(true, prelude);
     
     return crate;

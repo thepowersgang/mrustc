@@ -487,11 +487,8 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         return NEWNODE( AST::ExprNode_Integer, tok.intval(), tok.datatype() );
     case TOK_FLOAT:
         throw ParseError::Todo("Float");
-    case TOK_RWORD_SELF: {
-        AST::Path   path;
-        path.append( AST::PathNode("self", ::std::vector<TypeRef>()) );
-        return NEWNODE( AST::ExprNode_NamedValue, ::std::move(path) );
-        }
+    case TOK_RWORD_SELF:
+        return NEWNODE( AST::ExprNode_NamedValue, AST::Path(AST::Path::TagLocal(), "self") );
     case TOK_PAREN_OPEN: {
         ExprNodeP rv = Parse_Expr0(lex);
         GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
