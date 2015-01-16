@@ -26,6 +26,7 @@ class TypeRef:
         ARRAY,
         GENERIC,
         PATH,
+        ASSOCIATED,
     };
     
     Class   m_class;
@@ -95,6 +96,16 @@ public:
     {}
     TypeRef(AST::Path path):
         TypeRef(TagPath(), ::std::move(path))
+    {}
+   
+    struct TagAssoc {};
+    TypeRef(TagAssoc, TypeRef base, TypeRef trait, ::std::string assoc_name):
+        TypeRef(::std::move(base), ::std::move(trait), ::std::move(assoc_name))
+    {}
+    TypeRef(TypeRef base, TypeRef trait, ::std::string assoc_name):
+        m_class(ASSOCIATED),
+        m_path( {AST::PathNode(assoc_name, {})} ),
+        m_inner_types( {::std::move(base), ::std::move(trait)} )
     {}
    
     bool is_path() const { return m_class == PATH; }

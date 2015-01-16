@@ -230,6 +230,12 @@ SERIALISE_TYPE(Function::, "AST_Function", {
     //s << m_code;
 })
 
+SERIALISE_TYPE(Trait::, "AST_Trait", {
+    s << m_params;
+    s << m_types;
+    s << m_functions;
+})
+
 SERIALISE_TYPE(Enum::, "AST_Enum", {
     s << m_params;
     s << m_variants;

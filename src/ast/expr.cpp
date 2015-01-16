@@ -63,6 +63,10 @@ void ExprNode_StructLiteral::visit(NodeVisitor& nv) {
     nv.visit(*this);
 }
 
+void ExprNode_Tuple::visit(NodeVisitor& nv) {
+    nv.visit(*this);
+}
+
 void ExprNode_NamedValue::visit(NodeVisitor& nv) {
     nv.visit(*this);
 }

@@ -202,6 +202,18 @@ struct ExprNode_StructLiteral:
     
     virtual void visit(NodeVisitor& nv) override;
 };
+// Tuple
+struct ExprNode_Tuple:
+    public ExprNode
+{
+    ::std::vector< unique_ptr<ExprNode> >   m_values;
+    
+    ExprNode_Tuple(::std::vector< unique_ptr<ExprNode> > vals):
+        m_values( ::std::move(vals) )
+    {}
+    
+    virtual void visit(NodeVisitor& nv) override;
+};
 // Variable / Constant
 struct ExprNode_NamedValue:
     public ExprNode
@@ -329,6 +341,10 @@ public:
         for( auto& val : node.m_values )
             visit(val.second);
     }
+    virtual void visit(ExprNode_Tuple& node) {
+        for( auto& val : node.m_values )
+            visit(val);
+    }
     virtual void visit(ExprNode_NamedValue& node) {
         // LEAF
     }
@@ -357,8 +373,12 @@ public:
         m_node(node)
     {
     }
+    Expr():
+        m_node(nullptr)
+    {
+    }
 
-    ::std::shared_ptr<ExprNode> take_node() { return ::std::move(m_node); }
+    ::std::shared_ptr<ExprNode> take_node() { assert(m_node.get()); return ::std::move(m_node); }
     void visit_nodes(NodeVisitor& v);
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Expr& pat);

@@ -51,6 +51,30 @@ public:
     SERIALISABLE_PROTOTYPES();
 };
 
+template <typename T>
+struct Item:
+    public Serialisable
+{
+    ::std::string   name;
+    T   data;
+    bool    is_pub;
+    
+    Item(::std::string&& name, T&& data, bool is_pub):
+        name( move(name) ),
+        data( move(data) ),
+        is_pub( is_pub )
+    {
+    }
+    
+    SERIALISE_TYPE(, "Item", {
+        s << is_pub;
+        s << name;
+        s << data;
+    })
+};
+template <typename T>
+using ItemList = ::std::vector<Item<T> >;
+
 typedef ::std::vector<TypeParam>    TypeParams;
 typedef ::std::pair< ::std::string, TypeRef>    StructItem;
 
@@ -161,6 +185,28 @@ public:
     SERIALISABLE_PROTOTYPES();
 };
 
+class Trait:
+    public Serialisable
+{
+    ::std::vector<TypeParam>    m_params;
+    ItemList<TypeRef>   m_types;
+    ItemList<Function>  m_functions;
+public:
+    Trait(TypeParams params):
+        m_params(params)
+    {
+    }
+    
+    void add_type(::std::string name, TypeRef type) {
+        m_types.push_back( Item<TypeRef>(move(name), move(type), true) );
+    }
+    void add_function(::std::string name, Function fcn) {
+        m_functions.push_back( Item<Function>(move(name), move(fcn), true) );
+    }
+    
+    SERIALISABLE_PROTOTYPES();
+};
+
 class Enum:
     public Serialisable
 {
@@ -193,28 +239,6 @@ public:
     const ::std::vector<StructItem> fields() const { return m_fields; }
     
     SERIALISABLE_PROTOTYPES();
-};
-
-template <typename T>
-struct Item:
-    public Serialisable
-{
-    ::std::string   name;
-    T   data;
-    bool    is_pub;
-    
-    Item(::std::string&& name, T&& data, bool is_pub):
-        name( move(name) ),
-        data( move(data) ),
-        is_pub( is_pub )
-    {
-    }
-    
-    SERIALISE_TYPE(, "Item", {
-        s << is_pub;
-        s << name;
-        s << data;
-    })
 };
 
 class Impl:
@@ -277,6 +301,7 @@ class Module:
     
     
     itemlist_static_t   m_statics;
+    ItemList<Trait> m_traits;
     itemlist_enum_t m_enums;
     itemlist_struct_t m_structs;
     ::std::vector<Impl> m_impls;
@@ -297,6 +322,9 @@ public:
     }
     void add_global(bool is_public, bool is_mut, ::std::string name, TypeRef type, Expr val) {
         m_statics.push_back( Item<Static>( move(name), Static(is_mut ? Static::MUT : Static::STATIC, move(type), move(val)), is_public) );
+    }
+    void add_trait(bool is_public, ::std::string name, Trait trait) {
+        m_traits.push_back( Item<Trait>( move(name), move(trait), is_public) );
     }
     void add_struct(bool is_public, ::std::string name, TypeParams params, ::std::vector<StructItem> items) {
         m_structs.push_back( Item<Struct>( move(name), Struct(move(params), move(items)), is_public) );
@@ -337,6 +365,7 @@ public:
     const ::std::vector<Item<TypeAlias> >& type_aliases() const { return m_type_aliases; }
     const itemlist_ext_t& extern_crates() const { return m_extern_crates; }
     const itemlist_static_t&    statics() const { return m_statics; }
+    const ItemList<Trait>& traits() const { return m_traits; }
     const itemlist_enum_t&      enums  () const { return m_enums; }
     const itemlist_struct_t&    structs() const { return m_structs; }
 

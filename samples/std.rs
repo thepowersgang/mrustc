@@ -33,7 +33,7 @@ pub mod iter
     {
         type Item;
         fn next(&self) -> Option<<Self as Iterator>::Item>;
-        fn size_hint(&self) -> (usize, Option(usize)) {
+        fn size_hint(&self) -> (usize, Option<usize>) {
             return (0, None);
         }
     }

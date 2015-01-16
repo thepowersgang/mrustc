@@ -491,7 +491,18 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         return NEWNODE( AST::ExprNode_NamedValue, AST::Path(AST::Path::TagLocal(), "self") );
     case TOK_PAREN_OPEN: {
         ExprNodeP rv = Parse_Expr0(lex);
-        GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+        if( GET_TOK(tok, lex) == TOK_COMMA ) {
+            ::std::vector<ExprNodeP> ents;
+            ents.push_back( ::std::move(rv) );
+            do {
+                if( GET_TOK(tok, lex) == TOK_PAREN_CLOSE )
+                    break;
+                lex.putback(tok);
+                ents.push_back( Parse_Expr0(lex) );
+            } while( GET_TOK(tok, lex) == TOK_COMMA );
+            rv = NEWNODE( AST::ExprNode_Tuple, ::std::move(ents) );
+        }
+        CHECK_TOK(tok, TOK_PAREN_CLOSE);
         return rv; }
     case TOK_MACRO:
         //return NEWNODE( AST::ExprNode_Macro, tok.str(), Parse_TT(lex) );

@@ -42,8 +42,12 @@ AST::Path Parse_PathFrom(TokenStream& lex, AST::Path path, eParsePathGenericMode
         ::std::string component = tok.str();
 
         tok = lex.getToken();
-        if(generic_mode == PATH_GENERIC_TYPE && tok.type() == TOK_LT)
+        if( generic_mode == PATH_GENERIC_TYPE && (tok.type() == TOK_LT || tok.type() == TOK_DOUBLE_LT) )
         {
+            // HACK! Handle breaking << into < <
+            if( tok.type() == TOK_DOUBLE_LT )
+                lex.putback( Token(TOK_LT) );
+            
             // Type-mode generics "::path::to::Type<A,B>"
             params = Parse_Path_GenericList(lex);
             tok = lex.getToken();
@@ -53,8 +57,12 @@ AST::Path Parse_PathFrom(TokenStream& lex, AST::Path path, eParsePathGenericMode
             break;
         }
         tok = lex.getToken();
-        if( generic_mode == PATH_GENERIC_EXPR && tok.type() == TOK_LT )
+        if( generic_mode == PATH_GENERIC_EXPR && (tok.type() == TOK_LT || tok.type() == TOK_DOUBLE_LT) )
         {
+            // HACK! Handle breaking << into < <
+            if( tok.type() == TOK_DOUBLE_LT )
+                lex.putback( Token(TOK_LT) );
+            
             // Expr-mode generics "::path::to::function::<Type1,Type2>(arg1, arg2)"
             params = Parse_Path_GenericList(lex);
             tok = lex.getToken();
@@ -89,11 +97,13 @@ static const struct {
     {"i64", CORETYPE_I64},
     {"i8", CORETYPE_I8},
     {"int", CORETYPE_INT},
+    {"isize", CORETYPE_INT},
     {"u16", CORETYPE_U16},
     {"u32", CORETYPE_U32},
     {"u64", CORETYPE_U64},
     {"u8",  CORETYPE_U8},
     {"uint", CORETYPE_UINT},
+    {"usize", CORETYPE_UINT},
 };
 
 TypeRef Parse_Type(TokenStream& lex)
@@ -103,6 +113,19 @@ TypeRef Parse_Type(TokenStream& lex)
     Token tok = lex.getToken();
     switch(tok.type())
     {
+    case TOK_LT: {
+        DEBUG("Associated type");
+        // <Type as Trait>::Inner
+        TypeRef base = Parse_Type(lex);
+        GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
+        TypeRef trait = Parse_Type(lex);
+        GET_CHECK_TOK(tok, lex, TOK_GT);
+        // TODO: Is just '<Type as Trait>' valid?
+        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        ::std::string   inner_name = tok.str();
+        return TypeRef(TypeRef::TagAssoc(), ::std::move(base), ::std::move(trait), ::std::move(inner_name));
+        }
     case TOK_IDENT:
         // Either a path (with generics)
         if( tok.str() == "_" )
@@ -165,15 +188,17 @@ TypeRef Parse_Type(TokenStream& lex)
         throw ParseError::BugCheck("Reached end of Parse_Type:SQUARE");
         }
     case TOK_PAREN_OPEN: {
+        DEBUG("Tuple");
         ::std::vector<TypeRef>  types;
-        if( (tok = lex.getToken()).type() == TOK_PAREN_CLOSE)
+        if( GET_TOK(tok, lex) == TOK_PAREN_CLOSE )
             return TypeRef(TypeRef::TagTuple(), types);
+        lex.putback(tok);
         do
         {
             TypeRef type = Parse_Type(lex);
             types.push_back(type);
-        } while( (tok = lex.getToken()).type() == TOK_COMMA );
-        GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+        } while( GET_TOK(tok, lex) == TOK_COMMA );
+        CHECK_TOK(tok, TOK_PAREN_CLOSE);
         return TypeRef(TypeRef::TagTuple(), types); }
     case TOK_EXCLAM:
         throw ParseError::Todo("noreturn type");
@@ -237,7 +262,7 @@ void Parse_TypeConds(TokenStream& lex, AST::TypeParams& params)
 }
 
 /// Parse a function definition (after the 'fn')
-AST::Function Parse_FunctionDef(TokenStream& lex)
+AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_no_code=false)
 {
     TRACE_FUNCTION;
 
@@ -323,7 +348,19 @@ AST::Function Parse_FunctionDef(TokenStream& lex)
         lex.putback(tok);
     }
 
-    AST::Expr   code = Parse_ExprBlock(lex);
+    AST::Expr   code;
+    if( GET_TOK(tok, lex) == TOK_BRACE_OPEN )
+    {
+        lex.putback(tok);
+        code = Parse_ExprBlock(lex);
+    }
+    else
+    {
+        if( !allow_no_code )
+        {
+            throw ParseError::Generic("Expected code for function");
+        }
+    }
 
     return AST::Function(params, fcn_class, ret_type, args, code);
 }
@@ -418,6 +455,67 @@ void Parse_Struct(AST::Module& mod, TokenStream& lex, const bool is_public, cons
     {
         throw ParseError::Unexpected(tok);
     }
+}
+
+AST::Trait Parse_TraitDef(TokenStream& lex, const ::std::vector<AST::MetaItem> meta_items)
+{
+    TRACE_FUNCTION;
+
+    Token   tok;
+    
+    AST::TypeParams params;
+    if( GET_TOK(tok, lex) == TOK_LT )
+    {
+        params = Parse_TypeParams(lex);
+        GET_CHECK_TOK(tok, lex, TOK_GT);
+        tok = lex.getToken();
+    }
+    // TODO: Support "for Sized?"
+    if(tok.type() == TOK_RWORD_WHERE)
+    {
+        if( params.size() == 0 )
+            throw ParseError::Generic("Where clause with no generic params");
+        Parse_TypeConds(lex, params);
+        tok = lex.getToken();
+    }
+
+    
+    AST::Trait trait(params);
+        
+    CHECK_TOK(tok, TOK_BRACE_OPEN);
+    while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
+    {
+        switch(tok.type())
+        {
+        case TOK_RWORD_STATIC: {
+            throw ParseError::Todo("Associated static");
+            break; }
+        case TOK_RWORD_TYPE: {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            ::std::string name = tok.str();
+            if( GET_TOK(tok, lex) == TOK_COLON ) {
+                throw ParseError::Todo("Type bounds on associated type");
+            }
+            if( tok.type() == TOK_RWORD_WHERE ) {
+                throw ParseError::Todo("Where clause on associated type");
+            }
+            TypeRef default_type;
+            if( tok.type() == TOK_EQUAL ) {
+                default_type = Parse_Type(lex);
+            }
+            trait.add_type( ::std::move(name), ::std::move(default_type) );
+            break; }
+        case TOK_RWORD_FN: {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            ::std::string name = tok.str();
+            trait.add_function( ::std::move(name), Parse_FunctionDef(lex, true) );
+            break; }
+        default:
+            throw ParseError::Generic("Unexpected token, expected 'type' or 'fn'");
+        }
+    }
+    
+    return trait;
 }
 
 AST::Enum Parse_EnumDef(TokenStream& lex, const ::std::vector<AST::MetaItem> meta_items)
@@ -765,8 +863,11 @@ void Parse_ModRoot(Preproc& lex, AST::Crate& crate, AST::Module& mod, const ::st
         case TOK_RWORD_IMPL:
             mod.add_impl(Parse_Impl(lex));
             break;
-        case TOK_RWORD_TRAIT:
-            throw ParseError::Todo("modroot trait");
+        case TOK_RWORD_TRAIT: {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            ::std::string name = tok.str();
+            mod.add_trait(is_public, name, Parse_TraitDef(lex, meta_items));
+            break; }
 
         case TOK_RWORD_MOD: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
