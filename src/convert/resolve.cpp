@@ -9,7 +9,204 @@
 #include "../ast/ast.hpp"
 #include "../parse/parseerror.hpp"
 
-class CPathResolver
+// Iterator for the AST, calls virtual functions on paths/types
+class CASTIterator
+{
+public:
+    enum PathMode {
+        MODE_EXPR,  // Variables allowed
+        MODE_TYPE,
+        MODE_BIND,  // Failure is allowed
+    };
+    virtual void handle_path(AST::Path& path, PathMode mode) = 0;
+    virtual void handle_type(TypeRef& type);
+    virtual void handle_expr(AST::ExprNode& node);
+
+    virtual void handle_params(AST::TypeParams& params);
+    
+    virtual void start_scope();
+    virtual void local_type(::std::string name);
+    virtual void local_variable(bool is_mut, ::std::string name, const TypeRef& type);
+    virtual void local_use(::std::string name, AST::Path path);
+    virtual void end_scope();
+    
+    virtual void handle_pattern(AST::Pattern& pat, const TypeRef& type_hint);
+    
+    virtual void handle_module(AST::Path path, AST::Module& mod);
+
+    virtual void handle_function(AST::Path path, AST::Function& fcn);
+    virtual void handle_impl(AST::Path modpath, AST::Impl& impl);
+    
+    virtual void handle_struct(AST::Path path, AST::Struct& str);
+    virtual void handle_enum(AST::Path path, AST::Enum& enm);
+    virtual void handle_alias(AST::Path path, AST::TypeAlias& alias);
+};
+
+// handle_path is pure virtual
+
+void CASTIterator::handle_type(TypeRef& type)
+{
+    DEBUG("type = " << type);
+    if( type.is_path() )
+    {
+        handle_path(type.path(), MODE_TYPE);
+    }
+    else
+    {
+        for(auto& subtype : type.sub_types())
+            handle_type(subtype);
+    }
+}
+void CASTIterator::handle_expr(AST::ExprNode& node)
+{
+}
+void CASTIterator::handle_params(AST::TypeParams& params)
+{
+    for( auto& param : params.params() )
+    {
+        if( param.is_type() )
+            local_type(param.name());
+    }
+    for( auto& bound : params.bounds() )
+    {
+        handle_type(bound.get_type());
+    }
+}
+
+
+void CASTIterator::start_scope()
+{
+}
+void CASTIterator::local_type(::std::string name)
+{
+    DEBUG("type " << name);
+}
+void CASTIterator::local_variable(bool is_mut, ::std::string name, const TypeRef& type)
+{
+    DEBUG( (is_mut ? "mut " : "") << name << " : " << type );
+}
+void CASTIterator::local_use(::std::string name, AST::Path path)
+{
+    DEBUG( name << " = " << path );
+}
+void CASTIterator::end_scope()
+{
+}
+
+void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
+{
+    DEBUG("pat = " << pat);
+    // Resolve names
+    switch(pat.type())
+    {
+    case AST::Pattern::ANY:
+        // Wildcard, nothing to do
+        break;
+    case AST::Pattern::MAYBE_BIND:
+        throw ParseError::BugCheck("Calling CASTIterator::handle_pattern on MAYBE_BIND, not valid");
+    case AST::Pattern::VALUE:
+        handle_expr( pat.node() );
+        break;
+    case AST::Pattern::TUPLE:
+        // Tuple is handled by subpattern code
+        break;
+    case AST::Pattern::TUPLE_STRUCT:
+        // Resolve the path!
+        // - TODO: Restrict to types and enum variants
+        handle_path( pat.path(), CASTIterator::MODE_TYPE );
+        break;
+    }
+    // Extract bindings and add to namespace
+    if( pat.binding().size() > 0 )
+    {
+        // TODO: Mutable bindings
+        local_variable( false, pat.binding(), type_hint );
+    }
+    for( auto& subpat : pat.sub_patterns() )
+        handle_pattern(subpat, (const TypeRef&)TypeRef());
+}
+
+void CASTIterator::handle_module(AST::Path path, AST::Module& mod)
+{
+    start_scope();
+    for( auto& fcn : mod.functions() )
+    {
+        DEBUG("Handling function '" << fcn.name << "'");
+        handle_function(path + fcn.name, fcn.data);
+    }
+    
+    for( auto& impl : mod.impls() )
+    {
+        DEBUG("Handling 'impl' " << impl);
+        handle_impl(path, impl);
+    }
+    // End scope before handling sub-modules
+    end_scope(); 
+ 
+    for( auto& submod : mod.submods() )
+    {
+        DEBUG("Handling submod '" << submod.first.name() << "'");
+        handle_module(path + submod.first.name(), submod.first);
+    }
+}
+void CASTIterator::handle_function(AST::Path path, AST::Function& fcn)
+{
+    start_scope();
+    
+    handle_params(fcn.params());
+    
+    handle_type(fcn.rettype());
+    
+    for( auto& arg : fcn.args() )
+    {
+        handle_type(arg.second);
+        AST::Pattern    pat(AST::Pattern::TagBind(), arg.first);
+        handle_pattern( pat, arg.second );
+    }
+
+    handle_expr( fcn.code().node() );
+    
+    end_scope();
+}
+void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
+{
+    start_scope();
+    
+    // Generic params
+    handle_params( impl.params() );
+    
+    // Trait
+    handle_type( impl.trait() );
+    // Type
+    handle_type( impl.type() );
+    
+    // TODO: Associated types
+    
+    // Functions
+    for( auto& fcn : impl.functions() )
+    {
+        DEBUG("- Function '" << fcn.name << "'");
+        handle_function(AST::Path() + fcn.name, fcn.data);
+    }
+    
+    end_scope();
+}
+
+void CASTIterator::handle_struct(AST::Path path, AST::Struct& str)
+{
+}
+void CASTIterator::handle_enum(AST::Path path, AST::Enum& enm)
+{
+}
+void CASTIterator::handle_alias(AST::Path path, AST::TypeAlias& alias)
+{
+}
+
+// ====================================================================
+// -- Path resolver (converts paths to absolute form)
+// ====================================================================
+class CPathResolver:
+    public CASTIterator
 {
     struct LocalItem
     {
@@ -30,60 +227,33 @@ class CPathResolver
         {}
     };
     const AST::Crate&   m_crate;
-    const AST::Module&  m_module;
-    const AST::Path m_module_path;
+    const AST::Module*  m_module;
+    AST::Path m_module_path;
     ::std::vector< LocalItem >  m_locals;
     // TODO: Maintain a stack of variable scopes
     
 public:
-    CPathResolver(const AST::Crate& crate, const AST::Module& mod, AST::Path module_path);
+    CPathResolver(const AST::Crate& crate);
 
-    enum ResolvePathMode {
-        MODE_EXPR,  // Variables allowed
-        MODE_TYPE,
-        MODE_BIND,  // Failure is allowed
-    };
+    virtual void handle_path(AST::Path& path, CASTIterator::PathMode mode) override;
     
-    void resolve_path(AST::Path& path, ResolvePathMode mode) const;
-    void resolve_type(TypeRef& type) const;
-    
-    void handle_function(AST::Function& fcn);
-    void handle_pattern(AST::Pattern& pat);
+    virtual void handle_pattern(AST::Pattern& pat, const TypeRef& type_hint) override;
+    virtual void handle_module(AST::Path path, AST::Module& mod) override;
 
-    void push_scope() {
-        DEBUG("");
-        m_locals.push_back( LocalItem() );
-    }
-    void pop_scope() {
-        DEBUG(m_locals.size() << " items");
-        for( auto it = m_locals.end(); it-- != m_locals.begin(); )
-        {
-            if( it->name == "" ) {
-                m_locals.erase(it, m_locals.end());
-                return ;
-            }
-        }
-        m_locals.clear();
-    }
-    void add_local_type(::std::string name) {
+    virtual void start_scope() override;
+    virtual void local_type(::std::string name) override {
         m_locals.push_back( LocalItem(LocalItem::TYPE, ::std::move(name)) );
     }
-    void add_local_var(::std::string name) {
+    virtual void local_variable(bool _is_mut, ::std::string name, const TypeRef& _type) override {
         m_locals.push_back( LocalItem(LocalItem::VAR, ::std::move(name)) );
     }
+    virtual void end_scope() override;
+    
     void add_local_use(::std::string name, AST::Path path) {
         throw ParseError::Todo("CPathResolver::add_local_use - Determine type of path (type or value)");
         m_locals.push_back( LocalItem(LocalItem::VAR, ::std::move(name), path) );
     }
-    ::rust::option<const AST::Path&> lookup_local(LocalItem::Type type, const ::std::string& name) const {
-        for( auto it = m_locals.end(); it -- != m_locals.begin(); )
-        {
-            if( it->type == type && it->name == name ) {
-                return ::rust::option<const AST::Path&>(it->path);
-            }
-        }
-        return ::rust::option<const AST::Path&>();
-    }
+    ::rust::option<const AST::Path&> lookup_local(LocalItem::Type type, const ::std::string& name) const;
 };
 
 // Path resolution checking
@@ -109,7 +279,7 @@ public:
 
     void visit(AST::ExprNode_NamedValue& node) {
         DEBUG("ExprNode_NamedValue");
-        m_res.resolve_path(node.m_path, CPathResolver::MODE_EXPR);
+        m_res.handle_path(node.m_path, CASTIterator::MODE_EXPR);
     }
     
     void visit(AST::ExprNode_Match& node)
@@ -119,10 +289,10 @@ public:
         
         for( auto& arm : node.m_arms )
         {
-            m_res.push_scope();
-            m_res.handle_pattern(arm.first);
+            m_res.start_scope();
+            m_res.handle_pattern(arm.first, TypeRef());
             AST::NodeVisitor::visit(arm.second);
-            m_res.pop_scope();
+            m_res.end_scope();
         }
     }
     
@@ -132,18 +302,44 @@ public:
         
         AST::NodeVisitor::visit(node.m_value);
         
-        m_res.handle_pattern(node.m_pat);
+        m_res.handle_pattern(node.m_pat, TypeRef());
     }
 };
 
-CPathResolver::CPathResolver(const AST::Crate& crate, const AST::Module& mod, AST::Path module_path):
+CPathResolver::CPathResolver(const AST::Crate& crate):
     m_crate(crate),
-    m_module(mod),
-    m_module_path( ::std::move(module_path) )
+    m_module(nullptr)
 {
 }
+void CPathResolver::start_scope()
+{
+    DEBUG("");
+    m_locals.push_back( LocalItem() );
+}
+void CPathResolver::end_scope()
+{
+    DEBUG(m_locals.size() << " items");
+    for( auto it = m_locals.end(); it-- != m_locals.begin(); )
+    {
+        if( it->name == "" ) {
+            m_locals.erase(it, m_locals.end());
+            return ;
+        }
+    }
+    m_locals.clear();
+}
+::rust::option<const AST::Path&> CPathResolver::lookup_local(LocalItem::Type type, const ::std::string& name) const
+{
+    for( auto it = m_locals.end(); it -- != m_locals.begin(); )
+    {
+        if( it->type == type && it->name == name ) {
+            return ::rust::option<const AST::Path&>(it->path);
+        }
+    }
+    return ::rust::option<const AST::Path&>();
+}
 
-void CPathResolver::resolve_path(AST::Path& path, ResolvePathMode mode) const
+void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
 {
     DEBUG("path = " << path);
     
@@ -152,7 +348,7 @@ void CPathResolver::resolve_path(AST::Path& path, ResolvePathMode mode) const
     {
         for( auto& arg : ent.args() )
         {
-            resolve_type(arg);
+            handle_type(arg);
         }
     }
     
@@ -168,6 +364,8 @@ void CPathResolver::resolve_path(AST::Path& path, ResolvePathMode mode) const
     }
     else if( path.is_relative() )
     {
+        DEBUG("Relative, local");
+        
         // If there's a single node, and we're in expresion mode, look for a variable
         // Otherwise, search for a type
         bool is_trivial_path = path.size() == 1 && path[0].args().size() == 0;
@@ -211,7 +409,7 @@ void CPathResolver::resolve_path(AST::Path& path, ResolvePathMode mode) const
         // > Search local use definitions (function-level)
         // - TODO: Local use statements (scoped)
         // > Search module-level definitions
-        for( const auto& item_mod : m_module.submods() )
+        for( const auto& item_mod : m_module->submods() )
         {
             if( item_mod.first.name() == path[0].name() ) {
                 // Check name down?
@@ -221,7 +419,7 @@ void CPathResolver::resolve_path(AST::Path& path, ResolvePathMode mode) const
                 return ;
             }
         }
-        for( const auto& item_fcn : m_module.functions() )
+        for( const auto& item_fcn : m_module->functions() )
         {
             if( item_fcn.name == path[0].name() ) {
                 path = m_module_path + path;
@@ -229,7 +427,7 @@ void CPathResolver::resolve_path(AST::Path& path, ResolvePathMode mode) const
                 return ;
             }
         }
-        for( const auto& item : m_module.structs() )
+        for( const auto& item : m_module->structs() )
         {
             if( item.name == path[0].name() ) {
                 path = m_module_path + path;
@@ -237,7 +435,7 @@ void CPathResolver::resolve_path(AST::Path& path, ResolvePathMode mode) const
                 return ;
             }
         }
-        for( const auto& item : m_module.statics() )
+        for( const auto& item : m_module->statics() )
         {
             if( item.name == path[0].name() ) {
                 path = m_module_path + path;
@@ -245,7 +443,7 @@ void CPathResolver::resolve_path(AST::Path& path, ResolvePathMode mode) const
                 return ;
             }
         }
-        for( const auto& import : m_module.imports() )
+        for( const auto& import : m_module->imports() )
         {
             const ::std::string& bind_name = import.name;
             const AST::Path& bind_path = import.data;
@@ -265,37 +463,18 @@ void CPathResolver::resolve_path(AST::Path& path, ResolvePathMode mode) const
     }
 }
 
-void CPathResolver::resolve_type(TypeRef& type) const
-{
-    // TODO: Convert type into absolute (and check bindings)
-    DEBUG("type = " << type);
-    if( type.is_path() )
-    {
-        resolve_path(type.path(), MODE_TYPE);
-    }
-    else
-    {
-        for(auto& subtype : type.sub_types())
-            resolve_type(subtype);
-    }
-}
-
-void CPathResolver::handle_pattern(AST::Pattern& pat)
+void CPathResolver::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
 {
     DEBUG("pat = " << pat);
-    // Resolve names
-    switch(pat.type())
+    // Resolve "Maybe Bind" entries
+    if( pat.type() == AST::Pattern::MAYBE_BIND )
     {
-    case AST::Pattern::ANY:
-        // Wildcard, nothing to do
-        break;
-    case AST::Pattern::MAYBE_BIND: {
         ::std::string   name = pat.binding();
         // Locate a _constant_ within the current namespace which matches this name
         // - Variables don't count
         AST::Path newpath;
         newpath.append( AST::PathNode(name, {}) );
-        resolve_path(newpath, CPathResolver::MODE_BIND);
+        handle_path(newpath, CASTIterator::MODE_BIND);
         if( newpath.is_relative() )
         {
             // It's a name binding (desugar to 'name @ _')
@@ -310,48 +489,17 @@ void CPathResolver::handle_pattern(AST::Pattern& pat)
                 ::std::unique_ptr<AST::ExprNode>( new AST::ExprNode_NamedValue( ::std::move(newpath) ) )
                 );
         }
-        break; }
-    case AST::Pattern::VALUE: {
-        CResolvePaths_NodeVisitor   nv(*this);
-        pat.node().visit(nv);
-        break; }
-    case AST::Pattern::TUPLE:
-        // Tuple is handled by subpattern code
-        break;
-    case AST::Pattern::TUPLE_STRUCT:
-        // Resolve the path!
-        // - TODO: Restrict to types and enum variants
-        resolve_path( pat.path(), CPathResolver::MODE_TYPE );
-        break;
     }
-    // Extract bindings and add to namespace
-    if( pat.binding().size() > 0 )
-        add_local_var(pat.binding());
-    for( auto& subpat : pat.sub_patterns() )
-        handle_pattern(subpat);
     
-    
-    //throw ParseError::Todo("CPathResolver::handle_pattern()");
+    // hand off to original code
+    CASTIterator::handle_pattern(pat, type_hint);
 }
-
-/// Perform name resolution in a function
-void CPathResolver::handle_function(AST::Function& fcn)
+void CPathResolver::handle_module(AST::Path path, AST::Module& mod)
 {
-    CResolvePaths_NodeVisitor   node_visitor(*this);
-
-    DEBUG("Return type");
-    resolve_type(fcn.rettype());
-    DEBUG("Args");
-    for( auto& arg : fcn.args() )
-        resolve_type(arg.second);
-
-    DEBUG("Code");
-    for( auto& arg : fcn.args() )
-        add_local_var(arg.first);
-    fcn.code().visit_nodes( node_visitor );
-    pop_scope();
-    if( m_locals.size() != 0 )
-        throw ParseError::BugCheck("m_locals.size() != 0");
+    // NOTE: Assigning here is safe, as the CASTIterator handle_module iterates submodules as the last action
+    m_module = &mod;
+    m_module_path = path;
+    CASTIterator::handle_module(path, mod);
 }
 
 void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& modpath, AST::Module& mod)
@@ -412,6 +560,8 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
                 throw ParseError::Todo("ResolvePaths_HandleModule_Use - STRUCT");
             case AST::Path::STRUCT_METHOD:
                 throw ParseError::Todo("ResolvePaths_HandleModule_Use - STRUCT_METHOD");
+            case AST::Path::TRAIT:
+                throw ParseError::Todo("ResolvePaths_HandleModule_Use - TRAIT");
             case AST::Path::FUNCTION:
                 throw ParseError::Todo("ResolvePaths_HandleModule_Use - FUNCTION");
             case AST::Path::STATIC:
@@ -431,53 +581,6 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
     for( auto& submod : mod.submods() )
     {
         ResolvePaths_HandleModule_Use(crate, modpath + submod.first.name(), submod.first);
-    }
-}
-
-void ResolvePaths_HandleModule(const AST::Crate& crate, const AST::Path& modpath, AST::Module& mod)
-{
-    CPathResolver	pr(crate, mod, modpath);
-    for( auto& fcn : mod.functions() )
-    {
-        DEBUG("Handling function '" << fcn.name << "'");
-        pr.handle_function(fcn.data);
-    }
-    
-    for( auto& impl : mod.impls() )
-    {
-        DEBUG("Handling impl<" << impl.params() << "> " << impl.trait() << " for " << impl.type());
-        
-        // Params
-        pr.push_scope();
-        for( auto& param : impl.params().params() )
-        {
-            DEBUG("Param " << param);
-            pr.add_local_type(param.name());
-        }
-        for( auto& bound : impl.params().bounds() )
-        {
-            pr.resolve_type(bound.get_type());
-        }
-        // Trait
-        pr.resolve_type( impl.trait() );
-        // Type
-        pr.resolve_type( impl.type() );
-        
-        // TODO: Associated types
-        
-        // Functions
-        for( auto& fcn : impl.functions() )
-        {
-            DEBUG("- Function '" << fcn.name << "'");
-            pr.handle_function(fcn.data);
-        }
-        pr.pop_scope();
-    }
-    
-    for( auto& submod : mod.submods() )
-    {
-        DEBUG("Handling submod '" << submod.first.name() << "'");
-        ResolvePaths_HandleModule(crate, modpath + submod.first.name(), submod.first);
     }
 }
 
@@ -504,5 +607,6 @@ void ResolvePaths(AST::Crate& crate)
     ResolvePaths_HandleModule_Use(crate, AST::Path(AST::Path::TagAbsolute()), crate.root_module());
     
     // Then do path resolution on all other items
-    ResolvePaths_HandleModule(crate, AST::Path(AST::Path::TagAbsolute()), crate.root_module());
+    CPathResolver	pr(crate);
+    pr.handle_module(AST::Path(AST::Path::TagAbsolute()), crate.root_module());
 }

@@ -212,7 +212,7 @@ public:
 
 private:
     Class   m_fcn_class;
-    TypeParams  m_generic_params;
+    TypeParams  m_params;
     Expr    m_code;
     TypeRef m_rettype;
     Arglist m_args;
@@ -222,19 +222,19 @@ public:
     {}
     Function(TypeParams params, Class fcn_class, TypeRef ret_type, Arglist args, Expr code):
         m_fcn_class(fcn_class),
-        m_generic_params(params),
+        m_params(params),
         m_code( ::std::move(code) ),
         m_rettype( move(ret_type) ),
         m_args( move(args) )
     {
     }
     
-    TypeParams& generic_params() { return m_generic_params; }
+    TypeParams& params() { return m_params; }
     Expr& code() { return m_code; }
     TypeRef& rettype() { return m_rettype; }
     Arglist& args() { return m_args; }
 
-    const TypeParams& generic_params() const { return m_generic_params; }
+    const TypeParams& params() const { return m_params; }
     const Expr& code() const { return m_code; }
     const TypeRef& rettype() const { return m_rettype; }
     const Arglist& args() const { return m_args; }
@@ -330,6 +330,7 @@ public:
     TypeRef& type() { return m_type; }
     ::std::vector<Item<Function> >& functions() { return m_functions; }
     
+    friend ::std::ostream& operator<<(::std::ostream& os, const Impl& impl);
     SERIALISABLE_PROTOTYPES();
 };
 

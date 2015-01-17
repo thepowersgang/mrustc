@@ -68,6 +68,10 @@ SERIALISE_TYPE_S(Pattern, {
 });
 
 
+::std::ostream& operator<<(::std::ostream& os, const Impl& impl)
+{
+    return os << "impl<" << impl.m_params << "> " << impl.m_trait << " for " << impl.m_type << "";
+}
 SERIALISE_TYPE(Impl::, "AST_Impl", {
     s << m_params;
     s << m_trait;
@@ -247,13 +251,13 @@ void operator>>(::Deserialiser& s, Function::Class& fc)
 }
 SERIALISE_TYPE(Function::, "AST_Function", {
     s << m_fcn_class;
-    s << m_generic_params;
+    s << m_params;
     s << m_rettype;
     s << m_args;
     s << m_code;
 },{
     s >> m_fcn_class;
-    s.item(m_generic_params);
+    s.item(m_params);
     s.item(m_rettype);
     s.item(m_args);
     s.item(m_code);
