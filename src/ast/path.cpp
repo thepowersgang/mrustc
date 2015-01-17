@@ -227,12 +227,12 @@ void Path::bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args)
     DEBUG("Bound to enum");
     m_binding_type = ENUM;
     m_binding.enum_ = &ent;
-    if( args.size() > 0 )
-    {
-        if( args.size() != ent.params().size() )
-            throw ParseError::Generic("Parameter count mismatch");
-        throw ParseError::Todo("Bind enum with params passed");
-    }
+    //if( args.size() > 0 )
+    //{
+    //    if( args.size() != ent.params().size() )
+    //        throw ParseError::Generic("Parameter count mismatch");
+    //    throw ParseError::Todo("Bind enum with params passed");
+    //}
 }
 void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std::vector<TypeRef>& args)
 {
@@ -246,12 +246,12 @@ void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std
     if( idx == ent.variants().size() )
         throw ParseError::Generic("Enum variant not found");
     
-    if( args.size() > 0 )
-    {
-        if( args.size() != ent.params().size() )
-            throw ParseError::Generic("Parameter count mismatch");
-        throw ParseError::Todo("Bind enum variant with params passed");
-    }
+    //if( args.size() > 0 )
+    //{
+    //    if( args.size() != ent.params().size() )
+    //        throw ParseError::Generic("Parameter count mismatch");
+    //    throw ParseError::Todo("Bind enum variant with params passed");
+    //}
     
     DEBUG("Bound to enum variant '" << name << "' (#" << idx << ")");
     m_binding_type = ENUM_VAR;

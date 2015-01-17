@@ -111,7 +111,7 @@ impl<T:Reader> Iterator<IoResult<char>> for UTF8Reader<T>
 		// - Error, check if it's EOF
 		Err(e) => match e.kind {
 			// Return 'None' on EOF (end of stream)
-			::std::io::EndOfFile => None,
+			::std::io::IoError::EndOfFile => None,
 			_ => Some( Err( e ) ),
 			}
 		}
