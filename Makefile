@@ -16,7 +16,7 @@ BIN := bin/mrustc$(EXESUF)
 OBJ := main.o macros.o types.o serialise.o
 OBJ += ast/ast.o ast/path.o ast/expr.o
 OBJ += parse/parseerror.o parse/lex.o parse/preproc.o parse/root.o parse/expr.o
-OBJ += convert/flatten.o convert/resolve.o convert/render.o
+OBJ += convert/ast_iterate.o convert/flatten.o convert/resolve.o convert/render.o
 OBJ := $(addprefix $(OBJDIR),$(OBJ))
 
 
