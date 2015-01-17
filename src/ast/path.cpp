@@ -301,9 +301,11 @@ void operator>>(Deserialiser& s, Path::Class& pc)
 }
 SERIALISE_TYPE(Path::, "AST_Path", {
     s << m_class;
+    s << m_crate;
     s << m_nodes;
 },{
     s >> m_class;
+    s.item(m_crate);
     s.item(m_nodes);
 })
 

@@ -75,9 +75,10 @@ const char* coretype_name(const eCoreType ct ) {
     case CORETYPE_I32:  return "i32";
     case CORETYPE_U64:  return "u64";
     case CORETYPE_I64:  return "i64";
-    case CORETYPE_F32:  return "f16";
-    case CORETYPE_F64:  return "f16";
+    case CORETYPE_F32:  return "f32";
+    case CORETYPE_F64:  return "f64";
     }
+    DEBUG("Unknown core type?! " << ct);
     return "NFI";
 }
 void operator% (::Serialiser& s, eCoreType ct) {
@@ -129,16 +130,20 @@ void operator>>(::Deserialiser& d, TypeRef::Class& c) {
 }
 SERIALISE_TYPE(TypeRef::, "TypeRef", {
     s << class_name(m_class);
-    s << coretype_name(m_core_type);
+    if(m_class == PRIMITIVE)
+        s << coretype_name(m_core_type);
     s << m_inner_types;
-    s << m_is_inner_mutable;
+    if(m_class == REFERENCE || m_class == POINTER)
+        s << m_is_inner_mutable;
     s << m_size_expr;
     s << m_path;
 },{
     s >> m_class;
-    s % m_core_type;
+    if(m_class == PRIMITIVE)
+        s % m_core_type;
     s.item( m_inner_types );
-    s.item( m_is_inner_mutable );
+    if(m_class == REFERENCE || m_class == POINTER)
+        s.item( m_is_inner_mutable );
     bool size_expr_present;
     s.item(size_expr_present);
     if( size_expr_present )

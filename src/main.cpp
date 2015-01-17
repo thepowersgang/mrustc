@@ -81,11 +81,11 @@ int main(int argc, char *argv[])
     {
         AST::Crate crate = Parse_Crate(infile);
 
-        s << crate;
+        //s << crate;
     
         // Resolve names to be absolute names (include references to the relevant struct/global/function)
         ResolvePaths(crate);
-        s << crate;
+        //s << crate;
 
         // Typecheck / type propagate module (type annotations of all values)
 

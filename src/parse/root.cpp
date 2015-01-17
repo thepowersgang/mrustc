@@ -745,6 +745,7 @@ void Parse_ModRoot(Preproc& lex, AST::Crate& crate, AST::Module& mod, const ::st
         AST::Path   prelude_path = AST::Path(AST::Path::TagAbsolute());
         prelude_path.append( AST::PathNode("std", {}) );
         prelude_path.append( AST::PathNode("prelude", {}) );
+        prelude_path.append( AST::PathNode("v1", {}) );
         Parse_Use_Wildcard(prelude_path,
             [&mod](AST::Path p, std::string s) {
                 mod.add_alias(false, p, s);
