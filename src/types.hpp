@@ -113,6 +113,9 @@ public:
     ::std::vector<TypeRef>& sub_types() { return m_inner_types; }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr);
+    
+    static const char* class_name(TypeRef::Class c);
+    friend void operator>>(::Deserialiser& d, TypeRef::Class& c);
    
     SERIALISABLE_PROTOTYPES(); 
 };

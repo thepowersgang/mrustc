@@ -17,12 +17,15 @@ using ::std::unique_ptr;
 
 class NodeVisitor;
 
-class ExprNode
+class ExprNode:
+    public Serialisable
 {
 public:
     virtual ~ExprNode() = 0;
     
     virtual void visit(NodeVisitor& nv) = 0;
+    
+    static ::std::unique_ptr<ExprNode> from_deserialiser(Deserialiser& d);
 };
 
 struct ExprNode_Block:
@@ -30,7 +33,7 @@ struct ExprNode_Block:
 {
     ::std::vector< ::std::unique_ptr<ExprNode> >    m_nodes;
 
-    ExprNode_Block(const ExprNode_Block& x) = delete;
+    ExprNode_Block() {}
     ExprNode_Block(::std::vector< ::std::unique_ptr<ExprNode> >&& nodes):
         m_nodes( move(nodes) )
     {
@@ -38,6 +41,8 @@ struct ExprNode_Block:
     virtual ~ExprNode_Block() override;
     
     virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
 };
 
 struct ExprNode_Macro:
@@ -46,12 +51,15 @@ struct ExprNode_Macro:
     ::std::string   m_name;
     ::TokenTree m_tokens;
     
+    ExprNode_Macro() {}
     ExprNode_Macro(::std::string name, ::TokenTree&& tokens):
         m_name(name),
         m_tokens( move(tokens) )
     {}
     
     virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
 };
 
 // Return a value
@@ -66,6 +74,8 @@ struct ExprNode_Return:
     }
     
     virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
 };
 struct ExprNode_LetBinding:
     public ExprNode
@@ -80,6 +90,8 @@ struct ExprNode_LetBinding:
     }
     
     virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
 };
 struct ExprNode_Assign:
     public ExprNode
@@ -94,6 +106,8 @@ struct ExprNode_Assign:
     }
     
     virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
 };
 struct ExprNode_CallPath:
     public ExprNode
@@ -108,6 +122,8 @@ struct ExprNode_CallPath:
     }
     
     virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
 };
 struct ExprNode_CallMethod:
     public ExprNode
@@ -124,6 +140,8 @@ struct ExprNode_CallMethod:
     }
     
     virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
 };
 // Call an object (Fn/FnMut/FnOnce)
 struct ExprNode_CallObject:
@@ -138,6 +156,8 @@ struct ExprNode_CallObject:
     {
     }
     virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
 };
 
 struct ExprNode_Match:
@@ -153,6 +173,8 @@ struct ExprNode_Match:
     {
     }
     virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
 };
 
 struct ExprNode_If:
@@ -169,6 +191,8 @@ struct ExprNode_If:
     {
     }
     virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
 };
 // Literal integer
 struct ExprNode_Integer:
@@ -184,6 +208,8 @@ struct ExprNode_Integer:
     }
     
     virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
 };
 // Literal structure
 struct ExprNode_StructLiteral:
@@ -201,6 +227,8 @@ struct ExprNode_StructLiteral:
     {}
     
     virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
 };
 // Tuple
 struct ExprNode_Tuple:
@@ -213,6 +241,8 @@ struct ExprNode_Tuple:
     {}
     
     virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
 };
 // Variable / Constant
 struct ExprNode_NamedValue:
@@ -224,6 +254,8 @@ struct ExprNode_NamedValue:
     {
     }
     virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
 };
 // Field dereference
 struct ExprNode_Field:
@@ -238,6 +270,8 @@ struct ExprNode_Field:
     {
     }
     virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
 };
 
 // Type cast ('as')
@@ -253,6 +287,8 @@ struct ExprNode_Cast:
     {
     }
     virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
 };
 
 // Binary operation
@@ -283,6 +319,8 @@ struct ExprNode_BinOp:
     }
     
     virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
 };
 
 class NodeVisitor
@@ -296,6 +334,8 @@ public:
     virtual void visit(ExprNode_Block& node) {
         for( auto& child : node.m_nodes )
             visit(child);
+    }
+    virtual void visit(ExprNode_Macro& node) {
     }
     virtual void visit(ExprNode_Return& node) {
         visit(node.m_value);
@@ -361,7 +401,8 @@ public:
     }
 };
 
-class Expr
+class Expr:
+    public Serialisable
 {
     ::std::shared_ptr<ExprNode> m_node;
 public:
@@ -382,6 +423,8 @@ public:
     void visit_nodes(NodeVisitor& v);
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Expr& pat);
+    
+    SERIALISABLE_PROTOTYPES();
 };
 
 }

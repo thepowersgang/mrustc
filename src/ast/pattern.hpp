@@ -13,7 +13,8 @@ using ::std::move;
 
 class ExprNode;
 
-class Pattern
+class Pattern:
+    public Serialisable
 {
 public:
     enum BindType {
@@ -81,6 +82,8 @@ public:
     const ::std::vector<Pattern>& sub_patterns() const { return m_sub_patterns; }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat);
+
+    SERIALISABLE_PROTOTYPES();
 };
 
 };

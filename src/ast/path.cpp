@@ -26,6 +26,9 @@ const ::std::vector<TypeRef>& PathNode::args() const
 SERIALISE_TYPE(PathNode::, "PathNode", {
     s << m_name;
     s << m_params;
+},{
+    s.item(m_name);
+    s.item(m_params);
 })
 
 // --- AST::Path
@@ -287,9 +290,21 @@ Path& Path::operator+=(const Path& other)
     }
     return s;
 }
+void operator>>(Deserialiser& s, Path::Class& pc)
+{
+    ::std::string   n;
+    s.item(n);
+         if(n == "RELATIVE")    pc = Path::RELATIVE;
+    else if(n == "ABSOLUTE")    pc = Path::ABSOLUTE;
+    else if(n == "LOCAL")       pc = Path::LOCAL;
+    else    throw ::std::runtime_error("Unknown path class : " + n);
+}
 SERIALISE_TYPE(Path::, "AST_Path", {
     s << m_class;
     s << m_nodes;
+},{
+    s >> m_class;
+    s.item(m_nodes);
 })
 
 }

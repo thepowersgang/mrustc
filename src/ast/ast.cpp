@@ -5,6 +5,7 @@
 #include <iostream>
 #include "../parse/parseerror.hpp"
 #include <algorithm>
+#include <serialiser_texttree.hpp>
 
 namespace AST {
 
@@ -14,6 +15,10 @@ SERIALISE_TYPE(MetaItem::, "AST_MetaItem", {
     s << m_name;
     s << m_str_val;
     s << m_items;
+},{
+    s.item(m_name);
+    s.item(m_str_val);
+    s.item(m_items);
 })
 
 ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat)
@@ -39,6 +44,30 @@ SERIALISE_TYPE(MetaItem::, "AST_MetaItem", {
     }
     return os;
 }
+void operator%(Serialiser& s, Pattern::BindType c) {
+    switch(c)
+    {
+    case Pattern::ANY:          s << "ANY";         return;
+    case Pattern::MAYBE_BIND:   s << "MAYBE_BIND";  return;
+    case Pattern::VALUE:        s << "VALUE";  return;
+    case Pattern::TUPLE:        s << "TUPLE";  return;
+    case Pattern::TUPLE_STRUCT: s << "TUPLE_STRUCT";  return;
+    }
+}
+void operator%(::Deserialiser& s, Pattern::BindType& c) {
+    ::std::string   n;
+    s.item(n);
+         if(n == "ANY")         c = Pattern::ANY;
+    else if(n == "MAYBE_BIND")  c = Pattern::MAYBE_BIND;
+    else
+        throw ::std::runtime_error("");
+}
+SERIALISE_TYPE_S(Pattern, {
+    s % m_class;
+    s.item(m_binding);
+    s.item(m_sub_patterns);
+    s.item(m_path);
+});
 
 
 SERIALISE_TYPE(Impl::, "AST_Impl", {
@@ -46,6 +75,11 @@ SERIALISE_TYPE(Impl::, "AST_Impl", {
     s << m_trait;
     s << m_type;
     s << m_functions;
+},{
+    s.item(m_params);
+    s.item(m_trait);
+    s.item(m_type);
+    s.item(m_functions);
 })
 
 Crate::Crate():
@@ -70,20 +104,37 @@ const Module& Crate::get_root_module(const ::std::string& name) const {
 }
 void Crate::load_extern_crate(::std::string name)
 {
-    if( name == "std" )
+    ::std::ifstream is("output/"+name+".ast");
+    if( !is.is_open() )
     {
-        // HACK! Load std using a hackjob (included within the compiler)
-        m_extern_crates.insert( make_pair( ::std::move(name), ExternCrate_std() ) );
+        throw ParseError::Generic("Can't open crate '" + name + "'");
     }
-    else
-    {
-        throw ParseError::Todo("'extern crate' (not hackjob std)");
-    }
+    Deserialiser_TextTree   ds(is);
+    Deserialiser&   d = ds;
+    
+    ExternCrate ret;
+    d.item( ret.crate() );
+    
+    m_extern_crates.insert( make_pair(::std::move(name), ::std::move(ret)) );
+    
+    //if( name == "std" )
+    //{
+    //    // HACK! Load std using a hackjob (included within the compiler)
+    //    m_extern_crates.insert( make_pair( ::std::move(name), ExternCrate_std() ) );
+    //}
+    //else
+    //{
+    //    throw ParseError::Todo("'extern crate' (not hackjob std)");
+    //}
 }
 SERIALISE_TYPE(Crate::, "AST_Crate", {
     s << m_load_std;
     s << m_extern_crates;
     s << m_root_module;
+},{
+    s.item(m_load_std);
+    s.item(m_extern_crates);
+    s.item(m_root_module);
 })
 
 ExternCrate::ExternCrate()
@@ -95,6 +146,7 @@ ExternCrate::ExternCrate(const char *path)
     throw ParseError::Todo("Load extern crate from a file");
 }
 SERIALISE_TYPE(ExternCrate::, "AST_ExternCrate", {
+},{
 })
 
 ExternCrate ExternCrate_std()
@@ -171,11 +223,35 @@ ExternCrate ExternCrate_std()
 SERIALISE_TYPE(Module::, "AST_Module", {
     s << m_name;
     s << m_attrs;
+    
     s << m_extern_crates;
     s << m_submods;
+    
+    s << m_imports;
+    s << m_type_aliases;
+    
     s << m_enums;
     s << m_structs;
+    s << m_statics;
+    
     s << m_functions;
+    s << m_impls;
+},{
+    s.item(m_name);
+    s.item(m_attrs);
+    
+    s.item(m_extern_crates);
+    s.item(m_submods);
+    
+    s.item(m_imports);
+    s.item(m_type_aliases);
+    
+    s.item(m_enums);
+    s.item(m_structs);
+    s.item(m_statics);
+    
+    s.item(m_functions);
+    s.item(m_impls);
 })
 void Module::add_ext_crate(::std::string ext_name, ::std::string int_name)
 {
@@ -193,6 +269,9 @@ void Module::iterate_functions(fcn_visitor_t *visitor, const Crate& crate)
 SERIALISE_TYPE(TypeAlias::, "AST_TypeAlias", {
     s << m_params;
     s << m_type;
+},{
+    s.item(m_params);
+    s.item(m_type);
 })
 
 ::Serialiser& operator<<(::Serialiser& s, Static::Class fc)
@@ -205,10 +284,24 @@ SERIALISE_TYPE(TypeAlias::, "AST_TypeAlias", {
     }
     return s;
 }
+void operator>>(::Deserialiser& s, Static::Class& fc)
+{
+    ::std::string   n;
+    s.item(n);
+         if(n == "CONST")   fc = Static::CONST;
+    else if(n == "STATIC")  fc = Static::STATIC;
+    else if(n == "MUT")     fc = Static::MUT;
+    else
+        throw ::std::runtime_error("Deserialise Static::Class");
+}
 SERIALISE_TYPE(Static::, "AST_Static", {
     s << m_class;
     s << m_type;
-    //s << m_value;
+    s << m_value;
+},{
+    s >> m_class;
+    s.item(m_type);
+    s.item(m_value);
 })
 
 ::Serialiser& operator<<(::Serialiser& s, Function::Class fc)
@@ -222,28 +315,55 @@ SERIALISE_TYPE(Static::, "AST_Static", {
     }
     return s;
 }
+void operator>>(::Deserialiser& s, Function::Class& fc)
+{
+    ::std::string   n;
+    s.item(n);
+         if(n == "UNBOUND")    fc = Function::CLASS_UNBOUND;
+    else if(n == "REFMETHOD")  fc = Function::CLASS_REFMETHOD;
+    else if(n == "MUTMETHOD")  fc = Function::CLASS_MUTMETHOD;
+    else if(n == "VALMETHOD")  fc = Function::CLASS_VALMETHOD;
+    else
+        throw ::std::runtime_error("Deserialise Function::Class");
+}
 SERIALISE_TYPE(Function::, "AST_Function", {
     s << m_fcn_class;
     s << m_generic_params;
     s << m_rettype;
     s << m_args;
-    //s << m_code;
+    s << m_code;
+},{
+    s >> m_fcn_class;
+    s.item(m_generic_params);
+    s.item(m_rettype);
+    s.item(m_args);
+    s.item(m_code);
 })
 
 SERIALISE_TYPE(Trait::, "AST_Trait", {
     s << m_params;
     s << m_types;
     s << m_functions;
+},{
+    s.item(m_params);
+    s.item(m_types);
+    s.item(m_functions);
 })
 
 SERIALISE_TYPE(Enum::, "AST_Enum", {
     s << m_params;
     s << m_variants;
+},{
+    s.item(m_params);
+    s.item(m_variants);
 })
 
 SERIALISE_TYPE(Struct::, "AST_Struct", {
     s << m_params;
     s << m_fields;
+},{
+    s.item(m_params);
+    s.item(m_fields);
 })
 
 void TypeParam::addLifetimeBound(::std::string name)
@@ -271,7 +391,25 @@ void TypeParam::addTypeBound(TypeRef type)
     return os;
 }
 SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
-    // TODO: TypeParam
+    const char *classstr = "-";
+    switch(m_class)
+    {
+    case TypeParam::LIFETIME: classstr = "Lifetime";    break;
+    case TypeParam::TYPE:       classstr = "Type";    break;
+    }
+    s << classstr;
+    s << m_name;
+    s << m_trait_bounds;
+},{
+    {
+        ::std::string   n;
+        s.item(n);
+             if(n == "Lifetime") m_class = TypeParam::LIFETIME;
+        else if(n == "Type")     m_class = TypeParam::TYPE;
+        else    throw ::std::runtime_error("");
+    }
+    s.item(m_name);
+    s.item(m_trait_bounds);
 })
 
 }

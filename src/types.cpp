@@ -51,11 +51,99 @@ inline ::std::ostream& operator<<(::std::ostream& os, const ::std::vector<T>& v)
     case TypeRef::PATH:
         os << "TagPath, " << tr.m_path;
         break;
+    case TypeRef::ASSOCIATED:
+        os << "TagAssoc, <" << tr.m_inner_types[0] << " as " << tr.m_inner_types[1] << ">::" << tr.m_path[0].name();
+        break;
     }
     os << ")";
     return os;
 }
 
+const char* coretype_name(const eCoreType ct ) {
+    switch(ct)
+    {
+    case CORETYPE_INVAL:return "-";
+    case CORETYPE_ANY:  return "_";
+    case CORETYPE_CHAR: return "char";
+    case CORETYPE_UINT: return "usize";
+    case CORETYPE_INT:  return "isize";
+    case CORETYPE_U8:   return "u8";
+    case CORETYPE_I8:   return "i8";
+    case CORETYPE_U16:  return "u16";
+    case CORETYPE_I16:  return "i16";
+    case CORETYPE_U32:  return "u32";
+    case CORETYPE_I32:  return "i32";
+    case CORETYPE_U64:  return "u64";
+    case CORETYPE_I64:  return "i64";
+    case CORETYPE_F32:  return "f16";
+    case CORETYPE_F64:  return "f16";
+    }
+    return "NFI";
+}
+void operator% (::Serialiser& s, eCoreType ct) {
+    s << coretype_name(ct);
+}
+void operator% (::Deserialiser& d, eCoreType& ct) {
+    ::std::string n;
+    d.item(n);
+    /* */if(n == "-")   ct = CORETYPE_INVAL;
+    else if(n == "_")   ct = CORETYPE_ANY;
+    else
+        throw ::std::runtime_error("Deserialise failure - " + n);
+}
+const char* TypeRef::class_name(TypeRef::Class c) {
+    switch(c)
+    {
+    #define _(x)    case TypeRef::x: return #x;
+    _(ANY)
+    _(UNIT)
+    _(PRIMITIVE)
+    _(TUPLE)
+    _(REFERENCE)
+    _(POINTER)
+    _(ARRAY)
+    _(GENERIC)
+    _(PATH)
+    _(ASSOCIATED)
+    #undef _
+    }
+    return "NFI";
+}
+void operator>>(::Deserialiser& d, TypeRef::Class& c) {
+    ::std::string n;
+    d.item(n);
+    #define _(x) if(n == #x) c = TypeRef::x;
+    /**/ _(ANY)
+    else _(UNIT)
+    else _(PRIMITIVE)
+    else _(TUPLE)
+    else _(REFERENCE)
+    else _(POINTER)
+    else _(ARRAY)
+    else _(GENERIC)
+    else _(PATH)
+    else _(ASSOCIATED)
+    else
+        throw ::std::runtime_error("Deserialise failure - " + n);
+    #undef _
+}
 SERIALISE_TYPE(TypeRef::, "TypeRef", {
-    // TODO: TypeRef serialise
+    s << class_name(m_class);
+    s << coretype_name(m_core_type);
+    s << m_inner_types;
+    s << m_is_inner_mutable;
+    s << m_size_expr;
+    s << m_path;
+},{
+    s >> m_class;
+    s % m_core_type;
+    s.item( m_inner_types );
+    s.item( m_is_inner_mutable );
+    bool size_expr_present;
+    s.item(size_expr_present);
+    if( size_expr_present )
+        m_size_expr = AST::ExprNode::from_deserialiser(s);
+    else
+        m_size_expr.reset();
+    s.item( m_path );
 })

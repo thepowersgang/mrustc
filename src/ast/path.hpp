@@ -30,6 +30,7 @@ class PathNode:
     ::std::string   m_name;
     ::std::vector<TypeRef>  m_params;
 public:
+    PathNode() {}
     PathNode(::std::string name, ::std::vector<TypeRef> args = {});
     const ::std::string& name() const;
     ::std::vector<TypeRef>&   args() { return m_params; }
@@ -171,6 +172,7 @@ public:
     SERIALISABLE_PROTOTYPES(); 
     friend ::std::ostream& operator<<(::std::ostream& os, const Path& path);
     friend ::Serialiser& operator<<(Serialiser& s, Path::Class pc);
+    friend void operator>>(Deserialiser& s, Path::Class& pc);
 private:
     void bind_module(const Module& mod);
     void bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args);

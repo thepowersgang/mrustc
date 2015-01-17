@@ -33,6 +33,9 @@ class TypeParam:
     ::std::string   m_name;
     ::std::vector<TypeRef>  m_trait_bounds;
 public:
+    TypeParam():
+        m_class(LIFETIME)
+    {}
     TypeParam(bool is_lifetime, ::std::string name):
         m_class( is_lifetime ? LIFETIME : TYPE ),
         m_name( ::std::move(name) )
@@ -59,6 +62,9 @@ struct Item:
     T   data;
     bool    is_pub;
     
+    Item():
+        is_pub(false)
+    {}
     Item(::std::string&& name, T&& data, bool is_pub):
         name( move(name) ),
         data( move(data) ),
@@ -67,9 +73,11 @@ struct Item:
     }
     
     SERIALISE_TYPE(, "Item", {
-        s << is_pub;
-        s << name;
-        s << data;
+        s << name << data << is_pub;
+    },{
+        s.item(name);
+        s.item(data);
+        s.item(is_pub);
     })
 };
 template <typename T>
@@ -87,6 +95,7 @@ class MetaItem:
     ::std::vector<MetaItem> m_items;
     ::std::string   m_str_val;
 public:
+    MetaItem() {}
     MetaItem(::std::string name):
         m_name(name)
     {
@@ -108,6 +117,7 @@ class TypeAlias:
     TypeParams  m_params;
     TypeRef m_type;
 public:
+    TypeAlias() {}
     TypeAlias(TypeParams params, TypeRef type):
         m_params( move(params) ),
         m_type( move(type) )
@@ -134,6 +144,9 @@ private:
     TypeRef m_type;
     Expr    m_value;
 public:
+    Static():
+        m_class(CONST)
+    {}
     Static(Class s_class, TypeRef type, Expr value):
         m_class(s_class),
         m_type( move(type) ),
@@ -163,6 +176,9 @@ private:
     TypeRef m_rettype;
     Arglist m_args;
 public:
+    Function():
+        m_fcn_class(CLASS_UNBOUND)
+    {}
     Function(TypeParams params, Class fcn_class, TypeRef ret_type, Arglist args, Expr code):
         m_fcn_class(fcn_class),
         m_generic_params(params),
@@ -192,6 +208,7 @@ class Trait:
     ItemList<TypeRef>   m_types;
     ItemList<Function>  m_functions;
 public:
+    Trait() {}
     Trait(TypeParams params):
         m_params(params)
     {
@@ -213,6 +230,7 @@ class Enum:
     ::std::vector<TypeParam>    m_params;
     ::std::vector<StructItem>   m_variants;
 public:
+    Enum() {}
     Enum( ::std::vector<TypeParam> params, ::std::vector<StructItem> variants ):
         m_params( move(params) ),
         m_variants( move(variants) )
@@ -230,6 +248,7 @@ class Struct:
     ::std::vector<TypeParam>    m_params;
     ::std::vector<StructItem>   m_fields;
 public:
+    Struct() {}
     Struct( ::std::vector<TypeParam> params, ::std::vector<StructItem> fields ):
         m_params( move(params) ),
         m_fields( move(fields) )
@@ -250,6 +269,7 @@ class Impl:
     
     ::std::vector<Item<Function> >  m_functions;
 public:
+    Impl() {}
     Impl(TypeParams params, TypeRef impl_type, TypeRef trait_type):
         m_params( move(params) ),
         m_trait( move(trait_type) ),
@@ -306,6 +326,7 @@ class Module:
     itemlist_struct_t m_structs;
     ::std::vector<Impl> m_impls;
 public:
+    Module() {}
     Module(::std::string name):
         m_name(name)
     {
