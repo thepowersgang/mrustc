@@ -88,6 +88,12 @@ int main(int argc, char *argv[])
         //s << crate;
 
         // Typecheck / type propagate module (type annotations of all values)
+        // - Check all generic conditions (ensure referenced trait is valid)
+        //  > Also mark parameter with applicable traits
+        // - Check all generic parameters match required conditions
+        // - Typecheck statics and consts
+        // - Typecheck + propagate functions
+        //  > Forward pass first
 
         if( strcmp(emit_type, "ast") == 0 )
         {
