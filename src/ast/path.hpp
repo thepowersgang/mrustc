@@ -20,6 +20,7 @@ class Module;
 class TypeAlias;
 class Enum;
 class Struct;
+class Trait;
 class Static;
 class Function;
 
@@ -60,6 +61,7 @@ public:
         ALIAS,
         ENUM,
         STRUCT,
+        TRAIT,
         
         STRUCT_METHOD,
         ENUM_VAR,
@@ -88,6 +90,7 @@ private:
         const Module* module_;
         const Enum* enum_;
         const Struct*   struct_;
+        const Trait*    trait;
         const Static*   static_;
         const Function* func_;
         struct {

@@ -89,8 +89,21 @@ void operator% (::Deserialiser& d, eCoreType& ct) {
     d.item(n);
     /* */if(n == "-")   ct = CORETYPE_INVAL;
     else if(n == "_")   ct = CORETYPE_ANY;
+    else if(n == "char")  ct = CORETYPE_CHAR;
+    else if(n == "usize") ct = CORETYPE_UINT;
+    else if(n == "isize") ct = CORETYPE_INT;
+    else if(n == "u8")    ct = CORETYPE_U8;
+    else if(n == "i8")    ct = CORETYPE_I8;
+    else if(n == "u16")   ct = CORETYPE_U16;
+    else if(n == "i16")   ct = CORETYPE_I16;
+    else if(n == "u32")   ct = CORETYPE_U32;
+    else if(n == "i32")   ct = CORETYPE_I32;
+    else if(n == "u64")   ct = CORETYPE_U64;
+    else if(n == "i64")   ct = CORETYPE_I64;
+    else if(n == "f32")   ct = CORETYPE_F32;
+    else if(n == "f64")   ct = CORETYPE_F64;
     else
-        throw ::std::runtime_error("Deserialise failure - " + n);
+        throw ::std::runtime_error("Deserialise failure - coretype " + n);
 }
 const char* TypeRef::class_name(TypeRef::Class c) {
     switch(c)

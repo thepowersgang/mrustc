@@ -408,7 +408,10 @@ public:
     
     Module& get_root_module(const ::std::string& name);
     const Module& get_root_module(const ::std::string& name) const;
-    
+
+    ::std::map< ::std::string, ExternCrate>& extern_crates() { return m_extern_crates; }   
+    const ::std::map< ::std::string, ExternCrate>& extern_crates() const { return m_extern_crates; }   
+ 
     void load_extern_crate(::std::string name);
     
     void iterate_functions( fcn_visitor_t* visitor );

@@ -102,8 +102,8 @@ void Path::resolve(const Crate& root_crate)
             if( it != items.end() )
             {
                 DEBUG("Type alias <"<<it->data.params()<<"> " << it->data.type());
-                if( node.args().size() != it->data.params().size() )
-                    throw ParseError::Generic("Param count mismatch when referencing type alias");
+                //if( node.args().size() != it->data.params().size() )
+                //    throw ParseError::Generic("Param count mismatch when referencing type alias");
                 // Make a copy of the path, replace params with it, then replace *this?
                 // - Maybe leave that up to other code?
                 if( is_last ) {
@@ -129,6 +129,27 @@ void Path::resolve(const Crate& root_crate)
                 }
                 else {
                     throw ParseError::Generic("Import of function, too many extra nodes");
+                }
+            }
+        }
+
+        // - Traits
+        {
+            auto& items = mod->traits();
+            auto it = find_named(items, node.name());
+            if( it != items.end() )
+            {
+                DEBUG("Found trait");
+                if( is_last ) {
+                    m_binding_type = TRAIT;
+                    m_binding.trait = &it->data;
+                    return;
+                }
+                else if( is_sec_last ) {
+                    throw ParseError::Todo("Path::resolve() trait method");
+                }
+                else {
+                    throw ParseError::Generic("Import of trait, too many extra nodes");
                 }
             }
         }
@@ -272,7 +293,7 @@ Path& Path::operator+=(const Path& other)
         os << "Path({" << path.m_nodes << "})";
         break;
     case Path::ABSOLUTE:
-        os << "Path(TagAbsolute, {" << path.m_nodes << "})";
+        os << "Path(TagAbsolute, \""<<path.m_crate<<"\", {" << path.m_nodes << "})";
         break;
     case Path::LOCAL:
         os << "Path(TagLocal, " << path.m_nodes[0].name() << ")";

@@ -230,6 +230,7 @@ SERIALISE_TYPE(Module::, "AST_Module", {
     s << m_imports;
     s << m_type_aliases;
     
+    s << m_traits;
     s << m_enums;
     s << m_structs;
     s << m_statics;
@@ -246,6 +247,7 @@ SERIALISE_TYPE(Module::, "AST_Module", {
     s.item(m_imports);
     s.item(m_type_aliases);
     
+    s.item(m_traits);
     s.item(m_enums);
     s.item(m_structs);
     s.item(m_statics);

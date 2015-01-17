@@ -29,10 +29,27 @@ SERIALISE_TYPE(Expr::, "Expr", {
     
     DEBUG("tag = " << tag);
     ExprNode*   ptr = nullptr;
-         if(tag == "ExprNode_Block")    ptr = new ExprNode_Block;
-    else if(tag == "ExprNode_Macro")    ptr = new ExprNode_Macro;
+    #define _(x)    if(tag == #x) ptr = new x;
+         _(ExprNode_Block)
+    else _(ExprNode_Macro)
+    else _(ExprNode_Return)
+    else _(ExprNode_LetBinding)
+    else _(ExprNode_Assign)
+    else _(ExprNode_CallPath)
+    else _(ExprNode_CallMethod)
+    else _(ExprNode_CallObject)
+    else _(ExprNode_Match)
+    else _(ExprNode_If)
+    else _(ExprNode_Integer)
+    else _(ExprNode_StructLiteral)
+    else _(ExprNode_Tuple)
+    else _(ExprNode_NamedValue)
+    else _(ExprNode_Field)
+    else _(ExprNode_CallPath)
+    else _(ExprNode_BinOp)
     else
         throw ::std::runtime_error("Unknown node type " + tag);
+    #undef _
     
     ptr->deserialise(d);
     d.end_object(tag.c_str());
