@@ -228,9 +228,9 @@ AST::TypeParams Parse_TypeParams(TokenStream& lex)
             // Oopsie!
             throw ParseError::Unexpected(tok);
         }
-        AST::TypeParam  param( is_lifetime, tok.str() );
-        tok = lex.getToken();
-        if( tok.type() == TOK_COLON )
+        ::std::string param_name = tok.str();
+        ret.add_param( AST::TypeParam( is_lifetime, param_name ) );
+        if( GET_TOK(tok, lex) == TOK_COLON )
         {
             // TODO: Conditions
             if( is_lifetime )
@@ -238,18 +238,17 @@ AST::TypeParams Parse_TypeParams(TokenStream& lex)
                 throw ParseError::Todo("lifetime param conditions");
             }
 
-            do {
-                tok = lex.getToken();
-                if(tok.type() == TOK_LIFETIME)
-                    param.addLifetimeBound(tok.str());
+            do
+            {
+                if(GET_TOK(tok, lex) == TOK_LIFETIME) {
+                    ret.add_bound( AST::GenericBound(param_name, tok.str()) );
+                }
                 else {
                     lex.putback(tok);
-                    param.addTypeBound(Parse_Type(lex));
+                    ret.add_bound( AST::GenericBound(param_name, Parse_Type(lex)) );
                 }
-                tok = lex.getToken();
-            } while(tok.type() == TOK_PLUS);
+            } while( GET_TOK(tok, lex) == TOK_PLUS );
         }
-        ret.push_back(param);
     } while( tok.type() == TOK_COMMA );
     lex.putback(tok);
     return ret;
@@ -473,7 +472,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const ::std::vector<AST::MetaItem> m
     // TODO: Support "for Sized?"
     if(tok.type() == TOK_RWORD_WHERE)
     {
-        if( params.size() == 0 )
+        if( params.n_params() == 0 )
             throw ParseError::Generic("Where clause with no generic params");
         Parse_TypeConds(lex, params);
         tok = lex.getToken();

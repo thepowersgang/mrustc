@@ -24,6 +24,10 @@ pub mod io
     {
         EndOfFile,
     }
+    
+    pub trait Reader
+    {
+    }
 }
 
 pub mod iter
@@ -46,6 +50,7 @@ pub mod prelude
         pub use option::Option::{self, None, Some};
         pub use result::Result::{self, Ok, Err};
         pub use io::IoResult;
+        pub use io::Reader;
         pub use iter::Iterator;
     }
 }

@@ -31,7 +31,7 @@ class TypeParam:
     };
     Class   m_class;
     ::std::string   m_name;
-    ::std::vector<TypeRef>  m_trait_bounds;
+    TypeRef m_default;
 public:
     TypeParam():
         m_class(LIFETIME)
@@ -40,17 +40,59 @@ public:
         m_class( is_lifetime ? LIFETIME : TYPE ),
         m_name( ::std::move(name) )
     {}
-    void addLifetimeBound(::std::string name);
-    void addTypeBound(TypeRef type);
     void setDefault(TypeRef type);
     
     const ::std::string&    name() const { return m_name; }
     
     bool is_type() const { return m_class == TYPE; }
-    //TypeRef& get_default() const { return m_
-    ::std::vector<TypeRef>& get_bounds() { assert(is_type()); return m_trait_bounds; }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeParam& tp);
+    SERIALISABLE_PROTOTYPES();
+};
+
+class GenericBound:
+    public Serialisable
+{
+    ::std::string   m_argname;
+    ::std::string   m_lifetime;
+    TypeRef m_trait;
+public:
+    GenericBound() {}
+    GenericBound(::std::string argname, ::std::string lifetime):
+        m_argname(argname),
+        m_lifetime(lifetime)
+    { }
+    GenericBound(::std::string argname, TypeRef trait):
+        m_argname(argname),
+        m_trait( ::std::move(trait) )
+    { }
+    
+    TypeRef& get_type() { return m_trait; }
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x);
+    SERIALISABLE_PROTOTYPES();
+};
+
+class TypeParams:
+    public Serialisable
+{
+    ::std::vector<TypeParam>    m_params;
+    ::std::vector<GenericBound>    m_bounds;
+public:
+    TypeParams() {}
+    
+    size_t n_params() const { return m_params.size(); }
+    ::std::vector<TypeParam>& params() { return m_params; }
+    ::std::vector<GenericBound>& bounds() { return m_bounds; }
+    
+    void add_param(TypeParam param) {
+        m_params.push_back( ::std::move(param) );
+    }
+    void add_bound(GenericBound bound) {
+        m_bounds.push_back( ::std::move(bound) );
+    }
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const TypeParams& tp);
     SERIALISABLE_PROTOTYPES();
 };
 
@@ -83,7 +125,6 @@ struct Item:
 template <typename T>
 using ItemList = ::std::vector<Item<T> >;
 
-typedef ::std::vector<TypeParam>    TypeParams;
 typedef ::std::pair< ::std::string, TypeRef>    StructItem;
 
 class Crate;
@@ -204,7 +245,7 @@ public:
 class Trait:
     public Serialisable
 {
-    ::std::vector<TypeParam>    m_params;
+    TypeParams  m_params;
     ItemList<TypeRef>   m_types;
     ItemList<Function>  m_functions;
 public:
@@ -227,16 +268,16 @@ public:
 class Enum:
     public Serialisable
 {
-    ::std::vector<TypeParam>    m_params;
+    TypeParams    m_params;
     ::std::vector<StructItem>   m_variants;
 public:
     Enum() {}
-    Enum( ::std::vector<TypeParam> params, ::std::vector<StructItem> variants ):
+    Enum( TypeParams params, ::std::vector<StructItem> variants ):
         m_params( move(params) ),
         m_variants( move(variants) )
     {}
     
-    const ::std::vector<TypeParam> params() const { return m_params; }
+    const TypeParams params() const { return m_params; }
     const ::std::vector<StructItem> variants() const { return m_variants; }
     
     SERIALISABLE_PROTOTYPES();
@@ -245,16 +286,16 @@ public:
 class Struct:
     public Serialisable
 {
-    ::std::vector<TypeParam>    m_params;
+    TypeParams    m_params;
     ::std::vector<StructItem>   m_fields;
 public:
     Struct() {}
-    Struct( ::std::vector<TypeParam> params, ::std::vector<StructItem> fields ):
+    Struct( TypeParams params, ::std::vector<StructItem> fields ):
         m_params( move(params) ),
         m_fields( move(fields) )
     {}
     
-    const ::std::vector<TypeParam> params() const { return m_params; }
+    const TypeParams params() const { return m_params; }
     const ::std::vector<StructItem> fields() const { return m_fields; }
     
     SERIALISABLE_PROTOTYPES();

@@ -449,12 +449,14 @@ void ResolvePaths_HandleModule(const AST::Crate& crate, const AST::Path& modpath
         
         // Params
         pr.push_scope();
-        for( auto& param : impl.params() )
+        for( auto& param : impl.params().params() )
         {
             DEBUG("Param " << param);
             pr.add_local_type(param.name());
-            for(auto& trait : param.get_bounds())
-                pr.resolve_type(trait);
+        }
+        for( auto& bound : impl.params().bounds() )
+        {
+            pr.resolve_type(bound.get_type());
         }
         // Trait
         pr.resolve_type( impl.trait() );

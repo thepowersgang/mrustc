@@ -53,7 +53,6 @@ void Path::resolve(const Crate& root_crate)
         const bool is_last = (i+1 == m_nodes.size());
         const bool is_sec_last = (i+2 == m_nodes.size());
         const PathNode& node = m_nodes[i];
-        DEBUG("mod = " << mod << ", node = " << node);
         
         // Sub-modules
         {
@@ -261,7 +260,7 @@ void Path::bind_struct(const Struct& ent, const ::std::vector<TypeRef>& args)
 {
     if( args.size() > 0 )
     {
-        if( args.size() != ent.params().size() )
+        if( args.size() != ent.params().n_params() )
             throw ParseError::Generic("Parameter count mismatch");
         // TODO: Is it the role of this section of code to ensure that the passed args are valid?
         // - Probably not, it should instead be the type checker that does it

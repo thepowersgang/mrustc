@@ -9,8 +9,6 @@
 
 namespace AST {
 
-ExternCrate ExternCrate_std();
-
 SERIALISE_TYPE(MetaItem::, "AST_MetaItem", {
     s << m_name;
     s << m_str_val;
@@ -116,16 +114,6 @@ void Crate::load_extern_crate(::std::string name)
     d.item( ret.crate() );
     
     m_extern_crates.insert( make_pair(::std::move(name), ::std::move(ret)) );
-    
-    //if( name == "std" )
-    //{
-    //    // HACK! Load std using a hackjob (included within the compiler)
-    //    m_extern_crates.insert( make_pair( ::std::move(name), ExternCrate_std() ) );
-    //}
-    //else
-    //{
-    //    throw ParseError::Todo("'extern crate' (not hackjob std)");
-    //}
 }
 SERIALISE_TYPE(Crate::, "AST_Crate", {
     s << m_load_std;
@@ -148,77 +136,6 @@ ExternCrate::ExternCrate(const char *path)
 SERIALISE_TYPE(ExternCrate::, "AST_ExternCrate", {
 },{
 })
-
-ExternCrate ExternCrate_std()
-{
-    ExternCrate crate;
-    
-    Module& std_mod = crate.root_module();
-    
-    // === Add modules ===
-    // - option
-    Module  option("option");
-    option.add_enum(true, "Option", Enum(
-        {
-            TypeParam(false, "T"),
-        },
-        {
-            StructItem("None", TypeRef()),
-            StructItem("Some", TypeRef(TypeRef::TagArg(), "T")),
-        }
-        ));
-    std_mod.add_submod(true, ::std::move(option));
-    // - result
-    Module  result("result");
-    result.add_enum(true, "Result", Enum(
-        {
-            TypeParam(false, "R"),
-            TypeParam(false, "E"),
-        },
-        {
-            StructItem("Ok", TypeRef(TypeRef::TagArg(), "R")),
-            StructItem("Err", TypeRef(TypeRef::TagArg(), "E")),
-        }
-        ));
-    std_mod.add_submod(true, ::std::move(result));
-    // - io
-    Module  io("io");
-    io.add_typealias(true, "IoResult", TypeAlias(
-        { TypeParam(false, "T") },
-        TypeRef( Path("std", {
-            PathNode("result",{}),
-            PathNode("Result", {TypeRef("T"),TypeRef(Path("std", {PathNode("io"), PathNode("IoError")}))})
-            }) )
-        ));
-    std_mod.add_submod(true, ::std::move(io));
-    // - iter
-    {
-        Module  iter("iter");
-        #if 0
-        {
-            Trait   iterator;
-            iterator.add_type("Item", TypeRef());
-            //iterator.add_function("next", Function({}, Function::CLASS_REFMETHOD, "Option<<Self as Iterator>::Item>", {}, Expr());
-            iter.add_trait(true, "Iterator", ::std::move(iterator));
-        }
-        #endif
-        std_mod.add_submod(true, ::std::move(iter));
-    }
-    
-    // - prelude
-    Module  prelude("prelude");
-    // Re-exports
-    #define USE(mod, name, ...)    do{ Path p("std", {__VA_ARGS__}); mod.add_alias(true, ::std::move(p), name); } while(0)
-    USE(prelude, "Option",  PathNode("option", {}), PathNode("Option",{}) );
-    USE(prelude, "Some",  PathNode("option", {}), PathNode("Option",{}), PathNode("Some",{}) );
-    USE(prelude, "None",  PathNode("option", {}), PathNode("Option",{}), PathNode("None",{}) );
-    USE(prelude, "Result", PathNode("result", {}), PathNode("Result",{}) );
-    USE(prelude, "Ok",  PathNode("result", {}), PathNode("Result",{}), PathNode("Ok",{}) );
-    USE(prelude, "Err", PathNode("result", {}), PathNode("Result",{}), PathNode("Err",{}) );
-    std_mod.add_submod(true, prelude);
-    
-    return crate;
-}
 
 SERIALISE_TYPE(Module::, "AST_Module", {
     s << m_name;
@@ -368,14 +285,6 @@ SERIALISE_TYPE(Struct::, "AST_Struct", {
     s.item(m_fields);
 })
 
-void TypeParam::addLifetimeBound(::std::string name)
-{
-
-}
-void TypeParam::addTypeBound(TypeRef type)
-{
-
-}
 ::std::ostream& operator<<(::std::ostream& os, const TypeParam& tp)
 {
     os << "TypeParam(";
@@ -385,10 +294,8 @@ void TypeParam::addTypeBound(TypeRef type)
     case TypeParam::TYPE:      os << "";   break;
     }
     os << tp.m_name;
-    if( tp.m_trait_bounds.size() )
-    {
-        os << ": [" << tp.m_trait_bounds << "]";
-    }
+    os << " = ";
+    os << tp.m_default;
     os << ")";
     return os;
 }
@@ -401,7 +308,7 @@ SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
     }
     s << classstr;
     s << m_name;
-    s << m_trait_bounds;
+    s << m_default;
 },{
     {
         ::std::string   n;
@@ -411,7 +318,26 @@ SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
         else    throw ::std::runtime_error("");
     }
     s.item(m_name);
-    s.item(m_trait_bounds);
+    s.item(m_default);
+})
+
+::std::ostream& operator<<(::std::ostream& os, const GenericBound& x)
+{
+    return os << "GenericBound(" << x.m_argname << "," << x.m_lifetime << "," << x.m_trait << ")";
+}
+SERIALISE_TYPE_S(GenericBound, {
+    s.item(m_argname);
+    s.item(m_lifetime);
+    s.item(m_trait);
+})
+
+::std::ostream& operator<<(::std::ostream& os, const TypeParams& tps)
+{
+    return os << "TypeParams({" << tps.m_params << "}, {" << tps.m_bounds << "})";
+}
+SERIALISE_TYPE_S(TypeParams, {
+    s.item(m_params);
+    s.item(m_bounds);
 })
 
 }
