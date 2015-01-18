@@ -96,6 +96,7 @@ int main(int argc, char *argv[])
         // - Typecheck statics and consts
         // - Typecheck + propagate functions
         //  > Forward pass first
+        Typecheck_Expr(crate);
 
         if( strcmp(emit_type, "ast") == 0 )
         {
