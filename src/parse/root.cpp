@@ -640,6 +640,13 @@ AST::Impl Parse_Impl(TokenStream& lex)
         }
         switch(tok.type())
         {
+        case TOK_RWORD_TYPE: {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            ::std::string name = tok.str();
+            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+            impl.add_type(is_public, name, Parse_Type(lex));
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+            break; }
         case TOK_RWORD_FN: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string name = tok.str();

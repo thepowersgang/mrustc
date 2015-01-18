@@ -315,7 +315,8 @@ class Impl:
     TypeRef m_trait;
     TypeRef m_type;
     
-    ::std::vector<Item<Function> >  m_functions;
+    ItemList<TypeRef>   m_types;
+    ItemList<Function>  m_functions;
 public:
     Impl() {}
     Impl(TypeParams params, TypeRef impl_type, TypeRef trait_type):
@@ -327,15 +328,21 @@ public:
     void add_function(bool is_public, ::std::string name, Function fcn) {
         m_functions.push_back( Item<Function>( ::std::move(name), ::std::move(fcn), is_public ) );
     }
+    void add_type(bool is_public, ::std::string name, TypeRef type) {
+        m_types.push_back( Item<TypeRef>( ::std::move(name), ::std::move(type), is_public ) );
+    }
     
     const TypeParams& params() const { return m_params; }
     const TypeRef& trait() const { return m_trait; }
     const TypeRef& type() const { return m_type; }
+    const ItemList<Function>& functions() const { return m_functions; }
+    const ItemList<TypeRef>& types() const { return m_types; }
 
     TypeParams& params() { return m_params; }
     TypeRef& trait() { return m_trait; }
     TypeRef& type() { return m_type; }
-    ::std::vector<Item<Function> >& functions() { return m_functions; }
+    ItemList<Function>& functions() { return m_functions; }
+    ItemList<TypeRef>& types() { return m_types; }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const Impl& impl);
     SERIALISABLE_PROTOTYPES();

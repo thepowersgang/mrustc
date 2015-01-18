@@ -306,7 +306,11 @@ Path& Path::operator+=(const Path& other)
     {
     case Path::RELATIVE:
         os << "self";
+        for(const auto& n : path.m_nodes)
+            os << n;
+        break;
     case Path::ABSOLUTE:
+        os << "["<<path.m_crate<<"]";
         for(const auto& n : path.m_nodes)
             os << n;
         break;

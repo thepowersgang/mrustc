@@ -327,7 +327,8 @@ SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
 
 ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x)
 {
-    return os << "GenericBound(" << x.m_argname << "," << x.m_lifetime << "," << x.m_trait << ")";
+    //return os << "GenericBound(" << x.m_argname << "," << x.m_lifetime << "," << x.m_trait << ")";
+    return os << x.m_argname << ": ('" << x.m_lifetime << " + " << x.m_trait << ")";
 }
 SERIALISE_TYPE_S(GenericBound, {
     s.item(m_argname);
