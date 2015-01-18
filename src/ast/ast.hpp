@@ -67,7 +67,9 @@ public:
         m_trait( ::std::move(trait) )
     { }
     
-    TypeRef& get_type() { return m_trait; }
+    bool is_trait() const { return m_lifetime == ""; }
+    TypeRef& type() { return m_trait; }
+    const TypeRef& type() const { return m_trait; }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x);
     SERIALISABLE_PROTOTYPES();
@@ -82,6 +84,8 @@ public:
     TypeParams() {}
     
     size_t n_params() const { return m_params.size(); }
+    const ::std::vector<TypeParam>& params() const { return m_params; }
+    const ::std::vector<GenericBound>& bounds() const { return m_bounds; }
     ::std::vector<TypeParam>& params() { return m_params; }
     ::std::vector<GenericBound>& bounds() { return m_bounds; }
     
@@ -254,6 +258,9 @@ public:
         m_params(params)
     {
     }
+    
+    const TypeParams& params() const { return m_params; }
+    const ItemList<TypeRef>& types() const { return m_types; }
     
     void add_type(::std::string name, TypeRef type) {
         m_types.push_back( Item<TypeRef>(move(name), move(type), true) );

@@ -9,8 +9,26 @@
 #include <iostream>
 #include <vector>
 #include <cassert>
+#include <sstream>
 
-#define DEBUG(ss)   do{ ::std::cerr << __FUNCTION__ << ": " << ss << ::std::endl; } while(0)
+extern int g_debug_indent_level;
+
+#define FMT(ss)    (dynamic_cast< ::std::stringstream&>(::std::stringstream() << ss).str())
+#define INDENT()    do { g_debug_indent_level += 1; } while(0)
+#define UNINDENT()    do { g_debug_indent_level -= 1; } while(0)
+#define DEBUG(ss)   do{ ::std::cerr << ::RepeatLitStr{" ", g_debug_indent_level} << __FUNCTION__ << ": " << ss << ::std::endl; } while(0)
+
+struct RepeatLitStr
+{
+    const char *s;
+    int n;
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const RepeatLitStr& r) {
+        for(int i = 0; i < r.n; i ++ )
+            os << r.s;
+        return os;
+    }
+};
 
 namespace rust {
 

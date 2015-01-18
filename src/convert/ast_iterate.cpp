@@ -3,11 +3,12 @@
 #include "ast_iterate.hpp"
 #include "../ast/ast.hpp"
 
-// handle_path is pure virtual
-
+void CASTIterator::handle_path(AST::Path& path, CASTIterator::PathMode pm)
+{
+}
 void CASTIterator::handle_type(TypeRef& type)
 {
-    DEBUG("type = " << type);
+    //DEBUG("type = " << type);
     if( type.is_path() )
     {
         handle_path(type.path(), MODE_TYPE);
@@ -30,13 +31,14 @@ void CASTIterator::handle_params(AST::TypeParams& params)
     }
     for( auto& bound : params.bounds() )
     {
-        handle_type(bound.get_type());
+        handle_type(bound.type());
     }
 }
 
 
 void CASTIterator::start_scope()
 {
+    INDENT();
 }
 void CASTIterator::local_type(::std::string name)
 {
@@ -52,11 +54,12 @@ void CASTIterator::local_use(::std::string name, AST::Path path)
 }
 void CASTIterator::end_scope()
 {
+    UNINDENT();
 }
 
 void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
 {
-    DEBUG("pat = " << pat);
+    //DEBUG("pat = " << pat);
     // Resolve names
     switch(pat.type())
     {

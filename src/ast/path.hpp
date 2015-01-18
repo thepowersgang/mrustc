@@ -37,16 +37,7 @@ public:
     ::std::vector<TypeRef>&   args() { return m_params; }
     const ::std::vector<TypeRef>&   args() const;
     
-    friend ::std::ostream& operator<<(::std::ostream& os, const PathNode& pn) {
-        os << pn.m_name;
-        if( pn.m_params.size() )
-        {
-            os << "<";
-            os << pn.m_params;
-            os << ">";
-        }
-        return os;
-    }
+    friend ::std::ostream& operator<<(::std::ostream& os, const PathNode& pn);
     
     SERIALISABLE_PROTOTYPES();
 };
@@ -165,6 +156,7 @@ public:
     bool is_bound() const { return m_binding_type != UNBOUND; }
     BindingType binding_type() const { return m_binding_type; }
     const Module& bound_module() const { assert(m_binding_type == MODULE); return *m_binding.module_; }
+    const Trait& bound_trait() const { assert(m_binding_type == TRAIT); return *m_binding.trait; }
     
     ::std::vector<PathNode>& nodes() { return m_nodes; }
     const ::std::vector<PathNode>& nodes() const { return m_nodes; }

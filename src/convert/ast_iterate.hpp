@@ -23,7 +23,7 @@ public:
         MODE_TYPE,
         MODE_BIND,  // Failure is allowed
     };
-    virtual void handle_path(AST::Path& path, PathMode mode) = 0;
+    virtual void handle_path(AST::Path& path, PathMode mode);
     virtual void handle_type(TypeRef& type);
     virtual void handle_expr(AST::ExprNode& node);
 

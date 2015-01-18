@@ -7,10 +7,10 @@
 #include "ast/ast.hpp"
 #include <serialiser_texttree.hpp>
 #include <cstring>
+#include <main_bindings.hpp>
 
-extern AST::Crate Parse_Crate(::std::string mainfile);
-extern void ResolvePaths(AST::Crate& crate);
-extern AST::Flat Convert_Flatten(const AST::Crate& crate);
+
+int g_debug_indent_level = 0;
 
 /// main!
 int main(int argc, char *argv[])
@@ -90,7 +90,9 @@ int main(int argc, char *argv[])
         // Typecheck / type propagate module (type annotations of all values)
         // - Check all generic conditions (ensure referenced trait is valid)
         //  > Also mark parameter with applicable traits
+        Typecheck_GenericBounds(crate);
         // - Check all generic parameters match required conditions
+        Typecheck_GenericParams(crate);
         // - Typecheck statics and consts
         // - Typecheck + propagate functions
         //  > Forward pass first

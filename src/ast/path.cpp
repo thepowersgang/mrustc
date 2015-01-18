@@ -7,6 +7,8 @@
 #include "../parse/parseerror.hpp"
 #include <algorithm>
 
+#define PRETTY_PATH_PRINT   1
+
 namespace AST {
 
 // --- AST::PathNode
@@ -22,6 +24,19 @@ const ::std::string& PathNode::name() const
 const ::std::vector<TypeRef>& PathNode::args() const
 {
     return m_params;
+}
+::std::ostream& operator<<(::std::ostream& os, const PathNode& pn) {
+    #if PRETTY_PATH_PRINT
+    os << "::";
+    #endif
+    os << pn.m_name;
+    if( pn.m_params.size() )
+    {
+        os << "<";
+        os << pn.m_params;
+        os << ">";
+    }
+    return os;
 }
 SERIALISE_TYPE(PathNode::, "PathNode", {
     s << m_name;
@@ -286,6 +301,20 @@ Path& Path::operator+=(const Path& other)
 }
 ::std::ostream& operator<<(::std::ostream& os, const Path& path)
 {
+    #if PRETTY_PATH_PRINT
+    switch(path.m_class)
+    {
+    case Path::RELATIVE:
+        os << "self";
+    case Path::ABSOLUTE:
+        for(const auto& n : path.m_nodes)
+            os << n;
+        break;
+    case Path::LOCAL:
+        os << path.m_nodes[0].name();
+        break;
+    }
+    #else
     switch(path.m_class)
     {
     case Path::RELATIVE:
@@ -298,6 +327,7 @@ Path& Path::operator+=(const Path& other)
         os << "Path(TagLocal, " << path.m_nodes[0].name() << ")";
         break;
     }
+    #endif
     return os;
 }
 ::Serialiser& operator<<(Serialiser& s, Path::Class pc)
