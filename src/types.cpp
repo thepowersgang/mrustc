@@ -35,6 +35,7 @@ bool TypeRef::operator==(const TypeRef& x) const
     case TypeRef::ASSOCIATED:
         return m_path == x.m_path && m_inner_types == x.m_inner_types;
     }
+    throw ::std::runtime_error(FMT("BUGCHECK - Unhandled TypeRef class '" << m_class << "'"));
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr) {

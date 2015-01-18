@@ -44,6 +44,7 @@ public:
     
     virtual void handle_struct(AST::Path path, AST::Struct& str);
     virtual void handle_enum(AST::Path path, AST::Enum& enm);
+    virtual void handle_trait(AST::Path path, AST::Trait& trait);
     virtual void handle_alias(AST::Path path, AST::TypeAlias& alias);
 };
 

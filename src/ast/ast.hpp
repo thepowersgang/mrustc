@@ -176,6 +176,9 @@ public:
     const TypeParams& params() const { return m_params; }
     const TypeRef& type() const { return m_type; }
     
+    TypeParams& params() { return m_params; }
+    TypeRef& type() { return m_type; }
+    
     SERIALISABLE_PROTOTYPES();
 };
 
@@ -265,7 +268,12 @@ public:
     }
     
     const TypeParams& params() const { return m_params; }
+    const ItemList<Function>& functions() const { return m_functions; }
     const ItemList<TypeRef>& types() const { return m_types; }
+
+    TypeParams& params() { return m_params; }
+    ItemList<Function>& functions() { return m_functions; }
+    ItemList<TypeRef>& types() { return m_types; }
     
     void add_type(::std::string name, TypeRef type) {
         m_types.push_back( Item<TypeRef>(move(name), move(type), true) );

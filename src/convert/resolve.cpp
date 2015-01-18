@@ -151,6 +151,7 @@ void CPathResolver::end_scope()
 
 void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
 {
+    INDENT();
     DEBUG("path = " << path);
     
     // Handle generic components of the path
@@ -179,6 +180,7 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
         // If there's a single node, and we're in expresion mode, look for a variable
         // Otherwise, search for a type
         bool is_trivial_path = path.size() == 1 && path[0].args().size() == 0;
+        
         LocalItem::Type search_type = (is_trivial_path && mode == MODE_EXPR ? LocalItem::VAR : LocalItem::TYPE);
         auto local = lookup_local( search_type, path[0].name() );
         if( local.is_some() )
@@ -230,17 +232,49 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
                 return ;
             }
         }
-        for( const auto& item_fcn : m_module->functions() )
+        for( const auto& import : m_module->imports() )
         {
-            if( item_fcn.name == path[0].name() ) {
+            const ::std::string& bind_name = import.name;
+            const AST::Path& bind_path = import.data;
+            if( bind_name == "" ) {
+            }
+            else if( bind_name == path[0].name() ) {
+                path = AST::Path::add_tailing(bind_path, path);
+                path.resolve( m_crate );
+                return ;
+            }
+        }
+    
+        // Types
+        for( const auto& item : m_module->structs() )
+        {
+            if( item.name == path[0].name() ) {
                 path = m_module_path + path;
                 path.resolve( m_crate );
                 return ;
             }
         }
-        for( const auto& item : m_module->structs() )
+        for( const auto& item : m_module->enums() )
         {
             if( item.name == path[0].name() ) {
+                path = m_module_path + path;
+                path.resolve( m_crate );
+                return ;
+            }
+        }
+        for( const auto& item : m_module->traits() )
+        {
+            if( item.name == path[0].name() ) {
+                path = m_module_path + path;
+                path.resolve( m_crate );
+                return ;
+            }
+        }
+        
+        // Values / Functions
+        for( const auto& item_fcn : m_module->functions() )
+        {
+            if( item_fcn.name == path[0].name() ) {
                 path = m_module_path + path;
                 path.resolve( m_crate );
                 return ;
@@ -254,31 +288,28 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
                 return ;
             }
         }
-        for( const auto& import : m_module->imports() )
-        {
-            const ::std::string& bind_name = import.name;
-            const AST::Path& bind_path = import.data;
-            if( bind_name == "" ) {
-            }
-            else if( bind_name == path[0].name() ) {
-                path = AST::Path::add_tailing(bind_path, path);
-                path.resolve( m_crate );
-                return ;
-            }
-        }
         
         DEBUG("no matches found for path = " << path);
         assert( path.is_relative() );
         if( mode != MODE_BIND )
             throw ParseError::Generic("Name resolution failed");
     }
+    
+    UNINDENT();
 }
 void CPathResolver::handle_type(TypeRef& type)
 {
     if( type.is_path() && type.path().is_relative() && type.path().size() == 1 )
     {
         const auto& name = type.path()[0].name();
-        if( lookup_local(LocalItem::TYPE, name).is_some() )
+         
+        if( name == "Self" )
+        {
+            // TODO: Handle "Self" correctly
+            // THIS IS WRONG! (well, I think)
+            type = TypeRef(TypeRef::TagArg(), "Self");
+        }
+        else if( lookup_local(LocalItem::TYPE, name).is_some() )
         {
             type = TypeRef(TypeRef::TagArg(), name);
         }
@@ -433,6 +464,7 @@ void SetCrateName_Mod(::std::string name, AST::Module& mod)
 // - Convert all paths into absolute paths (or local variable references)
 void ResolvePaths(AST::Crate& crate)
 {
+    DEBUG(" >>>");
     // Pre-process external crates to tag all paths
     for(auto& ec : crate.extern_crates())
     {
@@ -441,8 +473,10 @@ void ResolvePaths(AST::Crate& crate)
     
     // Handle 'use' statements in an initial parss
     ResolvePaths_HandleModule_Use(crate, AST::Path(AST::Path::TagAbsolute()), crate.root_module());
+    DEBUG(" ---");
     
     // Then do path resolution on all other items
     CPathResolver	pr(crate);
     pr.handle_module(AST::Path(AST::Path::TagAbsolute()), crate.root_module());
+    DEBUG(" <<<");
 }

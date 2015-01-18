@@ -92,12 +92,9 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
 
 void CASTIterator::handle_module(AST::Path path, AST::Module& mod)
 {
+    INDENT();
     start_scope();
-    for( auto& fcn : mod.functions() )
-    {
-        DEBUG("Handling function '" << fcn.name << "'");
-        handle_function(path + fcn.name, fcn.data);
-    }
+    
     for( auto& item : mod.structs() )
     {
         DEBUG("Handling struct " << item.name);
@@ -108,12 +105,28 @@ void CASTIterator::handle_module(AST::Path path, AST::Module& mod)
         DEBUG("Handling enum " << item.name);
         handle_enum(path + item.name, item.data);
     }
+    for( auto& item : mod.traits() )
+    {
+        DEBUG("Handling trait " << item.name);
+        handle_trait(path + item.name, item.data);
+    }
+    for( auto& item : mod.type_aliases() )
+    {
+        DEBUG("Handling alias " << item.name);
+        handle_alias(path + item.name, item.data);
+    }
     
+    for( auto& fcn : mod.functions() )
+    {
+        DEBUG("Handling function '" << fcn.name << "'");
+        handle_function(path + fcn.name, fcn.data);
+    }
     for( auto& impl : mod.impls() )
     {
         DEBUG("Handling 'impl' " << impl);
         handle_impl(path, impl);
     }
+    
     // End scope before handling sub-modules
     end_scope(); 
  
@@ -122,6 +135,7 @@ void CASTIterator::handle_module(AST::Path path, AST::Module& mod)
         DEBUG("Handling submod '" << submod.first.name() << "'");
         handle_module(path + submod.first.name(), submod.first);
     }
+    UNINDENT();
 }
 void CASTIterator::handle_function(AST::Path path, AST::Function& fcn)
 {
@@ -138,7 +152,10 @@ void CASTIterator::handle_function(AST::Path path, AST::Function& fcn)
         handle_pattern( pat, arg.second );
     }
 
-    handle_expr( fcn.code().node() );
+    if( fcn.code().is_valid() )
+    {
+        handle_expr( fcn.code().node() );
+    }
     
     end_scope();
 }
@@ -168,17 +185,32 @@ void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
 
 void CASTIterator::handle_struct(AST::Path path, AST::Struct& str)
 {
+    start_scope();
     handle_params( str.params() );
     for( auto& f : str.fields() )
         handle_type( f.second );
+    end_scope();
 }
 void CASTIterator::handle_enum(AST::Path path, AST::Enum& enm)
 {
+    start_scope();
     handle_params( enm.params() );
     for( auto& f : enm.variants() )
         handle_type( f.second );
+    end_scope();
+}
+void CASTIterator::handle_trait(AST::Path path, AST::Trait& trait)
+{
+    start_scope();
+    handle_params( trait.params() );
+    for( auto& fcn : trait.functions() )
+        handle_function( path + fcn.name, fcn.data );
+    end_scope();
 }
 void CASTIterator::handle_alias(AST::Path path, AST::TypeAlias& alias)
 {
-    throw ::std::runtime_error("TODO - handle_alias");
+    start_scope();
+    handle_params( alias.params() );
+    handle_type( alias.type() );
+    end_scope();
 }
