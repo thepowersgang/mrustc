@@ -81,7 +81,7 @@ private:
         const Module* module_;
         const Enum* enum_;
         const Struct*   struct_;
-        const Trait*    trait;
+        const Trait*    trait_;
         const Static*   static_;
         const Function* func_;
         struct {
@@ -155,8 +155,13 @@ public:
     
     bool is_bound() const { return m_binding_type != UNBOUND; }
     BindingType binding_type() const { return m_binding_type; }
-    const Module& bound_module() const { assert(m_binding_type == MODULE); return *m_binding.module_; }
-    const Trait& bound_trait() const { assert(m_binding_type == TRAIT); return *m_binding.trait; }
+    #define _(t, n, v)  const t& bound_##n() const { assert(m_binding_type == v); return *m_binding.n##_; }
+    _(Module, module, MODULE)
+    _(Trait,  trait,  TRAIT)
+    _(Struct, struct, STRUCT)
+    _(Enum,   enum,   ENUM)
+    _(Function, func, FUNCTION)
+    #undef _
     
     ::std::vector<PathNode>& nodes() { return m_nodes; }
     const ::std::vector<PathNode>& nodes() const { return m_nodes; }

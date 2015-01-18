@@ -108,6 +108,7 @@ public:
         m_inner_types( {::std::move(base), ::std::move(trait)} )
     {}
    
+    bool is_wildcard() const { return m_class == ANY; }
     bool is_path() const { return m_class == PATH; }
     AST::Path& path() { assert(is_path()); return m_path; }
     ::std::vector<TypeRef>& sub_types() { return m_inner_types; }

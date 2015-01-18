@@ -84,7 +84,7 @@ option<T> None() {
 
 };
 
-namespace AST {
+namespace std {
 
 template <typename T>
 inline ::std::ostream& operator<<(::std::ostream& os, const ::std::vector<T>& v) {

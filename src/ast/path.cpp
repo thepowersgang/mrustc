@@ -156,7 +156,7 @@ void Path::resolve(const Crate& root_crate)
                 DEBUG("Found trait");
                 if( is_last ) {
                     m_binding_type = TRAIT;
-                    m_binding.trait = &it->data;
+                    m_binding.trait_ = &it->data;
                     return;
                 }
                 else if( is_sec_last ) {

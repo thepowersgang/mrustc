@@ -291,7 +291,7 @@ SERIALISE_TYPE(Struct::, "AST_Struct", {
 
 ::std::ostream& operator<<(::std::ostream& os, const TypeParam& tp)
 {
-    os << "TypeParam(";
+    //os << "TypeParam(";
     switch(tp.m_class)
     {
     case TypeParam::LIFETIME:  os << "'";  break;
@@ -300,7 +300,7 @@ SERIALISE_TYPE(Struct::, "AST_Struct", {
     os << tp.m_name;
     os << " = ";
     os << tp.m_default;
-    os << ")";
+    //os << ")";
     return os;
 }
 SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
@@ -338,7 +338,8 @@ SERIALISE_TYPE_S(GenericBound, {
 
 ::std::ostream& operator<<(::std::ostream& os, const TypeParams& tps)
 {
-    return os << "TypeParams({" << tps.m_params << "}, {" << tps.m_bounds << "})";
+    //return os << "TypeParams({" << tps.m_params << "}, {" << tps.m_bounds << "})";
+    return os << "<" << tps.m_params << "> where {" << tps.m_bounds << "}";
 }
 SERIALISE_TYPE_S(TypeParams, {
     s.item(m_params);

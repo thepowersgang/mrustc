@@ -68,8 +68,10 @@ public:
     { }
     
     bool is_trait() const { return m_lifetime == ""; }
-    TypeRef& type() { return m_trait; }
+    const ::std::string& name() const { return m_argname; }
     const TypeRef& type() const { return m_trait; }
+    
+    TypeRef& type() { return m_trait; }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x);
     SERIALISABLE_PROTOTYPES();
