@@ -44,6 +44,7 @@ public:
     CPathResolver(const AST::Crate& crate);
 
     virtual void handle_path(AST::Path& path, CASTIterator::PathMode mode) override;
+    virtual void handle_type(TypeRef& type) override;
     virtual void handle_expr(AST::ExprNode& node) override;
     
     virtual void handle_pattern(AST::Pattern& pat, const TypeRef& type_hint) override;
@@ -207,6 +208,7 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
             if( mode == MODE_TYPE )
             {
                 DEBUG("Local type " << path[0].name());
+                throw ParseError::BugCheck("Local types should be handled in handle_type");
                 return ;
             }
         
@@ -270,6 +272,22 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
         if( mode != MODE_BIND )
             throw ParseError::Generic("Name resolution failed");
     }
+}
+void CPathResolver::handle_type(TypeRef& type)
+{
+    if( type.is_path() && type.path().is_relative() && type.path().size() == 1 )
+    {
+        const auto& name = type.path()[0].name();
+        if( lookup_local(LocalItem::TYPE, name).is_some() )
+        {
+            type = TypeRef(TypeRef::TagArg(), name);
+        }
+        else
+        {
+            // Not a type param, fall back to other checks
+        }
+    }
+    CASTIterator::handle_type(type);
 }
 void CPathResolver::handle_expr(AST::ExprNode& node)
 {

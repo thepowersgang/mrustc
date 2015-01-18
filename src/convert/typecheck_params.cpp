@@ -10,9 +10,18 @@ class CGenericParamChecker:
     public CASTIterator
 {
      int    m_within_expr = 0;
+    ::std::vector<const AST::TypeParams*>   m_params_stack;
 public:
     virtual void handle_path(AST::Path& path, CASTIterator::PathMode pm) override;
     virtual void handle_expr(AST::ExprNode& root) override;
+    virtual void start_scope() override;
+    virtual void end_scope() override;
+    virtual void handle_params(AST::TypeParams& params) override;
+    
+private:
+    bool has_impl_for_param(const ::std::string name, const TypeRef& trait) const;
+    bool has_impl(const TypeRef& type, const TypeRef& trait) const;
+    void check_generic_params(const AST::TypeParams& info, ::std::vector<TypeRef>& types, bool allow_infer = false);
 };
 
 class CNodeVisitor:
@@ -25,14 +34,62 @@ public:
     {}
 };
 
-bool has_impl(const TypeRef& type, const TypeRef& trait)
+// === CODE ===
+bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const TypeRef& trait) const
 {
+    const AST::TypeParams*  tps = nullptr;
+    // Locate params set that contains the passed name
+    DEBUG("Searching stack for '" << name << "'");
+    for( const auto ptr : m_params_stack )
+    {
+        if( ptr )
+        {
+            DEBUG("Trying " << *ptr);
+            for( const auto& p : ptr->params() )
+            {
+                if(p.name() == name) {
+                    DEBUG(" - Found " << p);
+                    tps = ptr;
+                    break ;
+                }
+            }
+        }
+    }
+    
+    if( !tps )
+    {
+        throw ::std::runtime_error(FMT("Param '"<<name<<"' isn't in scope"));
+    }
+    DEBUG("Found block " << *tps);
+    
+    // Search bound list for the passed trait
+    for( const auto& bound : tps->bounds() )
+    {
+        if( bound.is_trait() && bound.name() == name )
+        {
+            DEBUG("bound.type() {" << bound.type() << "} == trait {" << trait << "}");
+            if( bound.type() == trait )
+                return true;
+        }
+    }
+    
+    // TODO: Search for generic ("impl<T: Trait2> Trait1 for T") that fits bounds
+    
+    DEBUG("No match in generics, returning failure");
+    return false;
+}
+bool CGenericParamChecker::has_impl(const TypeRef& type, const TypeRef& trait) const
+{
+    DEBUG("(type = " << type << ", trait = " << trait << ")");
     if( type.is_type_param() )
     {
         // TODO: Search current scope (requires access to CGenericParamChecker) for this type,
         // and search the bounds for this trait
         // - Also accept bounded generic impls (somehow)
-        throw ::std::runtime_error( FMT("TODO: Enumerate bounds on type param " << type.type_param() << " for matches to trait") );
+        if( has_impl_for_param(type.type_param(), trait) )
+        {
+            return true;
+        }
     }
     else
     {
@@ -47,7 +104,7 @@ bool has_impl(const TypeRef& type, const TypeRef& trait)
 /// \param info Generic item information (param names and bounds)
 /// \param types Type parameters being passed to the generic item
 /// \param allow_infer  Allow inferrence (mutates \a types with conditions from \a info)
-void check_generic_params(const AST::TypeParams& info, ::std::vector<TypeRef>& types, bool allow_infer = false)
+void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::std::vector<TypeRef>& types, bool allow_infer)
 {
     DEBUG("(info = " << info << ", types = {" << types << "}");
     // TODO: Need to correctly handle lifetime params here, they should be in a different list
@@ -114,15 +171,12 @@ void check_generic_params(const AST::TypeParams& info, ::std::vector<TypeRef>& t
                     {
                         throw ::std::runtime_error( FMT("No matching impl of "<<trait<<" for "<<type));
                     }
-                    
-                    throw ::std::runtime_error( FMT("TODO: Check if " << type << " impls " << trait) );
                 }
             }
         }
     }
 }
 
-// === CODE ===
 void CGenericParamChecker::handle_path(AST::Path& path, CASTIterator::PathMode pm)
 {
     DEBUG("path = " << path);
@@ -165,11 +219,27 @@ void CGenericParamChecker::handle_expr(AST::ExprNode& root)
     m_within_expr -= 1;
 }
 
+void CGenericParamChecker::start_scope()
+{
+    m_params_stack.push_back(nullptr);
+}
+void CGenericParamChecker::end_scope()
+{
+    assert( m_params_stack.size() > 0 );
+    while( m_params_stack.back() != nullptr )
+        m_params_stack.pop_back();
+}
+void CGenericParamChecker::handle_params(AST::TypeParams& params)
+{
+    m_params_stack.push_back( &params );
+}
+
 /// Typecheck generic parameters (ensure that they match all generic bounds)
 void Typecheck_GenericParams(AST::Crate& crate)
 {
-    DEBUG(" --- ");
+    DEBUG(" >>> ");
     CGenericParamChecker    chk;
     chk.handle_module(AST::Path({}), crate.root_module());
+    DEBUG(" <<< ");
 }
 

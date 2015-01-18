@@ -25,6 +25,10 @@ const ::std::vector<TypeRef>& PathNode::args() const
 {
     return m_params;
 }
+bool PathNode::operator==(const PathNode& x) const
+{
+    return m_name == x.m_name && m_params == x.m_params;
+}
 ::std::ostream& operator<<(::std::ostream& os, const PathNode& pn) {
     #if PRETTY_PATH_PRINT
     os << "::";
@@ -299,6 +303,12 @@ Path& Path::operator+=(const Path& other)
         append(node);
     return *this;
 }
+
+bool Path::operator==(const Path& x) const
+{
+    return m_class == x.m_class && m_crate == x.m_crate && m_nodes == x.m_nodes;
+}
+
 ::std::ostream& operator<<(::std::ostream& os, const Path& path)
 {
     #if PRETTY_PATH_PRINT

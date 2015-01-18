@@ -114,7 +114,12 @@ public:
     AST::Path& path() { assert(is_path()); return m_path; }
     const ::std::string& type_param() const { assert(is_type_param()); return m_path[0].name(); }
     ::std::vector<TypeRef>& sub_types() { return m_inner_types; }
-    
+   
+    bool operator==(const TypeRef& x) const;
+    bool operator!=(const TypeRef& x) const {
+        return !(*this == x);
+    }
+     
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr);
     
     static const char* class_name(TypeRef::Class c);

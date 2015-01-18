@@ -4,6 +4,39 @@
 #include "ast/ast.hpp"
 
 
+bool TypeRef::operator==(const TypeRef& x) const
+{
+    if(m_class != x.m_class)
+        return false;
+    switch(m_class)
+    {
+    case TypeRef::ANY:
+    case TypeRef::UNIT:
+        return true;
+    case TypeRef::PRIMITIVE:
+        return m_core_type == x.m_core_type;
+    case TypeRef::TUPLE:
+        return m_inner_types == x.m_inner_types;
+    case TypeRef::REFERENCE:
+    case TypeRef::POINTER:
+        return m_is_inner_mutable == x.m_is_inner_mutable && m_inner_types == x.m_inner_types;
+    case TypeRef::ARRAY:
+        if(m_inner_types[0] != x.m_inner_types[0])
+            return false;
+        if(m_size_expr.get())
+        {
+            throw ::std::runtime_error("TODO: Sized array comparisons");
+        }
+        return true;
+    case TypeRef::GENERIC:
+        throw ::std::runtime_error("BUGCHECK - Can't compare generic type");
+    case TypeRef::PATH:
+        return m_path == x.m_path;
+    case TypeRef::ASSOCIATED:
+        return m_path == x.m_path && m_inner_types == x.m_inner_types;
+    }
+}
+
 ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr) {
     os << "TypeRef(";
     switch(tr.m_class)

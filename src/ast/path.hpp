@@ -37,6 +37,7 @@ public:
     ::std::vector<TypeRef>&   args() { return m_params; }
     const ::std::vector<TypeRef>&   args() const;
     
+    bool operator==(const PathNode& x) const;
     friend ::std::ostream& operator<<(::std::ostream& os, const PathNode& pn);
     
     SERIALISABLE_PROTOTYPES();
@@ -169,6 +170,8 @@ public:
     PathNode& operator[](size_t idx) { return m_nodes[idx]; }
     const PathNode& operator[](size_t idx) const { return m_nodes[idx]; }
    
+    bool operator==(const Path& x) const;
+    
     SERIALISABLE_PROTOTYPES(); 
     friend ::std::ostream& operator<<(::std::ostream& os, const Path& path);
     friend ::Serialiser& operator<<(Serialiser& s, Path::Class pc);

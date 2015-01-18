@@ -435,6 +435,7 @@ public:
     {
     }
 
+    bool is_valid() const { return m_node.get() != nullptr; }
     ExprNode& node() { assert(m_node.get()); return *m_node; }
     ::std::shared_ptr<ExprNode> take_node() { assert(m_node.get()); return ::std::move(m_node); }
     void visit_nodes(NodeVisitor& v);
