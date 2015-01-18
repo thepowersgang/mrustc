@@ -39,16 +39,13 @@ bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const Ty
 {
     const AST::TypeParams*  tps = nullptr;
     // Locate params set that contains the passed name
-    DEBUG("Searching stack for '" << name << "'");
     for( const auto ptr : m_params_stack )
     {
         if( ptr )
         {
-            DEBUG("Trying " << *ptr);
             for( const auto& p : ptr->params() )
             {
                 if(p.name() == name) {
-                    DEBUG(" - Found " << p);
                     tps = ptr;
                     break ;
                 }
@@ -60,7 +57,6 @@ bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const Ty
     {
         throw ::std::runtime_error(FMT("Param '"<<name<<"' isn't in scope"));
     }
-    DEBUG("Found block " << *tps);
     
     // Search bound list for the passed trait
     for( const auto& bound : tps->bounds() )

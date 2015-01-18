@@ -151,7 +151,6 @@ void CPathResolver::end_scope()
 
 void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
 {
-    INDENT();
     DEBUG("path = " << path);
     
     // Handle generic components of the path
@@ -294,8 +293,6 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
         if( mode != MODE_BIND )
             throw ParseError::Generic("Name resolution failed");
     }
-    
-    UNINDENT();
 }
 void CPathResolver::handle_type(TypeRef& type)
 {

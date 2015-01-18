@@ -3,6 +3,28 @@
 #include "types.hpp"
 #include "ast/ast.hpp"
 
+const char* coretype_name(const eCoreType ct ) {
+    switch(ct)
+    {
+    case CORETYPE_INVAL:return "-";
+    case CORETYPE_ANY:  return "_";
+    case CORETYPE_CHAR: return "char";
+    case CORETYPE_UINT: return "usize";
+    case CORETYPE_INT:  return "isize";
+    case CORETYPE_U8:   return "u8";
+    case CORETYPE_I8:   return "i8";
+    case CORETYPE_U16:  return "u16";
+    case CORETYPE_I16:  return "i16";
+    case CORETYPE_U32:  return "u32";
+    case CORETYPE_I32:  return "i32";
+    case CORETYPE_U64:  return "u64";
+    case CORETYPE_I64:  return "i64";
+    case CORETYPE_F32:  return "f32";
+    case CORETYPE_F64:  return "f64";
+    }
+    DEBUG("Unknown core type?! " << ct);
+    return "NFI";
+}
 
 bool TypeRef::operator==(const TypeRef& x) const
 {
@@ -38,27 +60,37 @@ bool TypeRef::operator==(const TypeRef& x) const
     throw ::std::runtime_error(FMT("BUGCHECK - Unhandled TypeRef class '" << m_class << "'"));
 }
 
+::std::ostream& operator<<(::std::ostream& os, const eCoreType ct) {
+    return os << coretype_name(ct);
+}
+
 ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr) {
     os << "TypeRef(";
     switch(tr.m_class)
     {
     case TypeRef::ANY:
-        os << "TagAny";
+        //os << "TagAny";
+        os << "_";
         break;
     case TypeRef::UNIT:
-        os << "TagUnit";
+        //os << "TagUnit";
+        os << "()";
         break;
     case TypeRef::PRIMITIVE:
-        os << "TagPrimitive, " << tr.m_core_type;
+        //os << "TagPrimitive, " << tr.m_core_type;
+        os << tr.m_core_type;
         break;
     case TypeRef::TUPLE:
-        os << "TagTuple, {" << tr.m_inner_types << "}";
+        //os << "TagTuple, {" << tr.m_inner_types << "}";
+        os << "(" << tr.m_inner_types << ")";
         break;
     case TypeRef::REFERENCE:
-        os << "TagReference, " << (tr.m_is_inner_mutable ? "mut" : "const") << ", " << tr.m_inner_types[0];
+        //os << "TagReference, " << (tr.m_is_inner_mutable ? "mut" : "const") << ", " << tr.m_inner_types[0];
+        os << "&" << (tr.m_is_inner_mutable ? "mut " : "") << tr.m_inner_types[0];
         break;
     case TypeRef::POINTER:
-        os << "TagPointer, " << (tr.m_is_inner_mutable ? "mut" : "const") << ", " << tr.m_inner_types[0];
+        //os << "TagPointer, " << (tr.m_is_inner_mutable ? "mut" : "const") << ", " << tr.m_inner_types[0];
+        os << "*" << (tr.m_is_inner_mutable ? "mut" : "const") << " " << tr.m_inner_types[0];
         break;
     case TypeRef::ARRAY:
         os << "TagSizedArray, " << tr.m_inner_types[0] << ", " << tr.m_size_expr;
@@ -67,38 +99,18 @@ bool TypeRef::operator==(const TypeRef& x) const
         os << "TagArg, " << tr.m_path[0].name();
         break;
     case TypeRef::PATH:
-        os << "TagPath, " << tr.m_path;
+        //os << "TagPath, " << tr.m_path;
+        os << tr.m_path;
         break;
     case TypeRef::ASSOCIATED:
-        os << "TagAssoc, <" << tr.m_inner_types[0] << " as " << tr.m_inner_types[1] << ">::" << tr.m_path[0].name();
+        //os << "TagAssoc, <" << tr.m_inner_types[0] << " as " << tr.m_inner_types[1] << ">::" << tr.m_path[0].name();
+        os << "<" << tr.m_inner_types[0] << " as " << tr.m_inner_types[1] << ">::" << tr.m_path[0].name();
         break;
     }
     os << ")";
     return os;
 }
 
-const char* coretype_name(const eCoreType ct ) {
-    switch(ct)
-    {
-    case CORETYPE_INVAL:return "-";
-    case CORETYPE_ANY:  return "_";
-    case CORETYPE_CHAR: return "char";
-    case CORETYPE_UINT: return "usize";
-    case CORETYPE_INT:  return "isize";
-    case CORETYPE_U8:   return "u8";
-    case CORETYPE_I8:   return "i8";
-    case CORETYPE_U16:  return "u16";
-    case CORETYPE_I16:  return "i16";
-    case CORETYPE_U32:  return "u32";
-    case CORETYPE_I32:  return "i32";
-    case CORETYPE_U64:  return "u64";
-    case CORETYPE_I64:  return "i64";
-    case CORETYPE_F32:  return "f32";
-    case CORETYPE_F64:  return "f64";
-    }
-    DEBUG("Unknown core type?! " << ct);
-    return "NFI";
-}
 void operator% (::Serialiser& s, eCoreType ct) {
     s << coretype_name(ct);
 }
