@@ -98,6 +98,16 @@ void CASTIterator::handle_module(AST::Path path, AST::Module& mod)
         DEBUG("Handling function '" << fcn.name << "'");
         handle_function(path + fcn.name, fcn.data);
     }
+    for( auto& item : mod.structs() )
+    {
+        DEBUG("Handling struct " << item.name);
+        handle_struct(path + item.name, item.data);
+    }
+    for( auto& item : mod.enums() )
+    {
+        DEBUG("Handling enum " << item.name);
+        handle_enum(path + item.name, item.data);
+    }
     
     for( auto& impl : mod.impls() )
     {
@@ -158,10 +168,17 @@ void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
 
 void CASTIterator::handle_struct(AST::Path path, AST::Struct& str)
 {
+    handle_params( str.params() );
+    for( auto& f : str.fields() )
+        handle_type( f.second );
 }
 void CASTIterator::handle_enum(AST::Path path, AST::Enum& enm)
 {
+    handle_params( enm.params() );
+    for( auto& f : enm.variants() )
+        handle_type( f.second );
 }
 void CASTIterator::handle_alias(AST::Path path, AST::TypeAlias& alias)
 {
+    throw ::std::runtime_error("TODO - handle_alias");
 }

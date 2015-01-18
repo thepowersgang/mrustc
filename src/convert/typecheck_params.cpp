@@ -25,6 +25,23 @@ public:
     {}
 };
 
+bool has_impl(const TypeRef& type, const TypeRef& trait)
+{
+    if( type.is_type_param() )
+    {
+        // TODO: Search current scope (requires access to CGenericParamChecker) for this type,
+        // and search the bounds for this trait
+        // - Also accept bounded generic impls (somehow)
+        throw ::std::runtime_error( FMT("TODO: Enumerate bounds on type param " << type.type_param() << " for matches to trait") );
+    }
+    else
+    {
+        // Search all known impls of this trait (TODO: keep a list at the crate level) for a match to this type
+        throw ::std::runtime_error( FMT("TODO: Search for impls on " << type << " for the trait") );
+    }
+    return false;
+}
+
 /// Check that the passed set of parameters match the requiremens for a generic item
 ///
 /// \param info Generic item information (param names and bounds)
@@ -93,6 +110,11 @@ void check_generic_params(const AST::TypeParams& info, ::std::vector<TypeRef>& t
                 {
                     const auto& trait = bound.type();
                     // Check if 'type' impls 'trait'
+                    if( !has_impl(type, trait) )
+                    {
+                        throw ::std::runtime_error( FMT("No matching impl of "<<trait<<" for "<<type));
+                    }
+                    
                     throw ::std::runtime_error( FMT("TODO: Check if " << type << " impls " << trait) );
                 }
             }
@@ -105,24 +127,26 @@ void CGenericParamChecker::handle_path(AST::Path& path, CASTIterator::PathMode p
 {
     DEBUG("path = " << path);
     AST::PathNode& last_node = path[path.size()-1];
+    const AST::TypeParams* params = nullptr;
     switch(path.binding_type())
     {
-    case AST::Path::TRAIT:
-        // Outside of expressions, param types must match perfectly
-        if( m_within_expr == 0 )
-        {
-            try {
-                check_generic_params(path.bound_trait().params(), last_node.args());
-            }
-            catch( const ::std::exception& e )
-            {
-                throw ::std::runtime_error( FMT("Checking '" << path << "', threw : " << e.what()) );
-            }
-        }
+    case AST::Path::MODULE:
+        DEBUG("WTF - Module path, isn't this invalid at this stage?");
         break;
+    case AST::Path::TRAIT:
+        params = &path.bound_trait().params();
+        if(0)
     case AST::Path::STRUCT:
+        params = &path.bound_struct().params();
+        if(0)
+    case AST::Path::ENUM:
+        params = &path.bound_enum().params();
+        if(0)
+    case AST::Path::FUNCTION:
+        params = &path.bound_func().params();
+        
         try {
-            check_generic_params(path.bound_struct().params(), last_node.args(), (m_within_expr > 0));
+            check_generic_params(*params, last_node.args(), (m_within_expr > 0));
         }
         catch( const ::std::exception& e )
         {

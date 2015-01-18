@@ -13,7 +13,7 @@ pub mod result
     pub enum Result<G,E>
     {
         Ok(G),
-        Err(T)
+        Err(E)
     }
 }
 

@@ -110,7 +110,9 @@ public:
    
     bool is_wildcard() const { return m_class == ANY; }
     bool is_path() const { return m_class == PATH; }
+    bool is_type_param() const { return m_class == GENERIC; }
     AST::Path& path() { assert(is_path()); return m_path; }
+    const ::std::string& type_param() const { assert(is_type_param()); return m_path[0].name(); }
     ::std::vector<TypeRef>& sub_types() { return m_inner_types; }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr);

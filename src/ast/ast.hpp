@@ -120,6 +120,9 @@ struct Item:
     {
     }
     
+    //friend ::std::ostream& operator<<(::std::ostream& os, const Item& i) {
+    //    return os << (i.is_pub ? "pub " : " ") << i.name << ": " << i.data;
+    //}
     SERIALISE_TYPE(, "Item", {
         s << name << data << is_pub;
     },{
@@ -286,8 +289,11 @@ public:
         m_variants( move(variants) )
     {}
     
-    const TypeParams params() const { return m_params; }
-    const ::std::vector<StructItem> variants() const { return m_variants; }
+    const TypeParams& params() const { return m_params; }
+    const ::std::vector<StructItem>& variants() const { return m_variants; }
+    
+    TypeParams& params() { return m_params; }
+    ::std::vector<StructItem>& variants() { return m_variants; }
     
     SERIALISABLE_PROTOTYPES();
 };
@@ -304,8 +310,11 @@ public:
         m_fields( move(fields) )
     {}
     
-    const TypeParams params() const { return m_params; }
-    const ::std::vector<StructItem> fields() const { return m_fields; }
+    const TypeParams& params() const { return m_params; }
+    const ::std::vector<StructItem>& fields() const { return m_fields; }
+    
+    TypeParams& params() { return m_params; }
+    ::std::vector<StructItem>& fields() { return m_fields; }
     
     SERIALISABLE_PROTOTYPES();
 };
@@ -436,6 +445,10 @@ public:
     ::std::vector<Item<TypeAlias> >& type_aliases() { return m_type_aliases; }
     itemlist_ext_t& extern_crates() { return m_extern_crates; }
     ::std::vector<Impl>&    impls() { return m_impls; }
+    itemlist_static_t&    statics() { return m_statics; }
+    ItemList<Trait>& traits() { return m_traits; }
+    itemlist_enum_t&      enums  () { return m_enums; }
+    itemlist_struct_t&    structs() { return m_structs; }
 
     const ::std::vector<MetaItem>& attrs() const { return m_attrs; } 
     const itemlist_fcn_t& functions() const { return m_functions; }
