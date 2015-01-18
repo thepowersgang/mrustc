@@ -4,3 +4,4 @@
 /mrustc.layout
 /.obj
 *.swp
+/output
