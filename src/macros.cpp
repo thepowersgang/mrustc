@@ -62,7 +62,7 @@ MacroExpander Macro_Invoke(const char* name, TokenTree input)
         // 2. Check input token tree against possible variants
         // 3. Bind names
         // 4. Return expander
-        FOREACH(MacroRules, rule_it, rules)
+        for(const auto& rule : rules)
         {
             Token   tok;
             // Create token stream for input tree
@@ -73,10 +73,9 @@ MacroExpander Macro_Invoke(const char* name, TokenTree input)
             ::std::map<const char*,TokenTree,cmp_str>   bound_tts;
             // Parse according to rules
             bool fail = false;
-            FOREACH(::std::vector<MacroPatEnt>, pat_it, rule_it->m_pattern)
+            for(const auto& pat : rule.m_pattern)
             {
                 TokenTree   val;
-                const MacroPatEnt& pat = *pat_it;
                 try
                 {
                     switch(pat.type)
@@ -107,7 +106,7 @@ MacroExpander Macro_Invoke(const char* name, TokenTree input)
             }
             if( !fail && lex.getToken().type() == TOK_EOF )
             {
-                return MacroExpander(rule_it->m_contents, bound_tts);
+                return MacroExpander(rule.m_contents, bound_tts);
             }
         }
         throw ParseError::Todo("Error when macro fails to match");

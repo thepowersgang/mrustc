@@ -21,10 +21,10 @@ void Render_Type(::std::ostream& os, const TypeRef& type, const char *name)
 void Render_CStruct(::std::ostream& os, const AST::CStruct& str)
 {
     os << "struct " << str.name() << "{\n";
-    FOREACH(item_vec_t, f, str.fields())
+    for(auto& f : str.fields())
     {
         os << "\t";
-        Render_Type(os, f->second, f->first.c_str());
+        Render_Type(os, f.second, f.first.c_str());
         os << ";\n";
     }
     os << "}\n";
@@ -33,8 +33,8 @@ void Render_CStruct(::std::ostream& os, const AST::CStruct& str)
 void Render_Crate(::std::ostream& os, const AST::Flat& crate)
 {
     // First off, print forward declarations of all structs + enums
-    FOREACH(::std::vector<AST::CStruct>, s, crate.structs())
-        os << "struct " << s->mangled_name() << ";\n";
+    for(const auto& s : crate.structs())
+        os << "struct " << s.mangled_name() << ";\n";
 
     for(const auto& item : crate.functions())
     {
@@ -43,12 +43,12 @@ void Render_Crate(::std::ostream& os, const AST::Flat& crate)
         Render_Type(os, fcn.rettype(), nullptr);
         os << " " << name << "(";
         bool is_first = true;
-        FOREACH(item_vec_t, f, fcn.args())
+        for(const auto& f : fcn.args())
         {
             if( !is_first )
                 os << ", ";
             is_first = false;
-            Render_Type(os, f->second, f->first.c_str());
+            Render_Type(os, f.second, f.first.c_str());
         }
         os << ")\n{\n";
         // Dump expression AST
