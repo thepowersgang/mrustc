@@ -20,10 +20,13 @@ class NodeVisitor;
 class ExprNode:
     public Serialisable
 {
+    TypeRef m_res_type;
 public:
     virtual ~ExprNode() = 0;
     
     virtual void visit(NodeVisitor& nv) = 0;
+    
+    TypeRef& get_res_type() { return m_res_type; }
     
     static ::std::unique_ptr<ExprNode> from_deserialiser(Deserialiser& d);
 };
@@ -82,11 +85,13 @@ struct ExprNode_LetBinding:
     public ExprNode
 {
     Pattern m_pat;
+    TypeRef m_type;
     unique_ptr<ExprNode>    m_value;
 
     ExprNode_LetBinding() {}
-    ExprNode_LetBinding(Pattern pat, unique_ptr<ExprNode>&& value):
+    ExprNode_LetBinding(Pattern pat, TypeRef type, unique_ptr<ExprNode>&& value):
         m_pat( move(pat) ),
+        m_type( move(type) ),
         m_value( move(value) )
     {
     }
@@ -342,79 +347,30 @@ struct ExprNode_BinOp:
 class NodeVisitor
 {
 public:
-    void visit(const unique_ptr<ExprNode>& cnode) {
+    inline void visit(const unique_ptr<ExprNode>& cnode) {
         if(cnode.get())
             cnode->visit(*this);
     }
     
-    virtual void visit(ExprNode_Block& node) {
-        for( auto& child : node.m_nodes )
-            visit(child);
-    }
-    virtual void visit(ExprNode_Macro& node) {
-    }
-    virtual void visit(ExprNode_Return& node) {
-        visit(node.m_value);
-    }
-    virtual void visit(ExprNode_LetBinding& node) {
-        // TODO: Handle recurse into Let pattern
-        visit(node.m_value);
-    }
-    virtual void visit(ExprNode_Assign& node) {
-        visit(node.m_slot);
-        visit(node.m_value);
-    }
-    virtual void visit(ExprNode_CallPath& node) {
-        for( auto& arg : node.m_args )
-            visit(arg);
-    }
-    virtual void visit(ExprNode_CallMethod& node) {
-        visit(node.m_val);
-        for( auto& arg : node.m_args )
-            visit(arg);
-    }
-    virtual void visit(ExprNode_CallObject& node) {
-        visit(node.m_val);
-        for( auto& arg : node.m_args )
-            visit(arg);
-    }
-    virtual void visit(ExprNode_Match& node) {
-        visit(node.m_val);
-        for( auto& arm : node.m_arms )
-            visit(arm.second);
-    }
-    virtual void visit(ExprNode_If& node) {
-        visit(node.m_cond);
-        visit(node.m_true);
-        visit(node.m_false);
-    }
+    virtual void visit(ExprNode_Block& node);
+    virtual void visit(ExprNode_Macro& node);
+    virtual void visit(ExprNode_Return& node);
+    virtual void visit(ExprNode_LetBinding& node);
+    virtual void visit(ExprNode_Assign& node);
+    virtual void visit(ExprNode_CallPath& node);
+    virtual void visit(ExprNode_CallMethod& node);
+    virtual void visit(ExprNode_CallObject& node);
+    virtual void visit(ExprNode_Match& node);
+    virtual void visit(ExprNode_If& node);
     
-    virtual void visit(ExprNode_Integer& node) {
-        // LEAF
-    }
-    virtual void visit(ExprNode_StructLiteral& node) {
-        visit(node.m_base_value);
-        for( auto& val : node.m_values )
-            visit(val.second);
-    }
-    virtual void visit(ExprNode_Tuple& node) {
-        for( auto& val : node.m_values )
-            visit(val);
-    }
-    virtual void visit(ExprNode_NamedValue& node) {
-        // LEAF
-    }
+    virtual void visit(ExprNode_Integer& node);
+    virtual void visit(ExprNode_StructLiteral& node);
+    virtual void visit(ExprNode_Tuple& node);
+    virtual void visit(ExprNode_NamedValue& node);
     
-    virtual void visit(ExprNode_Field& node) {
-        visit(node.m_obj);
-    }
-    virtual void visit(ExprNode_Cast& node) {
-        visit(node.m_value);
-    }
-    virtual void visit(ExprNode_BinOp& node) {
-        visit(node.m_left);
-        visit(node.m_right);
-    }
+    virtual void visit(ExprNode_Field& node);
+    virtual void visit(ExprNode_Cast& node);
+    virtual void visit(ExprNode_BinOp& node);
 };
 
 class Expr:

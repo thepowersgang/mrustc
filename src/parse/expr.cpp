@@ -134,10 +134,17 @@ ExprNodeP Parse_Stmt(TokenStream& lex, bool& opt_semicolon)
     case TOK_RWORD_LET: {
         //ret.append();
         AST::Pattern pat = Parse_Pattern(lex);
-        GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+        TypeRef type;
+        if( GET_TOK(tok, lex) == TOK_COLON ) {
+            type = Parse_Type(lex);
+            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+        }
+        else {
+            CHECK_TOK(tok, TOK_EQUAL);
+        }
         ExprNodeP val = Parse_Expr1(lex);
         opt_semicolon = false;
-        return NEWNODE( AST::ExprNode_LetBinding, ::std::move(pat), ::std::move(val) );
+        return NEWNODE( AST::ExprNode_LetBinding, ::std::move(pat), ::std::move(type), ::std::move(val) );
         }
     case TOK_RWORD_RETURN:
         return NEWNODE( AST::ExprNode_Return, Parse_Expr1(lex) );

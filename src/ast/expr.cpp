@@ -10,8 +10,7 @@ void Expr::visit_nodes(NodeVisitor& v)
 }
 ::std::ostream& operator<<(::std::ostream& os, const Expr& pat)
 {
-    os << "Expr(TODO)";
-    return os;
+    return os << "Expr(TODO)";
 }
 SERIALISE_TYPE(Expr::, "Expr", {
     s.item(m_node);
@@ -219,6 +218,125 @@ SERIALISE_TYPE_S(ExprNode_BinOp, {
     s.item(m_left);
     s.item(m_right);
 })
+
+
+void NodeVisitor::visit(ExprNode_Block& node)
+{
+    DEBUG("DEF - ExprNode_Block");
+    INDENT();
+    for( auto& child : node.m_nodes )
+        visit(child);
+    UNINDENT();
+}
+void NodeVisitor::visit(ExprNode_Macro& node)
+{
+    DEBUG("DEF - ExprNode_Macro");
+}
+void NodeVisitor::visit(ExprNode_Return& node) 
+{
+    DEBUG("DEF - ExprNode_Return");
+    visit(node.m_value);
+}
+void NodeVisitor::visit(ExprNode_LetBinding& node) 
+{
+    DEBUG("DEF - ExprNode_LetBinding");
+    // TODO: Handle recurse into Let pattern
+    visit(node.m_value);
+}
+void NodeVisitor::visit(ExprNode_Assign& node) 
+{
+    DEBUG("DEF - ExprNode_Assign");
+    INDENT();
+    visit(node.m_slot);
+    visit(node.m_value);
+    UNINDENT();
+}
+void NodeVisitor::visit(ExprNode_CallPath& node) 
+{
+    DEBUG("DEF - ExprNode_CallPath");
+    INDENT();
+    for( auto& arg : node.m_args )
+        visit(arg);
+    UNINDENT();
+}
+void NodeVisitor::visit(ExprNode_CallMethod& node) 
+{
+    DEBUG("DEF - ExprNode_CallMethod");
+    INDENT();
+    visit(node.m_val);
+    for( auto& arg : node.m_args )
+        visit(arg);
+    UNINDENT();
+}
+void NodeVisitor::visit(ExprNode_CallObject& node) 
+{
+    DEBUG("DEF - ExprNode_CallObject");
+    INDENT();
+    visit(node.m_val);
+    for( auto& arg : node.m_args )
+        visit(arg);
+    UNINDENT();
+}
+void NodeVisitor::visit(ExprNode_Match& node) 
+{
+    DEBUG("DEF - ExprNode_Match");
+    INDENT();
+    visit(node.m_val);
+    for( auto& arm : node.m_arms )
+        visit(arm.second);
+    UNINDENT();
+}
+void NodeVisitor::visit(ExprNode_If& node) 
+{
+    DEBUG("DEF - ExprNode_If");
+    INDENT();
+    visit(node.m_cond);
+    visit(node.m_true);
+    visit(node.m_false);
+    UNINDENT();
+}
+
+void NodeVisitor::visit(ExprNode_Integer& node) 
+{
+    DEBUG("DEF - ExprNode_Integer");
+    // LEAF
+}
+void NodeVisitor::visit(ExprNode_StructLiteral& node) 
+{
+    DEBUG("DEF - ExprNode_StructLiteral");
+    visit(node.m_base_value);
+    for( auto& val : node.m_values )
+        visit(val.second);
+}
+void NodeVisitor::visit(ExprNode_Tuple& node) 
+{
+    DEBUG("DEF - ExprNode_Tuple");
+    for( auto& val : node.m_values )
+        visit(val);
+}
+void NodeVisitor::visit(ExprNode_NamedValue& node) 
+{
+    DEBUG("DEF - ExprNode_NamedValue");
+    // LEAF
+}
+
+void NodeVisitor::visit(ExprNode_Field& node) 
+{
+    DEBUG("DEF - ExprNode_Field");
+    visit(node.m_obj);
+}
+void NodeVisitor::visit(ExprNode_Cast& node) 
+{
+    DEBUG("DEF - ExprNode_Cast");
+    visit(node.m_value);
+}
+void NodeVisitor::visit(ExprNode_BinOp& node) 
+{
+    DEBUG("DEF - ExprNode_BinOp");
+    visit(node.m_left);
+    visit(node.m_right);
+}
+
 
 };
 
