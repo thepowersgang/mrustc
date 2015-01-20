@@ -13,13 +13,26 @@ class ExprNode;
 class Expr;
 }
 
+/// Representation of restrictions placed on a type before it is made concrete
+// Possible bounds:
+// - Known to be a tuple of various inner types
+// - Unknown struct / enum
+// - Impls a trait
+// - Unknown
+class TypeBounds
+{
+    
+};
+
+/// A type
 class TypeRef:
     public Serialisable
 {
+    /// Class
     enum Class {
-        ANY,
-        UNIT,
-        PRIMITIVE,
+        ANY,    //< '_' - Wildcard
+        UNIT,   //< '()' - Unit / void
+        PRIMITIVE,  //< Any primitive (builtin type)
         TUPLE,
         REFERENCE,
         POINTER,
@@ -108,17 +121,22 @@ public:
         m_inner_types( {::std::move(base), ::std::move(trait)} )
     {}
    
+    /// Merge with another type (combines known aspects, conflitcs cause an exception)
+    void merge_with(const TypeRef& other);
+    
+    /// Returns true if the type is fully known (all sub-types are not wildcards)
+    bool is_concrete() const;
+
     bool is_wildcard() const { return m_class == ANY; }
+    bool is_unit() const { return m_class == UNIT; }
     bool is_path() const { return m_class == PATH; }
     bool is_type_param() const { return m_class == GENERIC; }
-    AST::Path& path() { assert(is_path()); return m_path; }
     const ::std::string& type_param() const { assert(is_type_param()); return m_path[0].name(); }
+    AST::Path& path() { assert(is_path() || m_class == ASSOCIATED); return m_path; }
     ::std::vector<TypeRef>& sub_types() { return m_inner_types; }
    
     bool operator==(const TypeRef& x) const;
-    bool operator!=(const TypeRef& x) const {
-        return !(*this == x);
-    }
+    bool operator!=(const TypeRef& x) const { return !(*this == x); }
      
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr);
     

@@ -65,8 +65,10 @@ void CTypeChecker::lookup_method(const TypeRef& type, const char* name)
     //}
 }
 
+/// Named value - leaf
 void CTC_NodeVisitor::visit(AST::ExprNode_NamedValue& node)
 {
+    DEBUG("ExprNode_NamedValue - " << node.m_path);
     const AST::Path&    p = node.m_path;
     if( p.is_absolute() )
     {
@@ -76,7 +78,31 @@ void CTC_NodeVisitor::visit(AST::ExprNode_NamedValue& node)
         case AST::Path::STATIC:
             node.get_res_type() = p.bound_static().type();
             break;
+        case AST::Path::ENUM_VAR: {
+            const AST::Enum& enm = p.bound_enum();
+            auto idx = p.bound_idx();
+            // Enum variant:
+            // - Check that this variant takes no arguments
+            if( !enm.variants()[idx].second.is_unit() )
+                throw ::std::runtime_error( FMT("Used a non-unit variant as a raw value - " << enm.variants()[idx].second));
+            // - Set output type to the enum (wildcard params, not default)
+            AST::Path tp = p;
+            tp.nodes().pop_back();
+            AST::PathNode& pn = tp.nodes().back();
+            unsigned int num_params = enm.params().n_params();
+            if(pn.args().size() > num_params)
+                throw ::std::runtime_error( FMT("Too many arguments to enum variant - " << p) );
+            while(pn.args().size() < num_params)
+                pn.args().push_back( TypeRef() );
+            node.get_res_type() = TypeRef(tp);
+            break; }
+        default:
+            throw ::std::runtime_error( FMT("Unknown binding type on named value : "<<p) );
         }
+    }
+    else
+    {
+        throw ::std::runtime_error( FMT("TODO: Get type from local : "<<p) );
     }
 }
 
@@ -115,7 +141,8 @@ void CTC_NodeVisitor::visit(AST::ExprNode_LetBinding& node)
     // - If neither concrete, merge requirements of both
     else
     {
-        throw ::std::runtime_error("TODO - Merge type requirements");
+        node.m_type.merge_with( val_type );
+        node.m_value->get_res_type() = node.m_type;
     }
     
     m_tc.handle_pattern(node.m_pat, node.m_type);

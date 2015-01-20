@@ -26,6 +26,99 @@ const char* coretype_name(const eCoreType ct ) {
     return "NFI";
 }
 
+void TypeRef::merge_with(const TypeRef& other)
+{
+    // Ignore if other is wildcard
+    if( other.m_class == TypeRef::ANY )
+        return;
+    
+    if( m_class == TypeRef::ANY ) {
+        *this = other;
+    }
+    
+    if( m_class != other.m_class )
+        throw ::std::runtime_error("TypeRef::merge_with - Types not compatible");
+    
+    switch(m_class)
+    {
+    case TypeRef::ANY:
+        break;
+    case TypeRef::UNIT:
+    case TypeRef::PRIMITIVE:
+        if( other != *this && other.is_concrete() )
+            throw ::std::runtime_error("TypeRef::merge_with - Types not compatible");
+        break;
+    case TypeRef::TUPLE:
+        // Other is known not to be wildcard, and is also a tuple, so it must be the same size
+        if( m_inner_types.size() != other.m_inner_types.size() )
+            throw ::std::runtime_error("TypeRef::merge_with - Types not compatible [tuple sz]");
+        for(unsigned int i = 0; i < m_inner_types.size(); i ++)
+        {
+            m_inner_types[i].merge_with( other.m_inner_types[i] );
+        }
+        break;
+    case TypeRef::REFERENCE:
+    case TypeRef::POINTER:
+        if( m_is_inner_mutable != other.m_is_inner_mutable )
+            throw ::std::runtime_error("TypeRef::merge_with - Types not compatible [inner mut]");
+        assert( m_inner_types.size() == 1 );
+        assert( other.m_inner_types.size() == 1 );
+        m_inner_types[0].merge_with( other.m_inner_types[0] );
+        break;
+    case TypeRef::ARRAY:
+        throw ::std::runtime_error("TODO: TypeRef::merge_with on ARRAY");
+    case TypeRef::GENERIC:
+        throw ::std::runtime_error("TODO: TypeRef::merge_with on GENERIC");
+    case TypeRef::PATH:
+        throw ::std::runtime_error("TODO: TypeRef::merge_with on PATH");
+    case TypeRef::ASSOCIATED:
+        throw ::std::runtime_error("TODO: TypeRef::merge_with on ASSOCIATED");
+    }
+}
+
+bool TypeRef::is_concrete() const
+{
+    switch(m_class)
+    {
+    case TypeRef::ANY:
+        return false;
+    case TypeRef::UNIT:
+    case TypeRef::PRIMITIVE:
+        return true;
+    case TypeRef::TUPLE:
+    case TypeRef::REFERENCE:
+    case TypeRef::POINTER:
+    case TypeRef::ARRAY:
+        for(const auto& t : m_inner_types )
+            if( not t.is_concrete() )
+                return false;
+        return true;
+    case TypeRef::GENERIC:
+        // Well, I guess a generic param is "concrete"
+        return true;
+    case TypeRef::PATH:
+        for(const auto& n : m_path.nodes())
+        {
+            for(const auto& p : n.args())
+                if( not p.is_concrete() )
+                    return false;
+        }
+        return true;
+    case TypeRef::ASSOCIATED:
+        for(const auto& t : m_inner_types )
+            if( not t.is_concrete() )
+                return false;
+        for(const auto& n : m_path.nodes())
+        {
+            for(const auto& p : n.args())
+                if( not p.is_concrete() )
+                    return false;
+        }
+        return true;
+    }
+    throw ::std::runtime_error( FMT("BUGCHECK - Invalid type class on " << *this) );
+}
+
 bool TypeRef::operator==(const TypeRef& x) const
 {
     if(m_class != x.m_class)
@@ -82,7 +175,7 @@ bool TypeRef::operator==(const TypeRef& x) const
         break;
     case TypeRef::TUPLE:
         //os << "TagTuple, {" << tr.m_inner_types << "}";
-        os << "(" << tr.m_inner_types << ")";
+        os << "(" << tr.m_inner_types << ",)";
         break;
     case TypeRef::REFERENCE:
         //os << "TagReference, " << (tr.m_is_inner_mutable ? "mut" : "const") << ", " << tr.m_inner_types[0];

@@ -165,8 +165,12 @@ public:
     _(Static, static, STATIC)
     #undef _
     const Enum& bound_enum() const {
-        assert(m_binding_type == ENUM || m_binding_type == ENUM_VAR);
+        assert(m_binding_type == ENUM || m_binding_type == ENUM_VAR);  // Kinda evil, given that it has its own union entry
         return *m_binding.enum_;
+    }
+    const unsigned int bound_idx() const {
+        assert(m_binding_type == ENUM_VAR);
+        return m_binding.enumvar.idx; 
     }
     
     ::std::vector<PathNode>& nodes() { return m_nodes; }
