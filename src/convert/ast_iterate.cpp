@@ -27,7 +27,7 @@ void CASTIterator::handle_params(AST::TypeParams& params)
     for( auto& param : params.params() )
     {
         if( param.is_type() )
-            local_type(param.name());
+            local_type( param.name(), TypeRef(TypeRef::TagArg(), param.name()) );
     }
     for( auto& bound : params.bounds() )
     {
@@ -40,9 +40,9 @@ void CASTIterator::start_scope()
 {
     INDENT();
 }
-void CASTIterator::local_type(::std::string name)
+void CASTIterator::local_type(::std::string name, TypeRef type)
 {
-    DEBUG("type " << name);
+    DEBUG("type " << name << " = " << type);
 }
 void CASTIterator::local_variable(bool is_mut, ::std::string name, const TypeRef& type)
 {
@@ -170,6 +170,8 @@ void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
     handle_type( impl.trait() );
     // Type
     handle_type( impl.type() );
+    
+    local_type("Self", impl.type());
     
     // TODO: Associated types
     

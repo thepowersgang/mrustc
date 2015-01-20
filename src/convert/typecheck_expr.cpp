@@ -10,9 +10,21 @@ class CTypeChecker:
     public CASTIterator
 {
     friend class CTC_NodeVisitor;
+    
+    struct Scope {
+        ::std::vector< ::std::tuple<bool, ::std::string, TypeRef> >   vars;
+    };
+    
+    ::std::vector<Scope>    m_scopes;
+    
 protected:
+    TypeRef& get_local(const char* name);
     void lookup_method(const TypeRef& type, const char* name);
 public:
+    virtual void start_scope() override;
+    virtual void local_variable(bool is_mut, ::std::string name, const TypeRef& type) override;
+    virtual void end_scope() override;
+    
     virtual void handle_function(AST::Path path, AST::Function& fcn) override;
     // - Ignore all non-function items on this pass
     virtual void handle_enum(AST::Path path, AST::Enum& ) override {}
@@ -39,15 +51,58 @@ public:
     virtual void visit(AST::ExprNode_CallPath& node) override;
 };
 
+void CTypeChecker::start_scope() 
+{
+    m_scopes.push_back( Scope() );
+}
+void CTypeChecker::local_variable(bool is_mut, ::std::string name, const TypeRef& type) 
+{
+    m_scopes.back().vars.push_back( make_tuple(is_mut, name, TypeRef(type)) );
+}
+void CTypeChecker::end_scope() 
+{
+    m_scopes.pop_back();
+}
+
+TypeRef& CTypeChecker::get_local(const char* name)
+{
+    for( auto it = m_scopes.end(); it-- != m_scopes.begin(); )
+    {
+        for( auto it2 = it->vars.end(); it2-- != it->vars.begin(); )
+        {
+            if( name == ::std::get<1>(*it2) )
+            {
+                return ::std::get<2>(*it2);
+            }
+        }
+    }
+    throw ::std::runtime_error(FMT("get_local - name " << name << " not found"));
+}
 
 void CTypeChecker::handle_function(AST::Path path, AST::Function& fcn)
 {
     DEBUG("(path = " << path << ")");
+    start_scope();
+    
+    handle_params(fcn.params());
+
+    handle_type(fcn.rettype());
+    
+    for( auto& arg : fcn.args() )
+    {
+        handle_type(arg.second);
+        AST::Pattern    pat(AST::Pattern::TagBind(), arg.first);
+        handle_pattern( pat, arg.second );
+    }
+
     CTC_NodeVisitor    nv(*this);
     if( fcn.code().is_valid() )
     {
+        fcn.code().node().get_res_type() = fcn.rettype();
         fcn.code().visit_nodes(nv);
     }
+    
+    end_scope();
 }
 
 void CTypeChecker::lookup_method(const TypeRef& type, const char* name)
@@ -102,7 +157,9 @@ void CTC_NodeVisitor::visit(AST::ExprNode_NamedValue& node)
     }
     else
     {
-        throw ::std::runtime_error( FMT("TODO: Get type from local : "<<p) );
+        TypeRef& local_type = m_tc.get_local( p[0].name().c_str() );
+        node.get_res_type().merge_with( local_type );
+        local_type = node.get_res_type();
     }
 }
 
@@ -121,22 +178,11 @@ void CTC_NodeVisitor::visit(AST::ExprNode_LetBinding& node)
     // Obtain resultant type from value
     // Compare to binding type
     // - If both concrete, but different : error
-    if( !bind_type.is_wildcard() && !val_type.is_wildcard() )
+    if( bind_type.is_concrete() && val_type.is_concrete() )
     {
         if( bind_type != val_type ) {
             throw ::std::runtime_error( FMT("Type mismatch on let, expected " << bind_type << ", got " << val_type) );
         }
-    }
-    // - If value type concrete, but binding not : set binding to value
-    else if( !val_type.is_wildcard() )
-    {
-        node.m_type = val_type;
-    }
-    // - If binding concrete, but value not : reverse propagate type (set result type of value node to binding type)
-    else if( !bind_type.is_wildcard() )
-    {
-        // TODO: Check that value's current bind type's requirements fit this type
-        node.m_value->get_res_type() = bind_type;
     }
     // - If neither concrete, merge requirements of both
     else

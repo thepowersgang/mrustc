@@ -51,7 +51,7 @@ public:
     virtual void handle_module(AST::Path path, AST::Module& mod) override;
 
     virtual void start_scope() override;
-    virtual void local_type(::std::string name) override {
+    virtual void local_type(::std::string name, TypeRef type) override {
         m_locals.push_back( LocalItem(LocalItem::TYPE, ::std::move(name)) );
     }
     virtual void local_variable(bool _is_mut, ::std::string name, const TypeRef& _type) override {

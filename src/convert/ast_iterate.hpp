@@ -30,7 +30,7 @@ public:
     virtual void handle_params(AST::TypeParams& params);
     
     virtual void start_scope();
-    virtual void local_type(::std::string name);
+    virtual void local_type(::std::string name, TypeRef type);
     virtual void local_variable(bool is_mut, ::std::string name, const TypeRef& type);
     virtual void local_use(::std::string name, AST::Path path);
     virtual void end_scope();

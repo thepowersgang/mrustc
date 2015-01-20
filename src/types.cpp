@@ -34,20 +34,26 @@ void TypeRef::merge_with(const TypeRef& other)
     
     if( m_class == TypeRef::ANY ) {
         *this = other;
+        return;
     }
     
     if( m_class != other.m_class )
         throw ::std::runtime_error("TypeRef::merge_with - Types not compatible");
     
+    if( is_concrete() && other.is_concrete() )
+    {
+        if( *this != other )
+            throw ::std::runtime_error("TypeRef::merge_with - Types not compatible");
+        return;
+    }
+        
+    
     switch(m_class)
     {
     case TypeRef::ANY:
-        break;
     case TypeRef::UNIT:
     case TypeRef::PRIMITIVE:
-        if( other != *this && other.is_concrete() )
-            throw ::std::runtime_error("TypeRef::merge_with - Types not compatible");
-        break;
+        throw ::std::runtime_error("TypeRef::merge_with - Reached concrete/wildcard");
     case TypeRef::TUPLE:
         // Other is known not to be wildcard, and is also a tuple, so it must be the same size
         if( m_inner_types.size() != other.m_inner_types.size() )
@@ -144,6 +150,7 @@ bool TypeRef::operator==(const TypeRef& x) const
         }
         return true;
     case TypeRef::GENERIC:
+        DEBUG(*this << " == " << x);
         throw ::std::runtime_error("BUGCHECK - Can't compare generic type");
     case TypeRef::PATH:
         return m_path == x.m_path;
