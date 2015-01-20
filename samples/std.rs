@@ -43,6 +43,15 @@ pub mod iter
     }
 }
 
+pub mod char
+{
+    pub fn from_u32(v: u32) -> char
+    {
+        v   // TODO: This should generate a typecheck failure, but that part is incomplete
+        // Will eventually need a version of mem::transmute()
+    }
+}
+
 pub mod prelude
 {
     pub mod v1
@@ -54,4 +63,6 @@ pub mod prelude
         pub use iter::Iterator;
     }
 }
+
+// vim: ft=rust
 

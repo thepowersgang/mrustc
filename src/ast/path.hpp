@@ -160,9 +160,14 @@ public:
     _(Module, module, MODULE)
     _(Trait,  trait,  TRAIT)
     _(Struct, struct, STRUCT)
-    _(Enum,   enum,   ENUM)
+    //_(Enum,   enum,   ENUM)
     _(Function, func, FUNCTION)
+    _(Static, static, STATIC)
     #undef _
+    const Enum& bound_enum() const {
+        assert(m_binding_type == ENUM || m_binding_type == ENUM_VAR);
+        return *m_binding.enum_;
+    }
     
     ::std::vector<PathNode>& nodes() { return m_nodes; }
     const ::std::vector<PathNode>& nodes() const { return m_nodes; }

@@ -143,7 +143,9 @@ void Path::resolve(const Crate& root_crate)
             {
                 DEBUG("Found function");
                 if( is_last ) {
-                    throw ParseError::Todo("Path::resolve() bind to function");
+                    m_binding_type = FUNCTION;
+                    m_binding.func_ = &it->data;
+                    return ;
                 }
                 else {
                     throw ParseError::Generic("Import of function, too many extra nodes");

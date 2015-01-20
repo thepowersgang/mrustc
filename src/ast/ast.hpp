@@ -206,6 +206,8 @@ public:
         m_value( move(value) )
     {}
     
+    const TypeRef& type() const { return m_type; }
+    
     SERIALISABLE_PROTOTYPES();
 };
 

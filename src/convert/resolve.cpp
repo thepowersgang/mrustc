@@ -91,6 +91,11 @@ public:
         DEBUG("ExprNode_NamedValue");
         m_res.handle_path(node.m_path, CASTIterator::MODE_EXPR);
     }
+    void visit(AST::ExprNode_CallPath& node) {
+        DEBUG("ExprNode_CallPath");
+        AST::NodeVisitor::visit(node);
+        m_res.handle_path(node.m_path, CASTIterator::MODE_EXPR);
+    }
     
     void visit(AST::ExprNode_Match& node)
     {

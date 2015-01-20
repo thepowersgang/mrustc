@@ -28,11 +28,15 @@ public:
         m_tc(tc)
     {}
     
+    virtual void visit(AST::ExprNode_NamedValue& node) override;
+    
     virtual void visit(AST::ExprNode_LetBinding& node) override;
+    virtual void visit(AST::ExprNode_Assign& node) override;
     
     virtual void visit(AST::ExprNode_Match& node) override;
     
     virtual void visit(AST::ExprNode_CallMethod& node) override;
+    virtual void visit(AST::ExprNode_CallPath& node) override;
 };
 
 
@@ -61,9 +65,26 @@ void CTypeChecker::lookup_method(const TypeRef& type, const char* name)
     //}
 }
 
+void CTC_NodeVisitor::visit(AST::ExprNode_NamedValue& node)
+{
+    const AST::Path&    p = node.m_path;
+    if( p.is_absolute() )
+    {
+        // grab bound item
+        switch(p.binding_type())
+        {
+        case AST::Path::STATIC:
+            node.get_res_type() = p.bound_static().type();
+            break;
+        }
+    }
+}
+
 void CTC_NodeVisitor::visit(AST::ExprNode_LetBinding& node)
 {
     DEBUG("ExprNode_LetBinding");
+    
+    node.get_res_type() = TypeRef(TypeRef::TagUnit());
     
     // Evaluate value
     AST::NodeVisitor::visit(node.m_value);
@@ -100,6 +121,13 @@ void CTC_NodeVisitor::visit(AST::ExprNode_LetBinding& node)
     m_tc.handle_pattern(node.m_pat, node.m_type);
 }
 
+void CTC_NodeVisitor::visit(AST::ExprNode_Assign& node)
+{
+    node.get_res_type() = TypeRef(TypeRef::TagUnit());
+    AST::NodeVisitor::visit(node.m_slot);
+    AST::NodeVisitor::visit(node.m_value);
+}
+
 void CTC_NodeVisitor::visit(AST::ExprNode_Match& node)
 {
     DEBUG("ExprNode_Match");
@@ -116,7 +144,7 @@ void CTC_NodeVisitor::visit(AST::ExprNode_Match& node)
 
 void CTC_NodeVisitor::visit(AST::ExprNode_CallMethod& node)
 {
-    DEBUG("ExprNode_CallMethod");
+    DEBUG("ExprNode_CallMethod " << node.m_method);
     
     AST::NodeVisitor::visit(node.m_val);
     
@@ -127,6 +155,7 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallMethod& node)
     
     // Locate method
     const TypeRef& type = node.m_val->get_res_type();
+    DEBUG("- type = " << type);
     if( type.is_wildcard() )
     {
         // No idea (yet)
@@ -136,6 +165,26 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallMethod& node)
     {
         // - Search for a method on this type
         //const Function& fcn = type.lookup_method(node.m_method.name());
+    }
+}
+void CTC_NodeVisitor::visit(AST::ExprNode_CallPath& node)
+{
+    DEBUG("ExprNode_CallPath - " << node.m_path);
+    for( auto& arg : node.m_args )
+    {
+        AST::NodeVisitor::visit(arg);
+    }
+    
+    if(node.m_path.binding_type() == AST::Path::FUNCTION) {
+        const AST::Function& fcn = node.m_path.bound_func();
+    }
+    else if(node.m_path.binding_type() == AST::Path::ENUM_VAR) {
+        const AST::Enum& emn = node.m_path.bound_enum();
+        // We know the enum, but it might have type params, need to handle that case
+    }
+    else 
+    {
+        throw ::std::runtime_error("CallPath on non-function");
     }
 }
 
