@@ -545,9 +545,9 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const ::std::vector<AST::MetaItem> met
     {
         CHECK_TOK(tok, TOK_IDENT);
         ::std::string   name = tok.str();
-        ::std::vector<TypeRef>  types;
         if( GET_TOK(tok, lex) == TOK_PAREN_OPEN )
         {
+            ::std::vector<TypeRef>  types;
             // Get type list
             // TODO: Handle 'Variant()'?
             do
@@ -556,9 +556,13 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const ::std::vector<AST::MetaItem> met
             } while( GET_TOK(tok, lex) == TOK_COMMA );
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
             GET_TOK(tok, lex);
+            variants.push_back( AST::StructItem(::std::move(name), TypeRef(TypeRef::TagTuple(), ::std::move(types))) );
+        }
+        else
+        {
+            variants.push_back( AST::StructItem(::std::move(name), TypeRef(TypeRef::TagUnit())) );
         }
         
-        variants.push_back( AST::StructItem(::std::move(name), TypeRef(TypeRef::TagTuple(), ::std::move(types))) );
         if( tok.type() != TOK_COMMA )
             break;
     }
