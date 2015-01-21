@@ -89,7 +89,7 @@ private:
             const Enum* enum_;
             unsigned int idx;
         } enumvar;
-        const TypeAlias*    alias;
+        const TypeAlias*    alias_;
     } m_binding;
 public:
     Path():
@@ -163,6 +163,7 @@ public:
     //_(Enum,   enum,   ENUM)
     _(Function, func, FUNCTION)
     _(Static, static, STATIC)
+    _(TypeAlias, alias, ALIAS)
     #undef _
     const Enum& bound_enum() const {
         assert(m_binding_type == ENUM || m_binding_type == ENUM_VAR);  // Kinda evil, given that it has its own union entry

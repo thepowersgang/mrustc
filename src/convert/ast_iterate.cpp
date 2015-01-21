@@ -84,7 +84,10 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
     if( pat.binding().size() > 0 )
     {
         // TODO: Mutable bindings
-        local_variable( false, pat.binding(), type_hint );
+        if(pat.binding() != "_")
+        {
+            local_variable( false, pat.binding(), type_hint );
+        }
     }
     for( auto& subpat : pat.sub_patterns() )
         handle_pattern(subpat, (const TypeRef&)TypeRef());
@@ -205,6 +208,9 @@ void CASTIterator::handle_trait(AST::Path path, AST::Trait& trait)
 {
     start_scope();
     handle_params( trait.params() );
+    
+    local_type("Self", TypeRef(path));
+    
     for( auto& fcn : trait.functions() )
         handle_function( path + fcn.name, fcn.data );
     end_scope();

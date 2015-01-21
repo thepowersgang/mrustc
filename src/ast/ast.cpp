@@ -104,6 +104,12 @@ const Module& Crate::get_root_module(const ::std::string& name) const {
         return it->second.root_module();
     throw ParseError::Generic("crate name unknown");
 }
+
+Function& Crate::lookup_method(const TypeRef& type, const char *name)
+{
+    throw ParseError::Generic( FMT("TODO: Lookup method "<<name<<" for type " <<type));
+}
+
 void Crate::load_extern_crate(::std::string name)
 {
     ::std::ifstream is("output/"+name+".ast");
@@ -281,6 +287,42 @@ SERIALISE_TYPE(Enum::, "AST_Enum", {
     s.item(m_variants);
 })
 
+TypeRef Struct::get_field_type(const char *name, const ::std::vector<TypeRef>& args)
+{
+    if( args.size() != m_params.n_params() )
+    {
+        throw ::std::runtime_error("Incorrect parameter count for struct");
+    }
+    // TODO: Should the bounds be checked here? Or is the count sufficient?
+    for(const auto& f : m_fields)
+    {
+        if( f.first == name )
+        {
+            // Found it!
+            if( args.size() )
+            {
+                TypeRef res = f.second;
+                res.resolve_args( [&](const char *argname){
+                    for(unsigned int i = 0; i < m_params.n_params(); i ++)
+                    {
+                        if( m_params.params()[i].name() == argname ) {
+                            return args.at(i);
+                        }
+                    }
+                    throw ::std::runtime_error("BUGCHECK - Unknown arg in field type");
+                    });
+                return res;
+            }
+            else
+            {
+                return f.second;
+            }
+        }
+    }
+    
+    throw ::std::runtime_error(FMT("No such field " << name));
+}
+
 SERIALISE_TYPE(Struct::, "AST_Struct", {
     s << m_params;
     s << m_fields;
@@ -335,6 +377,16 @@ SERIALISE_TYPE_S(GenericBound, {
     s.item(m_lifetime);
     s.item(m_trait);
 })
+
+int TypeParams::find_name(const char* name) const
+{
+    for( unsigned int i = 0; i < m_params.size(); i ++ )
+    {
+        if( m_params[i].name() == name )
+            return i;
+    }
+    return -1;
+}
 
 ::std::ostream& operator<<(::std::ostream& os, const TypeParams& tps)
 {

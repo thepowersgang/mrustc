@@ -98,6 +98,8 @@ public:
         m_bounds.push_back( ::std::move(bound) );
     }
     
+    int find_name(const char* name) const;
+    
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeParams& tp);
     SERIALISABLE_PROTOTYPES();
 };
@@ -243,6 +245,8 @@ public:
     {
     }
     
+    const Class fcn_class() const { return m_fcn_class; }
+    
     TypeParams& params() { return m_params; }
     Expr& code() { return m_code; }
     TypeRef& rettype() { return m_rettype; }
@@ -325,6 +329,8 @@ public:
     
     TypeParams& params() { return m_params; }
     ::std::vector<StructItem>& fields() { return m_fields; }
+    
+    TypeRef get_field_type(const char *name, const ::std::vector<TypeRef>& args);
     
     SERIALISABLE_PROTOTYPES();
 };
@@ -493,6 +499,8 @@ public:
     ::std::map< ::std::string, ExternCrate>& extern_crates() { return m_extern_crates; }   
     const ::std::map< ::std::string, ExternCrate>& extern_crates() const { return m_extern_crates; }   
  
+    Function& lookup_method(const TypeRef& type, const char *name);
+    
     void load_extern_crate(::std::string name);
     
     void iterate_functions( fcn_visitor_t* visitor );

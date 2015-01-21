@@ -1,4 +1,5 @@
 /*
+/// Typecheck generic parameters (ensure that they match all generic bounds)
  */
 #include <main_bindings.hpp>
 #include "ast_iterate.hpp"
@@ -180,6 +181,8 @@ void CGenericParamChecker::handle_path(AST::Path& path, CASTIterator::PathMode p
     const AST::TypeParams* params = nullptr;
     switch(path.binding_type())
     {
+    case AST::Path::UNBOUND:
+        throw ::std::runtime_error("CGenericParamChecker::handle_path - Unbound path");
     case AST::Path::MODULE:
         DEBUG("WTF - Module path, isn't this invalid at this stage?");
         break;
@@ -192,6 +195,9 @@ void CGenericParamChecker::handle_path(AST::Path& path, CASTIterator::PathMode p
     case AST::Path::ENUM:
         params = &path.bound_enum().params();
         if(0)
+    case AST::Path::ALIAS:
+        params = &path.bound_alias().params();
+        if(0)
     case AST::Path::FUNCTION:
         params = &path.bound_func().params();
         
@@ -203,6 +209,8 @@ void CGenericParamChecker::handle_path(AST::Path& path, CASTIterator::PathMode p
             throw ::std::runtime_error( FMT("Checking '" << path << "', threw : " << e.what()) );
         }
         break;
+    default:
+        throw ::std::runtime_error("Unknown path type in CGenericParamChecker::handle_path");
     }
 }
 

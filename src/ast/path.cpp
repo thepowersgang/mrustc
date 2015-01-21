@@ -126,7 +126,7 @@ void Path::resolve(const Crate& root_crate)
                 // - Maybe leave that up to other code?
                 if( is_last ) {
                     m_binding_type = ALIAS;
-                    m_binding.alias = &it->data;
+                    m_binding.alias_ = &it->data;
                     return ;
                 }
                 else {

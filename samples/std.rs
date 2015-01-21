@@ -45,9 +45,9 @@ pub mod iter
 
 pub mod char
 {
-    pub fn from_u32(v: u32) -> char
+    pub fn from_u32(v: u32) -> ::option::Option<char>
     {
-        v   // TODO: This should generate a typecheck failure, but that part is incomplete
+        ::option::Option::Some(v as char)
         // Will eventually need a version of mem::transmute()
     }
 }

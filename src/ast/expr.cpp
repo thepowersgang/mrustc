@@ -44,6 +44,8 @@ SERIALISE_TYPE(Expr::, "Expr", {
     else _(ExprNode_Tuple)
     else _(ExprNode_NamedValue)
     else _(ExprNode_Field)
+    else _(ExprNode_Deref)
+    else _(ExprNode_Cast)
     else _(ExprNode_CallPath)
     else _(ExprNode_BinOp)
     else
@@ -177,6 +179,13 @@ SERIALISE_TYPE_S(ExprNode_Field, {
     s.item(m_obj);
     s.item(m_name);
 })
+
+void ExprNode_Deref::visit(NodeVisitor& nv) {
+    nv.visit(*this);
+}
+SERIALISE_TYPE_S(ExprNode_Deref, {
+    s.item(m_value);
+});
 
 void ExprNode_Cast::visit(NodeVisitor& nv) {
     nv.visit(*this);
@@ -324,6 +333,11 @@ void NodeVisitor::visit(ExprNode_Field& node)
 {
     DEBUG("DEF - ExprNode_Field");
     visit(node.m_obj);
+}
+void NodeVisitor::visit(ExprNode_Deref& node) 
+{
+    DEBUG("DEF - ExprNode_Deref");
+    visit(node.m_value);
 }
 void NodeVisitor::visit(ExprNode_Cast& node) 
 {

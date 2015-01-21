@@ -82,6 +82,90 @@ void TypeRef::merge_with(const TypeRef& other)
     }
 }
 
+/// Resolve all Generic/Argument types to the value returned by the passed closure
+void TypeRef::resolve_args(::std::function<TypeRef(const char*)> fcn)
+{
+    switch(m_class)
+    {
+    case TypeRef::ANY:
+        // TODO: Is resolving args on an ANY an erorr?
+        break;
+    case TypeRef::UNIT:
+    case TypeRef::PRIMITIVE:
+        break;
+    case TypeRef::TUPLE:
+    case TypeRef::REFERENCE:
+    case TypeRef::POINTER:
+    case TypeRef::ARRAY:
+        for( auto& t : m_inner_types )
+            t.resolve_args(fcn);
+    case TypeRef::GENERIC:
+        *this = fcn(m_path[0].name().c_str());
+        break;
+    case TypeRef::PATH:
+        for(auto& n : m_path.nodes())
+        {
+            for(auto& p : n.args())
+                p.resolve_args(fcn);
+        }
+        break;
+    case TypeRef::ASSOCIATED:
+        for(auto& t : m_inner_types )
+            t.resolve_args(fcn);
+        break;
+    }
+}
+
+void TypeRef::match_args(const TypeRef& other, ::std::function<void(const char*,const TypeRef&)> fcn) const
+{
+    // If the other type is a wildcard, early return
+    // - TODO - Might want to restrict the other type to be of the same form as this type
+    if( other.m_class == TypeRef::ANY )
+        return;
+    // If this type is a generic, then call the closure with the other type
+    if( m_class == TypeRef::GENERIC ) {
+        fcn( m_path[0].name().c_str(), other );
+        return ;
+    }
+    
+    // Any other case, it's a "pattern" match
+    if( m_class != other.m_class )
+        throw ::std::runtime_error("Type mismatch (class)");
+    switch(m_class)
+    {
+    case TypeRef::ANY:
+        // Wait, isn't this an error?
+        throw ::std::runtime_error("Encountered '_' in match_args");
+    case TypeRef::UNIT:
+        break;
+    case TypeRef::PRIMITIVE:
+        // TODO: Should check if the type matches
+        if( m_core_type != other.m_core_type )
+            throw ::std::runtime_error("Type mismatch (core)");
+        break;
+    case TypeRef::TUPLE:
+        if( m_inner_types.size() != other.m_inner_types.size() )
+            throw ::std::runtime_error("Type mismatch (tuple size)");
+        for(unsigned int i = 0; i < m_inner_types.size(); i ++ )
+            m_inner_types[i].match_args( other.m_inner_types[i], fcn );
+        break;
+    case TypeRef::REFERENCE:
+    case TypeRef::POINTER:
+        if( m_is_inner_mutable != other.m_is_inner_mutable )
+            throw ::std::runtime_error("Type mismatch (inner mutable)");
+        m_inner_types[0].match_args( other.m_inner_types[0], fcn );
+        break;
+    case TypeRef::ARRAY:
+        throw ::std::runtime_error("TODO: TypeRef::match_args on ARRAY");
+    case TypeRef::GENERIC:
+        throw ::std::runtime_error("Encountered GENERIC in match_args");
+    case TypeRef::PATH:
+        throw ::std::runtime_error("TODO: TypeRef::match_args on PATH");
+    case TypeRef::ASSOCIATED:
+        throw ::std::runtime_error("TODO: TypeRef::match_args on ASSOCIATED");
+    }
+}
+
 bool TypeRef::is_concrete() const
 {
     switch(m_class)

@@ -293,6 +293,23 @@ struct ExprNode_Field:
     SERIALISABLE_PROTOTYPES();
 };
 
+// Pointer dereference
+struct ExprNode_Deref:
+    public ExprNode
+{
+    ::std::unique_ptr<ExprNode>    m_value;
+    
+    ExprNode_Deref() {}
+    ExprNode_Deref(::std::unique_ptr<ExprNode> value):
+        m_value( ::std::move(value) )
+    {
+    }
+    
+    virtual void visit(NodeVisitor& nv) override;
+
+    SERIALISABLE_PROTOTYPES();
+};
+
 // Type cast ('as')
 struct ExprNode_Cast:
     public ExprNode
@@ -369,6 +386,7 @@ public:
     virtual void visit(ExprNode_NamedValue& node);
     
     virtual void visit(ExprNode_Field& node);
+    virtual void visit(ExprNode_Deref& node);
     virtual void visit(ExprNode_Cast& node);
     virtual void visit(ExprNode_BinOp& node);
 };

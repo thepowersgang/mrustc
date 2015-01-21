@@ -123,6 +123,10 @@ public:
    
     /// Merge with another type (combines known aspects, conflitcs cause an exception)
     void merge_with(const TypeRef& other);
+    /// Replace 'GENERIC' entries with the return value of the closure
+    void resolve_args(::std::function<TypeRef(const char*)> fcn);
+    /// Match 'GENERIC' entries with another type, passing matches to a closure
+    void match_args(const TypeRef& other, ::std::function<void(const char*,const TypeRef&)> fcn) const;
     
     /// Returns true if the type is fully known (all sub-types are not wildcards)
     bool is_concrete() const;
@@ -131,6 +135,7 @@ public:
     bool is_unit() const { return m_class == UNIT; }
     bool is_path() const { return m_class == PATH; }
     bool is_type_param() const { return m_class == GENERIC; }
+    bool is_reference() const { return m_class == REFERENCE; }
     const ::std::string& type_param() const { assert(is_type_param()); return m_path[0].name(); }
     AST::Path& path() { assert(is_path() || m_class == ASSOCIATED); return m_path; }
     ::std::vector<TypeRef>& sub_types() { return m_inner_types; }
