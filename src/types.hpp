@@ -53,6 +53,11 @@ public:
     TypeRef():
         m_class(ANY)
     {}
+    struct TagBoundedAny {};
+    TypeRef(TagBoundedAny, ::std::vector<TypeRef> traits):
+        m_class(ANY),
+        m_inner_types( ::std::move(traits) )
+    {}
 
     struct TagUnit {};  // unit maps to a zero-length tuple, just easier to type
     TypeRef(TagUnit):
@@ -138,8 +143,13 @@ public:
     bool is_reference() const { return m_class == REFERENCE; }
     const ::std::string& type_param() const { assert(is_type_param()); return m_path[0].name(); }
     AST::Path& path() { assert(is_path() || m_class == ASSOCIATED); return m_path; }
+    const AST::Path& path() const { assert(is_path() || m_class == ASSOCIATED); return m_path; }
     ::std::vector<TypeRef>& sub_types() { return m_inner_types; }
-   
+    const ::std::vector<TypeRef>& sub_types() const { return m_inner_types; }
+    
+    void add_trait(TypeRef trait) { assert(is_wildcard()); m_inner_types.push_back( ::std::move(trait) ); }
+    const ::std::vector<TypeRef>& traits() const { assert(is_wildcard()); return m_inner_types; }   
+
     bool operator==(const TypeRef& x) const;
     bool operator!=(const TypeRef& x) const { return !(*this == x); }
      

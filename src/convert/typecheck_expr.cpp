@@ -14,6 +14,7 @@ class CTypeChecker:
     struct Scope {
         ::std::vector< ::std::tuple<bool, ::std::string, TypeRef> >   vars;
         ::std::vector< ::std::tuple< ::std::string, TypeRef> >  types;
+        ::std::map< ::std::string, TypeRef >    params;
     };
     
     AST::Crate& m_crate;
@@ -29,6 +30,8 @@ public:
     virtual void local_type(::std::string name, TypeRef type) override;
     virtual void end_scope() override;
     
+    virtual void handle_params(AST::TypeParams& params) override;
+    
     virtual void handle_function(AST::Path path, AST::Function& fcn) override;
     // - Ignore all non-function items on this pass
     virtual void handle_enum(AST::Path path, AST::Enum& ) override {}
@@ -38,6 +41,7 @@ public:
 private:
     TypeRef& get_local_var(const char* name);
     const TypeRef& get_local_type(const char* name);
+    const TypeRef& get_type_param(const char* name);
     void lookup_method(const TypeRef& type, const char* name);
 };
 class CTC_NodeVisitor:
@@ -82,6 +86,26 @@ void CTypeChecker::end_scope()
     m_scopes.pop_back();
 }
 
+void CTypeChecker::handle_params(AST::TypeParams& params)
+{
+    ::std::map<std::string,TypeRef>  trs;
+    
+    for( const auto& param : params.params() )
+    {
+        trs.insert( make_pair(param.name(), TypeRef()) );
+    }
+    
+    for( const auto& bound : params.bounds() )
+    {
+        int i = params.find_name(bound.name().c_str());
+        assert(i >= 0);
+        trs[bound.name()].add_trait( bound.type() );
+    }
+    
+    assert(m_scopes.back().params.size() == 0);
+    m_scopes.back().params = trs;
+}
+
 TypeRef& CTypeChecker::get_local_var(const char* name)
 {
     for( auto it = m_scopes.end(); it-- != m_scopes.begin(); )
@@ -94,7 +118,7 @@ TypeRef& CTypeChecker::get_local_var(const char* name)
             }
         }
     }
-    throw ::std::runtime_error(FMT("get_local_type - name " << name << " not found"));
+    throw ::std::runtime_error(FMT("get_local_var - name " << name << " not found"));
 }
 const TypeRef& CTypeChecker::get_local_type(const char* name)
 {
@@ -109,6 +133,21 @@ const TypeRef& CTypeChecker::get_local_type(const char* name)
         }
     }
     throw ::std::runtime_error(FMT("get_local_type - name " << name << " not found"));
+}
+const TypeRef& CTypeChecker::get_type_param(const char* name)
+{
+    DEBUG("name = " << name);
+    for( auto it = m_scopes.end(); it-- != m_scopes.begin(); )
+    {
+        DEBUG("- params = " << it->params);
+        auto ent = it->params.find(name);
+        if( ent != it->params.end() )
+        {
+            DEBUG("> match " << ent->second);
+            return ent->second;
+        }
+    }
+    throw ::std::runtime_error(FMT("get_type_param - name " << name << " not found"));
 }
 
 void CTypeChecker::handle_function(AST::Path path, AST::Function& fcn)
@@ -339,13 +378,53 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallMethod& node)
         // - TODO: Support case where a trait is known
         throw ::std::runtime_error("Unknown type in CallMethod");
     }
+    else if( type.is_type_param() )
+    {
+        const char *name = type.type_param().c_str();
+        // Find this name in the current set of type params
+        const TypeRef& p_type = m_tc.get_type_param(name);
+        // Iterate bounds on type param
+        TypeRef ret_type;
+        for( const auto& t : p_type.traits() )
+        {
+            DEBUG("- Trait " << t.path());
+            const AST::Trait& trait = t.path().bound_trait();
+            // - Find method on one of them
+            for( const auto& m : trait.functions() )
+            {
+                DEBUG(" > method: " << m.name << " search: " << node.m_method.name());
+                if( m.name == node.m_method.name() )
+                {
+                    DEBUG(" > Found method");
+                    if( m.data.params().n_params() )
+                    {
+                        throw ::std::runtime_error("TODO: Call method with params");
+                    }
+                    ret_type = m.data.rettype();
+                }
+            }
+        }
+        if( ret_type.is_wildcard() )
+        {
+            throw ::std::runtime_error("Couldn't find method");
+        }
+    }
     else
     {
+        TypeRef ltype = type;
+        DEBUG("Resolving args in " << ltype);
+        ltype.resolve_args( [&](const char* name) {
+                DEBUG("- Looking up " << name);
+                return m_tc.get_type_param(name);
+            } );
+        // TODO: Replace generic references in 'type' (copying the type) with 
+        //   '_: Bounds' (allowing method lookup to succeed)
         // - Search for a method on this type
-        AST::Function& fcn = m_tc.m_crate.lookup_method(type, node.m_method.name().c_str());
+        //   TODO: Requires passing knowledge of in-scope traits (or trying traits)
+        AST::Function& fcn = m_tc.m_crate.lookup_method(ltype, node.m_method.name().c_str());
         if( fcn.params().n_params() != node.m_method.args().size() )
         {
-            throw ::std::runtime_error("TODO: CallMethod with param count mismatch");
+            throw ::std::runtime_error("CallMethod with param count mismatch");
         }
         if( fcn.params().n_params() )
         {

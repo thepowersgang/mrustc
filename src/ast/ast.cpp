@@ -105,6 +105,11 @@ const Module& Crate::get_root_module(const ::std::string& name) const {
     throw ParseError::Generic("crate name unknown");
 }
 
+Impl& Crate::find_impl(const TypeRef& trait, const TypeRef& type)
+{
+    throw ParseError::Generic( FMT("TODO: Lookup impl of " << trait << " for type " << type));
+}
+
 Function& Crate::lookup_method(const TypeRef& type, const char *name)
 {
     throw ParseError::Generic( FMT("TODO: Lookup method "<<name<<" for type " <<type));

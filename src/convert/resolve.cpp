@@ -274,6 +274,14 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
                 return ;
             }
         }
+        for( const auto& item : m_module->type_aliases() )
+        {
+            if( item.name == path[0].name() ) {
+                path = m_module_path + path;
+                path.resolve( m_crate );
+                return ;
+            }
+        }
         
         // Values / Functions
         for( const auto& item_fcn : m_module->functions() )

@@ -85,6 +85,7 @@ void TypeRef::merge_with(const TypeRef& other)
 /// Resolve all Generic/Argument types to the value returned by the passed closure
 void TypeRef::resolve_args(::std::function<TypeRef(const char*)> fcn)
 {
+    DEBUG("" << *this);
     switch(m_class)
     {
     case TypeRef::ANY:
@@ -99,6 +100,7 @@ void TypeRef::resolve_args(::std::function<TypeRef(const char*)> fcn)
     case TypeRef::ARRAY:
         for( auto& t : m_inner_types )
             t.resolve_args(fcn);
+        break;
     case TypeRef::GENERIC:
         *this = fcn(m_path[0].name().c_str());
         break;
@@ -255,6 +257,9 @@ bool TypeRef::operator==(const TypeRef& x) const
     case TypeRef::ANY:
         //os << "TagAny";
         os << "_";
+        if( tr.m_inner_types.size() ) {
+            os << ": {" << tr.m_inner_types << "}";
+        }
         break;
     case TypeRef::UNIT:
         //os << "TagUnit";

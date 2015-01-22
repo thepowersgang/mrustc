@@ -27,6 +27,7 @@ pub mod io
     
     pub trait Reader
     {
+        fn read_byte(&mut self) -> IoResult<u8>;
     }
 }
 

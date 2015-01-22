@@ -3,9 +3,9 @@ EXESUF ?=
 CXX ?= g++
 V ?= @
 
-LINKFLAGS :=
+LINKFLAGS := -g
 LIBS :=
-CXXFLAGS := -Wall -std=c++11
+CXXFLAGS := -g -Wall -std=c++11
 CPPFLAGS := -I src/include/
 
 
@@ -29,8 +29,8 @@ clean:
 
 test: $(BIN) samples/1.rs
 	mkdir -p output/
-	time $(BIN) samples/std.rs --emit ast -o output/std.ast
-	time $(BIN) samples/1.rs --crate-path output/std.ast
+	time $(DBG) $(BIN) samples/std.rs --emit ast -o output/std.ast
+	time $(DBG) $(BIN) samples/1.rs --crate-path output/std.ast
 
 $(BIN): $(OBJ)
 	@mkdir -p $(dir $@)

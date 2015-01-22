@@ -499,6 +499,7 @@ public:
     ::std::map< ::std::string, ExternCrate>& extern_crates() { return m_extern_crates; }   
     const ::std::map< ::std::string, ExternCrate>& extern_crates() const { return m_extern_crates; }   
  
+    Impl& find_impl(const TypeRef& trait, const TypeRef& type);
     Function& lookup_method(const TypeRef& type, const char *name);
     
     void load_extern_crate(::std::string name);
