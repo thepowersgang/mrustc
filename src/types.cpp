@@ -40,13 +40,13 @@ void TypeRef::merge_with(const TypeRef& other)
 {
     // Ignore if other is wildcard
     if( other.m_class == TypeRef::ANY ) {
-        assert(other.m_inner_types.size() == 0 && !"TODO: merge_with on bounded _");
+        assert(other.m_inner_types.size() == 0 && "TODO: merge_with on bounded _");
         return;
     }
    
     // If this is a wildcard, then replace with the othet type 
     if( m_class == TypeRef::ANY ) {
-        assert(m_inner_types.size() == 0 && !"TODO: merge_with on bounded _");
+        assert(m_inner_types.size() == 0 && "TODO: merge_with on bounded _");
         *this = other;
         return;
     }
