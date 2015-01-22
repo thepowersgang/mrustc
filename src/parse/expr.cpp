@@ -28,6 +28,15 @@ AST::Expr Parse_ExprBlock(TokenStream& lex)
     return AST::Expr(Parse_ExprBlockNode(lex));
 }
 
+/// Parse a pattern
+///
+/// Examples:
+/// - `Enum::Variant(a)`
+/// - `(1, a)`
+/// - `1 ... 2`
+/// - `"string"`
+/// - `mut x`
+/// - `mut x @ 1 ... 2`
 AST::Pattern Parse_Pattern(TokenStream& lex)
 {
     TRACE_FUNCTION;
@@ -35,6 +44,12 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
     AST::Path   path;
     Token   tok;
     tok = lex.getToken();
+    // 1. Bind mutability
+    if( tok.type() == TOK_RWORD_MUT )
+    {
+        throw ParseError::Todo("mut bindings");
+        tok = lex.getToken();
+    }
     if( tok.type() == TOK_RWORD_REF )
     {
         throw ParseError::Todo("ref bindings");
