@@ -411,14 +411,12 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallMethod& node)
     }
     else
     {
+        // Replace generic references in 'type' (copying the type) with 
+        //   '_: Bounds' (allowing method lookup to succeed)
         TypeRef ltype = type;
-        DEBUG("Resolving args in " << ltype);
         ltype.resolve_args( [&](const char* name) {
-                DEBUG("- Looking up " << name);
                 return m_tc.get_type_param(name);
             } );
-        // TODO: Replace generic references in 'type' (copying the type) with 
-        //   '_: Bounds' (allowing method lookup to succeed)
         // - Search for a method on this type
         //   TODO: Requires passing knowledge of in-scope traits (or trying traits)
         AST::Function& fcn = m_tc.m_crate.lookup_method(ltype, node.m_method.name().c_str());

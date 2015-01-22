@@ -107,6 +107,7 @@ const Module& Crate::get_root_module(const ::std::string& name) const {
 
 Impl& Crate::find_impl(const TypeRef& trait, const TypeRef& type)
 {
+    // TODO: Support autoderef here?
     throw ParseError::Generic( FMT("TODO: Lookup impl of " << trait << " for type " << type));
 }
 
