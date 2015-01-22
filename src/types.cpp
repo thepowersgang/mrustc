@@ -1,4 +1,11 @@
 /*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ * 
+ * types.cpp
+ * - Backing code for the TypeRef class
+ *
+ * Handles a chunk of type resolution (merging) and matching/comparing types
  */
 #include "types.hpp"
 #include "ast/ast.hpp"
@@ -26,20 +33,29 @@ const char* coretype_name(const eCoreType ct ) {
     return "NFI";
 }
 
+/// Merge the contents of the passed type with this type
+/// 
+/// \note Both types must be of the same form (i.e. both be tuples)
 void TypeRef::merge_with(const TypeRef& other)
 {
     // Ignore if other is wildcard
-    if( other.m_class == TypeRef::ANY )
+    if( other.m_class == TypeRef::ANY ) {
+        assert(other.m_inner_types.size() == 0 && !"TODO: merge_with on bounded _");
         return;
-    
+    }
+   
+    // If this is a wildcard, then replace with the othet type 
     if( m_class == TypeRef::ANY ) {
+        assert(m_inner_types.size() == 0 && !"TODO: merge_with on bounded _");
         *this = other;
         return;
     }
     
+    // If classes don't match, then merge is impossible
     if( m_class != other.m_class )
         throw ::std::runtime_error("TypeRef::merge_with - Types not compatible");
     
+    // If both types are concrete, then they must be the same
     if( is_concrete() && other.is_concrete() )
     {
         if( *this != other )
@@ -83,6 +99,9 @@ void TypeRef::merge_with(const TypeRef& other)
 }
 
 /// Resolve all Generic/Argument types to the value returned by the passed closure
+/// 
+/// Replaces every instance of a TypeRef::GENERIC with the value returned from the passed
+/// closure.
 void TypeRef::resolve_args(::std::function<TypeRef(const char*)> fcn)
 {
     DEBUG("" << *this);
@@ -118,6 +137,11 @@ void TypeRef::resolve_args(::std::function<TypeRef(const char*)> fcn)
     }
 }
 
+/// Match this type against another type, calling the provided function for all generics found in this
+///
+/// \param other    Type containing (possibly) concrete types
+/// \param fcn  Function to call for all generics (called with matching type from \a other)
+/// This is used to handle extracting types passsed to methods/enum variants
 void TypeRef::match_args(const TypeRef& other, ::std::function<void(const char*,const TypeRef&)> fcn) const
 {
     // If the other type is a wildcard, early return
@@ -168,6 +192,7 @@ void TypeRef::match_args(const TypeRef& other, ::std::function<void(const char*,
     }
 }
 
+/// Checks if the type is fully bounded
 bool TypeRef::is_concrete() const
 {
     switch(m_class)
