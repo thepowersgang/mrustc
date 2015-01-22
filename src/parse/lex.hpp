@@ -20,6 +20,7 @@ enum eTokenType
     TOK_INTEGER,
     TOK_CHAR,
     TOK_FLOAT,
+    TOK_STRING,
 
     TOK_CATTR_OPEN,
     TOK_ATTR_OPEN,

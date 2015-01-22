@@ -458,6 +458,7 @@ const char* Token::typestr(enum eTokenType type)
     case TOK_INTEGER: return "TOK_INTEGER";
     case TOK_CHAR: return "TOK_CHAR";
     case TOK_FLOAT: return "TOK_FLOAT";
+    case TOK_STRING: return "TOK_STRING";
 
     case TOK_CATTR_OPEN: return "TOK_CATTR_OPEN";
     case TOK_ATTR_OPEN: return "TOK_ATTR_OPEN";

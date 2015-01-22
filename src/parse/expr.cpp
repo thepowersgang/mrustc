@@ -28,6 +28,8 @@ AST::Expr Parse_ExprBlock(TokenStream& lex)
     return AST::Expr(Parse_ExprBlockNode(lex));
 }
 
+::std::vector<AST::Pattern> Parse_PatternList(TokenStream& lex);
+
 /// Parse a pattern
 ///
 /// Examples:
@@ -44,36 +46,86 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
     AST::Path   path;
     Token   tok;
     tok = lex.getToken();
-    // 1. Bind mutability
-    if( tok.type() == TOK_RWORD_MUT )
-    {
-        throw ParseError::Todo("mut bindings");
-        tok = lex.getToken();
-    }
+    
+    bool expect_bind = false;
+    bool is_mut = false;
+    bool is_ref = false;
+    // 1. Mutablity + Reference
     if( tok.type() == TOK_RWORD_REF )
     {
         throw ParseError::Todo("ref bindings");
+        is_ref = true;
+        expect_bind = true;
         tok = lex.getToken();
     }
-    switch( tok.type() )
+    if( tok.type() == TOK_RWORD_MUT )
     {
-    case TOK_IDENT:
-        // 1. Identifiers could be either a bind or a value
-        // - If the path resolves to a single node, either a local enum value, or a binding
+        throw ParseError::Todo("mut bindings");
+        is_mut = true;
+        expect_bind = true;
+        tok = lex.getToken();
+    }
+    
+    ::std::string   bind_name;
+    if( expect_bind )
+    {
+        CHECK_TOK(tok, TOK_IDENT);
+        bind_name = tok.str();
+        if( GET_TOK(tok, lex) != TOK_AT )
+        {
+            lex.putback(tok);
+            return AST::Pattern(AST::Pattern::TagBind(), bind_name);
+        }
+    }
+    
+    // TODO: If the next token is an ident, parse as a path
+    if( !expect_bind && tok.type() == TOK_IDENT )
+    {
         lex.putback(tok);
         path = Parse_Path(lex, false, PATH_GENERIC_EXPR);
+        // - If the path is trivial
         if( path.size() == 1 && path[0].args().size() == 0 )
         {
-            // Could be a name binding, check the next token
-            GET_TOK(tok, lex);
-            if(tok.type() != TOK_PAREN_OPEN) {
+            switch( GET_TOK(tok, lex) )
+            {
+            //  - If the next token after that is '@', use as bind name and expect an actual pattern
+            case TOK_AT:
+                bind_name = path[0].name();
+                GET_TOK(tok, lex);
+                break;
+            //  - Else, if the next token is  a '(' or '{', treat as a struct/enum
+            case TOK_BRACE_OPEN:
+                throw ParseError::Todo("Parse_Pattern - Structure patterns");
+            case TOK_PAREN_OPEN:
+                return AST::Pattern(AST::Pattern::TagEnumVariant(), ::std::move(path), Parse_PatternList(lex));
+            //  - Else, treat as a MaybeBind
+            default:
                 lex.putback(tok);
                 return AST::Pattern(AST::Pattern::TagMaybeBind(), path[0].name());
             }
-            lex.putback(tok);
         }
-        // otherwise, it's a value check
-        if(0)
+        else
+        {
+            switch(GET_TOK(tok, lex))
+            {
+            case TOK_BRACE_OPEN:
+                throw ParseError::Todo("Parse_Pattern - Structure patterns");
+            case TOK_PAREN_OPEN:
+                return AST::Pattern(AST::Pattern::TagEnumVariant(), ::std::move(path), Parse_PatternList(lex));
+            default:
+                lex.putback(tok);
+                return AST::Pattern(AST::Pattern::TagMaybeBind(), path[0].name());
+            }
+        }
+    }
+    
+    
+    switch( tok.type() )
+    {
+    case TOK_IDENT:
+        lex.putback(tok);
+        path = Parse_Path(lex, false, PATH_GENERIC_EXPR);
+        if( 0 )
     case TOK_DOUBLE_COLON:
         // 2. Paths are enum/struct names
         {
@@ -97,12 +149,26 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
         break;
     case TOK_INTEGER:
         return AST::Pattern( AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_Integer, tok.intval(), tok.datatype()) );
+    case TOK_STRING:
+        throw ParseError::Todo("string patterns");
     case TOK_PAREN_OPEN:
+        // This may also have to handle range expressions? (and other complexities)
         throw ParseError::Todo("tuple patterns");
     default:
         throw ParseError::Unexpected(tok);
     }
-    throw ParseError::BugCheck("Parse_TT_Stmt should early return");
+    throw ParseError::BugCheck("Parse_Pattern should early return");
+}
+
+::std::vector<AST::Pattern> Parse_PatternList(TokenStream& lex)
+{
+    Token tok;
+    ::std::vector<AST::Pattern> child_pats;
+    do {
+        child_pats.push_back( Parse_Pattern(lex) );
+    } while( GET_TOK(tok, lex) == TOK_COMMA );
+    CHECK_TOK(tok, TOK_PAREN_CLOSE);
+    return child_pats;
 }
 
 ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
