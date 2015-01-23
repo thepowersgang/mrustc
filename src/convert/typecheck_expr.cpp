@@ -1,4 +1,9 @@
 /*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * convert/typecheck_expr.cpp
+ * - Handles type checking, expansion, and method resolution for expressions (function bodies)
  */
 #include <main_bindings.hpp>
 #include "ast_iterate.hpp"
@@ -15,6 +20,7 @@ class CTypeChecker:
         ::std::vector< ::std::tuple<bool, ::std::string, TypeRef> >   vars;
         ::std::vector< ::std::tuple< ::std::string, TypeRef> >  types;
         ::std::map< ::std::string, TypeRef >    params;
+        ::std::vector< AST::Path >  traits;
     };
     
     AST::Crate& m_crate;
@@ -42,7 +48,8 @@ private:
     TypeRef& get_local_var(const char* name);
     const TypeRef& get_local_type(const char* name);
     const TypeRef& get_type_param(const char* name);
-    void lookup_method(const TypeRef& type, const char* name);
+    
+    void iterate_traits(::std::function<bool(const TypeRef& trait)> fcn);
 };
 class CTC_NodeVisitor:
     public AST::NodeVisitor
@@ -191,19 +198,18 @@ void CTypeChecker::handle_function(AST::Path path, AST::Function& fcn)
     end_scope();
 }
 
-void CTypeChecker::lookup_method(const TypeRef& type, const char* name)
+void CTypeChecker::iterate_traits(::std::function<bool(const TypeRef& trait)> fcn)
 {
-    DEBUG("(type = " << type << ", name = " << name << ")");
-    // 1. Look for inherent methods on the type
-    // 2. Iterate all in-scope traits, and locate an impl of that trait for this type
-    //for(auto traitptr : m_scope_traits )
-    //{
-    //    if( !traitptr ) continue;
-    //    const auto& trait = *traitptr;
-    //    if( trait.has_method(name) && trait.find_impl(type) )
-    //    {
-    //    }
-    //}
+    for( auto scopei = m_scopes.end(); scopei-- != m_scopes.begin(); )
+    {
+        for( auto& trait : scopei->traits )
+        {
+            if( !fcn(trait) )
+            {
+                return;
+            }
+        }
+    }
 }
 
 /// Named value - leaf
@@ -372,54 +378,99 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallMethod& node)
     // Locate method
     const TypeRef& type = node.m_val->get_res_type();
     DEBUG("CallMethod - type = " << type);
-    if( type.is_wildcard() )
+
+    // Replace generic references in 'type' (copying the type) with 
+    //   '_: Bounds' (allowing method lookup to succeed)
+    TypeRef ltype = type;
+    unsigned int deref_count = 0;
+    ltype.resolve_args( [&](const char* name) {
+            return m_tc.get_type_param(name);
+        } );
+   
+    // Begin trying options (attempting an autoderef each time) 
+    const char * const name = node.m_method.name().c_str();
+    AST::Function* fcnp = nullptr;
+    do
     {
-        // No idea (yet)
-        // - TODO: Support case where a trait is known
-        throw ::std::runtime_error("Unknown type in CallMethod");
-    }
-    else if( type.is_type_param() )
-    {
-        const char *name = type.type_param().c_str();
-        // Find this name in the current set of type params
-        const TypeRef& p_type = m_tc.get_type_param(name);
-        // Iterate bounds on type param
-        TypeRef ret_type;
-        for( const auto& t : p_type.traits() )
+        // 1. Handle bounded wildcard types
+        if( ltype.is_wildcard() )
         {
-            DEBUG("- Trait " << t.path());
-            const AST::Trait& trait = t.path().bound_trait();
-            // - Find method on one of them
-            for( const auto& m : trait.functions() )
-            {
-                DEBUG(" > method: " << m.name << " search: " << node.m_method.name());
-                if( m.name == node.m_method.name() )
-                {
-                    DEBUG(" > Found method");
-                    if( m.data.params().n_params() )
-                    {
-                        throw ::std::runtime_error("TODO: Call method with params");
-                    }
-                    ret_type = m.data.rettype();
-                }
+            if( ltype.traits().size() == 0 ) {
+                DEBUG("- Unconstrained wildcard, returning");
+                return ;
             }
+            
+            for( const auto& t : ltype.traits() )
+            {
+                DEBUG("- Trait " << t.path());
+                AST::Trait& trait = const_cast<AST::Trait&>( t.path().bound_trait() );
+                // - Find method on one of them
+                for( auto& m : trait.functions() )
+                {
+                    DEBUG(" > method: " << m.name << " search: " << node.m_method.name());
+                    if( m.name == node.m_method.name() )
+                    {
+                        DEBUG(" > Found method");
+                        fcnp = &m.data;
+                        break;
+                    }
+                }
+                if(fcnp)    break;
+            }
+            if(fcnp)    break;
         }
-        if( ret_type.is_wildcard() )
+        else
         {
-            throw ::std::runtime_error("Couldn't find method");
+            // 2. Find inherent impl
+            auto oimpl = m_tc.m_crate.find_impl(TypeRef(), ltype);
+            if( oimpl.is_some() )
+            {
+                AST::Impl& impl = oimpl.unwrap();
+                // 1.1. Search impl for this method
+                for(auto& fcn : impl.functions())
+                {
+                    if( fcn.name == name )
+                    {
+                        fcnp = &fcn.data;
+                        break;
+                    }
+                }
+                if(fcnp)    break;
+            }
+            
+            // 2. Iterate in-scope traits
+            m_tc.iterate_traits( [&](const TypeRef& trait) {
+                // TODO: Check trait first, then find an impl
+                auto oimpl = m_tc.m_crate.find_impl(trait, ltype);
+                if( oimpl.is_some() )
+                {
+                    AST::Impl& impl = oimpl.unwrap();
+                    for(auto& fcn : impl.functions())
+                    {
+                        if( fcn.name == name )
+                        {
+                            fcnp = &fcn.data;
+                            break;
+                        }
+                    }
+                }
+                return fcnp == nullptr;
+            });
         }
-    }
-    else
+        if( fcnp )
+            break;
+        deref_count ++;
+    } while( ltype.deref(true) );
+    
+    if( fcnp )
     {
-        // Replace generic references in 'type' (copying the type) with 
-        //   '_: Bounds' (allowing method lookup to succeed)
-        TypeRef ltype = type;
-        ltype.resolve_args( [&](const char* name) {
-                return m_tc.get_type_param(name);
-            } );
-        // - Search for a method on this type
-        //   TODO: Requires passing knowledge of in-scope traits (or trying traits)
-        AST::Function& fcn = m_tc.m_crate.lookup_method(ltype, node.m_method.name().c_str());
+        DEBUG("deref_count = " << deref_count);
+        for( unsigned i = 0; i < deref_count; i ++ )
+        {
+            node.m_val = ::std::unique_ptr<AST::ExprNode>(new AST::ExprNode_Deref( ::std::move(node.m_val) ));
+        }
+        
+        AST::Function& fcn = *fcnp;
         if( fcn.params().n_params() != node.m_method.args().size() )
         {
             throw ::std::runtime_error("CallMethod with param count mismatch");

@@ -33,6 +33,39 @@ const char* coretype_name(const eCoreType ct ) {
     return "NFI";
 }
 
+/// Replace this type reference with a dereferenced version
+bool TypeRef::deref(bool is_implicit)
+{
+    switch(m_class)
+    {
+    case TypeRef::ANY:
+        // TODO: Check if the _ is bounded by Deref<Output=?>, if so use that
+        throw ::std::runtime_error("Dereferencing _");
+        break;
+    case TypeRef::UNIT:
+        throw ::std::runtime_error("Dereferencing ()");
+    case TypeRef::PRIMITIVE:
+        throw ::std::runtime_error("Dereferencing a primtive type");
+    case TypeRef::GENERIC:
+        throw ::std::runtime_error("Dereferencing a generic");
+    case TypeRef::REFERENCE:
+        *this = m_inner_types[0];
+        return true;
+    case TypeRef::POINTER:
+        // raw pointers can't be implicitly dereferenced
+        if( is_implicit )
+            return false;
+        *this = m_inner_types[0];
+        return true;
+    case TypeRef::TUPLE:
+    case TypeRef::ARRAY:
+    case TypeRef::PATH:
+        throw ::std::runtime_error("TODO: Search for an impl of Deref");
+    case TypeRef::ASSOCIATED:
+        throw ::std::runtime_error("TODO: TypeRef::deref on ASSOCIATED");
+    }
+}
+
 /// Merge the contents of the passed type with this type
 /// 
 /// \note Both types must be of the same form (i.e. both be tuples)

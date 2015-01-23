@@ -126,6 +126,8 @@ public:
         m_inner_types( {::std::move(base), ::std::move(trait)} )
     {}
    
+    /// Dereference the type (return the result of *type_instance)
+    bool deref(bool is_implicit);
     /// Merge with another type (combines known aspects, conflitcs cause an exception)
     void merge_with(const TypeRef& other);
     /// Replace 'GENERIC' entries with the return value of the closure

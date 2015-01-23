@@ -105,10 +105,27 @@ const Module& Crate::get_root_module(const ::std::string& name) const {
     throw ParseError::Generic("crate name unknown");
 }
 
-Impl& Crate::find_impl(const TypeRef& trait, const TypeRef& type)
+::rust::option<Impl&> Crate::find_impl(const TypeRef& trait, const TypeRef& type)
 {
-    // TODO: Support autoderef here?
-    throw ParseError::Generic( FMT("TODO: Lookup impl of " << trait << " for type " << type));
+    // TODO: Support autoderef here? NO
+    if( trait.is_wildcard() && !type.is_path() )
+    {
+        // You can only have 'impl <type> { }' for user-defined types (i.e. paths)
+        // - Return failure
+        return ::rust::option<Impl&>();
+    }
+    
+    for( auto implptr : m_impl_index )
+    {
+        Impl& impl = *implptr;
+        // TODO: Pass to impl for comparison (handles type params)
+        if( impl.trait() == trait && impl.type() == type )
+        {
+            return ::rust::option<Impl&>(impl);
+        }
+    }
+    DEBUG("No impl of " << trait << " for " << type);
+    return ::rust::option<Impl&>();
 }
 
 Function& Crate::lookup_method(const TypeRef& type, const char *name)
