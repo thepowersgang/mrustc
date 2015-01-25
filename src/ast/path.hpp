@@ -38,6 +38,7 @@ public:
     const ::std::vector<TypeRef>&   args() const;
     
     bool operator==(const PathNode& x) const;
+    void print_pretty(::std::ostream& os) const;
     friend ::std::ostream& operator<<(::std::ostream& os, const PathNode& pn);
     
     SERIALISABLE_PROTOTYPES();
@@ -183,6 +184,7 @@ public:
     bool operator==(const Path& x) const;
     
     SERIALISABLE_PROTOTYPES(); 
+    void print_pretty(::std::ostream& os) const;
     friend ::std::ostream& operator<<(::std::ostream& os, const Path& path);
     friend ::Serialiser& operator<<(Serialiser& s, Path::Class pc);
     friend void operator>>(Deserialiser& s, Path::Class& pc);

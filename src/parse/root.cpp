@@ -8,6 +8,8 @@
 
 unsigned int TraceLog::depth = 0;
 
+extern AST::Pattern Parse_Pattern(TokenStream& lex);
+
 ::std::vector<TypeRef> Parse_Path_GenericList(TokenStream& lex)
 {
     TRACE_FUNCTION;
@@ -317,19 +319,20 @@ AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_no_code=false)
     {
         // Unbound method
     }
-    ::std::vector<AST::StructItem>  args;
+    
+    AST::Function::Arglist  args;
     if( tok.type() != TOK_PAREN_CLOSE )
     {
         lex.putback(tok);
         // Argument list
         do {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            ::std::string   name = tok.str();
+            AST::Pattern pat = Parse_Pattern(lex);
+            
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             TypeRef type = Parse_Type(lex);
-            args.push_back( ::std::make_pair(name, type) );
-            tok = lex.getToken();
-        } while( tok.type() == TOK_COMMA );
+            
+            args.push_back( ::std::make_pair( ::std::move(pat), ::std::move(type) ) );
+        } while( GET_TOK(tok, lex) == TOK_COMMA );
         CHECK_TOK(tok, TOK_PAREN_CLOSE);
     }
     else {
@@ -437,11 +440,12 @@ void Parse_Struct(AST::Module& mod, TokenStream& lex, const bool is_public, cons
         ::std::vector<AST::StructItem>  items;
         while( (tok = lex.getToken()).type() != TOK_BRACE_CLOSE )
         {
+            bool is_pub = false;
             CHECK_TOK(tok, TOK_IDENT);
             ::std::string   name = tok.str();
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             TypeRef type = Parse_Type(lex);
-            items.push_back( ::std::make_pair(name, type) );
+            items.push_back( AST::StructItem( ::std::move(name), ::std::move(type), is_pub ) );
             tok = lex.getToken();
             if(tok.type() == TOK_BRACE_CLOSE)
                 break;
@@ -556,11 +560,11 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const ::std::vector<AST::MetaItem> met
             } while( GET_TOK(tok, lex) == TOK_COMMA );
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
             GET_TOK(tok, lex);
-            variants.push_back( AST::StructItem(::std::move(name), TypeRef(TypeRef::TagTuple(), ::std::move(types))) );
+            variants.push_back( AST::StructItem(::std::move(name), TypeRef(TypeRef::TagTuple(), ::std::move(types)), true) );
         }
         else
         {
-            variants.push_back( AST::StructItem(::std::move(name), TypeRef(TypeRef::TagUnit())) );
+            variants.push_back( AST::StructItem(::std::move(name), TypeRef(TypeRef::TagUnit()), true) );
         }
         
         if( tok.type() != TOK_COMMA )

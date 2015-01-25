@@ -67,6 +67,87 @@ SERIALISE_TYPE_S(Pattern, {
     s.item(m_path);
 });
 
+Impl Impl::make_concrete(const ::std::vector<TypeRef>& types) const
+{
+    DEBUG("types={" << types << "}");
+    INDENT();
+    
+    assert(m_params.n_params());
+    
+    Impl    ret( TypeParams(), m_trait, m_type );
+    
+    auto resolver = [&](const char *name) {
+        int idx = m_params.find_name(name);
+        assert(idx >= 0);
+        return types[idx];
+        };
+    
+    ret.m_trait.resolve_args(resolver);
+    ret.m_type.resolve_args(resolver);
+    
+    for(const auto& fcn : m_functions)
+    {
+        TypeParams  new_fcn_params = fcn.data.params();
+        for( auto& b : new_fcn_params.bounds() )
+            b.type().resolve_args(resolver);
+        TypeRef new_ret_type = fcn.data.rettype();
+        new_ret_type.resolve_args(resolver);
+        Function::Arglist  new_args = fcn.data.args();
+        for( auto& t : new_args )
+            t.second.resolve_args(resolver);
+        
+        ret.add_function( fcn.is_pub, fcn.name, Function( ::std::move(new_fcn_params), fcn.data.fcn_class(), ::std::move(new_ret_type), ::std::move(new_args), Expr() ) );
+    }
+   
+    UNINDENT();
+    return ret;
+}
+
+::rust::option<Impl&> Impl::matches(const TypeRef& trait, const TypeRef& type)
+{
+    DEBUG("this = " << *this);
+    if( m_params.n_params() )
+    {
+        ::std::vector<TypeRef>  param_types(m_params.n_params());
+        try
+        {
+            auto c = [&](const char* name,const TypeRef& ty){
+                    int idx = m_params.find_name(name);
+                    assert( idx >= 0 );
+                    assert( (unsigned)idx < m_params.n_params() );
+                    param_types[idx].merge_with( ty );
+                };
+            m_trait.match_args(trait, c);
+            m_type.match_args(type, c);
+            
+            // Check that conditions match
+            // - TODO: Requires locating/checking trait implementations on types
+            
+            // The above two will throw if matching failed, so if we get here, it's a match
+            for( auto& i : m_concrete_impls )
+            {
+                if( i.first == param_types )
+                {
+                    return ::rust::option<Impl&>(i.second);
+                }
+            }
+            m_concrete_impls.push_back( make_pair(param_types, this->make_concrete(param_types)) );
+            return ::rust::option<Impl&>( m_concrete_impls.back().second );
+        }
+        catch( const ::std::runtime_error& e )
+        {
+            DEBUG("No match - " << e.what());
+        }
+    }
+    else
+    {
+        if( m_trait == trait && m_type == type )
+        {
+            return ::rust::option<Impl&>( *this );
+        }
+    }
+    return ::rust::option<Impl&>();
+}
 
 ::std::ostream& operator<<(::std::ostream& os, const Impl& impl)
 {
@@ -89,6 +170,25 @@ Crate::Crate():
     m_load_std(true)
 {
 }
+
+static void iterate_module(Module& mod, ::std::function<void(Module& mod)> fcn)
+{
+    fcn(mod);
+    for( auto& sm : mod.submods() )
+        iterate_module(sm.first, fcn);
+}
+
+void Crate::post_parse()
+{
+    // Iterate all modules, grabbing pointers to all impl blocks
+    iterate_module(m_root_module, [this](Module& mod){
+        for( auto& impl : mod.impls() )
+        {
+            m_impl_index.push_back( &impl );
+        }
+    });
+}
+
 void Crate::iterate_functions(fcn_visitor_t* visitor)
 {
     m_root_module.iterate_functions(visitor, *this);
@@ -107,6 +207,8 @@ const Module& Crate::get_root_module(const ::std::string& name) const {
 
 ::rust::option<Impl&> Crate::find_impl(const TypeRef& trait, const TypeRef& type)
 {
+    DEBUG("trait = " << trait << ", type = " << type);
+    
     // TODO: Support autoderef here? NO
     if( trait.is_wildcard() && !type.is_path() )
     {
@@ -118,10 +220,11 @@ const Module& Crate::get_root_module(const ::std::string& name) const {
     for( auto implptr : m_impl_index )
     {
         Impl& impl = *implptr;
-        // TODO: Pass to impl for comparison (handles type params)
-        if( impl.trait() == trait && impl.type() == type )
+        // TODO: What if there's two impls that match this combination?
+        ::rust::option<Impl&> oimpl = impl.matches(trait, type);
+        if( oimpl.is_some() )
         {
-            return ::rust::option<Impl&>(impl);
+            return oimpl.unwrap();
         }
     }
     DEBUG("No impl of " << trait << " for " << type);
@@ -319,12 +422,12 @@ TypeRef Struct::get_field_type(const char *name, const ::std::vector<TypeRef>& a
     // TODO: Should the bounds be checked here? Or is the count sufficient?
     for(const auto& f : m_fields)
     {
-        if( f.first == name )
+        if( f.name == name )
         {
             // Found it!
             if( args.size() )
             {
-                TypeRef res = f.second;
+                TypeRef res = f.data;
                 res.resolve_args( [&](const char *argname){
                     for(unsigned int i = 0; i < m_params.n_params(); i ++)
                     {
@@ -338,7 +441,7 @@ TypeRef Struct::get_field_type(const char *name, const ::std::vector<TypeRef>& a
             }
             else
             {
-                return f.second;
+                return f.data;
             }
         }
     }
@@ -409,6 +512,84 @@ int TypeParams::find_name(const char* name) const
             return i;
     }
     return -1;
+}
+
+bool TypeParams::check_params(Crate& crate, const ::std::vector<TypeRef>& types) const
+{
+    return check_params( crate, const_cast< ::std::vector<TypeRef>&>(types), false );
+}
+bool TypeParams::check_params(Crate& crate, ::std::vector<TypeRef>& types, bool allow_infer) const
+{
+    // XXX: Make sure all params are types
+    {
+        for(const auto& p : m_params)
+            assert(p.is_type());
+    }
+    
+    // Check parameter counts
+    if( types.size() > m_params.size() )
+    {
+        throw ::std::runtime_error(FMT("Too many generic params ("<<types.size()<<" passed, expecting "<< m_params.size()<<")"));
+    }
+    else if( types.size() < m_params.size() )
+    {
+        if( allow_infer )
+        {
+            while( types.size() < m_params.size() )
+            {
+                types.push_back( m_params[types.size()].get_default() );
+            }
+        }
+        else
+        {
+            throw ::std::runtime_error(FMT("Too few generic params, (" << types.size() << " passed, expecting " << m_params.size() << ")"));
+        }
+    }
+    else
+    {
+        // Counts are good, time to validate types
+    }
+    
+    for( unsigned int i = 0; i < types.size(); i ++ )
+    {
+        auto& type = types[i];
+        auto& param = m_params[i].name();
+        if( type.is_wildcard() )
+        {
+            for( const auto& bound : m_bounds )
+            {
+                if( bound.is_trait() && bound.name() == param )
+                {
+                    const auto& trait = bound.type();
+                    const auto& ty_traits = type.traits();
+                
+                    auto it = ::std::find(ty_traits.begin(), ty_traits.end(), trait);
+                    if( it == ty_traits.end() )
+                    {
+                        throw ::std::runtime_error( FMT("No matching impl of "<<trait<<" for "<<type));
+                    }
+                }
+            }
+        }
+        else
+        {
+            // Not a wildcard!
+            // Check that the type fits the bounds applied to it
+            for( const auto& bound : m_bounds )
+            {
+                if( bound.is_trait() && bound.name() == param )
+                {
+                    const auto& trait = bound.type();
+                    // Check if 'type' impls 'trait'
+                    if( !crate.find_impl(type, trait).is_some() )
+                    {
+                        throw ::std::runtime_error( FMT("No matching impl of "<<trait<<" for "<<type));
+                    }
+                }
+            }
+        }
+    }
+    return true;
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const TypeParams& tps)

@@ -151,8 +151,8 @@ void CASTIterator::handle_function(AST::Path path, AST::Function& fcn)
     for( auto& arg : fcn.args() )
     {
         handle_type(arg.second);
-        AST::Pattern    pat(AST::Pattern::TagBind(), arg.first);
-        handle_pattern( pat, arg.second );
+        // TODO: Check if pattern is irrefutable?
+        handle_pattern( arg.first, arg.second );
     }
 
     if( fcn.code().is_valid() )
@@ -193,7 +193,7 @@ void CASTIterator::handle_struct(AST::Path path, AST::Struct& str)
     start_scope();
     handle_params( str.params() );
     for( auto& f : str.fields() )
-        handle_type( f.second );
+        handle_type( f.data );
     end_scope();
 }
 void CASTIterator::handle_enum(AST::Path path, AST::Enum& enm)
@@ -201,7 +201,7 @@ void CASTIterator::handle_enum(AST::Path path, AST::Enum& enm)
     start_scope();
     handle_params( enm.params() );
     for( auto& f : enm.variants() )
-        handle_type( f.second );
+        handle_type( f.data );
     end_scope();
 }
 void CASTIterator::handle_trait(AST::Path path, AST::Trait& trait)

@@ -10,7 +10,10 @@ void Expr::visit_nodes(NodeVisitor& v)
 }
 ::std::ostream& operator<<(::std::ostream& os, const Expr& pat)
 {
-    return os << "Expr(TODO)";
+    if( pat.m_node.get() )
+        return os << *pat.m_node;
+    else
+        return os << "/* null */";
 }
 SERIALISE_TYPE(Expr::, "Expr", {
     s.item(m_node);
@@ -23,6 +26,16 @@ SERIALISE_TYPE(Expr::, "Expr", {
         m_node.reset();
 });
 
+::std::ostream& operator<<(::std::ostream& os, const ExprNode& node)
+{
+    if( &node != nullptr ) {
+        node.print(os);
+    }
+    else {
+        os << "/* NULLPTR */";
+    }
+    return os;
+}
 ::std::unique_ptr<ExprNode> ExprNode::from_deserialiser(Deserialiser& d) {
     ::std::string tag = d.start_object();
     
@@ -59,145 +72,151 @@ SERIALISE_TYPE(Expr::, "Expr", {
 ExprNode::~ExprNode() {
 }
 
+#define NODE(class, serialise, _print) void class::visit(NodeVisitor& nv) { nv.visit(*this); } SERIALISE_TYPE_S(class, serialise) void class::print(::std::ostream& os) const _print
+
 ExprNode_Block::~ExprNode_Block() {
 }
-void ExprNode_Block::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
-SERIALISE_TYPE_S(ExprNode_Block, {
+NODE(ExprNode_Block, {
     s.item(m_nodes);
+},{
+    os << "{";
+    for(const auto& n : m_nodes)
+        os << *n << ";";
+    os << "}";
 })
 
-void ExprNode_Macro::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
-SERIALISE_TYPE_S(ExprNode_Macro, {
+NODE(ExprNode_Macro, {
     s.item(m_name);
     //s.item(m_tokens);
+},{
+    os << m_name << "!(" << ")";
 })
 
-void ExprNode_Return::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
-SERIALISE_TYPE_S(ExprNode_Return, {
+NODE(ExprNode_Return, {
     s.item(m_value);
+},{
+    os << "return " << *m_value;
 })
 
-void ExprNode_LetBinding::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
-SERIALISE_TYPE_S(ExprNode_LetBinding, {
+NODE(ExprNode_LetBinding, {
     s.item(m_pat);
     s.item(m_value);
+},{
+    os << "let " << m_pat << ": " << m_type << " = " << *m_value;
 })
 
-void ExprNode_Assign::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
-SERIALISE_TYPE_S(ExprNode_Assign, {
+NODE(ExprNode_Assign, {
     s.item(m_slot);
     s.item(m_value);
+},{
+    os << *m_slot << " = " << *m_value;
 })
 
-void ExprNode_CallPath::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
-SERIALISE_TYPE_S(ExprNode_CallPath, {
+NODE(ExprNode_CallPath, {
     s.item(m_path);
     s.item(m_args);
+},{
+    os << m_path << "(";
+    for(const auto& a : m_args) {
+        os << *a << ",";
+    }
+    os << ")";
 })
 
-void ExprNode_CallMethod::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
-SERIALISE_TYPE_S(ExprNode_CallMethod, {
+NODE(ExprNode_CallMethod, {
     s.item(m_val);
     s.item(m_method);
     s.item(m_args);
+},{
+    os << "(" << *m_val << ")." << m_method << "(";
+    for(const auto& a : m_args) {
+        os << *a << ",";
+    }
+    os << ")";
 })
 
-void ExprNode_CallObject::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
-SERIALISE_TYPE_S(ExprNode_CallObject, {
+NODE(ExprNode_CallObject, {
     s.item(m_val);
     s.item(m_args);
+},{
+    os << "(" << *m_val << ")(";
+    for(const auto& a : m_args) {
+        os << *a << ",";
+    }
+    os << ")";
 })
 
-void ExprNode_Match::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
-SERIALISE_TYPE_S(ExprNode_Match, {
+NODE(ExprNode_Match, {
     s.item(m_val);
     s.item(m_arms);
+},{
+    os << "match ("<<*m_val<<") {";
+    for(const auto& arm : m_arms)
+    {
+        os << " " << arm.first << " => " << *arm.second << ",";
+    }
+    os << "}";
 })
 
-void ExprNode_If::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
-SERIALISE_TYPE_S(ExprNode_If, {
+NODE(ExprNode_If, {
     s.item(m_cond);
     s.item(m_true);
     s.item(m_false);
+},{
+    os << "if " << *m_cond << " { " << *m_true << " } else { " << *m_false << " }";
 })
 
-void ExprNode_Integer::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
-SERIALISE_TYPE_S(ExprNode_Integer, {
+NODE(ExprNode_Integer, {
     s % m_datatype;
     s.item(m_value);
+},{
+    os << m_value;
 })
 
-void ExprNode_StructLiteral::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
-SERIALISE_TYPE_S(ExprNode_StructLiteral, {
+NODE(ExprNode_StructLiteral, {
     s.item(m_path);
     s.item(m_base_value);
     s.item(m_values);
+},{
+    os << "/* todo: sl */";
 })
 
-void ExprNode_Tuple::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
-SERIALISE_TYPE_S(ExprNode_Tuple, {
+NODE(ExprNode_Tuple, {
     s.item(m_values);
+},{
+    os << "(";
+    for(const auto& a : m_values) {
+        os << *a << ",";
+    }
+    os << ")";
 })
 
-void ExprNode_NamedValue::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
-SERIALISE_TYPE_S(ExprNode_NamedValue, {
+NODE(ExprNode_NamedValue, {
     s.item(m_path);
+},{
+    os << m_path;
 })
 
-void ExprNode_Field::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
-SERIALISE_TYPE_S(ExprNode_Field, {
+NODE(ExprNode_Field, {
     s.item(m_obj);
     s.item(m_name);
+},{
+    os << "(" << *m_obj << ")." << m_name;
 })
 
-void ExprNode_Deref::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
-SERIALISE_TYPE_S(ExprNode_Deref, {
+NODE(ExprNode_Deref, {
     s.item(m_value);
+},{
+    os << "*(" << *m_value << ")";
 });
 
-void ExprNode_Cast::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
-SERIALISE_TYPE_S(ExprNode_Cast, {
+NODE(ExprNode_Cast, {
     s.item(m_value);
     s.item(m_type);
+},{
+    os << "(" << *m_value << " as " << m_type << ")";
 })
 
-void ExprNode_BinOp::visit(NodeVisitor& nv) {
-    nv.visit(*this);
-}
 void operator%(::Serialiser& s, const ExprNode_BinOp::Type t) {
     switch(t)
     {
@@ -222,10 +241,23 @@ void operator%(::Deserialiser& s, ExprNode_BinOp::Type& t) {
         throw ::std::runtime_error("");
     #undef _
 }
-SERIALISE_TYPE_S(ExprNode_BinOp, {
+NODE(ExprNode_BinOp, {
     s % m_type;
     s.item(m_left);
     s.item(m_right);
+},{
+    os << "(" << *m_left << " ";
+    switch(m_type)
+    {
+    case CMPEQU:    os << "=="; break;
+    case CMPNEQU:   os << "!="; break;
+    case BITAND:    os << "&"; break;
+    case BITOR:     os << "|"; break;
+    case BITXOR:    os << "^"; break;
+    case SHR:    os << ">>"; break;
+    case SHL:    os << "<<"; break;
+    }
+    os << " " << *m_right << ")";
 })
 
 

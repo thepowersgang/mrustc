@@ -43,6 +43,7 @@ public:
     void setDefault(TypeRef type);
     
     const ::std::string&    name() const { return m_name; }
+    const TypeRef& get_default() const { return m_default; }
     
     bool is_type() const { return m_class == TYPE; }
     
@@ -99,6 +100,8 @@ public:
     }
     
     int find_name(const char* name) const;
+    bool check_params(Crate& crate, const ::std::vector<TypeRef>& types) const;
+    bool check_params(Crate& crate, ::std::vector<TypeRef>& types, bool allow_infer) const;
     
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeParams& tp);
     SERIALISABLE_PROTOTYPES();
@@ -136,7 +139,7 @@ struct Item:
 template <typename T>
 using ItemList = ::std::vector<Item<T> >;
 
-typedef ::std::pair< ::std::string, TypeRef>    StructItem;
+typedef Item<TypeRef>    StructItem;
 
 class Crate;
 
@@ -207,8 +210,10 @@ public:
         m_type( move(type) ),
         m_value( move(value) )
     {}
-    
+   
+    const Class& s_class() const { return m_class; } 
     const TypeRef& type() const { return m_type; }
+    const Expr& value() const { return m_value; }
     
     SERIALISABLE_PROTOTYPES();
 };
@@ -224,7 +229,7 @@ public:
         CLASS_MUTMETHOD,
         CLASS_VALMETHOD,
     };
-    typedef ::std::vector<StructItem>   Arglist;
+    typedef ::std::vector< ::std::pair<AST::Pattern,TypeRef> >   Arglist;
 
 private:
     Class   m_fcn_class;
@@ -344,6 +349,8 @@ class Impl:
     
     ItemList<TypeRef>   m_types;
     ItemList<Function>  m_functions;
+    
+    ::std::vector< ::std::pair< ::std::vector<TypeRef>, Impl > > m_concrete_impls;
 public:
     Impl() {}
     Impl(TypeParams params, TypeRef impl_type, TypeRef trait_type):
@@ -370,6 +377,10 @@ public:
     TypeRef& type() { return m_type; }
     ItemList<Function>& functions() { return m_functions; }
     ItemList<TypeRef>& types() { return m_types; }
+
+    Impl make_concrete(const ::std::vector<TypeRef>& types) const;
+
+    ::rust::option<Impl&> matches(const TypeRef& trait, const TypeRef& type);
     
     friend ::std::ostream& operator<<(::std::ostream& os, const Impl& impl);
     SERIALISABLE_PROTOTYPES();
@@ -492,14 +503,15 @@ public:
     Crate();
 
     Module& root_module() { return m_root_module; }
-    const Module& root_module() const { return m_root_module; }
-    
     Module& get_root_module(const ::std::string& name);
-    const Module& get_root_module(const ::std::string& name) const;
-
     ::std::map< ::std::string, ExternCrate>& extern_crates() { return m_extern_crates; }   
+    
+    const Module& root_module() const { return m_root_module; }
+    const Module& get_root_module(const ::std::string& name) const;
     const ::std::map< ::std::string, ExternCrate>& extern_crates() const { return m_extern_crates; }   
  
+    void post_parse();
+    
     ::rust::option<Impl&> find_impl(const TypeRef& trait, const TypeRef& type);
     Function& lookup_method(const TypeRef& type, const char *name);
     

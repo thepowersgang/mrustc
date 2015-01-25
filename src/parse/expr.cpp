@@ -325,30 +325,43 @@ ExprNodeP Parse_IfStmt(TokenStream& lex)
     return NEWNODE( AST::ExprNode_If, ::std::move(cond), ::std::move(code), ::std::move(altcode) );
 }
 
+ExprNodeP Parse_Expr_Match(TokenStream& lex)
+{
+    TRACE_FUNCTION;
+    Token tok;
+    
+    // 1. Get expression
+    ExprNodeP   switch_val = Parse_Expr1(lex);
+    GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
+    
+    ::std::vector< ::std::pair<AST::Pattern, ExprNodeP> >    arms;
+    do {
+        if( GET_TOK(tok, lex) == TOK_BRACE_CLOSE )
+            break;
+        lex.putback(tok);
+        AST::Pattern    pat = Parse_Pattern(lex);
+        
+        GET_CHECK_TOK(tok, lex, TOK_FATARROW);
+        
+        bool opt_semicolon = false;
+        ExprNodeP   val = Parse_Stmt(lex, opt_semicolon);
+        
+        arms.push_back( ::std::make_pair( ::std::move(pat), ::std::move(val) ) );
+    } while( GET_TOK(tok, lex) == TOK_COMMA );
+    CHECK_TOK(tok, TOK_BRACE_CLOSE);
+    
+    return NEWNODE( AST::ExprNode_Match, ::std::move(switch_val), ::std::move(arms) );
+}
+
 // 0.5: Blocks
 ExprNodeP Parse_ExprBlocks(TokenStream& lex)
 {
+    TRACE_FUNCTION;
     Token tok;
     switch( GET_TOK(tok, lex) )
     {
-    case TOK_RWORD_MATCH: {
-        // 1. Get expression
-        ExprNodeP   switch_val = Parse_Expr1(lex);
-        GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
-        ::std::vector< ::std::pair<AST::Pattern, ::std::unique_ptr<ExprNode>> >    arms;
-        do {
-            if( GET_TOK(tok, lex) == TOK_BRACE_CLOSE )
-                break;
-            lex.putback(tok);
-            AST::Pattern    pat = Parse_Pattern(lex);
-            GET_CHECK_TOK(tok, lex, TOK_FATARROW);
-            bool opt_semicolon = false;
-            ExprNodeP   val = Parse_Stmt(lex, opt_semicolon);
-            arms.push_back( ::std::make_pair( ::std::move(pat), ::std::move(val) ) );
-        } while( GET_TOK(tok, lex) == TOK_COMMA );
-        CHECK_TOK(tok, TOK_BRACE_CLOSE);
-        return NEWNODE( AST::ExprNode_Match, ::std::move(switch_val), ::std::move(arms) );
-        }
+    case TOK_RWORD_MATCH:
+        return Parse_Expr_Match(lex);
     case TOK_RWORD_IF:
         // TODO: if let
         return Parse_IfStmt(lex);

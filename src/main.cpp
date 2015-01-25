@@ -75,11 +75,12 @@ int main(int argc, char *argv[])
         outfile += ".o";
     }
     
-    Serialiser_TextTree s_tt(::std::cout);
-    Serialiser& s = s_tt;
+    //Serialiser_TextTree s_tt(::std::cout);
+    //Serialiser& s = s_tt;
     try
     {
         AST::Crate crate = Parse_Crate(infile);
+        crate.post_parse();
 
         //s << crate;
     
@@ -98,6 +99,8 @@ int main(int argc, char *argv[])
         //  > Forward pass first
         Typecheck_Expr(crate);
 
+        Dump_Rust( FMT(outfile << ".rs").c_str(), crate );
+    
         if( strcmp(emit_type, "ast") == 0 )
         {
             ::std::ofstream os(outfile);
@@ -114,6 +117,11 @@ int main(int argc, char *argv[])
     catch(const ParseError::Base& e)
     {
         ::std::cerr << "Parser Error: " << e.what() << ::std::endl;
+        return 2;
+    }
+    catch(const ::std::exception& e)
+    {
+        ::std::cerr << "Misc Error: " << e.what() << ::std::endl;
         return 2;
     }
     return 0;

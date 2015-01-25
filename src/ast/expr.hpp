@@ -25,11 +25,15 @@ public:
     virtual ~ExprNode() = 0;
     
     virtual void visit(NodeVisitor& nv) = 0;
+    virtual void print(::std::ostream& os) const = 0;
     
     TypeRef& get_res_type() { return m_res_type; }
     
+    friend ::std::ostream& operator<<(::std::ostream& os, const ExprNode& node);
     static ::std::unique_ptr<ExprNode> from_deserialiser(Deserialiser& d);
 };
+
+#define NODE_METHODS()  virtual void visit(NodeVisitor& nv) override; virtual void print(::std::ostream& os) const override; SERIALISABLE_PROTOTYPES();
 
 struct ExprNode_Block:
     public ExprNode
@@ -43,9 +47,7 @@ struct ExprNode_Block:
     }
     virtual ~ExprNode_Block() override;
     
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 
 struct ExprNode_Macro:
@@ -60,9 +62,7 @@ struct ExprNode_Macro:
         m_tokens( move(tokens) )
     {}
     
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 
 // Return a value
@@ -77,9 +77,7 @@ struct ExprNode_Return:
     {
     }
     
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 struct ExprNode_LetBinding:
     public ExprNode
@@ -96,9 +94,7 @@ struct ExprNode_LetBinding:
     {
     }
     
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 struct ExprNode_Assign:
     public ExprNode
@@ -113,9 +109,7 @@ struct ExprNode_Assign:
     {
     }
     
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 struct ExprNode_CallPath:
     public ExprNode
@@ -130,9 +124,7 @@ struct ExprNode_CallPath:
     {
     }
     
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 struct ExprNode_CallMethod:
     public ExprNode
@@ -149,9 +141,7 @@ struct ExprNode_CallMethod:
     {
     }
     
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 // Call an object (Fn/FnMut/FnOnce)
 struct ExprNode_CallObject:
@@ -166,9 +156,7 @@ struct ExprNode_CallObject:
         m_args( move(args) )
     {
     }
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 
 struct ExprNode_Match:
@@ -184,9 +172,7 @@ struct ExprNode_Match:
         m_arms( ::std::move(arms) )
     {
     }
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 
 struct ExprNode_If:
@@ -203,9 +189,7 @@ struct ExprNode_If:
         m_false( ::std::move(false_code) )
     {
     }
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 // Literal integer
 struct ExprNode_Integer:
@@ -221,9 +205,7 @@ struct ExprNode_Integer:
     {
     }
     
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 // Literal structure
 struct ExprNode_StructLiteral:
@@ -241,9 +223,7 @@ struct ExprNode_StructLiteral:
         m_values( move(values) )
     {}
     
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 // Tuple
 struct ExprNode_Tuple:
@@ -256,9 +236,7 @@ struct ExprNode_Tuple:
         m_values( ::std::move(vals) )
     {}
     
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 // Variable / Constant
 struct ExprNode_NamedValue:
@@ -271,9 +249,7 @@ struct ExprNode_NamedValue:
         m_path( ::std::move(path) )
     {
     }
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 // Field dereference
 struct ExprNode_Field:
@@ -288,9 +264,7 @@ struct ExprNode_Field:
         m_name( ::std::move(name) )
     {
     }
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 
 // Pointer dereference
@@ -305,9 +279,7 @@ struct ExprNode_Deref:
     {
     }
     
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 
 // Type cast ('as')
@@ -323,9 +295,7 @@ struct ExprNode_Cast:
         m_type( move(dst_type) )
     {
     }
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 
 // Binary operation
@@ -356,9 +326,7 @@ struct ExprNode_BinOp:
     {
     }
     
-    virtual void visit(NodeVisitor& nv) override;
-
-    SERIALISABLE_PROTOTYPES();
+    NODE_METHODS();
 };
 
 class NodeVisitor

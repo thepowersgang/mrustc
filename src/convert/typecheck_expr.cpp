@@ -184,8 +184,7 @@ void CTypeChecker::handle_function(AST::Path path, AST::Function& fcn)
     for( auto& arg : fcn.args() )
     {
         handle_type(arg.second);
-        AST::Pattern    pat(AST::Pattern::TagBind(), arg.first);
-        handle_pattern( pat, arg.second );
+        handle_pattern( arg.first, arg.second );
     }
 
     CTC_NodeVisitor    nv(*this);
@@ -230,8 +229,8 @@ void CTC_NodeVisitor::visit(AST::ExprNode_NamedValue& node)
             auto idx = p.bound_idx();
             // Enum variant:
             // - Check that this variant takes no arguments
-            if( !enm.variants()[idx].second.is_unit() )
-                throw ::std::runtime_error( FMT("Used a non-unit variant as a raw value - " << enm.variants()[idx].second));
+            if( !enm.variants()[idx].data.is_unit() )
+                throw ::std::runtime_error( FMT("Used a non-unit variant as a raw value - " << enm.variants()[idx].data));
             // - Set output type to the enum (wildcard params, not default)
             AST::Path tp = p;
             tp.nodes().pop_back();
@@ -523,8 +522,8 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallPath& node)
             // 2. Create a pattern from the argument types and the format of the variant
             DEBUG("argtypes = [" << argtypes << "]");
             ::std::vector<TypeRef>  item_args(enm.params().n_params());
-            DEBUG("variant type = " << var.second << "");
-            var.second.match_args(
+            DEBUG("variant type = " << var.data << "");
+            var.data.match_args(
                 TypeRef(TypeRef::TagTuple(), argtypes),
                 [&](const char *name, const TypeRef& t) {
                     DEBUG("Binding " << name << " to type " << t);

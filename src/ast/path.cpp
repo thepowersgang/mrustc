@@ -259,7 +259,7 @@ void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std
     unsigned int idx = 0;
     for( idx = 0; idx < ent.variants().size(); idx ++ )
     {
-        if( ent.variants()[idx].first == name ) {
+        if( ent.variants()[idx].name == name ) {
             break;
         }
     }
@@ -311,6 +311,27 @@ bool Path::operator==(const Path& x) const
     return m_class == x.m_class && m_crate == x.m_crate && m_nodes == x.m_nodes;
 }
 
+void Path::print_pretty(::std::ostream& os) const
+{
+    switch(m_class)
+    {
+    case Path::RELATIVE:
+        os << "self";
+        for(const auto& n : m_nodes)
+            os << n;
+        break;
+    case Path::ABSOLUTE:
+        if( m_crate != "" )
+            os << "::" << m_crate;
+        for(const auto& n : m_nodes)
+            os << n;
+        break;
+    case Path::LOCAL:
+        os << m_nodes[0].name();
+        break;
+    }
+}
+
 ::std::ostream& operator<<(::std::ostream& os, const Path& path)
 {
     #if PRETTY_PATH_PRINT
@@ -322,7 +343,7 @@ bool Path::operator==(const Path& x) const
             os << n;
         break;
     case Path::ABSOLUTE:
-        os << "["<<path.m_crate<<"]";
+        os << "{"<<path.m_crate<<"}";
         for(const auto& n : path.m_nodes)
             os << n;
         break;

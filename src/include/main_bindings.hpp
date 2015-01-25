@@ -12,5 +12,7 @@ extern void Typecheck_GenericParams(AST::Crate& crate);
 extern void Typecheck_Expr(AST::Crate& crate);
 extern AST::Flat Convert_Flatten(const AST::Crate& crate);
 
+extern void Dump_Rust(const char *Filename, const AST::Crate& crate);
+
 #endif
 

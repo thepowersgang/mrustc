@@ -64,6 +64,7 @@ bool TypeRef::deref(bool is_implicit)
     case TypeRef::ASSOCIATED:
         throw ::std::runtime_error("TODO: TypeRef::deref on ASSOCIATED");
     }
+    throw ::std::runtime_error("BUGCHECK: Fell off end of TypeRef::deref");
 }
 
 /// Merge the contents of the passed type with this type
@@ -72,14 +73,15 @@ bool TypeRef::deref(bool is_implicit)
 void TypeRef::merge_with(const TypeRef& other)
 {
     // Ignore if other is wildcard
-    if( other.m_class == TypeRef::ANY ) {
-        assert(other.m_inner_types.size() == 0 && "TODO: merge_with on bounded _");
-        return;
-    }
+    //if( other.m_class == TypeRef::ANY ) {
+    //    assert(other.m_inner_types.size() == 0 && "TODO: merge_with on bounded _");
+    //    return;
+    //}
    
-    // If this is a wildcard, then replace with the othet type 
+    // If this is a wildcard, then replace with the other type 
     if( m_class == TypeRef::ANY ) {
-        assert(m_inner_types.size() == 0 && "TODO: merge_with on bounded _");
+        if( m_inner_types.size() && m_inner_types.size() != other.m_inner_types.size() )
+            throw ::std::runtime_error("TypeRef::merge_with - Handle bounded wildcards");
         *this = other;
         return;
     }
@@ -177,15 +179,18 @@ void TypeRef::resolve_args(::std::function<TypeRef(const char*)> fcn)
 /// This is used to handle extracting types passsed to methods/enum variants
 void TypeRef::match_args(const TypeRef& other, ::std::function<void(const char*,const TypeRef&)> fcn) const
 {
-    // If the other type is a wildcard, early return
-    // - TODO - Might want to restrict the other type to be of the same form as this type
-    if( other.m_class == TypeRef::ANY )
-        return;
     // If this type is a generic, then call the closure with the other type
     if( m_class == TypeRef::GENERIC ) {
         fcn( m_path[0].name().c_str(), other );
         return ;
     }
+    
+    // If the other type is a wildcard, early return
+    // - TODO - Might want to restrict the other type to be of the same form as this type
+    if( other.m_class == TypeRef::ANY )
+        return;
+    
+    DEBUG("this = " << *this << ", other = " << other);
     
     // Any other case, it's a "pattern" match
     if( m_class != other.m_class )
@@ -215,11 +220,35 @@ void TypeRef::match_args(const TypeRef& other, ::std::function<void(const char*,
         m_inner_types[0].match_args( other.m_inner_types[0], fcn );
         break;
     case TypeRef::ARRAY:
-        throw ::std::runtime_error("TODO: TypeRef::match_args on ARRAY");
+        m_inner_types[0].match_args( other.m_inner_types[0], fcn );
+        if(m_size_expr.get())
+        {
+            throw ::std::runtime_error("TODO: Sized array match_args");
+        }
+        break;
     case TypeRef::GENERIC:
         throw ::std::runtime_error("Encountered GENERIC in match_args");
     case TypeRef::PATH:
-        throw ::std::runtime_error("TODO: TypeRef::match_args on PATH");
+        if( m_path.size() != other.m_path.size() )
+            throw ::std::runtime_error("Type mismatch (path size)");
+        for( unsigned int i = 0; i < m_path.size(); i++ )
+        {
+            auto& pn1 = m_path[i];
+            auto& pn2 = other.m_path[i];
+            if( pn1.name() != pn2.name() )
+                throw ::std::runtime_error("Type mismatch (path component)");
+            
+            if( pn1.args().size() != pn2.args().size() )
+                throw ::std::runtime_error("Type mismatch (path component param count)");
+            
+            for( unsigned int j = 0; j < pn1.args().size(); j ++ )
+            {
+                auto& t1 = pn1.args()[j];
+                auto& t2 = pn2.args()[j];
+                t1.match_args( t2, fcn );
+            }
+        }
+        break;
     case TypeRef::ASSOCIATED:
         throw ::std::runtime_error("TODO: TypeRef::match_args on ASSOCIATED");
     }
@@ -309,14 +338,14 @@ bool TypeRef::operator==(const TypeRef& x) const
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr) {
-    os << "TypeRef(";
+    //os << "TypeRef(";
     switch(tr.m_class)
     {
     case TypeRef::ANY:
         //os << "TagAny";
         os << "_";
         if( tr.m_inner_types.size() ) {
-            os << ": {" << tr.m_inner_types << "}";
+            os << ": " << tr.m_inner_types << "";
         }
         break;
     case TypeRef::UNIT:
@@ -340,21 +369,19 @@ bool TypeRef::operator==(const TypeRef& x) const
         os << "*" << (tr.m_is_inner_mutable ? "mut" : "const") << " " << tr.m_inner_types[0];
         break;
     case TypeRef::ARRAY:
-        os << "TagSizedArray, " << tr.m_inner_types[0] << ", " << tr.m_size_expr;
+        os << "[" << tr.m_inner_types[0] << "; " << tr.m_size_expr << "]";
         break;
     case TypeRef::GENERIC:
-        os << "TagArg, " << tr.m_path[0].name();
+        os << "/* arg */ " << tr.m_path[0].name();
         break;
     case TypeRef::PATH:
-        //os << "TagPath, " << tr.m_path;
         os << tr.m_path;
         break;
     case TypeRef::ASSOCIATED:
-        //os << "TagAssoc, <" << tr.m_inner_types[0] << " as " << tr.m_inner_types[1] << ">::" << tr.m_path[0].name();
         os << "<" << tr.m_inner_types[0] << " as " << tr.m_inner_types[1] << ">::" << tr.m_path[0].name();
         break;
     }
-    os << ")";
+    //os << ")";
     return os;
 }
 
@@ -442,3 +469,54 @@ SERIALISE_TYPE(TypeRef::, "TypeRef", {
         m_size_expr.reset();
     s.item( m_path );
 })
+
+
+void PrettyPrintType::print(::std::ostream& os) const
+{
+    switch(m_type.m_class)
+    {
+    case TypeRef::ANY:
+        os << "_";
+        if( m_type.m_inner_types.size() ) {
+            os << "/* : " << m_type.m_inner_types << "*/";
+        }
+        break;
+    case TypeRef::UNIT:
+        os << "()";
+        break;
+    case TypeRef::PRIMITIVE:
+        os << m_type.m_core_type;
+        break;
+    case TypeRef::TUPLE:
+        os << "(";
+        for(const auto& t : m_type.m_inner_types)
+            os << t.print_pretty() << ",";
+        os << ")";
+        break;
+    case TypeRef::REFERENCE:
+        os << "&" << (m_type.m_is_inner_mutable ? "mut " : "") << m_type.m_inner_types[0].print_pretty();
+        break;
+    case TypeRef::POINTER:
+        os << "*" << (m_type.m_is_inner_mutable ? "mut" : "const") << " " << m_type.m_inner_types[0].print_pretty();
+        break;
+    case TypeRef::ARRAY:
+        os << "[" << m_type.m_inner_types[0].print_pretty() << ", " << m_type.m_size_expr << "]";
+        break;
+    case TypeRef::GENERIC:
+        os << m_type.m_path[0].name();
+        break;
+    case TypeRef::PATH:
+        os << m_type.m_path;
+        break;
+    case TypeRef::ASSOCIATED:
+        os << "<" << m_type.m_inner_types[0].print_pretty() << " as " << m_type.m_inner_types[1].print_pretty() << ">::" << m_type.m_path[0].name();
+        break;
+    }
+    
+}
+
+::std::ostream& operator<<(::std::ostream& os, const PrettyPrintType& v)
+{
+    v.print(os);
+    return os;
+}

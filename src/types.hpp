@@ -24,6 +24,19 @@ class TypeBounds
     
 };
 
+class PrettyPrintType
+{
+    const TypeRef&  m_type;
+public:
+    PrettyPrintType(const TypeRef& ty):
+        m_type(ty)
+    {}
+    
+    void print(::std::ostream& os) const;
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const PrettyPrintType& v);
+};
+
 /// A type
 class TypeRef:
     public Serialisable
@@ -31,6 +44,7 @@ class TypeRef:
     /// Class
     enum Class {
         ANY,    //< '_' - Wildcard
+        //BOUNDED,    //< '_: Traits' - Bounded type (a resolved type parameter usually)
         UNIT,   //< '()' - Unit / void
         PRIMITIVE,  //< Any primitive (builtin type)
         TUPLE,
@@ -138,7 +152,9 @@ public:
     /// Returns true if the type is fully known (all sub-types are not wildcards)
     bool is_concrete() const;
 
+    bool is_unbounded() const { return m_class == ANY && m_inner_types.size() == 0; }
     bool is_wildcard() const { return m_class == ANY; }
+    
     bool is_unit() const { return m_class == UNIT; }
     bool is_path() const { return m_class == PATH; }
     bool is_type_param() const { return m_class == GENERIC; }
@@ -154,7 +170,11 @@ public:
 
     bool operator==(const TypeRef& x) const;
     bool operator!=(const TypeRef& x) const { return !(*this == x); }
-     
+    
+    PrettyPrintType print_pretty() const { return PrettyPrintType(*this); }
+    
+    friend class PrettyPrintType;
+    
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr);
     
     static const char* class_name(TypeRef::Class c);

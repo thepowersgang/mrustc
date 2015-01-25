@@ -31,6 +31,37 @@ private:
     unique_ptr<ExprNode>    m_node;
     ::std::vector<Pattern>  m_sub_patterns;
 public:
+    Pattern(Pattern&& o):
+        m_class(o.m_class),
+        m_binding( move(o.m_binding) ),
+        m_path( move(o.m_path) ),
+        m_node( move(o.m_node) ),
+        m_sub_patterns( move(o.m_sub_patterns) )
+    { }
+    
+    Pattern(const Pattern& o):
+        m_class(o.m_class),
+        m_binding(o.m_binding),
+        m_path(o.m_path),
+        m_node(nullptr),
+        m_sub_patterns(o.m_sub_patterns)
+    {
+        if( o.m_node.get() ) {
+            DEBUG("Cloning " << o);
+            throw ::std::runtime_error(FMT("Cloning pattern with node : " << o));
+        }
+    }
+    
+    Pattern& operator=(Pattern o)
+    {
+        m_class = o.m_class,
+        m_binding = move(o.m_binding);
+        m_path = move(o.m_path);
+        m_node = move(o.m_node);
+        m_sub_patterns = move(o.m_sub_patterns);
+        return *this;
+    }
+    
     Pattern():
         m_class(ANY)
     {}

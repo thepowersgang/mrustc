@@ -24,7 +24,7 @@ void Render_CStruct(::std::ostream& os, const AST::CStruct& str)
     for(auto& f : str.fields())
     {
         os << "\t";
-        Render_Type(os, f.second, f.first.c_str());
+        Render_Type(os, f.data, f.name.c_str());
         os << ";\n";
     }
     os << "}\n";
@@ -48,7 +48,8 @@ void Render_Crate(::std::ostream& os, const AST::Flat& crate)
             if( !is_first )
                 os << ", ";
             is_first = false;
-            Render_Type(os, f.second, f.first.c_str());
+            // TODO: handle pattern
+            //Render_Type(os, f.second, f.first.c_str());
         }
         os << ")\n{\n";
         // Dump expression AST
