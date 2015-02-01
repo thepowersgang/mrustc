@@ -554,7 +554,7 @@ class Flat
     ::std::vector< ::std::pair< ::std::string,Function> > m_functions;
 public:
     
-    const ::std::vector< ::std::pair<::std::string, Function> >& functions() const { return m_functions; }
+    const ::std::vector< ::std::pair< ::std::string, Function> >& functions() const { return m_functions; }
     const ::std::vector<CStruct>& structs() const { return m_structs; }
 };
 

@@ -457,15 +457,31 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
     }
 }
 
-void SetCrateName_Mod(::std::string name, AST::Module& mod)
+void SetCrateName_Type(const AST::Crate& crate, ::std::string name, TypeRef& type)
+{
+    if( type.is_path() )
+    {
+        type.path().set_crate(name);
+        type.path().resolve(crate);
+    }
+}
+
+void SetCrateName_Mod(const AST::Crate& crate, ::std::string name, AST::Module& mod)
 {
     for(auto& submod : mod.submods())
-        SetCrateName_Mod(name, submod.first);
+        SetCrateName_Mod(crate, name, submod.first);
     // Imports 'use' statements
     for(auto& imp : mod.imports())
+    {
         imp.data.set_crate(name);
+        imp.data.resolve(crate);
+    }
     
     // TODO: All other types
+    for(auto& fcn : mod.functions())
+    {
+        SetCrateName_Type(crate, name, fcn.data.rettype());
+    }
 }
 
 
@@ -478,7 +494,7 @@ void ResolvePaths(AST::Crate& crate)
     // Pre-process external crates to tag all paths
     for(auto& ec : crate.extern_crates())
     {
-        SetCrateName_Mod(ec.first, ec.second.root_module());
+        SetCrateName_Mod(crate, ec.first, ec.second.root_module());
     }
     
     // Handle 'use' statements in an initial parss

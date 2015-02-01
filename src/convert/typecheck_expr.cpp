@@ -38,6 +38,12 @@ public:
     
     virtual void handle_params(AST::TypeParams& params) override;
     
+    virtual void handle_pattern_enum(
+            ::std::vector<TypeRef>& pat_args, const ::std::vector<TypeRef>& hint_args,
+            const AST::TypeParams& enum_params, const AST::StructItem& var,
+            ::std::vector<AST::Pattern>& sub_patterns
+            ) override;
+    
     virtual void handle_function(AST::Path path, AST::Function& fcn) override;
     // - Ignore all non-function items on this pass
     virtual void handle_enum(AST::Path path, AST::Enum& ) override {}
@@ -49,6 +55,10 @@ private:
     const TypeRef& get_local_type(const char* name);
     const TypeRef& get_type_param(const char* name);
     
+    void check_enum_variant(
+        ::std::vector<TypeRef>& path_args, const ::std::vector<TypeRef>& argtypes,
+        const AST::TypeParams& params, const AST::StructItem& var
+        );
     void iterate_traits(::std::function<bool(const TypeRef& trait)> fcn);
 };
 class CTC_NodeVisitor:
@@ -111,6 +121,32 @@ void CTypeChecker::handle_params(AST::TypeParams& params)
     
     assert(m_scopes.back().params.size() == 0);
     m_scopes.back().params = trs;
+}
+void CTypeChecker::handle_pattern_enum(
+        ::std::vector<TypeRef>& pat_args, const ::std::vector<TypeRef>& hint_args,
+        const AST::TypeParams& enum_params, const AST::StructItem& var,
+        ::std::vector<AST::Pattern>& sub_patterns
+        )
+{
+    check_enum_variant(pat_args, hint_args, enum_params, var);
+    
+    // Ensure that sub_patterns is the same length as the variant
+    assert(var.data.is_tuple());
+    const auto& var_types = var.data.sub_types();
+    if( sub_patterns.size() != var_types.size() )
+        throw ::std::runtime_error(FMT("Enum pattern size mismatch"));
+    for( unsigned int i = 0; i < sub_patterns.size(); i ++ )
+    {
+        // TODO: Need to propagate types through here correctly.
+        // - hint_args -> enum -> this
+        TypeRef arg = var_types[i];
+        arg.resolve_args([&](const char *name){
+                int i = enum_params.find_name(name);
+                if(i < 0)   throw "";
+                return hint_args[i];
+            });
+        handle_pattern(sub_patterns[i], var_types[i]);
+    }
 }
 
 TypeRef& CTypeChecker::get_local_var(const char* name)
@@ -208,6 +244,40 @@ void CTypeChecker::iterate_traits(::std::function<bool(const TypeRef& trait)> fc
                 return;
             }
         }
+    }
+}
+
+void CTypeChecker::check_enum_variant(::std::vector<TypeRef>& path_args, const ::std::vector<TypeRef>& argtypes, const AST::TypeParams& params, const AST::StructItem& var)
+{
+    // We know the enum, but it might have type params, need to handle that case
+    if( params.n_params() > 0 )
+    {
+        // 1. Obtain the pattern set from the path (should it be pre-marked with _ types?)
+        while( path_args.size() < params.n_params() )
+            path_args.push_back( TypeRef() );
+        DEBUG("path_args = [" << path_args << "]");
+        // 2. Create a pattern from the argument types and the format of the variant
+        DEBUG("argtypes = [" << argtypes << "]");
+        ::std::vector<TypeRef>  item_args(params.n_params());
+        DEBUG("variant type = " << var.data << "");
+        var.data.match_args(
+            TypeRef(TypeRef::TagTuple(), argtypes),
+            [&](const char *name, const TypeRef& t) {
+                    DEBUG("Binding " << name << " to type " << t);
+                    int idx = params.find_name(name);
+                    if( idx == -1 ) {
+                        throw ::std::runtime_error(FMT("Can't find generic " << name));
+                    }
+                    item_args.at(idx).merge_with( t );
+                }
+            );
+        DEBUG("item_args = [" << item_args << "]");
+        // 3. Merge the two sets of arguments
+        for( unsigned int i = 0; i < path_args.size(); i ++ )
+        {
+            path_args[i].merge_with( item_args[i] );
+        }
+        DEBUG("new path_args = [" << path_args << "]");
     }
 }
 
@@ -507,40 +577,9 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallPath& node)
     {
         const AST::Enum& enm = node.m_path.bound_enum();
         const unsigned int idx = node.m_path.bound_idx();
-        const auto& var = enm.variants().at(idx);
-        
-        const auto& params = enm.params();
-        // We know the enum, but it might have type params, need to handle that case
-        
-        if( params.n_params() > 0 )
-        {
-            // 1. Obtain the pattern set from the path (should it be pre-marked with _ types?)
-            auto& path_args = node.m_path[node.m_path.size()-2].args();
-            while( path_args.size() < params.n_params() )
-                path_args.push_back( TypeRef() );
-            DEBUG("path_args = [" << path_args << "]");
-            // 2. Create a pattern from the argument types and the format of the variant
-            DEBUG("argtypes = [" << argtypes << "]");
-            ::std::vector<TypeRef>  item_args(enm.params().n_params());
-            DEBUG("variant type = " << var.data << "");
-            var.data.match_args(
-                TypeRef(TypeRef::TagTuple(), argtypes),
-                [&](const char *name, const TypeRef& t) {
-                    DEBUG("Binding " << name << " to type " << t);
-                    int idx = params.find_name(name);
-                    if( idx == -1 ) {
-                        throw ::std::runtime_error(FMT("Can't find generic " << name));
-                    }
-                    item_args.at(idx).merge_with( t );
-                });
-            DEBUG("item_args = [" << item_args << "]");
-            // 3. Merge the two sets of arguments
-            for( unsigned int i = 0; i < path_args.size(); i ++ )
-            {
-                path_args[i].merge_with( item_args[i] );
-            }
-            DEBUG("new path_args = [" << path_args << "]");
-        }
+    
+        auto& path_node_enum = node.m_path[node.m_path.size()-2];
+        m_tc.check_enum_variant(path_node_enum.args(), argtypes, enm.params(), enm.variants().at(idx));
     
         AST::Path   p = node.m_path;
         p.nodes().pop_back();

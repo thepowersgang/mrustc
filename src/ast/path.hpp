@@ -178,8 +178,8 @@ public:
     ::std::vector<PathNode>& nodes() { return m_nodes; }
     const ::std::vector<PathNode>& nodes() const { return m_nodes; }
     
-    PathNode& operator[](size_t idx) { return m_nodes[idx]; }
-    const PathNode& operator[](size_t idx) const { return m_nodes[idx]; }
+    PathNode& operator[](int idx) { if(idx>=0) return m_nodes[idx]; else return m_nodes[size()+idx]; }
+    const PathNode& operator[](int idx) const { if(idx>=0) return m_nodes[idx]; else return m_nodes[size()+idx]; }
    
     bool operator==(const Path& x) const;
     

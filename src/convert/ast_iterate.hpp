@@ -11,6 +11,7 @@ class ExprNode;
 class Pattern;
 class TypeParams;
 class Impl;
+template<typename T> struct Item;
 
 };
 
@@ -36,6 +37,11 @@ public:
     virtual void end_scope();
     
     virtual void handle_pattern(AST::Pattern& pat, const TypeRef& type_hint);
+    virtual void handle_pattern_enum(
+            ::std::vector<TypeRef>& pat_args, const ::std::vector<TypeRef>& hint_args,
+            const AST::TypeParams& enum_params, const AST::Item<TypeRef>& var,
+            ::std::vector<AST::Pattern>& sub_patterns
+            );
     
     virtual void handle_module(AST::Path path, AST::Module& mod);
 

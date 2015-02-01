@@ -28,6 +28,49 @@ struct RepeatLitStr
     }
 };
 
+template<typename T>
+class slice
+{
+    T*  m_first;
+    unsigned int    m_len;
+public:
+    slice(::std::vector<T>& v):
+        m_first(&v[0]),
+        m_len(v.size())
+    {}
+    
+    ::std::vector<T> to_vec() const {
+        return ::std::vector<T>(begin(), end());
+    }
+    
+    unsigned int size() const {
+        return m_len;
+    }
+    T& operator[](unsigned int i) const {
+        assert(i < m_len);
+        return m_first[i];
+    }
+    
+    T* begin() const { return m_first; }
+    T* end() const { return m_first + m_len; }
+};
+
+template<typename T>
+::std::ostream& operator<<(::std::ostream& os, slice<T> s) {
+    if( s.size() > 0 )
+    {
+        bool is_first = true;
+        for( const auto& i : s )
+        {
+            if(!is_first)
+                os << ", ";
+            is_first = false;
+            os << i;
+        }
+    }
+    return os;
+}
+
 namespace rust {
 
 template<typename T>

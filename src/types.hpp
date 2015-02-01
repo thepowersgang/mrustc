@@ -159,6 +159,7 @@ public:
     bool is_path() const { return m_class == PATH; }
     bool is_type_param() const { return m_class == GENERIC; }
     bool is_reference() const { return m_class == REFERENCE; }
+    bool is_tuple() const { return m_class == TUPLE; }
     const ::std::string& type_param() const { assert(is_type_param()); return m_path[0].name(); }
     AST::Path& path() { assert(is_path() || m_class == ASSOCIATED); return m_path; }
     const AST::Path& path() const { assert(is_path() || m_class == ASSOCIATED); return m_path; }

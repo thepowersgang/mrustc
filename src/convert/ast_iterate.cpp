@@ -73,11 +73,66 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
         break;
     case AST::Pattern::TUPLE:
         // Tuple is handled by subpattern code
+        if( type_hint.is_wildcard() )
+        {
+            for( auto& sp : pat.sub_patterns() )
+                handle_pattern(sp, (const TypeRef&)TypeRef());
+        }
+        else if( !type_hint.is_tuple() )
+        {
+            throw ::std::runtime_error("Tuple pattern on non-tuple value");
+        }
+        else
+        {
+            if( type_hint.sub_types().size() != pat.sub_patterns().size() )
+            {
+                throw ::std::runtime_error("Tuple pattern count doesn't match");
+            }
+            for( unsigned int i = 0; i < pat.sub_patterns().size(); i ++ )
+            {
+                handle_pattern(pat.sub_patterns()[i], type_hint.sub_types()[i]);
+            }
+        }
         break;
     case AST::Pattern::TUPLE_STRUCT:
         // Resolve the path!
         // - TODO: Restrict to types and enum variants
         handle_path( pat.path(), CASTIterator::MODE_TYPE );
+        // Handle sub-patterns
+        if( type_hint.is_wildcard() )
+        {
+            for( auto& sp : pat.sub_patterns() )
+                handle_pattern(sp, (const TypeRef&)TypeRef());
+        }
+        else if( !type_hint.is_path() )
+        {
+            throw ::std::runtime_error("Tuple struct pattern on non-tuple value");
+        }
+        else
+        {
+            auto& hint_path = type_hint.path();
+            auto& pat_path = pat.path();
+            DEBUG("Pat: " << pat.path() << ", Type: " << type_hint.path());
+            switch( hint_path.binding_type() )
+            {
+            case AST::Path::UNBOUND:
+                throw ::std::runtime_error("Unbound path in pattern");
+            case AST::Path::ENUM: {
+                // The pattern's path must refer to a variant of the hint path
+                // - Actual type params are checked by the 'handle_pattern_enum' code
+                if( pat_path.binding_type() != AST::Path::ENUM_VAR )
+                    throw ::std::runtime_error(FMT("Paths in pattern are invalid"));
+                if( &pat_path.bound_enum() != &hint_path.bound_enum() )
+                    throw ::std::runtime_error(FMT("Paths in pattern are invalid"));
+                auto& enm = pat_path.bound_enum();
+                auto idx = pat_path.bound_idx();
+                auto& var = enm.variants().at(idx);
+                handle_pattern_enum(pat_path[-2].args(), hint_path[-1].args(), enm.params(), var, pat.sub_patterns());
+                break; }
+            default:
+                throw ::std::runtime_error(FMT("Bad type in tuple struct pattern : " << type_hint.path()));
+            }
+        }
         break;
     }
     // Extract bindings and add to namespace
@@ -89,8 +144,16 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
             local_variable( false, pat.binding(), type_hint );
         }
     }
-    for( auto& subpat : pat.sub_patterns() )
-        handle_pattern(subpat, (const TypeRef&)TypeRef());
+}
+void CASTIterator::handle_pattern_enum(
+        ::std::vector<TypeRef>& pat_args, const ::std::vector<TypeRef>& hint_args,
+        const AST::TypeParams& enum_params, const AST::StructItem& var,
+        ::std::vector<AST::Pattern>& sub_patterns
+        )
+{
+    // This implementation doesn't attempt to do anything with types, just propagates _
+    for( auto& sp : sub_patterns )
+        handle_pattern(sp, (const TypeRef&)TypeRef());
 }
 
 void CASTIterator::handle_module(AST::Path path, AST::Module& mod)
@@ -142,6 +205,8 @@ void CASTIterator::handle_module(AST::Path path, AST::Module& mod)
 }
 void CASTIterator::handle_function(AST::Path path, AST::Function& fcn)
 {
+    INDENT();
+    DEBUG("(" << path << ", ...");
     start_scope();
     
     handle_params(fcn.params());
@@ -157,10 +222,13 @@ void CASTIterator::handle_function(AST::Path path, AST::Function& fcn)
 
     if( fcn.code().is_valid() )
     {
+        INDENT();
         handle_expr( fcn.code().node() );
+        UNINDENT();
     }
     
     end_scope();
+    UNINDENT();
 }
 void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
 {

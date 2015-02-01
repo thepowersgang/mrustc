@@ -7,6 +7,7 @@
 #include <string>
 #include <map>
 #include <memory>
+#include <stdexcept>
 
 class Serialiser;
 class Deserialiser;
