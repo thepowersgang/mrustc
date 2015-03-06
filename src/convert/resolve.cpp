@@ -70,7 +70,7 @@ public:
 void ResolvePaths(AST::Crate& crate);
 
 class CResolvePaths_NodeVisitor:
-    public AST::NodeVisitor
+    public AST::NodeVisitorDef
 {
     CPathResolver&    m_res;
 public:
@@ -92,8 +92,8 @@ public:
         m_res.handle_path(node.m_path, CASTIterator::MODE_EXPR);
     }
     void visit(AST::ExprNode_CallPath& node) {
-        DEBUG("ExprNode_CallPath");
-        AST::NodeVisitor::visit(node);
+        DEBUG("ExprNode_CallPath - " << node);
+        AST::NodeVisitorDef::visit(node);
         m_res.handle_path(node.m_path, CASTIterator::MODE_EXPR);
     }
     
@@ -171,11 +171,13 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
     if( path.is_absolute() )
     {
         DEBUG("Absolute - binding");
+        INDENT();
         // Already absolute, our job is done
         // - However, if the path isn't bound, bind it
         if( !path.is_bound() ) {
             path.resolve(m_crate);
         }
+        UNINDENT();
     }
     else if( path.is_relative() )
     {
@@ -492,17 +494,23 @@ void ResolvePaths(AST::Crate& crate)
 {
     DEBUG(" >>>");
     // Pre-process external crates to tag all paths
+    DEBUG(" --- Extern crates");
+    INDENT();
     for(auto& ec : crate.extern_crates())
     {
         SetCrateName_Mod(crate, ec.first, ec.second.root_module());
     }
+    UNINDENT();
     
     // Handle 'use' statements in an initial parss
+    DEBUG(" --- Use Statements");
+    INDENT();
     ResolvePaths_HandleModule_Use(crate, AST::Path(AST::Path::TagAbsolute()), crate.root_module());
-    DEBUG(" ---");
+    UNINDENT();
     
     // Then do path resolution on all other items
     CPathResolver	pr(crate);
+    DEBUG(" ---");
     pr.handle_module(AST::Path(AST::Path::TagAbsolute()), crate.root_module());
     DEBUG(" <<<");
 }

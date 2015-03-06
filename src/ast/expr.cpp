@@ -6,7 +6,15 @@ namespace AST {
 
 void Expr::visit_nodes(NodeVisitor& v)
 {
+	assert(!!m_node);
     m_node->visit(v);
+}
+void Expr::visit_nodes(NodeVisitor& v) const
+{
+	assert(!!m_node);
+	assert(v.is_const());
+    //const_cast<const ExprNode*>(m_node.get())->visit(v);
+	m_node->visit(v);
 }
 ::std::ostream& operator<<(::std::ostream& os, const Expr& pat)
 {
@@ -72,7 +80,11 @@ SERIALISE_TYPE(Expr::, "Expr", {
 ExprNode::~ExprNode() {
 }
 
-#define NODE(class, serialise, _print) void class::visit(NodeVisitor& nv) { nv.visit(*this); } SERIALISE_TYPE_S(class, serialise) void class::print(::std::ostream& os) const _print
+#define NODE(class, serialise, _print)\
+	void class::visit(NodeVisitor& nv) { nv.visit(*this); } \
+	/*void class::visit(NodeVisitor& nv) const { nv.visit(*this); }*/ \
+	void class::print(::std::ostream& os) const _print \
+	SERIALISE_TYPE_S(class, serialise) \
 
 ExprNode_Block::~ExprNode_Block() {
 }
@@ -261,127 +273,114 @@ NODE(ExprNode_BinOp, {
 })
 
 
-void NodeVisitor::visit(ExprNode_Block& node)
-{
-    DEBUG("DEF - ExprNode_Block");
+#define NV(type, actions)\
+	void NodeVisitorDef::visit(type& node) { DEBUG("DEF - "#type); actions }
+//	void NodeVisitorDef::visit(const type& node) { DEBUG("DEF - "#type" (const)"); actions }
+
+NV(ExprNode_Block, {
     INDENT();
     for( auto& child : node.m_nodes )
         visit(child);
     UNINDENT();
-}
-void NodeVisitor::visit(ExprNode_Macro& node)
+})
+NV(ExprNode_Macro,
 {
-    DEBUG("DEF - ExprNode_Macro");
-}
-void NodeVisitor::visit(ExprNode_Return& node) 
+    DEBUG("TODO: Macro");
+})
+NV(ExprNode_Return,
 {
-    DEBUG("DEF - ExprNode_Return");
     visit(node.m_value);
-}
-void NodeVisitor::visit(ExprNode_LetBinding& node) 
+})
+NV(ExprNode_LetBinding,
 {
-    DEBUG("DEF - ExprNode_LetBinding");
     // TODO: Handle recurse into Let pattern
     visit(node.m_value);
-}
-void NodeVisitor::visit(ExprNode_Assign& node) 
+})
+NV(ExprNode_Assign,
 {
-    DEBUG("DEF - ExprNode_Assign");
     INDENT();
     visit(node.m_slot);
     visit(node.m_value);
     UNINDENT();
-}
-void NodeVisitor::visit(ExprNode_CallPath& node) 
+})
+NV(ExprNode_CallPath,
 {
-    DEBUG("DEF - ExprNode_CallPath");
     INDENT();
     for( auto& arg : node.m_args )
         visit(arg);
     UNINDENT();
-}
-void NodeVisitor::visit(ExprNode_CallMethod& node) 
+})
+NV(ExprNode_CallMethod,
 {
-    DEBUG("DEF - ExprNode_CallMethod");
     INDENT();
     visit(node.m_val);
     for( auto& arg : node.m_args )
         visit(arg);
     UNINDENT();
-}
-void NodeVisitor::visit(ExprNode_CallObject& node) 
+})
+NV(ExprNode_CallObject,
 {
-    DEBUG("DEF - ExprNode_CallObject");
     INDENT();
     visit(node.m_val);
     for( auto& arg : node.m_args )
         visit(arg);
     UNINDENT();
-}
-void NodeVisitor::visit(ExprNode_Match& node) 
+})
+NV(ExprNode_Match,
 {
-    DEBUG("DEF - ExprNode_Match");
     INDENT();
     visit(node.m_val);
     for( auto& arm : node.m_arms )
         visit(arm.second);
     UNINDENT();
-}
-void NodeVisitor::visit(ExprNode_If& node) 
+})
+NV(ExprNode_If,
 {
-    DEBUG("DEF - ExprNode_If");
     INDENT();
     visit(node.m_cond);
     visit(node.m_true);
     visit(node.m_false);
     UNINDENT();
-}
+})
 
-void NodeVisitor::visit(ExprNode_Integer& node) 
+NV(ExprNode_Integer,
 {
-    DEBUG("DEF - ExprNode_Integer");
     // LEAF
-}
-void NodeVisitor::visit(ExprNode_StructLiteral& node) 
+})
+NV(ExprNode_StructLiteral,
 {
-    DEBUG("DEF - ExprNode_StructLiteral");
     visit(node.m_base_value);
     for( auto& val : node.m_values )
         visit(val.second);
-}
-void NodeVisitor::visit(ExprNode_Tuple& node) 
+})
+NV(ExprNode_Tuple,
 {
-    DEBUG("DEF - ExprNode_Tuple");
     for( auto& val : node.m_values )
         visit(val);
-}
-void NodeVisitor::visit(ExprNode_NamedValue& node) 
+})
+NV(ExprNode_NamedValue,
 {
-    DEBUG("DEF - ExprNode_NamedValue");
     // LEAF
-}
+})
 
-void NodeVisitor::visit(ExprNode_Field& node) 
+NV(ExprNode_Field,
 {
-    DEBUG("DEF - ExprNode_Field");
     visit(node.m_obj);
-}
-void NodeVisitor::visit(ExprNode_Deref& node) 
+})
+NV(ExprNode_Deref,
 {
-    DEBUG("DEF - ExprNode_Deref");
     visit(node.m_value);
-}
-void NodeVisitor::visit(ExprNode_Cast& node) 
+})
+NV(ExprNode_Cast,
 {
-    DEBUG("DEF - ExprNode_Cast");
     visit(node.m_value);
-}
-void NodeVisitor::visit(ExprNode_BinOp& node) 
+})
+NV(ExprNode_BinOp,
 {
-    DEBUG("DEF - ExprNode_BinOp");
     visit(node.m_left);
     visit(node.m_right);
-}
+})
+#undef NV
 
 
 };

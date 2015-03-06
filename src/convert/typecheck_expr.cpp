@@ -62,7 +62,7 @@ private:
     void iterate_traits(::std::function<bool(const TypeRef& trait)> fcn);
 };
 class CTC_NodeVisitor:
-    public AST::NodeVisitor
+    public AST::NodeVisitorDef
 {
     CTypeChecker&   m_tc;
 public:

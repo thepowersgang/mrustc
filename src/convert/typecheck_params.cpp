@@ -26,7 +26,7 @@ private:
 };
 
 class CNodeVisitor:
-    public AST::NodeVisitor
+    public AST::NodeVisitorDef
 {
     CGenericParamChecker&   m_pc;
 public:

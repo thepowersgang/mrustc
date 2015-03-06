@@ -227,8 +227,9 @@ Token Lexer::getToken()
                     // Octal/hex handling
                     ch = this->getc();
                     if( ch == 'x' ) {
-                        while( isxdigit(ch = this->getc()) ) {
-                            val *= val * 16;
+                        while( isxdigit(ch = this->getc()) )
+                        {
+                            val *= 16;
                             if(ch <= '9')
                                 val += ch - '0';
                             else if( ch <= 'F' )

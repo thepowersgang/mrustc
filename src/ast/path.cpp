@@ -30,9 +30,6 @@ bool PathNode::operator==(const PathNode& x) const
     return m_name == x.m_name && m_params == x.m_params;
 }
 ::std::ostream& operator<<(::std::ostream& os, const PathNode& pn) {
-    #if PRETTY_PATH_PRINT
-    os << "::";
-    #endif
     os << pn.m_name;
     if( pn.m_params.size() )
     {
@@ -66,6 +63,8 @@ void Path::resolve(const Crate& root_crate)
         throw ParseError::BugCheck("Calling Path::resolve on non-absolute path");
     DEBUG("m_crate = '" << m_crate << "'");
     
+    unsigned int slice_from = 0;    // Used when rewriting the path to be relative to its crate root
+    
     const Module* mod = &root_crate.get_root_module(m_crate);
     for(unsigned int i = 0; i < m_nodes.size(); i ++ )
     {
@@ -97,6 +96,8 @@ void Path::resolve(const Crate& root_crate)
                 DEBUG("Extern crate '" << node.name() << "' = '" << it->data << "'");
                 if( node.args().size() )
                     throw ParseError::Generic("Generic params applied to extern crate");
+                m_crate = it->data;
+                slice_from = i+1;
                 mod = &root_crate.get_root_module(it->data);
                 continue;
             }
@@ -127,7 +128,7 @@ void Path::resolve(const Crate& root_crate)
                 if( is_last ) {
                     m_binding_type = ALIAS;
                     m_binding.alias_ = &it->data;
-                    return ;
+                    goto ret;
                 }
                 else {
                     throw ParseError::Todo("Path::resolve() type method");
@@ -145,7 +146,7 @@ void Path::resolve(const Crate& root_crate)
                 if( is_last ) {
                     m_binding_type = FUNCTION;
                     m_binding.func_ = &it->data;
-                    return ;
+                    goto ret;
                 }
                 else {
                     throw ParseError::Generic("Import of function, too many extra nodes");
@@ -163,7 +164,7 @@ void Path::resolve(const Crate& root_crate)
                 if( is_last ) {
                     m_binding_type = TRAIT;
                     m_binding.trait_ = &it->data;
-                    return;
+                    goto ret;
                 }
                 else if( is_sec_last ) {
                     throw ParseError::Todo("Path::resolve() trait method");
@@ -182,7 +183,7 @@ void Path::resolve(const Crate& root_crate)
                 DEBUG("Found struct");
                 if( is_last ) {
                     bind_struct(it->data, node.args());
-                    return;
+                    goto ret;
                 }
                 else if( is_sec_last ) {
                     throw ParseError::Todo("Path::resolve() struct method");
@@ -201,11 +202,11 @@ void Path::resolve(const Crate& root_crate)
                 DEBUG("Found enum");
                 if( is_last ) {
                     bind_enum(it->data, node.args());
-                    return ;
+                    goto ret;
                 }
                 else if( is_sec_last ) {
                     bind_enum_var(it->data, m_nodes[i+1].name(), node.args());
-                    return ;
+                    goto ret;
                 }
                 else {
                     throw ParseError::Generic("Binding path to enum, too many extra nodes");
@@ -223,7 +224,7 @@ void Path::resolve(const Crate& root_crate)
                     if( node.args().size() )
                         throw ParseError::Generic("Unexpected generic params on static/const");
                     bind_static(it->data);
-                    return ;
+                    goto ret;
                 }
                 else {
                     throw ParseError::Generic("Binding path to static, trailing nodes");
@@ -236,6 +237,13 @@ void Path::resolve(const Crate& root_crate)
     
     // We only reach here if the path points to a module
     bind_module(*mod);
+ret:
+    if( slice_from > 0 )
+    {
+        DEBUG("Removing " << slice_from << " nodes to rebase path to crate root");
+        m_nodes.erase(m_nodes.begin(), m_nodes.begin()+slice_from);
+    }
+    return ;
 }
 void Path::bind_module(const Module& mod)
 {
@@ -340,12 +348,22 @@ void Path::print_pretty(::std::ostream& os) const
     case Path::RELATIVE:
         os << "self";
         for(const auto& n : path.m_nodes)
+        {
+            #if PRETTY_PATH_PRINT
+            os << "::";
+            #endif
             os << n;
+        }
         break;
     case Path::ABSOLUTE:
         os << "{"<<path.m_crate<<"}";
         for(const auto& n : path.m_nodes)
+        {
+            #if PRETTY_PATH_PRINT
+            os << "::";
+            #endif
             os << n;
+        }
         break;
     case Path::LOCAL:
         os << path.m_nodes[0].name();

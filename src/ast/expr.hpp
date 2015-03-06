@@ -25,6 +25,7 @@ public:
     virtual ~ExprNode() = 0;
     
     virtual void visit(NodeVisitor& nv) = 0;
+    //virtual void visit(NodeVisitor& nv) const = 0;
     virtual void print(::std::ostream& os) const = 0;
     
     TypeRef& get_res_type() { return m_res_type; }
@@ -33,7 +34,11 @@ public:
     static ::std::unique_ptr<ExprNode> from_deserialiser(Deserialiser& d);
 };
 
-#define NODE_METHODS()  virtual void visit(NodeVisitor& nv) override; virtual void print(::std::ostream& os) const override; SERIALISABLE_PROTOTYPES();
+#define NODE_METHODS()  \
+	virtual void visit(NodeVisitor& nv) override;\
+	virtual void print(::std::ostream& os) const override; \
+	SERIALISABLE_PROTOTYPES();/* \
+	virtual void visit(NodeVisitor& nv) const override;*/
 
 struct ExprNode_Block:
     public ExprNode
@@ -336,27 +341,65 @@ public:
         if(cnode.get())
             cnode->visit(*this);
     }
+	virtual bool is_const() const { return false; }
+  
+    #define NT(nt) \
+		virtual void visit(nt& node) = 0/*; \
+		virtual void visit(const nt& node) = 0*/
+	NT(ExprNode_Block);  
+    NT(ExprNode_Macro);
+    NT(ExprNode_Return);
+    NT(ExprNode_LetBinding);
+    NT(ExprNode_Assign);
+    NT(ExprNode_CallPath);
+    NT(ExprNode_CallMethod);
+    NT(ExprNode_CallObject);
+    NT(ExprNode_Match);
+    NT(ExprNode_If);
     
-    virtual void visit(ExprNode_Block& node);
-    virtual void visit(ExprNode_Macro& node);
-    virtual void visit(ExprNode_Return& node);
-    virtual void visit(ExprNode_LetBinding& node);
-    virtual void visit(ExprNode_Assign& node);
-    virtual void visit(ExprNode_CallPath& node);
-    virtual void visit(ExprNode_CallMethod& node);
-    virtual void visit(ExprNode_CallObject& node);
-    virtual void visit(ExprNode_Match& node);
-    virtual void visit(ExprNode_If& node);
+    NT(ExprNode_Integer);
+    NT(ExprNode_StructLiteral);
+    NT(ExprNode_Tuple);
+    NT(ExprNode_NamedValue);
     
-    virtual void visit(ExprNode_Integer& node);
-    virtual void visit(ExprNode_StructLiteral& node);
-    virtual void visit(ExprNode_Tuple& node);
-    virtual void visit(ExprNode_NamedValue& node);
+    NT(ExprNode_Field);
+    NT(ExprNode_Deref);
+    NT(ExprNode_Cast);
+    NT(ExprNode_BinOp);
+	#undef NT
+};
+class NodeVisitorDef:
+	public NodeVisitor
+{
+public:
+    inline void visit(const unique_ptr<ExprNode>& cnode) {
+        if(cnode.get())
+            cnode->visit(*this);
+    }
+    #define NT(nt) \
+		virtual void visit(nt& node) override;/* \
+		virtual void visit(const nt& node) override*/
+	NT(ExprNode_Block);  
+    NT(ExprNode_Macro);
+    NT(ExprNode_Return);
+    NT(ExprNode_LetBinding);
+    NT(ExprNode_Assign);
+    NT(ExprNode_CallPath);
+    NT(ExprNode_CallMethod);
+    NT(ExprNode_CallObject);
+    NT(ExprNode_Match);
+    NT(ExprNode_If);
     
-    virtual void visit(ExprNode_Field& node);
-    virtual void visit(ExprNode_Deref& node);
-    virtual void visit(ExprNode_Cast& node);
-    virtual void visit(ExprNode_BinOp& node);
+    NT(ExprNode_Integer);
+    NT(ExprNode_StructLiteral);
+    NT(ExprNode_Tuple);
+    NT(ExprNode_NamedValue);
+    
+    NT(ExprNode_Field);
+    NT(ExprNode_Deref);
+    NT(ExprNode_Cast);
+    NT(ExprNode_BinOp);
+	#undef NT
 };
 
 class Expr:
@@ -379,8 +422,10 @@ public:
 
     bool is_valid() const { return m_node.get() != nullptr; }
     ExprNode& node() { assert(m_node.get()); return *m_node; }
+    const ExprNode& node() const { assert(m_node.get()); return *m_node; }
     ::std::shared_ptr<ExprNode> take_node() { assert(m_node.get()); return ::std::move(m_node); }
     void visit_nodes(NodeVisitor& v);
+    void visit_nodes(NodeVisitor& v) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Expr& pat);
     

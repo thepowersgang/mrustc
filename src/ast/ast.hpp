@@ -483,6 +483,7 @@ public:
     const itemlist_use_t& imports() const { return m_imports; }
     const ::std::vector<Item<TypeAlias> >& type_aliases() const { return m_type_aliases; }
     const itemlist_ext_t& extern_crates() const { return m_extern_crates; }
+    const ::std::vector<Impl>&  impls() const { return m_impls; }
     const itemlist_static_t&    statics() const { return m_statics; }
     const ItemList<Trait>& traits() const { return m_traits; }
     const itemlist_enum_t&      enums  () const { return m_enums; }
