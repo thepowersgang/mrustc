@@ -178,23 +178,29 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
 
     ::std::vector<ExprNodeP> nodes;
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
+    
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
         lex.putback(tok);
         bool    opt_semicolon = false;
         // NOTE: This semicolon handling is SHIT.
         nodes.push_back(Parse_Stmt(lex, opt_semicolon));
-        if( GET_TOK(tok, lex) != TOK_BRACE_CLOSE ) {
+        if( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
+        {
             if( !opt_semicolon )
+            {
                 CHECK_TOK(tok, TOK_SEMICOLON);
+            }
             else
                 lex.putback(tok);
         }
-        else {
-            nodes.push_back(nullptr);
-            break;
+        else
+        {
+            goto pass_value;
         }
     }
+    nodes.push_back(nullptr);
+pass_value:
     return NEWNODE( AST::ExprNode_Block, ::std::move(nodes) );
 }
 

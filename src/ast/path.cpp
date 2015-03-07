@@ -356,7 +356,8 @@ void Path::print_pretty(::std::ostream& os) const
         }
         break;
     case Path::ABSOLUTE:
-        os << "{"<<path.m_crate<<"}";
+        if( path.m_crate != "" )
+            os << "::\""<<path.m_crate<<"\"";
         for(const auto& n : path.m_nodes)
         {
             #if PRETTY_PATH_PRINT

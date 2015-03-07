@@ -8,15 +8,19 @@
 #include "ast/expr.hpp"
 #include <main_bindings.hpp>
 
+#define IS(v, c)    (dynamic_cast<c*>(&v) != 0)
+
 class RustPrinter:
     public AST::NodeVisitor
 {
     ::std::ostream& m_os;
     int m_indent_level;
+    bool m_expr_root;   //!< used to allow 'if' and 'match' to behave differently as standalone exprs
 public:
     RustPrinter(::std::ostream& os):
         m_os(os),
-        m_indent_level(0)
+        m_indent_level(0),
+        m_expr_root(false)
     {}
     
     void handle_module(const AST::Module& mod);
@@ -40,6 +44,7 @@ public:
             }
             m_os << "\n";
             m_os << indent();
+            m_expr_root = true;
             if( !child.get() )
                 m_os << "/* nil */";
             else
@@ -50,24 +55,29 @@ public:
         m_os << indent() << "}";
     }
     virtual void visit(AST::ExprNode_Macro& n) override {
+        m_expr_root = false;
         m_os << n.m_name << "!( /* TODO: Macro TT */ )";
     }
     virtual void visit(AST::ExprNode_Return& n) override {
+        m_expr_root = false;
         m_os << "return ";
         AST::NodeVisitor::visit(n.m_value);
     }
     virtual void visit(AST::ExprNode_LetBinding& n) override {
+        m_expr_root = false;
         m_os << "let ";
         print_pattern(n.m_pat);
         m_os << " = ";
         AST::NodeVisitor::visit(n.m_value);
     }
     virtual void visit(AST::ExprNode_Assign& n) override {
+        m_expr_root = false;
         AST::NodeVisitor::visit(n.m_slot);
         m_os << " = ";
         AST::NodeVisitor::visit(n.m_value);
     }
     virtual void visit(AST::ExprNode_CallPath& n) override {
+        m_expr_root = false;
         m_os << n.m_path;
         m_os << "(";
         bool is_first = true;
@@ -83,6 +93,7 @@ public:
         m_os << ")";
     }
     virtual void visit(AST::ExprNode_CallMethod& n) override {
+        m_expr_root = false;
         m_os << "(";
         AST::NodeVisitor::visit(n.m_val);
         m_os << ")." << n.m_method;
@@ -100,13 +111,25 @@ public:
         m_os << ")";
     }
     virtual void visit(AST::ExprNode_CallObject&) override {
+        m_expr_root = false;
         throw ::std::runtime_error("unimplemented ExprNode_CallObject");
     }
     virtual void visit(AST::ExprNode_Match& n) override {
+        bool expr_root = m_expr_root;
+        m_expr_root = false;
         m_os << "match ";
         AST::NodeVisitor::visit(n.m_val);
-        m_os << " {\n";
-        inc_indent();
+        
+        if(expr_root)
+        {
+            m_os << "\n";
+            m_os << indent() << "{\n";
+        }
+        else
+        {
+            m_os << " {\n";
+            inc_indent();
+        }
         
         for( auto& arm : n.m_arms )
         {
@@ -117,27 +140,61 @@ public:
             m_os << ",\n";
         }
         
-        m_os << indent() << "}";
-        dec_indent();
+        if(expr_root)
+        {
+            m_os << indent() << "}";
+        }
+        else
+        {
+            m_os << indent() << "}";
+            dec_indent();
+        }
     }
     virtual void visit(AST::ExprNode_If& n) override {
+        bool expr_root = m_expr_root;
+        m_expr_root = false;
         m_os << "if ";
         AST::NodeVisitor::visit(n.m_cond);
-        m_os << " ";
+        if( expr_root )
+        {
+            m_os << "\n";
+            m_os << indent();
+        }
+        else
+        {
+            m_os << " ";
+        }
         AST::NodeVisitor::visit(n.m_true);
         if(n.m_false.get())
         {
-            m_os << " else ";
+            if( expr_root )
+            {
+                m_os << "\n";
+                m_os << indent() << "else";
+                // handle chained if statements nicely
+                if( IS(*n.m_false, AST::ExprNode_If) ) {
+                    m_expr_root = true;
+                    m_os << " ";
+                }
+                else
+                    m_os << "\n" << indent();
+            }
+            else
+            {
+                m_os << " else ";
+            }
             AST::NodeVisitor::visit(n.m_false);
         }
     }
     virtual void visit(AST::ExprNode_Integer& n) override {
+        m_expr_root = false;
         switch(n.m_datatype)
         {
         }
         m_os << "0x" << ::std::hex << n.m_value << ::std::dec;
     }
     virtual void visit(AST::ExprNode_StructLiteral& n) override {
+        m_expr_root = false;
         m_os << n.m_path << " {\n";
         inc_indent();
         for( const auto& i : n.m_values )
@@ -156,6 +213,7 @@ public:
         dec_indent();
     }
     virtual void visit(AST::ExprNode_Tuple& n) override {
+        m_expr_root = false;
         m_os << "(";
         for( auto& item : n.m_values )
         {
@@ -165,22 +223,26 @@ public:
         m_os << ")";
     }
     virtual void visit(AST::ExprNode_NamedValue& n) override {
+        m_expr_root = false;
         m_os << n.m_path;
     }
     virtual void visit(AST::ExprNode_Field& n) override {
+        m_expr_root = false;
         m_os << "(";
         AST::NodeVisitor::visit(n.m_obj);
         m_os << ")." << n.m_name;
     }
     virtual void visit(AST::ExprNode_Deref&) override {
+        m_expr_root = false;
         throw ::std::runtime_error("unimplemented ExprNode_Deref");
     }
     virtual void visit(AST::ExprNode_Cast& n) override {
+        m_expr_root = false;
         AST::NodeVisitor::visit(n.m_value);
         m_os << " as " << n.m_type;
     }
     virtual void visit(AST::ExprNode_BinOp& n) override {
-        #define IS(v, c)    (dynamic_cast<c*>(&v) != 0)
+        m_expr_root = false;
         if( IS(*n.m_left, AST::ExprNode_Cast) )
             paren_wrap(n.m_left);
         else if( IS(*n.m_left, AST::ExprNode_BinOp) )
