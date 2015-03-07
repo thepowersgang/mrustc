@@ -155,7 +155,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
         // This may also have to handle range expressions? (and other complexities)
         throw ParseError::Todo("tuple patterns");
     default:
-        throw ParseError::Unexpected(tok);
+        throw ParseError::Unexpected(lex, tok);
     }
     throw ParseError::BugCheck("Parse_Pattern should early return");
 }
@@ -618,7 +618,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         return Parse_Expr0(expanded_macro);
         }
     default:
-        throw ParseError::Unexpected(tok);
+        throw ParseError::Unexpected(lex, tok);
     }
 }
 
@@ -701,7 +701,7 @@ TokenTree Parse_TT_Val(TokenStream& lex)
         break;
     default:
         // Oh, fail :(
-        throw ParseError::Unexpected(tok);
+        throw ParseError::Unexpected(lex, tok);
     }
     return TokenTree(ret);
 }

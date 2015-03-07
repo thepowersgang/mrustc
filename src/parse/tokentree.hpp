@@ -39,8 +39,10 @@ public:
     TTStream(const TokenTree& input_tt);
     ~TTStream();
 
+    virtual Position getPosition() const override;
+
 protected:
-    virtual Token realGetToken();
+    virtual Token realGetToken() override;
 };
 
 extern TokenTree Parse_TT(TokenStream& lex);

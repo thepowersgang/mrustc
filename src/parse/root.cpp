@@ -169,7 +169,7 @@ TypeRef Parse_Type(TokenStream& lex)
             // Immutable pointer
             return TypeRef(TypeRef::TagPointer(), false, Parse_Type(lex));
         default:
-            throw ParseError::Unexpected(tok, Token(TOK_RWORD_CONST));
+            throw ParseError::Unexpected(lex, tok, Token(TOK_RWORD_CONST));
         }
         throw ParseError::BugCheck("Reached end of Parse_Type:STAR");
     case TOK_SQUARE_OPEN: {
@@ -205,7 +205,7 @@ TypeRef Parse_Type(TokenStream& lex)
     case TOK_EXCLAM:
         throw ParseError::Todo("noreturn type");
     default:
-        throw ParseError::Unexpected(tok);
+        throw ParseError::Unexpected(lex, tok);
     }
     throw ParseError::BugCheck("Reached end of Parse_Type");
 }
@@ -228,7 +228,7 @@ AST::TypeParams Parse_TypeParams(TokenStream& lex)
             break;
         default:
             // Oopsie!
-            throw ParseError::Unexpected(tok);
+            throw ParseError::Unexpected(lex, tok);
         }
         ::std::string param_name = tok.str();
         ret.add_param( AST::TypeParam( is_lifetime, param_name ) );
@@ -425,8 +425,7 @@ void Parse_Struct(AST::Module& mod, TokenStream& lex, const bool is_public, cons
             {
                 refs.push_back( Parse_Type(lex) );
             }
-            if( tok.type() != TOK_PAREN_CLOSE )
-                throw ParseError::Unexpected(tok, Token(TOK_PAREN_CLOSE));
+            CHECK_TOK(tok, TOK_PAREN_CLOSE);
             inner = TypeRef(TypeRef::TagTuple(), refs);
         }
         throw ParseError::Todo("tuple struct");
@@ -449,14 +448,13 @@ void Parse_Struct(AST::Module& mod, TokenStream& lex, const bool is_public, cons
             tok = lex.getToken();
             if(tok.type() == TOK_BRACE_CLOSE)
                 break;
-            if(tok.type() != TOK_COMMA)
-                throw ParseError::Unexpected(tok, Token(TOK_COMMA));
+            CHECK_TOK(tok, TOK_COMMA);
         }
         mod.add_struct(is_public, name, params, items);
     }
     else
     {
-        throw ParseError::Unexpected(tok);
+        throw ParseError::Unexpected(lex, tok);
     }
 }
 
@@ -473,6 +471,25 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const ::std::vector<AST::MetaItem> m
         GET_CHECK_TOK(tok, lex, TOK_GT);
         tok = lex.getToken();
     }
+    
+    // Trait bounds "trait Trait : 'lifetime + OtherTrait + OtherTrait2"
+    if(tok.type() == TOK_COLON)
+    {
+        do
+        {
+            if( GET_TOK(tok, lex) == TOK_LIFETIME )
+            {
+                // Lifetime requirement
+                throw ParseError::Todo("Trait bounds (lifetime)");
+            }
+            else
+            {
+                lex.putback(tok);
+                params.add_bound( AST::GenericBound("Self", Parse_Type(lex)) );
+            }
+        } while(GET_TOK(tok, lex) == TOK_PLUS);
+    }
+    
     // TODO: Support "for Sized?"
     if(tok.type() == TOK_RWORD_WHERE)
     {
@@ -662,7 +679,7 @@ AST::Impl Parse_Impl(TokenStream& lex)
             break; }
 
         default:
-            throw ParseError::Unexpected(tok);
+            throw ParseError::Unexpected(lex, tok);
         }
     }
 
@@ -693,7 +710,7 @@ void Parse_Use(Preproc& lex, ::std::function<void(AST::Path, ::std::string)> fcn
         path.append( AST::PathNode(tok.str(), {}) );
         break;
     default:
-        throw ParseError::Unexpected(tok);
+        throw ParseError::Unexpected(lex, tok);
     }
     // TODO: Use from crate root
     while( GET_TOK(tok, lex) == TOK_DOUBLE_COLON )
@@ -723,7 +740,7 @@ void Parse_Use(Preproc& lex, ::std::function<void(AST::Path, ::std::string)> fcn
                 // early return - can't have anything else after
                 return;
             default:
-                throw ParseError::Unexpected(tok);
+                throw ParseError::Unexpected(lex, tok);
             }
             GET_TOK(tok, lex);
             break;
@@ -786,11 +803,11 @@ void Parse_ModRoot(Preproc& lex, AST::Crate& crate, AST::Module& mod, const ::st
         {
         case TOK_BRACE_CLOSE:
             if( !nested_module )
-                throw ParseError::Unexpected(tok);
+                throw ParseError::Unexpected(lex, tok);
             return ;
         case TOK_EOF:
             if( nested_module )
-                throw ParseError::Unexpected(tok);
+                throw ParseError::Unexpected(lex, tok);
             return ;
         default:
             lex.putback(tok);
@@ -824,7 +841,36 @@ void Parse_ModRoot(Preproc& lex, AST::Crate& crate, AST::Module& mod, const ::st
             Parse_Use(lex, [&mod,is_public](AST::Path p, std::string s) { mod.add_alias(is_public, p, s); });
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
             break;
-
+        
+        case TOK_RWORD_EXTERN:
+            switch( GET_TOK(tok, lex) )
+            {
+            case TOK_STRING:
+                throw ParseError::Todo("'extern \"C\"'");
+                break;
+            case TOK_RWORD_CRATE:
+                if( GET_TOK(tok, lex) == TOK_STRING )
+                {
+                    ::std::string path = tok.str();
+                    GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
+                    GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                    ::std::string name = tok.str();
+                    
+                    mod.add_ext_crate(path, name);
+                }
+                else if( tok.type() == TOK_IDENT )
+                {
+                    ::std::string name = tok.str();
+                    
+                    mod.add_ext_crate(name, name);
+                }
+                GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+                break;
+            default:
+                throw ParseError::Unexpected(lex, tok);
+            }
+            break;
+        
         case TOK_RWORD_CONST: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string name = tok.str();
@@ -892,10 +938,43 @@ void Parse_ModRoot(Preproc& lex, AST::Crate& crate, AST::Module& mod, const ::st
             switch( GET_TOK(tok, lex) )
             {
             case TOK_BRACE_OPEN:
-                Parse_ModRoot(lex, crate, submod, "");
+                Parse_ModRoot(lex, crate, submod, "-");
                 break;
             case TOK_SEMICOLON:
-                throw ParseError::Todo("sub-modules from other files");
+                DEBUG("Mod = " << name << ", curpath = " << path);
+                if( path.back() != '/' )
+                {
+                    throw ParseError::Generic( FMT("Can't load from files outside of mod.rs or crate root") );
+                }
+                else
+                {
+                    ::std::string newpath_dir  = path + name + "/";
+                    ::std::string newpath_file = path + name + ".rs";
+                    ::std::ifstream ifs_dir (newpath_dir + "mod.rs");
+                    ::std::ifstream ifs_file(newpath_file);
+                    if( ifs_dir.is_open() && ifs_file.is_open() )
+                    {
+                        // Collision
+                    }
+                    else if( ifs_dir.is_open() )
+                    {
+                        // Load from dir
+                        Preproc sub_lex(newpath_dir + "mod.rs");
+                        Parse_ModRoot(sub_lex, crate, submod, newpath_dir);
+                    }
+                    else if( ifs_file.is_open() )
+                    {
+                        // Load from file
+                        Preproc sub_lex(newpath_file);
+                        Parse_ModRoot(sub_lex, crate, submod, newpath_file);
+                    }
+                    else
+                    {
+                        // Can't find file
+                        throw ParseError::Generic( FMT("Can't find file for " << name << " in '" << path << "'") );
+                    }
+                }
+                break;
             default:
                 throw ParseError::Generic("Expected { or ; after module name");
             }
@@ -903,7 +982,7 @@ void Parse_ModRoot(Preproc& lex, AST::Crate& crate, AST::Module& mod, const ::st
             break; }
 
         default:
-            throw ParseError::Unexpected(tok);
+            throw ParseError::Unexpected(lex, tok);
         }
     }
 }
@@ -912,7 +991,11 @@ AST::Crate Parse_Crate(::std::string mainfile)
 {
     Token   tok;
     
-    Preproc lex(mainfile); 
+    Preproc lex(mainfile);
+    
+    size_t p = mainfile.find_last_of('/');
+    ::std::string mainpath = (p != ::std::string::npos ? ::std::string(mainfile.begin(), mainfile.begin()+p+1) : "./");
+     
     AST::Crate  crate;
     AST::Module& rootmod = crate.root_module();
     
@@ -948,7 +1031,7 @@ AST::Crate Parse_Crate(::std::string mainfile)
     // Include the std if the 'no_std' attribute was absent
     // - First need to load the std macros, then can import the prelude
     
-    Parse_ModRoot(lex, crate, rootmod, mainfile);
+    Parse_ModRoot(lex, crate, rootmod, mainpath);
     
     return crate;
 }

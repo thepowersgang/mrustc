@@ -205,6 +205,8 @@ Token Lexer::getToken()
     {
         char ch = this->getc();
 
+        if( ch == '\n' )
+            return Token(TOK_NEWLINE);
         if( isspace(ch) )
         {
             while( isspace(this->getc()) )
@@ -311,6 +313,7 @@ Token Lexer::getToken()
                     str.push_back(ch);
                     ch = this->getc();
                 }
+                this->putback();
                 return Token(TOK_COMMENT, str); }
             case BLOCKCOMMENT: {
                 ::std::string   str;
@@ -449,6 +452,7 @@ const char* Token::typestr(enum eTokenType type)
     case TOK_NULL: return "TOK_NULL";
     case TOK_EOF: return "TOK_EOF";
 
+    case TOK_NEWLINE:    return "TOK_NEWLINE";
     case TOK_WHITESPACE: return "TOK_WHITESPACE";
     case TOK_COMMENT: return "TOK_COMMENT";
 
@@ -579,10 +583,14 @@ const char* Token::typestr(enum eTokenType type)
     return ">>BUGCHECK: BADTOK<<";
 }
 
-::std::ostream&  operator<<(::std::ostream& os, Token& tok)
+::std::ostream&  operator<<(::std::ostream& os, const Token& tok)
 {
     os << Token::typestr(tok.type()) << "\"" << tok.str() << "\"";
     return os;
+}
+::std::ostream& operator<<(::std::ostream& os, const Position& p)
+{
+    return os << p.filename << ":" << p.line;
 }
 
 TTStream::TTStream(const TokenTree& input_tt):
@@ -622,6 +630,10 @@ Token TTStream::realGetToken()
         }
     }
     return Token(TOK_EOF);
+}
+Position TTStream::getPosition() const
+{
+    return Position("TTStream", 0);
 }
 
 TokenStream::TokenStream():

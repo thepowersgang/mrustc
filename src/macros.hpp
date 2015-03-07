@@ -87,7 +87,9 @@ public:
         m_ofs(0)
     {
     }
-    virtual Token realGetToken();
+
+    virtual Position getPosition() const override;
+    virtual Token realGetToken() override;
 };
 
 extern MacroExpander    Macro_Invoke(const char* name, TokenTree input);

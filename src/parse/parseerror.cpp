@@ -37,14 +37,15 @@ ParseError::BadChar::~BadChar() throw()
 {
 }
 
-ParseError::Unexpected::Unexpected(Token tok):
+ParseError::Unexpected::Unexpected(const TokenStream& lex, Token tok):
     m_tok(tok)
 {
-    ::std::cout << "Unexpected(" << tok << ")" << ::std::endl;
+    ::std::cout << lex.getPosition() << ": Unexpected(" << tok << ")" << ::std::endl;
 }
-ParseError::Unexpected::Unexpected(Token tok, Token exp)
+ParseError::Unexpected::Unexpected(const TokenStream& lex, Token tok, Token exp):
+    m_tok(tok)
 {
-    ::std::cout << "Unexpected(" << tok << ", " << exp << ")" << ::std::endl;
+    ::std::cout << lex.getPosition() << ": Unexpected(" << tok << ", " << exp << ")" << ::std::endl;
 }
 ParseError::Unexpected::~Unexpected() throw()
 {

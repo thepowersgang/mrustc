@@ -10,6 +10,7 @@ enum eTokenType
     TOK_NULL,
     TOK_EOF,
 
+    TOK_NEWLINE,
     TOK_WHITESPACE,
     TOK_COMMENT,
 
@@ -163,7 +164,20 @@ public:
     static const char* typestr(enum eTokenType type);
 };
 
-extern ::std::ostream&  operator<<(::std::ostream& os, Token& tok);
+extern ::std::ostream&  operator<<(::std::ostream& os, const Token& tok);
+
+struct Position
+{
+    ::std::string   filename;
+    unsigned int    line;
+    
+    Position(::std::string filename, unsigned int line):
+        filename(filename),
+        line(line)
+    {
+    }
+};
+extern ::std::ostream& operator<<(::std::ostream& os, const Position& p);
 
 class TokenStream
 {
@@ -174,6 +188,7 @@ public:
     virtual ~TokenStream();
     Token   getToken();
     void    putback(Token tok);
+    virtual Position getPosition() const = 0;
 protected:
     virtual Token   realGetToken() = 0;
 };

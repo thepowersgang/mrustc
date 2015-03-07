@@ -68,7 +68,7 @@ MacroExpander Macro_Invoke(const char* name, TokenTree input)
             // Create token stream for input tree
             TTStream    lex(input);
             if(GET_TOK(tok, lex) == TOK_EOF) {
-                throw ParseError::Unexpected(tok);
+                throw ParseError::Unexpected(lex, tok);
             }
             ::std::map<const char*,TokenTree,cmp_str>   bound_tts;
             // Parse according to rules
@@ -102,7 +102,7 @@ MacroExpander Macro_Invoke(const char* name, TokenTree input)
             }
             // TODO: Actually check if the final token is the closer to the first
             if( !fail && GET_TOK(tok, lex) == TOK_EOF) {
-                throw ParseError::Unexpected(tok);
+                throw ParseError::Unexpected(lex, tok);
             }
             if( !fail && lex.getToken().type() == TOK_EOF )
             {
@@ -115,6 +115,10 @@ MacroExpander Macro_Invoke(const char* name, TokenTree input)
     throw ParseError::Generic( ::std::string("Macro '") + name + "' was not found" );
 }
 
+Position MacroExpander::getPosition() const
+{
+    return Position("Macro", 0);
+}
 Token MacroExpander::realGetToken()
 {
     if( m_ttstream.get() )

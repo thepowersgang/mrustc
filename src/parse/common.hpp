@@ -5,11 +5,11 @@
 #define GET_TOK(tok, lex) ((tok = lex.getToken()).type())
 #define GET_CHECK_TOK(tok, lex, exp) do {\
     if((tok = lex.getToken()).type() != exp) \
-            throw ParseError::Unexpected(tok, Token(exp));\
+            throw ParseError::Unexpected(lex, tok, Token(exp));\
 } while(0)
 #define CHECK_TOK(tok, exp) do {\
     if(tok.type() != exp) \
-            throw ParseError::Unexpected(tok, Token(exp));\
+            throw ParseError::Unexpected(lex, tok, Token(exp));\
 } while(0)
 
 enum eParsePathGenericMode
