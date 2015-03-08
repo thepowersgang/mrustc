@@ -10,6 +10,7 @@
 
 #include "../parse/tokentree.hpp"
 #include "../types.hpp"
+#include "../macros.hpp"
 #include <serialise.hpp>
 
 #include "pattern.hpp"
@@ -108,17 +109,16 @@ public:
 };
 
 template <typename T>
-struct Item:
-    public Serialisable
+struct ItemNS
 {
     ::std::string   name;
     T   data;
     bool    is_pub;
     
-    Item():
+    ItemNS():
         is_pub(false)
     {}
-    Item(::std::string&& name, T&& data, bool is_pub):
+    ItemNS(::std::string&& name, T&& data, bool is_pub):
         name( move(name) ),
         data( move(data) ),
         is_pub( is_pub )
@@ -128,26 +128,60 @@ struct Item:
     //friend ::std::ostream& operator<<(::std::ostream& os, const Item& i) {
     //    return os << (i.is_pub ? "pub " : " ") << i.name << ": " << i.data;
     //}
-    SERIALISE_TYPE(, "Item", {
-        s << name << data << is_pub;
-    },{
-        s.item(name);
-        s.item(data);
-        s.item(is_pub);
+};
+
+template <typename T>
+struct Item:
+    public ItemNS<T>,
+    public Serialisable
+{
+    Item():
+        ItemNS<T>()
+    {}
+    Item(::std::string&& name, T&& data, bool is_pub):
+        ItemNS<T>( move(name), move(data), is_pub )
+    {}
+    SERIALISE_TYPE_A(, "Item", {
+        s.item(this->name);
+        s.item(this->data);
+        s.item(this->is_pub);
     })
 };
+
 template <typename T>
 using ItemList = ::std::vector<Item<T> >;
 
 typedef Item<TypeRef>    StructItem;
-
 class Crate;
+
+class MetaItem;
+
+class MetaItems:
+    public Serialisable
+{
+    ::std::vector<MetaItem> m_items;
+public:
+    MetaItems() {}
+    MetaItems(::std::vector<MetaItem> items):
+        m_items(items)
+    {
+    }
+    
+    void push_back(MetaItem i);
+    
+    MetaItem* get(const char *name);
+    bool has(const char *name) {
+        return get(name) != 0;
+    }
+    
+    SERIALISABLE_PROTOTYPES();
+};
 
 class MetaItem:
     public Serialisable
 {
     ::std::string   m_name;
-    ::std::vector<MetaItem> m_items;
+    MetaItems   m_sub_items;
     ::std::string   m_str_val;
 public:
     MetaItem() {}
@@ -157,10 +191,11 @@ public:
     }
     MetaItem(::std::string name, ::std::vector<MetaItem> items):
         m_name(name),
-        m_items(items)
+        m_sub_items(items)
     {
     }
     
+    void mark_used() {}
     const ::std::string& name() const { return m_name; }
     
     SERIALISABLE_PROTOTYPES();
@@ -404,7 +439,9 @@ class Module:
     typedef ::std::vector< Item<Static> >  itemlist_static_t;
     typedef ::std::vector< Item<Enum> >  itemlist_enum_t;
     typedef ::std::vector< Item<Struct> >  itemlist_struct_t;
-
+    typedef ::std::vector< Item<MacroRules> >   itemlist_macros_t;
+    typedef ::std::multimap< ::std::string, ::std::string > macro_imports_t;
+    
     ::std::string   m_name;
     ::std::vector<MetaItem> m_attrs;
     itemlist_fcn_t  m_functions;
@@ -412,6 +449,11 @@ class Module:
     itemlist_use_t  m_imports;
     ::std::vector<Item<TypeAlias> > m_type_aliases;
     itemlist_ext_t  m_extern_crates;
+    
+    itemlist_macros_t   m_macros;
+    macro_imports_t m_macro_imports;    // module => macro
+    ::std::vector< ItemNS<const MacroRules*> > m_macro_import_res; // Vec of imported macros (not serialised)
+    
     
     
     itemlist_static_t   m_statics;
@@ -425,7 +467,13 @@ public:
         m_name(name)
     {
     }
-    void add_ext_crate(::std::string ext_name, ::std::string imp_name);
+    
+    // Called when module is loaded from a serialised format
+    void prescan();
+    
+    void add_ext_crate(::std::string ext_name, ::std::string imp_name) {
+        m_extern_crates.push_back( Item< ::std::string>( move(imp_name), move(ext_name), false ) );
+    }
     void add_alias(bool is_public, Path path, ::std::string name) {
         m_imports.push_back( Item<Path>( move(name), move(path), is_public) );
     }
@@ -456,6 +504,10 @@ public:
     void add_impl(Impl impl) {
         m_impls.push_back( ::std::move(impl) );
     }
+    void add_macro(bool is_exported, ::std::string name, MacroRules macro) {
+        m_macros.push_back( Item<MacroRules>( move(name), move(macro), is_exported ) );
+    }
+    void add_macro_import(const Crate& crate, ::std::string mod, ::std::string name);
 
     void add_attr(MetaItem item) {
         m_attrs.push_back(item);
@@ -488,8 +540,13 @@ public:
     const ItemList<Trait>& traits() const { return m_traits; }
     const itemlist_enum_t&      enums  () const { return m_enums; }
     const itemlist_struct_t&    structs() const { return m_structs; }
+    const itemlist_macros_t&    macros()  const { return m_macros; }
+    const macro_imports_t&      macro_imports()  const { return m_macro_imports; }
+    const ::std::vector<ItemNS<const MacroRules*> >  macro_imports_res() const { return m_macro_import_res; }
 
     SERIALISABLE_PROTOTYPES();
+private:
+    void resolve_macro_import(const Crate& crate, const ::std::string& modname, const ::std::string& macro_name);
 };
 
 class Crate:
@@ -499,6 +556,9 @@ class Crate:
 public:
     Module  m_root_module;
     ::std::map< ::std::string, ExternCrate> m_extern_crates;
+    // Mapping filled by searching for (?visible) macros with is_pub=true
+    ::std::map< ::std::string, const MacroRules*> m_exported_macros;
+    
     bool    m_load_std;
 
     Crate();
@@ -536,6 +596,8 @@ public:
     const Crate& crate() const { return m_crate; }
     Module& root_module() { return m_crate.root_module(); }
     const Module& root_module() const { return m_crate.root_module(); }
+    
+    void prescan();
     
     SERIALISABLE_PROTOTYPES();
 };

@@ -240,6 +240,9 @@ void operator%(::Serialiser& s, const ExprNode_BinOp::Type t) {
     _(BITXOR);
     _(SHL);
     _(SHR);
+	_(MULTIPLY);
+	_(DIVIDE);
+	_(MODULO);
     #undef _
     }
 }
@@ -268,6 +271,9 @@ NODE(ExprNode_BinOp, {
     case BITXOR:    os << "^"; break;
     case SHR:    os << ">>"; break;
     case SHL:    os << "<<"; break;
+	case MULTIPLY: os << "*"; break;
+	case DIVIDE:   os << "/"; break;
+	case MODULO:   os << "%"; break;
     }
     os << " " << *m_right << ")";
 })

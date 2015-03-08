@@ -24,3 +24,27 @@ struct RepeatLitStr
     }
 };
 
+class TraceLog
+{
+    static unsigned int depth;
+    const char* m_tag;
+public:
+    TraceLog(const char* tag): m_tag(tag) { indent(); ::std::cout << ">> " << m_tag << ::std::endl; }
+    ~TraceLog() { outdent(); ::std::cout << "<< " << m_tag << ::std::endl; }
+private:
+    void indent()
+    {
+        for(unsigned int i = 0; i < depth; i ++)
+            ::std::cout << " ";
+        depth ++;
+    }
+    void outdent()
+    {
+        depth --;
+        for(unsigned int i = 0; i < depth; i ++)
+            ::std::cout << " ";
+    }
+};
+#define TRACE_FUNCTION  TraceLog _tf_(__func__)
+
+

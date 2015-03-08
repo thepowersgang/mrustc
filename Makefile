@@ -8,6 +8,7 @@ LIBS :=
 CXXFLAGS := -g -Wall -std=c++11
 CPPFLAGS := -I src/include/
 
+SHELL = bash
 
 OBJDIR = .obj/
 
@@ -30,8 +31,9 @@ clean:
 
 test: $(BIN) samples/1.rs
 	mkdir -p output/
-	$(DBG) $(BIN) samples/std.rs --emit ast -o output/std.ast 2>&1 | tee output/ast_dbg.txt
-	$(DBG) $(BIN) samples/1.rs --crate-path output/std.ast -o output/test.c 2>&1 | tee output/1_dbg.txt
+	$(DBG) $(BIN) samples/std.rs --emit ast -o output/std.ast 2>&1 | tee output/ast_dbg.txt ; test $${PIPESTATUS[0]} -eq 0
+#	$(DBG) $(BIN) samples/1.rs --crate-path output/std.ast -o output/test.c 2>&1 | tee output/1_dbg.txt
+	$(DBG) $(BIN) ../../BinaryView2/src/main.rs --crate-path output/std.ast -o output/test.c 2>&1 | tee output/1_dbg.txt ; test $${PIPESTATUS[0]} -eq 0
 
 $(BIN): $(OBJ)
 	@mkdir -p $(dir $@)

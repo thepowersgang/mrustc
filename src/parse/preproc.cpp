@@ -25,12 +25,15 @@ Token Preproc::getTokenInt()
         {
         case TOK_NEWLINE:
             m_line ++;
+            //DEBUG("m_line = " << m_line << " (NL)");
             continue;
         case TOK_WHITESPACE:
             continue;
         case TOK_COMMENT: {
             ::std::string comment = tok.str();
-            m_line += ::std::count(comment.begin(), comment.end(), '\n');
+            unsigned int c = ::std::count(comment.begin(), comment.end(), '\n');
+            m_line += c;
+            //DEBUG("m_line = " << m_line << " (comment w/ "<<c<<")");
             continue; }
         default:
             return tok;

@@ -1,5 +1,22 @@
 #![no_std]
 
+#[macro_export]
+macro_rules! try {
+    ($e:expr) => ( match $e { Ok(v) => v, Err(e) => return Err(e); } );
+}
+#[macro_export]
+macro_rules! assert{
+    ($e:expr) => ({ if !($e) { panic!("Assertion {} failed", stringify!($e)); } });
+}
+#[macro_export]
+macro_rules! assert_eq{
+    ($a:expr, $b:expr) => ({
+            let left = &$a;
+            let right = &$b;
+            assert!( left == right && right == left );
+        });
+}
+
 pub mod option
 {
     pub enum Option<T>

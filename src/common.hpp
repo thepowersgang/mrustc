@@ -14,6 +14,19 @@
 #include "include/debug.hpp"
 #include "include/rustic.hpp"	// slice and option
 
+template <typename T>
+struct LList
+{
+    LList*  m_prev;
+    T   m_item;
+    
+    LList(LList* prev, T item):
+        m_prev(prev),
+        m_item( ::std::move(item) )
+    {
+    };
+};
+
 namespace std {
 
 template <typename T>

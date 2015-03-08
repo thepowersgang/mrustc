@@ -43,15 +43,21 @@ public:
 struct ExprNode_Block:
     public ExprNode
 {
+	bool m_is_unsafe;
     ::std::vector< ::std::unique_ptr<ExprNode> >    m_nodes;
 
-    ExprNode_Block() {}
+    ExprNode_Block():
+		m_is_unsafe(false)
+	{}
     ExprNode_Block(::std::vector< ::std::unique_ptr<ExprNode> >&& nodes):
+		m_is_unsafe(false),
         m_nodes( move(nodes) )
     {
     }
     virtual ~ExprNode_Block() override;
     
+	void set_unsafe() { m_is_unsafe = true; }
+	
     NODE_METHODS();
 };
 
@@ -310,6 +316,10 @@ struct ExprNode_BinOp:
     enum Type {
         CMPEQU,
         CMPNEQU,
+		CMPLT,
+		CMPLTE,
+		CMPGT,
+		CMPGTE,
 
         BITAND,
         BITOR,
@@ -317,6 +327,10 @@ struct ExprNode_BinOp:
 
         SHL,
         SHR,
+	
+		MULTIPLY,
+		DIVIDE,
+		MODULO,
     };
 
     Type    m_type;

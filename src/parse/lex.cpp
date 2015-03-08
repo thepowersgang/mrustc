@@ -41,7 +41,7 @@ static const struct {
   TOKENT("#",  0),
   TOKENT("#![",TOK_CATTR_OPEN),
   TOKENT("#[", TOK_ATTR_OPEN),
-  //TOKENT("$",  0),
+  TOKENT("$",  TOK_DOLLAR),
   TOKENT("%" , TOK_PERCENT),
   TOKENT("%=", TOK_PERCENT_EQUAL),
   TOKENT("&" , TOK_AMP),
@@ -194,8 +194,6 @@ bool issym(char ch)
         return true;
     if( ch == '_' )
         return true;
-    if( ch == '$' )
-        return true;
     return false;
 }
 
@@ -209,7 +207,7 @@ Token Lexer::getToken()
             return Token(TOK_NEWLINE);
         if( isspace(ch) )
         {
-            while( isspace(this->getc()) )
+            while( isspace(ch = this->getc()) && ch != '\n' )
                 ;
             this->putback();
             return Token(TOK_WHITESPACE);
@@ -358,9 +356,16 @@ Token Lexer::getToken()
                     return Token((uint64_t)val, CORETYPE_CHAR);
                 }
                 break; }
-            case DOUBLEQUOTE:
-                throw ParseError::Todo("Strings");
-                break;
+            case DOUBLEQUOTE: {
+                ::std::string str;
+                while( (ch = this->getc()) != '"' )
+                {
+                    if( ch == '\\' )
+                        ch = this->parseEscape('"');
+                    str.push_back(ch);
+                }
+                return Token(TOK_STRING, str);
+                }
             default:
                 assert(!"bugcheck");
             }
@@ -449,139 +454,36 @@ const char* Token::typestr(enum eTokenType type)
 {
     switch(type)
     {
-    case TOK_NULL: return "TOK_NULL";
-    case TOK_EOF: return "TOK_EOF";
-
-    case TOK_NEWLINE:    return "TOK_NEWLINE";
-    case TOK_WHITESPACE: return "TOK_WHITESPACE";
-    case TOK_COMMENT: return "TOK_COMMENT";
-
-    // Value tokens
-    case TOK_IDENT: return "TOK_IDENT";
-    case TOK_MACRO: return "TOK_MACRO";
-    case TOK_LIFETIME: return "TOK_LIFETIME";
-    case TOK_INTEGER: return "TOK_INTEGER";
-    case TOK_CHAR: return "TOK_CHAR";
-    case TOK_FLOAT: return "TOK_FLOAT";
-    case TOK_STRING: return "TOK_STRING";
-
-    case TOK_CATTR_OPEN: return "TOK_CATTR_OPEN";
-    case TOK_ATTR_OPEN: return "TOK_ATTR_OPEN";
-
-    // Symbols
-    case TOK_PAREN_OPEN: return "TOK_PAREN_OPEN"; case TOK_PAREN_CLOSE: return "TOK_PAREN_CLOSE";
-    case TOK_BRACE_OPEN: return "TOK_BRACE_OPEN"; case TOK_BRACE_CLOSE: return "TOK_BRACE_CLOSE";
-    case TOK_LT: return "TOK_LT"; case TOK_GT: return "TOK_GT";
-    case TOK_SQUARE_OPEN: return "TOK_SQUARE_OPEN";case TOK_SQUARE_CLOSE: return "TOK_SQUARE_CLOSE";
-    case TOK_COMMA: return "TOK_COMMA";
-    case TOK_SEMICOLON: return "TOK_SEMICOLON";
-    case TOK_COLON: return "TOK_COLON";
-    case TOK_DOUBLE_COLON: return "TOK_DOUBLE_COLON";
-    case TOK_STAR: return "TOK_STAR"; case TOK_AMP: return "TOK_AMP";
-    case TOK_PIPE: return "TOK_PIPE";
-
-    case TOK_FATARROW: return "TOK_FATARROW";   // =>
-    case TOK_THINARROW: return "TOK_THINARROW";  // ->
-
-    case TOK_PLUS: return "TOK_PLUS"; case TOK_DASH: return "TOK_DASH";
-    case TOK_EXCLAM: return "TOK_EXCLAM";
-    case TOK_PERCENT: return "TOK_PERCENT";
-    case TOK_SLASH: return "TOK_SLASH";
-
-    case TOK_DOT: return "TOK_DOT";
-    case TOK_DOUBLE_DOT: return "TOK_DOUBLE_DOT";
-    case TOK_TRIPLE_DOT: return "TOK_TRIPLE_DOT";
-
-    case TOK_EQUAL: return "TOK_EQUAL";
-    case TOK_PLUS_EQUAL: return "TOK_PLUS_EQUAL";
-    case TOK_DASH_EQUAL: return "TOK_DASH_EQUAL";
-    case TOK_PERCENT_EQUAL: return "TOK_PERCENT_EQUAL";
-    case TOK_SLASH_EQUAL: return "TOK_SLASH_EQUAL";
-    case TOK_STAR_EQUAL: return "TOK_STAR_EQUAL";
-    case TOK_AMP_EQUAL: return "TOK_AMP_EQUAL";
-    case TOK_PIPE_EQUAL: return "TOK_PIPE_EQUAL";
-
-    case TOK_DOUBLE_EQUAL: return "TOK_DOUBLE_EQUAL";
-    case TOK_EXCLAM_EQUAL: return "TOK_EXCLAM_EQUAL";
-    case TOK_GTE: return "TOK_GTE";
-    case TOK_LTE: return "TOK_LTE";
-
-    case TOK_DOUBLE_AMP: return "TOK_DOUBLE_AMP";
-    case TOK_DOUBLE_PIPE: return "TOK_DOUBLE_PIPE";
-    case TOK_DOUBLE_LT: return "TOK_DOUBLE_LT";
-    case TOK_DOUBLE_GT: return "TOK_DOUBLE_GT";
-
-    case TOK_QMARK: return "TOK_QMARK";
-    case TOK_AT: return "TOK_AT";
-    case TOK_TILDE: return "TOK_TILDE";
-    case TOK_BACKSLASH: return "TOK_BACKSLASH";
-    case TOK_CARET: return "TOK_CARET";
-    case TOK_BACKTICK: return "TOK_BACKTICK";
-
-    // Reserved Words
-    case TOK_RWORD_PUB: return "TOK_RWORD_PUB";
-    case TOK_RWORD_PRIV: return "TOK_RWORD_PRIV";
-    case TOK_RWORD_MUT: return "TOK_RWORD_MUT";
-    case TOK_RWORD_CONST: return "TOK_RWORD_CONST";
-    case TOK_RWORD_STATIC: return "TOK_RWORD_STATIC";
-    case TOK_RWORD_UNSAFE: return "TOK_RWORD_UNSAFE";
-    case TOK_RWORD_EXTERN: return "TOK_RWORD_EXTERN";
-
-    case TOK_RWORD_CRATE: return "TOK_RWORD_CRATE";
-    case TOK_RWORD_MOD: return "TOK_RWORD_MOD";
-    case TOK_RWORD_STRUCT: return "TOK_RWORD_STRUCT";
-    case TOK_RWORD_ENUM: return "TOK_RWORD_ENUM";
-    case TOK_RWORD_TRAIT: return "TOK_RWORD_TRAIT";
-    case TOK_RWORD_FN: return "TOK_RWORD_FN";
-    case TOK_RWORD_USE: return "TOK_RWORD_USE";
-    case TOK_RWORD_IMPL: return "TOK_RWORD_IMPL";
-    case TOK_RWORD_TYPE: return "TOK_RWORD_TYPE";
-
-    case TOK_RWORD_WHERE: return "TOK_RWORD_WHERE";
-    case TOK_RWORD_AS: return "TOK_RWORD_AS";
-
-    case TOK_RWORD_LET: return "TOK_RWORD_LET";
-    case TOK_RWORD_MATCH: return "TOK_RWORD_MATCH";
-    case TOK_RWORD_IF: return "TOK_RWORD_IF";
-    case TOK_RWORD_ELSE: return "TOK_RWORD_ELSE";
-    case TOK_RWORD_LOOP: return "TOK_RWORD_LOOP";
-    case TOK_RWORD_WHILE: return "TOK_RWORD_WHILE";
-    case TOK_RWORD_FOR: return "TOK_RWORD_FOR";
-    case TOK_RWORD_IN: return "TOK_RWORD_IN";
-    case TOK_RWORD_DO: return "TOK_RWORD_DO";
-
-    case TOK_RWORD_CONTINUE: return "TOK_RWORD_CONTINUE";
-    case TOK_RWORD_BREAK: return "TOK_RWORD_BREAK";
-    case TOK_RWORD_RETURN: return "TOK_RWORD_RETURN";
-    case TOK_RWORD_YIELD: return "TOK_RWORD_YIELD";
-    case TOK_RWORD_BOX: return "TOK_RWORD_BOX";
-    case TOK_RWORD_REF: return "TOK_RWORD_REF";
-
-    case TOK_RWORD_FALSE: return "TOK_RWORD_FALSE";
-    case TOK_RWORD_TRUE: return "TOK_RWORD_TRUE";
-    case TOK_RWORD_SELF: return "TOK_RWORD_SELF";
-    case TOK_RWORD_SUPER: return "TOK_RWORD_SUPER";
-
-    case TOK_RWORD_PROC: return "TOK_RWORD_PROC";
-    case TOK_RWORD_MOVE: return "TOK_RWORD_MOVE";
-    case TOK_RWORD_ONCE: return "TOK_RWORD_ONCE";
-
-    case TOK_RWORD_ABSTRACT: return "TOK_RWORD_ABSTRACT";
-    case TOK_RWORD_FINAL: return "TOK_RWORD_FINAL";
-    case TOK_RWORD_PURE: return "TOK_RWORD_PURE";
-    case TOK_RWORD_OVERRIDE: return "TOK_RWORD_OVERRIDE";
-    case TOK_RWORD_VIRTUAL: return "TOK_RWORD_VIRTUAL";
-
-    case TOK_RWORD_ALIGNOF: return "TOK_RWORD_ALIGNOF";
-    case TOK_RWORD_OFFSETOF: return "TOK_RWORD_OFFSETOF";
-    case TOK_RWORD_SIZEOF: return "TOK_RWORD_SIZEOF";
-    case TOK_RWORD_TYPEOF: return "TOK_RWORD_TYPEOF";
-
-    case TOK_RWORD_BE: return "TOK_RWORD_BE";
-    case TOK_RWORD_UNSIZED: return "TOK_RWORD_UNSIZED";
+    #define _(t)    case t: return #t;
+    #include "eTokenType.enum.h"
+    #undef _
     }
     return ">>BUGCHECK: BADTOK<<";
 }
+
+enum eTokenType Token::typefromstr(const ::std::string& s)
+{
+    if(s == "")
+        return TOK_NULL;
+    #define _(t)    else if( s == #t ) return t;
+    #include "eTokenType.enum.h"
+    #undef _
+    else
+        return TOK_NULL;
+}
+
+void operator%(Serialiser& s, enum eTokenType c) {
+    s << Token::typestr(c);
+}
+void operator%(::Deserialiser& s, enum eTokenType& c) {
+    ::std::string   n;
+    s.item(n);
+    c = Token::typefromstr(n);
+}
+SERIALISE_TYPE_S(Token, {
+    s % m_type;
+    s.item(m_str);
+});
 
 ::std::ostream&  operator<<(::std::ostream& os, const Token& tok)
 {

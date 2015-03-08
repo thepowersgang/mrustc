@@ -39,6 +39,8 @@ public:
     TTStream(const TokenTree& input_tt);
     ~TTStream();
 
+    TTStream& operator=(const TTStream& x) { m_stack = x.m_stack; return *this; }
+    
     virtual Position getPosition() const override;
 
 protected:
@@ -48,5 +50,7 @@ protected:
 extern TokenTree Parse_TT(TokenStream& lex);
 extern TokenTree Parse_TT_Expr(TokenStream& lex);
 extern TokenTree Parse_TT_Stmt(TokenStream& lex);
+extern TokenTree Parse_TT_Block(TokenStream& lex);
+extern TokenTree Parse_TT_Path(TokenStream& lex);
 
 #endif // TOKENTREE_HPP_INCLUDED

@@ -24,27 +24,4 @@ extern TypeRef     Parse_Type(TokenStream& lex);
 extern AST::Expr   Parse_Expr(TokenStream& lex, bool const_only);
 extern AST::Expr   Parse_ExprBlock(TokenStream& lex);
 
-class TraceLog
-{
-    static unsigned int depth;
-    const char* m_tag;
-public:
-    TraceLog(const char* tag): m_tag(tag) { indent(); ::std::cout << ">> " << m_tag << ::std::endl; }
-    ~TraceLog() { outdent(); ::std::cout << "<< " << m_tag << ::std::endl; }
-private:
-    void indent()
-    {
-        for(unsigned int i = 0; i < depth; i ++)
-            ::std::cout << " ";
-        depth ++;
-    }
-    void outdent()
-    {
-        depth --;
-        for(unsigned int i = 0; i < depth; i ++)
-            ::std::cout << " ";
-    }
-};
-#define TRACE_FUNCTION  TraceLog _tf_(__func__)
-
 #endif // PARSE_COMMON_HPP_INCLUDED

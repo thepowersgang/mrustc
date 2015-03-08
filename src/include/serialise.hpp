@@ -20,6 +20,7 @@ class Deserialiser;
     const char* method_prefix serialise_tag() const { return tag_str; } \
     void method_prefix serialise(::Serialiser& s) const { body } \
     void method_prefix deserialise(::Deserialiser& s) { des_body } 
+#define SERIALISE_TYPE_A(method_prefix, tag_str, body)  SERIALISE_TYPE(method_prefix, tag_str, body, body)
 #define SERIALISE_TYPE_S(class_, body)  SERIALISE_TYPE(class_::, #class_, body, body)
 
 class Serialisable

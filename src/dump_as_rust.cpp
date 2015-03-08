@@ -190,8 +190,28 @@ public:
         m_expr_root = false;
         switch(n.m_datatype)
         {
+        case CORETYPE_INVAL:    break;
+        case CORETYPE_CHAR:
+            m_os << "'\\u" << ::std::hex << n.m_value << ::std::dec << "'";
+            break;
+        case CORETYPE_F32:
+        case CORETYPE_F64:
+            break;
+        case CORETYPE_U8:
+        case CORETYPE_U16:
+        case CORETYPE_U32:
+        case CORETYPE_U64:
+        case CORETYPE_UINT:
+            m_os << "0x" << ::std::hex << n.m_value << ::std::dec;
+            break;
+        case CORETYPE_I8:
+        case CORETYPE_I16:
+        case CORETYPE_I32:
+        case CORETYPE_I64:
+        case CORETYPE_INT:
+            m_os << n.m_value;
+            break;
         }
-        m_os << "0x" << ::std::hex << n.m_value << ::std::dec;
     }
     virtual void visit(AST::ExprNode_StructLiteral& n) override {
         m_expr_root = false;

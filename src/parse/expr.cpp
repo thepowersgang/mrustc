@@ -229,7 +229,7 @@ ExprNodeP Parse_Stmt(TokenStream& lex, bool& opt_semicolon)
         else {
             CHECK_TOK(tok, TOK_EQUAL);
         }
-        ExprNodeP val = Parse_Expr1(lex);
+        ExprNodeP val = Parse_ExprBlocks(lex);
         opt_semicolon = false;
         return NEWNODE( AST::ExprNode_LetBinding, ::std::move(pat), ::std::move(type), ::std::move(val) );
         }
@@ -244,11 +244,9 @@ ExprNodeP Parse_Stmt(TokenStream& lex, bool& opt_semicolon)
     case TOK_RWORD_WHILE:
         throw ParseError::Todo("while");
         break;
-    default: {
+    default:
         lex.putback(tok);
-        opt_semicolon = true;
         return Parse_Expr0(lex);
-        }
     }
 
 }
@@ -369,8 +367,12 @@ ExprNodeP Parse_ExprBlocks(TokenStream& lex)
     case TOK_RWORD_MATCH:
         return Parse_Expr_Match(lex);
     case TOK_RWORD_IF:
-        // TODO: if let
         return Parse_IfStmt(lex);
+    case TOK_RWORD_UNSAFE: {
+        auto rv = Parse_ExprBlockNode(lex);
+        dynamic_cast<AST::ExprNode_Block&>(*rv).set_unsafe();
+        return rv;
+        }
     default:
         lex.putback(tok);
         return Parse_Expr1(lex);
@@ -391,7 +393,7 @@ ExprNodeP cur(TokenStream& lex) \
         { \
         cases \
         default: \
-            ::std::cout << "<<" << #cur << ::std::endl; \
+            /*::std::cout << "<<" << #cur << ::std::endl; */\
             lex.putback(tok); \
             return rv; \
         } \
@@ -419,13 +421,17 @@ LEFTASSOC(Parse_Expr3, Parse_Expr4,
 // 4: Comparisons
 LEFTASSOC(Parse_Expr4, Parse_Expr5,
     case TOK_LT:
-        throw ParseError::Todo("expr - less than");
+        rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::CMPLT, ::std::move(rv), next(lex));
+        break;
     case TOK_GT:
-        throw ParseError::Todo("expr - greater than");
+        rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::CMPGT, ::std::move(rv), next(lex));
+        break;
     case TOK_LTE:
-        throw ParseError::Todo("expr - less than or equal");
+        rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::CMPLTE, ::std::move(rv), next(lex));
+        break;
     case TOK_GTE:
-        throw ParseError::Todo("expr - greater than or equal");
+        rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::CMPGTE, ::std::move(rv), next(lex));
+        break;
 )
 // 5: Bit OR
 LEFTASSOC(Parse_Expr5, Parse_Expr6,
@@ -470,9 +476,11 @@ LEFTASSOC(Parse_Expr10, Parse_Expr11,
 // 11: Times / Divide / Modulo
 LEFTASSOC(Parse_Expr11, Parse_Expr12,
     case TOK_STAR:
-        throw ParseError::Todo("expr - multiply");
+        rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::MULTIPLY, ::std::move(rv), next(lex));
+        break;
     case TOK_SLASH:
-        throw ParseError::Todo("expr - divide");
+        rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::DIVIDE, ::std::move(rv), next(lex));
+        break;
     case TOK_PERCENT:
         throw ParseError::Todo("expr - modulo");
 )
@@ -541,6 +549,8 @@ ExprNodeP Parse_ExprFC(TokenStream& lex)
 
 ExprNodeP Parse_ExprVal(TokenStream& lex)
 {
+    TRACE_FUNCTION;
+    
     Token   tok;
     AST::Path   path;
     switch( GET_TOK(tok, lex) )
@@ -596,21 +606,31 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         throw ParseError::Todo("Float");
     case TOK_RWORD_SELF:
         return NEWNODE( AST::ExprNode_NamedValue, AST::Path(AST::Path::TagLocal(), "self") );
-    case TOK_PAREN_OPEN: {
-        ExprNodeP rv = Parse_Expr0(lex);
-        if( GET_TOK(tok, lex) == TOK_COMMA ) {
-            ::std::vector<ExprNodeP> ents;
-            ents.push_back( ::std::move(rv) );
-            do {
-                if( GET_TOK(tok, lex) == TOK_PAREN_CLOSE )
-                    break;
-                lex.putback(tok);
-                ents.push_back( Parse_Expr0(lex) );
-            } while( GET_TOK(tok, lex) == TOK_COMMA );
-            rv = NEWNODE( AST::ExprNode_Tuple, ::std::move(ents) );
+    case TOK_PAREN_OPEN:
+        if( GET_TOK(tok, lex) == TOK_PAREN_CLOSE )
+        {
+            DEBUG("Unit");
+            return NEWNODE( AST::ExprNode_Tuple, ::std::vector<ExprNodeP>() );
         }
-        CHECK_TOK(tok, TOK_PAREN_CLOSE);
-        return rv; }
+        else
+        {
+            lex.putback(tok);
+            
+            ExprNodeP rv = Parse_Expr0(lex);
+            if( GET_TOK(tok, lex) == TOK_COMMA ) {
+                ::std::vector<ExprNodeP> ents;
+                ents.push_back( ::std::move(rv) );
+                do {
+                    if( GET_TOK(tok, lex) == TOK_PAREN_CLOSE )
+                        break;
+                    lex.putback(tok);
+                    ents.push_back( Parse_Expr0(lex) );
+                } while( GET_TOK(tok, lex) == TOK_COMMA );
+                rv = NEWNODE( AST::ExprNode_Tuple, ::std::move(ents) );
+            }
+            CHECK_TOK(tok, TOK_PAREN_CLOSE);
+            return rv;
+        }
     case TOK_MACRO:
         //return NEWNODE( AST::ExprNode_Macro, tok.str(), Parse_TT(lex) );
         {

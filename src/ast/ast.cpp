@@ -2,6 +2,7 @@
  */
 #include "ast.hpp"
 #include "../types.hpp"
+#include "../common.hpp"
 #include <iostream>
 #include "../parse/parseerror.hpp"
 #include <algorithm>
@@ -9,14 +10,32 @@
 
 namespace AST {
 
+void MetaItems::push_back(MetaItem i)
+{
+    m_items.push_back( ::std::move(i) );
+}
+MetaItem* MetaItems::get(const char *name)
+{
+    for( auto& i : m_items ) {
+        if(i.name() == name) {
+            i.mark_used();
+            return &i;
+        }
+    }
+    return 0;
+}
+SERIALISE_TYPE_A(MetaItems::, "AST_MetaItems", {
+    s.item(m_items);
+})
+
 SERIALISE_TYPE(MetaItem::, "AST_MetaItem", {
     s << m_name;
     s << m_str_val;
-    s << m_items;
+    s << m_sub_items;
 },{
     s.item(m_name);
     s.item(m_str_val);
-    s.item(m_items);
+    s.item(m_sub_items);
 })
 
 ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat)
@@ -249,6 +268,8 @@ void Crate::load_extern_crate(::std::string name)
     ExternCrate ret;
     d.item( ret.crate() );
     
+    ret.prescan();
+    
     m_extern_crates.insert( make_pair(::std::move(name), ::std::move(ret)) );
 }
 SERIALISE_TYPE(Crate::, "AST_Crate", {
@@ -269,33 +290,46 @@ ExternCrate::ExternCrate(const char *path)
 {
     throw ParseError::Todo("Load extern crate from a file");
 }
+
+// Fill runtime-generated structures in the crate
+void ExternCrate::prescan()
+{
+    TRACE_FUNCTION;
+    
+    Crate& cr = m_crate;
+
+    cr.m_root_module.prescan();
+    
+    for( const auto& mi : cr.m_root_module.macro_imports_res() )
+    {
+        DEBUG("Macro (I) '"<<mi.name<<"' is_pub="<<mi.is_pub);
+        if( mi.is_pub )
+        {
+            m_crate.m_exported_macros.insert( ::std::make_pair(mi.name, mi.data) );
+        }
+    }
+    for( const auto& mi : cr.m_root_module.macros() )
+    {
+        DEBUG("Macro '"<<mi.name<<"' is_pub="<<mi.is_pub);
+        if( mi.is_pub )
+        {
+            m_crate.m_exported_macros.insert( ::std::make_pair(mi.name, &mi.data) );
+        }
+    }
+}
+
 SERIALISE_TYPE(ExternCrate::, "AST_ExternCrate", {
 },{
 })
 
-SERIALISE_TYPE(Module::, "AST_Module", {
-    s << m_name;
-    s << m_attrs;
-    
-    s << m_extern_crates;
-    s << m_submods;
-    
-    s << m_imports;
-    s << m_type_aliases;
-    
-    s << m_traits;
-    s << m_enums;
-    s << m_structs;
-    s << m_statics;
-    
-    s << m_functions;
-    s << m_impls;
-},{
+SERIALISE_TYPE_A(Module::, "AST_Module", {
     s.item(m_name);
     s.item(m_attrs);
     
     s.item(m_extern_crates);
     s.item(m_submods);
+    
+    s.item(m_macros);
     
     s.item(m_imports);
     s.item(m_type_aliases);
@@ -308,11 +342,86 @@ SERIALISE_TYPE(Module::, "AST_Module", {
     s.item(m_functions);
     s.item(m_impls);
 })
-void Module::add_ext_crate(::std::string ext_name, ::std::string int_name)
+
+void Module::prescan()
 {
-    DEBUG("add_ext_crate(\"" << ext_name << "\" as " << int_name << ")");
-    m_extern_crates.push_back( Item< ::std::string>( ::std::move(int_name), ::std::move(ext_name), false ) );
+    TRACE_FUNCTION;
+    DEBUG("- '"<<m_name<<"'"); 
+    
+    for( auto& sm_p : m_submods )
+    {
+        sm_p.first.prescan();
+    }
+    
+    for( const auto& macro_imp : m_macro_imports )
+    {
+        resolve_macro_import( *(Crate*)0, macro_imp.first, macro_imp.second );
+    }
 }
+
+void Module::resolve_macro_import(const Crate& crate, const ::std::string& modname, const ::std::string& macro_name)
+{
+    DEBUG("Import macros from " << modname << " matching '" << macro_name << "'");
+    for( const auto& sm_p : m_submods )
+    {
+        const AST::Module& sm = sm_p.first;
+        if( sm.name() == modname )
+        {
+            DEBUG("Using module");
+            if( macro_name == "" )
+            {
+                for( const auto& macro_p : sm.m_macro_import_res )
+                    m_macro_import_res.push_back( macro_p );
+                return ;
+            }
+            else
+            {
+                for( const auto& macro_p : sm.m_macro_import_res )
+                {
+                    if( macro_p.name == macro_name ) {
+                        m_macro_import_res.push_back( macro_p );
+                        return ;
+                    }   
+                }
+                throw ::std::runtime_error("Macro not in module");
+            }
+        }
+    }
+    
+    for( const auto& cr : m_extern_crates )
+    {
+        if( cr.name == modname )
+        {
+            DEBUG("Using crate import " << cr.name << " == '" << cr.data << "'");
+            if( macro_name == "" ) {
+                for( const auto& macro_p : crate.extern_crates().at(cr.data).crate().m_exported_macros )
+                    m_macro_import_res.push_back( ItemNS<const MacroRules*>( ::std::string(macro_p.first), &*macro_p.second, false ) );
+                return ;
+            }
+            else {
+                for( const auto& macro_p : crate.extern_crates().at(cr.data).crate().m_exported_macros )
+                {
+                    DEBUG("Macro " << macro_p.first);
+                    if( macro_p.first == macro_name ) {
+                        // TODO: Handle #[macro_export] on extern crate
+                        m_macro_import_res.push_back( ItemNS<const MacroRules*>( ::std::string(macro_p.first), &*macro_p.second, false ) );
+                        return ;
+                    }
+                }
+                throw ::std::runtime_error("Macro not in crate");
+            }
+        }
+    }
+    
+    throw ::std::runtime_error( FMT("Could not find sub-module '" << modname << "' for macro import") );
+}
+
+void Module::add_macro_import(const Crate& crate, ::std::string modname, ::std::string macro_name)
+{
+    resolve_macro_import(crate, modname, macro_name);
+    m_macro_imports.insert( ::std::make_pair( move(modname), move(macro_name) ) );
+}
+
 void Module::iterate_functions(fcn_visitor_t *visitor, const Crate& crate)
 {
     for( auto fcn_item : this->m_functions )
