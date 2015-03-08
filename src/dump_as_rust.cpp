@@ -278,6 +278,8 @@ public:
         case AST::ExprNode_BinOp::CMPLTE: m_os << "<="; break;
         case AST::ExprNode_BinOp::CMPGT:  m_os << ">";  break;
         case AST::ExprNode_BinOp::CMPGTE: m_os << ">="; break;
+        case AST::ExprNode_BinOp::BOOLAND:m_os << "&&"; break;
+        case AST::ExprNode_BinOp::BOOLOR: m_os << "||"; break;
         case AST::ExprNode_BinOp::BITAND: m_os << "&";  break;
         case AST::ExprNode_BinOp::BITOR:  m_os << "|";  break;
         case AST::ExprNode_BinOp::BITXOR: m_os << "^";  break;

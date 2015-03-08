@@ -236,6 +236,8 @@ void operator%(::Serialiser& s, const ExprNode_BinOp::Type t) {
     #define _(v)    case ExprNode_BinOp::v: s << #v; return
     _(CMPEQU);
     _(CMPNEQU);
+    _(BOOLAND);
+    _(BOOLOR);
     _(BITAND);
     _(BITOR);
     _(BITXOR);
@@ -267,6 +269,8 @@ NODE(ExprNode_BinOp, {
     {
     case CMPEQU:    os << "=="; break;
     case CMPNEQU:   os << "!="; break;
+    case BOOLAND:   os << "&&"; break;
+    case BOOLOR:    os << "||"; break;
     case BITAND:    os << "&"; break;
     case BITOR:     os << "|"; break;
     case BITXOR:    os << "^"; break;

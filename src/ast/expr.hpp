@@ -320,6 +320,8 @@ struct ExprNode_BinOp:
 		CMPLTE,
 		CMPGT,
 		CMPGTE,
+        BOOLAND,
+        BOOLOR,
 
         BITAND,
         BITOR,

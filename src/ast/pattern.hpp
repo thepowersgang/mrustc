@@ -20,6 +20,7 @@ public:
     enum BindType {
         MAYBE_BIND,
         ANY,
+        REF,
         VALUE,
         TUPLE,
         TUPLE_STRUCT,
@@ -83,6 +84,12 @@ public:
         m_class(VALUE),
         m_node( ::std::move(node) )
     {}
+    
+    struct TagReference {};
+    Pattern(TagReference, Pattern sub_pattern):
+        m_class(REF),
+        m_sub_patterns( { ::std::move(sub_pattern) } )
+    {}
 
     struct TagTuple {};
     Pattern(TagTuple, ::std::vector<Pattern> sub_patterns):
@@ -98,7 +105,7 @@ public:
     {}
     
     // Mutators
-    void set_bind(::std::string name) {
+    void set_bind(::std::string name, bool is_ref, bool is_mut) {
         m_binding = name;
     }
     

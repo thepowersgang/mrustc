@@ -30,6 +30,10 @@ AST::Expr Parse_ExprBlock(TokenStream& lex)
 
 ::std::vector<AST::Pattern> Parse_PatternList(TokenStream& lex);
 
+AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path);
+AST::Pattern Parse_PatternReal(TokenStream& lex);
+
+
 /// Parse a pattern
 ///
 /// Examples:
@@ -73,12 +77,14 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
         bind_name = tok.str();
         if( GET_TOK(tok, lex) != TOK_AT )
         {
+            // No '@', it's a name binding
             lex.putback(tok);
             return AST::Pattern(AST::Pattern::TagBind(), bind_name);
         }
+        
+        tok = lex.getToken();
     }
     
-    // TODO: If the next token is an ident, parse as a path
     if( !expect_bind && tok.type() == TOK_IDENT )
     {
         lex.putback(tok);
@@ -95,9 +101,9 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
                 break;
             //  - Else, if the next token is  a '(' or '{', treat as a struct/enum
             case TOK_BRACE_OPEN:
-                throw ParseError::Todo("Parse_Pattern - Structure patterns");
             case TOK_PAREN_OPEN:
-                return AST::Pattern(AST::Pattern::TagEnumVariant(), ::std::move(path), Parse_PatternList(lex));
+                lex.putback(tok);
+                return Parse_PatternReal_Path(lex, path);
             //  - Else, treat as a MaybeBind
             default:
                 lex.putback(tok);
@@ -106,62 +112,62 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
         }
         else
         {
-            switch(GET_TOK(tok, lex))
-            {
-            case TOK_BRACE_OPEN:
-                throw ParseError::Todo("Parse_Pattern - Structure patterns");
-            case TOK_PAREN_OPEN:
-                return AST::Pattern(AST::Pattern::TagEnumVariant(), ::std::move(path), Parse_PatternList(lex));
-            default:
-                lex.putback(tok);
-                return AST::Pattern(AST::Pattern::TagMaybeBind(), path[0].name());
-            }
+            // non-trivial path, has to be a pattern (not a bind)
+            return Parse_PatternReal_Path(lex, path);
         }
     }
     
+    lex.putback(tok);
+    AST::Pattern pat = Parse_PatternReal(lex);
+    pat.set_bind(bind_name, is_ref, is_mut);
+    return pat;
+}
+AST::Pattern Parse_PatternReal(TokenStream& lex)
+{
+    Token   tok;
+    AST::Path   path;
     
-    switch( tok.type() )
+    switch( GET_TOK(tok, lex) )
     {
+    case TOK_UNDERSCORE:
+        return AST::Pattern( );
+    case TOK_AMP:
+        return AST::Pattern( AST::Pattern::TagReference(), Parse_PatternReal(lex) );
     case TOK_IDENT:
         lex.putback(tok);
-        path = Parse_Path(lex, false, PATH_GENERIC_EXPR);
-        if( 0 )
+        return Parse_PatternReal_Path( lex, Parse_Path(lex, false, PATH_GENERIC_EXPR) );
     case TOK_DOUBLE_COLON:
         // 2. Paths are enum/struct names
-        {
-            path = Parse_Path(lex, true, PATH_GENERIC_EXPR);
-        }
-        switch( GET_TOK(tok, lex) )
-        {
-        case TOK_PAREN_OPEN: {
-            // A list of internal patterns
-            ::std::vector<AST::Pattern> child_pats;
-            do {
-                child_pats.push_back( Parse_Pattern(lex) );
-            } while( GET_TOK(tok, lex) == TOK_COMMA );
-            CHECK_TOK(tok, TOK_PAREN_CLOSE);
-            return AST::Pattern(AST::Pattern::TagEnumVariant(), ::std::move(path), ::std::move(child_pats));
-            }
-        default:
-            lex.putback(tok);
-            return AST::Pattern(AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_NamedValue, ::std::move(path)));
-        }
-        break;
+        return Parse_PatternReal_Path( lex, Parse_Path(lex, true, PATH_GENERIC_EXPR) );
     case TOK_INTEGER:
         return AST::Pattern( AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_Integer, tok.intval(), tok.datatype()) );
     case TOK_STRING:
         throw ParseError::Todo("string patterns");
     case TOK_PAREN_OPEN:
-        // This may also have to handle range expressions? (and other complexities)
-        throw ParseError::Todo("tuple patterns");
+        return AST::Pattern(AST::Pattern::TagTuple(), Parse_PatternList(lex));
+    case TOK_SQUARE_OPEN:
+        throw ParseError::Todo("array patterns");
     default:
         throw ParseError::Unexpected(lex, tok);
     }
-    throw ParseError::BugCheck("Parse_Pattern should early return");
+}
+AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path)
+{
+    Token   tok;
+    
+    switch( GET_TOK(tok, lex) )
+    {
+    case TOK_PAREN_OPEN:
+        return AST::Pattern(AST::Pattern::TagEnumVariant(), ::std::move(path), Parse_PatternList(lex));
+    default:
+        lex.putback(tok);
+        return AST::Pattern(AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_NamedValue, ::std::move(path)));
+    }
 }
 
 ::std::vector<AST::Pattern> Parse_PatternList(TokenStream& lex)
 {
+    TRACE_FUNCTION;
     Token tok;
     ::std::vector<AST::Pattern> child_pats;
     do {
@@ -237,18 +243,14 @@ ExprNodeP Parse_Stmt(TokenStream& lex, bool& opt_semicolon)
         return NEWNODE( AST::ExprNode_Return, Parse_Expr1(lex) );
     case TOK_RWORD_LOOP:
         throw ParseError::Todo("loop");
-        break;
     case TOK_RWORD_FOR:
         throw ParseError::Todo("for");
-        break;
     case TOK_RWORD_WHILE:
         throw ParseError::Todo("while");
-        break;
     default:
         lex.putback(tok);
         return Parse_Expr0(lex);
     }
-
 }
 
 ::std::vector<ExprNodeP> Parse_ParenList(TokenStream& lex)
@@ -351,7 +353,12 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
         ExprNodeP   val = Parse_Stmt(lex, opt_semicolon);
         
         arms.push_back( ::std::make_pair( ::std::move(pat), ::std::move(val) ) );
-    } while( GET_TOK(tok, lex) == TOK_COMMA );
+        
+        if( GET_TOK(tok, lex) == TOK_COMMA )
+            continue;
+        lex.putback(tok);
+        
+    } while( 1 );
     CHECK_TOK(tok, TOK_BRACE_CLOSE);
     
     return NEWNODE( AST::ExprNode_Match, ::std::move(switch_val), ::std::move(arms) );
@@ -405,12 +412,14 @@ ExprNodeP cur(TokenStream& lex) \
 // 1: Bool OR
 LEFTASSOC(Parse_Expr1, Parse_Expr2,
     case TOK_DOUBLE_PIPE:
-        throw ParseError::Todo("expr - boolean OR");
+        rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::BOOLOR, ::std::move(rv), next(lex));
+        break;
 )
 // 2: Bool AND
 LEFTASSOC(Parse_Expr2, Parse_Expr3,
     case TOK_DOUBLE_AMP:
-        throw ParseError::Todo("expr - boolean AND");
+        rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::BOOLAND, ::std::move(rv), next(lex));
+        break;
 )
 // 3: (In)Equality
 LEFTASSOC(Parse_Expr3, Parse_Expr4,

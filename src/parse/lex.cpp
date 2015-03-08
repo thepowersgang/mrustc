@@ -100,6 +100,7 @@ static const struct {
     const char* chars;
     signed int type;
 } RWORDS[] = {
+  TOKENT("_", TOK_UNDERSCORE),
   TOKENT("abstract",TOK_RWORD_ABSTRACT),
   TOKENT("alignof", TOK_RWORD_ALIGNOF),
   TOKENT("as",      TOK_RWORD_AS),

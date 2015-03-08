@@ -319,7 +319,6 @@ AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_no_code=false)
         // By-value method
         fcn_class = AST::Function::CLASS_VALMETHOD;
         GET_TOK(tok, lex);
-        throw ParseError::Todo("By-value methods");
     }
     else
     {
@@ -821,6 +820,7 @@ MacroRule Parse_MacroRules_Var(Preproc& lex)
     auto rep = Parse_TT(lex, true); // - don't care about the enclosing brackets
     TTStream    slex(rep);
     
+    // parse token tree into a flattend replacement, handling expansions
     while(GET_TOK(tok, slex) != TOK_EOF)
     {
         if( tok.type() == TOK_DOLLAR )
