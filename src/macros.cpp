@@ -128,7 +128,7 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, bool rep, single
             throw ParseError::Unexpected(lex, TOK_EOF);
         else
             lex.putback(tok);
-        val = Parse_TT(lex);
+        val = Parse_TT(lex, false);
         if(0)
     case MacroPatEnt::PAT_EXPR:
         val = Parse_TT_Expr(lex);
@@ -137,7 +137,7 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, bool rep, single
         val = Parse_TT_Stmt(lex);
         if(0)
     case MacroPatEnt::PAT_PATH:
-        val = Parse_TT_Path(lex);
+        val = Parse_TT_Path(lex, false);    // non-expr mode
         if(0)
     case MacroPatEnt::PAT_BLOCK:
         val = Parse_TT_Block(lex);
@@ -159,43 +159,49 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, bool rep, single
 
 }
 
-MacroExpander Macro_InvokeInt(const MacroRules& rules, TokenTree input)
+MacroExpander Macro_InvokeInt(const char *name, const MacroRules& rules, TokenTree input)
 {
+    TRACE_FUNCTION;
+    
     // 2. Check input token tree against possible variants
     // 3. Bind names
     // 4. Return expander
+    int i = 0;
     for(const auto& rule : rules)
     {
         Token   tok;
         // Create token stream for input tree
         TTStream    lex(input);
-        if(GET_TOK(tok, lex) == TOK_EOF) {
+        /*
+        enum eTokenType close;
+        switch( GET_TOK(tok, lex) )
+        {
+        case TOK_PAREN_OPEN:    close = TOK_PAREN_CLOSE;    break;
+        case TOK_BRACE_OPEN:    close = TOK_BRACE_CLOSE;    break;
+        default:
             throw ParseError::Unexpected(lex, tok);
         }
+        */
         ::std::map<const char*,TokenTree,cmp_str>   bound_tts;
         ::std::multimap<const char*,TokenTree,cmp_str>  rep_bound_tts;
         // Parse according to rules
-        bool fail = false;
         try
         {
             for(const auto& pat : rule.m_pattern)
             {
                 Macro_HandlePattern(lex, pat, false, bound_tts, rep_bound_tts);
             }
+            
+            //GET_CHECK_TOK(tok, lex, close);
+            GET_CHECK_TOK(tok, lex, TOK_EOF);
+            DEBUG( rule.m_contents.size() << " rule contents bound to " << bound_tts.size() << " values - " << name );
+            return MacroExpander(rule.m_contents, bound_tts);
         }
         catch(const ParseError::Base& e)
         {
-            DEBUG("Parse of rule failed - " << e.what());
-            fail = true;
+            DEBUG("Parse of rule " << i << " of " << name <<" failed - " << e.what());
         }
-        // TODO: Actually check if the final token is the closer to the first
-        if( !fail )
-        {
-            if( GET_TOK(tok, lex) != TOK_EOF)
-                throw ParseError::Unexpected(lex, tok);
-            if( lex.getToken().type() == TOK_EOF )
-                return MacroExpander(rule.m_contents, bound_tts);
-        }
+        i ++;
     }
     DEBUG("");
     throw ParseError::Todo("Error when macro fails to match");
@@ -211,7 +217,7 @@ MacroExpander Macro_Invoke(const char* name, TokenTree input)
     t_macro_regs::iterator macro_reg = g_macro_registrations.find(name);
     if( macro_reg != g_macro_registrations.end() )
     {
-        return Macro_InvokeInt(macro_reg->second, input);
+        return Macro_InvokeInt(macro_reg->first.c_str(), macro_reg->second, input);
     }
     
     for( auto ent = g_macro_module; ent; ent = ent->m_prev )
@@ -222,7 +228,7 @@ MacroExpander Macro_Invoke(const char* name, TokenTree input)
             DEBUG("" << m.name);
             if( m.name == name )
             {
-                return Macro_InvokeInt(m.data, input);
+                return Macro_InvokeInt(m.name.c_str(), m.data, input);
             }
         }
         
@@ -231,7 +237,7 @@ MacroExpander Macro_Invoke(const char* name, TokenTree input)
             DEBUG("" << mi.name);
             if( mi.name == name )
             {
-                return Macro_InvokeInt(*mi.data, input);
+                return Macro_InvokeInt(mi.name.c_str(), *mi.data, input);
             }
         }
     }
@@ -247,11 +253,13 @@ Token MacroExpander::realGetToken()
 {
     if( m_ttstream.get() )
     {
+        DEBUG("TTStream set");
         Token rv = m_ttstream->getToken();
         if( rv.type() != TOK_EOF )
             return rv;
         m_ttstream.reset();
     }
+    DEBUG("ofs " << m_ofs << " < " << m_contents.size());
     if( m_ofs < m_contents.size() )
     {
         const MacroRuleEnt& ent = m_contents[m_ofs];
@@ -266,6 +274,8 @@ Token MacroExpander::realGetToken()
         }
         throw ParseError::Todo("MacroExpander - realGetToken");
     }
+    
+    DEBUG("EOF");
     return Token(TOK_EOF);
 }
 

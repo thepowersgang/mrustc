@@ -7,8 +7,6 @@
 #include "../macros.hpp"
 #include <cassert>
 
-unsigned int TraceLog::depth = 0;
-
 extern AST::Pattern Parse_Pattern(TokenStream& lex);
 
 ::std::vector<TypeRef> Parse_Path_GenericList(TokenStream& lex)
@@ -820,7 +818,11 @@ MacroRule Parse_MacroRules_Var(Preproc& lex)
     GET_CHECK_TOK(tok, lex, TOK_FATARROW);
 
     // Replacement
-    auto rep = Parse_TT(lex);
+    auto rep = Parse_TT(lex, true); // - don't care about the enclosing brackets
+    TTStream    slex(rep);
+    
+    while(GET_TOK(tok, slex) != TOK_EOF)
+        rule.m_contents.push_back( MacroRuleEnt(tok) );
 
     return rule;
 }

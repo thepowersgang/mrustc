@@ -10,10 +10,15 @@ macro_rules! assert{
 }
 #[macro_export]
 macro_rules! assert_eq{
-    ($a:expr, $b:expr) => ({
-            let left = &$a;
-            let right = &$b;
-            assert!( left == right && right == left );
+    ($left:expr, $right:expr) => ({
+            match (&($left), &($right)) {
+                (left_val, right_val) => {
+                    // check both directions of equality....
+                    if !((*left_val == *right_val) && (*right_val == *left_val)) {
+                        panic!("assertion failed: `(left == right) && (right == left)` (left: `{:?}`, right: `{:?}`)", *left_val, *right_val)
+                    }
+                }
+            }
         });
 }
 

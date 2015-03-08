@@ -364,6 +364,9 @@ ExprNodeP Parse_ExprBlocks(TokenStream& lex)
     Token tok;
     switch( GET_TOK(tok, lex) )
     {
+    case TOK_BRACE_OPEN:
+        lex.putback(tok);
+        return Parse_ExprBlockNode(lex);
     case TOK_RWORD_MATCH:
         return Parse_Expr_Match(lex);
     case TOK_RWORD_IF:
@@ -632,9 +635,12 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
             return rv;
         }
     case TOK_MACRO:
-        //return NEWNODE( AST::ExprNode_Macro, tok.str(), Parse_TT(lex) );
         {
-        MacroExpander expanded_macro = Macro_Invoke(tok.str().c_str(), Parse_TT(lex));
+        TokenTree tt = Parse_TT(lex, true);
+        if( tt.size() == 0 ) {
+            throw ParseError::Unexpected(lex, tt.tok());
+        }
+        MacroExpander expanded_macro = Macro_Invoke(tok.str().c_str(), tt);
         return Parse_Expr0(expanded_macro);
         }
     default:
@@ -643,8 +649,10 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
 }
 
 // Token Tree Parsing
-TokenTree Parse_TT(TokenStream& lex)
+TokenTree Parse_TT(TokenStream& lex, bool unwrapped)
 {
+    TRACE_FUNCTION;
+    
     Token tok = lex.getToken();
     eTokenType  closer = TOK_PAREN_CLOSE;
     switch(tok.type())
@@ -663,19 +671,105 @@ TokenTree Parse_TT(TokenStream& lex)
     }
 
     ::std::vector<TokenTree>   items;
-    items.push_back(tok);
+    if( !unwrapped )
+        items.push_back(tok);
     while(GET_TOK(tok, lex) != closer && tok.type() != TOK_EOF)
     {
         lex.putback(tok);
-        items.push_back(Parse_TT(lex));
+        items.push_back(Parse_TT(lex, false));
     }
-    items.push_back(tok);
+    if( !unwrapped )
+        items.push_back(tok);
     return TokenTree(items);
 }
 
-TokenTree Parse_TT_Path(TokenStream& lex)
+TokenTree Parse_TT_Type(TokenStream& lex)
 {
-    throw ParseError::Todo("TokenTree path");
+    TRACE_FUNCTION;
+    Token   tok;
+    
+    ::std::vector<TokenTree>    ret;
+    switch(GET_TOK(tok, lex))
+    {
+    case TOK_AMP:
+        throw ParseError::Todo("TokenTree type &-ptr");
+    case TOK_STAR:
+        throw ParseError::Todo("TokenTree type *-ptr");
+    case TOK_DOUBLE_COLON:
+    case TOK_IDENT:
+        lex.putback(tok);
+        return Parse_TT_Path(lex, false);
+    default:
+        throw ParseError::Unexpected(lex, tok);
+    }
+    return TokenTree(ret);
+}
+
+TokenTree Parse_TT_Path(TokenStream& lex, bool mode_expr)
+{
+    TRACE_FUNCTION;
+    
+    Token   tok;
+    
+    ::std::vector<TokenTree>    ret;
+    if( GET_TOK(tok, lex) == TOK_DOUBLE_COLON ) {
+        ret.push_back(TokenTree(tok));
+    }
+    else {
+        lex.putback(tok);
+    }
+    
+    for(;;)
+    {
+        // Expect an ident
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        ret.push_back(TokenTree(tok));
+        // If mode is expr, check for a double colon here
+        if( mode_expr )
+        {
+            if( GET_TOK(tok, lex) != TOK_DOUBLE_COLON )
+                break;
+            ret.push_back( TokenTree(tok) );
+        }
+        
+        if( GET_TOK(tok, lex) == TOK_LT )
+        {
+            do {
+                ret.push_back( TokenTree(tok) );
+                ret.push_back(Parse_TT_Type(lex));
+            } while(GET_TOK(tok, lex) == TOK_COMMA);
+            if( tok.type() != TOK_GT )
+            {
+                if(tok.type() == TOK_DOUBLE_GT) {
+                    ret.push_back(TokenTree(Token(TOK_GT)));
+                    lex.putback(Token(TOK_GT));
+                }
+                else {
+                    CHECK_TOK(tok, TOK_GT);
+                }
+            }
+            else {
+                ret.push_back(TokenTree(tok));
+            }
+            
+            if( GET_TOK(tok, lex) != TOK_DOUBLE_COLON )
+                break;
+            ret.push_back(TokenTree(tok));
+        }
+        else
+        {
+            lex.putback(tok);
+            
+            if( !mode_expr )
+            {
+                if( GET_TOK(tok, lex) != TOK_DOUBLE_COLON )
+                    break;
+                ret.push_back(TokenTree(tok));
+            }
+        }
+    }
+    lex.putback(tok);
+    return TokenTree(ret);
 }
 /// Parse a token tree path
 TokenTree Parse_TT_Val(TokenStream& lex)
@@ -686,16 +780,16 @@ TokenTree Parse_TT_Val(TokenStream& lex)
     {
     case TOK_PAREN_OPEN:
         lex.putback(tok);
-        return Parse_TT(lex);
+        return Parse_TT(lex, false);
 
     case TOK_IDENT:
     case TOK_DOUBLE_COLON: {
         lex.putback(tok);
-        TokenTree inner = Parse_TT_Path(lex);
+        TokenTree inner = Parse_TT_Path(lex, true);
         if(GET_TOK(tok, lex) == TOK_BRACE_OPEN) {
             lex.putback(tok);
             ret.push_back(inner);
-            ret.push_back(Parse_TT(lex));
+            ret.push_back(Parse_TT(lex, false));
         }
         else {
             lex.putback(tok);
@@ -703,17 +797,20 @@ TokenTree Parse_TT_Val(TokenStream& lex)
         }
         break; }
     case TOK_RWORD_SELF:
+    case TOK_INTEGER:
+    case TOK_FLOAT:
+    case TOK_STRING:
         return TokenTree(tok);
     case TOK_RWORD_MATCH:
         ret.push_back(TokenTree(tok));
-        ret.push_back(Parse_TT(lex));
+        ret.push_back(Parse_TT(lex, false));
         break;
     case TOK_RWORD_IF:
         ret.push_back(TokenTree(tok));
-        ret.push_back(Parse_TT(lex));
+        ret.push_back(Parse_TT_Expr(lex));
         if( GET_TOK(tok, lex) == TOK_RWORD_ELSE ) {
             ret.push_back(TokenTree(tok));
-            ret.push_back(Parse_TT(lex));
+            ret.push_back(Parse_TT(lex, false));
         }
         else {
             lex.putback(tok);
@@ -728,6 +825,8 @@ TokenTree Parse_TT_Val(TokenStream& lex)
 /// Parse a token tree expression
 TokenTree Parse_TT_Expr(TokenStream& lex)
 {
+    TRACE_FUNCTION;
+    
     Token   tok;
     ::std::vector<TokenTree>    ret;
 
@@ -740,8 +839,15 @@ TokenTree Parse_TT_Expr(TokenStream& lex)
         {
         case TOK_PLUS:
         case TOK_DASH:
+        case TOK_SLASH:
+        case TOK_STAR:
+        case TOK_PERCENT:
             ret.push_back(tok);
             ret.push_back(Parse_TT_Val(lex));
+            break;
+        case TOK_PAREN_OPEN:
+            lex.putback(tok);
+            ret.push_back(Parse_TT(lex, false));
             break;
         case TOK_DOT:
             ret.push_back(tok);
@@ -753,7 +859,7 @@ TokenTree Parse_TT_Expr(TokenStream& lex)
                 throw ParseError::Todo("Generic type params in TT expr");
             case TOK_PAREN_OPEN:
                 lex.putback(tok);
-                ret.push_back(Parse_TT(lex));
+                ret.push_back(Parse_TT(lex, false));
                 break;
             default:
                 lex.putback(tok);
