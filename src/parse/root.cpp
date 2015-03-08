@@ -822,7 +822,29 @@ MacroRule Parse_MacroRules_Var(Preproc& lex)
     TTStream    slex(rep);
     
     while(GET_TOK(tok, slex) != TOK_EOF)
-        rule.m_contents.push_back( MacroRuleEnt(tok) );
+    {
+        if( tok.type() == TOK_DOLLAR )
+        {
+            GET_TOK(tok, slex);
+            
+            if( tok.type() == TOK_PAREN_OPEN )
+            {
+                throw ParseError::Todo("Repetitions in macro_rules content");
+            }
+            else if( tok.type() == TOK_IDENT )
+            {
+                rule.m_contents.push_back( MacroRuleEnt(tok.str()) );
+            }
+            else
+            {
+                throw ParseError::Unexpected(lex, tok);
+            }
+        }
+        else
+        {
+            rule.m_contents.push_back( MacroRuleEnt(tok) );
+        }
+    }
 
     return rule;
 }

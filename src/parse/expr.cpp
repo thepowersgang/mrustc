@@ -492,18 +492,18 @@ ExprNodeP Parse_ExprFC(TokenStream& lex);
 ExprNodeP Parse_Expr12(TokenStream& lex)
 {
     Token   tok;
-    switch((tok = lex.getToken()).type())
+    switch(GET_TOK(tok, lex))
     {
     case TOK_DASH:
-        throw ParseError::Todo("expr - negate");
+        return NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::NEGATE, Parse_Expr12(lex) );
     case TOK_EXCLAM:
-        throw ParseError::Todo("expr - logical negate");
+        return NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::INVERT, Parse_Expr12(lex) );
     case TOK_STAR:
-        throw ParseError::Todo("expr - dereference");
+        return NEWNODE( AST::ExprNode_Deref, Parse_Expr12(lex) );
     case TOK_RWORD_BOX:
-        throw ParseError::Todo("expr - box");
+        return NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::BOX, Parse_Expr12(lex) );
     case TOK_AMP:
-        throw ParseError::Todo("expr - borrow");
+        return NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::REF, Parse_Expr12(lex) );
     default:
         lex.putback(tok);
         return Parse_ExprFC(lex);

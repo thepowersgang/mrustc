@@ -69,6 +69,7 @@ SERIALISE_TYPE(Expr::, "Expr", {
     else _(ExprNode_Cast)
     else _(ExprNode_CallPath)
     else _(ExprNode_BinOp)
+    else _(ExprNode_UniOp)
     else
         throw ::std::runtime_error("Unknown node type " + tag);
     #undef _
@@ -278,6 +279,44 @@ NODE(ExprNode_BinOp, {
     os << " " << *m_right << ")";
 })
 
+void operator%(::Serialiser& s, const ExprNode_UniOp::Type t) {
+    switch(t)
+    {
+    #define _(v)    case ExprNode_UniOp::v: s << #v; return;
+    _(NEGATE)
+    _(INVERT)
+    _(BOX)
+    _(REF)
+    #undef _
+    }
+}
+void operator%(::Deserialiser& s, enum ExprNode_UniOp::Type& t) {
+    ::std::string   n;
+    s.item(n);
+    if(1)   ;
+    #define _(v)    else if(n == #v) t = ExprNode_UniOp::v;
+    _(NEGATE)
+    _(INVERT)
+    _(BOX)
+    _(REF)
+    else
+        throw ::std::runtime_error( FMT("No uniop type for '" << n << "'") );
+    #undef _
+}
+NODE(ExprNode_UniOp, {
+    s % m_type;
+    s.item(m_value);
+},{
+    switch(m_type)
+    {
+    case NEGATE: os << "(-"; break;
+    case INVERT: os << "(!"; break;
+    case BOX: os << "(box "; break;
+    case REF: os << "(&"; break;
+    }
+    os << *m_value << ")";
+})
+
 
 #define NV(type, actions)\
 	void NodeVisitorDef::visit(type& node) { DEBUG("DEF - "#type); actions }
@@ -385,6 +424,10 @@ NV(ExprNode_BinOp,
 {
     visit(node.m_left);
     visit(node.m_right);
+})
+NV(ExprNode_UniOp,
+{
+    visit(node.m_value);
 })
 #undef NV
 

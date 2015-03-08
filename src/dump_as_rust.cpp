@@ -274,17 +274,39 @@ public:
         {
         case AST::ExprNode_BinOp::CMPEQU: m_os << "=="; break;
         case AST::ExprNode_BinOp::CMPNEQU:m_os << "!="; break;
+        case AST::ExprNode_BinOp::CMPLT:  m_os << "<";  break;
+        case AST::ExprNode_BinOp::CMPLTE: m_os << "<="; break;
+        case AST::ExprNode_BinOp::CMPGT:  m_os << ">";  break;
+        case AST::ExprNode_BinOp::CMPGTE: m_os << ">="; break;
         case AST::ExprNode_BinOp::BITAND: m_os << "&";  break;
         case AST::ExprNode_BinOp::BITOR:  m_os << "|";  break;
         case AST::ExprNode_BinOp::BITXOR: m_os << "^";  break;
         case AST::ExprNode_BinOp::SHL:    m_os << "<<"; break;
         case AST::ExprNode_BinOp::SHR:    m_os << ">>"; break;
+        case AST::ExprNode_BinOp::MULTIPLY: m_os << "*"; break;
+        case AST::ExprNode_BinOp::DIVIDE:   m_os << "/"; break;
+        case AST::ExprNode_BinOp::MODULO:   m_os << "%"; break;
         }
         m_os << " ";
         if( IS(*n.m_right, AST::ExprNode_BinOp) )
             paren_wrap(n.m_right);
         else
             AST::NodeVisitor::visit(n.m_right);
+    }
+    virtual void visit(AST::ExprNode_UniOp& n) override {
+        m_expr_root = false;
+        switch(n.m_type)
+        {
+        case AST::ExprNode_UniOp::NEGATE:   m_os << "-";    break;
+        case AST::ExprNode_UniOp::INVERT:   m_os << "!";    break;
+        case AST::ExprNode_UniOp::BOX:      m_os << "box ";    break;
+        case AST::ExprNode_UniOp::REF:    m_os << "&";    break;
+        //case AST::ExprNode_UniOp::REFMUT: m_os << "&mut ";    break;
+        }
+        
+        if( IS(*n.m_value, AST::ExprNode_BinOp) )
+            m_os << " ";
+        AST::NodeVisitor::visit(n.m_value);
     }
 
 

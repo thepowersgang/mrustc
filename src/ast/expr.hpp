@@ -348,6 +348,29 @@ struct ExprNode_BinOp:
     NODE_METHODS();
 };
 
+struct ExprNode_UniOp:
+    public ExprNode
+{
+    enum Type {
+        REF,
+        BOX,
+        INVERT,
+        NEGATE,
+    };
+    
+    enum Type   m_type;
+    ::std::unique_ptr<ExprNode> m_value;
+
+    ExprNode_UniOp() {}
+    ExprNode_UniOp(Type type, ::std::unique_ptr<ExprNode> value):
+        m_type(type),
+        m_value( ::std::move(value) )
+    {
+    }
+    
+    NODE_METHODS();
+};
+
 class NodeVisitor
 {
 public:
@@ -380,6 +403,7 @@ public:
     NT(ExprNode_Deref);
     NT(ExprNode_Cast);
     NT(ExprNode_BinOp);
+    NT(ExprNode_UniOp);
 	#undef NT
 };
 class NodeVisitorDef:
@@ -413,6 +437,7 @@ public:
     NT(ExprNode_Deref);
     NT(ExprNode_Cast);
     NT(ExprNode_BinOp);
+    NT(ExprNode_UniOp);
 	#undef NT
 };
 
