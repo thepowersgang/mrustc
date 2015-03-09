@@ -56,19 +56,48 @@ struct Position
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const Position& p);
 
+/// State the parser needs to pass down via a second channel.
+struct ParseState
+{
+    bool disallow_struct_literal = false;
+};
+
 class TokenStream
 {
     bool    m_cache_valid;
     Token   m_cache;
+    ParseState  m_parse_state;
 public:
     TokenStream();
     virtual ~TokenStream();
     Token   getToken();
     void    putback(Token tok);
     virtual Position getPosition() const = 0;
+    
+    ParseState& parse_state() { return m_parse_state; }
+    
 protected:
     virtual Token   realGetToken() = 0;
 };
+
+class SavedParseState
+{
+    TokenStream&    m_lex;
+    ParseState  m_state;
+public:
+    SavedParseState(TokenStream& lex, ParseState state):
+        m_lex(lex),
+        m_state(state)
+    {}
+    ~SavedParseState()
+    {
+        m_lex.parse_state() = m_state;
+    }
+};
+
+#define SET_PARSE_FLAG(lex, flag)    SavedParseState(lex, lex.parse_state()); lex.parse_state().flag = true
+#define CLEAR_PARSE_FLAG(lex, flag)    SavedParseState(lex, lex.parse_state()); lex.parse_state().flag = false
+#define CHECK_PARSE_FLAG(lex, flag) (lex.parse_state().flag == true)
 
 class Lexer
 {

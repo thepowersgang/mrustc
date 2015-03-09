@@ -268,6 +268,7 @@ public:
 
 private:
     Class   m_fcn_class;
+    ::std::string   m_lifetime;
     TypeParams  m_params;
     Expr    m_code;
     TypeRef m_rettype;
@@ -284,6 +285,8 @@ public:
         m_args( move(args) )
     {
     }
+    
+    void set_self_lifetime(::std::string s) { m_lifetime = s; }
     
     const Class fcn_class() const { return m_fcn_class; }
     

@@ -155,6 +155,21 @@ public:
         m_expr_root = false;
         m_os << "if ";
         AST::NodeVisitor::visit(n.m_cond);
+        
+        visit_if_common(expr_root, n.m_true, n.m_false);
+    }
+    virtual void visit(AST::ExprNode_IfLet& n) override {
+        bool expr_root = m_expr_root;
+        m_expr_root = false;
+        m_os << "if let ";
+        print_pattern(n.m_pattern);
+        m_os << " = ";
+        AST::NodeVisitor::visit(n.m_value);
+        
+        visit_if_common(expr_root, n.m_true, n.m_false);
+    }
+    void visit_if_common(bool expr_root, const ::std::unique_ptr<AST::ExprNode>& tv, const ::std::unique_ptr<AST::ExprNode>& fv)
+    {
         if( expr_root )
         {
             m_os << "\n";
@@ -164,15 +179,16 @@ public:
         {
             m_os << " ";
         }
-        AST::NodeVisitor::visit(n.m_true);
-        if(n.m_false.get())
+
+        AST::NodeVisitor::visit(tv);
+        if(fv.get())
         {
             if( expr_root )
             {
                 m_os << "\n";
                 m_os << indent() << "else";
                 // handle chained if statements nicely
-                if( IS(*n.m_false, AST::ExprNode_If) ) {
+                if( IS(*fv, AST::ExprNode_If) || IS(*fv, AST::ExprNode_IfLet) ) {
                     m_expr_root = true;
                     m_os << " ";
                 }
@@ -183,7 +199,7 @@ public:
             {
                 m_os << " else ";
             }
-            AST::NodeVisitor::visit(n.m_false);
+            AST::NodeVisitor::visit(fv);
         }
     }
     virtual void visit(AST::ExprNode_Integer& n) override {

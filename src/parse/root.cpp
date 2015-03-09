@@ -12,12 +12,23 @@ extern AST::Pattern Parse_Pattern(TokenStream& lex);
 ::std::vector<TypeRef> Parse_Path_GenericList(TokenStream& lex)
 {
     TRACE_FUNCTION;
+    Token   tok;
 
     ::std::vector<TypeRef>  types;
-    Token   tok;
+    ::std::vector< ::std::string>   lifetimes;
     do {
-        types.push_back( Parse_Type(lex) );
+        switch(GET_TOK(tok, lex))
+        {
+        case TOK_LIFETIME:
+            lifetimes.push_back( tok.str() );
+            break;
+        default:
+            lex.putback(tok);
+            types.push_back( Parse_Type(lex) );
+            break;
+        }
     } while( GET_TOK(tok, lex) == TOK_COMMA );
+
     // HACK: Split >> into >
     if(tok.type() == TOK_DOUBLE_GT) {
         lex.putback(Token(TOK_GT));
@@ -25,6 +36,8 @@ extern AST::Pattern Parse_Pattern(TokenStream& lex);
     else {
         CHECK_TOK(tok, TOK_GT);
     }
+    
+    
     return types;
 }
 
@@ -293,14 +306,18 @@ AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_no_code=false)
     }
 
     AST::Function::Class    fcn_class = AST::Function::CLASS_UNBOUND;
+    AST::Function::Arglist  args;
+
     GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
     GET_TOK(tok, lex);
     if( tok.type() == TOK_AMP )
     {
         // By-reference method
+        ::std::string   lifetime;
         if( GET_TOK(tok, lex) == TOK_LIFETIME )
         {
-            throw ParseError::Todo("Lifetimes on self in methods");
+            lifetime = tok.str();
+            GET_TOK(tok, lex);
         }
         if( tok.type() == TOK_RWORD_MUT )
         {
@@ -312,6 +329,8 @@ AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_no_code=false)
             CHECK_TOK(tok, TOK_RWORD_SELF);
             fcn_class = AST::Function::CLASS_REFMETHOD;
         }
+        DEBUG("TODO: UFCS / self lifetimes");
+        //args.push_back( ::std::make_pair( AST::Pattern(), TypeRef(TypeRef::TagReference(), lifetime, (fcn_class == AST::Function::CLASS_MUTMETHOD), ) ) );
         GET_TOK(tok, lex);
     }
     else if( tok.type() == TOK_RWORD_SELF )
@@ -325,10 +344,17 @@ AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_no_code=false)
         // Unbound method
     }
     
-    AST::Function::Arglist  args;
     if( tok.type() != TOK_PAREN_CLOSE )
     {
-        lex.putback(tok);
+        // Comma after self
+        if( fcn_class != AST::Function::CLASS_UNBOUND )
+        {
+            CHECK_TOK(tok, TOK_COMMA);
+        }
+        else {
+            lex.putback(tok);
+        }
+        
         // Argument list
         do {
             AST::Pattern pat = Parse_Pattern(lex);
@@ -992,6 +1018,7 @@ void Parse_ModRoot(Preproc& lex, AST::Crate& crate, AST::Module& mod, LList<AST:
                 {
                     throw ParseError::Unexpected(lex, tok);
                 }
+                crate.load_extern_crate(path);
                 mod.add_ext_crate(path, name);
                 GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
                 break; }

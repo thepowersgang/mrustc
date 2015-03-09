@@ -24,6 +24,11 @@ ParseError::Todo::Todo(::std::string message):
 {
     ::std::cout << "Todo(" << message << ")" << ::std::endl;
 }
+ParseError::Todo::Todo(const TokenStream& lex, ::std::string message):
+    m_message(message)
+{
+    ::std::cout << lex.getPosition() << ": Todo(" << message << ")" << ::std::endl;
+}
 ParseError::Todo::~Todo() throw()
 {
 }

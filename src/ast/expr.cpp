@@ -60,6 +60,7 @@ SERIALISE_TYPE(Expr::, "Expr", {
     else _(ExprNode_CallObject)
     else _(ExprNode_Match)
     else _(ExprNode_If)
+    else _(ExprNode_IfLet)
     else _(ExprNode_Integer)
     else _(ExprNode_StructLiteral)
     else _(ExprNode_Tuple)
@@ -178,6 +179,14 @@ NODE(ExprNode_If, {
 },{
     os << "if " << *m_cond << " { " << *m_true << " } else { " << *m_false << " }";
 })
+NODE(ExprNode_IfLet, {
+    s.item(m_pattern);
+    s.item(m_value);
+    s.item(m_true);
+    s.item(m_false);
+},{
+    os << "if let " << m_pattern << " = (" << *m_value << ") { " << *m_true << " } else { " << *m_false << " }";
+})
 
 NODE(ExprNode_Integer, {
     s % m_datatype;
@@ -247,6 +256,10 @@ void operator%(::Serialiser& s, const ExprNode_BinOp::Type t) {
     #define _(v)    case ExprNode_BinOp::v: s << #v; return
     _(CMPEQU);
     _(CMPNEQU);
+    _(CMPLT);
+    _(CMPLTE);
+    _(CMPGT);
+    _(CMPGTE);
     _(BOOLAND);
     _(BOOLOR);
     _(BITAND);
@@ -257,18 +270,37 @@ void operator%(::Serialiser& s, const ExprNode_BinOp::Type t) {
 	_(MULTIPLY);
 	_(DIVIDE);
 	_(MODULO);
+	_(ADD);
+	_(SUB);
     #undef _
     }
 }
 void operator%(::Deserialiser& s, ExprNode_BinOp::Type& t) {
     ::std::string   n;
     s.item(n);
-    #define _(v)    if(n == #v) t = ExprNode_BinOp::v
-         _(CMPEQU);
-    else _(CMPNEQU);
+    if(0)   ;
+    #define _(v)    else if(n == #v) t = ExprNode_BinOp::v
+    _(CMPEQU);
+    _(CMPNEQU);
+    _(CMPLT);
+    _(CMPLTE);
+    _(CMPGT);
+    _(CMPGTE);
+    _(BOOLAND);
+    _(BOOLOR);
+    _(BITAND);
+    _(BITOR);
+    _(BITXOR);
+    _(SHL);
+    _(SHR);
+	_(MULTIPLY);
+	_(DIVIDE);
+	_(MODULO);
+	_(ADD);
+	_(SUB);
+    #undef _
     else
         throw ::std::runtime_error("");
-    #undef _
 }
 NODE(ExprNode_BinOp, {
     s % m_type;
@@ -280,6 +312,10 @@ NODE(ExprNode_BinOp, {
     {
     case CMPEQU:    os << "=="; break;
     case CMPNEQU:   os << "!="; break;
+    case CMPLT:     os << "<";  break;
+    case CMPLTE:    os << "<="; break;
+    case CMPGT:     os << ">";  break;
+    case CMPGTE:    os << ">="; break;
     case BOOLAND:   os << "&&"; break;
     case BOOLOR:    os << "||"; break;
     case BITAND:    os << "&"; break;
@@ -398,6 +434,14 @@ NV(ExprNode_If,
 {
     INDENT();
     visit(node.m_cond);
+    visit(node.m_true);
+    visit(node.m_false);
+    UNINDENT();
+})
+NV(ExprNode_IfLet,
+{
+    INDENT();
+    visit(node.m_value);
     visit(node.m_true);
     visit(node.m_false);
     UNINDENT();

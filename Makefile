@@ -29,11 +29,14 @@ all: $(BIN)
 clean:
 	$(RM) -r $(BIN) $(OBJ)
 
-test: $(BIN) samples/1.rs
+output/%.ast: samples/%.rs
+	@mkdir -p output/
+	$(DBG) $(BIN) $< --emit ast -o $@ 2>&1 | tee $@_dbg.txt ; test $${PIPESTATUS[0]} -eq 0
+
+test: $(BIN) samples/1.rs output/std.ast output/log.ast
 	mkdir -p output/
-	$(DBG) $(BIN) samples/std.rs --emit ast -o output/std.ast 2>&1 | tee output/ast_dbg.txt ; test $${PIPESTATUS[0]} -eq 0
 #	$(DBG) $(BIN) samples/1.rs --crate-path output/std.ast -o output/test.c 2>&1 | tee output/1_dbg.txt
-	$(DBG) $(BIN) ../../BinaryView2/src/main.rs --crate-path output/std.ast -o output/test.c 2>&1 | tee output/1_dbg.txt ; test $${PIPESTATUS[0]} -eq 0
+	$(DBG) $(BIN) ../../BinaryView2/src/main.rs --crate-path output/ -o output/test.c 2>&1 | tee output/1_dbg.txt ; test $${PIPESTATUS[0]} -eq 0
 
 $(BIN): $(OBJ)
 	@mkdir -p $(dir $@)

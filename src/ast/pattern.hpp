@@ -32,7 +32,7 @@ private:
     unique_ptr<ExprNode>    m_node;
     ::std::vector<Pattern>  m_sub_patterns;
 public:
-    Pattern(Pattern&& o):
+    Pattern(Pattern&& o) noexcept:
         m_class(o.m_class),
         m_binding( move(o.m_binding) ),
         m_path( move(o.m_path) ),

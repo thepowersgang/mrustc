@@ -202,6 +202,24 @@ struct ExprNode_If:
     }
     NODE_METHODS();
 };
+struct ExprNode_IfLet:
+    public ExprNode
+{
+    AST::Pattern    m_pattern;
+    unique_ptr<ExprNode>    m_value;
+    unique_ptr<ExprNode>    m_true;
+    unique_ptr<ExprNode>    m_false;
+
+    ExprNode_IfLet() {}
+    ExprNode_IfLet(AST::Pattern pattern, unique_ptr<ExprNode>&& cond, unique_ptr<ExprNode>&& true_code, unique_ptr<ExprNode>&& false_code):
+        m_pattern( ::std::move(pattern) ),
+        m_value( ::std::move(cond) ),
+        m_true( ::std::move(true_code) ),
+        m_false( ::std::move(false_code) )
+    {
+    }
+    NODE_METHODS();
+};
 // Literal integer
 struct ExprNode_Integer:
     public ExprNode
@@ -363,6 +381,8 @@ struct ExprNode_BinOp:
 		MULTIPLY,
 		DIVIDE,
 		MODULO,
+		ADD,
+		SUB,
     };
 
     Type    m_type;
@@ -425,6 +445,7 @@ public:
     NT(ExprNode_CallObject);
     NT(ExprNode_Match);
     NT(ExprNode_If);
+    NT(ExprNode_IfLet);
     
     NT(ExprNode_Integer);
     NT(ExprNode_Float);
@@ -461,6 +482,7 @@ public:
     NT(ExprNode_CallObject);
     NT(ExprNode_Match);
     NT(ExprNode_If);
+    NT(ExprNode_IfLet);
     
     NT(ExprNode_Integer);
     NT(ExprNode_Float);

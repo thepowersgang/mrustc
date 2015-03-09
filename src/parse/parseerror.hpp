@@ -37,6 +37,7 @@ class Todo:
     ::std::string   m_message;
 public:
     Todo(::std::string message);
+    Todo(const TokenStream& lex, ::std::string message);
     virtual ~Todo() throw ();
 
 };

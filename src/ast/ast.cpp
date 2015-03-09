@@ -48,8 +48,10 @@ SERIALISE_TYPE(MetaItem::, "AST_MetaItem", {
     case Pattern::MAYBE_BIND:
         os << "Pattern(TagMaybeBind, '" << pat.m_binding << "')";
         break;
+    case Pattern::REF:
+        os << "Pattern(TagReference, '" << pat.m_binding << "' @ " << pat.m_sub_patterns[0] << ")";
+        break;
     case Pattern::VALUE:
-        //os << "Pattern(TagValue, " << *pat.m_node << ")";
         os << "Pattern(TagValue, '" << pat.m_binding << "' @ TODO:ExprNode)";
         break;
     case Pattern::TUPLE:
@@ -64,18 +66,28 @@ SERIALISE_TYPE(MetaItem::, "AST_MetaItem", {
 void operator%(Serialiser& s, Pattern::BindType c) {
     switch(c)
     {
-    case Pattern::ANY:          s << "ANY";         return;
-    case Pattern::MAYBE_BIND:   s << "MAYBE_BIND";  return;
-    case Pattern::VALUE:        s << "VALUE";  return;
-    case Pattern::TUPLE:        s << "TUPLE";  return;
-    case Pattern::TUPLE_STRUCT: s << "TUPLE_STRUCT";  return;
+    #define _(v)    case Pattern::v: s << #v; return;
+    _(ANY)
+    _(MAYBE_BIND)
+    _(REF)
+    _(VALUE)
+    _(TUPLE)
+    _(TUPLE_STRUCT)
+    #undef _
     }
 }
 void operator%(::Deserialiser& s, Pattern::BindType& c) {
     ::std::string   n;
     s.item(n);
-         if(n == "ANY")         c = Pattern::ANY;
-    else if(n == "MAYBE_BIND")  c = Pattern::MAYBE_BIND;
+    if(1)   ;
+    #define _(v) else if(n == #v) c = Pattern::v;
+    _(ANY)
+    _(MAYBE_BIND)
+    _(REF)
+    _(VALUE)
+    _(TUPLE)
+    _(TUPLE_STRUCT)
+    #undef _
     else
         throw ::std::runtime_error("");
 }
@@ -89,6 +101,8 @@ SERIALISE_TYPE_S(Pattern, {
 Impl Impl::make_concrete(const ::std::vector<TypeRef>& types) const
 {
     DEBUG("types={" << types << "}");
+    throw ParseError::Todo("Impl::make_concrete");
+/*
     INDENT();
     
     assert(m_params.n_params());
@@ -120,6 +134,7 @@ Impl Impl::make_concrete(const ::std::vector<TypeRef>& types) const
    
     UNINDENT();
     return ret;
+*/
 }
 
 ::rust::option<Impl&> Impl::matches(const TypeRef& trait, const TypeRef& type)
