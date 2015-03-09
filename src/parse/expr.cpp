@@ -47,7 +47,6 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
 {
     TRACE_FUNCTION;
 
-    AST::Path   path;
     Token   tok;
     tok = lex.getToken();
     
@@ -71,24 +70,25 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
     }
     
     ::std::string   bind_name;
+    // If a 'ref' or 'mut' annotation was seen, the next name must be a binding name
     if( expect_bind )
     {
         CHECK_TOK(tok, TOK_IDENT);
         bind_name = tok.str();
+        // If there's no '@' after it, it's a name binding only (_ pattern)
         if( GET_TOK(tok, lex) != TOK_AT )
         {
-            // No '@', it's a name binding
             lex.putback(tok);
             return AST::Pattern(AST::Pattern::TagBind(), bind_name);
         }
         
         tok = lex.getToken();
     }
-    
-    if( !expect_bind && tok.type() == TOK_IDENT )
+    // Otherwise, handle MaybeBind
+    else if( tok.type() == TOK_IDENT )
     {
         lex.putback(tok);
-        path = Parse_Path(lex, false, PATH_GENERIC_EXPR);
+        AST::Path path = Parse_Path(lex, false, PATH_GENERIC_EXPR);
         // - If the path is trivial
         if( path.size() == 1 && path[0].args().size() == 0 )
         {
@@ -98,6 +98,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
             case TOK_AT:
                 bind_name = path[0].name();
                 GET_TOK(tok, lex);
+                // - Fall though
                 break;
             //  - Else, if the next token is  a '(' or '{', treat as a struct/enum
             case TOK_BRACE_OPEN:
@@ -120,10 +121,12 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
     lex.putback(tok);
     AST::Pattern pat = Parse_PatternReal(lex);
     pat.set_bind(bind_name, is_ref, is_mut);
-    return pat;
+    return ::std::move(pat);
 }
 AST::Pattern Parse_PatternReal(TokenStream& lex)
 {
+    TRACE_FUNCTION;
+    
     Token   tok;
     AST::Path   path;
     
@@ -132,6 +135,7 @@ AST::Pattern Parse_PatternReal(TokenStream& lex)
     case TOK_UNDERSCORE:
         return AST::Pattern( );
     case TOK_AMP:
+        DEBUG("Ref");
         return AST::Pattern( AST::Pattern::TagReference(), Parse_PatternReal(lex) );
     case TOK_IDENT:
         lex.putback(tok);
@@ -615,7 +619,11 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     case TOK_INTEGER:
         return NEWNODE( AST::ExprNode_Integer, tok.intval(), tok.datatype() );
     case TOK_FLOAT:
-        throw ParseError::Todo("Float");
+        return NEWNODE( AST::ExprNode_Float, tok.floatval(), tok.datatype() );
+    case TOK_RWORD_TRUE:
+        return NEWNODE( AST::ExprNode_Bool, true );
+    case TOK_RWORD_FALSE:
+        return NEWNODE( AST::ExprNode_Bool, false );
     case TOK_RWORD_SELF:
         return NEWNODE( AST::ExprNode_NamedValue, AST::Path(AST::Path::TagLocal(), "self") );
     case TOK_PAREN_OPEN:

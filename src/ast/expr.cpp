@@ -185,6 +185,17 @@ NODE(ExprNode_Integer, {
 },{
     os << m_value;
 })
+NODE(ExprNode_Float, {
+    s % m_datatype;
+    s.item(m_value);
+},{
+    os << m_value;
+})
+NODE(ExprNode_Bool, {
+    s.item(m_value);
+},{
+    os << m_value;
+})
 
 NODE(ExprNode_StructLiteral, {
     s.item(m_path);
@@ -392,10 +403,10 @@ NV(ExprNode_If,
     UNINDENT();
 })
 
-NV(ExprNode_Integer,
-{
-    // LEAF
-})
+NV(ExprNode_Integer, {})
+NV(ExprNode_Float, {})
+NV(ExprNode_Bool, {})
+
 NV(ExprNode_StructLiteral,
 {
     visit(node.m_base_value);

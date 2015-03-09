@@ -218,6 +218,36 @@ struct ExprNode_Integer:
     
     NODE_METHODS();
 };
+// Literal float
+struct ExprNode_Float:
+    public ExprNode
+{
+    enum eCoreType  m_datatype;
+    double  m_value;
+
+    ExprNode_Float() {}
+    ExprNode_Float(double value, enum eCoreType datatype):
+        m_datatype(datatype),
+        m_value(value)
+    {
+    }
+    
+    NODE_METHODS();
+};
+// Literal boolean
+struct ExprNode_Bool:
+    public ExprNode
+{
+    bool    m_value;
+
+    ExprNode_Bool() {}
+    ExprNode_Bool(bool value):
+        m_value(value)
+    {
+    }
+    
+    NODE_METHODS();
+};
 // Literal structure
 struct ExprNode_StructLiteral:
     public ExprNode
@@ -397,6 +427,8 @@ public:
     NT(ExprNode_If);
     
     NT(ExprNode_Integer);
+    NT(ExprNode_Float);
+    NT(ExprNode_Bool);
     NT(ExprNode_StructLiteral);
     NT(ExprNode_Tuple);
     NT(ExprNode_NamedValue);
@@ -431,6 +463,8 @@ public:
     NT(ExprNode_If);
     
     NT(ExprNode_Integer);
+    NT(ExprNode_Float);
+    NT(ExprNode_Bool);
     NT(ExprNode_StructLiteral);
     NT(ExprNode_Tuple);
     NT(ExprNode_NamedValue);

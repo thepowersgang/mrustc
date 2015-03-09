@@ -88,8 +88,10 @@ public:
     struct TagReference {};
     Pattern(TagReference, Pattern sub_pattern):
         m_class(REF),
-        m_sub_patterns( { ::std::move(sub_pattern) } )
-    {}
+        m_sub_patterns()
+    {
+        m_sub_patterns.push_back( ::std::move(sub_pattern) );
+    }
 
     struct TagTuple {};
     Pattern(TagTuple, ::std::vector<Pattern> sub_patterns):

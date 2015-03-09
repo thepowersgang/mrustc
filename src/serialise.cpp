@@ -79,6 +79,12 @@ Serialiser& Serialiser_TextTree::operator<<(uint64_t val)
     m_os << val << "\n";
     return *this;
 }
+Serialiser& Serialiser_TextTree::operator<<(double val)
+{
+    print_indent();
+    m_os << val << "\n";
+    return *this;
+}
 
 Serialiser& Serialiser_TextTree::operator<<(const char* s)
 {
@@ -187,6 +193,13 @@ void Deserialiser_TextTree::item(uint64_t& v)
     m_is >> v;
     if( !m_is.good() )
         throw ::std::runtime_error("TODO: Less shit exception, item(uint64_t)");
+}
+void Deserialiser_TextTree::item(double& v)
+{
+    eat_ws();
+    m_is >> v;
+    if( !m_is.good() )
+        throw ::std::runtime_error("TODO: Less shit exception, item(double)");
 }
 void Deserialiser_TextTree::item(::std::string& s)
 {

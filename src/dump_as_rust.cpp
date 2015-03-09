@@ -202,6 +202,7 @@ public:
         case CORETYPE_U32:
         case CORETYPE_U64:
         case CORETYPE_UINT:
+        case CORETYPE_ANY:
             m_os << "0x" << ::std::hex << n.m_value << ::std::dec;
             break;
         case CORETYPE_I8:
@@ -212,6 +213,26 @@ public:
             m_os << n.m_value;
             break;
         }
+    }
+    virtual void visit(AST::ExprNode_Float& n) override {
+        m_expr_root = false;
+        switch(n.m_datatype)
+        {
+        case CORETYPE_ANY:
+        case CORETYPE_F32:
+        case CORETYPE_F64:
+            m_os << n.m_value;
+            break;
+        default:
+            break;
+        }
+    }
+    virtual void visit(AST::ExprNode_Bool& n) override {
+        m_expr_root = false;
+        if( n.m_value )
+            m_os << "true";
+        else
+            m_os << "false";
     }
     virtual void visit(AST::ExprNode_StructLiteral& n) override {
         m_expr_root = false;

@@ -19,6 +19,7 @@ public:
     
     virtual Serialiser& operator<<(bool val) override;
     virtual Serialiser& operator<<(uint64_t val) override;
+    virtual Serialiser& operator<<(double val) override;
     virtual Serialiser& operator<<(const char* s) override;
     
 protected:
@@ -53,6 +54,7 @@ protected:
 public:
     virtual void item(bool& b) override;
     virtual void item(uint64_t& v) override;
+    virtual void item(double& v) override;
     virtual void item(::std::string& s) override;
 
     virtual void start_object(const char *tag) override;
