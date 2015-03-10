@@ -160,6 +160,11 @@ NODE(ExprNode_CallObject, {
     os << ")";
 })
 
+SERIALISE_TYPE_A(ExprNode_Match::Arm::, "ExprNode_Match_Arm", {
+    s.item(m_patterns);
+    s.item(m_cond);
+    s.item(m_code);
+});
 NODE(ExprNode_Match, {
     s.item(m_val);
     s.item(m_arms);
@@ -167,7 +172,11 @@ NODE(ExprNode_Match, {
     os << "match ("<<*m_val<<") {";
     for(const auto& arm : m_arms)
     {
-        os << " " << arm.first << " => " << *arm.second << ",";
+        for( const auto& pat : arm.m_patterns )
+            os << " " << pat;
+        os << " if " << *arm.m_cond;
+        
+        os << " => " << *arm.m_code << ",";
     }
     os << "}";
 })
@@ -326,6 +335,8 @@ NODE(ExprNode_BinOp, {
 	case MULTIPLY: os << "*"; break;
 	case DIVIDE:   os << "/"; break;
 	case MODULO:   os << "%"; break;
+	case ADD:   os << "+"; break;
+	case SUB:   os << "-"; break;
     }
     os << " " << *m_right << ")";
 })
@@ -427,7 +438,10 @@ NV(ExprNode_Match,
     INDENT();
     visit(node.m_val);
     for( auto& arm : node.m_arms )
-        visit(arm.second);
+    {
+        visit(arm.m_cond);
+        visit(arm.m_code);
+    }
     UNINDENT();
 })
 NV(ExprNode_If,

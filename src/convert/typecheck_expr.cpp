@@ -371,8 +371,10 @@ void CTC_NodeVisitor::visit(AST::ExprNode_Match& node)
     for( auto& arm : node.m_arms )
     {
         m_tc.start_scope();
-        m_tc.handle_pattern(arm.first, node.m_val->get_res_type());
-        AST::NodeVisitor::visit(arm.second);
+        for( auto& pat : arm.m_patterns )
+            m_tc.handle_pattern(pat, node.m_val->get_res_type());
+        AST::NodeVisitor::visit(arm.m_cond);
+        AST::NodeVisitor::visit(arm.m_code);
         m_tc.end_scope();
     }
 }

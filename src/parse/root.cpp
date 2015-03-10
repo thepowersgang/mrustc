@@ -95,7 +95,18 @@ AST::Path Parse_PathFrom(TokenStream& lex, AST::Path path, eParsePathGenericMode
 AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generic_mode)
 {
     if( is_abs )
-        return Parse_PathFrom(lex, AST::Path(AST::Path::TagAbsolute()), generic_mode);
+    {
+        Token   tok;
+        if( GET_TOK(tok, lex) == TOK_STRING ) {
+            ::std::string   cratename = tok.str();
+            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+            return Parse_PathFrom(lex, AST::Path(cratename, {}), generic_mode);
+        }
+        else {
+            lex.putback(tok);
+            return Parse_PathFrom(lex, AST::Path(AST::Path::TagAbsolute()), generic_mode);
+        }
+    }
     else
         return Parse_PathFrom(lex, AST::Path(), generic_mode);
 }
@@ -794,6 +805,168 @@ void Parse_Use(Preproc& lex, ::std::function<void(AST::Path, ::std::string)> fcn
     fcn(path, name);
 }
 
+::std::vector<MacroPatEnt> Parse_MacroRules_Pat(TokenStream& lex, bool allow_sub, enum eTokenType open, enum eTokenType close)
+{
+    TRACE_FUNCTION;
+    Token tok;
+    
+    ::std::vector<MacroPatEnt>  ret;
+    
+     int    depth = 0;
+    while( GET_TOK(tok, lex) != close || depth > 0 )
+    {
+        if( tok.type() == open )
+        {
+            depth ++;
+        }
+        else if( tok.type() == close )
+        {
+            if(depth == 0)
+                throw ParseError::Generic(FMT("Unmatched " << Token(close) << " in macro pattern"));
+            depth --;
+        }
+        
+        switch(tok.type())
+        {
+        case TOK_DOLLAR:
+            switch( GET_TOK(tok, lex) )
+            {
+            case TOK_IDENT: {
+                ::std::string   name = tok.str();
+                GET_CHECK_TOK(tok, lex, TOK_COLON);
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                ::std::string   type = tok.str();
+                if(0)
+                    ;
+                else if( type == "expr" )
+                    ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_EXPR) );
+                else if( type == "tt" )
+                    ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_TT) );
+                else
+                    throw ParseError::Generic(FMT("Unknown fragment type " << type));
+                break; }
+            case TOK_PAREN_OPEN:
+                if( allow_sub )
+                {
+                    auto subpat = Parse_MacroRules_Pat(lex, false, TOK_PAREN_OPEN, TOK_PAREN_CLOSE);
+                    enum eTokenType joiner = TOK_NULL;
+                    GET_TOK(tok, lex);
+                    if( tok.type() != TOK_PLUS && tok.type() != TOK_STAR )
+                    {
+                        DEBUG("Joiner = " << tok);
+                        joiner = tok.type();
+                        GET_TOK(tok, lex);
+                    }
+                    DEBUG("tok = " << tok);
+                    switch(tok.type())
+                    {
+                    case TOK_PLUS:
+                        throw ParseError::Todo(lex, "+ repetitions");
+                        break;
+                    case TOK_STAR:
+                        DEBUG("$()* " << subpat);
+                        ret.push_back( MacroPatEnt(Token(joiner), ::std::move(subpat)) );
+                        break;
+                    default:
+                        throw ParseError::Unexpected(lex, tok);
+                    }
+                }
+                else
+                {
+                    throw ParseError::Generic(FMT("Nested repetitions in macro"));
+                }
+                break;
+            default:
+                throw ParseError::Unexpected(lex, tok);
+            }
+            break;
+        case TOK_EOF:
+            throw ParseError::Unexpected(lex, tok);
+        default:
+            ret.push_back( MacroPatEnt(tok) );
+            break;
+        }
+    }
+    
+    return ret;
+}
+
+::std::vector<MacroRuleEnt> Parse_MacroRules_Cont(Preproc& lex, bool allow_sub, enum eTokenType open, enum eTokenType close)
+{
+    TRACE_FUNCTION;
+    
+    Token tok;
+    ::std::vector<MacroRuleEnt> ret;
+    
+     int    depth = 0;
+    while( GET_TOK(tok, lex) != close || depth > 0 )
+    {
+        if( tok.type() == TOK_EOF ) {
+            throw ParseError::Unexpected(lex, tok);
+        }
+        if( tok.type() == TOK_NULL )    continue ;
+        
+        if( tok.type() == open )
+        {
+            DEBUG("depth++");
+            depth ++;
+        }
+        else if( tok.type() == close )
+        {
+            DEBUG("depth--");
+            if(depth == 0)
+                throw ParseError::Generic(FMT("Unmatched " << Token(close) << " in macro content"));
+            depth --;
+        }
+        
+        if( tok.type() == TOK_DOLLAR )
+        {
+            GET_TOK(tok, lex);
+            
+            if( allow_sub && tok.type() == TOK_PAREN_OPEN )
+            {
+                auto content = Parse_MacroRules_Cont(lex, false, TOK_PAREN_OPEN, TOK_PAREN_CLOSE);
+                
+                GET_TOK(tok, lex);
+                enum eTokenType joiner = TOK_NULL;
+                if( tok.type() != TOK_PLUS && tok.type() != TOK_STAR )
+                {
+                    joiner = tok.type();
+                    GET_TOK(tok, lex);
+                }
+                DEBUG("joiner = " << Token(joiner) << ", content = " << content);
+                switch(tok.type())
+                {
+                case TOK_STAR:
+                    ret.push_back( MacroRuleEnt(joiner, ::std::move(content)) );
+                    break;
+                default:
+                    throw ParseError::Unexpected(lex, tok);
+                }
+                
+            }
+            else if( tok.type() == TOK_IDENT )
+            {
+                ret.push_back( MacroRuleEnt(tok.str()) );
+            }
+            else if( tok.type() == TOK_RWORD_CRATE )
+            {
+                ret.push_back( MacroRuleEnt("*crate") );
+            }
+            else
+            {
+                throw ParseError::Unexpected(lex, tok);
+            }
+        }
+        else
+        {
+            ret.push_back( MacroRuleEnt(tok) );
+        }
+    }
+    
+    return ret;
+}
+
 MacroRule Parse_MacroRules_Var(Preproc& lex)
 {
     TRACE_FUNCTION;
@@ -811,67 +984,22 @@ MacroRule Parse_MacroRules_Var(Preproc& lex)
         throw ParseError::Unexpected(lex, tok);
     }
     // - Pattern entries
-    while( GET_TOK(tok, lex) != close )
-    {
-        switch(tok.type())
-        {
-        case TOK_DOLLAR:
-            switch( GET_TOK(tok, lex) )
-            {
-            case TOK_IDENT: {
-                ::std::string   name = tok.str();
-                GET_CHECK_TOK(tok, lex, TOK_COLON);
-                GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                ::std::string   type = tok.str();
-                if( type == "expr" )
-                    rule.m_pattern.push_back( MacroPatEnt(name, MacroPatEnt::PAT_EXPR) );
-                else
-                    throw ParseError::Generic(FMT("Unknown fragment type " << type));
-                break; }
-            case TOK_PAREN_OPEN:
-                throw ParseError::Todo("Repetitions in macro_rules");
-            default:
-                throw ParseError::Unexpected(lex, tok);
-            }
-            break;
-        default:
-            rule.m_pattern.push_back( MacroPatEnt(tok) );
-            break;
-        }
-    }
+    rule.m_pattern = Parse_MacroRules_Pat(lex, true, tok.type(), close);
     
     GET_CHECK_TOK(tok, lex, TOK_FATARROW);
 
     // Replacement
-    auto rep = Parse_TT(lex, true); // - don't care about the enclosing brackets
-    TTStream    slex(rep);
-    
-    // parse token tree into a flattend replacement, handling expansions
-    while(GET_TOK(tok, slex) != TOK_EOF)
+    switch(GET_TOK(tok, lex))
     {
-        if( tok.type() == TOK_DOLLAR )
-        {
-            GET_TOK(tok, slex);
-            
-            if( tok.type() == TOK_PAREN_OPEN )
-            {
-                throw ParseError::Todo("Repetitions in macro_rules content");
-            }
-            else if( tok.type() == TOK_IDENT )
-            {
-                rule.m_contents.push_back( MacroRuleEnt(tok.str()) );
-            }
-            else
-            {
-                throw ParseError::Unexpected(lex, tok);
-            }
-        }
-        else
-        {
-            rule.m_contents.push_back( MacroRuleEnt(tok) );
-        }
+    case TOK_BRACE_OPEN:    close = TOK_BRACE_CLOSE;    break;
+    case TOK_PAREN_OPEN:    close = TOK_PAREN_CLOSE;    break;
+    default:
+        throw ParseError::Unexpected(lex, tok);
     }
+    rule.m_contents = Parse_MacroRules_Cont(lex, true, tok.type(), close);
 
+    DEBUG("Rule - ["<<rule.m_pattern<<"] => "<<rule.m_contents<<"");
+    
     return rule;
 }
 
@@ -1020,6 +1148,20 @@ void Parse_ModRoot(Preproc& lex, AST::Crate& crate, AST::Module& mod, LList<AST:
                 }
                 crate.load_extern_crate(path);
                 mod.add_ext_crate(path, name);
+            
+                auto at = meta_items.get("macro_use");
+                if( at )
+                {
+                    if( at->has_sub_items() )
+                    {
+                        throw ParseError::Todo("selective macro_use");
+                    }
+                    else
+                    {
+                        mod.add_macro_import(crate, name, "");
+                    }
+                }    
+            
                 GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
                 break; }
             default:

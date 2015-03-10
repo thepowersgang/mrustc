@@ -12,6 +12,11 @@ typedef ::std::map< ::std::string, MacroRules>  t_macro_regs;
 t_macro_regs g_macro_registrations;
 const LList<AST::Module*>*  g_macro_module;
 
+TokenTree   g_crate_path_tt = TokenTree({
+    TokenTree(Token(TOK_DOUBLE_COLON)),
+    TokenTree(Token(TOK_STRING, "--CRATE--")),
+    });
+
 void Macro_SetModule(const LList<AST::Module*>& mod)
 {
     g_macro_module = &mod;
@@ -70,10 +75,7 @@ void Macro_InitDefaults()
     }
 }
 
-typedef ::std::map<const char*,TokenTree,cmp_str>   single_tts_t;
-typedef ::std::multimap<const char*,TokenTree,cmp_str>   repeated_tts_t;
-
-void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, bool rep, single_tts_t& bound_tts, repeated_tts_t& rep_bound_tts)
+void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int layer, MacroExpander::t_mappings& bound_tts)
 {
     Token   tok;
     TokenTree   val;
@@ -85,7 +87,7 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, bool rep, single
         break;
     case MacroPatEnt::PAT_LOOP:
     //case MacroPatEnt::PAT_OPTLOOP:
-        if( rep )
+        if( layer )
         {
             throw ParseError::BugCheck("Nested macro loop");
         }
@@ -97,7 +99,7 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, bool rep, single
                 DEBUG("Try");
                 TTStream    saved = lex;
                 try {
-                    Macro_HandlePattern(lex, pat.subpats[0], true, bound_tts, rep_bound_tts);
+                    Macro_HandlePattern(lex, pat.subpats[0], layer+1, bound_tts);
                 }
                 catch(const ParseError::Base& e) {
                     DEBUG("Breakout");
@@ -106,7 +108,7 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, bool rep, single
                 }
                 for( unsigned int i = 1; i < pat.subpats.size(); i ++ )
                 {
-                    Macro_HandlePattern(lex, pat.subpats[i], true, bound_tts, rep_bound_tts);
+                    Macro_HandlePattern(lex, pat.subpats[i], layer+1, bound_tts);
                 }
                 DEBUG("succ");
                 if( pat.tok.type() != TOK_NULL )
@@ -147,10 +149,7 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, bool rep, single
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             val = TokenTree(tok);
         }
-        if(rep)
-            rep_bound_tts.insert( std::make_pair(pat.name.c_str(), val) );
-        else
-            bound_tts.insert( std::make_pair(pat.name.c_str(), val) );
+        bound_tts.insert( ::std::make_pair( ::std::make_pair(layer, pat.name.c_str()), ::std::move(val) ) );
         break;
     
     //default:
@@ -182,20 +181,19 @@ MacroExpander Macro_InvokeInt(const char *name, const MacroRules& rules, TokenTr
             throw ParseError::Unexpected(lex, tok);
         }
         */
-        ::std::map<const char*,TokenTree,cmp_str>   bound_tts;
-        ::std::multimap<const char*,TokenTree,cmp_str>  rep_bound_tts;
+        MacroExpander::t_mappings   bound_tts;
         // Parse according to rules
         try
         {
             for(const auto& pat : rule.m_pattern)
             {
-                Macro_HandlePattern(lex, pat, false, bound_tts, rep_bound_tts);
+                Macro_HandlePattern(lex, pat, 0, bound_tts);
             }
             
             //GET_CHECK_TOK(tok, lex, close);
             GET_CHECK_TOK(tok, lex, TOK_EOF);
             DEBUG( rule.m_contents.size() << " rule contents bound to " << bound_tts.size() << " values - " << name );
-            return MacroExpander(rule.m_contents, bound_tts);
+            return MacroExpander(rule.m_contents, bound_tts, g_crate_path_tt);
         }
         catch(const ParseError::Base& e)
         {
@@ -213,7 +211,17 @@ MacroExpander Macro_Invoke(const char* name, TokenTree input)
     if( g_macro_registrations.size() == 0 ) {
         Macro_InitDefaults();
     }
-    // 1. Locate macro with that name
+
+    // 1. Builtin syntax extensions
+    {
+        const ::std::string sname = name;
+        if( sname == "format_args" )
+        {
+            throw ParseError::Todo("format_args");
+        }
+    }
+    
+    // 2. Locate macro with that name
     t_macro_regs::iterator macro_reg = g_macro_registrations.find(name);
     if( macro_reg != g_macro_registrations.end() )
     {
@@ -259,24 +267,130 @@ Token MacroExpander::realGetToken()
             return rv;
         m_ttstream.reset();
     }
-    DEBUG("ofs " << m_ofs << " < " << m_contents.size());
-    if( m_ofs < m_contents.size() )
+    //DEBUG("ofs " << m_offsets << " < " << m_root_contents.size());
+    
+    // Check offset of lowest layer
+    while(m_offsets.size() > 0)
     {
-        const MacroRuleEnt& ent = m_contents[m_ofs];
-        m_ofs ++;
-        if( ent.name.size() != 0 ) {
-            // Binding!
-            m_ttstream.reset( new TTStream(m_mappings.at(ent.name.c_str())) );
-            return m_ttstream->getToken();
+        assert(m_offsets.size() > 0);
+        unsigned int layer = m_offsets.size() - 1;
+        // - If that layer has hit its limit
+        const auto& ents = *m_cur_ents;
+        size_t idx = m_offsets.back().first;
+        m_offsets.back().first ++;
+    
+        //DEBUG("ents = " << ents);
+        
+        // Check if limit has been reached
+        if( idx < ents.size() )
+        {
+            const auto& ent = ents[idx];
+            // - If not, just handle the next entry
+            // Check type of entry
+            if( ent.name != "" )
+            {
+                // - Name
+                // HACK: Handle $crate with a special name
+                if( ent.name == "*crate" ) {
+                    m_ttstream.reset( new TTStream(m_crate_path) );
+                    return m_ttstream->getToken();
+                }
+                else {
+                    const auto tt_i = m_mappings.find( ::std::make_pair(layer, ent.name.c_str()) );
+                    if( tt_i == m_mappings.end() )
+                        throw ParseError::Generic( FMT("Cannot find mapping name: " << ent.name << " for layer " << layer) );
+                    m_ttstream.reset( new TTStream(tt_i->second) );
+                    return m_ttstream->getToken();
+                }
+            }
+            else if( ent.subpats.size() != 0 )
+            {
+                // New layer
+                // - Push an offset
+                m_offsets.push_back( ::std::make_pair(0, 0) );
+                // - Save the current layer
+                m_cur_ents = getCurLayer();
+                // - Restart loop for new layer
+            }
+            else
+            {
+                // Raw token
+                return ent.tok;
+            }
+            // Fall through for loop
         }
-        else {
-            return ent.tok;
+        else
+        {
+            // - Otherwise, restart/end loop and fall through
+            unsigned int layer_max = m_layer_counts.at(layer);
+            if( m_offsets.back().second + 1 < layer_max )
+            {
+                DEBUG("Restart layer");
+                m_offsets.back().first = 0;
+                m_offsets.back().second ++;
+                // Fall through and restart layer
+            }
+            else
+            {
+                DEBUG("Terminate layer");
+                // Terminate loop, fall through to lower layers
+                m_offsets.pop_back();
+                // - Special case: End of macro, avoid issues
+                if( m_offsets.size() == 0 )
+                    break;
+                m_cur_ents = getCurLayer();
+            }
         }
-        throw ParseError::Todo("MacroExpander - realGetToken");
-    }
+    } // while( m_offsets NONEMPTY )
     
     DEBUG("EOF");
     return Token(TOK_EOF);
+}
+
+/// Count the number of names at each layer
+void MacroExpander::prep_counts()
+{
+    struct TMP {
+        size_t  count;
+        const char *first_name;
+    };
+    ::std::vector<TMP>  counts;
+    
+    for( const auto& ent : m_mappings )
+    {
+        unsigned int layer = ent.first.first;
+        const char *name = ent.first.second;
+    
+        if( layer >= counts.size() )
+        {
+            counts.resize(layer+1);
+        }
+        auto& l = counts[layer];
+        if( l.first_name == NULL || ::std::strcmp(l.first_name, name) == 0 )
+        {
+            l.first_name = name;
+            l.count += 1;
+        }
+    }
+    
+    for( const auto& l : counts )
+    {
+        m_layer_counts.push_back(l.count);
+    }
+}
+const ::std::vector<MacroRuleEnt>* MacroExpander::getCurLayer() const
+{
+    assert( m_offsets.size() > 0 );
+    const ::std::vector<MacroRuleEnt>* ents = &m_root_contents;
+    for( unsigned int i = 0; i < m_offsets.size()-1; i ++ )
+    {
+        unsigned int ofs = m_offsets[i].first;
+        //DEBUG(i << " ofs=" << ofs << " / " << ents->size());
+        assert( ofs > 0 && ofs <= ents->size() );
+        ents = &(*ents)[ofs-1].subpats;
+        //DEBUG("ents = " << ents);
+    }
+    return ents;
 }
 
 SERIALISE_TYPE_S(MacroRule, {
@@ -287,19 +401,18 @@ SERIALISE_TYPE_S(MacroRule, {
 
 void operator%(Serialiser& s, MacroPatEnt::Type c) {
     switch(c) {
-    #define _(ns,v) case ns v: s << #v; return;
-    _(MacroPatEnt::,PAT_TOKEN);
-    _(MacroPatEnt::,PAT_TT);
-    _(MacroPatEnt::,PAT_EXPR);
-    _(MacroPatEnt::,PAT_LOOP);
-    //_(MacroPatEnt::,PAT_OPTLOOP);
-    _(MacroPatEnt::,PAT_STMT);
-    _(MacroPatEnt::,PAT_PATH);
-    _(MacroPatEnt::,PAT_BLOCK);
-    _(MacroPatEnt::,PAT_IDENT);
+    #define _(v) case MacroPatEnt::v: s << #v; return
+    _(PAT_TOKEN);
+    _(PAT_TT);
+    _(PAT_EXPR);
+    _(PAT_LOOP);
+    //_(PAT_OPTLOOP);
+    _(PAT_STMT);
+    _(PAT_PATH);
+    _(PAT_BLOCK);
+    _(PAT_IDENT);
     #undef _
     }
-    s << "--TODO--";
 }
 void operator%(::Deserialiser& s, MacroPatEnt::Type& c) {
     ::std::string   n;
@@ -329,4 +442,5 @@ SERIALISE_TYPE_S(MacroPatEnt, {
 SERIALISE_TYPE_S(MacroRuleEnt, {
     s.item(name);
     s.item(tok);
+    s.item(subpats);
 });

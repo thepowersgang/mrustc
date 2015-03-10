@@ -95,8 +95,8 @@ public:
     }
 };
 
-#define SET_PARSE_FLAG(lex, flag)    SavedParseState(lex, lex.parse_state()); lex.parse_state().flag = true
-#define CLEAR_PARSE_FLAG(lex, flag)    SavedParseState(lex, lex.parse_state()); lex.parse_state().flag = false
+#define SET_PARSE_FLAG(lex, flag)    SavedParseState _sps(lex, lex.parse_state()); lex.parse_state().flag = true
+#define CLEAR_PARSE_FLAG(lex, flag)    SavedParseState _sps(lex, lex.parse_state()); lex.parse_state().flag = false
 #define CHECK_PARSE_FLAG(lex, flag) (lex.parse_state().flag == true)
 
 class Lexer

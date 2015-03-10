@@ -6,7 +6,7 @@ macro_rules! try {
 }
 #[macro_export]
 macro_rules! assert{
-    ($e:expr) => ({ if !($e) { panic!("Assertion {} failed", stringify!($e)); } });
+    ($e:expr) => ({ if !($e) { panic!("assertion failed: {}", stringify!($e)); } });
 }
 #[macro_export]
 macro_rules! assert_eq{
@@ -20,6 +20,13 @@ macro_rules! assert_eq{
                 }
             }
         });
+}
+
+#[macro_export]
+macro_rules! write{
+    ($f:expr, $($fmt:tt)*) => {
+        $crate::fmt::write($f, format_args!($($fmt)*))
+    };
 }
 
 pub mod option

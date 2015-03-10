@@ -356,22 +356,34 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
     Token tok;
     
     // 1. Get expression
-    ExprNodeP   switch_val = Parse_Expr1(lex);
+    ExprNodeP   switch_val;
+    {
+        SET_PARSE_FLAG(lex, disallow_struct_literal);
+        switch_val = Parse_Expr1(lex);
+    }
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
     
-    ::std::vector< ::std::pair<AST::Pattern, ExprNodeP> >    arms;
+    ::std::vector< AST::ExprNode_Match::Arm >    arms;
     do {
         if( GET_TOK(tok, lex) == TOK_BRACE_CLOSE )
             break;
         lex.putback(tok);
-        AST::Pattern    pat = Parse_Pattern(lex);
+        AST::ExprNode_Match::Arm    arm;
+        do {
+            arm.m_patterns.push_back( Parse_Pattern(lex) );
+        } while( GET_TOK(tok, lex) == TOK_PIPE );
         
-        GET_CHECK_TOK(tok, lex, TOK_FATARROW);
+        if( tok.type() == TOK_RWORD_IF )
+        {
+            arm.m_cond = Parse_Expr1(lex);
+            GET_TOK(tok, lex);
+        }
+        CHECK_TOK(tok, TOK_FATARROW);
         
         bool opt_semicolon = false;
-        ExprNodeP   val = Parse_Stmt(lex, opt_semicolon);
+        arm.m_code = Parse_Stmt(lex, opt_semicolon);
         
-        arms.push_back( ::std::make_pair( ::std::move(pat), ::std::move(val) ) );
+        arms.push_back( ::std::move(arm) );
         
         if( GET_TOK(tok, lex) == TOK_COMMA )
             continue;
@@ -708,6 +720,9 @@ TokenTree Parse_TT(TokenStream& lex, bool unwrapped)
     case TOK_BRACE_OPEN:
         closer = TOK_BRACE_CLOSE;
         break;
+    case TOK_EOF:
+    case TOK_NULL:
+        throw ParseError::Unexpected(lex, tok);
     default:
         return TokenTree(tok);
     }
@@ -717,6 +732,8 @@ TokenTree Parse_TT(TokenStream& lex, bool unwrapped)
         items.push_back(tok);
     while(GET_TOK(tok, lex) != closer && tok.type() != TOK_EOF)
     {
+        if( tok.type() == TOK_NULL )
+            throw ParseError::Unexpected(lex, tok);
         lex.putback(tok);
         items.push_back(Parse_TT(lex, false));
     }

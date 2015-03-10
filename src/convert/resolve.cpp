@@ -105,8 +105,10 @@ public:
         for( auto& arm : node.m_arms )
         {
             m_res.start_scope();
-            m_res.handle_pattern(arm.first, TypeRef());
-            AST::NodeVisitor::visit(arm.second);
+            for( auto& pat : arm.m_patterns )
+                m_res.handle_pattern(pat, TypeRef());
+            AST::NodeVisitor::visit(arm.m_cond);
+            AST::NodeVisitor::visit(arm.m_code);
             m_res.end_scope();
         }
     }

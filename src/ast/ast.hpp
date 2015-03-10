@@ -159,8 +159,9 @@ class MetaItem;
 class MetaItems:
     public Serialisable
 {
-    ::std::vector<MetaItem> m_items;
 public:
+    ::std::vector<MetaItem> m_items;
+    
     MetaItems() {}
     MetaItems(::std::vector<MetaItem> items):
         m_items(items)
@@ -197,6 +198,8 @@ public:
     
     void mark_used() {}
     const ::std::string& name() const { return m_name; }
+    bool has_sub_items() const { return m_sub_items.m_items.size() > 0; }
+    MetaItems& items() { return m_sub_items; }
     
     SERIALISABLE_PROTOTYPES();
 };

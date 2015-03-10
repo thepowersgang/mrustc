@@ -134,9 +134,20 @@ public:
         for( auto& arm : n.m_arms )
         {
             m_os << indent();
-            print_pattern( arm.first );
+            bool is_first = true;
+            for( const auto& pat : arm.m_patterns ) {
+                if(!is_first)
+                    m_os << "|";
+                is_first = false;
+                print_pattern(pat);
+            }
+            if( arm.m_cond )
+            {
+                m_os << " if ";
+                AST::NodeVisitor::visit(arm.m_cond);
+            }
             m_os << " => ";
-            AST::NodeVisitor::visit(arm.second);
+            AST::NodeVisitor::visit(arm.m_code);
             m_os << ",\n";
         }
         

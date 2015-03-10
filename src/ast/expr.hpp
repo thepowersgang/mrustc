@@ -173,12 +173,22 @@ struct ExprNode_CallObject:
 struct ExprNode_Match:
     public ExprNode
 {
-    typedef ::std::vector< ::std::pair<Pattern,unique_ptr<ExprNode> > > arm_t;
+    struct Arm:
+        public Serialisable
+    {
+        ::std::vector<Pattern>  m_patterns;
+        unique_ptr<ExprNode>    m_cond;
+        
+        unique_ptr<ExprNode>    m_code;
+    
+        SERIALISABLE_PROTOTYPES();
+    };
+    
     unique_ptr<ExprNode>    m_val;
-    arm_t   m_arms;
+    ::std::vector<Arm>  m_arms;
 
     ExprNode_Match() {}
-    ExprNode_Match(unique_ptr<ExprNode>&& val, arm_t&& arms):
+    ExprNode_Match(unique_ptr<ExprNode> val, ::std::vector<Arm> arms):
         m_val( ::std::move(val) ),
         m_arms( ::std::move(arms) )
     {
