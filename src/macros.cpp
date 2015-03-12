@@ -62,7 +62,7 @@ void Macro_InitDefaults()
     // panic!() "macro"
     {
         MacroRule   rule;
-        rule.m_pattern.push_back( MacroPatEnt(Token(TOK_NULL), {
+        rule.m_pattern.push_back( MacroPatEnt(Token(TOK_NULL), false, {
             MacroPatEnt("tt", MacroPatEnt::PAT_TT), 
             } ) );
         rule.m_contents.push_back( MacroRuleEnt(Token(TOK_PAREN_OPEN)) );
@@ -131,6 +131,9 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
         else
             lex.putback(tok);
         val = Parse_TT(lex, false);
+        if(0)
+    case MacroPatEnt::PAT_TYPE:
+        val = Parse_TT_Type(lex);
         if(0)
     case MacroPatEnt::PAT_EXPR:
         val = Parse_TT_Expr(lex);
@@ -211,23 +214,15 @@ MacroExpander Macro_Invoke(const char* name, TokenTree input)
     if( g_macro_registrations.size() == 0 ) {
         Macro_InitDefaults();
     }
-
-    // 1. Builtin syntax extensions
-    {
-        const ::std::string sname = name;
-        if( sname == "format_args" )
-        {
-            throw ParseError::Todo("format_args");
-        }
-    }
     
-    // 2. Locate macro with that name
+    // Look for macro in builtins
     t_macro_regs::iterator macro_reg = g_macro_registrations.find(name);
     if( macro_reg != g_macro_registrations.end() )
     {
         return Macro_InvokeInt(macro_reg->first.c_str(), macro_reg->second, input);
     }
     
+    // Search import list
     for( auto ent = g_macro_module; ent; ent = ent->m_prev )
     {
         const AST::Module& mm = *ent->m_item;
@@ -296,11 +291,22 @@ Token MacroExpander::realGetToken()
                     return m_ttstream->getToken();
                 }
                 else {
-                    const auto tt_i = m_mappings.find( ::std::make_pair(layer, ent.name.c_str()) );
-                    if( tt_i == m_mappings.end() )
+                    const size_t iter_idx = m_offsets.back().second;
+                    const auto tt_i = m_mappings.equal_range( ::std::make_pair(layer, ent.name.c_str()) );
+                    if( tt_i.first == tt_i.second )
                         throw ParseError::Generic( FMT("Cannot find mapping name: " << ent.name << " for layer " << layer) );
-                    m_ttstream.reset( new TTStream(tt_i->second) );
-                    return m_ttstream->getToken();
+                    
+                    size_t i = 0;
+                    for( auto it = tt_i.first; it != tt_i.second; it ++ )
+                    {
+                        if( i == iter_idx )
+                        {
+                            m_ttstream.reset( new TTStream(it->second) );
+                            return m_ttstream->getToken();
+                        }
+                        i ++;
+                    }
+                    throw ParseError::Generic( FMT("Cannot find mapping name: " << ent.name << " for layer " << layer) );
                 }
             }
             else if( ent.subpats.size() != 0 )

@@ -57,6 +57,7 @@ struct MacroPatEnt:
         PAT_TT,
         PAT_IDENT,
         PAT_PATH,
+        PAT_TYPE,
         PAT_EXPR,
         PAT_STMT,
         PAT_BLOCK,
@@ -81,7 +82,8 @@ struct MacroPatEnt:
     {
     }
     
-    MacroPatEnt(Token sep, ::std::vector<MacroPatEnt> ents):
+    MacroPatEnt(Token sep, bool need_once, ::std::vector<MacroPatEnt> ents):
+        name( need_once ? "+" : "*" ),
         tok(sep),
         subpats( move(ents) ),
         type(PAT_LOOP)

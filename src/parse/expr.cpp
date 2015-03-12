@@ -57,14 +57,12 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
     // 1. Mutablity + Reference
     if( tok.type() == TOK_RWORD_REF )
     {
-        throw ParseError::Todo("ref bindings");
         is_ref = true;
         expect_bind = true;
         tok = lex.getToken();
     }
     if( tok.type() == TOK_RWORD_MUT )
     {
-        throw ParseError::Todo("mut bindings");
         is_mut = true;
         expect_bind = true;
         tok = lex.getToken();
@@ -288,16 +286,18 @@ ExprNodeP Parse_Expr0(TokenStream& lex)
     Token tok;
 
     ExprNodeP rv = Parse_ExprBlocks(lex);
-    if( GET_TOK(tok, lex) == TOK_EQUAL )
+    switch( GET_TOK(tok, lex) )
     {
-        ExprNodeP val = Parse_Expr1(lex);
-        rv = NEWNODE( AST::ExprNode_Assign, ::std::move(rv), ::std::move(val) );
-    }
-    else
-    {
+    case TOK_EQUAL:
+        return NEWNODE( AST::ExprNode_Assign, AST::ExprNode_Assign::NONE, ::std::move(rv), Parse_Expr1(lex) );
+    case TOK_PLUS_EQUAL:
+        return NEWNODE( AST::ExprNode_Assign, AST::ExprNode_Assign::ADD, ::std::move(rv), Parse_Expr1(lex) );
+    case TOK_DASH_EQUAL:
+        return NEWNODE( AST::ExprNode_Assign, AST::ExprNode_Assign::SUB, ::std::move(rv), Parse_Expr1(lex) );
+    default:
         lex.putback(tok);
+        return rv;
     }
-    return rv;
 }
 
 /// Parse an 'if' statement
@@ -623,6 +623,31 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
     return NEWNODE( AST::ExprNode_StructLiteral, path, ::std::move(base_val), ::std::move(items) );
 }
 
+ExprNodeP Parse_FormatArgs(TokenStream& lex)
+{
+    TRACE_FUNCTION;
+    
+    Token   tok;
+    
+    GET_CHECK_TOK(tok, lex, TOK_STRING);
+    ::std::string fmt = tok.str();
+    
+    ::std::vector<ExprNodeP>    nodes;
+    
+    while( GET_TOK(tok, lex) == TOK_COMMA )
+    {
+        // TODO: Support named
+        auto exp = NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::REF, Parse_Expr1(lex) );
+        
+        // ( &arg as *const _, &<arg as Trait>::fmt as fn(*const (), &mut Formatter) )
+        //nodes.push_back( NEWNODE( AST::ExprNode_Cast, TypeRef
+    }
+    
+    //return NEWNODE( AST::ExprNode_ArrayLiteral, ::std::move(nodes) );
+    DEBUG("TODO: Proper support for format_args!");
+    return NEWNODE( AST::ExprNode_Tuple, ::std::vector<ExprNodeP>() );
+}
+
 ExprNodeP Parse_ExprVal(TokenStream& lex)
 {
     TRACE_FUNCTION;
@@ -694,8 +719,18 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         if( tt.size() == 0 ) {
             throw ParseError::Unexpected(lex, tt.tok());
         }
-        MacroExpander expanded_macro = Macro_Invoke(tok.str().c_str(), tt);
-        return Parse_Expr0(expanded_macro);
+        ::std::string name = tok.str();
+        
+        if( name == "format_args" )
+        {
+            TTStream    slex(tt);
+            return Parse_FormatArgs(slex);
+        }
+        else
+        {
+            MacroExpander expanded_macro = Macro_Invoke(name.c_str(), tt);
+            return Parse_Expr0(expanded_macro);
+        }
         }
     default:
         throw ParseError::Unexpected(lex, tok);

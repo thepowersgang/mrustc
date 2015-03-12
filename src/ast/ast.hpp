@@ -190,6 +190,11 @@ public:
         m_name(name)
     {
     }
+    MetaItem(::std::string name, ::std::string str_val):
+        m_name(name),
+        m_str_val(str_val)
+    {
+    }
     MetaItem(::std::string name, ::std::vector<MetaItem> items):
         m_name(name),
         m_sub_items(items)
@@ -198,6 +203,7 @@ public:
     
     void mark_used() {}
     const ::std::string& name() const { return m_name; }
+    const ::std::string& string() const { return m_str_val; }
     bool has_sub_items() const { return m_sub_items.m_items.size() > 0; }
     MetaItems& items() { return m_sub_items; }
     

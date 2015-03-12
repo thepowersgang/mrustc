@@ -33,10 +33,13 @@ output/%.ast: samples/%.rs $(BIN)
 	@mkdir -p output/
 	$(DBG) $(BIN) $< --emit ast -o $@ 2>&1 | tee $@_dbg.txt ; test $${PIPESTATUS[0]} -eq 0
 
-test: $(BIN) samples/1.rs output/std.ast output/log.ast output/env_logger.ast output/getopts.ast
+TEST_FILE = ../../../Source/rust/rustc-nightly/src/libcore/lib.rs
+test: $(TEST_FILE) $(BIN) output/std.ast output/log.ast output/env_logger.ast output/getopts.ast
 	mkdir -p output/
 #	$(DBG) $(BIN) samples/1.rs --crate-path output/std.ast -o output/test.c 2>&1 | tee output/1_dbg.txt
-	$(DBG) $(BIN) ../../BinaryView2/src/main.rs --crate-path output/ -o output/test.c 2>&1 | tee output/1_dbg.txt ; test $${PIPESTATUS[0]} -eq 0
+#	$(DBG) $(BIN) ../../BinaryView2/src/main.rs --crate-path output/ -o output/test.c 2>&1 | tee output/1_dbg.txt ; test $${PIPESTATUS[0]} -eq 0
+#	$(DBG) $(BIN) ../../RustPorts/LogicCircuit/src/main.rs --crate-path output/ -o output/test.c 2>&1 | tee output/1_dbg.txt ; test $${PIPESTATUS[0]} -eq 0
+	$(DBG) $(BIN) $(TEST_FILE) --crate-path output/ -o output/test.c 2>&1 | tee output/1_dbg.txt ; test $${PIPESTATUS[0]} -eq 0
 
 $(BIN): $(OBJ)
 	@mkdir -p $(dir $@)

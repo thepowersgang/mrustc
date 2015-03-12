@@ -8,6 +8,7 @@
 #include <cassert>
 
 extern AST::Pattern Parse_Pattern(TokenStream& lex);
+void Parse_ModRoot(TokenStream& lex, AST::Crate& crate, AST::Module& mod, LList<AST::Module*> *prev_modstack, const ::std::string& path);
 
 ::std::vector<TypeRef> Parse_Path_GenericList(TokenStream& lex)
 {
@@ -324,21 +325,40 @@ AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_no_code=false)
     if( tok.type() == TOK_AMP )
     {
         // By-reference method
+        bool force_type = false;
         ::std::string   lifetime;
         if( GET_TOK(tok, lex) == TOK_LIFETIME )
         {
             lifetime = tok.str();
             GET_TOK(tok, lex);
+            force_type = true;
+            // Forces to be a type
         }
         if( tok.type() == TOK_RWORD_MUT )
         {
-            GET_CHECK_TOK(tok, lex, TOK_RWORD_SELF);
+            // Forces to be a type
             fcn_class = AST::Function::CLASS_MUTMETHOD;
+            force_type = true;
+            GET_TOK(tok, lex);
         }
         else
         {
-            CHECK_TOK(tok, TOK_RWORD_SELF);
             fcn_class = AST::Function::CLASS_REFMETHOD;
+        }
+        
+        if( tok.type() == TOK_RWORD_SELF )
+        {
+            // Could be a type or a binding...
+            CHECK_TOK(tok, TOK_RWORD_SELF);
+        }
+        else if( force_type )
+        {
+            // Fall into type parsing somehow
+            
+        }
+        else
+        {
+            // either a reference binding or a type
         }
         DEBUG("TODO: UFCS / self lifetimes");
         //args.push_back( ::std::make_pair( AST::Pattern(), TypeRef(TypeRef::TagReference(), lifetime, (fcn_class == AST::Function::CLASS_MUTMETHOD), ) ) );
@@ -644,7 +664,8 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
     switch(GET_TOK(tok, lex))
     {
     case TOK_EQUAL:
-        throw ParseError::Todo("Meta item key-value");
+        GET_CHECK_TOK(tok, lex, TOK_STRING);
+        return AST::MetaItem(name, tok.str());
     case TOK_PAREN_OPEN: {
         ::std::vector<AST::MetaItem>    items;
         do {
@@ -733,7 +754,7 @@ void Parse_Use_Wildcard(const AST::Path& base_path, ::std::function<void(AST::Pa
     fcn(base_path, ""); // HACK! Empty path indicates wilcard import
 }
 
-void Parse_Use(Preproc& lex, ::std::function<void(AST::Path, ::std::string)> fcn)
+void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)> fcn)
 {
     TRACE_FUNCTION;
 
@@ -838,10 +859,16 @@ void Parse_Use(Preproc& lex, ::std::function<void(AST::Path, ::std::string)> fcn
                 ::std::string   type = tok.str();
                 if(0)
                     ;
-                else if( type == "expr" )
-                    ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_EXPR) );
                 else if( type == "tt" )
                     ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_TT) );
+                else if( type == "ident" )
+                    ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_IDENT) );
+                else if( type == "path" )
+                    ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_PATH) );
+                else if( type == "expr" )
+                    ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_EXPR) );
+                else if( type == "ty" )
+                    ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_TYPE) );
                 else
                     throw ParseError::Generic(FMT("Unknown fragment type " << type));
                 break; }
@@ -861,11 +888,12 @@ void Parse_Use(Preproc& lex, ::std::function<void(AST::Path, ::std::string)> fcn
                     switch(tok.type())
                     {
                     case TOK_PLUS:
-                        throw ParseError::Todo(lex, "+ repetitions");
+                        DEBUG("$()+ " << subpat);
+                        ret.push_back( MacroPatEnt(Token(joiner), true, ::std::move(subpat)) );
                         break;
                     case TOK_STAR:
                         DEBUG("$()* " << subpat);
-                        ret.push_back( MacroPatEnt(Token(joiner), ::std::move(subpat)) );
+                        ret.push_back( MacroPatEnt(Token(joiner), false, ::std::move(subpat)) );
                         break;
                     default:
                         throw ParseError::Unexpected(lex, tok);
@@ -891,7 +919,7 @@ void Parse_Use(Preproc& lex, ::std::function<void(AST::Path, ::std::string)> fcn
     return ret;
 }
 
-::std::vector<MacroRuleEnt> Parse_MacroRules_Cont(Preproc& lex, bool allow_sub, enum eTokenType open, enum eTokenType close)
+::std::vector<MacroRuleEnt> Parse_MacroRules_Cont(TokenStream& lex, bool allow_sub, enum eTokenType open, enum eTokenType close)
 {
     TRACE_FUNCTION;
     
@@ -940,6 +968,10 @@ void Parse_Use(Preproc& lex, ::std::function<void(AST::Path, ::std::string)> fcn
                 case TOK_STAR:
                     ret.push_back( MacroRuleEnt(joiner, ::std::move(content)) );
                     break;
+                case TOK_PLUS:
+                    // TODO: Ensure that the plusses match
+                    ret.push_back( MacroRuleEnt(joiner, ::std::move(content)) );
+                    break;
                 default:
                     throw ParseError::Unexpected(lex, tok);
                 }
@@ -967,7 +999,7 @@ void Parse_Use(Preproc& lex, ::std::function<void(AST::Path, ::std::string)> fcn
     return ret;
 }
 
-MacroRule Parse_MacroRules_Var(Preproc& lex)
+MacroRule Parse_MacroRules_Var(TokenStream& lex)
 {
     TRACE_FUNCTION;
     Token tok;
@@ -1003,7 +1035,7 @@ MacroRule Parse_MacroRules_Var(Preproc& lex)
     return rule;
 }
 
-void Parse_MacroRules(Preproc& lex, AST::Module& mod, AST::MetaItems& meta_items)
+void Parse_MacroRules(TokenStream& lex, AST::Module& mod, AST::MetaItems& meta_items)
 {
     TRACE_FUNCTION;
     
@@ -1020,7 +1052,10 @@ void Parse_MacroRules(Preproc& lex, AST::Module& mod, AST::MetaItems& meta_items
         lex.putback(tok);
         
         rules.push_back( Parse_MacroRules_Var(lex) );
-        GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+        if(GET_TOK(tok, lex) != TOK_SEMICOLON) {
+            CHECK_TOK(tok, TOK_BRACE_CLOSE);
+            break;
+        }
     }
     
     bool is_pub = meta_items.has("macro_export");
@@ -1028,38 +1063,12 @@ void Parse_MacroRules(Preproc& lex, AST::Module& mod, AST::MetaItems& meta_items
     mod.add_macro( is_pub, name, MacroRules(move(rules)) );
 }
 
-void Parse_ModRoot(Preproc& lex, AST::Crate& crate, AST::Module& mod, LList<AST::Module*> *prev_modstack, const ::std::string& path)
+void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, LList<AST::Module*>& modstack, const ::std::string& path)
 {
     TRACE_FUNCTION;
-    LList<AST::Module*>  modstack(prev_modstack, &mod);
-    Macro_SetModule(modstack);
-
     const bool nested_module = (path == "-");  // 'mod name { code }', as opposed to 'mod name;'
     Token   tok;
 
-    if( crate.m_load_std )
-    {
-        // Import the prelude
-        AST::Path   prelude_path = AST::Path( "std", { AST::PathNode("prelude", {}), AST::PathNode("v1", {}) } );
-        Parse_Use_Wildcard(prelude_path,
-            [&mod](AST::Path p, std::string s) {
-                mod.add_alias(false, p, s);
-                }
-            );
-    }
-
-    // Attributes on module/crate (will continue loop)
-    while( GET_TOK(tok, lex) == TOK_CATTR_OPEN )
-    {
-        AST::MetaItem item = Parse_MetaItem(lex);
-        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-
-        mod.add_attr( item );
-    }
-    lex.putback(tok);
-
-    // TODO: Iterate attributes, and check for handlers on each
-    
     for(;;)
     {
         // Check 1 - End of module (either via a closing brace, or EOF)
@@ -1113,7 +1122,14 @@ void Parse_ModRoot(Preproc& lex, AST::Crate& crate, AST::Module& mod, LList<AST:
             }
             else
             {
-                throw ParseError::Todo("module-level syntax extensions");
+                TokenTree tt = Parse_TT(lex, true);
+                if( tt.size() == 0 ) {
+                    throw ParseError::Unexpected(lex, tt.tok());
+                }
+                ::std::string name = tok.str();
+                
+                MacroExpander expanded_macro = Macro_Invoke(name.c_str(), tt);
+                Parse_ModRoot_Items(expanded_macro, crate, mod, modstack, path);
             }
             break;
         
@@ -1244,6 +1260,20 @@ void Parse_ModRoot(Preproc& lex, AST::Crate& crate, AST::Module& mod, LList<AST:
                 {
                     throw ParseError::Generic( FMT("Can't load from files outside of mod.rs or crate root") );
                 }
+                else if( meta_items.has("path") )
+                {
+                    ::std::string newpath_dir  = path + meta_items.get("path")->string();
+                    ::std::ifstream ifs_dir (newpath_dir);
+                    if( !ifs_dir.is_open() )
+                    {
+                    }
+                    else
+                    {
+                        ::std::string   newdir( newpath_dir.begin(), newpath_dir.begin() + newpath_dir.find_last_of('/') );
+                        Preproc sub_lex(newpath_dir);
+                        Parse_ModRoot(sub_lex, crate, submod, &modstack, newdir);
+                    }
+                }
                 else
                 {
                     ::std::string newpath_dir  = path + name + "/";
@@ -1276,14 +1306,66 @@ void Parse_ModRoot(Preproc& lex, AST::Crate& crate, AST::Module& mod, LList<AST:
             default:
                 throw ParseError::Generic("Expected { or ; after module name");
             }
+            submod.prescan();
             mod.add_submod(is_public, ::std::move(submod));
             Macro_SetModule(modstack);
+        
+            // import macros
+            {
+                auto at = meta_items.get("macro_use");
+                if( at )
+                {
+                    if( at->has_sub_items() )
+                    {
+                        throw ParseError::Todo("selective macro_use");
+                    }
+                    else
+                    {
+                        mod.add_macro_import(crate, name, "");
+                    }
+                }
+            }
             break; }
 
         default:
             throw ParseError::Unexpected(lex, tok);
         }
     }
+}
+
+void Parse_ModRoot(TokenStream& lex, AST::Crate& crate, AST::Module& mod, LList<AST::Module*> *prev_modstack, const ::std::string& path)
+{
+    TRACE_FUNCTION;
+    LList<AST::Module*>  modstack(prev_modstack, &mod);
+    Macro_SetModule(modstack);
+
+    const bool nested_module = (path == "-");  // 'mod name { code }', as opposed to 'mod name;'
+    Token   tok;
+
+    if( crate.m_load_std )
+    {
+        // Import the prelude
+        AST::Path   prelude_path = AST::Path( "std", { AST::PathNode("prelude", {}), AST::PathNode("v1", {}) } );
+        Parse_Use_Wildcard(prelude_path,
+            [&mod](AST::Path p, std::string s) {
+                mod.add_alias(false, p, s);
+                }
+            );
+    }
+
+    // Attributes on module/crate (will continue loop)
+    while( GET_TOK(tok, lex) == TOK_CATTR_OPEN )
+    {
+        AST::MetaItem item = Parse_MetaItem(lex);
+        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+
+        mod.add_attr( item );
+    }
+    lex.putback(tok);
+
+    // TODO: Iterate attributes, and check for handlers on each
+    
+    Parse_ModRoot_Items(lex, crate, mod, modstack, path);
 }
 
 AST::Crate Parse_Crate(::std::string mainfile)

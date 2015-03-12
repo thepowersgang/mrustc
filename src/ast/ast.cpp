@@ -387,6 +387,8 @@ void Module::resolve_macro_import(const Crate& crate, const ::std::string& modna
             {
                 for( const auto& macro_p : sm.m_macro_import_res )
                     m_macro_import_res.push_back( macro_p );
+                for( const auto& macro_i : sm.m_macros )
+                    m_macro_import_res.push_back( ItemNS<const MacroRules*>( ::std::string(macro_i.name), &macro_i.data, false ) );
                 return ;
             }
             else

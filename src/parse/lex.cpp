@@ -200,6 +200,10 @@ bool issym(char ch)
 
 Token Lexer::getToken()
 {
+    if( this->m_next_token.type() != TOK_NULL )
+    {
+        return ::std::move(this->m_next_token);
+    }
     try
     {
         char ch = this->getc();
@@ -222,12 +226,20 @@ Token Lexer::getToken()
             char ch = this->getc();
             if( isdigit(ch) )
             {
+                enum eCoreType  num_type = CORETYPE_ANY;
+                enum {
+                    BIN,
+                    OCT,
+                    DEC,
+                    HEX,
+                } num_mode = DEC;
                 // TODO: handle integers/floats
                 uint64_t    val = 0;
                 if( ch == '0' ) {
                     // Octal/hex handling
                     ch = this->getc();
                     if( ch == 'x' ) {
+                        num_mode = HEX;
                         while( isxdigit(ch = this->getc()) )
                         {
                             val *= 16;
@@ -239,10 +251,16 @@ Token Lexer::getToken()
                                 val += ch - 'a' + 10;
                         }
                     }
+                    else if( ch == 'b' ) {
+                        num_mode = BIN;
+                        throw ParseError::Todo("Lex binary numbers");
+                    }
                     else if( isdigit(ch) ) {
+                        num_mode = OCT;
                         throw ParseError::Todo("Lex octal numbers");
                     }
                     else {
+                        num_mode = DEC;
                         val = 0;
                     }
                 }
@@ -259,11 +277,60 @@ Token Lexer::getToken()
                     throw ParseError::Todo("Lex number suffixes");
                 }
                 else if( ch == '.' ) {
-                    throw ParseError::Todo("Lex floats");
+                    if( num_mode != DEC )
+                        throw ParseError::Todo("Non-decimal floats");
+                    
+                    ch = this->getc();
+                    
+                    // Double/Triple Dot
+                    if( ch == '.' ) {
+                        if( this->getc() == '.') {
+                            this->m_next_token = Token(TOK_TRIPLE_DOT);
+                        }
+                        else {
+                            this->putback();
+                            this->m_next_token = Token(TOK_DOUBLE_DOT);
+                        }
+                        return Token(val, CORETYPE_ANY);
+                    }
+                    // Single dot
+                    else if( !isdigit(ch) )
+                    {
+                        this->m_next_token = Token(TOK_DOT);
+                        return Token(val, CORETYPE_ANY);
+                    }
+                    
+                    this->putback();
+                    double fval = this->parseFloat(val);
+                    if( (ch = this->getc()) == 'f' )
+                    {
+                        ::std::string   suffix;
+                        while( issym(ch) )
+                        {
+                            suffix.push_back(ch);
+                            ch = this->getc();
+                        }
+                        this->putback();
+                        if( suffix == "f32" ) {
+                            num_type = CORETYPE_F32;
+                        }
+                        else if( suffix == "f64" ) {
+                            num_type = CORETYPE_F64;
+                        }
+                        else {
+                            throw ParseError::Generic( FMT("Unknown number suffix " << suffix) );
+                        }
+                    }
+                    else
+                    {
+                        this->putback();
+                    }
+                    return Token( fval, num_type);
+
                 }
                 else {
                     this->putback();
-                    return Token(val, CORETYPE_ANY);
+                    return Token(val, num_type);
                 }
             }
             else if( issym(ch) )
@@ -379,6 +446,42 @@ Token Lexer::getToken()
     //assert(!"bugcheck");
 }
 
+// Takes the VERY lazy way of reading the float into a string then passing to strtod
+double Lexer::parseFloat(uint64_t whole)
+{
+    const int MAX_LEN = 63;
+    const int MAX_SIG = MAX_LEN - 1 - 4;
+    char buf[MAX_LEN+1];
+    int ofs = snprintf(buf, MAX_LEN+1, "%llu", (unsigned long long)whole);
+
+    char ch = this->getc_num();
+    #define PUTC(ch)    do { if( ofs < MAX_SIG ) { buf[ofs] = ch; ofs ++; } else { throw ParseError::Generic("Oversized float"); } } while(0)
+    while( isdigit(ch) )
+    {
+        PUTC(ch);
+        ch = this->getc_num();
+    }
+    if( ch == 'e' || ch == 'E' )
+    {
+        PUTC(ch);
+        ch = this->getc_num();
+        if( ch == '-' || ch == '+' ) {
+            PUTC(ch);
+            ch = this->getc_num();
+        }
+        if( !isdigit(ch) )
+            throw ParseError::Generic( FMT("Non-numeric '"<<ch<<"' in float exponent") );
+        do {
+            PUTC(ch);
+            ch = this->getc_num();
+        } while( isdigit(ch) );
+    }
+    this->putback();
+    buf[ofs] = 0;
+    
+    return ::std::strtod(buf, NULL);
+}
+
 uint32_t Lexer::parseEscape(char enclosing)
 {
     char ch = this->getc();
@@ -389,7 +492,7 @@ uint32_t Lexer::parseEscape(char enclosing)
         uint32_t    val = 0;
         ch = this->getc();
         if( !isxdigit(ch) )
-            throw ParseError::Todo("Proper lex error for escape sequences");
+            throw ParseError::Todo( FMT("Found invalid character '\\x" << ::std::hex << (int)ch << "' in \\u sequence" ) );
         while( isxdigit(ch) )
         {
             char    tmp[2] = {ch, 0};
@@ -401,8 +504,14 @@ uint32_t Lexer::parseEscape(char enclosing)
         return val; }
     case '\\':
         return '\\';
+    case 'n':
+        return '\n';
+    case '\n':
+        while( isspace(ch) )
+            ch = this->getc();
+        return ch;
     default:
-        throw ParseError::Todo("Proper lex error for escape sequences");
+        throw ParseError::Todo( FMT("Unknown escape sequence \\" << ch) );
     }
 }
 
@@ -420,6 +529,15 @@ char Lexer::getc()
     }
     //::std::cout << "getc(): '" << m_last_char << "'" << ::std::endl;
     return m_last_char;
+}
+
+char Lexer::getc_num()
+{
+    char ch;
+    do {
+        ch = this->getc();
+    } while( ch == '_' );
+    return ch;
 }
 
 void Lexer::putback()
@@ -448,6 +566,12 @@ Token::Token(uint64_t val, enum eCoreType datatype):
     m_type(TOK_INTEGER),
     m_datatype(datatype),
     m_intval(val)
+{
+}
+Token::Token(double val, enum eCoreType datatype):
+    m_type(TOK_FLOAT),
+    m_datatype(datatype),
+    m_floatval(val)
 {
 }
 

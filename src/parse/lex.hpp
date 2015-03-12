@@ -24,6 +24,16 @@ class Token:
     };
 public:
     Token();
+    Token(const Token& t) = default;
+    Token& operator =(const Token& t) = default;
+    Token(Token&& t):
+        m_type(t.m_type),
+        m_str( ::std::move(t.m_str) ),
+        m_datatype( t.m_datatype ),
+        m_intval( t.m_intval )
+    {
+        t.m_type = TOK_NULL;
+    }
     Token(enum eTokenType type);
     Token(enum eTokenType type, ::std::string str);
     Token(uint64_t val, enum eCoreType datatype);
@@ -104,6 +114,7 @@ class Lexer
     ::std::ifstream m_istream;
     bool    m_last_char_valid;
     char    m_last_char;
+    Token   m_next_token;   // Used when lexing generated two tokens
 public:
     Lexer(::std::string filename);
 
@@ -111,9 +122,11 @@ public:
 
 private:
     signed int getSymbol();
+    double parseFloat(uint64_t whole);
     uint32_t parseEscape(char enclosing);
 
     char getc();
+    char getc_num();
     void putback();
 
     class EndOfFile {};

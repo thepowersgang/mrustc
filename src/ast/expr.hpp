@@ -110,11 +110,17 @@ struct ExprNode_LetBinding:
 struct ExprNode_Assign:
     public ExprNode
 {
+    enum Operation {
+        NONE,
+        ADD,
+        SUB,
+    } m_op;
     unique_ptr<ExprNode>    m_slot;
     unique_ptr<ExprNode>    m_value;
 
-    ExprNode_Assign() {}
-    ExprNode_Assign(unique_ptr<ExprNode>&& slot, unique_ptr<ExprNode>&& value):
+    ExprNode_Assign(): m_op(NONE) {}
+    ExprNode_Assign(Operation op, unique_ptr<ExprNode>&& slot, unique_ptr<ExprNode>&& value):
+        m_op(op),
         m_slot( move(slot) ),
         m_value( move(value) )
     {
