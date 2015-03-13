@@ -4,12 +4,16 @@
 
 #define GET_TOK(tok, lex) ((tok = lex.getToken()).type())
 #define GET_CHECK_TOK(tok, lex, exp) do {\
-    if((tok = lex.getToken()).type() != exp) \
-            throw ParseError::Unexpected(lex, tok, Token(exp));\
+    if((tok = lex.getToken()).type() != exp) { \
+        DEBUG("GET_CHECK_TOK " << __FILE__ << ":" << __LINE__); \
+        throw ParseError::Unexpected(lex, tok, Token(exp));\
+    }\
 } while(0)
 #define CHECK_TOK(tok, exp) do {\
-    if(tok.type() != exp) \
-            throw ParseError::Unexpected(lex, tok, Token(exp));\
+    if(tok.type() != exp) { \
+        DEBUG("CHECK_TOK " << __FILE__ << ":" << __LINE__); \
+        throw ParseError::Unexpected(lex, tok, Token(exp));\
+    } \
 } while(0)
 
 enum eParsePathGenericMode

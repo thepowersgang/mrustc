@@ -63,6 +63,13 @@ public:
         m_os << "return ";
         AST::NodeVisitor::visit(n.m_value);
     }
+    virtual void visit(AST::ExprNode_Const& n) override {
+        m_expr_root = false;
+        m_os << "const " << n.m_name << ": ";
+        print_type(n.m_type);
+        m_os << " = ";
+        AST::NodeVisitor::visit(n.m_value);
+    }
     virtual void visit(AST::ExprNode_LetBinding& n) override {
         m_expr_root = false;
         m_os << "let ";
@@ -370,6 +377,7 @@ private:
     void print_params(const AST::TypeParams& params);
     void print_bounds(const AST::TypeParams& params);
     void print_pattern(const AST::Pattern& p);
+    void print_type(const TypeRef& t);
     
     void inc_indent();
     RepeatLitStr indent();
@@ -572,6 +580,11 @@ void RustPrinter::print_pattern(const AST::Pattern& p)
         m_os << ")";
         break;
     }
+}
+
+void RustPrinter::print_type(const TypeRef& t)
+{
+    m_os << t;
 }
 
 void RustPrinter::handle_struct(const AST::Struct& s)

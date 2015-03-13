@@ -53,6 +53,7 @@ SERIALISE_TYPE(Expr::, "Expr", {
          _(ExprNode_Block)
     else _(ExprNode_Macro)
     else _(ExprNode_Return)
+    else _(ExprNode_Const)
     else _(ExprNode_LetBinding)
     else _(ExprNode_Assign)
     else _(ExprNode_CallPath)
@@ -112,8 +113,17 @@ NODE(ExprNode_Return, {
     os << "return " << *m_value;
 })
 
+NODE(ExprNode_Const, {
+    s.item(m_name);
+    s.item(m_type);
+    s.item(m_value);
+},{
+    os << "const " << m_name << ": " << m_type << " = " << *m_value;
+})
+
 NODE(ExprNode_LetBinding, {
     s.item(m_pat);
+    s.item(m_type);
     s.item(m_value);
 },{
     os << "let " << m_pat << ": " << m_type << " = " << *m_value;
@@ -395,6 +405,10 @@ NV(ExprNode_Macro,
     DEBUG("TODO: Macro");
 })
 NV(ExprNode_Return,
+{
+    visit(node.m_value);
+})
+NV(ExprNode_Const,
 {
     visit(node.m_value);
 })

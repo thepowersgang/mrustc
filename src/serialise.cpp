@@ -1,5 +1,6 @@
 /*
  */
+#define DISABLE_DEBUG
 #include <serialise.hpp>
 #include <serialiser_texttree.hpp>
 #include "common.hpp"

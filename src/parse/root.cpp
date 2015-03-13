@@ -658,6 +658,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems meta_items)
 /// Parse a meta-item declaration (either #![ or #[)
 AST::MetaItem Parse_MetaItem(TokenStream& lex)
 {
+    TRACE_FUNCTION;
     Token tok;
     GET_CHECK_TOK(tok, lex, TOK_IDENT);
     ::std::string   name = tok.str();
@@ -681,6 +682,7 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
 
 AST::Impl Parse_Impl(TokenStream& lex)
 {
+    TRACE_FUNCTION;
     Token   tok;
 
     AST::TypeParams params;
@@ -719,8 +721,16 @@ AST::Impl Parse_Impl(TokenStream& lex)
     AST::Impl   impl( ::std::move(params), ::std::move(impl_type), ::std::move(trait_type) );
 
     // A sequence of method implementations
+    AST::MetaItems  item_attrs;
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
+        while( tok.type() == TOK_ATTR_OPEN )
+        {
+            item_attrs.push_back( Parse_MetaItem(lex) );
+            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+            GET_TOK(tok, lex);
+        }
+        
         bool is_public = false;
         if(tok.type() == TOK_RWORD_PUB) {
             is_public = true;

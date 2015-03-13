@@ -90,6 +90,23 @@ struct ExprNode_Return:
     
     NODE_METHODS();
 };
+struct ExprNode_Const:
+    public ExprNode
+{
+    ::std::string m_name;
+    TypeRef m_type;
+    unique_ptr<ExprNode>    m_value;
+
+    ExprNode_Const() {}
+    ExprNode_Const(::std::string name, TypeRef type, unique_ptr<ExprNode>&& value):
+        m_name( move(name) ),
+        m_type( move(type) ),
+        m_value( move(value) )
+    {
+    }
+    
+    NODE_METHODS();
+};
 struct ExprNode_LetBinding:
     public ExprNode
 {
@@ -454,6 +471,7 @@ public:
 	NT(ExprNode_Block);  
     NT(ExprNode_Macro);
     NT(ExprNode_Return);
+    NT(ExprNode_Const);
     NT(ExprNode_LetBinding);
     NT(ExprNode_Assign);
     NT(ExprNode_CallPath);
@@ -491,6 +509,7 @@ public:
 	NT(ExprNode_Block);  
     NT(ExprNode_Macro);
     NT(ExprNode_Return);
+    NT(ExprNode_Const);
     NT(ExprNode_LetBinding);
     NT(ExprNode_Assign);
     NT(ExprNode_CallPath);
