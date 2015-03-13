@@ -76,8 +76,8 @@ static const struct {
   TOKENT("==", TOK_DOUBLE_EQUAL),
   TOKENT("=>", TOK_FATARROW),
   TOKENT(">",  TOK_GT),
-  TOKENT(">>", TOK_DOUBLE_GT),
   TOKENT(">=", TOK_GTE),
+  TOKENT(">>", TOK_DOUBLE_GT),
   TOKENT("?",  TOK_QMARK),
   TOKENT("@",  TOK_AT),
   // A-Z :: Elsewhere
@@ -678,6 +678,13 @@ Token TokenStream::getToken()
         m_cache_valid = false;
         return m_cache;
     }
+    else if( m_lookahead.size() )
+    {
+        Token ret = m_lookahead.front();
+        m_lookahead.erase(m_lookahead.begin());
+        ::std::cout << "getToken[" << typeid(*this).name() << "] - " << ret << ::std::endl;
+        return ret;
+    }
     else
     {
         Token ret = this->realGetToken();
@@ -687,6 +694,38 @@ Token TokenStream::getToken()
 }
 void TokenStream::putback(Token tok)
 {
-    m_cache_valid = true;
-    m_cache = tok;
+    if( m_cache_valid )
+    {
+        DEBUG("" << getPosition());
+        throw ParseError::BugCheck("Double putback");
+    }
+    else
+    {
+        m_cache_valid = true;
+        m_cache = tok;
+    }
 }
+
+eTokenType TokenStream::lookahead(unsigned int i)
+{
+    const unsigned int MAX_LOOKAHEAD = 3;
+    
+    if( m_cache_valid )
+    {
+        if( i == 0 )
+            return m_cache.type();
+        i --;
+    }
+    
+    if( i >= MAX_LOOKAHEAD )
+        throw ParseError::BugCheck("Excessive lookahead");
+    
+    while( i >= m_lookahead.size() )
+    {
+        DEBUG("lookahead - read #" << m_lookahead.size());
+        m_lookahead.push_back( this->realGetToken() );
+    }
+    
+    return m_lookahead[i].type();
+}
+

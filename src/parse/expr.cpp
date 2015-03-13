@@ -256,11 +256,11 @@ ExprNodeP Parse_Stmt(TokenStream& lex, bool& opt_semicolon)
     case TOK_RWORD_RETURN:
         return NEWNODE( AST::ExprNode_Return, Parse_Expr1(lex) );
     case TOK_RWORD_LOOP:
-        throw ParseError::Todo("loop");
+        throw ParseError::Todo(lex, "loop");
     case TOK_RWORD_FOR:
-        throw ParseError::Todo("for");
+        throw ParseError::Todo(lex, "for");
     case TOK_RWORD_WHILE:
-        throw ParseError::Todo("while");
+        throw ParseError::Todo(lex, "while");
     case TOK_RWORD_IF:
         opt_semicolon = true;
         return Parse_IfStmt(lex);
@@ -575,25 +575,34 @@ ExprNodeP Parse_ExprFC(TokenStream& lex)
             lex.putback(tok);
             val = NEWNODE( AST::ExprNode_CallObject, ::std::move(val), Parse_ParenList(lex) );
             break;
-        case TOK_DOT: {
+        case TOK_DOT:
             // Field access / method call
             // TODO: What about tuple indexing?
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            ::std::string name = tok.str();
-            switch( GET_TOK(tok, lex) )
+            switch(GET_TOK(tok, lex))
             {
-            case TOK_PAREN_OPEN:
-                lex.putback(tok);
-                val = NEWNODE( AST::ExprNode_CallMethod, ::std::move(val), AST::PathNode(name, {}), Parse_ParenList(lex) );
+            case TOK_IDENT: {
+                ::std::string name = tok.str();
+                switch( GET_TOK(tok, lex) )
+                {
+                case TOK_PAREN_OPEN:
+                    lex.putback(tok);
+                    val = NEWNODE( AST::ExprNode_CallMethod, ::std::move(val), AST::PathNode(name, {}), Parse_ParenList(lex) );
+                    break;
+                case TOK_DOUBLE_COLON:
+                    throw ParseError::Todo("method calls - generic");
+                default:
+                    val = NEWNODE( AST::ExprNode_Field, ::std::move(val), ::std::string(name) );
+                    lex.putback(tok);
+                    break;
+                }
+                break; }
+            case TOK_INTEGER:
+                val = NEWNODE( AST::ExprNode_Field, ::std::move(val), FMT(tok.intval()) );
                 break;
-            case TOK_DOUBLE_COLON:
-                throw ParseError::Todo("method calls - generic");
             default:
-                val = NEWNODE( AST::ExprNode_Field, ::std::move(val), ::std::string(name) );
-                lex.putback(tok);
-                break;
+                throw ParseError::Unexpected(lex, tok);
             }
-            break; }
+            break;
         default:
             lex.putback(tok);
             return val;
@@ -737,8 +746,8 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         }
         else
         {
-            MacroExpander expanded_macro = Macro_Invoke(name.c_str(), tt);
-            return Parse_Expr0(expanded_macro);
+            auto expanded_macro = Macro_Invoke(lex, name, tt);
+            return Parse_Expr0(*expanded_macro);
         }
         }
     default:

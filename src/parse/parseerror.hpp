@@ -19,6 +19,7 @@ class Generic:
     ::std::string   m_message;
 public:
     Generic(::std::string message);
+    Generic(const TokenStream& lex, ::std::string message);
     virtual ~Generic() throw () {}
 };
 

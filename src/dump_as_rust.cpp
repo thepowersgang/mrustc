@@ -343,6 +343,8 @@ public:
         case AST::ExprNode_BinOp::MULTIPLY: m_os << "*"; break;
         case AST::ExprNode_BinOp::DIVIDE:   m_os << "/"; break;
         case AST::ExprNode_BinOp::MODULO:   m_os << "%"; break;
+        case AST::ExprNode_BinOp::ADD:   m_os << "+"; break;
+        case AST::ExprNode_BinOp::SUB:   m_os << "-"; break;
         }
         m_os << " ";
         if( IS(*n.m_right, AST::ExprNode_BinOp) )
@@ -564,6 +566,10 @@ void RustPrinter::print_pattern(const AST::Pattern& p)
     {
     case AST::Pattern::ANY:
         m_os << "_";
+        break;
+    case AST::Pattern::REF:
+        m_os << "& ";
+        print_pattern(p.sub_patterns()[0]);
         break;
     case AST::Pattern::VALUE:
         m_os << p.node();

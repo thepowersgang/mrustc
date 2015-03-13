@@ -111,64 +111,7 @@ public:
 /// A sigle 'macro_rules!' block
 typedef ::std::vector<MacroRule>    MacroRules;
 
-class MacroExpander:
-    public TokenStream
-{
-public:
-    // MultiMap (layer, name) -> TokenTree
-    // - Multiple values are only allowed for layer>0
-    typedef ::std::pair<unsigned,const char*>   t_mapping_key;
-
-    struct cmp_mk {
-        bool operator()(const t_mapping_key& a, const t_mapping_key& b) const {
-            return a.first < b.first || ::std::strcmp(a.second, b.second) < 0;
-        }
-    };
-    typedef ::std::multimap<t_mapping_key, TokenTree, cmp_mk>    t_mappings;
-
-private:
-    const TokenTree&    m_crate_path;
-    const ::std::vector<MacroRuleEnt>&  m_root_contents;
-    const t_mappings    m_mappings;
-    
-    /// Layer states : Index and Iteration
-    ::std::vector< ::std::pair<size_t,size_t> >   m_offsets;
-    
-    /// Cached pointer to the current layer
-    const ::std::vector<MacroRuleEnt>*  m_cur_ents;  // For faster lookup.
-    /// Iteration counts for each layer
-    ::std::vector<size_t>   m_layer_counts;
-
-    ::std::auto_ptr<TTStream>   m_ttstream;
-    
-public:
-    MacroExpander(const MacroExpander& x):
-        m_crate_path(x.m_crate_path),
-        m_root_contents(x.m_root_contents),
-        m_mappings(x.m_mappings),
-        m_offsets({ {0,0} }),
-        m_cur_ents(&m_root_contents)
-    {
-        prep_counts();
-    }
-    MacroExpander(const ::std::vector<MacroRuleEnt>& contents, t_mappings mappings, const TokenTree& crate_path):
-        m_crate_path(crate_path),
-        m_root_contents(contents),
-        m_mappings(mappings),
-        m_offsets({ {0,0} }),
-        m_cur_ents(&m_root_contents)
-    {
-        prep_counts();
-    }
-
-    virtual Position getPosition() const override;
-    virtual Token realGetToken() override;
-private:
-    const ::std::vector<MacroRuleEnt>* getCurLayer() const;
-    void prep_counts();
-};
-
 extern void Macro_SetModule(const LList<AST::Module*>& mod);
-extern MacroExpander    Macro_Invoke(const char* name, TokenTree input);
+extern ::std::unique_ptr<TokenStream>   Macro_Invoke(const TokenStream& lex, const ::std::string& name, TokenTree input);
 
 #endif // MACROS_HPP_INCLUDED

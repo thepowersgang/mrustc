@@ -17,6 +17,86 @@ TokenTree   g_crate_path_tt = TokenTree({
     TokenTree(Token(TOK_STRING, "--CRATE--")),
     });
 
+class MacroExpander:
+    public TokenStream
+{
+public:
+    // MultiMap (layer, name) -> TokenTree
+    // - Multiple values are only allowed for layer>0
+    typedef ::std::pair<unsigned,const char*>   t_mapping_key;
+
+    struct cmp_mk {
+        bool operator()(const t_mapping_key& a, const t_mapping_key& b) const {
+            return a.first < b.first || ::std::strcmp(a.second, b.second) < 0;
+        }
+    };
+    typedef ::std::multimap<t_mapping_key, TokenTree, cmp_mk>    t_mappings;
+
+private:
+    const TokenTree&    m_crate_path;
+    const ::std::vector<MacroRuleEnt>&  m_root_contents;
+    const t_mappings    m_mappings;
+    
+    /// Layer states : Index and Iteration
+    ::std::vector< ::std::pair<size_t,size_t> >   m_offsets;
+    
+    /// Cached pointer to the current layer
+    const ::std::vector<MacroRuleEnt>*  m_cur_ents;  // For faster lookup.
+    /// Iteration counts for each layer
+    ::std::vector<size_t>   m_layer_counts;
+
+    ::std::unique_ptr<TTStream>   m_ttstream;
+    
+public:
+    MacroExpander(const MacroExpander& x):
+        m_crate_path(x.m_crate_path),
+        m_root_contents(x.m_root_contents),
+        m_mappings(x.m_mappings),
+        m_offsets({ {0,0} }),
+        m_cur_ents(&m_root_contents)
+    {
+        prep_counts();
+    }
+    MacroExpander(const ::std::vector<MacroRuleEnt>& contents, t_mappings mappings, const TokenTree& crate_path):
+        m_crate_path(crate_path),
+        m_root_contents(contents),
+        m_mappings(mappings),
+        m_offsets({ {0,0} }),
+        m_cur_ents(&m_root_contents)
+    {
+        prep_counts();
+    }
+
+    virtual Position getPosition() const override;
+    virtual Token realGetToken() override;
+private:
+    const ::std::vector<MacroRuleEnt>* getCurLayer() const;
+    void prep_counts();
+};
+
+class MacroToken:
+    public TokenStream
+{
+    Token   m_tok;
+public:
+    MacroToken(Token tok);
+    virtual Position getPosition() const override;
+    virtual Token realGetToken() override;
+};
+
+class MacroStringify:
+    public TokenStream
+{
+    Token   m_tok;
+public:
+    MacroStringify(const TokenTree& input);
+    virtual Position getPosition() const override;
+    virtual Token realGetToken() override;
+};
+
+::std::unique_ptr<TokenStream> Macro_Invoke_Concat(const TokenTree& input, enum eTokenType exp);
+::std::unique_ptr<TokenStream> Macro_Invoke_Cfg(const TokenTree& input);
+
 void Macro_SetModule(const LList<AST::Module*>& mod)
 {
     g_macro_module = &mod;
@@ -161,7 +241,7 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
 
 }
 
-MacroExpander Macro_InvokeInt(const char *name, const MacroRules& rules, TokenTree input)
+::std::unique_ptr<TokenStream> Macro_InvokeInt(const char *name, const MacroRules& rules, TokenTree input)
 {
     TRACE_FUNCTION;
     
@@ -196,7 +276,7 @@ MacroExpander Macro_InvokeInt(const char *name, const MacroRules& rules, TokenTr
             //GET_CHECK_TOK(tok, lex, close);
             GET_CHECK_TOK(tok, lex, TOK_EOF);
             DEBUG( rule.m_contents.size() << " rule contents bound to " << bound_tts.size() << " values - " << name );
-            return MacroExpander(rule.m_contents, bound_tts, g_crate_path_tt);
+            return ::std::unique_ptr<TokenStream>( (TokenStream*)new MacroExpander(rule.m_contents, bound_tts, g_crate_path_tt) );
         }
         catch(const ParseError::Base& e)
         {
@@ -208,13 +288,26 @@ MacroExpander Macro_InvokeInt(const char *name, const MacroRules& rules, TokenTr
     throw ParseError::Todo("Error when macro fails to match");
 }
 
-MacroExpander Macro_Invoke(const char* name, TokenTree input)
+::std::unique_ptr<TokenStream> Macro_Invoke(const TokenStream& olex, const ::std::string& name, TokenTree input)
 {
     // XXX: EVIL HACK! - This should be removed when std loading is implemented
     if( g_macro_registrations.size() == 0 ) {
         Macro_InitDefaults();
     }
-    
+   
+    if( name == "concat_idents" ) {
+        return Macro_Invoke_Concat(input, TOK_IDENT);
+    }
+    else if( name == "concat_strings" ) {
+        return Macro_Invoke_Concat(input, TOK_STRING);
+    }
+    else if( name == "cfg" ) {
+        return Macro_Invoke_Cfg(input);
+    }
+    else if( name == "stringify" ) {
+        return ::std::unique_ptr<TokenStream>( (TokenStream*)new MacroStringify(input) );
+    }
+     
     // Look for macro in builtins
     t_macro_regs::iterator macro_reg = g_macro_registrations.find(name);
     if( macro_reg != g_macro_registrations.end() )
@@ -245,7 +338,7 @@ MacroExpander Macro_Invoke(const char* name, TokenTree input)
         }
     }
 
-    throw ParseError::Generic( ::std::string("Macro '") + name + "' was not found" );
+    throw ParseError::Generic(olex, FMT("Macro '" << name << "' was not found") );
 }
 
 Position MacroExpander::getPosition() const
@@ -399,6 +492,72 @@ const ::std::vector<MacroRuleEnt>* MacroExpander::getCurLayer() const
     return ents;
 }
 
+::std::unique_ptr<TokenStream> Macro_Invoke_Concat(const TokenTree& input, enum eTokenType exp)
+{
+    Token   tok;
+    TTStream    lex(input);
+    ::std::string   val;
+    do
+    {
+        GET_CHECK_TOK(tok, lex, exp);
+        val += tok.str();
+    } while( GET_TOK(tok, lex) == TOK_COMMA );
+    CHECK_TOK(tok, TOK_EOF);
+    
+    
+    return ::std::unique_ptr<TokenStream>( new MacroToken( Token(exp, val) ) );
+}
+
+::std::unique_ptr<TokenStream> Macro_Invoke_Cfg(const TokenTree& input)
+{
+    Token   tok;
+    TTStream    lex(input);
+    
+    GET_CHECK_TOK(tok, lex, TOK_IDENT);
+    ::std::string var = tok.str();
+    
+    if( GET_TOK(tok, lex) == TOK_EQUAL )
+    {
+        GET_CHECK_TOK(tok, lex, TOK_STRING);
+        ::std::string val = tok.str();
+        GET_CHECK_TOK(tok, lex, TOK_EOF);
+        return ::std::unique_ptr<TokenStream>( new MacroToken( Token(TOK_RWORD_FALSE) ) );
+    }
+    else
+    {
+        CHECK_TOK(tok, TOK_EOF);
+        return ::std::unique_ptr<TokenStream>( new MacroToken( Token(TOK_RWORD_FALSE) ) );
+    }
+}
+
+MacroToken::MacroToken(Token tok):
+    m_tok(tok)
+{
+}
+Position MacroToken::getPosition() const
+{
+    return Position("macro", 0);
+}
+Token MacroToken::realGetToken()
+{
+    Token ret = m_tok;
+    m_tok = Token(TOK_EOF);
+    return ret;
+}
+MacroStringify::MacroStringify(const TokenTree& input)
+{
+    throw ParseError::Todo("Stringify");
+}
+Position MacroStringify::getPosition() const
+{
+    return Position("stringify", 0);
+}
+Token MacroStringify::realGetToken()
+{
+    Token ret = m_tok;
+    m_tok = Token(TOK_EOF);
+    return ret;
+}
 SERIALISE_TYPE_S(MacroRule, {
     s.item(m_pattern);
     s.item(m_contents);

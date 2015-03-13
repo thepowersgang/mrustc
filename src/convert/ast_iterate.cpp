@@ -66,6 +66,14 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
     case AST::Pattern::ANY:
         // Wildcard, nothing to do
         break;
+    case AST::Pattern::REF:
+        if( type_hint.is_wildcard() )
+            handle_pattern(pat.sub_patterns()[0], (const TypeRef&)TypeRef());
+        else if( type_hint.is_reference() )
+            throw ::std::runtime_error("Ref pattern on non-ref value");
+        else
+            handle_pattern(pat.sub_patterns()[0], type_hint.sub_types()[0]);
+        break;
     case AST::Pattern::MAYBE_BIND:
         throw ::std::runtime_error("Calling CASTIterator::handle_pattern on MAYBE_BIND, not valid");
     case AST::Pattern::VALUE:

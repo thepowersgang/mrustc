@@ -3,6 +3,7 @@
 #include <iostream>
 
 #define GET_TOK(tok, lex) ((tok = lex.getToken()).type())
+#define LOOK_AHEAD(lex) (lex.lookahead(0))
 #define GET_CHECK_TOK(tok, lex, exp) do {\
     if((tok = lex.getToken()).type() != exp) { \
         DEBUG("GET_CHECK_TOK " << __FILE__ << ":" << __LINE__); \

@@ -12,6 +12,10 @@ ParseError::Generic::Generic(::std::string message):
 {
     ::std::cout << "Generic(" << message << ")" << ::std::endl;
 }
+ParseError::Generic::Generic(const TokenStream& lex, ::std::string message)
+{
+    ::std::cout << lex.getPosition() << ": Generic(" << message << ")" << ::std::endl;
+}
 
 ParseError::BugCheck::BugCheck(::std::string message):
     m_message(message)

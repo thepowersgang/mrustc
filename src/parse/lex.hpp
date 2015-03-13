@@ -76,12 +76,14 @@ class TokenStream
 {
     bool    m_cache_valid;
     Token   m_cache;
+    ::std::vector<Token>    m_lookahead;
     ParseState  m_parse_state;
 public:
     TokenStream();
     virtual ~TokenStream();
     Token   getToken();
     void    putback(Token tok);
+    eTokenType  lookahead(unsigned int count);
     virtual Position getPosition() const = 0;
     
     ParseState& parse_state() { return m_parse_state; }

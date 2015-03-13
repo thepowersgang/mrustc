@@ -8,6 +8,7 @@
 #include <cassert>
 
 extern AST::Pattern Parse_Pattern(TokenStream& lex);
+AST::MetaItem   Parse_MetaItem(TokenStream& lex);
 void Parse_ModRoot(TokenStream& lex, AST::Crate& crate, AST::Module& mod, LList<AST::Module*> *prev_modstack, const ::std::string& path);
 
 ::std::vector<TypeRef> Parse_Path_GenericList(TokenStream& lex)
@@ -17,12 +18,22 @@ void Parse_ModRoot(TokenStream& lex, AST::Crate& crate, AST::Module& mod, LList<
 
     ::std::vector<TypeRef>  types;
     ::std::vector< ::std::string>   lifetimes;
+    ::std::map< ::std::string, TypeRef> assoc_bounds;
+    ::std::vector<unsigned int> int_args;
     do {
         switch(GET_TOK(tok, lex))
         {
         case TOK_LIFETIME:
             lifetimes.push_back( tok.str() );
             break;
+        case TOK_IDENT:
+            if( LOOK_AHEAD(lex) == TOK_EQUAL )
+            {
+                ::std::string name = tok.str();
+                GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+                assoc_bounds.insert( ::std::make_pair( ::std::move(name), Parse_Type(lex) ) );
+                break;
+            }
         default:
             lex.putback(tok);
             types.push_back( Parse_Type(lex) );
@@ -38,6 +49,7 @@ void Parse_ModRoot(TokenStream& lex, AST::Crate& crate, AST::Module& mod, LList<
         CHECK_TOK(tok, TOK_GT);
     }
     
+    // TODO: Actually use the lifetimes/assoc_bounds
     
     return types;
 }
@@ -477,24 +489,30 @@ void Parse_Struct(AST::Module& mod, TokenStream& lex, const bool is_public, cons
     }
     if(tok.type() == TOK_PAREN_OPEN)
     {
-        TypeRef inner = Parse_Type(lex);
-        tok = lex.getToken();
-        if(tok.type() != TOK_PAREN_CLOSE)
+        // Tuple structs
+        ::std::vector<AST::StructItem>  refs;
+        while(GET_TOK(tok, lex) != TOK_PAREN_CLOSE)
         {
-            ::std::vector<TypeRef>  refs;
-            refs.push_back(inner);
-            while( (tok = lex.getToken()).type() == TOK_COMMA )
-            {
-                refs.push_back( Parse_Type(lex) );
-            }
-            CHECK_TOK(tok, TOK_PAREN_CLOSE);
-            inner = TypeRef(TypeRef::TagTuple(), refs);
+            bool    is_pub = false;
+            if(tok.type() == TOK_RWORD_PUB)
+                is_pub = true;
+            else
+                lex.putback(tok);
+            
+            refs.push_back( AST::StructItem( "", Parse_Type(lex), is_pub ) );
+            if( GET_TOK(tok, lex) != TOK_COMMA )
+                break;
         }
-        throw ParseError::Todo("tuple struct");
+        CHECK_TOK(tok, TOK_PAREN_CLOSE);
+        GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+        if( refs.size() == 0 )
+            throw ParseError::Generic(lex, "Use 'struct Name;' instead of 'struct Name();' ... ning-nong");
+        mod.add_struct(is_public, ::std::move(name), ::std::move(params), ::std::move(refs));
     }
     else if(tok.type() == TOK_SEMICOLON)
     {
-        throw ParseError::Todo("unit-like struct");
+        // Unit-like struct
+        mod.add_struct(is_public, name, params, ::std::vector<AST::StructItem>());
     }
     else if(tok.type() == TOK_BRACE_OPEN)
     {
@@ -512,6 +530,8 @@ void Parse_Struct(AST::Module& mod, TokenStream& lex, const bool is_public, cons
                 break;
             CHECK_TOK(tok, TOK_COMMA);
         }
+        if( items.size() == 0 )
+            throw ParseError::Generic(lex, "Use 'struct Name;' instead of 'struct Name { }' ... ning-nong");
         mod.add_struct(is_public, name, params, items);
     }
     else
@@ -567,6 +587,14 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
     CHECK_TOK(tok, TOK_BRACE_OPEN);
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
+        AST::MetaItems  item_attrs;
+        while( tok.type() == TOK_ATTR_OPEN )
+        {
+            item_attrs.push_back( Parse_MetaItem(lex) );
+            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+            GET_TOK(tok, lex);
+        }
+        
         switch(tok.type())
         {
         case TOK_RWORD_STATIC: {
@@ -721,9 +749,9 @@ AST::Impl Parse_Impl(TokenStream& lex)
     AST::Impl   impl( ::std::move(params), ::std::move(impl_type), ::std::move(trait_type) );
 
     // A sequence of method implementations
-    AST::MetaItems  item_attrs;
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
+        AST::MetaItems  item_attrs;
         while( tok.type() == TOK_ATTR_OPEN )
         {
             item_attrs.push_back( Parse_MetaItem(lex) );
@@ -774,10 +802,10 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
     switch( GET_TOK(tok, lex) )
     {
     case TOK_RWORD_SELF:
-        throw ParseError::Todo("Parse_Use - self");
+        path = AST::Path( );    // relative path
         break;
     case TOK_RWORD_SUPER:
-        throw ParseError::Todo("Parse_Use - super");
+        throw ParseError::Todo(lex, "Parse_Use - super");
         break;
     case TOK_IDENT:
         path.append( AST::PathNode(tok.str(), {}) );
@@ -1138,8 +1166,8 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
                 }
                 ::std::string name = tok.str();
                 
-                MacroExpander expanded_macro = Macro_Invoke(name.c_str(), tt);
-                Parse_ModRoot_Items(expanded_macro, crate, mod, modstack, path);
+                auto expanded_macro = Macro_Invoke(lex, name.c_str(), tt);
+                Parse_ModRoot_Items(*expanded_macro, crate, mod, modstack, path);
             }
             break;
         
@@ -1349,7 +1377,6 @@ void Parse_ModRoot(TokenStream& lex, AST::Crate& crate, AST::Module& mod, LList<
     LList<AST::Module*>  modstack(prev_modstack, &mod);
     Macro_SetModule(modstack);
 
-    const bool nested_module = (path == "-");  // 'mod name { code }', as opposed to 'mod name;'
     Token   tok;
 
     if( crate.m_load_std )
