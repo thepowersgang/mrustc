@@ -29,6 +29,7 @@ class BugCheck:
     ::std::string   m_message;
 public:
     BugCheck(::std::string message);
+    BugCheck(const TokenStream& lex, ::std::string message);
     virtual ~BugCheck() throw () {}
 };
 
@@ -63,6 +64,8 @@ public:
     virtual ~Unexpected() throw ();
 
 };
+
+#define ASSERT(lex, cnd)    do { if( !(cnd) ) throw ParseError::BugCheck(lex, "Assertion failed: "#cnd); } while(0)
 
 }
 

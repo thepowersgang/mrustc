@@ -28,6 +28,13 @@ public:
     const Token& tok() const {
         return m_tok;
     }
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const TokenTree& tt) {
+        if( tt.m_subtrees.size() == 0 )
+            return os << "TokenTree(" << tt.m_tok << ")";
+        else
+            return os << "TokenTree([" << tt.m_subtrees << "])";
+    }
 };
 
 class TTStream:

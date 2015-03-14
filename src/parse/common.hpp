@@ -25,7 +25,9 @@ enum eParsePathGenericMode
 };
 
 extern AST::Path   Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generic_mode);
+extern ::std::vector<TypeRef>   Parse_Path_GenericList(TokenStream& lex);
 extern TypeRef     Parse_Type(TokenStream& lex);
+extern void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)> fcn);
 extern AST::Expr   Parse_Expr(TokenStream& lex, bool const_only);
 extern AST::Expr   Parse_ExprBlock(TokenStream& lex);
 

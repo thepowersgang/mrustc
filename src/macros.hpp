@@ -39,7 +39,15 @@ public:
     }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const MacroRuleEnt& x) {
-        return os << "MacroRuleEnt( '"<<x.name<<"'" << x.tok << ", " << x.subpats << ")";
+        os << "MacroRuleEnt(";
+        if(x.name.size())
+            os << "'"<<x.name<<"'";
+        else if( x.subpats.size() )
+            os << x.tok << " [" << x.subpats << "]";
+        else
+            os << x.tok;
+        os << ")";
+        return os;
     }
 
     SERIALISABLE_PROTOTYPES();
@@ -90,8 +98,16 @@ struct MacroPatEnt:
     {
     }
 
-    friend ::std::ostream& operator<<(::std::ostream& os, const MacroPatEnt& mpe) {
-        return os << "MacroPatEnt( '"<<mpe.name<<"'" << mpe.tok << ", " << mpe.subpats << ")";
+    friend ::std::ostream& operator<<(::std::ostream& os, const MacroPatEnt& x) {
+        os << "MacroPatEnt(";
+        if(x.name.size())
+            os << "'"<<x.name<<"'";
+        else if( x.subpats.size() )
+            os << x.tok << " [" << x.subpats << "]";
+        else
+            os << x.tok;
+        os << ")";
+        return os;
     }
     
     SERIALISABLE_PROTOTYPES();

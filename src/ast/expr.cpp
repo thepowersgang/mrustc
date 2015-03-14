@@ -52,17 +52,20 @@ SERIALISE_TYPE(Expr::, "Expr", {
     #define _(x)    if(tag == #x) ptr = new x;
          _(ExprNode_Block)
     else _(ExprNode_Macro)
-    else _(ExprNode_Return)
+    else _(ExprNode_Flow)
     else _(ExprNode_Const)
+    else _(ExprNode_Import)
     else _(ExprNode_LetBinding)
     else _(ExprNode_Assign)
     else _(ExprNode_CallPath)
     else _(ExprNode_CallMethod)
     else _(ExprNode_CallObject)
     else _(ExprNode_Match)
+    else _(ExprNode_Loop)
     else _(ExprNode_If)
     else _(ExprNode_IfLet)
     else _(ExprNode_Integer)
+    else _(ExprNode_Closure)
     else _(ExprNode_StructLiteral)
     else _(ExprNode_Tuple)
     else _(ExprNode_NamedValue)
@@ -107,10 +110,40 @@ NODE(ExprNode_Macro, {
     os << m_name << "!(" << ")";
 })
 
-NODE(ExprNode_Return, {
+void operator%(::Serialiser& s, const ExprNode_Flow::Type t) {
+    switch(t)
+    {
+    #define _(v)    case ExprNode_Flow::v: s << #v; return
+    _(RETURN);
+    _(BREAK);
+    _(CONTINUE);
+    #undef _
+    }
+}
+void operator%(::Deserialiser& s, ExprNode_Flow::Type& t) {
+    ::std::string   n;
+    s.item(n);
+    if(0)   ;
+    #define _(v)    else if(n == #v) t = ExprNode_Flow::v
+    _(RETURN);
+    _(BREAK);
+    _(CONTINUE);
+    #undef _
+    else
+        throw ::std::runtime_error("");
+}
+NODE(ExprNode_Flow, {
+    s % m_type;
+    s.item(m_target);
     s.item(m_value);
 },{
-    os << "return " << *m_value;
+    switch(m_type)
+    {
+    case RETURN:    os << "return"; break;
+    case BREAK:     os << "break"; break;
+    case CONTINUE:  os << "continue"; break;
+    }
+    os << " " << *m_value;
 })
 
 NODE(ExprNode_Const, {
@@ -119,6 +152,12 @@ NODE(ExprNode_Const, {
     s.item(m_value);
 },{
     os << "const " << m_name << ": " << m_type << " = " << *m_value;
+})
+
+NODE(ExprNode_Import, {
+    s.item(m_imports);
+},{
+    os << "/* todo: use /*";
 })
 
 NODE(ExprNode_LetBinding, {
@@ -168,6 +207,40 @@ NODE(ExprNode_CallObject, {
         os << *a << ",";
     }
     os << ")";
+})
+
+void operator%(::Serialiser& s, const ExprNode_Loop::Type t) {
+    switch(t)
+    {
+    #define _(v)    case ExprNode_Loop::v: s << #v; return
+    _(LOOP);
+    _(WHILE);
+    _(WHILELET);
+    _(FOR);
+    #undef _
+    }
+}
+void operator%(::Deserialiser& s, ExprNode_Loop::Type& t) {
+    ::std::string   n;
+    s.item(n);
+    if(0)   ;
+    #define _(v)    else if(n == #v) t = ExprNode_Loop::v
+    _(LOOP);
+    _(WHILE);
+    _(WHILELET);
+    _(FOR);
+    #undef _
+    else
+        throw ::std::runtime_error("");
+}
+NODE(ExprNode_Loop, {
+    s % m_type;
+    s.item(m_label);
+    s.item(m_pattern);
+    s.item(m_cond);
+    s.item(m_code);
+},{
+    //os << "LOOP [" << m_label << "] " << m_pattern << " in/= " << m_cond << " " << m_code;
 })
 
 SERIALISE_TYPE_A(ExprNode_Match::Arm::, "ExprNode_Match_Arm", {
@@ -224,6 +297,19 @@ NODE(ExprNode_Bool, {
 },{
     os << m_value;
 })
+NODE(ExprNode_String, {
+    s.item(m_value);
+},{
+    os << "\"" << m_value << "\"";
+})
+
+NODE(ExprNode_Closure, {
+    s.item(m_args);
+    s.item(m_return);
+    s.item(m_code);
+},{
+    os << "/* todo: closure */";
+});
 
 NODE(ExprNode_StructLiteral, {
     s.item(m_path);
@@ -256,6 +342,13 @@ NODE(ExprNode_Field, {
     os << "(" << *m_obj << ")." << m_name;
 })
 
+NODE(ExprNode_Index, {
+    s.item(m_obj);
+    s.item(m_idx);
+},{
+    os << "(" << *m_obj << ")[" << *m_idx << "]";
+})
+
 NODE(ExprNode_Deref, {
     s.item(m_value);
 },{
@@ -279,6 +372,7 @@ void operator%(::Serialiser& s, const ExprNode_BinOp::Type t) {
     _(CMPLTE);
     _(CMPGT);
     _(CMPGTE);
+    _(RANGE);
     _(BOOLAND);
     _(BOOLOR);
     _(BITAND);
@@ -305,6 +399,7 @@ void operator%(::Deserialiser& s, ExprNode_BinOp::Type& t) {
     _(CMPLTE);
     _(CMPGT);
     _(CMPGTE);
+    _(RANGE);
     _(BOOLAND);
     _(BOOLOR);
     _(BITAND);
@@ -404,7 +499,7 @@ NV(ExprNode_Macro,
 {
     DEBUG("TODO: Macro");
 })
-NV(ExprNode_Return,
+NV(ExprNode_Flow,
 {
     visit(node.m_value);
 })
@@ -412,6 +507,7 @@ NV(ExprNode_Const,
 {
     visit(node.m_value);
 })
+NV(ExprNode_Import, {})
 NV(ExprNode_LetBinding,
 {
     // TODO: Handle recurse into Let pattern
@@ -447,6 +543,13 @@ NV(ExprNode_CallObject,
         visit(arg);
     UNINDENT();
 })
+NV(ExprNode_Loop,
+{
+    INDENT();
+    visit(node.m_cond);
+    visit(node.m_code);
+    UNINDENT();
+})
 NV(ExprNode_Match,
 {
     INDENT();
@@ -478,7 +581,11 @@ NV(ExprNode_IfLet,
 NV(ExprNode_Integer, {})
 NV(ExprNode_Float, {})
 NV(ExprNode_Bool, {})
+NV(ExprNode_String, {})
 
+NV(ExprNode_Closure,
+{
+});
 NV(ExprNode_StructLiteral,
 {
     visit(node.m_base_value);
@@ -498,6 +605,11 @@ NV(ExprNode_NamedValue,
 NV(ExprNode_Field,
 {
     visit(node.m_obj);
+})
+NV(ExprNode_Index,
+{
+    visit(node.m_obj);
+    visit(node.m_idx);
 })
 NV(ExprNode_Deref,
 {

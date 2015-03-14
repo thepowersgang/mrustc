@@ -17,6 +17,11 @@ ParseError::Generic::Generic(const TokenStream& lex, ::std::string message)
     ::std::cout << lex.getPosition() << ": Generic(" << message << ")" << ::std::endl;
 }
 
+ParseError::BugCheck::BugCheck(const TokenStream& lex, ::std::string message):
+    m_message(message)
+{
+    ::std::cout << lex.getPosition() << "BugCheck(" << message << ")" << ::std::endl;
+}
 ParseError::BugCheck::BugCheck(::std::string message):
     m_message(message)
 {
@@ -49,12 +54,18 @@ ParseError::BadChar::~BadChar() throw()
 ParseError::Unexpected::Unexpected(const TokenStream& lex, Token tok):
     m_tok(tok)
 {
-    ::std::cout << lex.getPosition() << ": Unexpected(" << tok << ")" << ::std::endl;
+    auto pos = tok.get_pos();
+    if(pos.filename == "")
+        pos = lex.getPosition();
+    ::std::cout << pos << ": Unexpected(" << tok << ")" << ::std::endl;
 }
 ParseError::Unexpected::Unexpected(const TokenStream& lex, Token tok, Token exp):
     m_tok(tok)
 {
-    ::std::cout << lex.getPosition() << ": Unexpected(" << tok << ", " << exp << ")" << ::std::endl;
+    auto pos = tok.get_pos();
+    if(pos.filename == "")
+        pos = lex.getPosition();
+    ::std::cout << pos << ": Unexpected(" << tok << ", " << exp << ")" << ::std::endl;
 }
 ParseError::Unexpected::~Unexpected() throw()
 {

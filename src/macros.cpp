@@ -33,6 +33,7 @@ public:
     typedef ::std::multimap<t_mapping_key, TokenTree, cmp_mk>    t_mappings;
 
 private:
+    const TokenStream&  m_olex;
     const TokenTree&    m_crate_path;
     const ::std::vector<MacroRuleEnt>&  m_root_contents;
     const t_mappings    m_mappings;
@@ -49,6 +50,7 @@ private:
     
 public:
     MacroExpander(const MacroExpander& x):
+        m_olex(x.m_olex),
         m_crate_path(x.m_crate_path),
         m_root_contents(x.m_root_contents),
         m_mappings(x.m_mappings),
@@ -57,7 +59,8 @@ public:
     {
         prep_counts();
     }
-    MacroExpander(const ::std::vector<MacroRuleEnt>& contents, t_mappings mappings, const TokenTree& crate_path):
+    MacroExpander(const TokenStream& olex, const ::std::vector<MacroRuleEnt>& contents, t_mappings mappings, const TokenTree& crate_path):
+        m_olex(olex),
         m_crate_path(crate_path),
         m_root_contents(contents),
         m_mappings(mappings),
@@ -241,7 +244,7 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
 
 }
 
-::std::unique_ptr<TokenStream> Macro_InvokeInt(const char *name, const MacroRules& rules, TokenTree input)
+::std::unique_ptr<TokenStream> Macro_InvokeInt(const TokenStream& olex, const char *name, const MacroRules& rules, TokenTree input)
 {
     TRACE_FUNCTION;
     
@@ -276,7 +279,7 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
             //GET_CHECK_TOK(tok, lex, close);
             GET_CHECK_TOK(tok, lex, TOK_EOF);
             DEBUG( rule.m_contents.size() << " rule contents bound to " << bound_tts.size() << " values - " << name );
-            return ::std::unique_ptr<TokenStream>( (TokenStream*)new MacroExpander(rule.m_contents, bound_tts, g_crate_path_tt) );
+            return ::std::unique_ptr<TokenStream>( (TokenStream*)new MacroExpander(olex, rule.m_contents, bound_tts, g_crate_path_tt) );
         }
         catch(const ParseError::Base& e)
         {
@@ -285,11 +288,12 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
         i ++;
     }
     DEBUG("");
-    throw ParseError::Todo("Error when macro fails to match");
+    throw ParseError::Todo(olex, "Error when macro fails to match");
 }
 
 ::std::unique_ptr<TokenStream> Macro_Invoke(const TokenStream& olex, const ::std::string& name, TokenTree input)
 {
+    DEBUG("Invoke " << name << " from " << olex.getPosition());
     // XXX: EVIL HACK! - This should be removed when std loading is implemented
     if( g_macro_registrations.size() == 0 ) {
         Macro_InitDefaults();
@@ -312,7 +316,7 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
     t_macro_regs::iterator macro_reg = g_macro_registrations.find(name);
     if( macro_reg != g_macro_registrations.end() )
     {
-        return Macro_InvokeInt(macro_reg->first.c_str(), macro_reg->second, input);
+        return Macro_InvokeInt(olex, macro_reg->first.c_str(), macro_reg->second, input);
     }
     
     // Search import list
@@ -324,7 +328,7 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
             DEBUG("" << m.name);
             if( m.name == name )
             {
-                return Macro_InvokeInt(m.name.c_str(), m.data, input);
+                return Macro_InvokeInt(olex, m.name.c_str(), m.data, input);
             }
         }
         
@@ -333,7 +337,7 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
             DEBUG("" << mi.name);
             if( mi.name == name )
             {
-                return Macro_InvokeInt(mi.name.c_str(), *mi.data, input);
+                return Macro_InvokeInt(olex, mi.name.c_str(), *mi.data, input);
             }
         }
     }
@@ -343,7 +347,8 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
 
 Position MacroExpander::getPosition() const
 {
-    return Position("Macro", 0);
+    DEBUG("olex.getPosition() = " << m_olex.getPosition());
+    return Position(FMT("Macro:" << ""), m_offsets[0].first);
 }
 Token MacroExpander::realGetToken()
 {
@@ -380,6 +385,7 @@ Token MacroExpander::realGetToken()
                 // - Name
                 // HACK: Handle $crate with a special name
                 if( ent.name == "*crate" ) {
+                    DEBUG("Crate name hack");
                     m_ttstream.reset( new TTStream(m_crate_path) );
                     return m_ttstream->getToken();
                 }
@@ -394,6 +400,7 @@ Token MacroExpander::realGetToken()
                     {
                         if( i == iter_idx )
                         {
+                            DEBUG(ent.name << " #" << i << " - Setting TT");
                             m_ttstream.reset( new TTStream(it->second) );
                             return m_ttstream->getToken();
                         }
@@ -536,7 +543,7 @@ MacroToken::MacroToken(Token tok):
 }
 Position MacroToken::getPosition() const
 {
-    return Position("macro", 0);
+    return Position("MacroToken", 0);
 }
 Token MacroToken::realGetToken()
 {
@@ -550,7 +557,7 @@ MacroStringify::MacroStringify(const TokenTree& input)
 }
 Position MacroStringify::getPosition() const
 {
-    return Position("stringify", 0);
+    return Position("Stringify", 0);
 }
 Token MacroStringify::realGetToken()
 {
@@ -569,6 +576,7 @@ void operator%(Serialiser& s, MacroPatEnt::Type c) {
     #define _(v) case MacroPatEnt::v: s << #v; return
     _(PAT_TOKEN);
     _(PAT_TT);
+    _(PAT_TYPE);
     _(PAT_EXPR);
     _(PAT_LOOP);
     //_(PAT_OPTLOOP);
@@ -586,6 +594,7 @@ void operator%(::Deserialiser& s, MacroPatEnt::Type& c) {
     if(0) ;
     _(PAT_TOKEN);
     _(PAT_TT);
+    _(PAT_TYPE);
     _(PAT_EXPR);
     _(PAT_LOOP);
     //_(PAT_OPTLOOP);

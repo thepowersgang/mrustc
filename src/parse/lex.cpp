@@ -623,6 +623,7 @@ SERIALISE_TYPE_S(Token, {
 TTStream::TTStream(const TokenTree& input_tt):
     m_input_tt(input_tt)
 {
+    DEBUG("input_tt = [" << input_tt << "]");
     m_stack.push_back( ::std::make_pair(0, &input_tt) );
 }
 TTStream::~TTStream()
@@ -671,6 +672,14 @@ TokenStream::~TokenStream()
 {
 }
 
+Token TokenStream::innerGetToken()
+{
+    Token ret = this->realGetToken();
+    if( ret.get_pos().filename.size() == 0 )
+        ret.set_pos( this->getPosition() );
+    //DEBUG("ret.get_pos() = " << ret.get_pos());
+    return ret;
+}
 Token TokenStream::getToken()
 {
     if( m_cache_valid )
@@ -687,7 +696,7 @@ Token TokenStream::getToken()
     }
     else
     {
-        Token ret = this->realGetToken();
+        Token ret = this->innerGetToken();
         ::std::cout << "getToken[" << typeid(*this).name() << "] - " << ret << ::std::endl;
         return ret;
     }
@@ -723,7 +732,7 @@ eTokenType TokenStream::lookahead(unsigned int i)
     while( i >= m_lookahead.size() )
     {
         DEBUG("lookahead - read #" << m_lookahead.size());
-        m_lookahead.push_back( this->realGetToken() );
+        m_lookahead.push_back( this->innerGetToken() );
     }
     
     return m_lookahead[i].type();

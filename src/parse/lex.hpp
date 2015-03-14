@@ -12,6 +12,23 @@ enum eTokenType
     #undef _
 };
 
+struct Position
+{
+    ::std::string   filename;
+    unsigned int    line;
+    
+    Position():
+        filename(""),
+        line(0)
+    {}
+    Position(::std::string filename, unsigned int line):
+        filename(filename),
+        line(line)
+    {
+    }
+};
+extern ::std::ostream& operator<<(::std::ostream& os, const Position& p);
+
 class Token:
     public Serialisable
 {
@@ -22,6 +39,7 @@ class Token:
         uint64_t    m_intval;
         double  m_floatval;
     };
+    Position    m_pos;
 public:
     Token();
     Token(const Token& t) = default;
@@ -30,7 +48,8 @@ public:
         m_type(t.m_type),
         m_str( ::std::move(t.m_str) ),
         m_datatype( t.m_datatype ),
-        m_intval( t.m_intval )
+        m_intval( t.m_intval ),
+        m_pos( ::std::move(t.m_pos) )
     {
         t.m_type = TOK_NULL;
     }
@@ -45,6 +64,9 @@ public:
     uint64_t intval() const { return m_intval; }
     double floatval() const { return m_floatval; }
 
+    void set_pos(Position pos) { m_pos = pos; }
+    const Position& get_pos() const { return m_pos; }
+    
     static const char* typestr(enum eTokenType type);
     static eTokenType typefromstr(const ::std::string& s);
     
@@ -53,27 +75,23 @@ public:
 
 extern ::std::ostream&  operator<<(::std::ostream& os, const Token& tok);
 
-struct Position
-{
-    ::std::string   filename;
-    unsigned int    line;
-    
-    Position(::std::string filename, unsigned int line):
-        filename(filename),
-        line(line)
-    {
-    }
-};
-extern ::std::ostream& operator<<(::std::ostream& os, const Position& p);
-
 /// State the parser needs to pass down via a second channel.
 struct ParseState
 {
     bool disallow_struct_literal = false;
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const ParseState& ps) {
+        os << "ParseState {";
+        if(ps.disallow_struct_literal)  os << " disallow_struct_literal";
+        os << " }";
+        return os;
+    }
 };
 
 class TokenStream
 {
+    friend class TTLexer;   // needs access to internals to know what was consumed
+    
     bool    m_cache_valid;
     Token   m_cache;
     ::std::vector<Token>    m_lookahead;
@@ -90,6 +108,8 @@ public:
     
 protected:
     virtual Token   realGetToken() = 0;
+private:
+    Token innerGetToken();
 };
 
 class SavedParseState
@@ -100,9 +120,11 @@ public:
     SavedParseState(TokenStream& lex, ParseState state):
         m_lex(lex),
         m_state(state)
-    {}
+    {
+    }
     ~SavedParseState()
     {
+        DEBUG("Restoring " << m_state);
         m_lex.parse_state() = m_state;
     }
 };

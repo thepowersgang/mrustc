@@ -77,13 +77,21 @@ struct ExprNode_Macro:
 };
 
 // Return a value
-struct ExprNode_Return:
+struct ExprNode_Flow:
     public ExprNode
 {
+    enum Type {
+        RETURN,
+        CONTINUE,
+        BREAK,
+    } m_type;
+    ::std::string   m_target;
     unique_ptr<ExprNode>    m_value;
 
-    ExprNode_Return() {}
-    ExprNode_Return(unique_ptr<ExprNode>&& value):
+    ExprNode_Flow() {}
+    ExprNode_Flow(Type type, ::std::string target, unique_ptr<ExprNode>&& value):
+        m_type(type),
+        m_target( move(target) ),
         m_value( move(value) )
     {
     }
@@ -104,6 +112,19 @@ struct ExprNode_Const:
         m_value( move(value) )
     {
     }
+    
+    NODE_METHODS();
+};
+struct ExprNode_Import:
+    public ExprNode
+{
+    typedef ::std::vector< ::std::pair< ::std::string, AST::Path> > imports_t;
+    imports_t   m_imports;
+    
+    ExprNode_Import() {}
+    ExprNode_Import(imports_t imports):
+        m_imports( ::std::move(imports) )
+    {}
     
     NODE_METHODS();
 };
@@ -131,6 +152,9 @@ struct ExprNode_Assign:
         NONE,
         ADD,
         SUB,
+        MUL,
+        DIV,
+        MOD,
     } m_op;
     unique_ptr<ExprNode>    m_slot;
     unique_ptr<ExprNode>    m_value;
@@ -190,6 +214,42 @@ struct ExprNode_CallObject:
         m_args( move(args) )
     {
     }
+    NODE_METHODS();
+};
+
+struct ExprNode_Loop:
+    public ExprNode
+{
+    enum Type {
+        LOOP,
+        WHILE,
+        WHILELET,
+        FOR,
+    } m_type;
+    ::std::string   m_label;
+    AST::Pattern    m_pattern;
+    unique_ptr<ExprNode>    m_cond; // if NULL, loop is a 'loop'
+    unique_ptr<ExprNode>    m_code;
+
+    ExprNode_Loop(): m_type(LOOP) {}
+    ExprNode_Loop(::std::string label, unique_ptr<ExprNode> code):
+        m_type(LOOP),
+        m_label( ::std::move(label) ),
+        m_code( ::std::move(code) )
+    {}
+    ExprNode_Loop(::std::string label, unique_ptr<ExprNode> cond, unique_ptr<ExprNode> code):
+        m_type(WHILE),
+        m_label( ::std::move(label) ),
+        m_cond( ::std::move(cond) ),
+        m_code( ::std::move(code) )
+    {}
+    ExprNode_Loop(::std::string label, Type type, AST::Pattern pattern, unique_ptr<ExprNode> val, unique_ptr<ExprNode> code):
+        m_type(type),
+        m_label( ::std::move(label) ),
+        m_pattern( ::std::move(pattern) ),
+        m_cond( ::std::move(val) ),
+        m_code( ::std::move(code) )
+    {}
     NODE_METHODS();
 };
 
@@ -299,6 +359,39 @@ struct ExprNode_Bool:
     
     NODE_METHODS();
 };
+// Literal string
+struct ExprNode_String:
+    public ExprNode
+{
+    ::std::string   m_value;
+    
+    ExprNode_String() {}
+    ExprNode_String(::std::string value):
+        m_value( ::std::move(value) )
+    {}
+    
+    NODE_METHODS();
+};
+
+// Closure / Lambda
+struct ExprNode_Closure:
+    public ExprNode
+{
+    typedef ::std::vector< ::std::pair<AST::Pattern, TypeRef> > args_t;
+    
+    args_t  m_args;
+    TypeRef m_return;
+    unique_ptr<ExprNode>    m_code;
+    
+    ExprNode_Closure() {}
+    ExprNode_Closure(args_t args, TypeRef rv, unique_ptr<ExprNode> code):
+        m_args( ::std::move(args) ),
+        m_return( ::std::move(rv) ),
+        m_code( ::std::move(code) )
+    {}
+    
+    NODE_METHODS();
+};
 // Literal structure
 struct ExprNode_StructLiteral:
     public ExprNode
@@ -358,6 +451,20 @@ struct ExprNode_Field:
     }
     NODE_METHODS();
 };
+struct ExprNode_Index:
+    public ExprNode
+{
+    ::std::unique_ptr<ExprNode> m_obj;
+    ::std::unique_ptr<ExprNode> m_idx;
+    
+    ExprNode_Index() {}
+    ExprNode_Index(::std::unique_ptr<ExprNode> obj, ::std::unique_ptr<ExprNode> idx):
+        m_obj( ::std::move(obj) ),
+        m_idx( ::std::move(idx) )
+    {}
+    
+    NODE_METHODS();
+};
 
 // Pointer dereference
 struct ExprNode_Deref:
@@ -401,6 +508,8 @@ struct ExprNode_BinOp:
 		CMPLTE,
 		CMPGT,
 		CMPGTE,
+        
+        RANGE,
         BOOLAND,
         BOOLOR,
 
@@ -470,13 +579,15 @@ public:
 		virtual void visit(const nt& node) = 0*/
 	NT(ExprNode_Block);  
     NT(ExprNode_Macro);
-    NT(ExprNode_Return);
+    NT(ExprNode_Flow);
     NT(ExprNode_Const);
+    NT(ExprNode_Import);
     NT(ExprNode_LetBinding);
     NT(ExprNode_Assign);
     NT(ExprNode_CallPath);
     NT(ExprNode_CallMethod);
     NT(ExprNode_CallObject);
+    NT(ExprNode_Loop);
     NT(ExprNode_Match);
     NT(ExprNode_If);
     NT(ExprNode_IfLet);
@@ -484,11 +595,14 @@ public:
     NT(ExprNode_Integer);
     NT(ExprNode_Float);
     NT(ExprNode_Bool);
+    NT(ExprNode_String);
+    NT(ExprNode_Closure);
     NT(ExprNode_StructLiteral);
     NT(ExprNode_Tuple);
     NT(ExprNode_NamedValue);
     
     NT(ExprNode_Field);
+    NT(ExprNode_Index);
     NT(ExprNode_Deref);
     NT(ExprNode_Cast);
     NT(ExprNode_BinOp);
@@ -508,13 +622,15 @@ public:
 		virtual void visit(const nt& node) override*/
 	NT(ExprNode_Block);  
     NT(ExprNode_Macro);
-    NT(ExprNode_Return);
+    NT(ExprNode_Flow);
     NT(ExprNode_Const);
+    NT(ExprNode_Import);
     NT(ExprNode_LetBinding);
     NT(ExprNode_Assign);
     NT(ExprNode_CallPath);
     NT(ExprNode_CallMethod);
     NT(ExprNode_CallObject);
+    NT(ExprNode_Loop);
     NT(ExprNode_Match);
     NT(ExprNode_If);
     NT(ExprNode_IfLet);
@@ -522,11 +638,14 @@ public:
     NT(ExprNode_Integer);
     NT(ExprNode_Float);
     NT(ExprNode_Bool);
+    NT(ExprNode_String);
+    NT(ExprNode_Closure);
     NT(ExprNode_StructLiteral);
     NT(ExprNode_Tuple);
     NT(ExprNode_NamedValue);
     
     NT(ExprNode_Field);
+    NT(ExprNode_Index);
     NT(ExprNode_Deref);
     NT(ExprNode_Cast);
     NT(ExprNode_BinOp);

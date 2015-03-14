@@ -149,9 +149,16 @@ TypeRef Parse_Type(TokenStream& lex)
 {
     TRACE_FUNCTION;
 
-    Token tok = lex.getToken();
-    switch(tok.type())
+    Token tok;
+    
+    switch( GET_TOK(tok, lex) )
     {
+    case TOK_RWORD_EXTERN:
+        GET_CHECK_TOK(tok, lex, TOK_STRING);
+        // abi = tok.str();
+        GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
+    case TOK_RWORD_FN:
+        throw ParseError::Todo(lex, "Function types");
     case TOK_LT: {
         DEBUG("Associated type");
         // <Type as Trait>::Inner
@@ -306,7 +313,7 @@ void Parse_TypeConds(TokenStream& lex, AST::TypeParams& params)
 }
 
 /// Parse a function definition (after the 'fn')
-AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_no_code=false)
+AST::Function Parse_FunctionDef(TokenStream& lex, AST::MetaItems attrs, bool allow_no_code=false)
 {
     TRACE_FUNCTION;
 
@@ -618,7 +625,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
         case TOK_RWORD_FN: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string name = tok.str();
-            trait.add_function( ::std::move(name), Parse_FunctionDef(lex, true) );
+            trait.add_function( ::std::move(name), Parse_FunctionDef(lex, item_attrs, true) );
             break; }
         default:
             throw ParseError::Generic("Unexpected token, expected 'type' or 'fn'");
@@ -776,7 +783,7 @@ AST::Impl Parse_Impl(TokenStream& lex)
         case TOK_RWORD_FN: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string name = tok.str();
-            impl.add_function(is_public, name, Parse_FunctionDef(lex));
+            impl.add_function(is_public, name, Parse_FunctionDef(lex, item_attrs));
             break; }
 
         default:
@@ -1255,10 +1262,22 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
             mod.add_global(is_public, is_mut, name, type, val);
             break; }
 
+        case TOK_RWORD_UNSAFE:
+            meta_items.push_back( AST::MetaItem("#UNSAFE") );
+            switch(GET_TOK(tok, lex))
+            {
+            case TOK_RWORD_FN:
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                mod.add_function(is_public, tok.str(), Parse_FunctionDef(lex, ::std::move(meta_items)));
+                break;
+            default:
+                throw ParseError::Unexpected(lex, tok);
+            }
+            break;
         case TOK_RWORD_FN: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string name = tok.str();
-            mod.add_function(is_public, name, Parse_FunctionDef(lex));
+            mod.add_function(is_public, name, Parse_FunctionDef(lex, ::std::move(meta_items)));
             break; }
         case TOK_RWORD_TYPE: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);

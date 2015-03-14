@@ -58,9 +58,14 @@ public:
         m_expr_root = false;
         m_os << n.m_name << "!( /* TODO: Macro TT */ )";
     }
-    virtual void visit(AST::ExprNode_Return& n) override {
+    virtual void visit(AST::ExprNode_Flow& n) override {
         m_expr_root = false;
-        m_os << "return ";
+        switch(n.m_type)
+        {
+        case AST::ExprNode_Flow::RETURN:    m_os << "return ";  break;
+        case AST::ExprNode_Flow::BREAK:     m_os << "break ";  break;
+        case AST::ExprNode_Flow::CONTINUE:  m_os << "continue ";  break;
+        }
         AST::NodeVisitor::visit(n.m_value);
     }
     virtual void visit(AST::ExprNode_Const& n) override {
@@ -69,6 +74,11 @@ public:
         print_type(n.m_type);
         m_os << " = ";
         AST::NodeVisitor::visit(n.m_value);
+    }
+    virtual void visit(AST::ExprNode_Import& n) override {
+        m_expr_root = false;
+        for( const auto& item : n.m_imports )
+            m_os << "use " << item.second << " as " << item.first << ";\n" << indent();
     }
     virtual void visit(AST::ExprNode_LetBinding& n) override {
         m_expr_root = false;
@@ -120,6 +130,45 @@ public:
     virtual void visit(AST::ExprNode_CallObject&) override {
         m_expr_root = false;
         throw ::std::runtime_error("unimplemented ExprNode_CallObject");
+    }
+    virtual void visit(AST::ExprNode_Loop& n) override {
+        bool expr_root = m_expr_root;
+        m_expr_root = false;
+        
+        switch(n.m_type)
+        {
+        case AST::ExprNode_Loop::LOOP:
+            m_os << "loop";
+            break;
+        case AST::ExprNode_Loop::WHILE:
+            m_os << "while ";
+            AST::NodeVisitor::visit(n.m_cond);
+            break;
+        case AST::ExprNode_Loop::WHILELET:
+            m_os << "while let ";
+            print_pattern(n.m_pattern);
+            m_os << " = ";
+            AST::NodeVisitor::visit(n.m_cond);
+            break;
+        case AST::ExprNode_Loop::FOR:
+            m_os << "while for ";
+            print_pattern(n.m_pattern);
+            m_os << " in ";
+            AST::NodeVisitor::visit(n.m_cond);
+            break;
+        }
+        
+        if( expr_root )
+        {
+            m_os << "\n";
+            m_os << indent();
+        }
+        else
+        {
+            m_os << " ";
+        }
+
+        AST::NodeVisitor::visit(n.m_code);
     }
     virtual void visit(AST::ExprNode_Match& n) override {
         bool expr_root = m_expr_root;
@@ -220,6 +269,22 @@ public:
             AST::NodeVisitor::visit(fv);
         }
     }
+    virtual void visit(AST::ExprNode_Closure& n) override {
+        m_expr_root = false;
+        m_os << "|";
+        bool is_first = true;
+        for( const auto& arg : n.m_args )
+        {
+            if(!is_first)   m_os << ", ";
+            is_first = false;
+            print_pattern(arg.first);
+            m_os << ": ";
+            print_type(arg.second);
+        }
+        m_os << "|: ";
+        print_type(n.m_return);
+        AST::NodeVisitor::visit(n.m_code);
+    }
     virtual void visit(AST::ExprNode_Integer& n) override {
         m_expr_root = false;
         switch(n.m_datatype)
@@ -268,6 +333,11 @@ public:
         else
             m_os << "false";
     }
+    virtual void visit(AST::ExprNode_String& n) override {
+        m_expr_root = false;
+        m_os << "\"" << n.m_value << "\"";
+    }
+    
     virtual void visit(AST::ExprNode_StructLiteral& n) override {
         m_expr_root = false;
         m_os << n.m_path << " {\n";
@@ -306,6 +376,14 @@ public:
         m_os << "(";
         AST::NodeVisitor::visit(n.m_obj);
         m_os << ")." << n.m_name;
+    }
+    virtual void visit(AST::ExprNode_Index& n) override {
+        m_expr_root = false;
+        m_os << "(";
+        AST::NodeVisitor::visit(n.m_obj);
+        m_os << ")[";
+        AST::NodeVisitor::visit(n.m_idx);
+        m_os << "]";
     }
     virtual void visit(AST::ExprNode_Deref&) override {
         m_expr_root = false;
