@@ -145,6 +145,35 @@ static const struct {
     {"usize", CORETYPE_UINT},
 };
 
+TypeRef Parse_Type_Fn(TokenStream& lex, ::std::string abi)
+{
+    TRACE_FUNCTION;
+    Token   tok;
+    
+    ::std::vector<TypeRef>  args;
+    GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
+    while( LOOK_AHEAD(lex) != TOK_PAREN_CLOSE )
+    {
+        args.push_back( Parse_Type(lex) );
+        if( GET_TOK(tok, lex) != TOK_COMMA ) {
+            lex.putback(tok);
+            break;
+        }
+    }
+    GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+    
+    TypeRef ret_type = TypeRef(TypeRef::TagUnit());
+    if( GET_TOK(tok, lex) == TOK_THINARROW )
+    {
+        ret_type = Parse_Type(lex);
+    }
+    else {
+        lex.putback(tok);
+    }
+    
+    return TypeRef(TypeRef::TagFunction(), ::std::move(abi), ::std::move(args), ::std::move(ret_type));
+}
+
 TypeRef Parse_Type(TokenStream& lex)
 {
     TRACE_FUNCTION;
@@ -153,12 +182,14 @@ TypeRef Parse_Type(TokenStream& lex)
     
     switch( GET_TOK(tok, lex) )
     {
-    case TOK_RWORD_EXTERN:
+    case TOK_RWORD_EXTERN: {
         GET_CHECK_TOK(tok, lex, TOK_STRING);
-        // abi = tok.str();
+        ::std::string abi = tok.str();
         GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
+        return Parse_Type_Fn(lex, abi);
+        }
     case TOK_RWORD_FN:
-        throw ParseError::Todo(lex, "Function types");
+        return Parse_Type_Fn(lex, "");
     case TOK_LT: {
         DEBUG("Associated type");
         // <Type as Trait>::Inner
@@ -524,9 +555,14 @@ void Parse_Struct(AST::Module& mod, TokenStream& lex, const bool is_public, cons
     else if(tok.type() == TOK_BRACE_OPEN)
     {
         ::std::vector<AST::StructItem>  items;
-        while( (tok = lex.getToken()).type() != TOK_BRACE_CLOSE )
+        while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
         {
-            bool is_pub = false;
+            bool    is_pub = false;
+            if(tok.type() == TOK_RWORD_PUB) {
+                is_pub = true;
+                GET_TOK(tok, lex);
+            }
+            
             CHECK_TOK(tok, TOK_IDENT);
             ::std::string   name = tok.str();
             GET_CHECK_TOK(tok, lex, TOK_COLON);
@@ -792,6 +828,31 @@ AST::Impl Parse_Impl(TokenStream& lex)
     }
 
     return impl;
+}
+
+void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi)
+{
+    TRACE_FUNCTION;
+    Token   tok;
+    
+    while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
+    {
+        bool is_public = false;
+        if( tok.type() == TOK_RWORD_PUB ) {
+            is_public = true;
+            GET_TOK(tok, lex);
+        }
+        switch(tok.type())
+        {
+        case TOK_RWORD_FN:
+            // parse function as prototype
+            throw ParseError::Todo(lex, "Extern block - fn");
+        default:
+            throw ParseError::Unexpected(lex, tok);
+        }
+    }
+    
+    throw ParseError::Todo(lex, "'extern \"<ABI>\"' block");
 }
 
 void Parse_Use_Wildcard(const AST::Path& base_path, ::std::function<void(AST::Path, ::std::string)> fcn)
@@ -1186,8 +1247,19 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
         case TOK_RWORD_EXTERN:
             switch( GET_TOK(tok, lex) )
             {
-            case TOK_STRING:
-                throw ParseError::Todo("'extern \"C\"'");
+            case TOK_STRING: {
+                ::std::string abi = tok.str();
+                switch(GET_TOK(tok, lex))
+                {
+                case TOK_RWORD_FN:
+                    throw ParseError::Todo(lex, "'extern \"<ABI>\" fn'");
+                case TOK_BRACE_OPEN:
+                    Parse_ExternBlock(lex, mod, ::std::move(abi));
+                    break;
+                default:
+                    throw ParseError::Unexpected(lex, tok);
+                }
+                }
                 break;
             case TOK_RWORD_CRATE: {
                 ::std::string   path, name;

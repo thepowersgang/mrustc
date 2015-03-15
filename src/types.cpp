@@ -48,6 +48,8 @@ bool TypeRef::deref(bool is_implicit)
         throw ::std::runtime_error("Dereferencing a primtive type");
     case TypeRef::GENERIC:
         throw ::std::runtime_error("Dereferencing a generic");
+    case TypeRef::FUNCTION:
+        throw ::std::runtime_error("Dereferencing a function");
     case TypeRef::REFERENCE:
         *this = m_inner_types[0];
         return true;
@@ -105,6 +107,10 @@ void TypeRef::merge_with(const TypeRef& other)
     case TypeRef::UNIT:
     case TypeRef::PRIMITIVE:
         throw ::std::runtime_error("TypeRef::merge_with - Reached concrete/wildcard");
+    case TypeRef::FUNCTION:
+        if( m_inner_types.size() != other.m_inner_types.size() )
+            throw ::std::runtime_error("TypeRef::merge_with - Types not compatible [function sz]");
+        // - fall through to tuple code
     case TypeRef::TUPLE:
         // Other is known not to be wildcard, and is also a tuple, so it must be the same size
         if( m_inner_types.size() != other.m_inner_types.size() )
@@ -148,6 +154,7 @@ void TypeRef::resolve_args(::std::function<TypeRef(const char*)> fcn)
     case TypeRef::UNIT:
     case TypeRef::PRIMITIVE:
         break;
+    case TypeRef::FUNCTION:
     case TypeRef::TUPLE:
     case TypeRef::REFERENCE:
     case TypeRef::POINTER:
@@ -207,6 +214,11 @@ void TypeRef::match_args(const TypeRef& other, ::std::function<void(const char*,
         if( m_core_type != other.m_core_type )
             throw ::std::runtime_error("Type mismatch (core)");
         break;
+    case TypeRef::FUNCTION:
+        if( m_path[0].name() != other.m_path[0].name() )
+            throw ::std::runtime_error("Type mismatch (function abo)");
+        if( m_inner_types.size() != other.m_inner_types.size() )
+            throw ::std::runtime_error("Type mismatch (function size)");
     case TypeRef::TUPLE:
         if( m_inner_types.size() != other.m_inner_types.size() )
             throw ::std::runtime_error("Type mismatch (tuple size)");
@@ -264,6 +276,7 @@ bool TypeRef::is_concrete() const
     case TypeRef::UNIT:
     case TypeRef::PRIMITIVE:
         return true;
+    case TypeRef::FUNCTION:
     case TypeRef::TUPLE:
     case TypeRef::REFERENCE:
     case TypeRef::POINTER:
@@ -309,6 +322,9 @@ bool TypeRef::operator==(const TypeRef& x) const
         return true;
     case TypeRef::PRIMITIVE:
         return m_core_type == x.m_core_type;
+    case TypeRef::FUNCTION:
+        if( m_path[0].name() != x.m_path[0].name() )
+            return false;
     case TypeRef::TUPLE:
         return m_inner_types == x.m_inner_types;
     case TypeRef::REFERENCE:
@@ -355,6 +371,14 @@ bool TypeRef::operator==(const TypeRef& x) const
     case TypeRef::PRIMITIVE:
         //os << "TagPrimitive, " << tr.m_core_type;
         os << tr.m_core_type;
+        break;
+    case TypeRef::FUNCTION:
+        if( tr.m_path[0].name() != "" )
+            os << "extern \"" << tr.m_path[0].name() << "\" ";
+        os << "fn (";
+        for( unsigned int i = 0; i < tr.m_inner_types.size()-1; i ++ )
+            os << tr.m_inner_types[i] << ", ";
+        os << ") -> " << tr.m_inner_types.back();
         break;
     case TypeRef::TUPLE:
         //os << "TagTuple, {" << tr.m_inner_types << "}";
@@ -416,6 +440,7 @@ const char* TypeRef::class_name(TypeRef::Class c) {
     _(ANY)
     _(UNIT)
     _(PRIMITIVE)
+    _(FUNCTION)
     _(TUPLE)
     _(REFERENCE)
     _(POINTER)
@@ -434,6 +459,7 @@ void operator>>(::Deserialiser& d, TypeRef::Class& c) {
     /**/ _(ANY)
     else _(UNIT)
     else _(PRIMITIVE)
+    else _(FUNCTION)
     else _(TUPLE)
     else _(REFERENCE)
     else _(POINTER)
@@ -486,6 +512,14 @@ void PrettyPrintType::print(::std::ostream& os) const
         break;
     case TypeRef::PRIMITIVE:
         os << m_type.m_core_type;
+        break;
+    case TypeRef::FUNCTION:
+        if( m_type.m_path[0].name() != "" )
+            os << "extern \"" << m_type.m_path[0].name() << "\" ";
+        os << "fn (";
+        for( unsigned int i = 0; i < m_type.m_inner_types.size()-1; i ++ )
+            os << m_type.m_inner_types[i].print_pretty() << ", ";
+        os << ") -> " << m_type.m_inner_types.back().print_pretty();
         break;
     case TypeRef::TUPLE:
         os << "(";

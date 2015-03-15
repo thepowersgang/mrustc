@@ -47,6 +47,7 @@ class TypeRef:
         //BOUNDED,    //< '_: Traits' - Bounded type (a resolved type parameter usually)
         UNIT,   //< '()' - Unit / void
         PRIMITIVE,  //< Any primitive (builtin type)
+        FUNCTION,
         TUPLE,
         REFERENCE,
         POINTER,
@@ -88,6 +89,15 @@ public:
         m_class(TUPLE),
         m_inner_types( ::std::move(inner_types) )
     {}
+    struct TagFunction {};
+    TypeRef(TagFunction, ::std::string abi, ::std::vector<TypeRef> args, TypeRef ret):
+        m_class(FUNCTION),
+        m_path( {AST::PathNode( ::std::move(abi), {})} ), // abuse path for string
+        m_inner_types( ::std::move(args) )
+    {
+        m_inner_types.push_back( ::std::move(ret) );
+    }
+    
     struct TagReference {};
     TypeRef(TagReference _, bool is_mut, TypeRef inner_type):
         m_class(REFERENCE),
