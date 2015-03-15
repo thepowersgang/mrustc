@@ -343,8 +343,28 @@ void Parse_TypeConds(TokenStream& lex, AST::TypeParams& params)
     throw ParseError::Todo("type param conditions (where)");
 }
 
+// Parse a single function argument
+::std::pair< AST::Pattern, TypeRef> Parse_Function_Arg(TokenStream& lex, bool expect_named)
+{
+    TRACE_FUNCTION;
+    Token   tok;
+    
+    AST::Pattern pat;
+    
+    if( expect_named || (LOOK_AHEAD(lex) == TOK_IDENT && lex.lookahead(1) == TOK_COLON) )
+    {
+        pat = Parse_Pattern(lex);
+        GET_CHECK_TOK(tok, lex, TOK_COLON);
+    }
+    
+    TypeRef type = Parse_Type(lex);
+    
+    
+    return ::std::make_pair( ::std::move(pat), ::std::move(type) );
+}
+
 /// Parse a function definition (after the 'fn')
-AST::Function Parse_FunctionDef(TokenStream& lex, AST::MetaItems attrs, bool allow_no_code=false)
+AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self, bool can_be_prototype)
 {
     TRACE_FUNCTION;
 
@@ -356,12 +376,6 @@ AST::Function Parse_FunctionDef(TokenStream& lex, AST::MetaItems attrs, bool all
     {
         params = Parse_TypeParams(lex);
         GET_CHECK_TOK(tok, lex, TOK_GT);
-
-        //if(GET_TOK(tok, lex) == TOK_RWORD_WHERE)
-        //{
-        //    Parse_TypeConds(lex, params);
-        //    tok = lex.getToken();
-        //}
     }
     else {
         lex.putback(tok);
@@ -372,51 +386,54 @@ AST::Function Parse_FunctionDef(TokenStream& lex, AST::MetaItems attrs, bool all
 
     GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
     GET_TOK(tok, lex);
+    
+    // Handle self
     if( tok.type() == TOK_AMP )
     {
-        // By-reference method
-        bool force_type = false;
-        ::std::string   lifetime;
-        if( GET_TOK(tok, lex) == TOK_LIFETIME )
-        {
-            lifetime = tok.str();
-            GET_TOK(tok, lex);
-            force_type = true;
-            // Forces to be a type
-        }
-        if( tok.type() == TOK_RWORD_MUT )
-        {
-            // Forces to be a type
-            fcn_class = AST::Function::CLASS_MUTMETHOD;
-            force_type = true;
-            GET_TOK(tok, lex);
-        }
-        else
-        {
-            fcn_class = AST::Function::CLASS_REFMETHOD;
-        }
+        // By-reference method?
         
-        if( tok.type() == TOK_RWORD_SELF )
+        unsigned int ofs = 0;
+        if( lex.lookahead(0) == TOK_LIFETIME )
+            ofs ++;
+        
+        if( lex.lookahead(ofs) == TOK_RWORD_SELF || (lex.lookahead(ofs) == TOK_RWORD_MUT && lex.lookahead(ofs+1) == TOK_RWORD_SELF) )
         {
-            // Could be a type or a binding...
-            CHECK_TOK(tok, TOK_RWORD_SELF);
-        }
-        else if( force_type )
-        {
-            // Fall into type parsing somehow
+            ::std::string   lifetime;
+            if( GET_TOK(tok, lex) == TOK_LIFETIME ) {
+                lifetime = tok.str();
+                GET_TOK(tok, lex);
+            }
+            if( tok.type() == TOK_RWORD_MUT )
+            {
+                GET_CHECK_TOK(tok, lex, TOK_RWORD_SELF);
+                fcn_class = AST::Function::CLASS_MUTMETHOD;
+            }
+            else
+            {
+                fcn_class = AST::Function::CLASS_REFMETHOD;
+            }
+            DEBUG("TODO: UFCS / self lifetimes");
+            if( allow_self == false )
+                throw ParseError::Generic(lex, "Self binding not expected");
+            //args.push_back( ::std::make_pair(
+            //    AST::Pattern(),
+            //    TypeRef(TypeRef::TagReference(), lifetime, (fcn_class == AST::Function::CLASS_MUTMETHOD), )
+            //) );
             
+            // Prime tok for next step
+            GET_TOK(tok, lex);
         }
         else
         {
-            // either a reference binding or a type
+            // Unbound method
+            lex.putback(tok);   // un-eat the '&'
         }
-        DEBUG("TODO: UFCS / self lifetimes");
-        //args.push_back( ::std::make_pair( AST::Pattern(), TypeRef(TypeRef::TagReference(), lifetime, (fcn_class == AST::Function::CLASS_MUTMETHOD), ) ) );
-        GET_TOK(tok, lex);
     }
     else if( tok.type() == TOK_RWORD_SELF )
     {
         // By-value method
+        if( allow_self == false )
+            throw ParseError::Generic(lex, "Self binding not expected");
         fcn_class = AST::Function::CLASS_VALMETHOD;
         GET_TOK(tok, lex);
     }
@@ -438,12 +455,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, AST::MetaItems attrs, bool all
         
         // Argument list
         do {
-            AST::Pattern pat = Parse_Pattern(lex);
-            
-            GET_CHECK_TOK(tok, lex, TOK_COLON);
-            TypeRef type = Parse_Type(lex);
-            
-            args.push_back( ::std::make_pair( ::std::move(pat), ::std::move(type) ) );
+            args.push_back( Parse_Function_Arg(lex, true) );
         } while( GET_TOK(tok, lex) == TOK_COMMA );
         CHECK_TOK(tok, TOK_PAREN_CLOSE);
     }
@@ -462,6 +474,14 @@ AST::Function Parse_FunctionDef(TokenStream& lex, AST::MetaItems attrs, bool all
         lex.putback(tok);
     }
 
+    if( GET_TOK(tok, lex) == TOK_RWORD_WHERE )
+    {
+        throw ParseError::Todo(lex, "where clauses on fn");
+    }
+    else {
+        lex.putback(tok);
+    }
+    
     AST::Expr   code;
     if( GET_TOK(tok, lex) == TOK_BRACE_OPEN )
     {
@@ -470,7 +490,8 @@ AST::Function Parse_FunctionDef(TokenStream& lex, AST::MetaItems attrs, bool all
     }
     else
     {
-        if( !allow_no_code )
+        CHECK_TOK(tok, TOK_SEMICOLON);
+        if( !can_be_prototype )
         {
             throw ParseError::Generic("Expected code for function");
         }
@@ -661,7 +682,8 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
         case TOK_RWORD_FN: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string name = tok.str();
-            trait.add_function( ::std::move(name), Parse_FunctionDef(lex, item_attrs, true) );
+            // Self allowed, prototype-form allowed (optional names and no code)
+            trait.add_function( ::std::move(name), Parse_FunctionDef(lex, "rust", item_attrs, true, true) );
             break; }
         default:
             throw ParseError::Generic("Unexpected token, expected 'type' or 'fn'");
@@ -819,7 +841,8 @@ AST::Impl Parse_Impl(TokenStream& lex)
         case TOK_RWORD_FN: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string name = tok.str();
-            impl.add_function(is_public, name, Parse_FunctionDef(lex, item_attrs));
+            // - Self allowed, can't be prototype-form
+            impl.add_function(is_public, name, Parse_FunctionDef(lex, "rust", item_attrs, true, false));
             break; }
 
         default:
@@ -837,6 +860,14 @@ void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi)
     
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
+        AST::MetaItems  meta_items;
+        while( tok.type() == TOK_ATTR_OPEN )
+        {
+            meta_items.push_back( Parse_MetaItem(lex) );
+            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+            GET_TOK(tok, lex);
+        }
+        
         bool is_public = false;
         if( tok.type() == TOK_RWORD_PUB ) {
             is_public = true;
@@ -845,14 +876,15 @@ void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi)
         switch(tok.type())
         {
         case TOK_RWORD_FN:
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
             // parse function as prototype
-            throw ParseError::Todo(lex, "Extern block - fn");
+            // - no self
+            mod.add_function(is_public, tok.str(), Parse_FunctionDef(lex, abi, ::std::move(meta_items), false, true));
+            break;
         default:
             throw ParseError::Unexpected(lex, tok);
         }
     }
-    
-    throw ParseError::Todo(lex, "'extern \"<ABI>\"' block");
 }
 
 void Parse_Use_Wildcard(const AST::Path& base_path, ::std::function<void(AST::Path, ::std::string)> fcn)
@@ -1340,7 +1372,8 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
             {
             case TOK_RWORD_FN:
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                mod.add_function(is_public, tok.str(), Parse_FunctionDef(lex, ::std::move(meta_items)));
+                // - self not allowed, not prototype
+                mod.add_function(is_public, tok.str(), Parse_FunctionDef(lex, "rust", ::std::move(meta_items), false, false));
                 break;
             default:
                 throw ParseError::Unexpected(lex, tok);
@@ -1349,7 +1382,8 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
         case TOK_RWORD_FN: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string name = tok.str();
-            mod.add_function(is_public, name, Parse_FunctionDef(lex, ::std::move(meta_items)));
+            // - self not allowed, not prototype
+            mod.add_function(is_public, name, Parse_FunctionDef(lex, "rust", ::std::move(meta_items), false, false));
             break; }
         case TOK_RWORD_TYPE: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
