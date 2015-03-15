@@ -621,11 +621,14 @@ SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
 
 ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x)
 {
-    //return os << "GenericBound(" << x.m_argname << "," << x.m_lifetime << "," << x.m_trait << ")";
-    return os << x.m_argname << ": ('" << x.m_lifetime << " + " << x.m_trait << ")";
+    os << x.m_type << ": ";
+    if( x.m_lifetime != "" )
+        return os << "'" << x.m_lifetime;
+    else
+        return os << x.m_trait;
 }
 SERIALISE_TYPE_S(GenericBound, {
-    s.item(m_argname);
+    s.item(m_type);
     s.item(m_lifetime);
     s.item(m_trait);
 })
@@ -680,13 +683,14 @@ bool TypeParams::check_params(Crate& crate, ::std::vector<TypeRef>& types, bool 
     {
         auto& type = types[i];
         auto& param = m_params[i].name();
+        TypeRef test(TypeRef::TagArg(), param);
         if( type.is_wildcard() )
         {
             for( const auto& bound : m_bounds )
             {
-                if( bound.is_trait() && bound.name() == param )
+                if( bound.is_trait() && bound.test() == test )
                 {
-                    const auto& trait = bound.type();
+                    const auto& trait = bound.bound();
                     const auto& ty_traits = type.traits();
                 
                     auto it = ::std::find(ty_traits.begin(), ty_traits.end(), trait);
@@ -703,9 +707,9 @@ bool TypeParams::check_params(Crate& crate, ::std::vector<TypeRef>& types, bool 
             // Check that the type fits the bounds applied to it
             for( const auto& bound : m_bounds )
             {
-                if( bound.is_trait() && bound.name() == param )
+                if( bound.is_trait() && bound.test() == test )
                 {
-                    const auto& trait = bound.type();
+                    const auto& trait = bound.bound();
                     // Check if 'type' impls 'trait'
                     if( !crate.find_impl(type, trait).is_some() )
                     {

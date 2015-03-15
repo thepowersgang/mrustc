@@ -623,7 +623,11 @@ void RustPrinter::print_bounds(const AST::TypeParams& params)
                 m_os << ", ";
             is_first = false;
             
-            m_os << indent() << b.name() << ": ";
+            m_os << indent() << b.test() << ": ";
+            if( b.is_trait() )
+                m_os << b.bound();
+            else
+                m_os << b.lifetime();
             m_os << "\n";
         }
     

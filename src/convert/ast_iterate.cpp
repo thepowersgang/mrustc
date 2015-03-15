@@ -31,7 +31,8 @@ void CASTIterator::handle_params(AST::TypeParams& params)
     }
     for( auto& bound : params.bounds() )
     {
-        handle_type(bound.type());
+        handle_type(bound.test());
+        handle_path(bound.bound(), CASTIterator::MODE_TYPE);
     }
 }
 

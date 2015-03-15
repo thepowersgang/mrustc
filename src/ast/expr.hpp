@@ -547,6 +547,7 @@ struct ExprNode_UniOp:
 {
     enum Type {
         REF,
+        REFMUT,
         BOX,
         INVERT,
         NEGATE,

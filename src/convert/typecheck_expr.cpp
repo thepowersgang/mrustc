@@ -114,9 +114,13 @@ void CTypeChecker::handle_params(AST::TypeParams& params)
     
     for( const auto& bound : params.bounds() )
     {
-        int i = params.find_name(bound.name().c_str());
-        assert(i >= 0);
-        trs[bound.name()].add_trait( bound.type() );
+        if( bound.is_trait() && bound.test().is_type_param() )
+        {
+            const auto& name = bound.test().type_param();
+            int i = params.find_name(name.c_str());
+            assert(i >= 0);
+            trs[name].add_trait( bound.bound() );
+        }
     }
     
     assert(m_scopes.back().params.size() == 0);

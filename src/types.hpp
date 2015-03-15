@@ -43,6 +43,7 @@ class TypeRef:
 {
     /// Class
     enum Class {
+        NONE,
         ANY,    //< '_' - Wildcard
         //BOUNDED,    //< '_: Traits' - Bounded type (a resolved type parameter usually)
         UNIT,   //< '()' - Unit / void
@@ -68,6 +69,12 @@ public:
     TypeRef():
         m_class(ANY)
     {}
+    
+    struct TagInvalid {};
+    TypeRef(TagInvalid):
+        m_class(NONE)
+    {}
+    
     struct TagBoundedAny {};
     TypeRef(TagBoundedAny, ::std::vector<TypeRef> traits):
         m_class(ANY),

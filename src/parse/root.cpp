@@ -11,6 +11,42 @@ extern AST::Pattern Parse_Pattern(TokenStream& lex);
 AST::MetaItem   Parse_MetaItem(TokenStream& lex);
 void Parse_ModRoot(TokenStream& lex, AST::Crate& crate, AST::Module& mod, LList<AST::Module*> *prev_modstack, const ::std::string& path);
 
+AST::Path   Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode);
+AST::Path   Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generic_mode);
+::std::vector<TypeRef>  Parse_Path_GenericList(TokenStream& lex);
+AST::Path   Parse_PathFrom(TokenStream& lex, AST::Path path, eParsePathGenericMode generic_mode);
+
+AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
+{
+    Token   tok;
+    if( GET_TOK(tok, lex) == TOK_DOUBLE_COLON )
+        return Parse_Path(lex, true, generic_mode);
+    else
+    {
+        lex.putback(tok);
+        return Parse_Path(lex, false, generic_mode);
+    }
+}
+AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generic_mode)
+{
+    if( is_abs )
+    {
+        Token   tok;
+        if( GET_TOK(tok, lex) == TOK_STRING ) {
+            ::std::string   cratename = tok.str();
+            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+            return Parse_PathFrom(lex, AST::Path(cratename, {}), generic_mode);
+        }
+        else {
+            lex.putback(tok);
+            return Parse_PathFrom(lex, AST::Path(AST::Path::TagAbsolute()), generic_mode);
+        }
+    }
+    else
+        return Parse_PathFrom(lex, AST::Path(), generic_mode);
+}
+
+/// Parse a list of parameters within a path
 ::std::vector<TypeRef> Parse_Path_GenericList(TokenStream& lex)
 {
     TRACE_FUNCTION;
@@ -105,25 +141,6 @@ AST::Path Parse_PathFrom(TokenStream& lex, AST::Path path, eParsePathGenericMode
     return path;
 }
 
-AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generic_mode)
-{
-    if( is_abs )
-    {
-        Token   tok;
-        if( GET_TOK(tok, lex) == TOK_STRING ) {
-            ::std::string   cratename = tok.str();
-            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-            return Parse_PathFrom(lex, AST::Path(cratename, {}), generic_mode);
-        }
-        else {
-            lex.putback(tok);
-            return Parse_PathFrom(lex, AST::Path(AST::Path::TagAbsolute()), generic_mode);
-        }
-    }
-    else
-        return Parse_PathFrom(lex, AST::Path(), generic_mode);
-}
-
 static const struct {
     const char* name;
     enum eCoreType  type;
@@ -145,34 +162,8 @@ static const struct {
     {"usize", CORETYPE_UINT},
 };
 
-TypeRef Parse_Type_Fn(TokenStream& lex, ::std::string abi)
-{
-    TRACE_FUNCTION;
-    Token   tok;
-    
-    ::std::vector<TypeRef>  args;
-    GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
-    while( LOOK_AHEAD(lex) != TOK_PAREN_CLOSE )
-    {
-        args.push_back( Parse_Type(lex) );
-        if( GET_TOK(tok, lex) != TOK_COMMA ) {
-            lex.putback(tok);
-            break;
-        }
-    }
-    GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
-    
-    TypeRef ret_type = TypeRef(TypeRef::TagUnit());
-    if( GET_TOK(tok, lex) == TOK_THINARROW )
-    {
-        ret_type = Parse_Type(lex);
-    }
-    else {
-        lex.putback(tok);
-    }
-    
-    return TypeRef(TypeRef::TagFunction(), ::std::move(abi), ::std::move(args), ::std::move(ret_type));
-}
+TypeRef Parse_Type(TokenStream& lex);
+TypeRef Parse_Type_Fn(TokenStream& lex, ::std::string abi);
 
 TypeRef Parse_Type(TokenStream& lex)
 {
@@ -284,11 +275,62 @@ TypeRef Parse_Type(TokenStream& lex)
         CHECK_TOK(tok, TOK_PAREN_CLOSE);
         return TypeRef(TypeRef::TagTuple(), types); }
     case TOK_EXCLAM:
-        throw ParseError::Todo("noreturn type");
+        throw ParseError::Generic(lex, "! is not a real type");
     default:
         throw ParseError::Unexpected(lex, tok);
     }
     throw ParseError::BugCheck("Reached end of Parse_Type");
+}
+
+TypeRef Parse_Type_Fn(TokenStream& lex, ::std::string abi)
+{
+    TRACE_FUNCTION;
+    Token   tok;
+    
+    ::std::vector<TypeRef>  args;
+    GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
+    while( LOOK_AHEAD(lex) != TOK_PAREN_CLOSE )
+    {
+        args.push_back( Parse_Type(lex) );
+        if( GET_TOK(tok, lex) != TOK_COMMA ) {
+            lex.putback(tok);
+            break;
+        }
+    }
+    GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+    
+    TypeRef ret_type = TypeRef(TypeRef::TagUnit());
+    if( GET_TOK(tok, lex) == TOK_THINARROW )
+    {
+        ret_type = Parse_Type(lex);
+    }
+    else {
+        lex.putback(tok);
+    }
+    
+    return TypeRef(TypeRef::TagFunction(), ::std::move(abi), ::std::move(args), ::std::move(ret_type));
+}
+
+/// Parse type parameters in a definition
+void Parse_TypeBound(TokenStream& lex, AST::TypeParams& ret, TypeRef checked_type)
+{
+    TRACE_FUNCTION;
+    Token tok;
+    
+    do
+    {
+        if(GET_TOK(tok, lex) == TOK_LIFETIME) {
+            ret.add_bound( AST::GenericBound(checked_type, tok.str()) );
+        }
+        else if( tok.type() == TOK_QMARK ) {
+            ret.add_bound( AST::GenericBound(checked_type, Parse_Path(lex, PATH_GENERIC_TYPE), true) );
+        }
+        else {
+            lex.putback(tok);
+            ret.add_bound( AST::GenericBound(checked_type, Parse_Path(lex, PATH_GENERIC_TYPE)) );
+        }
+    } while( GET_TOK(tok, lex) == TOK_PLUS );
+    lex.putback(tok);
 }
 
 AST::TypeParams Parse_TypeParams(TokenStream& lex)
@@ -299,8 +341,7 @@ AST::TypeParams Parse_TypeParams(TokenStream& lex)
     Token tok;
     do {
         bool is_lifetime = false;
-        tok = lex.getToken();
-        switch(tok.type())
+        switch( GET_TOK(tok, lex) )
         {
         case TOK_IDENT:
             break;
@@ -315,32 +356,45 @@ AST::TypeParams Parse_TypeParams(TokenStream& lex)
         ret.add_param( AST::TypeParam( is_lifetime, param_name ) );
         if( GET_TOK(tok, lex) == TOK_COLON )
         {
-            // TODO: Conditions
             if( is_lifetime )
             {
-                throw ParseError::Todo("lifetime param conditions");
+                throw ParseError::Todo(lex, "lifetime param conditions");
             }
-
-            do
+            else
             {
-                if(GET_TOK(tok, lex) == TOK_LIFETIME) {
-                    ret.add_bound( AST::GenericBound(param_name, tok.str()) );
-                }
-                else {
-                    lex.putback(tok);
-                    ret.add_bound( AST::GenericBound(param_name, Parse_Type(lex)) );
-                }
-            } while( GET_TOK(tok, lex) == TOK_PLUS );
+                Parse_TypeBound(lex, ret, TypeRef(TypeRef::TagArg(), param_name));
+            }
+            GET_TOK(tok, lex);
+        }
+        
+        if( tok.type() == TOK_EQUAL )
+        {
+            ret.params().back().setDefault( Parse_Type(lex) );
+            GET_TOK(tok, lex);
         }
     } while( tok.type() == TOK_COMMA );
     lex.putback(tok);
     return ret;
 }
 
-void Parse_TypeConds(TokenStream& lex, AST::TypeParams& params)
+void Parse_WhereClause(TokenStream& lex, AST::TypeParams& params)
 {
     TRACE_FUNCTION;
-    throw ParseError::Todo("type param conditions (where)");
+    Token   tok;
+    
+    do {
+        if( GET_TOK(tok, lex) == TOK_LIFETIME )
+        {
+        }
+        else
+        {
+            lex.putback(tok);
+            TypeRef type = Parse_Type(lex);
+            GET_CHECK_TOK(tok, lex, TOK_COLON);
+            Parse_TypeBound(lex, params, type);
+        }
+    } while( GET_TOK(tok, lex) == TOK_COMMA );
+    lex.putback(tok);
 }
 
 // Parse a single function argument
@@ -463,11 +517,17 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
         // Eat 'tok', negative comparison
     }
 
-    TypeRef ret_type;
+    TypeRef ret_type = TypeRef(TypeRef::TagUnit());;
     if( GET_TOK(tok, lex) == TOK_THINARROW )
     {
         // Return type
-        ret_type = Parse_Type(lex);
+        if( GET_TOK(tok, lex) == TOK_EXCLAM ) {
+            ret_type = TypeRef(TypeRef::TagInvalid());
+        }
+        else {
+            lex.putback(tok);
+            ret_type = Parse_Type(lex);
+        }
     }
     else
     {
@@ -476,7 +536,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
 
     if( GET_TOK(tok, lex) == TOK_RWORD_WHERE )
     {
-        throw ParseError::Todo(lex, "where clauses on fn");
+        Parse_WhereClause(lex, params);
     }
     else {
         lex.putback(tok);
@@ -542,7 +602,7 @@ void Parse_Struct(AST::Module& mod, TokenStream& lex, const bool is_public, cons
         tok = lex.getToken();
         if(tok.type() == TOK_RWORD_WHERE)
         {
-            Parse_TypeConds(lex, params);
+            Parse_WhereClause(lex, params);
             tok = lex.getToken();
         }
     }
@@ -621,19 +681,9 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
     // Trait bounds "trait Trait : 'lifetime + OtherTrait + OtherTrait2"
     if(tok.type() == TOK_COLON)
     {
-        do
-        {
-            if( GET_TOK(tok, lex) == TOK_LIFETIME )
-            {
-                // Lifetime requirement
-                throw ParseError::Todo("Trait bounds (lifetime)");
-            }
-            else
-            {
-                lex.putback(tok);
-                params.add_bound( AST::GenericBound("Self", Parse_Type(lex)) );
-            }
-        } while(GET_TOK(tok, lex) == TOK_PLUS);
+        // 'Self' is a special generic type only valid within traits
+        Parse_TypeBound(lex, params, TypeRef(TypeRef::TagArg(), "Self"));
+        GET_TOK(tok, lex);
     }
     
     // TODO: Support "for Sized?"
@@ -641,7 +691,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
     {
         if( params.n_params() == 0 )
             throw ParseError::Generic("Where clause with no generic params");
-        Parse_TypeConds(lex, params);
+        Parse_WhereClause(lex, params);
         tok = lex.getToken();
     }
 
@@ -659,26 +709,40 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
             GET_TOK(tok, lex);
         }
         
+        
         switch(tok.type())
         {
         case TOK_RWORD_STATIC: {
             throw ParseError::Todo("Associated static");
             break; }
+        // Associated type
         case TOK_RWORD_TYPE: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string name = tok.str();
-            if( GET_TOK(tok, lex) == TOK_COLON ) {
-                throw ParseError::Todo("Type bounds on associated type");
+            if( GET_TOK(tok, lex) == TOK_COLON )
+            {
+                // Bounded associated type
+                TypeRef a_type = TypeRef(TypeRef::TagAssoc(), TypeRef(TypeRef::TagArg(), "Self"), TypeRef(), name);
+                Parse_TypeBound(lex, params, a_type);
+                GET_TOK(tok, lex);
             }
             if( tok.type() == TOK_RWORD_WHERE ) {
-                throw ParseError::Todo("Where clause on associated type");
+                throw ParseError::Todo(lex, "Where clause on associated type");
             }
+            
             TypeRef default_type;
             if( tok.type() == TOK_EQUAL ) {
                 default_type = Parse_Type(lex);
+                GET_TOK(tok, lex);
             }
+            
+            CHECK_TOK(tok, TOK_SEMICOLON);
             trait.add_type( ::std::move(name), ::std::move(default_type) );
             break; }
+        // Functions (possibly unsafe)
+        case TOK_RWORD_UNSAFE:
+            item_attrs.push_back( AST::MetaItem("#UNSAFE") );
+            GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
         case TOK_RWORD_FN: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string name = tok.str();
@@ -686,7 +750,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
             trait.add_function( ::std::move(name), Parse_FunctionDef(lex, "rust", item_attrs, true, true) );
             break; }
         default:
-            throw ParseError::Generic("Unexpected token, expected 'type' or 'fn'");
+            throw ParseError::Unexpected(lex, tok);
         }
     }
     
@@ -709,7 +773,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems meta_items)
         tok = lex.getToken();
         if(tok.type() == TOK_RWORD_WHERE)
         {
-            Parse_TypeConds(lex, params);
+            Parse_WhereClause(lex, params);
             tok = lex.getToken();
         }
     }
@@ -773,7 +837,7 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
     }
 }
 
-AST::Impl Parse_Impl(TokenStream& lex)
+AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe=false)
 {
     TRACE_FUNCTION;
     Token   tok;
@@ -789,22 +853,51 @@ AST::Impl Parse_Impl(TokenStream& lex)
         lex.putback(tok);
     }
     // 2. Either a trait name (with type params), or the type to impl
-    // - Don't care which at this stage
+    
     TypeRef trait_type;
-    TypeRef impl_type = Parse_Type(lex);
-    if( GET_TOK(tok, lex) == TOK_RWORD_FOR )
+    TypeRef impl_type;
+    // - Handle negative impls, which must be a trait
+    // "impl !Trait for Type {}"
+    if( GET_TOK(tok, lex) == TOK_EXCLAM )
     {
-        // Implementing a trait for another type, get the target type
-        trait_type = impl_type;
+        trait_type = Parse_Type(lex);
+        GET_CHECK_TOK(tok, lex, TOK_RWORD_FOR);
         impl_type = Parse_Type(lex);
+        
+        if( GET_TOK(tok, lex) == TOK_RWORD_WHERE )
+        {
+            Parse_WhereClause(lex, params);
+            GET_TOK(tok, lex);
+        }
+        CHECK_TOK(tok, TOK_BRACE_OPEN);
+        // negative impls can't have any content
+        GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
+        
+        return AST::Impl(AST::Impl::TagNegative(), ::std::move(params),
+                ::std::move(impl_type), ::std::move(trait_type)
+                );
     }
-    else {
+    else
+    {
+        // - Don't care which at this stage
         lex.putback(tok);
+        
+        impl_type = Parse_Type(lex);
+        if( GET_TOK(tok, lex) == TOK_RWORD_FOR )
+        {
+            // Implementing a trait for another type, get the target type
+            trait_type = impl_type;
+            impl_type = Parse_Type(lex);
+        }
+        else {
+            lex.putback(tok);
+        }
     }
+    
     // Where clause
     if( GET_TOK(tok, lex) == TOK_RWORD_WHERE )
     {
-        Parse_TypeConds(lex, params);
+        Parse_WhereClause(lex, params);
     }
     else {
         lex.putback(tok);
@@ -829,6 +922,12 @@ AST::Impl Parse_Impl(TokenStream& lex)
             is_public = true;
             GET_TOK(tok, lex);
         }
+        
+        if(tok.type() == TOK_RWORD_UNSAFE) {
+            item_attrs.push_back( AST::MetaItem("#UNSAFE") );
+            GET_TOK(tok, lex);
+        }
+        
         switch(tok.type())
         {
         case TOK_RWORD_TYPE: {
@@ -1267,7 +1366,8 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
                 ::std::string name = tok.str();
                 
                 auto expanded_macro = Macro_Invoke(lex, name.c_str(), tt);
-                Parse_ModRoot_Items(*expanded_macro, crate, mod, modstack, path);
+                // Pass "!" as 'path' to allow termination on EOF
+                Parse_ModRoot_Items(*expanded_macro, crate, mod, modstack, "!");
             }
             break;
         
@@ -1375,6 +1475,15 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
                 // - self not allowed, not prototype
                 mod.add_function(is_public, tok.str(), Parse_FunctionDef(lex, "rust", ::std::move(meta_items), false, false));
                 break;
+            case TOK_RWORD_TRAIT: {
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                ::std::string name = tok.str();
+                mod.add_trait(is_public, name, Parse_TraitDef(lex, meta_items));
+                break;
+                }
+            case TOK_RWORD_IMPL:
+                mod.add_impl(Parse_Impl(lex, true));
+                break;
             default:
                 throw ParseError::Unexpected(lex, tok);
             }
@@ -1419,7 +1528,10 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
                 break;
             case TOK_SEMICOLON:
                 DEBUG("Mod = " << name << ", curpath = " << path);
-                if( path.back() != '/' )
+                if( path == "-" || path == "!" ) {
+                    throw ParseError::Generic(lex, "Cannot load module from file within nested context");
+                }
+                else if( path.back() != '/' )
                 {
                     throw ParseError::Generic( FMT("Can't load from files outside of mod.rs or crate root") );
                 }

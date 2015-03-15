@@ -41,7 +41,10 @@ public:
         m_class( is_lifetime ? LIFETIME : TYPE ),
         m_name( ::std::move(name) )
     {}
-    void setDefault(TypeRef type);
+    void setDefault(TypeRef type) {
+        assert(m_default.is_wildcard());
+        m_default = ::std::move(type);
+    }
     
     const ::std::string&    name() const { return m_name; }
     const TypeRef& get_default() const { return m_default; }
@@ -55,25 +58,32 @@ public:
 class GenericBound:
     public Serialisable
 {
-    ::std::string   m_argname;
+    TypeRef m_type;
+
     ::std::string   m_lifetime;
-    TypeRef m_trait;
+    
+    bool    m_optional;
+    AST::Path   m_trait;
 public:
+    
     GenericBound() {}
-    GenericBound(::std::string argname, ::std::string lifetime):
-        m_argname(argname),
+    GenericBound(TypeRef type, ::std::string lifetime):
+        m_type( ::std::move(type) ),
         m_lifetime(lifetime)
     { }
-    GenericBound(::std::string argname, TypeRef trait):
-        m_argname(argname),
+    GenericBound(TypeRef type, AST::Path trait, bool optional=false):
+        m_type( ::std::move(type) ),
+        m_optional(optional),
         m_trait( ::std::move(trait) )
     { }
     
     bool is_trait() const { return m_lifetime == ""; }
-    const ::std::string& name() const { return m_argname; }
-    const TypeRef& type() const { return m_trait; }
+    const ::std::string& lifetime() const { return m_lifetime; }
+    const TypeRef& test() const { return m_type; }
+    const AST::Path& bound() const { return m_trait; }
     
-    TypeRef& type() { return m_trait; }
+    TypeRef& test() { return m_type; }
+    AST::Path& bound() { return m_trait; }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x);
     SERIALISABLE_PROTOTYPES();
@@ -394,16 +404,26 @@ class Impl:
     TypeRef m_trait;
     TypeRef m_type;
     
+    bool    m_is_negative;
     ItemList<TypeRef>   m_types;
     ItemList<Function>  m_functions;
     
     ::std::vector< ::std::pair< ::std::vector<TypeRef>, Impl > > m_concrete_impls;
 public:
-    Impl() {}
+    Impl(): m_is_negative(false) {}
     Impl(TypeParams params, TypeRef impl_type, TypeRef trait_type):
         m_params( move(params) ),
         m_trait( move(trait_type) ),
-        m_type( move(impl_type) )
+        m_type( move(impl_type) ),
+        m_is_negative(true)
+    {}
+    
+    struct TagNegative {};
+    Impl(TagNegative, TypeParams params, TypeRef impl_type, TypeRef trait_type):
+        m_params( move(params) ),
+        m_trait( move(trait_type) ),
+        m_type( move(impl_type) ),
+        m_is_negative(true)
     {}
 
     void add_function(bool is_public, ::std::string name, Function fcn) {

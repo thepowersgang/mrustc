@@ -46,6 +46,7 @@ private:
     /// Iteration counts for each layer
     ::std::vector<size_t>   m_layer_counts;
 
+    Token   m_next_token;   // used for inserting a single token into the stream
     ::std::unique_ptr<TTStream>   m_ttstream;
     
 public:
@@ -73,6 +74,7 @@ public:
     virtual Position getPosition() const override;
     virtual Token realGetToken() override;
 private:
+    const MacroRuleEnt& getCurLayerEnt() const;
     const ::std::vector<MacroRuleEnt>* getCurLayer() const;
     void prep_counts();
 };
@@ -352,6 +354,13 @@ Position MacroExpander::getPosition() const
 }
 Token MacroExpander::realGetToken()
 {
+    // Use m_next_token first
+    DEBUG("m_next_token = " << m_next_token);
+    if( m_next_token.type() != TOK_NULL )
+    {
+        return ::std::move(m_next_token);
+    }
+    // Then try m_ttstream
     if( m_ttstream.get() )
     {
         DEBUG("TTStream set");
@@ -380,34 +389,32 @@ Token MacroExpander::realGetToken()
             const auto& ent = ents[idx];
             // - If not, just handle the next entry
             // Check type of entry
-            if( ent.name != "" )
+            if( ent.name == "*crate" ) {
+                // HACK: Handle $crate with a special name
+                DEBUG("Crate name hack");
+                m_ttstream.reset( new TTStream(m_crate_path) );
+                return m_ttstream->getToken();
+            }
+            else if( ent.name != "" )
             {
                 // - Name
-                // HACK: Handle $crate with a special name
-                if( ent.name == "*crate" ) {
-                    DEBUG("Crate name hack");
-                    m_ttstream.reset( new TTStream(m_crate_path) );
-                    return m_ttstream->getToken();
-                }
-                else {
-                    const size_t iter_idx = m_offsets.back().second;
-                    const auto tt_i = m_mappings.equal_range( ::std::make_pair(layer, ent.name.c_str()) );
-                    if( tt_i.first == tt_i.second )
-                        throw ParseError::Generic( FMT("Cannot find mapping name: " << ent.name << " for layer " << layer) );
-                    
-                    size_t i = 0;
-                    for( auto it = tt_i.first; it != tt_i.second; it ++ )
-                    {
-                        if( i == iter_idx )
-                        {
-                            DEBUG(ent.name << " #" << i << " - Setting TT");
-                            m_ttstream.reset( new TTStream(it->second) );
-                            return m_ttstream->getToken();
-                        }
-                        i ++;
-                    }
+                const size_t iter_idx = m_offsets.back().second;
+                const auto tt_i = m_mappings.equal_range( ::std::make_pair(layer, ent.name.c_str()) );
+                if( tt_i.first == tt_i.second )
                     throw ParseError::Generic( FMT("Cannot find mapping name: " << ent.name << " for layer " << layer) );
+                
+                size_t i = 0;
+                for( auto it = tt_i.first; it != tt_i.second; it ++ )
+                {
+                    if( i == iter_idx )
+                    {
+                        DEBUG(ent.name << " #" << i << " - Setting TT");
+                        m_ttstream.reset( new TTStream(it->second) );
+                        return m_ttstream->getToken();
+                    }
+                    i ++;
                 }
+                throw ParseError::Generic( FMT("Too few instances of " << ent.name << " at layer " << layer) );
             }
             else if( ent.subpats.size() != 0 )
             {
@@ -434,6 +441,13 @@ Token MacroExpander::realGetToken()
                 DEBUG("Restart layer");
                 m_offsets.back().first = 0;
                 m_offsets.back().second ++;
+                
+                auto& loop_layer = getCurLayerEnt();
+                assert(loop_layer.subpats.size());
+                if( loop_layer.tok.type() != TOK_NULL ) {
+                    DEBUG("- Separator token = " << loop_layer.tok);
+                    return loop_layer.tok;
+                }
                 // Fall through and restart layer
             }
             else
@@ -483,6 +497,22 @@ void MacroExpander::prep_counts()
     {
         m_layer_counts.push_back(l.count);
     }
+}
+const MacroRuleEnt& MacroExpander::getCurLayerEnt() const
+{
+    assert( m_offsets.size() > 1 );
+    
+    const ::std::vector<MacroRuleEnt>* ents = &m_root_contents;
+    for( unsigned int i = 0; i < m_offsets.size()-2; i ++ )
+    {
+        unsigned int ofs = m_offsets[i].first;
+        //DEBUG(i << " ofs=" << ofs << " / " << ents->size());
+        assert( ofs > 0 && ofs <= ents->size() );
+        ents = &(*ents)[ofs-1].subpats;
+        //DEBUG("ents = " << ents);
+    }
+    return (*ents)[m_offsets[m_offsets.size()-2].first-1];
+    
 }
 const ::std::vector<MacroRuleEnt>* MacroExpander::getCurLayer() const
 {

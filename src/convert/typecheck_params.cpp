@@ -20,8 +20,8 @@ public:
     virtual void handle_params(AST::TypeParams& params) override;
     
 private:
-    bool has_impl_for_param(const ::std::string name, const TypeRef& trait) const;
-    bool has_impl(const TypeRef& type, const TypeRef& trait) const;
+    bool has_impl_for_param(const ::std::string name, const AST::Path& trait) const;
+    bool has_impl(const TypeRef& type, const AST::Path& trait) const;
     void check_generic_params(const AST::TypeParams& info, ::std::vector<TypeRef>& types, bool allow_infer = false);
 };
 
@@ -36,7 +36,7 @@ public:
 };
 
 // === CODE ===
-bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const TypeRef& trait) const
+bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const AST::Path& trait) const
 {
     const AST::TypeParams*  tps = nullptr;
     // Locate params set that contains the passed name
@@ -60,12 +60,13 @@ bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const Ty
     }
     
     // Search bound list for the passed trait
+    TypeRef param_type(TypeRef::TagArg(), name);
     for( const auto& bound : tps->bounds() )
     {
-        if( bound.is_trait() && bound.name() == name )
+        if( bound.is_trait() && bound.test() == param_type )
         {
-            DEBUG("bound.type() {" << bound.type() << "} == trait {" << trait << "}");
-            if( bound.type() == trait )
+            DEBUG("bound.type() {" << bound.bound() << "} == trait {" << trait << "}");
+            if( bound.bound() == trait )
                 return true;
         }
     }
@@ -75,7 +76,7 @@ bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const Ty
     DEBUG("No match in generics, returning failure");
     return false;
 }
-bool CGenericParamChecker::has_impl(const TypeRef& type, const TypeRef& trait) const
+bool CGenericParamChecker::has_impl(const TypeRef& type, const AST::Path& trait) const
 {
     DEBUG("(type = " << type << ", trait = " << trait << ")");
     if( type.is_type_param() )
@@ -158,11 +159,12 @@ void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::s
         {
             // Not a wildcard!
             // Check that the type fits the bounds applied to it
+            TypeRef param_type(TypeRef::TagArg(), param);
             for( const auto& bound : info.bounds() )
             {
-                if( bound.is_trait() && bound.name() == param )
+                if( bound.is_trait() && bound.test() == param_type )
                 {
-                    const auto& trait = bound.type();
+                    const auto& trait = bound.bound();
                     // Check if 'type' impls 'trait'
                     if( !has_impl(type, trait) )
                     {

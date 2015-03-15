@@ -698,7 +698,12 @@ ExprNodeP Parse_Expr12(TokenStream& lex)
     case TOK_RWORD_BOX:
         return NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::BOX, Parse_Expr12(lex) );
     case TOK_AMP:
-        return NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::REF, Parse_Expr12(lex) );
+        if( GET_TOK(tok, lex) == TOK_RWORD_MUT )
+            return NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::REFMUT, Parse_Expr12(lex) );
+        else {
+            lex.putback(tok);
+            return NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::REF, Parse_Expr12(lex) );
+        }
     default:
         lex.putback(tok);
         return Parse_ExprFC(lex);

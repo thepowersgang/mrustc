@@ -454,6 +454,7 @@ void operator%(::Serialiser& s, const ExprNode_UniOp::Type t) {
     _(INVERT)
     _(BOX)
     _(REF)
+    _(REFMUT)
     #undef _
     }
 }
@@ -466,9 +467,10 @@ void operator%(::Deserialiser& s, enum ExprNode_UniOp::Type& t) {
     _(INVERT)
     _(BOX)
     _(REF)
+    _(REFMUT)
+    #undef _
     else
         throw ::std::runtime_error( FMT("No uniop type for '" << n << "'") );
-    #undef _
 }
 NODE(ExprNode_UniOp, {
     s % m_type;
