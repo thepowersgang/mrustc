@@ -156,7 +156,7 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
 }
 void CASTIterator::handle_pattern_enum(
         ::std::vector<TypeRef>& pat_args, const ::std::vector<TypeRef>& hint_args,
-        const AST::TypeParams& enum_params, const AST::StructItem& var,
+        const AST::TypeParams& enum_params, const AST::EnumVariant& var,
         ::std::vector<AST::Pattern>& sub_patterns
         )
 {
@@ -278,7 +278,10 @@ void CASTIterator::handle_enum(AST::Path path, AST::Enum& enm)
     start_scope();
     handle_params( enm.params() );
     for( auto& f : enm.variants() )
-        handle_type( f.data );
+    {
+        for( auto& t : f.m_sub_types )
+            handle_type(t);
+    }
     end_scope();
 }
 void CASTIterator::handle_trait(AST::Path path, AST::Trait& trait)

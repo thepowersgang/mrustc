@@ -255,6 +255,42 @@ ExprNodeP Parse_Stmt(TokenStream& lex, bool& opt_semicolon)
             });
         return NEWNODE( AST::ExprNode_Import, ::std::move(imports) );
         }
+    // 'extern' blocks
+    case TOK_RWORD_EXTERN: {
+        opt_semicolon = true;
+        // - default ABI is "C"
+        ::std::string    abi = "C";
+        if( GET_TOK(tok, lex) == TOK_STRING ) {
+            abi = tok.str();
+        }
+        else
+            lex.putback(tok);
+        
+        ::std::vector< ::std::pair< ::std::string, AST::Function> >  imports;
+        bool is_block = false;
+        if( GET_TOK(tok, lex) == TOK_BRACE_OPEN )
+            is_block = true;
+        else
+            lex.putback(tok);
+        
+        do {
+            ::std::string   name;
+            switch( GET_TOK(tok, lex) )
+            {
+            case TOK_RWORD_FN:
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                name = tok.str();
+                imports.push_back( ::std::make_pair( ::std::move(name), Parse_FunctionDef(lex, abi, AST::MetaItems(), false, true) ) );
+                GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+                break;
+            default:
+                throw ParseError::Unexpected(lex, tok);
+            }
+        } while( is_block && LOOK_AHEAD(lex) != TOK_BRACE_CLOSE );
+        if( is_block )
+            GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
+        return NEWNODE( AST::ExprNode_Extern, ::std::move(imports) );
+        }
     case TOK_RWORD_CONST: {
         opt_semicolon = false;
         GET_CHECK_TOK(tok, lex, TOK_IDENT);

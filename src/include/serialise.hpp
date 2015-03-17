@@ -44,6 +44,7 @@ public:
     
     virtual Serialiser& operator<<(bool val) = 0;
     virtual Serialiser& operator<<(uint64_t val) = 0;
+    virtual Serialiser& operator<<(int64_t val) = 0;
     virtual Serialiser& operator<<(double val) = 0;
     virtual Serialiser& operator<<(const char* s) = 0;
     Serialiser& operator<<(const ::std::string& s) {
@@ -106,6 +107,7 @@ protected:
 public:
     virtual void item(bool& b) = 0;
     virtual void item(uint64_t& v) = 0;
+    virtual void item(int64_t& val) = 0;
     virtual void item(double& v) = 0;
     virtual void item(::std::string& s) = 0;
 

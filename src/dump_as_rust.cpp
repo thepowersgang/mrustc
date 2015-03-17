@@ -80,6 +80,11 @@ public:
         for( const auto& item : n.m_imports )
             m_os << "use " << item.second << " as " << item.first << ";\n" << indent();
     }
+    virtual void visit(AST::ExprNode_Extern& n) override {
+        m_expr_root = false;
+        for( const auto& item : n.m_imports )
+            m_os << "extern \"\" fn " << item.first /*<< item.second*/ << ";\n" << indent();
+    }
     virtual void visit(AST::ExprNode_LetBinding& n) override {
         m_expr_root = false;
         m_os << "let ";
@@ -423,6 +428,7 @@ public:
         case AST::ExprNode_BinOp::MODULO:   m_os << "%"; break;
         case AST::ExprNode_BinOp::ADD:   m_os << "+"; break;
         case AST::ExprNode_BinOp::SUB:   m_os << "-"; break;
+        case AST::ExprNode_BinOp::RANGE: m_os << ".."; break;
         }
         m_os << " ";
         if( IS(*n.m_right, AST::ExprNode_BinOp) )
@@ -438,7 +444,7 @@ public:
         case AST::ExprNode_UniOp::INVERT:   m_os << "!";    break;
         case AST::ExprNode_UniOp::BOX:      m_os << "box ";    break;
         case AST::ExprNode_UniOp::REF:    m_os << "&";    break;
-        //case AST::ExprNode_UniOp::REFMUT: m_os << "&mut ";    break;
+        case AST::ExprNode_UniOp::REFMUT: m_os << "&mut ";    break;
         }
         
         if( IS(*n.m_value, AST::ExprNode_BinOp) )
@@ -718,9 +724,16 @@ void RustPrinter::handle_enum(const AST::Enum& s)
     inc_indent();
     for( const auto& i : s.variants() )
     {
-        m_os << indent() << i.name;
-        if( i.data.sub_types().size() )
-            m_os << i.data.print_pretty();
+        m_os << indent() << i.m_name;
+        if( i.m_sub_types.size() )
+        {
+            for( const auto& t : i.m_sub_types )
+                m_os << t.print_pretty() << ", ";
+        }
+        else
+        {
+            m_os << " = " << i.m_value;
+        }
         m_os << ",\n";
     }
     dec_indent();

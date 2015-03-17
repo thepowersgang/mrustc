@@ -1,6 +1,7 @@
 /*
  */
 #include "expr.hpp"
+#include "ast.hpp"
 
 namespace AST {
 
@@ -55,6 +56,7 @@ SERIALISE_TYPE(Expr::, "Expr", {
     else _(ExprNode_Flow)
     else _(ExprNode_Const)
     else _(ExprNode_Import)
+    else _(ExprNode_Extern)
     else _(ExprNode_LetBinding)
     else _(ExprNode_Assign)
     else _(ExprNode_CallPath)
@@ -154,10 +156,23 @@ NODE(ExprNode_Const, {
     os << "const " << m_name << ": " << m_type << " = " << *m_value;
 })
 
+
+ExprNode_Extern::ExprNode_Extern()
+{}
+ExprNode_Extern::ExprNode_Extern(ExprNode_Extern::imports_t imports):
+    m_imports( ::std::move(imports) )
+{}
+
 NODE(ExprNode_Import, {
     s.item(m_imports);
 },{
     os << "/* todo: use /*";
+})
+
+NODE(ExprNode_Extern, {
+    s.item(m_imports);
+},{
+    os << "/* todo: export /*";
 })
 
 NODE(ExprNode_LetBinding, {
@@ -442,6 +457,7 @@ NODE(ExprNode_BinOp, {
 	case MODULO:   os << "%"; break;
 	case ADD:   os << "+"; break;
 	case SUB:   os << "-"; break;
+	case RANGE:   os << ".."; break;
     }
     os << " " << *m_right << ")";
 })
@@ -482,6 +498,7 @@ NODE(ExprNode_UniOp, {
     case INVERT: os << "(!"; break;
     case BOX: os << "(box "; break;
     case REF: os << "(&"; break;
+    case REFMUT: os << "(&mut "; break;
     }
     os << *m_value << ")";
 })
@@ -510,6 +527,7 @@ NV(ExprNode_Const,
     visit(node.m_value);
 })
 NV(ExprNode_Import, {})
+NV(ExprNode_Extern, {})
 NV(ExprNode_LetBinding,
 {
     // TODO: Handle recurse into Let pattern

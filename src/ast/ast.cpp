@@ -531,6 +531,12 @@ SERIALISE_TYPE(Trait::, "AST_Trait", {
     s.item(m_functions);
 })
 
+SERIALISE_TYPE_A(EnumVariant::, "AST_EnumVariant", {
+    s.item(m_name);
+    s.item(m_sub_types);
+    s.item(m_value);
+})
+
 SERIALISE_TYPE(Enum::, "AST_Enum", {
     s << m_params;
     s << m_variants;

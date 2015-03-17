@@ -40,7 +40,7 @@ public:
     
     virtual void handle_pattern_enum(
             ::std::vector<TypeRef>& pat_args, const ::std::vector<TypeRef>& hint_args,
-            const AST::TypeParams& enum_params, const AST::StructItem& var,
+            const AST::TypeParams& enum_params, const AST::EnumVariant& var,
             ::std::vector<AST::Pattern>& sub_patterns
             ) override;
     
@@ -57,7 +57,7 @@ private:
     
     void check_enum_variant(
         ::std::vector<TypeRef>& path_args, const ::std::vector<TypeRef>& argtypes,
-        const AST::TypeParams& params, const AST::StructItem& var
+        const AST::TypeParams& params, const AST::EnumVariant& var
         );
     void iterate_traits(::std::function<bool(const TypeRef& trait)> fcn);
 };
@@ -128,15 +128,14 @@ void CTypeChecker::handle_params(AST::TypeParams& params)
 }
 void CTypeChecker::handle_pattern_enum(
         ::std::vector<TypeRef>& pat_args, const ::std::vector<TypeRef>& hint_args,
-        const AST::TypeParams& enum_params, const AST::StructItem& var,
+        const AST::TypeParams& enum_params, const AST::EnumVariant& var,
         ::std::vector<AST::Pattern>& sub_patterns
         )
 {
     check_enum_variant(pat_args, hint_args, enum_params, var);
     
     // Ensure that sub_patterns is the same length as the variant
-    assert(var.data.is_tuple());
-    const auto& var_types = var.data.sub_types();
+    const auto& var_types = var.m_sub_types;
     if( sub_patterns.size() != var_types.size() )
         throw ::std::runtime_error(FMT("Enum pattern size mismatch"));
     for( unsigned int i = 0; i < sub_patterns.size(); i ++ )
@@ -217,6 +216,9 @@ void CTypeChecker::handle_function(AST::Path path, AST::Function& fcn)
         local_variable(false, "self", TypeRef(TypeRef::TagReference(), true, get_local_type("Self")));
         break;
     case AST::Function::CLASS_VALMETHOD:
+        local_variable(false, "self", TypeRef(get_local_type("Self")));
+        break;
+    case AST::Function::CLASS_MUTVALMETHOD:
         local_variable(true, "self", TypeRef(get_local_type("Self")));
         break;
     }
@@ -251,7 +253,7 @@ void CTypeChecker::iterate_traits(::std::function<bool(const TypeRef& trait)> fc
     }
 }
 
-void CTypeChecker::check_enum_variant(::std::vector<TypeRef>& path_args, const ::std::vector<TypeRef>& argtypes, const AST::TypeParams& params, const AST::StructItem& var)
+void CTypeChecker::check_enum_variant(::std::vector<TypeRef>& path_args, const ::std::vector<TypeRef>& argtypes, const AST::TypeParams& params, const AST::EnumVariant& var)
 {
     // We know the enum, but it might have type params, need to handle that case
     if( params.n_params() > 0 )
@@ -263,18 +265,21 @@ void CTypeChecker::check_enum_variant(::std::vector<TypeRef>& path_args, const :
         // 2. Create a pattern from the argument types and the format of the variant
         DEBUG("argtypes = [" << argtypes << "]");
         ::std::vector<TypeRef>  item_args(params.n_params());
-        DEBUG("variant type = " << var.data << "");
-        var.data.match_args(
-            TypeRef(TypeRef::TagTuple(), argtypes),
-            [&](const char *name, const TypeRef& t) {
-                    DEBUG("Binding " << name << " to type " << t);
-                    int idx = params.find_name(name);
-                    if( idx == -1 ) {
-                        throw ::std::runtime_error(FMT("Can't find generic " << name));
+        DEBUG("variant type = " << var.m_sub_types << "");
+        for( unsigned int i = 0; i < var.m_sub_types.size(); i ++ )
+        {
+            var.m_sub_types[i].match_args(
+                TypeRef(TypeRef::TagTuple(), argtypes),
+                [&](const char *name, const TypeRef& t) {
+                        DEBUG("Binding " << name << " to type " << t);
+                        int idx = params.find_name(name);
+                        if( idx == -1 ) {
+                            throw ::std::runtime_error(FMT("Can't find generic " << name));
+                        }
+                        item_args.at(idx).merge_with( t );
                     }
-                    item_args.at(idx).merge_with( t );
-                }
-            );
+                );
+        }
         DEBUG("item_args = [" << item_args << "]");
         // 3. Merge the two sets of arguments
         for( unsigned int i = 0; i < path_args.size(); i ++ )
@@ -303,8 +308,8 @@ void CTC_NodeVisitor::visit(AST::ExprNode_NamedValue& node)
             auto idx = p.bound_idx();
             // Enum variant:
             // - Check that this variant takes no arguments
-            if( !enm.variants()[idx].data.is_unit() )
-                throw ::std::runtime_error( FMT("Used a non-unit variant as a raw value - " << enm.variants()[idx].data));
+            if( enm.variants()[idx].m_sub_types.size() > 0 )
+                throw ::std::runtime_error( FMT("Used a non-unit variant as a raw value - " << enm.variants()[idx].m_sub_types));
             // - Set output type to the enum (wildcard params, not default)
             AST::Path tp = p;
             tp.nodes().pop_back();

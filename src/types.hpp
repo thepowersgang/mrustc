@@ -201,4 +201,13 @@ public:
     SERIALISABLE_PROTOTYPES(); 
 };
 
+class Type_Function:
+    public Serialisable
+{
+    bool    is_unsafe;
+    ::std::string   m_abi;
+    TypeRef m_rettype;
+    ::std::vector<TypeRef>  m_arg_types;
+};
+
 #endif // TYPES_HPP_INCLUDED

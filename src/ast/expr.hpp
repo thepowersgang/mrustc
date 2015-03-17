@@ -128,6 +128,18 @@ struct ExprNode_Import:
     
     NODE_METHODS();
 };
+struct ExprNode_Extern:
+    public ExprNode
+{
+    typedef ::std::vector< ::std::pair< ::std::string, AST::Function> > imports_t;
+    imports_t   m_imports;
+    
+    ExprNode_Extern();
+    ExprNode_Extern(imports_t imports);
+    // - Non-local because AST::Function
+    
+    NODE_METHODS();
+};
 struct ExprNode_LetBinding:
     public ExprNode
 {
@@ -583,6 +595,7 @@ public:
     NT(ExprNode_Flow);
     NT(ExprNode_Const);
     NT(ExprNode_Import);
+    NT(ExprNode_Extern);
     NT(ExprNode_LetBinding);
     NT(ExprNode_Assign);
     NT(ExprNode_CallPath);
@@ -626,6 +639,7 @@ public:
     NT(ExprNode_Flow);
     NT(ExprNode_Const);
     NT(ExprNode_Import);
+    NT(ExprNode_Extern);
     NT(ExprNode_LetBinding);
     NT(ExprNode_Assign);
     NT(ExprNode_CallPath);

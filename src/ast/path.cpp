@@ -267,7 +267,7 @@ void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std
     unsigned int idx = 0;
     for( idx = 0; idx < ent.variants().size(); idx ++ )
     {
-        if( ent.variants()[idx].name == name ) {
+        if( ent.variants()[idx].m_name == name ) {
             break;
         }
     }

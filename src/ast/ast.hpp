@@ -282,6 +282,7 @@ public:
         CLASS_REFMETHOD,
         CLASS_MUTMETHOD,
         CLASS_VALMETHOD,
+        CLASS_MUTVALMETHOD,
     };
     typedef ::std::vector< ::std::pair<AST::Pattern,TypeRef> >   Arglist;
 
@@ -296,15 +297,15 @@ public:
     Function():
         m_fcn_class(CLASS_UNBOUND)
     {}
-    Function(TypeParams params, Class fcn_class, TypeRef ret_type, Arglist args, Expr code):
+    Function(TypeParams params, Class fcn_class, TypeRef ret_type, Arglist args):
         m_fcn_class(fcn_class),
         m_params(params),
-        m_code( ::std::move(code) ),
         m_rettype( move(ret_type) ),
         m_args( move(args) )
     {
     }
     
+    void set_code(Expr code) { m_code = ::std::move(code); }
     void set_self_lifetime(::std::string s) { m_lifetime = s; }
     
     const Class fcn_class() const { return m_fcn_class; }
@@ -353,23 +354,51 @@ public:
     SERIALISABLE_PROTOTYPES();
 };
 
+struct EnumVariant:
+    public Serialisable
+{
+    ::std::string   m_name;
+    ::std::vector<TypeRef>  m_sub_types;
+    int64_t m_value;
+    
+    EnumVariant():
+        m_value(0)
+    {
+    }
+    
+    EnumVariant(::std::string name, int64_t value):
+        m_name( ::std::move(name) ),
+        m_value( value )
+    {
+    }
+    
+    EnumVariant(::std::string name, ::std::vector<TypeRef> sub_types):
+        m_name( ::std::move(name) ),
+        m_sub_types( ::std::move(sub_types) ),
+        m_value(0)
+    {
+    }
+    
+    SERIALISABLE_PROTOTYPES();
+};
+
 class Enum:
     public Serialisable
 {
     TypeParams    m_params;
-    ::std::vector<StructItem>   m_variants;
+    ::std::vector<EnumVariant>   m_variants;
 public:
     Enum() {}
-    Enum( TypeParams params, ::std::vector<StructItem> variants ):
+    Enum( TypeParams params, ::std::vector<EnumVariant> variants ):
         m_params( move(params) ),
         m_variants( move(variants) )
     {}
     
     const TypeParams& params() const { return m_params; }
-    const ::std::vector<StructItem>& variants() const { return m_variants; }
+    const ::std::vector<EnumVariant>& variants() const { return m_variants; }
     
     TypeParams& params() { return m_params; }
-    ::std::vector<StructItem>& variants() { return m_variants; }
+    ::std::vector<EnumVariant>& variants() { return m_variants; }
     
     SERIALISABLE_PROTOTYPES();
 };

@@ -105,6 +105,11 @@ public:
         m_class(LOCAL),
         m_nodes({PathNode(name, {})})
     {}
+    struct TagSuper {};
+    Path(TagSuper):
+        m_class(RELATIVE),
+        m_nodes({PathNode("super", {})})
+    {}
     
     Path(::std::initializer_list<PathNode> l):
         m_class(ABSOLUTE),
