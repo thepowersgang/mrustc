@@ -637,7 +637,7 @@ Token TTStream::realGetToken()
         unsigned int& idx = m_stack.back().first;
         const TokenTree& tree = *m_stack.back().second;
 
-        if(idx == 0 && tree.size() == 0) {
+        if(idx == 0 && tree.is_token()) {
             idx ++;
             return tree.tok();
         }

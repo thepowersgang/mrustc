@@ -173,6 +173,8 @@ TypeRef Parse_Type(TokenStream& lex)
     
     switch( GET_TOK(tok, lex) )
     {
+    case TOK_UNDERSCORE:
+        return TypeRef();
     case TOK_RWORD_EXTERN: {
         GET_CHECK_TOK(tok, lex, TOK_STRING);
         ::std::string abi = tok.str();
@@ -211,6 +213,10 @@ TypeRef Parse_Type(TokenStream& lex)
     case TOK_DOUBLE_COLON:
         // Path with generics
         return TypeRef(TypeRef::TagPath(), Parse_Path(lex, true, PATH_GENERIC_TYPE));
+
+    // HACK! Convert && into & &
+    case TOK_DOUBLE_AMP:
+        lex.putback(Token(TOK_AMP));
     case TOK_AMP: {
         ::std::string   lifetime;
         // Reference
@@ -1424,8 +1430,10 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
             }
             else
             {
+                DEBUG("Invoke macro '"<<tok.str()<<"'");
                 TokenTree tt = Parse_TT(lex, true);
-                if( tt.size() == 0 ) {
+                if( tt.is_token() ) {
+                    DEBUG("TT was a single token (not a sub-tree)");
                     throw ParseError::Unexpected(lex, tt.tok());
                 }
                 ::std::string name = tok.str();

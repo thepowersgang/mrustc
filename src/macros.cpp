@@ -419,11 +419,20 @@ Token MacroExpander::realGetToken()
             else if( ent.subpats.size() != 0 )
             {
                 // New layer
-                // - Push an offset
-                m_offsets.push_back( ::std::make_pair(0, 0) );
-                // - Save the current layer
-                m_cur_ents = getCurLayer();
-                // - Restart loop for new layer
+                DEBUG("- NL = " << layer+1 << ", count = " << m_layer_counts.size() );
+                if( layer+1 < m_layer_counts.size() && m_layer_counts.at(layer+1) > 0 )
+                {
+                    // - Push an offset
+                    m_offsets.push_back( ::std::make_pair(0, 0) );
+                    // - Save the current layer
+                    m_cur_ents = getCurLayer();
+                    // - Restart loop for new layer
+                }
+                else
+                {
+                    // Layer empty
+                    DEBUG("Layer " << layer+1 << " is empty");
+                }
             }
             else
             {
@@ -435,7 +444,7 @@ Token MacroExpander::realGetToken()
         else
         {
             // - Otherwise, restart/end loop and fall through
-            unsigned int layer_max = m_layer_counts.at(layer);
+            unsigned int layer_max = (layer < m_layer_counts.size() ? m_layer_counts.at(layer) : 0);
             if( m_offsets.back().second + 1 < layer_max )
             {
                 DEBUG("Restart layer");
