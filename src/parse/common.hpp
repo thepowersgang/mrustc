@@ -35,6 +35,7 @@ extern void Parse_Struct(AST::Module& mod, TokenStream& lex, bool is_public, con
 extern AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe=false);
 
 extern AST::Function    Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self, bool can_be_prototype);
+extern AST::Function    Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self);
 extern AST::Expr   Parse_Expr(TokenStream& lex, bool const_only);
 extern AST::Expr   Parse_ExprBlock(TokenStream& lex);
 

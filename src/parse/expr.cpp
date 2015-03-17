@@ -163,6 +163,10 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex)
         return AST::Pattern( );
     case TOK_AMP:
         DEBUG("Ref");
+        if( GET_TOK(tok, lex) == TOK_RWORD_MUT )
+            // TODO: Actually use mutability
+            return AST::Pattern( AST::Pattern::TagReference(), Parse_PatternReal(lex) );
+        lex.putback(tok);
         return AST::Pattern( AST::Pattern::TagReference(), Parse_PatternReal(lex) );
     case TOK_IDENT:
         lex.putback(tok);
@@ -286,6 +290,15 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
         case TOK_RWORD_IMPL:
             if( !local_mod.get() )  local_mod.reset( new AST::Module("") );
             local_mod->add_impl(Parse_Impl(lex, false));
+            break;
+        // - 'fn'
+        case TOK_RWORD_FN:
+            if( !local_mod.get() )  local_mod.reset( new AST::Module("") );
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            // - self not allowed, not prototype
+            local_mod->add_function(
+                false, tok.str(), Parse_FunctionDefWithCode(lex, "rust", ::std::move(item_attrs), false)
+                );
             break;
         default: {
             lex.putback(tok);
@@ -1133,6 +1146,37 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
             return rv;
         }
+    case TOK_SQUARE_OPEN:
+        if( GET_TOK(tok, lex) == TOK_SQUARE_CLOSE )
+        {
+            // Empty literal
+            //return NEWNODE( AST::ExprNode_Array, ::std::vector<ExprNodeP>() );
+        }
+        else
+        {
+            lex.putback(tok);
+            auto first = Parse_Expr0(lex);
+            if( GET_TOK(tok, lex) == TOK_SEMICOLON )
+            {
+                // Repetiion
+                auto count = Parse_Expr0(lex);
+                GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+                //return NEWNODE( AST::ExprNode_Array, ::std::move(first), ::std::move(count); );
+            }
+            else
+            {
+                ::std::vector<ExprNodeP>    items;
+                items.push_back( ::std::move(first) );
+                while( tok.type() == TOK_COMMA )
+                {
+                    items.push_back( Parse_Expr0(lex) );
+                    GET_TOK(tok, lex);
+                }
+                CHECK_TOK(tok, TOK_SQUARE_CLOSE);
+                //return NEWNODE( AST::ExprNode_Array, ::std::move(items) );
+            }
+        }
+        throw ParseError::Todo(lex, "Array literals");
     case TOK_MACRO:
         {
         TokenTree tt = Parse_TT(lex, true);

@@ -1490,6 +1490,9 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
                 // Pass "!" as 'path' to allow termination on EOF
                 Parse_ModRoot_Items(*expanded_macro, crate, mod, modstack, "!");
             }
+            // - Silently consume ';' after the macro
+            if( GET_TOK(tok, lex) != TOK_SEMICOLON )
+                lex.putback(tok);
             break;
         
         case TOK_RWORD_USE:
