@@ -240,7 +240,7 @@ Token Lexer::getToken()
                     ch = this->getc();
                     if( ch == 'x' ) {
                         num_mode = HEX;
-                        while( isxdigit(ch = this->getc()) )
+                        while( isxdigit(ch = this->getc_num()) )
                         {
                             val *= 16;
                             if(ch <= '9')
@@ -253,7 +253,16 @@ Token Lexer::getToken()
                     }
                     else if( ch == 'b' ) {
                         num_mode = BIN;
-                        throw ParseError::Todo("Lex binary numbers");
+                        while( isdigit(ch = this->getc_num()) )
+                        {
+                            val *= 2;
+                            if(ch == '0')
+                                val += 0;
+                            else if( ch == '1' )
+                                val += 1;
+                            else
+                                throw ParseError::Generic("Invalid digit in binary literal");
+                        }
                     }
                     else if( isdigit(ch) ) {
                         num_mode = OCT;
@@ -487,6 +496,7 @@ uint32_t Lexer::parseEscape(char enclosing)
     char ch = this->getc();
     switch(ch)
     {
+    case 'x':
     case 'u': {
         // Unicode (up to six hex digits)
         uint32_t    val = 0;

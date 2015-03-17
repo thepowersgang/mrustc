@@ -651,6 +651,14 @@ void Parse_Struct(AST::Module& mod, TokenStream& lex, const bool is_public, cons
         ::std::vector<AST::StructItem>  items;
         while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
         {
+            AST::MetaItems  item_attrs;
+            while( tok.type() == TOK_ATTR_OPEN )
+            {
+                item_attrs.push_back( Parse_MetaItem(lex) );
+                GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+                GET_TOK(tok, lex);
+            }
+            
             bool    is_pub = false;
             if(tok.type() == TOK_RWORD_PUB) {
                 is_pub = true;
