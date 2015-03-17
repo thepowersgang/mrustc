@@ -25,10 +25,15 @@ enum eParsePathGenericMode
     PATH_GENERIC_TYPE
 };
 
+extern AST::MetaItem   Parse_MetaItem(TokenStream& lex);
 extern AST::Path   Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generic_mode);
 extern ::std::vector<TypeRef>   Parse_Path_GenericList(TokenStream& lex);
 extern TypeRef     Parse_Type(TokenStream& lex);
+
 extern void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)> fcn);
+extern void Parse_Struct(AST::Module& mod, TokenStream& lex, bool is_public, const AST::MetaItems meta_items);
+extern AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe=false);
+
 extern AST::Function    Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self, bool can_be_prototype);
 extern AST::Expr   Parse_Expr(TokenStream& lex, bool const_only);
 extern AST::Expr   Parse_ExprBlock(TokenStream& lex);

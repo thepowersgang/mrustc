@@ -12,8 +12,11 @@
 #include <iostream>
 #include <cstdlib>  // strtol
 #include <typeinfo>
+#include <algorithm>	// std::count
 
 Lexer::Lexer(::std::string filename):
+    m_path(filename),
+    m_line(1),
     m_istream(filename.c_str()),
     m_last_char_valid(false)
 {
@@ -170,7 +173,7 @@ signed int Lexer::getSymbol()
         //::std::cout << "ofs=" << ofs << ", chars[ofs] = " << chars[ofs] << ", ch = " << ch << ", len = " << len << ::std::endl;
 
         if( ofs >= len || chars[ofs] > ch ) {
-            this->putback();
+            this->ungetc();
             return best;
         }
 
@@ -185,7 +188,7 @@ signed int Lexer::getSymbol()
         }
     }
 
-    this->putback();
+    this->ungetc();
     return best;
 }
 
@@ -198,7 +201,37 @@ bool issym(char ch)
     return false;
 }
 
-Token Lexer::getToken()
+Position Lexer::getPosition() const
+{
+    return Position(m_path, m_line);
+}
+Token Lexer::realGetToken()
+{
+    while(true)
+    {
+        Token tok = getTokenInt();
+        //::std::cout << "getTokenInt: tok = " << tok << ::std::endl;
+        switch(tok.type())
+        {
+        case TOK_NEWLINE:
+            m_line ++;
+            //DEBUG("m_line = " << m_line << " (NL)");
+            continue;
+        case TOK_WHITESPACE:
+            continue;
+        case TOK_COMMENT: {
+            ::std::string comment = tok.str();
+            unsigned int c = ::std::count(comment.begin(), comment.end(), '\n');
+            m_line += c;
+            //DEBUG("m_line = " << m_line << " (comment w/ "<<c<<")");
+            continue; }
+        default:
+            return tok;
+        }
+    }
+}
+
+Token Lexer::getTokenInt()
 {
     if( this->m_next_token.type() != TOK_NULL )
     {
@@ -214,10 +247,10 @@ Token Lexer::getToken()
         {
             while( isspace(ch = this->getc()) && ch != '\n' )
                 ;
-            this->putback();
+            this->ungetc();
             return Token(TOK_WHITESPACE);
         }
-        this->putback();
+        this->ungetc();
 
         const signed int sym = this->getSymbol();
         if( sym == 0 )
@@ -297,7 +330,7 @@ Token Lexer::getToken()
                             this->m_next_token = Token(TOK_TRIPLE_DOT);
                         }
                         else {
-                            this->putback();
+                            this->ungetc();
                             this->m_next_token = Token(TOK_DOUBLE_DOT);
                         }
                         return Token(val, CORETYPE_ANY);
@@ -309,7 +342,7 @@ Token Lexer::getToken()
                         return Token(val, CORETYPE_ANY);
                     }
                     
-                    this->putback();
+                    this->ungetc();
                     double fval = this->parseFloat(val);
                     if( (ch = this->getc()) == 'f' )
                     {
@@ -319,7 +352,7 @@ Token Lexer::getToken()
                             suffix.push_back(ch);
                             ch = this->getc();
                         }
-                        this->putback();
+                        this->ungetc();
                         if( suffix == "f32" ) {
                             num_type = CORETYPE_F32;
                         }
@@ -332,13 +365,13 @@ Token Lexer::getToken()
                     }
                     else
                     {
-                        this->putback();
+                        this->ungetc();
                     }
                     return Token( fval, num_type);
 
                 }
                 else {
-                    this->putback();
+                    this->ungetc();
                     return Token(val, num_type);
                 }
             }
@@ -357,7 +390,7 @@ Token Lexer::getToken()
                 }
                 else
                 {
-                    this->putback();
+                    this->ungetc();
                     for( unsigned int i = 0; i < LEN(RWORDS); i ++ )
                     {
                         if( str < RWORDS[i].chars ) break;
@@ -388,7 +421,7 @@ Token Lexer::getToken()
                     str.push_back(ch);
                     ch = this->getc();
                 }
-                this->putback();
+                this->ungetc();
                 return Token(TOK_COMMENT, str); }
             case BLOCKCOMMENT: {
                 ::std::string   str;
@@ -397,7 +430,7 @@ Token Lexer::getToken()
                     if( ch == '*' ) {
                         ch = this->getc();
                         if( ch == '/' ) break;
-                        this->putback();
+                        this->ungetc();
                     }
                     str.push_back(ch);
                     ch = this->getc();
@@ -420,7 +453,7 @@ Token Lexer::getToken()
                             str.push_back(ch);
                             ch = this->getc();
                         }
-                        this->putback();
+                        this->ungetc();
                         return Token(TOK_LIFETIME, str);
                     }
                 }
@@ -485,7 +518,7 @@ double Lexer::parseFloat(uint64_t whole)
             ch = this->getc_num();
         } while( isdigit(ch) );
     }
-    this->putback();
+    this->ungetc();
     buf[ofs] = 0;
     
     return ::std::strtod(buf, NULL);
@@ -501,8 +534,13 @@ uint32_t Lexer::parseEscape(char enclosing)
         // Unicode (up to six hex digits)
         uint32_t    val = 0;
         ch = this->getc();
+        bool req_close_brace = false;
+        if( ch == '{' ) {
+            req_close_brace = true;
+            ch = this->getc();
+        }
         if( !isxdigit(ch) )
-            throw ParseError::Todo( FMT("Found invalid character '\\x" << ::std::hex << (int)ch << "' in \\u sequence" ) );
+            throw ParseError::Generic(*this, FMT("Found invalid character '\\x" << ::std::hex << (int)ch << "' in \\u sequence" ) );
         while( isxdigit(ch) )
         {
             char    tmp[2] = {ch, 0};
@@ -510,13 +548,25 @@ uint32_t Lexer::parseEscape(char enclosing)
             val += ::std::strtol(tmp, NULL, 16);
             ch = this->getc();
         }
-        this->putback();
+        if( !req_close_brace )
+                this->ungetc();
+        else if( ch != '}' )
+            throw ParseError::Generic(*this, "Expected terminating } in \\u sequence");
+        else
+            ;
         return val; }
     case '\\':
         return '\\';
+    case '\'':
+        return '\'';
+    case 'r':
+        return '\r';
     case 'n':
         return '\n';
+    case 't':
+        return '\t';
     case '\n':
+	    m_line ++;
         while( isspace(ch) )
             ch = this->getc();
         return ch;
@@ -550,9 +600,9 @@ char Lexer::getc_num()
     return ch;
 }
 
-void Lexer::putback()
+void Lexer::ungetc()
 {
-//    ::std::cout << "putback(): " << m_last_char_valid << " '" << m_last_char << "'" << ::std::endl;
+//    ::std::cout << "ungetc(): " << m_last_char_valid << " '" << m_last_char << "'" << ::std::endl;
     assert(!m_last_char_valid);
     m_last_char_valid = true;
 }

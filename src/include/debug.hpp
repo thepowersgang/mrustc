@@ -34,8 +34,12 @@ class TraceLog
 {
     const char* m_tag;
 public:
+    TraceLog(const char* tag, ::std::string info): m_tag(tag) {
+        DEBUG(" >> " << m_tag << "(" << info << ")");
+        INDENT();
+    }
     TraceLog(const char* tag): m_tag(tag) {
-        DEBUG(">> " << m_tag);
+        DEBUG(" >> " << m_tag);
         INDENT();
     }
     ~TraceLog() {
@@ -44,5 +48,6 @@ public:
     }
 };
 #define TRACE_FUNCTION  TraceLog _tf_(__func__)
+#define TRACE_FUNCTION_F(ss)    TraceLog _tf_(__func__, FMT(ss))
 
 

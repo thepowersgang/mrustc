@@ -1,6 +1,5 @@
 /*
  */
-#include "preproc.hpp"
 #include "parseerror.hpp"
 #include "../ast/ast.hpp"
 #include "common.hpp"
@@ -13,10 +12,12 @@ typedef ::std::unique_ptr<AST::ExprNode>    ExprNodeP;
 using AST::ExprNode;
 
 ExprNodeP Parse_ExprBlockNode(TokenStream& lex);
-ExprNodeP Parse_Stmt(TokenStream& lex, bool& opt_semicolon);
+ExprNodeP Parse_Stmt(TokenStream& lex);
 ExprNodeP Parse_Expr0(TokenStream& lex);
 ExprNodeP Parse_ExprBlocks(TokenStream& lex);
 ExprNodeP Parse_IfStmt(TokenStream& lex);
+ExprNodeP Parse_WhileStmt(TokenStream& lex, ::std::string lifetime);
+ExprNodeP Parse_ForStmt(TokenStream& lex, ::std::string lifetime);
 ExprNodeP Parse_Expr_Match(TokenStream& lex);
 ExprNodeP Parse_Expr1(TokenStream& lex);
 
@@ -123,7 +124,33 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
     pat.set_bind(bind_name, is_ref, is_mut);
     return ::std::move(pat);
 }
+
+AST::Pattern Parse_PatternReal(TokenStream& lex);
+AST::Pattern Parse_PatternReal1(TokenStream& lex);
+
 AST::Pattern Parse_PatternReal(TokenStream& lex)
+{
+    Token   tok;
+    AST::Pattern    ret = Parse_PatternReal1(lex);
+    if( GET_TOK(tok, lex) == TOK_TRIPLE_DOT )
+    {
+        if( ret.type() != AST::Pattern::VALUE )
+            throw ParseError::Generic(lex, "Using '...' with a non-value on left");
+        auto    leftval = ret.take_node();
+        auto    right_pat = Parse_PatternReal1(lex);
+        if( right_pat.type() != AST::Pattern::VALUE )
+            throw ParseError::Generic(lex, "Using '...' with a non-value on right");
+        auto    rightval = right_pat.take_node();
+        
+        return AST::Pattern(AST::Pattern::TagValue(), ::std::move(leftval), ::std::move(rightval));
+    }
+    else
+    {
+        lex.putback(tok);
+        return ret;
+    }
+}
+AST::Pattern Parse_PatternReal1(TokenStream& lex)
 {
     TRACE_FUNCTION;
     
@@ -190,135 +217,287 @@ AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path)
     return child_pats;
 }
 
+ExprNodeP Parse_ExprBlockNode(TokenStream& lex);
+ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end);
+void Parse_ExternBlock(TokenStream& lex, AST::MetaItems attrs, ::std::vector< AST::Item<AST::Function> >& imports);
+
 ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
 {
     TRACE_FUNCTION;
     Token   tok;
 
     ::std::vector<ExprNodeP> nodes;
-    GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
+    ::std::unique_ptr<AST::Module>    local_mod;
     
+    GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
-        lex.putback(tok);
-        bool    opt_semicolon = false;
-        // NOTE: This semicolon handling is SHIT.
-        nodes.push_back(Parse_Stmt(lex, opt_semicolon));
-        if( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
+        AST::MetaItems  item_attrs;
+        while( tok.type() == TOK_ATTR_OPEN )
         {
-            if( !opt_semicolon )
-            {
-                CHECK_TOK(tok, TOK_SEMICOLON);
-            }
-            else
-                lex.putback(tok);
+            item_attrs.push_back( Parse_MetaItem(lex) );
+            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+            GET_TOK(tok, lex);
         }
-        else
+        
+        switch(tok.type())
         {
-            goto pass_value;
+        // Items:
+        // - 'use'
+        case TOK_RWORD_USE:
+            if( !local_mod.get() )  local_mod.reset( new AST::Module("") );
+            Parse_Use(
+                lex,
+                [&local_mod](AST::Path p, std::string s) {
+                    local_mod->imports().push_back( AST::Item<AST::Path>( ::std::move(s), ::std::move(p), false ) );
+                }
+                );
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+            break;
+        // 'extern' blocks
+        case TOK_RWORD_EXTERN:
+            if( !local_mod.get() )  local_mod.reset( new AST::Module("") );
+            Parse_ExternBlock(lex, ::std::move(item_attrs), local_mod->functions());
+            break;
+        // - 'const'
+        case TOK_RWORD_CONST:
+            if( !local_mod.get() )  local_mod.reset( new AST::Module("") );
+            {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            ::std::string   name = tok.str();
+            GET_CHECK_TOK(tok, lex, TOK_COLON);
+            TypeRef type = Parse_Type(lex);
+            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+            auto val = Parse_Expr1(lex);
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+            
+            local_mod->statics().push_back( AST::Item<AST::Static>(
+                ::std::move(name),
+                AST::Static(AST::Static::CONST, ::std::move(type), ::std::move(val)),
+                false ) );
+            break;
+            }
+        // - 'struct'
+        case TOK_RWORD_STRUCT:
+            if( !local_mod.get() )  local_mod.reset( new AST::Module("") );
+            Parse_Struct(*local_mod, lex, false, item_attrs);
+            break;
+        // - 'impl'
+        case TOK_RWORD_IMPL:
+            if( !local_mod.get() )  local_mod.reset( new AST::Module("") );
+            local_mod->add_impl(Parse_Impl(lex, false));
+            break;
+        default: {
+            lex.putback(tok);
+            bool    expect_end = false;
+            nodes.push_back(Parse_ExprBlockLine(lex, &expect_end));
+            // Set to TRUE if there was no semicolon after a statement
+            if( expect_end )
+            {
+                if( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
+                {
+                    throw ParseError::Unexpected(lex, tok, Token(TOK_BRACE_CLOSE));
+                }
+                lex.putback(tok);
+            }
+            break;
+            }
         }
     }
-    nodes.push_back(nullptr);
-pass_value:
     return NEWNODE( AST::ExprNode_Block, ::std::move(nodes) );
 }
 
-ExprNodeP Parse_Stmt(TokenStream& lex, bool& opt_semicolon)
+/// Parse a single line from a block
+///
+/// Handles:
+/// - Block-level constructs (with lifetime annotations)
+/// - use/extern/const/let
+ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end)
 {
     TRACE_FUNCTION;
-    Token   tok;
-
-    ::std::string   lifetime;
     
-    if( GET_TOK(tok, lex) == TOK_LIFETIME ) {
-        lifetime = tok.str();
+    Token tok;
+    
+    if( GET_TOK(tok, lex) == TOK_LIFETIME )
+    {
+        // Lifetimes can only precede loops... and blocks?
+        ::std::string lifetime = tok.str();
         GET_CHECK_TOK(tok, lex, TOK_COLON);
+        
+        switch( GET_TOK(tok, lex) )
+        {
+        case TOK_RWORD_LOOP:
+            return NEWNODE( AST::ExprNode_Loop, lifetime, Parse_ExprBlockNode(lex) );
+        case TOK_RWORD_WHILE:
+            return Parse_WhileStmt(lex, lifetime);
+        case TOK_RWORD_FOR:
+            return Parse_ForStmt(lex, lifetime);
+        case TOK_RWORD_IF:
+            return Parse_IfStmt(lex);
+        case TOK_RWORD_MATCH:
+            return Parse_Expr_Match(lex);
+        case TOK_BRACE_OPEN:
+            lex.putback(tok);
+            return Parse_ExprBlockNode(lex);
+    
+        default:
+            throw ParseError::Unexpected(lex, tok);
+        }
+    }
+    else
+    {
+        switch( tok.type() )
+        {
+        case TOK_SEMICOLON:
+            return 0;
+        case TOK_BRACE_OPEN:
+            lex.putback(tok);
+            return Parse_ExprBlockNode(lex);
+        
+        // let binding
+        case TOK_RWORD_LET: {
+            AST::Pattern pat = Parse_Pattern(lex);
+            TypeRef type;
+            if( GET_TOK(tok, lex) == TOK_COLON ) {
+                type = Parse_Type(lex);
+                GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+            }
+            else {
+                CHECK_TOK(tok, TOK_EQUAL);
+            }
+            ExprNodeP val = Parse_ExprBlocks(lex);
+            return NEWNODE( AST::ExprNode_LetBinding, ::std::move(pat), ::std::move(type), ::std::move(val) );
+            }
+        
+        // blocks that don't need semicolons
+        case TOK_RWORD_LOOP:
+            return NEWNODE( AST::ExprNode_Loop, "", Parse_ExprBlockNode(lex) );
+        case TOK_RWORD_WHILE:
+            return Parse_WhileStmt(lex, "");
+        case TOK_RWORD_FOR:
+            return Parse_ForStmt(lex, "");
+        case TOK_RWORD_IF:
+            return Parse_IfStmt(lex);
+        case TOK_RWORD_MATCH:
+            return Parse_Expr_Match(lex);
+        
+        // Fall through to the statement code
+        default: {
+            lex.putback(tok);
+            auto ret = Parse_Stmt(lex);
+            if( GET_TOK(tok, lex) != TOK_SEMICOLON )
+            {
+                lex.putback(tok);
+                *expect_end = true;
+            }
+            return ::std::move(ret);
+            break;
+            }
+        }
+    }
+}
+/// Extern block within a block
+void Parse_ExternBlock(TokenStream& lex, AST::MetaItems attrs, ::std::vector< AST::Item<AST::Function> >& imports)
+{
+    Token tok;
+    
+    // - default ABI is "C"
+    ::std::string    abi = "C";
+    if( GET_TOK(tok, lex) == TOK_STRING ) {
+        abi = tok.str();
+    }
+    else
+        lex.putback(tok);
+    
+    bool is_block = false;
+    if( GET_TOK(tok, lex) == TOK_BRACE_OPEN ) {
+        is_block = true;
+    }
+    else
+        lex.putback(tok);
+    
+    do {
+        AST::MetaItems  inner_attrs;
+        if( is_block )
+        {
+            while( GET_TOK(tok, lex) == TOK_ATTR_OPEN )
+            {
+                inner_attrs.push_back( Parse_MetaItem(lex) );
+                GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+            }
+            lex.putback(tok);
+        }
+        else
+        {
+            inner_attrs = attrs;
+        }
+        ::std::string   name;
+        switch( GET_TOK(tok, lex) )
+        {
+        case TOK_RWORD_FN:
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            name = tok.str();
+            imports.push_back( AST::Item<AST::Function>(
+                ::std::move(name),
+                Parse_FunctionDef(lex, abi, AST::MetaItems(), false, true),
+                false
+                ) );
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+            break;
+        default:
+            throw ParseError::Unexpected(lex, tok);
+        }
+    } while( is_block && LOOK_AHEAD(lex) != TOK_BRACE_CLOSE );
+    if( is_block )
+        GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
+    else
+        GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+}
+/// While loop (either as a statement, or as part of an expression)
+ExprNodeP Parse_WhileStmt(TokenStream& lex, ::std::string lifetime)
+{
+    Token   tok;
+    
+    if( GET_TOK(tok, lex) == TOK_RWORD_LET ) {
+        auto pat = Parse_Pattern(lex);
+        GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+        auto val = Parse_Expr0(lex);
+        return NEWNODE( AST::ExprNode_Loop, lifetime, AST::ExprNode_Loop::WHILELET,
+            ::std::move(pat), ::std::move(val), Parse_ExprBlockNode(lex) );
     }
     else {
         lex.putback(tok);
+        ExprNodeP cnd = Parse_Expr1(lex);
+        return NEWNODE( AST::ExprNode_Loop, lifetime, ::std::move(cnd), Parse_ExprBlockNode(lex) );
     }
+}
+/// For loop (either as a statement, or as part of an expression)
+ExprNodeP Parse_ForStmt(TokenStream& lex, ::std::string lifetime)
+{
+    Token   tok;
     
-    // 1. Handle 'let'
-    // 2. Handle new blocks
-    // 3. Handle a sequence of expressions broken by ';'
+    AST::Pattern    pat = Parse_Pattern(lex);
+    GET_CHECK_TOK(tok, lex, TOK_RWORD_IN);
+    ExprNodeP val;
+    {
+        SET_PARSE_FLAG(lex, disallow_struct_literal);
+        val = Parse_Expr1(lex);
+    }
+    return NEWNODE( AST::ExprNode_Loop, lifetime, AST::ExprNode_Loop::FOR,
+            ::std::move(pat), ::std::move(val), Parse_ExprBlockNode(lex) );
+}
+
+/// Parses the 'stmt' fragment specifier
+/// - Flow control
+/// - Expressions
+ExprNodeP Parse_Stmt(TokenStream& lex)
+{
+    TRACE_FUNCTION;
+    Token   tok;
+    
     switch(GET_TOK(tok, lex))
     {
-    case TOK_BRACE_OPEN:
-        lex.putback(tok);
-        opt_semicolon = true;
-        return Parse_ExprBlockNode(lex);
-    case TOK_RWORD_USE: {
-        opt_semicolon = false;
-        ::std::vector< ::std::pair< ::std::string, AST::Path> > imports;
-        Parse_Use(lex, [&imports](AST::Path p, std::string s) {
-            imports.push_back( ::std::make_pair( ::std::move(s), ::std::move(p) ) );
-            });
-        return NEWNODE( AST::ExprNode_Import, ::std::move(imports) );
-        }
-    // 'extern' blocks
-    case TOK_RWORD_EXTERN: {
-        opt_semicolon = true;
-        // - default ABI is "C"
-        ::std::string    abi = "C";
-        if( GET_TOK(tok, lex) == TOK_STRING ) {
-            abi = tok.str();
-        }
-        else
-            lex.putback(tok);
-        
-        ::std::vector< ::std::pair< ::std::string, AST::Function> >  imports;
-        bool is_block = false;
-        if( GET_TOK(tok, lex) == TOK_BRACE_OPEN )
-            is_block = true;
-        else
-            lex.putback(tok);
-        
-        do {
-            ::std::string   name;
-            switch( GET_TOK(tok, lex) )
-            {
-            case TOK_RWORD_FN:
-                GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                name = tok.str();
-                imports.push_back( ::std::make_pair( ::std::move(name), Parse_FunctionDef(lex, abi, AST::MetaItems(), false, true) ) );
-                GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-                break;
-            default:
-                throw ParseError::Unexpected(lex, tok);
-            }
-        } while( is_block && LOOK_AHEAD(lex) != TOK_BRACE_CLOSE );
-        if( is_block )
-            GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
-        return NEWNODE( AST::ExprNode_Extern, ::std::move(imports) );
-        }
-    case TOK_RWORD_CONST: {
-        opt_semicolon = false;
-        GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        ::std::string   name = tok.str();
-        GET_CHECK_TOK(tok, lex, TOK_COLON);
-        TypeRef type = Parse_Type(lex);
-        GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-        auto val = Parse_Expr1(lex);
-        return NEWNODE( AST::ExprNode_Const, ::std::move(name), ::std::move(type), ::std::move(val) );
-        }
-    case TOK_RWORD_LET: {
-        opt_semicolon = false;
-        AST::Pattern pat = Parse_Pattern(lex);
-        TypeRef type;
-        if( GET_TOK(tok, lex) == TOK_COLON ) {
-            type = Parse_Type(lex);
-            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-        }
-        else {
-            CHECK_TOK(tok, TOK_EQUAL);
-        }
-        ExprNodeP val = Parse_ExprBlocks(lex);
-        return NEWNODE( AST::ExprNode_LetBinding, ::std::move(pat), ::std::move(type), ::std::move(val) );
-        }
-    
     case TOK_RWORD_RETURN: {
-        if( lifetime.size() )
-            throw ParseError::Unexpected(lex, Token(TOK_LIFETIME, lifetime));
         ExprNodeP   val;
         if( GET_TOK(tok, lex) != TOK_SEMICOLON ) {
             lex.putback(tok);
@@ -331,8 +510,6 @@ ExprNodeP Parse_Stmt(TokenStream& lex, bool& opt_semicolon)
     case TOK_RWORD_CONTINUE:
     case TOK_RWORD_BREAK:
         {
-        if( lifetime.size() )
-            throw ParseError::Unexpected(lex, Token(TOK_LIFETIME, lifetime));
         AST::ExprNode_Flow::Type    type;
         switch(tok.type())
         {
@@ -340,13 +517,14 @@ ExprNodeP Parse_Stmt(TokenStream& lex, bool& opt_semicolon)
         case TOK_RWORD_BREAK:    type = AST::ExprNode_Flow::BREAK;    break;
         default:    throw ParseError::BugCheck(/*lex,*/ "continue/break");
         }
+        ::std::string   lifetime;
         if( GET_TOK(tok, lex) == TOK_LIFETIME )
         {
             lifetime = tok.str();
             GET_TOK(tok, lex);
         }
         ExprNodeP   val;
-        if( tok.type() != TOK_SEMICOLON ) {
+        if( tok.type() != TOK_SEMICOLON && tok.type() != TOK_COMMA && tok.type() != TOK_BRACE_CLOSE ) {
             lex.putback(tok);
             val = Parse_Expr1(lex);
         }
@@ -354,29 +532,6 @@ ExprNodeP Parse_Stmt(TokenStream& lex, bool& opt_semicolon)
             lex.putback(tok);
         return NEWNODE( AST::ExprNode_Flow, type, lifetime, ::std::move(val) );
         } 
-    
-    case TOK_RWORD_LOOP:
-        opt_semicolon = true;
-        return NEWNODE( AST::ExprNode_Loop, lifetime, Parse_ExprBlockNode(lex) );
-    case TOK_RWORD_WHILE: {
-        opt_semicolon = true;
-        ExprNodeP cnd = Parse_Expr1(lex);
-        return NEWNODE( AST::ExprNode_Loop, lifetime, ::std::move(cnd), Parse_ExprBlockNode(lex) );
-        }
-    case TOK_RWORD_FOR: {
-        opt_semicolon = true;
-        AST::Pattern    pat = Parse_Pattern(lex);
-        GET_CHECK_TOK(tok, lex, TOK_RWORD_IN);
-        ExprNodeP val = Parse_Expr1(lex);
-        return NEWNODE( AST::ExprNode_Loop, lifetime, AST::ExprNode_Loop::FOR,
-                ::std::move(pat), ::std::move(val), Parse_ExprBlockNode(lex) );
-        }
-    case TOK_RWORD_IF:
-        opt_semicolon = true;
-        return Parse_IfStmt(lex);
-    case TOK_RWORD_MATCH:
-        opt_semicolon = true;
-        return Parse_Expr_Match(lex);
     default:
         lex.putback(tok);
         return Parse_Expr0(lex);
@@ -394,7 +549,7 @@ ExprNodeP Parse_Stmt(TokenStream& lex, bool& opt_semicolon)
     {
         lex.putback(tok);
         do {
-            rv.push_back( Parse_Expr1(lex) );
+            rv.push_back( Parse_Expr0(lex) );
         } while( GET_TOK(tok, lex) == TOK_COMMA );
         CHECK_TOK(tok, TOK_PAREN_CLOSE);
     }
@@ -517,8 +672,7 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
         }
         CHECK_TOK(tok, TOK_FATARROW);
         
-        bool opt_semicolon = false;
-        arm.m_code = Parse_Stmt(lex, opt_semicolon);
+        arm.m_code = Parse_Stmt(lex);
         
         arms.push_back( ::std::move(arm) );
         
@@ -542,6 +696,12 @@ ExprNodeP Parse_ExprBlocks(TokenStream& lex)
     case TOK_BRACE_OPEN:
         lex.putback(tok);
         return Parse_ExprBlockNode(lex);
+    case TOK_RWORD_LOOP:
+        return NEWNODE( AST::ExprNode_Loop, "", Parse_ExprBlockNode(lex) );
+    case TOK_RWORD_WHILE:
+        return Parse_WhileStmt(lex, "");
+    case TOK_RWORD_FOR:
+        return Parse_ForStmt(lex, "");
     case TOK_RWORD_MATCH:
         return Parse_Expr_Match(lex);
     case TOK_RWORD_IF:

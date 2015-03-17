@@ -133,8 +133,12 @@ public:
 #define CLEAR_PARSE_FLAG(lex, flag)    SavedParseState _sps(lex, lex.parse_state()); lex.parse_state().flag = false
 #define CHECK_PARSE_FLAG(lex, flag) (lex.parse_state().flag == true)
 
-class Lexer
+class Lexer:
+    public TokenStream
 {
+    ::std::string   m_path;
+    unsigned int m_line;
+
     ::std::ifstream m_istream;
     bool    m_last_char_valid;
     char    m_last_char;
@@ -142,16 +146,19 @@ class Lexer
 public:
     Lexer(::std::string filename);
 
-    Token getToken();
+    virtual Position getPosition() const override;
+    virtual Token realGetToken() override;
 
 private:
+    Token getTokenInt();
+    
     signed int getSymbol();
     double parseFloat(uint64_t whole);
     uint32_t parseEscape(char enclosing);
 
     char getc();
     char getc_num();
-    void putback();
+    void ungetc();
 
     class EndOfFile {};
 };

@@ -5,6 +5,7 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <tagged_enum.hpp>
 
 namespace AST {
 
@@ -30,6 +31,7 @@ private:
     ::std::string   m_binding;
     Path    m_path;
     unique_ptr<ExprNode>    m_node;
+    unique_ptr<ExprNode>    m_node2;    // ONLY used for range values
     ::std::vector<Pattern>  m_sub_patterns;
 public:
     Pattern(Pattern&& o) noexcept:
@@ -80,10 +82,12 @@ public:
     {}
 
     struct TagValue {};
-    Pattern(TagValue, unique_ptr<ExprNode> node):
+    Pattern(TagValue, unique_ptr<ExprNode> node, unique_ptr<ExprNode> node2 = 0):
         m_class(VALUE),
-        m_node( ::std::move(node) )
+        m_node( ::std::move(node) ),
+        m_node2( ::std::move(node2) )
     {}
+    
     
     struct TagReference {};
     Pattern(TagReference, Pattern sub_pattern):
@@ -110,6 +114,8 @@ public:
     void set_bind(::std::string name, bool is_ref, bool is_mut) {
         m_binding = name;
     }
+    
+    ::std::unique_ptr<ExprNode> take_node() { assert(m_class == VALUE); m_class = ANY; return ::std::move(m_node); }
     
     // Accessors
     const ::std::string& binding() const { return m_binding; }

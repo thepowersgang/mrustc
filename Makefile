@@ -16,7 +16,7 @@ BIN := bin/mrustc$(EXESUF)
 
 OBJ := main.o macros.o types.o serialise.o
 OBJ += ast/ast.o ast/path.o ast/expr.o
-OBJ += parse/parseerror.o parse/lex.o parse/preproc.o parse/root.o parse/expr.o
+OBJ += parse/parseerror.o parse/lex.o parse/root.o parse/expr.o
 OBJ += dump_as_rust.o
 OBJ += convert/ast_iterate.o
 OBJ += convert/resolve.o convert/typecheck_bounds.o convert/typecheck_params.o convert/typecheck_expr.o
