@@ -461,7 +461,11 @@ ExprNodeP Parse_WhileStmt(TokenStream& lex, ::std::string lifetime)
     if( GET_TOK(tok, lex) == TOK_RWORD_LET ) {
         auto pat = Parse_Pattern(lex);
         GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-        auto val = Parse_Expr0(lex);
+        ExprNodeP val;
+        {
+            SET_PARSE_FLAG(lex, disallow_struct_literal);
+            val = Parse_Expr0(lex);
+        }
         return NEWNODE( AST::ExprNode_Loop, lifetime, AST::ExprNode_Loop::WHILELET,
             ::std::move(pat), ::std::move(val), Parse_ExprBlockNode(lex) );
     }
@@ -481,7 +485,7 @@ ExprNodeP Parse_ForStmt(TokenStream& lex, ::std::string lifetime)
     ExprNodeP val;
     {
         SET_PARSE_FLAG(lex, disallow_struct_literal);
-        val = Parse_Expr1(lex);
+        val = Parse_Expr0(lex);
     }
     return NEWNODE( AST::ExprNode_Loop, lifetime, AST::ExprNode_Loop::FOR,
             ::std::move(pat), ::std::move(val), Parse_ExprBlockNode(lex) );
@@ -1132,7 +1136,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     case TOK_MACRO:
         {
         TokenTree tt = Parse_TT(lex, true);
-        if( tt.size() == 0 ) {
+        if( tt.is_token() ) {
             throw ParseError::Unexpected(lex, tt.tok());
         }
         ::std::string name = tok.str();
