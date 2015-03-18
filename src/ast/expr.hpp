@@ -44,17 +44,18 @@ struct ExprNode_Block:
     public ExprNode
 {
 	bool m_is_unsafe;
+    ::std::unique_ptr<Module>   m_inner_mod;
     ::std::vector< ::std::unique_ptr<ExprNode> >    m_nodes;
 
     ExprNode_Block():
 		m_is_unsafe(false)
 	{}
-    ExprNode_Block(::std::vector< ::std::unique_ptr<ExprNode> >&& nodes):
+    ExprNode_Block(::std::vector< ::std::unique_ptr<ExprNode> >&& nodes, ::std::unique_ptr<Module> inner_mod):
 		m_is_unsafe(false),
+        m_inner_mod( move(inner_mod) ),
         m_nodes( move(nodes) )
     {
     }
-    virtual ~ExprNode_Block() override;
     
 	void set_unsafe() { m_is_unsafe = true; }
 	

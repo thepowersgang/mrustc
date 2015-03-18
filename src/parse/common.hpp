@@ -33,6 +33,7 @@ extern TypeRef     Parse_Type(TokenStream& lex);
 extern void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)> fcn);
 extern void Parse_Struct(AST::Module& mod, TokenStream& lex, bool is_public, const AST::MetaItems meta_items);
 extern AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe=false);
+extern void Parse_MacroRules(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_items);
 
 extern AST::Function    Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self, bool can_be_prototype);
 extern AST::Function    Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self);

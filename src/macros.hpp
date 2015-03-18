@@ -127,6 +127,7 @@ public:
 /// A sigle 'macro_rules!' block
 typedef ::std::vector<MacroRule>    MacroRules;
 
+extern const LList<AST::Module*>* Macro_GetModule();
 extern void Macro_SetModule(const LList<AST::Module*>& mod);
 extern ::std::unique_ptr<TokenStream>   Macro_Invoke(const TokenStream& lex, const ::std::string& name, TokenTree input);
 

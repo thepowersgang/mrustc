@@ -213,12 +213,19 @@ AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path)
     TRACE_FUNCTION;
     Token tok;
     ::std::vector<AST::Pattern> child_pats;
+    
+    auto end = TOK_PAREN_CLOSE;
     do {
+        if( GET_TOK(tok, lex) == end )
+            break;
+        else
+            lex.putback(tok);
+        
         AST::Pattern pat = Parse_Pattern(lex);
         DEBUG("pat = " << pat);
         child_pats.push_back( ::std::move(pat) );
     } while( GET_TOK(tok, lex) == TOK_COMMA );
-    CHECK_TOK(tok, TOK_PAREN_CLOSE);
+    CHECK_TOK(tok, end);
     return child_pats;
 }
 
@@ -232,7 +239,14 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
     Token   tok;
 
     ::std::vector<ExprNodeP> nodes;
-    ::std::unique_ptr<AST::Module>    local_mod;
+    
+    ::std::unique_ptr<AST::Module>    local_mod( new AST::Module("") );
+    bool    keep_mod = false;
+    
+    const LList<AST::Module*>* prev_modstack = Macro_GetModule();
+    LList<AST::Module*> modstack(prev_modstack, local_mod.get());
+    Macro_SetModule(modstack);
+    
     
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
@@ -250,7 +264,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
         // Items:
         // - 'use'
         case TOK_RWORD_USE:
-            if( !local_mod.get() )  local_mod.reset( new AST::Module("") );
+            keep_mod = true;
             Parse_Use(
                 lex,
                 [&local_mod](AST::Path p, std::string s) {
@@ -261,12 +275,12 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
             break;
         // 'extern' blocks
         case TOK_RWORD_EXTERN:
-            if( !local_mod.get() )  local_mod.reset( new AST::Module("") );
+            keep_mod = true;
             Parse_ExternBlock(lex, ::std::move(item_attrs), local_mod->functions());
             break;
         // - 'const'
         case TOK_RWORD_CONST:
-            if( !local_mod.get() )  local_mod.reset( new AST::Module("") );
+            keep_mod = true;
             {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string   name = tok.str();
@@ -284,23 +298,32 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
             }
         // - 'struct'
         case TOK_RWORD_STRUCT:
-            if( !local_mod.get() )  local_mod.reset( new AST::Module("") );
+            keep_mod = true;
             Parse_Struct(*local_mod, lex, false, item_attrs);
             break;
         // - 'impl'
         case TOK_RWORD_IMPL:
-            if( !local_mod.get() )  local_mod.reset( new AST::Module("") );
+            keep_mod = true;
             local_mod->add_impl(Parse_Impl(lex, false));
             break;
         // - 'fn'
         case TOK_RWORD_FN:
-            if( !local_mod.get() )  local_mod.reset( new AST::Module("") );
+            keep_mod = true;
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             // - self not allowed, not prototype
             local_mod->add_function(
                 false, tok.str(), Parse_FunctionDefWithCode(lex, "rust", ::std::move(item_attrs), false)
                 );
             break;
+        // Macros - If not macro_rules, fall though to expression
+        case TOK_MACRO:
+            if( tok.str() == "macro_rules" )
+            {
+                keep_mod = true;
+                Parse_MacroRules(lex, *local_mod, ::std::move(item_attrs));
+                break;
+            }
+            // fall
         default: {
             lex.putback(tok);
             bool    expect_end = false;
@@ -318,7 +341,13 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
             }
         }
     }
-    return NEWNODE( AST::ExprNode_Block, ::std::move(nodes) );
+    
+    Macro_SetModule( *prev_modstack );
+    if( !keep_mod )
+    {
+        local_mod.reset();
+    }
+    return NEWNODE( AST::ExprNode_Block, ::std::move(nodes), ::std::move(local_mod) );
 }
 
 /// Parse a single line from a block
@@ -372,12 +401,12 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end)
             TypeRef type;
             if( GET_TOK(tok, lex) == TOK_COLON ) {
                 type = Parse_Type(lex);
-                GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+                GET_TOK(tok, lex);
             }
-            else {
-                CHECK_TOK(tok, TOK_EQUAL);
+            ExprNodeP val;
+            if( tok.type() == TOK_EQUAL ) {
+                val = Parse_Expr0(lex);
             }
-            ExprNodeP val = Parse_Expr0(lex);
             return NEWNODE( AST::ExprNode_LetBinding, ::std::move(pat), ::std::move(type), ::std::move(val) );
             }
         
@@ -1168,6 +1197,10 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
                 items.push_back( ::std::move(first) );
                 while( tok.type() == TOK_COMMA )
                 {
+                    if( GET_TOK(tok, lex) == TOK_SQUARE_CLOSE )
+                        break;
+                    else
+                        lex.putback(tok);
                     items.push_back( Parse_Expr0(lex) );
                     GET_TOK(tok, lex);
                 }

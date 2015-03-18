@@ -316,8 +316,11 @@ TypeRef Parse_Type(TokenStream& lex)
         lex.putback(tok);
         do
         {
-            TypeRef type = Parse_Type(lex);
-            types.push_back(type);
+            if( GET_TOK(tok, lex) == TOK_PAREN_CLOSE )
+                break;
+            else
+                lex.putback(tok);
+            types.push_back(Parse_Type(lex));
         } while( GET_TOK(tok, lex) == TOK_COMMA );
         CHECK_TOK(tok, TOK_PAREN_CLOSE);
         return TypeRef(TypeRef::TagTuple(), types); }
@@ -1425,7 +1428,7 @@ MacroRule Parse_MacroRules_Var(TokenStream& lex)
     return rule;
 }
 
-void Parse_MacroRules(TokenStream& lex, AST::Module& mod, AST::MetaItems& meta_items)
+void Parse_MacroRules(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_items)
 {
     TRACE_FUNCTION;
     
@@ -1507,8 +1510,7 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
         case TOK_MACRO:
             if( tok.str() == "macro_rules" )
             {
-                // TODO: Handle #[macro_export]
-                Parse_MacroRules(lex, mod, meta_items);
+                Parse_MacroRules(lex, mod, ::std::move(meta_items));
             }
             else
             {

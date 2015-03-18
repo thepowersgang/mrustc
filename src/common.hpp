@@ -17,10 +17,10 @@
 template <typename T>
 struct LList
 {
-    LList*  m_prev;
+    const LList*  m_prev;
     T   m_item;
     
-    LList(LList* prev, T item):
+    LList(const LList* prev, T item):
         m_prev(prev),
         m_item( ::std::move(item) )
     {

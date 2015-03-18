@@ -112,6 +112,10 @@ void Macro_SetModule(const LList<AST::Module*>& mod)
 {
     g_macro_module = &mod;
 }
+const LList<AST::Module*>* Macro_GetModule()
+{
+    return g_macro_module;
+}
 
 void Macro_InitDefaults()
 {

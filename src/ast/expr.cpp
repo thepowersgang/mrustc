@@ -95,8 +95,6 @@ ExprNode::~ExprNode() {
 	void class::print(::std::ostream& os) const _print \
 	SERIALISE_TYPE_S(class, serialise) \
 
-ExprNode_Block::~ExprNode_Block() {
-}
 NODE(ExprNode_Block, {
     s.item(m_nodes);
 },{
