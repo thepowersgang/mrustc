@@ -74,6 +74,7 @@ static const struct {
   TOKENT(";",  TOK_SEMICOLON),
   TOKENT("<",  TOK_LT),
   TOKENT("<<", TOK_DOUBLE_LT),
+  TOKENT("<<=",TOK_DOUBLE_LT_EQUAL),
   TOKENT("<=", TOK_LTE),
   TOKENT("=" , TOK_EQUAL),
   TOKENT("==", TOK_DOUBLE_EQUAL),
@@ -81,6 +82,7 @@ static const struct {
   TOKENT(">",  TOK_GT),
   TOKENT(">=", TOK_GTE),
   TOKENT(">>", TOK_DOUBLE_GT),
+  TOKENT(">>=",TOK_DOUBLE_GT_EQUAL),
   TOKENT("?",  TOK_QMARK),
   TOKENT("@",  TOK_AT),
   // A-Z :: Elsewhere
@@ -88,6 +90,7 @@ static const struct {
   TOKENT("\\", TOK_BACKSLASH),
   TOKENT("]",  TOK_SQUARE_CLOSE),
   TOKENT("^",  TOK_CARET),
+  TOKENT("^=", TOK_CARET_EQUAL),
   TOKENT("`",  TOK_BACKTICK),
 
   TOKENT("{",  TOK_BRACE_OPEN),

@@ -69,6 +69,7 @@ SERIALISE_TYPE(Expr::, "Expr", {
     else _(ExprNode_Integer)
     else _(ExprNode_Closure)
     else _(ExprNode_StructLiteral)
+    else _(ExprNode_Array)
     else _(ExprNode_Tuple)
     else _(ExprNode_NamedValue)
     else _(ExprNode_Field)
@@ -332,6 +333,19 @@ NODE(ExprNode_StructLiteral, {
     s.item(m_values);
 },{
     os << "/* todo: sl */";
+})
+
+NODE(ExprNode_Array, {
+    s.item(m_size);
+    s.item(m_values);
+},{
+    os << "[";
+    if( m_size.get() )
+        os << *m_values[0] << "; " << *m_size;
+    else
+        for(const auto& a : m_values)
+            os << *a << ",";
+    os << "]";
 })
 
 NODE(ExprNode_Tuple, {
@@ -611,6 +625,12 @@ NV(ExprNode_StructLiteral,
     visit(node.m_base_value);
     for( auto& val : node.m_values )
         visit(val.second);
+})
+NV(ExprNode_Array,
+{
+    visit(node.m_size);
+    for( auto& val : node.m_values )
+        visit(val);
 })
 NV(ExprNode_Tuple,
 {

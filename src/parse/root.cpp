@@ -251,6 +251,9 @@ TypeRef Parse_Type(TokenStream& lex)
     case TOK_DOUBLE_COLON:
         // Path with generics
         return TypeRef(TypeRef::TagPath(), Parse_Path(lex, true, PATH_GENERIC_TYPE));
+    case TOK_RWORD_SUPER:
+        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        return TypeRef(TypeRef::TagPath(), Parse_PathFrom(lex, AST::Path(AST::Path::TagSuper()), PATH_GENERIC_TYPE));
 
     // HACK! Convert && into & &
     case TOK_DOUBLE_AMP:
@@ -446,12 +449,12 @@ void Parse_WhereClause(TokenStream& lex, AST::TypeParams& params)
 // Parse a single function argument
 ::std::pair< AST::Pattern, TypeRef> Parse_Function_Arg(TokenStream& lex, bool expect_named)
 {
-    TRACE_FUNCTION;
+    TRACE_FUNCTION_F("expect_named = " << expect_named);
     Token   tok;
     
     AST::Pattern pat;
     
-    if( expect_named || (LOOK_AHEAD(lex) == TOK_IDENT && lex.lookahead(1) == TOK_COLON) )
+    if( expect_named || LOOK_AHEAD(lex) == TOK_UNDERSCORE || LOOK_AHEAD(lex) == TOK_RWORD_MUT || (LOOK_AHEAD(lex) == TOK_IDENT && lex.lookahead(1) == TOK_COLON) )
     {
         pat = Parse_Pattern(lex);
         GET_CHECK_TOK(tok, lex, TOK_COLON);
@@ -566,7 +569,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
         
         // Argument list
         do {
-            args.push_back( Parse_Function_Arg(lex, true) );
+            args.push_back( Parse_Function_Arg(lex, !can_be_prototype) );
         } while( GET_TOK(tok, lex) == TOK_COMMA );
         CHECK_TOK(tok, TOK_PAREN_CLOSE);
     }
@@ -599,7 +602,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
         lex.putback(tok);
     }
 
-    return AST::Function(params, fcn_class, ret_type, args);
+    return AST::Function(::std::move(params), fcn_class, ::std::move(ret_type), ::std::move(args));
 }
 
 AST::Function Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self)

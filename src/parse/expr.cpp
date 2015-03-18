@@ -14,7 +14,6 @@ using AST::ExprNode;
 ExprNodeP Parse_ExprBlockNode(TokenStream& lex);
 ExprNodeP Parse_Stmt(TokenStream& lex);
 ExprNodeP Parse_Expr0(TokenStream& lex);
-ExprNodeP Parse_ExprBlocks(TokenStream& lex);
 ExprNodeP Parse_IfStmt(TokenStream& lex);
 ExprNodeP Parse_WhileStmt(TokenStream& lex, ::std::string lifetime);
 ExprNodeP Parse_ForStmt(TokenStream& lex, ::std::string lifetime);
@@ -378,7 +377,7 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end)
             else {
                 CHECK_TOK(tok, TOK_EQUAL);
             }
-            ExprNodeP val = Parse_ExprBlocks(lex);
+            ExprNodeP val = Parse_Expr0(lex);
             return NEWNODE( AST::ExprNode_LetBinding, ::std::move(pat), ::std::move(type), ::std::move(val) );
             }
         
@@ -393,6 +392,11 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end)
             return Parse_IfStmt(lex);
         case TOK_RWORD_MATCH:
             return Parse_Expr_Match(lex);
+        case TOK_RWORD_UNSAFE: {
+            auto rv = Parse_ExprBlockNode(lex);
+            dynamic_cast<AST::ExprNode_Block&>(*rv).set_unsafe();
+            return rv;
+            }
         
         // Fall through to the statement code
         default: {
@@ -503,6 +507,103 @@ ExprNodeP Parse_ForStmt(TokenStream& lex, ::std::string lifetime)
     return NEWNODE( AST::ExprNode_Loop, lifetime, AST::ExprNode_Loop::FOR,
             ::std::move(pat), ::std::move(val), Parse_ExprBlockNode(lex) );
 }
+/// Parse an 'if' statement
+// Note: TOK_RWORD_IF has already been eaten
+ExprNodeP Parse_IfStmt(TokenStream& lex)
+{
+    TRACE_FUNCTION;
+
+    Token   tok;
+    ExprNodeP cond;
+    AST::Pattern    pat;
+    bool if_let = false;
+    
+    {
+        SET_PARSE_FLAG(lex, disallow_struct_literal);
+        if( GET_TOK(tok, lex) == TOK_RWORD_LET ) {
+            if_let = true;
+            pat = Parse_Pattern(lex);
+            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+            cond = Parse_Expr0(lex);
+        }
+        else {
+            lex.putback(tok);
+            cond = Parse_Expr0(lex);
+        }
+    }
+
+    // Contents
+    ExprNodeP code = Parse_ExprBlockNode(lex);
+
+    // Handle else:
+    ExprNodeP altcode;
+    if( GET_TOK(tok, lex) == TOK_RWORD_ELSE )
+    {
+        // Recurse for 'else if'
+        if( GET_TOK(tok, lex) == TOK_RWORD_IF ) {
+            altcode = Parse_IfStmt(lex);
+        }
+        // - or get block
+        else {
+            lex.putback(tok);
+            altcode = Parse_ExprBlockNode(lex);
+        }
+    }
+    // - or nothing
+    else {
+        lex.putback(tok);
+    }
+
+    if( if_let )
+        return NEWNODE( AST::ExprNode_IfLet, ::std::move(pat), ::std::move(cond), ::std::move(code), ::std::move(altcode) );
+    else
+        return NEWNODE( AST::ExprNode_If, ::std::move(cond), ::std::move(code), ::std::move(altcode) );
+}
+/// "match" block
+ExprNodeP Parse_Expr_Match(TokenStream& lex)
+{
+    TRACE_FUNCTION;
+    Token tok;
+    
+    // 1. Get expression
+    ExprNodeP   switch_val;
+    {
+        SET_PARSE_FLAG(lex, disallow_struct_literal);
+        switch_val = Parse_Expr1(lex);
+    }
+    ASSERT(lex, !CHECK_PARSE_FLAG(lex, disallow_struct_literal) );
+    GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
+    
+    ::std::vector< AST::ExprNode_Match::Arm >    arms;
+    do {
+        if( GET_TOK(tok, lex) == TOK_BRACE_CLOSE )
+            break;
+        lex.putback(tok);
+        AST::ExprNode_Match::Arm    arm;
+        do {
+            arm.m_patterns.push_back( Parse_Pattern(lex) );
+        } while( GET_TOK(tok, lex) == TOK_PIPE );
+        
+        if( tok.type() == TOK_RWORD_IF )
+        {
+            arm.m_cond = Parse_Expr1(lex);
+            GET_TOK(tok, lex);
+        }
+        CHECK_TOK(tok, TOK_FATARROW);
+        
+        arm.m_code = Parse_Stmt(lex);
+        
+        arms.push_back( ::std::move(arm) );
+        
+        if( GET_TOK(tok, lex) == TOK_COMMA )
+            continue;
+        lex.putback(tok);
+        
+    } while( 1 );
+    CHECK_TOK(tok, TOK_BRACE_CLOSE);
+    
+    return NEWNODE( AST::ExprNode_Match, ::std::move(switch_val), ::std::move(arms) );
+}
 
 /// Parses the 'stmt' fragment specifier
 /// - Flow control
@@ -579,158 +680,38 @@ ExprNodeP Parse_Expr0(TokenStream& lex)
     TRACE_FUNCTION;
     Token tok;
 
-    ExprNodeP rv = Parse_ExprBlocks(lex);
+    ExprNodeP rv = Parse_Expr1(lex);
     auto op = AST::ExprNode_Assign::NONE;
     switch( GET_TOK(tok, lex) )
     {
     case TOK_PLUS_EQUAL:
-        op = AST::ExprNode_Assign::ADD;
-        if(0)
+        op = AST::ExprNode_Assign::ADD; if(0)
     case TOK_DASH_EQUAL:
-        op = AST::ExprNode_Assign::SUB;
-        if(0)
-    case TOK_SLASH_EQUAL:
-        op = AST::ExprNode_Assign::DIV;
-        if(0)
+        op = AST::ExprNode_Assign::SUB; if(0)
     case TOK_STAR_EQUAL:
-        op = AST::ExprNode_Assign::MUL;
-        if(0)
+        op = AST::ExprNode_Assign::MUL; if(0)
+    case TOK_SLASH_EQUAL:
+        op = AST::ExprNode_Assign::DIV; if(0)
+    
+    case TOK_AMP_EQUAL:
+        op = AST::ExprNode_Assign::AND; if(0)
+    case TOK_PIPE_EQUAL:
+        op = AST::ExprNode_Assign::OR ; if(0)
+    case TOK_CARET_EQUAL:
+        op = AST::ExprNode_Assign::XOR; if(0)
+    
+    case TOK_DOUBLE_GT_EQUAL:
+        op = AST::ExprNode_Assign::SHR; if(0)
+    case TOK_DOUBLE_LT_EQUAL:
+        op = AST::ExprNode_Assign::SHL; if(0)
+
     case TOK_EQUAL:
         op = AST::ExprNode_Assign::NONE;
-        return NEWNODE( AST::ExprNode_Assign, op, ::std::move(rv), Parse_ExprBlocks(lex) );
+        return NEWNODE( AST::ExprNode_Assign, op, ::std::move(rv), Parse_Expr1(lex) );
     
     default:
         lex.putback(tok);
         return rv;
-    }
-}
-
-/// Parse an 'if' statement
-// Note: TOK_RWORD_IF has already been eaten
-ExprNodeP Parse_IfStmt(TokenStream& lex)
-{
-    TRACE_FUNCTION;
-
-    Token   tok;
-    ExprNodeP cond;
-    AST::Pattern    pat;
-    bool if_let = false;
-    
-    {
-        SET_PARSE_FLAG(lex, disallow_struct_literal);
-        if( GET_TOK(tok, lex) == TOK_RWORD_LET ) {
-            if_let = true;
-            pat = Parse_Pattern(lex);
-            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-            cond = Parse_Expr0(lex);
-        }
-        else {
-            lex.putback(tok);
-            cond = Parse_Expr0(lex);
-        }
-    }
-
-    // Contents
-    ExprNodeP code = Parse_ExprBlockNode(lex);
-
-    // Handle else:
-    ExprNodeP altcode;
-    if( GET_TOK(tok, lex) == TOK_RWORD_ELSE )
-    {
-        // Recurse for 'else if'
-        if( GET_TOK(tok, lex) == TOK_RWORD_IF ) {
-            altcode = Parse_IfStmt(lex);
-        }
-        // - or get block
-        else {
-            lex.putback(tok);
-            altcode = Parse_ExprBlockNode(lex);
-        }
-    }
-    // - or nothing
-    else {
-        lex.putback(tok);
-    }
-
-    if( if_let )
-        return NEWNODE( AST::ExprNode_IfLet, ::std::move(pat), ::std::move(cond), ::std::move(code), ::std::move(altcode) );
-    else
-        return NEWNODE( AST::ExprNode_If, ::std::move(cond), ::std::move(code), ::std::move(altcode) );
-}
-
-ExprNodeP Parse_Expr_Match(TokenStream& lex)
-{
-    TRACE_FUNCTION;
-    Token tok;
-    
-    // 1. Get expression
-    ExprNodeP   switch_val;
-    {
-        SET_PARSE_FLAG(lex, disallow_struct_literal);
-        switch_val = Parse_Expr1(lex);
-    }
-    ASSERT(lex, !CHECK_PARSE_FLAG(lex, disallow_struct_literal) );
-    GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
-    
-    ::std::vector< AST::ExprNode_Match::Arm >    arms;
-    do {
-        if( GET_TOK(tok, lex) == TOK_BRACE_CLOSE )
-            break;
-        lex.putback(tok);
-        AST::ExprNode_Match::Arm    arm;
-        do {
-            arm.m_patterns.push_back( Parse_Pattern(lex) );
-        } while( GET_TOK(tok, lex) == TOK_PIPE );
-        
-        if( tok.type() == TOK_RWORD_IF )
-        {
-            arm.m_cond = Parse_Expr1(lex);
-            GET_TOK(tok, lex);
-        }
-        CHECK_TOK(tok, TOK_FATARROW);
-        
-        arm.m_code = Parse_Stmt(lex);
-        
-        arms.push_back( ::std::move(arm) );
-        
-        if( GET_TOK(tok, lex) == TOK_COMMA )
-            continue;
-        lex.putback(tok);
-        
-    } while( 1 );
-    CHECK_TOK(tok, TOK_BRACE_CLOSE);
-    
-    return NEWNODE( AST::ExprNode_Match, ::std::move(switch_val), ::std::move(arms) );
-}
-
-// 0.5: Blocks
-ExprNodeP Parse_ExprBlocks(TokenStream& lex)
-{
-    TRACE_FUNCTION;
-    Token tok;
-    switch( GET_TOK(tok, lex) )
-    {
-    case TOK_BRACE_OPEN:
-        lex.putback(tok);
-        return Parse_ExprBlockNode(lex);
-    case TOK_RWORD_LOOP:
-        return NEWNODE( AST::ExprNode_Loop, "", Parse_ExprBlockNode(lex) );
-    case TOK_RWORD_WHILE:
-        return Parse_WhileStmt(lex, "");
-    case TOK_RWORD_FOR:
-        return Parse_ForStmt(lex, "");
-    case TOK_RWORD_MATCH:
-        return Parse_Expr_Match(lex);
-    case TOK_RWORD_IF:
-        return Parse_IfStmt(lex);
-    case TOK_RWORD_UNSAFE: {
-        auto rv = Parse_ExprBlockNode(lex);
-        dynamic_cast<AST::ExprNode_Block&>(*rv).set_unsafe();
-        return rv;
-        }
-    default:
-        lex.putback(tok);
-        return Parse_Expr1(lex);
     }
 }
 
@@ -765,6 +746,7 @@ bool Parse_IsTokValue(eTokenType tok_type)
     case TOK_STRING:
     case TOK_RWORD_TRUE:
     case TOK_RWORD_FALSE:
+    case TOK_RWORD_SELF:
     case TOK_RWORD_BOX:
     case TOK_PAREN_OPEN:
         return true;
@@ -937,11 +919,9 @@ ExprNodeP Parse_ExprFC(TokenStream& lex)
             lex.putback(tok);
             val = NEWNODE( AST::ExprNode_CallObject, ::std::move(val), Parse_ParenList(lex) );
             break;
-        case TOK_SQUARE_OPEN: {
-            ExprNodeP   idx = Parse_Expr0(lex);
-            val = NEWNODE( AST::ExprNode_Index, ::std::move(val), ::std::move(idx) );
+        case TOK_SQUARE_OPEN:
+            val = NEWNODE( AST::ExprNode_Index, ::std::move(val), Parse_Expr0(lex) );
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-            }
             break;
         case TOK_DOT:
             // Field access / method call
@@ -1081,6 +1061,25 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     AST::Path   path;
     switch( GET_TOK(tok, lex) )
     {
+    case TOK_BRACE_OPEN:
+        lex.putback(tok);
+        return Parse_ExprBlockNode(lex);
+    case TOK_RWORD_LOOP:
+        return NEWNODE( AST::ExprNode_Loop, "", Parse_ExprBlockNode(lex) );
+    case TOK_RWORD_WHILE:
+        return Parse_WhileStmt(lex, "");
+    case TOK_RWORD_FOR:
+        return Parse_ForStmt(lex, "");
+    case TOK_RWORD_MATCH:
+        return Parse_Expr_Match(lex);
+    case TOK_RWORD_IF:
+        return Parse_IfStmt(lex);
+    case TOK_RWORD_UNSAFE: {
+        auto rv = Parse_ExprBlockNode(lex);
+        dynamic_cast<AST::ExprNode_Block&>(*rv).set_unsafe();
+        return rv;
+        }
+    
     case TOK_IDENT:
         // Get path
         lex.putback(tok);
@@ -1150,7 +1149,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         if( GET_TOK(tok, lex) == TOK_SQUARE_CLOSE )
         {
             // Empty literal
-            //return NEWNODE( AST::ExprNode_Array, ::std::vector<ExprNodeP>() );
+            return NEWNODE( AST::ExprNode_Array, ::std::vector<ExprNodeP>() );
         }
         else
         {
@@ -1161,7 +1160,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
                 // Repetiion
                 auto count = Parse_Expr0(lex);
                 GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-                //return NEWNODE( AST::ExprNode_Array, ::std::move(first), ::std::move(count); );
+                return NEWNODE( AST::ExprNode_Array, ::std::move(first), ::std::move(count) );
             }
             else
             {
@@ -1173,10 +1172,10 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
                     GET_TOK(tok, lex);
                 }
                 CHECK_TOK(tok, TOK_SQUARE_CLOSE);
-                //return NEWNODE( AST::ExprNode_Array, ::std::move(items) );
+                return NEWNODE( AST::ExprNode_Array, ::std::move(items) );
             }
         }
-        throw ParseError::Todo(lex, "Array literals");
+        throw ParseError::BugCheck(lex, "Array literal fell");
     case TOK_MACRO:
         {
         TokenTree tt = Parse_TT(lex, true);

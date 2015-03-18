@@ -162,11 +162,10 @@ struct ExprNode_Assign:
 {
     enum Operation {
         NONE,
-        ADD,
-        SUB,
-        MUL,
-        DIV,
-        MOD,
+        ADD, SUB,
+        MUL, DIV, MOD,
+        AND, OR , XOR,
+        SHR, SHL,
     } m_op;
     unique_ptr<ExprNode>    m_slot;
     unique_ptr<ExprNode>    m_value;
@@ -422,6 +421,25 @@ struct ExprNode_StructLiteral:
     
     NODE_METHODS();
 };
+// Array
+struct ExprNode_Array:
+    public ExprNode
+{
+    unique_ptr<ExprNode>    m_size; // if non-NULL, it's a sized array
+    ::std::vector< unique_ptr<ExprNode> >   m_values;
+    
+    ExprNode_Array() {}
+    ExprNode_Array(::std::vector< unique_ptr<ExprNode> > vals):
+        m_values( ::std::move(vals) )
+    {}
+    ExprNode_Array(unique_ptr<ExprNode> val, unique_ptr<ExprNode> size):
+        m_size( ::std::move(size) )
+    {
+        m_values.push_back( ::std::move(val) );
+    }
+    
+    NODE_METHODS();
+};
 // Tuple
 struct ExprNode_Tuple:
     public ExprNode
@@ -612,6 +630,7 @@ public:
     NT(ExprNode_String);
     NT(ExprNode_Closure);
     NT(ExprNode_StructLiteral);
+    NT(ExprNode_Array);
     NT(ExprNode_Tuple);
     NT(ExprNode_NamedValue);
     
@@ -656,6 +675,7 @@ public:
     NT(ExprNode_String);
     NT(ExprNode_Closure);
     NT(ExprNode_StructLiteral);
+    NT(ExprNode_Array);
     NT(ExprNode_Tuple);
     NT(ExprNode_NamedValue);
     

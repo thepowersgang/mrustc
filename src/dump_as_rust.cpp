@@ -362,6 +362,24 @@ public:
         m_os << indent() << "}";
         dec_indent();
     }
+    virtual void visit(AST::ExprNode_Array& n) override {
+        m_expr_root = false;
+        m_os << "[";
+        if( n.m_size.get() )
+        {
+            AST::NodeVisitor::visit(n.m_values[0]);
+            m_os << "; ";
+            AST::NodeVisitor::visit(n.m_size);
+        }
+        else {
+            for( auto& item : n.m_values )
+            {
+                AST::NodeVisitor::visit(item);
+                m_os << ", ";
+            }
+        }
+        m_os << "]";
+    }
     virtual void visit(AST::ExprNode_Tuple& n) override {
         m_expr_root = false;
         m_os << "(";
