@@ -202,6 +202,8 @@ AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path)
     {
     case TOK_PAREN_OPEN:
         return AST::Pattern(AST::Pattern::TagEnumVariant(), ::std::move(path), Parse_PatternList(lex));
+    case TOK_BRACE_OPEN:
+        throw ParseError::Todo(lex, "struct patterns");
     default:
         lex.putback(tok);
         return AST::Pattern(AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_NamedValue, ::std::move(path)));
@@ -517,7 +519,11 @@ ExprNodeP Parse_WhileStmt(TokenStream& lex, ::std::string lifetime)
     }
     else {
         lex.putback(tok);
-        ExprNodeP cnd = Parse_Expr1(lex);
+        ExprNodeP cnd;
+        {
+            SET_PARSE_FLAG(lex, disallow_struct_literal);
+            cnd = Parse_Expr1(lex);
+        }
         return NEWNODE( AST::ExprNode_Loop, lifetime, ::std::move(cnd), Parse_ExprBlockNode(lex) );
     }
 }
@@ -776,6 +782,7 @@ bool Parse_IsTokValue(eTokenType tok_type)
     case TOK_RWORD_TRUE:
     case TOK_RWORD_FALSE:
     case TOK_RWORD_SELF:
+    case TOK_RWORD_SUPER:
     case TOK_RWORD_BOX:
     case TOK_PAREN_OPEN:
         return true;
@@ -1109,10 +1116,16 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         return rv;
         }
     
+    case TOK_RWORD_SUPER:
+        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        path = Parse_PathFrom(lex, AST::Path(AST::Path::TagSuper()), PATH_GENERIC_EXPR);
+        if(0)
     case TOK_IDENT:
         // Get path
-        lex.putback(tok);
-        path = Parse_Path(lex, false, PATH_GENERIC_EXPR);
+        {
+            lex.putback(tok);
+            path = Parse_Path(lex, false, PATH_GENERIC_EXPR);
+        }
         if(0)
     case TOK_DOUBLE_COLON:
         path = Parse_Path(lex, true, PATH_GENERIC_EXPR);

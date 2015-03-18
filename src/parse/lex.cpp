@@ -393,6 +393,22 @@ Token Lexer::getTokenInt()
                 }
                 else
                 {
+                    if( str == "b" && ch == '\'' ) {
+                        // Byte constant
+                        ch = this->getc();
+                        if( ch == '\\' ) {
+                            uint32_t val = this->parseEscape('\'');
+                            if( this->getc() != '\'' )
+                                throw ParseError::Generic(*this, "Multi-byte character literal");
+                            return Token((uint64_t)val, CORETYPE_U8);
+                        }
+                        else {
+                            if( this->getc() != '\'' )
+                                throw ParseError::Generic(*this, "Multi-byte character literal");
+                            return Token((uint64_t)ch, CORETYPE_U8);
+                        }
+                    }
+                
                     this->ungetc();
                     for( unsigned int i = 0; i < LEN(RWORDS); i ++ )
                     {
@@ -445,7 +461,7 @@ Token Lexer::getTokenInt()
                     ch = this->getc();
                     if( ch == '\'' ) {
                         // Character constant
-                        return Token((uint64_t)ch, CORETYPE_CHAR);
+                        return Token((uint64_t)firstchar, CORETYPE_CHAR);
                     }
                     else {
                         // Lifetime name

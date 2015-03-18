@@ -27,6 +27,7 @@ enum eParsePathGenericMode
 
 extern AST::MetaItem   Parse_MetaItem(TokenStream& lex);
 extern AST::Path   Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generic_mode);
+extern AST::Path   Parse_PathFrom(TokenStream& lex, AST::Path src, eParsePathGenericMode generic_mode);
 extern ::std::vector<TypeRef>   Parse_Path_GenericList(TokenStream& lex);
 extern TypeRef     Parse_Type(TokenStream& lex);
 
