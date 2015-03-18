@@ -62,7 +62,29 @@ inline ::std::ostream& operator<<(::std::ostream& os, const ::std::vector<T>& v)
 }
 
 template <typename T, typename U>
+inline ::std::ostream& operator<<(::std::ostream& os, const ::std::pair<T,U>& v) {
+    os << "(" << v.first << ", " << v.second << ")";
+    return os;
+}
+
+template <typename T, typename U>
 inline ::std::ostream& operator<<(::std::ostream& os, const ::std::map<T,U>& v) {
+    if( v.size() > 0 )
+    {
+        bool is_first = true;
+        for( const auto& i : v )
+        {
+            if(!is_first)
+                os << ", ";
+            is_first = false;
+            os << i.first << ": " << i.second;
+        }
+    }
+    return os;
+}
+
+template <typename T, typename U, class Cmp>
+inline ::std::ostream& operator<<(::std::ostream& os, const ::std::multimap<T,U,Cmp>& v) {
     if( v.size() > 0 )
     {
         bool is_first = true;

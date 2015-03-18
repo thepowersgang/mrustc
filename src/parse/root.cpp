@@ -607,7 +607,6 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
 
 AST::Function Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self)
 {
-    TRACE_FUNCTION;
     Token   tok;
     auto ret = Parse_FunctionDef(lex, abi, ::std::move(attrs), allow_self, false);
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
@@ -946,6 +945,9 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
     }
 }
 
+AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe/*=false*/);
+void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl);
+
 AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe/*=false*/)
 {
     TRACE_FUNCTION;
@@ -1018,59 +1020,88 @@ AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe/*=false*/)
     // A sequence of method implementations
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
-        AST::MetaItems  item_attrs;
-        while( tok.type() == TOK_ATTR_OPEN )
-        {
-            item_attrs.push_back( Parse_MetaItem(lex) );
-            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-            GET_TOK(tok, lex);
-        }
-        
-        bool is_public = false;
-        if(tok.type() == TOK_RWORD_PUB) {
-            is_public = true;
-            GET_TOK(tok, lex);
-        }
-        
-        if(tok.type() == TOK_RWORD_UNSAFE) {
-            item_attrs.push_back( AST::MetaItem("#UNSAFE") );
-            GET_TOK(tok, lex);
-        }
-        
-        ::std::string   abi = "rust";
-        switch(tok.type())
-        {
-        case TOK_RWORD_TYPE: {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            ::std::string name = tok.str();
-            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-            impl.add_type(is_public, name, Parse_Type(lex));
-            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-            break; }
-        case TOK_RWORD_EXTERN:
-            {
-                abi = "C";
-                if( GET_TOK(tok, lex) == TOK_STRING )
-                    abi = tok.str();
-                else
-                    lex.putback(tok);
-                
-                GET_TOK(tok, lex);
-            }
-            CHECK_TOK(tok, TOK_RWORD_FN);
-        case TOK_RWORD_FN: {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            ::std::string name = tok.str();
-            // - Self allowed, can't be prototype-form
-            impl.add_function(is_public, ::std::move(name), Parse_FunctionDefWithCode(lex, abi, ::std::move(item_attrs), true));
-            break; }
-
-        default:
-            throw ParseError::Unexpected(lex, tok);
-        }
+        lex.putback(tok);
+        Parse_Impl_Item(lex, impl);
     }
 
     return impl;
+}
+
+void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
+{
+    Token   tok;
+    
+    GET_TOK(tok, lex);
+    
+    AST::MetaItems  item_attrs;
+    while( tok.type() == TOK_ATTR_OPEN )
+    {
+        item_attrs.push_back( Parse_MetaItem(lex) );
+        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+        GET_TOK(tok, lex);
+    }
+    
+    bool is_public = false;
+    if(tok.type() == TOK_RWORD_PUB) {
+        is_public = true;
+        GET_TOK(tok, lex);
+    }
+    
+    if(tok.type() == TOK_RWORD_UNSAFE) {
+        item_attrs.push_back( AST::MetaItem("#UNSAFE") );
+        GET_TOK(tok, lex);
+    }
+    
+    ::std::string   abi = "rust";
+    switch(tok.type())
+    {
+    case TOK_MACRO:
+        {
+            TokenTree tt = Parse_TT(lex, true);
+            if( tt.is_token() ) {
+                DEBUG("TT was a single token (not a sub-tree)");
+                throw ParseError::Unexpected(lex, tt.tok());
+            }
+            
+            auto expanded_macro = Macro_Invoke(lex, tok.str().c_str(), tt);
+            auto& lex = *expanded_macro;
+            while( GET_TOK(tok, lex) != TOK_EOF )
+            {
+                lex.putback(tok);
+                Parse_Impl_Item(lex, impl);
+            }
+        }
+        if(GET_TOK(tok, lex) != TOK_SEMICOLON)
+            lex.putback(tok);
+        break;
+    case TOK_RWORD_TYPE: {
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        ::std::string name = tok.str();
+        GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+        impl.add_type(is_public, name, Parse_Type(lex));
+        GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+        break; }
+    case TOK_RWORD_EXTERN:
+        {
+            abi = "C";
+            if( GET_TOK(tok, lex) == TOK_STRING )
+                abi = tok.str();
+            else
+                lex.putback(tok);
+            
+            GET_TOK(tok, lex);
+        }
+        CHECK_TOK(tok, TOK_RWORD_FN);
+    case TOK_RWORD_FN: {
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        ::std::string name = tok.str();
+        // - Self allowed, can't be prototype-form
+        impl.add_function(is_public, ::std::move(name), Parse_FunctionDefWithCode(lex, abi, ::std::move(item_attrs), true));
+        break; }
+
+    default:
+        throw ParseError::Unexpected(lex, tok);
+    }
 }
 
 void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi)

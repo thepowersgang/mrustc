@@ -160,6 +160,8 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex)
     {
     case TOK_UNDERSCORE:
         return AST::Pattern( );
+    case TOK_DOUBLE_DOT:
+        return AST::Pattern( AST::Pattern::TagWildcard() );
     case TOK_AMP:
         DEBUG("Ref");
         if( GET_TOK(tok, lex) == TOK_RWORD_MUT )
@@ -326,8 +328,6 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
 /// - use/extern/const/let
 ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end)
 {
-    TRACE_FUNCTION;
-    
     Token tok;
     
     if( GET_TOK(tok, lex) == TOK_LIFETIME )

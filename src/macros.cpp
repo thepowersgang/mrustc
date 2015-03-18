@@ -27,7 +27,13 @@ public:
 
     struct cmp_mk {
         bool operator()(const t_mapping_key& a, const t_mapping_key& b) const {
-            return a.first < b.first || ::std::strcmp(a.second, b.second) < 0;
+            if( a.first < b.first )
+                return true;
+            if( a.first == b.first ) {
+                if( ::std::strcmp(a.second, b.second) < 0 )
+                    return true;
+            }
+            return false;
         }
     };
     typedef ::std::multimap<t_mapping_key, TokenTree, cmp_mk>    t_mappings;
@@ -281,6 +287,10 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
             //GET_CHECK_TOK(tok, lex, close);
             GET_CHECK_TOK(tok, lex, TOK_EOF);
             DEBUG( rule.m_contents.size() << " rule contents bound to " << bound_tts.size() << " values - " << name );
+            for( const auto& v : bound_tts )
+            {
+                DEBUG("- " << v.first.first << "#" << v.first.second << " = [" << v.second << "]");
+            }
             return ::std::unique_ptr<TokenStream>( (TokenStream*)new MacroExpander(olex, rule.m_contents, bound_tts, g_crate_path_tt) );
         }
         catch(const ParseError::Base& e)
@@ -399,9 +409,11 @@ Token MacroExpander::realGetToken()
             {
                 // - Name
                 const size_t iter_idx = m_offsets.back().second;
+                DEBUG("m_mappings = " << m_mappings);
                 const auto tt_i = m_mappings.equal_range( ::std::make_pair(layer, ent.name.c_str()) );
-                if( tt_i.first == tt_i.second )
-                    throw ParseError::Generic( FMT("Cannot find mapping name: " << ent.name << " for layer " << layer) );
+                if( tt_i.first == tt_i.second ) {
+                    throw ParseError::Generic(*this, FMT("Cannot find mapping name: " << ent.name << " for layer " << layer) );
+                }
                 
                 size_t i = 0;
                 for( auto it = tt_i.first; it != tt_i.second; it ++ )

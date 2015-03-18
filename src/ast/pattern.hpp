@@ -69,6 +69,13 @@ public:
         m_class(ANY)
     {}
 
+    // Wildcard = '..', distinct from '_'
+    // TODO: Store wildcard as a different pattern type
+    struct TagWildcard {};
+    Pattern(TagWildcard):
+        m_class(ANY)
+    {}
+
     struct TagBind {};
     Pattern(TagBind, ::std::string name):
         m_class(ANY),

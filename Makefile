@@ -31,7 +31,7 @@ clean:
 
 output/%.ast: samples/%.rs $(BIN) 
 	@mkdir -p output/
-	$(DBG) $(BIN) $< --emit ast -o $@ 2>&1 | tee $@_dbg.txt ; test $${PIPESTATUS[0]} -eq 0
+	$(DBG) $(BIN) $< --emit ast -o $@ 2>&1 | tee $@_dbg.txt | tail -n 20 ; test $${PIPESTATUS[0]} -eq 0
 
 TEST_FILE = ../../../Source/rust/rustc-nightly/src/libcore/lib.rs
 test: $(TEST_FILE) $(BIN) output/std.ast output/log.ast output/env_logger.ast output/getopts.ast
