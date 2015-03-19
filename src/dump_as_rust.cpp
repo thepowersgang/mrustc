@@ -661,36 +661,55 @@ void RustPrinter::print_bounds(const AST::TypeParams& params)
 
 void RustPrinter::print_pattern(const AST::Pattern& p)
 {
-    if( p.binding() != "" && p.type() == AST::Pattern::ANY ) {
-        m_os << p.binding();
-        return;
-    }
-    
     if( p.binding() != "" )
         m_os << p.binding() << " @ ";
-    switch(p.type())
+    switch(p.data().tag())
     {
-    case AST::Pattern::ANY:
+    case AST::Pattern::Data::Any:
         m_os << "_";
         break;
-    case AST::Pattern::REF:
+    case AST::Pattern::Data::MaybeBind:
+        m_os << "_ /*?*/";
+        break;
+    case AST::Pattern::Data::Ref: {
+        const auto& v = p.data().as_Ref();
         m_os << "& ";
-        print_pattern(p.sub_patterns()[0]);
-        break;
-    case AST::Pattern::VALUE:
-        m_os << p.node();
-        break;
-    case AST::Pattern::MAYBE_BIND:
-        m_os << "/*?*/" << p.path();
-        break;
-    case AST::Pattern::TUPLE_STRUCT:
-        m_os << p.path();
-    case AST::Pattern::TUPLE:
-        m_os << "(";
-        for(const auto& sp : p.sub_patterns())
+        print_pattern(*v.sub);
+        break; }
+    case AST::Pattern::Data::Value: {
+        auto& v = p.data().as_Value();
+        m_os << *v.start;
+        if( v.end.get() )
+            m_os << " ... " << *v.end;
+        break; }
+    case AST::Pattern::Data::StructTuple: {
+        const auto& v = p.data().as_StructTuple();
+        m_os << v.path << "(";
+        for(const auto& sp : v.sub_patterns) {
             print_pattern(sp);
+            m_os << ",";
+        }
         m_os << ")";
-        break;
+        break; }
+    case AST::Pattern::Data::Struct: {
+        const auto& v = p.data().as_Struct();
+        m_os << v.path << "(";
+        for(const auto& sp : v.sub_patterns) {
+            m_os << sp.first << ": ";
+            print_pattern(sp.second);
+            m_os << ",";
+        }
+        m_os << ")";
+        break; }
+    case AST::Pattern::Data::Tuple: {
+        const auto& v = p.data().as_Tuple();
+        m_os << "(";
+        for(const auto& sp : v.sub_patterns) {
+            print_pattern(sp);
+            m_os << ",";
+        }
+        m_os << ")";
+        break; }
     }
 }
 

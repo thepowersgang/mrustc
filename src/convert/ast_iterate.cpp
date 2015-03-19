@@ -62,29 +62,34 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
 {
     //DEBUG("pat = " << pat);
     // Resolve names
-    switch(pat.type())
+    switch(pat.data().tag())
     {
-    case AST::Pattern::ANY:
+    case AST::Pattern::Data::Any:
         // Wildcard, nothing to do
         break;
-    case AST::Pattern::REF:
+    case AST::Pattern::Data::Ref: {
+        auto& v = pat.data().as_Ref();
         if( type_hint.is_wildcard() )
-            handle_pattern(pat.sub_patterns()[0], (const TypeRef&)TypeRef());
+            handle_pattern(*v.sub, (const TypeRef&)TypeRef());
         else if( type_hint.is_reference() )
             throw ::std::runtime_error("Ref pattern on non-ref value");
         else
-            handle_pattern(pat.sub_patterns()[0], type_hint.sub_types()[0]);
-        break;
-    case AST::Pattern::MAYBE_BIND:
+            handle_pattern(*v.sub, type_hint.sub_types()[0]);
+        break; }
+    case AST::Pattern::Data::MaybeBind:
         throw ::std::runtime_error("Calling CASTIterator::handle_pattern on MAYBE_BIND, not valid");
-    case AST::Pattern::VALUE:
-        handle_expr( pat.node() );
-        break;
-    case AST::Pattern::TUPLE:
+    case AST::Pattern::Data::Value: {
+        auto& v = pat.data().as_Value();
+        handle_expr( *v.start );
+        if( v.end.get() )
+            handle_expr( *v.end );
+        break; }
+    case AST::Pattern::Data::Tuple: {
+        auto& v = pat.data().as_Tuple();
         // Tuple is handled by subpattern code
         if( type_hint.is_wildcard() )
         {
-            for( auto& sp : pat.sub_patterns() )
+            for( auto& sp : v.sub_patterns )
                 handle_pattern(sp, (const TypeRef&)TypeRef());
         }
         else if( !type_hint.is_tuple() )
@@ -93,24 +98,41 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
         }
         else
         {
-            if( type_hint.sub_types().size() != pat.sub_patterns().size() )
+            if( type_hint.sub_types().size() != v.sub_patterns.size() )
             {
                 throw ::std::runtime_error("Tuple pattern count doesn't match");
             }
-            for( unsigned int i = 0; i < pat.sub_patterns().size(); i ++ )
+            for( unsigned int i = 0; i < v.sub_patterns.size(); i ++ )
             {
-                handle_pattern(pat.sub_patterns()[i], type_hint.sub_types()[i]);
+                handle_pattern(v.sub_patterns[i], type_hint.sub_types()[i]);
             }
         }
-        break;
-    case AST::Pattern::TUPLE_STRUCT:
+        break; }
+    case AST::Pattern::Data::Struct: {
+        auto& v = pat.data().as_Struct();
+        handle_path( v.path, CASTIterator::MODE_TYPE );
+        if( type_hint.is_wildcard() )
+        {
+            for( auto& sp : v.sub_patterns )
+                handle_pattern(sp.second, (const TypeRef&)TypeRef());
+        }
+        else if( !type_hint.is_path() )
+        {
+            throw ::std::runtime_error("Tuple struct pattern on non-tuple value");
+        }
+        else
+        {
+            throw ::std::runtime_error("TODO: Struct typecheck/iterate");
+        }
+        break; }
+    case AST::Pattern::Data::StructTuple: {
+        auto& v = pat.data().as_StructTuple();
         // Resolve the path!
-        // - TODO: Restrict to types and enum variants
-        handle_path( pat.path(), CASTIterator::MODE_TYPE );
+        handle_path( v.path, CASTIterator::MODE_TYPE );
         // Handle sub-patterns
         if( type_hint.is_wildcard() )
         {
-            for( auto& sp : pat.sub_patterns() )
+            for( auto& sp : v.sub_patterns )
                 handle_pattern(sp, (const TypeRef&)TypeRef());
         }
         else if( !type_hint.is_path() )
@@ -120,8 +142,8 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
         else
         {
             auto& hint_path = type_hint.path();
-            auto& pat_path = pat.path();
-            DEBUG("Pat: " << pat.path() << ", Type: " << type_hint.path());
+            auto& pat_path = v.path;
+            DEBUG("Pat: " << pat_path << ", Type: " << type_hint.path());
             switch( hint_path.binding_type() )
             {
             case AST::Path::UNBOUND:
@@ -136,13 +158,13 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
                 auto& enm = pat_path.bound_enum();
                 auto idx = pat_path.bound_idx();
                 auto& var = enm.variants().at(idx);
-                handle_pattern_enum(pat_path[-2].args(), hint_path[-1].args(), enm.params(), var, pat.sub_patterns());
+                handle_pattern_enum(pat_path[-2].args(), hint_path[-1].args(), enm.params(), var, v.sub_patterns);
                 break; }
             default:
                 throw ::std::runtime_error(FMT("Bad type in tuple struct pattern : " << type_hint.path()));
             }
         }
-        break;
+        break; }
     }
     // Extract bindings and add to namespace
     if( pat.binding().size() > 0 )

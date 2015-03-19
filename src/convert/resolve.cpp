@@ -344,7 +344,7 @@ void CPathResolver::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
 {
     DEBUG("pat = " << pat);
     // Resolve "Maybe Bind" entries
-    if( pat.type() == AST::Pattern::MAYBE_BIND )
+    if( pat.data().tag() == AST::Pattern::Data::MaybeBind )
     {
         ::std::string   name = pat.binding();
         // Locate a _constant_ within the current namespace which matches this name

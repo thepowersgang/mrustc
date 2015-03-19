@@ -40,62 +40,110 @@ SERIALISE_TYPE(MetaItem::, "AST_MetaItem", {
 
 ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat)
 {
-    switch(pat.m_class)
+    os << "Pattern(" << pat.m_binding << " @ ";
+    switch(pat.m_data.tag())
     {
-    case Pattern::ANY:
-        os << "Pattern(TagWildcard, '" << pat.m_binding << "' @ _)";
+    case Pattern::Data::Any:
+        os << "_";
         break;
-    case Pattern::MAYBE_BIND:
-        os << "Pattern(TagMaybeBind, '" << pat.m_binding << "')";
+    case Pattern::Data::MaybeBind:
+        os << "?";
         break;
-    case Pattern::REF:
-        os << "Pattern(TagReference, '" << pat.m_binding << "' @ " << pat.m_sub_patterns[0] << ")";
+    case Pattern::Data::Ref:
+        os << "&" << (pat.m_data.as_Ref().mut ? "mut " : "") << *pat.m_data.as_Ref().sub;
         break;
-    case Pattern::VALUE:
-        os << "Pattern(TagValue, '" << pat.m_binding << "' @ TODO:ExprNode)";
+    case Pattern::Data::Value:
+        os << *pat.m_data.as_Value().start;
+        if( pat.m_data.as_Value().end.get() )
+            os << " ... " << *pat.m_data.as_Value().end;
         break;
-    case Pattern::TUPLE:
-        os << "Pattern(TagTuple, '" << pat.m_binding << "' @ [" << pat.m_sub_patterns << "])";
+    case Pattern::Data::Tuple:
+        os << "(" << pat.m_data.as_Tuple().sub_patterns << ")";
         break;
-    case Pattern::TUPLE_STRUCT:
-        os << "Pattern(TagEnumVariant, '" << pat.m_binding << "' @ " << pat.m_path << ", [" << pat.m_sub_patterns << "])";
+    case Pattern::Data::StructTuple:
+        os << pat.m_data.as_StructTuple().path << " (" << pat.m_data.as_StructTuple().sub_patterns << ")";
+        break;
+    case Pattern::Data::Struct:
+        os << pat.m_data.as_Struct().path << " {" << pat.m_data.as_Struct().sub_patterns << "}";
         break;
     }
+    os << ")";
     return os;
 }
-void operator%(Serialiser& s, Pattern::BindType c) {
-    switch(c)
-    {
-    #define _(v)    case Pattern::v: s << #v; return;
-    _(ANY)
-    _(MAYBE_BIND)
-    _(REF)
-    _(VALUE)
-    _(TUPLE)
-    _(TUPLE_STRUCT)
-    #undef _
-    }
+void operator%(Serialiser& s, Pattern::Data::Tag c) {
+    s << Pattern::Data::tag_to_str(c);
 }
-void operator%(::Deserialiser& s, Pattern::BindType& c) {
+void operator%(::Deserialiser& s, Pattern::Data::Tag& c) {
     ::std::string   n;
     s.item(n);
-    if(1)   ;
-    #define _(v) else if(n == #v) c = Pattern::v;
-    _(ANY)
-    _(MAYBE_BIND)
-    _(REF)
-    _(VALUE)
-    _(TUPLE)
-    _(TUPLE_STRUCT)
-    #undef _
-    else
-        throw ::std::runtime_error("");
+    c = Pattern::Data::tag_from_str(n);
 }
-SERIALISE_TYPE_S(Pattern, {
-    s % m_class;
+SERIALISE_TYPE(Pattern::, "Pattern", {
     s.item(m_binding);
-    s.item(m_sub_patterns);
-    s.item(m_path);
+    s % m_data.tag();
+    switch(m_data.tag())
+    {
+    case Pattern::Data::Any:
+        break;
+    case Pattern::Data::MaybeBind:
+        break;
+    case Pattern::Data::Ref:
+        s << m_data.as_Ref().mut;
+        s << m_data.as_Ref().sub;
+        break;
+    case Pattern::Data::Value:
+        s << m_data.as_Value().start;
+        s << m_data.as_Value().end;
+        break;
+    case Pattern::Data::Tuple:
+        s << m_data.as_Tuple().sub_patterns;
+        break;
+    case Pattern::Data::StructTuple:
+        s << m_data.as_StructTuple().path;
+        s << m_data.as_StructTuple().sub_patterns;
+        break;
+    case Pattern::Data::Struct:
+        s << m_data.as_Struct().path;
+        s << m_data.as_Struct().sub_patterns;
+        break;
+    }
+},{
+    s.item(m_binding);
+    Pattern::Data::Tag  tag;
+    s % tag;
+    switch(tag)
+    {
+    case Pattern::Data::Any:
+        m_data = Pattern::Data::make_null_Any();
+        break;
+    case Pattern::Data::MaybeBind:
+        m_data = Pattern::Data::make_null_MaybeBind();
+        break;
+    case Pattern::Data::Ref:
+        m_data = Pattern::Data::make_null_Ref();
+        s.item( m_data.as_Ref().mut );
+        s.item( m_data.as_Ref().sub );
+        break;
+    case Pattern::Data::Value:
+        m_data = Pattern::Data::make_null_Value();
+        s.item( m_data.as_Value().start );
+        s.item( m_data.as_Value().end );
+        break;
+    case Pattern::Data::Tuple:
+        m_data = Pattern::Data::make_null_Tuple();
+        s.item( m_data.as_Tuple().sub_patterns );
+        break;
+    case Pattern::Data::StructTuple:
+        m_data = Pattern::Data::make_null_StructTuple();
+        s.item( m_data.as_StructTuple().path );
+        s.item( m_data.as_StructTuple().sub_patterns );
+        break;
+    case Pattern::Data::Struct:
+        m_data = Pattern::Data::make_null_Struct();
+        s.item( m_data.as_Struct().path );
+        s.item( m_data.as_Struct().sub_patterns );
+        break;
+    }
 });
 
 Impl Impl::make_concrete(const ::std::vector<TypeRef>& types) const

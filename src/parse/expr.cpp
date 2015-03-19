@@ -134,11 +134,11 @@ AST::Pattern Parse_PatternReal(TokenStream& lex)
     AST::Pattern    ret = Parse_PatternReal1(lex);
     if( GET_TOK(tok, lex) == TOK_TRIPLE_DOT )
     {
-        if( ret.type() != AST::Pattern::VALUE )
+        if( !ret.data().is_Value() )
             throw ParseError::Generic(lex, "Using '...' with a non-value on left");
         auto    leftval = ret.take_node();
         auto    right_pat = Parse_PatternReal1(lex);
-        if( right_pat.type() != AST::Pattern::VALUE )
+        if( !right_pat.data().is_Value() )
             throw ParseError::Generic(lex, "Using '...' with a non-value on right");
         auto    rightval = right_pat.take_node();
         

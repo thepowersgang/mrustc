@@ -1,6 +1,7 @@
 
 #define TE_DATANAME(name)   Data_##name
 #define ENUM_CONS(__tag, __type) \
+    static self_t make_null_##__tag() { self_t ret; ret.m_tag = __tag; new (ret.m_data) __type; return ::std::move(ret); } \
     static self_t make_##__tag(__type v) \
     {\
         self_t  ret;\
@@ -65,23 +66,46 @@
 #define TE_MOVE_CASE6(_1, ...) TE_MOVE_CASE _1 TE_MOVE_CASE5(__VA_ARGS__)
 #define TE_MOVE_CASE7(_1, ...) TE_MOVE_CASE _1 TE_MOVE_CASE6(__VA_ARGS__)
 
-// Macro to obtain a numbered macro for argument counts
-#define TE_GM(SUF,_1,_2,_3,_4,_5,_6,_7,COUNT,...) SUF##COUNT
+// "tag_to_str" internals
+#define TE_TOSTR_CASE(tag,_)    case tag: return #tag;
+#define TE_TOSTR_CASE2(a,b)   TE_TOSTR_CASE a TE_TOSTR_CASE b
+#define TE_TOSTR_CASE3(a,...) TE_TOSTR_CASE a TE_TOSTR_CASE2(__VA_ARGS__)
+#define TE_TOSTR_CASE4(a,...) TE_TOSTR_CASE a TE_TOSTR_CASE3(__VA_ARGS__)
+#define TE_TOSTR_CASE5(a,...) TE_TOSTR_CASE a TE_TOSTR_CASE4(__VA_ARGS__)
+#define TE_TOSTR_CASE6(a,...) TE_TOSTR_CASE a TE_TOSTR_CASE5(__VA_ARGS__)
+#define TE_TOSTR_CASE7(a,...) TE_TOSTR_CASE a TE_TOSTR_CASE6(__VA_ARGS__)
+// "tag_from_str" internals
+#define TE_FROMSTR_CASE(tag,_)    else if(str == #tag) return tag;
+#define TE_FROMSTR_CASE2(a,b)   TE_FROMSTR_CASE a TE_FROMSTR_CASE b
+#define TE_FROMSTR_CASE3(a,...) TE_FROMSTR_CASE a TE_FROMSTR_CASE2(__VA_ARGS__)
+#define TE_FROMSTR_CASE4(a,...) TE_FROMSTR_CASE a TE_FROMSTR_CASE3(__VA_ARGS__)
+#define TE_FROMSTR_CASE5(a,...) TE_FROMSTR_CASE a TE_FROMSTR_CASE4(__VA_ARGS__)
+#define TE_FROMSTR_CASE6(a,...) TE_FROMSTR_CASE a TE_FROMSTR_CASE5(__VA_ARGS__)
+#define TE_FROMSTR_CASE7(a,...) TE_FROMSTR_CASE a TE_FROMSTR_CASE6(__VA_ARGS__)
 
-#define MAXS(...)          TE_GM(MAXS        ,__VA_ARGS__,7,6,5,4,3,2)(__VA_ARGS__)
-#define TE_TYPEDEFS(...)   TE_GM(TE_TYPEDEF  ,__VA_ARGS__,7,6,5,4,3,2)(__VA_ARGS__)
-#define TE_TAGS(...)       TE_GM(TE_TAG      ,__VA_ARGS__,7,6,5,4,3,2)(__VA_ARGS__)
-#define TE_DEST_CASES(...) TE_GM(TE_DEST_CASE,__VA_ARGS__,7,6,5,4,3,2)(__VA_ARGS__)
-#define TE_MOVE_CASES(...) TE_GM(TE_MOVE_CASE,__VA_ARGS__,7,6,5,4,3,2)(__VA_ARGS__)
-#define TE_CONSS(...)      TE_GM(TE_CONS     ,__VA_ARGS__,7,6,5,4,3,2)(__VA_ARGS__)
+// Macro to obtain a numbered macro for argument counts
+#define TE_GM_I(SUF,_1,_2,_3,_4,_5,_6,_7,COUNT,...) SUF##COUNT
+#define TE_GM(SUF,...) TE_GM_I(SUF,__VA_ARGS__,7,6,5,4,3,2)
+
+#define MAXS(...)          TE_GM(MAXS        ,__VA_ARGS__)(__VA_ARGS__)
+#define TE_TYPEDEFS(...)   TE_GM(TE_TYPEDEF  ,__VA_ARGS__)(__VA_ARGS__)
+#define TE_TAGS(...)       TE_GM(TE_TAG      ,__VA_ARGS__)(__VA_ARGS__)
+#define TE_DEST_CASES(...) TE_GM(TE_DEST_CASE,__VA_ARGS__)(__VA_ARGS__)
+#define TE_MOVE_CASES(...) TE_GM(TE_MOVE_CASE,__VA_ARGS__)(__VA_ARGS__)
+#define TE_TOSTR_CASES(...)   TE_GM(TE_TOSTR_CASE  ,__VA_ARGS__)(__VA_ARGS__)
+#define TE_FROMSTR_CASES(...) TE_GM(TE_FROMSTR_CASE,__VA_ARGS__)(__VA_ARGS__)
+#define TE_CONSS(...)      TE_GM(TE_CONS     ,__VA_ARGS__)(__VA_ARGS__)
 
 #define TAGGED_ENUM(_name, _def, ...) \
 class _name { \
     typedef _name self_t; \
     TE_TYPEDEFS(__VA_ARGS__) \
+public:\
     enum Tag { \
         TE_TAGS(__VA_ARGS__)\
-    } m_tag; \
+    }; \
+private:\
+    Tag m_tag; \
     char m_data[MAXS(__VA_ARGS__)]; \
 public:\
     _name(): m_tag(_def) {}\
@@ -89,7 +113,18 @@ public:\
     _name(_name&& x): m_tag(x.m_tag) { x.m_tag = _def; switch(m_tag) {  TE_MOVE_CASES(__VA_ARGS__) } } \
     _name& operator =(_name&& x) { this->~_name(); m_tag = x.m_tag; x.m_tag = _def; switch(m_tag) { TE_MOVE_CASES(__VA_ARGS__) }; return *this; } \
     ~_name() { switch(m_tag) { TE_DEST_CASES(__VA_ARGS__) } } \
+    \
+    Tag tag() const { return m_tag; }\
     TE_CONSS(__VA_ARGS__) \
+/*
+*/    static const char *tag_to_str(Tag tag) { \
+        switch(tag) { TE_TOSTR_CASES(__VA_ARGS__) } return ""; \
+    }/*
+*/    static Tag tag_from_str(const ::std::string& str) { \
+        if(0); \
+        TE_FROMSTR_CASES(__VA_ARGS__)\
+        else throw ::std::runtime_error("enum "#_name" No conversion"); \
+    }\
 }
 
 #define ENUM3(_name, _def, _t1, _v1, _t2, _v2, _t3, _v3)\
