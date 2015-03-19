@@ -34,6 +34,7 @@ AST::Expr Parse_ExprBlock(TokenStream& lex)
 
 AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path);
 AST::Pattern Parse_PatternReal(TokenStream& lex);
+AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path);
 
 
 /// Parse a pattern
@@ -203,7 +204,7 @@ AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path)
     case TOK_PAREN_OPEN:
         return AST::Pattern(AST::Pattern::TagEnumVariant(), ::std::move(path), Parse_PatternList(lex));
     case TOK_BRACE_OPEN:
-        throw ParseError::Todo(lex, "struct patterns");
+        return Parse_PatternStruct(lex, ::std::move(path));
     default:
         lex.putback(tok);
         return AST::Pattern(AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_NamedValue, ::std::move(path)));
@@ -229,6 +230,49 @@ AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path)
     } while( GET_TOK(tok, lex) == TOK_COMMA );
     CHECK_TOK(tok, end);
     return child_pats;
+}
+
+AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path)
+{
+    TRACE_FUNCTION;
+    Token tok;
+    do {
+        GET_TOK(tok, lex);
+        DEBUG("tok = " << tok);
+        if( tok.type() == TOK_BRACE_CLOSE )
+            break;
+        if( tok.type() == TOK_DOUBLE_DOT ) {
+            GET_TOK(tok, lex);
+            break;
+        }
+        
+        bool is_short_bind = false;
+        if( tok.type() == TOK_RWORD_REF ) {
+            is_short_bind = true;
+            GET_TOK(tok, lex);
+        }
+        if( tok.type() == TOK_RWORD_MUT ) {
+            is_short_bind = true;
+            GET_TOK(tok, lex);
+        }
+        
+        CHECK_TOK(tok, TOK_IDENT);
+        ::std::string   field = tok.str();
+        GET_TOK(tok, lex);
+        
+        AST::Pattern    pat;
+        if( is_short_bind || tok.type() != TOK_COLON ) {
+            lex.putback(tok);
+            pat = AST::Pattern(AST::Pattern::TagBind(), field);
+        }
+        else {
+            CHECK_TOK(tok, TOK_COLON);
+            pat = Parse_Pattern(lex);
+        }
+        // TODO: Append
+    } while( GET_TOK(tok, lex) == TOK_COMMA );
+    CHECK_TOK(tok, TOK_BRACE_CLOSE);
+    throw ParseError::Todo(lex, "struct patterns");
 }
 
 ExprNodeP Parse_ExprBlockNode(TokenStream& lex);

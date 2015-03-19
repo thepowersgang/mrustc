@@ -33,6 +33,16 @@ private:
     unique_ptr<ExprNode>    m_node;
     unique_ptr<ExprNode>    m_node2;    // ONLY used for range values
     ::std::vector<Pattern>  m_sub_patterns;
+    
+    TAGGED_ENUM(Data, Any,
+        (Any,       () ),
+        (Ref,       (bool mut; unique_ptr<ExprNode> sub;) ),
+        (Value,     (unique_ptr<ExprNode> start; unique_ptr<ExprNode> end;) ),
+        (Tuple,     (::std::vector<Pattern> sub_patterns;) ),
+        (StructTuple, (Path path; ::std::vector<Pattern> sub_patterns;) ),
+        (Struct,    (Path path; ::std::vector< ::std::pair< ::std::string,Pattern> > sub_patterns;) )
+        );
+    
 public:
     Pattern(Pattern&& o) noexcept:
         m_class(o.m_class),
