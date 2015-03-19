@@ -287,11 +287,7 @@ void Crate::load_extern_crate(::std::string name)
     
     m_extern_crates.insert( make_pair(::std::move(name), ::std::move(ret)) );
 }
-SERIALISE_TYPE(Crate::, "AST_Crate", {
-    s << m_load_std;
-    s << m_extern_crates;
-    s << m_root_module;
-},{
+SERIALISE_TYPE_A(Crate::, "AST_Crate", {
     s.item(m_load_std);
     s.item(m_extern_crates);
     s.item(m_root_module);
@@ -441,7 +437,7 @@ void Module::add_macro_import(const Crate& crate, ::std::string modname, ::std::
 
 void Module::iterate_functions(fcn_visitor_t *visitor, const Crate& crate)
 {
-    for( auto fcn_item : this->m_functions )
+    for( auto& fcn_item : this->m_functions )
     {
         visitor(crate, *this, fcn_item.data);
     }
@@ -493,6 +489,7 @@ SERIALISE_TYPE(Static::, "AST_Static", {
     case Function::CLASS_REFMETHOD: s << "REFMETHOD"; break;
     case Function::CLASS_MUTMETHOD: s << "MUTMETHOD"; break;
     case Function::CLASS_VALMETHOD: s << "VALMETHOD"; break;
+    case Function::CLASS_MUTVALMETHOD: s << "MUTVALMETHOD"; break;
     }
     return s;
 }
@@ -504,6 +501,7 @@ void operator>>(::Deserialiser& s, Function::Class& fc)
     else if(n == "REFMETHOD")  fc = Function::CLASS_REFMETHOD;
     else if(n == "MUTMETHOD")  fc = Function::CLASS_MUTMETHOD;
     else if(n == "VALMETHOD")  fc = Function::CLASS_VALMETHOD;
+    else if(n == "MUTVALMETHOD")  fc = Function::CLASS_MUTVALMETHOD;
     else
         throw ::std::runtime_error("Deserialise Function::Class");
 }

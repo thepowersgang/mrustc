@@ -173,7 +173,7 @@ public:
         while(count--) {
             ::std::pair<T1,T2>  e;
             item(e);
-            v.insert( e );
+            v.insert( ::std::move(e) );
         }
         end_array();
     }

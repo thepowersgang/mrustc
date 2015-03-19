@@ -30,51 +30,19 @@ private:
     BindType    m_class;
     ::std::string   m_binding;
     Path    m_path;
-    unique_ptr<ExprNode>    m_node;
-    unique_ptr<ExprNode>    m_node2;    // ONLY used for range values
     ::std::vector<Pattern>  m_sub_patterns;
     
     TAGGED_ENUM(Data, Any,
         (Any,       () ),
+        (MaybeBind, () ),
         (Ref,       (bool mut; unique_ptr<ExprNode> sub;) ),
         (Value,     (unique_ptr<ExprNode> start; unique_ptr<ExprNode> end;) ),
         (Tuple,     (::std::vector<Pattern> sub_patterns;) ),
         (StructTuple, (Path path; ::std::vector<Pattern> sub_patterns;) ),
         (Struct,    (Path path; ::std::vector< ::std::pair< ::std::string,Pattern> > sub_patterns;) )
-        );
+        ) m_data;
     
 public:
-    Pattern(Pattern&& o) noexcept:
-        m_class(o.m_class),
-        m_binding( move(o.m_binding) ),
-        m_path( move(o.m_path) ),
-        m_node( move(o.m_node) ),
-        m_sub_patterns( move(o.m_sub_patterns) )
-    { }
-    
-    Pattern(const Pattern& o):
-        m_class(o.m_class),
-        m_binding(o.m_binding),
-        m_path(o.m_path),
-        m_node(nullptr),
-        m_sub_patterns(o.m_sub_patterns)
-    {
-        if( o.m_node.get() ) {
-            DEBUG("Cloning " << o);
-            throw ::std::runtime_error(FMT("Cloning pattern with node : " << o));
-        }
-    }
-    
-    Pattern& operator=(Pattern o)
-    {
-        m_class = o.m_class,
-        m_binding = move(o.m_binding);
-        m_path = move(o.m_path);
-        m_node = move(o.m_node);
-        m_sub_patterns = move(o.m_sub_patterns);
-        return *this;
-    }
-    
     Pattern():
         m_class(ANY)
     {}
@@ -101,8 +69,7 @@ public:
     struct TagValue {};
     Pattern(TagValue, unique_ptr<ExprNode> node, unique_ptr<ExprNode> node2 = 0):
         m_class(VALUE),
-        m_node( ::std::move(node) ),
-        m_node2( ::std::move(node2) )
+        m_data( Data::make_Value({ ::std::move(node), ::std::move(node2) }) )
     {}
     
     
@@ -132,13 +99,22 @@ public:
         m_binding = name;
     }
     
-    ::std::unique_ptr<ExprNode> take_node() { assert(m_class == VALUE); m_class = ANY; return ::std::move(m_node); }
+    ::std::unique_ptr<ExprNode> take_node() {
+        assert(m_class == VALUE);
+        m_class = ANY;
+        assert(m_data.is_Value());
+        return ::std::move(m_data.unwrap_Value().start);
+    }
     
     // Accessors
     const ::std::string& binding() const { return m_binding; }
     BindType type() const { return m_class; }
-    ExprNode& node() { return *m_node; }
-    const ExprNode& node() const { return *m_node; }
+    ExprNode& node() {
+        return *m_data.as_Value().start;
+    }
+    const ExprNode& node() const {
+        return *m_data.as_Value().start;
+    }
     Path& path() { return m_path; }
     const Path& path() const { return m_path; }
     ::std::vector<Pattern>& sub_patterns() { return m_sub_patterns; }

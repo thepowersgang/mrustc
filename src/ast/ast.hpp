@@ -128,9 +128,11 @@ struct ItemNS
     ItemNS():
         is_pub(false)
     {}
-    ItemNS(::std::string&& name, T&& data, bool is_pub):
-        name( move(name) ),
-        data( move(data) ),
+    ItemNS(ItemNS&&) = default;
+    ItemNS(const ItemNS&) = default;
+    ItemNS(::std::string name, T data, bool is_pub):
+        name( ::std::move(name) ),
+        data( ::std::move(data) ),
         is_pub( is_pub )
     {
     }
@@ -148,8 +150,10 @@ struct Item:
     Item():
         ItemNS<T>()
     {}
-    Item(::std::string&& name, T&& data, bool is_pub):
-        ItemNS<T>( move(name), move(data), is_pub )
+    Item(Item&&) = default;
+    Item(const Item&) = default;
+    Item(::std::string name, T data, bool is_pub):
+        ItemNS<T>( ::std::move(name), ::std::move(data), is_pub )
     {}
     SERIALISE_TYPE_A(, "Item", {
         s.item(this->name);
@@ -297,9 +301,11 @@ public:
     Function():
         m_fcn_class(CLASS_UNBOUND)
     {}
+    Function(const Function&) = delete;
+    Function(Function&&) = default;
     Function(TypeParams params, Class fcn_class, TypeRef ret_type, Arglist args):
         m_fcn_class(fcn_class),
-        m_params(params),
+        m_params( move(params) ),
         m_rettype( move(ret_type) ),
         m_args( move(args) )
     {
@@ -348,7 +354,7 @@ public:
         m_types.push_back( Item<TypeRef>(move(name), move(type), true) );
     }
     void add_function(::std::string name, Function fcn) {
-        m_functions.push_back( Item<Function>(move(name), move(fcn), true) );
+        m_functions.push_back( Item<Function>(::std::move(name), ::std::move(fcn), true) );
     }
     
     SERIALISABLE_PROTOTYPES();
