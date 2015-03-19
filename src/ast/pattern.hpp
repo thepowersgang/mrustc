@@ -68,12 +68,17 @@ public:
 
     struct TagTuple {};
     Pattern(TagTuple, ::std::vector<Pattern> sub_patterns):
-	m_data( Data::make_Tuple( { ::std::move(sub_patterns) } ) )
+        m_data( Data::make_Tuple( { ::std::move(sub_patterns) } ) )
     {}
 
     struct TagEnumVariant {};
     Pattern(TagEnumVariant, Path path, ::std::vector<Pattern> sub_patterns):
-	m_data( Data::make_StructTuple( { ::std::move(path), ::std::move(sub_patterns) } ) ) 
+        m_data( Data::make_StructTuple( { ::std::move(path), ::std::move(sub_patterns) } ) ) 
+    {}
+
+    struct TagStruct {};
+    Pattern(TagStruct, Path path, ::std::vector< ::std::pair< ::std::string,Pattern> > sub_patterns):
+        m_data( Data::make_Struct( { ::std::move(path), ::std::move(sub_patterns) } ) ) 
     {}
     
     // Mutators

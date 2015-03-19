@@ -236,6 +236,8 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path)
 {
     TRACE_FUNCTION;
     Token tok;
+    
+    ::std::vector< ::std::pair< ::std::string, AST::Pattern> >  subpats;
     do {
         GET_TOK(tok, lex);
         DEBUG("tok = " << tok);
@@ -272,7 +274,8 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path)
         // TODO: Append
     } while( GET_TOK(tok, lex) == TOK_COMMA );
     CHECK_TOK(tok, TOK_BRACE_CLOSE);
-    throw ParseError::Todo(lex, "struct patterns");
+    
+    return AST::Pattern(AST::Pattern::TagStruct(), ::std::move(path), ::std::move(subpats));
 }
 
 ExprNodeP Parse_ExprBlockNode(TokenStream& lex);
@@ -696,12 +699,9 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
     {
     case TOK_RWORD_RETURN: {
         ExprNodeP   val;
-        if( GET_TOK(tok, lex) != TOK_SEMICOLON ) {
-            lex.putback(tok);
+        if( LOOK_AHEAD(lex) != TOK_SEMICOLON && LOOK_AHEAD(lex) != TOK_COMMA && LOOK_AHEAD(lex) != TOK_BRACE_CLOSE ) {
             val = Parse_Expr1(lex);
         }
-        else
-            lex.putback(tok);
         return NEWNODE( AST::ExprNode_Flow, AST::ExprNode_Flow::RETURN, "", ::std::move(val) );
         }
     case TOK_RWORD_CONTINUE:
