@@ -58,18 +58,22 @@ public:
 class GenericBound:
     public Serialisable
 {
+    ::std::string   m_lifetime_test;    // if "", use m_type
     TypeRef m_type;
 
-    ::std::string   m_lifetime;
-    
+    ::std::string   m_lifetime_bound;   // if "", use m_trait
     bool    m_optional;
     AST::Path   m_trait;
 public:
     
     GenericBound() {}
+    GenericBound(::std::string test, ::std::string bound):
+        m_lifetime_test( ::std::move(test) ),
+        m_lifetime_bound( ::std::move(bound) )
+    { }
     GenericBound(TypeRef type, ::std::string lifetime):
         m_type( ::std::move(type) ),
-        m_lifetime(lifetime)
+        m_lifetime_bound( ::std::move(lifetime) )
     { }
     GenericBound(TypeRef type, AST::Path trait, bool optional=false):
         m_type( ::std::move(type) ),
@@ -77,8 +81,8 @@ public:
         m_trait( ::std::move(trait) )
     { }
     
-    bool is_trait() const { return m_lifetime == ""; }
-    const ::std::string& lifetime() const { return m_lifetime; }
+    bool is_trait() const { return m_lifetime_bound == ""; }
+    const ::std::string& lifetime() const { return m_lifetime_bound; }
     const TypeRef& test() const { return m_type; }
     const AST::Path& bound() const { return m_trait; }
     

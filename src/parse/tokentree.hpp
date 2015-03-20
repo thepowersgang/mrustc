@@ -59,6 +59,7 @@ protected:
 
 // unwrapped = Exclude the enclosing brackets (used by macro parse code)
 extern TokenTree Parse_TT(TokenStream& lex, bool unwrapped);
+extern TokenTree Parse_TT_Pattern(TokenStream& lex);
 extern TokenTree Parse_TT_Expr(TokenStream& lex);
 extern TokenTree Parse_TT_Type(TokenStream& lex);
 extern TokenTree Parse_TT_Stmt(TokenStream& lex);

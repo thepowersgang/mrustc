@@ -1407,6 +1407,15 @@ TokenTree Parse_TT_Expr(TokenStream& lex)
     
     return wlex.get_output();
 }
+TokenTree Parse_TT_Pattern(TokenStream& lex)
+{
+    TRACE_FUNCTION;
+    TTLexer wlex(lex);
+    
+    Parse_Pattern(wlex);
+    
+    return wlex.get_output();
+}
 TokenTree Parse_TT_Stmt(TokenStream& lex)
 {
     throw ParseError::Todo("Parse_TT_Stmt");

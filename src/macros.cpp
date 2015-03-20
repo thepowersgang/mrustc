@@ -227,6 +227,9 @@ void Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
             lex.putback(tok);
         val = Parse_TT(lex, false);
         if(0)
+    case MacroPatEnt::PAT_PAT:
+        val = Parse_TT_Pattern(lex);
+        if(0)
     case MacroPatEnt::PAT_TYPE:
         val = Parse_TT_Type(lex);
         if(0)
@@ -631,6 +634,7 @@ void operator%(Serialiser& s, MacroPatEnt::Type c) {
     #define _(v) case MacroPatEnt::v: s << #v; return
     _(PAT_TOKEN);
     _(PAT_TT);
+    _(PAT_PAT);
     _(PAT_TYPE);
     _(PAT_EXPR);
     _(PAT_LOOP);
@@ -649,6 +653,7 @@ void operator%(::Deserialiser& s, MacroPatEnt::Type& c) {
     if(0) ;
     _(PAT_TOKEN);
     _(PAT_TT);
+    _(PAT_PAT);
     _(PAT_TYPE);
     _(PAT_EXPR);
     _(PAT_LOOP);

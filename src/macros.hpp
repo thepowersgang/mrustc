@@ -63,6 +63,7 @@ struct MacroPatEnt:
     enum Type {
         PAT_TOKEN,
         PAT_TT,
+        PAT_PAT,
         PAT_IDENT,
         PAT_PATH,
         PAT_TYPE,

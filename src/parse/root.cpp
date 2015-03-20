@@ -408,16 +408,19 @@ AST::TypeParams Parse_TypeParams(TokenStream& lex)
         {
             if( is_lifetime )
             {
-                throw ParseError::Todo(lex, "lifetime param conditions");
+                do {
+                    GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
+                    ret.add_bound( AST::GenericBound( param_name, tok.str() ) );
+                } while( GET_TOK(tok, lex) == TOK_PLUS );
             }
             else
             {
                 Parse_TypeBound(lex, ret, TypeRef(TypeRef::TagArg(), param_name));
+                GET_TOK(tok, lex);
             }
-            GET_TOK(tok, lex);
         }
         
-        if( tok.type() == TOK_EQUAL )
+        if( !is_lifetime && tok.type() == TOK_EQUAL )
         {
             ret.params().back().setDefault( Parse_Type(lex) );
             GET_TOK(tok, lex);
@@ -1254,6 +1257,8 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
                     ;
                 else if( type == "tt" )
                     ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_TT) );
+                else if( type == "pat" )
+                    ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_PAT) );
                 else if( type == "ident" )
                     ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_IDENT) );
                 else if( type == "path" )
@@ -1468,17 +1473,9 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
         switch(GET_TOK(tok, lex))
         {
         case TOK_BRACE_CLOSE:
-            if( !nested_module ) {
-                DEBUG("Brace close in file root");
-                throw ParseError::Unexpected(lex, tok);
-            }
-            return ;
         case TOK_EOF:
-            if( nested_module ) {
-                DEBUG("EOF in nested module");
-                throw ParseError::Unexpected(lex, tok);
-            }
-            return ;
+            lex.putback(tok);
+            return;
         default:
             lex.putback(tok);
             break;
@@ -1683,9 +1680,11 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
             DEBUG("Sub module '"<<name<<"'");
             switch( GET_TOK(tok, lex) )
             {
-            case TOK_BRACE_OPEN:
-                Parse_ModRoot(lex, crate, submod, &modstack, "-");
-                break;
+            case TOK_BRACE_OPEN: {
+                ::std::string   subpath = ( path.back() != '/' ? "-" : path + name + "/" );
+                Parse_ModRoot(lex, crate, submod, &modstack, subpath);
+                GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
+                break; }
             case TOK_SEMICOLON:
                 DEBUG("Mod = " << name << ", curpath = " << path);
                 if( path == "-" || path == "!" ) {
@@ -1707,6 +1706,7 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
                         ::std::string   newdir( newpath_dir.begin(), newpath_dir.begin() + newpath_dir.find_last_of('/') );
                         Lexer sub_lex(newpath_dir);
                         Parse_ModRoot(sub_lex, crate, submod, &modstack, newdir);
+                        GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
                     }
                 }
                 else
@@ -1724,12 +1724,14 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
                         // Load from dir
                         Lexer sub_lex(newpath_dir + "mod.rs");
                         Parse_ModRoot(sub_lex, crate, submod, &modstack, newpath_dir);
+                        GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
                     }
                     else if( ifs_file.is_open() )
                     {
                         // Load from file
                         Lexer sub_lex(newpath_file);
                         Parse_ModRoot(sub_lex, crate, submod, &modstack, newpath_file);
+                        GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
                     }
                     else
                     {

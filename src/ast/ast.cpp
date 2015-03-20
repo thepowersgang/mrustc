@@ -674,14 +674,15 @@ SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
 ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x)
 {
     os << x.m_type << ": ";
-    if( x.m_lifetime != "" )
-        return os << "'" << x.m_lifetime;
+    if( x.m_lifetime_bound != "" )
+        return os << "'" << x.m_lifetime_bound;
     else
         return os << x.m_trait;
 }
 SERIALISE_TYPE_S(GenericBound, {
+    s.item(m_lifetime_test);
     s.item(m_type);
-    s.item(m_lifetime);
+    s.item(m_lifetime_bound);
     s.item(m_trait);
 })
 
