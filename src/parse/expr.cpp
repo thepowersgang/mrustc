@@ -729,6 +729,9 @@ ExprNodeP Parse_Expr12(TokenStream& lex)
         return NEWNODE( AST::ExprNode_Deref, Parse_Expr12(lex) );
     case TOK_RWORD_BOX:
         return NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::BOX, Parse_Expr12(lex) );
+    case TOK_DOUBLE_AMP:
+        // HACK: Split && into & &
+        lex.putback( Token(TOK_AMP) );
     case TOK_AMP:
         if( GET_TOK(tok, lex) == TOK_RWORD_MUT )
             return NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::REFMUT, Parse_Expr12(lex) );
