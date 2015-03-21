@@ -46,6 +46,9 @@ TypeRef Parse_Type(TokenStream& lex)
     
     switch( GET_TOK(tok, lex) )
     {
+    // '!' - Only ever used as part of function prototypes, but is kinda a type... not allowed here though
+    case TOK_EXCLAM:
+        throw ParseError::Generic(lex, "! is not a real type");
     // '_' = Wildcard (type inferrence variable)
     case TOK_UNDERSCORE:
         return TypeRef();
@@ -185,8 +188,6 @@ TypeRef Parse_Type(TokenStream& lex)
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
             return TypeRef(TypeRef::TagTuple(), types); }
         }
-    case TOK_EXCLAM:
-        throw ParseError::Generic(lex, "! is not a real type");
     default:
         throw ParseError::Unexpected(lex, tok);
     }
