@@ -539,9 +539,9 @@ Position MacroExpander::getPosition() const
 Token MacroExpander::realGetToken()
 {
     // Use m_next_token first
-    DEBUG("m_next_token = " << m_next_token);
     if( m_next_token.type() != TOK_NULL )
     {
+        DEBUG("m_next_token = " << m_next_token);
         return ::std::move(m_next_token);
     }
     // Then try m_ttstream

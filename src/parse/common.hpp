@@ -30,7 +30,11 @@ extern AST::Path   Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mo
 extern AST::Path   Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generic_mode);
 extern AST::Path   Parse_PathFrom(TokenStream& lex, AST::Path src, eParsePathGenericMode generic_mode);
 extern ::std::vector<TypeRef>   Parse_Path_GenericList(TokenStream& lex);
+
 extern TypeRef     Parse_Type(TokenStream& lex);
+
+
+extern AST::Pattern Parse_Pattern(TokenStream& lex);
 
 extern void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)> fcn);
 extern void Parse_Struct(AST::Module& mod, TokenStream& lex, bool is_public, const AST::MetaItems meta_items);
