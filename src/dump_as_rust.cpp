@@ -308,6 +308,8 @@ public:
         switch(n.m_datatype)
         {
         case CORETYPE_INVAL:    break;
+        case CORETYPE_BOOL:
+            break;
         case CORETYPE_CHAR:
             m_os << "'\\u" << ::std::hex << n.m_value << ::std::dec << "'";
             break;

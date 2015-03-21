@@ -57,6 +57,7 @@ public:
         TRAIT,
         
         STRUCT_METHOD,
+        TRAIT_METHOD,
         ENUM_VAR,
         FUNCTION,
         STATIC,
