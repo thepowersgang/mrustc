@@ -15,6 +15,7 @@ static const struct {
     const char* name;
     enum eCoreType  type;
 } CORETYPES[] = {
+    {"bool", CORETYPE_BOOL},
     {"char", CORETYPE_CHAR},
     {"f32", CORETYPE_F32},
     {"f64", CORETYPE_F64},

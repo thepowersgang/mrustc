@@ -56,9 +56,10 @@ typename ::std::vector<Item<T> >::const_iterator find_named(const ::std::vector<
     });
 }
 
+/// Resolve a path into a canonical form, and bind it to the target value
 void Path::resolve(const Crate& root_crate)
 {
-    DEBUG("*this = " << *this);
+    TRACE_FUNCTION_F("*this = "<< *this);
     if(m_class != ABSOLUTE)
         throw ParseError::BugCheck("Calling Path::resolve on non-absolute path");
     DEBUG("m_crate = '" << m_crate << "'");
@@ -102,18 +103,7 @@ void Path::resolve(const Crate& root_crate)
                 continue;
             }
         }
-        
-        // Start searching for:
-        // - Re-exports
-        {
-            auto& imp = mod->imports();
-            auto it = find_named(imp, node.name());
-            if( it != imp.end() )
-            {
-                DEBUG("Re-exported path " << it->data);
-                throw ParseError::Todo("Path::resolve() re-export");
-            }
-        }
+
         // Type Aliases
         {
             auto& items = mod->type_aliases();
@@ -228,6 +218,55 @@ void Path::resolve(const Crate& root_crate)
                 }
                 else {
                     throw ParseError::Generic("Binding path to static, trailing nodes");
+                }
+            }
+        }
+        
+        // - Re-exports
+        //  > Comes last, as it's a potentially expensive operation
+        {
+            for( const auto& imp : mod->imports() )
+            {
+                if( !imp.is_pub )
+                {
+                    // not public, ignore
+                }
+                else if( imp.name == node.name() )
+                {
+                    // replace nodes 0:i with the source path
+                    DEBUG("Re-exported path " << imp.data);
+                    AST::Path   newpath = imp.data;
+                    for( unsigned int j = i+1; j < m_nodes.size(); j ++ )
+                    {
+                        newpath.m_nodes.push_back( m_nodes[j] );
+                    }
+                    DEBUG("- newpath = " << newpath);
+                    // TODO: This should check for recursion somehow
+                    newpath.resolve(root_crate);
+                    
+                    *this = newpath;
+                    DEBUG("Alias resolved, *this = " << *this);
+                    return ;
+                }
+                else if( imp.name == "" )
+                {
+                    // Loop avoidance, don't check this
+                    if( &imp.data == this )
+                        continue ;
+                    
+                    if( !imp.data.is_bound() )
+                    {
+                        // not yet bound, so run resolution (recursion)
+                        DEBUG("Recursively resolving pub wildcard use " << imp.data);
+                        //imp.data.resolve(root_crate);
+                        throw ParseError::Todo("Path::resolve() wildcard re-export call resolve");
+                    }
+                    
+                    throw ParseError::Todo("Path::resolve() wildcard re-export");
+                }
+                else
+                {
+                    // Can't match, ignore
                 }
             }
         }

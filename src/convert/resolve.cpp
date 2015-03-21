@@ -381,68 +381,55 @@ void CPathResolver::handle_module(AST::Path path, AST::Module& mod)
 
 void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& modpath, AST::Module& mod)
 {
-    DEBUG("modpath = " << modpath);
+    TRACE_FUNCTION_F("modpath = " << modpath);
     ::std::vector<AST::Path>    new_imports;
     for( auto& imp : mod.imports() )
     {
         // TODO: Handle 'super' and 'self' imports
         // - Any other type of import will be absolute
         
+        if( !imp.data.is_absolute() )
+        {
+            if( imp.data[0].name() == "super" ) {
+                if( modpath.size() < 1 )
+                    throw ParseError::Generic("Encountered 'super' at crate root");
+                auto newpath = modpath;
+                newpath.nodes().pop_back();
+                newpath.add_tailing(imp.data);
+                DEBUG("Absolutised path " << imp.data << " into " << newpath);
+                imp.data = ::std::move(newpath);
+            }
+            else {
+                auto newpath = modpath + imp.data;
+                DEBUG("Absolutised path " << imp.data << " into " << newpath);
+                imp.data = ::std::move(newpath);
+            }
+        }
         
+        // Run resolution on import
+        imp.data.resolve(crate);
+        DEBUG("Resolved import : " << imp.data);
+        
+        // If wildcard, make sure it's sane
         if( imp.name == "" )
         {
-            DEBUG("Wildcard of " << imp.data);
-            if( imp.is_pub ) {
-                throw ParseError::Generic("Wildcard uses can't be public");
-            }
-            
-            // Wildcard import
-            AST::Path& basepath = imp.data;
-            basepath.resolve(crate);
-            DEBUG("basepath = " << basepath);
-            switch(basepath.binding_type())
+            switch(imp.data.binding_type())
             {
             case AST::Path::UNBOUND:
                 throw ParseError::BugCheck("path unbound after calling .resolve()");
             case AST::Path::MODULE:
-                for( auto& submod : basepath.bound_module().submods() )
-                {
-                    if( submod.second == true )
-                    {
-                        new_imports.push_back( basepath + AST::PathNode(submod.first.name(), {}) );
-                    }
-                }
-                for(const auto& imp : basepath.bound_module().imports() )
-                {
-                    if( imp.is_pub )
-                    {
-                        DEBUG("Re-export " << imp.data);
-                        if(imp.name == "")
-                            throw ParseError::Generic("Wilcard uses can't be public");
-                        AST::Path   path = imp.data;
-                        path.resolve(crate);
-                        DEBUG("Re-export (resolved) " << path);
-                        new_imports.push_back( ::std::move(path) );
-                    }
-                }
-                //throw ParseError::Todo("ResolvePaths_HandleModule - wildcard use on module");
                 break;
-            case AST::Path::ALIAS:
-                throw ParseError::Todo("ResolvePaths_HandleModule_Use - ALIAS");
             case AST::Path::ENUM:
-                throw ParseError::Todo("ResolvePaths_HandleModule_Use - ENUM");
+                break;
+            
+            case AST::Path::ALIAS:
             case AST::Path::ENUM_VAR:
-                throw ParseError::Todo("ResolvePaths_HandleModule_Use - ENUM_VAR");
             case AST::Path::STRUCT:
-                throw ParseError::Todo("ResolvePaths_HandleModule_Use - STRUCT");
             case AST::Path::STRUCT_METHOD:
-                throw ParseError::Todo("ResolvePaths_HandleModule_Use - STRUCT_METHOD");
             case AST::Path::TRAIT:
-                throw ParseError::Todo("ResolvePaths_HandleModule_Use - TRAIT");
             case AST::Path::FUNCTION:
-                throw ParseError::Todo("ResolvePaths_HandleModule_Use - FUNCTION");
             case AST::Path::STATIC:
-                throw ParseError::Todo("ResolvePaths_HandleModule_Use - STATIC");
+                throw ParseError::Generic("Wildcard imports are only allowed on modules and enums");
             }
         }
     }

@@ -128,12 +128,17 @@ public:
         }
     }
     
+    /// Add the all nodes except the first from 'b' to 'a' and return
     static Path add_tailing(const Path& a, const Path& b) {
         Path    ret(a);
-        ret[ret.size()-1].args() = b[0].args();
-        for(unsigned int i = 1; i < b.m_nodes.size(); i ++)
-            ret.m_nodes.push_back(b.m_nodes[i]);
+        ret.add_tailing(b);
         return ret;
+    }
+    /// Grab the args from the first node of b, and add the rest to the end of the path
+    void add_tailing(const Path& b) {
+        m_nodes.back().args() = b[0].args();
+        for(unsigned int i = 1; i < b.m_nodes.size(); i ++)
+            m_nodes.push_back(b.m_nodes[i]);
     }
     Path operator+(PathNode&& pn) const {
         Path    tmp;

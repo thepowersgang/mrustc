@@ -16,6 +16,7 @@ const char* coretype_name(const eCoreType ct ) {
     case CORETYPE_INVAL:return "-";
     case CORETYPE_ANY:  return "_";
     case CORETYPE_CHAR: return "char";
+    case CORETYPE_BOOL: return "bool";
     case CORETYPE_UINT: return "usize";
     case CORETYPE_INT:  return "isize";
     case CORETYPE_U8:   return "u8";
@@ -38,6 +39,8 @@ bool TypeRef::deref(bool is_implicit)
 {
     switch(m_class)
     {
+    case TypeRef::NONE:
+        throw ::std::runtime_error("Dereferencing ! - bugcheck");
     case TypeRef::ANY:
         // TODO: Check if the _ is bounded by Deref<Output=?>, if so use that
         throw ::std::runtime_error("Dereferencing _");
@@ -103,6 +106,7 @@ void TypeRef::merge_with(const TypeRef& other)
     
     switch(m_class)
     {
+    case TypeRef::NONE:
     case TypeRef::ANY:
     case TypeRef::UNIT:
     case TypeRef::PRIMITIVE:
@@ -148,6 +152,8 @@ void TypeRef::resolve_args(::std::function<TypeRef(const char*)> fcn)
     DEBUG("" << *this);
     switch(m_class)
     {
+    case TypeRef::NONE:
+        throw ::std::runtime_error("TypeRef::resolve_args on !");
     case TypeRef::ANY:
         // TODO: Is resolving args on an ANY an erorr?
         break;
@@ -204,6 +210,8 @@ void TypeRef::match_args(const TypeRef& other, ::std::function<void(const char*,
         throw ::std::runtime_error("Type mismatch (class)");
     switch(m_class)
     {
+    case TypeRef::NONE:
+        throw ::std::runtime_error("TypeRef::match_args on !");
     case TypeRef::ANY:
         // Wait, isn't this an error?
         throw ::std::runtime_error("Encountered '_' in match_args");
@@ -271,6 +279,8 @@ bool TypeRef::is_concrete() const
 {
     switch(m_class)
     {
+    case TypeRef::NONE:
+        throw ::std::runtime_error("TypeRef::is_concrete on !");
     case TypeRef::ANY:
         return false;
     case TypeRef::UNIT:
@@ -317,6 +327,8 @@ bool TypeRef::operator==(const TypeRef& x) const
         return false;
     switch(m_class)
     {
+    case TypeRef::NONE:
+        return true;
     case TypeRef::ANY:
     case TypeRef::UNIT:
         return true;
@@ -357,6 +369,9 @@ bool TypeRef::operator==(const TypeRef& x) const
     //os << "TypeRef(";
     switch(tr.m_class)
     {
+    case TypeRef::NONE:
+        os << "!";
+        break;
     case TypeRef::ANY:
         //os << "TagAny";
         os << "_";
@@ -420,6 +435,7 @@ void operator% (::Deserialiser& d, eCoreType& ct) {
     d.item(n);
     /* */if(n == "-")   ct = CORETYPE_INVAL;
     else if(n == "_")   ct = CORETYPE_ANY;
+    else if(n == "bool")  ct = CORETYPE_BOOL;
     else if(n == "char")  ct = CORETYPE_CHAR;
     else if(n == "usize") ct = CORETYPE_UINT;
     else if(n == "isize") ct = CORETYPE_INT;
@@ -440,6 +456,7 @@ const char* TypeRef::class_name(TypeRef::Class c) {
     switch(c)
     {
     #define _(x)    case TypeRef::x: return #x;
+    _(NONE)
     _(ANY)
     _(UNIT)
     _(PRIMITIVE)
@@ -460,6 +477,7 @@ void operator>>(::Deserialiser& d, TypeRef::Class& c) {
     d.item(n);
     #define _(x) if(n == #x) c = TypeRef::x;
     /**/ _(ANY)
+    else _(NONE)
     else _(UNIT)
     else _(PRIMITIVE)
     else _(FUNCTION)
