@@ -101,6 +101,19 @@ struct MacroPatEnt:
 
     friend ::std::ostream& operator<<(::std::ostream& os, const MacroPatEnt& x) {
         os << "MacroPatEnt(";
+        switch(x.type)
+        {
+        case PAT_TOKEN: os << "token "; break;
+        case PAT_TT:    os << "tt ";    break;
+        case PAT_PAT:   os << "pat ";   break;
+        case PAT_IDENT: os << "ident "; break;
+        case PAT_PATH:  os << "path ";  break;
+        case PAT_TYPE:  os << "type ";  break;
+        case PAT_EXPR:  os << "expr ";  break;
+        case PAT_STMT:  os << "stmt ";  break;
+        case PAT_BLOCK: os << "block "; break;
+        case PAT_LOOP:  os << "loop ";  break;
+        }
         if(x.name.size())
             os << "'"<<x.name<<"'";
         else if( x.subpats.size() )

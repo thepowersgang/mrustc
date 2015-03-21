@@ -578,6 +578,8 @@ uint32_t Lexer::parseEscape(char enclosing)
         return '\\';
     case '\'':
         return '\'';
+    case '"':
+        return '"';
     case 'r':
         return '\r';
     case 'n':
@@ -691,7 +693,21 @@ SERIALISE_TYPE_S(Token, {
 
 ::std::ostream&  operator<<(::std::ostream& os, const Token& tok)
 {
-    os << Token::typestr(tok.type()) << "\"" << tok.str() << "\"";
+    os << Token::typestr(tok.type());
+    switch(tok.type())
+    {
+    case TOK_STRING:
+    case TOK_IDENT:
+    case TOK_MACRO:
+    case TOK_LIFETIME:
+        os << "\"" << tok.str() << "\"";
+        break;
+    case TOK_INTEGER:
+        os << tok.intval();
+        break;
+    default:
+        break;
+    }
     return os;
 }
 ::std::ostream& operator<<(::std::ostream& os, const Position& p)
@@ -814,6 +830,7 @@ eTokenType TokenStream::lookahead(unsigned int i)
         m_lookahead.push_back( this->innerGetToken() );
     }
     
+    DEBUG("lookahead(" << i << ") = " << m_lookahead[i]);
     return m_lookahead[i].type();
 }
 

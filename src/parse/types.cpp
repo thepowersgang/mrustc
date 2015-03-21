@@ -164,7 +164,9 @@ TypeRef Parse_Type(TokenStream& lex)
             GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
             ::std::string   lifetime = tok.str();   
             GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
-            throw ParseError::Todo(lex, "Type lifetime bounds");
+            // TODO: Actually use lifetime bound
+            DEBUG("TODO: Use lifetime bound '" << lifetime << " on type " << inner);
+            return ::std::move(inner);
         }
         else
         {

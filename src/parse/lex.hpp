@@ -79,10 +79,12 @@ extern ::std::ostream&  operator<<(::std::ostream& os, const Token& tok);
 struct ParseState
 {
     bool disallow_struct_literal = false;
+    bool no_expand_macros = false;
     
     friend ::std::ostream& operator<<(::std::ostream& os, const ParseState& ps) {
         os << "ParseState {";
         if(ps.disallow_struct_literal)  os << " disallow_struct_literal";
+        if(ps.no_expand_macros)  os << " no_expand_macros";
         os << " }";
         return os;
     }

@@ -939,7 +939,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
             case TOK_PAREN_OPEN:
                 if( allow_sub )
                 {
-                    auto subpat = Parse_MacroRules_Pat(lex, false, TOK_PAREN_OPEN, TOK_PAREN_CLOSE);
+                    auto subpat = Parse_MacroRules_Pat(lex, true, TOK_PAREN_OPEN, TOK_PAREN_CLOSE);
                     enum eTokenType joiner = TOK_NULL;
                     GET_TOK(tok, lex);
                     if( tok.type() != TOK_PLUS && tok.type() != TOK_STAR )
@@ -965,7 +965,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
                 }
                 else
                 {
-                    throw ParseError::Generic(FMT("Nested repetitions in macro"));
+                    throw ParseError::Generic(lex, FMT("Nested repetitions in macro"));
                 }
                 break;
             default:
@@ -1015,9 +1015,12 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
         {
             GET_TOK(tok, lex);
             
-            if( allow_sub && tok.type() == TOK_PAREN_OPEN )
-            {
-                auto content = Parse_MacroRules_Cont(lex, false, TOK_PAREN_OPEN, TOK_PAREN_CLOSE);
+            if( tok.type() == TOK_PAREN_OPEN )
+            {   
+                if( !allow_sub )
+                    throw ParseError::Unexpected(lex, tok);
+                
+                auto content = Parse_MacroRules_Cont(lex, true, TOK_PAREN_OPEN, TOK_PAREN_CLOSE);
                 
                 GET_TOK(tok, lex);
                 enum eTokenType joiner = TOK_NULL;

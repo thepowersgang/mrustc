@@ -42,4 +42,6 @@ extern AST::Function    Parse_FunctionDefWithCode(TokenStream& lex, ::std::strin
 extern AST::Expr   Parse_Expr(TokenStream& lex, bool const_only);
 extern AST::Expr   Parse_ExprBlock(TokenStream& lex);
 
+extern bool Parse_IsTokValue(eTokenType tok_type);
+
 #endif // PARSE_COMMON_HPP_INCLUDED

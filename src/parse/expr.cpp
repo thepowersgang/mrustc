@@ -829,6 +829,11 @@ bool Parse_IsTokValue(eTokenType tok_type)
     case TOK_RWORD_SUPER:
     case TOK_RWORD_BOX:
     case TOK_PAREN_OPEN:
+    
+    case TOK_MACRO:
+    
+    case TOK_STAR:
+    case TOK_AMP:
         return true;
     default:
         return false;
@@ -1267,23 +1272,33 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         }
         throw ParseError::BugCheck(lex, "Array literal fell");
     case TOK_MACRO:
+        if( CHECK_PARSE_FLAG(lex, no_expand_macros) )
         {
-        TokenTree tt = Parse_TT(lex, true);
-        if( tt.is_token() ) {
-            throw ParseError::Unexpected(lex, tt.tok());
-        }
-        ::std::string name = tok.str();
-        
-        if( name == "format_args" )
-        {
-            TTStream    slex(tt);
-            return Parse_FormatArgs(slex);
+            ::std::string name = tok.str();
+            TokenTree tt = Parse_TT(lex, true);
+            if( tt.is_token() ) {
+                throw ParseError::Unexpected(lex, tt.tok());
+            }
+            return NEWNODE(AST::ExprNode_Macro, ::std::move(name), ::std::move(tt));
         }
         else
         {
-            auto expanded_macro = Macro_Invoke(lex, name, tt);
-            return Parse_Expr0(*expanded_macro);
-        }
+            TokenTree tt = Parse_TT(lex, true);
+            if( tt.is_token() ) {
+                throw ParseError::Unexpected(lex, tt.tok());
+            }
+            ::std::string name = tok.str();
+            
+            if( name == "format_args" )
+            {
+                TTStream    slex(tt);
+                return Parse_FormatArgs(slex);
+            }
+            else
+            {
+                auto expanded_macro = Macro_Invoke(lex, name, tt);
+                return Parse_Expr0(*expanded_macro);
+            }
         }
     default:
         throw ParseError::Unexpected(lex, tok);
@@ -1373,6 +1388,7 @@ TokenTree Parse_TT_Type(TokenStream& lex)
 {
     TRACE_FUNCTION;
     TTLexer wlex(lex);
+    SET_PARSE_FLAG(wlex, no_expand_macros);
     
     // discard result
     Parse_Type(wlex);
@@ -1385,6 +1401,8 @@ TokenTree Parse_TT_Path(TokenStream& lex, bool mode_expr)
 {
     TRACE_FUNCTION;
     TTLexer wlex(lex);
+    SET_PARSE_FLAG(wlex, no_expand_macros);
+    
     Token   tok;
     
     if( GET_TOK(tok, wlex) == TOK_DOUBLE_COLON ) {
@@ -1402,6 +1420,7 @@ TokenTree Parse_TT_Expr(TokenStream& lex)
 {
     TRACE_FUNCTION;
     TTLexer wlex(lex);
+    SET_PARSE_FLAG(wlex, no_expand_macros);
     
     Parse_Expr1(wlex);
     
@@ -1411,6 +1430,7 @@ TokenTree Parse_TT_Pattern(TokenStream& lex)
 {
     TRACE_FUNCTION;
     TTLexer wlex(lex);
+    SET_PARSE_FLAG(wlex, no_expand_macros);
     
     Parse_Pattern(wlex);
     
@@ -1418,9 +1438,17 @@ TokenTree Parse_TT_Pattern(TokenStream& lex)
 }
 TokenTree Parse_TT_Stmt(TokenStream& lex)
 {
+    TRACE_FUNCTION;
+    TTLexer wlex(lex);
+    SET_PARSE_FLAG(wlex, no_expand_macros);
+    
     throw ParseError::Todo("Parse_TT_Stmt");
 }
 TokenTree Parse_TT_Block(TokenStream& lex)
 {
+    TRACE_FUNCTION;
+    TTLexer wlex(lex);
+    SET_PARSE_FLAG(wlex, no_expand_macros);
+    
     throw ParseError::Todo("Parse_TT_Block");
 }
