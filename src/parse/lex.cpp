@@ -311,7 +311,7 @@ Token Lexer::getTokenInt()
                 }
                 else {
                     while( isdigit(ch) ) {
-                        val *= val * 10;
+                        val *= 10;
                         val += ch - '0';
                         ch = this->getc();
                     }
@@ -703,7 +703,7 @@ SERIALISE_TYPE_S(Token, {
         os << "\"" << tok.str() << "\"";
         break;
     case TOK_INTEGER:
-        os << tok.intval();
+        os << ":" << tok.intval();
         break;
     default:
         break;

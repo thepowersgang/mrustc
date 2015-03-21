@@ -15,12 +15,12 @@ int g_debug_indent_level = 0;
 
 bool debug_enabled()
 {
-	
-	return true;
+        
+        return true;
 }
 ::std::ostream& debug_output(int indent, const char* function)
 {
-	return ::std::cout << g_cur_phase << "- " << RepeatLitStr { " ", indent } << function << ": ";
+        return ::std::cout << g_cur_phase << "- " << RepeatLitStr { " ", indent } << function << ": ";
 }
 
 /// main!
@@ -90,35 +90,37 @@ int main(int argc, char *argv[])
     //Serialiser& s = s_tt;
     try
     {
-	g_cur_phase = "Parse";
+        g_cur_phase = "Parse";
         AST::Crate crate = Parse_Crate(infile);
-	g_cur_phase = "PostParse";
+        g_cur_phase = "PostParse";
         crate.post_parse();
 
         //s << crate;
+        g_cur_phase = "Temp output";
+        Dump_Rust( FMT(outfile << ".rs").c_str(), crate );
     
         // Resolve names to be absolute names (include references to the relevant struct/global/function)
-	g_cur_phase = "Resolve";
+        g_cur_phase = "Resolve";
         ResolvePaths(crate);
         //s << crate;
 
         // Typecheck / type propagate module (type annotations of all values)
         // - Check all generic conditions (ensure referenced trait is valid)
         //  > Also mark parameter with applicable traits
-	#if 0
-	g_cur_phase = "TypecheckBounds";
+        #if 0
+        g_cur_phase = "TypecheckBounds";
         Typecheck_GenericBounds(crate);
         // - Check all generic parameters match required conditions
-	g_cur_phase = "TypecheckParams";
+        g_cur_phase = "TypecheckParams";
         Typecheck_GenericParams(crate);
         // - Typecheck statics and consts
         // - Typecheck + propagate functions
         //  > Forward pass first
-	//g_cur_phase = "TypecheckExpr";
+        //g_cur_phase = "TypecheckExpr";
         //Typecheck_Expr(crate);
-	#endif
+        #endif
 
-	g_cur_phase = "Output";
+        g_cur_phase = "Output";
         Dump_Rust( FMT(outfile << ".rs").c_str(), crate );
     
         if( strcmp(emit_type, "ast") == 0 )
@@ -129,7 +131,7 @@ int main(int argc, char *argv[])
             return 0;
         }
         // Flatten modules into "mangled" set
-	g_cur_phase = "Flatten";
+        g_cur_phase = "Flatten";
         AST::Flat flat_crate = Convert_Flatten(crate);
 
         // Convert structures to C structures / tagged enums

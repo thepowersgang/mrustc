@@ -132,9 +132,22 @@ public:
         }
         m_os << ")";
     }
-    virtual void visit(AST::ExprNode_CallObject&) override {
+    virtual void visit(AST::ExprNode_CallObject& n) override {
         m_expr_root = false;
-        throw ::std::runtime_error("unimplemented ExprNode_CallObject");
+        m_os << "(";
+        AST::NodeVisitor::visit(n.m_val);
+        m_os << ")(";
+        bool is_first = true;
+        for( auto& arg : n.m_args )
+        {
+            if(is_first) {
+                is_first = false;
+            } else {
+                m_os << ", ";
+            }
+            AST::NodeVisitor::visit(arg);
+        }
+        m_os << ")";
     }
     virtual void visit(AST::ExprNode_Loop& n) override {
         bool expr_root = m_expr_root;
@@ -408,9 +421,11 @@ public:
         AST::NodeVisitor::visit(n.m_idx);
         m_os << "]";
     }
-    virtual void visit(AST::ExprNode_Deref&) override {
+    virtual void visit(AST::ExprNode_Deref& n) override {
         m_expr_root = false;
-        throw ::std::runtime_error("unimplemented ExprNode_Deref");
+        m_os << "*(";
+        AST::NodeVisitor::visit(n.m_value);
+        m_os << ")";
     }
     virtual void visit(AST::ExprNode_Cast& n) override {
         m_expr_root = false;
@@ -644,7 +659,7 @@ void RustPrinter::print_bounds(const AST::TypeParams& params)
         for( const auto& b : params.bounds() )
         {
             if( !is_first )
-                m_os << ", ";
+                m_os << ",\n";
             is_first = false;
             
             m_os << indent() << b.test() << ": ";
@@ -652,8 +667,8 @@ void RustPrinter::print_bounds(const AST::TypeParams& params)
                 m_os << b.bound();
             else
                 m_os << b.lifetime();
-            m_os << "\n";
         }
+        m_os << "\n";
     
         dec_indent();
     }

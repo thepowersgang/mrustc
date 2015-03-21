@@ -393,7 +393,10 @@ bool TypeRef::operator==(const TypeRef& x) const
         os << "*" << (tr.m_is_inner_mutable ? "mut" : "const") << " " << tr.m_inner_types[0];
         break;
     case TypeRef::ARRAY:
-        os << "[" << tr.m_inner_types[0] << "; " << tr.m_size_expr << "]";
+        os << "[" << tr.m_inner_types[0];
+        if( tr.m_size_expr.get() )
+            os << "; " << *tr.m_size_expr;
+        os << "]";
         break;
     case TypeRef::GENERIC:
         os << "/* arg */ " << tr.m_path[0].name();
@@ -499,6 +502,9 @@ SERIALISE_TYPE(TypeRef::, "TypeRef", {
 
 void PrettyPrintType::print(::std::ostream& os) const
 {
+    #if 1
+    os << m_type;
+    #else
     switch(m_type.m_class)
     {
     case TypeRef::ANY:
@@ -546,7 +552,7 @@ void PrettyPrintType::print(::std::ostream& os) const
         os << "<" << m_type.m_inner_types[0].print_pretty() << " as " << m_type.m_inner_types[1].print_pretty() << ">::" << m_type.m_path[0].name();
         break;
     }
-    
+    #endif
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const PrettyPrintType& v)
