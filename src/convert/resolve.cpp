@@ -39,6 +39,9 @@ class CPathResolver:
     AST::Path m_module_path;
     ::std::vector< LocalItem >  m_locals;
     // TODO: Maintain a stack of variable scopes
+    ::std::vector<const AST::Module*>   m_module_stack;
+    
+    friend class CResolvePaths_NodeVisitor;
     
 public:
     CPathResolver(const AST::Crate& crate);
@@ -64,6 +67,8 @@ public:
         m_locals.push_back( LocalItem(LocalItem::VAR, ::std::move(name), path) );
     }
     ::rust::option<const AST::Path&> lookup_local(LocalItem::Type type, const ::std::string& name) const;
+    
+    // TODO: Handle a block and obtain the local module (if any)
 };
 
 // Path resolution checking
@@ -95,6 +100,14 @@ public:
         DEBUG("ExprNode_CallPath - " << node);
         AST::NodeVisitorDef::visit(node);
         m_res.handle_path(node.m_path, CASTIterator::MODE_EXPR);
+    }
+    
+    void visit(AST::ExprNode_Block& node) {
+        if( node.m_inner_mod.get() )
+            m_res.m_module_stack.push_back( node.m_inner_mod.get() );
+        AST::NodeVisitorDef::visit(node);
+        if( node.m_inner_mod.get() )
+            m_res.m_module_stack.pop_back();
     }
     
     void visit(AST::ExprNode_Match& node)

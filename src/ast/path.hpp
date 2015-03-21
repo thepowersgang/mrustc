@@ -10,6 +10,7 @@
 #include <initializer_list>
 #include <cassert>
 #include <serialise.hpp>
+#include <tagged_enum.hpp>
 
 class TypeRef;
 
@@ -62,6 +63,18 @@ public:
         FUNCTION,
         STATIC,
     };
+    //TAGGED_ENUM(Binding, Unbound,
+    //    (BndModule, (const Module* module_; ) ),
+    //    (BndEnum,   (const Enum* enum_; ) ),
+    //    (BndStruct, (const Struct* struct_; ) ),
+    //    (BndTrait,  (const Trait* trait_; ) ),
+    //    (BndStatic, (const Static* static_; ) ),
+    //    (BndFunction, (const Function* func_; ) ),
+    //    (BndEnumVar, (const Enum* enum_; unsigned int idx; ) ),
+    //    (BndTypeAlias, (const TypeAlias* alias_; ) ),
+    //    (BndStructMethod, (const Struct* struct_; ::std::string name; ) ),
+    //    (BndTraitMethod, (const Trait* struct_; ::std::string name; ) )
+    //    );
 private:
     enum Class {
         RELATIVE,

@@ -144,8 +144,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
     }
     
     Macro_SetModule( *prev_modstack );
-    if( !keep_mod )
-    {
+    if( !keep_mod ) {
         local_mod.reset();
     }
     return NEWNODE( AST::ExprNode_Block, ::std::move(nodes), ::std::move(local_mod) );

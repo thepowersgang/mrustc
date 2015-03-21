@@ -159,7 +159,7 @@ void Path::resolve(const Crate& root_crate)
                 else if( is_sec_last ) {
                     m_binding_type = TRAIT_METHOD;
                     m_binding.trait_ = &it->data;
-                    throw ParseError::Todo("Path::resolve() trait method");
+                    goto ret;
                 }
                 else {
                     throw ParseError::Generic("Import of trait, too many extra nodes");
