@@ -80,6 +80,7 @@ private:
         RELATIVE,
         ABSOLUTE,
         LOCAL,
+        UFCS,
     };
     
     /// The crate defining the root of this path (used for path resolution)
@@ -89,7 +90,9 @@ private:
     /// - Absolute is "relative" to the crate root
     /// - Relative doesn't have a set crate (and can't be resolved)
     /// - Local is a special case to handle possible use of local varaibles
+    /// - UFCS is relative to a type
     Class   m_class;
+    ::std::vector<TypeRef>  m_ufcs;
     ::std::vector<PathNode> m_nodes;
     
     BindingType m_binding_type = UNBOUND;
@@ -114,6 +117,8 @@ public:
     Path(TagAbsolute):
         m_class(ABSOLUTE)
     {}
+    struct TagUfcs {};
+    Path(TagUfcs, TypeRef type, TypeRef trait);
     struct TagLocal {};
     Path(TagLocal, ::std::string name):
         m_class(LOCAL),

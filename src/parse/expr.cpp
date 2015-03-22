@@ -903,6 +903,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     case TOK_BRACE_OPEN:
         lex.putback(tok);
         return Parse_ExprBlockNode(lex);
+    
     case TOK_RWORD_LOOP:
         return NEWNODE( AST::ExprNode_Loop, "", Parse_ExprBlockNode(lex) );
     case TOK_RWORD_WHILE:
@@ -919,9 +920,28 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         return rv;
         }
     
-    case TOK_RWORD_SUPER:
+    // UFCS
+    case TOK_DOUBLE_LT:
+        lex.putback(tok);
+    case TOK_LT: {
+        TypeRef ty = Parse_Type(lex);
+        TypeRef trait;
+        if( GET_TOK(tok, lex) == TOK_RWORD_AS ) {
+            trait = Parse_Type(lex);
+        }
+        else
+            lex.putback(tok);
+        GET_CHECK_TOK(tok, lex, TOK_GT);
+        // TODO: Terminating the "path" here is sometimes valid
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-        path = Parse_PathFrom(lex, AST::Path(AST::Path::TagSuper()), PATH_GENERIC_EXPR);
+        path = Parse_PathFrom(lex, AST::Path(AST::Path::TagUfcs(), ty, trait), PATH_GENERIC_EXPR);
+        }
+        if(0)
+    case TOK_RWORD_SUPER:
+        {
+            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+            path = Parse_PathFrom(lex, AST::Path(AST::Path::TagSuper()), PATH_GENERIC_EXPR);
+        }
         if(0)
     case TOK_IDENT:
         // Get path

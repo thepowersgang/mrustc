@@ -75,7 +75,6 @@ SERIALISE_TYPE(Expr::, "Expr", {
     else _(ExprNode_Field)
     else _(ExprNode_Deref)
     else _(ExprNode_Cast)
-    else _(ExprNode_CallPath)
     else _(ExprNode_BinOp)
     else _(ExprNode_UniOp)
     else

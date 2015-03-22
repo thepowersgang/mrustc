@@ -435,13 +435,7 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
             case AST::Path::ENUM:
                 break;
             
-            case AST::Path::ALIAS:
-            case AST::Path::ENUM_VAR:
-            case AST::Path::STRUCT:
-            case AST::Path::STRUCT_METHOD:
-            case AST::Path::TRAIT:
-            case AST::Path::FUNCTION:
-            case AST::Path::STATIC:
+            default:
                 throw ParseError::Generic("Wildcard imports are only allowed on modules and enums");
             }
         }

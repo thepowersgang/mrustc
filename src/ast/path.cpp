@@ -48,6 +48,12 @@ SERIALISE_TYPE(PathNode::, "PathNode", {
 })
 
 // --- AST::Path
+AST::Path::Path(TagUfcs, TypeRef type, TypeRef trait):
+    m_class(UFCS),
+    m_ufcs({::std::move(type), ::std::move(trait)} )
+{
+}
+
 template<typename T>
 typename ::std::vector<Item<T> >::const_iterator find_named(const ::std::vector<Item<T> >& vec, const ::std::string& name)
 {
