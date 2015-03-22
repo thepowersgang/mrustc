@@ -7,6 +7,7 @@
 #include "../coretypes.hpp"
 #include <memory>
 #include <map>
+#include <algorithm>
 
 #include "../parse/tokentree.hpp"
 #include "../types.hpp"
@@ -520,6 +521,7 @@ class Module:
     itemlist_use_t  m_imports;
     ::std::vector<Item<TypeAlias> > m_type_aliases;
     itemlist_ext_t  m_extern_crates;
+    ::std::vector<Module*>  m_anon_modules; // TODO: Should this be serialisable?
     
     itemlist_macros_t   m_macros;
     macro_imports_t m_macro_imports;    // module => macro
@@ -583,6 +585,13 @@ public:
     void add_attr(MetaItem item) {
         m_attrs.push_back(item);
     }
+    unsigned int add_anon_module(Module* mod_ptr) {
+        auto it = ::std::find(m_anon_modules.begin(), m_anon_modules.end(), mod_ptr);
+        if( it != m_anon_modules.end() )
+            return it - m_anon_modules.begin();
+        m_anon_modules.push_back(mod_ptr);
+        return m_anon_modules.size()-1;
+    }
 
     void iterate_functions(fcn_visitor_t* visitor, const Crate& crate);
 
@@ -599,6 +608,7 @@ public:
     ItemList<Trait>& traits() { return m_traits; }
     itemlist_enum_t&      enums  () { return m_enums; }
     itemlist_struct_t&    structs() { return m_structs; }
+    ::std::vector<Module*>&   anon_mods() { return m_anon_modules; }
 
     const ::std::vector<MetaItem>& attrs() const { return m_attrs; } 
     const itemlist_fcn_t& functions() const { return m_functions; }
@@ -611,9 +621,12 @@ public:
     const ItemList<Trait>& traits() const { return m_traits; }
     const itemlist_enum_t&      enums  () const { return m_enums; }
     const itemlist_struct_t&    structs() const { return m_structs; }
+    const ::std::vector<Module*>&   anon_mods() const { return m_anon_modules; }
+    
     const itemlist_macros_t&    macros()  const { return m_macros; }
     const macro_imports_t&      macro_imports()  const { return m_macro_imports; }
     const ::std::vector<ItemNS<const MacroRules*> >  macro_imports_res() const { return m_macro_import_res; }
+
 
     SERIALISABLE_PROTOTYPES();
 private:
@@ -693,5 +706,9 @@ public:
 };
 
 }
+
+extern AST::Module  g_compiler_module;
+extern void AST_InitProvidedModule();  
+
 
 #endif // AST_HPP_INCLUDED

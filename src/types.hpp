@@ -92,6 +92,11 @@ public:
         m_class(PRIMITIVE),
         m_core_type(type)
     {}
+    TypeRef(enum eCoreType type):
+        m_class(PRIMITIVE),
+        m_core_type(type)
+    {}
+
     struct TagTuple {};
     TypeRef(TagTuple _, ::std::vector<TypeRef> inner_types):
         m_class(TUPLE),

@@ -35,11 +35,11 @@ class CPathResolver:
         {}
     };
     const AST::Crate&   m_crate;
-    const AST::Module*  m_module;
+    AST::Module*  m_module;
     AST::Path m_module_path;
     ::std::vector< LocalItem >  m_locals;
     // TODO: Maintain a stack of variable scopes
-    ::std::vector<const AST::Module*>   m_module_stack;
+    ::std::vector< ::std::pair<unsigned int,AST::Module*> >   m_module_stack;
     
     friend class CResolvePaths_NodeVisitor;
     
@@ -62,10 +62,6 @@ public:
     }
     virtual void end_scope() override;
     
-    void add_local_use(::std::string name, AST::Path path) {
-        throw ParseError::Todo("CPathResolver::add_local_use - Determine type of path (type or value)");
-        m_locals.push_back( LocalItem(LocalItem::VAR, ::std::move(name), path) );
-    }
     ::rust::option<const AST::Path&> lookup_local(LocalItem::Type type, const ::std::string& name) const;
     
     // TODO: Handle a block and obtain the local module (if any)
@@ -103,9 +99,17 @@ public:
     }
     
     void visit(AST::ExprNode_Block& node) {
-        if( node.m_inner_mod.get() )
-            m_res.m_module_stack.push_back( node.m_inner_mod.get() );
+        // If there's an inner module on this node
+        if( node.m_inner_mod.get() ) {
+            // Add a reference to it to the parent node (add_anon_module will do dedup)
+            AST::Module& parent_mod = *( (m_res.m_module_stack.size() > 0) ? m_res.m_module_stack.back().second : m_res.m_module );
+            auto idx = parent_mod.add_anon_module( node.m_inner_mod.get() );
+            // Increment the module path to include it? (No - Instead handle that when tracing the stack)
+            // And add to the list of modules to use in lookup
+            m_res.m_module_stack.push_back( ::std::make_pair(idx, node.m_inner_mod.get()) );
+        }
         AST::NodeVisitorDef::visit(node);
+        // Once done, pop the module
         if( node.m_inner_mod.get() )
             m_res.m_module_stack.pop_back();
     }
@@ -158,6 +162,7 @@ void CPathResolver::end_scope()
     }
     m_locals.clear();
 }
+// Returns the bound path for the local item
 ::rust::option<const AST::Path&> CPathResolver::lookup_local(LocalItem::Type type, const ::std::string& name) const
 {
     for( auto it = m_locals.end(); it -- != m_locals.begin(); )
@@ -169,6 +174,90 @@ void CPathResolver::end_scope()
     return ::rust::option<const AST::Path&>();
 }
 
+// Search relative to current module
+// > Search local use definitions (function-level)
+// - TODO: Local use statements (scoped)
+// > Search module-level definitions
+bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, const AST::Path& mod_path, AST::Path& path)
+{
+    for( const auto& item_mod : module.submods() )
+    {
+        if( item_mod.first.name() == path[0].name() ) {
+            // Check name down?
+            // Add current module path
+            path = mod_path + path;
+            path.resolve( crate );
+            return true;
+        }
+    }
+    for( const auto& import : module.imports() )
+    {
+        const ::std::string& bind_name = import.name;
+        const AST::Path& bind_path = import.data;
+        if( bind_name == "" ) {
+            throw ParseError::Todo("Handle lookup_path_in_module for wildcard imports");
+        }
+        else if( bind_name == path[0].name() ) {
+            path = AST::Path::add_tailing(bind_path, path);
+            path.resolve( crate );
+            return true;
+        }
+    }
+
+    // Types
+    for( const auto& item : module.structs() )
+    {
+        if( item.name == path[0].name() ) {
+            path = mod_path + path;
+            path.resolve( crate );
+            return true;
+        }
+    }
+    for( const auto& item : module.enums() )
+    {
+        if( item.name == path[0].name() ) {
+            path = mod_path + path;
+            path.resolve( crate );
+            return true;
+        }
+    }
+    for( const auto& item : module.traits() )
+    {
+        if( item.name == path[0].name() ) {
+            path = mod_path + path;
+            path.resolve( crate );
+            return true;
+        }
+    }
+    for( const auto& item : module.type_aliases() )
+    {
+        if( item.name == path[0].name() ) {
+            path = mod_path + path;
+            path.resolve( crate );
+            return true;
+        }
+    }
+
+    // Values / Functions
+    for( const auto& item_fcn : module.functions() )
+    {
+        if( item_fcn.name == path[0].name() ) {
+            path = mod_path + path;
+            path.resolve( crate );
+            return true;
+        }
+    }
+    for( const auto& item : module.statics() )
+    {
+        if( item.name == path[0].name() ) {
+            path = mod_path + path;
+            path.resolve( crate );
+            return true;
+        }
+    }
+
+    return false;
+}
 void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
 {
     DEBUG("path = " << path);
@@ -200,7 +289,7 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
         
         // If there's a single node, and we're in expresion mode, look for a variable
         // Otherwise, search for a type
-        bool is_trivial_path = path.size() == 1 && path[0].args().size() == 0;
+        bool is_trivial_path = (path.size() == 1 && path[0].args().size() == 0);
         
         LocalItem::Type search_type = (is_trivial_path && mode == MODE_EXPR ? LocalItem::VAR : LocalItem::TYPE);
         auto local = lookup_local( search_type, path[0].name() );
@@ -209,29 +298,23 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
             auto rpath = local.unwrap();
             DEBUG("Local hit: " << path[0].name() << " = " << rpath);
             
-            // Local import?
-            if( rpath.size() > 0 )
+            switch(mode)
             {
-                path = AST::Path::add_tailing(rpath, path);
-                path.resolve( m_crate );
-                return ;
-            }
-            
             // Local variable?
             // - TODO: What would happen if MODE_EXPR but path isn't a single ident?
-            if( mode == MODE_EXPR && is_trivial_path )
-            {
-                DEBUG("Local variable " << path[0].name());
-                path = AST::Path(AST::Path::TagLocal(), path[0].name());
-                return ;
-            }
-        
-            // Type parameter, return verbatim?
-            // - TODO: Are extra params/entries valid here?
-            if( mode == MODE_TYPE )
-            {
-                DEBUG("Local type " << path[0].name());
-                throw ParseError::BugCheck("Local types should be handled in handle_type");
+            case MODE_EXPR:
+                if( is_trivial_path )
+                {
+                    DEBUG("Local variable " << path[0].name());
+                    path = AST::Path(AST::Path::TagLocal(), path[0].name());
+                    return ;
+                }
+                throw ParseError::Todo("TODO: MODE_EXPR, but not a single identifer, what do?");
+            // Type parameter
+            case MODE_TYPE:
+                DEBUG("Local type " << path);
+                // - Switch the path to be a "LOCAL"
+                path.set_local();
                 return ;
             }
         
@@ -239,83 +322,24 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
             // - Invalid afaik, instead Trait::method() is used
         }
         
-        // Search relative to current module
-        // > Search local use definitions (function-level)
-        // - TODO: Local use statements (scoped)
-        // > Search module-level definitions
-        for( const auto& item_mod : m_module->submods() )
+        if( m_module_stack.size() )
         {
-            if( item_mod.first.name() == path[0].name() ) {
-                // Check name down?
-                // Add current module path
-                path = m_module_path + path;
-                path.resolve( m_crate );
-                return ;
+            AST::Path   local_path = m_module_path;
+            for(unsigned int i = 0; i < m_module_stack.size(); i ++)
+                local_path.nodes().push_back( AST::PathNode( FMT("#"<<i), {} ) );
+            
+            for(unsigned int i = m_module_stack.size(); i--; )
+            {
+                if( lookup_path_in_module(m_crate, *m_module_stack[i].second, local_path, path) ) {
+                    // Success!
+                    return ;
+                }
+                local_path.nodes().pop_back();
             }
         }
-        for( const auto& import : m_module->imports() )
+        if( lookup_path_in_module(m_crate, *m_module, m_module_path, path) )
         {
-            const ::std::string& bind_name = import.name;
-            const AST::Path& bind_path = import.data;
-            if( bind_name == "" ) {
-            }
-            else if( bind_name == path[0].name() ) {
-                path = AST::Path::add_tailing(bind_path, path);
-                path.resolve( m_crate );
-                return ;
-            }
-        }
-    
-        // Types
-        for( const auto& item : m_module->structs() )
-        {
-            if( item.name == path[0].name() ) {
-                path = m_module_path + path;
-                path.resolve( m_crate );
-                return ;
-            }
-        }
-        for( const auto& item : m_module->enums() )
-        {
-            if( item.name == path[0].name() ) {
-                path = m_module_path + path;
-                path.resolve( m_crate );
-                return ;
-            }
-        }
-        for( const auto& item : m_module->traits() )
-        {
-            if( item.name == path[0].name() ) {
-                path = m_module_path + path;
-                path.resolve( m_crate );
-                return ;
-            }
-        }
-        for( const auto& item : m_module->type_aliases() )
-        {
-            if( item.name == path[0].name() ) {
-                path = m_module_path + path;
-                path.resolve( m_crate );
-                return ;
-            }
-        }
-        
-        // Values / Functions
-        for( const auto& item_fcn : m_module->functions() )
-        {
-            if( item_fcn.name == path[0].name() ) {
-                path = m_module_path + path;
-                path.resolve( m_crate );
-                return ;
-            }
-        }
-        for( const auto& item : m_module->statics() )
-        {
-            if( item.name == path[0].name() ) {
-                path = m_module_path + path;
-                path.resolve( m_crate );
-                return ;
-            }
+            return;
         }
         
         DEBUG("no matches found for path = " << path);

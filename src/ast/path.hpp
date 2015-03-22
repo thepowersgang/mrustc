@@ -146,6 +146,10 @@ public:
             DEBUG("crate set to " << m_crate);
         }
     }
+    void set_local() {
+        assert(m_class == RELATIVE);
+        m_class = LOCAL;
+    }
     
     /// Add the all nodes except the first from 'b' to 'a' and return
     static Path add_tailing(const Path& a, const Path& b) {

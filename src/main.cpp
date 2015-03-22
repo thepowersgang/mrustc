@@ -26,6 +26,8 @@ bool debug_enabled()
 /// main!
 int main(int argc, char *argv[])
 {
+    AST_InitProvidedModule();
+    
     const char *infile = NULL;
     ::std::string   outfile;
     const char *crate_path = ".";

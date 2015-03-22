@@ -79,6 +79,26 @@ void Path::resolve(const Crate& root_crate)
         const bool is_sec_last = (i+2 == m_nodes.size());
         const PathNode& node = m_nodes[i];
         
+        if( node.name()[0] == '#' )
+        {
+            // HACK - Compiler-provided functions/types live in the special '#' module
+            if( node.name() == "#" ) {
+                if( i != 0 )
+                    throw ParseError::BugCheck("# module not at path root");
+                mod = &g_compiler_module;
+                continue ;
+            }
+            
+            // Hacky special case - Anon modules are indexed
+            // - Darn you C++ and no string views
+            unsigned int index = ::std::strtoul(node.name().c_str()+1, nullptr, 10);    // Parse the number at +1
+            DEBUG(" index = " << index);
+            if( index >= mod->anon_mods().size() )
+                throw ParseError::Generic("Anon module index out of range");
+            mod = mod->anon_mods().at(index);
+            continue ;
+        }
+        
         // Sub-modules
         {
             auto& sms = mod->submods();
@@ -389,6 +409,11 @@ void Path::print_pretty(::std::ostream& os) const
 
 ::std::ostream& operator<<(::std::ostream& os, const Path& path)
 {
+    if( path.m_nodes.size() == 0 )
+    {
+        os << "/* null path */";
+        return os;
+    }
     #if PRETTY_PATH_PRINT
     switch(path.m_class)
     {

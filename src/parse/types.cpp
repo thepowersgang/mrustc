@@ -87,6 +87,11 @@ TypeRef Parse_Type(TokenStream& lex)
             if( tok.str() == CORETYPES[i].name )
                 return TypeRef(TypeRef::TagPrimitive(), CORETYPES[i].type);
         }
+        if( tok.str() == "str" )
+        {
+            // TODO: Create an internal newtype for 'str'
+            return TypeRef(TypeRef::TagPath(), AST::Path({ AST::PathNode("#",{}), AST::PathNode("str",{}) }));
+        }
         // - Fall through to path handling
     // '::' - Absolute path
     case TOK_DOUBLE_COLON: {
