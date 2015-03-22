@@ -69,6 +69,7 @@ public:
 
 // Path resolution checking
 void ResolvePaths(AST::Crate& crate);
+void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& modpath, AST::Module& mod);
 
 class CResolvePaths_NodeVisitor:
     public AST::NodeVisitorDef
@@ -100,13 +101,22 @@ public:
     
     void visit(AST::ExprNode_Block& node) {
         // If there's an inner module on this node
-        if( node.m_inner_mod.get() ) {
+        if( node.m_inner_mod.get() )
+        {
+            
             // Add a reference to it to the parent node (add_anon_module will do dedup)
             AST::Module& parent_mod = *( (m_res.m_module_stack.size() > 0) ? m_res.m_module_stack.back().second : m_res.m_module );
             auto idx = parent_mod.add_anon_module( node.m_inner_mod.get() );
-            // Increment the module path to include it? (No - Instead handle that when tracing the stack)
+            
             // And add to the list of modules to use in lookup
             m_res.m_module_stack.push_back( ::std::make_pair(idx, node.m_inner_mod.get()) );
+            
+            // Do use resolution on this module, then do 
+            AST::Path   local_path = m_res.m_module_path;
+            for(unsigned int i = 0; i < m_res.m_module_stack.size(); i ++)
+                local_path.nodes().push_back( AST::PathNode( FMT("#"<<i), {} ) );
+            
+            ResolvePaths_HandleModule_Use(m_res.m_crate, local_path, *node.m_inner_mod);
         }
         AST::NodeVisitorDef::visit(node);
         // Once done, pop the module
@@ -194,8 +204,26 @@ bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, c
     {
         const ::std::string& bind_name = import.name;
         const AST::Path& bind_path = import.data;
-        if( bind_name == "" ) {
-            throw ParseError::Todo("Handle lookup_path_in_module for wildcard imports");
+        if( bind_name == "" )
+        {
+            // Check the bind type of this path
+            switch(bind_path.binding_type())
+            {
+            case AST::Path::UNBOUND:
+                throw ParseError::BugCheck("Wildcard import path not bound");
+            // - If it's a module, recurse
+            case AST::Path::MODULE:
+                throw ParseError::Todo("Handle lookup_path_in_module for wildcard imports - module");
+                break;
+            // - If it's an enum, search for this name and then pass to resolve
+            case AST::Path::ENUM:
+                throw ParseError::Todo("Handle lookup_path_in_module for wildcard imports - enum");
+                break;
+            // - otherwise, error
+            default:
+                DEBUG("ERROR: Import of invalid class : " << bind_path);
+                throw ParseError::Generic("Wildcard import of non-module/enum");
+            }
         }
         else if( bind_name == path[0].name() ) {
             path = AST::Path::add_tailing(bind_path, path);

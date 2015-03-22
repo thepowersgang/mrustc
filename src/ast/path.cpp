@@ -78,6 +78,7 @@ void Path::resolve(const Crate& root_crate)
         const bool is_last = (i+1 == m_nodes.size());
         const bool is_sec_last = (i+2 == m_nodes.size());
         const PathNode& node = m_nodes[i];
+        DEBUG("[" << i << "/"<<m_nodes.size()<<"]: " << node);
         
         if( node.name()[0] == '#' )
         {
