@@ -65,6 +65,7 @@ TypeRef Parse_Type(TokenStream& lex)
     // '<' - An associated type cast
     case TOK_LT: {
         DEBUG("Associated type");
+        // TODO: This should instead use the path code, not a special case in typing
         // <Type as Trait>::Inner
         TypeRef base = Parse_Type(lex);
         GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
@@ -86,12 +87,29 @@ TypeRef Parse_Type(TokenStream& lex)
             if( tok.str() == CORETYPES[i].name )
                 return TypeRef(TypeRef::TagPrimitive(), CORETYPES[i].type);
         }
-        lex.putback(tok);
-        return TypeRef(TypeRef::TagPath(), Parse_Path(lex, false, PATH_GENERIC_TYPE)); // relative path
+        // - Fall through to path handling
     // '::' - Absolute path
-    case TOK_DOUBLE_COLON:
-        // Path with generics
-        return TypeRef(TypeRef::TagPath(), Parse_Path(lex, true, PATH_GENERIC_TYPE));
+    case TOK_DOUBLE_COLON: {
+        lex.putback(tok);
+        ::std::vector<AST::Path>    traits;
+        ::std::vector< ::std::string>   lifetimes;
+        do {
+            if( LOOK_AHEAD(lex) == TOK_LIFETIME ) {
+                GET_TOK(tok, lex);
+                lifetimes.push_back( tok.str() );
+            }
+            else
+                traits.push_back( Parse_Path(lex, PATH_GENERIC_TYPE) );
+        } while( GET_TOK(tok, lex) == TOK_PLUS );
+        lex.putback(tok);
+        if( traits.size() > 1 || lifetimes.size() > 0 ) {
+            if( lifetimes.size() )
+                DEBUG("TODO: Lifetime bounds on trait objects");
+            return TypeRef(::std::move(traits));
+        }
+        else 
+            return TypeRef(TypeRef::TagPath(), traits.at(0));
+        }
     // 'super' - Parent relative path
     case TOK_RWORD_SUPER:
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);

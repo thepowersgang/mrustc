@@ -55,6 +55,7 @@ class TypeRef:
         ARRAY,
         GENERIC,
         PATH,
+        MULTIDST,   // Multi-trait DST (e.g. Trait + Send + Sync)
         ASSOCIATED,
     };
     
@@ -147,6 +148,13 @@ public:
         TypeRef(TagPath(), ::std::move(path))
     {}
    
+    TypeRef( ::std::vector<AST::Path> traits ):
+        m_class(MULTIDST)
+    {
+        for( auto& t : traits )
+            m_inner_types.push_back( TypeRef(::std::move(t)) );
+    }
+    
     struct TagAssoc {};
     TypeRef(TagAssoc, TypeRef base, TypeRef trait, ::std::string assoc_name):
         TypeRef(::std::move(base), ::std::move(trait), ::std::move(assoc_name))

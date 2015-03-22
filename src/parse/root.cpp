@@ -666,6 +666,8 @@ AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe/*=false*/)
         lex.putback(tok);
         
         impl_type = Parse_Type(lex);
+        // TODO: Handle the "impl Any + Send" syntax here
+        
         if( GET_TOK(tok, lex) == TOK_RWORD_FOR )
         {
             // Implementing a trait for another type, get the target type
