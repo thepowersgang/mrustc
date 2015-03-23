@@ -491,6 +491,130 @@ void Module::iterate_functions(fcn_visitor_t *visitor, const Crate& crate)
     }
 }
 
+template<typename T>
+typename ::std::vector<Item<T> >::const_iterator find_named(const ::std::vector<Item<T> >& vec, const ::std::string& name)
+{
+    return ::std::find_if(vec.begin(), vec.end(), [&name](const Item<T>& x) {
+        return x.name == name;
+    });
+}
+
+Module::ItemRef Module::find_item(const ::std::string& needle) const
+{
+    TRACE_FUNCTION_F("needle = " << needle);
+    // Sub-modules
+    {
+        auto& sms = submods();
+        auto it = ::std::find_if(sms.begin(), sms.end(), [&needle](const ::std::pair<Module,bool>& x) {
+                return x.first.name() == needle;
+            });
+        if( it != sms.end() ) {
+            return ItemRef(it->first);
+        }
+    }
+    
+    // External crates
+    {
+        auto& crates = this->extern_crates();
+        auto it = find_named(crates, needle);
+        if( it != crates.end() ) {
+            return ItemRef(it->data);
+        }
+    }
+
+    // Type Aliases
+    {
+        auto& items = this->type_aliases();
+        auto it = find_named(items, needle);
+        if( it != items.end() ) {
+            return ItemRef(it->data);
+        }
+    }
+
+    // Functions
+    {
+        auto& items = this->functions();
+        auto it = find_named(items, needle);
+        if( it != items.end() ) {
+            return ItemRef(it->data);
+        }
+    }
+
+    // Traits
+    {
+        auto& items = this->traits();
+        auto it = find_named(items, needle);
+        if( it != items.end() ) {
+            return ItemRef(it->data);
+        }
+    }
+
+    // Structs
+    {
+        auto& items = this->structs();
+        auto it = find_named(items, needle);
+        if( it != items.end() ) {
+            return ItemRef(it->data);
+        }
+    }
+
+    // Enums
+    {
+        auto& items = this->enums();
+        auto it = find_named(items, needle);
+        if( it != items.end() ) {
+            return ItemRef(it->data);
+        }
+    }
+
+    // Statics
+    {
+        auto& items = this->statics();
+        auto it = find_named(items, needle);
+        if( it != items.end() ) {
+            return ItemRef(it->data);
+        }
+    }
+    
+    // - Re-exports
+    //  > Comes last, as it's a potentially expensive operation
+    {
+        for( const auto& imp : this->imports() )
+        {
+            if( !imp.is_pub )
+            {
+                // not public, ignore
+            }
+            else if( imp.name == needle )
+            {
+                return ItemRef(imp);
+            }
+            else if( imp.name == "" )
+            {
+                // Loop avoidance, don't check this
+                //if( &imp.data == this )
+                //    continue ;
+                //
+                //if( !imp.data.is_bound() )
+                //{
+                //    // not yet bound, so run resolution (recursion)
+                //    DEBUG("Recursively resolving pub wildcard use " << imp.data);
+                //    //imp.data.resolve(root_crate);
+                //    throw ParseError::Todo("Path::resolve() wildcard re-export call resolve");
+                //}
+                
+                throw ParseError::Todo("Path::resolve() wildcard re-export");
+            }
+            else
+            {
+                // Can't match, ignore
+            }
+        }
+    }
+    
+    return Module::ItemRef();
+}
+
 SERIALISE_TYPE(TypeAlias::, "AST_TypeAlias", {
     s << m_params;
     s << m_type;

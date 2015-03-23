@@ -100,207 +100,151 @@ void Path::resolve(const Crate& root_crate)
             continue ;
         }
         
-        // Sub-modules
+        auto item = mod->find_item(node.name());
+        switch( item.type() )
         {
-            auto& sms = mod->submods();
-            auto it = ::std::find_if(sms.begin(), sms.end(), [&node](const ::std::pair<Module,bool>& x) {
-                    return x.first.name() == node.name();
-                });
-            if( it != sms.end() )
-            {
-                DEBUG("Sub-module '" << node.name() << "'");
+        // Not found
+        case AST::Module::ItemRef::ITEM_none:
+            // TODO: If parent node is anon, backtrack and try again
+            throw ParseError::Generic("Unable to find component '" + node.name() + "'");
+            break;
+        
+        // Sub-module
+        case AST::Module::ItemRef::ITEM_Module:
+            DEBUG("Sub-module : " << node.name());
+            if( node.args().size() )
+                throw ParseError::Generic("Generic params applied to module");
+            mod = &item.unwrap_Module();
+            break;
+       
+        // Crate 
+        case AST::Module::ItemRef::ITEM_Crate: {
+            const ::std::string& crate_name = item.unwrap_Crate();
+            DEBUG("Extern crate '" << node.name() << "' = '" << crate_name << "'");
+            if( node.args().size() )
+                throw ParseError::Generic("Generic params applied to extern crate");
+            m_crate = crate_name;
+            slice_from = i+1;
+            mod = &root_crate.get_root_module(crate_name);
+            break; }
+        
+        // Type Alias
+        case AST::Module::ItemRef::ITEM_TypeAlias: {
+            const auto& ta = item.unwrap_TypeAlias();
+            DEBUG("Type alias <"<<ta.params()<<"> " << ta.type());
+            //if( node.args().size() != ta.params().size() )
+            //    throw ParseError::Generic("Param count mismatch when referencing type alias");
+            // Make a copy of the path, replace params with it, then replace *this?
+            // - Maybe leave that up to other code?
+            if( is_last ) {
+                m_binding_type = ALIAS;
+                m_binding.alias_ = &ta;
+                goto ret;
+            }
+            else {
+                throw ParseError::Todo("Path::resolve() type method");
+            }
+            break; }
+        
+        // Function
+        case AST::Module::ItemRef::ITEM_Function: {
+            const auto& fn = item.unwrap_Function();
+            DEBUG("Found function");
+            if( is_last ) {
+                m_binding_type = FUNCTION;
+                m_binding.func_ = &fn;
+                goto ret;
+            }
+            else {
+                throw ParseError::Generic("Import of function, too many extra nodes");
+            }
+            break; }
+        
+        // Trait
+        case AST::Module::ItemRef::ITEM_Trait: {
+            const auto& t = item.unwrap_Trait();
+            DEBUG("Found trait");
+            if( is_last ) {
+                m_binding_type = TRAIT;
+                m_binding.trait_ = &t;
+                goto ret;
+            }
+            else if( is_sec_last ) {
+                m_binding_type = TRAIT_METHOD;
+                m_binding.trait_ = &t;
+                goto ret;
+            }
+            else {
+                throw ParseError::Generic("Import of trait, too many extra nodes");
+            }
+            break; }
+        
+        // Struct
+        case AST::Module::ItemRef::ITEM_Struct: {
+            const auto& str = item.unwrap_Struct();
+            DEBUG("Found struct");
+            if( is_last ) {
+                bind_struct(str, node.args());
+                goto ret;
+            }
+            else if( is_sec_last ) {
+                throw ParseError::Todo("Path::resolve() struct method");
+            }
+            else {
+                throw ParseError::Generic("Import of struct, too many extra nodes");
+            }
+            break; }
+        
+        // Enum / enum variant
+        case AST::Module::ItemRef::ITEM_Enum: {
+            const auto& enm = item.unwrap_Enum();
+            DEBUG("Found enum");
+            if( is_last ) {
+                bind_enum(enm, node.args());
+                goto ret;
+            }
+            else if( is_sec_last ) {
+                bind_enum_var(enm, m_nodes[i+1].name(), node.args());
+                goto ret;
+            }
+            else {
+                throw ParseError::Generic("Binding path to enum, too many extra nodes");
+            }
+            break; }
+        
+        case AST::Module::ItemRef::ITEM_Static: {
+            const auto& st = item.unwrap_Static();
+            DEBUG("Found static/const");
+            if( is_last ) {
                 if( node.args().size() )
-                    throw ParseError::Generic("Generic params applied to module");
-                mod = &it->first;
-                continue;
+                    throw ParseError::Generic("Unexpected generic params on static/const");
+                bind_static(st);
+                goto ret;
             }
-        }
-        // External crates
-        {
-            auto& crates = mod->extern_crates();
-            auto it = find_named(crates, node.name());
-            if( it != crates.end() )
+            else {
+                throw ParseError::Generic("Binding path to static, trailing nodes");
+            }
+            break; }
+        
+        //
+        case AST::Module::ItemRef::ITEM_Use: {
+            const auto& imp = item.unwrap_Use();
+            // replace nodes 0:i with the source path
+            DEBUG("Re-exported path " << imp.data);
+            AST::Path   newpath = imp.data;
+            for( unsigned int j = i+1; j < m_nodes.size(); j ++ )
             {
-                DEBUG("Extern crate '" << node.name() << "' = '" << it->data << "'");
-                if( node.args().size() )
-                    throw ParseError::Generic("Generic params applied to extern crate");
-                m_crate = it->data;
-                slice_from = i+1;
-                mod = &root_crate.get_root_module(it->data);
-                continue;
+                newpath.m_nodes.push_back( m_nodes[j] );
             }
-        }
-
-        // Type Aliases
-        {
-            auto& items = mod->type_aliases();
-            auto it = find_named(items, node.name());
-            if( it != items.end() )
-            {
-                DEBUG("Type alias <"<<it->data.params()<<"> " << it->data.type());
-                //if( node.args().size() != it->data.params().size() )
-                //    throw ParseError::Generic("Param count mismatch when referencing type alias");
-                // Make a copy of the path, replace params with it, then replace *this?
-                // - Maybe leave that up to other code?
-                if( is_last ) {
-                    m_binding_type = ALIAS;
-                    m_binding.alias_ = &it->data;
-                    goto ret;
-                }
-                else {
-                    throw ParseError::Todo("Path::resolve() type method");
-                }
-            }
-        }
-
-        // - Functions
-        {
-            auto& items = mod->functions();
-            auto it = find_named(items, node.name());
-            if( it != items.end() )
-            {
-                DEBUG("Found function");
-                if( is_last ) {
-                    m_binding_type = FUNCTION;
-                    m_binding.func_ = &it->data;
-                    goto ret;
-                }
-                else {
-                    throw ParseError::Generic("Import of function, too many extra nodes");
-                }
-            }
-        }
-
-        // - Traits
-        {
-            auto& items = mod->traits();
-            auto it = find_named(items, node.name());
-            if( it != items.end() )
-            {
-                DEBUG("Found trait");
-                if( is_last ) {
-                    m_binding_type = TRAIT;
-                    m_binding.trait_ = &it->data;
-                    goto ret;
-                }
-                else if( is_sec_last ) {
-                    m_binding_type = TRAIT_METHOD;
-                    m_binding.trait_ = &it->data;
-                    goto ret;
-                }
-                else {
-                    throw ParseError::Generic("Import of trait, too many extra nodes");
-                }
-            }
-        }
-        // - Structs
-        {
-            auto& items = mod->structs();
-            auto it = find_named(items, node.name());
-            if( it != items.end() )
-            {
-                DEBUG("Found struct");
-                if( is_last ) {
-                    bind_struct(it->data, node.args());
-                    goto ret;
-                }
-                else if( is_sec_last ) {
-                    throw ParseError::Todo("Path::resolve() struct method");
-                }
-                else {
-                    throw ParseError::Generic("Import of struct, too many extra nodes");
-                }
-            }
-        }
-        // - Enums (and variants)
-        {
-            auto& enums = mod->enums();
-            auto it = find_named(enums, node.name());
-            if( it != enums.end() )
-            {
-                DEBUG("Found enum");
-                if( is_last ) {
-                    bind_enum(it->data, node.args());
-                    goto ret;
-                }
-                else if( is_sec_last ) {
-                    bind_enum_var(it->data, m_nodes[i+1].name(), node.args());
-                    goto ret;
-                }
-                else {
-                    throw ParseError::Generic("Binding path to enum, too many extra nodes");
-                }
-            }
-        }
-        // - Constants / statics
-        {
-            auto& items = mod->statics();
-            auto it = find_named(items, node.name());
-            if( it != items.end() )
-            {
-                DEBUG("Found static/const");
-                if( is_last ) {
-                    if( node.args().size() )
-                        throw ParseError::Generic("Unexpected generic params on static/const");
-                    bind_static(it->data);
-                    goto ret;
-                }
-                else {
-                    throw ParseError::Generic("Binding path to static, trailing nodes");
-                }
-            }
+            DEBUG("- newpath = " << newpath);
+            // TODO: This should check for recursion somehow
+            newpath.resolve(root_crate);
+            
+            *this = newpath;
+            DEBUG("Alias resolved, *this = " << *this);
+            break; }
         }
         
-        // - Re-exports
-        //  > Comes last, as it's a potentially expensive operation
-        {
-            for( const auto& imp : mod->imports() )
-            {
-                if( !imp.is_pub )
-                {
-                    // not public, ignore
-                }
-                else if( imp.name == node.name() )
-                {
-                    // replace nodes 0:i with the source path
-                    DEBUG("Re-exported path " << imp.data);
-                    AST::Path   newpath = imp.data;
-                    for( unsigned int j = i+1; j < m_nodes.size(); j ++ )
-                    {
-                        newpath.m_nodes.push_back( m_nodes[j] );
-                    }
-                    DEBUG("- newpath = " << newpath);
-                    // TODO: This should check for recursion somehow
-                    newpath.resolve(root_crate);
-                    
-                    *this = newpath;
-                    DEBUG("Alias resolved, *this = " << *this);
-                    return ;
-                }
-                else if( imp.name == "" )
-                {
-                    // Loop avoidance, don't check this
-                    if( &imp.data == this )
-                        continue ;
-                    
-                    if( !imp.data.is_bound() )
-                    {
-                        // not yet bound, so run resolution (recursion)
-                        DEBUG("Recursively resolving pub wildcard use " << imp.data);
-                        //imp.data.resolve(root_crate);
-                        throw ParseError::Todo("Path::resolve() wildcard re-export call resolve");
-                    }
-                    
-                    throw ParseError::Todo("Path::resolve() wildcard re-export");
-                }
-                else
-                {
-                    // Can't match, ignore
-                }
-            }
-        }
-        
-        throw ParseError::Generic("Unable to find component '" + node.name() + "'");
     }
     
     // We only reach here if the path points to a module
@@ -465,7 +409,8 @@ void Path::print_pretty(::std::ostream& os) const
     {
     case Path::RELATIVE:  s << "RELATIVE";    break;
     case Path::ABSOLUTE:  s << "ABSOLUTE";    break;
-    case Path::LOCAL: s << "LOCAL";   break;
+    case Path::LOCAL: s << "LOCAL"; break;
+    case Path::UFCS:  s << "UFCS";  break;
     }
     return s;
 }
@@ -476,6 +421,7 @@ void operator>>(Deserialiser& s, Path::Class& pc)
          if(n == "RELATIVE")    pc = Path::RELATIVE;
     else if(n == "ABSOLUTE")    pc = Path::ABSOLUTE;
     else if(n == "LOCAL")       pc = Path::LOCAL;
+    else if(n == "UFCS")        pc = Path::UFCS;
     else    throw ::std::runtime_error("Unknown path class : " + n);
 }
 SERIALISE_TYPE(Path::, "AST_Path", {

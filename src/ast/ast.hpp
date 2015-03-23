@@ -596,6 +596,44 @@ public:
     void iterate_functions(fcn_visitor_t* visitor, const Crate& crate);
 
     const ::std::string& name() const { return m_name; }
+    class ItemRef
+    {
+    public:
+        enum Type
+        {
+            ITEM_none,
+            ITEM_Module,
+            ITEM_Crate,
+            ITEM_TypeAlias,
+            ITEM_Function,
+            ITEM_Trait,
+            ITEM_Struct,
+            ITEM_Enum,
+            ITEM_Static,
+            ITEM_Use,
+        };
+    private:    
+        Type    m_type;
+        const void* m_ref;
+    public:
+        ItemRef(): m_type(ITEM_none) {}
+        
+        Type type() { return m_type; }
+        #define _(ty,ident) \
+            ItemRef(const ty& ref): m_type(ITEM_##ident), m_ref(&ref) {} \
+            const ty& unwrap_##ident() { assert(m_type == ITEM_##ident); m_type = ITEM_none; return *(const ty*)m_ref; }
+        _(Module, Module)
+        _(::std::string, Crate)
+        _(TypeAlias, TypeAlias)
+        _(Function, Function)
+        _(Trait, Trait)
+        _(Struct, Struct)
+        _(Enum, Enum)
+        _(Static, Static)
+        _(Item<Path>, Use)
+        #undef _
+    };
+    ItemRef find_item(const ::std::string& needle) const;
     
     ::std::vector<MetaItem>& attrs() { return m_attrs; } 
     itemlist_fcn_t& functions() { return m_functions; }

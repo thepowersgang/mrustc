@@ -450,9 +450,6 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
     ::std::vector<AST::Path>    new_imports;
     for( auto& imp : mod.imports() )
     {
-        // TODO: Handle 'super' and 'self' imports
-        // - Any other type of import will be absolute
-        
         if( !imp.data.is_absolute() )
         {
             if( imp.data[0].name() == "super" ) {
@@ -466,6 +463,7 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
             }
             else {
                 auto newpath = modpath + imp.data;
+                // TODO: Undo anon modules until item is found
                 DEBUG("Absolutised path " << imp.data << " into " << newpath);
                 imp.data = ::std::move(newpath);
             }
