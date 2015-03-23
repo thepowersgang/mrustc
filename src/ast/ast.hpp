@@ -390,6 +390,10 @@ struct EnumVariant:
     {
     }
     
+    friend ::std::ostream& operator<<(::std::ostream& os, const EnumVariant& x) {
+        return os << "EnumVariant(" << x.m_name << "(" << x.m_sub_types << ") = " << x.m_value << ")";
+    }
+    
     SERIALISABLE_PROTOTYPES();
 };
 
@@ -633,7 +637,7 @@ public:
         _(Item<Path>, Use)
         #undef _
     };
-    ItemRef find_item(const ::std::string& needle) const;
+    ItemRef find_item(const ::std::string& needle, bool ignore_private_wildcard = true) const;
     
     ::std::vector<MetaItem>& attrs() { return m_attrs; } 
     itemlist_fcn_t& functions() { return m_functions; }

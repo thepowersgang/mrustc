@@ -499,7 +499,7 @@ typename ::std::vector<Item<T> >::const_iterator find_named(const ::std::vector<
     });
 }
 
-Module::ItemRef Module::find_item(const ::std::string& needle) const
+Module::ItemRef Module::find_item(const ::std::string& needle, bool ignore_private_wildcard) const
 {
     TRACE_FUNCTION_F("needle = " << needle);
     // Sub-modules
@@ -581,12 +581,15 @@ Module::ItemRef Module::find_item(const ::std::string& needle) const
     {
         for( const auto& imp : this->imports() )
         {
-            if( !imp.is_pub )
+            DEBUG("imp: '" << imp.name << "' = " << imp.data);
+            if( !imp.is_pub && ignore_private_wildcard )
             {
                 // not public, ignore
+                DEBUG("Private import, ignore");
             }
             else if( imp.name == needle )
             {
+                DEBUG("Match " << needle);
                 return ItemRef(imp);
             }
             else if( imp.name == "" )
@@ -595,21 +598,49 @@ Module::ItemRef Module::find_item(const ::std::string& needle) const
                 //if( &imp.data == this )
                 //    continue ;
                 //
-                //if( !imp.data.is_bound() )
-                //{
-                //    // not yet bound, so run resolution (recursion)
-                //    DEBUG("Recursively resolving pub wildcard use " << imp.data);
-                //    //imp.data.resolve(root_crate);
-                //    throw ParseError::Todo("Path::resolve() wildcard re-export call resolve");
-                //}
+                if( !imp.data.is_bound() )
+                {
+                    // not yet bound, so run resolution (recursion)
+                    DEBUG("Recursively resolving pub wildcard use " << imp.data);
+                    //imp.data.resolve(root_crate);
+                    throw ParseError::Todo("Path::resolve() wildcard re-export call resolve");
+                }
                 
-                throw ParseError::Todo("Path::resolve() wildcard re-export");
+                switch(imp.data.binding_type())
+                {
+                case AST::Path::UNBOUND:
+                    throw ParseError::BugCheck("Wildcard import path not bound");
+                // - If it's a module, recurse
+                case AST::Path::MODULE: {
+                    auto rv = imp.data.bound_module().find_item(needle);
+                    if( rv.type() != Module::ItemRef::ITEM_none )
+                        return rv;
+                    break; }
+                // - If it's an enum, search for this name and then pass to resolve
+                case AST::Path::ENUM: {
+                    auto& vars = imp.data.bound_enum().variants();
+                    // Damnit C++ "let it = vars.find(|a| a.name == needle);"
+                    auto it = ::std::find_if(vars.begin(), vars.end(),
+                        [&needle](const EnumVariant& ev) { return ev.m_name == needle; });
+                    if( it != vars.end() ) {
+                        DEBUG("Found enum variant " << it->m_name);
+                        return ItemRef(imp);
+                        //throw ParseError::Todo("Handle lookup_path_in_module for wildcard imports - enum");
+                    }
+                    
+                    break; }
+                // - otherwise, error
+                default:
+                    DEBUG("ERROR: Import of invalid class : " << imp.data);
+                    throw ParseError::Generic("Wildcard import of non-module/enum");
+                }
             }
             else
             {
                 // Can't match, ignore
             }
         }
+        
     }
     
     return Module::ItemRef();

@@ -190,16 +190,38 @@ void CPathResolver::end_scope()
 // > Search module-level definitions
 bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, const AST::Path& mod_path, AST::Path& path)
 {
-    for( const auto& item_mod : module.submods() )
+    auto item = module.find_item(path[0].name(), false);
+    switch(item.type())
     {
-        if( item_mod.first.name() == path[0].name() ) {
-            // Check name down?
-            // Add current module path
-            path = mod_path + path;
+    case AST::Module::ItemRef::ITEM_none:
+        return false;
+    case AST::Module::ItemRef::ITEM_Use: {
+        const auto& imp = item.unwrap_Use();
+        if( imp.name == "" )
+        {
+            // Wildcard path, prefix entirely with the path
+            path = imp.data + path;
+            return true;
+        }
+        else
+        {
+            path = AST::Path::add_tailing(imp.data, path);
             path.resolve( crate );
             return true;
         }
+        break; }
+    case AST::Module::ItemRef::ITEM_Module:
+        // Check name down?
+        // Add current module path
+        path = mod_path + path;
+        path.resolve( crate );
+        return true;
+    default:
+        path = mod_path + path;
+        path.resolve( crate );
+        return true;
     }
+    #if 0
     for( const auto& import : module.imports() )
     {
         const ::std::string& bind_name = import.name;
@@ -231,60 +253,7 @@ bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, c
             return true;
         }
     }
-
-    // Types
-    for( const auto& item : module.structs() )
-    {
-        if( item.name == path[0].name() ) {
-            path = mod_path + path;
-            path.resolve( crate );
-            return true;
-        }
-    }
-    for( const auto& item : module.enums() )
-    {
-        if( item.name == path[0].name() ) {
-            path = mod_path + path;
-            path.resolve( crate );
-            return true;
-        }
-    }
-    for( const auto& item : module.traits() )
-    {
-        if( item.name == path[0].name() ) {
-            path = mod_path + path;
-            path.resolve( crate );
-            return true;
-        }
-    }
-    for( const auto& item : module.type_aliases() )
-    {
-        if( item.name == path[0].name() ) {
-            path = mod_path + path;
-            path.resolve( crate );
-            return true;
-        }
-    }
-
-    // Values / Functions
-    for( const auto& item_fcn : module.functions() )
-    {
-        if( item_fcn.name == path[0].name() ) {
-            path = mod_path + path;
-            path.resolve( crate );
-            return true;
-        }
-    }
-    for( const auto& item : module.statics() )
-    {
-        if( item.name == path[0].name() ) {
-            path = mod_path + path;
-            path.resolve( crate );
-            return true;
-        }
-    }
-
-    return false;
+    #endif
 }
 void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
 {
@@ -373,7 +342,7 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
         DEBUG("no matches found for path = " << path);
         assert( path.is_relative() );
         if( mode != MODE_BIND )
-            throw ParseError::Generic("Name resolution failed");
+            throw ParseError::Generic("CPathResolver::handle_path - Name resolution failed");
     }
 }
 void CPathResolver::handle_type(TypeRef& type)

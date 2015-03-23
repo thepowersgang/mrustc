@@ -72,9 +72,11 @@ void Path::resolve(const Crate& root_crate)
     
     unsigned int slice_from = 0;    // Used when rewriting the path to be relative to its crate root
     
+    ::std::vector<const Module*>    mod_stack;
     const Module* mod = &root_crate.get_root_module(m_crate);
     for(unsigned int i = 0; i < m_nodes.size(); i ++ )
     {
+        mod_stack.push_back(mod);
         const bool is_last = (i+1 == m_nodes.size());
         const bool is_sec_last = (i+2 == m_nodes.size());
         const PathNode& node = m_nodes[i];
@@ -105,9 +107,21 @@ void Path::resolve(const Crate& root_crate)
         {
         // Not found
         case AST::Module::ItemRef::ITEM_none:
-            // TODO: If parent node is anon, backtrack and try again
+            // If parent node is anon, backtrack and try again
+            // TODO: I feel like this shouldn't be done here, instead perform this when absolutising (now that find_item is reusable)
+            if( i > 0 && m_nodes[i-1].name()[0] == '#' && m_nodes[i-1].name().size() > 1 )
+            {
+                i --;
+                mod_stack.pop_back();
+                mod = mod_stack.back();
+                mod_stack.pop_back();
+                m_nodes.erase(m_nodes.begin()+i);
+                i --;
+                DEBUG("Failed to locate item in nested, look upwards - " << *this);
+                
+                continue ;
+            }
             throw ParseError::Generic("Unable to find component '" + node.name() + "'");
-            break;
         
         // Sub-module
         case AST::Module::ItemRef::ITEM_Module:
@@ -226,22 +240,29 @@ void Path::resolve(const Crate& root_crate)
             }
             break; }
         
-        //
+        // Re-export
         case AST::Module::ItemRef::ITEM_Use: {
             const auto& imp = item.unwrap_Use();
-            // replace nodes 0:i with the source path
-            DEBUG("Re-exported path " << imp.data);
-            AST::Path   newpath = imp.data;
-            for( unsigned int j = i+1; j < m_nodes.size(); j ++ )
+            if( imp.name == "" )
             {
-                newpath.m_nodes.push_back( m_nodes[j] );
+                throw ParseError::Todo("Path::resolve - wildcard import");
             }
-            DEBUG("- newpath = " << newpath);
-            // TODO: This should check for recursion somehow
-            newpath.resolve(root_crate);
-            
-            *this = newpath;
-            DEBUG("Alias resolved, *this = " << *this);
+            else
+            {
+                // replace nodes 0:i with the source path
+                DEBUG("Re-exported path " << imp.data);
+                AST::Path   newpath = imp.data;
+                for( unsigned int j = i+1; j < m_nodes.size(); j ++ )
+                {
+                    newpath.m_nodes.push_back( m_nodes[j] );
+                }
+                DEBUG("- newpath = " << newpath);
+                // TODO: This should check for recursion somehow
+                newpath.resolve(root_crate);
+                
+                *this = newpath;
+                DEBUG("Alias resolved, *this = " << *this);
+            }
             break; }
         }
         
