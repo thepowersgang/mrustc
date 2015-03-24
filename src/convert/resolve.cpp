@@ -128,6 +128,19 @@ public:
             m_res.m_module_stack.pop_back();
     }
     
+    void visit(AST::ExprNode_IfLet& node)
+    {
+        DEBUG("ExprNode_IfLet");
+        AST::NodeVisitor::visit(node.m_value);
+        
+        m_res.start_scope();
+        m_res.handle_pattern(node.m_pattern, TypeRef());
+        AST::NodeVisitor::visit(node.m_true);
+        m_res.end_scope();
+        
+        AST::NodeVisitor::visit(node.m_false);
+    }
+    
     void visit(AST::ExprNode_Match& node)
     {
         DEBUG("ExprNode_Match");
@@ -351,6 +364,7 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
             // - Invalid afaik, instead Trait::method() is used
         }
         
+        // Search backwards up the stack of anon modules
         if( m_module_stack.size() )
         {
             AST::Path   local_path = m_module_path;
@@ -366,6 +380,7 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
                 local_path.nodes().pop_back();
             }
         }
+        // Search current module, if found return with no error
         if( lookup_path_in_module(m_crate, *m_module, m_module_path, path) )
         {
             return;

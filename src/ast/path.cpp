@@ -321,14 +321,14 @@ void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std
 }
 void Path::bind_struct(const Struct& ent, const ::std::vector<TypeRef>& args)
 {
-    if( args.size() > 0 )
-    {
-        if( args.size() != ent.params().n_params() )
-            throw ParseError::Generic("Parameter count mismatch");
-        // TODO: Is it the role of this section of code to ensure that the passed args are valid?
-        // - Probably not, it should instead be the type checker that does it
-        // - Count validation is OK here though
-    }
+    //if( args.size() > 0 )
+    //{
+    //    if( args.size() != ent.params().n_params() )
+    //        throw ParseError::Generic("Parameter count mismatch");
+    //    // TODO: Is it the role of this section of code to ensure that the passed args are valid?
+    //    // - Probably not, it should instead be the type checker that does it
+    //    // - Count validation is OK here though
+    //}
     
     DEBUG("Bound to struct");
     m_binding_type = STRUCT;
