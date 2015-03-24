@@ -202,7 +202,8 @@ void Path::resolve(const Crate& root_crate)
                 goto ret;
             }
             else if( is_sec_last ) {
-                throw ParseError::Todo("Path::resolve() struct method");
+                bind_struct_member(str, node.args(), m_nodes[i+1]);
+                goto ret;
             }
             else {
                 throw ParseError::Generic("Import of struct, too many extra nodes");
@@ -331,6 +332,12 @@ void Path::bind_struct(const Struct& ent, const ::std::vector<TypeRef>& args)
     
     DEBUG("Bound to struct");
     m_binding_type = STRUCT;
+    m_binding.struct_ = &ent;
+}
+void Path::bind_struct_member(const Struct& ent, const ::std::vector<TypeRef>& args, const PathNode& member_node)
+{
+    DEBUG("Binding to struct item. This needs to be deferred");
+    m_binding_type = STRUCT_METHOD;
     m_binding.struct_ = &ent;
 }
 void Path::bind_static(const Static& ent)

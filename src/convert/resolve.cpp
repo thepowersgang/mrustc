@@ -118,7 +118,7 @@ public:
             // Do use resolution on this module, then do 
             AST::Path   local_path = m_res.m_module_path;
             for(unsigned int i = 0; i < m_res.m_module_stack.size(); i ++)
-                local_path.nodes().push_back( AST::PathNode( FMT("#"<<i), {} ) );
+                local_path.nodes().push_back( AST::PathNode( FMT("#" << m_res.m_module_stack[i].first), {} ) );
             
             ResolvePaths_HandleModule_Use(m_res.m_crate, local_path, *node.m_inner_mod);
         }
@@ -355,7 +355,7 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
         {
             AST::Path   local_path = m_module_path;
             for(unsigned int i = 0; i < m_module_stack.size(); i ++)
-                local_path.nodes().push_back( AST::PathNode( FMT("#"<<i), {} ) );
+                local_path.nodes().push_back( AST::PathNode( FMT("#" << m_module_stack[i].first), {} ) );
             
             for(unsigned int i = m_module_stack.size(); i--; )
             {

@@ -100,6 +100,10 @@ private:
         const Module* module_;
         const Enum* enum_;
         const Struct*   struct_;
+        struct {
+            const Struct* struct_;
+            unsigned int idx;
+        } structitem;
         const Trait*    trait_;
         const Static*   static_;
         const Function* func_;
@@ -226,6 +230,7 @@ private:
     void bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args);
     void bind_enum_var(const Enum& ent, const ::std::string& name, const ::std::vector<TypeRef>& args);
     void bind_struct(const Struct& ent, const ::std::vector<TypeRef>& args);
+    void bind_struct_member(const Struct& ent, const ::std::vector<TypeRef>& args, const PathNode& member_node);
     void bind_static(const Static& ent);
 };
 

@@ -495,6 +495,7 @@ template<typename T>
 typename ::std::vector<Item<T> >::const_iterator find_named(const ::std::vector<Item<T> >& vec, const ::std::string& name)
 {
     return ::std::find_if(vec.begin(), vec.end(), [&name](const Item<T>& x) {
+        DEBUG("find_named - x.name = " << x.name);
         return x.name == name;
     });
 }
