@@ -581,11 +581,11 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool ignore_priva
     {
         for( const auto& imp : this->imports() )
         {
-            DEBUG("imp: '" << imp.name << "' = " << imp.data);
+            //DEBUG("imp: '" << imp.name << "' = " << imp.data);
             if( !imp.is_pub && ignore_private_wildcard )
             {
                 // not public, ignore
-                DEBUG("Private import, ignore");
+                //DEBUG("Private import, '" << imp.name << "' = " << imp.data);
             }
             else if( imp.name == needle )
             {
@@ -613,8 +613,11 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool ignore_priva
                 // - If it's a module, recurse
                 case AST::Path::MODULE: {
                     auto rv = imp.data.bound_module().find_item(needle);
-                    if( rv.type() != Module::ItemRef::ITEM_none )
-                        return rv;
+                    if( rv.type() != Module::ItemRef::ITEM_none ) {
+                        // Don't return RV, return the import (so caller can rewrite path if need be)
+                        return ItemRef(imp);
+                        //return rv;
+                    }
                     break; }
                 // - If it's an enum, search for this name and then pass to resolve
                 case AST::Path::ENUM: {

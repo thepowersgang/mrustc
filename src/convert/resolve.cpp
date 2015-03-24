@@ -33,6 +33,10 @@ class CPathResolver:
             name( ::std::move(name) ),
             path( ::std::move(path) )
         {}
+        
+        friend ::std::ostream& operator<<(::std::ostream& os, const LocalItem& x) {
+            return os << "'" << x.name << "' = " << x.path;
+        }
     };
     const AST::Crate&   m_crate;
     AST::Module*  m_module;
@@ -140,6 +144,30 @@ public:
         }
     }
     
+    void visit(AST::ExprNode_Loop& node)
+    {
+        switch( node.m_type )
+        {
+        case AST::ExprNode_Loop::FOR:
+            AST::NodeVisitor::visit(node.m_cond);
+            m_res.start_scope();
+            m_res.handle_pattern(node.m_pattern, TypeRef());
+            AST::NodeVisitor::visit(node.m_code);
+            m_res.end_scope();
+            break;
+        case AST::ExprNode_Loop::WHILELET:
+            AST::NodeVisitor::visit(node.m_cond);
+            m_res.start_scope();
+            m_res.handle_pattern(node.m_pattern, TypeRef());
+            AST::NodeVisitor::visit(node.m_code);
+            m_res.end_scope();
+            break;
+        default:
+            AST::NodeVisitorDef::visit(node);
+            break;
+        }
+    }
+    
     void visit(AST::ExprNode_LetBinding& node)
     {
         DEBUG("ExprNode_LetBinding");
@@ -175,6 +203,7 @@ void CPathResolver::end_scope()
 // Returns the bound path for the local item
 ::rust::option<const AST::Path&> CPathResolver::lookup_local(LocalItem::Type type, const ::std::string& name) const
 {
+    DEBUG("m_locals = [" << m_locals << "]");
     for( auto it = m_locals.end(); it -- != m_locals.begin(); )
     {
         if( it->type == type && it->name == name ) {
@@ -199,12 +228,14 @@ bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, c
         const auto& imp = item.unwrap_Use();
         if( imp.name == "" )
         {
+            DEBUG("Wildcard import found, " << imp.data << " + " << path);
             // Wildcard path, prefix entirely with the path
             path = imp.data + path;
             return true;
         }
         else
         {
+            DEBUG("Named import found, " << imp.data << " + " << path << " [1..]");
             path = AST::Path::add_tailing(imp.data, path);
             path.resolve( crate );
             return true;
@@ -257,7 +288,7 @@ bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, c
 }
 void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
 {
-    DEBUG("path = " << path);
+    TRACE_FUNCTION_F("path = " << path << ", m_module_path = " << m_module_path);
     
     // Handle generic components of the path
     for( auto& ent : path.nodes() )
@@ -282,6 +313,7 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
     }
     else if( path.is_relative() )
     {
+        assert(path.size() > 0);
         DEBUG("Relative, local");
         
         // If there's a single node, and we're in expresion mode, look for a variable
@@ -347,6 +379,7 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
 }
 void CPathResolver::handle_type(TypeRef& type)
 {
+    TRACE_FUNCTION_F("type = " << type);
     if( type.is_path() && type.path().is_relative() && type.path().size() == 1 )
     {
         const auto& name = type.path()[0].name();
@@ -376,7 +409,7 @@ void CPathResolver::handle_expr(AST::ExprNode& node)
 
 void CPathResolver::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
 {
-    DEBUG("pat = " << pat);
+    TRACE_FUNCTION_F("pat = " << pat);
     // Resolve "Maybe Bind" entries
     if( pat.data().tag() == AST::Pattern::Data::MaybeBind )
     {

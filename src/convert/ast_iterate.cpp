@@ -24,15 +24,20 @@ void CASTIterator::handle_expr(AST::ExprNode& node)
 }
 void CASTIterator::handle_params(AST::TypeParams& params)
 {
+    DEBUG("params");
     for( auto& param : params.params() )
     {
         if( param.is_type() )
             local_type( param.name(), TypeRef(TypeRef::TagArg(), param.name()) );
     }
+    DEBUG("Bounds");
     for( auto& bound : params.bounds() )
     {
         handle_type(bound.test());
-        handle_path(bound.bound(), CASTIterator::MODE_TYPE);
+        if( !bound.is_trait() )
+            DEBUG("namecheck lifetime bounds?");
+        else
+            handle_path(bound.bound(), CASTIterator::MODE_TYPE);
     }
 }
 
@@ -236,14 +241,16 @@ void CASTIterator::handle_module(AST::Path path, AST::Module& mod)
 }
 void CASTIterator::handle_function(AST::Path path, AST::Function& fcn)
 {
-    INDENT();
-    DEBUG("(" << path << ", ...");
+    TRACE_FUNCTION_F("path = " << path << ", fcn.params() = " << fcn.params());
     start_scope();
     
+    DEBUG("params");
     handle_params(fcn.params());
     
+    DEBUG("ret type");
     handle_type(fcn.rettype());
     
+    DEBUG("args");
     for( auto& arg : fcn.args() )
     {
         handle_type(arg.second);
@@ -251,6 +258,7 @@ void CASTIterator::handle_function(AST::Path path, AST::Function& fcn)
         handle_pattern( arg.first, arg.second );
     }
 
+    DEBUG("code");
     if( fcn.code().is_valid() )
     {
         INDENT();
@@ -259,7 +267,6 @@ void CASTIterator::handle_function(AST::Path path, AST::Function& fcn)
     }
     
     end_scope();
-    UNINDENT();
 }
 void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
 {
