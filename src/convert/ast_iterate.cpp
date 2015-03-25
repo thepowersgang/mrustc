@@ -76,8 +76,8 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
         auto& v = pat.data().as_Ref();
         if( type_hint.is_wildcard() )
             handle_pattern(*v.sub, (const TypeRef&)TypeRef());
-        else if( type_hint.is_reference() )
-            throw ::std::runtime_error("Ref pattern on non-ref value");
+        else if( !type_hint.is_reference() )
+            throw ::std::runtime_error( FMT("Ref pattern on non-ref value: " << type_hint) );
         else
             handle_pattern(*v.sub, type_hint.sub_types()[0]);
         break; }

@@ -149,11 +149,12 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex)
         return AST::Pattern( AST::Pattern::TagWildcard() );
     case TOK_AMP:
         DEBUG("Ref");
+        // NOTE: Falls back into "Pattern" not "PatternReal" to handle MaybeBind again
         if( GET_TOK(tok, lex) == TOK_RWORD_MUT )
             // TODO: Actually use mutability
-            return AST::Pattern( AST::Pattern::TagReference(), Parse_PatternReal(lex) );
+            return AST::Pattern( AST::Pattern::TagReference(), Parse_Pattern(lex) );
         lex.putback(tok);
-        return AST::Pattern( AST::Pattern::TagReference(), Parse_PatternReal(lex) );
+        return AST::Pattern( AST::Pattern::TagReference(), Parse_Pattern(lex) );
     case TOK_IDENT:
         lex.putback(tok);
         return Parse_PatternReal_Path( lex, Parse_Path(lex, false, PATH_GENERIC_EXPR) );
