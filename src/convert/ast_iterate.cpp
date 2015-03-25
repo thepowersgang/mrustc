@@ -282,7 +282,12 @@ void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
     
     local_type("Self", impl.type());
     
-    // TODO: Associated types
+    // Associated types
+    for( auto& at : impl.types() )
+    {
+        DEBUG("- Type '" << at.name << "'");
+        handle_type( at.data );
+    }
     
     // Functions
     for( auto& fcn : impl.functions() )

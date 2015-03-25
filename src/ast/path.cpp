@@ -246,7 +246,19 @@ void Path::resolve(const Crate& root_crate)
             const auto& imp = item.unwrap_Use();
             if( imp.name == "" )
             {
-                throw ParseError::Todo("Path::resolve - wildcard import");
+                // Replace nodes 0:i-1 with source path, then recurse
+                AST::Path   newpath = imp.data;
+                for( unsigned int j = i; j < m_nodes.size(); j ++ )
+                {
+                    newpath.m_nodes.push_back( m_nodes[j] );
+                }
+                
+                DEBUG("- newpath = " << newpath);
+                // TODO: This should check for recursion somehow
+                newpath.resolve(root_crate);
+                
+                *this = newpath;
+                DEBUG("Alias resolved, *this = " << *this);
             }
             else
             {
