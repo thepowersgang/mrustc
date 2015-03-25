@@ -232,7 +232,8 @@ void CPathResolver::end_scope()
 // > Search module-level definitions
 bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, const AST::Path& mod_path, AST::Path& path)
 {
-    auto item = module.find_item(path[0].name(), false);
+    // - Allow leaf nodes if path is a single node, don't skip private wildcard imports
+    auto item = module.find_item(path[0].name(), (path.size() == 1), false);
     switch(item.type())
     {
     case AST::Module::ItemRef::ITEM_none:

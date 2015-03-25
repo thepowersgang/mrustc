@@ -500,9 +500,10 @@ typename ::std::vector<Item<T> >::const_iterator find_named(const ::std::vector<
     });
 }
 
-Module::ItemRef Module::find_item(const ::std::string& needle, bool ignore_private_wildcard) const
+Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves, bool ignore_private_wildcard) const
 {
     TRACE_FUNCTION_F("needle = " << needle);
+    
     // Sub-modules
     {
         auto& sms = submods();
@@ -537,7 +538,10 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool ignore_priva
         auto& items = this->functions();
         auto it = find_named(items, needle);
         if( it != items.end() ) {
-            return ItemRef(it->data);
+            if( allow_leaves )
+                return ItemRef(it->data);
+            else
+                DEBUG("Skipping static, leaves not allowed");
         }
     }
 
@@ -573,7 +577,11 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool ignore_priva
         auto& items = this->statics();
         auto it = find_named(items, needle);
         if( it != items.end() ) {
-            return ItemRef(it->data);
+            if( allow_leaves ) {
+                return ItemRef(it->data);
+            }
+            else
+                DEBUG("Skipping static, leaves not allowed");
         }
     }
     

@@ -102,7 +102,7 @@ void Path::resolve(const Crate& root_crate)
             continue ;
         }
         
-        auto item = mod->find_item(node.name());
+        auto item = mod->find_item(node.name(), is_last);  // Only allow leaf nodes (functions and statics) if this is the last node
         switch( item.type() )
         {
         // Not found

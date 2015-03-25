@@ -637,7 +637,7 @@ public:
         _(Item<Path>, Use)
         #undef _
     };
-    ItemRef find_item(const ::std::string& needle, bool ignore_private_wildcard = true) const;
+    ItemRef find_item(const ::std::string& needle, bool allow_leaves = true, bool ignore_private_wildcard = true) const;
     
     ::std::vector<MetaItem>& attrs() { return m_attrs; } 
     itemlist_fcn_t& functions() { return m_functions; }
