@@ -397,7 +397,10 @@ bool TypeRef::operator==(const TypeRef& x) const
         break;
     case TypeRef::TUPLE:
         //os << "TagTuple, {" << tr.m_inner_types << "}";
-        os << "(" << tr.m_inner_types << ",)";
+        os << "( ";
+        for( const auto& it : tr.m_inner_types )
+            os << it << ", ";
+        os << ")";
         break;
     case TypeRef::REFERENCE:
         //os << "TagReference, " << (tr.m_is_inner_mutable ? "mut" : "const") << ", " << tr.m_inner_types[0];

@@ -221,7 +221,10 @@ public:
                 AST::NodeVisitor::visit(arm.m_cond);
             }
             m_os << " => ";
+            // Increase indent, but don't print. Causes nested blocks to be indented above the match
+            inc_indent();
             AST::NodeVisitor::visit(arm.m_code);
+            dec_indent();
             m_os << ",\n";
         }
         
@@ -299,8 +302,9 @@ public:
             m_os << ": ";
             print_type(arg.second);
         }
-        m_os << "|: ";
+        m_os << "| ->";
         print_type(n.m_return);
+        m_os << " ";
         AST::NodeVisitor::visit(n.m_code);
     }
     virtual void visit(AST::ExprNode_Integer& n) override {
@@ -558,6 +562,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         m_os << " = " << i.data.type();
         print_bounds(i.data.params());
         m_os << ";\n";
+        m_os << "\n";
     }
     need_nl = true;
     
