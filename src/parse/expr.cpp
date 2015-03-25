@@ -217,7 +217,7 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end)
         
         // let binding
         case TOK_RWORD_LET: {
-            AST::Pattern pat = Parse_Pattern(lex);
+            AST::Pattern pat = Parse_Pattern(lex, false);   // irrefutable
             TypeRef type;
             if( GET_TOK(tok, lex) == TOK_COLON ) {
                 type = Parse_Type(lex);
@@ -325,7 +325,7 @@ ExprNodeP Parse_WhileStmt(TokenStream& lex, ::std::string lifetime)
     Token   tok;
     
     if( GET_TOK(tok, lex) == TOK_RWORD_LET ) {
-        auto pat = Parse_Pattern(lex);
+        auto pat = Parse_Pattern(lex, true);    // Refutable pattern
         GET_CHECK_TOK(tok, lex, TOK_EQUAL);
         ExprNodeP val;
         {
@@ -349,8 +349,9 @@ ExprNodeP Parse_WhileStmt(TokenStream& lex, ::std::string lifetime)
 ExprNodeP Parse_ForStmt(TokenStream& lex, ::std::string lifetime)
 {
     Token   tok;
-    
-    AST::Pattern    pat = Parse_Pattern(lex);
+   
+    // Irrefutable pattern 
+    AST::Pattern    pat = Parse_Pattern(lex, false);
     GET_CHECK_TOK(tok, lex, TOK_RWORD_IN);
     ExprNodeP val;
     {
@@ -375,7 +376,8 @@ ExprNodeP Parse_IfStmt(TokenStream& lex)
         SET_PARSE_FLAG(lex, disallow_struct_literal);
         if( GET_TOK(tok, lex) == TOK_RWORD_LET ) {
             if_let = true;
-            pat = Parse_Pattern(lex);
+            // Refutable pattern
+            pat = Parse_Pattern(lex, true);
             GET_CHECK_TOK(tok, lex, TOK_EQUAL);
             cond = Parse_Expr0(lex);
         }
@@ -434,7 +436,8 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
         lex.putback(tok);
         AST::ExprNode_Match::Arm    arm;
         do {
-            arm.m_patterns.push_back( Parse_Pattern(lex) );
+            // Refutable pattern
+            arm.m_patterns.push_back( Parse_Pattern(lex, true) );
         } while( GET_TOK(tok, lex) == TOK_PIPE );
         
         if( tok.type() == TOK_RWORD_IF )
@@ -861,7 +864,8 @@ ExprNodeP Parse_ExprVal_Closure(TokenStream& lex)
     while( GET_TOK(tok, lex) != TOK_PIPE )
     {
         lex.putback(tok);
-        AST::Pattern    pat = Parse_Pattern(lex);
+        // Irrefutable pattern
+        AST::Pattern    pat = Parse_Pattern(lex, false);
     
         TypeRef type;
         if( GET_TOK(tok, lex) == TOK_COLON )
@@ -1226,7 +1230,8 @@ TokenTree Parse_TT_Pattern(TokenStream& lex)
     TTLexer wlex(lex);
     SET_PARSE_FLAG(wlex, no_expand_macros);
     
-    Parse_Pattern(wlex);
+    // Allow a refutable pattern here
+    Parse_Pattern(wlex, true);
     
     return wlex.get_output();
 }

@@ -14,11 +14,11 @@ typedef ::std::unique_ptr<AST::ExprNode>    ExprNodeP;
 using AST::ExprNode;
 
 
-::std::vector<AST::Pattern> Parse_PatternList(TokenStream& lex);
 
-AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path);
-AST::Pattern Parse_PatternReal(TokenStream& lex);
-AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path);
+::std::vector<AST::Pattern> Parse_PatternList(TokenStream& lex, bool is_refutable);
+AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path, bool is_refutable);
+AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable);
+AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refutable);
 
 
 /// Parse a pattern
@@ -30,7 +30,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path);
 /// - `"string"`
 /// - `mut x`
 /// - `mut x @ 1 ... 2`
-AST::Pattern Parse_Pattern(TokenStream& lex)
+AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
 {
     TRACE_FUNCTION;
 
@@ -75,7 +75,8 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
         lex.putback(tok);
         AST::Path path = Parse_Path(lex, false, PATH_GENERIC_EXPR);
         // - If the path is trivial
-        if( path.size() == 1 && path[0].args().size() == 0 )
+        //if( path.is_relative() && path.size() == 1 && path[0].args().size() == 0 )
+        if( path.is_trivial() )
         {
             switch( GET_TOK(tok, lex) )
             {
@@ -89,39 +90,44 @@ AST::Pattern Parse_Pattern(TokenStream& lex)
             case TOK_BRACE_OPEN:
             case TOK_PAREN_OPEN:
                 lex.putback(tok);
-                return Parse_PatternReal_Path(lex, path);
+                return Parse_PatternReal_Path(lex, path, is_refutable);
             //  - Else, treat as a MaybeBind
             default:
                 lex.putback(tok);
-                return AST::Pattern(AST::Pattern::TagMaybeBind(), path[0].name());
+                // if the pattern can be refuted (i.e this could be an enum variant), return MaybeBind
+                if( is_refutable )
+                    return AST::Pattern(AST::Pattern::TagMaybeBind(), path[0].name());
+                // Otherwise, it IS a binding
+                else
+                    return AST::Pattern(AST::Pattern::TagBind(), path[0].name());
             }
         }
         else
         {
             // non-trivial path, has to be a pattern (not a bind)
-            return Parse_PatternReal_Path(lex, path);
+            return Parse_PatternReal_Path(lex, path, is_refutable);
         }
     }
     
     lex.putback(tok);
-    AST::Pattern pat = Parse_PatternReal(lex);
+    AST::Pattern pat = Parse_PatternReal(lex, is_refutable);
     pat.set_bind(bind_name, is_ref, is_mut);
     return ::std::move(pat);
 }
 
-AST::Pattern Parse_PatternReal(TokenStream& lex);
-AST::Pattern Parse_PatternReal1(TokenStream& lex);
+AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable);
+AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable);
 
-AST::Pattern Parse_PatternReal(TokenStream& lex)
+AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable)
 {
     Token   tok;
-    AST::Pattern    ret = Parse_PatternReal1(lex);
+    AST::Pattern    ret = Parse_PatternReal1(lex, is_refutable);
     if( GET_TOK(tok, lex) == TOK_TRIPLE_DOT )
     {
         if( !ret.data().is_Value() )
             throw ParseError::Generic(lex, "Using '...' with a non-value on left");
         auto    leftval = ret.take_node();
-        auto    right_pat = Parse_PatternReal1(lex);
+        auto    right_pat = Parse_PatternReal1(lex, is_refutable);
         if( !right_pat.data().is_Value() )
             throw ParseError::Generic(lex, "Using '...' with a non-value on right");
         auto    rightval = right_pat.take_node();
@@ -134,7 +140,7 @@ AST::Pattern Parse_PatternReal(TokenStream& lex)
         return ret;
     }
 }
-AST::Pattern Parse_PatternReal1(TokenStream& lex)
+AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
 {
     TRACE_FUNCTION;
     
@@ -152,15 +158,15 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex)
         // NOTE: Falls back into "Pattern" not "PatternReal" to handle MaybeBind again
         if( GET_TOK(tok, lex) == TOK_RWORD_MUT )
             // TODO: Actually use mutability
-            return AST::Pattern( AST::Pattern::TagReference(), Parse_Pattern(lex) );
+            return AST::Pattern( AST::Pattern::TagReference(), Parse_Pattern(lex, is_refutable) );
         lex.putback(tok);
-        return AST::Pattern( AST::Pattern::TagReference(), Parse_Pattern(lex) );
+        return AST::Pattern( AST::Pattern::TagReference(), Parse_Pattern(lex, is_refutable) );
     case TOK_IDENT:
         lex.putback(tok);
-        return Parse_PatternReal_Path( lex, Parse_Path(lex, false, PATH_GENERIC_EXPR) );
+        return Parse_PatternReal_Path( lex, Parse_Path(lex, false, PATH_GENERIC_EXPR), is_refutable );
     case TOK_DOUBLE_COLON:
         // 2. Paths are enum/struct names
-        return Parse_PatternReal_Path( lex, Parse_Path(lex, true, PATH_GENERIC_EXPR) );
+        return Parse_PatternReal_Path( lex, Parse_Path(lex, true, PATH_GENERIC_EXPR), is_refutable );
     case TOK_DASH:
         GET_CHECK_TOK(tok, lex, TOK_INTEGER);
         return AST::Pattern( AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_Integer, -tok.intval(), tok.datatype()) );
@@ -173,30 +179,30 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex)
     case TOK_STRING:
         return AST::Pattern( AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_String, tok.str()) );
     case TOK_PAREN_OPEN:
-        return AST::Pattern(AST::Pattern::TagTuple(), Parse_PatternList(lex));
+        return AST::Pattern(AST::Pattern::TagTuple(), Parse_PatternList(lex, is_refutable));
     case TOK_SQUARE_OPEN:
         throw ParseError::Todo(lex, "array patterns");
     default:
         throw ParseError::Unexpected(lex, tok);
     }
 }
-AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path)
+AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path, bool is_refutable)
 {
     Token   tok;
     
     switch( GET_TOK(tok, lex) )
     {
     case TOK_PAREN_OPEN:
-        return AST::Pattern(AST::Pattern::TagEnumVariant(), ::std::move(path), Parse_PatternList(lex));
+        return AST::Pattern(AST::Pattern::TagEnumVariant(), ::std::move(path), Parse_PatternList(lex, is_refutable));
     case TOK_BRACE_OPEN:
-        return Parse_PatternStruct(lex, ::std::move(path));
+        return Parse_PatternStruct(lex, ::std::move(path), is_refutable);
     default:
         lex.putback(tok);
         return AST::Pattern(AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_NamedValue, ::std::move(path)));
     }
 }
 
-::std::vector<AST::Pattern> Parse_PatternList(TokenStream& lex)
+::std::vector<AST::Pattern> Parse_PatternList(TokenStream& lex, bool is_refutable)
 {
     TRACE_FUNCTION;
     Token tok;
@@ -209,7 +215,7 @@ AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path)
         else
             lex.putback(tok);
         
-        AST::Pattern pat = Parse_Pattern(lex);
+        AST::Pattern pat = Parse_Pattern(lex, is_refutable);
         DEBUG("pat = " << pat);
         child_pats.push_back( ::std::move(pat) );
     } while( GET_TOK(tok, lex) == TOK_COMMA );
@@ -217,7 +223,7 @@ AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path)
     return child_pats;
 }
 
-AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path)
+AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refutable)
 {
     TRACE_FUNCTION;
     Token tok;
@@ -254,7 +260,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path)
         }
         else {
             CHECK_TOK(tok, TOK_COLON);
-            pat = Parse_Pattern(lex);
+            pat = Parse_Pattern(lex, is_refutable);
         }
         
         subpats.push_back( ::std::make_pair(::std::move(field), ::std::move(pat)) );

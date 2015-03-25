@@ -6,7 +6,6 @@
 #include "../macros.hpp"
 #include <cassert>
 
-extern AST::Pattern Parse_Pattern(TokenStream& lex);
 AST::MetaItem   Parse_MetaItem(TokenStream& lex);
 void Parse_ModRoot(TokenStream& lex, AST::Crate& crate, AST::Module& mod, LList<AST::Module*> *prev_modstack, const ::std::string& path);
 
@@ -128,7 +127,8 @@ void Parse_WhereClause(TokenStream& lex, AST::TypeParams& params)
       || (LOOK_AHEAD(lex) == TOK_IDENT && lex.lookahead(1) == TOK_COLON)
       )
     {
-        pat = Parse_Pattern(lex);
+        // Function args can't be refuted
+        pat = Parse_Pattern(lex, false);
         GET_CHECK_TOK(tok, lex, TOK_COLON);
     }
     

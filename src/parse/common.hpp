@@ -34,7 +34,7 @@ extern ::std::vector<TypeRef>   Parse_Path_GenericList(TokenStream& lex);
 extern TypeRef     Parse_Type(TokenStream& lex);
 
 
-extern AST::Pattern Parse_Pattern(TokenStream& lex);
+extern AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable);
 
 extern void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)> fcn);
 extern void Parse_Struct(AST::Module& mod, TokenStream& lex, bool is_public, const AST::MetaItems meta_items);

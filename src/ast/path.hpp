@@ -188,6 +188,10 @@ public:
     
     void resolve(const Crate& crate);
     
+    bool is_trivial() const {
+        return m_class == RELATIVE && m_nodes.size() == 1 && m_nodes[0].args().size() == 0;
+    }
+    
     bool is_absolute() const { return m_class == ABSOLUTE; }
     bool is_relative() const { return m_class == RELATIVE; }
     size_t size() const { return m_nodes.size(); }
