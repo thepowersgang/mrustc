@@ -825,6 +825,18 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
     Token   tok;
     AST::Path   path = AST::Path( AST::Path::TagAbsolute() );
     
+    // Leading :: is allowed and ignored for the $crate feature
+    if( LOOK_AHEAD(lex) == TOK_DOUBLE_COLON ) {
+        GET_TOK(tok, lex);
+        // HACK! mrustc emits $crate as `::"crate-name"`
+        if( LOOK_AHEAD(lex) == TOK_STRING )
+        {
+            GET_CHECK_TOK(tok, lex, TOK_STRING);
+            path.set_crate(tok.str());
+            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        }
+    }
+    
     switch( GET_TOK(tok, lex) )
     {
     case TOK_RWORD_SELF:

@@ -63,7 +63,27 @@ public:
     enum eCoreType  datatype() const { return m_datatype; }
     uint64_t intval() const { return m_intval; }
     double floatval() const { return m_floatval; }
+    bool operator==(const Token& r) const {
+        if(type() != r.type())
+            return false;
+        switch(type())
+        {
+        case TOK_STRING:
+        case TOK_IDENT:
+        case TOK_LIFETIME:
+            return str() == r.str();
+        case TOK_INTEGER:
+            return intval() == r.intval() && datatype() == r.datatype();
+        case TOK_FLOAT:
+            return floatval() == r.floatval() && datatype() == r.datatype();
+        default:
+            return true;
+        }
+    }
+    bool operator!=(const Token& r) { return !(*this == r); }
 
+    ::std::string to_str() const;
+    
     void set_pos(Position pos) { m_pos = pos; }
     const Position& get_pos() const { return m_pos; }
     

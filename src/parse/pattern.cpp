@@ -256,7 +256,8 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path)
             CHECK_TOK(tok, TOK_COLON);
             pat = Parse_Pattern(lex);
         }
-        // TODO: Append
+        
+        subpats.push_back( ::std::make_pair(::std::move(field), ::std::move(pat)) );
     } while( GET_TOK(tok, lex) == TOK_COMMA );
     CHECK_TOK(tok, TOK_BRACE_CLOSE);
     

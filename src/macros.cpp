@@ -12,11 +12,6 @@ typedef ::std::map< ::std::string, MacroRules>  t_macro_regs;
 t_macro_regs g_macro_registrations;
 const LList<AST::Module*>*  g_macro_module;
 
-TokenTree   g_crate_path_tt = TokenTree({
-    TokenTree(Token(TOK_DOUBLE_COLON)),
-    TokenTree(Token(TOK_STRING, "--CRATE--")),
-    });
-
 class ParameterMappings
 {
     // MultiMap (layer, name) -> TokenTree
@@ -141,7 +136,7 @@ public:
 
 private:
     const TokenStream&  m_olex;
-    const TokenTree&    m_crate_path;
+    const ::std::string m_crate_name;
     const ::std::vector<MacroRuleEnt>&  m_root_contents;
     const ParameterMappings m_mappings;
     
@@ -158,7 +153,7 @@ private:
 public:
     MacroExpander(const MacroExpander& x):
         m_olex(x.m_olex),
-        m_crate_path(x.m_crate_path),
+        m_crate_name(x.m_crate_name),
         m_root_contents(x.m_root_contents),
         m_mappings(x.m_mappings),
         m_offsets({ {0,0} }),
@@ -166,9 +161,9 @@ public:
     {
         prep_counts();
     }
-    MacroExpander(const TokenStream& olex, const ::std::vector<MacroRuleEnt>& contents, ParameterMappings mappings, const TokenTree& crate_path):
+    MacroExpander(const TokenStream& olex, const ::std::vector<MacroRuleEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
         m_olex(olex),
-        m_crate_path(crate_path),
+        m_crate_name(crate_name),
         m_root_contents(contents),
         m_mappings(mappings),
         m_offsets({ {0,0} }),
@@ -219,6 +214,7 @@ const LList<AST::Module*>* Macro_GetModule()
 
 void Macro_InitDefaults()
 {
+    #if 0
     // try!() macro
     {
         MacroRule   rule;
@@ -268,6 +264,7 @@ void Macro_InitDefaults()
         rules.push_back(rule);
         g_macro_registrations.insert( make_pair(::std::string("panic"), rules));
     }
+    #endif
 }
 
 bool Macro_TryPattern(TTStream& lex, const MacroPatEnt& pat)
@@ -275,8 +272,17 @@ bool Macro_TryPattern(TTStream& lex, const MacroPatEnt& pat)
     DEBUG("pat = " << pat);
     switch(pat.type)
     {
-    case MacroPatEnt::PAT_TOKEN:
-        return LOOK_AHEAD(lex) == pat.tok.type();
+    case MacroPatEnt::PAT_TOKEN: {
+        Token tok = lex.getToken();
+        if( tok != pat.tok ) {
+            lex.putback(tok);
+            return false;
+        }
+        else {
+            lex.putback(tok);
+            return true;
+        }
+        }
     case MacroPatEnt::PAT_LOOP:
         if( pat.name == "*" )
             return true;
@@ -460,7 +466,8 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
             // Count the number of repetitions
             bound_tts.calculate_counts();
             
-            TokenStream* ret_ptr = new MacroExpander(olex, rule.m_contents, bound_tts, g_crate_path_tt);
+            DEBUG("TODO: Obtain crate name correctly");
+            TokenStream* ret_ptr = new MacroExpander(olex, rule.m_contents, bound_tts, "");
             // HACK! Disable nested macro expansion
             //ret_ptr->parse_state().no_expand_macros = true;
             
@@ -487,7 +494,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
     if( name == "concat_idents" ) {
         return Macro_Invoke_Concat(input, TOK_IDENT);
     }
-    else if( name == "concat_strings" ) {
+    else if( name == "concat_strings" || name == "concat" ) {
         return Macro_Invoke_Concat(input, TOK_STRING);
     }
     else if( name == "cfg" ) {
@@ -495,6 +502,14 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
     }
     else if( name == "stringify" ) {
         return ::std::unique_ptr<TokenStream>( (TokenStream*)new MacroStringify(input) );
+    }
+    else if( name == "file" ) {
+        const ::std::string& pos = olex.getPosition().filename;
+        return ::std::unique_ptr<TokenStream>( (TokenStream*)new MacroToken(Token(TOK_STRING, pos)) );
+    }
+    else if( name == "line" ) {
+        auto pos = olex.getPosition().line;
+        return ::std::unique_ptr<TokenStream>( (TokenStream*)new MacroToken(Token((uint64_t)pos, CORETYPE_U32)) );
     }
      
     // Look for macro in builtins
@@ -575,8 +590,11 @@ Token MacroExpander::realGetToken()
             if( ent.name == "*crate" )
             {
                 DEBUG("Crate name hack");
-                m_ttstream.reset( new TTStream(m_crate_path) );
-                return m_ttstream->getToken();
+                if( m_crate_name != "" )
+                {
+                    m_next_token = Token(TOK_STRING, m_crate_name);
+                    return Token(TOK_DOUBLE_COLON);
+                }
             }
             // - Expand to a parameter
             else if( ent.name != "" )
@@ -704,6 +722,37 @@ const ::std::vector<MacroRuleEnt>* MacroExpander::getCurLayer() const
     return ents;
 }
 
+void Macro_Invoke_Concat_Once(::std::string& s, TokenStream& lex, enum eTokenType exp)
+{
+    Token   tok;
+    GET_TOK(tok, lex);
+    if( exp == TOK_STRING )
+    {
+        if( tok.type() == TOK_MACRO )
+        {
+            // Special case, expand both concat! and stringify! internally
+            // TODO: Invoke
+            auto tt = Parse_TT(lex, false);
+            auto slex = Macro_Invoke(lex, tok.str(), tt);
+            Macro_Invoke_Concat_Once(s, (*slex), exp);
+            GET_CHECK_TOK(tok, (*slex), TOK_EOF);
+        }
+        else if( tok.type() == exp )
+        {
+            s += tok.str();
+        }
+        else
+        {
+            CHECK_TOK(tok, exp);
+        }
+    }
+    else
+    {
+        CHECK_TOK(tok, exp);
+        s += tok.str();
+    }
+}
+
 ::std::unique_ptr<TokenStream> Macro_Invoke_Concat(const TokenTree& input, enum eTokenType exp)
 {
     Token   tok;
@@ -711,8 +760,7 @@ const ::std::vector<MacroRuleEnt>* MacroExpander::getCurLayer() const
     ::std::string   val;
     do
     {
-        GET_CHECK_TOK(tok, lex, exp);
-        val += tok.str();
+        Macro_Invoke_Concat_Once(val, lex, exp);
     } while( GET_TOK(tok, lex) == TOK_COMMA );
     CHECK_TOK(tok, TOK_EOF);
     
@@ -758,7 +806,17 @@ Token MacroToken::realGetToken()
 }
 MacroStringify::MacroStringify(const TokenTree& input)
 {
-    throw ParseError::Todo("Stringify");
+    Token   tok;
+    TTStream    lex(input);
+    
+    ::std::string   rv;
+    while( GET_TOK(tok, lex) != TOK_EOF )
+    {
+        rv += tok.to_str();
+        rv += " ";
+    }
+    
+    m_tok = Token(TOK_STRING, ::std::move(rv));
 }
 Position MacroStringify::getPosition() const
 {

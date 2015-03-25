@@ -97,6 +97,26 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
                 false ) );
             break;
             }
+        // - 'static'
+        case TOK_RWORD_STATIC:
+            keep_mod = true;
+            {
+            bool is_mut = false;
+            if( GET_TOK(tok, lex) == TOK_RWORD_MUT )
+                is_mut = true;
+            else
+                lex.putback(tok);
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            ::std::string   name = tok.str();
+            GET_CHECK_TOK(tok, lex, TOK_COLON);
+            TypeRef type = Parse_Type(lex);
+            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+            auto val = Parse_Expr1(lex);
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+            
+            local_mod->add_global(false, is_mut, ::std::move(name), ::std::move(type), ::std::move(val));
+            break;
+            }
         // - 'struct'
         case TOK_RWORD_STRUCT:
             keep_mod = true;

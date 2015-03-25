@@ -643,7 +643,10 @@ void RustPrinter::print_params(const AST::TypeParams& params)
         {
             if( !is_first )
                 m_os << ", ";
-            m_os << p.name();
+            if( p.is_type() )
+                m_os << p.name() << " = " << p.get_default();
+            else
+                m_os << "'" << p.name();
             is_first = false;
         }
         m_os << ">";
@@ -741,13 +744,14 @@ void RustPrinter::handle_struct(const AST::Struct& s)
     
     if( s.fields().size() == 0 )
     {
-        m_os << "()\n";
+        m_os << " /* unit-like */\n";
         print_bounds(s.params());
         m_os << indent() << ";\n";
     }
     else if( s.fields().size() == 1 && s.fields()[0].name == "" )
     {
-        m_os << "(" << "" <<")\n";
+        const auto& tuple = s.fields()[0].data;
+        m_os << "(" << tuple.print_pretty() <<")\n";
         print_bounds(s.params());
         m_os << indent() << ";\n";
     }

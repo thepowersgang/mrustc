@@ -35,7 +35,8 @@ class CPathResolver:
         {}
         
         friend ::std::ostream& operator<<(::std::ostream& os, const LocalItem& x) {
-            return os << "'" << x.name << "' = " << x.path;
+            //return os << "'" << x.name << "' = " << x.path;
+            return os << "'" << x.name << "'";
         }
     };
     const AST::Crate&   m_crate;
@@ -365,26 +366,44 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
             // - Invalid afaik, instead Trait::method() is used
         }
         
-        // Search backwards up the stack of anon modules
-        if( m_module_stack.size() )
+        
+        if( path.nodes()[0].name() == "super" )
         {
+            // Unwrap a single named node from the module path, and search that path
+            // - Requires resolving that path to a module to pass to lookup_path_in_module
             AST::Path   local_path = m_module_path;
-            for(unsigned int i = 0; i < m_module_stack.size(); i ++)
-                local_path.nodes().push_back( AST::PathNode( FMT("#" << m_module_stack[i].first), {} ) );
-            
-            for(unsigned int i = m_module_stack.size(); i--; )
-            {
-                if( lookup_path_in_module(m_crate, *m_module_stack[i].second, local_path, path) ) {
-                    // Success!
-                    return ;
-                }
-                local_path.nodes().pop_back();
-            }
+            local_path.nodes().pop_back();
+            local_path.resolve(m_crate);
+            DEBUG("'super' path is relative to " << local_path);
+            path.nodes().erase( path.nodes().begin() );   // delete the 'super' node
+            const AST::Module& mod = local_path.bound_module();
+            if( lookup_path_in_module(m_crate, mod, local_path, path) )
+                return ;
+            // this should always be an error, as 'super' paths are never MaybeBind
         }
-        // Search current module, if found return with no error
-        if( lookup_path_in_module(m_crate, *m_module, m_module_path, path) )
+        else
         {
-            return;
+            // Search backwards up the stack of anon modules
+            if( m_module_stack.size() )
+            {
+                AST::Path   local_path = m_module_path;
+                for(unsigned int i = 0; i < m_module_stack.size(); i ++)
+                    local_path.nodes().push_back( AST::PathNode( FMT("#" << m_module_stack[i].first), {} ) );
+                
+                for(unsigned int i = m_module_stack.size(); i--; )
+                {
+                    if( lookup_path_in_module(m_crate, *m_module_stack[i].second, local_path, path) ) {
+                        // Success!
+                        return ;
+                    }
+                    local_path.nodes().pop_back();
+                }
+            }
+            // Search current module, if found return with no error
+            if( lookup_path_in_module(m_crate, *m_module, m_module_path, path) )
+            {
+                return;
+            }
         }
         
         DEBUG("no matches found for path = " << path);
