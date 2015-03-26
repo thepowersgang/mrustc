@@ -1,4 +1,14 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * parse/expr.cpp
+ * - Expression (i.e. code) parsing
+ *
+ * Start points:
+ * - Parse_ExprBlockNode : Parses a block
+ * - Parse_Stmt : Parse a single statement
+ * - Parse_Expr0 : Parse a single expression
  */
 #include "parseerror.hpp"
 #include "../ast/ast.hpp"

@@ -1,4 +1,13 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * parse/root.cpp
+ * - Parsing at the module level (highest-level parsing)
+ *
+ * Entrypoint:
+ * - Parse_Crate : Handles crate attrbutes, and passes on to Parse_ModRoot
+ * - Parse_ModRoot
  */
 #include "../ast/ast.hpp"
 #include "parseerror.hpp"

@@ -1,3 +1,10 @@
+/*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * parse/common.hpp
+ * - Common definitions used by the parser
+ */
 #ifndef PARSE_COMMON_HPP_INCLUDED
 #define PARSE_COMMON_HPP_INCLUDED
 #include <iostream>
@@ -18,22 +25,21 @@
     } \
 } while(0)
 
+// --- path.cpp
 enum eParsePathGenericMode
 {
     PATH_GENERIC_NONE,
     PATH_GENERIC_EXPR,
     PATH_GENERIC_TYPE
 };
-
-extern AST::MetaItem   Parse_MetaItem(TokenStream& lex);
 extern AST::Path   Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode);    // Auto-determines
 extern AST::Path   Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generic_mode);
 extern AST::Path   Parse_PathFrom(TokenStream& lex, AST::Path src, eParsePathGenericMode generic_mode);
 extern ::std::vector<TypeRef>   Parse_Path_GenericList(TokenStream& lex);
 
+
+extern AST::MetaItem   Parse_MetaItem(TokenStream& lex);
 extern TypeRef     Parse_Type(TokenStream& lex);
-
-
 extern AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable);
 
 extern void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)> fcn);

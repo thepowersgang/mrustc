@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * main.cpp
+ * - Compiler Entrypoint
  */
 #include <iostream>
 #include <string>
@@ -28,6 +33,7 @@ int main(int argc, char *argv[])
 {
     AST_InitProvidedModule();
     
+    // Hacky command-line parsing
     const char *infile = NULL;
     ::std::string   outfile;
     const char *crate_path = ".";
@@ -88,8 +94,6 @@ int main(int argc, char *argv[])
         outfile += ".o";
     }
     
-    //Serialiser_TextTree s_tt(::std::cout);
-    //Serialiser& s = s_tt;
     try
     {
         g_cur_phase = "Parse";

@@ -1,9 +1,14 @@
 /*
- * "MRustC" - Primitive rust compiler in C++
- */
-/**
- * \file parse/lex.cpp
- * \brief Low-level lexer
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * parse/lex.cpp
+ * - Lexer (converts input file to token stream)
+ *
+ * Provides:
+ * - Lexer : The file->token lexer
+ * - TTStream : A stream of tokens from a TokenTree
+ * - TokenStream : Common interface for all token streams
  */
 #include "lex.hpp"
 #include "tokentree.hpp"
@@ -31,7 +36,7 @@ Lexer::Lexer(::std::string filename):
 #define SINGLEQUOTE -3
 #define DOUBLEQUOTE -4
 
-// NOTE: This array must be kept reverse sorted
+// NOTE: This array must be kept sorted, or symbols are will be skipped
 #define TOKENT(str, sym)    {sizeof(str)-1, str, sym}
 static const struct {
     unsigned char len;
