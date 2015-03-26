@@ -68,6 +68,8 @@ bool TypeRef::deref(bool is_implicit)
         throw ::std::runtime_error("TODO: Search for an impl of Deref");
     case TypeRef::ASSOCIATED:
         throw ::std::runtime_error("TODO: TypeRef::deref on ASSOCIATED");
+    case TypeRef::MULTIDST:
+        throw ::std::runtime_error("TODO: TypeRef::deref on MULTIDST");
     }
     throw ::std::runtime_error("BUGCHECK: Fell off end of TypeRef::deref");
 }
@@ -140,6 +142,8 @@ void TypeRef::merge_with(const TypeRef& other)
         throw ::std::runtime_error("TODO: TypeRef::merge_with on PATH");
     case TypeRef::ASSOCIATED:
         throw ::std::runtime_error("TODO: TypeRef::merge_with on ASSOCIATED");
+    case TypeRef::MULTIDST:
+        throw ::std::runtime_error("TODO: TypeRef::merge_with on MULTIDST");
     }
 }
 
@@ -179,6 +183,10 @@ void TypeRef::resolve_args(::std::function<TypeRef(const char*)> fcn)
         }
         break;
     case TypeRef::ASSOCIATED:
+        for(auto& t : m_inner_types )
+            t.resolve_args(fcn);
+        break;
+    case TypeRef::MULTIDST:
         for(auto& t : m_inner_types )
             t.resolve_args(fcn);
         break;
@@ -271,6 +279,8 @@ void TypeRef::match_args(const TypeRef& other, ::std::function<void(const char*,
         break;
     case TypeRef::ASSOCIATED:
         throw ::std::runtime_error("TODO: TypeRef::match_args on ASSOCIATED");
+    case TypeRef::MULTIDST:
+        throw ::std::runtime_error("TODO: TypeRef::match_args on MULTIDST");
     }
 }
 
@@ -317,6 +327,11 @@ bool TypeRef::is_concrete() const
                     return false;
         }
         return true;
+    case TypeRef::MULTIDST:
+        for(const auto& t : m_inner_types )
+            if( not t.is_concrete() )
+                return false;
+        return true;
     }
     throw ::std::runtime_error( FMT("BUGCHECK - Invalid type class on " << *this) );
 }
@@ -357,6 +372,8 @@ bool TypeRef::operator==(const TypeRef& x) const
         return m_path == x.m_path;
     case TypeRef::ASSOCIATED:
         return m_path == x.m_path && m_inner_types == x.m_inner_types;
+    case TypeRef::MULTIDST:
+        return m_inner_types == x.m_inner_types;
     }
     throw ::std::runtime_error(FMT("BUGCHECK - Unhandled TypeRef class '" << m_class << "'"));
 }
@@ -425,6 +442,15 @@ bool TypeRef::operator==(const TypeRef& x) const
     case TypeRef::ASSOCIATED:
         os << "<" << tr.m_inner_types[0] << " as " << tr.m_inner_types[1] << ">::" << tr.m_path[0].name();
         break;
+    case TypeRef::MULTIDST:
+        os << "(";
+        for( const auto& it : tr.m_inner_types ) {
+            if( &it != &tr.m_inner_types.front() )
+                os << "+";
+            os << it;
+        }
+        os << ")";
+        break;
     }
     //os << ")";
     return os;
@@ -471,6 +497,7 @@ const char* TypeRef::class_name(TypeRef::Class c) {
     _(GENERIC)
     _(PATH)
     _(ASSOCIATED)
+    _(MULTIDST)
     #undef _
     }
     return "NFI";
@@ -491,6 +518,7 @@ void operator>>(::Deserialiser& d, TypeRef::Class& c) {
     else _(GENERIC)
     else _(PATH)
     else _(ASSOCIATED)
+    else _(MULTIDST)
     else
         throw ::std::runtime_error("Deserialise failure - " + n);
     #undef _

@@ -389,6 +389,8 @@ void Path::print_pretty(::std::ostream& os) const
     case Path::LOCAL:
         os << m_nodes[0].name();
         break;
+    case Path::UFCS:
+        throw ParseError::Todo("Path::print_pretty");
     }
 }
 
@@ -426,6 +428,10 @@ void Path::print_pretty(::std::ostream& os) const
     case Path::LOCAL:
         os << path.m_nodes[0].name();
         break;
+    case Path::UFCS:
+        os << "<" << path.m_ufcs[0] << " as " << path.m_ufcs[1] << ">";
+        for(const auto& n : path.m_nodes)
+            os << "::" << n;
     }
     #else
     switch(path.m_class)
