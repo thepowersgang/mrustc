@@ -92,7 +92,7 @@ public:
     virtual void visit(AST::ExprNode_LetBinding& n) override {
         m_expr_root = false;
         m_os << "let ";
-        print_pattern(n.m_pat);
+        print_pattern(n.m_pat, false);
         m_os << ": ";
         print_type(n.m_type);
         m_os << " = ";
@@ -183,13 +183,13 @@ public:
             break;
         case AST::ExprNode_Loop::WHILELET:
             m_os << "while let ";
-            print_pattern(n.m_pattern);
+            print_pattern(n.m_pattern, true);
             m_os << " = ";
             AST::NodeVisitor::visit(n.m_cond);
             break;
         case AST::ExprNode_Loop::FOR:
             m_os << "while for ";
-            print_pattern(n.m_pattern);
+            print_pattern(n.m_pattern, true);
             m_os << " in ";
             AST::NodeVisitor::visit(n.m_cond);
             break;
@@ -232,7 +232,7 @@ public:
                 if(!is_first)
                     m_os << "|";
                 is_first = false;
-                print_pattern(pat);
+                print_pattern(pat, true);
             }
             if( arm.m_cond )
             {
@@ -269,7 +269,7 @@ public:
         bool expr_root = m_expr_root;
         m_expr_root = false;
         m_os << "if let ";
-        print_pattern(n.m_pattern);
+        print_pattern(n.m_pattern, true);
         m_os << " = ";
         AST::NodeVisitor::visit(n.m_value);
         
@@ -317,7 +317,7 @@ public:
         {
             if(!is_first)   m_os << ", ";
             is_first = false;
-            print_pattern(arg.first);
+            print_pattern(arg.first, false);
             m_os << ": ";
             print_type(arg.second);
         }
@@ -352,7 +352,8 @@ public:
         case CORETYPE_I32:
         case CORETYPE_I64:
         case CORETYPE_INT:
-            m_os << n.m_value;
+            m_os << (int64_t)n.m_value;
+            //m_os << "0x" << ::std::hex << n.m_value << ::std::dec;
             break;
         }
     }
@@ -520,7 +521,7 @@ private:
     
     void print_params(const AST::TypeParams& params);
     void print_bounds(const AST::TypeParams& params);
-    void print_pattern(const AST::Pattern& p);
+    void print_pattern(const AST::Pattern& p, bool is_refutable);
     void print_type(const TypeRef& t);
     
     void inc_indent();
@@ -703,10 +704,17 @@ void RustPrinter::print_bounds(const AST::TypeParams& params)
     }
 }
 
-void RustPrinter::print_pattern(const AST::Pattern& p)
+void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
 {
-    if( p.binding() != "" )
-        m_os << p.binding() << " @ ";
+    if( p.binding() != "" ) {
+        m_os << p.binding();
+        // If binding is irrefutable, and would be binding against a wildcard, just emit the name
+        if( !is_refutable && p.data().tag() == AST::Pattern::Data::Any )
+        {
+            return ;
+        }
+        m_os << " @ ";
+    }
     switch(p.data().tag())
     {
     case AST::Pattern::Data::Any:
@@ -718,19 +726,21 @@ void RustPrinter::print_pattern(const AST::Pattern& p)
     case AST::Pattern::Data::Ref: {
         const auto& v = p.data().as_Ref();
         m_os << "& ";
-        print_pattern(*v.sub);
+        print_pattern(*v.sub, is_refutable);
         break; }
     case AST::Pattern::Data::Value: {
         auto& v = p.data().as_Value();
-        m_os << *v.start;
-        if( v.end.get() )
-            m_os << " ... " << *v.end;
+        v.start->visit(*this);
+        if( v.end.get() ) {
+            m_os << " ... ";
+            v.end->visit(*this);
+        }
         break; }
     case AST::Pattern::Data::StructTuple: {
         const auto& v = p.data().as_StructTuple();
         m_os << v.path << "(";
         for(const auto& sp : v.sub_patterns) {
-            print_pattern(sp);
+            print_pattern(sp, is_refutable);
             m_os << ",";
         }
         m_os << ")";
@@ -740,7 +750,7 @@ void RustPrinter::print_pattern(const AST::Pattern& p)
         m_os << v.path << "(";
         for(const auto& sp : v.sub_patterns) {
             m_os << sp.first << ": ";
-            print_pattern(sp.second);
+            print_pattern(sp.second, is_refutable);
             m_os << ",";
         }
         m_os << ")";
@@ -749,7 +759,7 @@ void RustPrinter::print_pattern(const AST::Pattern& p)
         const auto& v = p.data().as_Tuple();
         m_os << "(";
         for(const auto& sp : v.sub_patterns) {
-            print_pattern(sp);
+            print_pattern(sp, is_refutable);
             m_os << ",";
         }
         m_os << ")";
@@ -857,7 +867,7 @@ void RustPrinter::handle_function(const AST::Item<AST::Function>& f)
     {
         if( !is_first )
             m_os << ", ";
-        print_pattern( a.first );
+        print_pattern( a.first, false );
         m_os << ": " << a.second.print_pretty();
         is_first = false;
     }

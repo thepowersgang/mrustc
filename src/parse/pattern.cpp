@@ -167,9 +167,13 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
     case TOK_DOUBLE_COLON:
         // 2. Paths are enum/struct names
         return Parse_PatternReal_Path( lex, Parse_Path(lex, true, PATH_GENERIC_EXPR), is_refutable );
-    case TOK_DASH:
+    case TOK_DASH: {
         GET_CHECK_TOK(tok, lex, TOK_INTEGER);
-        return AST::Pattern( AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_Integer, -tok.intval(), tok.datatype()) );
+        auto dt = tok.datatype();
+        if(dt == CORETYPE_ANY)
+            dt = CORETYPE_I32;
+        return AST::Pattern( AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_Integer, -tok.intval(), dt) );
+        }
     case TOK_INTEGER:
         return AST::Pattern( AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_Integer, tok.intval(), tok.datatype()) );
     case TOK_RWORD_TRUE:
