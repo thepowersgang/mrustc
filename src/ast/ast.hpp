@@ -50,6 +50,8 @@ public:
     const ::std::string&    name() const { return m_name; }
     const TypeRef& get_default() const { return m_default; }
     
+    TypeRef& get_default() { return m_default; }
+    
     bool is_type() const { return m_class == TYPE; }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeParam& tp);
@@ -277,6 +279,9 @@ public:
     const Class& s_class() const { return m_class; } 
     const TypeRef& type() const { return m_type; }
     const Expr& value() const { return m_value; }
+    
+    TypeRef& type() { return m_type; }
+    Expr& value() { return m_value; }
     
     SERIALISABLE_PROTOTYPES();
 };

@@ -33,7 +33,7 @@ bool PathNode::operator==(const PathNode& x) const
     os << pn.m_name;
     if( pn.m_params.size() )
     {
-        os << "<";
+        os << "::<";
         os << pn.m_params;
         os << ">";
     }

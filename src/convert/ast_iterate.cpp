@@ -27,8 +27,10 @@ void CASTIterator::handle_params(AST::TypeParams& params)
     DEBUG("params");
     for( auto& param : params.params() )
     {
-        if( param.is_type() )
+        if( param.is_type() ) {
+            handle_type(param.get_default());
             local_type( param.name(), TypeRef(TypeRef::TagArg(), param.name()) );
+        }
     }
     DEBUG("Bounds");
     for( auto& bound : params.bounds() )
@@ -216,6 +218,12 @@ void CASTIterator::handle_module(AST::Path path, AST::Module& mod)
     {
         DEBUG("Handling alias " << item.name);
         handle_alias(path + item.name, item.data);
+    }
+    for( auto& stat : mod.statics() )
+    {
+        DEBUG("handling static " << stat.name);
+        handle_type(stat.data.type());
+        handle_expr(stat.data.value().node());
     }
     
     for( auto& fcn : mod.functions() )

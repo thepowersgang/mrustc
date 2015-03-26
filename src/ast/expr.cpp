@@ -616,6 +616,7 @@ NV(ExprNode_String, {})
 
 NV(ExprNode_Closure,
 {
+    visit(node.m_code);
 });
 NV(ExprNode_StructLiteral,
 {

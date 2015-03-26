@@ -187,8 +187,45 @@ public:
         DEBUG("ExprNode_LetBinding");
         
         AST::NodeVisitor::visit(node.m_value);
-        
+        m_res.handle_type(node.m_type);
         m_res.handle_pattern(node.m_pat, TypeRef());
+    }
+    
+    void visit(AST::ExprNode_StructLiteral& node) override
+    {
+        DEBUG("ExprNode_StructLiteral");
+        
+        m_res.handle_path(node.m_path, CASTIterator::MODE_EXPR);
+        AST::NodeVisitorDef::visit(node);
+    }
+    
+    void visit(AST::ExprNode_Closure& node) override
+    {
+        DEBUG("ExprNode_Closure");
+        m_res.start_scope();
+        for( auto& param : node.m_args )
+        {
+            m_res.handle_type(param.second);
+            m_res.handle_pattern(param.first, param.second);
+        }
+        m_res.handle_type(node.m_return);
+        AST::NodeVisitor::visit(node.m_code);
+        m_res.end_scope();
+    }
+    
+    void visit(AST::ExprNode_Cast& node) override
+    {
+        DEBUG("ExprNode_Cast");
+        m_res.handle_type(node.m_type);
+        AST::NodeVisitorDef::visit(node);
+    }
+    
+    void visit(AST::ExprNode_CallMethod& node) override
+    {
+        DEBUG("ExprNode_CallMethod");
+        for( auto& arg : node.m_method.args() )
+            m_res.handle_type(arg);
+        AST::NodeVisitorDef::visit(node);
     }
 };
 
@@ -360,6 +397,10 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
                 // - Switch the path to be a "LOCAL"
                 path.set_local();
                 return ;
+            // Binding is valid
+            case MODE_BIND:
+                //break ;
+                throw ParseError::Todo("TODO: MODE_BIND, but local hit, what do?");
             }
         
             // TODO: What about sub-types and methods on type params?

@@ -34,6 +34,10 @@ public:
     virtual void visit(AST::ExprNode_Block& n) override {
         m_os << "{";
         inc_indent();
+        if( n.m_inner_mod.get() )
+        {
+            handle_module(*n.m_inner_mod);
+        }
         bool is_first = true;
         for( auto& child : n.m_nodes )
         {
@@ -89,13 +93,28 @@ public:
         m_expr_root = false;
         m_os << "let ";
         print_pattern(n.m_pat);
+        m_os << ": ";
+        print_type(n.m_type);
         m_os << " = ";
         AST::NodeVisitor::visit(n.m_value);
     }
     virtual void visit(AST::ExprNode_Assign& n) override {
         m_expr_root = false;
         AST::NodeVisitor::visit(n.m_slot);
-        m_os << " = ";
+        switch(n.m_op)
+        {
+        case AST::ExprNode_Assign::NONE:    m_os << "  = ";  break;
+        case AST::ExprNode_Assign::ADD:     m_os << " += ";  break;
+        case AST::ExprNode_Assign::SUB:     m_os << " -= ";  break;
+        case AST::ExprNode_Assign::MUL:     m_os << " *= ";  break;
+        case AST::ExprNode_Assign::DIV:     m_os << " /= ";  break;
+        case AST::ExprNode_Assign::MOD:     m_os << " %= ";  break;
+        case AST::ExprNode_Assign::AND:     m_os << " &= ";  break;
+        case AST::ExprNode_Assign::OR:      m_os << " |= ";  break;
+        case AST::ExprNode_Assign::XOR:     m_os << " ^= ";  break;
+        case AST::ExprNode_Assign::SHR:     m_os << " >>= ";  break;
+        case AST::ExprNode_Assign::SHL:     m_os << " <<= ";  break;
+        }
         AST::NodeVisitor::visit(n.m_value);
     }
     virtual void visit(AST::ExprNode_CallPath& n) override {
