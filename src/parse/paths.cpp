@@ -17,10 +17,24 @@ AST::Path   Parse_PathFrom(TokenStream& lex, AST::Path path, eParsePathGenericMo
 AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
 {
     Token   tok;
-    if( GET_TOK(tok, lex) == TOK_DOUBLE_COLON )
-        return Parse_Path(lex, true, generic_mode);
-    else
+    switch( GET_TOK(tok, lex) )
     {
+    case TOK_DOUBLE_COLON:
+        return Parse_Path(lex, true, generic_mode);
+    case TOK_LT: {
+        TypeRef ty = Parse_Type(lex);
+        TypeRef trait;
+        if( GET_TOK(tok, lex) == TOK_RWORD_AS ) {
+            trait = Parse_Type(lex);
+        }
+        else
+            lex.putback(tok);
+        GET_CHECK_TOK(tok, lex, TOK_GT);
+        // TODO: Terminating the "path" here is sometimes valid
+        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        return Parse_PathFrom(lex, AST::Path(AST::Path::TagUfcs(), ty, trait), PATH_GENERIC_EXPR);
+        }
+    default:
         lex.putback(tok);
         return Parse_Path(lex, false, generic_mode);
     }

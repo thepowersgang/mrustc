@@ -429,7 +429,7 @@ void Path::print_pretty(::std::ostream& os) const
         os << path.m_nodes[0].name();
         break;
     case Path::UFCS:
-        os << "<" << path.m_ufcs[0] << " as " << path.m_ufcs[1] << ">";
+        os << "/*ufcs*/<" << path.m_ufcs[0] << " as " << path.m_ufcs[1] << ">";
         for(const auto& n : path.m_nodes)
             os << "::" << n;
     }

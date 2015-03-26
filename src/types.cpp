@@ -66,8 +66,6 @@ bool TypeRef::deref(bool is_implicit)
     case TypeRef::ARRAY:
     case TypeRef::PATH:
         throw ::std::runtime_error("TODO: Search for an impl of Deref");
-    case TypeRef::ASSOCIATED:
-        throw ::std::runtime_error("TODO: TypeRef::deref on ASSOCIATED");
     case TypeRef::MULTIDST:
         throw ::std::runtime_error("TODO: TypeRef::deref on MULTIDST");
     }
@@ -140,8 +138,6 @@ void TypeRef::merge_with(const TypeRef& other)
         throw ::std::runtime_error("TODO: TypeRef::merge_with on GENERIC");
     case TypeRef::PATH:
         throw ::std::runtime_error("TODO: TypeRef::merge_with on PATH");
-    case TypeRef::ASSOCIATED:
-        throw ::std::runtime_error("TODO: TypeRef::merge_with on ASSOCIATED");
     case TypeRef::MULTIDST:
         throw ::std::runtime_error("TODO: TypeRef::merge_with on MULTIDST");
     }
@@ -181,10 +177,6 @@ void TypeRef::resolve_args(::std::function<TypeRef(const char*)> fcn)
             for(auto& p : n.args())
                 p.resolve_args(fcn);
         }
-        break;
-    case TypeRef::ASSOCIATED:
-        for(auto& t : m_inner_types )
-            t.resolve_args(fcn);
         break;
     case TypeRef::MULTIDST:
         for(auto& t : m_inner_types )
@@ -277,8 +269,6 @@ void TypeRef::match_args(const TypeRef& other, ::std::function<void(const char*,
             }
         }
         break;
-    case TypeRef::ASSOCIATED:
-        throw ::std::runtime_error("TODO: TypeRef::match_args on ASSOCIATED");
     case TypeRef::MULTIDST:
         throw ::std::runtime_error("TODO: TypeRef::match_args on MULTIDST");
     }
@@ -309,17 +299,6 @@ bool TypeRef::is_concrete() const
         // Well, I guess a generic param is "concrete"
         return true;
     case TypeRef::PATH:
-        for(const auto& n : m_path.nodes())
-        {
-            for(const auto& p : n.args())
-                if( not p.is_concrete() )
-                    return false;
-        }
-        return true;
-    case TypeRef::ASSOCIATED:
-        for(const auto& t : m_inner_types )
-            if( not t.is_concrete() )
-                return false;
         for(const auto& n : m_path.nodes())
         {
             for(const auto& p : n.args())
@@ -370,8 +349,6 @@ bool TypeRef::operator==(const TypeRef& x) const
         throw ::std::runtime_error("BUGCHECK - Can't compare generic type");
     case TypeRef::PATH:
         return m_path == x.m_path;
-    case TypeRef::ASSOCIATED:
-        return m_path == x.m_path && m_inner_types == x.m_inner_types;
     case TypeRef::MULTIDST:
         return m_inner_types == x.m_inner_types;
     }
@@ -439,9 +416,6 @@ bool TypeRef::operator==(const TypeRef& x) const
     case TypeRef::PATH:
         os << tr.m_path;
         break;
-    case TypeRef::ASSOCIATED:
-        os << "<" << tr.m_inner_types[0] << " as " << tr.m_inner_types[1] << ">::" << tr.m_path[0].name();
-        break;
     case TypeRef::MULTIDST:
         os << "(";
         for( const auto& it : tr.m_inner_types ) {
@@ -496,7 +470,6 @@ const char* TypeRef::class_name(TypeRef::Class c) {
     _(ARRAY)
     _(GENERIC)
     _(PATH)
-    _(ASSOCIATED)
     _(MULTIDST)
     #undef _
     }
@@ -517,7 +490,6 @@ void operator>>(::Deserialiser& d, TypeRef::Class& c) {
     else _(ARRAY)
     else _(GENERIC)
     else _(PATH)
-    else _(ASSOCIATED)
     else _(MULTIDST)
     else
         throw ::std::runtime_error("Deserialise failure - " + n);
@@ -596,9 +568,6 @@ void PrettyPrintType::print(::std::ostream& os) const
         break;
     case TypeRef::PATH:
         os << m_type.m_path;
-        break;
-    case TypeRef::ASSOCIATED:
-        os << "<" << m_type.m_inner_types[0].print_pretty() << " as " << m_type.m_inner_types[1].print_pretty() << ">::" << m_type.m_path[0].name();
         break;
     }
     #endif

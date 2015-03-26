@@ -56,7 +56,6 @@ class TypeRef:
         GENERIC,
         PATH,
         MULTIDST,   // Multi-trait DST (e.g. Trait + Send + Sync)
-        ASSOCIATED,
     };
     
     Class   m_class;
@@ -160,16 +159,6 @@ public:
             m_inner_types.push_back( TypeRef(::std::move(t)) );
     }
     
-    struct TagAssoc {};
-    TypeRef(TagAssoc, TypeRef base, TypeRef trait, ::std::string assoc_name):
-        TypeRef(::std::move(base), ::std::move(trait), ::std::move(assoc_name))
-    {}
-    TypeRef(TypeRef base, TypeRef trait, ::std::string assoc_name):
-        m_class(ASSOCIATED),
-        m_path( {AST::PathNode(assoc_name, {})} ),
-        m_inner_types( {::std::move(base), ::std::move(trait)} )
-    {}
-   
     /// Dereference the type (return the result of *type_instance)
     bool deref(bool is_implicit);
     /// Merge with another type (combines known aspects, conflitcs cause an exception)
@@ -191,8 +180,8 @@ public:
     bool is_reference() const { return m_class == REFERENCE; }
     bool is_tuple() const { return m_class == TUPLE; }
     const ::std::string& type_param() const { assert(is_type_param()); return m_path[0].name(); }
-    AST::Path& path() { assert(is_path() || m_class == ASSOCIATED); return m_path; }
-    const AST::Path& path() const { assert(is_path() || m_class == ASSOCIATED); return m_path; }
+    AST::Path& path() { assert(is_path()); return m_path; }
+    const AST::Path& path() const { assert(is_path()); return m_path; }
     ::std::vector<TypeRef>& sub_types() { return m_inner_types; }
     const ::std::vector<TypeRef>& sub_types() const { return m_inner_types; }
     

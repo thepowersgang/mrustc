@@ -63,7 +63,11 @@ TypeRef Parse_Type(TokenStream& lex)
     case TOK_RWORD_FN:
         return Parse_Type_Fn(lex, "");
     // '<' - An associated type cast
-    case TOK_LT: {
+    case TOK_LT:
+        lex.putback(tok);
+        return TypeRef(TypeRef::TagPath(), Parse_Path(lex, PATH_GENERIC_TYPE));
+        #if 0
+        {
         DEBUG("Associated type");
         // TODO: This should instead use the path code, not a special case in typing
         // <Type as Trait>::Inner
@@ -77,6 +81,7 @@ TypeRef Parse_Type(TokenStream& lex)
         ::std::string   inner_name = tok.str();
         return TypeRef(TypeRef::TagAssoc(), ::std::move(base), ::std::move(trait), ::std::move(inner_name));
         }
+        #endif
     // <ident> - Either a primitive, or a path
     case TOK_IDENT:
         // or a primitive
