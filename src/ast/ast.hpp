@@ -26,20 +26,11 @@ using ::std::move;
 class TypeParam:
     public Serialisable
 {
-    enum Class {
-        LIFETIME,
-        TYPE,
-        //INTEGER,
-    };
-    Class   m_class;
     ::std::string   m_name;
     TypeRef m_default;
 public:
-    TypeParam():
-        m_class(LIFETIME)
-    {}
-    TypeParam(bool is_lifetime, ::std::string name):
-        m_class( is_lifetime ? LIFETIME : TYPE ),
+    TypeParam(): m_name("") {}
+    TypeParam(::std::string name):
         m_name( ::std::move(name) )
     {}
     void setDefault(TypeRef type) {
@@ -51,8 +42,6 @@ public:
     const TypeRef& get_default() const { return m_default; }
     
     TypeRef& get_default() { return m_default; }
-    
-    bool is_type() const { return m_class == TYPE; }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeParam& tp);
     SERIALISABLE_PROTOTYPES();
@@ -99,20 +88,20 @@ public:
 class TypeParams:
     public Serialisable
 {
-    ::std::vector<TypeParam>    m_params;
+    ::std::vector<TypeParam>    m_type_params;
+    ::std::vector< ::std::string > m_lifetime_params;
     ::std::vector<GenericBound>    m_bounds;
 public:
     TypeParams() {}
     
-    size_t n_params() const { return m_params.size(); }
-    const ::std::vector<TypeParam>& params() const { return m_params; }
+    const ::std::vector<TypeParam>& ty_params() const { return m_type_params; }
+    const ::std::vector< ::std::string>&    lft_params() const { return m_lifetime_params; }
     const ::std::vector<GenericBound>& bounds() const { return m_bounds; }
-    ::std::vector<TypeParam>& params() { return m_params; }
+    ::std::vector<TypeParam>& ty_params() { return m_type_params; }
     ::std::vector<GenericBound>& bounds() { return m_bounds; }
     
-    void add_param(TypeParam param) {
-        m_params.push_back( ::std::move(param) );
-    }
+    void add_ty_param(TypeParam param) { m_type_params.push_back( ::std::move(param) ); }
+    void add_lft_param(::std::string name) { m_lifetime_params.push_back( ::std::move(name) ); }
     void add_bound(GenericBound bound) {
         m_bounds.push_back( ::std::move(bound) );
     }

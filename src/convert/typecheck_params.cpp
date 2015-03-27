@@ -44,7 +44,7 @@ bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const AS
     {
         if( ptr )
         {
-            for( const auto& p : ptr->params() )
+            for( const auto& p : ptr->ty_params() )
             {
                 if(p.name() == name) {
                     tps = ptr;
@@ -104,14 +104,9 @@ bool CGenericParamChecker::has_impl(const TypeRef& type, const AST::Path& trait)
 /// \param allow_infer  Allow inferrence (mutates \a types with conditions from \a info)
 void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::std::vector<TypeRef>& types, bool allow_infer)
 {
-    DEBUG("(info = " << info << ", types = {" << types << "}");
+    TRACE_FUNCTION_F("info = " << info << ", types = {" << types << "}");
     // TODO: Need to correctly handle lifetime params here, they should be in a different list
-    const auto& params = info.params();
-    
-    {
-        for(const auto& p : params)
-            assert(p.is_type());
-    }
+    const auto& params = info.ty_params();
     
     if( types.size() > params.size() )
     {
@@ -119,6 +114,11 @@ void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::s
     }
     else if( types.size() < params.size() )
     {
+        // Fill with defaults
+        while( types.size() < params.size() && params[types.size()].get_default() != TypeRef() )
+            types.push_back( params[types.size()].get_default() );
+        
+        // And (optionally) infer
         if( allow_infer )
         {
             while( types.size() < params.size() )
@@ -126,7 +126,7 @@ void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::s
                 types.push_back( TypeRef() );
             }
         }
-        else
+        else if( types.size() < params.size() )
         {
             throw ::std::runtime_error(FMT("Too few generic params, ("<<types.size()<<" passed, expecting "<<params.size()<<")"));
         }
@@ -135,11 +135,12 @@ void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::s
     {
         // Counts are good, time to validate types
     }
-    
+   
     for( unsigned int i = 0; i < types.size(); i ++ )
     {
         auto& type = types[i];
         auto& param = params[i].name();
+        DEBUG("#" << i << " - checking type " << type << " against " << param); 
         if( type.is_wildcard() )
         {
             // Type is a wildcard - this can match any condition
@@ -148,6 +149,7 @@ void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::s
                 // Apply conditions for this param to the type
                 // TODO: Requires supporting type "ranges" on the TypeRef
                 // Should also check for conflicting requirements (negative bounds?)
+                DEBUG("TODO: Type inferrence");
             }
             else
             {

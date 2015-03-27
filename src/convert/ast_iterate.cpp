@@ -25,12 +25,10 @@ void CASTIterator::handle_expr(AST::ExprNode& node)
 void CASTIterator::handle_params(AST::TypeParams& params)
 {
     DEBUG("params");
-    for( auto& param : params.params() )
+    for( auto& param : params.ty_params() )
     {
-        if( param.is_type() ) {
-            handle_type(param.get_default());
-            local_type( param.name(), TypeRef(TypeRef::TagArg(), param.name()) );
-        }
+        handle_type(param.get_default());
+        local_type( param.name(), TypeRef(TypeRef::TagArg(), param.name()) );
     }
     DEBUG("Bounds");
     for( auto& bound : params.bounds() )

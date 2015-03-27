@@ -660,18 +660,26 @@ void RustPrinter::handle_module(const AST::Module& mod)
 
 void RustPrinter::print_params(const AST::TypeParams& params)
 {
-    if( params.n_params() > 0 )
+    if( params.ty_params().size() > 0 || params.lft_params().size() > 0 )
     {
         bool is_first = true;
         m_os << "<";
-        for( const auto& p : params.params() )
+        // Lifetimes
+        for( const auto& p : params.lft_params() )
         {
             if( !is_first )
                 m_os << ", ";
-            if( p.is_type() )
-                m_os << p.name() << " = " << p.get_default();
-            else
-                m_os << "'" << p.name();
+            m_os << "'" << p;
+            is_first = false;
+        }
+        // Types
+        for( const auto& p : params.ty_params() )
+        {
+            if( !is_first )
+                m_os << ", ";
+            m_os << p.name();
+            if( !p.get_default().is_wildcard() )
+                m_os << " = " << p.get_default();
             is_first = false;
         }
         m_os << ">";

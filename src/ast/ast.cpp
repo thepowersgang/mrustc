@@ -81,15 +81,15 @@ Impl Impl::make_concrete(const ::std::vector<TypeRef>& types) const
 ::rust::option<Impl&> Impl::matches(const TypeRef& trait, const TypeRef& type)
 {
     DEBUG("this = " << *this);
-    if( m_params.n_params() )
+    if( m_params.ty_params().size() > 0 )
     {
-        ::std::vector<TypeRef>  param_types(m_params.n_params());
+        ::std::vector<TypeRef>  param_types(m_params.ty_params().size());
         try
         {
             auto c = [&](const char* name,const TypeRef& ty){
                     int idx = m_params.find_name(name);
                     assert( idx >= 0 );
-                    assert( (unsigned)idx < m_params.n_params() );
+                    assert( (unsigned)idx < param_types.size() );
                     param_types[idx].merge_with( ty );
                 };
             m_trait.match_args(trait, c);
@@ -654,7 +654,7 @@ SERIALISE_TYPE(Enum::, "AST_Enum", {
 
 TypeRef Struct::get_field_type(const char *name, const ::std::vector<TypeRef>& args)
 {
-    if( args.size() != m_params.n_params() )
+    if( args.size() != m_params.ty_params().size() )
     {
         throw ::std::runtime_error("Incorrect parameter count for struct");
     }
@@ -668,9 +668,9 @@ TypeRef Struct::get_field_type(const char *name, const ::std::vector<TypeRef>& a
             {
                 TypeRef res = f.data;
                 res.resolve_args( [&](const char *argname){
-                    for(unsigned int i = 0; i < m_params.n_params(); i ++)
+                    for(unsigned int i = 0; i < m_params.ty_params().size(); i ++)
                     {
-                        if( m_params.params()[i].name() == argname ) {
+                        if( m_params.ty_params()[i].name() == argname ) {
                             return args.at(i);
                         }
                     }
@@ -699,11 +699,6 @@ SERIALISE_TYPE(Struct::, "AST_Struct", {
 ::std::ostream& operator<<(::std::ostream& os, const TypeParam& tp)
 {
     //os << "TypeParam(";
-    switch(tp.m_class)
-    {
-    case TypeParam::LIFETIME:  os << "'";  break;
-    case TypeParam::TYPE:      os << "";   break;
-    }
     os << tp.m_name;
     os << " = ";
     os << tp.m_default;
@@ -711,23 +706,9 @@ SERIALISE_TYPE(Struct::, "AST_Struct", {
     return os;
 }
 SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
-    const char *classstr = "-";
-    switch(m_class)
-    {
-    case TypeParam::LIFETIME: classstr = "Lifetime";    break;
-    case TypeParam::TYPE:       classstr = "Type";    break;
-    }
-    s << classstr;
     s << m_name;
     s << m_default;
 },{
-    {
-        ::std::string   n;
-        s.item(n);
-             if(n == "Lifetime") m_class = TypeParam::LIFETIME;
-        else if(n == "Type")     m_class = TypeParam::TYPE;
-        else    throw ::std::runtime_error("");
-    }
     s.item(m_name);
     s.item(m_default);
 })
@@ -749,9 +730,9 @@ SERIALISE_TYPE_S(GenericBound, {
 
 int TypeParams::find_name(const char* name) const
 {
-    for( unsigned int i = 0; i < m_params.size(); i ++ )
+    for( unsigned int i = 0; i < m_type_params.size(); i ++ )
     {
-        if( m_params[i].name() == name )
+        if( m_type_params[i].name() == name )
             return i;
     }
     return -1;
@@ -763,29 +744,23 @@ bool TypeParams::check_params(Crate& crate, const ::std::vector<TypeRef>& types)
 }
 bool TypeParams::check_params(Crate& crate, ::std::vector<TypeRef>& types, bool allow_infer) const
 {
-    // XXX: Make sure all params are types
-    {
-        for(const auto& p : m_params)
-            assert(p.is_type());
-    }
-    
     // Check parameter counts
-    if( types.size() > m_params.size() )
+    if( types.size() > m_type_params.size() )
     {
-        throw ::std::runtime_error(FMT("Too many generic params ("<<types.size()<<" passed, expecting "<< m_params.size()<<")"));
+        throw ::std::runtime_error(FMT("Too many generic params ("<<types.size()<<" passed, expecting "<< m_type_params.size()<<")"));
     }
-    else if( types.size() < m_params.size() )
+    else if( types.size() < m_type_params.size() )
     {
         if( allow_infer )
         {
-            while( types.size() < m_params.size() )
+            while( types.size() < m_type_params.size() )
             {
-                types.push_back( m_params[types.size()].get_default() );
+                types.push_back( m_type_params[types.size()].get_default() );
             }
         }
         else
         {
-            throw ::std::runtime_error(FMT("Too few generic params, (" << types.size() << " passed, expecting " << m_params.size() << ")"));
+            throw ::std::runtime_error(FMT("Too few generic params, (" << types.size() << " passed, expecting " << m_type_params.size() << ")"));
         }
     }
     else
@@ -796,7 +771,7 @@ bool TypeParams::check_params(Crate& crate, ::std::vector<TypeRef>& types, bool 
     for( unsigned int i = 0; i < types.size(); i ++ )
     {
         auto& type = types[i];
-        auto& param = m_params[i].name();
+        auto& param = m_type_params[i].name();
         TypeRef test(TypeRef::TagArg(), param);
         if( type.is_wildcard() )
         {
@@ -838,11 +813,11 @@ bool TypeParams::check_params(Crate& crate, ::std::vector<TypeRef>& types, bool 
 
 ::std::ostream& operator<<(::std::ostream& os, const TypeParams& tps)
 {
-    //return os << "TypeParams({" << tps.m_params << "}, {" << tps.m_bounds << "})";
-    return os << "<" << tps.m_params << "> where {" << tps.m_bounds << "}";
+    return os << "<" << tps.m_lifetime_params << "," << tps.m_type_params << "> where {" << tps.m_bounds << "}";
 }
 SERIALISE_TYPE_S(TypeParams, {
-    s.item(m_params);
+    s.item(m_type_params);
+    s.item(m_lifetime_params);
     s.item(m_bounds);
 })
 

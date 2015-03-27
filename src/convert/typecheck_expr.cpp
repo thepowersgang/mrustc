@@ -107,7 +107,7 @@ void CTypeChecker::handle_params(AST::TypeParams& params)
 {
     ::std::map<std::string,TypeRef>  trs;
     
-    for( const auto& param : params.params() )
+    for( const auto& param : params.ty_params() )
     {
         trs.insert( make_pair(param.name(), TypeRef()) );
     }
@@ -256,15 +256,16 @@ void CTypeChecker::iterate_traits(::std::function<bool(const TypeRef& trait)> fc
 void CTypeChecker::check_enum_variant(::std::vector<TypeRef>& path_args, const ::std::vector<TypeRef>& argtypes, const AST::TypeParams& params, const AST::EnumVariant& var)
 {
     // We know the enum, but it might have type params, need to handle that case
-    if( params.n_params() > 0 )
+    // TODO: Check for more parameters than required
+    if( params.ty_params().size() > 0 )
     {
         // 1. Obtain the pattern set from the path (should it be pre-marked with _ types?)
-        while( path_args.size() < params.n_params() )
+        while( path_args.size() < params.ty_params().size() )
             path_args.push_back( TypeRef() );
         DEBUG("path_args = [" << path_args << "]");
         // 2. Create a pattern from the argument types and the format of the variant
         DEBUG("argtypes = [" << argtypes << "]");
-        ::std::vector<TypeRef>  item_args(params.n_params());
+        ::std::vector<TypeRef>  item_args(params.ty_params().size());
         DEBUG("variant type = " << var.m_sub_types << "");
         for( unsigned int i = 0; i < var.m_sub_types.size(); i ++ )
         {
@@ -314,7 +315,7 @@ void CTC_NodeVisitor::visit(AST::ExprNode_NamedValue& node)
             AST::Path tp = p;
             tp.nodes().pop_back();
             AST::PathNode& pn = tp.nodes().back();
-            unsigned int num_params = enm.params().n_params();
+            unsigned int num_params = enm.params().ty_params().size();
             if(pn.args().size() > num_params)
                 throw ::std::runtime_error( FMT("Too many arguments to enum variant - " << p) );
             while(pn.args().size() < num_params)
@@ -551,11 +552,11 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallMethod& node)
         }
         
         AST::Function& fcn = *fcnp;
-        if( fcn.params().n_params() != node.m_method.args().size() )
+        if( fcn.params().ty_params().size() != node.m_method.args().size() )
         {
             throw ::std::runtime_error("CallMethod with param count mismatch");
         }
-        if( fcn.params().n_params() )
+        if( fcn.params().ty_params().size() )
         {
             throw ::std::runtime_error("TODO: CallMethod with params");
         }
@@ -576,7 +577,7 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallPath& node)
     {
         const AST::Function& fcn = node.m_path.binding().bound_func();
         
-        if( fcn.params().n_params() > 0 )
+        if( fcn.params().ty_params().size() > 0 )
         {
             throw ::std::runtime_error("CallPath - TODO: Params on functions");
         }
