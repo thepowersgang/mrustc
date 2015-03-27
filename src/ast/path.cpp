@@ -255,6 +255,7 @@ void Path::resolve(const Crate& root_crate)
                 
                 *this = newpath;
                 DEBUG("Alias resolved, *this = " << *this);
+                return;
             }
             else
             {
@@ -271,6 +272,7 @@ void Path::resolve(const Crate& root_crate)
                 
                 *this = newpath;
                 DEBUG("Alias resolved, *this = " << *this);
+                return;
             }
             break; }
         }
@@ -349,6 +351,8 @@ Path& Path::operator+=(const Path& other)
 {
     for(auto& node : other.m_nodes)
         append(node);
+    // If the path is modified, clear the binding
+    m_binding = PathBinding();
     return *this;
 }
 
@@ -410,6 +414,7 @@ void Path::print_pretty(::std::ostream& os) const
             #endif
             os << n;
         }
+        os << "/*" << path.m_binding << "*/";
         break;
     case Path::LOCAL:
         os << path.m_nodes[0].name();

@@ -64,7 +64,8 @@ int main(int argc, char *argv[])
         // Resolve names to be absolute names (include references to the relevant struct/global/function)
         g_cur_phase = "Resolve";
         ResolvePaths(crate);
-        //s << crate;
+        
+        g_cur_phase = "Temp output"; Dump_Rust( FMT(params.outfile << ".rs").c_str(), crate );
 
         // Typecheck / type propagate module (type annotations of all values)
         // - Check all generic conditions (ensure referenced trait is valid)

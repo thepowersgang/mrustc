@@ -218,6 +218,7 @@ public:
         m_nodes.back().args() = b[0].args();
         for(unsigned int i = 1; i < b.m_nodes.size(); i ++)
             m_nodes.push_back(b.m_nodes[i]);
+        m_binding = PathBinding();
     }
     Path operator+(PathNode&& pn) const {
         Path    tmp;
@@ -236,6 +237,7 @@ public:
 
     void append(PathNode node) {
         m_nodes.push_back(node);
+        m_binding = PathBinding();
     }
     
     void resolve(const Crate& crate);

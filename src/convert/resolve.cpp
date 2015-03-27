@@ -283,6 +283,7 @@ bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, c
             DEBUG("Wildcard import found, " << imp.data << " + " << path);
             // Wildcard path, prefix entirely with the path
             path = imp.data + path;
+            path.resolve( crate );
             return true;
         }
         else
@@ -360,6 +361,9 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
         // - However, if the path isn't bound, bind it
         if( !path.binding().is_bound() ) {
             path.resolve(m_crate);
+        }
+        else {
+            DEBUG("- Path " << path << " already bound");
         }
         UNINDENT();
     }
