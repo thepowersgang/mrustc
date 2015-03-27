@@ -25,11 +25,12 @@ void CGenericBoundChecker::handle_params(AST::TypeParams& params)
         if( bound.is_trait() )
         {
             auto& trait = bound.bound();
+            assert(trait.binding().is_bound());
             DEBUG("trait = " << trait);
-            if( trait.binding_type() != AST::Path::TRAIT )
+            if( trait.binding().type() != AST::PathBinding::TRAIT )
             {
                 //throw CompileError::BoundNotTrait( bound.lex_scope(), bound.param(), trait );
-                throw ::std::runtime_error(FMT("TODO - Bound " << trait << " not a trait"));
+                throw ::std::runtime_error(FMT("TODO - Bound " << trait << " not a trait : " << trait.binding()));
             }
             else {
                 DEBUG("Bound is a trait, good");

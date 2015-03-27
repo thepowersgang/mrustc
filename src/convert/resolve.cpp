@@ -358,7 +358,7 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
         INDENT();
         // Already absolute, our job is done
         // - However, if the path isn't bound, bind it
-        if( !path.is_bound() ) {
+        if( !path.binding().is_bound() ) {
             path.resolve(m_crate);
         }
         UNINDENT();
@@ -417,7 +417,7 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
             local_path.resolve(m_crate);
             DEBUG("'super' path is relative to " << local_path);
             path.nodes().erase( path.nodes().begin() );   // delete the 'super' node
-            const AST::Module& mod = local_path.bound_module();
+            const AST::Module& mod = local_path.binding().bound_module();
             if( lookup_path_in_module(m_crate, mod, local_path, path) )
                 return ;
             // this should always be an error, as 'super' paths are never MaybeBind
@@ -554,13 +554,13 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
         // If wildcard, make sure it's sane
         if( imp.name == "" )
         {
-            switch(imp.data.binding_type())
+            switch(imp.data.binding().type())
             {
-            case AST::Path::UNBOUND:
+            case AST::PathBinding::UNBOUND:
                 throw ParseError::BugCheck("path unbound after calling .resolve()");
-            case AST::Path::MODULE:
+            case AST::PathBinding::MODULE:
                 break;
-            case AST::Path::ENUM:
+            case AST::PathBinding::ENUM:
                 break;
             
             default:
@@ -571,7 +571,7 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
     
     for( auto& new_imp : new_imports )
     {
-        if( not new_imp.is_bound() ) {
+        if( not new_imp.binding().is_bound() ) {
             new_imp.resolve(crate);
         }
         mod.add_alias(false, new_imp, new_imp[new_imp.size()-1].name());

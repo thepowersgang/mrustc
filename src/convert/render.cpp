@@ -42,15 +42,15 @@ void Render_Crate(::std::ostream& os, const AST::Flat& crate)
         const auto& fcn = item.second;
         Render_Type(os, fcn.rettype(), nullptr);
         os << " " << name << "(";
-        bool is_first = true;
-        for(const auto& f : fcn.args())
-        {
-            if( !is_first )
-                os << ", ";
-            is_first = false;
-            // TODO: handle pattern
-            //Render_Type(os, f.second, f.first.c_str());
-        }
+        //bool is_first = true;
+        //for(const auto& f : fcn.args())
+        //{
+        //    if( !is_first )
+        //        os << ", ";
+        //    is_first = false;
+        //    // TODO: handle pattern
+        //    //Render_Type(os, f.second, f.first.c_str());
+        //}
         os << ")\n{\n";
         // Dump expression AST
         os << "}\n";

@@ -151,8 +151,7 @@ void Path::resolve(const Crate& root_crate)
             // Make a copy of the path, replace params with it, then replace *this?
             // - Maybe leave that up to other code?
             if( is_last ) {
-                m_binding_type = ALIAS;
-                m_binding.alias_ = &ta;
+                m_binding = PathBinding(&ta);
                 goto ret;
             }
             else {
@@ -165,8 +164,7 @@ void Path::resolve(const Crate& root_crate)
             const auto& fn = item.unwrap_Function();
             DEBUG("Found function");
             if( is_last ) {
-                m_binding_type = FUNCTION;
-                m_binding.func_ = &fn;
+                m_binding = PathBinding(&fn);
                 goto ret;
             }
             else {
@@ -179,13 +177,11 @@ void Path::resolve(const Crate& root_crate)
             const auto& t = item.unwrap_Trait();
             DEBUG("Found trait");
             if( is_last ) {
-                m_binding_type = TRAIT;
-                m_binding.trait_ = &t;
+                m_binding = PathBinding(&t);
                 goto ret;
             }
             else if( is_sec_last ) {
-                m_binding_type = TRAIT_METHOD;
-                m_binding.trait_ = &t;
+                m_binding = PathBinding(PathBinding::TagItem(), &t);
                 goto ret;
             }
             else {
@@ -282,7 +278,7 @@ void Path::resolve(const Crate& root_crate)
     }
     
     // We only reach here if the path points to a module
-    bind_module(*mod);
+    m_binding = PathBinding(mod);
 ret:
     if( slice_from > 0 )
     {
@@ -291,16 +287,10 @@ ret:
     }
     return ;
 }
-void Path::bind_module(const Module& mod)
-{
-    m_binding_type = MODULE;
-    m_binding.module_ = &mod;
-}
 void Path::bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args)
 {
     DEBUG("Bound to enum");
-    m_binding_type = ENUM;
-    m_binding.enum_ = &ent;
+    m_binding = PathBinding(&ent);
     //if( args.size() > 0 )
     //{
     //    if( args.size() != ent.params().size() )
@@ -328,8 +318,7 @@ void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std
     //}
     
     DEBUG("Bound to enum variant '" << name << "' (#" << idx << ")");
-    m_binding_type = ENUM_VAR;
-    m_binding.enumvar = {&ent, idx};
+    m_binding = PathBinding(&ent, idx);
 }
 void Path::bind_struct(const Struct& ent, const ::std::vector<TypeRef>& args)
 {
@@ -343,19 +332,16 @@ void Path::bind_struct(const Struct& ent, const ::std::vector<TypeRef>& args)
     //}
     
     DEBUG("Bound to struct");
-    m_binding_type = STRUCT;
-    m_binding.struct_ = &ent;
+    m_binding = PathBinding(&ent);
 }
 void Path::bind_struct_member(const Struct& ent, const ::std::vector<TypeRef>& args, const PathNode& member_node)
 {
     DEBUG("Binding to struct item. This needs to be deferred");
-    m_binding_type = STRUCT_METHOD;
-    m_binding.struct_ = &ent;
+    m_binding = PathBinding(PathBinding::TagItem(), &ent);
 }
 void Path::bind_static(const Static& ent)
 {
-    m_binding_type = STATIC;
-    m_binding.static_ = &ent;
+    m_binding = PathBinding(&ent);
 }
 
 

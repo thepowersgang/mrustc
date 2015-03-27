@@ -150,20 +150,22 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
         {
             auto& hint_path = type_hint.path();
             auto& pat_path = v.path;
+            const auto& hint_binding = hint_path.binding();
+            const auto& pat_binding = pat_path.binding();
             DEBUG("Pat: " << pat_path << ", Type: " << type_hint.path());
-            switch( hint_path.binding_type() )
+            switch( hint_binding.type() )
             {
-            case AST::Path::UNBOUND:
+            case AST::PathBinding::UNBOUND:
                 throw ::std::runtime_error("Unbound path in pattern");
-            case AST::Path::ENUM: {
+            case AST::PathBinding::ENUM: {
                 // The pattern's path must refer to a variant of the hint path
                 // - Actual type params are checked by the 'handle_pattern_enum' code
-                if( pat_path.binding_type() != AST::Path::ENUM_VAR )
+                if( pat_binding.type() != AST::PathBinding::ENUM_VAR )
                     throw ::std::runtime_error(FMT("Paths in pattern are invalid"));
-                if( &pat_path.bound_enum() != &hint_path.bound_enum() )
+                if( pat_binding.bound_enumvar().enum_ != &hint_binding.bound_enum() )
                     throw ::std::runtime_error(FMT("Paths in pattern are invalid"));
-                auto& enm = pat_path.bound_enum();
-                auto idx = pat_path.bound_idx();
+                const auto& enm = *pat_binding.bound_enumvar().enum_;
+                auto idx = pat_binding.bound_enumvar().idx;
                 auto& var = enm.variants().at(idx);
                 handle_pattern_enum(pat_path[-2].args(), hint_path[-1].args(), enm.params(), var, v.sub_patterns);
                 break; }

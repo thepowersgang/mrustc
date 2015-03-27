@@ -298,14 +298,14 @@ void CTC_NodeVisitor::visit(AST::ExprNode_NamedValue& node)
     if( p.is_absolute() )
     {
         // grab bound item
-        switch(p.binding_type())
+        switch(p.binding().type())
         {
-        case AST::Path::STATIC:
-            node.get_res_type() = p.bound_static().type();
+        case AST::PathBinding::STATIC:
+            node.get_res_type() = p.binding().bound_static().type();
             break;
-        case AST::Path::ENUM_VAR: {
-            const AST::Enum& enm = p.bound_enum();
-            auto idx = p.bound_idx();
+        case AST::PathBinding::ENUM_VAR: {
+            const AST::Enum& enm = *p.binding().bound_enumvar().enum_;
+            auto idx = p.binding().bound_enumvar().idx;
             // Enum variant:
             // - Check that this variant takes no arguments
             if( enm.variants()[idx].m_sub_types.size() > 0 )
@@ -413,11 +413,11 @@ void CTC_NodeVisitor::visit(AST::ExprNode_Field& node)
         
         // TODO Move this logic to types.cpp?
         const AST::Path& p = tr->path();
-        switch( p.binding_type() )
+        switch( p.binding().type() )
         {
-        case AST::Path::STRUCT: {
+        case AST::PathBinding::STRUCT: {
             const AST::PathNode& lastnode = p.nodes().back();
-            AST::Struct& s = const_cast<AST::Struct&>( p.bound_struct() );
+            AST::Struct& s = const_cast<AST::Struct&>( p.binding().bound_struct() );
             node.get_res_type().merge_with( s.get_field_type(node.m_name.c_str(), lastnode.args()) );
             break; }
         default:
@@ -483,7 +483,7 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallMethod& node)
             for( const auto& t : ltype.traits() )
             {
                 DEBUG("- Trait " << t.path());
-                AST::Trait& trait = const_cast<AST::Trait&>( t.path().bound_trait() );
+                AST::Trait& trait = const_cast<AST::Trait&>( t.path().binding().bound_trait() );
                 // - Find method on one of them
                 for( auto& m : trait.functions() )
                 {
@@ -572,9 +572,9 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallPath& node)
         argtypes.push_back( arg->get_res_type() );
     }
     
-    if(node.m_path.binding_type() == AST::Path::FUNCTION)
+    if(node.m_path.binding().type() == AST::PathBinding::FUNCTION)
     {
-        const AST::Function& fcn = node.m_path.bound_func();
+        const AST::Function& fcn = node.m_path.binding().bound_func();
         
         if( fcn.params().n_params() > 0 )
         {
@@ -584,10 +584,10 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallPath& node)
         DEBUG("ExprNode_CallPath - rt = " << fcn.rettype());
         node.get_res_type().merge_with( fcn.rettype() );
     }
-    else if(node.m_path.binding_type() == AST::Path::ENUM_VAR)
+    else if(node.m_path.binding().type() == AST::PathBinding::ENUM_VAR)
     {
-        const AST::Enum& enm = node.m_path.bound_enum();
-        const unsigned int idx = node.m_path.bound_idx();
+        const AST::Enum& enm = *node.m_path.binding().bound_enumvar().enum_;
+        const unsigned int idx = node.m_path.binding().bound_enumvar().idx;
     
         auto& path_node_enum = node.m_path[node.m_path.size()-2];
         m_tc.check_enum_variant(path_node_enum.args(), argtypes, enm.params(), enm.variants().at(idx));

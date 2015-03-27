@@ -28,82 +28,38 @@ bool debug_enabled()
         return ::std::cout << g_cur_phase << "- " << RepeatLitStr { " ", indent } << function << ": ";
 }
 
+struct ProgramParams
+{
+	static const unsigned int EMIT_C = 0x1;
+	static const unsigned int EMIT_AST = 0x2;
+
+	const char *infile = NULL;
+	::std::string	outfile;
+	const char *crate_path = ".";
+	unsigned emit_flags = EMIT_C;
+    
+    ProgramParams(int argc, char *argv[]);
+};
+
 /// main!
 int main(int argc, char *argv[])
 {
     AST_InitProvidedModule();
     
-    // Hacky command-line parsing
-    const char *infile = NULL;
-    ::std::string   outfile;
-    const char *crate_path = ".";
-    const char *emit_type = "c";
-    for( int i = 1; i < argc; i ++ )
-    {
-        const char* arg = argv[i];
-        
-        if( arg[0] != '-' )
-        {
-            infile = arg;
-        }
-        else if( arg[1] != '-' )
-        {
-            arg ++; // eat '-'
-            for( ; *arg; arg ++ )
-            {
-                switch(*arg)
-                {
-                // "-o <file>" : Set output file
-                case 'o':
-                    if( i == argc - 1 ) {
-                        // TODO: BAIL!
-                        return 1;
-                    }
-                    outfile = argv[++i];
-                    break;
-                default:
-                    return 1;
-                }
-            }
-        }
-        else
-        {
-            if( strcmp(arg, "--crate-path") == 0 ) {
-                if( i == argc - 1 ) {
-                    // TODO: BAIL!
-                    return 1;
-                }
-                crate_path = argv[++i];
-            }
-            else if( strcmp(arg, "--emit") == 0 ) {
-                if( i == argc - 1 ) {
-                    // TODO: BAIL!
-                    return 1;
-                }
-                emit_type = argv[++i];
-            }
-            else {
-                return 1;
-            }
-        }
-    }
+	
+    ProgramParams   params(argc, argv);
     
-    if( outfile == "" )
-    {
-        outfile = infile;
-        outfile += ".o";
-    }
     
     try
     {
         g_cur_phase = "Parse";
-        AST::Crate crate = Parse_Crate(infile);
+        AST::Crate crate = Parse_Crate(params.infile);
         g_cur_phase = "PostParse";
         crate.post_parse();
 
         //s << crate;
         g_cur_phase = "Temp output";
-        Dump_Rust( FMT(outfile << ".rs").c_str(), crate );
+        Dump_Rust( FMT(params.outfile << ".rs").c_str(), crate );
     
         // Resolve names to be absolute names (include references to the relevant struct/global/function)
         g_cur_phase = "Resolve";
@@ -113,7 +69,7 @@ int main(int argc, char *argv[])
         // Typecheck / type propagate module (type annotations of all values)
         // - Check all generic conditions (ensure referenced trait is valid)
         //  > Also mark parameter with applicable traits
-        #if 0
+        #if 1
         g_cur_phase = "TypecheckBounds";
         Typecheck_GenericBounds(crate);
         // - Check all generic parameters match required conditions
@@ -127,11 +83,11 @@ int main(int argc, char *argv[])
         #endif
 
         g_cur_phase = "Output";
-        Dump_Rust( FMT(outfile << ".rs").c_str(), crate );
+        Dump_Rust( FMT(params.outfile << ".rs").c_str(), crate );
     
-        if( strcmp(emit_type, "ast") == 0 )
+        if( params.emit_flags == ProgramParams::EMIT_AST )
         {
-            ::std::ofstream os(outfile);
+            ::std::ofstream os(params.outfile);
             Serialiser_TextTree os_tt(os);
             ((Serialiser&)os_tt) << crate;
             return 0;
@@ -155,3 +111,72 @@ int main(int argc, char *argv[])
     }
     return 0;
 }
+
+ProgramParams::ProgramParams(int argc, char *argv[])
+{
+    // Hacky command-line parsing
+    for( int i = 1; i < argc; i ++ )
+    {
+        const char* arg = argv[i];
+        
+        if( arg[0] != '-' )
+        {
+            this->infile = arg;
+        }
+        else if( arg[1] != '-' )
+        {
+            arg ++; // eat '-'
+            for( ; *arg; arg ++ )
+            {
+                switch(*arg)
+                {
+                // "-o <file>" : Set output file
+                case 'o':
+                    if( i == argc - 1 ) {
+                        // TODO: BAIL!
+                        exit(1);
+                    }
+                    this->outfile = argv[++i];
+                    break;
+                default:
+                    exit(1);
+                }
+            }
+        }
+        else
+        {
+            if( strcmp(arg, "--crate-path") == 0 ) {
+                if( i == argc - 1 ) {
+                    // TODO: BAIL!
+                    exit(1);
+                }
+                this->crate_path = argv[++i];
+            }
+            else if( strcmp(arg, "--emit") == 0 ) {
+                if( i == argc - 1 ) {
+                    // TODO: BAIL!
+                    exit(1);
+                }
+                
+                arg = argv[++i];
+                if( strcmp(arg, "ast") == 0 )
+                    this->emit_flags = EMIT_AST;
+                else if( strcmp(arg, "c") == 0 )
+                    this->emit_flags = EMIT_C;
+                else {
+                    ::std::cerr << "Unknown argument to --emit : '" << arg << "'" << ::std::endl;
+                    exit(1);
+                }
+            }
+            else {
+                exit(1);
+            }
+        }
+    }
+    
+    if( this->outfile == "" )
+    {
+        this->outfile = (::std::string)this->infile + ".o";
+    }
+}
+

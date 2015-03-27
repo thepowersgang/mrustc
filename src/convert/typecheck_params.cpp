@@ -181,27 +181,27 @@ void CGenericParamChecker::handle_path(AST::Path& path, CASTIterator::PathMode p
     DEBUG("path = " << path);
     AST::PathNode& last_node = path[path.size()-1];
     const AST::TypeParams* params = nullptr;
-    switch(path.binding_type())
+    switch(path.binding().type())
     {
-    case AST::Path::UNBOUND:
+    case AST::PathBinding::UNBOUND:
         throw ::std::runtime_error("CGenericParamChecker::handle_path - Unbound path");
-    case AST::Path::MODULE:
+    case AST::PathBinding::MODULE:
         DEBUG("WTF - Module path, isn't this invalid at this stage?");
         break;
-    case AST::Path::TRAIT:
-        params = &path.bound_trait().params();
+    case AST::PathBinding::TRAIT:
+        params = &path.binding().bound_trait().params();
         if(0)
-    case AST::Path::STRUCT:
-        params = &path.bound_struct().params();
+    case AST::PathBinding::STRUCT:
+        params = &path.binding().bound_struct().params();
         if(0)
-    case AST::Path::ENUM:
-        params = &path.bound_enum().params();
+    case AST::PathBinding::ENUM:
+        params = &path.binding().bound_enum().params();
         if(0)
-    case AST::Path::ALIAS:
-        params = &path.bound_alias().params();
+    case AST::PathBinding::ALIAS:
+        params = &path.binding().bound_alias().params();
         if(0)
-    case AST::Path::FUNCTION:
-        params = &path.bound_func().params();
+    case AST::PathBinding::FUNCTION:
+        params = &path.binding().bound_func().params();
         
         try {
             check_generic_params(*params, last_node.args(), (m_within_expr > 0));

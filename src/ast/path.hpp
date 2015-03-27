@@ -25,6 +25,102 @@ class Trait;
 class Static;
 class Function;
 
+//TAGGED_ENUM(Binding, Unbound,
+//    (BndModule, (const Module* module_; ) ),
+//    (BndEnum,   (const Enum* enum_; ) ),
+//    (BndStruct, (const Struct* struct_; ) ),
+//    (BndTrait,  (const Trait* trait_; ) ),
+//    (BndStatic, (const Static* static_; ) ),
+//    (BndFunction, (const Function* func_; ) ),
+//    (BndEnumVar, (const Enum* enum_; unsigned int idx; ) ),
+//    (BndTypeAlias, (const TypeAlias* alias_; ) ),
+//    (BndStructMethod, (const Struct* struct_; ::std::string name; ) ),
+//    (BndTraitMethod, (const Trait* struct_; ::std::string name; ) )
+//    );
+class PathBinding
+{
+public:
+    enum BindingType {
+        UNBOUND,
+        MODULE,
+        ALIAS,
+        ENUM,
+        STRUCT,
+        TRAIT,
+        
+        STRUCT_METHOD,
+        TRAIT_METHOD,
+        ENUM_VAR,
+        FUNCTION,
+        STATIC,
+    };
+    struct EnumVar {
+        const Enum* enum_;
+        unsigned int idx;
+    };
+private:
+    BindingType m_binding_type = UNBOUND;
+    union {
+        const Module* module_;
+        const Enum* enum_;
+        const Struct*   struct_;
+        struct {
+            const Struct* struct_;
+            unsigned int idx;
+        } structitem;
+        const Trait*    trait_;
+        const Static*   static_;
+        const Function* func_;
+        EnumVar enumvar_;
+        const TypeAlias*    alias_;
+    } m_binding;
+
+public:
+    PathBinding(): m_binding_type(UNBOUND) {}
+    
+    bool is_bound() const { return m_binding_type != UNBOUND; }
+    BindingType type() const { return m_binding_type; }
+    #define _(t, n, v)\
+        PathBinding(const t* i): m_binding_type(v) { m_binding.n##_ = i; } \
+        const t& bound_##n() const { assert(m_binding_type == v); return *m_binding.n##_; }
+    _(Module, module, MODULE)
+    _(Trait,  trait,  TRAIT)
+    _(Struct, struct, STRUCT)
+    _(Enum,   enum,   ENUM)
+    _(Function, func, FUNCTION)
+    _(Static, static, STATIC)
+    _(TypeAlias, alias, ALIAS)
+    //_(EnumVar, enumvar, ENUM_VAR)
+    #undef _
+    PathBinding(const Enum* enm, unsigned int i):
+        m_binding_type(ENUM_VAR)
+    {
+        m_binding.enumvar_ = {enm, i};
+    }
+    const EnumVar& bound_enumvar() const { assert(m_binding_type == ENUM_VAR); return m_binding.enumvar_; }
+    
+    struct TagItem {};
+    PathBinding(TagItem, const Trait* t): m_binding_type(TRAIT_METHOD) { m_binding.trait_ = t; }
+    PathBinding(TagItem, const Struct* i): m_binding_type(STRUCT_METHOD) { m_binding.struct_ = i; }
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const PathBinding& x) {
+        switch(x.m_binding_type)
+        {
+        case UNBOUND:   os << "UNBOUND";    break;
+        case MODULE:    os << "Module"; break;
+        case TRAIT:     os << "Trait";  break;
+        case STRUCT:    os << "Struct"; break;
+        case ENUM:      os << "Enum";   break;
+        case FUNCTION:  os << "Function";break;
+        case STATIC:    os << "Static"; break;
+        case ALIAS:     os << "Alias";  break;
+        case STRUCT_METHOD: os << "StructMethod";   break;
+        case TRAIT_METHOD:  os << "TraitMethod";    break;
+        case ENUM_VAR:  os << "EnumVar(" << x.m_binding.enumvar_.idx << ")";  break;
+        }
+        return os;
+    }
+};
 
 class PathNode:
     public ::Serialisable
@@ -48,33 +144,6 @@ public:
 class Path:
     public ::Serialisable
 {
-public:
-    enum BindingType {
-        UNBOUND,
-        MODULE,
-        ALIAS,
-        ENUM,
-        STRUCT,
-        TRAIT,
-        
-        STRUCT_METHOD,
-        TRAIT_METHOD,
-        ENUM_VAR,
-        FUNCTION,
-        STATIC,
-    };
-    //TAGGED_ENUM(Binding, Unbound,
-    //    (BndModule, (const Module* module_; ) ),
-    //    (BndEnum,   (const Enum* enum_; ) ),
-    //    (BndStruct, (const Struct* struct_; ) ),
-    //    (BndTrait,  (const Trait* trait_; ) ),
-    //    (BndStatic, (const Static* static_; ) ),
-    //    (BndFunction, (const Function* func_; ) ),
-    //    (BndEnumVar, (const Enum* enum_; unsigned int idx; ) ),
-    //    (BndTypeAlias, (const TypeAlias* alias_; ) ),
-    //    (BndStructMethod, (const Struct* struct_; ::std::string name; ) ),
-    //    (BndTraitMethod, (const Trait* struct_; ::std::string name; ) )
-    //    );
 private:
     enum Class {
         RELATIVE,
@@ -95,24 +164,7 @@ private:
     ::std::vector<TypeRef>  m_ufcs;
     ::std::vector<PathNode> m_nodes;
     
-    BindingType m_binding_type = UNBOUND;
-    union {
-        const Module* module_;
-        const Enum* enum_;
-        const Struct*   struct_;
-        struct {
-            const Struct* struct_;
-            unsigned int idx;
-        } structitem;
-        const Trait*    trait_;
-        const Static*   static_;
-        const Function* func_;
-        struct {
-            const Enum* enum_;
-            unsigned int idx;
-        } enumvar;
-        const TypeAlias*    alias_;
-    } m_binding;
+    PathBinding m_binding;
 public:
     Path():
         m_class(RELATIVE)
@@ -196,25 +248,7 @@ public:
     bool is_relative() const { return m_class == RELATIVE; }
     size_t size() const { return m_nodes.size(); }
     
-    bool is_bound() const { return m_binding_type != UNBOUND; }
-    BindingType binding_type() const { return m_binding_type; }
-    #define _(t, n, v)  const t& bound_##n() const { assert(m_binding_type == v); return *m_binding.n##_; }
-    _(Module, module, MODULE)
-    _(Trait,  trait,  TRAIT)
-    _(Struct, struct, STRUCT)
-    //_(Enum,   enum,   ENUM)
-    _(Function, func, FUNCTION)
-    _(Static, static, STATIC)
-    _(TypeAlias, alias, ALIAS)
-    #undef _
-    const Enum& bound_enum() const {
-        assert(m_binding_type == ENUM || m_binding_type == ENUM_VAR);  // Kinda evil, given that it has its own union entry
-        return *m_binding.enum_;
-    }
-    const unsigned int bound_idx() const {
-        assert(m_binding_type == ENUM_VAR);
-        return m_binding.enumvar.idx; 
-    }
+    const PathBinding& binding() const { return m_binding; }
     
     ::std::vector<PathNode>& nodes() { return m_nodes; }
     const ::std::vector<PathNode>& nodes() const { return m_nodes; }

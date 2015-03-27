@@ -500,7 +500,8 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
                 //if( &imp.data == this )
                 //    continue ;
                 //
-                if( !imp.data.is_bound() )
+                const auto& binding = imp.data.binding();
+                if( !binding.is_bound() )
                 {
                     // not yet bound, so run resolution (recursion)
                     DEBUG("Recursively resolving pub wildcard use " << imp.data);
@@ -508,13 +509,13 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
                     throw ParseError::Todo("Path::resolve() wildcard re-export call resolve");
                 }
                 
-                switch(imp.data.binding_type())
+                switch(binding.type())
                 {
-                case AST::Path::UNBOUND:
+                case AST::PathBinding::UNBOUND:
                     throw ParseError::BugCheck("Wildcard import path not bound");
                 // - If it's a module, recurse
-                case AST::Path::MODULE: {
-                    auto rv = imp.data.bound_module().find_item(needle);
+                case AST::PathBinding::MODULE: {
+                    auto rv = binding.bound_module().find_item(needle);
                     if( rv.type() != Module::ItemRef::ITEM_none ) {
                         // Don't return RV, return the import (so caller can rewrite path if need be)
                         return ItemRef(imp);
@@ -522,8 +523,8 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
                     }
                     break; }
                 // - If it's an enum, search for this name and then pass to resolve
-                case AST::Path::ENUM: {
-                    auto& vars = imp.data.bound_enum().variants();
+                case AST::PathBinding::ENUM: {
+                    auto& vars = binding.bound_enum().variants();
                     // Damnit C++ "let it = vars.find(|a| a.name == needle);"
                     auto it = ::std::find_if(vars.begin(), vars.end(),
                         [&needle](const EnumVariant& ev) { return ev.m_name == needle; });
