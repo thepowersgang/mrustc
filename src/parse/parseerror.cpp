@@ -8,42 +8,42 @@
 #include "parseerror.hpp"
 #include <iostream>
 
-ParseError::Base::~Base() throw()
+CompileError::Base::~Base() throw()
 {
 }
 
-ParseError::Generic::Generic(::std::string message):
+CompileError::Generic::Generic(::std::string message):
     m_message(message)
 {
     ::std::cout << "Generic(" << message << ")" << ::std::endl;
 }
-ParseError::Generic::Generic(const TokenStream& lex, ::std::string message)
+CompileError::Generic::Generic(const TokenStream& lex, ::std::string message)
 {
     ::std::cout << lex.getPosition() << ": Generic(" << message << ")" << ::std::endl;
 }
 
-ParseError::BugCheck::BugCheck(const TokenStream& lex, ::std::string message):
+CompileError::BugCheck::BugCheck(const TokenStream& lex, ::std::string message):
     m_message(message)
 {
     ::std::cout << lex.getPosition() << "BugCheck(" << message << ")" << ::std::endl;
 }
-ParseError::BugCheck::BugCheck(::std::string message):
+CompileError::BugCheck::BugCheck(::std::string message):
     m_message(message)
 {
     ::std::cout << "BugCheck(" << message << ")" << ::std::endl;
 }
 
-ParseError::Todo::Todo(::std::string message):
+CompileError::Todo::Todo(::std::string message):
     m_message(message)
 {
     ::std::cout << "Todo(" << message << ")" << ::std::endl;
 }
-ParseError::Todo::Todo(const TokenStream& lex, ::std::string message):
+CompileError::Todo::Todo(const TokenStream& lex, ::std::string message):
     m_message(message)
 {
     ::std::cout << lex.getPosition() << ": Todo(" << message << ")" << ::std::endl;
 }
-ParseError::Todo::~Todo() throw()
+CompileError::Todo::~Todo() throw()
 {
 }
 

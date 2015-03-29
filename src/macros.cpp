@@ -303,7 +303,7 @@ bool Macro_TryPattern(TTStream& lex, const MacroPatEnt& pat)
             Parse_TT_Type(slex);
             return true;
         }
-        catch( const ParseError::Base& e ) {
+        catch( const CompileError::Base& e ) {
             return false;
         }
     case MacroPatEnt::PAT_EXPR:
@@ -314,7 +314,7 @@ bool Macro_TryPattern(TTStream& lex, const MacroPatEnt& pat)
             Parse_TT_Stmt(slex);
             return true;
         }
-        catch( const ParseError::Base& e ) {
+        catch( const CompileError::Base& e ) {
             return false;
         }
     case MacroPatEnt::PAT_PAT:
@@ -323,7 +323,7 @@ bool Macro_TryPattern(TTStream& lex, const MacroPatEnt& pat)
             Parse_TT_Pattern(slex);
             return true;
         }
-        catch( const ParseError::Base& e ) {
+        catch( const CompileError::Base& e ) {
             return false;
         }
     }
@@ -473,7 +473,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
             
             return ::std::unique_ptr<TokenStream>( ret_ptr );
         }
-        catch(const ParseError::Base& e)
+        catch(const CompileError::Base& e)
         {
             DEBUG("Parse of rule " << i << " of " << name <<" failed - " << e.what());
         }

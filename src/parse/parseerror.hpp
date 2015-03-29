@@ -6,46 +6,12 @@
 
 namespace ParseError {
 
-class Base:
-    public ::std::exception
-{
-public:
-    virtual ~Base() throw();
-};
-
-class Generic:
-    public Base
-{
-    ::std::string   m_message;
-public:
-    Generic(::std::string message);
-    Generic(const TokenStream& lex, ::std::string message);
-    virtual ~Generic() throw () {}
-};
-
-class BugCheck:
-    public Base
-{
-    ::std::string   m_message;
-public:
-    BugCheck(::std::string message);
-    BugCheck(const TokenStream& lex, ::std::string message);
-    virtual ~BugCheck() throw () {}
-};
-
-class Todo:
-    public Base
-{
-    ::std::string   m_message;
-public:
-    Todo(::std::string message);
-    Todo(const TokenStream& lex, ::std::string message);
-    virtual ~Todo() throw ();
-
-};
+using CompileError::Generic;
+using CompileError::BugCheck;
+using CompileError::Todo;
 
 class BadChar:
-    public Base
+    public CompileError::Base
 {
     char    m_char;
 public:
@@ -55,7 +21,7 @@ public:
 };
 
 class Unexpected:
-    public Base
+    public CompileError::Base
 {
     Token   m_tok;
 public:
@@ -65,7 +31,7 @@ public:
 
 };
 
-#define ASSERT(lex, cnd)    do { if( !(cnd) ) throw ParseError::BugCheck(lex, "Assertion failed: "#cnd); } while(0)
+#define ASSERT(lex, cnd)    do { if( !(cnd) ) throw CompileError::BugCheck(lex, "Assertion failed: "#cnd); } while(0)
 
 }
 

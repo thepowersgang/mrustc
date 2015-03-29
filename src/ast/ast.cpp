@@ -735,6 +735,7 @@ int TypeParams::find_name(const char* name) const
         if( m_type_params[i].name() == name )
             return i;
     }
+    DEBUG("Type param '" << name << "' not in list");
     return -1;
 }
 

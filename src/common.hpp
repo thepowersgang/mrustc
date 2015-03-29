@@ -13,6 +13,7 @@
 
 #include "include/debug.hpp"
 #include "include/rustic.hpp"	// slice and option
+#include "include/compile_error.hpp"
 
 template <typename T>
 struct LList

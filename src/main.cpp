@@ -100,7 +100,7 @@ int main(int argc, char *argv[])
         // Convert structures to C structures / tagged enums
         //Convert_Render(flat_crate, stdout);
     }
-    catch(const ParseError::Base& e)
+    catch(const CompileError::Base& e)
     {
         ::std::cerr << "Parser Error: " << e.what() << ::std::endl;
         return 2;

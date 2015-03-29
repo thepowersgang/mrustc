@@ -11,18 +11,39 @@ class CGenericParamChecker:
     public CASTIterator
 {
      int    m_within_expr = 0;
-    ::std::vector<const AST::TypeParams*>   m_params_stack;
+    struct LocalType {
+        const ::std::string name;
+        const AST::TypeParams*  source_params;  // if nullptr, use fixed_type
+        TypeRef fixed_type;
+    
+        LocalType():
+            name("")
+        {}
+        LocalType(const ::std::string& n, const AST::TypeParams* tps):
+            name(n), source_params(tps)
+        {}
+        LocalType(const ::std::string& n, TypeRef ty):
+            name(n), source_params(nullptr), fixed_type( ::std::move(ty) )
+        {}
+    
+        bool is_separator() const { return name == ""; }
+    };
+    // name == "" indicates edge of a scope
+    ::std::vector<LocalType>    m_types_stack;
 public:
     virtual void handle_path(AST::Path& path, CASTIterator::PathMode pm) override;
     virtual void handle_expr(AST::ExprNode& root) override;
-    virtual void start_scope() override;
-    virtual void end_scope() override;
+    void start_scope() override;
+    void local_type(::std::string name, TypeRef type) override;
+    void end_scope() override;
     virtual void handle_params(AST::TypeParams& params) override;
     
 private:
     bool has_impl_for_param(const ::std::string name, const AST::Path& trait) const;
     bool has_impl(const TypeRef& type, const AST::Path& trait) const;
     void check_generic_params(const AST::TypeParams& info, ::std::vector<TypeRef>& types, bool allow_infer = false);
+    
+    const LocalType* find_type_by_name(const ::std::string& name) const;
 };
 
 class CNodeVisitor:
@@ -40,17 +61,17 @@ bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const AS
 {
     const AST::TypeParams*  tps = nullptr;
     // Locate params set that contains the passed name
-    for( const auto ptr : m_params_stack )
+    for( const auto lt : m_types_stack )
     {
-        if( ptr )
+        if( lt.name == name )
         {
-            for( const auto& p : ptr->ty_params() )
-            {
-                if(p.name() == name) {
-                    tps = ptr;
-                    break ;
-                }
+            if( lt.source_params != nullptr ) {
+                tps = lt.source_params;
             }
+            else {
+                DEBUG("Type name '" << name << "' isn't a param");
+            }
+            break ;
         }
     }
     
@@ -78,7 +99,7 @@ bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const AS
 }
 bool CGenericParamChecker::has_impl(const TypeRef& type, const AST::Path& trait) const
 {
-    DEBUG("(type = " << type << ", trait = " << trait << ")");
+    TRACE_FUNCTION_F("(type = " << type << ", trait = " << trait << ")");
     if( type.is_type_param() )
     {
         // TODO: Search current scope (requires access to CGenericParamChecker) for this type,
@@ -162,17 +183,25 @@ void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::s
             // Not a wildcard!
             // Check that the type fits the bounds applied to it
             TypeRef param_type(TypeRef::TagArg(), param);
-            for( const auto& bound : info.bounds() )
+        }
+    }
+    
+    for( const auto& bound : info.bounds() )
+    {
+        if( bound.is_trait() )
+        {
+            auto bound_type = bound.test();
+            bound_type.resolve_args([&](const char *a){
+                if( strcmp(a, "Self") == 0 )
+                    throw CompileError::Todo("Resolving 'Self' in check_generic_params");
+                return types.at(info.find_name(a));
+                });
+            
+            const auto& trait = bound.bound();
+            // Check if 'type' impls 'trait'
+            if( !has_impl(bound_type, trait) )
             {
-                if( bound.is_trait() && bound.test() == param_type )
-                {
-                    const auto& trait = bound.bound();
-                    // Check if 'type' impls 'trait'
-                    if( !has_impl(type, trait) )
-                    {
-                        throw ::std::runtime_error( FMT("No matching impl of "<<trait<<" for "<<type));
-                    }
-                }
+                throw ::std::runtime_error( FMT("No matching impl of "<<trait<<" for "<<bound_type));
             }
         }
     }
@@ -180,7 +209,7 @@ void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::s
 
 void CGenericParamChecker::handle_path(AST::Path& path, CASTIterator::PathMode pm)
 {
-    DEBUG("path = " << path);
+    TRACE_FUNCTION_F("path = " << path);
     AST::PathNode& last_node = path[path.size()-1];
     const AST::TypeParams* params = nullptr;
     switch(path.binding().type())
@@ -205,13 +234,7 @@ void CGenericParamChecker::handle_path(AST::Path& path, CASTIterator::PathMode p
     case AST::PathBinding::FUNCTION:
         params = &path.binding().bound_func().params();
         
-        try {
-            check_generic_params(*params, last_node.args(), (m_within_expr > 0));
-        }
-        catch( const ::std::exception& e )
-        {
-            throw ::std::runtime_error( FMT("Checking '" << path << "', threw : " << e.what()) );
-        }
+        check_generic_params(*params, last_node.args(), (m_within_expr > 0));
         break;
     default:
         throw ::std::runtime_error("Unknown path type in CGenericParamChecker::handle_path");
@@ -229,17 +252,32 @@ void CGenericParamChecker::handle_expr(AST::ExprNode& root)
 
 void CGenericParamChecker::start_scope()
 {
-    m_params_stack.push_back(nullptr);
+    m_types_stack.push_back( LocalType() );
+}
+void CGenericParamChecker::local_type(::std::string name, TypeRef type)
+{
+    throw CompileError::Todo("local_type");
 }
 void CGenericParamChecker::end_scope()
 {
-    assert( m_params_stack.size() > 0 );
-    while( m_params_stack.back() != nullptr )
-        m_params_stack.pop_back();
+    assert( m_types_stack.size() > 0 );
+    while( !m_types_stack.back().is_separator() )
+        m_types_stack.pop_back();
 }
 void CGenericParamChecker::handle_params(AST::TypeParams& params)
 {
-    m_params_stack.push_back( &params );
+    for( const auto& p : params.ty_params())
+        m_types_stack.push_back( LocalType(p.name(), &params) );
+}
+
+const CGenericParamChecker::LocalType* CGenericParamChecker::find_type_by_name(const ::std::string& name) const
+{
+    for( unsigned int i = m_types_stack.size(); i --; )
+    {
+        if( m_types_stack[i].name == name )
+            return &m_types_stack[i];
+    }
+    return nullptr;
 }
 
 /// Typecheck generic parameters (ensure that they match all generic bounds)
