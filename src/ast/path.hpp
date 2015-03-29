@@ -215,7 +215,12 @@ public:
     }
     /// Grab the args from the first node of b, and add the rest to the end of the path
     void add_tailing(const Path& b) {
-        m_nodes.back().args() = b[0].args();
+        if( m_nodes.size() > 0 )
+            m_nodes.back().args() = b[0].args();
+        else if( b[0].args().size() > 0 )
+            throw ::std::runtime_error("add_tail to empty path, but generics in source");
+        else
+            ;
         for(unsigned int i = 1; i < b.m_nodes.size(); i ++)
             m_nodes.push_back(b.m_nodes[i]);
         m_binding = PathBinding();

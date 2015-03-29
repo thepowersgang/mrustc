@@ -21,12 +21,16 @@ class ExprNode:
     public Serialisable
 {
     TypeRef m_res_type;
+    Position    m_pos;
 public:
     virtual ~ExprNode() = 0;
     
     virtual void visit(NodeVisitor& nv) = 0;
     //virtual void visit(NodeVisitor& nv) const = 0;
     virtual void print(::std::ostream& os) const = 0;
+    
+    void set_pos(Position p) { m_pos = ::std::move(p); }
+    const Position& get_pos() const { return m_pos; }
     
     TypeRef& get_res_type() { return m_res_type; }
     

@@ -36,7 +36,7 @@ class CPathResolver:
         
         friend ::std::ostream& operator<<(::std::ostream& os, const LocalItem& x) {
             //return os << "'" << x.name << "' = " << x.path;
-            return os << "'" << x.name << "'";
+            return os << (x.type == TYPE ? "type" : "var") << " '" << x.name << "'";
         }
     };
     const AST::Crate&   m_crate;
@@ -67,7 +67,7 @@ public:
     }
     virtual void end_scope() override;
     
-    ::rust::option<const AST::Path&> lookup_local(LocalItem::Type type, const ::std::string& name) const;
+    ::rust::option<const LocalItem&> lookup_local(LocalItem::Type type, const ::std::string& name) const;
     
     // TODO: Handle a block and obtain the local module (if any)
 };
@@ -99,7 +99,7 @@ public:
         m_res.handle_path(node.m_path, CASTIterator::MODE_EXPR);
     }
     void visit(AST::ExprNode_CallPath& node) {
-        DEBUG("ExprNode_CallPath - " << node);
+        DEBUG(node.get_pos() << " ExprNode_CallPath - " << node);
         AST::NodeVisitorDef::visit(node);
         m_res.handle_path(node.m_path, CASTIterator::MODE_EXPR);
     }
@@ -252,16 +252,16 @@ void CPathResolver::end_scope()
     m_locals.clear();
 }
 // Returns the bound path for the local item
-::rust::option<const AST::Path&> CPathResolver::lookup_local(LocalItem::Type type, const ::std::string& name) const
+::rust::option<const CPathResolver::LocalItem&> CPathResolver::lookup_local(LocalItem::Type type, const ::std::string& name) const
 {
     DEBUG("m_locals = [" << m_locals << "]");
     for( auto it = m_locals.end(); it -- != m_locals.begin(); )
     {
         if( it->type == type && it->name == name ) {
-            return ::rust::option<const AST::Path&>(it->path);
+            return ::rust::option<const LocalItem&>(*it);
         }
     }
-    return ::rust::option<const AST::Path&>();
+    return ::rust::option<const LocalItem&>();
 }
 
 // Search relative to current module
@@ -377,24 +377,38 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
         bool is_trivial_path = (path.size() == 1 && path[0].args().size() == 0);
         
         LocalItem::Type search_type = (is_trivial_path && mode == MODE_EXPR ? LocalItem::VAR : LocalItem::TYPE);
-        auto local = lookup_local( search_type, path[0].name() );
-        if( local.is_some() )
+        auto local_o = lookup_local( search_type, path[0].name() );
+        if( local_o.is_some() )
         {
-            auto rpath = local.unwrap();
-            DEBUG("Local hit: " << path[0].name() << " = " << rpath);
+            auto local = local_o.unwrap();
+            DEBUG("Local hit: " << path[0].name() << " = " << local);
             
             switch(mode)
             {
             // Local variable?
             // - TODO: What would happen if MODE_EXPR but path isn't a single ident?
             case MODE_EXPR:
-                if( is_trivial_path )
+                if( local.type == LocalItem::VAR )
                 {
+                    if( !is_trivial_path )
+                        throw ParseError::Todo("TODO: MODE_EXPR, but not a single identifer, what do?");
                     DEBUG("Local variable " << path[0].name());
                     path = AST::Path(AST::Path::TagLocal(), path[0].name());
-                    return ;
                 }
-                throw ParseError::Todo("TODO: MODE_EXPR, but not a single identifer, what do?");
+                else
+                {
+                    if( is_trivial_path )
+                        throw ParseError::Generic("Type used in expression context?");
+                    // Convert to a UFCS path
+                    DEBUG("Local type");
+                    auto np = AST::Path(AST::Path::TagUfcs(), TypeRef(TypeRef::TagArg(), path[0].name()), TypeRef());
+                    DEBUG("np = " << np);
+                    np.add_tailing(path);
+                    DEBUG("np = " << np);
+                    path = ::std::move(np);
+                    DEBUG("path = " << path);
+                }
+                return ;
             // Type parameter
             case MODE_TYPE:
                 DEBUG("Local type " << path);

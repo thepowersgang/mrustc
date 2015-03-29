@@ -386,7 +386,7 @@ void Path::print_pretty(::std::ostream& os) const
 
 ::std::ostream& operator<<(::std::ostream& os, const Path& path)
 {
-    if( path.m_nodes.size() == 0 )
+    if( path.m_nodes.size() == 0 && path.m_class == Path::RELATIVE )
     {
         os << "/* null path */";
         return os;
