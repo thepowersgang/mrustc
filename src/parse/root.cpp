@@ -684,9 +684,18 @@ AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe/*=false*/)
         
         if( GET_TOK(tok, lex) == TOK_RWORD_FOR )
         {
-            // Implementing a trait for another type, get the target type
             trait_type = impl_type;
-            impl_type = Parse_Type(lex);
+            // Implementing a trait for another type, get the target type
+            if( GET_TOK(tok, lex) == TOK_DOUBLE_DOT )
+            {
+                // Default impl
+                impl_type = TypeRef();
+            }
+            else
+            {
+                lex.putback(tok);
+                impl_type = Parse_Type(lex);
+            }
         }
         else {
             lex.putback(tok);
@@ -717,6 +726,7 @@ AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe/*=false*/)
 
 void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
 {
+    TRACE_FUNCTION;
     Token   tok;
     
     GET_TOK(tok, lex);

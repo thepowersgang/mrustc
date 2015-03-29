@@ -72,6 +72,14 @@ ParseError::Unexpected::Unexpected(const TokenStream& lex, Token tok, Token exp)
         pos = lex.getPosition();
     ::std::cout << pos << ": Unexpected(" << tok << ", " << exp << ")" << ::std::endl;
 }
+ParseError::Unexpected::Unexpected(const TokenStream& lex, Token tok, ::std::vector<eTokenType> exp)
+{
+    auto pos = tok.get_pos();
+    if(pos.filename == "")
+        pos = lex.getPosition();
+    ::std::cout << pos << ": Unexpected " << tok << ", expected ";
+    ::std::cout << exp << ")" << ::std::endl;
+}
 ParseError::Unexpected::~Unexpected() throw()
 {
 }

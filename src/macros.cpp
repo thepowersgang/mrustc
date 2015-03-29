@@ -523,8 +523,9 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
     for( auto ent = g_macro_module; ent; ent = ent->m_prev )
     {
         const AST::Module& mm = *ent->m_item;
-        for( const auto &m : mm.macros() )
+        for( unsigned int i = mm.macros().size(); i --; )
         {
+            const auto& m = mm.macros()[i];
             DEBUG("" << m.name);
             if( m.name == name )
             {

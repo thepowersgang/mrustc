@@ -60,6 +60,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
     
     
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
+    
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
         AST::MetaItems  item_attrs;
@@ -72,6 +73,10 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
         
         switch(tok.type())
         {
+        case TOK_CATTR_OPEN:
+            /*node_attrs.push_back(*/ Parse_MetaItem(lex) /*)*/;
+            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+            break;
         // Items:
         // - 'use'
         case TOK_RWORD_USE:
@@ -146,6 +151,19 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
                 false, tok.str(), Parse_FunctionDefWithCode(lex, "rust", ::std::move(item_attrs), false)
                 );
             break;
+        case TOK_RWORD_UNSAFE:
+            if( LOOK_AHEAD(lex) == TOK_RWORD_FN )
+            {
+                GET_TOK(tok, lex);
+                keep_mod = true;
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                // - self not allowed, not prototype
+                local_mod->add_function(
+                    false, tok.str(), Parse_FunctionDefWithCode(lex, "rust", ::std::move(item_attrs), false)
+                    );
+                break;
+            }
+            if(0)
         // Macros - If not macro_rules, fall though to expression
         case TOK_MACRO:
             if( tok.str() == "macro_rules" )
@@ -162,6 +180,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
             // Set to TRUE if there was no semicolon after a statement
             if( expect_end )
             {
+                DEBUG("expect_end == true");
                 if( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
                 {
                     throw ParseError::Unexpected(lex, tok, Token(TOK_BRACE_CLOSE));
