@@ -134,7 +134,8 @@ public:
     ::std::vector<TypeRef>&   args() { return m_params; }
     const ::std::vector<TypeRef>&   args() const;
     
-    bool operator==(const PathNode& x) const;
+    Ordering ord(const PathNode& x) const;
+    bool operator==(const PathNode& x) const { return ord(x) == OrdEqual; }
     void print_pretty(::std::ostream& os) const;
     friend ::std::ostream& operator<<(::std::ostream& os, const PathNode& pn);
     
@@ -263,7 +264,8 @@ public:
     PathNode& operator[](int idx) { if(idx>=0) return m_nodes[idx]; else return m_nodes[size()+idx]; }
     const PathNode& operator[](int idx) const { if(idx>=0) return m_nodes[idx]; else return m_nodes[size()+idx]; }
    
-    bool operator==(const Path& x) const;
+    Ordering ord(const Path& x) const;
+    bool operator==(const Path& x) const { return ord(x) == OrdEqual; }
     
     SERIALISABLE_PROTOTYPES(); 
     void print_pretty(::std::ostream& os) const;

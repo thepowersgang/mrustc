@@ -25,9 +25,14 @@ const ::std::vector<TypeRef>& PathNode::args() const
 {
     return m_params;
 }
-bool PathNode::operator==(const PathNode& x) const
+Ordering PathNode::ord(const PathNode& x) const
 {
-    return m_name == x.m_name && m_params == x.m_params;
+    Ordering    rv;
+    rv = ::ord(m_name, x.m_name);
+    if(rv != OrdEqual)  return rv;
+    rv = ::ord(m_params, x.m_params);
+    if(rv != OrdEqual)  return rv;
+    return OrdEqual;
 }
 ::std::ostream& operator<<(::std::ostream& os, const PathNode& pn) {
     os << pn.m_name;
@@ -356,9 +361,20 @@ Path& Path::operator+=(const Path& other)
     return *this;
 }
 
-bool Path::operator==(const Path& x) const
+Ordering Path::ord(const Path& x) const
 {
-    return m_class == x.m_class && m_crate == x.m_crate && m_nodes == x.m_nodes;
+    Ordering rv;
+    
+    rv = ::ord( (unsigned)m_class, (unsigned)x.m_class );
+    if( rv != OrdEqual )    return rv;
+    
+    rv = ::ord( m_crate, x.m_crate );
+    if( rv != OrdEqual )    return rv;
+    
+    rv = ::ord( m_nodes, x.m_nodes );
+    if( rv != OrdEqual )    return rv;
+    
+    return OrdEqual;
 }
 
 void Path::print_pretty(::std::ostream& os) const

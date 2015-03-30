@@ -188,8 +188,10 @@ public:
     void add_trait(TypeRef trait) { assert(is_wildcard()); m_inner_types.push_back( ::std::move(trait) ); }
     const ::std::vector<TypeRef>& traits() const { assert(is_wildcard()); return m_inner_types; }   
 
-    bool operator==(const TypeRef& x) const;
-    bool operator!=(const TypeRef& x) const { return !(*this == x); }
+    Ordering ord(const TypeRef& x) const;
+    bool operator==(const TypeRef& x) const { return ord(x) == OrdEqual; }
+    bool operator!=(const TypeRef& x) const { return ord(x) != OrdEqual; }
+    bool operator<(const TypeRef& x) const { return ord(x) == OrdLess; };
     
     PrettyPrintType print_pretty() const { return PrettyPrintType(*this); }
     

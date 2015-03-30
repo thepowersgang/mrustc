@@ -315,42 +315,51 @@ bool TypeRef::is_concrete() const
     throw ::std::runtime_error( FMT("BUGCHECK - Invalid type class on " << *this) );
 }
 
-bool TypeRef::operator==(const TypeRef& x) const
+Ordering TypeRef::ord(const TypeRef& x) const
 {
-    if(m_class != x.m_class)
-        return false;
+    Ordering    rv;
+    
+    rv = ::ord( (unsigned)m_class, (unsigned)x.m_class );
+    if(rv != OrdEqual)  return rv;
+    
     switch(m_class)
     {
     case TypeRef::NONE:
-        return true;
+        return OrdEqual;
     case TypeRef::ANY:
     case TypeRef::UNIT:
-        return true;
+        return OrdEqual;
     case TypeRef::PRIMITIVE:
-        return m_core_type == x.m_core_type;
+        rv = ::ord( (unsigned)m_core_type, (unsigned)x.m_core_type );
+        if(rv != OrdEqual)  return rv;
+        return OrdEqual;
     case TypeRef::FUNCTION:
-        if( m_path[0].name() != x.m_path[0].name() )
-            return false;
+        rv = ::ord(m_path[0].name(),x.m_path[0].name());
+        if(rv != OrdEqual)  return rv;
+        return OrdEqual;
     case TypeRef::TUPLE:
-        return m_inner_types == x.m_inner_types;
+        return ::ord(m_inner_types, x.m_inner_types);
+        //return m_inner_types == x.m_inner_types;
     case TypeRef::REFERENCE:
     case TypeRef::POINTER:
-        return m_is_inner_mutable == x.m_is_inner_mutable && m_inner_types == x.m_inner_types;
+        rv = ::ord(m_is_inner_mutable, x.m_is_inner_mutable);
+        if(rv != OrdEqual)  return rv;
+        return ::ord(m_inner_types, x.m_inner_types);
     case TypeRef::ARRAY:
-        if(m_inner_types[0] != x.m_inner_types[0])
-            return false;
+        rv = m_inner_types[0].ord( x.m_inner_types[0] );
+        if(rv != OrdEqual)  return rv;
         if(m_size_expr.get())
         {
             throw ::std::runtime_error("TODO: Sized array comparisons");
         }
-        return true;
+        return OrdEqual;
     case TypeRef::GENERIC:
         DEBUG(*this << " == " << x);
         throw ::std::runtime_error("BUGCHECK - Can't compare generic type");
     case TypeRef::PATH:
-        return m_path == x.m_path;
+        return m_path.ord( x.m_path );
     case TypeRef::MULTIDST:
-        return m_inner_types == x.m_inner_types;
+        return ::ord(m_inner_types, x.m_inner_types);
     }
     throw ::std::runtime_error(FMT("BUGCHECK - Unhandled TypeRef class '" << m_class << "'"));
 }

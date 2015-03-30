@@ -15,6 +15,59 @@
 #include "include/rustic.hpp"	// slice and option
 #include "include/compile_error.hpp"
 
+enum Ordering
+{
+    OrdLess,
+    OrdEqual,
+    OrdGreater,
+};
+template<typename T>
+Ordering ord(const ::std::vector<T>& l, const ::std::vector<T>& r)
+{
+    unsigned int i = 0;
+    for(const auto& it : l)
+    {
+        if( i > r.size() )
+            return OrdGreater;
+        
+        auto rv = it.ord(r[i]);
+        if( rv != OrdEqual )
+            return rv;
+        
+        i ++;
+    }
+        
+    return OrdEqual;
+}
+static inline Ordering ord(bool l, bool r)
+{
+    if(l == r)
+        return OrdEqual;
+    else if( l )
+        return OrdGreater;
+    else
+        return OrdLess;
+}
+static inline Ordering ord(unsigned l, unsigned r)
+{
+    if(l == r)
+        return OrdEqual;
+    else if( l > r )
+        return OrdGreater;
+    else
+        return OrdLess;
+}
+static inline Ordering ord(const ::std::string& l, const ::std::string& r)
+{
+    if(l == r)
+        return OrdEqual;
+    else if( l > r )
+        return OrdGreater;
+    else
+        return OrdLess;
+}
+
+
 template <typename T>
 struct LList
 {
