@@ -280,6 +280,9 @@ void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
 {
     start_scope();
     
+    // First, so that handle_params can use it
+    local_type("Self", impl.type());
+    
     // Generic params
     handle_params( impl.params() );
     
@@ -287,8 +290,6 @@ void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
     handle_type( impl.trait() );
     // Type
     handle_type( impl.type() );
-    
-    local_type("Self", impl.type());
     
     // Associated types
     for( auto& at : impl.types() )

@@ -41,7 +41,7 @@ public:
 private:
     bool has_impl_for_param(const ::std::string name, const AST::Path& trait) const;
     bool has_impl(const TypeRef& type, const AST::Path& trait) const;
-    void check_generic_params(const AST::TypeParams& info, ::std::vector<TypeRef>& types, bool allow_infer = false);
+    void check_generic_params(const AST::TypeParams& info, ::std::vector<TypeRef>& types, TypeRef self_type, bool allow_infer = false);
     
     const LocalType* find_type_by_name(const ::std::string& name) const;
 };
@@ -97,9 +97,10 @@ bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const AS
     DEBUG("No match in generics, returning failure");
     return false;
 }
+
 bool CGenericParamChecker::has_impl(const TypeRef& type, const AST::Path& trait) const
 {
-    TRACE_FUNCTION_F("(type = " << type << ", trait = " << trait << ")");
+    TRACE_FUNCTION_F("type = " << type << ", trait = " << trait);
     if( type.is_type_param() )
     {
         // TODO: Search current scope (requires access to CGenericParamChecker) for this type,
@@ -113,7 +114,8 @@ bool CGenericParamChecker::has_impl(const TypeRef& type, const AST::Path& trait)
     else
     {
         // Search all known impls of this trait (TODO: keep a list at the crate level) for a match to this type
-        throw ::std::runtime_error( FMT("TODO: Search for impls on " << type << " for the trait") );
+        throw CompileError::Todo( FMT("Search for impls on " << type << " for trait " << trait) );
+
     }
     return false;
 }
@@ -123,7 +125,7 @@ bool CGenericParamChecker::has_impl(const TypeRef& type, const AST::Path& trait)
 /// \param info Generic item information (param names and bounds)
 /// \param types Type parameters being passed to the generic item
 /// \param allow_infer  Allow inferrence (mutates \a types with conditions from \a info)
-void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::std::vector<TypeRef>& types, bool allow_infer)
+void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::std::vector<TypeRef>& types, TypeRef self_type, bool allow_infer)
 {
     TRACE_FUNCTION_F("info = " << info << ", types = {" << types << "}");
     // TODO: Need to correctly handle lifetime params here, they should be in a different list
@@ -192,8 +194,11 @@ void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::s
         {
             auto bound_type = bound.test();
             bound_type.resolve_args([&](const char *a){
-                if( strcmp(a, "Self") == 0 )
-                    throw CompileError::Todo("Resolving 'Self' in check_generic_params");
+                if( strcmp(a, "Self") == 0 ) {
+                    if( self_type == TypeRef() )
+                        throw CompileError::Generic("Unexpected use of 'Self' in bounds");
+                    return self_type;
+                }
                 return types.at(info.find_name(a));
                 });
             
@@ -219,6 +224,7 @@ void CGenericParamChecker::handle_path(AST::Path& path, CASTIterator::PathMode p
     case AST::PathBinding::MODULE:
         DEBUG("WTF - Module path, isn't this invalid at this stage?");
         break;
+    
     case AST::PathBinding::TRAIT:
         params = &path.binding().bound_trait().params();
         if(0)
@@ -227,14 +233,22 @@ void CGenericParamChecker::handle_path(AST::Path& path, CASTIterator::PathMode p
         if(0)
     case AST::PathBinding::ENUM:
         params = &path.binding().bound_enum().params();
-        if(0)
+        
+        {
+            auto lt = find_type_by_name("Self");
+            TypeRef self_type;  // =TypeRef(TypeRef::TagPath(), path)
+            if( lt )
+                self_type = lt->fixed_type;
+            check_generic_params(*params, last_node.args(), self_type, (m_within_expr > 0));
+        }
+        break;
     case AST::PathBinding::ALIAS:
         params = &path.binding().bound_alias().params();
         if(0)
     case AST::PathBinding::FUNCTION:
         params = &path.binding().bound_func().params();
         
-        check_generic_params(*params, last_node.args(), (m_within_expr > 0));
+        check_generic_params(*params, last_node.args(), TypeRef(), (m_within_expr > 0));
         break;
     default:
         throw ::std::runtime_error("Unknown path type in CGenericParamChecker::handle_path");
@@ -256,7 +270,8 @@ void CGenericParamChecker::start_scope()
 }
 void CGenericParamChecker::local_type(::std::string name, TypeRef type)
 {
-    throw CompileError::Todo("local_type");
+    DEBUG("name = " << name << ", type = " << type);
+    m_types_stack.push_back( LocalType(::std::move(name), ::std::move(type)) );
 }
 void CGenericParamChecker::end_scope()
 {
