@@ -636,7 +636,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         m_os << "\n";
         m_os << indent() << "impl";
         print_params(i.params());
-        if( i.trait() != TypeRef() )
+        if( !(i.trait() == AST::Path()) )
         {
                 m_os << " " << i.trait() << " for";
         }

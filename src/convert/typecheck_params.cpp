@@ -30,7 +30,14 @@ class CGenericParamChecker:
     };
     // name == "" indicates edge of a scope
     ::std::vector<LocalType>    m_types_stack;
+    
+    AST::Crate& m_crate;
 public:
+    CGenericParamChecker(AST::Crate& c):
+        m_crate(c)
+    {
+    }
+    
     virtual void handle_path(AST::Path& path, CASTIterator::PathMode pm) override;
     virtual void handle_expr(AST::ExprNode& root) override;
     void start_scope() override;
@@ -114,6 +121,12 @@ bool CGenericParamChecker::has_impl(const TypeRef& type, const AST::Path& trait)
     else
     {
         // Search all known impls of this trait (TODO: keep a list at the crate level) for a match to this type
+        auto i = m_crate.find_impl(trait, trait);
+        if( i.is_none() ) {
+            DEBUG("- Nope");
+            return false;
+        }
+            
         throw CompileError::Todo( FMT("Search for impls on " << type << " for trait " << trait) );
 
     }
@@ -299,7 +312,7 @@ const CGenericParamChecker::LocalType* CGenericParamChecker::find_type_by_name(c
 void Typecheck_GenericParams(AST::Crate& crate)
 {
     DEBUG(" >>> ");
-    CGenericParamChecker    chk;
+    CGenericParamChecker    chk(crate);
     chk.handle_module(AST::Path({}), crate.root_module());
     DEBUG(" <<< ");
 }

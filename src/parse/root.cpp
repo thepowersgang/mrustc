@@ -651,13 +651,13 @@ AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe/*=false*/)
     }
     // 2. Either a trait name (with type params), or the type to impl
     
-    TypeRef trait_type;
+    AST::Path   trait_path;
     TypeRef impl_type;
     // - Handle negative impls, which must be a trait
     // "impl !Trait for Type {}"
     if( GET_TOK(tok, lex) == TOK_EXCLAM )
     {
-        trait_type = Parse_Type(lex);
+        trait_path = Parse_Path(lex, PATH_GENERIC_TYPE);
         GET_CHECK_TOK(tok, lex, TOK_RWORD_FOR);
         impl_type = Parse_Type(lex);
         
@@ -671,7 +671,7 @@ AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe/*=false*/)
         GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
         
         return AST::Impl(AST::Impl::TagNegative(), ::std::move(params),
-                ::std::move(impl_type), ::std::move(trait_type)
+                ::std::move(impl_type), ::std::move(trait_path)
                 );
     }
     else
@@ -684,7 +684,9 @@ AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe/*=false*/)
         
         if( GET_TOK(tok, lex) == TOK_RWORD_FOR )
         {
-            trait_type = impl_type;
+            if( !impl_type.is_path() )
+                throw ParseError::Generic(lex, "Trait was not a path");
+            trait_path = impl_type.path();
             // Implementing a trait for another type, get the target type
             if( GET_TOK(tok, lex) == TOK_DOUBLE_DOT )
             {
@@ -712,7 +714,7 @@ AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe/*=false*/)
     }
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
 
-    AST::Impl   impl( ::std::move(params), ::std::move(impl_type), ::std::move(trait_type) );
+    AST::Impl   impl( ::std::move(params), ::std::move(impl_type), ::std::move(trait_path) );
 
     // A sequence of method implementations
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )

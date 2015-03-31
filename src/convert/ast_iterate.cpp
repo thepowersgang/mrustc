@@ -287,7 +287,8 @@ void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
     handle_params( impl.params() );
     
     // Trait
-    handle_type( impl.trait() );
+    if( impl.trait() != AST::Path() )
+        handle_path( impl.trait(), MODE_TYPE );
     // Type
     handle_type( impl.type() );
     

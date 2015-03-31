@@ -266,6 +266,8 @@ public:
    
     Ordering ord(const Path& x) const;
     bool operator==(const Path& x) const { return ord(x) == OrdEqual; }
+    bool operator!=(const Path& x) const { return ord(x) != OrdEqual; }
+    bool operator<(const Path& x) const { return ord(x) != OrdLess; }
     
     SERIALISABLE_PROTOTYPES(); 
     void print_pretty(::std::ostream& os) const;

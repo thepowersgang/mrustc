@@ -439,7 +439,7 @@ class Impl:
     public Serialisable
 {
     TypeParams  m_params;
-    TypeRef m_trait;
+    Path    m_trait;
     TypeRef m_type;
     
     bool    m_is_negative;
@@ -449,7 +449,7 @@ class Impl:
     ::std::vector< ::std::pair< ::std::vector<TypeRef>, Impl > > m_concrete_impls;
 public:
     Impl(): m_is_negative(false) {}
-    Impl(TypeParams params, TypeRef impl_type, TypeRef trait_type):
+    Impl(TypeParams params, TypeRef impl_type, Path trait_type):
         m_params( move(params) ),
         m_trait( move(trait_type) ),
         m_type( move(impl_type) ),
@@ -457,7 +457,7 @@ public:
     {}
     
     struct TagNegative {};
-    Impl(TagNegative, TypeParams params, TypeRef impl_type, TypeRef trait_type):
+    Impl(TagNegative, TypeParams params, TypeRef impl_type, Path trait_type):
         m_params( move(params) ),
         m_trait( move(trait_type) ),
         m_type( move(impl_type) ),
@@ -472,20 +472,20 @@ public:
     }
     
     const TypeParams& params() const { return m_params; }
-    const TypeRef& trait() const { return m_trait; }
+    const Path& trait() const { return m_trait; }
     const TypeRef& type() const { return m_type; }
     const ItemList<Function>& functions() const { return m_functions; }
     const ItemList<TypeRef>& types() const { return m_types; }
 
     TypeParams& params() { return m_params; }
-    TypeRef& trait() { return m_trait; }
+    Path& trait() { return m_trait; }
     TypeRef& type() { return m_type; }
     ItemList<Function>& functions() { return m_functions; }
     ItemList<TypeRef>& types() { return m_types; }
 
     Impl make_concrete(const ::std::vector<TypeRef>& types) const;
 
-    ::rust::option<Impl&> matches(const TypeRef& trait, const TypeRef& type);
+    ::rust::option<Impl&> matches(const Path& trait, const TypeRef& type);
     
     friend ::std::ostream& operator<<(::std::ostream& os, const Impl& impl);
     SERIALISABLE_PROTOTYPES();
@@ -693,7 +693,7 @@ public:
  
     void post_parse();
     
-    ::rust::option<Impl&> find_impl(const TypeRef& trait, const TypeRef& type);
+    ::rust::option<Impl&> find_impl(const Path& trait, const TypeRef& type);
     Function& lookup_method(const TypeRef& type, const char *name);
     
     void load_extern_crate(::std::string name);

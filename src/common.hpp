@@ -27,7 +27,7 @@ Ordering ord(const ::std::vector<T>& l, const ::std::vector<T>& r)
     unsigned int i = 0;
     for(const auto& it : l)
     {
-        if( i > r.size() )
+        if( i >= r.size() )
             return OrdGreater;
         
         auto rv = it.ord(r[i]);

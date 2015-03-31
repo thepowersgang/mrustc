@@ -78,9 +78,10 @@ Impl Impl::make_concrete(const ::std::vector<TypeRef>& types) const
 */
 }
 
-::rust::option<Impl&> Impl::matches(const TypeRef& trait, const TypeRef& type)
+::rust::option<Impl&> Impl::matches(const Path& trait, const TypeRef& type)
 {
     DEBUG("this = " << *this);
+    
     if( m_params.ty_params().size() > 0 )
     {
         ::std::vector<TypeRef>  param_types(m_params.ty_params().size());
@@ -92,7 +93,8 @@ Impl Impl::make_concrete(const ::std::vector<TypeRef>& types) const
                     assert( (unsigned)idx < param_types.size() );
                     param_types[idx].merge_with( ty );
                 };
-            m_trait.match_args(trait, c);
+            throw CompileError::Todo("Match arguments in path for m_trait");
+            //m_trait.match_args(TypeRef(trait), c);
             m_type.match_args(type, c);
             
             // Check that conditions match
@@ -180,12 +182,13 @@ const Module& Crate::get_root_module(const ::std::string& name) const {
     throw ParseError::Generic("crate name unknown");
 }
 
-::rust::option<Impl&> Crate::find_impl(const TypeRef& trait, const TypeRef& type)
+::rust::option<Impl&> Crate::find_impl(const Path& trait, const TypeRef& type)
 {
+    // TODO: Do a sort to allow a binary search
     DEBUG("trait = " << trait << ", type = " << type);
     
     // TODO: Support autoderef here? NO
-    if( trait.is_wildcard() && !type.is_path() )
+    if( trait == Path() && !type.is_path() )
     {
         // You can only have 'impl <type> { }' for user-defined types (i.e. paths)
         // - Return failure
@@ -801,7 +804,7 @@ bool TypeParams::check_params(Crate& crate, ::std::vector<TypeRef>& types, bool 
                 {
                     const auto& trait = bound.bound();
                     // Check if 'type' impls 'trait'
-                    if( !crate.find_impl(type, trait).is_some() )
+                    if( !crate.find_impl(trait, trait).is_some() )
                     {
                         throw ::std::runtime_error( FMT("No matching impl of "<<trait<<" for "<<type));
                     }
