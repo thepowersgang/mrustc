@@ -419,6 +419,29 @@ Path& Path::operator+=(const Path& other)
     return *this;
 }
 
+void Path::match_args(const Path& other, ::std::function<void(const char*,const TypeRef&)> fcn) const
+{
+    if( m_nodes.size() != other.m_nodes.size() )
+        throw ::std::runtime_error("Type mismatch (path size)");
+    for( unsigned int i = 0; i < m_nodes.size(); i++ )
+    {
+        auto& pn1 = m_nodes[i];
+        auto& pn2 = other.m_nodes[i];
+        if( pn1.name() != pn2.name() )
+            throw ::std::runtime_error("Type mismatch (path component)");
+        
+        if( pn1.args().size() != pn2.args().size() )
+            throw ::std::runtime_error("Type mismatch (path component param count)");
+        
+        for( unsigned int j = 0; j < pn1.args().size(); j ++ )
+        {
+            auto& t1 = pn1.args()[j];
+            auto& t2 = pn2.args()[j];
+            t1.match_args( t2, fcn );
+        }
+    }
+}
+
 int Path::equal_no_generic(const Path& x) const
 {
     if( m_class != x.m_class )
@@ -426,6 +449,7 @@ int Path::equal_no_generic(const Path& x) const
     if( m_crate != x.m_crate )
         return -1;
     
+    bool conditional_match = false;
     unsigned int i = 0;
     for( const auto &e : m_nodes )
     {
@@ -437,15 +461,21 @@ int Path::equal_no_generic(const Path& x) const
         
         if( e.args().size() || xe.args().size() )
         {
-            //
-            DEBUG("e = " << e << ", xe = " << xe); 
-            throw CompileError::Todo("Handle Path::equal_no_generic with generic");
+            DEBUG("e = " << e << ", xe = " << xe);
+            if( e.args().size() != xe.args().size() )
+                throw CompileError::BugCheck("Generics should be resolved, and hence have the correct argument count");
+            for( unsigned int j = 0; j < e.args().size(); j ++ )
+            {
+                int rv = e.args()[j].equal_no_generic( xe.args()[j] );
+                if(rv < 0) return rv;
+                if(rv > 0)  conditional_match = true;
+            }
         }
         
         i ++;
     }
     
-    return 0;
+    return (conditional_match ? 1 : 0);
 }
 
 Ordering Path::ord(const Path& x) const

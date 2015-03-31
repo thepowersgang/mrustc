@@ -23,15 +23,15 @@ class CPathResolver:
             VAR,
         }   type;
         ::std::string   name;
-        AST::Path   path;
+        TypeRef tr;
      
         LocalItem():
             type(VAR), name()
         {}
-        LocalItem(Type t, ::std::string name, AST::Path path=AST::Path()):
+        LocalItem(Type t, ::std::string name, TypeRef tr=TypeRef()):
             type(t),
             name( ::std::move(name) ),
-            path( ::std::move(path) )
+            tr( ::std::move(tr) )
         {}
         
         friend ::std::ostream& operator<<(::std::ostream& os, const LocalItem& x) {
@@ -60,7 +60,7 @@ public:
 
     virtual void start_scope() override;
     virtual void local_type(::std::string name, TypeRef type) override {
-        m_locals.push_back( LocalItem(LocalItem::TYPE, ::std::move(name)) );
+        m_locals.push_back( LocalItem(LocalItem::TYPE, ::std::move(name), ::std::move(type)) );
     }
     virtual void local_variable(bool _is_mut, ::std::string name, const TypeRef& _type) override {
         m_locals.push_back( LocalItem(LocalItem::VAR, ::std::move(name)) );
@@ -500,6 +500,19 @@ void CPathResolver::handle_type(TypeRef& type)
             // Not a type param, fall back to other checks
         }
     }
+    
+    //if( type.is_type_param() && type.type_param() == "Self" )
+    //{
+    //    auto l = lookup_local(LocalItem::TYPE, "Self");
+    //    if( l.is_some() )
+    //    {
+    //        type = l.unwrap().tr;
+    //        DEBUG("Replacing Self with " << type);
+    //        // TODO: Can this recurse?
+    //        handle_type(type);
+    //        return ;
+    //    }
+    //}
     CASTIterator::handle_type(type);
     DEBUG("res = " << type);
 }

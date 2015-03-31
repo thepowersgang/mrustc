@@ -245,25 +245,7 @@ void TypeRef::match_args(const TypeRef& other, ::std::function<void(const char*,
     case TypeRef::GENERIC:
         throw ::std::runtime_error("Encountered GENERIC in match_args");
     case TypeRef::PATH:
-        if( m_path.size() != other.m_path.size() )
-            throw ::std::runtime_error("Type mismatch (path size)");
-        for( unsigned int i = 0; i < m_path.size(); i++ )
-        {
-            auto& pn1 = m_path[i];
-            auto& pn2 = other.m_path[i];
-            if( pn1.name() != pn2.name() )
-                throw ::std::runtime_error("Type mismatch (path component)");
-            
-            if( pn1.args().size() != pn2.args().size() )
-                throw ::std::runtime_error("Type mismatch (path component param count)");
-            
-            for( unsigned int j = 0; j < pn1.args().size(); j ++ )
-            {
-                auto& t1 = pn1.args()[j];
-                auto& t2 = pn2.args()[j];
-                t1.match_args( t2, fcn );
-            }
-        }
+        m_path.match_args(other.m_path, fcn);
         break;
     case TypeRef::MULTIDST:
         throw ::std::runtime_error("TODO: TypeRef::match_args on MULTIDST");
@@ -313,6 +295,9 @@ bool TypeRef::is_concrete() const
 
 int TypeRef::equal_no_generic(const TypeRef& x) const
 {
+    DEBUG(*this << ", " << x);
+    if( m_class == TypeRef::GENERIC || x.m_class == TypeRef::GENERIC )
+        return 1;
     if( m_class != x.m_class )  return -1;
     switch(m_class)
     {

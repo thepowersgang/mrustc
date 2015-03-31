@@ -255,6 +255,9 @@ public:
     /// Resolve generic arguments within the path
     void resolve_args(::std::function<TypeRef(const char*)> fcn);
     
+    /// Match args
+    void match_args(const Path& other, ::std::function<void(const char*,const TypeRef&)> fcn) const;
+    
     bool is_trivial() const {
         return m_class == RELATIVE && m_nodes.size() == 1 && m_nodes[0].args().size() == 0;
     }

@@ -92,37 +92,42 @@ Impl Impl::make_concrete(const ::std::vector<TypeRef>& types) const
     if( type_match < 0 )
         return ::rust::option<Impl&>();
     DEBUG("Type " << type << " matches " << type_match);
+    
     // 2. If a parameter was seen, do the more expensive generic checks
     //  > Involves checking that parameters are valid
-    if( trait_match > 0 )
+    if( m_params.ty_params().size() )
     {
-        throw CompileError::Todo("Generic-ised match of impl trait");
-    }
-    if( type_match > 0 )
-    {
-        throw CompileError::Todo("Generic-ised match of impl type");
-    }
-    // 3. Return success
-    
-    if( m_params.ty_params().size() > 0 )
+        if( trait_match == 0 && type_match == 0 )
+            throw CompileError::Generic( "Unbound generic in impl" );
+    } 
+        
+    if( !(trait_match == 0 && type_match == 0) )
     {
         ::std::vector<TypeRef>  param_types(m_params.ty_params().size());
         try
         {
-            auto c = [&](const char* name,const TypeRef& ty){
+            auto c = [&](const char* name,const TypeRef& ty) {
+                    if( strcmp(name, "Self") == 0 ) {
+                        if( ty != type )
+                            throw CompileError::Generic(FMT("Self mismatch : " << ty));
+                        return ;
+                    }
                     int idx = m_params.find_name(name);
                     assert( idx >= 0 );
                     assert( (unsigned)idx < param_types.size() );
                     param_types[idx].merge_with( ty );
                 };
-            throw CompileError::Todo("Match arguments in path for m_trait");
-            //m_trait.match_args(TypeRef(trait), c);
+            m_trait.match_args(trait, c);
             m_type.match_args(type, c);
-            
-            // Check that conditions match
-            // - TODO: Requires locating/checking trait implementations on types
-            
-            // The above two will throw if matching failed, so if we get here, it's a match
+        }
+        catch(const CompileError::Base& e)
+        {
+            DEBUG("No match - " << e.what());
+            return ::rust::option<Impl&>();
+        }
+       
+        if( param_types.size() > 0 )
+        { 
             for( auto& i : m_concrete_impls )
             {
                 if( i.first == param_types )
@@ -130,22 +135,12 @@ Impl Impl::make_concrete(const ::std::vector<TypeRef>& types) const
                     return ::rust::option<Impl&>(i.second);
                 }
             }
+            
             m_concrete_impls.push_back( make_pair(param_types, this->make_concrete(param_types)) );
             return ::rust::option<Impl&>( m_concrete_impls.back().second );
         }
-        catch( const ::std::runtime_error& e )
-        {
-            DEBUG("No match - " << e.what());
-        }
     }
-    else
-    {
-        if( m_trait == trait && m_type == type )
-        {
-            return ::rust::option<Impl&>( *this );
-        }
-    }
-    return ::rust::option<Impl&>();
+    return ::rust::option<Impl&>( *this );
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const Impl& impl)
