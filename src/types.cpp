@@ -315,6 +315,28 @@ bool TypeRef::is_concrete() const
     throw ::std::runtime_error( FMT("BUGCHECK - Invalid type class on " << *this) );
 }
 
+int TypeRef::equal_no_generic(const TypeRef& x) const
+{
+    if( m_class != x.m_class )  return -1;
+    switch(m_class)
+    {
+    case TypeRef::NONE:
+    case TypeRef::UNIT:
+        return 0;
+    case TypeRef::ANY:
+        throw CompileError::Todo("TypeRef::equal_no_generic - ANY");
+    case TypeRef::PRIMITIVE:
+        if( m_core_type != x.m_core_type )  return -1;
+        return 0;
+    case TypeRef::FUNCTION:
+        if( m_path[0].name() != x.m_path[0].name() )    return -1;
+        throw CompileError::Todo("TypeRef::equal_no_generic - FUNCTION");
+    case TypeRef::PATH:
+        return m_path.equal_no_generic( x.m_path );
+    default:
+        throw CompileError::Todo("TypeRef::equal_no_generic");
+    }
+}
 Ordering TypeRef::ord(const TypeRef& x) const
 {
     Ordering    rv;
@@ -336,7 +358,7 @@ Ordering TypeRef::ord(const TypeRef& x) const
     case TypeRef::FUNCTION:
         rv = ::ord(m_path[0].name(),x.m_path[0].name());
         if(rv != OrdEqual)  return rv;
-        return OrdEqual;
+        return ::ord(m_inner_types, x.m_inner_types);
     case TypeRef::TUPLE:
         return ::ord(m_inner_types, x.m_inner_types);
         //return m_inner_types == x.m_inner_types;

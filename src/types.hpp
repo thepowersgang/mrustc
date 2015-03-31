@@ -188,6 +188,9 @@ public:
     void add_trait(TypeRef trait) { assert(is_wildcard()); m_inner_types.push_back( ::std::move(trait) ); }
     const ::std::vector<TypeRef>& traits() const { assert(is_wildcard()); return m_inner_types; }   
 
+    /// Returns 0 if types are identical, 1 if TypeRef::TagArg is present in one, and -1 if form differs
+    int equal_no_generic(const TypeRef& x) const;
+    
     Ordering ord(const TypeRef& x) const;
     bool operator==(const TypeRef& x) const { return ord(x) == OrdEqual; }
     bool operator!=(const TypeRef& x) const { return ord(x) != OrdEqual; }

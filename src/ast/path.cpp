@@ -361,6 +361,31 @@ Path& Path::operator+=(const Path& other)
     return *this;
 }
 
+int Path::equal_no_generic(const Path& x) const
+{
+    if( m_class != x.m_class )
+        return -1;
+    if( m_crate != x.m_crate )
+        return -1;
+    
+    unsigned int i = 0;
+    for( const auto &e : m_nodes )
+    {
+        if( i >= x.m_nodes.size() )
+            return -1;
+        const auto& xe = x.m_nodes[i];
+        if( e.name() != xe.name() )
+            return -1;
+        
+        if( e.args().size() || xe.args().size() )
+            throw CompileError::Todo("Handle Path::equal_no_generic with generic");
+        
+        i ++;
+    }
+    
+    return 0;
+}
+
 Ordering Path::ord(const Path& x) const
 {
     Ordering rv;

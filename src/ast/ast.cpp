@@ -80,7 +80,29 @@ Impl Impl::make_concrete(const ::std::vector<TypeRef>& types) const
 
 ::rust::option<Impl&> Impl::matches(const Path& trait, const TypeRef& type)
 {
-    DEBUG("this = " << *this);
+    //DEBUG("this = " << *this);
+    
+    // 1. Check the type/trait counting parameters as wildcards (but flagging if one was seen)
+    //  > If that fails, just early return
+    int trait_match = m_trait.equal_no_generic(trait);
+    if( trait_match < 0 )
+        return ::rust::option<Impl&>();
+    DEBUG("Trait " << trait << " matches " << trait_match);
+    int type_match = m_type.equal_no_generic(type);
+    if( type_match < 0 )
+        return ::rust::option<Impl&>();
+    DEBUG("Type " << type << " matches " << type_match);
+    // 2. If a parameter was seen, do the more expensive generic checks
+    //  > Involves checking that parameters are valid
+    if( trait_match > 0 )
+    {
+        throw CompileError::Todo("Generic-ised match of impl trait");
+    }
+    if( type_match > 0 )
+    {
+        throw CompileError::Todo("Generic-ised match of impl type");
+    }
+    // 3. Return success
     
     if( m_params.ty_params().size() > 0 )
     {

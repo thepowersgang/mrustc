@@ -264,6 +264,9 @@ public:
     PathNode& operator[](int idx) { if(idx>=0) return m_nodes[idx]; else return m_nodes[size()+idx]; }
     const PathNode& operator[](int idx) const { if(idx>=0) return m_nodes[idx]; else return m_nodes[size()+idx]; }
    
+    /// Returns 0 if paths are identical, 1 if TypeRef::TagArg is present in one, and -1 if a node differs
+    int equal_no_generic(const Path& x) const;
+    
     Ordering ord(const Path& x) const;
     bool operator==(const Path& x) const { return ord(x) == OrdEqual; }
     bool operator!=(const Path& x) const { return ord(x) != OrdEqual; }
