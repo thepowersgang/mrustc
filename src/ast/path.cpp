@@ -68,7 +68,7 @@ typename ::std::vector<Item<T> >::const_iterator find_named(const ::std::vector<
 }
 
 /// Resolve a path into a canonical form, and bind it to the target value
-void Path::resolve(const Crate& root_crate)
+void Path::resolve(const Crate& root_crate, bool expect_params)
 {
     TRACE_FUNCTION_F("*this = "<< *this);
     if(m_class != ABSOLUTE)
@@ -156,6 +156,7 @@ void Path::resolve(const Crate& root_crate)
             // Make a copy of the path, replace params with it, then replace *this?
             // - Maybe leave that up to other code?
             if( is_last ) {
+                check_param_counts(ta.params(), expect_params, m_nodes[i]);
                 m_binding = PathBinding(&ta);
                 goto ret;
             }
@@ -169,6 +170,7 @@ void Path::resolve(const Crate& root_crate)
             const auto& fn = item.unwrap_Function();
             DEBUG("Found function");
             if( is_last ) {
+                check_param_counts(fn.params(), expect_params, m_nodes[i]);
                 m_binding = PathBinding(&fn);
                 goto ret;
             }
@@ -182,10 +184,13 @@ void Path::resolve(const Crate& root_crate)
             const auto& t = item.unwrap_Trait();
             DEBUG("Found trait");
             if( is_last ) {
+                check_param_counts(t.params(), expect_params, m_nodes[i]);
                 m_binding = PathBinding(&t);
                 goto ret;
             }
             else if( is_sec_last ) {
+                check_param_counts(t.params(), expect_params, m_nodes[i]);
+                // TODO: Also check params on item
                 m_binding = PathBinding(PathBinding::TagItem(), &t);
                 goto ret;
             }
@@ -199,10 +204,12 @@ void Path::resolve(const Crate& root_crate)
             const auto& str = item.unwrap_Struct();
             DEBUG("Found struct");
             if( is_last ) {
+                check_param_counts(str.params(), expect_params, m_nodes[i]);
                 bind_struct(str, node.args());
                 goto ret;
             }
             else if( is_sec_last ) {
+                check_param_counts(str.params(), expect_params, m_nodes[i]);
                 bind_struct_member(str, node.args(), m_nodes[i+1]);
                 goto ret;
             }
@@ -216,10 +223,12 @@ void Path::resolve(const Crate& root_crate)
             const auto& enm = item.unwrap_Enum();
             DEBUG("Found enum");
             if( is_last ) {
+                check_param_counts(enm.params(), expect_params, m_nodes[i]);
                 bind_enum(enm, node.args());
                 goto ret;
             }
             else if( is_sec_last ) {
+                check_param_counts(enm.params(), expect_params, m_nodes[i]);
                 bind_enum_var(enm, m_nodes[i+1].name(), node.args());
                 goto ret;
             }
@@ -256,7 +265,7 @@ void Path::resolve(const Crate& root_crate)
                 
                 DEBUG("- newpath = " << newpath);
                 // TODO: This should check for recursion somehow
-                newpath.resolve(root_crate);
+                newpath.resolve(root_crate, expect_params);
                 
                 *this = newpath;
                 DEBUG("Alias resolved, *this = " << *this);
@@ -273,7 +282,7 @@ void Path::resolve(const Crate& root_crate)
                 }
                 DEBUG("- newpath = " << newpath);
                 // TODO: This should check for recursion somehow
-                newpath.resolve(root_crate);
+                newpath.resolve(root_crate, expect_params);
                 
                 *this = newpath;
                 DEBUG("Alias resolved, *this = " << *this);
@@ -294,16 +303,41 @@ ret:
     }
     return ;
 }
+void Path::check_param_counts(const TypeParams& params, bool expect_params, PathNode& node)
+{
+    if( !expect_params )
+    {
+        if( node.args().size() )
+            throw CompileError::BugCheck(FMT("Unexpected parameters in path " << *this));
+    }
+    else if( node.args().size() != params.ty_params().size() )
+    {
+        DEBUG("Count mismatch");
+        if( node.args().size() > params.ty_params().size() )
+        {
+            // Too many, definitely an error
+            throw CompileError::Generic(FMT("Too many type parameters passed in path " << *this));
+        }
+        else
+        {
+            // Too few, allow defaulting
+            while( node.args().size() < params.ty_params().size() )
+            {
+                unsigned int i = node.args().size();
+                const auto& p = params.ty_params()[i];
+                DEBUG("Extra #" << i << ", p = " << p);
+                if( true || p.get_default() != TypeRef() )
+                    node.args().push_back( p.get_default() );
+                else
+                    throw CompileError::Generic(FMT("Not enough type parameters passed in path " << *this));
+            }
+        }
+    }
+}
 void Path::bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args)
 {
     DEBUG("Bound to enum");
     m_binding = PathBinding(&ent);
-    //if( args.size() > 0 )
-    //{
-    //    if( args.size() != ent.params().size() )
-    //        throw ParseError::Generic("Parameter count mismatch");
-    //    throw ParseError::Todo("Bind enum with params passed");
-    //}
 }
 void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std::vector<TypeRef>& args)
 {
@@ -378,7 +412,11 @@ int Path::equal_no_generic(const Path& x) const
             return -1;
         
         if( e.args().size() || xe.args().size() )
+        {
+            //
+            DEBUG("e = " << e << ", xe = " << xe); 
             throw CompileError::Todo("Handle Path::equal_no_generic with generic");
+        }
         
         i ++;
     }

@@ -566,7 +566,7 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
         }
         
         // Run resolution on import
-        imp.data.resolve(crate);
+        imp.data.resolve(crate, false);
         DEBUG("Resolved import : " << imp.data);
         
         // If wildcard, make sure it's sane
@@ -590,7 +590,7 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
     for( auto& new_imp : new_imports )
     {
         if( not new_imp.binding().is_bound() ) {
-            new_imp.resolve(crate);
+            new_imp.resolve(crate, false);
         }
         mod.add_alias(false, new_imp, new_imp[new_imp.size()-1].name());
     }
@@ -618,7 +618,8 @@ void SetCrateName_Mod(const AST::Crate& crate, ::std::string name, AST::Module& 
     for(auto& imp : mod.imports())
     {
         imp.data.set_crate(name);
-        imp.data.resolve(crate);
+        // - Disable expectation of type parameters
+        imp.data.resolve(crate, false);
     }
     
     // TODO: All other types

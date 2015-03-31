@@ -180,12 +180,14 @@ static void iterate_module(Module& mod, ::std::function<void(Module& mod)> fcn)
 void Crate::post_parse()
 {
     // Iterate all modules, grabbing pointers to all impl blocks
-    iterate_module(m_root_module, [this](Module& mod){
+    auto cb = [this](Module& mod){
         for( auto& impl : mod.impls() )
         {
             m_impl_index.push_back( &impl );
         }
-    });
+        };
+    iterate_module(m_root_module, cb);
+    iterate_module(g_compiler_module, cb);
 }
 
 void Crate::iterate_functions(fcn_visitor_t* visitor)

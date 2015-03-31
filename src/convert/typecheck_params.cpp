@@ -126,9 +126,8 @@ bool CGenericParamChecker::has_impl(const TypeRef& type, const AST::Path& trait)
             DEBUG("- Nope");
             return false;
         }
-            
-        throw CompileError::Todo( FMT("Search for impls on " << type << " for trait " << trait) );
-
+        
+        return true;
     }
     return false;
 }
@@ -216,6 +215,8 @@ void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::s
                 });
             
             const auto& trait = bound.bound();
+            // TODO: Also resolve args in the trait
+            
             // Check if 'type' impls 'trait'
             if( !has_impl(bound_type, trait) )
             {

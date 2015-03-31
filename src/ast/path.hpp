@@ -16,6 +16,7 @@ class TypeRef;
 
 namespace AST {
 
+class TypeParams;
 class Crate;
 class Module;
 class TypeAlias;
@@ -246,7 +247,10 @@ public:
         m_binding = PathBinding();
     }
     
-    void resolve(const Crate& crate);
+    /// Resolve the path, and set up binding
+    ///
+    /// expect_params enables checking of param counts (clear for handling 'use')
+    void resolve(const Crate& crate, bool expect_params=true);
     
     bool is_trivial() const {
         return m_class == RELATIVE && m_nodes.size() == 1 && m_nodes[0].args().size() == 0;
@@ -278,6 +282,7 @@ public:
     friend ::Serialiser& operator<<(Serialiser& s, Path::Class pc);
     friend void operator>>(Deserialiser& s, Path::Class& pc);
 private:
+    void check_param_counts(const TypeParams& params, bool expect_params, PathNode& node);
     void bind_module(const Module& mod);
     void bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args);
     void bind_enum_var(const Enum& ent, const ::std::string& name, const ::std::vector<TypeRef>& args);
