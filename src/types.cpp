@@ -172,11 +172,7 @@ void TypeRef::resolve_args(::std::function<TypeRef(const char*)> fcn)
         *this = fcn(m_path[0].name().c_str());
         break;
     case TypeRef::PATH:
-        for(auto& n : m_path.nodes())
-        {
-            for(auto& p : n.args())
-                p.resolve_args(fcn);
-        }
+        m_path.resolve_args(fcn);
         break;
     case TypeRef::MULTIDST:
         for(auto& t : m_inner_types )

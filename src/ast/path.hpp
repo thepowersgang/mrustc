@@ -252,6 +252,9 @@ public:
     /// expect_params enables checking of param counts (clear for handling 'use')
     void resolve(const Crate& crate, bool expect_params=true);
     
+    /// Resolve generic arguments within the path
+    void resolve_args(::std::function<TypeRef(const char*)> fcn);
+    
     bool is_trivial() const {
         return m_class == RELATIVE && m_nodes.size() == 1 && m_nodes[0].args().size() == 0;
     }

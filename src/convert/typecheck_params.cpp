@@ -204,17 +204,19 @@ void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::s
     {
         if( bound.is_trait() )
         {
-            auto bound_type = bound.test();
-            bound_type.resolve_args([&](const char *a){
+            auto ra_fcn = [&](const char *a){
                 if( strcmp(a, "Self") == 0 ) {
                     if( self_type == TypeRef() )
                         throw CompileError::Generic("Unexpected use of 'Self' in bounds");
                     return self_type;
                 }
                 return types.at(info.find_name(a));
-                });
+                };
+            auto bound_type = bound.test();
+            bound_type.resolve_args(ra_fcn);
             
-            const auto& trait = bound.bound();
+            auto trait = bound.bound();
+            trait.resolve_args(ra_fcn);
             // TODO: Also resolve args in the trait
             
             // Check if 'type' impls 'trait'

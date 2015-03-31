@@ -326,6 +326,8 @@ void Path::check_param_counts(const TypeParams& params, bool expect_params, Path
                 unsigned int i = node.args().size();
                 const auto& p = params.ty_params()[i];
                 DEBUG("Extra #" << i << ", p = " << p);
+                // XXX: Currently, the default is just inserted (_ where not specified)
+                // - Erroring failed on transmute, and other omitted for inferrence instnaces
                 if( true || p.get_default() != TypeRef() )
                     node.args().push_back( p.get_default() );
                 else
@@ -385,6 +387,28 @@ void Path::bind_static(const Static& ent)
     m_binding = PathBinding(&ent);
 }
 
+void Path::resolve_args(::std::function<TypeRef(const char*)> fcn)
+{
+    TRACE_FUNCTION_F(*this);
+    for(auto& n : nodes())
+    {
+        for(auto& p : n.args())
+            p.resolve_args(fcn);
+    }
+    
+    switch(m_class)
+    {
+    case Path::RELATIVE:
+    case Path::ABSOLUTE:
+        break;
+    case Path::LOCAL:
+        break;
+    case Path::UFCS:
+        m_ufcs[0].resolve_args(fcn);
+        m_ufcs[1].resolve_args(fcn);
+        break;
+    }
+}
 
 Path& Path::operator+=(const Path& other)
 {

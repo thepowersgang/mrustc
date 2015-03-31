@@ -70,6 +70,8 @@ public:
     ::rust::option<const LocalItem&> lookup_local(LocalItem::Type type, const ::std::string& name) const;
     
     // TODO: Handle a block and obtain the local module (if any)
+private:
+    void handle_path_int(AST::Path& path, CASTIterator::PathMode mode);
 };
 
 // Path resolution checking
@@ -342,8 +344,11 @@ bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, c
 void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
 {
     TRACE_FUNCTION_F("path = " << path << ", m_module_path = " << m_module_path);
-    
+ 
+    handle_path_int(path, mode);
+       
     // Handle generic components of the path
+    // - Done AFTER resoltion, as binding might introduce defaults (which may not have been resolved)
     for( auto& ent : path.nodes() )
     {
         for( auto& arg : ent.args() )
@@ -351,7 +356,9 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
             handle_type(arg);
         }
     }
-    
+}
+void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode)
+{ 
     // Convert to absolute
     if( path.is_absolute() )
     {
@@ -474,7 +481,7 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
 void CPathResolver::handle_type(TypeRef& type)
 {
     TRACE_FUNCTION_F("type = " << type);
-    if( type.is_path() && type.path().is_relative() && type.path().size() == 1 )
+    if( type.is_path() && type.path().is_trivial() )
     {
         const auto& name = type.path()[0].name();
          
@@ -494,6 +501,7 @@ void CPathResolver::handle_type(TypeRef& type)
         }
     }
     CASTIterator::handle_type(type);
+    DEBUG("res = " << type);
 }
 void CPathResolver::handle_expr(AST::ExprNode& node)
 {
