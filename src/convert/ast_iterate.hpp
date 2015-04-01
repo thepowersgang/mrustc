@@ -11,6 +11,7 @@ class ExprNode;
 class Pattern;
 class TypeParams;
 class Impl;
+class ImplDef;
 class EnumVariant;
 template<typename T> struct Item;
 
@@ -53,6 +54,9 @@ public:
     virtual void handle_enum(AST::Path path, AST::Enum& enm);
     virtual void handle_trait(AST::Path path, AST::Trait& trait);
     virtual void handle_alias(AST::Path path, AST::TypeAlias& alias);
+
+private:
+    void handle_impl_def(AST::ImplDef& impl);
 };
 
 #endif

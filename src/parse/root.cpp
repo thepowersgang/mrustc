@@ -631,10 +631,10 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
     }
 }
 
-AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe/*=false*/);
+void Parse_Impl(TokenStream& lex, AST::Module& mod, bool is_unsafe/*=false*/);
 void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl);
 
-AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe/*=false*/)
+void Parse_Impl(TokenStream& lex, AST::Module& mod, bool is_unsafe/*=false*/)
 {
     TRACE_FUNCTION;
     Token   tok;
@@ -670,9 +670,8 @@ AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe/*=false*/)
         // negative impls can't have any content
         GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
         
-        return AST::Impl(AST::Impl::TagNegative(), ::std::move(params),
-                ::std::move(impl_type), ::std::move(trait_path)
-                );
+        mod.add_neg_impl( AST::ImplDef( ::std::move(params), ::std::move(trait_path), ::std::move(impl_type) ) );
+        return ;
     }
     else
     {
@@ -723,7 +722,7 @@ AST::Impl Parse_Impl(TokenStream& lex, bool is_unsafe/*=false*/)
         Parse_Impl_Item(lex, impl);
     }
 
-    return impl;
+    mod.add_impl( ::std::move(impl) );
 }
 
 void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
@@ -1348,7 +1347,7 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
                 break;
                 }
             case TOK_RWORD_IMPL:
-                mod.add_impl(Parse_Impl(lex, true));
+                Parse_Impl(lex, mod, true);
                 break;
             default:
                 throw ParseError::Unexpected(lex, tok);
@@ -1374,7 +1373,7 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
             mod.add_enum(is_public, name, Parse_EnumDef(lex, meta_items));
             break; }
         case TOK_RWORD_IMPL:
-            mod.add_impl(Parse_Impl(lex));
+            Parse_Impl(lex, mod);
             break;
         case TOK_RWORD_TRAIT: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);

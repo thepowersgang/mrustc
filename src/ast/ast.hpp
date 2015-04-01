@@ -435,33 +435,48 @@ public:
     SERIALISABLE_PROTOTYPES();
 };
 
-class Impl:
+class ImplDef:
     public Serialisable
 {
     TypeParams  m_params;
     Path    m_trait;
     TypeRef m_type;
+public:
+    ImplDef() {}
+    ImplDef(TypeParams params, Path trait_type, TypeRef impl_type):
+        m_params( move(params) ),
+        m_trait( move(trait_type) ),
+        m_type( move(impl_type) )
+    {}
     
-    bool    m_is_negative;
+    // Accessors
+    const TypeParams& params() const { return m_params; }
+    const Path& trait() const { return m_trait; }
+    const TypeRef& type() const { return m_type; }
+    TypeParams& params() { return m_params; }
+    Path& trait() { return m_trait; }
+    TypeRef& type() { return m_type; }
+    
+    /// Compare this impl against a trait,type pair
+    bool matches(::std::vector<TypeRef>& types, const Path& trait, const TypeRef& type) const;
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const ImplDef& impl);
+    SERIALISABLE_PROTOTYPES();
+};
+
+class Impl:
+    public Serialisable
+{
+    ImplDef m_def;
+    
     ItemList<TypeRef>   m_types;
     ItemList<Function>  m_functions;
     
     ::std::vector< ::std::pair< ::std::vector<TypeRef>, Impl > > m_concrete_impls;
 public:
-    Impl(): m_is_negative(false) {}
+    Impl() {}
     Impl(TypeParams params, TypeRef impl_type, Path trait_type):
-        m_params( move(params) ),
-        m_trait( move(trait_type) ),
-        m_type( move(impl_type) ),
-        m_is_negative(true)
-    {}
-    
-    struct TagNegative {};
-    Impl(TagNegative, TypeParams params, TypeRef impl_type, Path trait_type):
-        m_params( move(params) ),
-        m_trait( move(trait_type) ),
-        m_type( move(impl_type) ),
-        m_is_negative(true)
+        m_def( move(params), move(trait_type), move(impl_type) )
     {}
 
     void add_function(bool is_public, ::std::string name, Function fcn) {
@@ -471,15 +486,11 @@ public:
         m_types.push_back( Item<TypeRef>( ::std::move(name), ::std::move(type), is_public ) );
     }
     
-    const TypeParams& params() const { return m_params; }
-    const Path& trait() const { return m_trait; }
-    const TypeRef& type() const { return m_type; }
+    const ImplDef& def() const { return m_def; }
     const ItemList<Function>& functions() const { return m_functions; }
     const ItemList<TypeRef>& types() const { return m_types; }
 
-    TypeParams& params() { return m_params; }
-    Path& trait() { return m_trait; }
-    TypeRef& type() { return m_type; }
+    ImplDef& def() { return m_def; }
     ItemList<Function>& functions() { return m_functions; }
     ItemList<TypeRef>& types() { return m_types; }
 
@@ -532,6 +543,7 @@ class Module:
     itemlist_enum_t m_enums;
     itemlist_struct_t m_structs;
     ::std::vector<Impl> m_impls;
+    ::std::vector<ImplDef> m_neg_impls;
 public:
     Module() {}
     Module(::std::string name):
@@ -574,6 +586,9 @@ public:
     }
     void add_impl(Impl impl) {
         m_impls.push_back( ::std::move(impl) );
+    }
+    void add_neg_impl(ImplDef impl) {
+        m_neg_impls.push_back( ::std::move(impl) );
     }
     void add_macro(bool is_exported, ::std::string name, MacroRules macro) {
         m_macros.push_back( Item<MacroRules>( move(name), move(macro), is_exported ) );

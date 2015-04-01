@@ -305,7 +305,7 @@ int TypeRef::equal_no_generic(const TypeRef& x) const
     case TypeRef::UNIT:
         return 0;
     case TypeRef::ANY:
-        throw CompileError::Todo("TypeRef::equal_no_generic - ANY");
+        return 0;
     case TypeRef::PRIMITIVE:
         if( m_core_type != x.m_core_type )  return -1;
         return 0;

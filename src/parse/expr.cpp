@@ -141,7 +141,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
         // - 'impl'
         case TOK_RWORD_IMPL:
             keep_mod = true;
-            local_mod->add_impl(Parse_Impl(lex, false));
+            Parse_Impl(lex, *local_mod, false);
             break;
         // - 'fn'
         case TOK_RWORD_FN:

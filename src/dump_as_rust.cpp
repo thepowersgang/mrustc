@@ -635,14 +635,14 @@ void RustPrinter::handle_module(const AST::Module& mod)
     {
         m_os << "\n";
         m_os << indent() << "impl";
-        print_params(i.params());
-        if( !(i.trait() == AST::Path()) )
+        print_params(i.def().params());
+        if( i.def().trait() != AST::Path() )
         {
-                m_os << " " << i.trait() << " for";
+                m_os << " " << i.def().trait() << " for";
         }
-        m_os << " " << i.type() << "\n";
+        m_os << " " << i.def().type() << "\n";
         
-        print_bounds(i.params());
+        print_bounds(i.def().params());
         m_os << indent() << "{\n";
         inc_indent();
         for( const auto& t : i.types() )

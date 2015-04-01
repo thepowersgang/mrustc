@@ -276,10 +276,9 @@ void CASTIterator::handle_function(AST::Path path, AST::Function& fcn)
     
     end_scope();
 }
-void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
+
+void CASTIterator::handle_impl_def(AST::ImplDef& impl)
 {
-    start_scope();
-    
     // First, so that handle_params can use it
     local_type("Self", impl.type());
     
@@ -291,6 +290,13 @@ void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
         handle_path( impl.trait(), MODE_TYPE );
     // Type
     handle_type( impl.type() );
+}
+
+void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
+{
+    start_scope();
+    
+    handle_impl_def(impl.def());   
     
     // Associated types
     for( auto& at : impl.types() )

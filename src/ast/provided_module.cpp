@@ -32,11 +32,10 @@ void AST_InitProvidedModule()
     g_compiler_module.add_impl(AST::Impl(AST::TypeParams(), TypeRef(), copy_marker_path));
     AST::TypeParams tps;
     tps.add_ty_param( AST::TypeParam("T") );
-    g_compiler_module.add_impl(AST::Impl(
-        AST::Impl::TagNegative(),
+    g_compiler_module.add_neg_impl(AST::ImplDef(
         ::std::move(tps),
-        TypeRef(TypeRef::TagUnsizedArray(), TypeRef(TypeRef::TagArg(), "T")),
-        copy_marker_path
+        copy_marker_path,
+        TypeRef(TypeRef::TagUnsizedArray(), TypeRef(TypeRef::TagArg(), "T"))
         ));
 }
 
