@@ -29,12 +29,12 @@ void AST_InitProvidedModule()
     
     // A hacky default impl of 'Sized', with a negative impl on [T]
     AST::Path   sized_marker_path({AST::PathNode("marker"),AST::PathNode("Sized")});
-    g_compiler_module.add_impl(AST::Impl(AST::TypeParams(), TypeRef(), copy_marker_path));
+    g_compiler_module.add_impl(AST::Impl(AST::TypeParams(), TypeRef(), sized_marker_path));
     AST::TypeParams tps;
     tps.add_ty_param( AST::TypeParam("T") );
     g_compiler_module.add_neg_impl(AST::ImplDef(
         ::std::move(tps),
-        copy_marker_path,
+        sized_marker_path,
         TypeRef(TypeRef::TagUnsizedArray(), TypeRef(TypeRef::TagArg(), "T"))
         ));
 }

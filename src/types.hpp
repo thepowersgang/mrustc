@@ -175,6 +175,7 @@ public:
     bool is_wildcard() const { return m_class == ANY; }
     
     bool is_unit() const { return m_class == UNIT; }
+    bool is_primitive() const { return m_class == PRIMITIVE; }
     bool is_path() const { return m_class == PATH; }
     bool is_type_param() const { return m_class == GENERIC; }
     bool is_reference() const { return m_class == REFERENCE; }

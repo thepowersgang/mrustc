@@ -674,6 +674,8 @@ public:
     const itemlist_struct_t&    structs() const { return m_structs; }
     const ::std::vector<Module*>&   anon_mods() const { return m_anon_modules; }
     
+    const ::std::vector<ImplDef>&   neg_impls() const { return m_neg_impls; }
+    
     const itemlist_macros_t&    macros()  const { return m_macros; }
     const macro_imports_t&      macro_imports()  const { return m_macro_imports; }
     const ::std::vector<ItemNS<const MacroRules*> >  macro_imports_res() const { return m_macro_import_res; }
@@ -688,6 +690,7 @@ class Crate:
     public Serialisable
 {
     ::std::vector<Impl*>    m_impl_index;
+    ::std::vector<const ImplDef*> m_neg_impl_index;
 public:
     Module  m_root_module;
     ::std::map< ::std::string, ExternCrate> m_extern_crates;
@@ -716,6 +719,8 @@ public:
     void iterate_functions( fcn_visitor_t* visitor );
 
     SERIALISABLE_PROTOTYPES();
+private:
+    bool check_impls_wildcard(const Path& trait, const TypeRef& type);
 };
 
 /// Representation of an imported crate

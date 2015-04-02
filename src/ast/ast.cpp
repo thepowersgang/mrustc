@@ -40,6 +40,7 @@ SERIALISE_TYPE(MetaItem::, "AST_MetaItem", {
 
 bool ImplDef::matches(::std::vector<TypeRef>& out_types, const Path& trait, const TypeRef& type) const
 {
+    TRACE_FUNCTION_F("m_trait=" << m_trait << ", m_type=" << m_type);
     // 1. Check the type/trait counting parameters as wildcards (but flagging if one was seen)
     //  > If that fails, just early return
     int trait_match = m_trait.equal_no_generic(trait);
@@ -204,9 +205,9 @@ void Crate::post_parse()
     // Iterate all modules, grabbing pointers to all impl blocks
     auto cb = [this](Module& mod){
         for( auto& impl : mod.impls() )
-        {
             m_impl_index.push_back( &impl );
-        }
+        for( auto& impl : mod.neg_impls() )
+            m_neg_impl_index.push_back( &impl );
         };
     iterate_module(m_root_module, cb);
     iterate_module(g_compiler_module, cb);
@@ -228,16 +229,45 @@ const Module& Crate::get_root_module(const ::std::string& name) const {
     throw ParseError::Generic("crate name unknown");
 }
 
-#if 0
 bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
 {
+    ::std::vector<TypeRef>  _params;
+    DEBUG("trait="<<trait);
     // 1. Look for a negative impl for this type
+    for( auto implptr : m_neg_impl_index )
+    {
+        const ImplDef& impl = *implptr;
+        
+        if( impl.matches(_params, trait, type) )
+        {
+            return false;
+        }
+    }
+    DEBUG("No negative impl of " << trait << " for " << type);
     // 2. Look for a positive impl for this type (i.e. an unsafe impl)
+    for( auto implptr : m_impl_index )
+    {
+        const Impl& impl = *implptr;
+        if( impl.def().matches(_params, trait, type) )
+        {
+            return true;
+        }
+    }
+    DEBUG("No positive impl of " << trait << " for " << type);
     // If none found, destructure the type
     // - structs need all fields to impl this trait (cache result)
-    // - 
+    // - same for enums, tuples, arrays, pointers...
+    // - traits check the Self bounds
+    if( type.is_primitive() ) {
+        return true;
+    }
+    else if( type.is_unit() ) {
+        return true;
+    }
+    else {
+        throw CompileError::Todo("wildcard impls - auto determine");
+    }
 }
-#endif
 
 ::rust::option<Impl&> Crate::find_impl(const Path& trait, const TypeRef& type)
 {
@@ -247,19 +277,22 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
     for( auto implptr : m_impl_index )
     {
         Impl& impl = *implptr;
-        ::rust::option<Impl&> oimpl = impl.matches(trait, TypeRef());
-        if( oimpl.is_some() )
+        ::std::vector<TypeRef>  _p;
+        if( impl.def().matches(_p, trait, TypeRef()) )
         {
             // This is a wildcard trait, need to locate either a negative, or check contents
-            //if( check_impls_wildcard(trait, type) )
-            //{
-            //    return ::rust::option<Impl&>(oimpl);
-            //}
-            throw CompileError::Todo("wildcard impls");
+            if( check_impls_wildcard(trait, type) )
+            {
+                return ::rust::option<Impl&>(impl);
+            }
+            else {
+                return ::rust::option<Impl&>();
+            }
         }
         
     }
     
+    DEBUG("Not wildcard");
     for( auto implptr : m_impl_index )
     {
         Impl& impl = *implptr;
