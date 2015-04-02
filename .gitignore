@@ -5,3 +5,7 @@
 /.obj
 *.swp
 /output
+
+/bnf/*.c
+/bnf/*.h
+/bnf/*.output
