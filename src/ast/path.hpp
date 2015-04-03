@@ -180,7 +180,10 @@ public:
     struct TagLocal {};
     Path(TagLocal, ::std::string name):
         m_class(LOCAL),
-        m_nodes({PathNode(name, {})})
+        m_nodes({PathNode( ::std::move(name), {} )})
+    {}
+    Path(::std::string name):
+        Path(TagLocal(), ::std::move(name))
     {}
     struct TagSuper {};
     Path(TagSuper):

@@ -57,6 +57,7 @@ int main(int argc, char *argv[])
     
         // Iterate all items in the AST, applying syntax extensions
         g_cur_phase = "Syn Exts";
+        Process_Decorators(crate);
         // TODO:
         
         g_cur_phase = "PostParse";

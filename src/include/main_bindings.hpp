@@ -5,13 +5,24 @@
 
 #include "../ast/ast.hpp"
 
+/// Parse a crate from the given file
 extern AST::Crate Parse_Crate(::std::string mainfile);
+/// Process #[] decorators
+extern void Process_Decorators(AST::Crate& crate);
+/// Resolve all in-text paths to absolute variants
 extern void ResolvePaths(AST::Crate& crate);
+/// Check that generic bounds are valid
 extern void Typecheck_GenericBounds(AST::Crate& crate);
+/// Check that parameters for generics are valid
 extern void Typecheck_GenericParams(AST::Crate& crate);
+/// Type resolution (and hence checking) for expressions
 extern void Typecheck_Expr(AST::Crate& crate);
+
+/// Convert the AST to a flat tree
 extern AST::Flat Convert_Flatten(const AST::Crate& crate);
 
+
+/// Dump the crate as annotated rust
 extern void Dump_Rust(const char *Filename, const AST::Crate& crate);
 
 #endif

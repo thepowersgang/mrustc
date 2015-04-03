@@ -208,7 +208,7 @@ struct ExprNode_CallMethod:
     ::std::vector<unique_ptr<ExprNode>> m_args;
 
     ExprNode_CallMethod() {}
-    ExprNode_CallMethod(unique_ptr<ExprNode>&& obj, PathNode&& method, ::std::vector<unique_ptr<ExprNode>>&& args):
+    ExprNode_CallMethod(unique_ptr<ExprNode> obj, PathNode method, ::std::vector<unique_ptr<ExprNode>> args):
         m_val( move(obj) ),
         m_method( move(method) ),
         m_args( move(args) )
@@ -479,7 +479,7 @@ struct ExprNode_Field:
     ::std::string   m_name;
 
     ExprNode_Field() {}
-    ExprNode_Field(::std::unique_ptr<ExprNode>&& obj, ::std::string&& name):
+    ExprNode_Field(::std::unique_ptr<ExprNode>&& obj, ::std::string name):
         m_obj( ::std::move(obj) ),
         m_name( ::std::move(name) )
     {
@@ -723,6 +723,7 @@ public:
     SERIALISABLE_PROTOTYPES();
 };
 
+typedef ::std::unique_ptr<AST::ExprNode>    ExprNodeP;
 }
 
 #endif

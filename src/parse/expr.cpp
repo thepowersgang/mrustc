@@ -17,10 +17,10 @@
 #include <iostream>
 #include "tokentree.hpp"
 
-typedef ::std::unique_ptr<AST::ExprNode>    ExprNodeP;
+using AST::ExprNode;
+using AST::ExprNodeP;
 static inline ExprNodeP mk_exprnodep(const TokenStream& lex, AST::ExprNode* en){en->set_pos(lex.getPosition()); return ExprNodeP(en); }
 #define NEWNODE(type, ...)  mk_exprnodep(lex, new type(__VA_ARGS__))
-using AST::ExprNode;
 
 ExprNodeP Parse_ExprBlockNode(TokenStream& lex);
 ExprNodeP Parse_Stmt(TokenStream& lex);

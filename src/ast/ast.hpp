@@ -170,6 +170,7 @@ public:
     const ::std::string& name() const { return m_name; }
     const ::std::string& string() const { return m_str_val; }
     bool has_sub_items() const { return m_sub_items.m_items.size() > 0; }
+    const MetaItems& items() const { return m_sub_items; }
     MetaItems& items() { return m_sub_items; }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const MetaItem& x) {
@@ -454,9 +455,11 @@ public:
         m_fields( move(fields) )
     {}
     
-    const TypeParams& params() const { return m_params; }
+    const MetaItems&    attrs()  const { return m_attrs; }
+    const TypeParams&   params() const { return m_params; }
     const ::std::vector<StructItem>& fields() const { return m_fields; }
     
+    MetaItems&  attrs()  { return m_attrs; }
     TypeParams& params() { return m_params; }
     ::std::vector<StructItem>& fields() { return m_fields; }
     

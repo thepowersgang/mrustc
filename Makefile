@@ -21,8 +21,11 @@ OBJ += parse/parseerror.o parse/lex.o
 OBJ += parse/root.o parse/paths.o parse/types.o parse/expr.o parse/pattern.o
 OBJ += dump_as_rust.o
 OBJ += convert/ast_iterate.o
+OBJ += convert/decorators.o
 OBJ += convert/resolve.o convert/typecheck_bounds.o convert/typecheck_params.o convert/typecheck_expr.o
 OBJ += convert/flatten.o convert/render.o
+OBJ += synexts/derive.o
+
 OBJ := $(addprefix $(OBJDIR),$(OBJ))
 
 

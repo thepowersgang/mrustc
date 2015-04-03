@@ -105,7 +105,9 @@ extern ::std::ostream&  operator<<(::std::ostream& os, const Token& tok);
 /// State the parser needs to pass down via a second channel.
 struct ParseState
 {
+    // Used for "for/if/while" to handle ambiguity
     bool disallow_struct_literal = false;
+    // A debugging hook that disables expansion of macros
     bool no_expand_macros = false;
     
     friend ::std::ostream& operator<<(::std::ostream& os, const ParseState& ps) {
