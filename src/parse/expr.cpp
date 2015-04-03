@@ -52,7 +52,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
 
     ::std::vector<ExprNodeP> nodes;
     
-    ::std::unique_ptr<AST::Module>    local_mod( new AST::Module("") );
+    ::std::unique_ptr<AST::Module>    local_mod( new AST::Module(AST::MetaItems(),"") );
     bool    keep_mod = false;
     
     const LList<AST::Module*>* prev_modstack = Macro_GetModule();
@@ -109,7 +109,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
             
             local_mod->statics().push_back( AST::Item<AST::Static>(
                 ::std::move(name),
-                AST::Static(AST::Static::CONST, ::std::move(type), ::std::move(val)),
+                AST::Static(mv$(item_attrs), AST::Static::CONST, mv$(type), mv$(val)),
                 false ) );
             break;
             }
@@ -130,14 +130,18 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
             auto val = Parse_Expr1(lex);
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
             
-            local_mod->add_global(false, is_mut, ::std::move(name), ::std::move(type), ::std::move(val));
+            local_mod->add_static(false, mv$(name),
+                AST::Static(mv$(item_attrs), (is_mut ? AST::Static::MUT : AST::Static::STATIC), mv$(type), mv$(val))
+                );
             break;
             }
         // - 'struct'
-        case TOK_RWORD_STRUCT:
+        case TOK_RWORD_STRUCT: {
             keep_mod = true;
-            Parse_Struct(*local_mod, lex, false, item_attrs);
-            break;
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            ::std::string name = tok.str();
+            local_mod->add_struct(false, mv$(name), Parse_Struct(lex, item_attrs));
+            break; }
         // - 'impl'
         case TOK_RWORD_IMPL:
             keep_mod = true;

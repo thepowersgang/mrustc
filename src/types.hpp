@@ -182,6 +182,7 @@ public:
     bool is_tuple() const { return m_class == TUPLE; }
     const ::std::string& type_param() const { assert(is_type_param()); return m_path[0].name(); }
     AST::Path& path() { assert(is_path()); return m_path; }
+
     const AST::Path& path() const { assert(is_path()); return m_path; }
     ::std::vector<TypeRef>& sub_types() { return m_inner_types; }
     const ::std::vector<TypeRef>& sub_types() const { return m_inner_types; }

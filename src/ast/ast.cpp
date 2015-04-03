@@ -40,7 +40,6 @@ SERIALISE_TYPE(MetaItem::, "AST_MetaItem", {
 
 bool ImplDef::matches(::std::vector<TypeRef>& out_types, const Path& trait, const TypeRef& type) const
 {
-    TRACE_FUNCTION_F("m_trait=" << m_trait << ", m_type=" << m_type);
     // 1. Check the type/trait counting parameters as wildcards (but flagging if one was seen)
     //  > If that fails, just early return
     int trait_match = m_trait.equal_no_generic(trait);
@@ -188,7 +187,7 @@ SERIALISE_TYPE(Impl::, "AST_Impl", {
 })
 
 Crate::Crate():
-    m_root_module(""),
+    m_root_module(MetaItems(), ""),
     m_load_std(true)
 {
 }
@@ -229,10 +228,19 @@ const Module& Crate::get_root_module(const ::std::string& name) const {
     throw ParseError::Generic("crate name unknown");
 }
 
+/**
+ * \brief Checks if a type implements the provided wildcard trait
+ * \param trait Trait path
+ * \param type  Type in question
+ * \note Wildcard trait = A trait for which there exists a 'impl Trait for ..' definition
+ *
+ * \return True if the trait is implemented (either exlicitly, or implicitly)
+ */
 bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
 {
     ::std::vector<TypeRef>  _params;
     DEBUG("trait="<<trait);
+    
     // 1. Look for a negative impl for this type
     for( auto implptr : m_neg_impl_index )
     {
@@ -244,6 +252,7 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
         }
     }
     DEBUG("No negative impl of " << trait << " for " << type);
+    
     // 2. Look for a positive impl for this type (i.e. an unsafe impl)
     for( auto implptr : m_impl_index )
     {
@@ -254,16 +263,18 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
         }
     }
     DEBUG("No positive impl of " << trait << " for " << type);
-    // If none found, destructure the type
+    
+    // 3. If none found, destructure the type
+    // Primitives always impl
+    if( type.is_primitive() || type.is_unit() ) {
+        return true;
+    }
+    else if( type.is_reference() ) {
+        return check_impls_wildcard(trait, type.sub_types()[0]);
+    }
     // - structs need all fields to impl this trait (cache result)
     // - same for enums, tuples, arrays, pointers...
     // - traits check the Self bounds
-    if( type.is_primitive() ) {
-        return true;
-    }
-    else if( type.is_unit() ) {
-        return true;
-    }
     else {
         throw CompileError::Todo("wildcard impls - auto determine");
     }

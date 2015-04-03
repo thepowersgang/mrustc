@@ -214,57 +214,6 @@ const LList<AST::Module*>* Macro_GetModule()
 
 void Macro_InitDefaults()
 {
-    #if 0
-    // try!() macro
-    {
-        MacroRule   rule;
-        rule.m_pattern.push_back( MacroPatEnt("val", MacroPatEnt::PAT_EXPR) );
-        // match $rule {
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_RWORD_MATCH)) );
-        rule.m_contents.push_back( MacroRuleEnt("val") );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_BRACE_OPEN)) );
-        // Ok(v) => v,
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_IDENT, "Ok")) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_PAREN_OPEN)) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_IDENT, "v")) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_PAREN_CLOSE)) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_FATARROW)) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_IDENT, "v")) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_COMMA)) );
-        // Err(e) => return Err(r),
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_IDENT, "Err")) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_PAREN_OPEN)) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_IDENT, "e")) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_PAREN_CLOSE)) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_FATARROW)) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_RWORD_RETURN)) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_IDENT, "Err")) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_PAREN_OPEN)) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_IDENT, "e")) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_PAREN_CLOSE)) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_COMMA)) );
-        // }
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_BRACE_CLOSE)) );
-        MacroRules  rules;
-        rules.push_back(rule);
-        g_macro_registrations.insert( make_pair(::std::string("try"), rules));
-    }
-    
-    // panic!() "macro"
-    {
-        MacroRule   rule;
-        rule.m_pattern.push_back( MacroPatEnt(Token(TOK_NULL), false, {
-            MacroPatEnt("tt", MacroPatEnt::PAT_TT), 
-            } ) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_PAREN_OPEN)) );
-        rule.m_contents.push_back( MacroRuleEnt(Token(TOK_PAREN_CLOSE)) );
-        
-        
-        MacroRules  rules;
-        rules.push_back(rule);
-        g_macro_registrations.insert( make_pair(::std::string("panic"), rules));
-    }
-    #endif
 }
 
 bool Macro_TryPattern(TTStream& lex, const MacroPatEnt& pat)
@@ -523,10 +472,11 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
     for( auto ent = g_macro_module; ent; ent = ent->m_prev )
     {
         const AST::Module& mm = *ent->m_item;
+        DEBUG("Module '" << mm.name() << "'");
         for( unsigned int i = mm.macros().size(); i --; )
         {
             const auto& m = mm.macros()[i];
-            DEBUG("" << m.name);
+            DEBUG("- [local] " << m.name);
             if( m.name == name )
             {
                 return Macro_InvokeInt(olex, m.name.c_str(), m.data, input);
@@ -535,7 +485,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
         
         for( const auto& mi : mm.macro_imports_res() )
         {
-            DEBUG("" << mi.name);
+            DEBUG("- [imp]" << mi.name);
             if( mi.name == name )
             {
                 return Macro_InvokeInt(olex, mi.name.c_str(), *mi.data, input);

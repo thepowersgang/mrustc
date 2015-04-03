@@ -10,6 +10,8 @@
 #include <sstream>
 
 #define FMT(ss)    (dynamic_cast< ::std::stringstream&>(::std::stringstream() << ss).str())
+// XXX: Evil hack - Define 'mv$' to be ::std::move
+#define mv$(x)    ::std::move(x)
 
 #include "include/debug.hpp"
 #include "include/rustic.hpp"	// slice and option

@@ -114,6 +114,77 @@ public:
     SERIALISABLE_PROTOTYPES();
 };
 
+//
+class MetaItem;
+
+class MetaItems:
+    public Serialisable
+{
+public:
+    ::std::vector<MetaItem> m_items;
+    
+    MetaItems() {}
+    MetaItems(::std::vector<MetaItem> items):
+        m_items(items)
+    {
+    }
+    
+    void push_back(MetaItem i);
+    
+    MetaItem* get(const char *name);
+    bool has(const char *name) {
+        return get(name) != 0;
+    }
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const MetaItems& x) {
+        return os << "[" << x.m_items << "]";
+    }
+    
+    SERIALISABLE_PROTOTYPES();
+};
+
+class MetaItem:
+    public Serialisable
+{
+    ::std::string   m_name;
+    MetaItems   m_sub_items;
+    ::std::string   m_str_val;
+public:
+    MetaItem() {}
+    MetaItem(::std::string name):
+        m_name(name)
+    {
+    }
+    MetaItem(::std::string name, ::std::string str_val):
+        m_name(name),
+        m_str_val(str_val)
+    {
+    }
+    MetaItem(::std::string name, ::std::vector<MetaItem> items):
+        m_name(name),
+        m_sub_items(items)
+    {
+    }
+    
+    void mark_used() {}
+    const ::std::string& name() const { return m_name; }
+    const ::std::string& string() const { return m_str_val; }
+    bool has_sub_items() const { return m_sub_items.m_items.size() > 0; }
+    MetaItems& items() { return m_sub_items; }
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const MetaItem& x) {
+        os << x.m_name;
+        if(x.m_sub_items.m_items.size())
+            os << "(" << x.m_sub_items.m_items << ")";
+        else
+            os << "=\"" << x.m_str_val << "\"";
+        return os;
+    }
+    
+    SERIALISABLE_PROTOTYPES();
+};
+
+
 template <typename T>
 struct ItemNS
 {
@@ -164,70 +235,16 @@ using ItemList = ::std::vector<Item<T> >;
 typedef Item<TypeRef>    StructItem;
 class Crate;
 
-class MetaItem;
-
-class MetaItems:
-    public Serialisable
-{
-public:
-    ::std::vector<MetaItem> m_items;
-    
-    MetaItems() {}
-    MetaItems(::std::vector<MetaItem> items):
-        m_items(items)
-    {
-    }
-    
-    void push_back(MetaItem i);
-    
-    MetaItem* get(const char *name);
-    bool has(const char *name) {
-        return get(name) != 0;
-    }
-    
-    SERIALISABLE_PROTOTYPES();
-};
-
-class MetaItem:
-    public Serialisable
-{
-    ::std::string   m_name;
-    MetaItems   m_sub_items;
-    ::std::string   m_str_val;
-public:
-    MetaItem() {}
-    MetaItem(::std::string name):
-        m_name(name)
-    {
-    }
-    MetaItem(::std::string name, ::std::string str_val):
-        m_name(name),
-        m_str_val(str_val)
-    {
-    }
-    MetaItem(::std::string name, ::std::vector<MetaItem> items):
-        m_name(name),
-        m_sub_items(items)
-    {
-    }
-    
-    void mark_used() {}
-    const ::std::string& name() const { return m_name; }
-    const ::std::string& string() const { return m_str_val; }
-    bool has_sub_items() const { return m_sub_items.m_items.size() > 0; }
-    MetaItems& items() { return m_sub_items; }
-    
-    SERIALISABLE_PROTOTYPES();
-};
-
 class TypeAlias:
     public Serialisable
 {
+    MetaItems   m_attrs;
     TypeParams  m_params;
     TypeRef m_type;
 public:
     TypeAlias() {}
-    TypeAlias(TypeParams params, TypeRef type):
+    TypeAlias(MetaItems attrs, TypeParams params, TypeRef type):
+        m_attrs( move(attrs) ),
         m_params( move(params) ),
         m_type( move(type) )
     {}
@@ -252,6 +269,7 @@ public:
         MUT,
     };
 private:
+    MetaItems   m_attrs;
     Class   m_class;
     TypeRef m_type;
     Expr    m_value;
@@ -259,7 +277,8 @@ public:
     Static():
         m_class(CONST)
     {}
-    Static(Class s_class, TypeRef type, Expr value):
+    Static(MetaItems attrs, Class s_class, TypeRef type, Expr value):
+        m_attrs( move(attrs) ),
         m_class(s_class),
         m_type( move(type) ),
         m_value( move(value) )
@@ -290,6 +309,7 @@ public:
     typedef ::std::vector< ::std::pair<AST::Pattern,TypeRef> >   Arglist;
 
 private:
+    MetaItems   m_attrs;
     Class   m_fcn_class;
     ::std::string   m_lifetime;
     TypeParams  m_params;
@@ -302,7 +322,8 @@ public:
     {}
     Function(const Function&) = delete;
     Function(Function&&) = default;
-    Function(TypeParams params, Class fcn_class, TypeRef ret_type, Arglist args):
+    Function(MetaItems attrs, TypeParams params, Class fcn_class, TypeRef ret_type, Arglist args):
+        m_attrs( move(attrs) ),
         m_fcn_class(fcn_class),
         m_params( move(params) ),
         m_rettype( move(ret_type) ),
@@ -331,12 +352,14 @@ public:
 class Trait:
     public Serialisable
 {
+    MetaItems   m_attrs;
     TypeParams  m_params;
     ItemList<TypeRef>   m_types;
     ItemList<Function>  m_functions;
 public:
     Trait() {}
-    Trait(TypeParams params):
+    Trait(MetaItems attrs, TypeParams params):
+        m_attrs( move(attrs) ),
         m_params(params)
     {
     }
@@ -362,6 +385,7 @@ public:
 struct EnumVariant:
     public Serialisable
 {
+    MetaItems   m_attrs;
     ::std::string   m_name;
     ::std::vector<TypeRef>  m_sub_types;
     int64_t m_value;
@@ -371,13 +395,15 @@ struct EnumVariant:
     {
     }
     
-    EnumVariant(::std::string name, int64_t value):
+    EnumVariant(MetaItems attrs, ::std::string name, int64_t value):
+        m_attrs( move(attrs) ),
         m_name( ::std::move(name) ),
         m_value( value )
     {
     }
     
-    EnumVariant(::std::string name, ::std::vector<TypeRef> sub_types):
+    EnumVariant(MetaItems attrs, ::std::string name, ::std::vector<TypeRef> sub_types):
+        m_attrs( move(attrs) ),
         m_name( ::std::move(name) ),
         m_sub_types( ::std::move(sub_types) ),
         m_value(0)
@@ -394,11 +420,13 @@ struct EnumVariant:
 class Enum:
     public Serialisable
 {
+    MetaItems   m_attrs;
     TypeParams    m_params;
     ::std::vector<EnumVariant>   m_variants;
 public:
     Enum() {}
-    Enum( TypeParams params, ::std::vector<EnumVariant> variants ):
+    Enum( MetaItems attrs, TypeParams params, ::std::vector<EnumVariant> variants ):
+        m_attrs( move(attrs) ),
         m_params( move(params) ),
         m_variants( move(variants) )
     {}
@@ -415,11 +443,13 @@ public:
 class Struct:
     public Serialisable
 {
+    MetaItems   m_attrs;
     TypeParams    m_params;
     ::std::vector<StructItem>   m_fields;
 public:
     Struct() {}
-    Struct( TypeParams params, ::std::vector<StructItem> fields ):
+    Struct( MetaItems attrs, TypeParams params, ::std::vector<StructItem> fields ):
+        m_attrs( move(attrs) ),
         m_params( move(params) ),
         m_fields( move(fields) )
     {}
@@ -438,12 +468,14 @@ public:
 class ImplDef:
     public Serialisable
 {
+    MetaItems   m_attrs;
     TypeParams  m_params;
     Path    m_trait;
     TypeRef m_type;
 public:
     ImplDef() {}
-    ImplDef(TypeParams params, Path trait_type, TypeRef impl_type):
+    ImplDef(MetaItems attrs, TypeParams params, Path trait_type, TypeRef impl_type):
+        m_attrs( move(attrs) ),
         m_params( move(params) ),
         m_trait( move(trait_type) ),
         m_type( move(impl_type) )
@@ -475,8 +507,8 @@ class Impl:
     ::std::vector< ::std::pair< ::std::vector<TypeRef>, Impl > > m_concrete_impls;
 public:
     Impl() {}
-    Impl(TypeParams params, TypeRef impl_type, Path trait_type):
-        m_def( move(params), move(trait_type), move(impl_type) )
+    Impl(MetaItems attrs, TypeParams params, TypeRef impl_type, Path trait_type):
+        m_def( move(attrs), move(params), move(trait_type), move(impl_type) )
     {}
 
     void add_function(bool is_public, ::std::string name, Function fcn) {
@@ -523,8 +555,8 @@ class Module:
     typedef ::std::vector< Item<MacroRules> >   itemlist_macros_t;
     typedef ::std::multimap< ::std::string, ::std::string > macro_imports_t;
     
+    MetaItems   m_attrs;
     ::std::string   m_name;
-    ::std::vector<MetaItem> m_attrs;
     itemlist_fcn_t  m_functions;
     itemlist_mod_t  m_submods;
     itemlist_use_t  m_imports;
@@ -546,7 +578,8 @@ class Module:
     ::std::vector<ImplDef> m_neg_impls;
 public:
     Module() {}
-    Module(::std::string name):
+    Module(MetaItems attrs, ::std::string name):
+        m_attrs( move(attrs) ),
         m_name(name)
     {
     }
@@ -563,17 +596,20 @@ public:
     void add_typealias(bool is_public, ::std::string name, TypeAlias alias) {
         m_type_aliases.push_back( Item<TypeAlias>( move(name), move(alias), is_public ) );
     }
-    void add_constant(bool is_public, ::std::string name, TypeRef type, Expr val) {
-        m_statics.push_back( Item<Static>( move(name), Static(Static::CONST, move(type), move(val)), is_public) );
-    }
-    void add_global(bool is_public, bool is_mut, ::std::string name, TypeRef type, Expr val) {
-        m_statics.push_back( Item<Static>( move(name), Static(is_mut ? Static::MUT : Static::STATIC, move(type), move(val)), is_public) );
+    //void add_constant(bool is_public, ::std::string name, TypeRef type, Expr val) {
+    //    m_statics.push_back( Item<Static>( move(name), Static(Static::CONST, move(type), move(val)), is_public) );
+    //}
+    //void add_global(bool is_public, bool is_mut, ::std::string name, TypeRef type, Expr val) {
+    //    m_statics.push_back( Item<Static>( move(name), Static(is_mut ? Static::MUT : Static::STATIC, move(type), move(val)), is_public) );
+    //}
+    void add_static(bool is_public, ::std::string name, Static item) {
+        m_statics.push_back( Item<Static>( move(name), ::std::move(item), is_public) );
     }
     void add_trait(bool is_public, ::std::string name, Trait trait) {
         m_traits.push_back( Item<Trait>( move(name), move(trait), is_public) );
     }
-    void add_struct(bool is_public, ::std::string name, TypeParams params, ::std::vector<StructItem> items) {
-        m_structs.push_back( Item<Struct>( move(name), Struct(move(params), move(items)), is_public) );
+    void add_struct(bool is_public, ::std::string name, Struct item) {
+        m_structs.push_back( Item<Struct>( move(name), move(item), is_public) );
     }
     void add_enum(bool is_public, ::std::string name, Enum inst) {
         m_enums.push_back( Item<Enum>( move(name), move(inst), is_public ) );
@@ -648,7 +684,7 @@ public:
     };
     ItemRef find_item(const ::std::string& needle, bool allow_leaves = true, bool ignore_private_wildcard = true) const;
     
-    ::std::vector<MetaItem>& attrs() { return m_attrs; } 
+    MetaItems& attrs() { return m_attrs; } 
     itemlist_fcn_t& functions() { return m_functions; }
     itemlist_mod_t& submods() { return m_submods; }
     itemlist_use_t& imports() { return m_imports; }
@@ -661,7 +697,7 @@ public:
     itemlist_struct_t&    structs() { return m_structs; }
     ::std::vector<Module*>&   anon_mods() { return m_anon_modules; }
 
-    const ::std::vector<MetaItem>& attrs() const { return m_attrs; } 
+    const MetaItems& attrs() const { return m_attrs; } 
     const itemlist_fcn_t& functions() const { return m_functions; }
     const itemlist_mod_t& submods() const { return m_submods; }
     const itemlist_use_t& imports() const { return m_imports; }

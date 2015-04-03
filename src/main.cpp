@@ -54,6 +54,11 @@ int main(int argc, char *argv[])
     {
         g_cur_phase = "Parse";
         AST::Crate crate = Parse_Crate(params.infile);
+    
+        // Iterate all items in the AST, applying syntax extensions
+        g_cur_phase = "Syn Exts";
+        // TODO:
+        
         g_cur_phase = "PostParse";
         crate.post_parse();
 

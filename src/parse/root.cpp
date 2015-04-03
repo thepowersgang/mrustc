@@ -287,7 +287,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
         lex.putback(tok);
     }
 
-    return AST::Function(::std::move(params), fcn_class, ::std::move(ret_type), ::std::move(args));
+    return AST::Function(::std::move(attrs), ::std::move(params), fcn_class, ::std::move(ret_type), ::std::move(args));
 }
 
 AST::Function Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self)
@@ -300,7 +300,7 @@ AST::Function Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST
     return ret;
 }
 
-AST::TypeAlias Parse_TypeAlias(TokenStream& lex, const AST::MetaItems meta_items)
+AST::TypeAlias Parse_TypeAlias(TokenStream& lex, AST::MetaItems meta_items)
 {
     TRACE_FUNCTION;
 
@@ -322,17 +322,15 @@ AST::TypeAlias Parse_TypeAlias(TokenStream& lex, const AST::MetaItems meta_items
     TypeRef type = Parse_Type(lex);
     GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
     
-    return AST::TypeAlias( ::std::move(params), ::std::move(type) );
+    return AST::TypeAlias( ::std::move(meta_items), ::std::move(params), ::std::move(type) );
 }
 
-void Parse_Struct(AST::Module& mod, TokenStream& lex, const bool is_public, const AST::MetaItems meta_items)
+AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems meta_items)
 {
     TRACE_FUNCTION;
 
     Token   tok;
 
-    GET_CHECK_TOK(tok, lex, TOK_IDENT);
-    ::std::string name = tok.str();
     tok = lex.getToken();
     AST::TypeParams params;
     if( tok.type() == TOK_LT )
@@ -366,12 +364,12 @@ void Parse_Struct(AST::Module& mod, TokenStream& lex, const bool is_public, cons
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
         if( refs.size() == 0 )
             throw ParseError::Generic(lex, "Use 'struct Name;' instead of 'struct Name();' ... ning-nong");
-        mod.add_struct(is_public, ::std::move(name), ::std::move(params), ::std::move(refs));
+        return AST::Struct(::std::move(meta_items), ::std::move(params), ::std::move(refs));
     }
     else if(tok.type() == TOK_SEMICOLON)
     {
         // Unit-like struct
-        mod.add_struct(is_public, name, params, ::std::vector<AST::StructItem>());
+        return AST::Struct(::std::move(meta_items), ::std::move(params), ::std::vector<AST::StructItem>());
     }
     else if(tok.type() == TOK_BRACE_OPEN)
     {
@@ -404,7 +402,7 @@ void Parse_Struct(AST::Module& mod, TokenStream& lex, const bool is_public, cons
         }
         if( items.size() == 0 )
             throw ParseError::Generic(lex, "Use 'struct Name;' instead of 'struct Name { }' ... ning-nong");
-        mod.add_struct(is_public, name, params, items);
+        return AST::Struct(::std::move(meta_items), ::std::move(params), ::std::move(items));
     }
     else
     {
@@ -444,7 +442,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
     }
 
     
-    AST::Trait trait(params);
+    AST::Trait trait(mv$(meta_items), mv$(params));
         
     CHECK_TOK(tok, TOK_BRACE_OPEN);
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
@@ -578,7 +576,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems meta_items)
             } while( GET_TOK(tok, lex) == TOK_COMMA );
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
             GET_TOK(tok, lex);
-            variants.push_back( AST::EnumVariant(::std::move(name), ::std::move(types)) );
+            variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), mv$(types)) );
         }
         else if( tok.type() == TOK_EQUAL )
         {
@@ -589,12 +587,12 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems meta_items)
                 lex.putback(tok);
             GET_CHECK_TOK(tok, lex, TOK_INTEGER);
             int64_t val = (is_neg ? -tok.intval() : tok.intval());
-            variants.push_back( AST::EnumVariant(::std::move(name), val) );
+            variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), val) );
             GET_TOK(tok, lex);
         }
         else
         {
-            variants.push_back( AST::EnumVariant(::std::move(name), ::std::vector<TypeRef>()) );
+            variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), ::std::vector<TypeRef>()) );
         }
         
         if( tok.type() != TOK_COMMA )
@@ -603,7 +601,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems meta_items)
     CHECK_TOK(tok, TOK_BRACE_CLOSE);
 
     
-    return AST::Enum( ::std::move(params), ::std::move(variants) );
+    return AST::Enum( mv$(meta_items), mv$(params), mv$(variants) );
 }
 
 /// Parse a meta-item declaration (either #![ or #[)
@@ -670,7 +668,7 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, bool is_unsafe/*=false*/)
         // negative impls can't have any content
         GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
         
-        mod.add_neg_impl( AST::ImplDef( ::std::move(params), ::std::move(trait_path), ::std::move(impl_type) ) );
+        mod.add_neg_impl( AST::ImplDef( AST::MetaItems(), ::std::move(params), ::std::move(trait_path), ::std::move(impl_type) ) );
         return ;
     }
     else
@@ -713,7 +711,8 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, bool is_unsafe/*=false*/)
     }
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
 
-    AST::Impl   impl( ::std::move(params), ::std::move(impl_type), ::std::move(trait_path) );
+    // TODO: Pass #[] attrs to impl blocks
+    AST::Impl   impl( AST::MetaItems(), ::std::move(params), ::std::move(impl_type), ::std::move(trait_path) );
 
     // A sequence of method implementations
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
@@ -1143,7 +1142,7 @@ MacroRule Parse_MacroRules_Var(TokenStream& lex)
 
 void Parse_MacroRules(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_items)
 {
-    TRACE_FUNCTION;
+    TRACE_FUNCTION_F("meta_items="<<meta_items);
     
     Token tok;
     
@@ -1197,25 +1196,13 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
         }
         lex.putback(tok);
+        DEBUG("meta_items = " << meta_items);
 
-        // Module visibility
-        bool    is_public = false;
-        if( GET_TOK(tok, lex) == TOK_RWORD_PUB )
+        if( GET_TOK(tok, lex) == TOK_MACRO )
         {
-            is_public = true;
-        }
-        else
-        {
-            lex.putback(tok);
-        }
-
-        // The actual item!
-        switch( GET_TOK(tok, lex) )
-        {
-        case TOK_MACRO:
             if( tok.str() == "macro_rules" )
             {
-                Parse_MacroRules(lex, mod, ::std::move(meta_items));
+                Parse_MacroRules(lex, mod, mv$(meta_items));
             }
             else
             {
@@ -1234,7 +1221,26 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
             // - Silently consume ';' after the macro
             if( GET_TOK(tok, lex) != TOK_SEMICOLON )
                 lex.putback(tok);
-            break;
+            continue ;
+        }
+        else {
+            lex.putback(tok);
+        }
+    
+        // Module visibility
+        bool    is_public = false;
+        if( GET_TOK(tok, lex) == TOK_RWORD_PUB )
+        {
+            is_public = true;
+        }
+        else
+        {
+            lex.putback(tok);
+        }
+
+        // The actual item!
+        switch( GET_TOK(tok, lex) )
+        {
         
         case TOK_RWORD_USE:
             Parse_Use(lex, [&mod,is_public](AST::Path p, std::string s) { mod.add_alias(is_public, p, s); });
@@ -1308,7 +1314,7 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
             GET_CHECK_TOK(tok, lex, TOK_EQUAL);
             AST::Expr val = Parse_Expr(lex, true);
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-            mod.add_constant(is_public, name, type, val);
+            mod.add_static(is_public, name, AST::Static(::std::move(meta_items), AST::Static::CONST, type, val));
             break; }
         case TOK_RWORD_STATIC: {
             tok = lex.getToken();
@@ -1328,7 +1334,9 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
             AST::Expr val = Parse_Expr(lex, true);
 
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-            mod.add_global(is_public, is_mut, name, type, val);
+            mod.add_static(is_public, name,
+                AST::Static(::std::move(meta_items), (is_mut ? AST::Static::MUT : AST::Static::STATIC), type, val)
+                );
             break; }
 
         case TOK_RWORD_UNSAFE:
@@ -1364,9 +1372,11 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
             ::std::string name = tok.str();
             mod.add_typealias(is_public, name, Parse_TypeAlias(lex, meta_items));
             break; }
-        case TOK_RWORD_STRUCT:
-            Parse_Struct(mod, lex, is_public, meta_items);
-            break;
+        case TOK_RWORD_STRUCT: {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            ::std::string name = tok.str();
+            mod.add_struct( is_public, name, Parse_Struct(lex, meta_items) );
+            break; }
         case TOK_RWORD_ENUM: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string name = tok.str();
@@ -1384,7 +1394,7 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
         case TOK_RWORD_MOD: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string name = tok.str();
-            AST::Module submod(name);
+            AST::Module submod(meta_items, name);
             DEBUG("Sub module '"<<name<<"'");
             switch( GET_TOK(tok, lex) )
             {
@@ -1402,9 +1412,9 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
                 {
                     throw ParseError::Generic( FMT("Can't load from files outside of mod.rs or crate root") );
                 }
-                else if( meta_items.has("path") )
+                else if( submod.attrs().has("path") )
                 {
-                    ::std::string newpath_dir  = path + meta_items.get("path")->string();
+                    ::std::string newpath_dir  = path + submod.attrs().get("path")->string();
                     ::std::ifstream ifs_dir (newpath_dir);
                     if( !ifs_dir.is_open() )
                     {
@@ -1535,7 +1545,7 @@ AST::Crate Parse_Crate(::std::string mainfile)
     lex.putback(tok);
     
     // Check for crate attributes
-    for( const auto& attr : rootmod.attrs() )
+    for( const auto& attr : rootmod.attrs().m_items )
     {
         if( attr.name() == "no_std" ) {
             crate.m_load_std = false;
