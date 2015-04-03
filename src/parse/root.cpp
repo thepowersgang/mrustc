@@ -1394,6 +1394,7 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
         case TOK_RWORD_MOD: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string name = tok.str();
+            // TODO: Remove this copy, by keeping record of macro_use()
             AST::Module submod(meta_items, name);
             DEBUG("Sub module '"<<name<<"'");
             switch( GET_TOK(tok, lex) )
