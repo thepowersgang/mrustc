@@ -307,7 +307,7 @@ Token Lexer::getTokenInt()
                     }
                     else if( isdigit(ch) ) {
                         num_mode = OCT;
-                        throw ParseError::Todo("Lex octal numbers");
+                        throw ParseError::Todo(*this, "Lex octal numbers");
                     }
                     else {
                         num_mode = DEC;
@@ -318,13 +318,34 @@ Token Lexer::getTokenInt()
                     while( isdigit(ch) ) {
                         val *= 10;
                         val += ch - '0';
-                        ch = this->getc();
+                        ch = this->getc_num();
                     }
                 }
 
                 if(ch == 'u' || ch == 'i') {
                     // Unsigned
-                    throw ParseError::Todo("Lex number suffixes");
+                    ::std::string   suffix;
+                    while( issym(ch) )
+                    {
+                        suffix.push_back(ch);
+                        ch = this->getc();
+                    }
+                    this->ungetc();
+                    
+                    if(0)   ;
+                    else if(suffix == "i8")  num_type = CORETYPE_I8;
+                    else if(suffix == "i16") num_type = CORETYPE_I16;
+                    else if(suffix == "i32") num_type = CORETYPE_I32;
+                    else if(suffix == "i64") num_type = CORETYPE_I64;
+                    else if(suffix == "isize") num_type = CORETYPE_INT;
+                    else if(suffix == "u8")  num_type = CORETYPE_U8;
+                    else if(suffix == "u16") num_type = CORETYPE_U16;
+                    else if(suffix == "u32") num_type = CORETYPE_U32;
+                    else if(suffix == "u64") num_type = CORETYPE_U64;
+                    else if(suffix == "usize") num_type = CORETYPE_UINT;
+                    else
+                        throw ParseError::Generic(*this, FMT("Unknown integer suffix '" << suffix << "'"));
+                    return Token(val, num_type);
                 }
                 else if( ch == '.' ) {
                     if( num_mode != DEC )
@@ -361,15 +382,12 @@ Token Lexer::getTokenInt()
                             ch = this->getc();
                         }
                         this->ungetc();
-                        if( suffix == "f32" ) {
-                            num_type = CORETYPE_F32;
-                        }
-                        else if( suffix == "f64" ) {
-                            num_type = CORETYPE_F64;
-                        }
-                        else {
+                        
+                        if(0)   ;
+                        else if(suffix == "f32") num_type = CORETYPE_F32;
+                        else if(suffix == "f64") num_type = CORETYPE_F64;
+                        else
                             throw ParseError::Generic( FMT("Unknown number suffix " << suffix) );
-                        }
                     }
                     else
                     {
