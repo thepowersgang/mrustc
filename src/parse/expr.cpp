@@ -640,6 +640,8 @@ bool Parse_IsTokValue(eTokenType tok_type)
     
     case TOK_MACRO:
     
+    case TOK_EXCLAM:
+    case TOK_DASH:
     case TOK_STAR:
     case TOK_AMP:
         return true;
@@ -995,6 +997,18 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         path = Parse_PathFrom(lex, AST::Path(AST::Path::TagUfcs(), ty, trait), PATH_GENERIC_EXPR);
         }
         if(0)
+    case TOK_RWORD_SELF:
+        {
+            if( LOOK_AHEAD(lex) != TOK_DOUBLE_COLON ) {
+                return NEWNODE( AST::ExprNode_NamedValue, AST::Path(AST::Path::TagLocal(), "self") );
+            }
+            else
+            {
+                GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+                path = Parse_Path(lex, false, PATH_GENERIC_EXPR);
+            }
+        }
+        if(0)
     case TOK_RWORD_SUPER:
         {
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
@@ -1040,8 +1054,6 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         return NEWNODE( AST::ExprNode_Bool, true );
     case TOK_RWORD_FALSE:
         return NEWNODE( AST::ExprNode_Bool, false );
-    case TOK_RWORD_SELF:
-        return NEWNODE( AST::ExprNode_NamedValue, AST::Path(AST::Path::TagLocal(), "self") );
     case TOK_PAREN_OPEN:
         if( GET_TOK(tok, lex) == TOK_PAREN_CLOSE )
         {

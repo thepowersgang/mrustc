@@ -350,12 +350,21 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems meta_items)
         ::std::vector<AST::StructItem>  refs;
         while(GET_TOK(tok, lex) != TOK_PAREN_CLOSE)
         {
+            AST::MetaItems  item_attrs;
+            while( tok.type() == TOK_ATTR_OPEN )
+            {
+                item_attrs.push_back( Parse_MetaItem(lex) );
+                GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+                GET_TOK(tok, lex);
+            }
+            
             bool    is_pub = false;
             if(tok.type() == TOK_RWORD_PUB)
                 is_pub = true;
             else
                 lex.putback(tok);
             
+            // TODO: Save item_attrs
             refs.push_back( AST::StructItem( "", Parse_Type(lex), is_pub ) );
             if( GET_TOK(tok, lex) != TOK_COMMA )
                 break;
@@ -394,9 +403,10 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems meta_items)
             ::std::string   name = tok.str();
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             TypeRef type = Parse_Type(lex);
+            
+            // TODO: Save item_attrs
             items.push_back( AST::StructItem( ::std::move(name), ::std::move(type), is_pub ) );
-            tok = lex.getToken();
-            if(tok.type() == TOK_BRACE_CLOSE)
+            if(GET_TOK(tok, lex) == TOK_BRACE_CLOSE)
                 break;
             CHECK_TOK(tok, TOK_COMMA);
         }
@@ -849,18 +859,6 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
     Token   tok;
     AST::Path   path = AST::Path( AST::Path::TagAbsolute() );
     
-    // Leading :: is allowed and ignored for the $crate feature
-    if( LOOK_AHEAD(lex) == TOK_DOUBLE_COLON ) {
-        GET_TOK(tok, lex);
-        // HACK! mrustc emits $crate as `::"crate-name"`
-        if( LOOK_AHEAD(lex) == TOK_STRING )
-        {
-            GET_CHECK_TOK(tok, lex, TOK_STRING);
-            path.set_crate(tok.str());
-            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-        }
-    }
-    
     switch( GET_TOK(tok, lex) )
     {
     case TOK_RWORD_SELF:
@@ -871,6 +869,20 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
         break;
     case TOK_IDENT:
         path.append( AST::PathNode(tok.str(), {}) );
+        break;
+    // Leading :: is allowed and ignored for the $crate feature
+    case TOK_DOUBLE_COLON:
+        // Absolute path
+        // HACK! mrustc emits $crate as `::"crate-name"`
+        if( LOOK_AHEAD(lex) == TOK_STRING )
+        {
+            GET_CHECK_TOK(tok, lex, TOK_STRING);
+            path.set_crate(tok.str());
+            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        }
+        else {
+            lex.putback(tok);
+        }
         break;
     default:
         throw ParseError::Unexpected(lex, tok);

@@ -110,7 +110,6 @@ public:
         const auto it_range = m_inner.equal_range( t_mapping_key { {layer, iteration}, name } );
         if( it_range.first == it_range.second ) {
             DEBUG("m_mappings = " << m_inner);
-            DEBUG("Can't find mapping");
             return nullptr;
         }
         
@@ -550,9 +549,13 @@ Token MacroExpander::realGetToken()
             // - Expand to a parameter
             else if( ent.name != "" )
             {
-                unsigned int parent_iter = (layer > 0 ? m_layer_iters.at(layer-1) : 0);
-                const size_t iter_idx = m_offsets.back().second;
-                const TokenTree* tt = m_mappings.get(layer, parent_iter, ent.name.c_str(), iter_idx);
+                const TokenTree* tt;
+                unsigned int search_layer = layer;
+                do {
+                    unsigned int parent_iter = (search_layer > 0 ? m_layer_iters.at(search_layer-1) : 0);
+                    const size_t iter_idx = m_offsets.at(search_layer).second;
+                    tt = m_mappings.get(search_layer, parent_iter, ent.name.c_str(), iter_idx);
+                } while( !tt && search_layer-- > 0 );
                 if( ! tt )
                 {
                     throw ParseError::Generic(*this, FMT("Cannot find '" << ent.name << "' for " << layer));
