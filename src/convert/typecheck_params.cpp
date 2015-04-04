@@ -66,10 +66,12 @@ public:
 // === CODE ===
 bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const AST::Path& trait) const
 {
+    TRACE_FUNCTION_F("name = " << name << ", trait = " << trait);
     const AST::TypeParams*  tps = nullptr;
     // Locate params set that contains the passed name
     for( const auto lt : m_types_stack )
     {
+        DEBUG("lt = " << lt.name);
         if( lt.name == name )
         {
             if( lt.source_params != nullptr ) {
@@ -78,7 +80,7 @@ bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const AS
             else {
                 DEBUG("Type name '" << name << "' isn't a param");
             }
-            break ;
+            //break ;
         }
     }
     
@@ -88,10 +90,10 @@ bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const AS
     }
     
     // Search bound list for the passed trait
-    TypeRef param_type(TypeRef::TagArg(), name);
     for( const auto& bound : tps->bounds() )
     {
-        if( bound.is_trait() && bound.test() == param_type )
+        DEBUG("bound = " << bound);
+        if( bound.is_trait() && bound.test().is_type_param() && bound.test().type_param() == name )
         {
             DEBUG("bound.type() {" << bound.bound() << "} == trait {" << trait << "}");
             if( bound.bound() == trait )
@@ -297,6 +299,7 @@ void CGenericParamChecker::end_scope()
 }
 void CGenericParamChecker::handle_params(AST::TypeParams& params)
 {
+    DEBUG("params = " << params);
     for( const auto& p : params.ty_params())
         m_types_stack.push_back( LocalType(p.name(), &params) );
 }
