@@ -10,6 +10,27 @@
 
 namespace AST {
 
+class GenericResolveClosure
+{
+    const TypeParams&   m_params;
+    const ::std::vector<TypeRef>&   m_args;
+public:
+    GenericResolveClosure(const TypeParams& params, const ::std::vector<TypeRef>& args):
+        m_params(params),
+        m_args(args)
+    {}
+    TypeRef operator()(const char *argname) {
+        for(unsigned int i = 0; i < m_params.ty_params().size(); i ++)
+        {
+            if( m_params.ty_params()[i].name() == argname ) {
+                return m_args.at(i);
+            }
+        }
+        throw ::std::runtime_error("BUGCHECK - Unknown arg in field type");
+    }
+};
+
+
 void MetaItems::push_back(MetaItem i)
 {
     m_items.push_back( ::std::move(i) );
@@ -272,10 +293,48 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
     else if( type.is_reference() ) {
         return check_impls_wildcard(trait, type.sub_types()[0]);
     }
-    // - structs need all fields to impl this trait (cache result)
-    // - same for enums, tuples, arrays, pointers...
-    // - traits check the Self bounds
+    else if( type.is_path() ) {
+        // - structs need all fields to impl this trait (cache result)
+        // - same for enums, tuples, arrays, pointers...
+        // - traits check the Self bounds
+        // CATCH: Need to handle recursion, keep a list of currently processing paths and assume true if found
+        switch(type.path().binding().type())
+        {
+        case AST::PathBinding::STRUCT: {
+            const auto &s = type.path().binding().bound_struct();
+            GenericResolveClosure   resolve_fn( s.params(), type.path().nodes().back().args() );
+            for(const auto& fld : s.fields())
+            {
+                TypeRef fld_ty = fld.data;
+                fld_ty.resolve_args( resolve_fn );
+                DEBUG("- Fld '" << fld.name << "' := " << fld.data << " => " << fld_ty);
+                // TODO: Defer failure until after all fields are processed
+                if( !check_impls_wildcard(trait, fld_ty) )
+                    return false;
+            }
+            return true; }
+        case AST::PathBinding::ENUM: {
+            const auto& i = type.path().binding().bound_enum();
+            GenericResolveClosure   resolve_fn( i.params(), type.path().nodes().back().args() );
+            for( const auto& var : i.variants() )
+            {
+                for( const auto& ty : var.m_sub_types )
+                {
+                    TypeRef real_ty = ty;
+                    real_ty.resolve_args( resolve_fn );
+                    DEBUG("- Var '" << var.m_name << "' := " << ty << " => " << real_ty);
+                    // TODO: Defer failure until after all fields are processed
+                    if( !check_impls_wildcard(trait, real_ty) )
+                        return false;
+                }
+            }
+            return true; }
+        default:
+            throw CompileError::Todo("wildcard impls - auto determine path");
+        }
+    }
     else {
+        DEBUG("type = " << type);
         throw CompileError::Todo("wildcard impls - auto determine");
     }
 }
@@ -779,15 +838,7 @@ TypeRef Struct::get_field_type(const char *name, const ::std::vector<TypeRef>& a
             if( args.size() )
             {
                 TypeRef res = f.data;
-                res.resolve_args( [&](const char *argname){
-                    for(unsigned int i = 0; i < m_params.ty_params().size(); i ++)
-                    {
-                        if( m_params.ty_params()[i].name() == argname ) {
-                            return args.at(i);
-                        }
-                    }
-                    throw ::std::runtime_error("BUGCHECK - Unknown arg in field type");
-                    });
+                res.resolve_args( GenericResolveClosure(m_params, args) );
                 return res;
             }
             else

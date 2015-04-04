@@ -47,6 +47,8 @@ class Deriver_Debug:
 public:
     AST::Impl handle_item(const AST::TypeParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
+        // TODO: be correct herhe and use "core" as the crate name
+        // - Requires handling the crate_name crate attribute correctly
         const AST::Path    debug_trait("", { AST::PathNode("fmt", {}), AST::PathNode("Debug", {}) });
         const TypeRef  ret_type(AST::Path("", {AST::PathNode("fmt",{}), AST::PathNode("Result",{})}) );
         const TypeRef  f_type(TypeRef::TagReference(), true,
