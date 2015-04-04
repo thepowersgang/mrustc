@@ -109,6 +109,31 @@ void Parse_WhereClause(TokenStream& lex, AST::TypeParams& params)
         {
             throw ParseError::Todo(lex, "Lifetime bounds in 'where' clauses");
         }
+        // Higher-ranked types/lifetimes
+        else if( tok.type() == TOK_RWORD_FOR )
+        {
+            ::std::vector< ::std::string>   lifetimes;
+            GET_CHECK_TOK(tok, lex, TOK_LT);
+            do {
+                switch(GET_TOK(tok, lex))
+                {
+                case TOK_LIFETIME:
+                    lifetimes.push_back(tok.str());
+                    break;    
+                default:
+                    throw ParseError::Unexpected(lex, tok, Token(TOK_LIFETIME));
+                }
+            } while( GET_TOK(tok, lex) == TOK_COMMA );
+            CHECK_TOK(tok, TOK_GT);
+            
+            // Parse a bound as normal
+            TypeRef type = Parse_Type(lex);
+            GET_CHECK_TOK(tok, lex, TOK_COLON);
+            Parse_TypeBound(lex, params, type);
+            
+            // And store the higher-ranked lifetime list
+            params.bounds().back().set_higherrank( mv$(lifetimes) );
+        }
         else
         {
             lex.putback(tok);

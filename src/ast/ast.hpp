@@ -56,6 +56,7 @@ class GenericBound:
     ::std::string   m_lifetime_bound;   // if "", use m_trait
     bool    m_optional;
     AST::Path   m_trait;
+    ::std::vector< ::std::string>   m_hrls; // Higher-ranked lifetimes
 public:
     
     GenericBound() {}
@@ -72,6 +73,10 @@ public:
         m_optional(optional),
         m_trait( ::std::move(trait) )
     { }
+    
+    void set_higherrank( ::std::vector< ::std::string> hrls ) {
+        m_hrls = mv$(hrls);
+    }
     
     bool is_trait() const { return m_lifetime_bound == ""; }
     const ::std::string& lifetime() const { return m_lifetime_bound; }
