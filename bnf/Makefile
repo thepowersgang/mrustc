@@ -1,6 +1,11 @@
 
 .SUFFIXES:
 
+all: test.bin
+
+test: test.bin ../samples/1.rs
+	./test.bin < ../samples/1.rs
+
 test.bin: rust.tab.c rust.lex.c
 	gcc rust.tab.c rust.lex.c -o $@
 	
