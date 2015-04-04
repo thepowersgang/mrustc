@@ -342,9 +342,23 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
 
 ::rust::option<Impl&> Crate::find_impl(const Path& trait, const TypeRef& type)
 {
-    // TODO: Do a sort to allow a binary search
     DEBUG("trait = " << trait << ", type = " << type);
     
+    // 0. Handle generic bounds
+    // TODO: Handle more complex bounds like "[T]: Trait"
+    if( type.is_type_param() )
+    {
+        // Obtain the relevant TypeParams structure
+        // - TODO: this structure should be pointed to by TypeRef
+        // Search bounds for type: trait
+        // If found, success!
+        // Else, failure
+        // TODO: What should be returned, kinda need to return a boolean
+    }
+    
+    // TODO: Do a sort to allow a binary search
+    // 1. Search for wildcard traits (i.e. ones like "impl Send for ..")
+    // - These require special handling, as negatives apply
     for( auto implptr : m_impl_index )
     {
         Impl& impl = *implptr;
@@ -363,6 +377,7 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
         
     }
     
+    // 2. Check real impls
     DEBUG("Not wildcard");
     for( auto implptr : m_impl_index )
     {
