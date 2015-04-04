@@ -348,12 +348,21 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
     // TODO: Handle more complex bounds like "[T]: Trait"
     if( type.is_type_param() )
     {
+        assert(type.type_params_ptr());
         // Obtain the relevant TypeParams structure
+        const TypeParams& tps = *type.type_params_ptr();
         // - TODO: this structure should be pointed to by TypeRef
         // Search bounds for type: trait
-        // If found, success!
+        for( const auto& bound : tps.bounds() )
+        {
+            if( bound.is_trait() && bound.test() == type && bound.bound() == trait ) {
+                // If found, success!
+                // TODO: What should be returned, kinda need to return a boolean
+                throw CompileError::Todo("find_impl - Return successful impl for generic");
+            }
+        }
         // Else, failure
-        // TODO: What should be returned, kinda need to return a boolean
+        return ::rust::option<Impl&>();
     }
     
     // TODO: Do a sort to allow a binary search

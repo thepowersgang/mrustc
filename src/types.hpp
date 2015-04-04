@@ -65,6 +65,10 @@ class TypeRef:
     AST::Path   m_path; // local = argument
     ::std::vector<TypeRef>  m_inner_types;
     ::std::shared_ptr<AST::ExprNode>    m_size_expr; //< Can be null (unsized array)
+    
+    /// A generic pointer, used for tagging with extra information
+    /// e.g. The source TypeParams for GENERIC
+    const void* m_tagged_ptr;
 public:
     TypeRef():
         m_class(ANY)
@@ -137,7 +141,8 @@ public:
     struct TagArg {};
     TypeRef(TagArg, ::std::string name):
         m_class(GENERIC),
-        m_path({AST::PathNode(name, {})})
+        m_path( ::std::move(name) ),
+        m_tagged_ptr(nullptr)
     {}
     TypeRef(::std::string name):
         TypeRef(TagArg(), ::std::move(name))
@@ -176,15 +181,23 @@ public:
     
     bool is_unit() const { return m_class == UNIT; }
     bool is_primitive() const { return m_class == PRIMITIVE; }
+    
     bool is_path() const { return m_class == PATH; }
+    const AST::Path& path() const { assert(is_path()); return m_path; }
+    AST::Path& path() { assert(is_path()); return m_path; }
+    
     bool is_type_param() const { return m_class == GENERIC; }
+    const ::std::string& type_param() const { assert(is_type_param()); return m_path[0].name(); }
+    void set_type_params_ptr(const AST::TypeParams& p) { assert(is_type_param()); m_tagged_ptr = &p; };
+    const AST::TypeParams* type_params_ptr() const {
+        assert(is_type_param());
+        return reinterpret_cast<const AST::TypeParams*>(m_tagged_ptr);
+    }
+    
     bool is_reference() const { return m_class == REFERENCE; }
     bool is_pointer() const { return m_class == POINTER; }
     bool is_tuple() const { return m_class == TUPLE; }
-    const ::std::string& type_param() const { assert(is_type_param()); return m_path[0].name(); }
-    AST::Path& path() { assert(is_path()); return m_path; }
 
-    const AST::Path& path() const { assert(is_path()); return m_path; }
     ::std::vector<TypeRef>& sub_types() { return m_inner_types; }
     const ::std::vector<TypeRef>& sub_types() const { return m_inner_types; }
     
