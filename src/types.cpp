@@ -296,7 +296,7 @@ bool TypeRef::is_concrete() const
 int TypeRef::equal_no_generic(const TypeRef& x) const
 {
     DEBUG(*this << ", " << x);
-    if( m_class == TypeRef::GENERIC || x.m_class == TypeRef::GENERIC )
+    if( m_class == TypeRef::GENERIC ) //|| x.m_class == TypeRef::GENERIC )
         return 1;
     if( m_class != x.m_class )  return -1;
     switch(m_class)
@@ -314,9 +314,30 @@ int TypeRef::equal_no_generic(const TypeRef& x) const
         throw CompileError::Todo("TypeRef::equal_no_generic - FUNCTION");
     case TypeRef::PATH:
         return m_path.equal_no_generic( x.m_path );
-    default:
-        throw CompileError::Todo("TypeRef::equal_no_generic");
+    case TypeRef::REFERENCE:
+    case TypeRef::POINTER:
+        return m_inner_types[0].equal_no_generic( x.m_inner_types[0] );
+    case TypeRef::ARRAY:
+        if( m_size_expr.get() || x.m_size_expr.get() )
+            throw CompileError::Todo("TypeRef::equal_no_generic - sized array");
+        return m_inner_types[0].equal_no_generic( x.m_inner_types[0] );
+    case TypeRef::TUPLE: {
+        bool fuzzy = false;
+        if( m_inner_types.size() != x.m_inner_types.size() )
+            return -1;
+        for( unsigned int i = 0; i < m_inner_types.size(); i ++ )
+        {
+            int rv = m_inner_types[i].equal_no_generic( x.m_inner_types[i] );
+            if(rv < 0)  return -1;
+            if(rv > 0)  fuzzy = true;
+        }
+        return (fuzzy ? 1 : 0); }
+    case TypeRef::MULTIDST:
+        throw CompileError::Todo("TypeRef::equal_no_generic - MULTIDST");
+    case TypeRef::GENERIC:
+        throw CompileError::BugCheck("equal_no_generic - Generic should have been handled above");
     }
+    throw CompileError::BugCheck("equal_no_generic - Ran off end");
 }
 Ordering TypeRef::ord(const TypeRef& x) const
 {

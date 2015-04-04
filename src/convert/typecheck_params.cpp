@@ -71,7 +71,6 @@ bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const AS
     // Locate params set that contains the passed name
     for( const auto lt : m_types_stack )
     {
-        DEBUG("lt = " << lt.name);
         if( lt.name == name )
         {
             if( lt.source_params != nullptr ) {
@@ -79,6 +78,7 @@ bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const AS
             }
             else {
                 DEBUG("Type name '" << name << "' isn't a param");
+                return has_impl(lt.fixed_type, trait);
             }
             //break ;
         }
@@ -219,7 +219,6 @@ void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::s
             
             auto trait = bound.bound();
             trait.resolve_args(ra_fcn);
-            // TODO: Also resolve args in the trait
             
             // Check if 'type' impls 'trait'
             if( !has_impl(bound_type, trait) )
@@ -296,6 +295,8 @@ void CGenericParamChecker::end_scope()
     assert( m_types_stack.size() > 0 );
     while( !m_types_stack.back().is_separator() )
         m_types_stack.pop_back();
+    // pop the separator
+    m_types_stack.pop_back();
 }
 void CGenericParamChecker::handle_params(AST::TypeParams& params)
 {

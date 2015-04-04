@@ -139,43 +139,36 @@ SERIALISE_TYPE(ImplDef::, "AST_ImplDef", {
     }
     else
     {
-        if( param_types.size() > 0 )
-        { 
-            for( auto& i : m_concrete_impls )
-            {
-                if( i.first == param_types )
-                {
-                    return ::rust::option<Impl&>(i.second);
-                }
-            }
-            
-            m_concrete_impls.push_back( make_pair(param_types, this->make_concrete(param_types)) );
-            return ::rust::option<Impl&>( m_concrete_impls.back().second );
-        }
+        //if( param_types.size() > 0 )
+        //{ 
+        //    for( auto& i : m_concrete_impls )
+        //    {
+        //        if( i.first == param_types )
+        //        {
+        //            return ::rust::option<Impl&>(i.second);
+        //        }
+        //    }
+        //    
+        //    m_concrete_impls.push_back( make_pair(param_types, this->make_concrete(param_types)) );
+        //    return ::rust::option<Impl&>( m_concrete_impls.back().second );
+        //}
     }
     return ::rust::option<Impl&>( *this );
 }
 
 Impl Impl::make_concrete(const ::std::vector<TypeRef>& types) const
 {
-    DEBUG("types={" << types << "}");
+    TRACE_FUNCTION_F("*this = " << *this << ", types={" << types << "}");
+    assert(m_def.params().ty_params().size());
+    
+    GenericResolveClosure   resolver(m_def.params(), types);
+    
+    Impl    ret( MetaItems(), TypeParams(), m_def.type(), m_def.trait() );
+    ret.m_def.trait().resolve_args( resolver );
+    ret.m_def.type().resolve_args( resolver );
+    
     throw ParseError::Todo("Impl::make_concrete");
 /*
-    INDENT();
-    
-    assert(m_params.n_params());
-    
-    Impl    ret( TypeParams(), m_trait, m_type );
-    
-    auto resolver = [&](const char *name) {
-        int idx = m_params.find_name(name);
-        assert(idx >= 0);
-        return types[idx];
-        };
-    
-    ret.m_trait.resolve_args(resolver);
-    ret.m_type.resolve_args(resolver);
-    
     for(const auto& fcn : m_functions)
     {
         TypeParams  new_fcn_params = fcn.data.params();
@@ -260,7 +253,7 @@ const Module& Crate::get_root_module(const ::std::string& name) const {
 bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
 {
     ::std::vector<TypeRef>  _params;
-    DEBUG("trait="<<trait);
+    TRACE_FUNCTION_F("trait="<<trait<<", type="<<type);
     
     // 1. Look for a negative impl for this type
     for( auto implptr : m_neg_impl_index )
@@ -292,6 +285,14 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
     }
     else if( type.is_reference() ) {
         return check_impls_wildcard(trait, type.sub_types()[0]);
+    }
+    else if( type.is_pointer() ) {
+        return check_impls_wildcard(trait, type.sub_types()[0]);
+    }
+    else if( type.is_type_param() ) {
+        // TODO: Include an annotation to the TypeParams structure relevant to this type
+        // - Allows searching the params for the impl, without having to pass the params down
+        throw CompileError::Todo("check_impls_wildcard - param");
     }
     else if( type.is_path() ) {
         // - structs need all fields to impl this trait (cache result)
