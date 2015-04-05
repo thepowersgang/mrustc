@@ -284,10 +284,10 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
         return true;
     }
     else if( type.is_reference() ) {
-        return find_impl(trait, type.sub_types()[0]).is_some();
+        return find_impl(trait, type.sub_types()[0], nullptr);
     }
     else if( type.is_pointer() ) {
-        return find_impl(trait, type.sub_types()[0]).is_some();
+        return find_impl(trait, type.sub_types()[0], nullptr);
     }
     else if( type.is_type_param() ) {
         // TODO: Include an annotation to the TypeParams structure relevant to this type
@@ -310,7 +310,7 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
                 fld_ty.resolve_args( resolve_fn );
                 DEBUG("- Fld '" << fld.name << "' := " << fld.data << " => " << fld_ty);
                 // TODO: Defer failure until after all fields are processed
-                if( !find_impl(trait, fld_ty).is_some() )
+                if( !find_impl(trait, fld_ty, nullptr) )
                     return false;
             }
             return true; }
@@ -325,7 +325,7 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
                     real_ty.resolve_args( resolve_fn );
                     DEBUG("- Var '" << var.m_name << "' := " << ty << " => " << real_ty);
                     // TODO: Defer failure until after all fields are processed
-                    if( !find_impl(trait, real_ty).is_some() )
+                    if( !find_impl(trait, real_ty, nullptr) )
                         return false;
                 }
             }

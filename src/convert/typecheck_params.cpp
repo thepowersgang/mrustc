@@ -123,8 +123,7 @@ bool CGenericParamChecker::has_impl(const TypeRef& type, const AST::Path& trait)
     else
     {
         // Search all known impls of this trait (TODO: keep a list at the crate level) for a match to this type
-        auto i = m_crate.find_impl(trait, type);
-        if( i.is_none() ) {
+        if( m_crate.find_impl(trait, type, NULL) == false ) {
             DEBUG("- Nope");
             return false;
         }
