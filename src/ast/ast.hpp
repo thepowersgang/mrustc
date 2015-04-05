@@ -1,3 +1,10 @@
+/*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * ast/ast.hpp
+ * - Core AST header
+ */
 #ifndef AST_HPP_INCLUDED
 #define AST_HPP_INCLUDED
 
@@ -755,7 +762,16 @@ public:
  
     void post_parse();
     
-    ::rust::option<Impl&> find_impl(const Path& trait, const TypeRef& type);
+    bool find_impl(const Path& trait, const TypeRef& type, Impl** out_impl);
+    ::rust::option<Impl&> find_impl(const Path& trait, const TypeRef& type) {
+        Impl*   impl_ptr;
+        if( find_impl(trait, type, &impl_ptr) ) {
+            return ::rust::option<Impl&>(*impl_ptr);
+        }
+        else {
+            return ::rust::option<Impl&>();
+        }
+    }
     Function& lookup_method(const TypeRef& type, const char *name);
     
     void load_extern_crate(::std::string name);

@@ -378,8 +378,16 @@ Ordering TypeRef::ord(const TypeRef& x) const
         }
         return OrdEqual;
     case TypeRef::GENERIC:
-        DEBUG(*this << " == " << x);
-        throw ::std::runtime_error("BUGCHECK - Can't compare generic type");
+        if( m_tagged_ptr != x.m_tagged_ptr )
+        {
+            DEBUG(*this << " == " << x);
+            if( m_tagged_ptr )   DEBUG("- (L) " << *type_params_ptr());
+            if( x.m_tagged_ptr ) DEBUG("- (R) " << *x.type_params_ptr());
+            throw ::std::runtime_error("BUGCHECK - Can't compare mismatched generic types");
+        }
+        else {
+        }
+        return m_path.ord( x.m_path );
     case TypeRef::PATH:
         return m_path.ord( x.m_path );
     case TypeRef::MULTIDST:

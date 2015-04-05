@@ -144,6 +144,11 @@ public:
         m_path( ::std::move(name) ),
         m_tagged_ptr(nullptr)
     {}
+    TypeRef(TagArg, ::std::string name, const AST::TypeParams& params):
+        m_class(GENERIC),
+        m_path( ::std::move(name) ),
+        m_tagged_ptr(&params)
+    {}
     TypeRef(::std::string name):
         TypeRef(TagArg(), ::std::move(name))
     {}

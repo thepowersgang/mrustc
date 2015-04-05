@@ -28,7 +28,7 @@ void CASTIterator::handle_params(AST::TypeParams& params)
     for( auto& param : params.ty_params() )
     {
         handle_type(param.get_default());
-        local_type( param.name(), TypeRef(TypeRef::TagArg(), param.name()) );
+        local_type( param.name(), TypeRef(TypeRef::TagArg(), param.name(), params) );
     }
     DEBUG("Bounds");
     for( auto& bound : params.bounds() )

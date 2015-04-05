@@ -284,10 +284,10 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
         return true;
     }
     else if( type.is_reference() ) {
-        return check_impls_wildcard(trait, type.sub_types()[0]);
+        return find_impl(trait, type.sub_types()[0]).is_some();
     }
     else if( type.is_pointer() ) {
-        return check_impls_wildcard(trait, type.sub_types()[0]);
+        return find_impl(trait, type.sub_types()[0]).is_some();
     }
     else if( type.is_type_param() ) {
         // TODO: Include an annotation to the TypeParams structure relevant to this type
@@ -310,7 +310,7 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
                 fld_ty.resolve_args( resolve_fn );
                 DEBUG("- Fld '" << fld.name << "' := " << fld.data << " => " << fld_ty);
                 // TODO: Defer failure until after all fields are processed
-                if( !check_impls_wildcard(trait, fld_ty) )
+                if( !find_impl(trait, fld_ty).is_some() )
                     return false;
             }
             return true; }
@@ -325,7 +325,7 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
                     real_ty.resolve_args( resolve_fn );
                     DEBUG("- Var '" << var.m_name << "' := " << ty << " => " << real_ty);
                     // TODO: Defer failure until after all fields are processed
-                    if( !check_impls_wildcard(trait, real_ty) )
+                    if( !find_impl(trait, real_ty).is_some() )
                         return false;
                 }
             }
@@ -340,9 +340,11 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
     }
 }
 
-::rust::option<Impl&> Crate::find_impl(const Path& trait, const TypeRef& type)
+bool Crate::find_impl(const Path& trait, const TypeRef& type, Impl** out_impl)
 {
     DEBUG("trait = " << trait << ", type = " << type);
+    
+    if(out_impl)    *out_impl = nullptr;
     
     // 0. Handle generic bounds
     // TODO: Handle more complex bounds like "[T]: Trait"
@@ -355,14 +357,19 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
         // Search bounds for type: trait
         for( const auto& bound : tps.bounds() )
         {
+            DEBUG("bound = " << bound);
             if( bound.is_trait() && bound.test() == type && bound.bound() == trait ) {
                 // If found, success!
+                DEBUG("- Success!");
                 // TODO: What should be returned, kinda need to return a boolean
-                throw CompileError::Todo("find_impl - Return successful impl for generic");
+                if(out_impl)    throw CompileError::BugCheck("find_impl - Asking for a concrete impl, but generic passed");
+                return true;
             }
         }
         // Else, failure
-        return ::rust::option<Impl&>();
+        DEBUG("- No impl :(");
+        if(out_impl)    throw CompileError::BugCheck("find_impl - Asking for a concrete impl, but generic passed");
+        return false;
     }
     
     // TODO: Do a sort to allow a binary search
@@ -377,10 +384,11 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
             // This is a wildcard trait, need to locate either a negative, or check contents
             if( check_impls_wildcard(trait, type) )
             {
-                return ::rust::option<Impl&>(impl);
+                if(out_impl)    *out_impl = &impl;
+                return true;
             }
             else {
-                return ::rust::option<Impl&>();
+                return false;
             }
         }
         
@@ -395,11 +403,12 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
         ::rust::option<Impl&> oimpl = impl.matches(trait, type);
         if( oimpl.is_some() )
         {
-            return oimpl.unwrap();
+            if(out_impl)    *out_impl = &oimpl.unwrap();
+            return true;
         }
     }
     DEBUG("No impl of " << trait << " for " << type);
-    return ::rust::option<Impl&>();
+    return false;
 }
 
 Function& Crate::lookup_method(const TypeRef& type, const char *name)

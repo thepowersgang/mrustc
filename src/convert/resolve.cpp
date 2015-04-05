@@ -408,7 +408,8 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
                         throw ParseError::Generic("Type used in expression context?");
                     // Convert to a UFCS path
                     DEBUG("Local type");
-                    auto np = AST::Path(AST::Path::TagUfcs(), TypeRef(TypeRef::TagArg(), path[0].name()), TypeRef());
+                    // - "<Type as _>::nodes"
+                    auto np = AST::Path(AST::Path::TagUfcs(), local.tr, TypeRef());
                     DEBUG("np = " << np);
                     np.add_tailing(path);
                     DEBUG("np = " << np);
@@ -484,20 +485,40 @@ void CPathResolver::handle_type(TypeRef& type)
     if( type.is_path() && type.path().is_trivial() )
     {
         const auto& name = type.path()[0].name();
+        auto opt_local = lookup_local(LocalItem::TYPE, name);
          
         if( name == "Self" )
         {
             // TODO: Handle "Self" correctly
-            // THIS IS WRONG! (well, I think)
+            // - Needs to be tagged with the soure params, but since Self is special...
+            // - Shouldn't matter, as Self should be resolved out before it needs that tagging
             type = TypeRef(TypeRef::TagArg(), "Self");
         }
-        else if( lookup_local(LocalItem::TYPE, name).is_some() )
+        else if( opt_local.is_some() )
         {
-            type = TypeRef(TypeRef::TagArg(), name);
+            type = opt_local.unwrap().tr;
         }
         else
         {
             // Not a type param, fall back to other checks
+        }
+    }
+    else if( type.is_type_param() )
+    {
+        const auto& name = type.type_param();
+        auto opt_local = lookup_local(LocalItem::TYPE, name);
+        if( name == "Self" )
+        {
+            // Good as it is
+        }
+        else if( opt_local.is_some() )
+        {
+            type = opt_local.unwrap().tr;
+        }
+        else
+        {
+            // Not a type param, fall back to other checks
+            throw CompileError::Generic( FMT("CPathResolver::handle_type - Invalid parameter '" << name << "'") );
         }
     }
     
