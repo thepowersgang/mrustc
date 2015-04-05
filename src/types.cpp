@@ -295,7 +295,7 @@ bool TypeRef::is_concrete() const
 
 int TypeRef::equal_no_generic(const TypeRef& x) const
 {
-    DEBUG(*this << ", " << x);
+    //DEBUG(*this << ", " << x);
     if( m_class == TypeRef::GENERIC ) //|| x.m_class == TypeRef::GENERIC )
         return 1;
     if( m_class != x.m_class )  return -1;
@@ -316,6 +316,8 @@ int TypeRef::equal_no_generic(const TypeRef& x) const
         return m_path.equal_no_generic( x.m_path );
     case TypeRef::REFERENCE:
     case TypeRef::POINTER:
+        if( m_is_inner_mutable != x.m_is_inner_mutable )
+            return -1;
         return m_inner_types[0].equal_no_generic( x.m_inner_types[0] );
     case TypeRef::ARRAY:
         if( m_size_expr.get() || x.m_size_expr.get() )

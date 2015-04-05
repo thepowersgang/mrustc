@@ -51,6 +51,8 @@ class CPathResolver:
 public:
     CPathResolver(const AST::Crate& crate);
 
+    void handle_params(AST::TypeParams& params) override;
+
     virtual void handle_path(AST::Path& path, CASTIterator::PathMode mode) override;
     virtual void handle_type(TypeRef& type) override;
     virtual void handle_expr(AST::ExprNode& node) override;
@@ -341,6 +343,26 @@ bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, c
     }
     #endif
 }
+void CPathResolver::handle_params(AST::TypeParams& params)
+{
+    DEBUG("params");
+    for( auto& param : params.ty_params() )
+    {
+        handle_type(param.get_default());
+        local_type( param.name(), TypeRef(TypeRef::TagArg(), param.name(), params) );
+    }
+    DEBUG("Bounds");
+    for( auto& bound : params.bounds() )
+    {
+        handle_type(bound.test());
+        local_type("Self", bound.test());
+        if( !bound.is_trait() )
+            DEBUG("namecheck lifetime bounds?");
+        else
+            handle_path(bound.bound(), CASTIterator::MODE_TYPE);
+        m_locals.pop_back();
+    }
+}
 void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
 {
     TRACE_FUNCTION_F("path = " << path << ", m_module_path = " << m_module_path);
@@ -487,14 +509,14 @@ void CPathResolver::handle_type(TypeRef& type)
         const auto& name = type.path()[0].name();
         auto opt_local = lookup_local(LocalItem::TYPE, name);
          
-        if( name == "Self" )
+        /*if( name == "Self" )
         {
             // TODO: Handle "Self" correctly
             // - Needs to be tagged with the soure params, but since Self is special...
             // - Shouldn't matter, as Self should be resolved out before it needs that tagging
             type = TypeRef(TypeRef::TagArg(), "Self");
         }
-        else if( opt_local.is_some() )
+        else*/ if( opt_local.is_some() )
         {
             type = opt_local.unwrap().tr;
         }
@@ -507,11 +529,11 @@ void CPathResolver::handle_type(TypeRef& type)
     {
         const auto& name = type.type_param();
         auto opt_local = lookup_local(LocalItem::TYPE, name);
-        if( name == "Self" )
+        /*if( name == "Self" )
         {
             // Good as it is
         }
-        else if( opt_local.is_some() )
+        else*/ if( opt_local.is_some() )
         {
             type = opt_local.unwrap().tr;
         }

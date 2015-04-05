@@ -337,9 +337,11 @@ void CASTIterator::handle_enum(AST::Path path, AST::Enum& enm)
 void CASTIterator::handle_trait(AST::Path path, AST::Trait& trait)
 {
     start_scope();
+    local_type("Self", TypeRef(TypeRef::TagArg(), "Self"));
     handle_params( trait.params() );
     
-    local_type("Self", TypeRef(path));
+    //local_type("Self", TypeRef(path));
+    //local_type("Self", TypeRef(TypeRef::TagArg(), "Self"));
     
     for( auto& fcn : trait.functions() )
         handle_function( path + fcn.name, fcn.data );

@@ -66,11 +66,10 @@ bool ImplDef::matches(::std::vector<TypeRef>& out_types, const Path& trait, cons
     int trait_match = m_trait.equal_no_generic(trait);
     if( trait_match < 0 )
         return false;
-    DEBUG("Trait " << trait << " matches " << trait_match);
     int type_match = m_type.equal_no_generic(type);
     if( type_match < 0 )
         return false;
-    DEBUG("Type " << type << " matches " << type_match);
+    DEBUG("Match Tr:" <<trait_match << ", Ty:" << type_match << " for Trait " << trait << ", Type " << type);
     
     // 2. If a parameter was seen, do the more expensive generic checks
     //  > Involves checking that parameters are valid
