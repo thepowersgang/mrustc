@@ -355,6 +355,8 @@ void CPathResolver::handle_params(AST::TypeParams& params)
     for( auto& bound : params.bounds() )
     {
         handle_type(bound.test());
+        
+        // TODO: Will there be a case where within the test there's a Self that isn't the bound?
         local_type("Self", bound.test());
         if( !bound.is_trait() )
             DEBUG("namecheck lifetime bounds?");
