@@ -823,6 +823,26 @@ public:
 
 }
 
+class GenericResolveClosure
+{
+    const AST::TypeParams&  m_params;
+    const ::std::vector<TypeRef>&   m_args;
+public:
+    GenericResolveClosure(const AST::TypeParams& params, const ::std::vector<TypeRef>& args):
+        m_params(params),
+        m_args(args)
+    {}
+    TypeRef operator()(const char *argname) {
+        for(unsigned int i = 0; i < m_params.ty_params().size(); i ++)
+        {
+            if( m_params.ty_params()[i].name() == argname ) {
+                return m_args.at(i);
+            }
+        }
+        throw ::std::runtime_error("BUGCHECK - Unknown arg in field type");
+    }
+};
+
 extern AST::Module  g_compiler_module;
 extern void AST_InitProvidedModule();  
 

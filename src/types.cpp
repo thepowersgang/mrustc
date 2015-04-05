@@ -252,6 +252,89 @@ void TypeRef::match_args(const TypeRef& other, ::std::function<void(const char*,
     }
 }
 
+bool TypeRef::impls_wildcard(AST::Crate& crate, const AST::Path& trait) const
+{
+    switch(m_class)
+    {
+    case TypeRef::NONE:
+        throw CompileError::BugCheck("TypeRef::impls_wildcard on !");
+    case TypeRef::ANY:
+        throw CompileError::BugCheck("TypeRef::impls_wildcard on _");
+    // Generics are an error?
+    case GENERIC:
+        // TODO: Include an annotation to the TypeParams structure relevant to this type
+        // - Allows searching the params for the impl, without having to pass the params down
+        throw CompileError::Todo("TypeRef::impls_wildcard - param");
+    // Primitives always impl
+    case UNIT:
+    case PRIMITIVE:
+        return true;
+    // Functions are pointers (currently), so they implement the trait
+    case FUNCTION:
+        return true;
+    // Pointers/arrays inherit directly
+    case REFERENCE:
+        return crate.find_impl(trait, sub_types()[0], nullptr);
+    case POINTER:
+        return crate.find_impl(trait, sub_types()[0], nullptr);
+    case ARRAY:
+        return crate.find_impl(trait, sub_types()[0], nullptr);
+    // Tuples just destructure
+    case TUPLE:
+        for( const auto& fld : sub_types() )
+        {
+            if( !crate.find_impl(trait, fld, nullptr) )
+                return false;
+        }
+        return true;
+    // MultiDST is special - It only impls if this trait is in the list
+    //  (or if a listed trait requires/impls the trait)
+    case MULTIDST:
+        throw CompileError::Todo("TypeRef::impls_wildcard - MULTIDST");
+    // Path types destructure
+    case PATH:
+        // - structs need all fields to impl this trait (cache result)
+        // - same for enums, tuples, arrays, pointers...
+        // - traits check the Self bounds
+        // CATCH: Need to handle recursion, keep a list of currently processing paths and assume true if found
+        switch(m_path.binding().type())
+        {
+        case AST::PathBinding::STRUCT: {
+            const auto &s = m_path.binding().bound_struct();
+            GenericResolveClosure   resolve_fn( s.params(), m_path.nodes().back().args() );
+            for(const auto& fld : s.fields())
+            {
+                TypeRef fld_ty = fld.data;
+                fld_ty.resolve_args( resolve_fn );
+                DEBUG("- Fld '" << fld.name << "' := " << fld.data << " => " << fld_ty);
+                // TODO: Defer failure until after all fields are processed
+                if( !crate.find_impl(trait, fld_ty, nullptr) )
+                    return false;
+            }
+            return true; }
+        case AST::PathBinding::ENUM: {
+            const auto& i = m_path.binding().bound_enum();
+            GenericResolveClosure   resolve_fn( i.params(), m_path.nodes().back().args() );
+            for( const auto& var : i.variants() )
+            {
+                for( const auto& ty : var.m_sub_types )
+                {
+                    TypeRef real_ty = ty;
+                    real_ty.resolve_args( resolve_fn );
+                    DEBUG("- Var '" << var.m_name << "' := " << ty << " => " << real_ty);
+                    // TODO: Defer failure until after all fields are processed
+                    if( !crate.find_impl(trait, real_ty, nullptr) )
+                        return false;
+                }
+            }
+            return true; }
+        default:
+            throw CompileError::Todo("wildcard impls - auto determine path");
+        }
+    }
+    throw CompileError::BugCheck("TypeRef::impls_wildcard - Fell off end");
+}
+
 /// Checks if the type is fully bounded
 bool TypeRef::is_concrete() const
 {
