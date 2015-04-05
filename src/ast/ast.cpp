@@ -221,6 +221,16 @@ const Module& Crate::get_root_module(const ::std::string& name) const {
     throw ParseError::Generic("crate name unknown");
 }
 
+bool Crate::is_trait_implicit(const Path& trait) const
+{
+    // 1. Handle lang_item traits (e.g. FhantomFn)
+    if( m_lang_item_PhantomFn.is_valid() && trait.equal_no_generic( m_lang_item_PhantomFn ) >= 0 )
+    {
+        return true;
+    }
+    return false;
+}
+
 /**
  * \brief Checks if a type implements the provided wildcard trait
  * \param trait Trait path
@@ -266,6 +276,12 @@ bool Crate::find_impl(const Path& trait, const TypeRef& type, Impl** out_impl)
     DEBUG("trait = " << trait << ", type = " << type);
     
     if(out_impl)    *out_impl = nullptr;
+    
+    if( is_trait_implicit(trait) )
+    {
+        if(out_impl)    throw CompileError::BugCheck("find_impl - Asking for concrete impl of PhantomFn");
+        return true;
+    }
     
     // 0. Handle generic bounds
     // TODO: Handle more complex bounds like "[T]: Trait"

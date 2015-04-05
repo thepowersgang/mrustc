@@ -143,7 +143,7 @@ class Decorator_Derive:
     public CDecoratorHandler
 {
 public:
-    void handle_item(AST::Module& mod, const AST::MetaItem& attr, const AST::Path& path, AST::Struct& str) const override
+    void handle_item(AST::Crate& , AST::Module& mod, const AST::MetaItem& attr, const AST::Path& path, AST::Struct& str) const override
     {
         derive_item(mod, attr, path, str);
     }

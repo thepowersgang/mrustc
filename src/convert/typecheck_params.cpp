@@ -67,6 +67,10 @@ public:
 bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const AST::Path& trait) const
 {
     TRACE_FUNCTION_F("name = " << name << ", trait = " << trait);
+    
+    if( m_crate.is_trait_implicit(trait) )
+        return true;
+    
     const AST::TypeParams*  tps = nullptr;
     // Locate params set that contains the passed name
     for( const auto lt : m_types_stack )
@@ -115,7 +119,6 @@ bool CGenericParamChecker::has_impl(const TypeRef& type, const AST::Path& trait)
         // TODO: Search current scope (requires access to CGenericParamChecker) for this type,
         // and search the bounds for this trait
         // - Also accept bounded generic impls (somehow)
-        if( has_impl_for_param(type.type_param(), trait) )
         {
             return true;
         }
@@ -207,7 +210,7 @@ void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::s
         {
             auto ra_fcn = [&](const char *a){
                 if( strcmp(a, "Self") == 0 ) {
-                    if( self_type == TypeRef() )
+                    if( self_type == TypeRef(TypeRef::TagInvalid()) )
                         throw CompileError::Generic("Unexpected use of 'Self' in bounds");
                     return self_type;
                 }
@@ -236,7 +239,7 @@ void CGenericParamChecker::handle_path(AST::Path& path, CASTIterator::PathMode p
     switch(path.binding().type())
     {
     case AST::PathBinding::UNBOUND:
-        throw ::std::runtime_error("CGenericParamChecker::handle_path - Unbound path");
+        throw CompileError::BugCheck( FMT("CGenericParamChecker::handle_path - Unbound path : " << path) );
     case AST::PathBinding::MODULE:
         DEBUG("WTF - Module path, isn't this invalid at this stage?");
         break;
@@ -264,7 +267,7 @@ void CGenericParamChecker::handle_path(AST::Path& path, CASTIterator::PathMode p
     case AST::PathBinding::FUNCTION:
         params = &path.binding().bound_func().params();
         
-        check_generic_params(*params, last_node.args(), TypeRef(), (m_within_expr > 0));
+        check_generic_params(*params, last_node.args(), TypeRef(TypeRef::TagInvalid()), (m_within_expr > 0));
         break;
     default:
         throw ::std::runtime_error("Unknown path type in CGenericParamChecker::handle_path");

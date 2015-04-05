@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * convert/decorators.cpp
+ * - Handles #[...] item decorators by delegating
  */
 #include "ast_iterate.hpp"
 #include "../ast/ast.hpp"
@@ -9,18 +14,21 @@
 ::std::unordered_map< ::std::string, ::std::unique_ptr<CDecoratorHandler> > g_decorators;
 
 template<typename T>
-bool Decorator_Apply(AST::Module& mod, const AST::MetaItem& attr, const AST::Path& path, T& ent)
+void Decorator_Apply(AST::Crate& crate, AST::Module& mod, const AST::MetaItems& attrs, const AST::Path& path, T& ent)
 {
-    auto it = g_decorators.find(attr.name());
-    if( it == g_decorators.end() )
+    // For all attributes on the item, search for a handler and call handler
+    for( const auto& attr : attrs.m_items )
     {
-        return false;
+        auto it = g_decorators.find(attr.name());
+        if( it != g_decorators.end() )
+        {
+            const CDecoratorHandler&    handler = *it->second;
+            
+            handler.handle_item(crate, mod, attr, path, ent);
+        }
+        else {
+        }
     }
-    
-    const CDecoratorHandler&    handler = *it->second;
-    
-    handler.handle_item(mod, attr, path, ent);
-    return true;
 }
 
 class CProcessor:
@@ -42,12 +50,12 @@ public:
     
     void handle_struct(AST::Path path, AST::Struct& str) override
     {
-        // For all attributes on the struct, search for a handler and call handler
-        auto& attrs = str.attrs();
-        for( auto& attr : attrs.m_items )
-        {
-            Decorator_Apply(*m_modstack.back(), attr, path, str);
-        }
+        Decorator_Apply(m_crate, *m_modstack.back(), str.attrs(), path, str);
+    }
+    
+    void handle_trait(AST::Path path, AST::Trait& tr) override
+    {
+        Decorator_Apply(m_crate, *m_modstack.back(), tr.attrs(), path, tr);
     }
 };
 

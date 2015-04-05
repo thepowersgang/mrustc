@@ -8,16 +8,25 @@
 #include <memory>
 
 namespace AST {
+    class Crate;
     class MetaItem;
     class Path;
+    
     class Module;
+    
     class Struct;
+    class Trait;
 }
 
 class CDecoratorHandler
 {
 public:
-    virtual void handle_item(AST::Module& mod, const AST::MetaItem& attr, const AST::Path& path, AST::Struct& str) const = 0;
+    virtual void handle_item(AST::Crate&, AST::Module&, const AST::MetaItem&, const AST::Path&, AST::Struct& ) const
+    {
+    }
+    virtual void handle_item(AST::Crate&, AST::Module&, const AST::MetaItem&, const AST::Path&, AST::Trait& ) const
+    {
+    }
 };
 
 #define STATIC_SYNEXT(_type, ident, _typename) \

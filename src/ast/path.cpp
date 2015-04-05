@@ -71,8 +71,15 @@ typename ::std::vector<Item<T> >::const_iterator find_named(const ::std::vector<
 void Path::resolve(const Crate& root_crate, bool expect_params)
 {
     TRACE_FUNCTION_F("*this = "<< *this);
-    if(m_class != ABSOLUTE)
+    if(m_class == ABSOLUTE)
+        resolve_absolute(root_crate, expect_params);
+    else if(m_class == UFCS)
+        resolve_ufcs(root_crate, expect_params);
+    else
         throw ParseError::BugCheck("Calling Path::resolve on non-absolute path");
+}
+void Path::resolve_absolute(const Crate& root_crate, bool expect_params)
+{
     DEBUG("m_crate = '" << m_crate << "'");
     
     unsigned int slice_from = 0;    // Used when rewriting the path to be relative to its crate root
@@ -302,6 +309,56 @@ ret:
         m_nodes.erase(m_nodes.begin(), m_nodes.begin()+slice_from);
     }
     return ;
+}
+void Path::resolve_ufcs(const Crate& root_crate, bool expect_params)
+{
+    auto& type = m_ufcs.at(0);
+    auto& trait = m_ufcs.at(1);
+    
+    // If the type is unknown (at this time)
+    if( type.is_wildcard() || type.is_type_param() )
+    {
+        // - _ as _ = BUG
+        if( !trait.is_path() )
+        {
+            throw CompileError::BugCheck( FMT("Path::resolve_ufcs - Path invalid : " << *this) );
+        }
+        // - /*arg*/T as Trait = Type parameter
+        else if( type.is_type_param() )
+        {
+            // Just check that the param is bound on that trait?
+            throw ParseError::Todo("Path::resolve_ufcs - Handle binding on generic");
+        }
+        // - _ as Trait = Inferred type (unknown at the moment)
+        else
+        {
+            throw ParseError::Todo("Path::resolve_ufcs - Handle binding when type is unknown");
+        }
+    }
+    else
+    {
+        // - Type as _ = ? Infer the trait from any matching impls
+        if( trait.is_wildcard() )
+        {
+            throw ParseError::Todo("Path::resolve_ufcs - Unknown trait (resolve)");
+        }
+        // - Type as Trait = Obtain from relevant impl
+        else if( trait.is_path() )
+        {
+            // Locate in the trait, but store Self type somehow?
+            throw ParseError::Todo("Path::resolve_ufcs - Fully known");
+        }
+        // - Type as ! = Item from the inherent impl (similar to above)
+        else if( trait == TypeRef(TypeRef::TagInvalid()) )
+        {
+            throw ParseError::Todo("Path::resolve_ufcs - Fully known (inherent)");
+        }
+        // - Type as * = Bug
+        else
+        {
+            throw CompileError::BugCheck( FMT("Path::resolve_ufcs - Path invalid : " << *this) );
+        }
+    }
 }
 void Path::check_param_counts(const TypeParams& params, bool expect_params, PathNode& node)
 {

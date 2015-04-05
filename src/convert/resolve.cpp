@@ -384,8 +384,9 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
 void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode)
 { 
     // Convert to absolute
-    if( path.is_absolute() )
+    switch( path.type() )
     {
+    case AST::Path::ABSOLUTE:
         DEBUG("Absolute - binding");
         INDENT();
         // Already absolute, our job is done
@@ -397,9 +398,8 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
             DEBUG("- Path " << path << " already bound");
         }
         UNINDENT();
-    }
-    else if( path.is_relative() )
-    {
+        break;
+    case AST::Path::RELATIVE: {
         assert(path.size() > 0);
         DEBUG("Relative, local");
         
@@ -425,11 +425,13 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
                         throw ParseError::Todo("TODO: MODE_EXPR, but not a single identifer, what do?");
                     DEBUG("Local variable " << path[0].name());
                     path = AST::Path(AST::Path::TagLocal(), path[0].name());
+                    return ;
                 }
-                else
+                if( is_trivial_path )
+                    throw ParseError::Generic("Type used in expression context?");
+            // Type parameter
+            case MODE_TYPE:
                 {
-                    if( is_trivial_path )
-                        throw ParseError::Generic("Type used in expression context?");
                     // Convert to a UFCS path
                     DEBUG("Local type");
                     // - "<Type as _>::nodes"
@@ -440,12 +442,6 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
                     path = ::std::move(np);
                     DEBUG("path = " << path);
                 }
-                return ;
-            // Type parameter
-            case MODE_TYPE:
-                DEBUG("Local type " << path);
-                // - Switch the path to be a "LOCAL"
-                path.set_local();
                 return ;
             // Binding is valid
             case MODE_BIND:
@@ -501,6 +497,17 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
         assert( path.is_relative() );
         if( mode != MODE_BIND )
             throw ParseError::Generic("CPathResolver::handle_path - Name resolution failed");
+        break; }
+    case AST::Path::LOCAL:
+        // Don't touch locals, they're already known
+        break;
+    case AST::Path::UFCS:
+        // 1. Handle sub-types
+        handle_type(path.ufcs().at(0));
+        handle_type(path.ufcs().at(1));
+        // 2. Call resolve to attempt binding
+        path.resolve(m_crate);
+        break;
     }
 }
 void CPathResolver::handle_type(TypeRef& type)
@@ -511,16 +518,15 @@ void CPathResolver::handle_type(TypeRef& type)
         const auto& name = type.path()[0].name();
         auto opt_local = lookup_local(LocalItem::TYPE, name);
          
-        /*if( name == "Self" )
-        {
-            // TODO: Handle "Self" correctly
-            // - Needs to be tagged with the soure params, but since Self is special...
-            // - Shouldn't matter, as Self should be resolved out before it needs that tagging
-            type = TypeRef(TypeRef::TagArg(), "Self");
-        }
-        else*/ if( opt_local.is_some() )
+        if( opt_local.is_some() )
         {
             type = opt_local.unwrap().tr;
+        }
+        else if( name == "Self" )
+        {
+            // If the name was "Self", but Self isn't already defined... then we need to make it an arg?
+            throw CompileError::Generic( FMT("CPathResolver::handle_type - Unexpected 'Self'") );
+            type = TypeRef(TypeRef::TagArg(), "Self");
         }
         else
         {

@@ -8,7 +8,7 @@ void CASTIterator::handle_path(AST::Path& path, CASTIterator::PathMode pm)
 }
 void CASTIterator::handle_type(TypeRef& type)
 {
-    //DEBUG("type = " << type);
+    TRACE_FUNCTION_F("type = " << type);
     if( type.is_path() )
     {
         handle_path(type.path(), MODE_TYPE);

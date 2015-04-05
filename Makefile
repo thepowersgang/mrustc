@@ -24,7 +24,7 @@ OBJ += convert/ast_iterate.o
 OBJ += convert/decorators.o
 OBJ += convert/resolve.o convert/typecheck_bounds.o convert/typecheck_params.o convert/typecheck_expr.o
 OBJ += convert/flatten.o convert/render.o
-OBJ += synexts/derive.o
+OBJ += synexts/derive.o synexts/lang_item.o
 
 OBJ := $(addprefix $(OBJDIR),$(OBJ))
 

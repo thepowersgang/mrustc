@@ -985,7 +985,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         lex.putback(tok);
     case TOK_LT: {
         TypeRef ty = Parse_Type(lex);
-        TypeRef trait;
+        TypeRef trait;// = TypeRef(TypeRef::TagInvalid());
         if( GET_TOK(tok, lex) == TOK_RWORD_AS ) {
             trait = Parse_Type(lex);
         }

@@ -198,6 +198,13 @@ public:
 };
 
 
+enum eItemType
+{
+    ITEM_TRAIT,
+    ITEM_STRUCT,
+    ITEM_FN,
+};
+
 template <typename T>
 struct ItemNS
 {
@@ -262,6 +269,7 @@ public:
         m_type( move(type) )
     {}
     
+    const MetaItems& attrs() const { return m_attrs; }
     const TypeParams& params() const { return m_params; }
     const TypeRef& type() const { return m_type; }
     
@@ -297,6 +305,7 @@ public:
         m_value( move(value) )
     {}
    
+    const MetaItems& attrs() const { return m_attrs; }
     const Class& s_class() const { return m_class; } 
     const TypeRef& type() const { return m_type; }
     const Expr& value() const { return m_value; }
@@ -348,16 +357,17 @@ public:
     void set_self_lifetime(::std::string s) { m_lifetime = s; }
     
     const Class fcn_class() const { return m_fcn_class; }
+
+    const MetaItems& attrs() const { return m_attrs; }
+    const TypeParams& params() const { return m_params; }
+    const Expr& code() const { return m_code; }
+    const TypeRef& rettype() const { return m_rettype; }
+    const Arglist& args() const { return m_args; }
     
     TypeParams& params() { return m_params; }
     Expr& code() { return m_code; }
     TypeRef& rettype() { return m_rettype; }
     Arglist& args() { return m_args; }
-
-    const TypeParams& params() const { return m_params; }
-    const Expr& code() const { return m_code; }
-    const TypeRef& rettype() const { return m_rettype; }
-    const Arglist& args() const { return m_args; }
     
     SERIALISABLE_PROTOTYPES();
 };
@@ -377,6 +387,7 @@ public:
     {
     }
     
+    const MetaItems& attrs() const { return m_attrs; }
     const TypeParams& params() const { return m_params; }
     const ItemList<Function>& functions() const { return m_functions; }
     const ItemList<TypeRef>& types() const { return m_types; }
@@ -444,6 +455,7 @@ public:
         m_variants( move(variants) )
     {}
     
+    const MetaItems& attrs() const { return m_attrs; }
     const TypeParams& params() const { return m_params; }
     const ::std::vector<EnumVariant>& variants() const { return m_variants; }
     
@@ -497,9 +509,11 @@ public:
     {}
     
     // Accessors
+    const MetaItems& attrs() const { return m_attrs; }
     const TypeParams& params() const { return m_params; }
     const Path& trait() const { return m_trait; }
     const TypeRef& type() const { return m_type; }
+
     TypeParams& params() { return m_params; }
     Path& trait() { return m_trait; }
     TypeRef& type() { return m_type; }
@@ -736,12 +750,19 @@ public:
 private:
     void resolve_macro_import(const Crate& crate, const ::std::string& modname, const ::std::string& macro_name);
 };
+}
+extern void handle_lang_item(AST::Crate& , const AST::Path& h, const ::std::string& , AST::eItemType );
+namespace AST {
 
 class Crate:
     public Serialisable
 {
     ::std::vector<Impl*>    m_impl_index;
     ::std::vector<const ImplDef*> m_neg_impl_index;
+    
+    // XXX: EVIL - Make the method that handles #[lang] a friend, so it can twiddle these paths
+    friend void ::handle_lang_item(AST::Crate& , const AST::Path& h, const ::std::string& , AST::eItemType );
+    AST::Path   m_lang_item_PhantomFn;
 public:
     Module  m_root_module;
     ::std::map< ::std::string, ExternCrate> m_extern_crates;
@@ -761,6 +782,8 @@ public:
     const ::std::map< ::std::string, ExternCrate>& extern_crates() const { return m_extern_crates; }   
  
     void post_parse();
+    
+    bool is_trait_implicit(const Path& trait) const;
     
     bool find_impl(const Path& trait, const TypeRef& type, Impl** out_impl);
     ::rust::option<Impl&> find_impl(const Path& trait, const TypeRef& type) {

@@ -146,7 +146,7 @@ public:
 class Path:
     public ::Serialisable
 {
-private:
+public:
     enum Class {
         RELATIVE,
         ABSOLUTE,
@@ -154,6 +154,7 @@ private:
         UFCS,
     };
     
+private:
     /// The crate defining the root of this path (used for path resolution)
     ::std::string   m_crate;
 
@@ -254,6 +255,8 @@ public:
     ///
     /// expect_params enables checking of param counts (clear for handling 'use')
     void resolve(const Crate& crate, bool expect_params=true);
+    void resolve_absolute(const Crate& root_crate, bool expect_params);
+    void resolve_ufcs(const Crate& root_crate, bool expect_params);
     
     /// Resolve generic arguments within the path
     void resolve_args(::std::function<TypeRef(const char*)> fcn);
@@ -265,11 +268,15 @@ public:
         return m_class == RELATIVE && m_nodes.size() == 1 && m_nodes[0].args().size() == 0;
     }
     
+    bool is_valid() const { return *this != Path(); }
+    Class type() const { return m_class; }
     bool is_absolute() const { return m_class == ABSOLUTE; }
     bool is_relative() const { return m_class == RELATIVE; }
     size_t size() const { return m_nodes.size(); }
     
     const PathBinding& binding() const { return m_binding; }
+    
+    ::std::vector<TypeRef>& ufcs() { return m_ufcs; }
     
     ::std::vector<PathNode>& nodes() { return m_nodes; }
     const ::std::vector<PathNode>& nodes() const { return m_nodes; }
