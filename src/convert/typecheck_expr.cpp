@@ -503,7 +503,7 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallMethod& node)
         else
         {
             // 2. Find inherent impl
-            auto oimpl = m_tc.m_crate.find_impl(AST::Path(), ltype);
+            auto oimpl = m_tc.m_crate.get_impl(AST::Path(), ltype);
             if( oimpl.is_some() )
             {
                 AST::Impl& impl = oimpl.unwrap();
@@ -522,7 +522,7 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallMethod& node)
             // 2. Iterate in-scope traits
             m_tc.iterate_traits( [&](const TypeRef& trait) {
                 // TODO: Check trait first, then find an impl
-                auto oimpl = m_tc.m_crate.find_impl(trait.path(), ltype);
+                auto oimpl = m_tc.m_crate.get_impl(trait.path(), ltype);
                 if( oimpl.is_some() )
                 {
                     AST::Impl& impl = oimpl.unwrap();

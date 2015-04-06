@@ -35,8 +35,12 @@ class CPathResolver:
         {}
         
         friend ::std::ostream& operator<<(::std::ostream& os, const LocalItem& x) {
-            //return os << "'" << x.name << "' = " << x.path;
-            return os << (x.type == TYPE ? "type" : "var") << " '" << x.name << "'";
+            if( x.name == "" )
+                return os << "#";
+            else if( x.type == TYPE )
+                return os << "type '" << x.name << "' = " << x.tr;
+            else
+                return os << "var '" << x.name << "'";
         }
     };
     const AST::Crate&   m_crate;
@@ -62,6 +66,7 @@ public:
 
     virtual void start_scope() override;
     virtual void local_type(::std::string name, TypeRef type) override {
+        DEBUG("(name = " << name << ", type = " << type << ")");
         m_locals.push_back( LocalItem(LocalItem::TYPE, ::std::move(name), ::std::move(type)) );
     }
     virtual void local_variable(bool _is_mut, ::std::string name, const TypeRef& _type) override {
@@ -505,7 +510,26 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
         // 1. Handle sub-types
         handle_type(path.ufcs().at(0));
         handle_type(path.ufcs().at(1));
-        // 2. Call resolve to attempt binding
+        // 2. Handle wildcard traits (locate in inherent impl, or from an in-scope trait)
+        if( path.ufcs().at(1).is_wildcard() )
+        {
+            // 1. Inherent
+            AST::Impl*  impl_ptr;
+            ::std::vector<TypeRef> params;
+            if( m_crate.find_impl(AST::Path(), path.ufcs().at(0), &impl_ptr, &params) )
+            {
+                DEBUG("Found matching inherent impl");
+                // - Mark as being from the inherent, and move along
+                //  > TODO: What about if this item is actually from a trait (due to genric restrictions)
+                path.ufcs().at(1) = TypeRef(TypeRef::TagInvalid());
+            }
+            else
+            {            
+                // Iterate all traits in scope, and find one that is impled for this type
+                throw ParseError::Todo("CPathResolver::handle_path - UFCS, find trait");
+            }
+        }
+        // 3. Call resolve to attempt binding
         path.resolve(m_crate);
         break;
     }
@@ -513,6 +537,12 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
 void CPathResolver::handle_type(TypeRef& type)
 {
     TRACE_FUNCTION_F("type = " << type);
+    // PROBLEM: Recursion when evaluating Self that expands to UFCS mentioning Self
+    //  > The inner Self shouldn't be touched, but it gets hit by this method, and sudden recursion
+    //if( type.is_locked() )
+    //{
+    //}
+    //else
     if( type.is_path() && type.path().is_trivial() )
     {
         const auto& name = type.path()[0].name();
@@ -551,6 +581,11 @@ void CPathResolver::handle_type(TypeRef& type)
             throw CompileError::Generic( FMT("CPathResolver::handle_type - Invalid parameter '" << name << "'") );
         }
     }
+    else
+    {
+        // No change
+    }
+    DEBUG("type = " << type);
     
     //if( type.is_type_param() && type.type_param() == "Self" )
     //{

@@ -252,7 +252,7 @@ void TypeRef::match_args(const TypeRef& other, ::std::function<void(const char*,
     }
 }
 
-bool TypeRef::impls_wildcard(AST::Crate& crate, const AST::Path& trait) const
+bool TypeRef::impls_wildcard(const AST::Crate& crate, const AST::Path& trait) const
 {
     switch(m_class)
     {
@@ -274,16 +274,16 @@ bool TypeRef::impls_wildcard(AST::Crate& crate, const AST::Path& trait) const
         return true;
     // Pointers/arrays inherit directly
     case REFERENCE:
-        return crate.find_impl(trait, sub_types()[0], nullptr);
+        return crate.find_impl(trait, sub_types()[0], nullptr, nullptr);
     case POINTER:
-        return crate.find_impl(trait, sub_types()[0], nullptr);
+        return crate.find_impl(trait, sub_types()[0], nullptr, nullptr);
     case ARRAY:
-        return crate.find_impl(trait, sub_types()[0], nullptr);
+        return crate.find_impl(trait, sub_types()[0], nullptr, nullptr);
     // Tuples just destructure
     case TUPLE:
         for( const auto& fld : sub_types() )
         {
-            if( !crate.find_impl(trait, fld, nullptr) )
+            if( !crate.find_impl(trait, fld, nullptr, nullptr) )
                 return false;
         }
         return true;
@@ -308,7 +308,7 @@ bool TypeRef::impls_wildcard(AST::Crate& crate, const AST::Path& trait) const
                 fld_ty.resolve_args( resolve_fn );
                 DEBUG("- Fld '" << fld.name << "' := " << fld.data << " => " << fld_ty);
                 // TODO: Defer failure until after all fields are processed
-                if( !crate.find_impl(trait, fld_ty, nullptr) )
+                if( !crate.find_impl(trait, fld_ty, nullptr, nullptr) )
                     return false;
             }
             return true; }
@@ -323,7 +323,7 @@ bool TypeRef::impls_wildcard(AST::Crate& crate, const AST::Path& trait) const
                     real_ty.resolve_args( resolve_fn );
                     DEBUG("- Var '" << var.m_name << "' := " << ty << " => " << real_ty);
                     // TODO: Defer failure until after all fields are processed
-                    if( !crate.find_impl(trait, real_ty, nullptr) )
+                    if( !crate.find_impl(trait, real_ty, nullptr, nullptr) )
                         return false;
                 }
             }

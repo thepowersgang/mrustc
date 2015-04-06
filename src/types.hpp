@@ -178,7 +178,7 @@ public:
     /// Match 'GENERIC' entries with another type, passing matches to a closure
     void match_args(const TypeRef& other, ::std::function<void(const char*,const TypeRef&)> fcn) const;
     
-    bool impls_wildcard(AST::Crate& crate, const AST::Path& trait) const;
+    bool impls_wildcard(const AST::Crate& crate, const AST::Path& trait) const;
     
     /// Returns true if the type is fully known (all sub-types are not wildcards)
     bool is_concrete() const;

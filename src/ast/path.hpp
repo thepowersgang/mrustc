@@ -257,6 +257,7 @@ public:
     void resolve(const Crate& crate, bool expect_params=true);
     void resolve_absolute(const Crate& root_crate, bool expect_params);
     void resolve_ufcs(const Crate& root_crate, bool expect_params);
+    void resolve_ufcs_trait(const AST::Path& trait_path, AST::PathNode& node);
     
     /// Resolve generic arguments within the path
     void resolve_args(::std::function<TypeRef(const char*)> fcn);

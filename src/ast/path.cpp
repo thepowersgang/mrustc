@@ -310,10 +310,16 @@ ret:
     }
     return ;
 }
+
 void Path::resolve_ufcs(const Crate& root_crate, bool expect_params)
 {
     auto& type = m_ufcs.at(0);
     auto& trait = m_ufcs.at(1);
+    
+    // TODO: I can forsee <T>::Assoc::Item desugaring into < <T>::Assoc >::Item, but that will be messy to code
+    assert(m_nodes.size());
+    if(m_nodes.size() != 1) throw ParseError::Todo("Path::resolve_ufcs - Are multi-node UFCS paths valid?");
+    auto& node = m_nodes.at(0);
     
     // If the type is unknown (at this time)
     if( type.is_wildcard() || type.is_type_param() )
@@ -321,13 +327,27 @@ void Path::resolve_ufcs(const Crate& root_crate, bool expect_params)
         // - _ as _ = BUG
         if( !trait.is_path() )
         {
+            // Wait, what about <T as _>, is that valid?
             throw CompileError::BugCheck( FMT("Path::resolve_ufcs - Path invalid : " << *this) );
         }
         // - /*arg*/T as Trait = Type parameter
         else if( type.is_type_param() )
         {
-            // Just check that the param is bound on that trait?
-            throw ParseError::Todo("Path::resolve_ufcs - Handle binding on generic");
+            // Check that the param is bound on that trait?
+            if( !type.type_params_ptr() )
+                throw CompileError::BugCheck( FMT("Path::resolve_ufcs - No bound params on arg") );
+            
+            //const auto& tps = *type.type_params_ptr();
+            //for( const auto& bound : tps.bounds() )
+            //{
+            //    // TODO: Check if this type impls the trait
+            //    // - Not needed to do the bind, so ignore for now
+            //}
+            
+            // Search trait for an impl
+            //throw ParseError::Todo("Path::resolve_ufcs - Arg");
+            resolve_ufcs_trait(trait.path(), node);
+            //throw ParseError::Todo("Path::resolve_ufcs - Arg2");
         }
         // - _ as Trait = Inferred type (unknown at the moment)
         else
@@ -340,18 +360,38 @@ void Path::resolve_ufcs(const Crate& root_crate, bool expect_params)
         // - Type as _ = ? Infer the trait from any matching impls
         if( trait.is_wildcard() )
         {
+            // Search inherent impl first, then (somehow) search in-scope traits
+            // - TODO: Shouldn't this be the job of CPathResolver?
             throw ParseError::Todo("Path::resolve_ufcs - Unknown trait (resolve)");
         }
         // - Type as Trait = Obtain from relevant impl
         else if( trait.is_path() )
         {
             // Locate in the trait, but store Self type somehow?
-            throw ParseError::Todo("Path::resolve_ufcs - Fully known");
+            trait.path().resolve(root_crate, true);
+            resolve_ufcs_trait(trait.path(), node);
         }
         // - Type as ! = Item from the inherent impl (similar to above)
         else if( trait == TypeRef(TypeRef::TagInvalid()) )
         {
-            throw ParseError::Todo("Path::resolve_ufcs - Fully known (inherent)");
+            // TODO: Handle case where 'type' is a trait object
+            // 1. Obtain the impl
+            AST::Impl* impl_ptr;
+            if( ! root_crate.find_impl(AST::Path(), type, &impl_ptr) )
+                throw ParseError::Generic("Path::resolve_ufcs - No impl block for type");
+            assert( impl_ptr );
+            
+            for( const auto& it : impl_ptr->functions() )
+            {
+                if( it.name == node.name() ) {
+                    check_param_counts(it.data.params(), expect_params, node);
+                    m_binding = PathBinding(&it.data);
+                    goto _impl_item_bound;
+                }
+            }
+            throw ParseError::Generic("Path::resolve_ufcs - No item in inherent");
+        _impl_item_bound:
+            DEBUG("UFCS inherent bound to " << m_binding);
         }
         // - Type as * = Bug
         else
@@ -360,6 +400,35 @@ void Path::resolve_ufcs(const Crate& root_crate, bool expect_params)
         }
     }
 }
+
+void Path::resolve_ufcs_trait(const AST::Path& trait_path, AST::PathNode& node)
+{
+    if(trait_path.m_binding.type() != PathBinding::TRAIT)
+        throw ParseError::Generic("Path::resolve_ufcs - Trait in UFCS path is not a trait");
+    const auto& trait_def = trait_path.m_binding.bound_trait();
+    
+    // Check that the requested item exists within the trait, and bind to that item
+    for( const auto& fn : trait_def.functions() )
+    {
+        if( fn.name == node.name() ) {
+            check_param_counts(fn.data.params(), true, node);
+            m_binding = PathBinding(&fn.data);
+            goto _trait_item_bound;
+        }
+    }
+    for( const auto& it : trait_def.types() )
+    {
+        if( it.name == node.name() ) {
+            check_param_counts(it.data.params(), true, node);
+            m_binding = PathBinding(&it.data);
+            goto _trait_item_bound;
+        }
+    }
+    throw ParseError::Todo("Path::resolve_ufcs - Fully known");
+_trait_item_bound:
+    DEBUG("UFCS trait bound to " << m_binding);
+}
+
 void Path::check_param_counts(const TypeParams& params, bool expect_params, PathNode& node)
 {
     if( !expect_params )

@@ -6,7 +6,7 @@
 extern int g_debug_indent_level;
 
 #ifndef DISABLE_DEBUG
-#define INDENT()    do { g_debug_indent_level += 1; } while(0)
+#define INDENT()    do { g_debug_indent_level += 1; assert(g_debug_indent_level<100); } while(0)
 #define UNINDENT()    do { g_debug_indent_level -= 1; } while(0)
 #define DEBUG(ss)   do{ if(debug_enabled()) { debug_output(g_debug_indent_level, __FUNCTION__) << ss << ::std::endl; } } while(0)
 #else

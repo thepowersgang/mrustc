@@ -377,7 +377,7 @@ class Trait:
 {
     MetaItems   m_attrs;
     TypeParams  m_params;
-    ItemList<TypeRef>   m_types;
+    ItemList<TypeAlias> m_types;
     ItemList<Function>  m_functions;
 public:
     Trait() {}
@@ -390,14 +390,14 @@ public:
     const MetaItems& attrs() const { return m_attrs; }
     const TypeParams& params() const { return m_params; }
     const ItemList<Function>& functions() const { return m_functions; }
-    const ItemList<TypeRef>& types() const { return m_types; }
+    const ItemList<TypeAlias>& types() const { return m_types; }
 
     TypeParams& params() { return m_params; }
     ItemList<Function>& functions() { return m_functions; }
-    ItemList<TypeRef>& types() { return m_types; }
+    ItemList<TypeAlias>& types() { return m_types; }
     
     void add_type(::std::string name, TypeRef type) {
-        m_types.push_back( Item<TypeRef>(move(name), move(type), true) );
+        m_types.push_back( Item<TypeAlias>(move(name), TypeAlias(MetaItems(), TypeParams(), move(type)), true) );
     }
     void add_function(::std::string name, Function fcn) {
         m_functions.push_back( Item<Function>(::std::move(name), ::std::move(fcn), true) );
@@ -555,12 +555,15 @@ public:
     ItemList<Function>& functions() { return m_functions; }
     ItemList<TypeRef>& types() { return m_types; }
 
-    Impl make_concrete(const ::std::vector<TypeRef>& types) const;
-
-    ::rust::option<Impl&> matches(const Path& trait, const TypeRef& type);
+    /// Obtain a concrete implementation based on the provided types (caches)
+    Impl& get_concrete(const ::std::vector<TypeRef>& param_types);
     
     friend ::std::ostream& operator<<(::std::ostream& os, const Impl& impl);
     SERIALISABLE_PROTOTYPES();
+    
+private:
+    /// Actually create a concrete impl
+    Impl make_concrete(const ::std::vector<TypeRef>& types) const;
 };
 
 
@@ -785,11 +788,12 @@ public:
     
     bool is_trait_implicit(const Path& trait) const;
     
-    bool find_impl(const Path& trait, const TypeRef& type, Impl** out_impl);
-    ::rust::option<Impl&> find_impl(const Path& trait, const TypeRef& type) {
+    bool find_impl(const Path& trait, const TypeRef& type, Impl** out_impl=nullptr, ::std::vector<TypeRef>* out_prams=nullptr) const;
+    const ::rust::option<Impl&> get_impl(const Path& trait, const TypeRef& type) {
         Impl*   impl_ptr;
-        if( find_impl(trait, type, &impl_ptr) ) {
-            return ::rust::option<Impl&>(*impl_ptr);
+        ::std::vector<TypeRef>  params;
+        if( find_impl(trait, type, &impl_ptr, &params) ) {
+            return ::rust::option<Impl&>( impl_ptr->get_concrete(params) );
         }
         else {
             return ::rust::option<Impl&>();
@@ -803,7 +807,7 @@ public:
 
     SERIALISABLE_PROTOTYPES();
 private:
-    bool check_impls_wildcard(const Path& trait, const TypeRef& type);
+    bool check_impls_wildcard(const Path& trait, const TypeRef& type) const;
 };
 
 /// Representation of an imported crate

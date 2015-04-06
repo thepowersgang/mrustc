@@ -106,33 +106,25 @@ SERIALISE_TYPE(ImplDef::, "AST_ImplDef", {
     s.item(m_type);
 })
 
-
-::rust::option<Impl&> Impl::matches(const Path& trait, const TypeRef& type)
+Impl& Impl::get_concrete(const ::std::vector<TypeRef>& param_types)
 {
-    //DEBUG("this = " << *this);
-    ::std::vector<TypeRef>  param_types;
-    
-    if( m_def.matches(param_types, trait, type) == false )
-    {
-        return ::rust::option<Impl&>();
+    if( param_types.size() > 0 )
+    { 
+        for( auto& i : m_concrete_impls )
+        {
+            if( i.first == param_types )
+            {
+                return i.second;
+            }
+        }
+        
+        m_concrete_impls.push_back( make_pair(param_types, this->make_concrete(param_types)) );
+        return m_concrete_impls.back().second;
     }
     else
     {
-        //if( param_types.size() > 0 )
-        //{ 
-        //    for( auto& i : m_concrete_impls )
-        //    {
-        //        if( i.first == param_types )
-        //        {
-        //            return ::rust::option<Impl&>(i.second);
-        //        }
-        //    }
-        //    
-        //    m_concrete_impls.push_back( make_pair(param_types, this->make_concrete(param_types)) );
-        //    return ::rust::option<Impl&>( m_concrete_impls.back().second );
-        //}
+        return *this;
     }
-    return ::rust::option<Impl&>( *this );
 }
 
 Impl Impl::make_concrete(const ::std::vector<TypeRef>& types) const
@@ -239,7 +231,7 @@ bool Crate::is_trait_implicit(const Path& trait) const
  *
  * \return True if the trait is implemented (either exlicitly, or implicitly)
  */
-bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
+bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type) const
 {
     ::std::vector<TypeRef>  _params;
     TRACE_FUNCTION_F("trait="<<trait<<", type="<<type);
@@ -247,9 +239,9 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
     // 1. Look for a negative impl for this type
     for( auto implptr : m_neg_impl_index )
     {
-        const ImplDef& impl = *implptr;
+        const ImplDef& neg_impl = *implptr;
         
-        if( impl.matches(_params, trait, type) )
+        if( neg_impl.matches(_params, trait, type) )
         {
             return false;
         }
@@ -271,9 +263,16 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type)
     return type.impls_wildcard(*this, trait);
 }
 
-bool Crate::find_impl(const Path& trait, const TypeRef& type, Impl** out_impl)
+bool Crate::find_impl(const Path& trait, const TypeRef& type, Impl** out_impl, ::std::vector<TypeRef>* out_params) const 
 {
     DEBUG("trait = " << trait << ", type = " << type);
+    
+    ::std::vector<TypeRef>  dud_params;
+    
+    if(out_params)
+        *out_params = ::std::vector<TypeRef>();
+    else
+        out_params = &dud_params;
     
     if(out_impl)    *out_impl = nullptr;
     
@@ -318,6 +317,7 @@ bool Crate::find_impl(const Path& trait, const TypeRef& type, Impl** out_impl)
         ::std::vector<TypeRef>  _p;
         if( impl.def().matches(_p, trait, TypeRef()) )
         {
+            assert(_p.size() == 0);
             // This is a wildcard trait, need to locate either a negative, or check contents
             if( check_impls_wildcard(trait, type) )
             {
@@ -337,10 +337,9 @@ bool Crate::find_impl(const Path& trait, const TypeRef& type, Impl** out_impl)
     {
         Impl& impl = *implptr;
         // TODO: What if there's two impls that match this combination?
-        ::rust::option<Impl&> oimpl = impl.matches(trait, type);
-        if( oimpl.is_some() )
+        if( impl.def().matches(*out_params, trait, type) )
         {
-            if(out_impl)    *out_impl = &oimpl.unwrap();
+            if(out_impl)    *out_impl = &impl;
             return true;
         }
     }
@@ -935,7 +934,7 @@ bool TypeParams::check_params(Crate& crate, ::std::vector<TypeRef>& types, bool 
                 {
                     const auto& trait = bound.bound();
                     // Check if 'type' impls 'trait'
-                    if( !crate.find_impl(trait, trait).is_some() )
+                    if( !crate.find_impl(trait, trait) )
                     {
                         throw ::std::runtime_error( FMT("No matching impl of "<<trait<<" for "<<type));
                     }
