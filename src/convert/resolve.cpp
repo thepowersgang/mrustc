@@ -58,6 +58,7 @@ public:
     void handle_params(AST::TypeParams& params) override;
 
     virtual void handle_path(AST::Path& path, CASTIterator::PathMode mode) override;
+     void handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mode);
     virtual void handle_type(TypeRef& type) override;
     virtual void handle_expr(AST::ExprNode& node) override;
     
@@ -67,6 +68,10 @@ public:
     virtual void start_scope() override;
     virtual void local_type(::std::string name, TypeRef type) override {
         DEBUG("(name = " << name << ", type = " << type << ")");
+        if( lookup_local(LocalItem::TYPE, name).is_some() ) {
+            // Shadowing the type... check for recursion by doing a resolve check?
+            type.resolve_args([&](const char *an){ if(an == name) return TypeRef(name+" "); else return TypeRef(an); });
+        }
         m_locals.push_back( LocalItem(LocalItem::TYPE, ::std::move(name), ::std::move(type)) );
     }
     virtual void local_variable(bool _is_mut, ::std::string name, const TypeRef& _type) override {
@@ -261,13 +266,21 @@ void CPathResolver::end_scope()
     m_locals.clear();
 }
 // Returns the bound path for the local item
-::rust::option<const CPathResolver::LocalItem&> CPathResolver::lookup_local(LocalItem::Type type, const ::std::string& name) const
+::rust::option<const CPathResolver::LocalItem&> CPathResolver::lookup_local(LocalItem::Type type, const ::std::string& src_name) const
 {
     DEBUG("m_locals = [" << m_locals << "]");
+    ::std::string   name = src_name;
+    unsigned int    count = 0;
+    while( name.size() > 0 && name.back() == ' ') {
+        name.pop_back();
+        count ++;
+    }
     for( auto it = m_locals.end(); it -- != m_locals.begin(); )
     {
-        if( it->type == type && it->name == name ) {
-            return ::rust::option<const LocalItem&>(*it);
+        if( it->type == type )
+        {
+            if( it->name == name && count-- == 0 )
+                return ::rust::option<const LocalItem&>(*it);
         }
     }
     return ::rust::option<const LocalItem&>();
@@ -441,11 +454,10 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
                     DEBUG("Local type");
                     // - "<Type as _>::nodes"
                     auto np = AST::Path(AST::Path::TagUfcs(), local.tr, TypeRef());
-                    DEBUG("np = " << np);
                     np.add_tailing(path);
-                    DEBUG("np = " << np);
                     path = ::std::move(np);
                     DEBUG("path = " << path);
+                    handle_path_ufcs(path, mode);
                 }
                 return ;
             // Binding is valid
@@ -475,7 +487,7 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
         }
         else
         {
-            // Search backwards up the stack of anon modules
+           // Search backwards up the stack of anon modules
             if( m_module_stack.size() )
             {
                 AST::Path   local_path = m_module_path;
@@ -507,33 +519,43 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
         // Don't touch locals, they're already known
         break;
     case AST::Path::UFCS:
-        // 1. Handle sub-types
-        handle_type(path.ufcs().at(0));
-        handle_type(path.ufcs().at(1));
-        // 2. Handle wildcard traits (locate in inherent impl, or from an in-scope trait)
-        if( path.ufcs().at(1).is_wildcard() )
-        {
-            // 1. Inherent
-            AST::Impl*  impl_ptr;
-            ::std::vector<TypeRef> params;
-            if( m_crate.find_impl(AST::Path(), path.ufcs().at(0), &impl_ptr, &params) )
-            {
-                DEBUG("Found matching inherent impl");
-                // - Mark as being from the inherent, and move along
-                //  > TODO: What about if this item is actually from a trait (due to genric restrictions)
-                path.ufcs().at(1) = TypeRef(TypeRef::TagInvalid());
-            }
-            else
-            {            
-                // Iterate all traits in scope, and find one that is impled for this type
-                throw ParseError::Todo("CPathResolver::handle_path - UFCS, find trait");
-            }
-        }
-        // 3. Call resolve to attempt binding
-        path.resolve(m_crate);
+        handle_path_ufcs(path, mode);
         break;
     }
 }
+void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mode)
+{
+    assert( path.type() == AST::Path::UFCS );
+    // 1. Handle sub-types
+    handle_type(path.ufcs().at(0));
+    handle_type(path.ufcs().at(1));
+    // 2. Handle wildcard traits (locate in inherent impl, or from an in-scope trait)
+    if( path.ufcs().at(1).is_wildcard() )
+    {
+        DEBUG("Searching for impls when trait is _");
+        
+        // Search applicable type parameters for known implementations
+        
+        // 1. Inherent
+        AST::Impl*  impl_ptr;
+        ::std::vector<TypeRef> params;
+        if( m_crate.find_impl(AST::Path(), path.ufcs().at(0), &impl_ptr, &params) )
+        {
+            DEBUG("Found matching inherent impl");
+            // - Mark as being from the inherent, and move along
+            //  > TODO: What about if this item is actually from a trait (due to genric restrictions)
+            path.ufcs().at(1) = TypeRef(TypeRef::TagInvalid());
+        }
+        else
+        {            
+            // Iterate all traits in scope, and find one that is impled for this type
+            throw ParseError::Todo("CPathResolver::handle_path - UFCS, find trait");
+        }
+    }
+    // 3. Call resolve to attempt binding
+    path.resolve(m_crate);
+}
+
 void CPathResolver::handle_type(TypeRef& type)
 {
     TRACE_FUNCTION_F("type = " << type);
