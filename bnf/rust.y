@@ -3,6 +3,7 @@
 %token <realnum> FLOAT 
 %token SUPER_ATTR SUB_ATTR DOC_COMMENT SUPER_DOC_COMMENT
 %token DOUBLECOLON THINARROW FATARROW DOUBLEDOT TRIPLEDOT
+%token DOUBLEEQUAL EXCLAMEQUAL
 %token RWD_mod RWD_fn RWD_const RWD_static RWD_use RWD_struct RWD_enum RWD_trait RWD_impl RWD_type
 %token RWD_as RWD_mut RWD_pub RWD_where
 %token RWD_let
@@ -52,9 +53,7 @@ Root
 */
 crate : super_attrs module_body;
 
-super_attrs
- : super_attrs super_attr
- | ;
+super_attrs : | super_attrs super_attr;
 
 opt_pub
  : RWD_pub	{ bnf_trace("public"); }
@@ -66,9 +65,7 @@ module_body
  : module_body attrs item
  | ;
 
-attrs
- : attrs attr
- | ;
+attrs: attrs attr | ;
 
 super_attr
  : SUPER_ATTR meta_items ']'
@@ -110,11 +107,19 @@ module_def
  ;
 
 /* --- Function --- */
-fn_def: IDENT generic_def '(' fn_def_args ')' fn_def_ret where_clause code	{ bnf_trace("function %s", $1); };
+fn_def: fn_def_hdr code	{ bnf_trace("function defined"); };
+fn_def_hdr: IDENT generic_def '(' fn_def_args ')' fn_def_ret where_clause	{ bnf_trace("function '%s'", $1); };
 
 fn_def_ret: /* -> () */ | THINARROW type;
 
-fn_def_args : fn_def_args fn_def_arg | ;
+fn_def_args: /* empty */ | fn_def_self | fn_def_self ',' fn_def_arg_list | fn_def_arg_list;
+fn_def_self
+ : RWD_self
+ | RWD_mut RWD_self
+ | '&' RWD_self
+ | '&' RWD_mut RWD_self
+ ;
+fn_def_arg_list: fn_def_arg_list fn_def_arg | ;
 fn_def_arg : irrefutable_pattern ':' type;
 
 /* --- Use --- */
@@ -171,15 +176,16 @@ enum_def:
 trait_def:
  ;
 /* --- Impl --- */
-impl_def
- : generic_def type_path RWD_for type '{' impl_items '}'
- | generic_def type_path RWD_for DOUBLEDOT '{' impl_items '}'
- | generic_def type '{' impl_items '}'
+impl_def: impl_def_line '{' impl_items '}'
+impl_def_line
+ : generic_def type RWD_for type	{ bnf_trace("trait impl"); }
+ | generic_def type RWD_for DOUBLEDOT	{ bnf_trace("wildcard impl"); }
+ | generic_def type	{ bnf_trace("inherent impl"); }
  ;
 impl_items: | impl_items attrs impl_item;
 impl_item
  : opt_pub RWD_fn fn_def
- : opt_pub RWD_type generic_def IDENT '=' type ';'
+ | opt_pub RWD_type generic_def IDENT '=' type ';'
  ;
 
 
@@ -334,6 +340,8 @@ expr_value
 
 expr_list: expr_list ',' expr | expr | /* mt */;
 
-struct_literal_list:
-	struct_literal_list IDENT ':' expr | ;
+struct_literal_list
+ : struct_literal_list IDENT ':' expr
+ | struct_literal_list IDENT ':' expr ','
+ | ;
 

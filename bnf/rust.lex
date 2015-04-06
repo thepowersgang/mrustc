@@ -32,6 +32,9 @@ ident_c	[a-zA-Z_]
 "mut"	{ return RWD_mut; }
 "pub"	{ return RWD_pub; }
 
+"self"	{ return RWD_self; }
+"super"	{ return RWD_super; }
+
 "match"	{ return RWD_match; }
 "if"	{ return RWD_if; }
 "else"	{ return RWD_else; }
@@ -43,6 +46,9 @@ ident_c	[a-zA-Z_]
 "->"	{ return THINARROW; }
 "=>"	{ return FATARROW; }
 "#!["	{ return SUPER_ATTR; }
+
+"=="	{ return DOUBLEEQUAL; }
+"!="	{ return EXCLAMEQUAL; }
 
 "&"	{ return *yytext; }
 "!"	{ return *yytext; }
