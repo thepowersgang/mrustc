@@ -24,6 +24,7 @@
 %{
 #include <stdio.h>
 #include <stdarg.h>
+#include <assert.h>
 extern int yylineno;
 
 static inline void bnf_trace(const char* fmt, ...) {
@@ -40,10 +41,19 @@ static void yyprint(FILE *outstream, int type, YYSTYPE value)
 	switch(type)
 	{
 	case IDENT: fprintf(outstream, "%s", value.text); break;
+	case MACRO: fprintf(outstream, "%s!", value.text); break;
 	default:
 		break;
 	}
 }
+
+int rustbnf_forcetoken = 0;
+static inline int read_and_clear(int* ptr) {
+	int rv = *ptr;
+	*ptr = 0;
+	return rv;
+}
+#define YYLEX_PARAM	read_and_clear(&rustbnf_forcetoken)
 %}
 
 %%
@@ -244,7 +254,7 @@ type_path_segs
 type_path_seg
  : IDENT
  | IDENT '<' type_exprs '>'
-/* | IDENT '<' type_exprs DOUBLEGT {  } */
+ | IDENT '<' type_exprs DOUBLEGT { bnf_trace("Double-gt terminated type expr"); rustbnf_forcetoken = '>'; } 
  ;
 type_exprs: type_exprs ',' type | type;
 
@@ -385,6 +395,7 @@ expr_value
  | expr_path '(' expr_list ')'	{ bnf_trace("function call"); }
  | expr_path '{' struct_literal_list '}'
  | expr_path
+ | RWD_self
  | '(' expr ')'
  | MACRO tt_paren	{ bnf_trace("Expr macro invocation"); }
  ;
