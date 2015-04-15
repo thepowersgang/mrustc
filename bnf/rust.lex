@@ -53,6 +53,7 @@ ident_c	[a-zA-Z_]
 "->"	{ return THINARROW; }
 "=>"	{ return FATARROW; }
 "#!["	{ return SUPER_ATTR; }
+"#["	{ return SUB_ATTR; }
 
 "=="	{ return DOUBLEEQUAL; }
 "!="	{ return EXCLAMEQUAL; }
@@ -71,6 +72,7 @@ ident_c	[a-zA-Z_]
 "="	{ return *yytext; }
 "{"|"}"	{ return *yytext; }
 "("|")"	{ return *yytext; }
+"["|"]"	{ return *yytext; }
 "<"	{ return *yytext; }
 ">"	{ return *yytext; }
 ","	{ return *yytext; }

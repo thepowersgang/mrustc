@@ -101,7 +101,7 @@ impl<T:Reader> UTF8Reader<T>
 /// Implmentation of the same interface as 'Chars' provides, returns None at the end of the stream
 impl<T:Reader> Iterator for UTF8Reader<T>
 {
-    type Item = IoResult<char>;
+	type Item = IoResult<char>;
 	fn next(&mut self) -> Option<IoResult<char>>
 	{
 		// Get result from decoder

@@ -240,6 +240,10 @@ expr_path_segs
  | IDENT DOUBLECOLON expr_path_segs
  | IDENT
  ;
+expr_path_seg
+ : IDENT DOUBLECOLON '<' type_exprs '>'
+ | IDENT
+ ;
 
 type_path
  : ufcs_path DOUBLECOLON IDENT
@@ -384,11 +388,31 @@ expr_9
 expr_cast: expr_11 | expr_cast RWD_as type { bnf_trace("expr:cast"); };
 /* 11: Times/Div/Modulo */
 expr_11
- : expr_value
- | expr_11 '*' expr_value {}
- | expr_11 '/' expr_value {}
- | expr_11 '%' expr_value {}
+ : expr_11n
+ | expr_11 '*' expr_11n {}
+ | expr_11 '/' expr_11n {}
+ | expr_11 '%' expr_11n {}
  ;
+expr_11n: expr_12;
+expr_12
+ : expr_fc
+ | '-' expr_12
+ | '-' expr_12
+ | '*' expr_12
+/* | RWD_box expr_12 */
+ | '&' expr_12
+ | '&' RWD_mut expr_12
+ | DOUBLEAMP expr_12 { }
+ | DOUBLEAMP RWD_mut expr_12 { }
+ ;
+
+expr_fc
+ : expr_value
+ | expr_fc '(' ')'
+ | expr_fc '[' expr ']'
+ | expr_fc '.' INTEGER
+ | expr_fc '.' expr_path_seg '(' ')'
+ | expr_fc '.' expr_path_seg
 
 expr_value
  : CHARLIT | INTEGER | FLOAT | STRING
