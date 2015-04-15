@@ -32,6 +32,8 @@ ident_c	[a-zA-Z_]
 "mut"	{ return RWD_mut; }
 "pub"	{ return RWD_pub; }
 
+"let"	{ return RWD_let; }
+
 "self"	{ return RWD_self; }
 "super"	{ return RWD_super; }
 
@@ -50,7 +52,13 @@ ident_c	[a-zA-Z_]
 "=="	{ return DOUBLEEQUAL; }
 "!="	{ return EXCLAMEQUAL; }
 
+"&&"	{ return DOUBLEAMP; }
+"||"	{ return DOUBLEPIPE; }
+"<<"	{ return DOUBLELT; }
+">>"	{ return DOUBLEGT; }
+
 "&"	{ return *yytext; }
+"|"	{ return *yytext; }
 "!"	{ return *yytext; }
 "."	{ return *yytext; }
 ":"	{ return *yytext; }
@@ -63,8 +71,10 @@ ident_c	[a-zA-Z_]
 ","	{ return *yytext; }
 
 {ident_c}({ident_c}|[0-9])*	{ yylval.text = strdup(yytext); return IDENT; }
+{ident_c}({ident_c}|[0-9])*"!"	{ yylval.text = strdup(yytext); return MACRO; }
 [0-9]{dec_digit}*"."{dec_digit}+	{ yylval.realnum = strtod(yytext, NULL); return FLOAT; }
 [0-9]{dec_digit}*	{ yylval.integer = strtoull(yytext, 0, NULL); return INTEGER; }
+0x[0-9a-fA-F]*	{ yylval.integer = strtoull(yytext, 0, NULL); return INTEGER; }
 
 '(\\.|[^\\'])+'	{ return CHARLIT; }
 
@@ -72,7 +82,7 @@ ident_c	[a-zA-Z_]
 
 %%
 int main() {
-	yydebug = 1;
+	//yydebug = 1;
 	yyparse();
 	return 0;
 }
