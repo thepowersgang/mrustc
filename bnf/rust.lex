@@ -38,6 +38,7 @@ ident_c	[a-zA-Z_]
 "pub"	{ return RWD_pub; }
 
 "let"	{ return RWD_let; }
+"ref"	{ return RWD_ref; }
 
 "self"	{ return RWD_self; }
 "super"	{ return RWD_super; }

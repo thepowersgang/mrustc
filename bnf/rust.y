@@ -6,7 +6,7 @@
 %token DOUBLEEQUAL EXCLAMEQUAL DOUBLEPIPE DOUBLEAMP
 %token DOUBLELT DOUBLEGT
 %token RWD_mod RWD_fn RWD_const RWD_static RWD_use RWD_struct RWD_enum RWD_trait RWD_impl RWD_type
-%token RWD_as RWD_mut RWD_pub RWD_where
+%token RWD_as RWD_mut RWD_ref RWD_pub RWD_where
 %token RWD_let
 %token RWD_self RWD_super
 %token RWD_match RWD_if RWD_while RWD_loop RWD_for RWD_else
@@ -300,7 +300,12 @@ struct_pattern
 refutable_pattern
  : IDENT	{ /* maybe bind */ }
  | IDENT '@' nonbind_pattern
+ | RWD_ref IDENT
+ | RWD_ref IDENT '@' nonbind_pattern
+ | RWD_ref RWD_mut IDENT
+ | RWD_ref RWD_mut IDENT '@' nonbind_pattern
  | '&' refutable_pattern
+ | '&' RWD_mut refutable_pattern
  | nonbind_pattern;
 
 nonbind_pattern
