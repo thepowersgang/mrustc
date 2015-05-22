@@ -35,7 +35,7 @@ static const struct {
 
 // === PROTOTYPES ===
 TypeRef Parse_Type(TokenStream& lex);
-TypeRef Parse_Type_Fn(TokenStream& lex, ::std::string abi);
+TypeRef Parse_Type_Fn(TokenStream& lex);
 
 // === CODE ===
 TypeRef Parse_Type(TokenStream& lex)
@@ -52,16 +52,18 @@ TypeRef Parse_Type(TokenStream& lex)
     // '_' = Wildcard (type inferrence variable)
     case TOK_UNDERSCORE:
         return TypeRef();
+    // 'unsafe' - An unsafe function type
+    case TOK_RWORD_UNSAFE:
+        lex.putback(tok);
+        return Parse_Type_Fn(lex);
     // 'extern' - A function type with an ABI
-    case TOK_RWORD_EXTERN: {
-        GET_CHECK_TOK(tok, lex, TOK_STRING);
-        ::std::string abi = tok.str();
-        GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
-        return Parse_Type_Fn(lex, abi);
-        }
+    case TOK_RWORD_EXTERN:
+        lex.putback(tok);
+        return Parse_Type_Fn(lex);
     // 'fn' - Rust function
     case TOK_RWORD_FN:
-        return Parse_Type_Fn(lex, "");
+        lex.putback(tok);
+        return Parse_Type_Fn(lex);
     // '<' - An associated type cast
     case TOK_LT:
         lex.putback(tok);
@@ -222,11 +224,28 @@ TypeRef Parse_Type(TokenStream& lex)
     throw ParseError::BugCheck("Reached end of Parse_Type");
 }
 
-TypeRef Parse_Type_Fn(TokenStream& lex, ::std::string abi)
+TypeRef Parse_Type_Fn(TokenStream& lex)
 {
     TRACE_FUNCTION;
     Token   tok;
     
+    ::std::string   abi = "";
+    
+    GET_TOK(tok, lex);
+    
+    if( tok.type() == TOK_RWORD_UNSAFE )
+    {
+        // TODO: Unsafe functions in types
+        GET_TOK(tok, lex);
+    }
+    if( tok.type() == TOK_RWORD_EXTERN )
+    {
+        GET_CHECK_TOK(tok, lex, TOK_STRING);
+        abi = tok.str();
+        GET_TOK(tok, lex);
+    }
+    CHECK_TOK(tok, TOK_RWORD_FN);
+
     ::std::vector<TypeRef>  args;
     GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
     while( LOOK_AHEAD(lex) != TOK_PAREN_CLOSE )

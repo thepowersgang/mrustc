@@ -123,8 +123,8 @@ inline ::std::ostream& operator<<(::std::ostream& os, const ::std::pair<T,U>& v)
     return os;
 }
 
-template <typename T, typename U>
-inline ::std::ostream& operator<<(::std::ostream& os, const ::std::map<T,U>& v) {
+template <typename T, typename U, class Cmp>
+inline ::std::ostream& operator<<(::std::ostream& os, const ::std::map<T,U,Cmp>& v) {
     if( v.size() > 0 )
     {
         bool is_first = true;

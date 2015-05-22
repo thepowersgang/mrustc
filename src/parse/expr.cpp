@@ -640,6 +640,7 @@ bool Parse_IsTokValue(eTokenType tok_type)
     
     case TOK_MACRO:
     
+    case TOK_PIPE:
     case TOK_EXCLAM:
     case TOK_DASH:
     case TOK_STAR:
@@ -1296,4 +1297,12 @@ TokenTree Parse_TT_Block(TokenStream& lex)
     SET_PARSE_FLAG(wlex, no_expand_macros);
     
     throw ParseError::Todo("Parse_TT_Block");
+}
+TokenTree Parse_TT_Meta(TokenStream& lex)
+{   
+    TRACE_FUNCTION;
+    TTLexer wlex(lex);
+    SET_PARSE_FLAG(wlex, no_expand_macros);
+    Parse_MetaItem(wlex);
+    return wlex.get_output();
 }

@@ -36,12 +36,12 @@ clean:
 
 output/%.ast: samples/%.rs $(BIN) 
 	@mkdir -p output/
-	$(DBG) $(BIN) $< --emit ast -o $@ 2>&1 | tee $@_dbg.txt | tail -n 20 ; test $${PIPESTATUS[0]} -eq 0
+	$(DBG) $(BIN) $< --emit ast -o $@ 2>&1 | tee $@_dbg.txt | tail -n 40 ; test $${PIPESTATUS[0]} -eq 0
 
 RUSTCSRC := ../../../Source/rust/rustc-nightly/
 output/core.ast: $(RUSTCSRC)src/libcore/lib.rs $(BIN)
 	@mkdir -p output/
-	$(DBG) $(BIN) $< --emit ast -o $@ 2>&1 | tee $@_dbg.txt | tail -n 20 ; test $${PIPESTATUS[0]} -eq 0
+	$(DBG) $(BIN) $< --emit ast -o $@ 2>&1 | tee $@_dbg.txt | tail -n 40 ; test $${PIPESTATUS[0]} -eq 0
 	
 
 test: output/core.ast $(BIN)

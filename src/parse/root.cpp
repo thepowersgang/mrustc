@@ -395,6 +395,13 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems meta_items)
                 break;
         }
         CHECK_TOK(tok, TOK_PAREN_CLOSE);
+	
+        if(LOOK_AHEAD(lex) == TOK_RWORD_WHERE)
+        {
+            GET_TOK(tok, lex);
+            Parse_WhereClause(lex, params);
+        }
+        // TODO: Where block
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
         if( refs.size() == 0 )
             throw ParseError::Generic(lex, "Use 'struct Name;' instead of 'struct Name();' ... ning-nong");
@@ -1008,8 +1015,10 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
                     ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_EXPR) );
                 else if( type == "ty" )
                     ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_TYPE) );
+                else if( type == "meta" )
+                    ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_META) );
                 else
-                    throw ParseError::Generic(FMT("Unknown fragment type " << type));
+                    throw ParseError::Generic(lex, FMT("Unknown fragment type " << type));
                 break; }
             case TOK_PAREN_OPEN:
                 if( allow_sub )

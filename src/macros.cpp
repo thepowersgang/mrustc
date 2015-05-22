@@ -6,6 +6,7 @@
 #include "parse/tokentree.hpp"
 #include "parse/common.hpp"
 #include "ast/ast.hpp"
+#include <limits.h>
 
 typedef ::std::map< ::std::string, MacroRules>  t_macro_regs;
 
@@ -37,15 +38,27 @@ class ParameterMappings
     };
 
     ::std::vector<unsigned int> m_layer_indexes;
-    ::std::multimap<t_mapping_key, TokenTree>   m_inner;
     ::std::map<t_mapping_block, unsigned int> m_counts;
     
+    
+    struct Mapping {
+        t_mapping_block block;
+        ::std::vector<TokenTree>    entries;
+        friend ::std::ostream& operator<<(::std::ostream& os, const Mapping& x) {
+            os << "(" << x.block.first << ", " << x.block.second << "): '"<<x.entries<<"')";
+            return os;
+        }
+    };
+    struct less_cstr {
+        bool operator()(const char *a, const char *b) const { return ::std::strcmp(a,b) < 0; }
+    };
+    ::std::map<const char *, Mapping, less_cstr> m_inner;
 public:
     ParameterMappings()
     {
     }
     
-    const ::std::multimap<t_mapping_key, TokenTree>& inner_() const {
+    const ::std::map<const char *, Mapping, less_cstr>& inner_() const {
         return m_inner;
     }
     
@@ -63,35 +76,35 @@ public:
     }
     
     void insert(unsigned int layer, const char *name, TokenTree data) {
-        unsigned int iteration = (layer > 0 ? m_layer_indexes.at(layer-1) : 0);
-        m_inner.insert( ::std::make_pair(
-            t_mapping_key { {layer, iteration}, name },
-            ::std::move(data)
-            ) );
+        auto v = m_inner.insert( ::std::make_pair( name, Mapping { {layer, 0}, {} } ) );
+        if(v.first->second.block.first != layer) {
+            throw ParseError::Generic(FMT("matching '"<<name<<"' at multiple layers"));
+        }
+        v.first->second.entries.push_back( data );
     }
     
     void calculate_counts()
     {
-        assert( m_counts.size() == 0 );
-        auto ins_it = m_counts.begin();
-        const char* name = nullptr;
-        for( const auto& p : m_inner )
-        {
-            // If the first iteration, or the block changes
-            if( ins_it == m_counts.end() || ins_it->first < p.first.block )
-            {
-                ins_it = m_counts.insert(ins_it, ::std::make_pair(p.first.block, 1));
-                name = p.first.name;
-            }
-            else if( ::std::strcmp(name, p.first.name) == 0 )
-            {
-                ins_it->second ++;
-            }
-            else
-            {
-                // Ignore, the name has changed
-            }
-        }
+        //assert( m_counts.size() == 0 );
+        //auto ins_it = m_counts.begin();
+        //const char* name = nullptr;
+        //for( const auto& p : m_inner )
+        //{
+        //    // If the first iteration, or the block changes
+        //    if( ins_it == m_counts.end() || ins_it->first < p.first.block )
+        //    {
+        //        ins_it = m_counts.insert(ins_it, ::std::make_pair(p.first.block, 1));
+        //        name = p.first.name;
+        //    }
+        //    else if( ::std::strcmp(name, p.first.name) == 0 )
+        //    {
+        //        ins_it->second ++;
+        //    }
+        //    else
+        //    {
+        //        // Ignore, the name has changed
+        //    }
+        //}
     }
     
     unsigned int iter_count(unsigned int layer, unsigned int parent_iteration) const {
@@ -107,24 +120,49 @@ public:
     
     const TokenTree* get(unsigned int layer, unsigned int iteration, const char *name, unsigned int idx) const
     {
-        const auto it_range = m_inner.equal_range( t_mapping_key { {layer, iteration}, name } );
-        if( it_range.first == it_range.second ) {
+        const auto it = m_inner.find( name );
+        if( it == m_inner.end() ) {
             DEBUG("m_mappings = " << m_inner);
             return nullptr;
         }
-        
-        size_t i = 0;
-        for( auto it = it_range.first; it != it_range.second; it ++ )
-        {
-            if( i == idx )
-            {
-                DEBUG(name << " #" << i);
-                return &it->second;
-            }
-            i ++;
+        const auto& e = it->second;
+        if( e.block.first < layer ) {
+            DEBUG(name<<" higher layer (" << e.block.first << ")");
+            return nullptr;
         }
-        DEBUG("Not enough mappings for name " << name << " at layer " << layer << " PI " << iteration);
-        return nullptr;
+        else if( e.block.first > layer ) {
+            throw ParseError::Generic( FMT("'" << name << "' is still repeating at this layer") );
+        }
+        else if( idx >= e.entries.size() ) {
+            DEBUG("Not enough mappings for name " << name << " at layer " << layer << " PI " << iteration);
+            return nullptr;
+        }
+        else {
+            DEBUG(name << " #" << idx << ": " << e.entries[idx]);
+            return &e.entries[idx];
+        }
+    }
+    unsigned int count(unsigned int layer, unsigned int iteration, const char *name) const
+    {
+        const auto it = m_inner.find( name );
+        if( it == m_inner.end() ) {
+            DEBUG("("<<layer<<","<<iteration<<",'"<<name<<"') not found m_mappings = " << m_inner);
+            return 0;
+        }
+        const auto& e = it->second;
+        
+        if( e.block.first < layer ) {
+            DEBUG(name<<" higher layer (" << e.block.first << ")");
+            return UINT_MAX;
+        }
+        else if( e.block.first > layer ) {
+            //throw ParseError::Generic( FMT("'" << name << "' is still repeating at this layer") );
+            // ignore mismatch
+            return UINT_MAX;
+        }
+        else {
+            return it->second.entries.size();
+        }
     }
 };
 
@@ -139,8 +177,14 @@ private:
     const ::std::vector<MacroRuleEnt>&  m_root_contents;
     const ParameterMappings m_mappings;
     
+
+    struct t_offset {
+        unsigned read_pos;
+        unsigned loop_index;
+        unsigned max_index;
+    };
     /// Layer states : Index and Iteration
-    ::std::vector< ::std::pair<size_t,size_t> >   m_offsets;
+    ::std::vector< t_offset >   m_offsets;
     ::std::vector< size_t > m_layer_iters;
     
     /// Cached pointer to the current layer
@@ -155,7 +199,7 @@ public:
         m_crate_name(x.m_crate_name),
         m_root_contents(x.m_root_contents),
         m_mappings(x.m_mappings),
-        m_offsets({ {0,0} }),
+        m_offsets({ {0,0,0} }),
         m_cur_ents(&m_root_contents)
     {
         prep_counts();
@@ -165,7 +209,7 @@ public:
         m_crate_name(crate_name),
         m_root_contents(contents),
         m_mappings(mappings),
-        m_offsets({ {0,0} }),
+        m_offsets({ {0,0,0} }),
         m_cur_ents(&m_root_contents)
     {
         prep_counts();
@@ -177,6 +221,7 @@ private:
     const MacroRuleEnt& getCurLayerEnt() const;
     const ::std::vector<MacroRuleEnt>* getCurLayer() const;
     void prep_counts();
+    unsigned int count_repeats(const ::std::vector<MacroRuleEnt>& ents, unsigned layer, unsigned iter);
 };
 
 class MacroToken:
@@ -274,6 +319,8 @@ bool Macro_TryPattern(TTStream& lex, const MacroPatEnt& pat)
         catch( const CompileError::Base& e ) {
             return false;
         }
+    case MacroPatEnt::PAT_META:
+        return LOOK_AHEAD(lex) == TOK_IDENT;
     }
     throw ParseError::Todo(lex, FMT("Macro_TryPattern : " << pat));
 }
@@ -355,6 +402,9 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
         if(0)
     case MacroPatEnt::PAT_BLOCK:
         val = Parse_TT_Block(lex);
+        if(0)
+    case MacroPatEnt::PAT_META:
+        val = Parse_TT_Meta(lex);
         if(0)
     case MacroPatEnt::PAT_IDENT:
         {
@@ -499,7 +549,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
 Position MacroExpander::getPosition() const
 {
     DEBUG("olex.getPosition() = " << m_olex.getPosition());
-    return Position(FMT("Macro:" << ""), m_offsets[0].first);
+    return Position(FMT("Macro:" << ""), m_offsets[0].read_pos);
 }
 Token MacroExpander::realGetToken()
 {
@@ -527,8 +577,7 @@ Token MacroExpander::realGetToken()
         const auto& ents = *m_cur_ents;
         
         // Obtain current read position in layer, and increment
-        size_t idx = m_offsets.back().first;
-        m_offsets.back().first ++;
+        size_t idx = m_offsets.back().read_pos++;
         
         // Check if limit has been reached
         if( idx < ents.size() )
@@ -549,11 +598,12 @@ Token MacroExpander::realGetToken()
             // - Expand to a parameter
             else if( ent.name != "" )
             {
+                DEBUG("lookup '" << ent.name << "'");
                 const TokenTree* tt;
                 unsigned int search_layer = layer;
                 do {
                     unsigned int parent_iter = (search_layer > 0 ? m_layer_iters.at(search_layer-1) : 0);
-                    const size_t iter_idx = m_offsets.at(search_layer).second;
+                    const size_t iter_idx = m_offsets.at(search_layer).loop_index;
                     tt = m_mappings.get(search_layer, parent_iter, ent.name.c_str(), iter_idx);
                 } while( !tt && search_layer-- > 0 );
                 if( ! tt )
@@ -571,13 +621,15 @@ Token MacroExpander::realGetToken()
             {
                 DEBUG("desc: layer = " << layer << ", m_layer_iters = " << m_layer_iters);
                 unsigned int layer_iter = m_layer_iters.at(layer);
-                unsigned int num_repeats = m_mappings.iter_count(layer+1, layer_iter);
+                unsigned int num_repeats = this->count_repeats(ent.subpats, layer+1, layer_iter);
+                if(num_repeats == UINT_MAX)
+                    num_repeats = 0;
                 // New layer
                 DEBUG("- NL = " << layer+1 << ", count = " << num_repeats );
                 if( num_repeats > 0 )
                 {
                     // - Push an offset
-                    m_offsets.push_back( ::std::make_pair(0, 0) );
+                    m_offsets.push_back( {0, 0, num_repeats} );
                     // - Save the current layer
                     m_cur_ents = getCurLayer();
                     // - Restart loop for new layer
@@ -600,16 +652,15 @@ Token MacroExpander::realGetToken()
         {
             // - Otherwise, restart/end loop and fall through
             DEBUG("layer = " << layer << ", m_layer_iters = " << m_layer_iters);
-            unsigned int parent_layer_iter = m_layer_iters.at(layer-1);
-            unsigned int layer_max = m_mappings.iter_count(layer, parent_layer_iter);
-            DEBUG("Layer #" << layer << " Cur: " << m_offsets.back().second << ", Max: " << layer_max);
-            if( m_offsets.back().second + 1 < layer_max )
+            auto& cur_ofs = m_offsets.back();
+            DEBUG("Layer #" << layer << " Cur: " << cur_ofs.loop_index << ", Max: " << cur_ofs.max_index);
+            if( cur_ofs.loop_index + 1 < cur_ofs.max_index )
             {
                 m_layer_iters.at(layer) ++;
                 
                 DEBUG("Restart layer");
-                m_offsets.back().first = 0;
-                m_offsets.back().second ++;
+                cur_ofs.read_pos = 0;
+                cur_ofs.loop_index ++;
                 
                 auto& loop_layer = getCurLayerEnt();
                 assert(loop_layer.subpats.size());
@@ -654,11 +705,11 @@ const MacroRuleEnt& MacroExpander::getCurLayerEnt() const
     const ::std::vector<MacroRuleEnt>* ents = &m_root_contents;
     for( unsigned int i = 0; i < m_offsets.size()-2; i ++ )
     {
-        unsigned int ofs = m_offsets[i].first;
+        unsigned int ofs = m_offsets[i].read_pos;
         assert( ofs > 0 && ofs <= ents->size() );
         ents = &(*ents)[ofs-1].subpats;
     }
-    return (*ents)[m_offsets[m_offsets.size()-2].first-1];
+    return (*ents)[m_offsets[m_offsets.size()-2].read_pos-1];
     
 }
 const ::std::vector<MacroRuleEnt>* MacroExpander::getCurLayer() const
@@ -667,13 +718,67 @@ const ::std::vector<MacroRuleEnt>* MacroExpander::getCurLayer() const
     const ::std::vector<MacroRuleEnt>* ents = &m_root_contents;
     for( unsigned int i = 0; i < m_offsets.size()-1; i ++ )
     {
-        unsigned int ofs = m_offsets[i].first;
+        unsigned int ofs = m_offsets[i].read_pos;
         //DEBUG(i << " ofs=" << ofs << " / " << ents->size());
         assert( ofs > 0 && ofs <= ents->size() );
         ents = &(*ents)[ofs-1].subpats;
         //DEBUG("ents = " << ents);
     }
     return ents;
+}
+unsigned int MacroExpander::count_repeats(const ::std::vector<MacroRuleEnt>& ents, unsigned layer, unsigned iter)
+{
+    bool    valid = false;
+    unsigned int count = 0;
+    for(const auto& ent : ents)
+    {
+        if( ent.name != "" )
+        {
+            if( ent.name[0] == '*' ) {
+                // Ignore meta-vars, they don't repeat
+            }
+            else {
+                auto c = m_mappings.count(layer, iter, ent.name.c_str());
+                DEBUG(c << " mappings for " << ent.name << " at (" << layer << ", " << iter << ")");
+                if( c == UINT_MAX ) {
+                    // Ignore
+                }
+                else if(!valid || count == c) {
+                    count = c;
+                    valid = true;
+                }
+                else {
+                    // Mismatch!
+                    throw ParseError::Generic("count_repeats - iteration count mismatch");
+                }
+            }
+        }
+        else if( ent.subpats.size() > 0 )
+        {
+            auto c = this->count_repeats(ent.subpats, layer, iter);
+            if( c == UINT_MAX ) {
+            }
+            else if(!valid || count == c) {
+                count = c;
+                valid = true;
+            }
+            else {
+                // Mismatch!
+                throw ParseError::Generic("count_repeats - iteration count mismatch (subpat)");
+            }
+        }
+        else
+        {
+            // Don't care
+        }
+    }
+    
+    if(valid) {
+        return count;
+    }
+    else {
+        return UINT_MAX;
+    }
 }
 
 void Macro_Invoke_Concat_Once(::std::string& s, TokenStream& lex, enum eTokenType exp)
@@ -801,6 +906,7 @@ void operator%(Serialiser& s, MacroPatEnt::Type c) {
     _(PAT_STMT);
     _(PAT_PATH);
     _(PAT_BLOCK);
+    _(PAT_META);
     _(PAT_IDENT);
     #undef _
     }
@@ -820,6 +926,7 @@ void operator%(::Deserialiser& s, MacroPatEnt::Type& c) {
     _(PAT_STMT);
     _(PAT_PATH);
     _(PAT_BLOCK);
+    _(PAT_META);
     _(PAT_IDENT);
     else
         throw ::std::runtime_error( FMT("No conversion for '" << n << "'") );

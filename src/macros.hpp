@@ -70,6 +70,7 @@ struct MacroPatEnt:
         PAT_EXPR,
         PAT_STMT,
         PAT_BLOCK,
+        PAT_META,
         PAT_LOOP,   // Enables use of subpats
     } type;
 
@@ -112,6 +113,7 @@ struct MacroPatEnt:
         case PAT_EXPR:  os << "expr ";  break;
         case PAT_STMT:  os << "stmt ";  break;
         case PAT_BLOCK: os << "block "; break;
+        case PAT_META:  os << "meta "; break;
         case PAT_LOOP:  os << "loop ";  break;
         }
         if(x.name.size())
