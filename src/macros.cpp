@@ -18,29 +18,6 @@ class ParameterMappings
     // MultiMap (layer, name) -> TokenTree
     // - Multiple values are only allowed for layer>0
     typedef ::std::pair<unsigned, unsigned> t_mapping_block;
-    struct t_mapping_key {
-        t_mapping_block block;
-        const char*     name;
-        
-        bool operator<(const t_mapping_key& x) const {
-            if( block < x.block )   return true;
-            if( block > x.block )   return false;
-            int cmp = ::std::strcmp(name, x.name);
-            if( cmp < 0 )   return true;
-            if( cmp > 0 )   return false;
-            // Equal
-            return false;
-        }
-        friend ::std::ostream& operator<<(::std::ostream& os, const t_mapping_key& x) {
-            os << "(" << x.block.first << ", " << x.block.second << " - '"<<x.name<<"')";
-            return os;
-        }
-    };
-
-    ::std::vector<unsigned int> m_layer_indexes;
-    ::std::map<t_mapping_block, unsigned int> m_counts;
-    
-    
     struct Mapping {
         t_mapping_block block;
         ::std::vector<TokenTree>    entries;
@@ -53,6 +30,7 @@ class ParameterMappings
         bool operator()(const char *a, const char *b) const { return ::std::strcmp(a,b) < 0; }
     };
     ::std::map<const char *, Mapping, less_cstr> m_inner;
+    unsigned m_layer_count = 0;
 public:
     ParameterMappings()
     {
@@ -63,59 +41,17 @@ public:
     }
     
     size_t layer_count() const {
-        return m_layer_indexes.size();
-    }
-    
-    void prep_layer(unsigned int layer) {
-        // Need to ensure that [layer] is valid for insert
-        while( m_layer_indexes.size() <= layer )
-            m_layer_indexes.push_back(0);
-    }
-    void inc_layer(unsigned int layer) {
-        m_layer_indexes.at(layer) ++;
+        return m_layer_count+1;
     }
     
     void insert(unsigned int layer, const char *name, TokenTree data) {
+        if(layer > m_layer_count)
+            m_layer_count = layer;
         auto v = m_inner.insert( ::std::make_pair( name, Mapping { {layer, 0}, {} } ) );
         if(v.first->second.block.first != layer) {
             throw ParseError::Generic(FMT("matching '"<<name<<"' at multiple layers"));
         }
         v.first->second.entries.push_back( data );
-    }
-    
-    void calculate_counts()
-    {
-        //assert( m_counts.size() == 0 );
-        //auto ins_it = m_counts.begin();
-        //const char* name = nullptr;
-        //for( const auto& p : m_inner )
-        //{
-        //    // If the first iteration, or the block changes
-        //    if( ins_it == m_counts.end() || ins_it->first < p.first.block )
-        //    {
-        //        ins_it = m_counts.insert(ins_it, ::std::make_pair(p.first.block, 1));
-        //        name = p.first.name;
-        //    }
-        //    else if( ::std::strcmp(name, p.first.name) == 0 )
-        //    {
-        //        ins_it->second ++;
-        //    }
-        //    else
-        //    {
-        //        // Ignore, the name has changed
-        //    }
-        //}
-    }
-    
-    unsigned int iter_count(unsigned int layer, unsigned int parent_iteration) const {
-        t_mapping_block block = {layer, parent_iteration};
-        DEBUG("block = " << block);
-        const auto it = m_counts.find( block );
-        if( it == m_counts.end() ) {
-            DEBUG("m_counts = " << m_counts);
-            return 0;
-        }
-        return it->second;
     }
     
     const TokenTree* get(unsigned int layer, unsigned int iteration, const char *name, unsigned int idx) const
@@ -349,7 +285,6 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
         DEBUG("Loop");
         for(;;)
         {
-            bound_tts.prep_layer(layer+1);
             if( ! Macro_TryPattern(lex, pat.subpats[0]) )
             {
                 DEBUG("break");
@@ -362,7 +297,6 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
                     return false;
                 }
             }
-            bound_tts.inc_layer(layer+1);
             match_count += 1;
             DEBUG("succ");
             if( pat.tok.type() != TOK_NULL )
@@ -460,9 +394,6 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
             {
                 DEBUG("- " << v.first << " = [" << v.second << "]");
             }
-            
-            // Count the number of repetitions
-            bound_tts.calculate_counts();
             
             DEBUG("TODO: Obtain crate name correctly");
             TokenStream* ret_ptr = new MacroExpander(olex, rule.m_contents, bound_tts, "");
