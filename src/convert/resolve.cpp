@@ -58,7 +58,7 @@ public:
     void handle_params(AST::TypeParams& params) override;
 
     virtual void handle_path(AST::Path& path, CASTIterator::PathMode mode) override;
-     void handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mode);
+    void handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mode);
     virtual void handle_type(TypeRef& type) override;
     virtual void handle_expr(AST::ExprNode& node) override;
     

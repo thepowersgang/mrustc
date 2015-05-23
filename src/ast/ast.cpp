@@ -267,18 +267,20 @@ bool Crate::find_impl(const Path& trait, const TypeRef& type, Impl** out_impl, :
 {
     DEBUG("trait = " << trait << ", type = " << type);
     
+    // If no params output provided, use a dud locaton
     ::std::vector<TypeRef>  dud_params;
-    
     if(out_params)
         *out_params = ::std::vector<TypeRef>();
     else
         out_params = &dud_params;
     
-    if(out_impl)    *out_impl = nullptr;
+    // Zero output
+    if(out_impl)
+        *out_impl = nullptr;
     
     if( is_trait_implicit(trait) )
     {
-        if(out_impl)    throw CompileError::BugCheck("find_impl - Asking for concrete impl of PhantomFn");
+        if(out_impl)    throw CompileError::BugCheck("find_impl - Asking for concrete impl of a marker trait");
         return true;
     }
     
