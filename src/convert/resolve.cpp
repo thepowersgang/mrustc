@@ -579,9 +579,17 @@ bool CPathResolver::find_mod_item(AST::Path& path) {
 bool CPathResolver::find_super_mod_item(AST::Path& path) {
     if( m_module->name() == "" )
         throw ParseError::Todo("Correct handling of 'super' in anon modules");
-    // 1. 
-    // TODO: lookup_path_in_module
-    throw ParseError::Todo("Handle 'super'");
+    
+    // 1. Construct path to parent module
+    AST::Path   super_path = m_module_path;
+    super_path.nodes().pop_back();
+    assert( super_path.nodes().size() > 0 );
+    if( super_path.nodes().back().name()[0] == '#' )
+        throw ParseError::Todo("Correct handling of 'super' in anon modules (parent is anon)");
+    // 2. Resolve that path
+    super_path.resolve(m_crate);
+    // 3. Call lookup_path_in_module
+    return lookup_path_in_module(m_crate, super_path.binding().bound_module(), super_path, path);
 }
 bool CPathResolver::find_type_param(const ::std::string& name) {
     for( auto it = m_locals.end(); it -- != m_locals.begin(); )
@@ -628,11 +636,14 @@ void CPathResolver::handle_type(TypeRef& type)
     {
         const auto& name = type.type_param();
         auto opt_local = lookup_local(LocalItem::TYPE, name);
-        /*if( name == "Self" )
+        if( name == "Self" )
         {
             // Good as it is
+            // - TODO: Allow replacing this with the real Self (e.g. in an impl block)
+            // - NEED to annotate with the relevant impl block, and with other bounds
+            //  > So that you can handle 'where Self: Sized' etc
         }
-        else*/ if( opt_local.is_some() )
+        else if( opt_local.is_some() )
         {
             type = opt_local.unwrap().tr;
         }

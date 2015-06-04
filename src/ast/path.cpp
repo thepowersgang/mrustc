@@ -335,8 +335,8 @@ void Path::resolve_ufcs(const Crate& root_crate, bool expect_params)
         else if( type.is_type_param() )
         {
             // Check that the param is bound on that trait?
-            if( !type.type_params_ptr() )
-                throw CompileError::BugCheck( FMT("Path::resolve_ufcs - No bound params on arg") );
+            //if( !type.type_params_ptr() )
+            //    throw CompileError::BugCheck( FMT("Path::resolve_ufcs - No bound params on arg") );
             
             //const auto& tps = *type.type_params_ptr();
             //for( const auto& bound : tps.bounds() )
