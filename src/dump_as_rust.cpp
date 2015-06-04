@@ -334,7 +334,7 @@ public:
         case CORETYPE_BOOL:
             break;
         case CORETYPE_CHAR:
-            m_os << "'\\u" << ::std::hex << n.m_value << ::std::dec << "'";
+            m_os << "'\\u{" << ::std::hex << n.m_value << ::std::dec << "}'";
             break;
         case CORETYPE_F32:
         case CORETYPE_F64:
@@ -364,6 +364,7 @@ public:
         case CORETYPE_ANY:
         case CORETYPE_F32:
         case CORETYPE_F64:
+            m_os.precision(10);
             m_os << n.m_value;
             break;
         default:

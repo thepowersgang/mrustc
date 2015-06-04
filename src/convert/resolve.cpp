@@ -276,10 +276,12 @@ CPathResolver::CPathResolver(const AST::Crate& crate):
 void CPathResolver::start_scope()
 {
     DEBUG("");
+    m_scope_stack.push_back( {0, nullptr, AST::Path(), {}} );
     m_locals.push_back( LocalItem() );
 }
 void CPathResolver::end_scope()
 {
+    m_scope_stack.pop_back( );
     DEBUG(m_locals.size() << " items");
     for( auto it = m_locals.end(); it-- != m_locals.begin(); )
     {
@@ -437,7 +439,8 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
         // 1. function scopes (variables and local items)
         // > Return values: name or path
         {
-            if( this->find_local_item(path, /*allow_variables=*/path.is_trivial()) ) {
+            bool allow_variables = (mode == CASTIterator::MODE_EXPR && path.is_trivial());
+            if( this->find_local_item(path, allow_variables) ) {
                 break ;
             }
             else {

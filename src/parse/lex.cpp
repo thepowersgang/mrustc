@@ -536,7 +536,7 @@ double Lexer::parseFloat(uint64_t whole)
     const int MAX_LEN = 63;
     const int MAX_SIG = MAX_LEN - 1 - 4;
     char buf[MAX_LEN+1];
-    int ofs = snprintf(buf, MAX_LEN+1, "%llu", (unsigned long long)whole);
+    int ofs = snprintf(buf, MAX_LEN+1, "%llu.", (unsigned long long)whole);
 
     char ch = this->getc_num();
     #define PUTC(ch)    do { if( ofs < MAX_SIG ) { buf[ofs] = ch; ofs ++; } else { throw ParseError::Generic("Oversized float"); } } while(0)
