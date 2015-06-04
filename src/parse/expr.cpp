@@ -1001,7 +1001,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     case TOK_RWORD_SELF:
         {
             if( LOOK_AHEAD(lex) != TOK_DOUBLE_COLON ) {
-                return NEWNODE( AST::ExprNode_NamedValue, AST::Path(AST::Path::TagLocal(), "self") );
+                return NEWNODE( AST::ExprNode_NamedValue, AST::Path(AST::Path::TagVariable(), "self") );
             }
             else
             {

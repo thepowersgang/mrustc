@@ -47,8 +47,14 @@ class CPathResolver:
     AST::Module*  m_module;
     AST::Path m_module_path;
     ::std::vector< LocalItem >  m_locals;
-    // TODO: Maintain a stack of variable scopes
-    ::std::vector< ::std::pair<unsigned int,AST::Module*> >   m_module_stack;
+    struct Scope {
+        unsigned int    module_idx;
+        AST::Module *module;    // can be NULL
+        AST::Path   module_path;
+        ::std::vector< ::std::string >  locals;
+    };
+    ::std::vector<Scope>    m_scope_stack;
+    ::std::vector< TypeRef >  m_self_type;
     
     friend class CResolvePaths_NodeVisitor;
     
@@ -64,6 +70,7 @@ public:
     
     virtual void handle_pattern(AST::Pattern& pat, const TypeRef& type_hint) override;
     virtual void handle_module(AST::Path path, AST::Module& mod) override;
+    virtual void handle_function(AST::Path path, AST::Function& fcn) override;
 
     virtual void start_scope() override;
     virtual void local_type(::std::string name, TypeRef type) override {
@@ -75,11 +82,17 @@ public:
         m_locals.push_back( LocalItem(LocalItem::TYPE, ::std::move(name), ::std::move(type)) );
     }
     virtual void local_variable(bool _is_mut, ::std::string name, const TypeRef& _type) override {
-        m_locals.push_back( LocalItem(LocalItem::VAR, ::std::move(name)) );
+        assert(m_scope_stack.size() > 0);
+        m_scope_stack.back().locals.push_back( ::std::move(name) );
     }
     virtual void end_scope() override;
     
     ::rust::option<const LocalItem&> lookup_local(LocalItem::Type type, const ::std::string& name) const;
+    
+    bool find_local_item(AST::Path& path, bool allow_variables);
+    bool find_mod_item(AST::Path& path);
+    bool find_super_mod_item(AST::Path& path);
+    bool find_type_param(const ::std::string& name);
     
     // TODO: Handle a block and obtain the local module (if any)
 private:
@@ -124,23 +137,35 @@ public:
         {
             
             // Add a reference to it to the parent node (add_anon_module will do dedup)
-            AST::Module& parent_mod = *( (m_res.m_module_stack.size() > 0) ? m_res.m_module_stack.back().second : m_res.m_module );
+            AST::Module* parent_mod_p = m_res.m_module;
+            for(const auto& e : m_res.m_scope_stack)
+                if(e.module != nullptr)
+                    parent_mod_p = e.module;
+            AST::Module& parent_mod = *parent_mod_p;
             auto idx = parent_mod.add_anon_module( node.m_inner_mod.get() );
             
-            // And add to the list of modules to use in lookup
-            m_res.m_module_stack.push_back( ::std::make_pair(idx, node.m_inner_mod.get()) );
-            
-            // Do use resolution on this module, then do 
+            // Obtain the path
             AST::Path   local_path = m_res.m_module_path;
-            for(unsigned int i = 0; i < m_res.m_module_stack.size(); i ++)
-                local_path.nodes().push_back( AST::PathNode( FMT("#" << m_res.m_module_stack[i].first), {} ) );
+            for(const auto& e : m_res.m_scope_stack ) {
+                if( e.module != nullptr ) {
+                    local_path.nodes().push_back( AST::PathNode( FMT("#" << e.module_idx), {} ) );
+                }
+            }
+            local_path.nodes().push_back( AST::PathNode(FMT("#" << idx), {}) );
+
+            // And add to the list of modules to use in lookup
+            m_res.m_scope_stack.push_back( {idx, node.m_inner_mod.get(), local_path, {}} );
             
-            ResolvePaths_HandleModule_Use(m_res.m_crate, local_path, *node.m_inner_mod);
+            // Do use resolution on this module
+            // TODO: When is more advanced resolution done?
+            ResolvePaths_HandleModule_Use(m_res.m_crate, m_res.m_scope_stack.back().module_path, *node.m_inner_mod);
+        }
+        else {
+            m_res.m_scope_stack.push_back( {0, nullptr, AST::Path(), {}} );
         }
         AST::NodeVisitorDef::visit(node);
         // Once done, pop the module
-        if( node.m_inner_mod.get() )
-            m_res.m_module_stack.pop_back();
+        m_res.m_scope_stack.pop_back();
     }
     
     void visit(AST::ExprNode_IfLet& node)
@@ -292,6 +317,7 @@ void CPathResolver::end_scope()
 // > Search module-level definitions
 bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, const AST::Path& mod_path, AST::Path& path)
 {
+    TRACE_FUNCTION_F("mod_path="<<mod_path);
     // - Allow leaf nodes if path is a single node, don't skip private wildcard imports
     auto item = module.find_item(path[0].name(), (path.size() == 1), false);
     switch(item.type())
@@ -315,7 +341,7 @@ bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, c
             path.resolve( crate );
             return true;
         }
-        break; }
+        return false; }
     case AST::Module::ItemRef::ITEM_Module:
         // Check name down?
         // Add current module path
@@ -327,62 +353,38 @@ bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, c
         path.resolve( crate );
         return true;
     }
-    #if 0
-    for( const auto& import : module.imports() )
-    {
-        const ::std::string& bind_name = import.name;
-        const AST::Path& bind_path = import.data;
-        if( bind_name == "" )
-        {
-            // Check the bind type of this path
-            switch(bind_path.binding_type())
-            {
-            case AST::Path::UNBOUND:
-                throw ParseError::BugCheck("Wildcard import path not bound");
-            // - If it's a module, recurse
-            case AST::Path::MODULE:
-                throw ParseError::Todo("Handle lookup_path_in_module for wildcard imports - module");
-                break;
-            // - If it's an enum, search for this name and then pass to resolve
-            case AST::Path::ENUM:
-                throw ParseError::Todo("Handle lookup_path_in_module for wildcard imports - enum");
-                break;
-            // - otherwise, error
-            default:
-                DEBUG("ERROR: Import of invalid class : " << bind_path);
-                throw ParseError::Generic("Wildcard import of non-module/enum");
-            }
-        }
-        else if( bind_name == path[0].name() ) {
-            path = AST::Path::add_tailing(bind_path, path);
-            path.resolve( crate );
-            return true;
-        }
-    }
-    #endif
 }
+
+/// Perform path resolution within a generic definition block
 void CPathResolver::handle_params(AST::TypeParams& params)
 {
+    // Parameters
     DEBUG("params");
     for( auto& param : params.ty_params() )
     {
+        // - Resolve the default type
         handle_type(param.get_default());
+        // - Register each param as a type name within this scope
         local_type( param.name(), TypeRef(TypeRef::TagArg(), param.name(), params) );
     }
     DEBUG("Bounds");
     for( auto& bound : params.bounds() )
     {
+        // Resolve names within the test (i.e. the lefthand side)
         handle_type(bound.test());
         
-        // TODO: Will there be a case where within the test there's a Self that isn't the bound?
-        local_type("Self", bound.test());
+        // Handle the trait bound
+        // - Clear "Self" to prevent it from being mangled
+        m_self_type.push_back( TypeRef() );
         if( !bound.is_trait() )
             DEBUG("namecheck lifetime bounds?");
         else
             handle_path(bound.bound(), CASTIterator::MODE_TYPE);
-        m_locals.pop_back();
+        m_self_type.pop_back();
     }
 }
+
+/// Resolve names within a path
 void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
 {
     TRACE_FUNCTION_F("path = " << path << ", m_module_path = " << m_module_path);
@@ -402,8 +404,13 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
 void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode)
 { 
     // Convert to absolute
+    // - This means converting all partial forms (i.e. not UFCS, Variable, or Absolute)
     switch( path.type() )
     {
+    case AST::Path::INVALID:
+        return;
+    // --- Already absolute forms
+    // > Absolute: Resolve
     case AST::Path::ABSOLUTE:
         DEBUG("Absolute - binding");
         INDENT();
@@ -417,110 +424,90 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
         }
         UNINDENT();
         break;
-    case AST::Path::RELATIVE: {
-        assert(path.size() > 0);
-        DEBUG("Relative, local");
-        
-        // If there's a single node, and we're in expresion mode, look for a variable
-        // Otherwise, search for a type
-        bool is_trivial_path = (path.size() == 1 && path[0].args().size() == 0);
-        
-        LocalItem::Type search_type = (is_trivial_path && mode == MODE_EXPR ? LocalItem::VAR : LocalItem::TYPE);
-        auto local_o = lookup_local( search_type, path[0].name() );
-        if( local_o.is_some() )
-        {
-            auto local = local_o.unwrap();
-            DEBUG("Local hit: " << path[0].name() << " = " << local);
-            
-            switch(mode)
-            {
-            // Local variable?
-            // - TODO: What would happen if MODE_EXPR but path isn't a single ident?
-            case MODE_EXPR:
-                if( local.type == LocalItem::VAR )
-                {
-                    if( !is_trivial_path )
-                        throw ParseError::Todo("TODO: MODE_EXPR, but not a single identifer, what do?");
-                    DEBUG("Local variable " << path[0].name());
-                    path = AST::Path(AST::Path::TagLocal(), path[0].name());
-                    return ;
-                }
-                if( is_trivial_path )
-                    throw ParseError::Generic("Type used in expression context?");
-            // Type parameter
-            case MODE_TYPE:
-                {
-                    // Convert to a UFCS path
-                    DEBUG("Local type");
-                    // - "<Type as _>::nodes"
-                    auto np = AST::Path(AST::Path::TagUfcs(), local.tr, TypeRef());
-                    np.add_tailing(path);
-                    path = ::std::move(np);
-                    DEBUG("path = " << path);
-                    handle_path_ufcs(path, mode);
-                }
-                return ;
-            // Binding is valid
-            case MODE_BIND:
-                //break ;
-                throw ParseError::Todo("TODO: MODE_BIND, but local hit, what do?");
-            }
-        
-            // TODO: What about sub-types and methods on type params?
-            // - Invalid afaik, instead Trait::method() is used
-        }
-        
-        
-        if( path.nodes()[0].name() == "super" )
-        {
-            // Unwrap a single named node from the module path, and search that path
-            // - Requires resolving that path to a module to pass to lookup_path_in_module
-            AST::Path   local_path = m_module_path;
-            local_path.nodes().pop_back();
-            local_path.resolve(m_crate);
-            DEBUG("'super' path is relative to " << local_path);
-            path.nodes().erase( path.nodes().begin() );   // delete the 'super' node
-            const AST::Module& mod = local_path.binding().bound_module();
-            if( lookup_path_in_module(m_crate, mod, local_path, path) )
-                return ;
-            // this should always be an error, as 'super' paths are never MaybeBind
-        }
-        else
-        {
-           // Search backwards up the stack of anon modules
-            if( m_module_stack.size() )
-            {
-                AST::Path   local_path = m_module_path;
-                for(unsigned int i = 0; i < m_module_stack.size(); i ++)
-                    local_path.nodes().push_back( AST::PathNode( FMT("#" << m_module_stack[i].first), {} ) );
-                
-                for(unsigned int i = m_module_stack.size(); i--; )
-                {
-                    if( lookup_path_in_module(m_crate, *m_module_stack[i].second, local_path, path) ) {
-                        // Success!
-                        return ;
-                    }
-                    local_path.nodes().pop_back();
-                }
-            }
-            // Search current module, if found return with no error
-            if( lookup_path_in_module(m_crate, *m_module, m_module_path, path) )
-            {
-                return;
-            }
-        }
-        
-        DEBUG("no matches found for path = " << path);
-        assert( path.is_relative() );
-        if( mode != MODE_BIND )
-            throw ParseError::Generic("CPathResolver::handle_path - Name resolution failed");
-        break; }
-    case AST::Path::LOCAL:
-        // Don't touch locals, they're already known
-        break;
+    // > UFCS: Expand the types
     case AST::Path::UFCS:
         handle_path_ufcs(path, mode);
         break;
+    // > Variable: (wait, how is this known already?)
+    // - 'self'
+    case AST::Path::VARIABLE:
+        break;
+    
+    case AST::Path::RELATIVE:
+        // 1. function scopes (variables and local items)
+        // > Return values: name or path
+        {
+            if( this->find_local_item(path, /*allow_variables=*/path.is_trivial()) ) {
+                break ;
+            }
+            else {
+                // No match, fall through
+            }
+        }
+        
+        // 2. Type parameters
+        // - Should probably check if this is expression mode, bare types are invalid there
+        // NOTES:
+        // - If the path is bare (i.e. there are no more nodes), then ensure that the mode is TYPE
+        // - If there are more nodes, replace with a UFCS block
+        {
+            auto tp = this->find_type_param(path[0].name());
+            if( tp != false /*nullptr*/ )
+            {
+                if(path.size() > 1) {
+                    // Repalce with UFCS
+                    auto newpath = AST::Path(AST::Path::TagUfcs(), TypeRef(TypeRef::TagArg(), path[0].name()), TypeRef());
+                    newpath.add_tailing(path);
+                    path = newpath;
+                }
+                else {
+                    // Replace with VARIABLE (not strictly speaking true... but close enough)
+                    // - TODO: Not being trivial is an error, not a bug
+                    assert( path.is_trivial() );
+                    path = AST::Path(AST::Path::TagVariable(), path[0].name());
+                }
+                break;
+                throw ParseError::Todo("Handle type param in RELATIVE");
+            }
+        }
+        
+        // 3. current module
+        {
+            if( this->find_mod_item(path) ) {
+                break;
+            }
+            else {
+            }
+        }
+        
+        // *. No match? I give up
+        DEBUG("no matches found for path = " << path);
+        if( mode != MODE_BIND )
+            throw ParseError::Generic("CPathResolver::handle_path - Name resolution failed");
+        return ;
+    
+    // Module relative
+    case AST::Path::SELF:{
+        if( this->find_mod_item(path) ) {
+            break;
+        }
+        else {
+        }
+        DEBUG("no matches found for path = " << path);
+        if( mode != MODE_BIND )
+            throw ParseError::Generic("CPathResolver::handle_path - Name resolution failed");
+        break; }
+    // Parent module relative
+    case AST::Path::SUPER:{
+        if( this->find_super_mod_item(path) ) {
+            break;
+        }
+        else {
+        }
+        DEBUG("no matches found for path = " << path);
+        if( mode != MODE_BIND )
+            throw ParseError::Generic("CPathResolver::handle_path - Name resolution failed");
+        break; }
     }
 }
 void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mode)
@@ -554,6 +541,58 @@ void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mod
     }
     // 3. Call resolve to attempt binding
     path.resolve(m_crate);
+}
+
+bool CPathResolver::find_local_item(AST::Path& path, bool allow_variables) {
+    TRACE_FUNCTION_F("path="<<path<<", allow_variables="<<allow_variables);
+    // Search current scopes for a name
+    // - This should search both the expression stack
+    // - and the scope's module (if any)
+    for(auto it = m_scope_stack.rbegin(); it != m_scope_stack.rend(); ++it)
+    {
+        const auto& s = *it;
+        if( allow_variables )
+        {
+            for( auto it2 = s.locals.rbegin(); it2 != s.locals.rend(); ++it2 )
+            {
+                if( *it2 == path[0].name() ) {
+                    path = AST::Path(AST::Path::TagVariable(), path[0].name());
+                    return true;
+                }
+            }
+        }
+        if( s.module != nullptr )
+        {
+            DEBUG("- Looking in sub-module '" << s.module_path << "'");
+            if( lookup_path_in_module(m_crate, *s.module, s.module_path, path) )
+                return true;
+        }
+    }
+    return false;
+}
+bool CPathResolver::find_mod_item(AST::Path& path) {
+    if( m_module->name() == "" )
+        throw ParseError::Todo("Correct handling of 'self' in anon modules");
+    
+    return lookup_path_in_module(m_crate, *m_module, m_module_path, path);
+}
+bool CPathResolver::find_super_mod_item(AST::Path& path) {
+    if( m_module->name() == "" )
+        throw ParseError::Todo("Correct handling of 'super' in anon modules");
+    // 1. 
+    // TODO: lookup_path_in_module
+    throw ParseError::Todo("Handle 'super'");
+}
+bool CPathResolver::find_type_param(const ::std::string& name) {
+    for( auto it = m_locals.end(); it -- != m_locals.begin(); )
+    {
+        if( it->type == LocalItem::TYPE ) {
+            if( it->name == name ) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 void CPathResolver::handle_type(TypeRef& type)
@@ -639,8 +678,7 @@ void CPathResolver::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
         ::std::string   name = pat.binding();
         // Locate a _constant_ within the current namespace which matches this name
         // - Variables don't count
-        AST::Path newpath;
-        newpath.append( AST::PathNode(name, {}) );
+        AST::Path newpath = AST::Path(name);
         handle_path(newpath, CASTIterator::MODE_BIND);
         if( newpath.is_relative() )
         {
@@ -668,6 +706,12 @@ void CPathResolver::handle_module(AST::Path path, AST::Module& mod)
     m_module_path = path;
     CASTIterator::handle_module(path, mod);
 }
+void CPathResolver::handle_function(AST::Path path, AST::Function& fcn)
+{
+    m_scope_stack.push_back( {0, nullptr, AST::Path(), {}} );
+    CASTIterator::handle_function(::std::move(path), fcn);
+    m_scope_stack.pop_back();
+}
 
 void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& modpath, AST::Module& mod)
 {
@@ -675,23 +719,35 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
     ::std::vector<AST::Path>    new_imports;
     for( auto& imp : mod.imports() )
     {
-        if( !imp.data.is_absolute() )
+        AST::Path& p = imp.data;
+        DEBUG("p = " << p);
+        switch( p.type() )
         {
-            if( imp.data[0].name() == "super" ) {
-                if( modpath.size() < 1 )
-                    throw ParseError::Generic("Encountered 'super' at crate root");
-                auto newpath = modpath;
-                newpath.nodes().pop_back();
-                newpath.add_tailing(imp.data);
-                DEBUG("Absolutised path " << imp.data << " into " << newpath);
-                imp.data = ::std::move(newpath);
-            }
-            else {
-                auto newpath = modpath + imp.data;
-                // TODO: Undo anon modules until item is found
-                DEBUG("Absolutised path " << imp.data << " into " << newpath);
-                imp.data = ::std::move(newpath);
-            }
+        case AST::Path::ABSOLUTE:
+            // - No action
+            break;
+        // 'super' - Add parent path
+        // - TODO: Handle nested modules correctly.
+        case AST::Path::SUPER: {
+            if( modpath.size() < 1 )
+                throw ParseError::Generic("Encountered 'super' at crate root");
+            auto newpath = modpath;
+            newpath.nodes().pop_back();
+            newpath += p;
+            DEBUG("Absolutised path " << p << " into " << newpath);
+            p = ::std::move(newpath);
+            break; }
+        // 'self' - Add parent path
+        // - TODO: Handle nested modules correctly.
+        case AST::Path::SELF: {
+            auto newpath = modpath + p;
+            // TODO: Undo anon modules until item is found
+            DEBUG("Absolutised path " << p << " into " << newpath);
+            p = ::std::move(newpath);
+            break; }
+        // Any other class is an error
+        default:
+            throw ParseError::Generic( FMT("Invalid path type encounted in 'use' : " << p) );
         }
         
         // Run resolution on import

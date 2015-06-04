@@ -143,15 +143,28 @@ public:
     SERIALISABLE_PROTOTYPES();
 };
 
+//TAGGED_ENUM(Class, Local,
+//    (Local, (::std:string name) ),
+//    (Variable, (::std:string name) ),
+//    (Relative, (::std::vector<PathNode> nodes) ),
+//    (Self, (::std::vector<PathNode> nodes) ),
+//    (Super, (::std::vector<PathNode> nodes) ),
+//    (Absolute, (::std::vector<PathNode> nodes) ),
+//    (UFCS, (TypeRef type; TypeRef trait; ::std::vector<PathNode> nodes) ),
+//    );
 class Path:
     public ::Serialisable
 {
 public:
     enum Class {
-        RELATIVE,
-        ABSOLUTE,
-        LOCAL,
-        UFCS,
+        INVALID,    // An empty path, usually invalid
+        ABSOLUTE,   // root-relative path ("::path")
+        UFCS,   // type-relative path ("<Type>::such")
+        VARIABLE,   // Reference to a local variable
+        
+        RELATIVE,   // Unadorned relative path (e.g. "path::to::item" or "generic_item::<>")
+        SELF,   // module-relative path ("self::path")
+        SUPER,  // parent-relative path ("super::path")
     };
     
 private:
@@ -169,29 +182,16 @@ private:
     
     PathBinding m_binding;
 public:
+    // INVALID
     Path():
-        m_class(RELATIVE)
+        m_class(INVALID)
     {}
+    
+    // ABSOLUTE
     struct TagAbsolute {};
     Path(TagAbsolute):
         m_class(ABSOLUTE)
     {}
-    struct TagUfcs {};
-    Path(TagUfcs, TypeRef type, TypeRef trait);
-    struct TagLocal {};
-    Path(TagLocal, ::std::string name):
-        m_class(LOCAL),
-        m_nodes({PathNode( ::std::move(name), {} )})
-    {}
-    Path(::std::string name):
-        Path(TagLocal(), ::std::move(name))
-    {}
-    struct TagSuper {};
-    Path(TagSuper):
-        m_class(RELATIVE),
-        m_nodes({PathNode("super", {})})
-    {}
-    
     Path(::std::initializer_list<PathNode> l):
         m_class(ABSOLUTE),
         m_nodes(l)
@@ -202,6 +202,40 @@ public:
         m_nodes( ::std::move(nodes) )
     {}
     
+    // UFCS
+    struct TagUfcs {};
+    Path(TagUfcs, TypeRef type, TypeRef trait);
+    
+    // VARIABLE
+    struct TagVariable {};
+    Path(TagVariable, ::std::string name):
+        m_class(VARIABLE),
+        m_nodes( {PathNode( ::std::move(name), {} )} )
+    {}
+    
+    // RELATIVE
+    struct TagRelative {};
+    Path(TagRelative):
+        m_class(RELATIVE),
+        m_nodes({})
+    {}
+    Path(::std::string name):
+        m_class(RELATIVE),
+        m_nodes( {PathNode( ::std::move(name), {} )} )
+    {}
+    // SELF
+    struct TagSelf {};
+    Path(TagSelf):
+        m_class(SELF),
+        m_nodes({})
+    {}
+    // SUPER
+    struct TagSuper {};
+    Path(TagSuper):
+        m_class(SUPER),
+        m_nodes({})
+    {}
+    
     void set_crate(::std::string crate) {
         if( m_crate == "" ) {
             m_crate = crate;
@@ -210,7 +244,6 @@ public:
     }
     void set_local() {
         assert(m_class == RELATIVE);
-        m_class = LOCAL;
     }
     
     /// Add the all nodes except the first from 'b' to 'a' and return
@@ -221,7 +254,11 @@ public:
     }
     /// Grab the args from the first node of b, and add the rest to the end of the path
     void add_tailing(const Path& b) {
-        if( m_nodes.size() > 0 )
+        assert(this->m_class != INVALID);
+        assert(b.m_class != INVALID);
+        if( b.m_nodes.size() == 0 )
+            ;
+        else if( m_nodes.size() > 0 )
             m_nodes.back().args() = b[0].args();
         else if( b[0].args().size() > 0 )
             throw ::std::runtime_error("add_tail to empty path, but generics in source");
@@ -232,12 +269,12 @@ public:
         m_binding = PathBinding();
     }
     Path operator+(PathNode&& pn) const {
-        Path    tmp;
+        Path tmp = Path(TagRelative());
         tmp.append( ::std::move(pn) );
         return Path(*this) += tmp;
     }
     Path operator+(const ::std::string& s) const {
-        Path    tmp;
+        Path tmp = Path(TagRelative());
         tmp.append(PathNode(s, {}));
         return Path(*this) += tmp;
     }
@@ -247,6 +284,8 @@ public:
     Path& operator+=(const Path& x);
 
     void append(PathNode node) {
+        assert(this->m_class != INVALID);
+        assert(this->m_class != VARIABLE);
         m_nodes.push_back(node);
         m_binding = PathBinding();
     }
@@ -266,7 +305,11 @@ public:
     void match_args(const Path& other, ::std::function<void(const char*,const TypeRef&)> fcn) const;
     
     bool is_trivial() const {
-        return m_class == RELATIVE && m_nodes.size() == 1 && m_nodes[0].args().size() == 0;
+        switch(m_class)
+        {
+        case RELATIVE:  return m_nodes.size() == 1 && m_nodes[0].args().size() == 0;
+        default:    return false;
+        }
     }
     
     bool is_valid() const { return *this != Path(); }

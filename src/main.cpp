@@ -76,7 +76,7 @@ int main(int argc, char *argv[])
         // Typecheck / type propagate module (type annotations of all values)
         // - Check all generic conditions (ensure referenced trait is valid)
         //  > Also mark parameter with applicable traits
-        #if 1
+        #if 0
         g_cur_phase = "TypecheckBounds";
         Typecheck_GenericBounds(crate);
         // - Check all generic parameters match required conditions

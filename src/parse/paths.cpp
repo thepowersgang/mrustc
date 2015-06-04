@@ -55,7 +55,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         }
     }
     else
-        return Parse_PathFrom(lex, AST::Path(), generic_mode);
+        return Parse_PathFrom(lex, AST::Path(AST::Path::TagRelative()), generic_mode);
 }
 
 AST::Path Parse_PathFrom(TokenStream& lex, AST::Path path, eParsePathGenericMode generic_mode)
@@ -145,6 +145,9 @@ AST::Path Parse_PathFrom(TokenStream& lex, AST::Path path, eParsePathGenericMode
         path.append( AST::PathNode(component, params) );
     }
     lex.putback(tok);
+    if( path.is_trivial() ) {
+        path = AST::Path(path[0].name());
+    }
     DEBUG("path = " << path);
     return path;
 }

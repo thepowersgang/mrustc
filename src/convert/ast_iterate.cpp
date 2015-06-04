@@ -258,6 +258,24 @@ void CASTIterator::handle_function(AST::Path path, AST::Function& fcn)
     DEBUG("ret type");
     handle_type(fcn.rettype());
     
+    switch( fcn.fcn_class() )
+    {
+    case AST::Function::CLASS_UNBOUND:
+        break;
+    case AST::Function::CLASS_REFMETHOD:
+        local_variable(false, "self", TypeRef(TypeRef::TagReference(), false, TypeRef(TypeRef::TagArg(), "Self")));
+        break;
+    case AST::Function::CLASS_MUTMETHOD:
+        local_variable(false, "self", TypeRef(TypeRef::TagReference(), true, TypeRef(TypeRef::TagArg(), "Self")));
+        break;
+    case AST::Function::CLASS_VALMETHOD:
+        local_variable(false, "self", TypeRef(TypeRef::TagArg(), "Self"));
+        break;
+    case AST::Function::CLASS_MUTVALMETHOD:
+        local_variable(true, "self", TypeRef(TypeRef::TagArg(), "Self"));
+        break;
+    }
+    
     DEBUG("args");
     for( auto& arg : fcn.args() )
     {
@@ -309,7 +327,7 @@ void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
     for( auto& fcn : impl.functions() )
     {
         DEBUG("- Function '" << fcn.name << "'");
-        handle_function(AST::Path() + fcn.name, fcn.data);
+        handle_function(AST::Path(AST::Path::TagRelative()) + fcn.name, fcn.data);
     }
     
     end_scope();

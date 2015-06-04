@@ -894,7 +894,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
     switch( GET_TOK(tok, lex) )
     {
     case TOK_RWORD_SELF:
-        path = AST::Path( );    // relative path
+        path = AST::Path( AST::Path::TagSelf() );    // relative path
         break;
     case TOK_RWORD_SUPER:
         path = AST::Path( AST::Path::TagSuper() );
@@ -941,21 +941,21 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
                     }
                 } while( GET_TOK(tok, lex) == TOK_COMMA );
                 CHECK_TOK(tok, TOK_BRACE_CLOSE);
-                return;
+                break ;
             case TOK_STAR:
                 Parse_Use_Wildcard(path, fcn);
-                // early return - can't have anything else after
-                return;
+                break ;
             default:
                 throw ParseError::Unexpected(lex, tok);
             }
-            GET_TOK(tok, lex);
-            break;
+            // early return - This branch is either the end of the use statement, or a syntax error
+            return ;
         }
     }
     
     ::std::string name;
-    // TODO: This should only be allowed if the last token was an ident
+    // This should only be allowed if the last token was an ident
+    // - Above checks ensure this
     if( tok.type() == TOK_RWORD_AS )
     {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
@@ -964,7 +964,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
     else
     {
         lex.putback(tok);
-        name = path[path.size()-1].name();
+        name = path.nodes().back().name();
     }
     
     fcn(path, name);
@@ -1289,7 +1289,10 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
         {
         
         case TOK_RWORD_USE:
-            Parse_Use(lex, [&mod,is_public](AST::Path p, std::string s) { mod.add_alias(is_public, p, s); });
+            Parse_Use(lex, [&mod,is_public,&path](AST::Path p, std::string s) {
+                    DEBUG(path << " - use " << p << " as '" << s << "'");
+                    mod.add_alias(is_public, p, s);
+                });
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
             break;
         

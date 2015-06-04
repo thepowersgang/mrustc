@@ -577,7 +577,7 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
             if( allow_leaves )
                 return ItemRef(it->data);
             else
-                DEBUG("Skipping static, leaves not allowed");
+                DEBUG("Skipping function, leaves not allowed");
         }
     }
 
@@ -634,7 +634,7 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
             }
             else if( imp.name == needle )
             {
-                DEBUG("Match " << needle);
+                DEBUG("Match " << needle << " = " << imp.data);
                 return ItemRef(imp);
             }
             else if( imp.name == "" )

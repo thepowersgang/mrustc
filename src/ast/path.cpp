@@ -52,19 +52,20 @@ SERIALISE_TYPE(PathNode::, "PathNode", {
     s.item(m_params);
 })
 
-// --- AST::Path
-AST::Path::Path(TagUfcs, TypeRef type, TypeRef trait):
-    m_class(UFCS),
-    m_ufcs({::std::move(type), ::std::move(trait)} )
-{
-}
-
+/// Return an iterator to the named item
 template<typename T>
 typename ::std::vector<Item<T> >::const_iterator find_named(const ::std::vector<Item<T> >& vec, const ::std::string& name)
 {
     return ::std::find_if(vec.begin(), vec.end(), [&name](const Item<T>& x) {
         return x.name == name;
     });
+}
+
+// --- AST::Path
+AST::Path::Path(TagUfcs, TypeRef type, TypeRef trait):
+    m_class(UFCS),
+    m_ufcs({::std::move(type), ::std::move(trait)} )
+{
 }
 
 /// Resolve a path into a canonical form, and bind it to the target value
@@ -524,14 +525,11 @@ void Path::resolve_args(::std::function<TypeRef(const char*)> fcn)
     
     switch(m_class)
     {
-    case Path::RELATIVE:
-    case Path::ABSOLUTE:
-        break;
-    case Path::LOCAL:
-        break;
     case Path::UFCS:
         m_ufcs[0].resolve_args(fcn);
         m_ufcs[1].resolve_args(fcn);
+        break;
+    default:
         break;
     }
 }
@@ -545,8 +543,10 @@ Path& Path::operator+=(const Path& other)
     return *this;
 }
 
+/// Match two same-format (i.e. same components) paths together, calling TypeRef::match_args on arguments
 void Path::match_args(const Path& other, ::std::function<void(const char*,const TypeRef&)> fcn) const
 {
+    // TODO: Ensure that the two paths are of a compatible class (same class?)
     if( m_nodes.size() != other.m_nodes.size() )
         throw ::std::runtime_error("Type mismatch (path size)");
     for( unsigned int i = 0; i < m_nodes.size(); i++ )
@@ -568,6 +568,10 @@ void Path::match_args(const Path& other, ::std::function<void(const char*,const 
     }
 }
 
+/// Compare if two paths refer to the same non-generic item
+///
+/// - This doesn't handle the (impossible?) case where a generic might
+///   cause two different paths to look the same.
 int Path::equal_no_generic(const Path& x) const
 {
     if( m_class != x.m_class )
@@ -624,22 +628,30 @@ void Path::print_pretty(::std::ostream& os) const
 {
     switch(m_class)
     {
+    case Path::INVALID: os << "/* inv */";  break;
+    case Path::VARIABLE:os << m_nodes[0].name();    break;
     case Path::RELATIVE:
+        for(const auto& n : m_nodes) {
+            if( &n != &m_nodes[0] )  os << "::";
+            os << "::" << n;
+        }
+        break;
+    case Path::SELF:
         os << "self";
-        for(const auto& n : m_nodes)
-            os << n;
+        for(const auto& n : m_nodes)    os << "::" << n;
+        break;
+    case Path::SUPER:
+        os << "super";
+        for(const auto& n : m_nodes)    os << "::" << n;
         break;
     case Path::ABSOLUTE:
         if( m_crate != "" )
             os << "::" << m_crate;
         for(const auto& n : m_nodes)
-            os << n;
-        break;
-    case Path::LOCAL:
-        os << m_nodes[0].name();
+            os << "::" << n;
         break;
     case Path::UFCS:
-        throw ParseError::Todo("Path::print_pretty");
+        throw ParseError::Todo("Path::print_pretty - UFCS");
     }
 }
 
@@ -653,8 +665,31 @@ void Path::print_pretty(::std::ostream& os) const
     #if PRETTY_PATH_PRINT
     switch(path.m_class)
     {
+    case Path::INVALID: os << "/*inv*/";    break;
+    case Path::VARIABLE: os << "/*var*/" << path.m_nodes[0].name();    break;
     case Path::RELATIVE:
+        for(const auto& n : path.m_nodes)
+        {
+            #if PRETTY_PATH_PRINT
+            if( &n != &path.m_nodes[0] ) {
+                os << "::";
+            }
+            #endif
+            os << n;
+        }
+        break;
+    case Path::SELF:
         os << "self";
+        for(const auto& n : path.m_nodes)
+        {
+            #if PRETTY_PATH_PRINT
+            os << "::";
+            #endif
+            os << n;
+        }
+        break;
+    case Path::SUPER:
+        os << "super";
         for(const auto& n : path.m_nodes)
         {
             #if PRETTY_PATH_PRINT
@@ -675,9 +710,6 @@ void Path::print_pretty(::std::ostream& os) const
         }
         os << "/*" << path.m_binding << "*/";
         break;
-    case Path::LOCAL:
-        os << path.m_nodes[0].name();
-        break;
     case Path::UFCS:
         os << "/*ufcs*/<" << path.m_ufcs[0] << " as " << path.m_ufcs[1] << ">";
         for(const auto& n : path.m_nodes)
@@ -692,33 +724,40 @@ void Path::print_pretty(::std::ostream& os) const
     case Path::ABSOLUTE:
         os << "Path(TagAbsolute, \""<<path.m_crate<<"\", {" << path.m_nodes << "})";
         break;
-    case Path::LOCAL:
-        os << "Path(TagLocal, " << path.m_nodes[0].name() << ")";
-        break;
     }
     #endif
     return os;
 }
 ::Serialiser& operator<<(Serialiser& s, Path::Class pc)
 {
+    #define _(v)    case Path::v: s << #v; break;
     switch(pc)
     {
-    case Path::RELATIVE:  s << "RELATIVE";    break;
-    case Path::ABSOLUTE:  s << "ABSOLUTE";    break;
-    case Path::LOCAL: s << "LOCAL"; break;
-    case Path::UFCS:  s << "UFCS";  break;
+    _(INVALID )
+    _(VARIABLE)
+    _(RELATIVE)
+    _(SELF    )
+    _(SUPER   )
+    _(ABSOLUTE)
+    _(UFCS    )
     }
+    #undef _
     return s;
 }
 void operator>>(Deserialiser& s, Path::Class& pc)
 {
     ::std::string   n;
     s.item(n);
-         if(n == "RELATIVE")    pc = Path::RELATIVE;
-    else if(n == "ABSOLUTE")    pc = Path::ABSOLUTE;
-    else if(n == "LOCAL")       pc = Path::LOCAL;
-    else if(n == "UFCS")        pc = Path::UFCS;
-    else    throw ::std::runtime_error("Unknown path class : " + n);
+    #define _(v)    if(n == #v)    pc = Path::v; else
+    _(INVALID )
+    _(VARIABLE)
+    _(RELATIVE)
+    _(SELF    )
+    _(SUPER   )
+    _(ABSOLUTE)
+    _(UFCS    )
+        throw ::std::runtime_error("Unknown path class : " + n);
+    #undef _
 }
 SERIALISE_TYPE(Path::, "AST_Path", {
     s << m_class;
