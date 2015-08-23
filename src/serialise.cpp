@@ -145,7 +145,7 @@ size_t Deserialiser_TextTree::start_array()
     eat_ws();
     char c = getc();
     if( c != '[' )
-        throw ::std::runtime_error("TODO: Less shit exception, start_array");
+        throw DeserialiseFailure("start_array", "no [");
     
     eat_ws();
     if( peekc() == ']' ) {
@@ -156,7 +156,7 @@ size_t Deserialiser_TextTree::start_array()
     size_t len;
     m_is >> len;
     if( !m_is.good() )
-        throw ::std::runtime_error("TODO: Less shit exception, start_array");
+        throw DeserialiseFailure("start_array", "length missing");
     DEBUG("len = "<<len);
     return len;
 }
@@ -166,7 +166,7 @@ void Deserialiser_TextTree::end_array()
     char c = getc();
     DEBUG("c = '"<<c<<"'");
     if( c != ']' )
-        throw ::std::runtime_error("TODO: Less shit exception, end_array");
+        throw DeserialiseFailure("end_array", "no ]");
 }
 ::std::string Deserialiser_TextTree::read_tag()
 {
@@ -179,7 +179,7 @@ void Deserialiser_TextTree::end_array()
     } while( !is_ws(c) );
     tag.pop_back();
     if( tag.size() == 0 )
-        throw ::std::runtime_error("TODO: Less shit exception, read_tag");
+        throw DeserialiseFailure("read_tag", "tag empty");
     return tag;
 }
 
@@ -191,7 +191,7 @@ void Deserialiser_TextTree::item(bool& b)
     case 'T': DEBUG("true");   b = true;   break;
     case 'F': DEBUG("false");  b = false;  break;
     default:
-        throw ::std::runtime_error("TODO: Less shit exception, item(bool)");
+        throw DeserialiseFailure("item(bool)", "bad value");
     }
 }
 void Deserialiser_TextTree::item(uint64_t& v)
@@ -199,21 +199,21 @@ void Deserialiser_TextTree::item(uint64_t& v)
     eat_ws();
     m_is >> v;
     if( !m_is.good() )
-        throw ::std::runtime_error("TODO: Less shit exception, item(uint64_t)");
+        throw DeserialiseFailure("item(uint64_t)", "bad value");
 }
 void Deserialiser_TextTree::item(int64_t& v)
 {
     eat_ws();
     m_is >> v;
     if( !m_is.good() )
-        throw ::std::runtime_error("TODO: Less shit exception, item(int64_t)");
+        throw DeserialiseFailure("item(int64_t)", "bad value");
 }
 void Deserialiser_TextTree::item(double& v)
 {
     eat_ws();
     m_is >> v;
     if( !m_is.good() )
-        throw ::std::runtime_error("TODO: Less shit exception, item(double)");
+        throw DeserialiseFailure("item(double)", "bad value");
 }
 void Deserialiser_TextTree::item(::std::string& s)
 {
@@ -223,7 +223,7 @@ void Deserialiser_TextTree::item(::std::string& s)
     char c = getc();
     DEBUG("c = '"<<c<<"'");
     if( c != '"' )
-        throw ::std::runtime_error("TODO: Less shit exception, item(::std::string)");
+        throw DeserialiseFailure("item(::std::string)", "no open \"");
     
     while(peekc() != '"')
     {
@@ -245,13 +245,13 @@ void Deserialiser_TextTree::start_object(const char *tag)
         ::std::string s = read_tag();
         DEBUG("s == " << s);
         if( s != tag )
-            throw ::std::runtime_error("TODO: Less shit exception, start_object");
+            throw DeserialiseFailure("start_object", "tag mismatch");
     }
     eat_ws();
     char c = getc();
     DEBUG("c = '" << c << "' (tag = " << (tag ? tag : "-NUL-"));
     if( c != '{' )
-        throw ::std::runtime_error("TODO: Less shit exception, start_object");
+        throw DeserialiseFailure("start_object", "no {");
 }
 void Deserialiser_TextTree::end_object(const char *tag)
 {
@@ -259,6 +259,6 @@ void Deserialiser_TextTree::end_object(const char *tag)
     char c = getc();
     DEBUG("c = '"<<c<<"'");
     if( c != '}' ) {
-        throw ::std::runtime_error("TODO: Less shit exception, end_object");
+        throw DeserialiseFailure("end_object", "no }");
     }
 }

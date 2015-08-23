@@ -23,6 +23,19 @@ class Deserialiser;
 #define SERIALISE_TYPE_A(method_prefix, tag_str, body)  SERIALISE_TYPE(method_prefix, tag_str, body, body)
 #define SERIALISE_TYPE_S(class_, body)  SERIALISE_TYPE(class_::, #class_, body, body)
 
+class DeserialiseFailure:
+    public ::std::runtime_error
+{
+    const char *m_fcn;
+    const char *m_message;
+public:
+    DeserialiseFailure(const char *fcn, const char *message):
+        ::std::runtime_error("Deserialise failure"),
+        m_fcn(fcn),
+        m_message(message)
+    {}
+};
+
 class Serialisable
 {
 public:
