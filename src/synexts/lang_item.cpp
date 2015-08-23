@@ -55,6 +55,8 @@ void handle_lang_item(AST::Crate& crate, const AST::Path& path, const ::std::str
     
     else if( name == "eq"  ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }
+    else if( name == "unsize" ) { DEBUG("Bind '"<<name<<"' to " << path); }
+    else if( name == "coerce_unsized" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     
     else if( name == "iterator" ) { /* mrustc just desugars? */ }
     

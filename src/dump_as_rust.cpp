@@ -72,23 +72,6 @@ public:
         }
         AST::NodeVisitor::visit(n.m_value);
     }
-    virtual void visit(AST::ExprNode_Const& n) override {
-        m_expr_root = false;
-        m_os << "const " << n.m_name << ": ";
-        print_type(n.m_type);
-        m_os << " = ";
-        AST::NodeVisitor::visit(n.m_value);
-    }
-    virtual void visit(AST::ExprNode_Import& n) override {
-        m_expr_root = false;
-        for( const auto& item : n.m_imports )
-            m_os << "use " << item.second << " as " << item.first << ";\n" << indent();
-    }
-    virtual void visit(AST::ExprNode_Extern& n) override {
-        m_expr_root = false;
-        for( const auto& item : n.m_imports )
-            m_os << "extern \"\" fn " << item.first /*<< item.second*/ << ";\n" << indent();
-    }
     virtual void visit(AST::ExprNode_LetBinding& n) override {
         m_expr_root = false;
         m_os << "let ";

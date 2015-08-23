@@ -81,7 +81,7 @@ struct ExprNode_Macro:
     NODE_METHODS();
 };
 
-// Return a value
+// Break/Continue/Return
 struct ExprNode_Flow:
     public ExprNode
 {
@@ -100,48 +100,6 @@ struct ExprNode_Flow:
         m_value( move(value) )
     {
     }
-    
-    NODE_METHODS();
-};
-struct ExprNode_Const:
-    public ExprNode
-{
-    ::std::string m_name;
-    TypeRef m_type;
-    unique_ptr<ExprNode>    m_value;
-
-    ExprNode_Const() {}
-    ExprNode_Const(::std::string name, TypeRef type, unique_ptr<ExprNode>&& value):
-        m_name( move(name) ),
-        m_type( move(type) ),
-        m_value( move(value) )
-    {
-    }
-    
-    NODE_METHODS();
-};
-struct ExprNode_Import:
-    public ExprNode
-{
-    typedef ::std::vector< ::std::pair< ::std::string, AST::Path> > imports_t;
-    imports_t   m_imports;
-    
-    ExprNode_Import() {}
-    ExprNode_Import(imports_t imports):
-        m_imports( ::std::move(imports) )
-    {}
-    
-    NODE_METHODS();
-};
-struct ExprNode_Extern:
-    public ExprNode
-{
-    typedef ::std::vector< ::std::pair< ::std::string, AST::Function> > imports_t;
-    imports_t   m_imports;
-    
-    ExprNode_Extern();
-    ExprNode_Extern(imports_t imports);
-    // - Non-local because AST::Function
     
     NODE_METHODS();
 };
@@ -616,9 +574,6 @@ public:
 	NT(ExprNode_Block);  
     NT(ExprNode_Macro);
     NT(ExprNode_Flow);
-    NT(ExprNode_Const);
-    NT(ExprNode_Import);
-    NT(ExprNode_Extern);
     NT(ExprNode_LetBinding);
     NT(ExprNode_Assign);
     NT(ExprNode_CallPath);
@@ -661,9 +616,6 @@ public:
 	NT(ExprNode_Block);  
     NT(ExprNode_Macro);
     NT(ExprNode_Flow);
-    NT(ExprNode_Const);
-    NT(ExprNode_Import);
-    NT(ExprNode_Extern);
     NT(ExprNode_LetBinding);
     NT(ExprNode_Assign);
     NT(ExprNode_CallPath);

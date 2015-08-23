@@ -244,9 +244,11 @@ public:
         m_res.start_scope();
         for( auto& param : node.m_args )
         {
+            DEBUG("- ExprNode_Closure: pat=" << param.first << ", ty=" << param.second);
             m_res.handle_type(param.second);
             m_res.handle_pattern(param.first, param.second);
         }
+        DEBUG("- ExprNode_Closure: rt=" << node.m_return);
         m_res.handle_type(node.m_return);
         AST::NodeVisitor::visit(node.m_code);
         m_res.end_scope();

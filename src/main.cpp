@@ -30,67 +30,99 @@ bool debug_enabled()
 
 struct ProgramParams
 {
-	static const unsigned int EMIT_C = 0x1;
-	static const unsigned int EMIT_AST = 0x2;
+    static const unsigned int EMIT_C = 0x1;
+    static const unsigned int EMIT_AST = 0x2;
 
-	const char *infile = NULL;
-	::std::string	outfile;
-	const char *crate_path = ".";
-	unsigned emit_flags = EMIT_C;
+    const char *infile = NULL;
+    ::std::string   outfile;
+    const char *crate_path = ".";
+    unsigned emit_flags = EMIT_C;
     
     ProgramParams(int argc, char *argv[]);
 };
+
+template <typename Rv, typename Fcn>
+Rv CompilePhase(const char *name, Fcn f) {
+    g_cur_phase = name;
+    auto rv = f();
+    g_cur_phase = "";
+    return rv;
+}
+template <typename Fcn>
+void CompilePhaseV(const char *name, Fcn f) {
+    g_cur_phase = name;
+    f();
+    g_cur_phase = "";
+}
 
 /// main!
 int main(int argc, char *argv[])
 {
     AST_InitProvidedModule();
     
-	
+    
     ProgramParams   params(argc, argv);
     
     
     try
     {
-        g_cur_phase = "Parse";
-        AST::Crate crate = Parse_Crate(params.infile);
+        // Parse the crate into AST
+        AST::Crate crate = CompilePhase<AST::Crate>("Parse", [&]() {
+            return Parse_Crate(params.infile);
+            });
     
         // Iterate all items in the AST, applying syntax extensions
-        g_cur_phase = "Syn Exts";
-        Process_Decorators(crate);
-        // TODO:
-        
-        g_cur_phase = "PostParse";
-        crate.post_parse();
+        CompilePhaseV("Decorators", [&]() {
+            Process_Decorators(crate);
+            });
+            
+        // Run a quick post-parse pass
+        // TODO: What does this do?
+        CompilePhaseV("PostParse", [&]() {
+            crate.post_parse();
+            });
 
-        //s << crate;
-        g_cur_phase = "Temp output";
-        Dump_Rust( FMT(params.outfile << ".rs").c_str(), crate );
+        // XXX: Dump crate before resolve
+        CompilePhaseV("Temp output - Parsed", [&]() {
+            Dump_Rust( FMT(params.outfile << ".rs").c_str(), crate );
+            });
     
         // Resolve names to be absolute names (include references to the relevant struct/global/function)
-        g_cur_phase = "Resolve";
-        ResolvePaths(crate);
+        CompilePhaseV("Resolve", [&]() {
+            ResolvePaths(crate);
+            });
         
-        g_cur_phase = "Temp output"; Dump_Rust( FMT(params.outfile << ".rs").c_str(), crate );
+        // XXX: Dump crate before typecheck
+        CompilePhaseV("Temp output - Resolved", [&]() {
+            Dump_Rust( FMT(params.outfile << ".rs").c_str(), crate );
+            });
 
+        // Replace type aliases (`type`) into the actual type
+        CompilePhaseV("Resolve Type Aliases", [&]() {
+            //
+            });
+        
         // Typecheck / type propagate module (type annotations of all values)
         // - Check all generic conditions (ensure referenced trait is valid)
         //  > Also mark parameter with applicable traits
-        #if 0
-        g_cur_phase = "TypecheckBounds";
-        Typecheck_GenericBounds(crate);
+        CompilePhaseV("TypecheckBounds", [&]() {
+            //Typecheck_GenericBounds(crate);
+            });
+        
         // - Check all generic parameters match required conditions
-        g_cur_phase = "TypecheckParams";
-        Typecheck_GenericParams(crate);
+        CompilePhaseV("TypecheckParams", [&]() {
+            //Typecheck_GenericParams(crate);
+            });
         // - Typecheck statics and consts
         // - Typecheck + propagate functions
         //  > Forward pass first
-        //g_cur_phase = "TypecheckExpr";
-        //Typecheck_Expr(crate);
-        #endif
+        CompilePhaseV("TypecheckExpr", [&]() {
+            //Typecheck_Expr(crate);
+            });
 
-        g_cur_phase = "Output";
-        Dump_Rust( FMT(params.outfile << ".rs").c_str(), crate );
+        CompilePhaseV("Output", [&]() {
+            Dump_Rust( FMT(params.outfile << ".rs").c_str(), crate );
+            });
     
         if( params.emit_flags == ProgramParams::EMIT_AST )
         {

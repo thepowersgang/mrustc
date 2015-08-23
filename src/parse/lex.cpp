@@ -97,6 +97,8 @@ static const struct {
   TOKENT("^",  TOK_CARET),
   TOKENT("^=", TOK_CARET_EQUAL),
   TOKENT("`",  TOK_BACKTICK),
+  // a-z :: Elsewhere
+  //TOKENT("b\"", DOUBLEQUOTE),
 
   TOKENT("{",  TOK_BRACE_OPEN),
   TOKENT("|",  TOK_PIPE),
@@ -139,7 +141,6 @@ static const struct {
   TOKENT("move",    TOK_RWORD_MOVE),
   TOKENT("mut",     TOK_RWORD_MUT),
   TOKENT("offsetof",TOK_RWORD_OFFSETOF),
-  TOKENT("once",    TOK_RWORD_ONCE),
   TOKENT("override",TOK_RWORD_OVERRIDE),
   TOKENT("priv",    TOK_RWORD_PRIV),
   TOKENT("proc",    TOK_RWORD_PROC),
@@ -401,6 +402,7 @@ Token Lexer::getTokenInt()
                     return Token(val, num_type);
                 }
             }
+            // Symbols
             else if( issym(ch) )
             {
                 ::std::string   str;
@@ -416,19 +418,34 @@ Token Lexer::getTokenInt()
                 }
                 else
                 {
-                    if( str == "b" && ch == '\'' ) {
-                        // Byte constant
-                        ch = this->getc();
-                        if( ch == '\\' ) {
-                            uint32_t val = this->parseEscape('\'');
-                            if( this->getc() != '\'' )
-                                throw ParseError::Generic(*this, "Multi-byte character literal");
-                            return Token((uint64_t)val, CORETYPE_U8);
+                    if( str == "b" )
+                    {
+                        if( ch == '\'' ) {
+                            // Byte constant
+                            ch = this->getc();
+                            if( ch == '\\' ) {
+                                uint32_t val = this->parseEscape('\'');
+                                if( this->getc() != '\'' )
+                                    throw ParseError::Generic(*this, "Multi-byte character literal");
+                                return Token((uint64_t)val, CORETYPE_U8);
+                            }
+                            else {
+                                if( this->getc() != '\'' )
+                                    throw ParseError::Generic(*this, "Multi-byte character literal");
+                                return Token((uint64_t)ch, CORETYPE_U8);
+                            }
+                        }
+                        else if( ch == '"') {
+                            ::std::string str;
+                            while( (ch = this->getc()) != '"' )
+                            {
+                                if( ch == '\\' )
+                                    ch = this->parseEscape('"');
+                                str.push_back(ch);
+                            }
+                            return Token(TOK_BYTESTRING, str);
                         }
                         else {
-                            if( this->getc() != '\'' )
-                                throw ParseError::Generic(*this, "Multi-byte character literal");
-                            return Token((uint64_t)ch, CORETYPE_U8);
                         }
                     }
                 
@@ -719,6 +736,7 @@ enum eTokenType Token::typefromstr(const ::std::string& s)
     case TOK_CHAR:      return FMT("'\\u{"<< ::std::hex << m_intval << "}");
     case TOK_FLOAT:     return FMT(m_floatval);
     case TOK_STRING:    return "\"" + m_str + "\"";
+    case TOK_BYTESTRING:return "b\"" + m_str + "\"";
     case TOK_CATTR_OPEN:return "#![";
     case TOK_ATTR_OPEN: return "#[";
     case TOK_UNDERSCORE:return "_";
@@ -829,7 +847,6 @@ enum eTokenType Token::typefromstr(const ::std::string& s)
 
     case TOK_RWORD_PROC:    return "proc";
     case TOK_RWORD_MOVE:    return "move";
-    case TOK_RWORD_ONCE:    return "once";
 
     case TOK_RWORD_ABSTRACT:return "abstract";
     case TOK_RWORD_FINAL:   return "final";

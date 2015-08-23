@@ -755,14 +755,8 @@ LEFTASSOC(Parse_Expr9, Parse_Expr10,
         rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::SUB, ::std::move(rv), next(lex));
         break;
 )
-// 10: Cast
+// 10: Times / Divide / Modulo
 LEFTASSOC(Parse_Expr10, Parse_Expr11,
-    case TOK_RWORD_AS:
-        rv = NEWNODE( AST::ExprNode_Cast, ::std::move(rv), Parse_Type(lex) );
-        break;
-)
-// 11: Times / Divide / Modulo
-LEFTASSOC(Parse_Expr11, Parse_Expr12,
     case TOK_STAR:
         rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::MULTIPLY, ::std::move(rv), next(lex));
         break;
@@ -771,6 +765,12 @@ LEFTASSOC(Parse_Expr11, Parse_Expr12,
         break;
     case TOK_PERCENT:
         rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::MODULO, ::std::move(rv), next(lex));
+        break;
+)
+// 11: Cast
+LEFTASSOC(Parse_Expr11, Parse_Expr12,
+    case TOK_RWORD_AS:
+        rv = NEWNODE( AST::ExprNode_Cast, ::std::move(rv), Parse_Type(lex) );
         break;
 )
 // 12: Unaries
@@ -891,7 +891,7 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
     return NEWNODE( AST::ExprNode_StructLiteral, path, ::std::move(base_val), ::std::move(items) );
 }
 
-ExprNodeP Parse_ExprVal_Closure(TokenStream& lex)
+ExprNodeP Parse_ExprVal_Closure(TokenStream& lex, bool is_move)
 {
     TRACE_FUNCTION;
     Token   tok;
@@ -1041,15 +1041,36 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
             lex.putback(tok);
             return NEWNODE( AST::ExprNode_NamedValue, ::std::move(path) );
         }
+    case TOK_RWORD_MOVE:
+        // TODO: Annotate closure as move
+        GET_TOK(tok, lex);
+        if(tok.type() == TOK_PIPE)
+            return Parse_ExprVal_Closure(lex, true);
+        else if(tok.type() == TOK_DOUBLE_PIPE) {
+            lex.putback(Token(TOK_PIPE));
+            return Parse_ExprVal_Closure(lex, true);
+        }
+        else {
+            CHECK_TOK(tok, TOK_PIPE);
+        }
     case TOK_DOUBLE_PIPE:
         lex.putback(Token(TOK_PIPE));
     case TOK_PIPE:
-        return Parse_ExprVal_Closure(lex);
+        return Parse_ExprVal_Closure(lex, false);
     case TOK_INTEGER:
         return NEWNODE( AST::ExprNode_Integer, tok.intval(), tok.datatype() );
     case TOK_FLOAT:
         return NEWNODE( AST::ExprNode_Float, tok.floatval(), tok.datatype() );
     case TOK_STRING:
+        return NEWNODE( AST::ExprNode_String, tok.str() );
+    case TOK_BYTESTRING: {
+        ::std::vector<ExprNodeP>    items;
+        for(char b: tok.str()) {
+            items.push_back( NEWNODE( AST::ExprNode_Integer, b, CORETYPE_U8 ) );
+        }
+        return NEWNODE( AST::ExprNode_Array, ::std::move(items) );
+        }
+        // TODO: Correct type here
         return NEWNODE( AST::ExprNode_String, tok.str() );
     case TOK_RWORD_TRUE:
         return NEWNODE( AST::ExprNode_Bool, true );

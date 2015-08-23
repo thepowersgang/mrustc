@@ -54,9 +54,6 @@ SERIALISE_TYPE(Expr::, "Expr", {
          _(ExprNode_Block)
     else _(ExprNode_Macro)
     else _(ExprNode_Flow)
-    else _(ExprNode_Const)
-    else _(ExprNode_Import)
-    else _(ExprNode_Extern)
     else _(ExprNode_LetBinding)
     else _(ExprNode_Assign)
     else _(ExprNode_CallPath)
@@ -146,32 +143,6 @@ NODE(ExprNode_Flow, {
     os << " " << *m_value;
 })
 
-NODE(ExprNode_Const, {
-    s.item(m_name);
-    s.item(m_type);
-    s.item(m_value);
-},{
-    os << "const " << m_name << ": " << m_type << " = " << *m_value;
-})
-
-
-ExprNode_Extern::ExprNode_Extern()
-{}
-ExprNode_Extern::ExprNode_Extern(ExprNode_Extern::imports_t imports):
-    m_imports( ::std::move(imports) )
-{}
-
-NODE(ExprNode_Import, {
-    s.item(m_imports);
-},{
-    os << "/* todo: use /*";
-})
-
-NODE(ExprNode_Extern, {
-    s.item(m_imports);
-},{
-    os << "/* todo: export /*";
-})
 
 NODE(ExprNode_LetBinding, {
     s.item(m_pat);
@@ -533,12 +504,6 @@ NV(ExprNode_Flow,
 {
     visit(node.m_value);
 })
-NV(ExprNode_Const,
-{
-    visit(node.m_value);
-})
-NV(ExprNode_Import, {})
-NV(ExprNode_Extern, {})
 NV(ExprNode_LetBinding,
 {
     // TODO: Handle recurse into Let pattern
