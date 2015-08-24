@@ -916,10 +916,10 @@ bool TypeParams::check_params(Crate& crate, ::std::vector<TypeRef>& types, bool 
                 if( bound.is_trait() && bound.test() == test )
                 {
                     const auto& trait = bound.bound();
-                    const auto& ty_traits = type.traits();
+                    //const auto& ty_traits = type.traits();
                 
-                    auto it = ::std::find(ty_traits.begin(), ty_traits.end(), trait);
-                    if( it == ty_traits.end() )
+                    //auto it = ::std::find(ty_traits.begin(), ty_traits.end(), trait);
+                    //if( it == ty_traits.end() )
                     {
                         throw ::std::runtime_error( FMT("No matching impl of "<<trait<<" for "<<type));
                     }

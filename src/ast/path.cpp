@@ -568,6 +568,17 @@ void Path::match_args(const Path& other, ::std::function<void(const char*,const 
     }
 }
 
+bool Path::is_concrete() const
+{
+    for(const auto& n : this->nodes())
+    {
+        for(const auto& p : n.args())
+            if( not p.is_concrete() )
+                return false;
+    }
+    return true;
+}
+
 /// Compare if two paths refer to the same non-generic item
 ///
 /// - This doesn't handle the (impossible?) case where a generic might

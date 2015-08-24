@@ -653,10 +653,10 @@ public:
         m_submods.push_back( ::std::make_pair( move(mod), is_public ) );
     }
     void add_impl(Impl impl) {
-        m_impls.push_back( ::std::move(impl) );
+        m_impls.emplace_back( ::std::move(impl) );
     }
     void add_neg_impl(ImplDef impl) {
-        m_neg_impls.push_back( ::std::move(impl) );
+        m_neg_impls.emplace_back( ::std::move(impl) );
     }
     void add_macro(bool is_exported, ::std::string name, MacroRules macro) {
         m_macros.push_back( Item<MacroRules>( move(name), move(macro), is_exported ) );
@@ -859,7 +859,7 @@ public:
         m_params(params),
         m_args(args)
     {}
-    TypeRef operator()(const char *argname) {
+    const TypeRef& operator()(const char *argname) {
         for(unsigned int i = 0; i < m_params.ty_params().size(); i ++)
         {
             if( m_params.ty_params()[i].name() == argname ) {

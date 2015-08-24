@@ -15,8 +15,9 @@ void CASTIterator::handle_type(TypeRef& type)
     }
     else
     {
-        for(auto& subtype : type.sub_types())
-            handle_type(subtype);
+        throw ::std::runtime_error("TODO: handle_type");
+        //for(auto& subtype : type.sub_types())
+        //    handle_type(subtype);
     }
 }
 void CASTIterator::handle_expr(AST::ExprNode& node)

@@ -59,6 +59,7 @@ public:
     virtual Serialiser& operator<<(uint64_t val) = 0;
     virtual Serialiser& operator<<(int64_t val) = 0;
     virtual Serialiser& operator<<(double val) = 0;
+    Serialiser& operator<<(unsigned int val) { return *this << (uint64_t)val; };
     virtual Serialiser& operator<<(const char* s) = 0;
     Serialiser& operator<<(const ::std::string& s) {
         return *this << s.c_str();
@@ -120,6 +121,7 @@ protected:
 public:
     virtual void item(bool& b) = 0;
     virtual void item(uint64_t& v) = 0;
+    void item(unsigned int& v) { uint64_t v1; this->item(v1); v = v1; }
     virtual void item(int64_t& val) = 0;
     virtual void item(double& v) = 0;
     virtual void item(::std::string& s) = 0;

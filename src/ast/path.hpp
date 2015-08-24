@@ -317,6 +317,8 @@ public:
     bool is_absolute() const { return m_class == ABSOLUTE; }
     bool is_relative() const { return m_class == RELATIVE; }
     size_t size() const { return m_nodes.size(); }
+
+    bool is_concrete() const;
     
     const PathBinding& binding() const { return m_binding; }
     

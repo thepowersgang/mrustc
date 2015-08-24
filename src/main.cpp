@@ -20,12 +20,11 @@ int g_debug_indent_level = 0;
 
 bool debug_enabled()
 {
-        
-        return true;
+    return true;
 }
 ::std::ostream& debug_output(int indent, const char* function)
 {
-        return ::std::cout << g_cur_phase << "- " << RepeatLitStr { " ", indent } << function << ": ";
+    return ::std::cout << g_cur_phase << "- " << RepeatLitStr { " ", indent } << function << ": ";
 }
 
 struct ProgramParams
@@ -84,17 +83,19 @@ int main(int argc, char *argv[])
 
         // XXX: Dump crate before resolve
         CompilePhaseV("Temp output - Parsed", [&]() {
-            Dump_Rust( FMT(params.outfile << ".rs").c_str(), crate );
+            Dump_Rust( FMT(params.outfile << "_0_pp.rs").c_str(), crate );
             });
     
         // Resolve names to be absolute names (include references to the relevant struct/global/function)
+        // - This does name checking on types and free functions.
+        // - Resolves all identifiers/paths to references
         CompilePhaseV("Resolve", [&]() {
             ResolvePaths(crate);
             });
         
         // XXX: Dump crate before typecheck
         CompilePhaseV("Temp output - Resolved", [&]() {
-            Dump_Rust( FMT(params.outfile << ".rs").c_str(), crate );
+            Dump_Rust( FMT(params.outfile << "_1_res.rs").c_str(), crate );
             });
 
         // Replace type aliases (`type`) into the actual type
@@ -102,6 +103,9 @@ int main(int argc, char *argv[])
             //
             });
         
+        // Perform type checking on items
+        
+        // 
         // Typecheck / type propagate module (type annotations of all values)
         // - Check all generic conditions (ensure referenced trait is valid)
         //  > Also mark parameter with applicable traits

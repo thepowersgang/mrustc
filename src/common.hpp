@@ -8,14 +8,26 @@
 #include <map>
 #include <cassert>
 #include <sstream>
+#include <memory>
 
 #define FMT(ss)    (dynamic_cast< ::std::stringstream&>(::std::stringstream() << ss).str())
 // XXX: Evil hack - Define 'mv$' to be ::std::move
 #define mv$(x)    ::std::move(x)
+#define box$(x) ::make_unique_ptr(::std::move(x))
+#define rc_new$(x) ::make_shared_ptr(::std::move(x))
 
 #include "include/debug.hpp"
 #include "include/rustic.hpp"	// slice and option
 #include "include/compile_error.hpp"
+
+template<typename T>
+::std::unique_ptr<T> make_unique_ptr(T&& v) {
+    return ::std::unique_ptr<T>(new T(mv$(v)));
+}
+template<typename T>
+::std::shared_ptr<T> make_shared_ptr(T&& v) {
+    return ::std::shared_ptr<T>(new T(mv$(v)));
+}
 
 enum Ordering
 {

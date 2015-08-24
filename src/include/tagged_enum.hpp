@@ -1,3 +1,8 @@
+/*
+ * The most evil CPP abuse I have ever written
+ */
+#ifndef INCLUDED_TAGGED_UNION_H_
+#define INCLUDED_TAGGED_UNION_H_
 
 #define TE_DATANAME(name)   Data_##name
 #define ENUM_CONS(__tag, __type) \
@@ -14,16 +19,29 @@
     __type& as_##__tag() { return reinterpret_cast<__type&>(m_data); } \
     __type unwrap_##__tag() { return ::std::move(reinterpret_cast<__type&>(m_data)); } \
 
+// Argument iteration
+#define _DISP2(n, _1, _2)   n _1 n _2
+#define _DISP3(n, v, v2, v3)   n v n v2 n v3    // _DISP2(n, __VA_ARGS__)
+#define _DISP4(n, v, v2, v3, v4)   n v n v2 n v3 n v4    // #define _DISP4(n, v, ...)   n v _DISP3(n, __VA_ARGS__)
+#define _DISP5(n, v, ...)   n v _DISP4(n, __VA_ARGS__)
+#define _DISP6(n, v, ...)   n v _DISP5(n, __VA_ARGS__)
+#define _DISP7(n, v, ...)   n v _DISP6(n, __VA_ARGS__)
+#define _DISP8(n, v, ...)   n v _DISP7(n, __VA_ARGS__)
+#define _DISP9(n, v, ...)   n v _DISP8(n, __VA_ARGS__)
+#define _DISP10(n, v, ...)   n v _DISP9(n, __VA_ARGS__)
+#define _DISP11(n, v, ...)   n v _DISP10(n, __VA_ARGS__)
+#define _DISP12(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3,c4)   _DISP4(n, a1,a2,a3,a4) _DISP4(n, b1,b2,b3,b4) _DISP4(n, c1,c2,c3,c4)    //n v _DISP11(n, __VA_ARGS__)
+
+// Macro to obtain a numbered macro for argument counts
+// - Raw variant
+#define TE_GM_I(SUF,_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,COUNT,...) SUF##COUNT
+#define TE_GM(SUF,...) TE_GM_I(SUF,__VA_ARGS__,12,11,10,9,8,7,6,5,4,3,2,x)
+// - _DISP based variant (for iteration)
+#define TE_GMX(...) TE_GM(_DISP,__VA_ARGS__)
+
+
+// "
 #define TE_CONS(name, _) ENUM_CONS(name, TE_DATANAME(name))
-#define TE_CONS2(a, b)  TE_CONS a TE_CONS b
-#define TE_CONS3(a, ...)  TE_CONS a TE_CONS2(__VA_ARGS__)
-#define TE_CONS4(a, ...)  TE_CONS a TE_CONS3(__VA_ARGS__)
-#define TE_CONS5(a, ...)  TE_CONS a TE_CONS4(__VA_ARGS__)
-#define TE_CONS6(a, ...)  TE_CONS a TE_CONS5(__VA_ARGS__)
-#define TE_CONS7(a, ...)  TE_CONS a TE_CONS6(__VA_ARGS__)
-#define TE_CONS8(a, ...)  TE_CONS a TE_CONS7(__VA_ARGS__)
-#define TE_CONS9(a, ...)  TE_CONS a TE_CONS8(__VA_ARGS__)
-#define TE_CONS10(a, ...) TE_CONS a TE_CONS9(__VA_ARGS__)
 
 // Sizes of structures
 #define TE_SO(name, _)   sizeof(TE_DATANAME(name))
@@ -37,94 +55,39 @@
 #define MAXS8(a, b, c, d, e, f, g, h)  MAX2(MAXS4(a, b, c, d), MAXS4(e, f, g, h))
 #define MAXS9(a, b, c, d, e, f, g, h, i)  MAX2(MAXS4(a, b, c, d), MAXS5(e, f, g, h, i))
 #define MAXS10(a, b, c, d, e, f, g, h, i, j)  MAX2(MAXS5(a, b, c, d, e), MAXS5(f, g, h, i, j))
+#define MAXS11(a, b, c, d, e, f, g, h, i, j, k)  MAX2(MAXS6(a, b, c, d, e, f), MAXS5(g, h, i, j, k))
+#define MAXS12(a, b, c, d, e, f, g, h, i, j, k, l)  MAX2(MAXS6(a, b, c, d, e, f), MAXS6(g, h, i, j, k, l))
 
 // Type definitions
 #define TE_EXP(...)  __VA_ARGS__
-#define TE_TYPEDEF(name, content)    struct TE_DATANAME(name) { TE_EXP content };/*
+#define TE_TYPEDEF(name, content)    struct TE_DATANAME(name) { TE_EXP content; };/*
 */
-#define TE_TYPEDEF2(_1, _2) TE_TYPEDEF _1 TE_TYPEDEF _2
-#define TE_TYPEDEF3(v, ...)  TE_TYPEDEF v TE_TYPEDEF2(__VA_ARGS__)
-#define TE_TYPEDEF4(v, ...)  TE_TYPEDEF v TE_TYPEDEF3(__VA_ARGS__)
-#define TE_TYPEDEF5(v, ...)  TE_TYPEDEF v TE_TYPEDEF4(__VA_ARGS__)
-#define TE_TYPEDEF6(v, ...)  TE_TYPEDEF v TE_TYPEDEF5(__VA_ARGS__)
-#define TE_TYPEDEF7(v, ...)  TE_TYPEDEF v TE_TYPEDEF6(__VA_ARGS__)
-#define TE_TYPEDEF8(v, ...)  TE_TYPEDEF v TE_TYPEDEF7(__VA_ARGS__)
-#define TE_TYPEDEF9(v, ...)  TE_TYPEDEF v TE_TYPEDEF8(__VA_ARGS__)
-#define TE_TYPEDEF10(v, ...) TE_TYPEDEF v TE_TYPEDEF9(__VA_ARGS__)
 
 #define TE_TAG(name, _)  name,
-#define TE_TAG2(_1,_2)  TE_TAG _1 TE_TAG _2
-#define TE_TAG3(_1,...) TE_TAG _1 TE_TAG2(__VA_ARGS__)
-#define TE_TAG4(_1,...) TE_TAG _1 TE_TAG3(__VA_ARGS__)
-#define TE_TAG5(_1,...) TE_TAG _1 TE_TAG4(__VA_ARGS__)
-#define TE_TAG6(_1,...) TE_TAG _1 TE_TAG5(__VA_ARGS__)
-#define TE_TAG7(_1,...) TE_TAG _1 TE_TAG6(__VA_ARGS__)
-#define TE_TAG8(_1,...) TE_TAG _1 TE_TAG7(__VA_ARGS__)
-#define TE_TAG9(_1,...) TE_TAG _1 TE_TAG9(__VA_ARGS__)
-#define TE_TAG10(_1,...) TE_TAG _1 TE_TAG9(__VA_ARGS__)
 
+// Destructor internals
 #define TE_DEST_CASE(tag, _)  case tag: as_##tag().~TE_DATANAME(tag)(); break;/*
 */
-#define TE_DEST_CASE2(_1,_2)   TE_DEST_CASE _1 TE_DEST_CASE _2
-#define TE_DEST_CASE3(v, ...) TE_DEST_CASE v TE_DEST_CASE2(__VA_ARGS__)
-#define TE_DEST_CASE4(v, ...) TE_DEST_CASE v TE_DEST_CASE3(__VA_ARGS__)
-#define TE_DEST_CASE5(v, ...) TE_DEST_CASE v TE_DEST_CASE4(__VA_ARGS__)
-#define TE_DEST_CASE6(v, ...) TE_DEST_CASE v TE_DEST_CASE5(__VA_ARGS__)
-#define TE_DEST_CASE7(v, ...) TE_DEST_CASE v TE_DEST_CASE6(__VA_ARGS__)
-#define TE_DEST_CASE8(v, ...) TE_DEST_CASE v TE_DEST_CASE7(__VA_ARGS__)
-#define TE_DEST_CASE9(v, ...) TE_DEST_CASE v TE_DEST_CASE8(__VA_ARGS__)
-#define TE_DEST_CASE10(v, ...) TE_DEST_CASE v TE_DEST_CASE9(__VA_ARGS__)
 
+// move constructor internals
 #define TE_MOVE_CASE(tag, _)  case tag: new(m_data) TE_DATANAME(tag)(x.unwrap_##tag()); break;/*
 */
-#define TE_MOVE_CASE2(_1,_2)   TE_MOVE_CASE _1 TE_MOVE_CASE _2
-#define TE_MOVE_CASE3(v, ...)   TE_MOVE_CASE v TE_MOVE_CASE2(__VA_ARGS__)
-#define TE_MOVE_CASE4(v, ...)   TE_MOVE_CASE v TE_MOVE_CASE3(__VA_ARGS__)
-#define TE_MOVE_CASE5(v, ...)   TE_MOVE_CASE v TE_MOVE_CASE4(__VA_ARGS__)
-#define TE_MOVE_CASE6(v, ...)   TE_MOVE_CASE v TE_MOVE_CASE5(__VA_ARGS__)
-#define TE_MOVE_CASE7(v, ...)   TE_MOVE_CASE v TE_MOVE_CASE6(__VA_ARGS__)
-#define TE_MOVE_CASE8(v, ...)   TE_MOVE_CASE v TE_MOVE_CASE7(__VA_ARGS__)
-#define TE_MOVE_CASE9(v, ...)   TE_MOVE_CASE v TE_MOVE_CASE8(__VA_ARGS__)
-#define TE_MOVE_CASE10(v, ...)  TE_MOVE_CASE v TE_MOVE_CASE9(__VA_ARGS__)
 
 // "tag_to_str" internals
 #define TE_TOSTR_CASE(tag,_)    case tag: return #tag;/*
 */
-#define TE_TOSTR_CASE2(a,b)   TE_TOSTR_CASE a TE_TOSTR_CASE b
-#define TE_TOSTR_CASE3(a,...)   TE_TOSTR_CASE a TE_TOSTR_CASE2(__VA_ARGS__)
-#define TE_TOSTR_CASE4(a,...)   TE_TOSTR_CASE a TE_TOSTR_CASE3(__VA_ARGS__)
-#define TE_TOSTR_CASE5(a,...)   TE_TOSTR_CASE a TE_TOSTR_CASE4(__VA_ARGS__)
-#define TE_TOSTR_CASE6(a,...)   TE_TOSTR_CASE a TE_TOSTR_CASE5(__VA_ARGS__)
-#define TE_TOSTR_CASE7(a,...)   TE_TOSTR_CASE a TE_TOSTR_CASE6(__VA_ARGS__)
-#define TE_TOSTR_CASE8(a,...)   TE_TOSTR_CASE a TE_TOSTR_CASE7(__VA_ARGS__)
-#define TE_TOSTR_CASE9(a,...)   TE_TOSTR_CASE a TE_TOSTR_CASE8(__VA_ARGS__)
-#define TE_TOSTR_CASE10(a,...)  TE_TOSTR_CASE a TE_TOSTR_CASE9(__VA_ARGS__)
 // "tag_from_str" internals
 #define TE_FROMSTR_CASE(tag,_)    else if(str == #tag) return tag;/*
 */
-#define TE_FROMSTR_CASE2(a,b)   TE_FROMSTR_CASE a TE_FROMSTR_CASE b
-#define TE_FROMSTR_CASE3(a,...) TE_FROMSTR_CASE a TE_FROMSTR_CASE2(__VA_ARGS__)
-#define TE_FROMSTR_CASE4(a,...) TE_FROMSTR_CASE a TE_FROMSTR_CASE3(__VA_ARGS__)
-#define TE_FROMSTR_CASE5(a,...) TE_FROMSTR_CASE a TE_FROMSTR_CASE4(__VA_ARGS__)
-#define TE_FROMSTR_CASE6(a,...) TE_FROMSTR_CASE a TE_FROMSTR_CASE5(__VA_ARGS__)
-#define TE_FROMSTR_CASE7(a,...) TE_FROMSTR_CASE a TE_FROMSTR_CASE6(__VA_ARGS__)
-#define TE_FROMSTR_CASE8(a,...) TE_FROMSTR_CASE a TE_FROMSTR_CASE7(__VA_ARGS__)
-#define TE_FROMSTR_CASE9(a,...) TE_FROMSTR_CASE a TE_FROMSTR_CASE8(__VA_ARGS__)
-#define TE_FROMSTR_CASE10(a,...) TE_FROMSTR_CASE a TE_FROMSTR_CASE9(__VA_ARGS__)
 
-// Macro to obtain a numbered macro for argument counts
-#define TE_GM_I(SUF,_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,COUNT,...) SUF##COUNT
-#define TE_GM(SUF,...) TE_GM_I(SUF,__VA_ARGS__,10,9,8,7,6,5,4,3,2,x)
-//#define TE_GMx(SUF,...) TE_GM_I(SUF,__VA_ARGS__,x,x,x,x,x,x,2)
-
-#define MAXS(...)          TE_GM(MAXS        ,__VA_ARGS__)(__VA_ARGS__)
-#define TE_CONSS(...)      TE_GM(TE_CONS     ,__VA_ARGS__)(__VA_ARGS__)
-#define TE_TYPEDEFS(...)   TE_GM(TE_TYPEDEF  ,__VA_ARGS__)(__VA_ARGS__)
-#define TE_TAGS(...)       TE_GM(TE_TAG      ,__VA_ARGS__)(__VA_ARGS__)
-#define TE_DEST_CASES(...) TE_GM(TE_DEST_CASE,__VA_ARGS__)(__VA_ARGS__)
-#define TE_MOVE_CASES(...) TE_GM(TE_MOVE_CASE,__VA_ARGS__)(__VA_ARGS__)
-#define TE_TOSTR_CASES(...)   TE_GM(TE_TOSTR_CASE  ,__VA_ARGS__)(__VA_ARGS__)
-#define TE_FROMSTR_CASES(...) TE_GM(TE_FROMSTR_CASE,__VA_ARGS__)(__VA_ARGS__)
+#define MAXS(...)          TE_GM(MAXS,__VA_ARGS__)(__VA_ARGS__)
+#define TE_CONSS(...)      TE_GMX(__VA_ARGS__)(TE_CONS     , __VA_ARGS__)
+#define TE_TYPEDEFS(...)   TE_GMX(__VA_ARGS__)(TE_TYPEDEF  ,__VA_ARGS__)
+#define TE_TAGS(...)       TE_GMX(__VA_ARGS__)(TE_TAG      ,__VA_ARGS__)
+#define TE_DEST_CASES(...) TE_GMX(__VA_ARGS__)(TE_DEST_CASE,__VA_ARGS__)
+#define TE_MOVE_CASES(...) TE_GMX(__VA_ARGS__)(TE_MOVE_CASE,__VA_ARGS__)
+#define TE_TOSTR_CASES(...)   TE_GMX(__VA_ARGS__)(TE_TOSTR_CASE  ,__VA_ARGS__)
+#define TE_FROMSTR_CASES(...) TE_GMX(__VA_ARGS__)(TE_FROMSTR_CASE,__VA_ARGS__)
 
 #define TAGGED_ENUM(_name, _def, ...) \
 class _name { \
@@ -175,3 +138,6 @@ class _name { \
         Range, struct { ::std::unique_ptr<ExprNode> left; ::std::unique_ptr<ExprNode> right; }
         )   m_contents;
 */
+
+#endif
+
