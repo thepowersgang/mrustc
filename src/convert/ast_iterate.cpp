@@ -9,16 +9,41 @@ void CASTIterator::handle_path(AST::Path& path, CASTIterator::PathMode pm)
 void CASTIterator::handle_type(TypeRef& type)
 {
     TRACE_FUNCTION_F("type = " << type);
-    if( type.is_path() )
+    #define _(VAR, ...) case TypeData::VAR: { auto &ent = type.m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
+    switch(type.m_data.tag())
     {
-        handle_path(type.path(), MODE_TYPE);
+    _(None)
+    _(Any)
+    _(Unit)
+    _(Primitive)
+    _(Path,
+        handle_path(ent.path, MODE_TYPE);
+        )
+    _(Tuple,
+        for(auto& subtype : ent.inner_types)
+            handle_type(subtype);
+        )
+    _(Borrow,
+        handle_type(*ent.inner);
+        )
+    _(Pointer,
+        handle_type(*ent.inner);
+        )
+    _(Array,
+        handle_type(*ent.inner);
+        )
+    _(Function,
+        handle_type(*ent.info.m_rettype);
+        for(auto& arg : ent.info.m_arg_types)
+            handle_type(arg);
+        )
+    _(Generic)
+    _(TraitObject,
+        for(auto& trait : ent.traits)
+            handle_path(trait, MODE_TYPE);
+        )
     }
-    else
-    {
-        throw ::std::runtime_error("TODO: handle_type");
-        //for(auto& subtype : type.sub_types())
-        //    handle_type(subtype);
-    }
+    #undef _
 }
 void CASTIterator::handle_expr(AST::ExprNode& node)
 {
@@ -80,7 +105,7 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
         else if( !type_hint.is_reference() )
             throw ::std::runtime_error( FMT("Ref pattern on non-ref value: " << type_hint) );
         else
-            handle_pattern(*v.sub, type_hint.sub_types()[0]);
+            handle_pattern(*v.sub, type_hint.inner_type());
         break; }
     case AST::Pattern::Data::MaybeBind:
         throw ::std::runtime_error("Calling CASTIterator::handle_pattern on MAYBE_BIND, not valid");
@@ -104,13 +129,14 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
         }
         else
         {
-            if( type_hint.sub_types().size() != v.sub_patterns.size() )
+            const auto& inner_types = type_hint.m_data.as_Tuple().inner_types;
+            if( inner_types.size() != v.sub_patterns.size() )
             {
                 throw ::std::runtime_error("Tuple pattern count doesn't match");
             }
             for( unsigned int i = 0; i < v.sub_patterns.size(); i ++ )
             {
-                handle_pattern(v.sub_patterns[i], type_hint.sub_types()[i]);
+                handle_pattern(v.sub_patterns[i], inner_types[i]);
             }
         }
         break; }

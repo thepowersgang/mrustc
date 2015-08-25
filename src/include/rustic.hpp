@@ -68,6 +68,16 @@ public:
         assert(is_some());
         return m_data;
     }
+    
+    //template<typename U/*, class FcnSome, class FcnNone*/>
+    //U match(::std::function<U(const T&)> if_some, ::Std::function<U()> if_none) const {
+    //    if( m_set ) {
+    //        return if_some(m_data);
+    //    }
+    //    else {
+    //        return if_none();
+    //    }
+    //}
 };
 template<typename T>
 class option<T&>
@@ -87,6 +97,16 @@ public:
         assert(is_some());
         return *m_ptr;
     }
+    
+    //template<typename U/*, class FcnSome, class FcnNone*/>
+    //U match(::std::function<U(const T&)> if_some, ::Std::function<U()> if_none) const {
+    //    if( m_set ) {
+    //        return if_some(*m_ptr);
+    //    }
+    //    else {
+    //        return if_none();
+    //    }
+    //}
 };
 template<typename T>
 option<T> Some(T data) {

@@ -41,6 +41,12 @@ Type_Function::Type_Function(const Type_Function& other):
     m_arg_types(other.m_arg_types)
 {
 }
+SERIALISE_TYPE_A(Type_Function::, "Type_Function", {
+    s.item( is_unsafe );
+    s.item( m_abi );
+    s.item( m_rettype );
+    s.item( m_arg_types );
+    })
 
 Ordering Type_Function::ord(const Type_Function& x) const
 {

@@ -119,7 +119,8 @@ void CTypeChecker::handle_params(AST::TypeParams& params)
             const auto& name = bound.test().type_param();
             int i = params.find_name(name.c_str());
             assert(i >= 0);
-            trs[name].add_trait( bound.bound() );
+            // - Just assert that it's valid.
+            //trs[name].add_trait( bound.bound() );
         }
     }
     
@@ -403,7 +404,7 @@ void CTC_NodeVisitor::visit(AST::ExprNode_Field& node)
         unsigned int deref_count = 0;
         while( tr->is_reference() )
         {
-            tr = &tr->sub_types()[0];
+            tr = &tr->inner_type();
             DEBUG("ExprNode_Field - ref deref to " << *tr);
             deref_count ++;
         }
@@ -476,29 +477,30 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallMethod& node)
         // 1. Handle bounded wildcard types
         if( ltype.is_wildcard() )
         {
-            if( ltype.traits().size() == 0 ) {
-                DEBUG("- Unconstrained wildcard, returning");
-                return ;
-            }
-            
-            for( const auto& t : ltype.traits() )
-            {
-                DEBUG("- Trait " << t.path());
-                AST::Trait& trait = const_cast<AST::Trait&>( t.path().binding().bound_trait() );
-                // - Find method on one of them
-                for( auto& m : trait.functions() )
-                {
-                    DEBUG(" > method: " << m.name << " search: " << node.m_method.name());
-                    if( m.name == node.m_method.name() )
-                    {
-                        DEBUG(" > Found method");
-                        fcnp = &m.data;
-                        break;
-                    }
-                }
-                if(fcnp)    break;
-            }
-            if(fcnp)    break;
+            throw ::std::runtime_error("TODO: _ in CallMethod");
+            //if( ltype.traits().size() == 0 ) {
+            //    DEBUG("- Unconstrained wildcard, returning");
+            //    return ;
+            //}
+            //
+            //for( const auto& t : ltype.traits() )
+            //{
+            //    DEBUG("- Trait " << t.path());
+            //    AST::Trait& trait = const_cast<AST::Trait&>( t.path().binding().bound_trait() );
+            //    // - Find method on one of them
+            //    for( auto& m : trait.functions() )
+            //    {
+            //        DEBUG(" > method: " << m.name << " search: " << node.m_method.name());
+            //        if( m.name == node.m_method.name() )
+            //        {
+            //            DEBUG(" > Found method");
+            //            fcnp = &m.data;
+            //            break;
+            //        }
+            //    }
+            //    if(fcnp)    break;
+            //}
+            //if(fcnp)    break;
         }
         else
         {

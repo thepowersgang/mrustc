@@ -97,12 +97,12 @@ TAGGED_ENUM(TypeData, None,
 class TypeRef:
     public Serialisable
 {
-    TypeData    m_data;
-    
     /// A generic pointer, used for tagging with extra information
     /// e.g. The source TypeParams for GENERIC
     const void* m_tagged_ptr;
 public:
+    TypeData    m_data;
+    
     TypeRef(TypeRef&& other) noexcept:
         m_data( mv$(other.m_data) )
     {}
@@ -130,7 +130,7 @@ public:
         }
     }
     TypeRef& operator=(const TypeRef& other) {
-        *this = TypeRef(other);
+        m_data = TypeRef(other).m_data;
         return *this;
     }
     
@@ -240,7 +240,31 @@ public:
     bool is_reference() const { return m_data.is_Borrow(); }
     bool is_pointer() const { return m_data.is_Pointer(); }
     bool is_tuple() const { return m_data.is_Tuple(); }
+    
+    //::option<const TypeData::Tuple&> as_tuple() const {
+    //    switch(m_data.tag())
+    //    {
+    //    }
+    //}
 
+    const TypeRef& inner_type() const {
+        switch(m_data.tag())
+        {
+        case TypeData::Borrow:  return *m_data.as_Borrow().inner;
+        case TypeData::Pointer: return *m_data.as_Pointer().inner;
+        case TypeData::Array:   return *m_data.as_Array().inner;
+        default:    throw ::std::runtime_error("Called inner_type on non-wrapper");
+        }
+    }
+    TypeRef& inner_type() {
+        switch(m_data.tag())
+        {
+        case TypeData::Borrow:  return *m_data.as_Borrow().inner;
+        case TypeData::Pointer: return *m_data.as_Pointer().inner;
+        case TypeData::Array:   return *m_data.as_Array().inner;
+        default:    throw ::std::runtime_error("Called inner_type on non-wrapper");
+        }
+    }
     //::std::vector<TypeRef>& sub_types() { return m_inner_types; }
     //const ::std::vector<TypeRef>& sub_types() const { return m_inner_types; }
     
