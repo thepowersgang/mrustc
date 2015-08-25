@@ -7,6 +7,7 @@
 #include "coretypes.hpp"
 #include "ast/path.hpp"
 #include <serialise.hpp>
+#include <tagged_union.hpp>
 
 namespace AST {
 class ExprNode;
@@ -55,7 +56,7 @@ struct Type_Function:
     SERIALISABLE_PROTOTYPES();
 };
 
-TAGGED_ENUM(TypeData, None,
+TAGGED_UNION(TypeData, None,
     (None, ()),
     (Any,  ()),
     (Unit, ()),

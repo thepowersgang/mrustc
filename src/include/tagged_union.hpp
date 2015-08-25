@@ -1,11 +1,21 @@
 /*
  * The most evil CPP abuse I have ever written
+ *
+ * Constructs a tagged union that correctly handles objects.
+ *
+ * Union is NOT copy-constructable
  */
 #ifndef INCLUDED_TAGGED_UNION_H_
 #define INCLUDED_TAGGED_UNION_H_
 
-#define TE_DATANAME(name)   Data_##name
-#define ENUM_CONS(__tag, __type) \
+#define TU_CASE_ITEM(src, mod, var, name)	mod auto& name = src.as_##var(); (void)&name;
+#define TU_CASE_BODY(class,var, ...)	case class::var: { __VA_ARGS__ } break;
+#define TU_CASE(mod, class, var,  name,src, ...)	TU_CASE_BODY(mod,class,var, TU_CASE_ITEM(src,mod,var,name) __VA_ARGS__)
+#define TU_CASE2(mod, class, var,  n1,s1, n2,s2, ...)	TU_CASE_BODY(mod,class,var, TU_CASE_ITEM(s1,mod,var,n1) TU_CASE_ITEM(s2,mod,var,n2) __VA_ARGS__)
+
+#define TU_DATANAME(name)   Data_##name
+// Internals of TU_CONS
+#define TU_CONS_I(__tag, __type) \
     static self_t make_null_##__tag() { self_t ret; ret.m_tag = __tag; new (ret.m_data) __type; return ::std::move(ret); } \
     static self_t make_##__tag(__type v) \
     {\
@@ -18,6 +28,8 @@
     const __type& as_##__tag() const { return reinterpret_cast<const __type&>(m_data); } \
     __type& as_##__tag() { return reinterpret_cast<__type&>(m_data); } \
     __type unwrap_##__tag() { return ::std::move(reinterpret_cast<__type&>(m_data)); } \
+// Define a tagged union constructor
+#define TU_CONS(name, _) TU_CONS_I(name, TU_DATANAME(name))
 
 // Argument iteration
 #define _DISP2(n, _1, _2)   n _1 n _2
@@ -34,20 +46,17 @@
 
 // Macro to obtain a numbered macro for argument counts
 // - Raw variant
-#define TE_GM_I(SUF,_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,COUNT,...) SUF##COUNT
-#define TE_GM(SUF,...) TE_GM_I(SUF,__VA_ARGS__,12,11,10,9,8,7,6,5,4,3,2,x)
+#define TU_GM_I(SUF,_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,COUNT,...) SUF##COUNT
+#define TU_GM(SUF,...) TU_GM_I(SUF,__VA_ARGS__,12,11,10,9,8,7,6,5,4,3,2,x)
 // - _DISP based variant (for iteration)
-#define TE_GMX(...) TE_GM(_DISP,__VA_ARGS__)
+#define TU_GMX(...) TU_GM(_DISP,__VA_ARGS__)
 
-
-// "
-#define TE_CONS(name, _) ENUM_CONS(name, TE_DATANAME(name))
 
 // Sizes of structures
-#define TE_SO(name, _)   sizeof(TE_DATANAME(name))
+#define TU_SO(name, _)   sizeof(TU_DATANAME(name))
 #define MAX2(a, b)  (a < b ? b : a)
-#define MAXS2(a, b)  (TE_SO a < TE_SO b ? TE_SO b : TE_SO a)
-#define MAXS3(a, b, c)   MAX2(MAXS2(a, b), TE_SO c)
+#define MAXS2(a, b)  (TU_SO a < TU_SO b ? TU_SO b : TU_SO a)
+#define MAXS3(a, b, c)   MAX2(MAXS2(a, b), TU_SO c)
 #define MAXS4(a, b, c, d)   MAX2(MAXS2(a, b), MAXS2(c, d))
 #define MAXS5(a, b, c, d, e)   MAX2(MAXS3(a, b, c), MAXS2(d, e))
 #define MAXS6(a, b, c, d, e, f)  MAX2(MAXS3(a, b, c), MAXS3(d, e, f))
@@ -59,43 +68,56 @@
 #define MAXS12(a, b, c, d, e, f, g, h, i, j, k, l)  MAX2(MAXS6(a, b, c, d, e, f), MAXS6(g, h, i, j, k, l))
 
 // Type definitions
-#define TE_EXP(...)  __VA_ARGS__
-#define TE_TYPEDEF(name, content)    struct TE_DATANAME(name) { TE_EXP content; };/*
+#define TU_EXP(...)  __VA_ARGS__
+#define TU_TYPEDEF(name, content)    struct TU_DATANAME(name) { TU_EXP content; };/*
 */
 
-#define TE_TAG(name, _)  name,
+#define TU_TAG(name, _)  name,
 
 // Destructor internals
-#define TE_DEST_CASE(tag, _)  case tag: as_##tag().~TE_DATANAME(tag)(); break;/*
+#define TU_DEST_CASE(tag, _)  case tag: as_##tag().~TU_DATANAME(tag)(); break;/*
 */
 
 // move constructor internals
-#define TE_MOVE_CASE(tag, _)  case tag: new(m_data) TE_DATANAME(tag)(x.unwrap_##tag()); break;/*
+#define TU_MOVE_CASE(tag, _)  case tag: new(m_data) TU_DATANAME(tag)(x.unwrap_##tag()); break;/*
 */
 
 // "tag_to_str" internals
-#define TE_TOSTR_CASE(tag,_)    case tag: return #tag;/*
+#define TU_TOSTR_CASE(tag,_)    case tag: return #tag;/*
 */
 // "tag_from_str" internals
-#define TE_FROMSTR_CASE(tag,_)    else if(str == #tag) return tag;/*
+#define TU_FROMSTR_CASE(tag,_)    else if(str == #tag) return tag;/*
 */
 
-#define MAXS(...)          TE_GM(MAXS,__VA_ARGS__)(__VA_ARGS__)
-#define TE_CONSS(...)      TE_GMX(__VA_ARGS__)(TE_CONS     , __VA_ARGS__)
-#define TE_TYPEDEFS(...)   TE_GMX(__VA_ARGS__)(TE_TYPEDEF  ,__VA_ARGS__)
-#define TE_TAGS(...)       TE_GMX(__VA_ARGS__)(TE_TAG      ,__VA_ARGS__)
-#define TE_DEST_CASES(...) TE_GMX(__VA_ARGS__)(TE_DEST_CASE,__VA_ARGS__)
-#define TE_MOVE_CASES(...) TE_GMX(__VA_ARGS__)(TE_MOVE_CASE,__VA_ARGS__)
-#define TE_TOSTR_CASES(...)   TE_GMX(__VA_ARGS__)(TE_TOSTR_CASE  ,__VA_ARGS__)
-#define TE_FROMSTR_CASES(...) TE_GMX(__VA_ARGS__)(TE_FROMSTR_CASE,__VA_ARGS__)
+#define MAXS(...)          TU_GM(MAXS,__VA_ARGS__)(__VA_ARGS__)
+#define TU_CONSS(...)      TU_GMX(__VA_ARGS__)(TU_CONS     , __VA_ARGS__)
+#define TU_TYPEDEFS(...)   TU_GMX(__VA_ARGS__)(TU_TYPEDEF  ,__VA_ARGS__)
+#define TU_TAGS(...)       TU_GMX(__VA_ARGS__)(TU_TAG      ,__VA_ARGS__)
+#define TU_DEST_CASES(...) TU_GMX(__VA_ARGS__)(TU_DEST_CASE,__VA_ARGS__)
+#define TU_MOVE_CASES(...) TU_GMX(__VA_ARGS__)(TU_MOVE_CASE,__VA_ARGS__)
+#define TU_TOSTR_CASES(...)   TU_GMX(__VA_ARGS__)(TU_TOSTR_CASE  ,__VA_ARGS__)
+#define TU_FROMSTR_CASES(...) TU_GMX(__VA_ARGS__)(TU_FROMSTR_CASE,__VA_ARGS__)
 
-#define TAGGED_ENUM(_name, _def, ...) \
+/**
+ * Define a new tagged union
+ *
+ * ```
+ * TAGGED_UNION(Inner, Any,
+ *     (Any, (bool flag)),
+ *     (Tuple, (::std::vector<Pattern> subpats)),
+ *     (TupleStruct, (Path path; ::std::vector<Pattern> sub_patterns;)),
+ *     (Value, (::std::unique_ptr<ExprNode> val )),
+ *     (Range, (::std::unique_ptr<ExprNode> left; ::std::unique_ptr<ExprNode> right;))
+ *     );
+ * ```
+ */
+#define TAGGED_UNION(_name, _def, ...) \
 class _name { \
     typedef _name self_t;/*
-*/  TE_TYPEDEFS(__VA_ARGS__)/*
+*/  TU_TYPEDEFS(__VA_ARGS__)/*
 */public:\
     enum Tag { \
-        TE_TAGS(__VA_ARGS__)\
+        TU_TAGS(__VA_ARGS__)\
     };/*
 */ private:\
     Tag m_tag; \
@@ -103,40 +125,26 @@ class _name { \
 */ public:\
     _name(): m_tag(_def) {}\
     _name(const _name&) = delete; \
-    _name(_name&& x): m_tag(x.m_tag) { x.m_tag = _def; switch(m_tag) {  TE_MOVE_CASES(__VA_ARGS__) } } \
-    _name& operator =(_name&& x) { this->~_name(); m_tag = x.m_tag; x.m_tag = _def; switch(m_tag) { TE_MOVE_CASES(__VA_ARGS__) }; return *this; } \
-    ~_name() { switch(m_tag) { TE_DEST_CASES(__VA_ARGS__) } } \
+    _name(_name&& x): m_tag(x.m_tag) { x.m_tag = _def; switch(m_tag) {  TU_MOVE_CASES(__VA_ARGS__) } } \
+    _name& operator =(_name&& x) { this->~_name(); m_tag = x.m_tag; x.m_tag = _def; switch(m_tag) { TU_MOVE_CASES(__VA_ARGS__) }; return *this; } \
+    ~_name() { switch(m_tag) { TU_DEST_CASES(__VA_ARGS__) } } \
     \
     Tag tag() const { return m_tag; }\
-    TE_CONSS(__VA_ARGS__) \
+    TU_CONSS(__VA_ARGS__) \
 /*
 */    static const char *tag_to_str(Tag tag) { \
         switch(tag) {/*
-*/          TE_TOSTR_CASES(__VA_ARGS__)/*
+*/          TU_TOSTR_CASES(__VA_ARGS__)/*
 */      } return ""; \
     }/*
 */    static Tag tag_from_str(const ::std::string& str) { \
         if(0); /*
-*/      TE_FROMSTR_CASES(__VA_ARGS__)/*
+*/      TU_FROMSTR_CASES(__VA_ARGS__)/*
 */      else throw ::std::runtime_error("enum "#_name" No conversion"); \
     }\
 }
 
-#define ENUM3(_name, _def, _t1, _v1, _t2, _v2, _t3, _v3)\
-    TAGGED_ENUM(_name, _def,\
-        (_t1, _v1), \
-        (_t2, _v2), \
-        (_t3, _v3) \
-        )
-
 /*
-    ENUM5(Inner, Any,
-        Any, bool,
-        Tuple, ::std::vector<Pattern>,
-        TupleStruct, struct { Path path; ::std::vector<Pattern> sub_patterns; },
-        Value, ::std::unique_ptr<ExprNode>,
-        Range, struct { ::std::unique_ptr<ExprNode> left; ::std::unique_ptr<ExprNode> right; }
-        )   m_contents;
 */
 
 #endif

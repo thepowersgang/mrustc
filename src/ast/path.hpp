@@ -10,7 +10,7 @@
 #include <initializer_list>
 #include <cassert>
 #include <serialise.hpp>
-#include <tagged_enum.hpp>
+#include <tagged_union.hpp>
 
 class TypeRef;
 

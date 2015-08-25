@@ -5,7 +5,7 @@
 #include <vector>
 #include <memory>
 #include <string>
-#include <tagged_enum.hpp>
+#include <tagged_union.hpp>
 
 namespace AST {
 
@@ -18,7 +18,7 @@ class Pattern:
     public Serialisable
 {
 public:
-    TAGGED_ENUM(Data, Any,
+    TAGGED_UNION(Data, Any,
         (Any,       () ),
         (MaybeBind, () ),
         (Ref,       (bool mut; unique_ptr<Pattern> sub;) ),
