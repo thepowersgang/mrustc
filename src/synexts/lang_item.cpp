@@ -13,7 +13,7 @@
 void handle_lang_item(AST::Crate& crate, const AST::Path& path, const ::std::string& name, AST::eItemType type)
 {
     if(name == "phantom_fn") {
-        crate.m_lang_item_PhantomFn = path;
+        crate.m_lang_item_PhantomFn = AST::Path(path);
         crate.m_lang_item_PhantomFn.nodes().back().args() = { TypeRef("A"), TypeRef("B") };
     }
     else if( name == "send" ) {

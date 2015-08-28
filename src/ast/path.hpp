@@ -11,6 +11,7 @@
 #include <cassert>
 #include <serialise.hpp>
 #include <tagged_union.hpp>
+#include <string>
 
 class TypeRef;
 
@@ -26,17 +27,17 @@ class Trait;
 class Static;
 class Function;
 
-//TAGGED_ENUM(Binding, Unbound,
-//    (BndModule, (const Module* module_; ) ),
-//    (BndEnum,   (const Enum* enum_; ) ),
-//    (BndStruct, (const Struct* struct_; ) ),
-//    (BndTrait,  (const Trait* trait_; ) ),
-//    (BndStatic, (const Static* static_; ) ),
-//    (BndFunction, (const Function* func_; ) ),
-//    (BndEnumVar, (const Enum* enum_; unsigned int idx; ) ),
-//    (BndTypeAlias, (const TypeAlias* alias_; ) ),
-//    (BndStructMethod, (const Struct* struct_; ::std::string name; ) ),
-//    (BndTraitMethod, (const Trait* struct_; ::std::string name; ) )
+//TAGGED_UNION(PathBinding, Unbound,
+//    (Module, (const Module* module_; ) ),
+//    (Enum,   (const Enum* enum_; ) ),
+//    (Struct, (const Struct* struct_; ) ),
+//    (Trait,  (const Trait* trait_; ) ),
+//    (Static, (const Static* static_; ) ),
+//    (Function, (const Function* func_; ) ),
+//    (EnumVar, (const Enum* enum_; unsigned int idx; ) ),
+//    (TypeAlias, (const TypeAlias* alias_; ) ),
+//    (StructMethod, (const Struct* struct_; ::std::string name; ) ),
+//    (TraitMethod, (const Trait* struct_; ::std::string name; ) )
 //    );
 class PathBinding
 {
@@ -143,63 +144,64 @@ public:
     SERIALISABLE_PROTOTYPES();
 };
 
-//TAGGED_ENUM(Class, Local,
-//    (Local, (::std:string name) ),
-//    (Variable, (::std:string name) ),
-//    (Relative, (::std::vector<PathNode> nodes) ),
-//    (Self, (::std::vector<PathNode> nodes) ),
-//    (Super, (::std::vector<PathNode> nodes) ),
-//    (Absolute, (::std::vector<PathNode> nodes) ),
-//    (UFCS, (TypeRef type; TypeRef trait; ::std::vector<PathNode> nodes) ),
-//    );
 class Path:
     public ::Serialisable
 {
 public:
-    enum Class {
-        INVALID,    // An empty path, usually invalid
-        ABSOLUTE,   // root-relative path ("::path")
-        UFCS,   // type-relative path ("<Type>::such")
-        VARIABLE,   // Reference to a local variable
-        
-        RELATIVE,   // Unadorned relative path (e.g. "path::to::item" or "generic_item::<>")
-        SELF,   // module-relative path ("self::path")
-        SUPER,  // parent-relative path ("super::path")
-    };
+    TAGGED_UNION(Class, Invalid,
+        (Invalid, ()),
+        (Local, (   // Variable / Type param (resolved)
+            ::std::string name;
+            ) ),
+        (Relative, (    // General relative
+            ::std::vector<PathNode> nodes;
+            ) ),
+        (Self, (    // Module-relative
+            ::std::vector<PathNode> nodes;
+            ) ),
+        (Super, (   // Parent-relative
+            ::std::vector<PathNode> nodes;
+            ) ),
+        (Absolute, (    // Absolute
+            ::std::vector<PathNode> nodes;
+            ) ),
+        (UFCS, (    // Type-relative
+            ::std::unique_ptr<TypeRef> type;
+            ::std::unique_ptr<TypeRef> trait;
+            ::std::vector<PathNode> nodes;
+            ) )
+        );
     
 private:
     /// The crate defining the root of this path (used for path resolution)
     ::std::string   m_crate;
 
-    /// Path class (absolute, relative, local)
-    /// - Absolute is "relative" to the crate root
-    /// - Relative doesn't have a set crate (and can't be resolved)
-    /// - Local is a special case to handle possible use of local varaibles
-    /// - UFCS is relative to a type
+public:
     Class   m_class;
-    ::std::vector<TypeRef>  m_ufcs;
-    ::std::vector<PathNode> m_nodes;
-    
+
+private:
     PathBinding m_binding;
 public:
     // INVALID
     Path():
-        m_class(INVALID)
+        m_class()
     {}
+    Path(Path&&) noexcept = default;
+    Path& operator=(AST::Path&&) = default;
+    
+    Path(const Path& x);
     
     // ABSOLUTE
     struct TagAbsolute {};
     Path(TagAbsolute):
-        m_class(ABSOLUTE)
+        m_class( Class::make_Absolute({}) )
     {}
     Path(::std::initializer_list<PathNode> l):
-        m_class(ABSOLUTE),
-        m_nodes(l)
+        Path("", l)
     {}
     Path(::std::string crate, ::std::vector<PathNode> nodes):
         m_crate( ::std::move(crate) ),
-        m_class(ABSOLUTE),
-        m_nodes( ::std::move(nodes) )
+        m_class( Class::make_Absolute({nodes: mv$(nodes)}) )
     {}
     
     // UFCS
@@ -207,33 +209,28 @@ public:
     Path(TagUfcs, TypeRef type, TypeRef trait);
     
     // VARIABLE
-    struct TagVariable {};
-    Path(TagVariable, ::std::string name):
-        m_class(VARIABLE),
-        m_nodes( {PathNode( ::std::move(name), {} )} )
+    struct TagLocal {};
+    Path(TagLocal, ::std::string name):
+        m_class( Class::make_Local({ mv$(name) }) )
+    {}
+    Path(::std::string name):
+        m_class( Class::make_Local({name: mv$(name)}) )
     {}
     
     // RELATIVE
     struct TagRelative {};
     Path(TagRelative):
-        m_class(RELATIVE),
-        m_nodes({})
-    {}
-    Path(::std::string name):
-        m_class(RELATIVE),
-        m_nodes( {PathNode( ::std::move(name), {} )} )
+        m_class( Class::make_Relative({}) )
     {}
     // SELF
     struct TagSelf {};
     Path(TagSelf):
-        m_class(SELF),
-        m_nodes({})
+        m_class( Class::make_Self({}) )
     {}
     // SUPER
     struct TagSuper {};
     Path(TagSuper):
-        m_class(SUPER),
-        m_nodes({})
+        m_class( Class::make_Super({}) )
     {}
     
     void set_crate(::std::string crate) {
@@ -242,8 +239,10 @@ public:
             DEBUG("crate set to " << m_crate);
         }
     }
-    void set_local() {
-        assert(m_class == RELATIVE);
+
+    
+    Class::Tag class_tag() const {
+        return m_class.tag();
     }
     
     /// Add the all nodes except the first from 'b' to 'a' and return
@@ -253,19 +252,21 @@ public:
         return ret;
     }
     /// Grab the args from the first node of b, and add the rest to the end of the path
+    // TODO: Args should probably be moved to the path, not the nodes
     void add_tailing(const Path& b) {
-        assert(this->m_class != INVALID);
-        assert(b.m_class != INVALID);
-        if( b.m_nodes.size() == 0 )
+        assert( !this->m_class.is_Invalid() );
+        assert( b.m_class.is_Relative() );
+        const auto& b_r = b.m_class.as_Relative();
+        if( b_r.nodes.size() == 0 )
             ;
-        else if( m_nodes.size() > 0 )
-            m_nodes.back().args() = b[0].args();
+        else if( nodes().size() > 0 )
+            nodes().back().args() = b[0].args();
         else if( b[0].args().size() > 0 )
             throw ::std::runtime_error("add_tail to empty path, but generics in source");
         else
             ;
-        for(unsigned int i = 1; i < b.m_nodes.size(); i ++)
-            m_nodes.push_back(b.m_nodes[i]);
+        for(unsigned int i = 1; i < b_r.nodes.size(); i ++)
+            nodes().push_back(b_r.nodes[i]);
         m_binding = PathBinding();
     }
     Path operator+(PathNode&& pn) const {
@@ -284,9 +285,9 @@ public:
     Path& operator+=(const Path& x);
 
     void append(PathNode node) {
-        assert(this->m_class != INVALID);
-        assert(this->m_class != VARIABLE);
-        m_nodes.push_back(node);
+        if( m_class.is_Invalid() )
+            m_class = Class::make_Relative({});
+        nodes().push_back(node);
         m_binding = PathBinding();
     }
     
@@ -305,30 +306,44 @@ public:
     void match_args(const Path& other, ::std::function<void(const char*,const TypeRef&)> fcn) const;
     
     bool is_trivial() const {
-        switch(m_class)
+        switch(m_class.tag())
         {
-        case RELATIVE:  return m_nodes.size() == 1 && m_nodes[0].args().size() == 0;
+        case Class::Local:  return true;
+        case Class::Relative: {
+            auto& e = m_class.as_Relative();
+            return e.nodes.size() == 1 && e.nodes[0].args().size() == 0;
+            }
         default:    return false;
         }
     }
     
-    bool is_valid() const { return *this != Path(); }
-    Class type() const { return m_class; }
-    bool is_absolute() const { return m_class == ABSOLUTE; }
-    bool is_relative() const { return m_class == RELATIVE; }
-    size_t size() const { return m_nodes.size(); }
+    bool is_valid() const { return !m_class.is_Invalid(); }
+    bool is_absolute() const { return m_class.is_Absolute(); }
+    bool is_relative() const { return m_class.is_Relative() || m_class.is_Super() || m_class.is_Self(); }
+    size_t size() const { return nodes().size(); }
 
     bool is_concrete() const;
     
     const PathBinding& binding() const { return m_binding; }
     
-    ::std::vector<TypeRef>& ufcs() { return m_ufcs; }
+    ::std::vector<PathNode>& nodes() {
+        TU_MATCH(Class, (m_class), (ent),
+        (Invalid,  assert(!m_class.is_Invalid()); throw ::std::runtime_error("Path::nodes() on Invalid"); ),
+        (Local,    assert(!m_class.is_Local()); throw ::std::runtime_error("Path::nodes() on Local"); ),
+        (Relative, return ent.nodes;),
+        (Self,     return ent.nodes;),
+        (Super,    return ent.nodes;),
+        (Absolute, return ent.nodes;),
+        (UFCS,      return ent.nodes;)
+        )
+        throw ::std::runtime_error("Path::nodes() fell off");
+    }
+    const ::std::vector<PathNode>& nodes() const {
+        return ((Path*)this)->nodes();
+    }
     
-    ::std::vector<PathNode>& nodes() { return m_nodes; }
-    const ::std::vector<PathNode>& nodes() const { return m_nodes; }
-    
-    PathNode& operator[](int idx) { if(idx>=0) return m_nodes[idx]; else return m_nodes[size()+idx]; }
-    const PathNode& operator[](int idx) const { if(idx>=0) return m_nodes[idx]; else return m_nodes[size()+idx]; }
+    PathNode& operator[](int idx) { if(idx>=0) return nodes()[idx]; else return nodes()[size()+idx]; }
+    const PathNode& operator[](int idx) const { return (*(Path*)this)[idx]; }
    
     /// Returns 0 if paths are identical, 1 if TypeRef::TagArg is present in one, and -1 if a node differs
     int equal_no_generic(const Path& x) const;
@@ -344,6 +359,10 @@ public:
     friend ::Serialiser& operator<<(Serialiser& s, Path::Class pc);
     friend void operator>>(Deserialiser& s, Path::Class& pc);
 private:
+    static void resolve_args_nl(::std::vector<PathNode>& nodes, ::std::function<TypeRef(const char*)> fcn);
+    static void match_args_nl(const ::std::vector<PathNode>& nodes_a, const ::std::vector<PathNode>& nodes_b, ::std::function<void(const char*,const TypeRef&)> fcn);
+    static int node_lists_equal_no_generic(const ::std::vector<PathNode>& nodes_a, const ::std::vector<PathNode>& nodes_b);
+    
     void check_param_counts(const TypeParams& params, bool expect_params, PathNode& node);
     void bind_module(const Module& mod);
     void bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args);

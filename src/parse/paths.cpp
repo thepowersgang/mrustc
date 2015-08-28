@@ -41,9 +41,9 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
 }
 AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generic_mode)
 {
+    Token   tok;
     if( is_abs )
     {
-        Token   tok;
         if( GET_TOK(tok, lex) == TOK_STRING ) {
             ::std::string   cratename = tok.str();
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
@@ -54,8 +54,16 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
             return Parse_PathFrom(lex, AST::Path(AST::Path::TagAbsolute()), generic_mode);
         }
     }
-    else
-        return Parse_PathFrom(lex, AST::Path(AST::Path::TagRelative()), generic_mode);
+    else {
+        //assert( GET_TOK(tok, lex) == TOK_IDENT );
+        //if( lex.lookahead(0) != TOK_DOUBLE_COLON ) {
+        //    return AST::Path( tok.str() );
+        //}
+        //else {
+        //    lex.putback(tok);
+            return Parse_PathFrom(lex, AST::Path(AST::Path::TagRelative()), generic_mode);
+        //}
+    }
 }
 
 AST::Path Parse_PathFrom(TokenStream& lex, AST::Path path, eParsePathGenericMode generic_mode)
@@ -145,9 +153,9 @@ AST::Path Parse_PathFrom(TokenStream& lex, AST::Path path, eParsePathGenericMode
         path.append( AST::PathNode(component, params) );
     }
     lex.putback(tok);
-    if( path.is_trivial() ) {
-        path = AST::Path(path[0].name());
-    }
+    //if( path.is_trivial() ) {
+    //    path = AST::Path(path[0].name());
+    //}
     DEBUG("path = " << path);
     return path;
 }

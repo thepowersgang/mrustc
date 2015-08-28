@@ -215,7 +215,7 @@ struct ItemNS
     ItemNS():
         is_pub(false)
     {}
-    ItemNS(ItemNS&&) = default;
+    ItemNS(ItemNS&&) noexcept = default;
     ItemNS(const ItemNS&) = default;
     ItemNS(::std::string name, T data, bool is_pub):
         name( ::std::move(name) ),
@@ -237,7 +237,7 @@ struct Item:
     Item():
         ItemNS<T>()
     {}
-    Item(Item&&) = default;
+    Item(Item&&) noexcept = default;
     Item(const Item&) = default;
     Item(::std::string name, T data, bool is_pub):
         ItemNS<T>( ::std::move(name), ::std::move(data), is_pub )
@@ -343,7 +343,7 @@ public:
         m_fcn_class(CLASS_UNBOUND)
     {}
     Function(const Function&) = delete;
-    Function(Function&&) = default;
+    Function(Function&&) noexcept = default;
     Function(MetaItems attrs, TypeParams params, Class fcn_class, TypeRef ret_type, Arglist args):
         m_attrs( move(attrs) ),
         m_fcn_class(fcn_class),
@@ -501,6 +501,7 @@ class ImplDef:
     TypeRef m_type;
 public:
     ImplDef() {}
+    ImplDef(ImplDef&&) noexcept = default;
     ImplDef(MetaItems attrs, TypeParams params, Path trait_type, TypeRef impl_type):
         m_attrs( move(attrs) ),
         m_params( move(params) ),
@@ -536,6 +537,7 @@ class Impl:
     ::std::vector< ::std::pair< ::std::vector<TypeRef>, Impl > > m_concrete_impls;
 public:
     Impl() {}
+    Impl(Impl&&) noexcept = default;
     Impl(MetaItems attrs, TypeParams params, TypeRef impl_type, Path trait_type):
         m_def( move(attrs), move(params), move(trait_type), move(impl_type) )
     {}

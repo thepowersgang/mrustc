@@ -63,37 +63,64 @@ typename ::std::vector<Item<T> >::const_iterator find_named(const ::std::vector<
 
 // --- AST::Path
 AST::Path::Path(TagUfcs, TypeRef type, TypeRef trait):
-    m_class(UFCS),
-    m_ufcs({::std::move(type), ::std::move(trait)} )
+    m_class( AST::Path::Class::make_UFCS({box$(type), box$(trait), {}}) )
 {
+}
+AST::Path::Path(const Path& x):
+    m_class()
+{
+    TU_MATCH(Class, (x.m_class), (ent),
+    (Invalid, m_class = Class::make_Invalid({});),
+    (Local,
+        m_class = Class::make_Local({name: ent.name});
+        ),
+    (Relative,
+        m_class = Class::make_Relative({nodes: ent.nodes});
+        ),
+    (Self,
+        m_class = Class::make_Self({nodes: ent.nodes});
+        ),
+    (Super,
+        m_class = Class::make_Super({nodes: ent.nodes});
+        ),
+    (Absolute,
+        m_class = Class::make_Absolute({nodes: ent.nodes});
+        ),
+    (UFCS,
+        m_class = Class::make_UFCS({ box$(TypeRef(*ent.type)), box$(TypeRef(*ent.trait)), ent.nodes });
+        )
+    )
 }
 
 /// Resolve a path into a canonical form, and bind it to the target value
 void Path::resolve(const Crate& root_crate, bool expect_params)
 {
     TRACE_FUNCTION_F("*this = "<< *this);
-    if(m_class == ABSOLUTE)
+    if( m_class.is_Absolute() ) {
         resolve_absolute(root_crate, expect_params);
-    else if(m_class == UFCS)
+    }
+    else if(m_class.is_UFCS()) {
         resolve_ufcs(root_crate, expect_params);
+    }
     else
         throw ParseError::BugCheck("Calling Path::resolve on non-absolute path");
 }
 void Path::resolve_absolute(const Crate& root_crate, bool expect_params)
 {
+    auto& nodes = m_class.as_Absolute().nodes;
     DEBUG("m_crate = '" << m_crate << "'");
     
     unsigned int slice_from = 0;    // Used when rewriting the path to be relative to its crate root
     
     ::std::vector<const Module*>    mod_stack;
     const Module* mod = &root_crate.get_root_module(m_crate);
-    for(unsigned int i = 0; i < m_nodes.size(); i ++ )
+    for(unsigned int i = 0; i < nodes.size(); i ++ )
     {
         mod_stack.push_back(mod);
-        const bool is_last = (i+1 == m_nodes.size());
-        const bool is_sec_last = (i+2 == m_nodes.size());
-        const PathNode& node = m_nodes[i];
-        DEBUG("[" << i << "/"<<m_nodes.size()<<"]: " << node);
+        const bool is_last = (i+1 == nodes.size());
+        const bool is_sec_last = (i+2 == nodes.size());
+        const PathNode& node = nodes[i];
+        DEBUG("[" << i << "/"<<nodes.size()<<"]: " << node);
         
         if( node.name()[0] == '#' )
         {
@@ -122,13 +149,13 @@ void Path::resolve_absolute(const Crate& root_crate, bool expect_params)
         case AST::Module::ItemRef::ITEM_none:
             // If parent node is anon, backtrack and try again
             // TODO: I feel like this shouldn't be done here, instead perform this when absolutising (now that find_item is reusable)
-            if( i > 0 && m_nodes[i-1].name()[0] == '#' && m_nodes[i-1].name().size() > 1 )
+            if( i > 0 && nodes[i-1].name()[0] == '#' && nodes[i-1].name().size() > 1 )
             {
                 i --;
                 mod_stack.pop_back();
                 mod = mod_stack.back();
                 mod_stack.pop_back();
-                m_nodes.erase(m_nodes.begin()+i);
+                nodes.erase(nodes.begin()+i);
                 i --;
                 DEBUG("Failed to locate item in nested, look upwards - " << *this);
                 
@@ -164,7 +191,7 @@ void Path::resolve_absolute(const Crate& root_crate, bool expect_params)
             // Make a copy of the path, replace params with it, then replace *this?
             // - Maybe leave that up to other code?
             if( is_last ) {
-                check_param_counts(ta.params(), expect_params, m_nodes[i]);
+                check_param_counts(ta.params(), expect_params, nodes[i]);
                 m_binding = PathBinding(&ta);
                 goto ret;
             }
@@ -178,7 +205,7 @@ void Path::resolve_absolute(const Crate& root_crate, bool expect_params)
             const auto& fn = item.unwrap_Function();
             DEBUG("Found function");
             if( is_last ) {
-                check_param_counts(fn.params(), expect_params, m_nodes[i]);
+                check_param_counts(fn.params(), expect_params, nodes[i]);
                 m_binding = PathBinding(&fn);
                 goto ret;
             }
@@ -192,12 +219,12 @@ void Path::resolve_absolute(const Crate& root_crate, bool expect_params)
             const auto& t = item.unwrap_Trait();
             DEBUG("Found trait");
             if( is_last ) {
-                check_param_counts(t.params(), expect_params, m_nodes[i]);
+                check_param_counts(t.params(), expect_params, nodes[i]);
                 m_binding = PathBinding(&t);
                 goto ret;
             }
             else if( is_sec_last ) {
-                check_param_counts(t.params(), expect_params, m_nodes[i]);
+                check_param_counts(t.params(), expect_params, nodes[i]);
                 // TODO: Also check params on item
                 m_binding = PathBinding(PathBinding::TagItem(), &t);
                 goto ret;
@@ -212,13 +239,13 @@ void Path::resolve_absolute(const Crate& root_crate, bool expect_params)
             const auto& str = item.unwrap_Struct();
             DEBUG("Found struct");
             if( is_last ) {
-                check_param_counts(str.params(), expect_params, m_nodes[i]);
+                check_param_counts(str.params(), expect_params, nodes[i]);
                 bind_struct(str, node.args());
                 goto ret;
             }
             else if( is_sec_last ) {
-                check_param_counts(str.params(), expect_params, m_nodes[i]);
-                bind_struct_member(str, node.args(), m_nodes[i+1]);
+                check_param_counts(str.params(), expect_params, nodes[i]);
+                bind_struct_member(str, node.args(), nodes[i+1]);
                 goto ret;
             }
             else {
@@ -231,13 +258,13 @@ void Path::resolve_absolute(const Crate& root_crate, bool expect_params)
             const auto& enm = item.unwrap_Enum();
             DEBUG("Found enum");
             if( is_last ) {
-                check_param_counts(enm.params(), expect_params, m_nodes[i]);
+                check_param_counts(enm.params(), expect_params, nodes[i]);
                 bind_enum(enm, node.args());
                 goto ret;
             }
             else if( is_sec_last ) {
-                check_param_counts(enm.params(), expect_params, m_nodes[i]);
-                bind_enum_var(enm, m_nodes[i+1].name(), node.args());
+                check_param_counts(enm.params(), expect_params, nodes[i]);
+                bind_enum_var(enm, nodes[i+1].name(), node.args());
                 goto ret;
             }
             else {
@@ -262,41 +289,33 @@ void Path::resolve_absolute(const Crate& root_crate, bool expect_params)
         // Re-export
         case AST::Module::ItemRef::ITEM_Use: {
             const auto& imp = item.unwrap_Use();
+            AST::Path   newpath = imp.data;
+            auto& newnodes = newpath.m_class.as_Absolute().nodes;
+            DEBUG("Re-exported path " << imp.data);
             if( imp.name == "" )
             {
                 // Replace nodes 0:i-1 with source path, then recurse
-                AST::Path   newpath = imp.data;
-                for( unsigned int j = i; j < m_nodes.size(); j ++ )
+                for( unsigned int j = i; j < nodes.size(); j ++ )
                 {
-                    newpath.m_nodes.push_back( m_nodes[j] );
+                    newnodes.push_back( nodes[j] );
                 }
-                
-                DEBUG("- newpath = " << newpath);
-                // TODO: This should check for recursion somehow
-                newpath.resolve(root_crate, expect_params);
-                
-                *this = newpath;
-                DEBUG("Alias resolved, *this = " << *this);
-                return;
             }
             else
             {
                 // replace nodes 0:i with the source path
-                DEBUG("Re-exported path " << imp.data);
-                AST::Path   newpath = imp.data;
-                for( unsigned int j = i+1; j < m_nodes.size(); j ++ )
+                for( unsigned int j = i+1; j < nodes.size(); j ++ )
                 {
-                    newpath.m_nodes.push_back( m_nodes[j] );
+                    newnodes.push_back( nodes[j] );
                 }
-                DEBUG("- newpath = " << newpath);
-                // TODO: This should check for recursion somehow
-                newpath.resolve(root_crate, expect_params);
-                
-                *this = newpath;
-                DEBUG("Alias resolved, *this = " << *this);
-                return;
             }
-            break; }
+            
+            DEBUG("- newpath = " << newpath);
+            // TODO: This should check for recursion somehow
+            newpath.resolve(root_crate, expect_params);
+            
+            *this = mv$(newpath);
+            DEBUG("Alias resolved, *this = " << *this);
+            return; }
         }
         
     }
@@ -307,20 +326,21 @@ ret:
     if( slice_from > 0 )
     {
         DEBUG("Removing " << slice_from << " nodes to rebase path to crate root");
-        m_nodes.erase(m_nodes.begin(), m_nodes.begin()+slice_from);
+        nodes.erase(nodes.begin(), nodes.begin()+slice_from);
     }
     return ;
 }
 
 void Path::resolve_ufcs(const Crate& root_crate, bool expect_params)
 {
-    auto& type = m_ufcs.at(0);
-    auto& trait = m_ufcs.at(1);
+    auto& data = m_class.as_UFCS();
+    auto& type = *data.type;
+    auto& trait = *data.trait;
     
     // TODO: I can forsee <T>::Assoc::Item desugaring into < <T>::Assoc >::Item, but that will be messy to code
-    assert(m_nodes.size());
-    if(m_nodes.size() != 1) throw ParseError::Todo("Path::resolve_ufcs - Are multi-node UFCS paths valid?");
-    auto& node = m_nodes.at(0);
+    assert(data.nodes.size());
+    if(data.nodes.size() != 1) throw ParseError::Todo("Path::resolve_ufcs - Are multi-node UFCS paths valid?");
+    auto& node = data.nodes.at(0);
     
     // If the type is unknown (at this time)
     if( type.is_wildcard() || type.is_type_param() )
@@ -517,26 +537,34 @@ void Path::bind_static(const Static& ent)
 void Path::resolve_args(::std::function<TypeRef(const char*)> fcn)
 {
     TRACE_FUNCTION_F(*this);
-    for(auto& n : nodes())
+    
+    TU_MATCH(Path::Class, (m_class), (ent),
+    (Invalid),
+    (Local,  ),
+    
+    (Relative, Path::resolve_args_nl(ent.nodes, fcn); ),
+    (Absolute, Path::resolve_args_nl(ent.nodes, fcn); ),
+    (Self    , Path::resolve_args_nl(ent.nodes, fcn); ),
+    (Super   , Path::resolve_args_nl(ent.nodes, fcn); ),
+    (UFCS,
+        ent.type->resolve_args(fcn);
+        ent.trait->resolve_args(fcn);
+        Path::resolve_args_nl(ent.nodes, fcn);
+        )
+    )
+}
+void Path::resolve_args_nl(::std::vector<PathNode>& nodes, ::std::function<TypeRef(const char*)> fcn)
+{
+    for(auto& n : nodes)
     {
         for(auto& p : n.args())
             p.resolve_args(fcn);
-    }
-    
-    switch(m_class)
-    {
-    case Path::UFCS:
-        m_ufcs[0].resolve_args(fcn);
-        m_ufcs[1].resolve_args(fcn);
-        break;
-    default:
-        break;
     }
 }
 
 Path& Path::operator+=(const Path& other)
 {
-    for(auto& node : other.m_nodes)
+    for(auto& node : other.nodes())
         append(node);
     // If the path is modified, clear the binding
     m_binding = PathBinding();
@@ -547,15 +575,32 @@ Path& Path::operator+=(const Path& other)
 void Path::match_args(const Path& other, ::std::function<void(const char*,const TypeRef&)> fcn) const
 {
     // TODO: Ensure that the two paths are of a compatible class (same class?)
-    if( m_nodes.size() != other.m_nodes.size() )
+    // - This will crash atm if they aren't the same
+    TU_MATCH(Path::Class, (m_class, other.m_class), (ent, x_ent),
+    (Invalid),
+    (Local,  ),
+    
+    (Relative, Path::match_args_nl(ent.nodes, x_ent.nodes, fcn); ),
+    (Absolute, Path::match_args_nl(ent.nodes, x_ent.nodes, fcn); ),
+    (Self    , Path::match_args_nl(ent.nodes, x_ent.nodes, fcn); ),
+    (Super   , Path::match_args_nl(ent.nodes, x_ent.nodes, fcn); ),
+    (UFCS,
+        Path::match_args_nl(ent.nodes, x_ent.nodes, fcn);
+        throw ::std::runtime_error("TODO: UFCS Path::match_args");
+        )
+    )
+}
+
+void Path::match_args_nl(const ::std::vector<PathNode>& nodes_a, const ::std::vector<PathNode>& nodes_b, ::std::function<void(const char*,const TypeRef&)> fcn)
+{
+    if( nodes_a.size() != nodes_b.size() )
         throw ::std::runtime_error("Type mismatch (path size)");
-    for( unsigned int i = 0; i < m_nodes.size(); i++ )
+    for( unsigned int i = 0; i < nodes_a.size(); i++ )
     {
-        auto& pn1 = m_nodes[i];
-        auto& pn2 = other.m_nodes[i];
+        auto& pn1 = nodes_a[i];
+        auto& pn2 = nodes_b[i];
         if( pn1.name() != pn2.name() )
             throw ::std::runtime_error("Type mismatch (path component)");
-        
         if( pn1.args().size() != pn2.args().size() )
             throw ::std::runtime_error("Type mismatch (path component param count)");
         
@@ -585,18 +630,38 @@ bool Path::is_concrete() const
 ///   cause two different paths to look the same.
 int Path::equal_no_generic(const Path& x) const
 {
-    if( m_class != x.m_class )
+    if( m_class.tag() != x.m_class.tag() )
         return -1;
     if( m_crate != x.m_crate )
         return -1;
     
+    TU_MATCH(Path::Class, (m_class, x.m_class), (ent, x_ent),
+    (Invalid, return 0; ),
+    (Local,    return (ent.name == x_ent.name ? 0 : 1); ),
+    
+    (Relative, return Path::node_lists_equal_no_generic(ent.nodes, x_ent.nodes); ),
+    (Absolute, return Path::node_lists_equal_no_generic(ent.nodes, x_ent.nodes); ),
+    (Self    , return Path::node_lists_equal_no_generic(ent.nodes, x_ent.nodes); ),
+    (Super   , return Path::node_lists_equal_no_generic(ent.nodes, x_ent.nodes); ),
+    (UFCS,
+        throw ::std::runtime_error("TODO: UFCS Path::equal_no_generic");
+        return Path::node_lists_equal_no_generic(ent.nodes, x_ent.nodes);
+        )
+    )
+    throw ::std::runtime_error("Path::equal_no_generic - fell off");
+}
+
+int Path::node_lists_equal_no_generic(const ::std::vector<PathNode>& nodes_a, const ::std::vector<PathNode>& nodes_b)
+{
+    if( nodes_a.size() != nodes_b.size() ) {
+        return -1;
+    }
+    
     bool conditional_match = false;
     unsigned int i = 0;
-    for( const auto &e : m_nodes )
+    for( const auto &e : nodes_a )
     {
-        if( i >= x.m_nodes.size() )
-            return -1;
-        const auto& xe = x.m_nodes[i];
+        const auto& xe = nodes_b[i];
         if( e.name() != xe.name() )
             return -1;
         
@@ -623,96 +688,121 @@ Ordering Path::ord(const Path& x) const
 {
     Ordering rv;
     
-    rv = ::ord( (unsigned)m_class, (unsigned)x.m_class );
+    rv = ::ord( (unsigned)m_class.tag(), (unsigned)x.m_class.tag() );
     if( rv != OrdEqual )    return rv;
     
     rv = ::ord( m_crate, x.m_crate );
     if( rv != OrdEqual )    return rv;
     
-    rv = ::ord( m_nodes, x.m_nodes );
-    if( rv != OrdEqual )    return rv;
+    TU_MATCH(Path::Class, (m_class, x.m_class), (ent, x_ent),
+    (Invalid,
+        return OrdEqual;
+        ),
+    (Local,
+        return ::ord(ent.name, x_ent.name);
+        ),
+    (Relative,
+        return ::ord(ent.nodes, x_ent.nodes);
+        ),
+    (Self,
+        return ::ord(ent.nodes, x_ent.nodes);
+        ),
+    (Super,
+        return ::ord(ent.nodes, x_ent.nodes);
+        ),
+    (Absolute,
+        return ::ord(ent.nodes, x_ent.nodes);
+        ),
+    (UFCS,
+        rv = ent.type->ord( *x_ent.type );
+        if( rv != OrdEqual )    return rv;
+        rv = ent.trait->ord( *x_ent.trait );
+        if( rv != OrdEqual )    return rv;
+        return ::ord(ent.nodes, x_ent.nodes);
+        )
+    )
     
     return OrdEqual;
 }
 
 void Path::print_pretty(::std::ostream& os) const
 {
-    switch(m_class)
-    {
-    case Path::INVALID: os << "/* inv */";  break;
-    case Path::VARIABLE:os << m_nodes[0].name();    break;
-    case Path::RELATIVE:
-        for(const auto& n : m_nodes) {
-            if( &n != &m_nodes[0] )  os << "::";
-            os << "::" << n;
-        }
-        break;
-    case Path::SELF:
+    TU_MATCH(Path::Class, (m_class), (ent),
+    (Invalid, os << "/* inv */"; ),
+    (Local, os << ent.name;),
+    (Relative,
+        for(const auto& n : ent.nodes)    os << "::" << n;
+        ),
+    (Self,
         os << "self";
-        for(const auto& n : m_nodes)    os << "::" << n;
-        break;
-    case Path::SUPER:
+        for(const auto& n : ent.nodes)    os << "::" << n;
+        ),
+    (Super,
         os << "super";
-        for(const auto& n : m_nodes)    os << "::" << n;
-        break;
-    case Path::ABSOLUTE:
+        for(const auto& n : ent.nodes)    os << "::" << n;
+        ),
+    (Absolute,
         if( m_crate != "" )
-            os << "::" << m_crate;
-        for(const auto& n : m_nodes)
+            os << "::\"" << m_crate << "\"";
+        for(const auto& n : ent.nodes)
             os << "::" << n;
-        break;
-    case Path::UFCS:
+        ),
+    (UFCS,
         throw ParseError::Todo("Path::print_pretty - UFCS");
-    }
+        )
+    )
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const Path& path)
 {
-    if( path.m_nodes.size() == 0 && path.m_class == Path::RELATIVE )
-    {
-        os << "/* null path */";
-        return os;
-    }
+    //if( path.m_nodes.size() == 0 && path.m_class == Path::RELATIVE )
+    //{
+    //    os << "/* null path */";
+    //    return os;
+    //}
     #if PRETTY_PATH_PRINT
-    switch(path.m_class)
-    {
-    case Path::INVALID: os << "/*inv*/";    break;
-    case Path::VARIABLE: os << "/*var*/" << path.m_nodes[0].name();    break;
-    case Path::RELATIVE:
-        for(const auto& n : path.m_nodes)
+    TU_MATCH(Path::Class, (path.m_class), (ent),
+    (Invalid,
+        os << "/*inv*/";
+        ),
+    (Local,
+        os << "/*var*/" << ent.name;
+        ),
+    (Relative,
+        for(const auto& n : ent.nodes)
         {
             #if PRETTY_PATH_PRINT
-            if( &n != &path.m_nodes[0] ) {
+            if( &n != &ent.nodes[0] ) {
                 os << "::";
             }
             #endif
             os << n;
         }
-        break;
-    case Path::SELF:
+        ),
+    (Self,
         os << "self";
-        for(const auto& n : path.m_nodes)
+        for(const auto& n : ent.nodes)
         {
             #if PRETTY_PATH_PRINT
             os << "::";
             #endif
             os << n;
         }
-        break;
-    case Path::SUPER:
+        ),
+    (Super,
         os << "super";
-        for(const auto& n : path.m_nodes)
+        for(const auto& n : ent.nodes)
         {
             #if PRETTY_PATH_PRINT
             os << "::";
             #endif
             os << n;
         }
-        break;
-    case Path::ABSOLUTE:
+        ),
+    (Absolute,
         if( path.m_crate != "" )
             os << "::\""<<path.m_crate<<"\"";
-        for(const auto& n : path.m_nodes)
+        for(const auto& n : ent.nodes)
         {
             #if PRETTY_PATH_PRINT
             os << "::";
@@ -720,12 +810,13 @@ void Path::print_pretty(::std::ostream& os) const
             os << n;
         }
         os << "/*" << path.m_binding << "*/";
-        break;
-    case Path::UFCS:
-        os << "/*ufcs*/<" << path.m_ufcs[0] << " as " << path.m_ufcs[1] << ">";
-        for(const auto& n : path.m_nodes)
+        ),
+    (UFCS,
+        os << "/*ufcs*/<" << *ent.type << " as " << *ent.trait << ">";
+        for(const auto& n : ent.nodes)
             os << "::" << n;
-    }
+        )
+    )
     #else
     switch(path.m_class)
     {
@@ -739,45 +830,49 @@ void Path::print_pretty(::std::ostream& os) const
     #endif
     return os;
 }
-::Serialiser& operator<<(Serialiser& s, Path::Class pc)
-{
-    #define _(v)    case Path::v: s << #v; break;
-    switch(pc)
-    {
-    _(INVALID )
-    _(VARIABLE)
-    _(RELATIVE)
-    _(SELF    )
-    _(SUPER   )
-    _(ABSOLUTE)
-    _(UFCS    )
-    }
-    #undef _
-    return s;
+void operator%(Serialiser& s, Path::Class::Tag c) {
+    s << Path::Class::tag_to_str(c);
 }
-void operator>>(Deserialiser& s, Path::Class& pc)
-{
+void operator%(::Deserialiser& s, Path::Class::Tag& c) {
     ::std::string   n;
     s.item(n);
-    #define _(v)    if(n == #v)    pc = Path::v; else
-    _(INVALID )
-    _(VARIABLE)
-    _(RELATIVE)
-    _(SELF    )
-    _(SUPER   )
-    _(ABSOLUTE)
-    _(UFCS    )
-        throw ::std::runtime_error("Unknown path class : " + n);
-    #undef _
+    c = Path::Class::tag_from_str(n);
 }
+#define _D(VAR, ...)  case Class::VAR: { m_class = Class::make_null_##VAR(); auto& ent = m_class.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
 SERIALISE_TYPE(Path::, "AST_Path", {
-    s << m_class;
-    s << m_crate;
-    s << m_nodes;
+    s % m_class.tag();
+    TU_MATCH(Path::Class, (m_class), (ent),
+    (Invalid),
+    (Local, s << ent.name; ),
+    (Relative, s.item(ent.nodes); ),
+    (Absolute, s.item(ent.nodes); ),
+    (Self    , s.item(ent.nodes); ),
+    (Super   , s.item(ent.nodes); ),
+    (UFCS,
+        s.item( ent.type );
+        s.item( ent.trait );
+        s.item( ent.nodes );
+        )
+    )
 },{
-    s >> m_class;
-    s.item(m_crate);
-    s.item(m_nodes);
+    Class::Tag  tag;
+    s % tag;
+    switch(tag)
+    {
+    _D(Invalid)
+    _D(Local   , s.item( ent.name ); )
+    
+    _D(Relative, s.item(ent.nodes); )
+    _D(Absolute, s.item(ent.nodes); )
+    _D(Self    , s.item(ent.nodes); )
+    _D(Super   , s.item(ent.nodes); )
+    _D(UFCS,
+        s.item( ent.type );
+        s.item( ent.trait );
+        s.item( ent.nodes );
+        )
+    }
 })
+#undef _D
 
 }

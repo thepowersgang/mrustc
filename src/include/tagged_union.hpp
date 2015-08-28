@@ -13,6 +13,7 @@
 #define TU_CASE(mod, class, var,  name,src, ...)	TU_CASE_BODY(mod,class,var, TU_CASE_ITEM(src,mod,var,name) __VA_ARGS__)
 #define TU_CASE2(mod, class, var,  n1,s1, n2,s2, ...)	TU_CASE_BODY(mod,class,var, TU_CASE_ITEM(s1,mod,var,n1) TU_CASE_ITEM(s2,mod,var,n2) __VA_ARGS__)
 
+
 #define TU_DATANAME(name)   Data_##name
 // Internals of TU_CONS
 #define TU_CONS_I(__tag, __type) \
@@ -31,6 +32,8 @@
 // Define a tagged union constructor
 #define TU_CONS(name, _) TU_CONS_I(name, TU_DATANAME(name))
 
+#define TU_FIRST(a, ...)    a
+
 // Argument iteration
 #define _DISP2(n, _1, _2)   n _1 n _2
 #define _DISP3(n, v, v2, v3)   n v n v2 n v3    // _DISP2(n, __VA_ARGS__)
@@ -39,18 +42,32 @@
 #define _DISP6(n, v, ...)   n v _DISP5(n, __VA_ARGS__)
 #define _DISP7(n, v, ...)   n v _DISP6(n, __VA_ARGS__)
 #define _DISP8(n, v, ...)   n v _DISP7(n, __VA_ARGS__)
-#define _DISP9(n, v, ...)   n v _DISP8(n, __VA_ARGS__)
-#define _DISP10(n, v, ...)   n v _DISP9(n, __VA_ARGS__)
-#define _DISP11(n, v, ...)   n v _DISP10(n, __VA_ARGS__)
+#define _DISP9(n, a1,a2,a3,a4, b1,b2,b3,b4, c1)   _DISP4(n, a1,a2,a3,a4) _DISP3(n, b1,b2,b3)  _DISP2(n, b4,c1)   //n v _DISP8(n, __VA_ARGS__)
+#define _DISP10(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2)   _DISP4(n, a1,a2,a3,a4) _DISP4(n, b1,b2,b3,b4) _DISP2(n, c1,c2)    //n v _DISP9(n, __VA_ARGS__)
+#define _DISP11(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3)   _DISP4(n, a1,a2,a3,a4) _DISP4(n, b1,b2,b3,b4) _DISP2(n, c1,c2,c3)    //n v _DISP10(n, __VA_ARGS__)
 #define _DISP12(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3,c4)   _DISP4(n, a1,a2,a3,a4) _DISP4(n, b1,b2,b3,b4) _DISP4(n, c1,c2,c3,c4)    //n v _DISP11(n, __VA_ARGS__)
+
+#define TU_DISPA(n, a)   n a
+#define TU_DISPA2(n, a, _1, _2)   TU_DISPA(n, (TU_EXP a, TU_EXP _1))/*
+*/    TU_DISPA(n, (TU_EXP a, TU_EXP _2))
+#define TU_DISPA3(n, a, _1, _2, _3) \
+      TU_DISPA(n, (TU_EXP a, TU_EXP _1))/*
+*/    TU_DISPA(n, (TU_EXP a, TU_EXP _2))/*
+*/    TU_DISPA(n, (TU_EXP a, TU_EXP _3))
+#define TU_DISPA4(n, a, a1,a2, b1,b2)     TU_DISPA2(n,a, a1,a2)    TU_DISPA2(n,a, b1,b2)
+#define TU_DISPA5(n, a, a1,a2,a3, b1,b2)    TU_DISPA3(n,a, a1,a2,a3) TU_DISPA2(n,a, b1,b2)
+#define TU_DISPA6(n, a, a1,a2,a3, b1,b2,b3) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA3(n,a, b1,b2,b3)
+#define TU_DISPA7(n, a, a1,a2,a3, b1,b2, c1,c2) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA2(n,a, b1,b2) TU_DISPA2(n,a, c1,c2)
+#define TU_DISPA8(n, a, a1,a2,a3, b1,b2,b3, c1,c2) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA3(n,a, b1,b2,b3) TU_DISPA2(n,a, c1,c2)
+#define TU_DISPA9(n, a, a1,a2,a3, b1,b2,b3, c1,c2,c3) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA3(n,a, b1,b2,b3) TU_DISPA3(n,a, c1,c2,c3)
 
 // Macro to obtain a numbered macro for argument counts
 // - Raw variant
 #define TU_GM_I(SUF,_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,COUNT,...) SUF##COUNT
-#define TU_GM(SUF,...) TU_GM_I(SUF,__VA_ARGS__,12,11,10,9,8,7,6,5,4,3,2,x)
+#define TU_GM(SUF,...) TU_GM_I(SUF,__VA_ARGS__,12,11,10,9,8,7,6,5,4,3,2,1)
 // - _DISP based variant (for iteration)
 #define TU_GMX(...) TU_GM(_DISP,__VA_ARGS__)
-
+#define TU_GMA(...) TU_GM(TU_DISPA,__VA_ARGS__)
 
 // Sizes of structures
 #define TU_SO(name, _)   sizeof(TU_DATANAME(name))
@@ -66,6 +83,20 @@
 #define MAXS10(a, b, c, d, e, f, g, h, i, j)  MAX2(MAXS5(a, b, c, d, e), MAXS5(f, g, h, i, j))
 #define MAXS11(a, b, c, d, e, f, g, h, i, j, k)  MAX2(MAXS6(a, b, c, d, e, f), MAXS5(g, h, i, j, k))
 #define MAXS12(a, b, c, d, e, f, g, h, i, j, k, l)  MAX2(MAXS6(a, b, c, d, e, f), MAXS6(g, h, i, j, k, l))
+
+// "match"-like statement
+// TU_MATCH(Class, m_data, ent, (Variant, CODE), (Variant2, CODE))
+#define TU_MATCH(CLASS, VAR, NAME, ...)   switch( TU_FIRST VAR.tag()) {/*
+*/    TU_MATCH_ARMS(CLASS, VAR, NAME, __VA_ARGS__)/*
+*/}
+#define TU_MATCH_BIND1(TAG, VAR, NAME)  /*MATCH_BIND*/ auto& NAME = VAR.as_##TAG(); (void)&NAME;
+#define TU_MATCH_BIND2_(TAG, v1,v2, n1,n2)   TU_MATCH_BIND1(TAG, v1, n1) TU_MATCH_BIND1(TAG, v2, n2)
+#define TU_MATCH_BIND2(...) TU_MATCH_BIND2_(__VA_ARGS__)
+#define TU_MATCH_ARM(CLASS, VAR, NAME, TAG, ...)  case CLASS::TAG: {/*
+*/    TU_GM(TU_MATCH_BIND, TU_EXP VAR)(TAG, TU_EXP VAR , TU_EXP NAME)/*
+*/    __VA_ARGS__/*
+*/} break;
+#define TU_MATCH_ARMS(CLASS, VAR, NAME, ...)    TU_GMA(__VA_ARGS__)(TU_MATCH_ARM, (CLASS, VAR, NAME), __VA_ARGS__)
 
 // Type definitions
 #define TU_EXP(...)  __VA_ARGS__
@@ -125,7 +156,7 @@ class _name { \
 */ public:\
     _name(): m_tag(_def) {}\
     _name(const _name&) = delete; \
-    _name(_name&& x): m_tag(x.m_tag) { x.m_tag = _def; switch(m_tag) {  TU_MOVE_CASES(__VA_ARGS__) } } \
+    _name(_name&& x) noexcept: m_tag(x.m_tag) { x.m_tag = _def; switch(m_tag) {  TU_MOVE_CASES(__VA_ARGS__) } } \
     _name& operator =(_name&& x) { this->~_name(); m_tag = x.m_tag; x.m_tag = _def; switch(m_tag) { TU_MOVE_CASES(__VA_ARGS__) }; return *this; } \
     ~_name() { switch(m_tag) { TU_DEST_CASES(__VA_ARGS__) } } \
     \

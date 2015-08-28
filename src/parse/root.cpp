@@ -725,7 +725,7 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, bool is_unsafe/*=false*/)
         {
             if( !impl_type.is_path() )
                 throw ParseError::Generic(lex, "Trait was not a path");
-            trait_path = impl_type.path();
+            trait_path = mv$(impl_type.path());
             // Implementing a trait for another type, get the target type
             if( GET_TOK(tok, lex) == TOK_DOUBLE_DOT )
             {
@@ -885,9 +885,9 @@ void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi)
     }
 }
 
-void Parse_Use_Wildcard(const AST::Path& base_path, ::std::function<void(AST::Path, ::std::string)> fcn)
+void Parse_Use_Wildcard(AST::Path base_path, ::std::function<void(AST::Path, ::std::string)> fcn)
 {
-    fcn(base_path, ""); // HACK! Empty path indicates wilcard import
+    fcn( mv$(base_path), ""); // HACK! Empty path indicates wilcard import
 }
 void Parse_Use_Set(TokenStream& lex, const AST::Path& base_path, ::std::function<void(AST::Path, ::std::string)> fcn)
 {
@@ -911,7 +911,8 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
     TRACE_FUNCTION;
 
     Token   tok;
-    AST::Path   path = AST::Path( AST::Path::TagAbsolute() );
+    AST::Path   path = AST::Path(AST::Path::TagAbsolute());
+    ::std::vector<AST::PathNode>    nodes;
     
     switch( GET_TOK(tok, lex) )
     {
@@ -945,7 +946,6 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
     default:
         throw ParseError::Unexpected(lex, tok);
     }
-    // TODO: Use from crate root
     while( GET_TOK(tok, lex) == TOK_DOUBLE_COLON )
     {
         if( GET_TOK(tok, lex) == TOK_IDENT )
@@ -961,7 +961,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
                 GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
                 break ;
             case TOK_STAR:
-                Parse_Use_Wildcard(path, fcn);
+                Parse_Use_Wildcard( mv$(path), fcn );
                 break ;
             default:
                 throw ParseError::Unexpected(lex, tok);
@@ -1309,7 +1309,7 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
         case TOK_RWORD_USE:
             Parse_Use(lex, [&mod,is_public,&path](AST::Path p, std::string s) {
                     DEBUG(path << " - use " << p << " as '" << s << "'");
-                    mod.add_alias(is_public, p, s);
+                    mod.add_alias(is_public, mv$(p), s);
                 });
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
             break;
@@ -1614,7 +1614,7 @@ void Parse_ModRoot(TokenStream& lex, AST::Crate& crate, AST::Module& mod, LList<
     {
         // Import the prelude
         AST::Path   prelude_path = AST::Path( "std", { AST::PathNode("prelude", {}), AST::PathNode("v1", {}) } );
-        Parse_Use_Wildcard(prelude_path,
+        Parse_Use_Wildcard( mv$(prelude_path),
             [&mod](AST::Path p, std::string s) {
                 mod.add_alias(false, p, s);
                 }

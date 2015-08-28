@@ -34,14 +34,17 @@ all: $(BIN)
 clean:
 	$(RM) -r $(BIN) $(OBJ)
 
+
+PIPECMD ?= 2>&1 | tee $@_dbg.txt | tail -n 40 ; test $${PIPESTATUS[0]} -eq 0
+
 output/%.ast: samples/%.rs $(BIN) 
 	@mkdir -p output/
-	$(DBG) $(BIN) $< --emit ast -o $@ 2>&1 | tee $@_dbg.txt | tail -n 40 ; test $${PIPESTATUS[0]} -eq 0
+	$(DBG) $(BIN) $< --emit ast -o $@ $(PIPECMD)
 
 RUSTCSRC := ~/Source/rust/rustc-nightly/
 output/core.ast: $(RUSTCSRC)src/libcore/lib.rs $(BIN)
 	@mkdir -p output/
-	$(DBG) $(BIN) $< --emit ast -o $@ 2>&1 | tee $@_dbg.txt | tail -n 40 ; test $${PIPESTATUS[0]} -eq 0
+	$(DBG) $(BIN) $< --emit ast -o $@ $(PIPECMD)
 	
 
 test: output/core.ast $(BIN)
