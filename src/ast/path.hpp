@@ -27,102 +27,54 @@ class Trait;
 class Static;
 class Function;
 
-//TAGGED_UNION(PathBinding, Unbound,
-//    (Module, (const Module* module_; ) ),
-//    (Enum,   (const Enum* enum_; ) ),
-//    (Struct, (const Struct* struct_; ) ),
-//    (Trait,  (const Trait* trait_; ) ),
-//    (Static, (const Static* static_; ) ),
-//    (Function, (const Function* func_; ) ),
-//    (EnumVar, (const Enum* enum_; unsigned int idx; ) ),
-//    (TypeAlias, (const TypeAlias* alias_; ) ),
-//    (StructMethod, (const Struct* struct_; ::std::string name; ) ),
-//    (TraitMethod, (const Trait* struct_; ::std::string name; ) )
-//    );
-class PathBinding
-{
-public:
-    enum BindingType {
-        UNBOUND,
-        MODULE,
-        ALIAS,
-        ENUM,
-        STRUCT,
-        TRAIT,
-        
-        STRUCT_METHOD,
-        TRAIT_METHOD,
-        ENUM_VAR,
-        FUNCTION,
-        STATIC,
-    };
-    struct EnumVar {
+TAGGED_UNION(PathBinding, Unbound,
+    (Unbound, (
+        )),
+    (Module, (
+        const Module* module_;
+        )),
+    (Enum,   (
+        const Enum* enum_;
+        )),
+    (Struct, (
+        const Struct* struct_;
+        )),
+    (Trait,  (
+        const Trait* trait_;
+        )),
+    (Static, (
+        const Static* static_;
+        )),
+    (Function, (
+        const Function* func_;
+        )),
+    (EnumVar, (
         const Enum* enum_;
         unsigned int idx;
-    };
-private:
-    BindingType m_binding_type = UNBOUND;
-    union {
-        const Module* module_;
-        const Enum* enum_;
-        const Struct*   struct_;
-        struct {
-            const Struct* struct_;
-            unsigned int idx;
-        } structitem;
-        const Trait*    trait_;
-        const Static*   static_;
-        const Function* func_;
-        EnumVar enumvar_;
-        const TypeAlias*    alias_;
-    } m_binding;
+        )),
+    (TypeAlias, (
+        const TypeAlias* alias_;
+        )),
+    (StructMethod, (
+        const Struct* struct_;
+        ::std::string name;
+        )),
+    (TraitMethod, (
+        const Trait* struct_;
+        ::std::string name;
+        )),
 
-public:
-    PathBinding(): m_binding_type(UNBOUND) {}
-    
-    bool is_bound() const { return m_binding_type != UNBOUND; }
-    BindingType type() const { return m_binding_type; }
-    #define _(t, n, v)\
-        PathBinding(const t* i): m_binding_type(v) { m_binding.n##_ = i; } \
-        const t& bound_##n() const { assert(m_binding_type == v); return *m_binding.n##_; }
-    _(Module, module, MODULE)
-    _(Trait,  trait,  TRAIT)
-    _(Struct, struct, STRUCT)
-    _(Enum,   enum,   ENUM)
-    _(Function, func, FUNCTION)
-    _(Static, static, STATIC)
-    _(TypeAlias, alias, ALIAS)
-    //_(EnumVar, enumvar, ENUM_VAR)
-    #undef _
-    PathBinding(const Enum* enm, unsigned int i):
-        m_binding_type(ENUM_VAR)
-    {
-        m_binding.enumvar_ = {enm, i};
-    }
-    const EnumVar& bound_enumvar() const { assert(m_binding_type == ENUM_VAR); return m_binding.enumvar_; }
-    
-    struct TagItem {};
-    PathBinding(TagItem, const Trait* t): m_binding_type(TRAIT_METHOD) { m_binding.trait_ = t; }
-    PathBinding(TagItem, const Struct* i): m_binding_type(STRUCT_METHOD) { m_binding.struct_ = i; }
-    
-    friend ::std::ostream& operator<<(::std::ostream& os, const PathBinding& x) {
-        switch(x.m_binding_type)
-        {
-        case UNBOUND:   os << "UNBOUND";    break;
-        case MODULE:    os << "Module"; break;
-        case TRAIT:     os << "Trait";  break;
-        case STRUCT:    os << "Struct"; break;
-        case ENUM:      os << "Enum";   break;
-        case FUNCTION:  os << "Function";break;
-        case STATIC:    os << "Static"; break;
-        case ALIAS:     os << "Alias";  break;
-        case STRUCT_METHOD: os << "StructMethod";   break;
-        case TRAIT_METHOD:  os << "TraitMethod";    break;
-        case ENUM_VAR:  os << "EnumVar(" << x.m_binding.enumvar_.idx << ")";  break;
-        }
-        return os;
-    }
-};
+    (TypeParameter, (
+        unsigned int level;
+        unsigned int idx;
+        )),
+    (Variable, (
+        unsigned int slot;
+        ))
+    );
+
+extern ::std::ostream& operator<<(::std::ostream& os, const PathBinding& x);
+
 
 class PathNode:
     public ::Serialisable
@@ -325,6 +277,7 @@ public:
     bool is_concrete() const;
     
     const PathBinding& binding() const { return m_binding; }
+    void bind_variable(unsigned int slot);
     
     ::std::vector<PathNode>& nodes() {
         TU_MATCH(Class, (m_class), (ent),

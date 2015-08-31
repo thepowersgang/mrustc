@@ -35,6 +35,7 @@
 #define TU_FIRST(a, ...)    a
 
 // Argument iteration
+#define _DISP1(n, _1)   n _1
 #define _DISP2(n, _1, _2)   n _1 n _2
 #define _DISP3(n, v, v2, v3)   n v n v2 n v3    // _DISP2(n, __VA_ARGS__)
 #define _DISP4(n, v, v2, v3, v4)   n v n v2 n v3 n v4    // #define _DISP4(n, v, ...)   n v _DISP3(n, __VA_ARGS__)
@@ -42,12 +43,15 @@
 #define _DISP6(n, v, ...)   n v _DISP5(n, __VA_ARGS__)
 #define _DISP7(n, v, ...)   n v _DISP6(n, __VA_ARGS__)
 #define _DISP8(n, v, ...)   n v _DISP7(n, __VA_ARGS__)
-#define _DISP9(n, a1,a2,a3,a4, b1,b2,b3,b4, c1)   _DISP4(n, a1,a2,a3,a4) _DISP3(n, b1,b2,b3)  _DISP2(n, b4,c1)   //n v _DISP8(n, __VA_ARGS__)
-#define _DISP10(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2)   _DISP4(n, a1,a2,a3,a4) _DISP4(n, b1,b2,b3,b4) _DISP2(n, c1,c2)    //n v _DISP9(n, __VA_ARGS__)
-#define _DISP11(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3)   _DISP4(n, a1,a2,a3,a4) _DISP4(n, b1,b2,b3,b4) _DISP2(n, c1,c2,c3)    //n v _DISP10(n, __VA_ARGS__)
-#define _DISP12(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3,c4)   _DISP4(n, a1,a2,a3,a4) _DISP4(n, b1,b2,b3,b4) _DISP4(n, c1,c2,c3,c4)    //n v _DISP11(n, __VA_ARGS__)
+#define _DISP9(n, a1,a2,a3,a4, b1,b2,b3,b4, c1)   _DISP4(n, a1,a2,a3,a4) _DISP3(n, b1,b2,b3)  _DISP2(n, b4,c1)
+#define _DISP10(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2)   _DISP4(n, a1,a2,a3,a4) _DISP4(n, b1,b2,b3,b4) _DISP2(n, c1,c2)
+#define _DISP11(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3)   _DISP4(n, a1,a2,a3,a4) _DISP4(n, b1,b2,b3,b4) _DISP2(n, c1,c2,c3)
+#define _DISP12(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3,c4)   _DISP4(n, a1,a2,a3,a4) _DISP4(n, b1,b2,b3,b4) _DISP4(n, c1,c2,c3,c4)
+#define _DISP13(n, a1,a2,a3,a4,a5, b1,b2,b3,b4, c1,c2,c3,c4)   _DISP5(n, a1,a2,a3,a4,a5) _DISP4(n, b1,b2,b3,b4) _DISP4(n, c1,c2,c3,c4)
+#define _DISP14(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4)   _DISP5(n, a1,a2,a3,a4,a5) _DISP5(n, b1,b2,b3,b4,b5) _DISP4(n, c1,c2,c3,c4)
 
 #define TU_DISPA(n, a)   n a
+#define TU_DISPA1(n, a, _1)   TU_DISPA(n, (TU_EXP a, TU_EXP _1))
 #define TU_DISPA2(n, a, _1, _2)   TU_DISPA(n, (TU_EXP a, TU_EXP _1))/*
 */    TU_DISPA(n, (TU_EXP a, TU_EXP _2))
 #define TU_DISPA3(n, a, _1, _2, _3) \
@@ -60,11 +64,16 @@
 #define TU_DISPA7(n, a, a1,a2,a3, b1,b2, c1,c2) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA2(n,a, b1,b2) TU_DISPA2(n,a, c1,c2)
 #define TU_DISPA8(n, a, a1,a2,a3, b1,b2,b3, c1,c2) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA3(n,a, b1,b2,b3) TU_DISPA2(n,a, c1,c2)
 #define TU_DISPA9(n, a, a1,a2,a3, b1,b2,b3, c1,c2,c3) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA3(n,a, b1,b2,b3) TU_DISPA3(n,a, c1,c2,c3)
+#define TU_DISPA10(n, a, a1,a2,a3, b1,b2,b3, c1,c2,c3, d1) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA3(n,a, b1,b2,b3) TU_DISPA3(n,a, c1,c2,c3) TU_DISPA(n,a, d1)
+#define TU_DISPA11(n, a, a1,a2,a3, b1,b2,b3, c1,c2,c3, d1,d2) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA3(n,a, b1,b2,b3) TU_DISPA3(n,a, c1,c2,c3) TU_DISPA2(n,a, d1,d2)
+#define TU_DISPA12(n, a, a1,a2,a3, b1,b2,b3, c1,c2,c3, d1,d2,d3) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA3(n,a, b1,b2,b3) TU_DISPA3(n,a, c1,c2,c3) TU_DISPA3(n,a, d1,d2,d3)
+#define TU_DISPA13(n, a, a1,a2,a3,a4, b1,b2,b3, c1,c2,c3, d1,d2,d3) TU_DISPA4(n,a, a1,a2,a3,a4) TU_DISPA3(n,a, b1,b2,b3) TU_DISPA3(n,a, c1,c2,c3) TU_DISPA3(n,a, d1,d2,d3)
+#define TU_DISPA14(n, a, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3, d1,d2,d3) TU_DISPA4(n,a, a1,a2,a3,a4) TU_DISPA4(n,a, b1,b2,b3,b4) TU_DISPA3(n,a, c1,c2,c3) TU_DISPA3(n,a, d1,d2,d3)
 
 // Macro to obtain a numbered macro for argument counts
 // - Raw variant
-#define TU_GM_I(SUF,_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,COUNT,...) SUF##COUNT
-#define TU_GM(SUF,...) TU_GM_I(SUF,__VA_ARGS__,12,11,10,9,8,7,6,5,4,3,2,1)
+#define TU_GM_I(SUF,_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,COUNT,...) SUF##COUNT
+#define TU_GM(SUF,...) TU_GM_I(SUF,__VA_ARGS__,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1)
 // - _DISP based variant (for iteration)
 #define TU_GMX(...) TU_GM(_DISP,__VA_ARGS__)
 #define TU_GMA(...) TU_GM(TU_DISPA,__VA_ARGS__)
@@ -83,11 +92,17 @@
 #define MAXS10(a, b, c, d, e, f, g, h, i, j)  MAX2(MAXS5(a, b, c, d, e), MAXS5(f, g, h, i, j))
 #define MAXS11(a, b, c, d, e, f, g, h, i, j, k)  MAX2(MAXS6(a, b, c, d, e, f), MAXS5(g, h, i, j, k))
 #define MAXS12(a, b, c, d, e, f, g, h, i, j, k, l)  MAX2(MAXS6(a, b, c, d, e, f), MAXS6(g, h, i, j, k, l))
+#define MAXS13(a1,a2,a3,a4,a5,a6,a7, b1,b2,b3,b4,b5,b6)  MAX2(MAXS7(a1,a2,a3,a4,a5,a6,a7), MAXS6(b1,b2,b3,b4,b5,b6))
+#define MAXS14(a1,a2,a3,a4,a5,a6,a7, b1,b2,b3,b4,b5,b6,b7)  MAX2(MAXS7(a1,a2,a3,a4,a5,a6,a7), MAXS7(b1,b2,b3,b4,b5,b6,b7))
 
 // "match"-like statement
 // TU_MATCH(Class, m_data, ent, (Variant, CODE), (Variant2, CODE))
 #define TU_MATCH(CLASS, VAR, NAME, ...)   switch( TU_FIRST VAR.tag()) {/*
 */    TU_MATCH_ARMS(CLASS, VAR, NAME, __VA_ARGS__)/*
+*/}
+#define TU_MATCH_DEF(CLASS, VAR, NAME, DEF, ...)   switch( TU_FIRST VAR.tag()) {/*
+*/    TU_MATCH_ARMS(CLASS, VAR, NAME, __VA_ARGS__)/*
+*/    default: {TU_EXP DEF;} break;/*
 */}
 #define TU_MATCH_BIND1(TAG, VAR, NAME)  /*MATCH_BIND*/ auto& NAME = VAR.as_##TAG(); (void)&NAME;
 #define TU_MATCH_BIND2_(TAG, v1,v2, n1,n2)   TU_MATCH_BIND1(TAG, v1, n1) TU_MATCH_BIND1(TAG, v2, n2)

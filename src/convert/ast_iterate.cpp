@@ -178,25 +178,26 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
             const auto& hint_binding = hint_path.binding();
             const auto& pat_binding = pat_path.binding();
             DEBUG("Pat: " << pat_path << ", Type: " << type_hint.path());
-            switch( hint_binding.type() )
-            {
-            case AST::PathBinding::UNBOUND:
+            TU_MATCH_DEF( AST::PathBinding, (hint_binding), (info),
+            (
+                throw ::std::runtime_error(FMT("Bad type in tuple struct pattern : " << type_hint.path()))
+                ),
+            (Unbound,
                 throw ::std::runtime_error("Unbound path in pattern");
-            case AST::PathBinding::ENUM: {
+                ),
+            (Enum,
                 // The pattern's path must refer to a variant of the hint path
                 // - Actual type params are checked by the 'handle_pattern_enum' code
-                if( pat_binding.type() != AST::PathBinding::ENUM_VAR )
+                if( !pat_binding.is_EnumVar() )
                     throw ::std::runtime_error(FMT("Paths in pattern are invalid"));
-                if( pat_binding.bound_enumvar().enum_ != &hint_binding.bound_enum() )
+                if( pat_binding.as_EnumVar().enum_ != info.enum_ )
                     throw ::std::runtime_error(FMT("Paths in pattern are invalid"));
-                const auto& enm = *pat_binding.bound_enumvar().enum_;
-                auto idx = pat_binding.bound_enumvar().idx;
+                const auto& enm = *pat_binding.as_EnumVar().enum_;
+                auto idx = pat_binding.as_EnumVar().idx;
                 auto& var = enm.variants().at(idx);
                 handle_pattern_enum(pat_path[-2].args(), hint_path[-1].args(), enm.params(), var, v.sub_patterns);
-                break; }
-            default:
-                throw ::std::runtime_error(FMT("Bad type in tuple struct pattern : " << type_hint.path()));
-            }
+                )
+            )
         }
         break; }
     }

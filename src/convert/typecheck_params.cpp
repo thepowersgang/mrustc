@@ -235,43 +235,57 @@ void CGenericParamChecker::handle_path(AST::Path& path, CASTIterator::PathMode p
 {
     TRACE_FUNCTION_F("path = " << path);
     AST::PathNode& last_node = path[path.size()-1];
-    const AST::TypeParams* params = nullptr;
-    switch(path.binding().type())
-    {
-    case AST::PathBinding::UNBOUND:
-        throw CompileError::BugCheck( FMT("CGenericParamChecker::handle_path - Unbound path : " << path) );
-    case AST::PathBinding::MODULE:
-        DEBUG("WTF - Module path, isn't this invalid at this stage?");
-        break;
     
-    case AST::PathBinding::TRAIT:
-        params = &path.binding().bound_trait().params();
-        if(0)
-    case AST::PathBinding::STRUCT:
-        params = &path.binding().bound_struct().params();
-        if(0)
-    case AST::PathBinding::ENUM:
-        params = &path.binding().bound_enum().params();
-        
-        {
+    auto comm = [&](const AST::TypeParams& params) {
             auto lt = find_type_by_name("Self");
             TypeRef self_type;  // =TypeRef(TypeRef::TagPath(), path)
             if( lt )
                 self_type = lt->fixed_type;
-            check_generic_params(*params, last_node.args(), self_type, (m_within_expr > 0));
-        }
-        break;
-    case AST::PathBinding::ALIAS:
-        params = &path.binding().bound_alias().params();
-        if(0)
-    case AST::PathBinding::FUNCTION:
-        params = &path.binding().bound_func().params();
-        
-        check_generic_params(*params, last_node.args(), TypeRef(TypeRef::TagInvalid()), (m_within_expr > 0));
-        break;
-    default:
-        throw ::std::runtime_error("Unknown path type in CGenericParamChecker::handle_path");
-    }
+            check_generic_params(params, last_node.args(), self_type, (m_within_expr > 0));
+        };
+    
+    TU_MATCH( AST::PathBinding, (path.binding()), (info),
+    (Unbound,
+        throw CompileError::BugCheck( FMT("CGenericParamChecker::handle_path - Unbound path : " << path) );
+        ),
+    (Module,
+        DEBUG("WTF - Module path, isn't this invalid at this stage?");
+        ),
+    (Trait,
+        comm( info.trait_->params() );
+        ),
+    (Struct,
+        comm( info.struct_->params() );
+        ),
+    (Enum,
+        comm( info.enum_->params() );
+        ),
+    (TypeAlias,
+        comm( info.alias_->params() );
+        ),
+    (Function,
+        check_generic_params(info.func_->params(), last_node.args(), TypeRef(TypeRef::TagInvalid()), (m_within_expr > 0));
+        ),
+    
+    (EnumVar,
+        throw ::std::runtime_error("TODO: handle_path EnumVar");
+        ),
+    (Static,
+        throw ::std::runtime_error("TODO: handle_path Static");
+        ),
+    (StructMethod,
+        throw ::std::runtime_error("TODO: handle_path StructMethod");
+        ),
+    (TraitMethod,
+        throw ::std::runtime_error("TODO: handle_path TraitMethod");
+        ),
+    (TypeParameter,
+        throw ::std::runtime_error("TODO: handle_path TypeParameter");
+        ),
+    (Variable,
+        throw ::std::runtime_error("TODO: handle_path Variable");
+        )
+    )
 }
 
 void CGenericParamChecker::handle_expr(AST::ExprNode& root)

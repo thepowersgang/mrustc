@@ -11,6 +11,27 @@
 
 namespace AST {
 
+// --- AST::PathBinding
+::std::ostream& operator<<(::std::ostream& os, const PathBinding& x) {
+    TU_MATCH(PathBinding, (x), (i),
+    (Unbound, os << "UNBOUND";   ),
+    (Module,  os << "Module";    ),
+    (Trait,     os << "Trait";   ),
+    (Struct,    os << "Struct";  ),
+    (Enum,      os << "Enum";    ),
+    (Static,    os << "Static";  ),
+    (Function,  os << "Function";),
+    (EnumVar,  os << "EnumVar(" << i.idx << ")"; ),
+    (TypeAlias, os << "TypeAlias";),
+    (StructMethod, os << "StructMethod"; ),
+    (TraitMethod,  os << "TraitMethod";  ),
+    
+    (TypeParameter, os << "TypeParameter(" << i.level << " # " << i.idx << ")"; ),
+    (Variable, os << "Variable(" << i.slot << ")"; )
+    )
+    return os;
+}
+
 // --- AST::PathNode
 PathNode::PathNode(::std::string name, ::std::vector<TypeRef> args):
     m_name(name),
@@ -96,14 +117,17 @@ AST::Path::Path(const Path& x):
 void Path::resolve(const Crate& root_crate, bool expect_params)
 {
     TRACE_FUNCTION_F("*this = "<< *this);
-    if( m_class.is_Absolute() ) {
-        resolve_absolute(root_crate, expect_params);
+    if( m_binding.is_Unbound() )
+    {
+        if( m_class.is_Absolute() ) {
+            resolve_absolute(root_crate, expect_params);
+        }
+        else if(m_class.is_UFCS()) {
+            resolve_ufcs(root_crate, expect_params);
+        }
+        else
+            throw ParseError::BugCheck("Calling Path::resolve on non-absolute path");
     }
-    else if(m_class.is_UFCS()) {
-        resolve_ufcs(root_crate, expect_params);
-    }
-    else
-        throw ParseError::BugCheck("Calling Path::resolve on non-absolute path");
 }
 void Path::resolve_absolute(const Crate& root_crate, bool expect_params)
 {
@@ -192,7 +216,7 @@ void Path::resolve_absolute(const Crate& root_crate, bool expect_params)
             // - Maybe leave that up to other code?
             if( is_last ) {
                 check_param_counts(ta.params(), expect_params, nodes[i]);
-                m_binding = PathBinding(&ta);
+                m_binding = PathBinding::make_TypeAlias( {&ta} );
                 goto ret;
             }
             else {
@@ -206,7 +230,7 @@ void Path::resolve_absolute(const Crate& root_crate, bool expect_params)
             DEBUG("Found function");
             if( is_last ) {
                 check_param_counts(fn.params(), expect_params, nodes[i]);
-                m_binding = PathBinding(&fn);
+                m_binding = PathBinding::make_Function({&fn});
                 goto ret;
             }
             else {
@@ -220,13 +244,13 @@ void Path::resolve_absolute(const Crate& root_crate, bool expect_params)
             DEBUG("Found trait");
             if( is_last ) {
                 check_param_counts(t.params(), expect_params, nodes[i]);
-                m_binding = PathBinding(&t);
+                m_binding = PathBinding::make_Trait({&t});
                 goto ret;
             }
             else if( is_sec_last ) {
                 check_param_counts(t.params(), expect_params, nodes[i]);
                 // TODO: Also check params on item
-                m_binding = PathBinding(PathBinding::TagItem(), &t);
+                m_binding = PathBinding::make_TraitMethod( {&t, nodes[i+1].name()} );
                 goto ret;
             }
             else {
@@ -321,7 +345,7 @@ void Path::resolve_absolute(const Crate& root_crate, bool expect_params)
     }
     
     // We only reach here if the path points to a module
-    m_binding = PathBinding(mod);
+    m_binding = PathBinding::make_Module({mod});
 ret:
     if( slice_from > 0 )
     {
@@ -406,7 +430,7 @@ void Path::resolve_ufcs(const Crate& root_crate, bool expect_params)
             {
                 if( it.name == node.name() ) {
                     check_param_counts(it.data.params(), expect_params, node);
-                    m_binding = PathBinding(&it.data);
+                    m_binding = PathBinding::make_Function( {&it.data} );
                     goto _impl_item_bound;
                 }
             }
@@ -424,16 +448,16 @@ void Path::resolve_ufcs(const Crate& root_crate, bool expect_params)
 
 void Path::resolve_ufcs_trait(const AST::Path& trait_path, AST::PathNode& node)
 {
-    if(trait_path.m_binding.type() != PathBinding::TRAIT)
+    if( !trait_path.m_binding.is_Trait() )
         throw ParseError::Generic("Path::resolve_ufcs - Trait in UFCS path is not a trait");
-    const auto& trait_def = trait_path.m_binding.bound_trait();
+    const auto& trait_def = *trait_path.m_binding.as_Trait().trait_;
     
     // Check that the requested item exists within the trait, and bind to that item
     for( const auto& fn : trait_def.functions() )
     {
         if( fn.name == node.name() ) {
             check_param_counts(fn.data.params(), true, node);
-            m_binding = PathBinding(&fn.data);
+            m_binding = PathBinding::make_Function( {&fn.data} );
             goto _trait_item_bound;
         }
     }
@@ -441,7 +465,7 @@ void Path::resolve_ufcs_trait(const AST::Path& trait_path, AST::PathNode& node)
     {
         if( it.name == node.name() ) {
             check_param_counts(it.data.params(), true, node);
-            m_binding = PathBinding(&it.data);
+            m_binding = PathBinding::make_TypeAlias( {&it.data} );
             goto _trait_item_bound;
         }
     }
@@ -483,10 +507,15 @@ void Path::check_param_counts(const TypeParams& params, bool expect_params, Path
         }
     }
 }
+
+void Path::bind_variable(unsigned int slot)
+{
+    m_binding = PathBinding::make_Variable({slot});
+}
 void Path::bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args)
 {
     DEBUG("Bound to enum");
-    m_binding = PathBinding(&ent);
+    m_binding = PathBinding::make_Enum({&ent});
 }
 void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std::vector<TypeRef>& args)
 {
@@ -508,7 +537,7 @@ void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std
     //}
     
     DEBUG("Bound to enum variant '" << name << "' (#" << idx << ")");
-    m_binding = PathBinding(&ent, idx);
+    m_binding = PathBinding::make_EnumVar({&ent, idx});
 }
 void Path::bind_struct(const Struct& ent, const ::std::vector<TypeRef>& args)
 {
@@ -522,16 +551,16 @@ void Path::bind_struct(const Struct& ent, const ::std::vector<TypeRef>& args)
     //}
     
     DEBUG("Bound to struct");
-    m_binding = PathBinding(&ent);
+    m_binding = PathBinding::make_Struct({&ent});
 }
 void Path::bind_struct_member(const Struct& ent, const ::std::vector<TypeRef>& args, const PathNode& member_node)
 {
     DEBUG("Binding to struct item. This needs to be deferred");
-    m_binding = PathBinding(PathBinding::TagItem(), &ent);
+    m_binding = PathBinding::make_StructMethod({&ent, member_node.name()});
 }
 void Path::bind_static(const Static& ent)
 {
-    m_binding = PathBinding(&ent);
+    m_binding = PathBinding::make_Static({&ent});
 }
 
 void Path::resolve_args(::std::function<TypeRef(const char*)> fcn)

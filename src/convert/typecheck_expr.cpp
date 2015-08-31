@@ -300,14 +300,16 @@ void CTC_NodeVisitor::visit(AST::ExprNode_NamedValue& node)
     if( p.is_absolute() )
     {
         // grab bound item
-        switch(p.binding().type())
-        {
-        case AST::PathBinding::STATIC:
-            node.get_res_type() = p.binding().bound_static().type();
-            break;
-        case AST::PathBinding::ENUM_VAR: {
-            const AST::Enum& enm = *p.binding().bound_enumvar().enum_;
-            auto idx = p.binding().bound_enumvar().idx;
+        TU_MATCH_DEF(AST::PathBinding, (p.binding()), (info),
+        (
+            throw ::std::runtime_error( FMT("Unknown binding type on named value : "<<p) );
+            ),
+        (Static,
+            node.get_res_type() = info.static_->type();
+            ),
+        (EnumVar,
+            const AST::Enum& enm = *info.enum_;
+            auto idx = info.idx;
             // Enum variant:
             // - Check that this variant takes no arguments
             if( enm.variants()[idx].m_sub_types.size() > 0 )
@@ -322,10 +324,8 @@ void CTC_NodeVisitor::visit(AST::ExprNode_NamedValue& node)
             while(pn.args().size() < num_params)
                 pn.args().push_back( TypeRef() );
             node.get_res_type() = TypeRef(tp);
-            break; }
-        default:
-            throw ::std::runtime_error( FMT("Unknown binding type on named value : "<<p) );
-        }
+            )
+        )
     }
     else
     {
@@ -415,16 +415,16 @@ void CTC_NodeVisitor::visit(AST::ExprNode_Field& node)
         
         // TODO Move this logic to types.cpp?
         const AST::Path& p = tr->path();
-        switch( p.binding().type() )
-        {
-        case AST::PathBinding::STRUCT: {
-            const AST::PathNode& lastnode = p.nodes().back();
-            AST::Struct& s = const_cast<AST::Struct&>( p.binding().bound_struct() );
-            node.get_res_type().merge_with( s.get_field_type(node.m_name.c_str(), lastnode.args()) );
-            break; }
-        default:
+        TU_MATCH_DEF( AST::PathBinding, (p.binding()), (info),
+        (
             throw ::std::runtime_error("TODO: Get field from non-structure");
-        }
+            ),
+        (Struct,
+            const AST::PathNode& lastnode = p.nodes().back();
+            AST::Struct& s = const_cast<AST::Struct&>( *info.struct_ );
+            node.get_res_type().merge_with( s.get_field_type(node.m_name.c_str(), lastnode.args()) );
+            )
+        )
         DEBUG("deref_count = " << deref_count);
         for( unsigned i = 0; i < deref_count; i ++ )
         {
@@ -575,9 +575,12 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallPath& node)
         argtypes.push_back( arg->get_res_type() );
     }
     
-    if(node.m_path.binding().type() == AST::PathBinding::FUNCTION)
-    {
-        const AST::Function& fcn = node.m_path.binding().bound_func();
+    TU_MATCH_DEF( AST::PathBinding, (node.m_path.binding()), (info),
+    (
+        throw ::std::runtime_error("CallPath on non-function");
+        ),
+    (Function,
+        const AST::Function& fcn = *info.func_;
         
         if( fcn.params().ty_params().size() > 0 )
         {
@@ -586,11 +589,10 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallPath& node)
         
         DEBUG("ExprNode_CallPath - rt = " << fcn.rettype());
         node.get_res_type().merge_with( fcn.rettype() );
-    }
-    else if(node.m_path.binding().type() == AST::PathBinding::ENUM_VAR)
-    {
-        const AST::Enum& enm = *node.m_path.binding().bound_enumvar().enum_;
-        const unsigned int idx = node.m_path.binding().bound_enumvar().idx;
+        ),
+    (EnumVar,
+        const AST::Enum& enm = *info.enum_;
+        const unsigned int idx = info.idx;
     
         auto& path_node_enum = node.m_path[node.m_path.size()-2];
         m_tc.check_enum_variant(path_node_enum.args(), argtypes, enm.params(), enm.variants().at(idx));
@@ -601,11 +603,8 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallPath& node)
         
         DEBUG("ExprNode_CallPath - enum t = " << ty);
         node.get_res_type().merge_with(ty);
-    }
-    else 
-    {
-        throw ::std::runtime_error("CallPath on non-function");
-    }
+        )
+    )
 }
 
 void Typecheck_Expr(AST::Crate& crate)

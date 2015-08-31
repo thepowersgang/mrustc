@@ -265,7 +265,7 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type) const
 
 bool Crate::find_impl(const Path& trait, const TypeRef& type, Impl** out_impl, ::std::vector<TypeRef>* out_params) const 
 {
-    DEBUG("trait = " << trait << ", type = " << type);
+    TRACE_FUNCTION_F("trait = " << trait << ", type = " << type);
     
     // If no params output provided, use a dud locaton
     ::std::vector<TypeRef>  dud_params;
@@ -288,26 +288,31 @@ bool Crate::find_impl(const Path& trait, const TypeRef& type, Impl** out_impl, :
     // TODO: Handle more complex bounds like "[T]: Trait"
     if( type.is_type_param() )
     {
-        assert(type.type_params_ptr());
-        // Obtain the relevant TypeParams structure
-        const TypeParams& tps = *type.type_params_ptr();
-        // - TODO: this structure should be pointed to by TypeRef
-        // Search bounds for type: trait
-        for( const auto& bound : tps.bounds() )
+        if( trait.is_valid() )
         {
-            DEBUG("bound = " << bound);
-            if( bound.is_trait() && bound.test() == type && bound.bound() == trait ) {
-                // If found, success!
-                DEBUG("- Success!");
-                // TODO: What should be returned, kinda need to return a boolean
-                if(out_impl)    throw CompileError::BugCheck("find_impl - Asking for a concrete impl, but generic passed");
-                return true;
+            assert(type.type_params_ptr());
+            // Search bounds for type: trait
+            for( const auto& bound : type.type_params_ptr()->bounds() )
+            {
+                DEBUG("bound = " << bound);
+                if( bound.is_trait() && bound.test() == type && bound.bound() == trait ) {
+                    // If found, success!
+                    DEBUG("- Success!");
+                    // TODO: What should be returned, kinda need to return a boolean
+                    if(out_impl)    throw CompileError::BugCheck("find_impl - Asking for a concrete impl, but generic passed");
+                    return true;
+                }
             }
+            // Else, failure
+            DEBUG("- No impl :(");
+            //if(out_impl)    throw CompileError::BugCheck("find_impl - Asking for a concrete impl, but generic passed");
+            return false;
         }
-        // Else, failure
-        DEBUG("- No impl :(");
-        if(out_impl)    throw CompileError::BugCheck("find_impl - Asking for a concrete impl, but generic passed");
-        return false;
+        else
+        {
+            DEBUG("- No inherent impl for generic params");
+            return false;
+        }
     }
     
     // TODO: Do a sort to allow a binary search
@@ -644,7 +649,7 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
                 //    continue ;
                 //
                 const auto& binding = imp.data.binding();
-                if( !binding.is_bound() )
+                if( binding.is_Unbound() )
                 {
                     // not yet bound, so run resolution (recursion)
                     DEBUG("Recursively resolving pub wildcard use " << imp.data);
@@ -652,22 +657,27 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
                     throw ParseError::Todo("Path::resolve() wildcard re-export call resolve");
                 }
                 
-                switch(binding.type())
-                {
-                case AST::PathBinding::UNBOUND:
+                TU_MATCH_DEF(AST::PathBinding, (binding), (info),
+                // - any other type - error
+                (
+                    DEBUG("ERROR: Import of invalid class : " << imp.data);
+                    throw ParseError::Generic("Wildcard import of non-module/enum");
+                    ),
+                (Unbound,
                     throw ParseError::BugCheck("Wildcard import path not bound");
+                    ),
                 // - If it's a module, recurse
-                case AST::PathBinding::MODULE: {
-                    auto rv = binding.bound_module().find_item(needle);
+                (Module,
+                    auto rv = info.module_->find_item(needle);
                     if( rv.type() != Module::ItemRef::ITEM_none ) {
                         // Don't return RV, return the import (so caller can rewrite path if need be)
                         return ItemRef(imp);
                         //return rv;
                     }
-                    break; }
+                    ),
                 // - If it's an enum, search for this name and then pass to resolve
-                case AST::PathBinding::ENUM: {
-                    auto& vars = binding.bound_enum().variants();
+                (Enum,
+                    auto& vars = info.enum_->variants();
                     // Damnit C++ "let it = vars.find(|a| a.name == needle);"
                     auto it = ::std::find_if(vars.begin(), vars.end(),
                         [&needle](const EnumVariant& ev) { return ev.m_name == needle; });
@@ -676,13 +686,8 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
                         return ItemRef(imp);
                         //throw ParseError::Todo("Handle lookup_path_in_module for wildcard imports - enum");
                     }
-                    
-                    break; }
-                // - otherwise, error
-                default:
-                    DEBUG("ERROR: Import of invalid class : " << imp.data);
-                    throw ParseError::Generic("Wildcard import of non-module/enum");
-                }
+                    )
+                )
             }
             else
             {

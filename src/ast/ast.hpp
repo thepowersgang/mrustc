@@ -54,6 +54,36 @@ public:
     SERIALISABLE_PROTOTYPES();
 };
 
+#if 0
+TAGGED_UNION( GenericBound, Lifetime,
+    // Lifetime bound: 'test must be valid for 'bound
+    (Lifetime, (
+        ::std::string   test;
+        ::std::string   bound;
+        )),
+    // Standard trait bound: "Type: [for<'a>] Trait"
+    (IsTrait, (
+        TypeRef type;
+        ::std::vector< ::std::string>   hrls; // Higher-ranked lifetimes
+        AST::Path   trait;
+        )),
+    // Removed trait bound: "Type: ?Trait"
+    (MaybeTrait, (
+        TypeRef type;
+        AST::Path   trait;
+        )),
+    // Negative trait bound: "Type: !Trait"
+    (NotTrait, (
+        TypeRef type;
+        AST::Path   trait;
+        )),
+    // Type equality: "Type = Replacement"
+    (Equality, (
+        TypeRef type;
+        TypeRef replacement;
+        ))
+    );
+#endif
 class GenericBound:
     public Serialisable
 {

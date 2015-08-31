@@ -369,10 +369,12 @@ bool TypeRef::impls_wildcard(const AST::Crate& crate, const AST::Path& trait) co
         // - same for enums, tuples, arrays, pointers...
         // - traits check the Self bounds
         // CATCH: Need to handle recursion, keep a list of currently processing paths and assume true if found
-        switch(ent.path.binding().type())
-        {
-        case AST::PathBinding::STRUCT: {
-            const auto &s = ent.path.binding().bound_struct();
+        TU_MATCH_DEF(AST::PathBinding, (ent.path.binding()), (info),
+        (
+            throw CompileError::Todo("wildcard impls - auto determine path");
+            ),
+        (Struct,
+            const auto &s = *info.struct_;
             GenericResolveClosure   resolve_fn( s.params(), ent.path.nodes().back().args() );
             for(const auto& fld : s.fields())
             {
@@ -383,9 +385,10 @@ bool TypeRef::impls_wildcard(const AST::Crate& crate, const AST::Path& trait) co
                 if( !crate.find_impl(trait, fld_ty, nullptr, nullptr) )
                     return false;
             }
-            return true; }
-        case AST::PathBinding::ENUM: {
-            const auto& i = ent.path.binding().bound_enum();
+            return true;
+            ),
+        (Enum,
+            const auto& i = *info.enum_;
             GenericResolveClosure   resolve_fn( i.params(), ent.path.nodes().back().args() );
             for( const auto& var : i.variants() )
             {
@@ -399,10 +402,9 @@ bool TypeRef::impls_wildcard(const AST::Crate& crate, const AST::Path& trait) co
                         return false;
                 }
             }
-            return true; }
-        default:
-            throw CompileError::Todo("wildcard impls - auto determine path");
-        }
+            return true;
+            )
+        )
         )
     // MultiDST is special - It only impls if this trait is in the list
     //  (or if a listed trait requires/impls the trait)
@@ -569,11 +571,11 @@ Ordering TypeRef::ord(const TypeRef& x) const
         return OrdEqual;
         )
     _(Generic,
-        if( m_tagged_ptr != x.m_tagged_ptr )
+        if( ent.params != x_ent.params )
         {
             DEBUG(*this << " == " << x);
-            if( m_tagged_ptr )   DEBUG("- (L) " << *type_params_ptr());
-            if( x.m_tagged_ptr ) DEBUG("- (R) " << *x.type_params_ptr());
+            if( ent.params )   DEBUG("- (L) " << *ent.params);
+            if( x_ent.params ) DEBUG("- (R) " << *x_ent.params);
             throw ::std::runtime_error("BUGCHECK - Can't compare mismatched generic types");
         }
         else {

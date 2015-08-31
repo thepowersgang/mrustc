@@ -98,9 +98,6 @@ TAGGED_UNION(TypeData, None,
 class TypeRef:
     public Serialisable
 {
-    /// A generic pointer, used for tagging with extra information
-    /// e.g. The source TypeParams for GENERIC
-    const void* m_tagged_ptr;
 public:
     TypeData    m_data;
     
@@ -232,10 +229,9 @@ public:
     
     bool is_type_param() const { return m_data.is_Generic(); }
     const ::std::string& type_param() const { return m_data.as_Generic().name; }
-    void set_type_params_ptr(const AST::TypeParams& p) { assert(is_type_param()); m_tagged_ptr = &p; };
+    void set_type_params_ptr(const AST::TypeParams& p) { m_data.as_Generic().params = &p; };
     const AST::TypeParams* type_params_ptr() const {
-        assert(is_type_param());
-        return reinterpret_cast<const AST::TypeParams*>(m_tagged_ptr);
+        return reinterpret_cast<const AST::TypeParams*>( m_data.as_Generic().params );
     }
     
     bool is_reference() const { return m_data.is_Borrow(); }
