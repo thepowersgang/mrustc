@@ -95,6 +95,24 @@ struct LList
     };
 };
 
+template<typename T>
+struct Join {
+    const char *sep;
+    const ::std::vector<T>& v;
+    friend ::std::ostream& operator<<(::std::ostream& os, const Join& j) {
+        if( j.v.size() > 0 )
+            os << j.v[0];
+        for( unsigned int i = 1; i < j.v.size(); i ++ )
+            os << j.sep << j.v[i];
+        return os;
+    }
+};
+template<typename T>
+inline Join<T> join(const char *sep, const ::std::vector<T> v) {
+    return Join<T>({ sep, v });
+}
+
+
 namespace std {
 
 template <typename T>
@@ -112,6 +130,7 @@ inline ::std::ostream& operator<<(::std::ostream& os, const ::std::vector<T*>& v
     }
     return os;
 }
+
 
 template <typename T>
 inline ::std::ostream& operator<<(::std::ostream& os, const ::std::vector<T>& v) {

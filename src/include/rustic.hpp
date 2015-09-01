@@ -69,6 +69,11 @@ public:
         return m_data;
     }
     
+    void if_set(::std::function<void (const T&)> f) const {
+        if( m_set ) {
+            return f(m_data);
+        }
+    }
     //template<typename U/*, class FcnSome, class FcnNone*/>
     //U match(::std::function<U(const T&)> if_some, ::Std::function<U()> if_none) const {
     //    if( m_set ) {
@@ -96,6 +101,11 @@ public:
     T& unwrap() const {
         assert(is_some());
         return *m_ptr;
+    }
+    void if_set(::std::function<void (const T&)> f) const {
+        if( m_ptr ) {
+            return f(*m_ptr);
+        }
     }
     
     //template<typename U/*, class FcnSome, class FcnNone*/>

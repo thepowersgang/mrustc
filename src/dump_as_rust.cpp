@@ -684,11 +684,30 @@ void RustPrinter::print_bounds(const AST::TypeParams& params)
                 m_os << ",\n";
             is_first = false;
             
-            m_os << indent() << b.test() << ": ";
-            if( b.is_trait() )
-                m_os << b.bound();
-            else
-                m_os << b.lifetime();
+            m_os << indent();
+            TU_MATCH(AST::GenericBound, (b), (ent),
+            (Lifetime,
+                m_os << "'" << ent.test << ": '" << ent.bound;
+                ),
+            (TypeLifetime,
+                m_os << ent.type << ": '" << ent.bound;
+                ),
+            (IsTrait,
+                if( ent.hrls.size() > 0 ) {
+                    m_os << "for<'" << ::join(", '", ent.hrls) << "> ";
+                }
+                m_os << ent.type << ": " << ent.trait;
+                ),
+            (MaybeTrait,
+                m_os << ent.type << ": ?" << ent.trait;
+                ),
+            (NotTrait,
+                m_os << ent.type << ": !" << ent.trait;
+                ),
+            (Equality,
+                m_os << ent.type << ": =" << ent.replacement;
+                )
+            )
         }
         m_os << "\n";
     

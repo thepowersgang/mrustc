@@ -97,12 +97,14 @@ bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const AS
     for( const auto& bound : tps->bounds() )
     {
         DEBUG("bound = " << bound);
-        if( bound.is_trait() && bound.test().is_type_param() && bound.test().type_param() == name )
-        {
-            DEBUG("bound.type() {" << bound.bound() << "} == trait {" << trait << "}");
-            if( bound.bound() == trait )
-                return true;
-        }
+        TU_IFLET( AST::GenericBound, bound, IsTrait, ent,
+            if( ent.type.is_type_param() && ent.type.type_param() == name )
+            {
+                DEBUG("bound.type() {" << ent.trait << "} == trait {" << trait << "}");
+                if( ent.trait == trait )
+                    return true;
+            }
+            )
     }
     
     // TODO: Search for generic ("impl<T: Trait2> Trait1 for T") that fits bounds
@@ -206,8 +208,7 @@ void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::s
     
     for( const auto& bound : info.bounds() )
     {
-        if( bound.is_trait() )
-        {
+        TU_IFLET(AST::GenericBound, bound, IsTrait, ent,
             auto ra_fcn = [&](const char *a){
                 if( strcmp(a, "Self") == 0 ) {
                     if( self_type == TypeRef(TypeRef::TagInvalid()) )
@@ -216,10 +217,10 @@ void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::s
                 }
                 return types.at(info.find_name(a));
                 };
-            auto bound_type = bound.test();
+            auto bound_type = ent.type;
             bound_type.resolve_args(ra_fcn);
             
-            auto trait = bound.bound();
+            auto trait = ent.trait;
             trait.resolve_args(ra_fcn);
             
             // Check if 'type' impls 'trait'
@@ -227,7 +228,7 @@ void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::s
             {
                 throw ::std::runtime_error( FMT("No matching impl of "<<trait<<" for "<<bound_type));
             }
-        }
+        )
     }
 }
 

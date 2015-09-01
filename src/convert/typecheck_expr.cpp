@@ -114,9 +114,9 @@ void CTypeChecker::handle_params(AST::TypeParams& params)
     
     for( const auto& bound : params.bounds() )
     {
-        if( bound.is_trait() && bound.test().is_type_param() )
+        if( bound.is_IsTrait() && bound.as_IsTrait().type.is_type_param() )
         {
-            const auto& name = bound.test().type_param();
+            const auto& name = bound.as_IsTrait().type.type_param();
             int i = params.find_name(name.c_str());
             assert(i >= 0);
             // - Just assert that it's valid.

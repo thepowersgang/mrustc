@@ -379,17 +379,36 @@ void CPathResolver::handle_params(AST::TypeParams& params)
     DEBUG("Bounds");
     for( auto& bound : params.bounds() )
     {
-        // Resolve names within the test (i.e. the lefthand side)
-        handle_type(bound.test());
-        
-        // Handle the trait bound
-        // - Clear "Self" to prevent it from being mangled
-        m_self_type.push_back( TypeRef() );
-        if( !bound.is_trait() )
-            DEBUG("namecheck lifetime bounds?");
-        else
-            handle_path(bound.bound(), CASTIterator::MODE_TYPE);
-        m_self_type.pop_back();
+        TU_MATCH(AST::GenericBound, (bound), (ent),
+        (Lifetime,
+            {}
+            ),
+        (TypeLifetime,
+            handle_type(ent.type);
+            ),
+        (IsTrait,
+            handle_type(ent.type);
+            m_self_type.push_back( TypeRef() );
+            handle_path(ent.trait, MODE_TYPE);
+            m_self_type.pop_back();
+            ),
+        (MaybeTrait,
+            handle_type(ent.type);
+            m_self_type.push_back( TypeRef() );
+            handle_path(ent.trait, MODE_TYPE);
+            m_self_type.pop_back();
+            ),
+        (NotTrait,
+            handle_type(ent.type);
+            m_self_type.push_back( TypeRef() );
+            handle_path(ent.trait, MODE_TYPE);
+            m_self_type.pop_back();
+            ),
+        (Equality,
+            handle_type(ent.type);
+            handle_type(ent.replacement);
+            )
+        )
     }
 }
 
@@ -604,6 +623,8 @@ void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mod
         ::std::vector<TypeRef> params;
         if( info.type->is_type_param() && info.type->type_param() == "Self" )
         {
+            // TODO: What is "Self" here? May want to use GenericBound's to replace Self with the actual type when possible.
+            //       In which case, Self will refer to "implementor of this trait"
             throw ParseError::Todo("CPathResolver::handle_path_ufcs - Handle '<Self as _>::...'");
         }
         else if( info.type->is_type_param() )
@@ -617,32 +638,36 @@ void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mod
             for( const auto& bound : tp.bounds() )
             {
                 DEBUG("bound = " << bound);
-                if( bound.is_trait() && bound.test() == *info.type )
-                {
-                    const auto& t = *bound.bound().binding().as_Trait().trait_;
-                    {
-                        const auto& fcns = t.functions();
-                        auto it = ::std::find_if( fcns.begin(), fcns.end(), [&](const AST::Item<AST::Function>& a) { return a.name == item_name; } );
-                        if( it != fcns.end() ) {
-                            // Found it.
-                            if( info.nodes.size() != 1 )
-                                throw ParseError::Generic("CPathResolver::handle_path_ufcs - Multiple arguments");
-                            *info.trait = bound.bound();
-                            success = true;
-                            break;
+                TU_MATCH_DEF(AST::GenericBound, (bound), (ent),
+                (),
+                (IsTrait,
+                    if( ent.type == *info.type ) {
+                        const auto& t = *ent.trait.binding().as_Trait().trait_;
+                        {
+                            const auto& fcns = t.functions();
+                            auto it = ::std::find_if( fcns.begin(), fcns.end(), [&](const AST::Item<AST::Function>& a) { return a.name == item_name; } );
+                            if( it != fcns.end() ) {
+                                // Found it.
+                                if( info.nodes.size() != 1 )
+                                    throw ParseError::Generic("CPathResolver::handle_path_ufcs - Multiple arguments");
+                                *info.trait = ent.trait;
+                                success = true;
+                                break;
+                            }
+                        }
+                        {
+                            const auto& types = t.types();
+                            auto it = ::std::find_if( types.begin(), types.end(), [&](const AST::Item<AST::TypeAlias>& a) { return a.name == item_name; } );
+                            if( it != types.end() ) {
+                                // Found it.
+                                *info.trait = ent.trait;
+                                success = true;
+                                break;
+                            }
                         }
                     }
-                    {
-                        const auto& types = t.types();
-                        auto it = ::std::find_if( types.begin(), types.end(), [&](const AST::Item<AST::TypeAlias>& a) { return a.name == item_name; } );
-                        if( it != types.end() ) {
-                            // Found it.
-                            *info.trait = bound.bound();
-                            success = true;
-                            break;
-                        }
-                    }
-                }
+                    )
+                )
             }
             
             if( !success )

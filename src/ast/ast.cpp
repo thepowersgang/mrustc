@@ -295,13 +295,18 @@ bool Crate::find_impl(const Path& trait, const TypeRef& type, Impl** out_impl, :
             for( const auto& bound : type.type_params_ptr()->bounds() )
             {
                 DEBUG("bound = " << bound);
-                if( bound.is_trait() && bound.test() == type && bound.bound() == trait ) {
-                    // If found, success!
-                    DEBUG("- Success!");
-                    // TODO: What should be returned, kinda need to return a boolean
-                    if(out_impl)    throw CompileError::BugCheck("find_impl - Asking for a concrete impl, but generic passed");
-                    return true;
-                }
+                TU_MATCH_DEF(GenericBound, (bound), (ent),
+                (),
+                (IsTrait,
+                    if(ent.type == type && ent.trait == trait) {
+                        // If found, success!
+                        DEBUG("- Success!");
+                        // TODO: What should be returned, kinda need to return a boolean
+                        if(out_impl)    throw CompileError::BugCheck("find_impl - Asking for a concrete impl, but generic passed");
+                        return true;
+                    }
+                    )
+                )
             }
             // Else, failure
             DEBUG("- No impl :(");
@@ -855,18 +860,75 @@ SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
 
 ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x)
 {
-    os << x.m_type << ": ";
-    if( x.m_lifetime_bound != "" )
-        return os << "'" << x.m_lifetime_bound;
-    else
-        return os << x.m_trait;
+    TU_MATCH(GenericBound, (x), (ent),
+    (Lifetime,
+        os << "'" << ent.test << ": '" << ent.bound;
+        ),
+    (TypeLifetime,
+        os << ent.type << ": '" << ent.bound;
+        ),
+    (IsTrait,
+        if( ! ent.hrls.empty() )
+        {
+            os << "for<";
+            for(const auto& l : ent.hrls)
+                os << "'" << l;
+            os << ">";
+        }
+        os << ent.type << ":  " << ent.trait;
+        ),
+    (MaybeTrait,
+        os << ent.type << ": ?" << ent.trait;
+        ),
+    (NotTrait,
+        os << ent.type << ": !" << ent.trait;
+        ),
+    (Equality,
+        os << ent.type << " = " << ent.replacement;
+        )
+    )
+    return os;
 }
-SERIALISE_TYPE_S(GenericBound, {
-    s.item(m_lifetime_test);
-    s.item(m_type);
-    s.item(m_lifetime_bound);
-    s.item(m_trait);
-})
+
+
+#define SERIALISE_TU_ARM(CLASS, NAME, TAG, ...)    case CLASS::TAG: { *this = CLASS::make_null_##TAG(); auto& NAME = this->as_##TAG(); (void)&NAME; __VA_ARGS__ } break;
+#define SERIALISE_TU_ARMS(CLASS, NAME, ...)    TU_GMA(__VA_ARGS__)(SERIALISE_TU_ARM, (CLASS, NAME), __VA_ARGS__)
+#define SERIALISE_TU(PATH, TAG, NAME, ...) \
+    void operator%(::Serialiser& s, PATH::Tag c) { s << PATH::tag_to_str(c); } \
+    void operator%(::Deserialiser& s, PATH::Tag& c) { ::std::string n; s.item(n); c = PATH::tag_from_str(n); }\
+    SERIALISE_TYPE(PATH::, TAG, {\
+        s % this->tag(); TU_MATCH(PATH, ((*this)), (NAME), __VA_ARGS__)\
+    }, {\
+        PATH::Tag tag; s % tag; switch(tag) { SERIALISE_TU_ARMS(PATH, NAME, __VA_ARGS__) } \
+    })
+
+SERIALISE_TU(GenericBound, "GenericBound", ent,
+    (Lifetime,
+        s.item(ent.test);
+        s.item(ent.bound);
+        ),
+    (TypeLifetime,
+        s.item(ent.type);
+        s.item(ent.bound);
+        ),
+    (IsTrait,
+        s.item(ent.type);
+        s.item(ent.hrls);
+        s.item(ent.trait);
+        ),
+    (MaybeTrait,
+        s.item(ent.type);
+        s.item(ent.trait);
+        ),
+    (NotTrait,
+        s.item(ent.type);
+        s.item(ent.trait);
+        ),
+    (Equality,
+        s.item(ent.type);
+        s.item(ent.replacement);
+        )
+)
 
 int TypeParams::find_name(const char* name) const
 {
@@ -918,9 +980,9 @@ bool TypeParams::check_params(Crate& crate, ::std::vector<TypeRef>& types, bool 
         {
             for( const auto& bound : m_bounds )
             {
-                if( bound.is_trait() && bound.test() == test )
+                if( bound.is_IsTrait() && bound.as_IsTrait().type == test )
                 {
-                    const auto& trait = bound.bound();
+                    const auto& trait = bound.as_IsTrait().trait;
                     //const auto& ty_traits = type.traits();
                 
                     //auto it = ::std::find(ty_traits.begin(), ty_traits.end(), trait);
@@ -937,9 +999,9 @@ bool TypeParams::check_params(Crate& crate, ::std::vector<TypeRef>& types, bool 
             // Check that the type fits the bounds applied to it
             for( const auto& bound : m_bounds )
             {
-                if( bound.is_trait() && bound.test() == test )
+                if( bound.is_IsTrait() && bound.as_IsTrait().type == test )
                 {
-                    const auto& trait = bound.bound();
+                    const auto& trait = bound.as_IsTrait().trait;
                     // Check if 'type' impls 'trait'
                     if( !crate.find_impl(trait, trait) )
                     {

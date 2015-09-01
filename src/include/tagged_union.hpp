@@ -13,25 +13,6 @@
 #define TU_CASE(mod, class, var,  name,src, ...)	TU_CASE_BODY(mod,class,var, TU_CASE_ITEM(src,mod,var,name) __VA_ARGS__)
 #define TU_CASE2(mod, class, var,  n1,s1, n2,s2, ...)	TU_CASE_BODY(mod,class,var, TU_CASE_ITEM(s1,mod,var,n1) TU_CASE_ITEM(s2,mod,var,n2) __VA_ARGS__)
 
-
-#define TU_DATANAME(name)   Data_##name
-// Internals of TU_CONS
-#define TU_CONS_I(__tag, __type) \
-    static self_t make_null_##__tag() { self_t ret; ret.m_tag = __tag; new (ret.m_data) __type; return ::std::move(ret); } \
-    static self_t make_##__tag(__type v) \
-    {\
-        self_t  ret;\
-        ret.m_tag = __tag;\
-        new (ret.m_data) __type( ::std::move(v) ); \
-        return ::std::move(ret); \
-    }\
-    bool is_##__tag() const { return m_tag == __tag; } \
-    const __type& as_##__tag() const { return reinterpret_cast<const __type&>(m_data); } \
-    __type& as_##__tag() { return reinterpret_cast<__type&>(m_data); } \
-    __type unwrap_##__tag() { return ::std::move(reinterpret_cast<__type&>(m_data)); } \
-// Define a tagged union constructor
-#define TU_CONS(name, _) TU_CONS_I(name, TU_DATANAME(name))
-
 #define TU_FIRST(a, ...)    a
 
 // Argument iteration
@@ -113,6 +94,25 @@
 */} break;
 #define TU_MATCH_ARMS(CLASS, VAR, NAME, ...)    TU_GMA(__VA_ARGS__)(TU_MATCH_ARM, (CLASS, VAR, NAME), __VA_ARGS__)
 
+#define TU_IFLET(CLASS, VAR, TAG, NAME, ...) if(VAR.tag() == CLASS::TAG) { auto& NAME = VAR.as_##TAG(); (void)&NAME; __VA_ARGS__ }
+
+
+#define TU_DATANAME(name)   Data_##name
+// Internals of TU_CONS
+#define TU_CONS_I(__name, __tag, __type) \
+    __name(__type v): m_tag(__tag) { new (m_data) __type( ::std::move(v) ); } \
+    static self_t make_null_##__tag() { self_t ret; ret.m_tag = __tag; new (ret.m_data) __type; return ::std::move(ret); } \
+    static self_t make_##__tag(__type v) \
+    {\
+        return __name( ::std::move(v) );\
+    }\
+    bool is_##__tag() const { return m_tag == __tag; } \
+    const __type& as_##__tag() const { return reinterpret_cast<const __type&>(m_data); } \
+    __type& as_##__tag() { return reinterpret_cast<__type&>(m_data); } \
+    __type unwrap_##__tag() { return ::std::move(reinterpret_cast<__type&>(m_data)); } \
+// Define a tagged union constructor
+#define TU_CONS(__name, name, _) TU_CONS_I(__name, name, TU_DATANAME(name))
+
 // Type definitions
 #define TU_EXP(...)  __VA_ARGS__
 #define TU_TYPEDEF(name, content)    struct TU_DATANAME(name) { TU_EXP content; };/*
@@ -136,7 +136,7 @@
 */
 
 #define MAXS(...)          TU_GM(MAXS,__VA_ARGS__)(__VA_ARGS__)
-#define TU_CONSS(...)      TU_GMX(__VA_ARGS__)(TU_CONS     , __VA_ARGS__)
+#define TU_CONSS(_name, ...)  TU_GMA(__VA_ARGS__)(TU_CONS, (_name), __VA_ARGS__)
 #define TU_TYPEDEFS(...)   TU_GMX(__VA_ARGS__)(TU_TYPEDEF  ,__VA_ARGS__)
 #define TU_TAGS(...)       TU_GMX(__VA_ARGS__)(TU_TAG      ,__VA_ARGS__)
 #define TU_DEST_CASES(...) TU_GMX(__VA_ARGS__)(TU_DEST_CASE,__VA_ARGS__)
@@ -157,37 +157,39 @@
  *     );
  * ```
  */
-#define TAGGED_UNION(_name, _def, ...) \
-class _name { \
+#define TAGGED_UNION(_name, _def, ...)  TAGGED_UNION_EX(_name, (), _def, (__VA_ARGS__), ())
+#define TAGGED_UNION_EX(_name, _inherit, _def, _variants,  _extra) \
+class _name TU_EXP _inherit { \
     typedef _name self_t;/*
-*/  TU_TYPEDEFS(__VA_ARGS__)/*
+*/  TU_TYPEDEFS _variants/*
 */public:\
     enum Tag { \
-        TU_TAGS(__VA_ARGS__)\
+        TU_TAGS _variants\
     };/*
 */ private:\
     Tag m_tag; \
-    char m_data[MAXS(__VA_ARGS__)];/*
+    char m_data[MAXS _variants];/*
 */ public:\
-    _name(): m_tag(_def) {}\
+    _name(): m_tag(_def) { new((void*)m_data) TU_DATANAME(_def); }\
     _name(const _name&) = delete; \
-    _name(_name&& x) noexcept: m_tag(x.m_tag) { x.m_tag = _def; switch(m_tag) {  TU_MOVE_CASES(__VA_ARGS__) } } \
-    _name& operator =(_name&& x) { this->~_name(); m_tag = x.m_tag; x.m_tag = _def; switch(m_tag) { TU_MOVE_CASES(__VA_ARGS__) }; return *this; } \
-    ~_name() { switch(m_tag) { TU_DEST_CASES(__VA_ARGS__) } } \
+    _name(_name&& x) noexcept: m_tag(x.m_tag) { switch(m_tag) {  TU_MOVE_CASES _variants } } \
+    _name& operator =(_name&& x) { this->~_name(); m_tag = x.m_tag; x.m_tag = _def; switch(m_tag) { TU_MOVE_CASES _variants }; return *this; } \
+    ~_name() { switch(m_tag) { TU_DEST_CASES _variants } } \
     \
     Tag tag() const { return m_tag; }\
-    TU_CONSS(__VA_ARGS__) \
+    TU_CONSS(_name, TU_EXP _variants) \
 /*
 */    static const char *tag_to_str(Tag tag) { \
         switch(tag) {/*
-*/          TU_TOSTR_CASES(__VA_ARGS__)/*
+*/          TU_TOSTR_CASES _variants/*
 */      } return ""; \
     }/*
 */    static Tag tag_from_str(const ::std::string& str) { \
         if(0); /*
-*/      TU_FROMSTR_CASES(__VA_ARGS__)/*
+*/      TU_FROMSTR_CASES _variants/*
 */      else throw ::std::runtime_error("enum "#_name" No conversion"); \
     }\
+    TU_EXP _extra\
 }
 
 /*

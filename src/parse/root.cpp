@@ -18,8 +18,28 @@
 AST::MetaItem   Parse_MetaItem(TokenStream& lex);
 void Parse_ModRoot(TokenStream& lex, AST::Crate& crate, AST::Module& mod, LList<AST::Module*> *prev_modstack, const ::std::string& path);
 
+::std::vector< ::std::string> Parse_HRB(TokenStream& lex)
+{
+    TRACE_FUNCTION;
+    Token   tok;
+    
+    ::std::vector< ::std::string>   lifetimes;
+    GET_CHECK_TOK(tok, lex, TOK_LT);
+    do {
+        switch(GET_TOK(tok, lex))
+        {
+        case TOK_LIFETIME:
+            lifetimes.push_back(tok.str());
+            break;    
+        default:
+            throw ParseError::Unexpected(lex, tok, Token(TOK_LIFETIME));
+        }
+    } while( GET_TOK(tok, lex) == TOK_COMMA );
+    CHECK_TOK(tok, TOK_GT);
+    return lifetimes;
+}
 /// Parse type parameters in a definition
-void Parse_TypeBound(TokenStream& lex, AST::TypeParams& ret, TypeRef checked_type)
+void Parse_TypeBound(TokenStream& lex, AST::TypeParams& ret, TypeRef checked_type, ::std::vector< ::std::string> lifetimes = {})
 {
     TRACE_FUNCTION;
     Token tok;
@@ -27,14 +47,33 @@ void Parse_TypeBound(TokenStream& lex, AST::TypeParams& ret, TypeRef checked_typ
     do
     {
         if(GET_TOK(tok, lex) == TOK_LIFETIME) {
-            ret.add_bound( AST::GenericBound(checked_type, tok.str()) );
+            ret.add_bound(AST::GenericBound::make_TypeLifetime( {type: checked_type, bound: tok.str()} ));
         }
         else if( tok.type() == TOK_QMARK ) {
-            ret.add_bound( AST::GenericBound(checked_type, Parse_Path(lex, PATH_GENERIC_TYPE), true) );
+            ret.add_bound(AST::GenericBound::make_MaybeTrait( {type: checked_type, trait: Parse_Path(lex, PATH_GENERIC_TYPE)} ));
         }
-        else {
+        //else if( tok.type() == TOK_RWORD_FOR )
+        //{
+        //    ::std::vector< ::std::string>   lifetimes;
+        //    GET_CHECK_TOK(tok, lex, TOK_LT);
+        //    do {
+        //        switch(GET_TOK(tok, lex))
+        //        {
+        //        case TOK_LIFETIME:
+        //            lifetimes.push_back(tok.str());
+        //            break;    
+        //        default:
+        //            throw ParseError::Unexpected(lex, tok, Token(TOK_LIFETIME));
+        //        }
+        //    } while( GET_TOK(tok, lex) == TOK_COMMA );
+        //    CHECK_TOK(tok, TOK_GT);
+        //    
+        //    ret.add_bound( AST::GenericBound::make_IsTrait( {type: checked_type, hrls: lifetimes, trait: Parse_Path(lex, PATH_GENERIC_TYPE) }) );
+        //}
+        else
+        {
             lex.putback(tok);
-            ret.add_bound( AST::GenericBound(checked_type, Parse_Path(lex, PATH_GENERIC_TYPE)) );
+            ret.add_bound( AST::GenericBound::make_IsTrait( {type: checked_type, hrls: lifetimes, trait: Parse_Path(lex, PATH_GENERIC_TYPE) }) );
         }
     } while( GET_TOK(tok, lex) == TOK_PLUS );
     lex.putback(tok);
@@ -72,7 +111,7 @@ AST::TypeParams Parse_TypeParams(TokenStream& lex)
             {
                 do {
                     GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
-                    ret.add_bound( AST::GenericBound( param_name, tok.str() ) );
+                    ret.add_bound(AST::GenericBound::make_Lifetime( {test: param_name, bound: tok.str()} ));
                 } while( GET_TOK(tok, lex) == TOK_PLUS );
             }
             else
@@ -112,27 +151,11 @@ void Parse_WhereClause(TokenStream& lex, AST::TypeParams& params)
         // Higher-ranked types/lifetimes
         else if( tok.type() == TOK_RWORD_FOR )
         {
-            ::std::vector< ::std::string>   lifetimes;
-            GET_CHECK_TOK(tok, lex, TOK_LT);
-            do {
-                switch(GET_TOK(tok, lex))
-                {
-                case TOK_LIFETIME:
-                    lifetimes.push_back(tok.str());
-                    break;    
-                default:
-                    throw ParseError::Unexpected(lex, tok, Token(TOK_LIFETIME));
-                }
-            } while( GET_TOK(tok, lex) == TOK_COMMA );
-            CHECK_TOK(tok, TOK_GT);
+            ::std::vector< ::std::string>   lifetimes = Parse_HRB(lex);
             
-            // Parse a bound as normal
             TypeRef type = Parse_Type(lex);
             GET_CHECK_TOK(tok, lex, TOK_COLON);
-            Parse_TypeBound(lex, params, type);
-            
-            // And store the higher-ranked lifetime list
-            params.bounds().back().set_higherrank( mv$(lifetimes) );
+            Parse_TypeBound(lex, params, type, lifetimes);
         }
         else
         {

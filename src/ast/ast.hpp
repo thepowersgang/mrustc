@@ -54,11 +54,16 @@ public:
     SERIALISABLE_PROTOTYPES();
 };
 
-#if 0
-TAGGED_UNION( GenericBound, Lifetime,
+TAGGED_UNION_EX( GenericBound, (: public Serialisable), Lifetime,
+    (
     // Lifetime bound: 'test must be valid for 'bound
     (Lifetime, (
         ::std::string   test;
+        ::std::string   bound;
+        )),
+    // Type lifetime bound
+    (TypeLifetime, (
+        TypeRef type;
         ::std::string   bound;
         )),
     // Standard trait bound: "Type: [for<'a>] Trait"
@@ -82,50 +87,26 @@ TAGGED_UNION( GenericBound, Lifetime,
         TypeRef type;
         TypeRef replacement;
         ))
+    ),
+    (
+    public:
+        SERIALISABLE_PROTOTYPES();
+        
+        GenericBound clone() const {
+            TU_MATCH(GenericBound, ( (*this) ), (ent),
+            (Lifetime,     return make_Lifetime({ent.test, ent.bound});     ),
+            (TypeLifetime, return make_TypeLifetime({ent.type, ent.bound}); ),
+            (IsTrait,    return make_IsTrait({ent.type, ent.hrls, ent.trait}); ),
+            (MaybeTrait, return make_MaybeTrait({ent.type, ent.trait}); ),
+            (NotTrait,   return make_NotTrait({ent.type, ent.trait}); ),
+            (Equality,   return make_Equality({ent.type, ent.replacement}); )
+            )
+            return GenericBound();
+        }
+        )
     );
-#endif
-class GenericBound:
-    public Serialisable
-{
-    ::std::string   m_lifetime_test;    // if "", use m_type
-    TypeRef m_type;
 
-    ::std::string   m_lifetime_bound;   // if "", use m_trait
-    bool    m_optional;
-    AST::Path   m_trait;
-    ::std::vector< ::std::string>   m_hrls; // Higher-ranked lifetimes
-public:
-    
-    GenericBound() {}
-    GenericBound(::std::string test, ::std::string bound):
-        m_lifetime_test( ::std::move(test) ),
-        m_lifetime_bound( ::std::move(bound) )
-    { }
-    GenericBound(TypeRef type, ::std::string lifetime):
-        m_type( ::std::move(type) ),
-        m_lifetime_bound( ::std::move(lifetime) )
-    { }
-    GenericBound(TypeRef type, AST::Path trait, bool optional=false):
-        m_type( ::std::move(type) ),
-        m_optional(optional),
-        m_trait( ::std::move(trait) )
-    { }
-    
-    void set_higherrank( ::std::vector< ::std::string> hrls ) {
-        m_hrls = mv$(hrls);
-    }
-    
-    bool is_trait() const { return m_lifetime_bound == ""; }
-    const ::std::string& lifetime() const { return m_lifetime_bound; }
-    const TypeRef& test() const { return m_type; }
-    const AST::Path& bound() const { return m_trait; }
-    
-    TypeRef& test() { return m_type; }
-    AST::Path& bound() { return m_trait; }
-    
-    friend ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x);
-    SERIALISABLE_PROTOTYPES();
-};
+::std::ostream& operator<<(::std::ostream& os, const GenericBound& x);
 
 class TypeParams:
     public Serialisable
@@ -135,6 +116,26 @@ class TypeParams:
     ::std::vector<GenericBound>    m_bounds;
 public:
     TypeParams() {}
+    TypeParams(TypeParams&& x) noexcept:
+        m_type_params( mv$(x.m_type_params) ),
+        m_lifetime_params( mv$(x.m_lifetime_params) ),
+        m_bounds( mv$(x.m_bounds) )
+    {}
+    TypeParams& operator=(TypeParams&& x) {
+        m_type_params = mv$(x.m_type_params);
+        m_lifetime_params = mv$(x.m_lifetime_params);
+        m_bounds = mv$(x.m_bounds);
+        return *this;
+    }
+    TypeParams(const TypeParams& x):
+        m_type_params(x.m_type_params),
+        m_lifetime_params(x.m_lifetime_params),
+        m_bounds()
+    {
+        m_bounds.reserve( x.m_bounds.size() );
+        for(auto& e: x.m_bounds)
+            m_bounds.push_back( e.clone() );
+    }
     
     const ::std::vector<TypeParam>& ty_params() const { return m_type_params; }
     const ::std::vector< ::std::string>&    lft_params() const { return m_lifetime_params; }

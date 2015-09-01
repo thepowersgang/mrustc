@@ -59,11 +59,33 @@ void CASTIterator::handle_params(AST::TypeParams& params)
     DEBUG("Bounds");
     for( auto& bound : params.bounds() )
     {
-        handle_type(bound.test());
-        if( !bound.is_trait() )
+        TU_MATCH( AST::GenericBound, (bound), (ent),
+        (Lifetime,
             DEBUG("namecheck lifetime bounds?");
-        else
-            handle_path(bound.bound(), CASTIterator::MODE_TYPE);
+            ),
+        (TypeLifetime,
+            handle_type(ent.type);
+            DEBUG("namecheck lifetime bounds?");
+            ),
+        (IsTrait,
+            handle_type(ent.type);
+            // TODO: Define HRLs
+            handle_path(ent.trait, CASTIterator::MODE_TYPE);
+            ),
+        (MaybeTrait,
+            handle_type(ent.type);
+            handle_path(ent.trait, CASTIterator::MODE_TYPE);
+            // TODO: Process trait, ensuring that it's a valid lang item
+            ),
+        (NotTrait,
+            handle_type(ent.type);
+            handle_path(ent.trait, CASTIterator::MODE_TYPE);
+            ),
+        (Equality,
+            handle_type(ent.type);
+            handle_type(ent.replacement);
+            )
+        )
     }
 }
 
