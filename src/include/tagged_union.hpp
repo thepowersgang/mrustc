@@ -107,9 +107,9 @@
         return __name( ::std::move(v) );\
     }\
     bool is_##__tag() const { return m_tag == __tag; } \
-    const __type& as_##__tag() const { return reinterpret_cast<const __type&>(m_data); } \
-    __type& as_##__tag() { return reinterpret_cast<__type&>(m_data); } \
-    __type unwrap_##__tag() { return ::std::move(reinterpret_cast<__type&>(m_data)); } \
+    const __type& as_##__tag() const { assert(m_tag == __tag); return reinterpret_cast<const __type&>(m_data); } \
+    __type& as_##__tag() { assert(m_tag == __tag); return reinterpret_cast<__type&>(m_data); } \
+    __type unwrap_##__tag() { assert(m_tag == __tag); return ::std::move(reinterpret_cast<__type&>(m_data)); } \
 // Define a tagged union constructor
 #define TU_CONS(__name, name, _) TU_CONS_I(__name, name, TU_DATANAME(name))
 
@@ -173,7 +173,7 @@ class _name TU_EXP _inherit { \
     _name(): m_tag(_def) { new((void*)m_data) TU_DATANAME(_def); }\
     _name(const _name&) = delete; \
     _name(_name&& x) noexcept: m_tag(x.m_tag) { switch(m_tag) {  TU_MOVE_CASES _variants } } \
-    _name& operator =(_name&& x) { this->~_name(); m_tag = x.m_tag; x.m_tag = _def; switch(m_tag) { TU_MOVE_CASES _variants }; return *this; } \
+    _name& operator =(_name&& x) { this->~_name(); m_tag = x.m_tag; switch(m_tag) { TU_MOVE_CASES _variants }; return *this; } \
     ~_name() { switch(m_tag) { TU_DEST_CASES _variants } } \
     \
     Tag tag() const { return m_tag; }\

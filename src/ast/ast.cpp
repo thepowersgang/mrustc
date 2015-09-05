@@ -106,6 +106,17 @@ SERIALISE_TYPE(ImplDef::, "AST_ImplDef", {
     s.item(m_type);
 })
 
+bool Impl::has_named_item(const ::std::string& name) const
+{
+    for( const auto& it : this->functions() )
+    {
+        if( it.name == name ) {
+            return true;
+        }
+    }
+    return false;
+}
+
 Impl& Impl::get_concrete(const ::std::vector<TypeRef>& param_types)
 {
     if( param_types.size() > 0 )
@@ -176,6 +187,17 @@ Crate::Crate():
     m_load_std(true)
 {
 }
+
+::rust::option<char> ImplRef::find_named_item(const ::std::string& name) const
+{
+    if( this->impl.has_named_item(name) ) {
+        return ::rust::Some(' ');
+    }
+    else {
+        return ::rust::None<char>();
+    }
+}
+
 
 static void iterate_module(Module& mod, ::std::function<void(Module& mod)> fcn)
 {
@@ -261,6 +283,39 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type) const
     
     // 3. If none found, destructure the type
     return type.impls_wildcard(*this, trait);
+}
+
+
+::std::vector<ImplRef>  Crate::find_inherent_impls(const TypeRef& type) const
+{
+    assert( !type.is_type_param() );
+    
+    ::std::vector<ImplRef>  ret;
+    
+    for( auto implptr : m_impl_index )
+    {
+        Impl& impl = *implptr;
+        ::std::vector<TypeRef>  out_params;
+        if( impl.def().matches(out_params, AST::Path(), type) )
+        {
+            ret.push_back( ImplRef(impl, out_params) );
+        }
+    }
+    
+    return ret;
+}
+
+::rust::option<ImplRef> Crate::find_impl(const Path& trait, const TypeRef& type) const
+{
+    ::std::vector<TypeRef>  params;
+    Impl    *out_impl;
+    if( find_impl(trait, type, &out_impl, &params) )
+    {
+        return ::rust::Some( ImplRef(*out_impl, params) );
+    }
+    else {
+        return ::rust::None<ImplRef>();
+    }
 }
 
 bool Crate::find_impl(const Path& trait, const TypeRef& type, Impl** out_impl, ::std::vector<TypeRef>* out_params) const 
@@ -1003,7 +1058,7 @@ bool TypeParams::check_params(Crate& crate, ::std::vector<TypeRef>& types, bool 
                 {
                     const auto& trait = bound.as_IsTrait().trait;
                     // Check if 'type' impls 'trait'
-                    if( !crate.find_impl(trait, trait) )
+                    if( !crate.find_impl(trait, trait, nullptr, nullptr) )
                     {
                         throw ::std::runtime_error( FMT("No matching impl of "<<trait<<" for "<<type));
                     }

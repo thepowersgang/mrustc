@@ -88,7 +88,9 @@ AST::Path::Path(TagUfcs, TypeRef type, TypeRef trait):
 {
 }
 AST::Path::Path(const Path& x):
+    m_crate(x.m_crate),
     m_class()
+    //m_binding(x.m_binding)
 {
     TU_MATCH(Class, (x.m_class), (ent),
     (Invalid, m_class = Class::make_Invalid({});),
@@ -111,6 +113,8 @@ AST::Path::Path(const Path& x):
         m_class = Class::make_UFCS({ box$(TypeRef(*ent.type)), box$(TypeRef(*ent.trait)), ent.nodes });
         )
     )
+    
+    DEBUG("clone, x = " << x << ", this = " << *this );
 }
 
 /// Resolve a path into a canonical form, and bind it to the target value
@@ -434,7 +438,7 @@ void Path::resolve_ufcs(const Crate& root_crate, bool expect_params)
                     goto _impl_item_bound;
                 }
             }
-            throw ParseError::Generic("Path::resolve_ufcs - No item in inherent");
+            throw ParseError::Generic( FMT("Path::resolve_ufcs - No item named '"<<node.name()<<"' in inherent"));
         _impl_item_bound:
             DEBUG("UFCS inherent bound to " << m_binding);
         }

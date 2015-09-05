@@ -490,11 +490,19 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
     }
     
     // Trait bounds "trait Trait : 'lifetime + OtherTrait + OtherTrait2"
+    ::std::vector<AST::Path>    supertraits;
     if(tok.type() == TOK_COLON)
     {
-        // 'Self' is a special generic type only valid within traits
-        Parse_TypeBound(lex, params, TypeRef(TypeRef::TagArg(), "Self"));
-        GET_TOK(tok, lex);
+        do {
+            if( GET_TOK(tok, lex) == TOK_LIFETIME ) {
+                // TODO: Need a better way of indiciating 'static than just an invalid path
+                supertraits.push_back( AST::Path() );
+            }
+            else {
+                lex.putback(tok);
+                supertraits.push_back( Parse_Path(lex, PATH_GENERIC_TYPE) );
+            }
+        } while( GET_TOK(tok, lex) == TOK_PLUS );
     }
     
     // TODO: Support "for Sized?"
@@ -507,7 +515,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
     }
 
     
-    AST::Trait trait(mv$(meta_items), mv$(params));
+    AST::Trait trait( mv$(meta_items), mv$(params), mv$(supertraits) );
         
     CHECK_TOK(tok, TOK_BRACE_OPEN);
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )

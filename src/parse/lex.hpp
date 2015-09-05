@@ -36,6 +36,16 @@ struct Position
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const Position& p);
 
+struct Span
+{
+    ::std::string   filename;
+    
+    unsigned int start_line;
+    unsigned int start_ofs;
+    unsigned int end_line;
+    unsigned int end_ofs;
+};
+
 class Token:
     public Serialisable
 {

@@ -276,6 +276,7 @@ public:
 
     bool is_concrete() const;
     
+    bool is_bound() const { return !m_binding.is_Unbound(); }
     const PathBinding& binding() const { return m_binding; }
     void bind_variable(unsigned int slot);
     

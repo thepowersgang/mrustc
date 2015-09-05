@@ -50,23 +50,29 @@ namespace rust {
 template<typename T>
 class option
 {
+    char    m_data[ sizeof(T) ];
     bool    m_set;
-    T   m_data;
 public:
     option(T ent):
-        m_set(true),
-        m_data( ::std::move(ent) )
-    {}
+        m_set(true)
+    {
+        new (m_data) T(::std::move(ent));
+    }
     option():
         m_set(false)
     {}
+    ~option() {
+        if( m_set ) {
+            reinterpret_cast<T*>(m_data)->~T();
+        }
+    }
     
     bool is_none() const { return !m_set; }
     bool is_some() const { return m_set; }
     
     const T& unwrap() const {
         assert(is_some());
-        return m_data;
+        return *reinterpret_cast<const T*>(m_data);
     }
     
     void if_set(::std::function<void (const T&)> f) const {
@@ -107,16 +113,6 @@ public:
             return f(*m_ptr);
         }
     }
-    
-    //template<typename U/*, class FcnSome, class FcnNone*/>
-    //U match(::std::function<U(const T&)> if_some, ::Std::function<U()> if_none) const {
-    //    if( m_set ) {
-    //        return if_some(*m_ptr);
-    //    }
-    //    else {
-    //        return if_none();
-    //    }
-    //}
 };
 template<typename T>
 option<T> Some(T data) {
@@ -126,5 +122,7 @@ template<typename T>
 option<T> None() {
     return option<T>( );
 }
+
+#define IF_OPTION_SOME(bind, var, ...)    { auto __v = (var); if( var.is_some() ) { auto bind = __v.unwrap(); (void)&bind; __VA_ARGS__ } }
 
 };

@@ -6,6 +6,7 @@ V ?= @
 LINKFLAGS := -g
 LIBS :=
 CXXFLAGS := -g -Wall -std=c++11 -Werror
+#CXXFLAGS += -O3
 CPPFLAGS := -I src/include/
 
 SHELL = bash

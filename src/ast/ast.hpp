@@ -408,22 +408,26 @@ class Trait:
 {
     MetaItems   m_attrs;
     TypeParams  m_params;
+    ::std::vector<AST::Path>    m_supertraits;
     ItemList<TypeAlias> m_types;
     ItemList<Function>  m_functions;
 public:
     Trait() {}
-    Trait(MetaItems attrs, TypeParams params):
-        m_attrs( move(attrs) ),
-        m_params(params)
+    Trait(MetaItems attrs, TypeParams params, ::std::vector<Path> supertraits):
+        m_attrs( mv$(attrs) ),
+        m_params( mv$(params) ),
+        m_supertraits( mv$(supertraits) )
     {
     }
     
     const MetaItems& attrs() const { return m_attrs; }
     const TypeParams& params() const { return m_params; }
+    const ::std::vector<Path>& supertraits() const { return m_supertraits; }
     const ItemList<Function>& functions() const { return m_functions; }
     const ItemList<TypeAlias>& types() const { return m_types; }
 
     TypeParams& params() { return m_params; }
+    ::std::vector<Path>& supertraits() { return m_supertraits; }
     ItemList<Function>& functions() { return m_functions; }
     ItemList<TypeAlias>& types() { return m_types; }
     
@@ -432,6 +436,22 @@ public:
     }
     void add_function(::std::string name, Function fcn) {
         m_functions.push_back( Item<Function>(::std::move(name), ::std::move(fcn), true) );
+    }
+    
+    bool has_named_item(const ::std::string& name, bool& out_is_fcn) const {
+        for( const auto& f : m_functions )
+            if( f.name == name ) {
+                out_is_fcn = true;
+                return true;
+            }
+        for( const auto& f : m_types )
+            if( f.name == name ) {
+                out_is_fcn = false;
+                return true;
+            }
+        
+        //for( const auto& st : 
+        return false;
     }
     
     SERIALISABLE_PROTOTYPES();
@@ -587,6 +607,8 @@ public:
     ImplDef& def() { return m_def; }
     ItemList<Function>& functions() { return m_functions; }
     ItemList<TypeRef>& types() { return m_types; }
+    
+    bool has_named_item(const ::std::string& name) const;
 
     /// Obtain a concrete implementation based on the provided types (caches)
     Impl& get_concrete(const ::std::vector<TypeRef>& param_types);
@@ -790,6 +812,20 @@ private:
 extern void handle_lang_item(AST::Crate& , const AST::Path& h, const ::std::string& , AST::eItemType );
 namespace AST {
 
+
+struct ImplRef
+{
+    const Impl& impl;
+    ::std::vector<TypeRef>  params;
+    
+    ImplRef(const Impl& impl, ::std::vector<TypeRef> params):
+        impl(impl),
+        params(params)
+    {}
+    
+    ::rust::option<char> find_named_item(const ::std::string& name) const;
+};
+
 class Crate:
     public Serialisable
 {
@@ -821,7 +857,10 @@ public:
     
     bool is_trait_implicit(const Path& trait) const;
     
-    bool find_impl(const Path& trait, const TypeRef& type, Impl** out_impl=nullptr, ::std::vector<TypeRef>* out_prams=nullptr) const;
+
+    ::std::vector<ImplRef> find_inherent_impls(const TypeRef& type) const;
+    ::rust::option<ImplRef> find_impl(const Path& trait, const TypeRef& type) const;
+    bool find_impl(const Path& trait, const TypeRef& type, Impl** out_impl, ::std::vector<TypeRef>* out_prams=nullptr) const;
     const ::rust::option<Impl&> get_impl(const Path& trait, const TypeRef& type) {
         Impl*   impl_ptr;
         ::std::vector<TypeRef>  params;
