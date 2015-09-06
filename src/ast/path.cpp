@@ -83,13 +83,14 @@ typename ::std::vector<Item<T> >::const_iterator find_named(const ::std::vector<
 }
 
 // --- AST::Path
-AST::Path::Path(TagUfcs, TypeRef type, TypeRef trait):
-    m_class( AST::Path::Class::make_UFCS({box$(type), box$(trait), {}}) )
+AST::Path::Path(TagUfcs, TypeRef type, TypeRef trait, ::std::vector<AST::PathNode> nodes):
+    m_class( AST::Path::Class::make_UFCS({box$(type), box$(trait), nodes}) )
 {
 }
 AST::Path::Path(const Path& x):
     m_crate(x.m_crate),
-    m_class()
+    m_class(),
+    m_span(x.m_span)
     //m_binding(x.m_binding)
 {
     TU_MATCH(Class, (x.m_class), (ent),
@@ -850,6 +851,7 @@ void Path::print_pretty(::std::ostream& os) const
             os << "::" << n;
         )
     )
+    os << "/*[" << path.span().filename << ":" << path.span().start_line << "]*/";
     #else
     switch(path.m_class)
     {

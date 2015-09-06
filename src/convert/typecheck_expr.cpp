@@ -611,7 +611,7 @@ void Typecheck_Expr(AST::Crate& crate)
 {
     DEBUG(" >>>");
     CTypeChecker    tc(crate);
-    tc.handle_module(AST::Path({}), crate.root_module());
+    tc.handle_module(AST::Path("", {}), crate.root_module());
     DEBUG(" <<<");
 }
 

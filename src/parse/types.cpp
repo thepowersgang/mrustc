@@ -35,10 +35,19 @@ static const struct {
 
 // === PROTOTYPES ===
 TypeRef Parse_Type(TokenStream& lex);
+TypeRef Parse_Type_Int(TokenStream& lex);
 TypeRef Parse_Type_Fn(TokenStream& lex);
 
 // === CODE ===
 TypeRef Parse_Type(TokenStream& lex)
+{
+    ProtoSpan ps = lex.start_span();
+    TypeRef rv = Parse_Type_Int(lex);
+    rv.set_span(lex.end_span(ps));
+    return rv;
+}
+
+TypeRef Parse_Type_Int(TokenStream& lex)
 {
     //TRACE_FUNCTION;
 
@@ -97,7 +106,7 @@ TypeRef Parse_Type(TokenStream& lex)
         if( tok.str() == "str" )
         {
             // TODO: Create an internal newtype for 'str'
-            return TypeRef(TypeRef::TagPath(), AST::Path({ AST::PathNode("#",{}), AST::PathNode("str",{}) }));
+            return TypeRef(TypeRef::TagPath(), AST::Path("", { AST::PathNode("#",{}), AST::PathNode("str",{}) }));
         }
         // - Fall through to path handling
     // '::' - Absolute path
@@ -125,7 +134,7 @@ TypeRef Parse_Type(TokenStream& lex)
     // 'super' - Parent relative path
     case TOK_RWORD_SUPER:
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-        return TypeRef(TypeRef::TagPath(), Parse_PathFrom(lex, AST::Path(AST::Path::TagSuper()), PATH_GENERIC_TYPE));
+        return TypeRef(TypeRef::TagPath(), AST::Path(AST::Path::TagSuper(), Parse_PathNodes(lex, PATH_GENERIC_TYPE)));
 
     // HACK! Convert && into & &
     case TOK_DOUBLE_AMP:

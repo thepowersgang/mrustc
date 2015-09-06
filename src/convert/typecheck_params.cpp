@@ -337,7 +337,7 @@ void Typecheck_GenericParams(AST::Crate& crate)
 {
     DEBUG(" >>> ");
     CGenericParamChecker    chk(crate);
-    chk.handle_module(AST::Path({}), crate.root_module());
+    chk.handle_module(AST::Path("", {}), crate.root_module());
     DEBUG(" <<< ");
 }
 

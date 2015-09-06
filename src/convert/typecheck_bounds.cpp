@@ -52,6 +52,6 @@ void Typecheck_GenericBounds(AST::Crate& crate)
 {
     DEBUG(" --- ");
     CGenericBoundChecker    chk;
-    chk.handle_module(AST::Path({}), crate.root_module());
+    chk.handle_module(AST::Path("", {}), crate.root_module());
 }
 

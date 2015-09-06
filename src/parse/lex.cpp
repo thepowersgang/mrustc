@@ -22,6 +22,7 @@
 Lexer::Lexer(::std::string filename):
     m_path(filename),
     m_line(1),
+    m_line_ofs(0),
     m_istream(filename.c_str()),
     m_last_char_valid(false)
 {
@@ -212,7 +213,7 @@ bool issym(char ch)
 
 Position Lexer::getPosition() const
 {
-    return Position(m_path, m_line);
+    return Position(m_path, m_line, m_line_ofs);
 }
 Token Lexer::realGetToken()
 {
@@ -224,6 +225,7 @@ Token Lexer::realGetToken()
         {
         case TOK_NEWLINE:
             m_line ++;
+            m_line_ofs = 0;
             //DEBUG("m_line = " << m_line << " (NL)");
             continue;
         case TOK_WHITESPACE:
@@ -644,9 +646,10 @@ char Lexer::getc()
     }
     else
     {
-		m_last_char = m_istream.get();
-		if( m_istream.eof() )
-			throw Lexer::EndOfFile();
+        m_last_char = m_istream.get();
+        m_line_ofs += 1;
+        if( m_istream.eof() )
+            throw Lexer::EndOfFile();
     }
     //::std::cout << "getc(): '" << m_last_char << "'" << ::std::endl;
     return m_last_char;
@@ -943,7 +946,7 @@ Token TTStream::realGetToken()
 }
 Position TTStream::getPosition() const
 {
-    return Position("TTStream", 0);
+    return Position("TTStream", 0,0);
 }
 
 TokenStream::TokenStream():
@@ -1019,5 +1022,24 @@ eTokenType TokenStream::lookahead(unsigned int i)
     
     DEBUG("lookahead(" << i << ") = " << m_lookahead[i]);
     return m_lookahead[i].type();
+}
+
+ProtoSpan TokenStream::start_span() const
+{
+    auto p = this->getPosition();
+    return ProtoSpan {
+        .filename = p.filename,
+        .start_line = p.line,
+        .start_ofs = p.ofs,
+        };
+}
+Span TokenStream::end_span(ProtoSpan ps) const
+{
+    auto p = this->getPosition();
+    return Span(
+        ps.filename,
+        ps.start_line, ps.start_ofs,
+        p.line, p.ofs
+        );
 }
 

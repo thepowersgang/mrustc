@@ -480,7 +480,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
 Position MacroExpander::getPosition() const
 {
     DEBUG("olex.getPosition() = " << m_olex.getPosition());
-    return Position(FMT("Macro:" << ""), m_offsets[0].read_pos);
+    return Position(FMT("Macro:" << ""), 0, m_offsets[0].read_pos);
 }
 Token MacroExpander::realGetToken()
 {
@@ -786,7 +786,7 @@ MacroToken::MacroToken(Token tok):
 }
 Position MacroToken::getPosition() const
 {
-    return Position("MacroToken", 0);
+    return Position("MacroToken", 0, 0);
 }
 Token MacroToken::realGetToken()
 {
@@ -810,7 +810,7 @@ MacroStringify::MacroStringify(const TokenTree& input)
 }
 Position MacroStringify::getPosition() const
 {
-    return Position("Stringify", 0);
+    return Position("Stringify", 0,0);
 }
 Token MacroStringify::realGetToken()
 {

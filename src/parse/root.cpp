@@ -541,7 +541,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
             if( GET_TOK(tok, lex) == TOK_COLON )
             {
                 // Bounded associated type
-                TypeRef a_type = TypeRef( AST::Path(AST::Path::TagUfcs(), TypeRef(TypeRef::TagArg(), "Self"), TypeRef())+ name);
+                TypeRef a_type = TypeRef( AST::Path(AST::Path::TagUfcs(), TypeRef(TypeRef::TagArg(), "Self"), TypeRef(), {AST::PathNode(name)}) );
                 //TypeRef a_type = TypeRef(TypeRef::TagAssoc(), TypeRef(TypeRef::TagArg(), "Self"), TypeRef(), name);
                 Parse_TypeBound(lex, params, a_type);
                 GET_TOK(tok, lex);
@@ -942,16 +942,17 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
     TRACE_FUNCTION;
 
     Token   tok;
-    AST::Path   path = AST::Path(AST::Path::TagAbsolute());
+    AST::Path   path = AST::Path("", {});
     ::std::vector<AST::PathNode>    nodes;
+    ProtoSpan   span_start = lex.start_span();
     
     switch( GET_TOK(tok, lex) )
     {
     case TOK_RWORD_SELF:
-        path = AST::Path( AST::Path::TagSelf() );    // relative path
+        path = AST::Path( AST::Path::TagSelf(), {} );    // relative path
         break;
     case TOK_RWORD_SUPER:
-        path = AST::Path( AST::Path::TagSuper() );
+        path = AST::Path( AST::Path::TagSuper(), {} );
         break;
     case TOK_IDENT:
         path.append( AST::PathNode(tok.str(), {}) );
@@ -985,10 +986,11 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
         }
         else
         {
+            path.set_span( lex.end_span(span_start) );
             switch( tok.type() )
             {
             case TOK_BRACE_OPEN:
-                Parse_Use_Set(lex, path, fcn);
+                Parse_Use_Set(lex, mv$(path), fcn);
                 GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
                 break ;
             case TOK_STAR:
@@ -1001,6 +1003,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
             return ;
         }
     }
+    path.set_span( lex.end_span(span_start) );
     
     ::std::string name;
     // This should only be allowed if the last token was an ident

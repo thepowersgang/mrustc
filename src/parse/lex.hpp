@@ -12,6 +12,8 @@
 #include <string>
 #include <fstream>
 
+#include "../include/span.hpp"
+
 enum eTokenType
 {
     #define _(t)    t,
@@ -23,28 +25,21 @@ struct Position
 {
     ::std::string   filename;
     unsigned int    line;
+    unsigned int    ofs;
     
     Position():
         filename(""),
-        line(0)
+        line(0),
+        ofs(0)
     {}
-    Position(::std::string filename, unsigned int line):
+    Position(::std::string filename, unsigned int line, unsigned int ofs):
         filename(filename),
-        line(line)
+        line(line),
+        ofs(ofs)
     {
     }
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const Position& p);
-
-struct Span
-{
-    ::std::string   filename;
-    
-    unsigned int start_line;
-    unsigned int start_ofs;
-    unsigned int end_line;
-    unsigned int end_ofs;
-};
 
 class Token:
     public Serialisable
@@ -147,6 +142,9 @@ public:
     
     ParseState& parse_state() { return m_parse_state; }
     
+    ProtoSpan   start_span() const;
+    Span    end_span(ProtoSpan ps) const;
+    
 protected:
     virtual Token   realGetToken() = 0;
 private:
@@ -179,6 +177,7 @@ class Lexer:
 {
     ::std::string   m_path;
     unsigned int m_line;
+    unsigned int m_line_ofs;
 
     ::std::ifstream m_istream;
     bool    m_last_char_valid;

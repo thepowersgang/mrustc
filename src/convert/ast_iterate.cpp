@@ -377,7 +377,7 @@ void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
     for( auto& fcn : impl.functions() )
     {
         DEBUG("- Function '" << fcn.name << "'");
-        handle_function(AST::Path(AST::Path::TagRelative()) + fcn.name, fcn.data);
+        handle_function(AST::Path(AST::Path::TagRelative(), { AST::PathNode(fcn.name) }), fcn.data);
     }
     
     end_scope();

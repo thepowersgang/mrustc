@@ -11,7 +11,7 @@
 
 AST::Path   Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode);
 AST::Path   Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generic_mode);
-AST::Path   Parse_PathFrom(TokenStream& lex, AST::Path path, eParsePathGenericMode generic_mode);
+::std::vector<AST::PathNode> Parse_PathNodes(TokenStream& lex, eParsePathGenericMode generic_mode);
 ::std::vector<TypeRef>  Parse_Path_GenericList(TokenStream& lex);
 
 AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
@@ -32,7 +32,7 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
         GET_CHECK_TOK(tok, lex, TOK_GT);
         // TODO: Terminating the "path" here is sometimes valid
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-        return Parse_PathFrom(lex, AST::Path(AST::Path::TagUfcs(), ty, trait), PATH_GENERIC_EXPR);
+        return AST::Path(AST::Path::TagUfcs(), ty, trait, Parse_PathNodes(lex, PATH_GENERIC_EXPR));
         }
     default:
         lex.putback(tok);
@@ -47,11 +47,11 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         if( GET_TOK(tok, lex) == TOK_STRING ) {
             ::std::string   cratename = tok.str();
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-            return Parse_PathFrom(lex, AST::Path(cratename, {}), generic_mode);
+            return AST::Path(cratename, Parse_PathNodes(lex, generic_mode));
         }
         else {
             lex.putback(tok);
-            return Parse_PathFrom(lex, AST::Path(AST::Path::TagAbsolute()), generic_mode);
+            return AST::Path("", Parse_PathNodes(lex, generic_mode));
         }
     }
     else {
@@ -61,16 +61,15 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         //}
         //else {
         //    lex.putback(tok);
-            return Parse_PathFrom(lex, AST::Path(AST::Path::TagRelative()), generic_mode);
+            return AST::Path(AST::Path::TagRelative(), Parse_PathNodes(lex, generic_mode));
         //}
     }
 }
 
-AST::Path Parse_PathFrom(TokenStream& lex, AST::Path path, eParsePathGenericMode generic_mode)
+::std::vector<AST::PathNode> Parse_PathNodes(TokenStream& lex, eParsePathGenericMode generic_mode)
 {
-    TRACE_FUNCTION_F("path = " << path);
-    
     Token tok;
+    ::std::vector<AST::PathNode>    ret;
 
     tok = lex.getToken();
     while(true)
@@ -131,7 +130,7 @@ AST::Path Parse_PathFrom(TokenStream& lex, AST::Path path, eParsePathGenericMode
             }
         }
         if( tok.type() != TOK_DOUBLE_COLON ) {
-            path.append( AST::PathNode(component, params) );
+            ret.push_back( AST::PathNode(component, params) );
             break;
         }
         tok = lex.getToken();
@@ -145,19 +144,19 @@ AST::Path Parse_PathFrom(TokenStream& lex, AST::Path path, eParsePathGenericMode
             params = Parse_Path_GenericList(lex);
             tok = lex.getToken();
             if( tok.type() != TOK_DOUBLE_COLON ) {
-                path.append( AST::PathNode(component, params) );
+                ret.push_back( AST::PathNode(component, params) );
                 break;
             }
             GET_TOK(tok, lex);
         }
-        path.append( AST::PathNode(component, params) );
+        ret.push_back( AST::PathNode(component, params) );
     }
     lex.putback(tok);
     //if( path.is_trivial() ) {
     //    path = AST::Path(path[0].name());
     //}
-    DEBUG("path = " << path);
-    return path;
+    DEBUG("ret = " << ret);
+    return ret;
 }
 /// Parse a list of parameters within a path
 ::std::vector<TypeRef> Parse_Path_GenericList(TokenStream& lex)

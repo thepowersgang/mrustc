@@ -12,6 +12,7 @@
 #include <serialise.hpp>
 #include <tagged_union.hpp>
 #include <string>
+#include "../include/span.hpp"
 
 class TypeRef;
 
@@ -130,6 +131,7 @@ private:
 
 public:
     Class   m_class;
+    Span    m_span;
 
 private:
     PathBinding m_binding;
@@ -139,18 +141,17 @@ public:
         m_class()
     {}
     Path(Path&&) noexcept = default;
-    Path& operator=(AST::Path&&) = default;
+    Path& operator=(AST::Path&& x) {
+        m_crate = mv$(x.m_crate);
+        m_class = mv$(x.m_class);
+        //m_span = mv$(x.m_span);
+        x.m_binding = mv$(x.m_binding);
+        return *this;
+    }
     
     Path(const Path& x);
     
     // ABSOLUTE
-    struct TagAbsolute {};
-    Path(TagAbsolute):
-        m_class( Class::make_Absolute({}) )
-    {}
-    Path(::std::initializer_list<PathNode> l):
-        Path("", l)
-    {}
     Path(::std::string crate, ::std::vector<PathNode> nodes):
         m_crate( ::std::move(crate) ),
         m_class( Class::make_Absolute({nodes: mv$(nodes)}) )
@@ -158,7 +159,7 @@ public:
     
     // UFCS
     struct TagUfcs {};
-    Path(TagUfcs, TypeRef type, TypeRef trait);
+    Path(TagUfcs, TypeRef type, TypeRef trait, ::std::vector<PathNode> nodes={});
     
     // VARIABLE
     struct TagLocal {};
@@ -171,18 +172,18 @@ public:
     
     // RELATIVE
     struct TagRelative {};
-    Path(TagRelative):
-        m_class( Class::make_Relative({}) )
+    Path(TagRelative, ::std::vector<PathNode> nodes):
+        m_class( Class::make_Relative({nodes: mv$(nodes)}) )
     {}
     // SELF
     struct TagSelf {};
-    Path(TagSelf):
-        m_class( Class::make_Self({}) )
+    Path(TagSelf, ::std::vector<PathNode> nodes):
+        m_class( Class::make_Self({nodes: nodes}) )
     {}
     // SUPER
     struct TagSuper {};
-    Path(TagSuper):
-        m_class( Class::make_Super({}) )
+    Path(TagSuper, ::std::vector<PathNode> nodes):
+        m_class( Class::make_Super({nodes: nodes}) )
     {}
     
     void set_crate(::std::string crate) {
@@ -190,6 +191,12 @@ public:
             m_crate = crate;
             DEBUG("crate set to " << m_crate);
         }
+    }
+    void set_span(Span sp) {
+        this->m_span = sp;
+    }
+    const Span& span() const {
+        return this->m_span;
     }
 
     
@@ -222,14 +229,14 @@ public:
         m_binding = PathBinding();
     }
     Path operator+(PathNode&& pn) const {
-        Path tmp = Path(TagRelative());
-        tmp.append( ::std::move(pn) );
-        return Path(*this) += tmp;
+        Path tmp = Path(*this);
+        tmp.nodes().push_back( pn );
+        return tmp;
     }
     Path operator+(const ::std::string& s) const {
-        Path tmp = Path(TagRelative());
+        Path tmp = Path(*this);
         tmp.append(PathNode(s, {}));
-        return Path(*this) += tmp;
+        return tmp;
     }
     Path operator+(const Path& x) const {
         return Path(*this) += x;

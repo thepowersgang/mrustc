@@ -98,6 +98,7 @@ TAGGED_UNION(TypeData, None,
 class TypeRef:
     public Serialisable
 {
+    Span    m_span;
 public:
     TypeData    m_data;
     
@@ -202,6 +203,10 @@ public:
     TypeRef( ::std::vector<AST::Path> traits ):
         m_data(TypeData::make_TraitObject({ ::std::move(traits) }))
     {}
+    
+    
+    void set_span(Span sp) { this->m_span = sp; }
+    const Span& span() { return this->m_span; }
     
     /// Dereference the type (return the result of *type_instance)
     bool deref(bool is_implicit);

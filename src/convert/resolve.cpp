@@ -865,8 +865,11 @@ void CPathResolver::handle_type(TypeRef& type)
         else if( name == "Self" )
         {
             // If the name was "Self", but Self isn't already defined... then we need to make it an arg?
-            throw CompileError::Generic( FMT("CPathResolver::handle_type - Unexpected 'Self'") );
-            type = TypeRef(TypeRef::TagArg(), "Self");
+            ERROR(type.path().span(), E0000, "Unexpected 'Self'");
+            
+            TypeRef nt = TypeRef(TypeRef::TagArg(), "Self");
+            nt.set_span(type.span());
+            type = nt;
         }
         else
         {
@@ -930,8 +933,7 @@ void CPathResolver::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
         ::std::string   name = pat.binding();
         // Locate a _constant_ within the current namespace which matches this name
         // - Variables don't count
-        AST::Path newpath = AST::Path(AST::Path::TagRelative());
-        newpath.append(name);
+        AST::Path newpath = AST::Path(AST::Path::TagRelative(), { AST::PathNode(name) });
         handle_path(newpath, CASTIterator::MODE_BIND);
         if( newpath.is_relative() )
         {
@@ -1096,12 +1098,12 @@ void ResolvePaths(AST::Crate& crate)
     // Handle 'use' statements in an initial parss
     DEBUG(" --- Use Statements");
     INDENT();
-    ResolvePaths_HandleModule_Use(crate, AST::Path(AST::Path::TagAbsolute()), crate.root_module());
+    ResolvePaths_HandleModule_Use(crate, AST::Path("", {}), crate.root_module());
     UNINDENT();
     
     // Then do path resolution on all other items
     CPathResolver	pr(crate);
     DEBUG(" ---");
-    pr.handle_module(AST::Path(AST::Path::TagAbsolute()), crate.root_module());
+    pr.handle_module(AST::Path("", {}), crate.root_module());
     DEBUG(" <<<");
 }

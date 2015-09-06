@@ -72,6 +72,6 @@ void Process_Decorators(AST::Crate& crate)
 {
     CProcessor  processor(crate);
     
-    processor.handle_module(AST::Path({}), crate.root_module());
+    processor.handle_module(AST::Path("", {}), crate.root_module());
 }
 

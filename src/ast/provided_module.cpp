@@ -23,11 +23,11 @@ void AST_InitProvidedModule()
 void AST_InitProvidedModule_Impls()
 {
     if( !g_copy_marker_path.is_valid() ) {
-        g_copy_marker_path = AST::Path( {AST::PathNode("marker"),AST::PathNode("Copy")} );
+        g_copy_marker_path = AST::Path( "", {AST::PathNode("marker"),AST::PathNode("Copy")} );
     }
     
     if( !g_sized_marker_path.is_valid() ) {
-        g_sized_marker_path = AST::Path( {AST::PathNode("marker"),AST::PathNode("Sized")} );
+        g_sized_marker_path = AST::Path( "", {AST::PathNode("marker"),AST::PathNode("Sized")} );
     }
     
     #define impl(trait, type) \

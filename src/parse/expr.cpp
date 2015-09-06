@@ -995,7 +995,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         GET_CHECK_TOK(tok, lex, TOK_GT);
         // TODO: Terminating the "path" here is sometimes valid
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-        path = Parse_PathFrom(lex, AST::Path(AST::Path::TagUfcs(), ty, trait), PATH_GENERIC_EXPR);
+        path = AST::Path(AST::Path::TagUfcs(), ty, trait, Parse_PathNodes(lex, PATH_GENERIC_EXPR));
         }
         if(0)
     case TOK_RWORD_SELF:
@@ -1013,7 +1013,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     case TOK_RWORD_SUPER:
         {
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-            path = Parse_PathFrom(lex, AST::Path(AST::Path::TagSuper()), PATH_GENERIC_EXPR);
+            path = AST::Path(AST::Path::TagSuper(), Parse_PathNodes(lex, PATH_GENERIC_EXPR));
         }
         if(0)
     case TOK_IDENT:
