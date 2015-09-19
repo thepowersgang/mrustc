@@ -83,9 +83,12 @@ public:
         DEBUG("node = " << *node);
         
         AST::Function fcn(
-            AST::MetaItems(), AST::TypeParams(), AST::Function::CLASS_REFMETHOD,
+            AST::MetaItems(), AST::TypeParams(),
             ret_type,
-            vec$( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "f"), f_type ) )
+            vec$(
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), false, TypeRef("Self")) ),
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "f"), f_type )
+                )
             );
         fcn.set_code( NEWNODE(AST::ExprNode_Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         

@@ -351,33 +351,22 @@ class Function:
     public Serialisable
 {
 public:
-    enum Class
-    {
-        CLASS_UNBOUND,
-        CLASS_REFMETHOD,
-        CLASS_MUTMETHOD,
-        CLASS_VALMETHOD,
-        CLASS_MUTVALMETHOD,
-    };
     typedef ::std::vector< ::std::pair<AST::Pattern,TypeRef> >   Arglist;
 
 private:
     MetaItems   m_attrs;
-    Class   m_fcn_class;
     ::std::string   m_lifetime;
     TypeParams  m_params;
     Expr    m_code;
     TypeRef m_rettype;
     Arglist m_args;
 public:
-    Function():
-        m_fcn_class(CLASS_UNBOUND)
+    Function()
     {}
     Function(const Function&) = delete;
     Function(Function&&) noexcept = default;
-    Function(MetaItems attrs, TypeParams params, Class fcn_class, TypeRef ret_type, Arglist args):
+    Function(MetaItems attrs, TypeParams params, TypeRef ret_type, Arglist args):
         m_attrs( move(attrs) ),
-        m_fcn_class(fcn_class),
         m_params( move(params) ),
         m_rettype( move(ret_type) ),
         m_args( move(args) )
@@ -387,8 +376,6 @@ public:
     void set_code(Expr code) { m_code = ::std::move(code); }
     void set_self_lifetime(::std::string s) { m_lifetime = s; }
     
-    const Class fcn_class() const { return m_fcn_class; }
-
     const MetaItems& attrs() const { return m_attrs; }
     const TypeParams& params() const { return m_params; }
     const Expr& code() const { return m_code; }

@@ -798,38 +798,12 @@ SERIALISE_TYPE(Static::, "AST_Static", {
     s.item(m_value);
 })
 
-::Serialiser& operator<<(::Serialiser& s, Function::Class fc)
-{
-    switch(fc)
-    {
-    case Function::CLASS_UNBOUND: s << "UNBOUND"; break;
-    case Function::CLASS_REFMETHOD: s << "REFMETHOD"; break;
-    case Function::CLASS_MUTMETHOD: s << "MUTMETHOD"; break;
-    case Function::CLASS_VALMETHOD: s << "VALMETHOD"; break;
-    case Function::CLASS_MUTVALMETHOD: s << "MUTVALMETHOD"; break;
-    }
-    return s;
-}
-void operator>>(::Deserialiser& s, Function::Class& fc)
-{
-    ::std::string   n;
-    s.item(n);
-         if(n == "UNBOUND")    fc = Function::CLASS_UNBOUND;
-    else if(n == "REFMETHOD")  fc = Function::CLASS_REFMETHOD;
-    else if(n == "MUTMETHOD")  fc = Function::CLASS_MUTMETHOD;
-    else if(n == "VALMETHOD")  fc = Function::CLASS_VALMETHOD;
-    else if(n == "MUTVALMETHOD")  fc = Function::CLASS_MUTVALMETHOD;
-    else
-        throw ::std::runtime_error("Deserialise Function::Class");
-}
 SERIALISE_TYPE(Function::, "AST_Function", {
-    s << m_fcn_class;
     s << m_params;
     s << m_rettype;
     s << m_args;
     s << m_code;
 },{
-    s >> m_fcn_class;
     s.item(m_params);
     s.item(m_rettype);
     s.item(m_args);

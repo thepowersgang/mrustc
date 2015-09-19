@@ -217,7 +217,6 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
         lex.putback(tok);
     }
 
-    AST::Function::Class    fcn_class = AST::Function::CLASS_UNBOUND;
     AST::Function::Arglist  args;
 
     GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
@@ -243,11 +242,11 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
             if( tok.type() == TOK_RWORD_MUT )
             {
                 GET_CHECK_TOK(tok, lex, TOK_RWORD_SELF);
-                fcn_class = AST::Function::CLASS_MUTMETHOD;
+                args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), true, TypeRef("Self"))) );
             }
             else
             {
-                fcn_class = AST::Function::CLASS_REFMETHOD;
+                args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), false, TypeRef("Self"))) );
             }
             DEBUG("TODO: UFCS / self lifetimes");
             if( allow_self == false )
@@ -273,7 +272,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
             GET_TOK(tok, lex);
             if( allow_self == false )
                 throw ParseError::Generic(lex, "Self binding not expected");
-            fcn_class = AST::Function::CLASS_MUTVALMETHOD;
+            args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef("Self")) );
             GET_TOK(tok, lex);
         }
     }
@@ -282,7 +281,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
         // By-value method
         if( allow_self == false )
             throw ParseError::Generic(lex, "Self binding not expected");
-        fcn_class = AST::Function::CLASS_VALMETHOD;
+        args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef("Self")) );
         GET_TOK(tok, lex);
     }
     else
@@ -293,7 +292,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
     if( tok.type() != TOK_PAREN_CLOSE )
     {
         // Comma after self
-        if( fcn_class != AST::Function::CLASS_UNBOUND )
+        if( args.size() )
         {
             CHECK_TOK(tok, TOK_COMMA);
         }
@@ -336,7 +335,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
         lex.putback(tok);
     }
 
-    return AST::Function(::std::move(attrs), ::std::move(params), fcn_class, ::std::move(ret_type), ::std::move(args));
+    return AST::Function(::std::move(attrs), ::std::move(params), ::std::move(ret_type), ::std::move(args));
 }
 
 AST::Function Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self)

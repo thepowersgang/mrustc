@@ -206,23 +206,23 @@ void CTypeChecker::handle_function(AST::Path path, AST::Function& fcn)
 
     handle_type(fcn.rettype());
     
-    switch(fcn.fcn_class())
-    {
-    case AST::Function::CLASS_UNBOUND:
-        break;
-    case AST::Function::CLASS_REFMETHOD:
-        local_variable(false, "self", TypeRef(TypeRef::TagReference(), false, get_local_type("Self")));
-        break;
-    case AST::Function::CLASS_MUTMETHOD:
-        local_variable(false, "self", TypeRef(TypeRef::TagReference(), true, get_local_type("Self")));
-        break;
-    case AST::Function::CLASS_VALMETHOD:
-        local_variable(false, "self", TypeRef(get_local_type("Self")));
-        break;
-    case AST::Function::CLASS_MUTVALMETHOD:
-        local_variable(true, "self", TypeRef(get_local_type("Self")));
-        break;
-    }
+    //switch(fcn.fcn_class())
+    //{
+    //case AST::Function::CLASS_UNBOUND:
+    //    break;
+    //case AST::Function::CLASS_REFMETHOD:
+    //    local_variable(false, "self", TypeRef(TypeRef::TagReference(), false, get_local_type("Self")));
+    //    break;
+    //case AST::Function::CLASS_MUTMETHOD:
+    //    local_variable(false, "self", TypeRef(TypeRef::TagReference(), true, get_local_type("Self")));
+    //    break;
+    //case AST::Function::CLASS_VALMETHOD:
+    //    local_variable(false, "self", TypeRef(get_local_type("Self")));
+    //    break;
+    //case AST::Function::CLASS_MUTVALMETHOD:
+    //    local_variable(true, "self", TypeRef(get_local_type("Self")));
+    //    break;
+    //}
     
     for( auto& arg : fcn.args() )
     {
