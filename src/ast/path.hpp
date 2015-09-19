@@ -145,7 +145,8 @@ public:
         m_crate = mv$(x.m_crate);
         m_class = mv$(x.m_class);
         //m_span = mv$(x.m_span);
-        x.m_binding = mv$(x.m_binding);
+        m_binding = mv$(x.m_binding);
+        //DEBUG("Path, " << x);
         return *this;
     }
     

@@ -54,6 +54,11 @@ public:
     virtual void handle_enum(AST::Path path, AST::Enum& enm);
     virtual void handle_trait(AST::Path path, AST::Trait& trait);
     virtual void handle_alias(AST::Path path, AST::TypeAlias& alias);
+    
+    virtual void push_self();
+    virtual void push_self(AST::Path path, const AST::Trait& trait);
+    virtual void push_self(TypeRef real_type);
+    virtual void pop_self();
 
 private:
     void handle_impl_def(AST::ImplDef& impl);

@@ -115,6 +115,24 @@ AST::Path::Path(const Path& x):
         )
     )
     
+    memcpy(&m_binding, &x.m_binding, sizeof(PathBinding));
+    //TU_MATCH(PathBinding, (x.m_binding), (ent),
+    //(Unbound, m_binding = PathBinding::make_Unbound({}); ),
+    //(Module,  os << "Module";    ),
+    //(Trait,     os << "Trait";   ),
+    //(Struct,    os << "Struct";  ),
+    //(Enum,      os << "Enum";    ),
+    //(Static,    os << "Static";  ),
+    //(Function,  os << "Function";),
+    //(EnumVar,  os << "EnumVar(" << i.idx << ")"; ),
+    //(TypeAlias, os << "TypeAlias";),
+    //(StructMethod, os << "StructMethod"; ),
+    //(TraitMethod,  os << "TraitMethod";  ),
+    //
+    //(TypeParameter, os << "TypeParameter(" << i.level << " # " << i.idx << ")"; ),
+    //(Variable, os << "Variable(" << i.slot << ")"; )
+    //)
+    
     DEBUG("clone, x = " << x << ", this = " << *this );
 }
 
@@ -454,7 +472,7 @@ void Path::resolve_ufcs(const Crate& root_crate, bool expect_params)
 void Path::resolve_ufcs_trait(const AST::Path& trait_path, AST::PathNode& node)
 {
     if( !trait_path.m_binding.is_Trait() )
-        throw ParseError::Generic("Path::resolve_ufcs - Trait in UFCS path is not a trait");
+        ERROR(trait_path.span(), E0000, "Trait in UFCS path is not a trait");
     const auto& trait_def = *trait_path.m_binding.as_Trait().trait_;
     
     // Check that the requested item exists within the trait, and bind to that item
@@ -843,7 +861,6 @@ void Path::print_pretty(::std::ostream& os) const
             #endif
             os << n;
         }
-        os << "/*" << path.m_binding << "*/";
         ),
     (UFCS,
         os << "/*ufcs*/<" << *ent.type << " as " << *ent.trait << ">";
@@ -851,7 +868,7 @@ void Path::print_pretty(::std::ostream& os) const
             os << "::" << n;
         )
     )
-    os << "/*[" << path.span().filename << ":" << path.span().start_line << "]*/";
+    os << "/*" << path.m_binding << " [" << path.span().filename << ":" << path.span().start_line << "]*/";
     #else
     switch(path.m_class)
     {

@@ -70,16 +70,22 @@ void CASTIterator::handle_params(AST::TypeParams& params)
         (IsTrait,
             handle_type(ent.type);
             // TODO: Define HRLs
+            push_self(ent.type);
             handle_path(ent.trait, CASTIterator::MODE_TYPE);
+            pop_self();
             ),
         (MaybeTrait,
             handle_type(ent.type);
+            push_self(ent.type);
             handle_path(ent.trait, CASTIterator::MODE_TYPE);
+            pop_self();
             // TODO: Process trait, ensuring that it's a valid lang item
             ),
         (NotTrait,
             handle_type(ent.type);
+            push_self(ent.type);
             handle_path(ent.trait, CASTIterator::MODE_TYPE);
+            pop_self();
             ),
         (Equality,
             handle_type(ent.type);
@@ -347,24 +353,24 @@ void CASTIterator::handle_function(AST::Path path, AST::Function& fcn)
 
 void CASTIterator::handle_impl_def(AST::ImplDef& impl)
 {
-    // First, so that handle_params can use it
-    local_type("Self", impl.type());
-    
     // Generic params
     handle_params( impl.params() );
+    
+    // Type
+    handle_type( impl.type() );
+    
+    push_self(impl.type());
     
     // Trait
     if( impl.trait() != AST::Path() )
         handle_path( impl.trait(), MODE_TYPE );
-    // Type
-    handle_type( impl.type() );
 }
 
 void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
 {
     start_scope();
     
-    handle_impl_def(impl.def());   
+    handle_impl_def(impl.def());
     
     // Associated types
     for( auto& at : impl.types() )
@@ -380,6 +386,7 @@ void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
         handle_function(AST::Path(AST::Path::TagRelative(), { AST::PathNode(fcn.name) }), fcn.data);
     }
     
+    pop_self();
     end_scope();
 }
 
@@ -405,14 +412,21 @@ void CASTIterator::handle_enum(AST::Path path, AST::Enum& enm)
 void CASTIterator::handle_trait(AST::Path path, AST::Trait& trait)
 {
     start_scope();
-    local_type("Self", TypeRef(TypeRef::TagArg(), "Self"));
+    push_self(path, trait);
     handle_params( trait.params() );
     
-    //local_type("Self", TypeRef(path));
-    //local_type("Self", TypeRef(TypeRef::TagArg(), "Self"));
+    for( auto& st : trait.supertraits() ) {
+        if( st.m_class.is_Invalid() ) {
+            // An invalid path is used for 'static
+        }
+        else {
+            handle_path(st, MODE_TYPE);
+        }
+    }
     
     for( auto& fcn : trait.functions() )
         handle_function( path + fcn.name, fcn.data );
+    pop_self();
     end_scope();
 }
 void CASTIterator::handle_alias(AST::Path path, AST::TypeAlias& alias)
@@ -421,4 +435,12 @@ void CASTIterator::handle_alias(AST::Path path, AST::TypeAlias& alias)
     handle_params( alias.params() );
     handle_type( alias.type() );
     end_scope();
+}
+void CASTIterator::push_self() {
+}
+void CASTIterator::push_self(AST::Path path, const AST::Trait& trait) {
+}
+void CASTIterator::push_self(TypeRef real_type) {
+}
+void CASTIterator::pop_self() {
 }

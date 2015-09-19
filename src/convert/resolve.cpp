@@ -16,6 +16,11 @@
 class CPathResolver:
     public CASTIterator
 {
+    const AST::Crate&   m_crate;
+    AST::Module*  m_module;
+    AST::Path m_module_path;
+    
+    
     struct LocalItem
     {
         enum Type {
@@ -43,10 +48,8 @@ class CPathResolver:
                 return os << "var '" << x.name << "'";
         }
     };
-    const AST::Crate&   m_crate;
-    AST::Module*  m_module;
-    AST::Path m_module_path;
     ::std::vector< LocalItem >  m_locals;
+    
     struct Scope {
         unsigned int    module_idx;
         AST::Module *module;    // can be NULL
@@ -56,7 +59,19 @@ class CPathResolver:
         ::std::vector< ::std::pair<AST::Path, const AST::Trait&> >    traits;
     };
     ::std::vector<Scope>    m_scope_stack;
-    ::std::vector< TypeRef >  m_self_type;
+    
+    
+    TAGGED_UNION(SelfType, None,
+        (None, ()),
+        (Type, (
+            TypeRef type;
+            )),
+        (Trait, (
+            AST::Path   path;
+            const AST::Trait* trait;
+            ))
+        );
+    ::std::vector<SelfType>  m_self_type;
     
     friend class CResolvePaths_NodeVisitor;
     
@@ -105,6 +120,19 @@ public:
     bool find_self_mod_item(AST::Path& path, const ::std::string& name);
     bool find_super_mod_item(AST::Path& path, const ::std::string& name);
     bool find_type_param(const ::std::string& name);
+    
+    virtual void push_self() override {
+        m_self_type.push_back( SelfType::make_None({}) );
+    }
+    virtual void push_self(AST::Path path, const AST::Trait& trait) override {
+        m_self_type.push_back( SelfType::make_Trait( {path, &trait} ) );
+    }
+    virtual void push_self(TypeRef real_type) override {
+        m_self_type.push_back( SelfType::make_Type( {real_type} ) );
+    }
+    virtual void pop_self() override {
+        m_self_type.pop_back();
+    }
     
     // TODO: Handle a block and obtain the local module (if any)
 private:
@@ -393,6 +421,7 @@ bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, c
 /// Perform path resolution within a generic definition block
 void CPathResolver::handle_params(AST::TypeParams& params)
 {
+    TRACE_FUNCTION;
     // Parameters
     DEBUG("params");
     for( auto& param : params.ty_params() )
@@ -405,6 +434,8 @@ void CPathResolver::handle_params(AST::TypeParams& params)
     DEBUG("Bounds");
     for( auto& bound : params.bounds() )
     {
+        DEBUG("- Bound " << bound);
+
         TU_MATCH(AST::GenericBound, (bound), (ent),
         (Lifetime,
             {}
@@ -414,21 +445,22 @@ void CPathResolver::handle_params(AST::TypeParams& params)
             ),
         (IsTrait,
             handle_type(ent.type);
-            m_self_type.push_back( TypeRef() );
+            // TODO: Should 'Self' in this trait be ent.type?
+            push_self(ent.type);
             handle_path(ent.trait, MODE_TYPE);
-            m_self_type.pop_back();
+            pop_self();
             ),
         (MaybeTrait,
             handle_type(ent.type);
-            m_self_type.push_back( TypeRef() );
+            push_self();
             handle_path(ent.trait, MODE_TYPE);
-            m_self_type.pop_back();
+            pop_self();
             ),
         (NotTrait,
             handle_type(ent.type);
-            m_self_type.push_back( TypeRef() );
+            push_self();
             handle_path(ent.trait, MODE_TYPE);
-            m_self_type.pop_back();
+            pop_self();
             ),
         (Equality,
             handle_type(ent.type);
@@ -480,7 +512,7 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
     )
 }
 void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode)
-{ 
+{
     // Convert to absolute
     // - This means converting all partial forms (i.e. not UFCS, Variable, or Absolute)
     switch( path.class_tag() )
@@ -565,7 +597,7 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
         // - If there are more nodes, replace with a UFCS block
         {
             auto tp = this->find_type_param(path[0].name());
-            if( tp != false /*nullptr*/ )
+            if( tp != false /*nullptr*/ || path[0].name() == "Self" )
             {
                 if(path.size() > 1) {
                     // Repalce with UFCS
@@ -633,14 +665,16 @@ void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mod
     assert(path.m_class.is_UFCS());
     auto& info = path.m_class.as_UFCS();
     TRACE_FUNCTION_F("info={< " << *info.type << " as " << *info.trait << ">::" << info.nodes << "}");
-    const ::std::string&    item_name = info.nodes[0].name();
     // 1. Handle sub-types
     handle_type(*info.type);
     handle_type(*info.trait);
     // 2. Handle wildcard traits (locate in inherent impl, or from an in-scope trait)
+    // TODO: Disabled, as it requires having all traits (semi) path resolved, so that trait resolution works cleanly
     if( info.trait->is_wildcard() )
     {
-        DEBUG("Searching for impls when trait is _ (trait = " << *info.trait << ")");
+        #if 0
+        const ::std::string&    item_name = info.nodes[0].name();
+        DEBUG("Searching for matching trait for '"<<item_name<<"' on type " << *info.type);
         
         // Search applicable type parameters for known implementations
         
@@ -649,10 +683,32 @@ void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mod
         ::std::vector<TypeRef> params;
         if( info.type->is_type_param() && info.type->type_param() == "Self" )
         {
+            DEBUG("Checking Self trait and sub-traits");
             // TODO: What is "Self" here? May want to use `GenericBound`s to replace Self with the actual type when possible.
             //       In which case, Self will refer to "implementor of this trait".
             // - Look up applicable traits for this type, using bounds (basically same as next)
-            throw ParseError::Todo("CPathResolver::handle_path_ufcs - Handle '<Self as _>::...'");
+            assert( !m_self_type.empty() );
+            assert( m_self_type.back().is_Trait() );
+            AST::Path p = m_self_type.back().as_Trait().path;
+            handle_path(p, MODE_TYPE);
+            AST::Trait& t = *const_cast<AST::Trait*>(m_self_type.back().as_Trait().trait);
+            
+            bool is_method;
+            AST::Path   found_trait_path;
+            if( this->find_trait_item(p, t, item_name,  is_method, found_trait_path) ) {
+                if( is_method ) {
+                    if( info.nodes.size() != 1 )
+                        ERROR(path.span(), E0000, "CPathResolver::handle_path_ufcs - Sub-nodes to method");
+                }
+                else {
+                    if( info.nodes.size() != 1 )
+                        throw ParseError::Todo("CPathResolver::handle_path_ufcs - Sub nodes on associated type");
+                }
+                *info.trait = TypeRef( mv$(found_trait_path) );
+            }
+            else {
+                ERROR(path.span(), E0000, "Cannot find item '" << item_name << "' on Self");
+            }
         }
         else if( info.type->is_type_param() )
         {
@@ -703,6 +759,7 @@ void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mod
         }
         else
         {
+            DEBUG("(maybe) known type");
             // Iterate all inherent impls
             for( auto impl : m_crate.find_inherent_impls(*info.type) ) {
                 IF_OPTION_SOME(item, impl.find_named_item(item_name), {
@@ -733,13 +790,19 @@ void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mod
 
             throw ParseError::Todo("CPathResolver::handle_path_ufcs - UFCS, find trait");
         }
+        
+        path.resolve(m_crate);
+        #endif
     }
-    // 3. Call resolve to attempt binding
-    path.resolve(m_crate);
+    else {
+        // 3. Call resolve to attempt binding
+        path.resolve(m_crate);
+    }
 }
 
 bool CPathResolver::find_trait_item(const AST::Path& path, AST::Trait& trait, const ::std::string& item_name, bool& out_is_method, AST::Path& out_trait_path)
 {
+    TRACE_FUNCTION_F("path=" << path << ", trait=..., item_name=" << item_name);
     {
         const auto& fcns = trait.functions();
         //DEBUG("fcns = " << fcns);
@@ -747,8 +810,8 @@ bool CPathResolver::find_trait_item(const AST::Path& path, AST::Trait& trait, co
         if( it != fcns.end() ) {
             // Found it.
             out_is_method = true;
-            DEBUG("&out_trait_path = " << &out_trait_path);
             out_trait_path = AST::Path(path);
+            DEBUG("Fcn, out_trait_path = " << out_trait_path);
             return true;
         }
     }
@@ -759,14 +822,30 @@ bool CPathResolver::find_trait_item(const AST::Path& path, AST::Trait& trait, co
             // Found it.
             out_is_method = false;
             out_trait_path = AST::Path(path);
+            DEBUG("Ty, out_trait_path = " << out_trait_path << "  path=" << path);
             return true;
         }
     }
     
     for( auto& st : trait.supertraits() ) {
-        assert(st.is_bound());
-        if( this->find_trait_item(st, *const_cast<AST::Trait*>(st.binding().as_Trait().trait_), item_name,  out_is_method, out_trait_path) )
+        if(!st.is_bound()) {
+            handle_path(st, MODE_TYPE);
+            //BUG(st.span(), "Supertrait path '"<<st<<"' of '"<<path<<"' is not bound");
+        }
+        AST::Trait& super_t = *const_cast<AST::Trait*>(st.binding().as_Trait().trait_);
+        if( this->find_trait_item(st, super_t, item_name,  out_is_method, out_trait_path) ) {
+            DEBUG("path = " << path << ", super_t.params() = " << super_t.params() << ", out_trait_path = " << out_trait_path);
+            // 
+            out_trait_path.resolve_args([&](const char* name) {
+                int idx = trait.params().find_name(name);
+                if(idx < 0)
+                    ERROR(st.span(), E0000, "Parameter " << name << " not found");
+                const auto& tr = path.nodes().back().args().at(idx);
+                DEBUG("Replacing '" << name << "' with " << tr);
+                return tr;
+                });
             return true;
+        }
     }
     
     return false;
@@ -865,11 +944,25 @@ void CPathResolver::handle_type(TypeRef& type)
         else if( name == "Self" )
         {
             // If the name was "Self", but Self isn't already defined... then we need to make it an arg?
-            ERROR(type.path().span(), E0000, "Unexpected 'Self'");
-            
-            TypeRef nt = TypeRef(TypeRef::TagArg(), "Self");
-            nt.set_span(type.span());
-            type = nt;
+            if( this->m_self_type.empty() || this->m_self_type.back().is_None() ) {
+                ERROR(type.path().span(), E0000, "Unexpected 'Self'");
+            }
+            else {
+                TU_MATCH(SelfType, (this->m_self_type.back()), (ent),
+                (None,
+                    assert(!"");
+                    ),
+                (Type,
+                    type = ent.type;
+                    return ;
+                    ),
+                (Trait,
+                    // TODO: Need to have the trait encoded in the type. To avoid interpolation and bad replacement
+                    // - Would also reduce the need to look at the m_self_type stack
+                    type = TypeRef(TypeRef::TagArg(), "Self");
+                    )
+                )
+            }
         }
         else
         {
@@ -880,14 +973,25 @@ void CPathResolver::handle_type(TypeRef& type)
     {
         const auto& name = type.type_param();
         auto opt_local = lookup_local(LocalItem::TYPE, name);
-        /*if( name == "Self" )
+        if( name == "Self" )
         {
-            // Good as it is
-            // - TODO: Allow replacing this with the real Self (e.g. in an impl block)
-            // - NEED to annotate with the relevant impl block, and with other bounds
-            //  > So that you can handle 'where Self: Sized' etc
+            if( m_self_type.empty() ) {
+                ERROR(type.span(), E0000, "Self type not set");
+            }
+            TU_MATCH(SelfType, (m_self_type.back()), (ent),
+            (None,
+                ERROR(type.span(), E0000, "Self type not set");
+                ),
+            (Type,
+                type = ent.type;
+                return ;
+                ),
+            (Trait,
+                // Valid...
+                )
+            )
         }
-        else*/ if( opt_local.is_some() )
+        else if( opt_local.is_some() )
         {
             type = opt_local.unwrap().tr;
         }
@@ -965,11 +1069,11 @@ void CPathResolver::handle_module(AST::Path path, AST::Module& mod)
 }
 void CPathResolver::handle_trait(AST::Path path, AST::Trait& trait)
 {
+    path.resolve(m_crate);
+    
     // Handle local 
-    for( auto& st : trait.supertraits() ) {
-        handle_path(st, MODE_TYPE);
-    }
     m_scope_stack.back().traits.push_back( ::std::pair<AST::Path, const AST::Trait&>(path, trait) );
+    CASTIterator::handle_trait(path, trait);
 }
 void CPathResolver::handle_function(AST::Path path, AST::Function& fcn)
 {

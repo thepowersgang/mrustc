@@ -28,6 +28,8 @@ OBJ += convert/resolve.o convert/typecheck_bounds.o convert/typecheck_params.o c
 OBJ += convert/flatten.o convert/render.o
 OBJ += synexts/derive.o synexts/lang_item.o
 
+PCHS := ast/ast.hpp
+
 OBJ := $(addprefix $(OBJDIR),$(OBJ))
 
 
@@ -63,6 +65,12 @@ $(OBJDIR)%.o: src/%.cpp
 	@mkdir -p $(dir $@)
 	@echo [CXX] -o $@
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) $(CPPFLAGS) -MMD -MP -MF $@.dep
+
+src/main.cpp:	$(PCHS:%=src/%.gch)
+
+%.hpp.gch: %.hpp
+	@echo [CXX] -o $@
+	$V$(CXX) -std=c++11 -o $@ $< $(CPPFLAGS) -MMD -MP -MF $@.dep
 
 -include $(OBJ:%=%.dep)
 

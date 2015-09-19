@@ -227,6 +227,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
     if( tok.type() == TOK_AMP )
     {
         // By-reference method?
+        // TODO: If a lifetime is seen (and not a prototype), it is definitely a self binding
         
         unsigned int ofs = 0;
         if( lex.lookahead(0) == TOK_LIFETIME )

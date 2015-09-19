@@ -45,13 +45,12 @@ Rv CompilePhase(const char *name, Fcn f) {
     g_cur_phase = name;
     auto rv = f();
     g_cur_phase = "";
+    ::std::cout << name << ": DONE" << ::std::endl;
     return rv;
 }
 template <typename Fcn>
 void CompilePhaseV(const char *name, Fcn f) {
-    g_cur_phase = name;
-    f();
-    g_cur_phase = "";
+    CompilePhase<int>(name, [&]() { f(); return 0; });
 }
 
 /// main!
