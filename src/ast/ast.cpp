@@ -295,6 +295,7 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type) const
     for( auto implptr : m_impl_index )
     {
         Impl& impl = *implptr;
+        DEBUG("- " << impl.def());
         ::std::vector<TypeRef>  out_params;
         if( impl.def().matches(out_params, AST::Path(), type) )
         {

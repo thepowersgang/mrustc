@@ -41,9 +41,9 @@ struct Span
         end_ofs(end_ofs)
     {}
     Span():
-        filename(""),
+        filename("")/*,
         start_line(0), start_ofs(0),
-        end_line(0), end_ofs(0)
+        end_line(0), end_ofs(0) // */
     {}
     
     void bug(::std::function<void(::std::ostream&)> msg) const;
