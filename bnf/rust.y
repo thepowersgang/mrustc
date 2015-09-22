@@ -4,12 +4,16 @@
 %token SUPER_ATTR SUB_ATTR DOC_COMMENT SUPER_DOC_COMMENT
 %token DOUBLECOLON THINARROW FATARROW DOUBLEDOT TRIPLEDOT
 %token DOUBLEEQUAL EXCLAMEQUAL DOUBLEPIPE DOUBLEAMP
+%token GTEQUAL LTEQUAL
+%token PLUSEQUAL MINUSEQUAL STAREQUAL SLASHEQUAL
 %token DOUBLELT DOUBLEGT
 %token RWD_mod RWD_fn RWD_const RWD_static RWD_use RWD_struct RWD_enum RWD_trait RWD_impl RWD_type
-%token RWD_as RWD_mut RWD_ref RWD_pub RWD_where
+%token RWD_as RWD_mut RWD_ref RWD_pub RWD_where RWD_unsafe
 %token RWD_let
 %token RWD_self RWD_super
 %token RWD_match RWD_if RWD_while RWD_loop RWD_for RWD_else
+%token RWD_return RWD_break RWD_continue
+%token RWD_extern
 %start crate
 
 %union {
@@ -27,7 +31,7 @@
 #include <assert.h>
 extern int yylineno;
 
-static inline void bnf_trace(const char* fmt, ...) {
+/*static inline*/ void bnf_trace(const char* fmt, ...) {
 	fprintf(stderr, "\x1b[32m""TRACE: ");
 	va_list	args;
 	va_start(args, fmt);
@@ -42,18 +46,14 @@ static void yyprint(FILE *outstream, int type, YYSTYPE value)
 	{
 	case IDENT: fprintf(outstream, "%s", value.text); break;
 	case MACRO: fprintf(outstream, "%s!", value.text); break;
+	case STRING: fprintf(outstream, "\"%s\"", value.text); break;
+	case LIFETIME: fprintf(outstream, "'%s", value.text); break;
 	default:
 		break;
 	}
 }
 
-int rustbnf_forcetoken = 0;
-static inline int read_and_clear(int* ptr) {
-	int rv = *ptr;
-	*ptr = 0;
-	return rv;
-}
-#define YYLEX_PARAM	read_and_clear(&rustbnf_forcetoken)
+extern int rustbnf_forcetoken;
 %}
 
 %%
@@ -80,16 +80,14 @@ module_body
 attrs: attrs attr | ;
 
 super_attr
- : SUPER_ATTR meta_items ']'
+ : '#' '!' '[' meta_items ']'
  | SUPER_DOC_COMMENT
  ;
 attr
- : SUB_ATTR meta_items ']'
+ : '#' '[' meta_items ']'
  | DOC_COMMENT
  ;
-meta_items
- : meta_item
- | meta_items ',' meta_item;
+meta_items: meta_item | meta_items ',' meta_item;
 meta_item
  : IDENT '(' meta_items ')'
  | IDENT '=' STRING
@@ -104,19 +102,28 @@ Root Items
 */
 item
  : opt_pub RWD_mod module_def
- | opt_pub RWD_fn fn_def
+ | opt_pub fn_qualifiers RWD_fn fn_def
  | opt_pub RWD_use use_def
  | opt_pub RWD_static static_def
  | opt_pub RWD_const const_def
  | opt_pub RWD_struct struct_def
  | opt_pub RWD_enum enum_def
  | opt_pub RWD_trait trait_def
+ | RWD_extern extern_block
  | RWD_impl impl_def
+ | MACRO IDENT tt_brace
+ | MACRO tt_brace
+ | MACRO tt_paren ';'
  ;
+
+extern_block: extern_abi | '{' extern_items '}';
+extern_abi: | STRING;
+extern_items: | extern_items extern_item;
+extern_item: opt_pub RWD_fn fn_def_hdr ';';
 
 module_def
  : IDENT '{' module_body '}'
- | IDENT ';'
+ | IDENT ';'	{ bnf_trace("mod %s;", $1); }
  ;
 
 /* --- Function --- */
@@ -133,14 +140,31 @@ fn_def_self
  | '&' RWD_mut RWD_self
  ;
 fn_def_arg_list: fn_def_arg | fn_def_arg_list ',' fn_def_arg;
-fn_def_arg : irrefutable_pattern ':' type;
+fn_def_arg : pattern ':' type;
+
+fn_qualifiers
+ :
+ | RWD_extern extern_abi
+ | RWD_unsafe
+ | RWD_const
+ | RWD_unsafe RWD_const
+ ;
 
 /* --- Use --- */
 use_def
- : use_path RWD_as IDENT ';'
- | use_path '*' ';'
- | use_path '{' use_picks '}' ';'
- | use_path ';'
+ : RWD_self use_def_tail
+ | RWD_self DOUBLECOLON use_path use_def_tail
+ | RWD_super use_def_tail
+ | RWD_super DOUBLECOLON use_path use_def_tail
+ | DOUBLECOLON use_path use_def_tail
+ | use_path use_def_tail
+ | '{' use_picks '}' ';'
+ ;
+use_def_tail
+ : RWD_as IDENT ';'
+ | DOUBLECOLON '*' ';'
+ | DOUBLECOLON '{' use_picks '}' ';'
+ | ';'
 /* | RWD_use error ';' */
  ;
 use_picks
@@ -166,7 +190,7 @@ const_value
 /* --- Struct --- */
 struct_def
  : IDENT generic_def ';'	{ bnf_trace("unit-like struct"); }
- | IDENT generic_def '(' tuple_struct_def_items opt_comma ')'	{ bnf_trace("tuple struct"); }
+ | IDENT generic_def '(' tuple_struct_def_items opt_comma ')' ';'	{ bnf_trace("tuple struct"); }
  | IDENT generic_def '{' struct_def_items opt_comma '}'	{ bnf_trace("normal struct"); }
  ;
 
@@ -177,8 +201,8 @@ tuple_struct_def_items
 tuple_struct_def_item: attrs opt_pub type;
 
 struct_def_items
- : /*struct_def_items ',' struct_def_item
- |*/ struct_def_item { bnf_trace("struct_def_item"); }
+ : struct_def_items ',' struct_def_item
+ | struct_def_item { bnf_trace("struct_def_item"); }
  ;
 struct_def_item: attrs opt_pub IDENT ':' type;
 
@@ -186,18 +210,27 @@ struct_def_item: attrs opt_pub IDENT ':' type;
 enum_def:
  ;
 /* --- Trait --- */
-trait_def:
+trait_def: IDENT generic_def trait_bounds '{' trait_items '}';
+trait_bounds: ':' type_path | ;
+trait_bound_list: trait_bound_list '+' trait_bound | trait_bound;
+trait_bound: type_path | LIFETIME;
+trait_items: | trait_items attrs trait_item;
+trait_item
+ : RWD_type IDENT ';'
+ | RWD_type IDENT ':' trait_bound_list ';'
+ | fn_qualifiers RWD_fn fn_def_hdr ';'
  ;
+
 /* --- Impl --- */
 impl_def: impl_def_line '{' impl_items '}'
 impl_def_line
- : generic_def type RWD_for type	{ bnf_trace("trait impl"); }
- | generic_def type RWD_for DOUBLEDOT	{ bnf_trace("wildcard impl"); }
- | generic_def type	{ bnf_trace("inherent impl"); }
+ : generic_def type RWD_for type where_clause	{ bnf_trace("trait impl"); }
+ | generic_def type RWD_for DOUBLEDOT where_clause	{ bnf_trace("wildcard impl"); }
+ | generic_def type where_clause	{ bnf_trace("inherent impl"); }
  ;
 impl_items: | impl_items attrs impl_item;
 impl_item
- : opt_pub RWD_fn fn_def
+ : opt_pub fn_qualifiers RWD_fn fn_def
  | opt_pub RWD_type generic_def IDENT '=' type ';'
  ;
 
@@ -209,7 +242,10 @@ generic_def_one
  : IDENT '=' type ':' bounds
  | IDENT '=' type
  | IDENT ':' bounds { bnf_trace("bounded ident"); }
- | IDENT ;
+ | IDENT
+ | LIFETIME
+ | LIFETIME ':' LIFETIME
+ ;
 
 where_clause: | RWD_where where_clauses;
 where_clauses
@@ -260,7 +296,8 @@ type_path_seg
  | IDENT '<' type_exprs '>'
  | IDENT '<' type_exprs DOUBLEGT { bnf_trace("Double-gt terminated type expr"); rustbnf_forcetoken = '>'; } 
  ;
-type_exprs: type_exprs ',' type | type;
+type_exprs: type_exprs ',' type_arg | type_arg;
+type_arg: type | LIFETIME | IDENT '=' type;
 
 /*
 =========================================
@@ -270,55 +307,65 @@ Types
 type
  : type_path
  | '&' type
+ | '&' LIFETIME type
  | '&' RWD_mut type
+ | '&' LIFETIME RWD_mut type
  | '*' RWD_const type
  | '*' RWD_mut type
  | '[' type ']'
  | '[' type ';' expr ']'
+ | '(' ')'
+ | '(' type ')'
+ | '(' type ',' ')'
+ | '(' type ',' type_list ')'
  ;
+type_list: type_list ',' type | type;
 
 /*
 =========================================
 Patterns
 =========================================
 */
-irrefutable_pattern
-	: tuple_pattern
-	| bind_pattern
-	/*| struct_pattern */
-	;
-
-tuple_pattern: '(' ')';
-
-bind_pattern: IDENT;
+tuple_pattern: '(' pattern_list ')' | '(' pattern_list ',' ')';
 
 struct_pattern
-	: expr_path '{' '}'
+	: expr_path '{' struct_pattern_items '}'
 	| expr_path tuple_pattern
 	;
+struct_pattern_item: IDENT | IDENT ':' pattern;
+struct_pattern_items: struct_pattern_items ',' struct_pattern_item | struct_pattern_item;
 
-refutable_pattern
- : IDENT	{ /* maybe bind */ }
- | IDENT '@' nonbind_pattern
+pattern
+ : /*IDENT	{ /* maybe bind * / }
+ */| IDENT '@' nonbind_pattern
  | RWD_ref IDENT
  | RWD_ref IDENT '@' nonbind_pattern
+ | RWD_mut IDENT
+ | RWD_mut IDENT '@' nonbind_pattern
  | RWD_ref RWD_mut IDENT
  | RWD_ref RWD_mut IDENT '@' nonbind_pattern
- | '&' refutable_pattern
- | '&' RWD_mut refutable_pattern
- | nonbind_pattern;
+ | nonbind_pattern
+ ;
 
 nonbind_pattern
  : '_'	{ }
  | DOUBLEDOT	{ }
- | expr_path '(' refutable_pattern_list opt_comma ')'
- | expr_path '{' refutable_struct_patern '}'
+ | STRING { }
+ | INTEGER { }
+ | CHARLIT { }
+ | struct_pattern
+ | tuple_pattern
+/* | expr_path '(' refutable_pattern_list opt_comma ')'
+ | expr_path '{' refutable_struct_patern '}' */
  | expr_path
-/* | '&' nonbind_pattern */
+ | '&' pattern
+ | '&' RWD_mut pattern
  ;
 
-refutable_pattern_list: refutable_pattern_list ',' refutable_pattern | refutable_pattern;
-refutable_struct_patern: /* TODO */;
+pattern_list
+ : pattern_list ',' pattern
+ | pattern
+ ;
 
 
 /*
@@ -328,41 +375,76 @@ Expressions!
 */
 code: '{' block_contents '}'	{ bnf_trace("code parsed"); };
 
-block_contents: block_contents block_line | ;
+block_contents
+ :
+ | block_lines
+ | block_lines expr
+ ;
+block_lines: | block_lines block_line;
 block_line
  : RWD_let let_binding ';'
+ | MACRO IDENT tt_brace
+ | attr item
+ | expr_blocks
  | stmt
- | expr
  ;
 
 opt_type_annotation: | ':' type;
 let_binding
- : irrefutable_pattern opt_type_annotation '=' expr
- | irrefutable_pattern opt_type_annotation
+ : pattern opt_type_annotation '=' expr
+ | pattern opt_type_annotation
 
 stmt
  : expr ';'
  ;
 
-expr: expr_blocks;
+expr: expr_assign;
 
-expr_blocks
- : RWD_match expr '{' match_arms opt_comma '}'	{ }
- | RWD_if if_block
+expr_assign
+ : expr_0 assign_op expr_0
  | expr_0
  ;
+assign_op: '=' | PLUSEQUAL | MINUSEQUAL | STAREQUAL | SLASHEQUAL;
+
+expr_blocks
+ : RWD_match expr_path '{' match_arms opt_comma '}'	{ }
+ | RWD_match expr '{' match_arms opt_comma '}'	{ }
+ | RWD_if if_block
+ | RWD_unsafe '{' block_contents '}' { }
+ | RWD_loop '{' block_contents '}' { }
+ | RWD_while expr '{' block_contents '}' { }
+ | RWD_return {}
+ | RWD_return expr_0 {}
+ | '{' block_contents '}'
+ ;
+
 if_block
  : expr code { }
  | expr code RWD_else code { }
  | expr code RWD_else RWD_if if_block { }
  ;
 match_arms
- : match_arms ',' match_arm
+ : match_arm ',' match_arms
+ | match_arm_brace match_arms
  | match_arm
+ | match_arm ','
  ;
-match_arm: refutable_pattern FATARROW expr	{ bnf_trace("match_arm"); };
+match_pattern: pattern | pattern RWD_if expr_0;
+match_arm
+ : match_pattern FATARROW expr	{ bnf_trace("match_arm"); }
+ | match_arm_brace
+ ;
+match_arm_brace : match_pattern FATARROW '{' block_contents '}';
 
-expr_0: expr_bor;
+expr_0: expr_range;
+
+expr_range
+ : expr_range_n
+ | expr_range_n DOUBLEDOT
+ | DOUBLEDOT expr_range_n
+ | expr_range_n DOUBLEDOT expr_range_n
+ ;
+expr_range_n: expr_bor;
 
 expr_bor: expr_band | expr_bor DOUBLEPIPE expr_band { } ;
 expr_band: expr_equ | expr_band DOUBLEAMP expr_equ { } ;
@@ -372,10 +454,15 @@ expr_equ
  | expr_equ EXCLAMEQUAL expr_cmp
  ;
 expr_cmp
- : expr_or
- | expr_cmp '<' expr_or {}
- | expr_cmp '>' expr_or {}
+ : expr_cmp_n
+ | expr_cmp '<' expr_cmp_n {}
+ | expr_cmp '>' expr_cmp_n {}
+ | expr_cmp GTEQUAL expr_cmp_n {}
+ | expr_cmp LTEQUAL expr_cmp_n {}
  ;
+
+expr_cmp_n: expr_or;
+
 expr_or: expr_and | expr_or '|' expr_and { };
 expr_and: expr_xor | expr_and '&' expr_xor { };
 expr_xor: expr_8 | expr_xor '^' expr_8 { };
@@ -402,7 +489,7 @@ expr_11n: expr_12;
 expr_12
  : expr_fc
  | '-' expr_12
- | '-' expr_12
+ | '!' expr_12
  | '*' expr_12
 /* | RWD_box expr_12 */
  | '&' expr_12
@@ -413,33 +500,54 @@ expr_12
 
 expr_fc
  : expr_value
- | expr_fc '(' ')'
+ | expr_fc '(' expr_list ')'
  | expr_fc '[' expr ']'
  | expr_fc '.' INTEGER
- | expr_fc '.' expr_path_seg '(' ')'
+ | expr_fc '.' expr_path_seg '(' expr_list ')'
  | expr_fc '.' expr_path_seg
 
 expr_value
  : CHARLIT | INTEGER | FLOAT | STRING
+ | expr_blocks
  | expr_path '(' expr_list ')'	{ bnf_trace("function call"); }
  | expr_path '{' struct_literal_list '}'
+ | expr_path '{' struct_literal_list ',' DOUBLEDOT expr_0 '}'
  | expr_path
  | RWD_self
  | '(' expr ')'
+ | '(' ')'
+ | '(' expr ',' expr_list ')'
  | MACRO tt_paren	{ bnf_trace("Expr macro invocation"); }
+ | '|' pattern_list '|' expr
+ | DOUBLEPIPE expr
  ;
 
 expr_list: expr_list ',' expr | expr | /* mt */;
 
+struct_literal_ent: IDENT | IDENT ':' expr;
 struct_literal_list
- : struct_literal_list IDENT ':' expr
- | struct_literal_list IDENT ':' expr ','
- | ;
-
+ : struct_literal_list ',' struct_literal_ent
+ | struct_literal_ent
+ ;
 
 tt_list: | tt_list tt_item;
 tt_item: tt_paren | tt_brace | tt_square | tt_tok;
-tt_tok: IDENT | '+' | '-' | '.' | '!' | RWD_self;
+tt_tok
+ : IDENT | STRING | CHARLIT | LIFETIME | INTEGER | MACRO
+ | '+' | '*' | '/' | '!' | ',' | ';' | '#'
+ | RWD_self | RWD_super | RWD_mut | RWD_ref | RWD_let | RWD_where
+ | RWD_for | RWD_while | RWD_loop | RWD_if | RWD_else | RWD_match | RWD_return
+ | RWD_impl | RWD_pub | RWD_struct | RWD_enum | RWD_fn | RWD_type | RWD_static | RWD_const
+ | '-' | THINARROW
+ | '&' | DOUBLEAMP
+ | ':' | DOUBLECOLON
+ | '|' | DOUBLEPIPE
+ | '=' | DOUBLEEQUAL | FATARROW
+ | '<' | DOUBLELT
+ | '>' | DOUBLEGT
+ | '.' | DOUBLEDOT | TRIPLEDOT
+ | '$'
+ ;
 tt_paren: '(' tt_list ')';
 tt_brace: '{' tt_list '}';
 tt_square: '[' tt_list ']';

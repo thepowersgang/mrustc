@@ -4,9 +4,20 @@
 void yyerror(const char *s);
 extern int yydebug;
 
-#define YY_DECL	int yylex(int force_ret)
+int rustbnf_forcetoken = 0;
+#define YY_DECL	int yylex_inner()
 
-#define YY_USER_ACTION	if(force_ret>0)	return force_ret;
+int yylex() {
+	if(rustbnf_forcetoken>0) {
+		int rv = rustbnf_forcetoken;
+		rustbnf_forcetoken = 0;
+		return rv;
+	}
+	else {
+		return yylex_inner();
+	}
+}
+
 
 %}
 
@@ -17,6 +28,7 @@ ident_c	[a-zA-Z_]
 
 "//"[^/].*\n	{ yylineno += 1; }
 "///".*\n	{ yylineno += 1; }	// TODO: Handle /// by desugaring
+"/*"[^*]([^(\*/)])*"*/"	{ const char *c; for(c = yytext; *c; c ++) if( *c == '\n') yylineno += 1; }
 \n	{ yylineno += 1; }
 \r	/* */
 [ \t]	/* */
@@ -36,6 +48,8 @@ ident_c	[a-zA-Z_]
 "as"	{ return RWD_as; }
 "mut"	{ return RWD_mut; }
 "pub"	{ return RWD_pub; }
+"where"	{ return RWD_where; }
+"extern"	{ return RWD_extern; }
 
 "let"	{ return RWD_let; }
 "ref"	{ return RWD_ref; }
@@ -49,21 +63,33 @@ ident_c	[a-zA-Z_]
 "loop"	{ return RWD_loop; }
 "while"	{ return RWD_while; }
 "for"	{ return RWD_for; }
+"unsafe" { return RWD_unsafe; }
+"return" { return RWD_return; }
+"break" { return RWD_break; }
+"continue" { return RWD_continue; }
 
 "::"	{ return DOUBLECOLON; }
 "->"	{ return THINARROW; }
 "=>"	{ return FATARROW; }
-"#!["	{ return SUPER_ATTR; }
-"#["	{ return SUB_ATTR; }
 
 "=="	{ return DOUBLEEQUAL; }
 "!="	{ return EXCLAMEQUAL; }
+">="	{ return GTEQUAL; }
+"<="	{ return LTEQUAL; }
+"+="	{ return PLUSEQUAL; }
+"-="	{ return MINUSEQUAL; }
+"*="	{ return STAREQUAL; }
+"/="	{ return SLASHEQUAL; }
 
 "&&"	{ return DOUBLEAMP; }
 "||"	{ return DOUBLEPIPE; }
 "<<"	{ return DOUBLELT; }
 ">>"	{ return DOUBLEGT; }
+".."	{ return DOUBLEDOT; }
+"..."	{ return TRIPLEDOT; }
 
+"#"	{ return *yytext; }
+"$"	{ return *yytext; }
 "&"	{ return *yytext; }
 "|"	{ return *yytext; }
 "!"	{ return *yytext; }
@@ -77,19 +103,26 @@ ident_c	[a-zA-Z_]
 "<"	{ return *yytext; }
 ">"	{ return *yytext; }
 ","	{ return *yytext; }
+"/"	{ return *yytext; }
+"*"	{ return *yytext; }
+"+"	{ return *yytext; }
+"-"	{ return *yytext; }
 
 {ident_c}({ident_c}|[0-9])*	{ yylval.text = strdup(yytext); return IDENT; }
 {ident_c}({ident_c}|[0-9])*"!"	{ yylval.text = strdup(yytext); return MACRO; }
+'{ident_c}{ident_c}*	{ yylval.text = strdup(yytext+1); return LIFETIME; }
 [0-9]{dec_digit}*"."{dec_digit}+	{ yylval.realnum = strtod(yytext, NULL); return FLOAT; }
 [0-9]{dec_digit}*	{ yylval.integer = strtoull(yytext, NULL, 0); return INTEGER; }
 0x[0-9a-fA-F]*	{ yylval.integer = strtoull(yytext, NULL, 0); return INTEGER; }
 
-'(\\.|[^\\'])+'	{ return CHARLIT; }
+[b]'(.|\\['rn])'	{ yylval.text = strdup(yytext); return CHARLIT; }
+\"([^"])+\"	{ yylval.text = strdup(yytext); return STRING; }
 
 .	{ fprintf(stderr, "\x1b[31m" "ERROR: Invalid character '%c' on line %i\x1b[0m\n", *yytext, yylineno); exit(1); }
 
 %%
 int main() {
+	yylineno = 1;
 	yydebug = (getenv("BNFDEBUG") != NULL);
 	yyparse();
 	return 0;

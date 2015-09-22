@@ -3,9 +3,12 @@
 
 all: test.bin
 
-test: test.bin ../samples/1.rs
-	./test.bin < ../samples/1.rs
-#	./test.bin < ../../../RustPorts/OS/libcore/lib.rs
+TSTFILE := ../samples/1.rs
+TSTFILE := ../../rust_os/libcore/lib.rs
+TSTFILE := ../../rust_os/libcore/str/mod.rs
+
+test: test.bin $(TSTFILE)
+	./test.bin < $(TSTFILE)
 
 test.bin: rust.tab.c rust.lex.c
 	gcc rust.tab.c rust.lex.c -o $@
