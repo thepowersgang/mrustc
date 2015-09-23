@@ -88,6 +88,8 @@ tt_paren: '(' tt_list ')';
 tt_brace: '{' tt_list '}';
 tt_square: '[' tt_list ']';
 
+tt_group_item: tt_paren ';' | tt_brace | tt_square ';';
+
 super_attrs : | super_attrs super_attr;
 
 opt_pub
@@ -95,6 +97,9 @@ opt_pub
  | /* mt */	{ bnf_trace("private"); }
  ;
 opt_comma: | ',';
+opt_semicolon: | ';';
+opt_unsafe: | RWD_unsafe;
+opt_lifetime: | LIFETIME;
 
 module_body
  : module_body attrs item
@@ -131,9 +136,9 @@ item
  | opt_pub RWD_const const_def
  | opt_pub RWD_struct struct_def
  | opt_pub RWD_enum enum_def
- | opt_pub RWD_trait trait_def
+ | opt_pub opt_unsafe RWD_trait trait_def
  | RWD_extern extern_block
- | RWD_impl impl_def
+ | opt_unsafe RWD_impl impl_def
  | MACRO IDENT tt_brace
  | MACRO tt_brace
  | MACRO tt_paren ';'
@@ -153,19 +158,35 @@ module_def
 fn_def: fn_def_hdr code	{ bnf_trace("function defined"); };
 fn_def_hdr: IDENT generic_def '(' fn_def_args ')' fn_def_ret where_clause	{ bnf_trace("function '%s'", $1); };
 
-fn_def_ret: /* -> () */ | THINARROW type | THINARROW '!';
+fn_def_hdr_PROTO: IDENT generic_def '(' fn_def_args_PROTO ')' fn_def_ret where_clause	{ bnf_trace("function '%s'", $1); };
+
+fn_def_ret
+ : /* -> () */
+ | THINARROW type
+ | THINARROW '!'
+ ;
 
 fn_def_args: /* empty */ | fn_def_self | fn_def_self ',' fn_def_arg_list | fn_def_arg_list;
+fn_def_args_PROTO: /* empty */ | fn_def_self | fn_def_self ',' fn_def_arg_list_PROTO | fn_def_arg_list_PROTO;
+
 fn_def_self
  : RWD_self
+ | RWD_self ':' type
  | RWD_mut RWD_self
+ | RWD_mut RWD_self ':' type
  | '&' RWD_self
  | '&' LIFETIME RWD_self
  | '&' RWD_mut RWD_self
  | '&' LIFETIME RWD_mut RWD_self
  ;
 fn_def_arg_list: fn_def_arg | fn_def_arg_list ',' fn_def_arg;
-fn_def_arg : pattern ':' type;
+fn_def_arg: pattern ':' type;
+
+fn_def_arg_list_PROTO: fn_def_arg_PROTO | fn_def_arg_list_PROTO ',' fn_def_arg_PROTO;
+fn_def_arg_PROTO
+ : IDENT ':' type
+ | type
+ ;
 
 fn_qualifiers
  :
@@ -214,9 +235,9 @@ const_value
 
 /* --- Struct --- */
 struct_def
- : IDENT generic_def ';'	{ bnf_trace("unit-like struct"); }
- | IDENT generic_def '(' tuple_struct_def_items opt_comma ')' ';'	{ bnf_trace("tuple struct"); }
- | IDENT generic_def '{' struct_def_items opt_comma '}'	{ bnf_trace("normal struct"); }
+ : IDENT generic_def where_clause ';'	{ bnf_trace("unit-like struct"); }
+ | IDENT generic_def '(' tuple_struct_def_items opt_comma ')' where_clause ';'	{ bnf_trace("tuple struct"); }
+ | IDENT generic_def where_clause '{' struct_def_items opt_comma '}'	{ bnf_trace("normal struct"); }
  ;
 
 tuple_struct_def_items
@@ -232,8 +253,15 @@ struct_def_items
 struct_def_item: attrs opt_pub IDENT ':' type;
 
 /* --- Enum --- */
-enum_def:
+enum_def: IDENT generic_def where_clause '{' enum_variants '}';
+enum_variants: | enum_variant_list | enum_variant_list ',';
+enum_variant_list: enum_variant | enum_variant_list ',' enum_variant;
+enum_variant
+ : IDENT
+ | IDENT '(' type_list ')'
+ | IDENT '{' struct_def_items '}'
  ;
+
 /* --- Trait --- */
 trait_def: IDENT generic_def trait_bounds '{' trait_items '}';
 trait_bounds: ':' type_path | ;
@@ -243,7 +271,8 @@ trait_items: | trait_items attrs trait_item;
 trait_item
  : RWD_type IDENT ';'
  | RWD_type IDENT ':' trait_bound_list ';'
- | fn_qualifiers RWD_fn fn_def_hdr ';'
+ | fn_qualifiers RWD_fn fn_def_hdr_PROTO ';'
+ | fn_qualifiers RWD_fn fn_def_hdr_PROTO code 
  ;
 
 /* --- Impl --- */
@@ -257,6 +286,7 @@ impl_items: | impl_items attrs impl_item;
 impl_item
  : opt_pub fn_qualifiers RWD_fn fn_def
  | opt_pub RWD_type generic_def IDENT '=' type ';'
+ | MACRO tt_group_item
  ;
 
 
@@ -311,7 +341,10 @@ expr_path_seg
 type_path
  : ufcs_path DOUBLECOLON IDENT
  | DOUBLECOLON type_path_segs
+ | RWD_super DOUBLECOLON type_path_segs
+ | RWD_self DOUBLECOLON type_path_segs
  | type_path_segs
+ | type_path_segs '(' type_list ')' fn_def_ret
  ;
 ufcs_path: '<' type RWD_as type_path '>';
 type_path_segs
@@ -402,11 +435,12 @@ pattern_list
 Expressions!
 =========================================
 */
-code: '{' block_contents '}'	{ bnf_trace("code parsed"); };
+code: block	{ bnf_trace("code parsed"); };
+
+block: '{' block_contents '}';
 
 block_contents
- :
- | block_lines
+ : block_lines
  | block_lines tail_expr
  ;
 tail_expr
@@ -426,6 +460,7 @@ block_line
  | attrs item
  | expr_blocks
  | stmt
+ | LIFETIME ':' loop_block
  ;
 
 opt_type_annotation: | ':' type;
@@ -449,14 +484,16 @@ expr_blocks
  : RWD_match expr_NOSTRLIT '{' match_arms opt_comma '}'	{ }
  | RWD_if if_block
  | RWD_unsafe '{' block_contents '}' { }
- | RWD_loop '{' block_contents '}' { }
- | RWD_while expr_NOSTRLIT '{' block_contents '}' { }
- | RWD_for pattern RWD_in expr_NOSTRLIT '{' block_contents '}' { }
- | flow_control
- | '{' block_contents '}'
+/* | flow_control */
+ | loop_block
+ | block
  ;
-opt_lifetime: | LIFETIME;
-opt_semicolon: | ';';
+loop_block
+ : RWD_loop '{' block_contents '}' { }
+ | RWD_while expr_NOSTRLIT '{' block_contents '}' { }
+ | RWD_while RWD_let pattern '=' expr_NOSTRLIT '{' block_contents '}' { }
+ | RWD_for pattern RWD_in expr_NOSTRLIT '{' block_contents '}' { }
+ ;
 
 if_block
  : if_block_head {}
@@ -482,10 +519,11 @@ match_patterns
  | match_pattern
  ;
 match_arm
- : match_patterns FATARROW expr	{ bnf_trace("match_arm"); }
+ : match_arm_expr
  | match_arm_brace
  ;
-match_arm_brace : match_patterns FATARROW '{' block_contents '}';
+match_arm_brace : match_patterns FATARROW '{' block_contents '}'	{ };
+match_arm_expr: match_patterns FATARROW tail_expr	{ bnf_trace("match_arm"); };
 
 
 /* rust_expr.y.h inserted */

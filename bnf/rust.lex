@@ -31,8 +31,7 @@ ident_c	[a-zA-Z_]
 
 "//"[^/].*\n	{ }
 "///".*\n	{ /* TODO: Handle /// by desugaring */ }
-"/*"[^*]([^(\*/)])*"*/"	{ }
-"/**"([^(\*/)])*"*/"	{ /* TODO: handle / ** by desugaring */ }
+"/*"	{ comment(); /* TODO: Handle doc comments */ }
 \n	/* */
 \r	/* */
 [ \t]	/* */
@@ -126,16 +125,45 @@ b?'(.|\\['rn])'	{ yylval.text = strdup(yytext); return CHARLIT; }
 .	{ fprintf(stderr, "\x1b[31m" "ERROR: Invalid character '%c' on line %i\x1b[0m\n", *yytext, yylineno); exit(1); }
 
 %%
-int main() {
+const char *gsCurrentFilename = "-";
+int main(int argc, char *argv[]) {
+	if(argc < 2 || strcmp(argv[1], "-") == 0) {
+		yyin = stdin;
+	}
+	else {
+		gsCurrentFilename = argv[1];
+		yyin = fopen(argv[1], "r");
+		if( !yyin ) {
+			fprintf(stderr, "ERROR: Unable to open '%s': '%s'", argv[1], strerror(errno));
+			return 1;
+		}
+	}
 	yylineno = 1;
 	yydebug = (getenv("BNFDEBUG") != NULL);
 	yyparse();
 	return 0;
 }
 void yyerror(const char *s) {
-	fprintf(stderr, "\x1b[31mERROR: ?:%d: yyerror(%s)\x1b[0m\n", yylineno, s);
+	fprintf(stderr, "\x1b[31mERROR: %s:%d: yyerror(%s)\x1b[0m\n", gsCurrentFilename, yylineno, s);
 }
 int yywrap(void) {
 	printf("done\n");
 	return 1;
+}
+
+// Thanks stackoverflow: http://www.lysator.liu.se/c/ANSI-C-grammar-l.html
+void comment() {
+    char c, c1;
+
+loop:
+    while ((c = input()) != '*' && c != 0)
+        putchar(c);
+
+    if ((c1 = input()) != '/' && c != 0) {
+        unput(c1);
+        goto loop;
+    }
+
+    if (c != 0)
+        putchar(c1);
 }
