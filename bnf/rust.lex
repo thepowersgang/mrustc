@@ -121,7 +121,7 @@ ident_c	[a-zA-Z_]
 0x[0-9a-fA-F]*	{ yylval.integer = strtoull(yytext, NULL, 0); return INTEGER; }
 
 b?'(.|\\['rn])'	{ yylval.text = strdup(yytext); return CHARLIT; }
-\"([^"])+\"	{ yylval.text = strdup(yytext); return STRING; }
+\"([^"])*\"	{ yylval.text = strdup(yytext); return STRING; }
 
 .	{ fprintf(stderr, "\x1b[31m" "ERROR: Invalid character '%c' on line %i\x1b[0m\n", *yytext, yylineno); exit(1); }
 

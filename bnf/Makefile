@@ -6,6 +6,7 @@ all: test.bin
 TSTFILE := ../samples/1.rs
 TSTFILE := ../../rust_os/libcore/lib.rs
 TSTFILE := ../../rust_os/libcore/str/mod.rs
+TSTFILE := ../../rust_os/libcore/str/pattern.rs
 
 test: test.bin $(TSTFILE)
 	./test.bin < $(TSTFILE)

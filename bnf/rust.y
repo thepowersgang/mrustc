@@ -69,10 +69,11 @@ tt_list: | tt_list tt_item;
 tt_item: tt_paren | tt_brace | tt_square | tt_tok;
 tt_tok
  : IDENT | STRING | CHARLIT | LIFETIME | INTEGER | MACRO
- | '+' | '*' | '/' | '!' | ',' | ';' | '#'
+ | '+' | '*' | '/' | ',' | ';' | '#'
  | RWD_self | RWD_super | RWD_mut | RWD_ref | RWD_let | RWD_where
  | RWD_for | RWD_while | RWD_loop | RWD_if | RWD_else | RWD_match | RWD_return
  | RWD_impl | RWD_pub | RWD_struct | RWD_enum | RWD_fn | RWD_type | RWD_static | RWD_const
+ | '!' | EXCLAMEQUAL
  | '-' | THINARROW
  | '&' | DOUBLEAMP
  | ':' | DOUBLECOLON
@@ -422,7 +423,7 @@ block_lines: | block_lines block_line;
 block_line
  : RWD_let let_binding ';'
  | MACRO IDENT tt_brace
- | attr item
+ | attrs item
  | expr_blocks
  | stmt
  ;
