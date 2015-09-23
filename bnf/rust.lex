@@ -1,3 +1,6 @@
+
+%option yylineno
+
 %{
 #include "rust.tab.h"
 #include <stdio.h>
@@ -26,10 +29,11 @@ ident_c	[a-zA-Z_]
 
 %%
 
-"//"[^/].*\n	{ yylineno += 1; }
-"///".*\n	{ yylineno += 1; }	// TODO: Handle /// by desugaring
-"/*"[^*]([^(\*/)])*"*/"	{ const char *c; for(c = yytext; *c; c ++) if( *c == '\n') yylineno += 1; }
-\n	{ yylineno += 1; }
+"//"[^/].*\n	{ }
+"///".*\n	{ /* TODO: Handle /// by desugaring */ }
+"/*"[^*]([^(\*/)])*"*/"	{ }
+"/**"([^(\*/)])*"*/"	{ /* TODO: handle / ** by desugaring */ }
+\n	/* */
 \r	/* */
 [ \t]	/* */
 
@@ -46,6 +50,7 @@ ident_c	[a-zA-Z_]
 
 "fn"	{ return RWD_fn; }
 "as"	{ return RWD_as; }
+"in"	{ return RWD_in; }
 "mut"	{ return RWD_mut; }
 "pub"	{ return RWD_pub; }
 "where"	{ return RWD_where; }
@@ -115,7 +120,7 @@ ident_c	[a-zA-Z_]
 [0-9]{dec_digit}*	{ yylval.integer = strtoull(yytext, NULL, 0); return INTEGER; }
 0x[0-9a-fA-F]*	{ yylval.integer = strtoull(yytext, NULL, 0); return INTEGER; }
 
-[b]'(.|\\['rn])'	{ yylval.text = strdup(yytext); return CHARLIT; }
+b?'(.|\\['rn])'	{ yylval.text = strdup(yytext); return CHARLIT; }
 \"([^"])+\"	{ yylval.text = strdup(yytext); return STRING; }
 
 .	{ fprintf(stderr, "\x1b[31m" "ERROR: Invalid character '%c' on line %i\x1b[0m\n", *yytext, yylineno); exit(1); }

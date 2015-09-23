@@ -1,14 +1,14 @@
 %token <text> IDENT LIFETIME STRING MACRO
 %token <integer> INTEGER CHARLIT
 %token <realnum> FLOAT 
-%token SUPER_ATTR SUB_ATTR DOC_COMMENT SUPER_DOC_COMMENT
+%token DOC_COMMENT SUPER_DOC_COMMENT
 %token DOUBLECOLON THINARROW FATARROW DOUBLEDOT TRIPLEDOT
 %token DOUBLEEQUAL EXCLAMEQUAL DOUBLEPIPE DOUBLEAMP
 %token GTEQUAL LTEQUAL
 %token PLUSEQUAL MINUSEQUAL STAREQUAL SLASHEQUAL
 %token DOUBLELT DOUBLEGT
 %token RWD_mod RWD_fn RWD_const RWD_static RWD_use RWD_struct RWD_enum RWD_trait RWD_impl RWD_type
-%token RWD_as RWD_mut RWD_ref RWD_pub RWD_where RWD_unsafe
+%token RWD_as RWD_in RWD_mut RWD_ref RWD_pub RWD_where RWD_unsafe
 %token RWD_let
 %token RWD_self RWD_super
 %token RWD_match RWD_if RWD_while RWD_loop RWD_for RWD_else
@@ -64,6 +64,28 @@ Root
 ==========================
 */
 crate : super_attrs module_body;
+
+tt_list: | tt_list tt_item;
+tt_item: tt_paren | tt_brace | tt_square | tt_tok;
+tt_tok
+ : IDENT | STRING | CHARLIT | LIFETIME | INTEGER | MACRO
+ | '+' | '*' | '/' | '!' | ',' | ';' | '#'
+ | RWD_self | RWD_super | RWD_mut | RWD_ref | RWD_let | RWD_where
+ | RWD_for | RWD_while | RWD_loop | RWD_if | RWD_else | RWD_match | RWD_return
+ | RWD_impl | RWD_pub | RWD_struct | RWD_enum | RWD_fn | RWD_type | RWD_static | RWD_const
+ | '-' | THINARROW
+ | '&' | DOUBLEAMP
+ | ':' | DOUBLECOLON
+ | '|' | DOUBLEPIPE
+ | '=' | DOUBLEEQUAL | FATARROW
+ | '<' | DOUBLELT | LTEQUAL
+ | '>' | DOUBLEGT | GTEQUAL
+ | '.' | DOUBLEDOT | TRIPLEDOT
+ | '$'
+ ;
+tt_paren: '(' tt_list ')';
+tt_brace: '{' tt_list '}';
+tt_square: '[' tt_list ']';
 
 super_attrs : | super_attrs super_attr;
 
@@ -130,14 +152,16 @@ module_def
 fn_def: fn_def_hdr code	{ bnf_trace("function defined"); };
 fn_def_hdr: IDENT generic_def '(' fn_def_args ')' fn_def_ret where_clause	{ bnf_trace("function '%s'", $1); };
 
-fn_def_ret: /* -> () */ | THINARROW type;
+fn_def_ret: /* -> () */ | THINARROW type | THINARROW '!';
 
 fn_def_args: /* empty */ | fn_def_self | fn_def_self ',' fn_def_arg_list | fn_def_arg_list;
 fn_def_self
  : RWD_self
  | RWD_mut RWD_self
  | '&' RWD_self
+ | '&' LIFETIME RWD_self
  | '&' RWD_mut RWD_self
+ | '&' LIFETIME RWD_mut RWD_self
  ;
 fn_def_arg_list: fn_def_arg | fn_def_arg_list ',' fn_def_arg;
 fn_def_arg : pattern ':' type;
@@ -268,6 +292,8 @@ use_path
 expr_path
  : ufcs_path DOUBLECOLON IDENT
  | DOUBLECOLON expr_path_segs
+ | RWD_self DOUBLECOLON expr_path_segs
+ | RWD_super DOUBLECOLON expr_path_segs
  | expr_path_segs
  ;
 expr_path_segs
@@ -350,16 +376,18 @@ pattern
 nonbind_pattern
  : '_'	{ }
  | DOUBLEDOT	{ }
- | STRING { }
- | INTEGER { }
- | CHARLIT { }
  | struct_pattern
  | tuple_pattern
-/* | expr_path '(' refutable_pattern_list opt_comma ')'
- | expr_path '{' refutable_struct_patern '}' */
- | expr_path
+ | value_pattern
+ | value_pattern TRIPLEDOT value_pattern
  | '&' pattern
  | '&' RWD_mut pattern
+ ;
+value_pattern
+ : expr_path
+ | INTEGER
+ | CHARLIT
+ | STRING
  ;
 
 pattern_list
@@ -378,7 +406,17 @@ code: '{' block_contents '}'	{ bnf_trace("code parsed"); };
 block_contents
  :
  | block_lines
- | block_lines expr
+ | block_lines tail_expr
+ ;
+tail_expr
+ : expr
+ | flow_control
+ ;
+flow_control
+ : RWD_return opt_semicolon {}
+ | RWD_return expr_0 opt_semicolon {}
+ | RWD_break opt_lifetime opt_semicolon {}
+ | RWD_continue opt_lifetime opt_semicolon {}
  ;
 block_lines: | block_lines block_line;
 block_line
@@ -398,130 +436,6 @@ stmt
  : expr ';'
  ;
 
-expr: expr_assign;
-
-expr_assign
- : expr_0 assign_op expr_0
- | expr_0
- ;
-assign_op: '=' | PLUSEQUAL | MINUSEQUAL | STAREQUAL | SLASHEQUAL;
-
-expr_blocks
- : RWD_match expr_path '{' match_arms opt_comma '}'	{ }
- | RWD_match expr '{' match_arms opt_comma '}'	{ }
- | RWD_if if_block
- | RWD_unsafe '{' block_contents '}' { }
- | RWD_loop '{' block_contents '}' { }
- | RWD_while expr '{' block_contents '}' { }
- | RWD_return {}
- | RWD_return expr_0 {}
- | '{' block_contents '}'
- ;
-
-if_block
- : expr code { }
- | expr code RWD_else code { }
- | expr code RWD_else RWD_if if_block { }
- ;
-match_arms
- : match_arm ',' match_arms
- | match_arm_brace match_arms
- | match_arm
- | match_arm ','
- ;
-match_pattern: pattern | pattern RWD_if expr_0;
-match_arm
- : match_pattern FATARROW expr	{ bnf_trace("match_arm"); }
- | match_arm_brace
- ;
-match_arm_brace : match_pattern FATARROW '{' block_contents '}';
-
-expr_0: expr_range;
-
-expr_range
- : expr_range_n
- | expr_range_n DOUBLEDOT
- | DOUBLEDOT expr_range_n
- | expr_range_n DOUBLEDOT expr_range_n
- ;
-expr_range_n: expr_bor;
-
-expr_bor: expr_band | expr_bor DOUBLEPIPE expr_band { } ;
-expr_band: expr_equ | expr_band DOUBLEAMP expr_equ { } ;
-expr_equ
- : expr_cmp
- | expr_equ DOUBLEEQUAL expr_cmp
- | expr_equ EXCLAMEQUAL expr_cmp
- ;
-expr_cmp
- : expr_cmp_n
- | expr_cmp '<' expr_cmp_n {}
- | expr_cmp '>' expr_cmp_n {}
- | expr_cmp GTEQUAL expr_cmp_n {}
- | expr_cmp LTEQUAL expr_cmp_n {}
- ;
-
-expr_cmp_n: expr_or;
-
-expr_or: expr_and | expr_or '|' expr_and { };
-expr_and: expr_xor | expr_and '&' expr_xor { };
-expr_xor: expr_8 | expr_xor '^' expr_8 { };
-expr_8
- : expr_9
- | expr_8 DOUBLELT expr_9 {}
- | expr_8 DOUBLEGT expr_9 {}
- ;
-expr_9
- : expr_cast
- | expr_9 '+' expr_cast {}
- | expr_9 '-' expr_cast {}
- ;
-/* 10: Cast */
-expr_cast: expr_11 | expr_cast RWD_as type { bnf_trace("expr:cast"); };
-/* 11: Times/Div/Modulo */
-expr_11
- : expr_11n
- | expr_11 '*' expr_11n {}
- | expr_11 '/' expr_11n {}
- | expr_11 '%' expr_11n {}
- ;
-expr_11n: expr_12;
-expr_12
- : expr_fc
- | '-' expr_12
- | '!' expr_12
- | '*' expr_12
-/* | RWD_box expr_12 */
- | '&' expr_12
- | '&' RWD_mut expr_12
- | DOUBLEAMP expr_12 { }
- | DOUBLEAMP RWD_mut expr_12 { }
- ;
-
-expr_fc
- : expr_value
- | expr_fc '(' expr_list ')'
- | expr_fc '[' expr ']'
- | expr_fc '.' INTEGER
- | expr_fc '.' expr_path_seg '(' expr_list ')'
- | expr_fc '.' expr_path_seg
-
-expr_value
- : CHARLIT | INTEGER | FLOAT | STRING
- | expr_blocks
- | expr_path '(' expr_list ')'	{ bnf_trace("function call"); }
- | expr_path '{' struct_literal_list '}'
- | expr_path '{' struct_literal_list ',' DOUBLEDOT expr_0 '}'
- | expr_path
- | RWD_self
- | '(' expr ')'
- | '(' ')'
- | '(' expr ',' expr_list ')'
- | MACRO tt_paren	{ bnf_trace("Expr macro invocation"); }
- | '|' pattern_list '|' expr
- | DOUBLEPIPE expr
- ;
-
 expr_list: expr_list ',' expr | expr | /* mt */;
 
 struct_literal_ent: IDENT | IDENT ':' expr;
@@ -530,25 +444,47 @@ struct_literal_list
  | struct_literal_ent
  ;
 
-tt_list: | tt_list tt_item;
-tt_item: tt_paren | tt_brace | tt_square | tt_tok;
-tt_tok
- : IDENT | STRING | CHARLIT | LIFETIME | INTEGER | MACRO
- | '+' | '*' | '/' | '!' | ',' | ';' | '#'
- | RWD_self | RWD_super | RWD_mut | RWD_ref | RWD_let | RWD_where
- | RWD_for | RWD_while | RWD_loop | RWD_if | RWD_else | RWD_match | RWD_return
- | RWD_impl | RWD_pub | RWD_struct | RWD_enum | RWD_fn | RWD_type | RWD_static | RWD_const
- | '-' | THINARROW
- | '&' | DOUBLEAMP
- | ':' | DOUBLECOLON
- | '|' | DOUBLEPIPE
- | '=' | DOUBLEEQUAL | FATARROW
- | '<' | DOUBLELT
- | '>' | DOUBLEGT
- | '.' | DOUBLEDOT | TRIPLEDOT
- | '$'
+expr_blocks
+ : RWD_match expr_NOSTRLIT '{' match_arms opt_comma '}'	{ }
+ | RWD_if if_block
+ | RWD_unsafe '{' block_contents '}' { }
+ | RWD_loop '{' block_contents '}' { }
+ | RWD_while expr_NOSTRLIT '{' block_contents '}' { }
+ | RWD_for pattern RWD_in expr_NOSTRLIT '{' block_contents '}' { }
+ | flow_control
+ | '{' block_contents '}'
  ;
-tt_paren: '(' tt_list ')';
-tt_brace: '{' tt_list '}';
-tt_square: '[' tt_list ']';
+opt_lifetime: | LIFETIME;
+opt_semicolon: | ';';
 
+if_block
+ : if_block_head {}
+ | if_block_head RWD_else code { }
+ | if_block_head RWD_else RWD_if if_block { }
+ ;
+if_block_head
+ : expr_NOSTRLIT code {}
+ | RWD_let pattern '=' expr_NOSTRLIT code {}
+ ;
+match_arms
+ : match_arm ',' match_arms
+ | match_arm_brace match_arms
+ | match_arm
+ | match_arm ','
+ ;
+match_pattern
+ : pattern
+ | pattern RWD_if expr_0
+ ;
+match_patterns
+ : match_patterns '|' match_pattern
+ | match_pattern
+ ;
+match_arm
+ : match_patterns FATARROW expr	{ bnf_trace("match_arm"); }
+ | match_arm_brace
+ ;
+match_arm_brace : match_patterns FATARROW '{' block_contents '}';
+
+
+/* rust_expr.y.h inserted */

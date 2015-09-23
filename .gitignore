@@ -3,9 +3,14 @@
 /mrustc.depend
 /mrustc.layout
 /.obj
-*.swp
+*.gch
+*.gch.dep
+*.sw[po]
 /output
 
-/bnf/*.c
-/bnf/*.h
-/bnf/*.output
+/bnf/.rust.y
+/bnf/rust.lex.c
+/bnf/rust.tab.c
+/bnf/rust.tab.h
+/bnf/rust.output
+/bnf/test.bin
