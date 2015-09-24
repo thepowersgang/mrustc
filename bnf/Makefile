@@ -4,10 +4,11 @@
 all: test.bin
 
 TSTFILE := ../samples/1.rs
-TSTFILE := ../../rust_os/libcore/lib.rs ../../rust_os/libcore/str/mod.rs ../../rust_os/libcore/str/pattern.rs
+TSTFILE := $(addprefix ../../rust_os/libcore/, lib.rs str/mod.rs str/pattern.rs borrow.rs any.rs array.rs)
 
 test: test.bin $(TSTFILE)
-	for f in $(TSTFILE); do ./test.bin "$$f"; done
+	$(foreach f,$(TSTFILE), ./test.bin "$f" &&) true
+#	for f in $(TSTFILE); do ./test.bin "$$f"; done
 
 test.bin: rust.tab.c rust.lex.c
 	gcc rust.tab.c rust.lex.c -o $@

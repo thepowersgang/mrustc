@@ -106,6 +106,8 @@ _(expr_value)
  | '(' expr ')'
  | '(' ')'
  | '(' expr ',' expr_list ')'
+ | '[' expr_list opt_comma ']'
+ | '[' expr ';' expr ']'
  | MACRO tt_paren	{ bnf_trace("Expr macro invocation"); }
  | '|' pattern_list '|' expr
  | DOUBLEPIPE expr

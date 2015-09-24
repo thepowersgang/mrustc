@@ -2,6 +2,7 @@
 %token <integer> INTEGER CHARLIT
 %token <realnum> FLOAT 
 %token DOC_COMMENT SUPER_DOC_COMMENT
+%token HASHBANG
 %token DOUBLECOLON THINARROW FATARROW DOUBLEDOT TRIPLEDOT
 %token DOUBLEEQUAL EXCLAMEQUAL DOUBLEPIPE DOUBLEAMP
 %token GTEQUAL LTEQUAL
@@ -53,6 +54,8 @@ static void yyprint(FILE *outstream, int type, YYSTYPE value)
 	}
 }
 
+
+// semi-evil hack used to break '>>' apart into '>' '>'
 extern int rustbnf_forcetoken;
 %}
 
@@ -93,8 +96,8 @@ tt_group_item: tt_paren ';' | tt_brace | tt_square ';';
 super_attrs : | super_attrs super_attr;
 
 opt_pub
- : RWD_pub	{ bnf_trace("public"); }
- | /* mt */	{ bnf_trace("private"); }
+ : /* mt */	{ bnf_trace("private"); }
+ | RWD_pub	{ bnf_trace("public"); }
  ;
 opt_comma: | ',';
 opt_semicolon: | ';';
@@ -108,7 +111,7 @@ module_body
 attrs: attrs attr | ;
 
 super_attr
- : '#' '!' '[' meta_items ']'
+ : HASHBANG /*'#' '!'*/ '[' meta_items ']'
  | SUPER_DOC_COMMENT
  ;
 attr
@@ -129,19 +132,34 @@ Root Items
 ==========================
 */
 item
- : opt_pub RWD_mod module_def
- | opt_pub fn_qualifiers RWD_fn fn_def
- | opt_pub RWD_use use_def
- | opt_pub RWD_static static_def
- | opt_pub RWD_const const_def
- | opt_pub RWD_struct struct_def
- | opt_pub RWD_enum enum_def
- | opt_pub opt_unsafe RWD_trait trait_def
+ : RWD_pub vis_item	{ /* $2.set_pub(); */ }
+ |         vis_item
+ | RWD_pub RWD_unsafe unsafe_vis_item	{ /* $2.set_pub(); */ }
+ |         RWD_unsafe unsafe_item
+ | RWD_impl impl_def
  | RWD_extern extern_block
- | opt_unsafe RWD_impl impl_def
  | MACRO IDENT tt_brace
  | MACRO tt_brace
  | MACRO tt_paren ';'
+ ;
+/* Items for which visibility is valid */
+vis_item
+ : RWD_mod module_def
+ | RWD_use use_def
+ | RWD_static static_def
+ | RWD_const const_def
+ | RWD_struct struct_def
+ | RWD_enum enum_def
+ | unsafe_vis_item
+ ;
+/* Possibily unsafe visibility item */
+unsafe_vis_item
+ : fn_qualifiers RWD_fn fn_def
+ | RWD_trait trait_def
+ ;
+unsafe_item
+ : unsafe_vis_item
+ | RWD_impl impl_def
  ;
 
 extern_block: extern_abi | '{' extern_items '}';
@@ -191,8 +209,8 @@ fn_def_arg_PROTO
 fn_qualifiers
  :
  | RWD_extern extern_abi
- | RWD_unsafe
  | RWD_const
+ | RWD_unsafe
  | RWD_unsafe RWD_const
  ;
 
@@ -264,15 +282,15 @@ enum_variant
 
 /* --- Trait --- */
 trait_def: IDENT generic_def trait_bounds '{' trait_items '}';
-trait_bounds: ':' type_path | ;
-trait_bound_list: trait_bound_list '+' trait_bound | trait_bound;
-trait_bound: type_path | LIFETIME;
+trait_bounds: ':' trait_bound_list | ;
+trait_bound_list: trait_bound_list '+' bound | bound;
+
 trait_items: | trait_items attrs trait_item;
 trait_item
  : RWD_type IDENT ';'
  | RWD_type IDENT ':' trait_bound_list ';'
- | fn_qualifiers RWD_fn fn_def_hdr_PROTO ';'
- | fn_qualifiers RWD_fn fn_def_hdr_PROTO code 
+ | opt_unsafe fn_qualifiers RWD_fn fn_def_hdr_PROTO ';'
+ | opt_unsafe fn_qualifiers RWD_fn fn_def_hdr_PROTO code 
  ;
 
 /* --- Impl --- */
@@ -284,7 +302,7 @@ impl_def_line
  ;
 impl_items: | impl_items attrs impl_item;
 impl_item
- : opt_pub fn_qualifiers RWD_fn fn_def
+ : opt_pub opt_unsafe fn_qualifiers RWD_fn fn_def
  | opt_pub RWD_type generic_def IDENT '=' type ';'
  | MACRO tt_group_item
  ;
@@ -309,7 +327,7 @@ where_clauses
 where_clause_ent
 	: type ':' bounds;
 bounds: bounds '+' bound | bound;
-bound: LIFETIME | type_path;
+bound: LIFETIME | '?' type_path | type_path;
 
 /*
 =========================================
@@ -365,13 +383,17 @@ Types
 =========================================
 */
 type
+ : trait_list
+ | type_ele
+ ;
+type_ele
  : type_path
- | '&' type
- | '&' LIFETIME type
- | '&' RWD_mut type
- | '&' LIFETIME RWD_mut type
- | '*' RWD_const type
- | '*' RWD_mut type
+ | '&' type_ele
+ | '&' LIFETIME type_ele
+ | '&' RWD_mut type_ele
+ | '&' LIFETIME RWD_mut type_ele
+ | '*' RWD_const type_ele
+ | '*' RWD_mut type_ele
  | '[' type ']'
  | '[' type ';' expr ']'
  | '(' ')'
@@ -379,6 +401,8 @@ type
  | '(' type ',' ')'
  | '(' type ',' type_list ')'
  ;
+trait_list: type_path '+' trait_list_inner;
+trait_list_inner: type_path | trait_list_inner '+' type_path;
 type_list: type_list ',' type | type;
 
 /*
@@ -397,7 +421,7 @@ struct_pattern_items: struct_pattern_items ',' struct_pattern_item | struct_patt
 
 pattern
  : /*IDENT	{ /* maybe bind * / }
- */| IDENT '@' nonbind_pattern
+ |*/ IDENT '@' nonbind_pattern
  | RWD_ref IDENT
  | RWD_ref IDENT '@' nonbind_pattern
  | RWD_mut IDENT
