@@ -3,23 +3,35 @@
 
 all: test.bin
 
-TSTFILE := ../samples/1.rs
-TSTFILE := $(addprefix ../../rust_os/libcore/, lib.rs str/mod.rs str/pattern.rs borrow.rs any.rs array.rs)
+TSTFILES := ../samples/1.rs
+TSTFILES := $(addprefix ../../rust_os/libcore/, lib.rs str/mod.rs str/pattern.rs borrow.rs any.rs array.rs result.rs)
 
-test: test.bin $(TSTFILE)
-	$(foreach f,$(TSTFILE), ./test.bin "$f" &&) true
-#	for f in $(TSTFILE); do ./test.bin "$$f"; done
+test: test.bin $(TSTFILES)
+	$(foreach f,$(TSTFILES), ./test.bin "$f" &&) true
 
-test.bin: rust.tab.c rust.lex.c
-	gcc rust.tab.c rust.lex.c -o $@
+OBJS := rust.tab.o rust.lex.o
+
+test.bin: $(OBJS)
+	g++ -std=c++11 $(OBJS) -o $@
+
+%.o: %.cpp
+	g++  -x c++ -std=c++11 $< -c -o $@ -I .
+%.o: .gen/%.cpp
+	g++  -x c++ -std=c++11 $< -c -o $@ -I .
 	
-rust.tab.c: .rust.y
-	yacc -o $@ $< -d --verbose
-.rust.y: rust.y rust_expr.y.h rust_expr.y_tree.h
+.gen/rust.tab.cpp: .gen/.rust.y
+	@mkdir -p $(dir $@)
+	bison -o $@ $< -d --verbose
+
+.gen/.rust.y: Makefile rust.y rust_expr.y.h rust_tts.y.h
+	@mkdir -p $(dir $@)
 	cat rust.y > $@
 	cpp -P rust_expr.y.h >> $@
+	cpp -P rust_tts.y.h >> $@
 
-rust.lex.c: rust.lex
-	lex -o $@ $<
+
+.gen/rust.lex.cpp: rust.lex
+	@mkdir -p $(dir $@)
+	flex -o $@ $<
 	
 

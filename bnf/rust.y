@@ -1,7 +1,26 @@
-%token <text> IDENT LIFETIME STRING MACRO
-%token <integer> INTEGER CHARLIT
-%token <realnum> FLOAT 
-%token DOC_COMMENT SUPER_DOC_COMMENT
+%define api.value.type union
+%{
+#include <stdio.h>
+#include <stdarg.h>
+#include <assert.h>
+#include <string>
+#include <vector>
+#include <memory>
+
+#include "ast_types.hpp"
+
+extern int yylineno;
+extern int yylex();
+extern void yyerror(const char *s);
+
+// semi-evil hack used to break '>>' apart into '>' '>'
+extern int rustbnf_forcetoken;
+%}
+
+%token <::std::string*> IDENT LIFETIME STRING MACRO
+%token <int> INTEGER CHARLIT
+%token <double> FLOAT 
+%token <::std::string*> DOC_COMMENT SUPER_DOC_COMMENT
 %token HASHBANG
 %token DOUBLECOLON THINARROW FATARROW DOUBLEDOT TRIPLEDOT
 %token DOUBLEEQUAL EXCLAMEQUAL DOUBLEPIPE DOUBLEAMP
@@ -15,23 +34,27 @@
 %token RWD_match RWD_if RWD_while RWD_loop RWD_for RWD_else
 %token RWD_return RWD_break RWD_continue
 %token RWD_extern
-%start crate
+%start module_root
 
-%union {
-	char *text;
-	unsigned long long	integer;
-	double	realnum;
-}
+%type <Module*>	module_root
+%type <int> tt_tok
+%type <TokenTreeList*> tt_list
+%type <TokenTree*> /* tt_item */ tt_paren tt_square tt_brace tt_subtree
+%type <bool>	opt_pub opt_mut
+%type <::std::string*>	opt_lifetime
+%type <AttrList*>	super_attrs attrs
+%type <Attr*>	super_attr attr
+%type < ::std::vector< ::std::unique_ptr<Item> >* >	module_body
+%type <Item*>	item vis_item unsafe_item unsafe_vis_item  impl_def extern_block use_def
+%type <Module*>	module_def
+%type <Global*>	static_def const_def
+%type <MetaItem*>	meta_item
+%type <MetaItems*>	meta_items
 
 %debug
 %error-verbose
 
 %{
-#include <stdio.h>
-#include <stdarg.h>
-#include <assert.h>
-extern int yylineno;
-
 /*static inline*/ void bnf_trace(const char* fmt, ...) {
 	fprintf(stderr, "\x1b[32m""TRACE: ");
 	va_list	args;
@@ -40,23 +63,23 @@ extern int yylineno;
 	va_end(args);
 	fprintf(stderr, "\x1b[0m\n");
 }
-#define YYPRINT(f,t,v)	yyprint(f,t,v)
-static void yyprint(FILE *outstream, int type, YYSTYPE value)
-{
-	switch(type)
-	{
-	case IDENT: fprintf(outstream, "%s", value.text); break;
-	case MACRO: fprintf(outstream, "%s!", value.text); break;
-	case STRING: fprintf(outstream, "\"%s\"", value.text); break;
-	case LIFETIME: fprintf(outstream, "'%s", value.text); break;
-	default:
-		break;
-	}
+/*static inline*/ void bnf_trace(const char* fmt, const ::std::string& s) {
+	bnf_trace(fmt, s.c_str());
 }
+//#define YYPRINT(f,t,v)	yyprint(f,t,v)
+//static void yyprint(FILE *outstream, int type, const YYSTYPE value)
+//{
+//	switch(type)
+//	{
+//	case IDENT: fprintf(outstream, "%s", value.text); break;
+//	case MACRO: fprintf(outstream, "%s!", value.text); break;
+//	case STRING: fprintf(outstream, "\"%s\"", value.text); break;
+//	case LIFETIME: fprintf(outstream, "'%s", value.text); break;
+//	default:
+//		break;
+//	}
+//}
 
-
-// semi-evil hack used to break '>>' apart into '>' '>'
-extern int rustbnf_forcetoken;
 %}
 
 %%
@@ -66,63 +89,62 @@ extern int rustbnf_forcetoken;
 Root
 ==========================
 */
-crate : super_attrs module_body;
+module_root: super_attrs module_body { $$ = new Module(consume($1), consume($2));  };
 
-tt_list: | tt_list tt_item;
-tt_item: tt_paren | tt_brace | tt_square | tt_tok;
-tt_tok
- : IDENT | STRING | CHARLIT | LIFETIME | INTEGER | MACRO
- | '+' | '*' | '/' | ',' | ';' | '#'
- | RWD_self | RWD_super | RWD_mut | RWD_ref | RWD_let | RWD_where
- | RWD_for | RWD_while | RWD_loop | RWD_if | RWD_else | RWD_match | RWD_return
- | RWD_impl | RWD_pub | RWD_struct | RWD_enum | RWD_fn | RWD_type | RWD_static | RWD_const
- | '!' | EXCLAMEQUAL
- | '-' | THINARROW
- | '&' | DOUBLEAMP
- | ':' | DOUBLECOLON
- | '|' | DOUBLEPIPE
- | '=' | DOUBLEEQUAL | FATARROW
- | '<' | DOUBLELT | LTEQUAL
- | '>' | DOUBLEGT | GTEQUAL
- | '.' | DOUBLEDOT | TRIPLEDOT
- | '$'
+tt_list
+ :	{ $$ = new ::std::vector<TokenTree>(); }
+ | tt_list tt_subtree	{ $$ = $1; $$->push_back( consume($2) ); }
+ | tt_list tt_tok	{ $$ = $1; $$->push_back( TokenTree($2) ); }
  ;
-tt_paren: '(' tt_list ')';
-tt_brace: '{' tt_list '}';
-tt_square: '[' tt_list ']';
+tt_subtree: tt_paren | tt_brace | tt_square;
+tt_paren: '(' tt_list ')' { $$ = new TokenTree( consume($2) ); };
+tt_brace: '{' tt_list '}' { $$ = new TokenTree( consume($2) ); };
+tt_square: '[' tt_list ']' { $$ = new TokenTree( consume($2) ); };
+/* tt_tok: SEE rust_tts.y.h */
 
 tt_group_item: tt_paren ';' | tt_brace | tt_square ';';
 
-super_attrs : | super_attrs super_attr;
+super_attrs
+ :	{ $$ = new AttrList(); }
+ | super_attrs super_attr	{ $$ = $1; $$->push_back( consume($2) ); }
+ ;
 
 opt_pub
- : /* mt */	{ bnf_trace("private"); }
- | RWD_pub	{ bnf_trace("public"); }
+ : /* mt */	{ $$ = false; bnf_trace("private"); }
+ | RWD_pub	{ $$ = true; bnf_trace("public"); }
  ;
 opt_comma: | ',';
 opt_semicolon: | ';';
 opt_unsafe: | RWD_unsafe;
-opt_lifetime: | LIFETIME;
+opt_lifetime: { $$ = nullptr; } | LIFETIME;
 
 module_body
- : module_body attrs item
- | ;
+ :	{ $$ = new ::std::vector< ::std::unique_ptr<Item> >(); }
+ | module_body attrs item { $3->add_attrs( consume($2) ); $1->push_back( box_raw($3) ); $$ = $1; }
+ ;
 
-attrs: attrs attr | ;
+attrs
+ :	{ $$ = new AttrList(); }
+ | attrs attr	{ $$ = $1; $$->push_back( consume($2) ); }
+ ;
 
 super_attr
- : HASHBANG /*'#' '!'*/ '[' meta_items ']'
- | SUPER_DOC_COMMENT
+ : HASHBANG /*'#' '!'*/ '[' meta_items ']'	{ $$ = new Attr(consume($3)); }
+ | SUPER_DOC_COMMENT	{ $$ = new Attr(MetaItems( { MetaItem("doc", consume($1)) } )); }
  ;
 attr
- : '#' '[' meta_items ']'
- | DOC_COMMENT
+ : '#' '[' meta_items ']'	{ $$ = new Attr( consume($3) ); }
+ | DOC_COMMENT	{ $$ = new Attr(MetaItems( { MetaItem("doc", consume($1)) } )); }
  ;
-meta_items: meta_item | meta_items ',' meta_item;
+meta_items
+ : meta_item	{ $$ = new MetaItems({ consume($1) }); }
+ | meta_items ',' meta_item	{ $$ = $1; $$->push_back( consume($3) ); }
+ ;
 meta_item
- : IDENT '(' meta_items ')'
- | IDENT '=' STRING
- | IDENT ;
+ : IDENT '(' meta_items ')'	{ $$ = new MetaItem(consume($1), consume($3)); }
+ | IDENT '=' STRING	{ $$ = new MetaItem(consume($1), consume($3)); }
+ | IDENT	{ $$ = new MetaItem(consume($1)); }
+ ;
 
 
 
@@ -132,44 +154,44 @@ Root Items
 ==========================
 */
 item
- : RWD_pub vis_item	{ /* $2.set_pub(); */ }
+ : RWD_pub vis_item	{ $2->set_pub(); $$ = $2; }
  |         vis_item
- | RWD_pub RWD_unsafe unsafe_vis_item	{ /* $2.set_pub(); */ }
- |         RWD_unsafe unsafe_item
- | RWD_impl impl_def
- | RWD_extern extern_block
- | MACRO IDENT tt_brace
- | MACRO tt_brace
- | MACRO tt_paren ';'
+ | RWD_pub RWD_unsafe unsafe_vis_item	{ $3->set_pub(); $$ = $3; }
+ |         RWD_unsafe unsafe_item	{ $$ = $2; }
+ | RWD_impl impl_def	{ $$ = $2; }
+ | RWD_extern extern_block	{ $$ = $2; }
+ | MACRO IDENT tt_brace	{ $$ = new Macro(consume($1), consume($2), consume($3)); }
+ | MACRO tt_brace	{ $$ = new Macro(consume($1), consume($2)); }
+ | MACRO tt_paren ';'	{ $$ = new Macro(consume($1), consume($2)); }
  ;
 /* Items for which visibility is valid */
 vis_item
- : RWD_mod module_def
- | RWD_use use_def
- | RWD_static static_def
- | RWD_const const_def
- | RWD_struct struct_def
- | RWD_enum enum_def
+ : RWD_mod module_def	{ $$ = $2; }
+ | RWD_use use_def	{ $$ = $2; }
+ | RWD_static static_def	{ $$ = $2; }
+ | RWD_const const_def	{ $$ = $2; }
+ | RWD_struct struct_def	{ $$ = nullptr; }
+ | RWD_enum enum_def	{ $$ = nullptr; }
  | unsafe_vis_item
  ;
 /* Possibily unsafe visibility item */
 unsafe_vis_item
- : fn_qualifiers RWD_fn fn_def
- | RWD_trait trait_def
+ : fn_qualifiers RWD_fn fn_def	{ $$ = nullptr; }
+ | RWD_trait trait_def	{ $$ = nullptr; }
  ;
 unsafe_item
  : unsafe_vis_item
- | RWD_impl impl_def
+ | RWD_impl impl_def	{ $$ = $2; }
  ;
 
-extern_block: extern_abi | '{' extern_items '}';
+extern_block: extern_abi '{' extern_items '}' { $$ = nullptr; /*new ExternBlock($1, $3);*/ };
 extern_abi: | STRING;
 extern_items: | extern_items extern_item;
 extern_item: opt_pub RWD_fn fn_def_hdr ';';
 
 module_def
- : IDENT '{' module_body '}'
- | IDENT ';'	{ bnf_trace("mod %s;", $1); }
+ : IDENT '{' module_root '}'	{ $3->set_name( consume($1) ); $$ = new Module(consume($3)); }
+ | IDENT ';'	{ bnf_trace("mod %s;", $1); $$ = new Module( consume($1) ); }
  ;
 
 /* --- Function --- */
@@ -216,13 +238,13 @@ fn_qualifiers
 
 /* --- Use --- */
 use_def
- : RWD_self use_def_tail
- | RWD_self DOUBLECOLON use_path use_def_tail
- | RWD_super use_def_tail
- | RWD_super DOUBLECOLON use_path use_def_tail
- | DOUBLECOLON use_path use_def_tail
- | use_path use_def_tail
- | '{' use_picks '}' ';'
+ : RWD_self use_def_tail	{ $$ = nullptr; }
+ | RWD_self DOUBLECOLON use_path use_def_tail	{ $$ = nullptr; }
+ | RWD_super use_def_tail	{ $$ = nullptr; }
+ | RWD_super DOUBLECOLON use_path use_def_tail	{ $$ = nullptr; }
+ | DOUBLECOLON use_path use_def_tail	{ $$ = nullptr; }
+ | use_path use_def_tail	{ $$ = nullptr; }
+ | '{' use_picks '}' ';'	{ $$ = nullptr; }
  ;
 use_def_tail
  : RWD_as IDENT ';'
@@ -239,13 +261,9 @@ path_item: IDENT | RWD_self;
 
 
 /* --- Static/Const --- */
-static_def
- : IDENT ':' type '=' const_value
- | RWD_mut IDENT ':' type '=' const_value
- ;
-const_def
- : IDENT ':' type '=' const_value
- ;
+opt_mut: { $$ = false; } | RWD_mut { $$ = true; };
+static_def: opt_mut IDENT ':' type '=' const_value { $$ = nullptr; };
+const_def: IDENT ':' type '=' const_value { $$ = nullptr; };
 const_value
  : expr ';'
  | error ';' { yyerror("Syntax error in constant expression"); }
@@ -274,7 +292,8 @@ struct_def_item: attrs opt_pub IDENT ':' type;
 enum_def: IDENT generic_def where_clause '{' enum_variants '}';
 enum_variants: | enum_variant_list | enum_variant_list ',';
 enum_variant_list: enum_variant | enum_variant_list ',' enum_variant;
-enum_variant
+enum_variant: attrs enum_variant_;
+enum_variant_
  : IDENT
  | IDENT '(' type_list ')'
  | IDENT '{' struct_def_items '}'
@@ -294,10 +313,10 @@ trait_item
  ;
 
 /* --- Impl --- */
-impl_def: impl_def_line '{' impl_items '}'
+impl_def: impl_def_line '{' impl_items '}' { $$ = nullptr; };
 impl_def_line
- : generic_def type RWD_for type where_clause	{ bnf_trace("trait impl"); }
- | generic_def type RWD_for DOUBLEDOT where_clause	{ bnf_trace("wildcard impl"); }
+ : generic_def trait_path RWD_for type where_clause	{ bnf_trace("trait impl"); }
+ | generic_def trait_path RWD_for DOUBLEDOT where_clause	{ bnf_trace("wildcard impl"); }
  | generic_def type where_clause	{ bnf_trace("inherent impl"); }
  ;
 impl_items: | impl_items attrs impl_item;
@@ -327,7 +346,7 @@ where_clauses
 where_clause_ent
 	: type ':' bounds;
 bounds: bounds '+' bound | bound;
-bound: LIFETIME | '?' type_path | type_path;
+bound: LIFETIME | '?' trait_path | trait_path;
 
 /*
 =========================================
@@ -356,15 +375,18 @@ expr_path_seg
  | IDENT
  ;
 
-type_path
- : ufcs_path DOUBLECOLON IDENT
+trait_path:
  | DOUBLECOLON type_path_segs
  | RWD_super DOUBLECOLON type_path_segs
  | RWD_self DOUBLECOLON type_path_segs
  | type_path_segs
  | type_path_segs '(' type_list ')' fn_def_ret
  ;
-ufcs_path: '<' type RWD_as type_path '>';
+type_path
+ : ufcs_path DOUBLECOLON IDENT
+ | trait_path
+ ;
+ufcs_path: '<' type RWD_as trait_path '>';
 type_path_segs
  : type_path_segs DOUBLECOLON type_path_seg
  | type_path_seg
@@ -388,6 +410,7 @@ type
  ;
 type_ele
  : type_path
+ | '_'
  | '&' type_ele
  | '&' LIFETIME type_ele
  | '&' RWD_mut type_ele
@@ -551,3 +574,5 @@ match_arm_expr: match_patterns FATARROW tail_expr	{ bnf_trace("match_arm"); };
 
 
 /* rust_expr.y.h inserted */
+/* vim: ft=yacc
+ */

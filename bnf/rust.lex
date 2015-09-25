@@ -1,15 +1,20 @@
-
-%option yylineno
-
 %{
-#include "rust.tab.h"
+#include "ast_types.hpp"
+#include "rust.tab.hpp"
 #include <stdio.h>
 void yyerror(const char *s);
 extern int yydebug;
+%}
 
+%option yylineno
+%option noyywrap batch debug
+
+%{
 int rustbnf_forcetoken = 0;
+//#define YY_DECL	yy::parser::symbol_type yylex_inner()
 #define YY_DECL	int yylex_inner()
 
+YY_DECL;
 // Wrap the real yylex with one that can yeild a pushbacked token
 int yylex() {
 	if(rustbnf_forcetoken>0) {
@@ -119,16 +124,23 @@ ident_c	[a-zA-Z_]
 "+"	{ return *yytext; }
 "-"	{ return *yytext; }
 
-{ident_c}({ident_c}|[0-9])*	{ if(*yytext == '_' && yytext[1] == 0) return '_'; else { yylval.text = strdup(yytext); return IDENT; } }
-{ident_c}({ident_c}|[0-9])*"!"	{ yylval.text = strdup(yytext); return MACRO; }
-'{ident_c}{ident_c}*	{ yylval.text = strdup(yytext+1); return LIFETIME; }
-[0-9]{dec_digit}*"."{dec_digit}+	{ yylval.realnum = strtod(yytext, NULL); return FLOAT; }
-[0-9]{dec_digit}*	{ yylval.integer = strtoull(yytext, NULL, 0); return INTEGER; }
-0x[0-9a-fA-F_]+	{ yylval.integer = strtoull(yytext, NULL, 0); return INTEGER; }
-0b[01_]+	{ yylval.integer = strtoull(yytext, NULL, 0); return INTEGER; }
+{ident_c}({ident_c}|[0-9])*	{
+	if(*yytext == '_' && yytext[1] == 0)
+		return '_';
+	else {
+		yylval.IDENT = new ::std::string( yytext );
+		return IDENT;
+	}
+	}
+{ident_c}({ident_c}|[0-9])*"!"	{ yylval.MACRO = new ::std::string(yytext); return MACRO; }
+'{ident_c}{ident_c}*	{ yylval.LIFETIME = new ::std::string(yytext); return LIFETIME; }
+[0-9]{dec_digit}*"."{dec_digit}+	{ yylval.FLOAT = strtod(yytext, NULL); return FLOAT; }
+[0-9]{dec_digit}*	{ yylval.INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
+0x[0-9a-fA-F_]+	{ yylval.INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
+0b[01_]+	{ yylval.INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
 
-b?'(.|\\['rn])'	{ yylval.text = strdup(yytext); return CHARLIT; }
-\"([^"])*\"	{ yylval.text = strdup(yytext); return STRING; }
+b?'(.|\\['rn])'	{ yylval.CHARLIT = yytext[0]; return CHARLIT; }
+\"([^"])*\"	{ yylval.STRING = new ::std::string(yytext); }
 
 .	{ fprintf(stderr, "\x1b[31m" "ERROR: %s:%d: Invalid character '%c'\x1b[0m\n", gsCurrentFilename, yylineno, *yytext); exit(1); }
 
@@ -154,21 +166,17 @@ void yyerror(const char *s) {
 	fprintf(stderr, "\x1b[31mERROR: %s:%d: yyerror(%s)\x1b[0m\n", gsCurrentFilename, yylineno, s);
 	exit(1);
 }
-int yywrap(void) {
-	printf("done\n");
-	return 1;
-}
 
 // Thanks stackoverflow: http://www.lysator.liu.se/c/ANSI-C-grammar-l.html
 void handle_block_comment() {
     char c, c1;
 
 loop:
-    while ((c = input()) != '*' && c != 0) {
+    while ((c = yyinput()) != '*' && c != 0) {
     //    putchar(c);
     }
 
-    if ((c1 = input()) != '/' && c != 0) {
+    if ((c1 = yyinput()) != '/' && c != 0) {
         unput(c1);
         goto loop;
     }
