@@ -12,6 +12,7 @@ _(expr_range)
  | _(expr_range_n) DOUBLEDOT
  |                 DOUBLEDOT _(expr_range_n)
  | _(expr_range_n) DOUBLEDOT _(expr_range_n)
+ | DOUBLEDOT
  ;
 _(expr_range_n): _(expr_bor);
 
@@ -82,6 +83,7 @@ _(expr_12)
  | '&' RWD_mut _(expr_12)
  | DOUBLEAMP _(expr_12) { }
  | DOUBLEAMP RWD_mut _(expr_12) { }
+ | RWD_box _(expr)
  ;
 
 _(expr_fc)

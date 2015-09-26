@@ -212,6 +212,21 @@ public:
 	{}
 };
 
+class ExternCrate:
+	public Item
+{
+	::std::string	m_name;
+	::std::string	m_alias;
+public:
+	ExternCrate(::std::string name):
+		m_name(name),
+		m_alias(name)
+	{}
+	ExternCrate(::std::string name, ::std::string alias):
+		m_name(name),
+		m_alias(alias)
+	{}
+};
 
 class UseItem
 {

@@ -31,11 +31,11 @@
 %token DOUBLELT DOUBLEGT DOUBLELTEQUAL DOUBLEGTEQUAL
 %token RWD_mod RWD_fn RWD_const RWD_static RWD_use RWD_struct RWD_enum RWD_trait RWD_impl RWD_type
 %token RWD_as RWD_in RWD_mut RWD_ref RWD_pub RWD_where RWD_unsafe
-%token RWD_let
+%token RWD_let RWD_box
 %token RWD_self RWD_super
 %token RWD_match RWD_if RWD_while RWD_loop RWD_for RWD_else
 %token RWD_return RWD_break RWD_continue
-%token RWD_extern
+%token RWD_extern RWD_crate
 
 %type <Module*>	module_root
 %type <int> tt_tok
@@ -58,6 +58,7 @@
 %type <Enum*>	enum_def
 %type <Trait*>	trait_def
 %type <Fn*>	fn_def fn_def_hdr fn_def_hdr_PROTO
+%type <ExternCrate*>	extern_crate
 %type <ExternBlock*>	extern_block
 %type <Impl*>	impl_def
 
@@ -171,6 +172,8 @@ item
  |         RWD_unsafe unsafe_item	{ $$ = $2; }
  | RWD_impl impl_def	{ $$ = $2; }
  | RWD_extern extern_block	{ $$ = $2; }
+ | RWD_extern RWD_crate extern_crate	{ $$ = $3; }
+ | RWD_pub RWD_extern RWD_crate extern_crate	{ $$ = $4; $$->set_pub(); }
  | MACRO IDENT tt_brace	{ $$ = new Macro(consume($1), consume($2), consume($3)); }
  | MACRO tt_brace	{ $$ = new Macro(consume($1), consume($2)); }
  | MACRO tt_paren ';'	{ $$ = new Macro(consume($1), consume($2)); }
@@ -194,6 +197,12 @@ unsafe_vis_item
 unsafe_item
  : unsafe_vis_item
  | RWD_impl impl_def	{ $$ = $2; }
+ ;
+
+
+extern_crate
+ : IDENT ';'	{ $$ = new ExternCrate( consume($1) ); }
+ | IDENT RWD_as IDENT ';'	{ $$ = new ExternCrate( consume($1), consume($3)); }
  ;
 
 extern_block: extern_abi '{' extern_items '}' { $$ = new ExternBlock( consume($1), consume($3) ); };
@@ -400,7 +409,7 @@ type_args
  ;
 
 expr_path
- : ufcs_path DOUBLECOLON IDENT
+ : ufcs_path DOUBLECOLON expr_path_segs
  | DOUBLECOLON expr_path_segs
  | RWD_self DOUBLECOLON expr_path_segs
  | RWD_super DOUBLECOLON expr_path_segs
@@ -430,7 +439,8 @@ type_path
  ;
 ufcs_path: '<' ufcs_path_tail;
 ufcs_path_tail
- : type RWD_as trait_path '>'
+ : type '>'
+ | type RWD_as trait_path '>'
  | type RWD_as trait_path DOUBLEGT { context.pushback('>'); }
  ; 
 type_path_segs
@@ -457,6 +467,7 @@ type
 type_ele
  : type_path
  | RWD_fn '(' type_list ')' fn_def_ret
+ | RWD_extern extern_abi RWD_fn '(' type_list ')' fn_def_ret
  | '_'
  | '&' opt_lifetime type_ele
  | DOUBLEAMP opt_lifetime type_ele
@@ -483,11 +494,11 @@ type_list: type_list ',' type | type;
 Patterns
 =========================================
 */
-tuple_pattern: '(' pattern_list ')' | '(' pattern_list ',' ')';
+tuple_pattern: '(' ')' | '(' pattern_list ')' | '(' pattern_list ',' ')';
 
 struct_pattern
 	: expr_path '{' struct_pattern_items '}'
-	| expr_path tuple_pattern
+	| expr_path '(' pattern_list ')'
 	;
 struct_pattern_item: IDENT | IDENT ':' pattern;
 struct_pattern_items: struct_pattern_items ',' struct_pattern_item | struct_pattern_item;

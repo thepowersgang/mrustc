@@ -4,8 +4,10 @@
 
 OBJS := main.o rust.tab.o rust.lex.o
 
+RUSTSRC := ../../rust_os/rustc_src/
+
 TSTFILES := ../samples/1.rs
-TSTFILES += ../../rust_os/rustc_src/libcore/lib.rs
+TSTFILES += $(addprefix $(RUSTSRC), libcore/lib.rs libstd/lib.rs)
 
 
 

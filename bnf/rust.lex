@@ -27,6 +27,7 @@ int yylex(YYSTYPE* lvalp, ParserContext& context) {
 
 void handle_block_comment();
 ::std::string parse_escaped_string(const char* s);
+::std::string handle_raw_string(const char* s);
 
 %}
 
@@ -62,9 +63,11 @@ int_suffix	([ui](size|8|16|32|64))?
 "pub"	{ return RWD_pub; }
 "where"	{ return RWD_where; }
 "extern"	{ return RWD_extern; }
+"crate"	{ return RWD_crate; }
 
 "let"	{ return RWD_let; }
 "ref"	{ return RWD_ref; }
+"box"	{ return RWD_box; }
 
 "self"	{ return RWD_self; }
 "super"	{ return RWD_super; }
@@ -142,14 +145,16 @@ int_suffix	([ui](size|8|16|32|64))?
 	}
 	}
 [0-9]{dec_digit}*"."{dec_digit}+(e[+\-]?{dec_digit}+)?(f32|f64)?	{ lvalp->FLOAT = strtod(yytext, NULL); return FLOAT; }
+[0-9]{dec_digit}*(f32|f64)	{ lvalp->FLOAT = strtod(yytext, NULL); return FLOAT; }
 [0-9]{dec_digit}*{int_suffix}	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
 0x[0-9a-fA-F_]+{int_suffix}	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
 0b[01_]+{int_suffix}	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
 {ident_c}({ident_c}|[0-9])*"!"	{ lvalp->MACRO = new ::std::string(yytext, 0, strlen(yytext)-1); return MACRO; }
 '{ident_c}{ident_c}*	{ lvalp->LIFETIME = new ::std::string(yytext, 1); return LIFETIME; }
 
-b?'(.|\\'|\\[^']+)'	{ lvalp->CHARLIT = yytext[0]; return CHARLIT; }
-b?\"([^"]|\\\")*\"	{ lvalp->STRING = new ::std::string( parse_escaped_string(yytext) ); return STRING; }
+b?'(.|\\'|\\[^']+|[\x80-\xFF]*)'	{ lvalp->CHARLIT = yytext[0]; return CHARLIT; }
+b?\"(\\.|[^\\"]|\\\n)*\"	{ lvalp->STRING = new ::std::string( parse_escaped_string(yytext) ); return STRING; }
+b?r#*\"	{ auto rs = handle_raw_string( (*yytext=='b' ? yytext+2 : yytext+1) ); lvalp->STRING = new ::std::string(rs); return STRING; }
 
 .	{ fprintf(stderr, "\x1b[31m" "ERROR: %s:%d: Invalid character '%c'\x1b[0m\n", context.filename.c_str(), yylineno, *yytext); exit(1); }
 
@@ -194,6 +199,7 @@ uint32_t parse_char_literal(const char *_s) {
 }
 
 ::std::string parse_escaped_string(const char* s) {
+	printf("parse_escaped_string(%s)\n", s);
 	if( *s == 'b' ) {
 		s ++;
 	}
@@ -211,7 +217,20 @@ uint32_t parse_char_literal(const char *_s) {
 			case 'n':	rv += '\n';	break;
 			case 'r':	rv += '\r';	break;
 			case '"':	rv += '"';	break;
+			case '0':	rv += '\0';	break;
+			case '\\':	rv += '\\';	break;
 			case '\n':	break;
+			case 'x':
+				rv += (char)strtoul((const char*)(s+1), NULL, 16);
+				s += 2;
+				break;
+			case 'u': {
+				char *out;
+				assert(s[1] == '{');
+				rv += (char)strtoul((const char*)(s+2), &out, 16);
+				s  = out;
+				assert(*s == '}');
+				break; }
 			default:
 				fprintf(stderr, "Unknown escape code '\\%c' in string\n", *s);
 				exit(1);
@@ -247,4 +266,40 @@ loop:
 
     //if (c != 0)
     //    putchar(c1);
+}
+
+::std::string handle_raw_string(const char* s) {
+	 int	num_hash = 0;
+	for(; *s == '#'; s++)
+		num_hash ++;
+	assert(*s == '"');
+	
+	::std::string rv;
+	
+	for(;;)
+	{
+		char	c;
+		if( (c = yyinput()) == '"' ) {
+			if( num_hash == 0 )
+				break;
+			int i;
+			for(i = 0; i < num_hash; i ++) {
+				if( (c = yyinput()) != '#' )
+					break;
+			}
+			// Found `num_hash` '#' characters in a row, break out
+			if( i == num_hash ) {
+				break;
+			}
+			// Didn't find enough, append to output
+			rv += '"';
+			while(i--)	rv += '#';
+			
+		}
+		else {
+			rv += c;
+		}
+	}
+	
+	return rv;
 }
