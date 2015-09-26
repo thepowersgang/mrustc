@@ -17,9 +17,9 @@ test: test.bin $(TSTFILES)
 test.bin: $(OBJS)
 	g++ -std=c++11 $(OBJS) -o $@
 
-%.o: %.cpp ast_types.hpp
+%.o: %.cpp ast_types.hpp lex.hpp
 	g++  -x c++ -std=c++11 $< -c -o $@ -I .
-%.o: .gen/%.cpp ast_types.hpp
+%.o: .gen/%.cpp ast_types.hpp lex.hpp
 	g++  -x c++ -std=c++11 $< -c -o $@ -I .
 	
 .gen/rust.tab.cpp: .gen/.rust.y
@@ -31,7 +31,7 @@ test.bin: $(OBJS)
 	@awk '{ if($$0 ~ /yacc.c:1909/) { ignore = 1; print $$0; } else if( ignore == 1 ) { trigger = $$0; ignore = 2; } else if( ignore == 2 ) { if($$0 == trigger) { ignore = 0 } }  if( ignore > 0 ) { } else { print $$0; }  }' < ${@:%.cpp=%.hpp.OLD} > $(@:%.cpp=%.hpp)
 .gen/rust.tab.hpp: .gen/rust.tab.cpp
 
-.gen/.rust.y: Makefile rust.y rust_expr.y.h rust_tts.y.h
+.gen/.rust.y: Makefile rust.y rust_expr.y.h rust_expr.y_tree.h rust_tts.y.h
 	@mkdir -p $(dir $@)
 	cat rust.y > $@
 	cpp -P rust_expr.y.h >> $@

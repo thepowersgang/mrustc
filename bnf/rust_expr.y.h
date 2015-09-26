@@ -1,5 +1,14 @@
 
-assign_op: '=' | PLUSEQUAL | MINUSEQUAL | STAREQUAL | SLASHEQUAL;
+assign_op: '=' | PLUSEQUAL | MINUSEQUAL | STAREQUAL | SLASHEQUAL | DOUBLELTEQUAL | DOUBLEGTEQUAL | PIPEEQUAL | AMPEQUAL;
+
+closure_arg_list: | closure_arg_list_;
+closure_arg_list_
+ : closure_arg
+ | closure_arg_list ',' closure_arg
+closure_arg
+ : pattern
+ | pattern ':' type
+ ;
 
 #define SUFFIX_is_
 #define _(v)	v

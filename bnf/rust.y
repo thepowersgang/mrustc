@@ -25,9 +25,10 @@
 %token HASHBANG
 %token DOUBLECOLON THINARROW FATARROW DOUBLEDOT TRIPLEDOT
 %token DOUBLEEQUAL EXCLAMEQUAL DOUBLEPIPE DOUBLEAMP
+%token PIPEEQUAL AMPEQUAL
 %token GTEQUAL LTEQUAL
 %token PLUSEQUAL MINUSEQUAL STAREQUAL SLASHEQUAL PERCENTEQUAL
-%token DOUBLELT DOUBLEGT
+%token DOUBLELT DOUBLEGT DOUBLELTEQUAL DOUBLEGTEQUAL
 %token RWD_mod RWD_fn RWD_const RWD_static RWD_use RWD_struct RWD_enum RWD_trait RWD_impl RWD_type
 %token RWD_as RWD_in RWD_mut RWD_ref RWD_pub RWD_where RWD_unsafe
 %token RWD_let
@@ -241,6 +242,7 @@ fn_def_arg: pattern ':' type;
 fn_def_arg_list_PROTO: fn_def_arg_PROTO | fn_def_arg_list_PROTO ',' fn_def_arg_PROTO;
 fn_def_arg_PROTO
  : IDENT ':' type
+ | RWD_mut IDENT ':' type
  | type
  ;
 
@@ -367,10 +369,15 @@ generic_def_one
 
 where_clause: | RWD_where where_clauses;
 where_clauses
-	: where_clause_ent ',' where_clauses
-	| where_clause_ent;
+ : where_clause_ent ',' where_clauses
+ | where_clause_ent ','
+ | where_clause_ent
+ ;
 where_clause_ent
-	: type ':' bounds;
+ : hrlb_def type ':' bounds
+ ;
+hrlb_def: | RWD_for '<' lifetime_list '>';
+lifetime_list: LIFETIME | lifetime_list ',' LIFETIME
 bounds: bounds '+' bound | bound;
 bound: LIFETIME | '?' trait_path | trait_path;
 
@@ -383,6 +390,14 @@ use_path
  : use_path DOUBLECOLON IDENT
  | IDENT;
 
+dlt: DOUBLELT	{ context.pushback('<'); context.pushback('<'); }
+
+type_args
+ : '<' type_exprs '>'
+ | '<' type_exprs DOUBLEGT { bnf_trace("Double-gt terminated type expr"); context.pushback('>'); } 
+ | dlt type_args
+ ;
+
 expr_path
  : ufcs_path DOUBLECOLON IDENT
  | DOUBLECOLON expr_path_segs
@@ -391,13 +406,13 @@ expr_path
  | expr_path_segs
  ;
 expr_path_segs
- : IDENT DOUBLECOLON '<' type_exprs '>'
- | IDENT DOUBLECOLON '<' type_exprs '>' DOUBLECOLON expr_path_segs
+ : IDENT DOUBLECOLON type_args
+ | IDENT DOUBLECOLON type_args DOUBLECOLON expr_path_segs
  | IDENT DOUBLECOLON expr_path_segs
  | IDENT
  ;
 expr_path_seg
- : IDENT DOUBLECOLON '<' type_exprs '>'
+ : IDENT DOUBLECOLON type_args
  | IDENT
  ;
 
@@ -412,15 +427,19 @@ type_path
  : ufcs_path DOUBLECOLON IDENT
  | trait_path
  ;
-ufcs_path: '<' type RWD_as trait_path '>';
+ufcs_path: '<' ufcs_path_tail;
+ufcs_path_tail
+ : type RWD_as trait_path '>'
+ | type RWD_as trait_path DOUBLEGT { context.pushback('>'); }
+ ; 
 type_path_segs
  : type_path_segs DOUBLECOLON type_path_seg
  | type_path_seg
  ;
 type_path_seg
  : IDENT
- | IDENT '<' type_exprs '>'
- | IDENT '<' type_exprs DOUBLEGT { bnf_trace("Double-gt terminated type expr"); context.pushback('>'); } 
+ | IDENT type_args
+ | IDENT type_args
  ;
 type_exprs: type_exprs ',' type_arg | type_arg;
 type_arg: type | LIFETIME | IDENT '=' type;
@@ -436,7 +455,7 @@ type
  ;
 type_ele
  : type_path
- | RWD_fn '(' type_list ')'
+ | RWD_fn '(' type_list ')' fn_def_ret
  | '_'
  | '&' opt_lifetime type_ele
  | DOUBLEAMP opt_lifetime type_ele
@@ -454,7 +473,8 @@ type_ele
  | '(' type ',' type_list ')'
  ;
 trait_list: type_path '+' trait_list_inner;
-trait_list_inner: type_path | trait_list_inner '+' type_path;
+trait_list_inner: trait_list_ent | trait_list_inner '+' trait_list_ent;
+trait_list_ent: trait_path | LIFETIME;
 type_list: type_list ',' type | type;
 
 /*

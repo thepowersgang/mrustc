@@ -62,7 +62,7 @@ _(expr_9)
 /* 10: Cast */
 _(expr_cast)
  : _(expr_11)
- | _(expr_cast) RWD_as type { bnf_trace("expr:cast"); }
+ | _(expr_cast) RWD_as type_ele { bnf_trace("expr:cast"); }
  ;
 /* 11: Times/Div/Modulo */
 _(expr_11)
@@ -109,6 +109,6 @@ _(expr_value)
  | '[' expr_list opt_comma ']'
  | '[' expr ';' expr ']'
  | MACRO tt_paren	{ bnf_trace("Expr macro invocation"); }
- | '|' pattern_list '|' expr
+ | '|' closure_arg_list '|' expr
  | DOUBLEPIPE expr
  ;

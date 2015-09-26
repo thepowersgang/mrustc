@@ -5,7 +5,7 @@
 %}
 
 %option yylineno
-%option noyywrap batch debug
+%option noyywrap batch
 
 %{
 int rustbnf_forcetoken = 0;
@@ -15,9 +15,9 @@ int rustbnf_forcetoken = 0;
 YY_DECL;
 // Wrap the real yylex with one that can yeild a pushbacked token
 int yylex(YYSTYPE* lvalp, ParserContext& context) {
-	if(context.next_token > 0) {
-		int rv = context.next_token;
-		context.next_token = 0;
+	int rv = context.popback();
+	if(rv > 0) {
+		printf("--return %i\n", rv);
 		return rv;
 	}
 	else {
@@ -32,6 +32,7 @@ void handle_block_comment();
 
 dec_digit	[0-9_]
 ident_c	[a-zA-Z_]
+int_suffix	([ui](size|8|16|32))?
 
 %%
 
@@ -93,10 +94,15 @@ ident_c	[a-zA-Z_]
 "/="	{ return SLASHEQUAL; }
 "%="	{ return PERCENTEQUAL; }
 
+"|="	{ return PIPEEQUAL; }
+"&="	{ return AMPEQUAL; }
+
 "&&"	{ return DOUBLEAMP; }
 "||"	{ return DOUBLEPIPE; }
 "<<"	{ return DOUBLELT; }
 ">>"	{ return DOUBLEGT; }
+"<<="	{ return DOUBLELTEQUAL; }
+">>="	{ return DOUBLEGTEQUAL; }
 ".."	{ return DOUBLEDOT; }
 "..."	{ return TRIPLEDOT; }
 
@@ -104,6 +110,7 @@ ident_c	[a-zA-Z_]
 
 "?"	{ return *yytext; }
 "#"	{ return *yytext; }
+"@"	{ return *yytext; }
 "$"	{ return *yytext; }
 "&"	{ return *yytext; }
 "|"	{ return *yytext; }
@@ -134,25 +141,66 @@ ident_c	[a-zA-Z_]
 	}
 	}
 [0-9]{dec_digit}*"."{dec_digit}+(e[+\-]?{dec_digit}+)?(f32|f64)?	{ lvalp->FLOAT = strtod(yytext, NULL); return FLOAT; }
-[0-9]{dec_digit}*	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
-0x[0-9a-fA-F_]+	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
-0b[01_]+	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
+[0-9]{dec_digit}*{int_suffix}	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
+0x[0-9a-fA-F_]+{int_suffix}	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
+0b[01_]+{int_suffix}	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
 {ident_c}({ident_c}|[0-9])*"!"	{ lvalp->MACRO = new ::std::string(yytext, 0, strlen(yytext)-1); return MACRO; }
 '{ident_c}{ident_c}*	{ lvalp->LIFETIME = new ::std::string(yytext, 1); return LIFETIME; }
 
 b?'(.|\\'|\\[^']+)'	{ lvalp->CHARLIT = yytext[0]; return CHARLIT; }
-\"([^"])*\"	{ lvalp->STRING = new ::std::string( parse_escaped_string(yytext) ); return STRING; }
+b?\"([^"]|\\\")*\"	{ lvalp->STRING = new ::std::string( parse_escaped_string(yytext) ); return STRING; }
 
 .	{ fprintf(stderr, "\x1b[31m" "ERROR: %s:%d: Invalid character '%c'\x1b[0m\n", context.filename.c_str(), yylineno, *yytext); exit(1); }
 
 %%
+uint32_t parse_char_literal(const char *_s) {
+	const uint8_t* s = (const uint8_t*)_s;
+	
+	assert(*s++ == '\'');
+	uint32_t rv = 0;
+	
+	if( *s == '\\' ) {
+		s ++;
+		switch(*s)
+		{
+		case 'n':	rv = '\0';	break;
+		case 'r':	rv = '\0';	break;
+		case 'x':
+			rv = strtoul((const char*)(s+1), NULL, 16);
+			s += 2;
+			break;
+		//case 'u':
+		//	rv = strtoul((const char*)(s+1), NULL, 16);
+		//	s += 2;
+		//	break;
+		default:
+			return 0;
+		}
+	}
+	else if( *s < 0x80 ) {
+		rv = *s;
+	}
+	else {
+		fprintf(stderr, "TODO: UTF-8 char literals");
+		exit(1);
+	}
+	s ++;
+	if( *s != '\'' ) {
+		exit(1);
+	}
+	assert(*s == '\0');
+	return rv;
+}
 
 ::std::string parse_escaped_string(const char* s) {
+	if( *s == 'b' ) {
+		s ++;
+	}
 	assert(*s++ == '"');
 	
 	::std::string rv;
 	
-	for( ; *s != '\0'; s ++ )
+	for( ; *s != '"'; s ++ )
 	{
 		if( *s == '\\' )
 		{
@@ -161,21 +209,21 @@ b?'(.|\\'|\\[^']+)'	{ lvalp->CHARLIT = yytext[0]; return CHARLIT; }
 			{
 			case 'n':	rv += '\n';	break;
 			case 'r':	rv += '\r';	break;
+			case '"':	rv += '"';	break;
 			case '\n':	break;
 			default:
 				fprintf(stderr, "Unknown escape code '\\%c' in string\n", *s);
 				exit(1);
 			}
 		}
-		else if( *s == '"') {
-			break ;
+		else if( *s == '\0' ) {
+			// wut?
+			fprintf(stderr, "Unexpected EOS\n");
+			exit(1);
 		}
 		else {
 			rv += *s;
 		}
-	}
-	if( *s == '\0' ) {
-		// wut?
 	}
 	assert(*s++ == '"');
 	assert(*s == '\0');
