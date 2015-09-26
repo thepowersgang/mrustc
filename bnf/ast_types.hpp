@@ -115,6 +115,7 @@ public:
 class Item
 {
 	bool	m_is_pub;
+protected:
 	AttrList	m_attrs;
 public:
 	Item():
@@ -148,7 +149,11 @@ class Module:
 	bool	m_is_extern;
 	::std::string	m_name;
 	ItemList	m_items;
+	
+	::std::vector<::std::string>	m_mod_path;
+	::std::string	m_filename, m_base_dir;
 public:
+	Module(Module&&) = default;
 	Module(::std::string name):
 		m_is_extern(true),
 		m_name(name)
@@ -158,13 +163,30 @@ public:
 		m_is_extern(false),
 		m_items( ::std::move(items) )
 	{}
+	Module& operator=(Module&& x) {
+		assert(m_is_extern);
+		assert(x.m_name == "");
+		m_items = ::std::move(x.m_items);
+		this->add_attrs( ::std::move(x.m_attrs) );
+	}
 	
 	bool is_external() const { return m_is_extern; }
 	const ::std::string& name() const { return m_name; }
+	const ::std::string& filename() const { return m_filename; }
+	const ::std::string& base_dir() const { return m_base_dir; }
+	const ::std::vector<::std::string>& mod_path() const { return m_mod_path; }
 	
 	void set_name(::std::string name) {
 		assert(m_name == "");
 		m_name = name;
+	}
+	
+	void set_mod_path(::std::vector<::std::string> mod_path) {
+		m_mod_path = ::std::move(mod_path);
+	}
+	void set_paths(::std::string filename, ::std::string base_dir) {
+		m_filename = filename;
+		m_base_dir = base_dir;
 	}
 	
 	ItemList& items() {

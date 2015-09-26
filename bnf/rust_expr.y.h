@@ -9,6 +9,10 @@ closure_arg
  : pattern
  | pattern ':' type
  ;
+closure_ret
+ :
+ | THINARROW type
+ ;
 
 #define SUFFIX_is_
 #define _(v)	v

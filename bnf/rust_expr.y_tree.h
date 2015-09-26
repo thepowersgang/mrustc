@@ -62,7 +62,7 @@ _(expr_9)
 /* 10: Cast */
 _(expr_cast)
  : _(expr_11)
- | _(expr_cast) RWD_as type_ele { bnf_trace("expr:cast"); }
+ | _(expr_cast) RWD_as type_ele { bnf_trace(context, "expr:cast"); }
  ;
 /* 11: Times/Div/Modulo */
 _(expr_11)
@@ -95,7 +95,7 @@ _(expr_fc)
 _(expr_value)
  : CHARLIT | INTEGER | FLOAT | STRING
  | expr_blocks
- | expr_path '(' expr_list ')'	{ bnf_trace("function call"); }
+ | expr_path '(' expr_list ')'	{ bnf_trace(context, "function call"); }
 #ifndef SUFFIX_is__NOSTRLIT
  | expr_path '{' struct_literal_list '}'
  | expr_path '{' struct_literal_list ',' '}'
@@ -108,7 +108,7 @@ _(expr_value)
  | '(' expr ',' expr_list ')'
  | '[' expr_list opt_comma ']'
  | '[' expr ';' expr ']'
- | MACRO tt_paren	{ bnf_trace("Expr macro invocation"); }
- | '|' closure_arg_list '|' expr
+ | MACRO tt_paren	{ bnf_trace(context, "Expr macro invocation"); }
+ | '|' closure_arg_list '|' closure_ret expr
  | DOUBLEPIPE expr
  ;

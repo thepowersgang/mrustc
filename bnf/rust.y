@@ -73,19 +73,19 @@
 
 %{
 // TODO: Replace this with a C++-safe printf
-/*static inline*/ void bnf_trace(const char* fmt, ...) {
-	fprintf(stderr, "\x1b[32m""TRACE: ");
+/*static inline*/ void bnf_trace(const ParserContext& context, const char* fmt, ...) {
+	fprintf(stderr, "\x1b[32m""TRACE:%s:%i: ", context.filename.c_str(), yylineno);
 	va_list	args;
 	va_start(args, fmt);
 	vfprintf(stderr, fmt, args);
 	va_end(args);
 	fprintf(stderr, "\x1b[0m\n");
 }
-/*static inline*/ void bnf_trace(const char* fmt, const ::std::string* s) {
-	bnf_trace(fmt, s->c_str(), '0');
+/*static inline*/ void bnf_trace(const ParserContext& context, const char* fmt, const ::std::string* s) {
+	bnf_trace(context, fmt, s->c_str(), '0');
 }
-/*static inline*/ void bnf_trace(const char* fmt, const ::std::string& s) {
-	bnf_trace(fmt, s.c_str(), '0');
+/*static inline*/ void bnf_trace(const ParserContext& context, const char* fmt, const ::std::string& s) {
+	bnf_trace(context, fmt, s.c_str(), '0');
 }
 
 %}
@@ -121,8 +121,8 @@ super_attrs
  ;
 
 opt_pub
- : /* mt */	{ $$ = false; bnf_trace("private"); }
- | RWD_pub	{ $$ = true; bnf_trace("public"); }
+ : /* mt */	{ $$ = false; bnf_trace(context, "private"); }
+ | RWD_pub	{ $$ = true; bnf_trace(context, "public"); }
  ;
 opt_comma: | ',';
 opt_semicolon: | ';';
@@ -208,14 +208,14 @@ extern_item
 
 module_def
  : IDENT '{' module_root '}'	{ $3->set_name( consume($1) ); $$ = new Module(consume($3)); }
- | IDENT ';'	{ bnf_trace("mod %s;", $1); $$ = new Module( consume($1) ); }
+ | IDENT ';'	{ bnf_trace(context, "mod %s;", $1); $$ = new Module( consume($1) ); }
  ;
 
 /* --- Function --- */
-fn_def: fn_def_hdr code	{ bnf_trace("function defined"); };
-fn_def_hdr: IDENT generic_def '(' fn_def_args ')' fn_def_ret where_clause	{ $$ = new Fn(); bnf_trace("function '%s'", *$1); };
+fn_def: fn_def_hdr code	{ bnf_trace(context, "function defined"); };
+fn_def_hdr: IDENT generic_def '(' fn_def_args ')' fn_def_ret where_clause	{ $$ = new Fn(); bnf_trace(context, "function '%s'", *$1); };
 
-fn_def_hdr_PROTO: IDENT generic_def '(' fn_def_args_PROTO ')' fn_def_ret where_clause	{ $$ = new Fn(); bnf_trace("function '%s'", *$1); };
+fn_def_hdr_PROTO: IDENT generic_def '(' fn_def_args_PROTO ')' fn_def_ret where_clause	{ $$ = new Fn(); bnf_trace(context, "function '%s'", *$1); };
 
 fn_def_ret
  : /* -> () */
@@ -267,6 +267,7 @@ use_def
  | DOUBLECOLON use_path use_def_tail	{ $$ = new UseSet(/* TODO */); }
  | use_path use_def_tail	{ $$ = new UseSet(/* TODO */); }
  | '{' use_picks '}' ';'	{ $$ = new UseSet( Path(Path::TagAbs()), consume($2) ); }
+ | DOUBLECOLON '{' use_picks '}' ';'	{ $$ = new UseSet( Path(Path::TagAbs()), consume($3) ); }
  ;
 use_def_tail
  : RWD_as IDENT ';'	{ $$ = new UseItems(UseItems::TagRename(), consume($2) ); }
@@ -296,9 +297,9 @@ const_value
 
 /* --- Struct --- */
 struct_def
- : IDENT generic_def where_clause ';'	{ $$ = new Struct(); bnf_trace("unit-like struct"); }
- | IDENT generic_def '(' tuple_struct_def_items opt_comma ')' where_clause ';'	{ $$ = new Struct(); bnf_trace("tuple struct"); }
- | IDENT generic_def where_clause '{' struct_def_items opt_comma '}'	{ $$ = new Struct(); bnf_trace("normal struct"); }
+ : IDENT generic_def where_clause ';'	{ $$ = new Struct(); bnf_trace(context, "unit-like struct"); }
+ | IDENT generic_def '(' tuple_struct_def_items opt_comma ')' where_clause ';'	{ $$ = new Struct(); bnf_trace(context, "tuple struct"); }
+ | IDENT generic_def where_clause '{' struct_def_items opt_comma '}'	{ $$ = new Struct(); bnf_trace(context, "normal struct"); }
  ;
 
 tuple_struct_def_items
@@ -309,7 +310,7 @@ tuple_struct_def_item: attrs opt_pub type;
 
 struct_def_items
  : struct_def_items ',' struct_def_item
- | struct_def_item { bnf_trace("struct_def_item"); }
+ | struct_def_item { bnf_trace(context, "struct_def_item"); }
  ;
 struct_def_item: attrs opt_pub IDENT ':' type;
 
@@ -342,10 +343,10 @@ trait_item
 /* --- Impl --- */
 impl_def: impl_def_line '{' impl_items '}' { $$ = new Impl(); };
 impl_def_line
- : generic_def trait_path RWD_for type where_clause	{ bnf_trace("trait impl"); }
- | generic_def '!' trait_path RWD_for type where_clause	{ bnf_trace("negative trait impl"); }
- | generic_def trait_path RWD_for DOUBLEDOT where_clause	{ bnf_trace("wildcard impl"); }
- | generic_def type where_clause	{ bnf_trace("inherent impl"); }
+ : generic_def trait_path RWD_for type where_clause	{ bnf_trace(context, "trait impl"); }
+ | generic_def '!' trait_path RWD_for type where_clause	{ bnf_trace(context, "negative trait impl"); }
+ | generic_def trait_path RWD_for DOUBLEDOT where_clause	{ bnf_trace(context, "wildcard impl"); }
+ | generic_def type where_clause	{ bnf_trace(context, "inherent impl"); }
  ;
 impl_items: | impl_items attrs impl_item;
 impl_item
@@ -356,12 +357,12 @@ impl_item
 
 
 /* Generic paramters */
-generic_def : /* mt */ | '<' generic_def_list '>' { bnf_trace("generic_def_list"); };
+generic_def : /* mt */ | '<' generic_def_list '>' { bnf_trace(context, "generic_def_list"); };
 generic_def_list : generic_def_one | generic_def_list ',' generic_def_one | ;
 generic_def_one
  : IDENT ':' bounds '=' type
  | IDENT '=' type
- | IDENT ':' bounds { bnf_trace("bounded ident"); }
+ | IDENT ':' bounds { bnf_trace(context, "bounded ident"); }
  | IDENT
  | LIFETIME
  | LIFETIME ':' LIFETIME
@@ -394,7 +395,7 @@ dlt: DOUBLELT	{ context.pushback('<'); context.pushback('<'); }
 
 type_args
  : '<' type_exprs '>'
- | '<' type_exprs DOUBLEGT { bnf_trace("Double-gt terminated type expr"); context.pushback('>'); } 
+ | '<' type_exprs DOUBLEGT { bnf_trace(context, "Double-gt terminated type expr"); context.pushback('>'); } 
  | dlt type_args
  ;
 
@@ -512,6 +513,8 @@ nonbind_pattern
  | value_pattern TRIPLEDOT value_pattern
  | '&' pattern
  | '&' RWD_mut pattern
+ | DOUBLEAMP pattern
+ | DOUBLEAMP RWD_mut pattern
  ;
 value_pattern
  : expr_path
@@ -531,7 +534,7 @@ pattern_list
 Expressions!
 =========================================
 */
-code: block	{ bnf_trace("code parsed"); };
+code: block	{ bnf_trace(context, "code parsed"); };
 
 block: '{' block_contents '}';
 
@@ -544,10 +547,10 @@ tail_expr
  | flow_control
  ;
 flow_control
- : RWD_return opt_semicolon {}
- | RWD_return expr_0 opt_semicolon {}
- | RWD_break opt_lifetime opt_semicolon {}
- | RWD_continue opt_lifetime opt_semicolon {}
+ : RWD_return {}
+ | RWD_return expr_0 {}
+ | RWD_break opt_lifetime {}
+ | RWD_continue opt_lifetime {}
  ;
 block_lines: | block_lines block_line;
 block_line
@@ -581,7 +584,7 @@ expr_blocks
  : RWD_match expr_NOSTRLIT '{' match_arms '}'	{ }
  | RWD_if if_block
  | RWD_unsafe '{' block_contents '}' { }
-/* | flow_control */
+ | flow_control 
  | loop_block
  | block
  ;
@@ -624,7 +627,7 @@ match_arm
  | match_arm_brace
  ;
 match_arm_brace : match_patterns FATARROW '{' block_contents '}'	{ };
-match_arm_expr: match_patterns FATARROW tail_expr	{ bnf_trace("match_arm"); };
+match_arm_expr: match_patterns FATARROW tail_expr	{ bnf_trace(context, "match_arm"); };
 
 
 /* rust_expr.y.h inserted */
