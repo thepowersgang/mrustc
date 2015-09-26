@@ -36,7 +36,8 @@ ident_c	[a-zA-Z_]
 %%
 
 "//"[^/].*\n	{ }
-"///".*\n	{ /* TODO: Handle /// by desugaring */ }
+"///".*\n	{ lvalp->DOC_COMMENT = new ::std::string(yytext+1, strlen(yytext)-2); return DOC_COMMENT; }
+"//!".*\n	{ lvalp->SUPER_DOC_COMMENT = new ::std::string(yytext+1, strlen(yytext)-2); return SUPER_DOC_COMMENT; }
 "/*"	{ handle_block_comment(); /* TODO: Handle doc comments */ }
 \n	/* */
 \r	/* */
@@ -90,6 +91,7 @@ ident_c	[a-zA-Z_]
 "-="	{ return MINUSEQUAL; }
 "*="	{ return STAREQUAL; }
 "/="	{ return SLASHEQUAL; }
+"%="	{ return PERCENTEQUAL; }
 
 "&&"	{ return DOUBLEAMP; }
 "||"	{ return DOUBLEPIPE; }
@@ -105,6 +107,7 @@ ident_c	[a-zA-Z_]
 "$"	{ return *yytext; }
 "&"	{ return *yytext; }
 "|"	{ return *yytext; }
+"^"	{ return *yytext; }
 "!"	{ return *yytext; }
 "."	{ return *yytext; }
 ":"	{ return *yytext; }
@@ -117,6 +120,7 @@ ident_c	[a-zA-Z_]
 ">"	{ return *yytext; }
 ","	{ return *yytext; }
 "/"	{ return *yytext; }
+"%"	{ return *yytext; }
 "*"	{ return *yytext; }
 "+"	{ return *yytext; }
 "-"	{ return *yytext; }
@@ -136,7 +140,7 @@ ident_c	[a-zA-Z_]
 {ident_c}({ident_c}|[0-9])*"!"	{ lvalp->MACRO = new ::std::string(yytext, 0, strlen(yytext)-1); return MACRO; }
 '{ident_c}{ident_c}*	{ lvalp->LIFETIME = new ::std::string(yytext, 1); return LIFETIME; }
 
-b?'(.|\\['rn])'	{ lvalp->CHARLIT = yytext[0]; return CHARLIT; }
+b?'(.|\\'|\\[^']+)'	{ lvalp->CHARLIT = yytext[0]; return CHARLIT; }
 \"([^"])*\"	{ lvalp->STRING = new ::std::string( parse_escaped_string(yytext) ); return STRING; }
 
 .	{ fprintf(stderr, "\x1b[31m" "ERROR: %s:%d: Invalid character '%c'\x1b[0m\n", context.filename.c_str(), yylineno, *yytext); exit(1); }

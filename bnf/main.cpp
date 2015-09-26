@@ -89,6 +89,7 @@ int main(int argc, char *argv[]) {
 		}
 		
 		ParserContext	new_context(filename);
+		yylineno = 1;
 		int rv = yyparse(new_context);
 		fclose(yyin);
 		if( rv != 0 ) {

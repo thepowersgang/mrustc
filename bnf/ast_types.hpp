@@ -234,6 +234,10 @@ public:
 	{}
 };
 
+class TypeAlias:
+	public Item
+{
+};
 
 class Enum:
 	public Item

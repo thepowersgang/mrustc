@@ -4,9 +4,8 @@
 
 OBJS := main.o rust.tab.o rust.lex.o
 
-#TSTFILES := ../samples/1.rs
-TSTFILES := ../../rust_os/rustc_src/libcore/lib.rs
-#TSTFILES := $(addprefix ../../rust_os/libcore/, lib.rs str/mod.rs str/pattern.rs borrow.rs any.rs array.rs result.rs)
+TSTFILES := ../samples/1.rs
+TSTFILES += ../../rust_os/rustc_src/libcore/lib.rs
 
 
 

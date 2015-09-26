@@ -28,6 +28,7 @@ struct ParserContext
 
 extern int yylineno;
 extern int yylex(YYSTYPE* lvalp, ParserContext& context);
+
 extern void yyerror(ParserContext& context, const char *s);
 extern int yydebug;
 

@@ -26,7 +26,7 @@
 %token DOUBLECOLON THINARROW FATARROW DOUBLEDOT TRIPLEDOT
 %token DOUBLEEQUAL EXCLAMEQUAL DOUBLEPIPE DOUBLEAMP
 %token GTEQUAL LTEQUAL
-%token PLUSEQUAL MINUSEQUAL STAREQUAL SLASHEQUAL
+%token PLUSEQUAL MINUSEQUAL STAREQUAL SLASHEQUAL PERCENTEQUAL
 %token DOUBLELT DOUBLEGT
 %token RWD_mod RWD_fn RWD_const RWD_static RWD_use RWD_struct RWD_enum RWD_trait RWD_impl RWD_type
 %token RWD_as RWD_in RWD_mut RWD_ref RWD_pub RWD_where RWD_unsafe
@@ -50,6 +50,7 @@
 
 %type <Item*>	item vis_item unsafe_item unsafe_vis_item 
 %type <UseSet*>	use_def
+%type <TypeAlias*>	type_def
 %type <Module*>	module_def
 %type <Global*>	static_def const_def
 %type <Struct*>	struct_def
@@ -176,6 +177,7 @@ item
 /* Items for which visibility is valid */
 vis_item
  : RWD_mod module_def	{ $$ = $2; }
+ | RWD_type type_def	{ $$ = $2; }
  | RWD_use use_def	{ $$ = $2; }
  | RWD_static static_def	{ $$ = $2; }
  | RWD_const const_def	{ $$ = $2; }
@@ -200,7 +202,7 @@ extern_items
  | extern_items extern_item	{ $$ = $1; $$->push_back( box_raw($2) ); }
  ;
 extern_item
- : opt_pub RWD_fn fn_def_hdr ';'	{ $$ = $3; if($1) $$->set_pub(); }
+ : attrs opt_pub RWD_fn fn_def_hdr ';'	{ $$ = $4; if($2) $$->set_pub(); $$->add_attrs( consume($1) ); }
  ;
 
 module_def
@@ -249,6 +251,10 @@ fn_qualifiers
  | RWD_unsafe
  | RWD_unsafe RWD_const
  ;
+
+/* --- Type --- */
+type_def
+ : IDENT generic_def '=' type ';'	{ $$ = new TypeAlias(); };
 
 /* --- Use --- */
 use_def
@@ -312,6 +318,7 @@ enum_variant_list: enum_variant | enum_variant_list ',' enum_variant;
 enum_variant: attrs enum_variant_;
 enum_variant_
  : IDENT
+ | IDENT '=' expr
  | IDENT '(' type_list ')'
  | IDENT '{' struct_def_items '}'
  ;
@@ -325,6 +332,7 @@ trait_items: | trait_items attrs trait_item;
 trait_item
  : RWD_type IDENT ';'
  | RWD_type IDENT ':' trait_bound_list ';'
+ | RWD_type IDENT '=' type ';'
  | opt_unsafe fn_qualifiers RWD_fn fn_def_hdr_PROTO ';'
  | opt_unsafe fn_qualifiers RWD_fn fn_def_hdr_PROTO code 
  ;
@@ -333,6 +341,7 @@ trait_item
 impl_def: impl_def_line '{' impl_items '}' { $$ = new Impl(); };
 impl_def_line
  : generic_def trait_path RWD_for type where_clause	{ bnf_trace("trait impl"); }
+ | generic_def '!' trait_path RWD_for type where_clause	{ bnf_trace("negative trait impl"); }
  | generic_def trait_path RWD_for DOUBLEDOT where_clause	{ bnf_trace("wildcard impl"); }
  | generic_def type where_clause	{ bnf_trace("inherent impl"); }
  ;
@@ -348,7 +357,7 @@ impl_item
 generic_def : /* mt */ | '<' generic_def_list '>' { bnf_trace("generic_def_list"); };
 generic_def_list : generic_def_one | generic_def_list ',' generic_def_one | ;
 generic_def_one
- : IDENT '=' type ':' bounds
+ : IDENT ':' bounds '=' type
  | IDENT '=' type
  | IDENT ':' bounds { bnf_trace("bounded ident"); }
  | IDENT
@@ -427,11 +436,14 @@ type
  ;
 type_ele
  : type_path
+ | RWD_fn '(' type_list ')'
  | '_'
- | '&' type_ele
- | '&' LIFETIME type_ele
- | '&' RWD_mut type_ele
- | '&' LIFETIME RWD_mut type_ele
+ | '&' opt_lifetime type_ele
+ | DOUBLEAMP opt_lifetime type_ele
+/* | '&' LIFETIME type_ele */
+ | '&' opt_lifetime RWD_mut type_ele
+ | DOUBLEAMP opt_lifetime RWD_mut type_ele
+/* | '&' LIFETIME RWD_mut type_ele */
  | '*' RWD_const type_ele
  | '*' RWD_mut type_ele
  | '[' type ']'
@@ -521,6 +533,7 @@ block_lines: | block_lines block_line;
 block_line
  : RWD_let let_binding ';'
  | MACRO IDENT tt_brace
+ | super_attr
  | attrs item
  | expr_blocks
  | stmt
@@ -545,7 +558,7 @@ struct_literal_list
  ;
 
 expr_blocks
- : RWD_match expr_NOSTRLIT '{' match_arms opt_comma '}'	{ }
+ : RWD_match expr_NOSTRLIT '{' match_arms '}'	{ }
  | RWD_if if_block
  | RWD_unsafe '{' block_contents '}' { }
 /* | flow_control */
@@ -568,10 +581,14 @@ if_block_head
  : expr_NOSTRLIT code {}
  | RWD_let pattern '=' expr_NOSTRLIT code {}
  ;
-match_arms
- : match_arm ',' match_arms
- | match_arm_brace match_arms
- | match_arm
+match_arms: match_arms_list match_arm_last;
+match_arms_list
+ :
+ | match_arms_list match_arm ','
+ | match_arms_list match_arm_brace
+ ;
+match_arm_last
+ : match_arm 
  | match_arm ','
  ;
 match_pattern
