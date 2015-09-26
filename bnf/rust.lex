@@ -1,9 +1,7 @@
 %{
 #include "ast_types.hpp"
-#include "rust.tab.hpp"
+#include "lex.hpp"
 #include <stdio.h>
-void yyerror(const char *s);
-extern int yydebug;
 %}
 
 %option yylineno
@@ -12,24 +10,23 @@ extern int yydebug;
 %{
 int rustbnf_forcetoken = 0;
 //#define YY_DECL	yy::parser::symbol_type yylex_inner()
-#define YY_DECL	int yylex_inner()
+#define YY_DECL	int yylex_inner(YYSTYPE* lvalp, ParserContext& context)
 
 YY_DECL;
 // Wrap the real yylex with one that can yeild a pushbacked token
-int yylex() {
-	if(rustbnf_forcetoken>0) {
-		int rv = rustbnf_forcetoken;
-		rustbnf_forcetoken = 0;
+int yylex(YYSTYPE* lvalp, ParserContext& context) {
+	if(context.next_token > 0) {
+		int rv = context.next_token;
+		context.next_token = 0;
 		return rv;
 	}
 	else {
-		return yylex_inner();
+		return yylex_inner(lvalp, context);
 	}
 }
 
 void handle_block_comment();
-
-const char *gsCurrentFilename = "-";
+::std::string parse_escaped_string(const char* s);
 
 %}
 
@@ -128,43 +125,57 @@ ident_c	[a-zA-Z_]
 	if(*yytext == '_' && yytext[1] == 0)
 		return '_';
 	else {
-		yylval.IDENT = new ::std::string( yytext );
+		lvalp->IDENT = new ::std::string( yytext );
 		return IDENT;
 	}
 	}
-{ident_c}({ident_c}|[0-9])*"!"	{ yylval.MACRO = new ::std::string(yytext); return MACRO; }
-'{ident_c}{ident_c}*	{ yylval.LIFETIME = new ::std::string(yytext); return LIFETIME; }
-[0-9]{dec_digit}*"."{dec_digit}+	{ yylval.FLOAT = strtod(yytext, NULL); return FLOAT; }
-[0-9]{dec_digit}*	{ yylval.INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
-0x[0-9a-fA-F_]+	{ yylval.INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
-0b[01_]+	{ yylval.INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
+[0-9]{dec_digit}*"."{dec_digit}+(e[+\-]?{dec_digit}+)?(f32|f64)?	{ lvalp->FLOAT = strtod(yytext, NULL); return FLOAT; }
+[0-9]{dec_digit}*	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
+0x[0-9a-fA-F_]+	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
+0b[01_]+	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
+{ident_c}({ident_c}|[0-9])*"!"	{ lvalp->MACRO = new ::std::string(yytext, 0, strlen(yytext)-1); return MACRO; }
+'{ident_c}{ident_c}*	{ lvalp->LIFETIME = new ::std::string(yytext, 1); return LIFETIME; }
 
-b?'(.|\\['rn])'	{ yylval.CHARLIT = yytext[0]; return CHARLIT; }
-\"([^"])*\"	{ yylval.STRING = new ::std::string(yytext); }
+b?'(.|\\['rn])'	{ lvalp->CHARLIT = yytext[0]; return CHARLIT; }
+\"([^"])*\"	{ lvalp->STRING = new ::std::string( parse_escaped_string(yytext) ); return STRING; }
 
-.	{ fprintf(stderr, "\x1b[31m" "ERROR: %s:%d: Invalid character '%c'\x1b[0m\n", gsCurrentFilename, yylineno, *yytext); exit(1); }
+.	{ fprintf(stderr, "\x1b[31m" "ERROR: %s:%d: Invalid character '%c'\x1b[0m\n", context.filename.c_str(), yylineno, *yytext); exit(1); }
 
 %%
-int main(int argc, char *argv[]) {
-	if(argc < 2 || strcmp(argv[1], "-") == 0) {
-		yyin = stdin;
-	}
-	else {
-		gsCurrentFilename = argv[1];
-		yyin = fopen(argv[1], "r");
-		if( !yyin ) {
-			fprintf(stderr, "ERROR: Unable to open '%s': '%s'\n", argv[1], strerror(errno));
-			return 1;
+
+::std::string parse_escaped_string(const char* s) {
+	assert(*s++ == '"');
+	
+	::std::string rv;
+	
+	for( ; *s != '\0'; s ++ )
+	{
+		if( *s == '\\' )
+		{
+			s ++;
+			switch(*s)
+			{
+			case 'n':	rv += '\n';	break;
+			case 'r':	rv += '\r';	break;
+			case '\n':	break;
+			default:
+				fprintf(stderr, "Unknown escape code '\\%c' in string\n", *s);
+				exit(1);
+			}
+		}
+		else if( *s == '"') {
+			break ;
+		}
+		else {
+			rv += *s;
 		}
 	}
-	yylineno = 1;
-	yydebug = (getenv("BNFDEBUG") != NULL);
-	yyparse();
-	return 0;
-}
-void yyerror(const char *s) {
-	fprintf(stderr, "\x1b[31mERROR: %s:%d: yyerror(%s)\x1b[0m\n", gsCurrentFilename, yylineno, s);
-	exit(1);
+	if( *s == '\0' ) {
+		// wut?
+	}
+	assert(*s++ == '"');
+	assert(*s == '\0');
+	return rv;
 }
 
 // Thanks stackoverflow: http://www.lysator.liu.se/c/ANSI-C-grammar-l.html
