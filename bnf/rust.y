@@ -25,7 +25,7 @@
 %token HASHBANG
 %token DOUBLECOLON THINARROW FATARROW DOUBLEDOT TRIPLEDOT
 %token DOUBLEEQUAL EXCLAMEQUAL DOUBLEPIPE DOUBLEAMP
-%token PIPEEQUAL AMPEQUAL
+%token PIPEEQUAL AMPEQUAL CARETEQUAL
 %token GTEQUAL LTEQUAL
 %token PLUSEQUAL MINUSEQUAL STAREQUAL SLASHEQUAL PERCENTEQUAL
 %token DOUBLELT DOUBLEGT DOUBLELTEQUAL DOUBLEGTEQUAL
@@ -125,7 +125,7 @@ opt_pub
  | RWD_pub	{ $$ = true; bnf_trace(context, "public"); }
  ;
 opt_comma: | ',';
-opt_semicolon: | ';';
+/*opt_semicolon: | ';';*/
 opt_unsafe: | RWD_unsafe;
 opt_lifetime: { $$ = nullptr; } | LIFETIME;
 
@@ -440,7 +440,7 @@ type_path_segs
 type_path_seg
  : IDENT
  | IDENT type_args
- | IDENT type_args
+ /*| IDENT type_args*/
  ;
 type_exprs: type_exprs ',' type_arg | type_arg;
 type_arg: type | LIFETIME | IDENT '=' type;

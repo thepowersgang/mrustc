@@ -55,23 +55,23 @@ _(expr_8)
  | _(expr_8) DOUBLEGT _(expr_9) {}
  ;
 _(expr_9)
- : _(expr_cast)
- | _(expr_9) '+' _(expr_cast) {}
- | _(expr_9) '-' _(expr_cast) {}
+ : _(expr_10)
+ | _(expr_9) '+' _(expr_10) {}
+ | _(expr_9) '-' _(expr_10) {}
  ;
-/* 10: Cast */
+/* 10: Times/Div/Modulo */
+_(expr_10)
+ : _(expr_10n)
+ | _(expr_10) '*' _(expr_10n) {}
+ | _(expr_10) '/' _(expr_10n) {}
+ | _(expr_10) '%' _(expr_10n) {}
+ ;
+_(expr_10n): _(expr_cast);
+/* 11: Cast */
 _(expr_cast)
- : _(expr_11)
+ : _(expr_12)
  | _(expr_cast) RWD_as type_ele { bnf_trace(context, "expr:cast"); }
  ;
-/* 11: Times/Div/Modulo */
-_(expr_11)
- : _(expr_11n)
- | _(expr_11) '*' _(expr_11n) {}
- | _(expr_11) '/' _(expr_11n) {}
- | _(expr_11) '%' _(expr_11n) {}
- ;
-_(expr_11n): _(expr_12);
 _(expr_12)
  : _(expr_fc)
  | '-' _(expr_12)

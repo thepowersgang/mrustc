@@ -32,7 +32,7 @@ void handle_block_comment();
 
 dec_digit	[0-9_]
 ident_c	[a-zA-Z_]
-int_suffix	([ui](size|8|16|32))?
+int_suffix	([ui](size|8|16|32|64))?
 
 %%
 
@@ -96,6 +96,7 @@ int_suffix	([ui](size|8|16|32))?
 
 "|="	{ return PIPEEQUAL; }
 "&="	{ return AMPEQUAL; }
+"^="	{ return CARETEQUAL; }
 
 "&&"	{ return DOUBLEAMP; }
 "||"	{ return DOUBLEPIPE; }

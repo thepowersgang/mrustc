@@ -20,7 +20,7 @@ tt_tok
  | _C('&') | _T(DOUBLEAMP)  | _T(AMPEQUAL)
  | _C('|') | _T(DOUBLEPIPE) | _T(PIPEEQUAL)
  | _C(':') | _T(DOUBLECOLON)
- | _C('^')
+ | _C('^') | _T(CARETEQUAL)
  | _C('=') | _T(DOUBLEEQUAL) | _T(FATARROW)
  | _C('<') | _T(DOUBLELT)    | _T(LTEQUAL)   | _T(DOUBLELTEQUAL)
  | _C('>') | _T(DOUBLEGT)    | _T(GTEQUAL)   | _T(DOUBLEGTEQUAL)

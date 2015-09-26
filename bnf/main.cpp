@@ -131,6 +131,8 @@ int main(int argc, char *argv[]) {
 	
 	post_process_module(*mod, base_filename, base_path);
 	
+	printf("Crate parsed\n");
+	
 	return 0;
 }
 void yyerror(ParserContext& context, const char *s) {
