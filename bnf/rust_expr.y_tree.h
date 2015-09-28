@@ -1,4 +1,4 @@
-_(expr): _(expr_assign);
+_(expr_noblock): _(expr_assign);
 
 _(expr_assign)
  : _(expr_0) assign_op _(expr_0)
@@ -97,7 +97,7 @@ _(expr_fc)
 _(expr_value)
  : CHARLIT | INTEGER | FLOAT | STRING
  | expr_blocks
- | expr_path '(' expr_list ')'	{ bnf_trace(context, "function call"); }
+ | expr_path '(' expr_list opt_comma ')'	{ bnf_trace(context, "function call"); }
 #ifndef SUFFIX_is__NOSTRLIT
  | expr_path '{' struct_literal_list '}'
  | expr_path '{' struct_literal_list ',' '}'
@@ -111,6 +111,11 @@ _(expr_value)
  | '[' expr_list opt_comma ']'
  | '[' expr ';' expr ']'
  | MACRO tt_paren	{ bnf_trace(context, "Expr macro invocation"); }
- | '|' closure_arg_list '|' closure_ret expr
- | DOUBLEPIPE expr
+ | MACRO tt_square	{ bnf_trace(context, "Expr macro invocation"); }
+ | _(closure)
+ | RWD_move _(closure)
+ ;
+_(closure)
+ : '|' closure_arg_list '|' closure_ret expr
+ | DOUBLEPIPE closure_ret expr
  ;

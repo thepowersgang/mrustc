@@ -37,8 +37,7 @@ int_suffix	([ui](size|8|16|32|64))?
 
 %%
 
-"//"[^/].*\n	{ }
-"///".*\n	{ lvalp->DOC_COMMENT = new ::std::string(yytext+1, strlen(yytext)-2); return DOC_COMMENT; }
+"//".*\n	{ if(yytext[2] == '/' && yytext[3] != '/') { lvalp->DOC_COMMENT = new ::std::string(yytext+1, strlen(yytext)-2); return DOC_COMMENT; } }
 "//!".*\n	{ lvalp->SUPER_DOC_COMMENT = new ::std::string(yytext+1, strlen(yytext)-2); return SUPER_DOC_COMMENT; }
 "/*"	{ handle_block_comment(); /* TODO: Handle doc comments */ }
 \n	/* */
@@ -67,6 +66,7 @@ int_suffix	([ui](size|8|16|32|64))?
 
 "let"	{ return RWD_let; }
 "ref"	{ return RWD_ref; }
+"move"	{ return RWD_move; }
 "box"	{ return RWD_box; }
 
 "self"	{ return RWD_self; }
@@ -148,6 +148,7 @@ int_suffix	([ui](size|8|16|32|64))?
 [0-9]{dec_digit}*(f32|f64)	{ lvalp->FLOAT = strtod(yytext, NULL); return FLOAT; }
 [0-9]{dec_digit}*{int_suffix}	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
 0x[0-9a-fA-F_]+{int_suffix}	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
+0o[0-7]+{int_suffix}	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
 0b[01_]+{int_suffix}	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
 {ident_c}({ident_c}|[0-9])*"!"	{ lvalp->MACRO = new ::std::string(yytext, 0, strlen(yytext)-1); return MACRO; }
 '{ident_c}{ident_c}*	{ lvalp->LIFETIME = new ::std::string(yytext, 1); return LIFETIME; }
@@ -216,10 +217,16 @@ uint32_t parse_char_literal(const char *_s) {
 			{
 			case 'n':	rv += '\n';	break;
 			case 'r':	rv += '\r';	break;
+			case 't':	rv += '\t';	break;
 			case '"':	rv += '"';	break;
 			case '0':	rv += '\0';	break;
 			case '\\':	rv += '\\';	break;
-			case '\n':	break;
+			case '\'':	rv += '\'';	break;
+			case '\n':
+				while( isblank(*s) )
+					s ++;
+				s --;
+				break;
 			case 'x':
 				rv += (char)strtoul((const char*)(s+1), NULL, 16);
 				s += 2;
@@ -273,6 +280,7 @@ loop:
 	for(; *s == '#'; s++)
 		num_hash ++;
 	assert(*s == '"');
+	printf("handle_raw_string - num_hash=%i\n", num_hash);
 	
 	::std::string rv;
 	
@@ -291,10 +299,14 @@ loop:
 			if( i == num_hash ) {
 				break;
 			}
+			unput(c);
 			// Didn't find enough, append to output
 			rv += '"';
 			while(i--)	rv += '#';
 			
+		}
+		else if( c <= 0 ) {
+			break;
 		}
 		else {
 			rv += c;

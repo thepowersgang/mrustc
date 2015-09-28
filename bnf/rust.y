@@ -31,7 +31,7 @@
 %token DOUBLELT DOUBLEGT DOUBLELTEQUAL DOUBLEGTEQUAL
 %token RWD_mod RWD_fn RWD_const RWD_static RWD_use RWD_struct RWD_enum RWD_trait RWD_impl RWD_type
 %token RWD_as RWD_in RWD_mut RWD_ref RWD_pub RWD_where RWD_unsafe
-%token RWD_let RWD_box
+%token RWD_let RWD_box RWD_move
 %token RWD_self RWD_super
 %token RWD_match RWD_if RWD_while RWD_loop RWD_for RWD_else
 %token RWD_return RWD_break RWD_continue
@@ -175,6 +175,7 @@ item
  | RWD_extern RWD_crate extern_crate	{ $$ = $3; }
  | RWD_pub RWD_extern RWD_crate extern_crate	{ $$ = $4; $$->set_pub(); }
  | MACRO IDENT tt_brace	{ $$ = new Macro(consume($1), consume($2), consume($3)); }
+ | MACRO IDENT tt_paren ';'	{ $$ = new Macro(consume($1), consume($2), consume($3)); }
  | MACRO tt_brace	{ $$ = new Macro(consume($1), consume($2)); }
  | MACRO tt_paren ';'	{ $$ = new Macro(consume($1), consume($2)); }
  ;
@@ -191,7 +192,8 @@ vis_item
  ;
 /* Possibily unsafe visibility item */
 unsafe_vis_item
- : fn_qualifiers RWD_fn fn_def	{ $$ = $3; }
+ : RWD_fn fn_def	{ $$ = $2; }
+ | fn_qualifiers RWD_fn fn_def	{ $$ = $3; }
  | RWD_trait trait_def	{ $$ = $2; }
  ;
 unsafe_item
@@ -213,6 +215,7 @@ extern_items
  ;
 extern_item
  : attrs opt_pub RWD_fn fn_def_hdr ';'	{ $$ = $4; if($2) $$->set_pub(); $$->add_attrs( consume($1) ); }
+ | attrs opt_pub RWD_static opt_mut IDENT ':' type ';'	{ $$ = new Global(); }
  ;
 
 module_def
@@ -232,8 +235,20 @@ fn_def_ret
  | THINARROW '!'
  ;
 
-fn_def_args: /* empty */ | fn_def_self | fn_def_self ',' fn_def_arg_list | fn_def_arg_list;
-fn_def_args_PROTO: /* empty */ | fn_def_self | fn_def_self ',' fn_def_arg_list_PROTO | fn_def_arg_list_PROTO;
+fn_def_args
+ : /* empty */
+ | fn_def_self
+ | fn_def_self ',' fn_def_arg_list opt_comma
+ | fn_def_arg_list opt_comma
+ | fn_def_arg_list ',' TRIPLEDOT
+ ;
+fn_def_args_PROTO
+ : /* empty */
+ | fn_def_self
+ | fn_def_self ',' fn_def_arg_list_PROTO opt_comma
+ | fn_def_arg_list_PROTO opt_comma
+ | fn_def_arg_list_PROTO ',' TRIPLEDOT
+ ;
 
 fn_def_self
  : RWD_self
@@ -256,8 +271,7 @@ fn_def_arg_PROTO
  ;
 
 fn_qualifiers
- :
- | RWD_extern extern_abi
+ : RWD_extern extern_abi
  | RWD_const
  | RWD_unsafe
  | RWD_unsafe RWD_const
@@ -271,17 +285,18 @@ type_def
 use_def
  : RWD_self use_def_tail	{ $$ = new UseSet( Path(Path::TagSelf()), consume($2) ); }
  | RWD_self DOUBLECOLON use_path use_def_tail	{ $$ = new UseSet(/* TODO */); }
- | RWD_super use_def_tail	{ $$ = new UseSet( Path(Path::TagSuper()), consume($2) ); }
- | RWD_super DOUBLECOLON use_path use_def_tail	{ $$ = new UseSet(/* TODO */); }
+ | RWD_super super_chain use_def_tail	{ $$ = new UseSet( Path(Path::TagSuper()), consume($3) ); }
+ | RWD_super super_chain DOUBLECOLON use_path use_def_tail	{ $$ = new UseSet(/* TODO */); }
  | DOUBLECOLON use_path use_def_tail	{ $$ = new UseSet(/* TODO */); }
  | use_path use_def_tail	{ $$ = new UseSet(/* TODO */); }
- | '{' use_picks '}' ';'	{ $$ = new UseSet( Path(Path::TagAbs()), consume($2) ); }
- | DOUBLECOLON '{' use_picks '}' ';'	{ $$ = new UseSet( Path(Path::TagAbs()), consume($3) ); }
+ | '{' use_picks opt_comma '}' ';'	{ $$ = new UseSet( Path(Path::TagAbs()), consume($2) ); }
+ | DOUBLECOLON '{' use_picks opt_comma '}' ';'	{ $$ = new UseSet( Path(Path::TagAbs()), consume($3) ); }
  ;
+super_chain: | super_chain DOUBLECOLON RWD_super;
 use_def_tail
  : RWD_as IDENT ';'	{ $$ = new UseItems(UseItems::TagRename(), consume($2) ); }
  | DOUBLECOLON '*' ';'	{ $$ = new UseItems(UseItems::TagWildcard()); }
- | DOUBLECOLON '{' use_picks '}' ';'	{ $$ = new UseItems( consume($3) ); }
+ | DOUBLECOLON '{' use_picks opt_comma '}' ';'	{ $$ = new UseItems( consume($3) ); }
  | ';'	{ $$ = new UseItems(); }
 /* | RWD_use error ';' */
  ;
@@ -345,7 +360,9 @@ trait_item
  : RWD_type IDENT ';'
  | RWD_type IDENT ':' trait_bound_list ';'
  | RWD_type IDENT '=' type ';'
+ | opt_unsafe RWD_fn fn_def_hdr_PROTO ';'
  | opt_unsafe fn_qualifiers RWD_fn fn_def_hdr_PROTO ';'
+ | opt_unsafe RWD_fn fn_def_hdr_PROTO code 
  | opt_unsafe fn_qualifiers RWD_fn fn_def_hdr_PROTO code 
  ;
 
@@ -360,6 +377,7 @@ impl_def_line
 impl_items: | impl_items attrs impl_item;
 impl_item
  : opt_pub opt_unsafe fn_qualifiers RWD_fn fn_def
+ | opt_pub opt_unsafe RWD_fn fn_def
  | opt_pub RWD_type generic_def IDENT '=' type ';'
  | MACRO tt_group_item
  ;
@@ -466,8 +484,8 @@ type
  ;
 type_ele
  : type_path
- | RWD_fn '(' type_list ')' fn_def_ret
- | RWD_extern extern_abi RWD_fn '(' type_list ')' fn_def_ret
+ | opt_unsafe RWD_fn '(' fn_def_arg_list_PROTO ')' fn_def_ret
+ | opt_unsafe RWD_extern extern_abi RWD_fn '(' fn_def_arg_list_PROTO ')' fn_def_ret
  | '_'
  | '&' opt_lifetime type_ele
  | DOUBLEAMP opt_lifetime type_ele
@@ -500,8 +518,13 @@ struct_pattern
 	: expr_path '{' struct_pattern_items '}'
 	| expr_path '(' pattern_list ')'
 	;
-struct_pattern_item: IDENT | IDENT ':' pattern;
+struct_pattern_item: IDENT | IDENT ':' pattern | DOUBLEDOT;
 struct_pattern_items: struct_pattern_items ',' struct_pattern_item | struct_pattern_item;
+
+slice_pattern
+ : '[' pattern_list ']'
+ | '[' pattern_list ',' DOUBLEDOT ']'
+ ;
 
 pattern
  : /*IDENT	{ /* maybe bind * / }
@@ -522,6 +545,7 @@ nonbind_pattern
  | tuple_pattern
  | value_pattern
  | value_pattern TRIPLEDOT value_pattern
+ | slice_pattern
  | '&' pattern
  | '&' RWD_mut pattern
  | DOUBLEAMP pattern
@@ -530,6 +554,7 @@ nonbind_pattern
 value_pattern
  : expr_path
  | INTEGER
+ | '-' INTEGER
  | CHARLIT
  | STRING
  ;
@@ -554,7 +579,7 @@ block_contents
  | block_lines tail_expr
  ;
 tail_expr
- : expr
+ : expr_noblock
  | flow_control
  ;
 flow_control
@@ -566,10 +591,15 @@ flow_control
 block_lines: | block_lines block_line;
 block_line
  : RWD_let let_binding ';'
- | MACRO IDENT tt_brace
+ | MACRO IDENT tt_brace 
+ | MACRO IDENT tt_paren ';'
+ | MACRO tt_brace
  | super_attr
  | attrs item
  | expr_blocks
+ | RWD_unsafe RWD_extern extern_abi RWD_fn fn_def
+ | RWD_unsafe RWD_fn fn_def
+ | block
  | stmt
  | LIFETIME ':' loop_block
  ;
@@ -581,6 +611,7 @@ let_binding
 
 stmt
  : expr ';'
+ | ';'
  ;
 
 expr_list: expr_list ',' expr | expr | /* mt */;
@@ -591,13 +622,21 @@ struct_literal_list
  | struct_literal_ent
  ;
 
+expr
+ : '{' block_contents '}'
+ | expr_noblock
+ ;
+expr_NOSTRLIT
+ : block
+ | expr_noblock_NOSTRLIT
+ ;
+
 expr_blocks
  : RWD_match expr_NOSTRLIT '{' match_arms '}'	{ }
  | RWD_if if_block
  | RWD_unsafe '{' block_contents '}' { }
  | flow_control 
  | loop_block
- | block
  ;
 loop_block
  : RWD_loop '{' block_contents '}' { }
