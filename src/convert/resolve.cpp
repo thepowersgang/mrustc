@@ -85,6 +85,7 @@ public:
 
     virtual void handle_path(AST::Path& path, CASTIterator::PathMode mode) override;
     void handle_path_abs(AST::Path& path, CASTIterator::PathMode mode);
+    void handle_path_abs__into_ufcs(AST::Path& path, unsigned slice_from, unsigned split_point);
     void handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mode);
     bool find_trait_item(const AST::Path& path, AST::Trait& trait, const ::std::string& item_name, bool& out_is_method, AST::Path& out_trait_path);
     virtual void handle_type(TypeRef& type) override;
@@ -668,6 +669,8 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
     // TODO: Are there any reasons not to be bound at this point?
     //assert( !path.binding().is_Unbound() );
 }
+
+// Validates all components are able to be located, and converts Trait/Struct/Enum::Item into UFCS format
 void CPathResolver::handle_path_abs(AST::Path& path, CASTIterator::PathMode mode)
 {
     //bool expect_params = false;
@@ -679,7 +682,7 @@ void CPathResolver::handle_path_abs(AST::Path& path, CASTIterator::PathMode mode
     unsigned int slice_from = 0;    // Used when rewriting the path to be relative to its crate root
     
     // Iterate through nodes, starting at the root module of the specified crate
-    // - Locate the referenced item, and fail if the 
+    // - Locate the referenced item, and fail if any component isn't found
     ::std::vector<const AST::Module*>    mod_stack;
     const AST::Module* mod = &this->m_crate.get_root_module(path.crate());
     for(unsigned int i = 0; i < nodes.size(); i ++ )
@@ -760,7 +763,9 @@ void CPathResolver::handle_path_abs(AST::Path& path, CASTIterator::PathMode mode
                 goto ret;
             }
             else {
-                throw ParseError::Todo("Path::resolve() type method");
+                this->handle_path_abs__into_ufcs(path, slice_from, i);
+                // Explicit return - rebase slicing is already done
+                return ;
             }
             ),
         
@@ -786,7 +791,9 @@ void CPathResolver::handle_path_abs(AST::Path& path, CASTIterator::PathMode mode
                 goto ret;
             }
             else {
-                throw ParseError::Todo("CPathResolver::handle_path_abs - Trait into UFCS");
+                this->handle_path_abs__into_ufcs(path, slice_from, i);
+                // Explicit return - rebase slicing is already done
+                return ;
             }
             ),
         
@@ -800,7 +807,9 @@ void CPathResolver::handle_path_abs(AST::Path& path, CASTIterator::PathMode mode
                 goto ret;
             }
             else {
-                throw ParseError::Todo("CPathResolver::handle_path_abs - Struct into UFCS");
+                this->handle_path_abs__into_ufcs(path, slice_from, i);
+                // Explicit return - rebase slicing is already done
+                return ;
             }
             ),
         
@@ -814,9 +823,9 @@ void CPathResolver::handle_path_abs(AST::Path& path, CASTIterator::PathMode mode
                 goto ret;
             }
             else {
-                // TODO: Should enum variants be converted into UFCS, or left as is?
-                // - UFCS is actually valid... oddly enough, except in use statements
-                throw ParseError::Todo("CPathResolver::handle_path_abs - Enum into UFCS");
+                this->handle_path_abs__into_ufcs(path, slice_from, i);
+                // Explicit return - rebase slicing is already done
+                return ;
             }
             ),
         
@@ -877,6 +886,26 @@ ret:
     }
     return ;
 }
+// Starting from the `slice_from`th element, take until `split_point` as the type path, and the rest of the nodes as UFCS items
+void CPathResolver::handle_path_abs__into_ufcs(AST::Path& path, unsigned slice_from, unsigned split_point)
+{
+    TRACE_FUNCTION_F("(path = " << path << ", slice_from=" << slice_from << ", split_point=" << split_point << ")");
+    assert(slice_from < path.size());
+    assert(slice_from < split_point);
+    // Split point must be at most the last index
+    assert(split_point < path.size());
+    
+    const auto& nodes = path.nodes();
+    AST::Path   type_path(path.crate(), ::std::vector<AST::PathNode>( nodes.begin() + slice_from, nodes.begin() + split_point ));
+    for(unsigned i = split_point; i < nodes.size(); i ++)
+    {
+        DEBUG("type_path = " << type_path << ", nodes[i] = " << nodes[i]);
+        type_path = AST::Path(AST::Path::TagUfcs(), TypeRef(mv$(type_path)), TypeRef(), {mv$(nodes[i])} );
+    }
+    
+    path = mv$(type_path);
+}
+
 void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mode)
 {
     assert(path.m_class.is_UFCS());

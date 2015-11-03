@@ -158,6 +158,8 @@ public:
     
     // UFCS
     struct TagUfcs {};
+    // TODO: Replace with "Path(TagUfcs, TypeRef, Path, PathNode)" and "Path(TagUfcs, TypeRef, PathNode)"
+    // - Making Class::UFCS.trait be a nullable Path pointer
     Path(TagUfcs, TypeRef type, TypeRef trait, ::std::vector<PathNode> nodes={});
     
     // VARIABLE
