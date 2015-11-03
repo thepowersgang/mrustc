@@ -8,6 +8,8 @@
 *.sw[po]
 /output
 
+/bnf/*.o
+/bnf/.gen
 /bnf/.rust.y
 /bnf/rust.lex.c
 /bnf/rust.tab.c

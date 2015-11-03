@@ -45,7 +45,7 @@
 #define TU_DISPA7(n, a, a1,a2,a3, b1,b2, c1,c2) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA2(n,a, b1,b2) TU_DISPA2(n,a, c1,c2)
 #define TU_DISPA8(n, a, a1,a2,a3, b1,b2,b3, c1,c2) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA3(n,a, b1,b2,b3) TU_DISPA2(n,a, c1,c2)
 #define TU_DISPA9(n, a, a1,a2,a3, b1,b2,b3, c1,c2,c3) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA3(n,a, b1,b2,b3) TU_DISPA3(n,a, c1,c2,c3)
-#define TU_DISPA10(n, a, a1,a2,a3, b1,b2,b3, c1,c2,c3, d1) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA3(n,a, b1,b2,b3) TU_DISPA3(n,a, c1,c2,c3) TU_DISPA(n,a, d1)
+#define TU_DISPA10(n, a, a1,a2,a3, b1,b2,b3, c1,c2,c3, d1) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA3(n,a, b1,b2,b3) TU_DISPA3(n,a, c1,c2,c3) TU_DISPA(n, (TU_EXP a, TU_EXP d1))
 #define TU_DISPA11(n, a, a1,a2,a3, b1,b2,b3, c1,c2,c3, d1,d2) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA3(n,a, b1,b2,b3) TU_DISPA3(n,a, c1,c2,c3) TU_DISPA2(n,a, d1,d2)
 #define TU_DISPA12(n, a, a1,a2,a3, b1,b2,b3, c1,c2,c3, d1,d2,d3) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA3(n,a, b1,b2,b3) TU_DISPA3(n,a, c1,c2,c3) TU_DISPA3(n,a, d1,d2,d3)
 #define TU_DISPA13(n, a, a1,a2,a3,a4, b1,b2,b3, c1,c2,c3, d1,d2,d3) TU_DISPA4(n,a, a1,a2,a3,a4) TU_DISPA3(n,a, b1,b2,b3) TU_DISPA3(n,a, c1,c2,c3) TU_DISPA3(n,a, d1,d2,d3)

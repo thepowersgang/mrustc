@@ -724,36 +724,37 @@ public:
     public:
         enum Type
         {
-            ITEM_none,
-            ITEM_Module,
-            ITEM_Crate,
-            ITEM_TypeAlias,
-            ITEM_Function,
-            ITEM_Trait,
-            ITEM_Struct,
-            ITEM_Enum,
-            ITEM_Static,
-            ITEM_Use,
+            None,
+            Module,
+            Crate,
+            TypeAlias,
+            Function,
+            Trait,
+            Struct,
+            Enum,
+            Static,
+            Use,
         };
     private:    
         Type    m_type;
         const void* m_ref;
     public:
-        ItemRef(): m_type(ITEM_none) {}
+        ItemRef(): m_type(None) {}
         
-        Type type() { return m_type; }
+        Type tag() const { return m_type; }
+        const Type& as_None() const { return m_type; }  // HACK: Returns &Type in place of &void
         #define _(ty,ident) \
-            ItemRef(const ty& ref): m_type(ITEM_##ident), m_ref(&ref) {} \
-            const ty& unwrap_##ident() { assert(m_type == ITEM_##ident); m_type = ITEM_none; return *(const ty*)m_ref; }
-        _(Module, Module)
+            ItemRef(const ty& ref): m_type(ident), m_ref(&ref) {} \
+            const ty& as_##ident() const { assert(m_type == ident); return *(const ty*)m_ref; }
+        _(AST::Module, Module)
         _(::std::string, Crate)
-        _(TypeAlias, TypeAlias)
-        _(Function, Function)
-        _(Trait, Trait)
-        _(Struct, Struct)
-        _(Enum, Enum)
-        _(Static, Static)
-        _(Item<Path>, Use)
+        _(AST::TypeAlias, TypeAlias)
+        _(AST::Function, Function)
+        _(AST::Trait, Trait)
+        _(AST::Struct, Struct)
+        _(AST::Enum, Enum)
+        _(AST::Static, Static)
+        _(AST::Item<Path>, Use)
         #undef _
     };
     ItemRef find_item(const ::std::string& needle, bool allow_leaves = true, bool ignore_private_wildcard = true) const;

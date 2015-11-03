@@ -715,7 +715,7 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
                     // not yet bound, so run resolution (recursion)
                     DEBUG("Recursively resolving pub wildcard use " << imp.data);
                     //imp.data.resolve(root_crate);
-                    throw ParseError::Todo("Path::resolve() wildcard re-export call resolve");
+                    throw ParseError::Todo("AST::Module::find_item() - Wildcard `use` not bound, call resolve here?");
                 }
                 
                 TU_MATCH_DEF(AST::PathBinding, (binding), (info),
@@ -730,7 +730,7 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
                 // - If it's a module, recurse
                 (Module,
                     auto rv = info.module_->find_item(needle);
-                    if( rv.type() != Module::ItemRef::ITEM_none ) {
+                    if( rv.tag() != Module::ItemRef::None ) {
                         // Don't return RV, return the import (so caller can rewrite path if need be)
                         return ItemRef(imp);
                         //return rv;

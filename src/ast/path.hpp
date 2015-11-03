@@ -250,15 +250,7 @@ public:
         nodes().push_back(node);
         m_binding = PathBinding();
     }
-    
-    /// Resolve the path, and set up binding
-    ///
-    /// expect_params enables checking of param counts (clear for handling 'use')
-    void resolve(const Crate& crate, bool expect_params=true);
-    void resolve_absolute(const Crate& root_crate, bool expect_params);
-    void resolve_ufcs(const Crate& root_crate, bool expect_params);
-    void resolve_ufcs_trait(const AST::Path& trait_path, AST::PathNode& node);
-    
+
     /// Resolve generic arguments within the path
     void resolve_args(::std::function<TypeRef(const char*)> fcn);
     
@@ -281,6 +273,7 @@ public:
     bool is_absolute() const { return m_class.is_Absolute(); }
     bool is_relative() const { return m_class.is_Relative() || m_class.is_Super() || m_class.is_Self(); }
     size_t size() const { return nodes().size(); }
+    const ::std::string& crate() const { return m_crate; }
 
     bool is_concrete() const;
     
@@ -326,12 +319,17 @@ private:
     static int node_lists_equal_no_generic(const ::std::vector<PathNode>& nodes_a, const ::std::vector<PathNode>& nodes_b);
     
     void check_param_counts(const TypeParams& params, bool expect_params, PathNode& node);
+public:
     void bind_module(const Module& mod);
-    void bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args);
-    void bind_enum_var(const Enum& ent, const ::std::string& name, const ::std::vector<TypeRef>& args);
-    void bind_struct(const Struct& ent, const ::std::vector<TypeRef>& args);
+    void bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args={});
+    void bind_enum_var(const Enum& ent, const ::std::string& name, const ::std::vector<TypeRef>& args={});
+    void bind_struct(const Struct& ent, const ::std::vector<TypeRef>& args={});
     void bind_struct_member(const Struct& ent, const ::std::vector<TypeRef>& args, const PathNode& member_node);
     void bind_static(const Static& ent);
+    void bind_trait(const Trait& ent, const ::std::vector<TypeRef>& args={});
+    void bind_function(const Function& ent, const ::std::vector<TypeRef>& args={}) {
+        m_binding = PathBinding::make_Function({&ent});
+    }
 };
 
 }   // namespace AST

@@ -4,6 +4,8 @@
  *
  * convert/resolve.cpp
  * - Resolve names into absolute format
+ * 
+ * - Converts all paths into a canonical format (absolute, local, or UFCS)
  */
 #include "../common.hpp"
 #include "../ast/ast.hpp"
@@ -82,6 +84,7 @@ public:
     void handle_params(AST::TypeParams& params) override;
 
     virtual void handle_path(AST::Path& path, CASTIterator::PathMode mode) override;
+    void handle_path_abs(AST::Path& path, CASTIterator::PathMode mode);
     void handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mode);
     bool find_trait_item(const AST::Path& path, AST::Trait& trait, const ::std::string& item_name, bool& out_is_method, AST::Path& out_trait_path);
     virtual void handle_type(TypeRef& type) override;
@@ -381,39 +384,43 @@ bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, c
     TRACE_FUNCTION_F("mod_path="<<mod_path);
     // - Allow leaf nodes if path is a single node, don't skip private wildcard imports
     auto item = module.find_item(name, is_leaf, false);
-    switch(item.type())
-    {
-    case AST::Module::ItemRef::ITEM_none:
+    TU_MATCH_DEF(AST::Module::ItemRef, (item), (i),
+    (
+        path = mod_path + path;
+        //path.resolve( crate );
+        return true;
+        ),
+    (None,
         return false;
-    case AST::Module::ItemRef::ITEM_Use: {
-        const auto& imp = item.unwrap_Use();
+        ),
+    (Use,
+        const auto& imp = i;
         if( imp.name == "" )
         {
             DEBUG("Wildcard import found, " << imp.data << " + " << path);
             // Wildcard path, prefix entirely with the path
             path = imp.data + path;
-            path.resolve( crate );
+            //path.resolve( crate );
             return true;
         }
         else
         {
             DEBUG("Named import found, " << imp.data << " + " << path << " [1..]");
             path = AST::Path::add_tailing(imp.data, path);
-            path.resolve( crate );
+            //path.resolve( crate );
             return true;
         }
-        return false; }
-    case AST::Module::ItemRef::ITEM_Module:
+        return false;
+        ),
+    (Module,
         // Check name down?
         // Add current module path
         path = mod_path + path;
-        path.resolve( crate );
+        //path.resolve( crate );
         return true;
-    default:
-        path = mod_path + path;
-        path.resolve( crate );
-        return true;
-    }
+        )
+    )
+    assert(!"");
 }
 bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, const AST::Path& mod_path, AST::Path& path) {
     return lookup_path_in_module(crate, module, mod_path, path, path[0].name(), path.size() == 1);
@@ -484,19 +491,13 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
     (Invalid),
     (Local),
     (Relative,
-        for( auto& ent : info.nodes )
-            for( auto& arg : ent.args() )
-                handle_type(arg);
+        assert( !"Relative path after handle_path_int");
         ),
     (Self,
-        for( auto& ent : info.nodes )
-            for( auto& arg : ent.args() )
-                handle_type(arg);
+        assert( !"Relative (self) path after handle_path_int");
         ),
     (Super,
-        for( auto& ent : info.nodes )
-            for( auto& arg : ent.args() )
-                handle_type(arg);
+        assert( !"Relative (super) path after handle_path_int");
         ),
     (Absolute,
         for( auto& ent : info.nodes )
@@ -512,6 +513,7 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
         )
     )
 }
+
 void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode)
 {
     // Convert to absolute
@@ -519,6 +521,7 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
     switch( path.class_tag() )
     {
     case AST::Path::Class::Invalid:
+        // TODO: Throw an error
         assert( !path.m_class.is_Invalid() );
         return;
     // --- Already absolute forms
@@ -526,22 +529,24 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
     case AST::Path::Class::Absolute:
         DEBUG("Absolute - binding");
         INDENT();
+        handle_path_abs(path, mode);
+        // TODO: Move Path::resolve() to this file
         // Already absolute, our job is done
         // - However, if the path isn't bound, bind it
         if( path.binding().is_Unbound() ) {
-            path.resolve(m_crate);
+            //path.resolve(m_crate);
         }
         else {
             DEBUG("- Path " << path << " already bound");
         }
         UNINDENT();
         break;
-    // > UFCS: Expand the types
+    // > UFCS: Resolve the type and trait
     case AST::Path::Class::UFCS:
         handle_path_ufcs(path, mode);
         break;
     // > Variable: (wait, how is this known already?)
-    // - 'self'
+    // - 'self', 'Self'
     case AST::Path::Class::Local:
         if( !path.binding().is_Unbound() )
         {
@@ -552,7 +557,7 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
             const auto& info = path.m_class.as_Local();
             // 1. Check for local items
             if( this->find_local_item(path, info.name, (mode == CASTIterator::MODE_EXPR)) ) {
-                path.resolve(m_crate);
+                //path.resolve(m_crate);
                 break ;
             }
             else {
@@ -564,7 +569,7 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
             }
             // 3. Module items
             if( this->find_mod_item(path, info.name) ) {
-                path.resolve(m_crate);
+                //path.resolve(m_crate);
                 break;
             }
             else {
@@ -583,7 +588,7 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
         {
             bool allow_variables = (mode == CASTIterator::MODE_EXPR && path.is_trivial());
             if( this->find_local_item(path, path[0].name(), allow_variables) ) {
-                path.resolve(m_crate);
+                //path.resolve(m_crate);
                 break ;
             }
             else {
@@ -623,7 +628,7 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
         // 3. current module
         {
             if( this->find_mod_item(path, path[0].name()) ) {
-                path.resolve(m_crate);
+                //path.resolve(m_crate);
                 break;
             }
             else {
@@ -662,6 +667,215 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
     
     // TODO: Are there any reasons not to be bound at this point?
     //assert( !path.binding().is_Unbound() );
+}
+void CPathResolver::handle_path_abs(AST::Path& path, CASTIterator::PathMode mode)
+{
+    //bool expect_params = false;
+
+    assert( path.m_class.is_Absolute() );
+    
+    auto& nodes = path.m_class.as_Absolute().nodes;
+    
+    unsigned int slice_from = 0;    // Used when rewriting the path to be relative to its crate root
+    
+    // Iterate through nodes, starting at the root module of the specified crate
+    // - Locate the referenced item, and fail if the 
+    ::std::vector<const AST::Module*>    mod_stack;
+    const AST::Module* mod = &this->m_crate.get_root_module(path.crate());
+    for(unsigned int i = 0; i < nodes.size(); i ++ )
+    {
+        mod_stack.push_back(mod);
+        const bool is_last = (i+1 == nodes.size());
+        const AST::PathNode& node = nodes[i];
+        DEBUG("[" << i << "/"<<nodes.size()<<"]: " << node);
+        
+        if( node.name()[0] == '#' )
+        {
+            // HACK - Compiler-provided functions/types live in the special '#' module
+            if( node.name() == "#" ) {
+                if( i != 0 )
+                    throw ParseError::BugCheck("# module not at path root");
+                mod = &g_compiler_module;
+                continue ;
+            }
+            
+            // Hacky special case - Anon modules are indexed
+            // - Darn you C++ and no string views
+            unsigned int index = ::std::strtoul(node.name().c_str()+1, nullptr, 10);    // Parse the number at +1
+            DEBUG(" index = " << index);
+            if( index >= mod->anon_mods().size() )
+                throw ParseError::Generic("Anon module index out of range");
+            mod = mod->anon_mods().at(index);
+            continue ;
+        }
+        
+        auto item_ref = mod->find_item(node.name(), is_last);  // Only allow leaf nodes (functions and statics) if this is the last node
+        TU_MATCH( AST::Module::ItemRef, (item_ref), (item),
+        // Not found
+        (None,
+            // If parent node is anon, backtrack and try again
+            // TODO: I feel like this shouldn't be done here, instead perform this when absolutising (now that find_item is reusable)
+            if( i > 0 && nodes[i-1].name()[0] == '#' && nodes[i-1].name().size() > 1 )
+            {
+                i --;
+                mod_stack.pop_back();
+                mod = mod_stack.back();
+                mod_stack.pop_back();
+                nodes.erase(nodes.begin()+i);
+                i --;
+                DEBUG("Failed to locate item in nested, look upwards");
+                
+                continue ;
+            }
+            throw ParseError::Generic("Unable to find component '" + node.name() + "'");
+            ),
+        // Sub-module
+        (Module,
+            DEBUG("Sub-module : " << node.name());
+            if( node.args().size() )
+                throw ParseError::Generic("Generic params applied to module");
+            mod = &item;
+            ),
+        // Crate
+        (Crate,
+            const ::std::string& crate_name = item;
+            DEBUG("Extern crate '" << node.name() << "' = '" << crate_name << "'");
+            if( node.args().size() )
+                throw ParseError::Generic("Generic params applied to extern crate");
+            path.set_crate( crate_name );
+            slice_from = i+1;
+            mod = &this->m_crate.get_root_module(crate_name);
+            ),
+        
+        // Type Alias
+        (TypeAlias,
+            const auto& ta = item;
+            DEBUG("Type alias <"<<ta.params()<<"> " << ta.type());
+            //if( node.args().size() != ta.params().size() )
+            //    throw ParseError::Generic("Param count mismatch when referencing type alias");
+            // Make a copy of the path, replace params with it, then replace *this?
+            // - Maybe leave that up to other code?
+            if( is_last ) {
+                //check_param_counts(ta.params(), expect_params, nodes[i]);
+                goto ret;
+            }
+            else {
+                throw ParseError::Todo("Path::resolve() type method");
+            }
+            ),
+        
+        // Function
+        (Function,
+            //const auto& fn = item;
+            DEBUG("Found function");
+            if( is_last ) {
+                //check_param_counts(fn.params(), expect_params, nodes[i]);
+                goto ret;
+            }
+            else {
+                throw ParseError::Generic("Import of function, too many extra nodes");
+            }
+            ),
+        
+        // Trait
+        (Trait,
+            //const auto& t = item;
+            DEBUG("Found trait");
+            if( is_last ) {
+                //check_param_counts(t.params(), expect_params, nodes[i]);
+                goto ret;
+            }
+            else {
+                throw ParseError::Todo("CPathResolver::handle_path_abs - Trait into UFCS");
+            }
+            ),
+        
+        // Struct
+        (Struct,
+            const auto& str = item;
+            DEBUG("Found struct");
+            if( is_last ) {
+                //check_param_counts(str.params(), expect_params, nodes[i]);
+                path.bind_struct(str, node.args());
+                goto ret;
+            }
+            else {
+                throw ParseError::Todo("CPathResolver::handle_path_abs - Struct into UFCS");
+            }
+            ),
+        
+        // Enum / enum variant
+        (Enum,
+            const auto& enm = item;
+            DEBUG("Found enum");
+            if( is_last ) {
+                //check_param_counts(enm.params(), expect_params, nodes[i]);
+                path.bind_enum(enm, node.args());
+                goto ret;
+            }
+            else {
+                // TODO: Should enum variants be converted into UFCS, or left as is?
+                // - UFCS is actually valid... oddly enough, except in use statements
+                throw ParseError::Todo("CPathResolver::handle_path_abs - Enum into UFCS");
+            }
+            ),
+        
+        (Static,
+            const auto& st = item;
+            DEBUG("Found static/const");
+            if( is_last ) {
+                if( node.args().size() )
+                    throw ParseError::Generic("Unexpected generic params on static/const");
+                path.bind_static(st);
+                goto ret;
+            }
+            else {
+                throw ParseError::Generic("Binding path to static, trailing nodes");
+            }
+            ),
+        
+        // Re-export
+        (Use,
+            const auto& imp = item;
+            AST::Path   newpath = imp.data;
+            auto& newnodes = newpath.m_class.as_Absolute().nodes;
+            DEBUG("Re-exported path " << imp.data);
+            if( imp.name == "" )
+            {
+                // Replace nodes 0:i-1 with source path, then recurse
+                for( unsigned int j = i; j < nodes.size(); j ++ )
+                {
+                    newnodes.push_back( nodes[j] );
+                }
+            }
+            else
+            {
+                // replace nodes 0:i with the source path
+                for( unsigned int j = i+1; j < nodes.size(); j ++ )
+                {
+                    newnodes.push_back( nodes[j] );
+                }
+            }
+            
+            DEBUG("- newpath = " << newpath);
+            // TODO: This should check for recursion somehow
+            this->handle_path_abs(newpath, mode);
+            
+            path = mv$(newpath);
+            return;
+            )
+        )
+    }
+    
+    // We only reach here if the path points to a module
+    path.bind_module( *mod );
+ret:
+    if( slice_from > 0 )
+    {
+        DEBUG("Removing " << slice_from << " nodes to rebase path to crate root");
+        nodes.erase(nodes.begin(), nodes.begin()+slice_from);
+    }
+    return ;
 }
 void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mode)
 {
@@ -768,8 +982,6 @@ void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mod
                     IF_OPTION_SOME(item, impl.find_named_item(item_name), {
                         DEBUG("Found matching inherent impl");
                         *info.trait = TypeRef(TypeRef::TagInvalid());
-                        //path.set_binding(item);
-                        path.resolve(m_crate);
                         return ;
                     })
                 }
@@ -783,9 +995,6 @@ void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mod
                     if( trait.has_named_item(item_name, is_fcn) ) {
                         IF_OPTION_SOME(impl, m_crate.find_impl( trait_p, *info.type ), {
                             *info.trait = TypeRef( trait_p );
-                            //auto item = impl.find_named_item(item_name).unwrap();
-                            //path.set_binding(item);
-                            path.resolve(m_crate);
                             return ;
                         })
                     }
@@ -793,13 +1002,9 @@ void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mod
 
                 throw ParseError::Todo("CPathResolver::handle_path_ufcs - UFCS, find trait");
             }
-            
-            path.resolve(m_crate);
         }
     }
     else {
-        // 3. Call resolve to attempt binding
-        path.resolve(m_crate);
     }
 }
 
@@ -910,7 +1115,7 @@ bool CPathResolver::find_super_mod_item(AST::Path& path, const ::std::string& na
     if( super_path.nodes().back().name()[0] == '#' )
         throw ParseError::Todo("Correct handling of 'super' in anon modules (parent is anon)");
     // 2. Resolve that path
-    super_path.resolve(m_crate);
+    //super_path.resolve(m_crate);
     // 3. Call lookup_path_in_module
     return lookup_path_in_module(m_crate, *super_path.binding().as_Module().module_, super_path, path,  name, path.size()==1);
 }
@@ -953,7 +1158,7 @@ void CPathResolver::handle_type(TypeRef& type)
             else {
                 TU_MATCH(SelfType, (this->m_self_type.back()), (ent),
                 (None,
-                    assert(!"");
+                    assert(!"SelfType is None in CPathResolver::handle_type");
                     ),
                 (Type,
                     type = ent.type;
@@ -1072,7 +1277,7 @@ void CPathResolver::handle_module(AST::Path path, AST::Module& mod)
 }
 void CPathResolver::handle_trait(AST::Path path, AST::Trait& trait)
 {
-    path.resolve(m_crate);
+    //path.resolve(m_crate);
     
     // Handle local 
     m_scope_stack.back().traits.push_back( ::std::pair<AST::Path, const AST::Trait&>(path, trait) );
@@ -1100,6 +1305,7 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
             break;
         // 'super' - Add parent path
         // - TODO: Handle nested modules correctly.
+        // - TODO: Chaining 'super' is valid
         case AST::Path::Class::Super: {
             if( modpath.size() < 1 )
                 throw ParseError::Generic("Encountered 'super' at crate root");
@@ -1125,7 +1331,84 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
         }
         
         // Run resolution on import
-        imp.data.resolve(crate, false);
+        // TODO: Need to truely absolutise?
+        {
+            const AST::Module* mod = &crate.root_module();
+            for(const auto& node : p.nodes() ) {
+                if( node.args().size() > 0 ) {
+                    throw ParseError::Generic("Unexpected generic params in use path");
+                }
+                if( mod == nullptr ) {
+                    if( p.binding().is_Enum() ) {
+                        auto& enm = *p.binding().as_Enum().enum_;
+                        for(const auto& variant : enm.variants()) {
+                            if( variant.m_name == node.name() ) {
+                                p.bind_enum_var(enm, node.name());
+                                break;
+                            }
+                        }
+                        if( p.binding().is_Enum() ) {
+                            throw ParseError::Generic( FMT("Unable to find component '" << node.name() << "' of import " << p) );
+                        }
+                        break;
+                    }
+                    else {
+                        throw ParseError::Generic("Extra path components after final item");
+                    }
+                }
+                auto item = mod->find_item(node.name());
+                // HACK: Not actually a normal TU, but it fits the same pattern
+                TU_MATCH(AST::Module::ItemRef, (item), (i),
+                (None,
+                    throw ParseError::Generic( FMT("Unable to find component '" << node.name() << "' of import " << p) );
+                    ),
+                (Module,
+                    mod = &i;
+                    ),
+                (Crate,
+                    mod = &crate.get_root_module(i);
+                    ),
+                (TypeAlias,
+                    throw ParseError::Todo("Bind to type alias in use resolution");
+                    //p.bind_type_alias(i);
+                    mod = nullptr;
+                    ),
+                (Function,
+                    p.bind_function(i);
+                    mod = nullptr;
+                    ),
+                (Trait,
+                    p.bind_trait(i);
+                    mod = nullptr;
+                    ),
+                (Struct,
+                    p.bind_struct(i);
+                    mod = nullptr;
+                    ),
+                (Enum,
+                    // - Importing an enum item will be handled in the nullptr check above
+                    p.bind_enum(i);
+                    mod = nullptr;
+                    ),
+                (Static,
+                    p.bind_static(i);
+                    mod = nullptr;
+                    ),
+                (Use,
+                    if(i.name == "") {
+                        throw ParseError::Todo("Handle resolving to wildcard use in use resolution");
+                    }
+                    else {
+                        // Restart lookup using new path
+                    }
+                    )
+                )
+            }
+            if( mod != nullptr ) {
+                p.bind_module(*mod);
+            }
+        }
+        //imp.data.resolve(crate, false);
         DEBUG("Resolved import : " << imp.data);
         
         // If wildcard, make sure it's sane
@@ -1136,7 +1419,7 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
                 throw ParseError::Generic("Wildcard imports are only allowed on modules and enums");
                 ),
             (Unbound,
-                throw ParseError::BugCheck("path unbound after calling .resolve()");
+                throw ParseError::BugCheck("Wildcard import path unbound after calling .resolve()");
                 ),
             (Module, (void)0;),
             (Enum, (void)0;)
@@ -1146,9 +1429,9 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
     
     for( auto& new_imp : new_imports )
     {
-        if( new_imp.binding().is_Unbound() ) {
-            new_imp.resolve(crate, false);
-        }
+        //if( new_imp.binding().is_Unbound() ) {
+        //    new_imp.resolve(crate, false);
+        //}
         mod.add_alias(false, new_imp, new_imp[new_imp.size()-1].name());
     }
     
@@ -1163,7 +1446,7 @@ void SetCrateName_Type(const AST::Crate& crate, ::std::string name, TypeRef& typ
     if( type.is_path() )
     {
         type.path().set_crate(name);
-        type.path().resolve(crate);
+        //type.path().resolve(crate);
     }
 }
 
@@ -1176,7 +1459,7 @@ void SetCrateName_Mod(const AST::Crate& crate, ::std::string name, AST::Module& 
     {
         imp.data.set_crate(name);
         // - Disable expectation of type parameters
-        imp.data.resolve(crate, false);
+        //imp.data.resolve(crate, false);
     }
     
     // TODO: All other types
@@ -1209,7 +1492,7 @@ void ResolvePaths(AST::Crate& crate)
     UNINDENT();
     
     // Then do path resolution on all other items
-    CPathResolver	pr(crate);
+    CPathResolver pr(crate);
     DEBUG(" ---");
     pr.handle_module(AST::Path("", {}), crate.root_module());
     DEBUG(" <<<");
