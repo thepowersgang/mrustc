@@ -576,7 +576,8 @@ Ordering TypeRef::ord(const TypeRef& x) const
             DEBUG(*this << " == " << x);
             if( ent.params )   DEBUG("- (L) " << *ent.params);
             if( x_ent.params ) DEBUG("- (R) " << *x_ent.params);
-            BUG(m_span, "Can't compare mismatched generic types");
+            throw ::std::runtime_error("Can't compare mismatched generic types");
+            //BUG(m_span, "Can't compare mismatched generic types");
         }
         else {
         }

@@ -986,7 +986,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
         }
         else
         {
-            path.set_span( lex.end_span(span_start) );
+            //path.set_span( lex.end_span(span_start) );
             switch( tok.type() )
             {
             case TOK_BRACE_OPEN:
@@ -1003,7 +1003,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
             return ;
         }
     }
-    path.set_span( lex.end_span(span_start) );
+    //path.set_span( lex.end_span(span_start) );
     
     ::std::string name;
     // This should only be allowed if the last token was an ident

@@ -52,6 +52,13 @@ struct Span
     void note(::std::function<void(::std::ostream&)> msg) const;
 };
 
-#define ERROR(span, code, msg)  do { (span).error(code, [&](::std::ostream& os) { os << msg; }); throw ::std::runtime_error("Error fell through" #code); } while(0)
-#define BUG(span, msg)  do { (span).bug([&](::std::ostream& os) { os << msg; }); throw ::std::runtime_error("Bug fell through"); } while(0)
+template<typename T>
+struct Spanned
+{
+    Span    m_span;
+    T   m_item;
+};
+
+#define ERROR(span, code, msg)  do { (Span()/*span*/).error(code, [&](::std::ostream& os) { os << msg; }); throw ::std::runtime_error("Error fell through" #code); } while(0)
+#define BUG(span, msg)  do { (Span()/*span*/).bug([&](::std::ostream& os) { os << msg; }); throw ::std::runtime_error("Bug fell through"); } while(0)
 

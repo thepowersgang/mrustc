@@ -43,7 +43,7 @@ TypeRef Parse_Type(TokenStream& lex)
 {
     ProtoSpan ps = lex.start_span();
     TypeRef rv = Parse_Type_Int(lex);
-    rv.set_span(lex.end_span(ps));
+    //rv.set_span(lex.end_span(ps));
     return rv;
 }
 

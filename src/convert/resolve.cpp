@@ -607,7 +607,7 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
             {
                 if(path.size() > 1) {
                     auto ty = TypeRef(TypeRef::TagArg(), path[0].name());
-                    ty.set_span( path.span() );
+                    //ty.set_span( path.span() );
                     // Repalce with UFCS
                     auto newpath = AST::Path(AST::Path::TagUfcs(), ty, TypeRef());
                     newpath.add_tailing(path);
@@ -1369,8 +1369,7 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
                     mod = &crate.get_root_module(i);
                     ),
                 (TypeAlias,
-                    throw ParseError::Todo("Bind to type alias in use resolution");
-                    //p.bind_type_alias(i);
+                    p.bind_type_alias(i);
                     mod = nullptr;
                     ),
                 (Function,

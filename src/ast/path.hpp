@@ -131,7 +131,6 @@ private:
 
 public:
     Class   m_class;
-    Span    m_span;
 
 private:
     PathBinding m_binding;
@@ -144,7 +143,6 @@ public:
     Path& operator=(AST::Path&& x) {
         m_crate = mv$(x.m_crate);
         m_class = mv$(x.m_class);
-        //m_span = mv$(x.m_span);
         m_binding = mv$(x.m_binding);
         //DEBUG("Path, " << x);
         return *this;
@@ -192,12 +190,6 @@ public:
             m_crate = crate;
             DEBUG("crate set to " << m_crate);
         }
-    }
-    void set_span(Span sp) {
-        this->m_span = sp;
-    }
-    const Span& span() const {
-        return this->m_span;
     }
 
     
@@ -329,6 +321,9 @@ public:
     void bind_trait(const Trait& ent, const ::std::vector<TypeRef>& args={});
     void bind_function(const Function& ent, const ::std::vector<TypeRef>& args={}) {
         m_binding = PathBinding::make_Function({&ent});
+    }
+    void bind_type_alias(const TypeAlias& ent, const ::std::vector<TypeRef>& args={}) {
+        m_binding = PathBinding::make_TypeAlias({&ent});
     }
 };
 
