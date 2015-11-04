@@ -64,5 +64,17 @@ private:
     void handle_impl_def(AST::ImplDef& impl);
 };
 
+static inline ::std::ostream& operator<<(::std::ostream& os, const CASTIterator::PathMode& mode) {
+    switch(mode)
+    {
+    case CASTIterator::MODE_EXPR:   return os << "MODE_EXPR";
+    case CASTIterator::MODE_TYPE:   return os << "MODE_TYPE";
+    case CASTIterator::MODE_BIND:   return os << "MODE_BIND";
+    }
+    return os;
+}
+
+
+
 #endif
 

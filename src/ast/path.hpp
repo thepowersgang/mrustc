@@ -266,7 +266,19 @@ public:
     bool is_valid() const { return !m_class.is_Invalid(); }
     bool is_absolute() const { return m_class.is_Absolute(); }
     bool is_relative() const { return m_class.is_Relative() || m_class.is_Super() || m_class.is_Self(); }
-    size_t size() const { return nodes().size(); }
+    
+    size_t size() const {
+        TU_MATCH(Class, (m_class), (ent),
+        (Invalid,  assert(!m_class.is_Invalid()); throw ::std::runtime_error("Path::nodes() on Invalid"); ),
+        (Local,    return 1;),
+        (Relative, return ent.nodes.size();),
+        (Self,     return ent.nodes.size();),
+        (Super,    return ent.nodes.size();),
+        (Absolute, return ent.nodes.size();),
+        (UFCS,     return ent.nodes.size();)
+        )
+        throw ::std::runtime_error("Path::nodes() fell off");
+    }
     const ::std::string& crate() const { return m_crate; }
 
     bool is_concrete() const;
@@ -283,7 +295,7 @@ public:
         (Self,     return ent.nodes;),
         (Super,    return ent.nodes;),
         (Absolute, return ent.nodes;),
-        (UFCS,      return ent.nodes;)
+        (UFCS,     return ent.nodes;)
         )
         throw ::std::runtime_error("Path::nodes() fell off");
     }

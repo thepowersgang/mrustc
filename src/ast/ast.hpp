@@ -742,9 +742,11 @@ public:
         ItemRef(): m_type(None) {}
         
         Type tag() const { return m_type; }
+        bool is_None() const { return m_type == None; }
         const Type& as_None() const { return m_type; }  // HACK: Returns &Type in place of &void
         #define _(ty,ident) \
             ItemRef(const ty& ref): m_type(ident), m_ref(&ref) {} \
+            bool is_##ident() const { return m_type == ident; } \
             const ty& as_##ident() const { assert(m_type == ident); return *(const ty*)m_ref; }
         _(AST::Module, Module)
         _(::std::string, Crate)

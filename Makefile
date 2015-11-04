@@ -11,6 +11,14 @@ CPPFLAGS := -I src/include/
 
 SHELL = bash
 
+ifeq ($(DBGTPL),)
+  
+else ifeq ($(DBGTPL),gdb)
+  DBG := echo -e "r\nbt 7\nq" | gdb --args
+else
+  $(error "Unknown debug template")
+endif
+
 OBJDIR = .obj/
 
 BIN := bin/mrustc$(EXESUF)
