@@ -84,11 +84,11 @@ public:
     void handle_params(AST::TypeParams& params) override;
 
     virtual void handle_path(AST::Path& path, CASTIterator::PathMode mode) override;
-    void handle_path_abs(AST::Path& path, CASTIterator::PathMode mode);
-    void handle_path_abs__into_ufcs(AST::Path& path, unsigned slice_from, unsigned split_point);
-    void handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mode);
-    void handle_path_rel(AST::Path& path, CASTIterator::PathMode mode);
-    bool find_trait_item(const AST::Path& path, AST::Trait& trait, const ::std::string& item_name, bool& out_is_method, AST::Path& out_trait_path);
+    void handle_path_abs(const Span& span, AST::Path& path, CASTIterator::PathMode mode);
+    void handle_path_abs__into_ufcs(const Span& span, AST::Path& path, unsigned slice_from, unsigned split_point);
+    void handle_path_ufcs(const Span& span, AST::Path& path, CASTIterator::PathMode mode);
+    void handle_path_rel(const Span& span, AST::Path& path, CASTIterator::PathMode mode);
+    bool find_trait_item(const Span& span, const AST::Path& path, AST::Trait& trait, const ::std::string& item_name, bool& out_is_method, AST::Path& out_trait_path);
     virtual void handle_type(TypeRef& type) override;
     virtual void handle_expr(AST::ExprNode& node) override;
     
@@ -120,11 +120,11 @@ public:
     
     ::rust::option<const LocalItem&> lookup_local(LocalItem::Type type, const ::std::string& name) const;
     
-    bool find_local_item(AST::Path& path, const ::std::string& name, bool allow_variables);
+    bool find_local_item(const Span& span, AST::Path& path, const ::std::string& name, bool allow_variables);
     //bool find_local_item(AST::Path& path, bool allow_variables);
-    bool find_mod_item(AST::Path& path, const ::std::string& name);
-    bool find_self_mod_item(AST::Path& path, const ::std::string& name);
-    bool find_super_mod_item(AST::Path& path, const ::std::string& name);
+    bool find_mod_item(const Span& span, AST::Path& path, const ::std::string& name);
+    bool find_self_mod_item(const Span& span, AST::Path& path, const ::std::string& name);
+    bool find_super_mod_item(const Span& span, AST::Path& path, const ::std::string& name);
     bool find_type_param(const ::std::string& name);
     
     virtual void push_self() override {
@@ -146,7 +146,7 @@ public:
     
     // TODO: Handle a block and obtain the local module (if any)
 private:
-    void handle_path_int(AST::Path& path, CASTIterator::PathMode mode);
+    void handle_path_int(const Span& span, AST::Path& path, CASTIterator::PathMode mode);
     
     ::std::vector< ::std::pair<AST::Path, const AST::Trait&> > inscope_traits() const
     {
@@ -338,7 +338,7 @@ public:
 
 /// Do simple path resolution on this path
 /// - Simple involves only doing item name lookups, no checks of generic params at all or handling UFCS
-void resolve_path(const AST::Crate& root_crate, AST::Path& path)
+void resolve_path(const Span& span, const AST::Crate& root_crate, AST::Path& path)
 {
     if( !path.is_absolute() ) {
         BUG(span, "Calling resolve_path on non-absolute path - " << path);
@@ -469,7 +469,7 @@ void CPathResolver::end_scope()
 // > Search local use definitions (function-level)
 // - TODO: Local use statements (scoped)
 // > Search module-level definitions
-bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, const AST::Path& mod_path, AST::Path& path, const ::std::string& name, bool is_leaf)
+bool lookup_path_in_module(const Span& span, const AST::Crate& crate, const AST::Module& module, const AST::Path& mod_path, AST::Path& path, const ::std::string& name, bool is_leaf)
 {
     TRACE_FUNCTION_F("mod_path="<<mod_path);
     // - Allow leaf nodes if path is a single node, don't skip private wildcard imports
@@ -512,8 +512,8 @@ bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, c
     )
     assert(!"");
 }
-bool lookup_path_in_module(const AST::Crate& crate, const AST::Module& module, const AST::Path& mod_path, AST::Path& path) {
-    return lookup_path_in_module(crate, module, mod_path, path, path[0].name(), path.size() == 1);
+bool lookup_path_in_module(const Span &span, const AST::Crate& crate, const AST::Module& module, const AST::Path& mod_path, AST::Path& path) {
+    return lookup_path_in_module(span, crate, module, mod_path, path, path[0].name(), path.size() == 1);
 }
 
 /// Perform path resolution within a generic definition block
@@ -574,9 +574,10 @@ void CPathResolver::handle_params(AST::TypeParams& params)
 /// Resolve names within a path
 void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
 {
+    const Span span = Span();
     TRACE_FUNCTION_F("(path = " << path << ", mode = "<<mode<<"), m_module_path = " << m_module_path);
  
-    handle_path_int(path, mode);
+    handle_path_int(span, path, mode);
     
     // Handle generic components of the path
     // - Done AFTER resoltion, as binding might introduce defaults (which may not have been resolved)
@@ -611,7 +612,7 @@ void CPathResolver::handle_path(AST::Path& path, CASTIterator::PathMode mode)
     )
 }
 
-void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode)
+void CPathResolver::handle_path_int(const Span& span, AST::Path& path, CASTIterator::PathMode mode)
 {
     // Convert to absolute
     // - This means converting all partial forms (i.e. not UFCS, Variable, or Absolute)
@@ -626,7 +627,7 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
     case AST::Path::Class::Absolute:
         DEBUG("Absolute - binding");
         INDENT();
-        handle_path_abs(path, mode);
+        handle_path_abs(span, path, mode);
         // TODO: Move Path::resolve() to this file
         // Already absolute, our job is done
         // - However, if the path isn't bound, bind it
@@ -640,7 +641,7 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
         break;
     // > UFCS: Resolve the type and trait
     case AST::Path::Class::UFCS:
-        handle_path_ufcs(path, mode);
+        handle_path_ufcs(span, path, mode);
         break;
     // > Variable: (wait, how is this known already?)
     // - 'self', 'Self'
@@ -654,9 +655,9 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
         {
             const auto& info = path.m_class.as_Local();
             // 1. Check for local items
-            if( this->find_local_item(path, info.name, (mode == CASTIterator::MODE_EXPR)) ) {
+            if( this->find_local_item(span, path, info.name, (mode == CASTIterator::MODE_EXPR)) ) {
                 if( path.is_absolute() ) {
-                    handle_path_abs(path, mode);
+                    handle_path_abs(span, path, mode);
                 }
                 break ;
             }
@@ -668,8 +669,8 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
                 throw ::std::runtime_error("TODO: Local in CPathResolver::handle_path_int type param");
             }
             // 3. Module items
-            if( this->find_mod_item(path, info.name) ) {
-                handle_path_abs(path, mode);
+            if( this->find_mod_item(span, path, info.name) ) {
+                handle_path_abs(span, path, mode);
                 break;
             }
             else {
@@ -680,16 +681,17 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
                 throw ParseError::Generic("CPathResolver::handle_path - Name resolution failed (Local)");
             return ;
         }
-        break;
+        if(0)
     
+    // Unannotated relative
     case AST::Path::Class::Relative:
-        handle_path_rel(path, mode);
+        handle_path_rel(span, path, mode);
         if(0)
     
     // Module relative
     case AST::Path::Class::Self:
         {
-            if( this->find_self_mod_item(path, path[0].name()) ) {
+            if( this->find_self_mod_item(span, path, path[0].name()) ) {
                 // Fall
             }
             else {
@@ -703,7 +705,7 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
     // TODO: "super::" can be chained
     case AST::Path::Class::Super:
         {
-            if( this->find_super_mod_item(path, path[0].name()) ) {
+            if( this->find_super_mod_item(span, path, path[0].name()) ) {
                 // Fall
             }
             else {
@@ -715,7 +717,7 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
         // Common for Relative, Self, and Super
         DEBUG("Post relative resolve - path=" << path);
         if( path.is_absolute() ) {
-            handle_path_abs(path, mode);
+            handle_path_abs(span, path, mode);
         }
         else {
         }
@@ -727,7 +729,7 @@ void CPathResolver::handle_path_int(AST::Path& path, CASTIterator::PathMode mode
 }
 
 // Validates all components are able to be located, and converts Trait/Struct/Enum::Item into UFCS format
-void CPathResolver::handle_path_abs(AST::Path& path, CASTIterator::PathMode mode)
+void CPathResolver::handle_path_abs(const Span& span, AST::Path& path, CASTIterator::PathMode mode)
 {
     //bool expect_params = false;
 
@@ -824,7 +826,7 @@ void CPathResolver::handle_path_abs(AST::Path& path, CASTIterator::PathMode mode
                 goto ret;
             }
             else {
-                this->handle_path_abs__into_ufcs(path, slice_from, i+1);
+                this->handle_path_abs__into_ufcs(span, path, slice_from, i+1);
                 // Explicit return - rebase slicing is already done
                 return ;
             }
@@ -854,7 +856,7 @@ void CPathResolver::handle_path_abs(AST::Path& path, CASTIterator::PathMode mode
                 goto ret;
             }
             else {
-                this->handle_path_abs__into_ufcs(path, slice_from, i+1);
+                this->handle_path_abs__into_ufcs(span, path, slice_from, i+1);
                 // Explicit return - rebase slicing is already done
                 return ;
             }
@@ -870,7 +872,7 @@ void CPathResolver::handle_path_abs(AST::Path& path, CASTIterator::PathMode mode
                 goto ret;
             }
             else {
-                this->handle_path_abs__into_ufcs(path, slice_from, i+1);
+                this->handle_path_abs__into_ufcs(span, path, slice_from, i+1);
                 // Explicit return - rebase slicing is already done
                 return ;
             }
@@ -886,7 +888,7 @@ void CPathResolver::handle_path_abs(AST::Path& path, CASTIterator::PathMode mode
                 goto ret;
             }
             else {
-                this->handle_path_abs__into_ufcs(path, slice_from, i+1);
+                this->handle_path_abs__into_ufcs(span, path, slice_from, i+1);
                 // Explicit return - rebase slicing is already done
                 return ;
             }
@@ -931,7 +933,7 @@ void CPathResolver::handle_path_abs(AST::Path& path, CASTIterator::PathMode mode
             
             DEBUG("- newpath = " << newpath);
             // TODO: This should check for recursion somehow
-            this->handle_path_abs(newpath, mode);
+            this->handle_path_abs(span, newpath, mode);
             
             path = mv$(newpath);
             return;
@@ -950,7 +952,7 @@ ret:
     return ;
 }
 // Starting from the `slice_from`th element, take until `split_point` as the type path, and the rest of the nodes as UFCS items
-void CPathResolver::handle_path_abs__into_ufcs(AST::Path& path, unsigned slice_from, unsigned split_point)
+void CPathResolver::handle_path_abs__into_ufcs(const Span& span, AST::Path& path, unsigned slice_from, unsigned split_point)
 {
     TRACE_FUNCTION_F("(path = " << path << ", slice_from=" << slice_from << ", split_point=" << split_point << ")");
     assert(slice_from < path.size());
@@ -963,7 +965,12 @@ void CPathResolver::handle_path_abs__into_ufcs(AST::Path& path, unsigned slice_f
     for(unsigned i = split_point; i < nodes.size(); i ++)
     {
         DEBUG("type_path = " << type_path << ", nodes[i] = " << nodes[i]);
-        type_path = AST::Path(AST::Path::TagUfcs(), TypeRef(mv$(type_path)), TypeRef(), {mv$(nodes[i])} );
+        resolve_path(span, m_crate, type_path);
+        // If the type path refers to a trait, put it in the trait location
+        if(type_path.binding().is_Trait())
+            type_path = AST::Path(AST::Path::TagUfcs(), TypeRef(), TypeRef(mv$(type_path)), {mv$(nodes[i])} );
+        else
+            type_path = AST::Path(AST::Path::TagUfcs(), TypeRef(mv$(type_path)), TypeRef(), {mv$(nodes[i])} );
     }
     
     path = mv$(type_path);
@@ -971,7 +978,7 @@ void CPathResolver::handle_path_abs__into_ufcs(AST::Path& path, unsigned slice_f
 
 
 /// Handles path resolution for UFCS format paths (<Type as Trait>::Item)
-void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mode)
+void CPathResolver::handle_path_ufcs(const Span& span, AST::Path& path, CASTIterator::PathMode mode)
 {
     assert(path.m_class.is_UFCS());
     auto& info = path.m_class.as_UFCS();
@@ -988,15 +995,20 @@ void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mod
             // Invalid
             BUG(span, "Invalid item class for type in path " << path);
             ),
+        //(Unbound,
+        //    ),
+        //(Trait, ),
         (Struct, ),
         (Enum, )
         )
     }
-    
+
     // 2. Handle wildcard traits (locate in inherent impl, or from an in-scope trait)
     // TODO: Disabled, as it requires having all traits (semi) path resolved, so that trait resolution works cleanly
+    // - Impl heads and trait heads could be resolved in an earlier pass
     if( info.trait->is_wildcard() )
     {
+        #if 0
         if( this->m_second_pass ) {
             const ::std::string&    item_name = info.nodes[0].name();
             DEBUG("Searching for matching trait for '"<<item_name<<"' on type " << *info.type);
@@ -1020,7 +1032,7 @@ void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mod
                 
                 bool is_method;
                 AST::Path   found_trait_path;
-                if( this->find_trait_item(p, t, item_name,  is_method, found_trait_path) ) {
+                if( this->find_trait_item(span, p, t, item_name,  is_method, found_trait_path) ) {
                     if( is_method ) {
                         if( info.nodes.size() != 1 )
                             ERROR(path.span(), E0000, "CPathResolver::handle_path_ufcs - Sub-nodes to method");
@@ -1055,7 +1067,7 @@ void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mod
                             bool is_method;
                             AST::Path   found_trait_path;
                             DEBUG("find_trait_item(" << ent.trait << /*", t=" << t <<*/ ", item_name = " << item_name);
-                            if( this->find_trait_item(ent.trait, t, item_name,  is_method, found_trait_path) )
+                            if( this->find_trait_item(span, ent.trait, t, item_name,  is_method, found_trait_path) )
                             {
                                 if( is_method ) {
                                     if( info.nodes.size() != 1 )
@@ -1111,17 +1123,63 @@ void CPathResolver::handle_path_ufcs(AST::Path& path, CASTIterator::PathMode mod
                 throw ParseError::Todo( FMT("CPathResolver::handle_path_ufcs - UFCS, find trait, for type " << *info.type) );
             }
         }
+        #endif
     }
     else {
+        #if 0
+        const auto& name = path.nodes()[0].name();
+        // Trait is known, need to ensure that the named item exists
+        assert(info.trait->path().binding().is_Trait());
+        const auto &tr = *info.trait->path().binding().as_Trait().trait_;
+        
+        // TODO: Need to try super-traits AND applicable type impls
+        // - E.g. "impl Any {"
+        switch(mode)
+        {
+        case MODE_EXPR:
+            for( const auto& fcn : tr.functions() )
+            {
+                DEBUG("fcn.name = " << fcn.name);
+                if(fcn.name == name) {
+                    path.bind_function(fcn.data);
+                    break;
+                }
+            }
+            //for( const auto& fcn : tr.constants() )
+            //{
+            //}
+            break;
+        case MODE_BIND:
+            //for( const auto& fcn : tr.constants() )
+            //{
+            //}
+            break;
+        case MODE_TYPE:
+            for( const auto& it : tr.types() )
+            {
+                if(it.name == name) {
+                    path.bind_type_alias(it.data);
+                    break;
+                }
+            }
+            break;
+        }
+        if(mode == MODE_EXPR && path.binding().is_Unbound()) {
+            // TODO: Locate an 'impl Trait' block for methods
+        }
+        if(path.binding().is_Unbound()) {
+            ERROR(span, E0000, "Unable to locate item '" << name << "' in trait " << *info.trait << " (mode=" << mode << ")");
+        }
+        #endif
     }
 }
-void CPathResolver::handle_path_rel(AST::Path& path, CASTIterator::PathMode mode)
+void CPathResolver::handle_path_rel(const Span& span, AST::Path& path, CASTIterator::PathMode mode)
 {
     // 1. function scopes (variables and local items)
     // > Return values: name or path
     {
         bool allow_variables = (mode == CASTIterator::MODE_EXPR && path.is_trivial());
-        if( this->find_local_item(path, path[0].name(), allow_variables) ) {
+        if( this->find_local_item(span, path, path[0].name(), allow_variables) ) {
             return ;
         }
     }
@@ -1142,7 +1200,6 @@ void CPathResolver::handle_path_rel(AST::Path& path, CASTIterator::PathMode mode
                 auto newpath = AST::Path(AST::Path::TagUfcs(), ty, TypeRef());
                 newpath.add_tailing(path);
                 path = mv$(newpath);
-                handle_path_ufcs(path, mode);
             }
             else {
                 // Mark as local
@@ -1157,8 +1214,7 @@ void CPathResolver::handle_path_rel(AST::Path& path, CASTIterator::PathMode mode
     
     // 3. current module
     {
-        if( this->find_mod_item(path, path[0].name()) ) {
-            handle_path_abs(path, mode);
+        if( this->find_mod_item(span, path, path[0].name()) ) {
             return ;
         }
         else {
@@ -1180,7 +1236,7 @@ void CPathResolver::handle_path_rel(AST::Path& path, CASTIterator::PathMode mode
     ERROR(span, E0000, "CPathResolver::handle_path - Name resolution failed");
 }
 
-bool CPathResolver::find_trait_item(const AST::Path& path, AST::Trait& trait, const ::std::string& item_name, bool& out_is_method, AST::Path& out_trait_path)
+bool CPathResolver::find_trait_item(const Span& span, const AST::Path& path, AST::Trait& trait, const ::std::string& item_name, bool& out_is_method, AST::Path& out_trait_path)
 {
     TRACE_FUNCTION_F("path=" << path << ", trait=..., item_name=" << item_name);
     {
@@ -1213,7 +1269,7 @@ bool CPathResolver::find_trait_item(const AST::Path& path, AST::Trait& trait, co
             //BUG(st.span(), "Supertrait path '"<<st<<"' of '"<<path<<"' is not bound");
         }
         AST::Trait& super_t = *const_cast<AST::Trait*>(st.binding().as_Trait().trait_);
-        if( this->find_trait_item(st, super_t, item_name,  out_is_method, out_trait_path) ) {
+        if( this->find_trait_item(span, st, super_t, item_name,  out_is_method, out_trait_path) ) {
             DEBUG("path = " << path << ", super_t.params() = " << super_t.params() << ", out_trait_path = " << out_trait_path);
             // 
             out_trait_path.resolve_args([&](const char* name) {
@@ -1231,7 +1287,7 @@ bool CPathResolver::find_trait_item(const AST::Path& path, AST::Trait& trait, co
     return false;
 }
 
-bool CPathResolver::find_local_item(AST::Path& path, const ::std::string& name, bool allow_variables)
+bool CPathResolver::find_local_item(const Span& span, AST::Path& path, const ::std::string& name, bool allow_variables)
 {
     TRACE_FUNCTION_F("path="<<path<<", allow_variables="<<allow_variables);
     // Search current scopes for a name
@@ -1254,30 +1310,30 @@ bool CPathResolver::find_local_item(AST::Path& path, const ::std::string& name, 
         if( s.module != nullptr )
         {
             DEBUG("- Looking in sub-module '" << s.module_path << "'");
-            if( lookup_path_in_module(m_crate, *s.module, s.module_path, path, name, path.is_trivial()) )
+            if( lookup_path_in_module(span, m_crate, *s.module, s.module_path, path, name, path.is_trivial()) )
                 return true;
         }
     }
     DEBUG("- find_local_item: Not found");
     return false;
 }
-bool CPathResolver::find_mod_item(AST::Path& path, const ::std::string& name) {
+bool CPathResolver::find_mod_item(const Span& span, AST::Path& path, const ::std::string& name) {
     const AST::Module* mod = m_module;
     do {
-        if( lookup_path_in_module(m_crate, *mod, m_module_path, path, name, path.size()==1) )
+        if( lookup_path_in_module(span, m_crate, *mod, m_module_path, path, name, path.size()==1) )
             return true;
         if( mod->name() == "" )
             throw ParseError::Todo("Handle anon modules when resoling unqualified relative paths");
     } while( mod->name() == "" );
     return false;
 }
-bool CPathResolver::find_self_mod_item(AST::Path& path, const ::std::string& name) {
+bool CPathResolver::find_self_mod_item(const Span& span, AST::Path& path, const ::std::string& name) {
     if( m_module->name() == "" )
         throw ParseError::Todo("Correct handling of 'self' in anon modules");
     
-    return lookup_path_in_module(m_crate, *m_module, m_module_path, path, name, path.size()==1);
+    return lookup_path_in_module(span, m_crate, *m_module, m_module_path, path, name, path.size()==1);
 }
-bool CPathResolver::find_super_mod_item(AST::Path& path, const ::std::string& name) {
+bool CPathResolver::find_super_mod_item(const Span& span, AST::Path& path, const ::std::string& name) {
     if( m_module->name() == "" )
         throw ParseError::Todo("Correct handling of 'super' in anon modules");
     
@@ -1288,10 +1344,10 @@ bool CPathResolver::find_super_mod_item(AST::Path& path, const ::std::string& na
     if( super_path.nodes().back().name()[0] == '#' )
         throw ParseError::Todo("Correct handling of 'super' in anon modules (parent is anon)");
     // 2. Resolve that path
-    resolve_path(m_crate, super_path);
+    resolve_path(span, m_crate, super_path);
     // 3. Call lookup_path_in_module
     assert( super_path.binding().is_Module() );
-    return lookup_path_in_module(m_crate, *super_path.binding().as_Module().module_, super_path, path,  name, path.size()==1);
+    return lookup_path_in_module(span, m_crate, *super_path.binding().as_Module().module_, super_path, path,  name, path.size()==1);
 }
 bool CPathResolver::find_type_param(const ::std::string& name) {
     for( auto it = m_locals.end(); it -- != m_locals.begin(); )
@@ -1473,6 +1529,7 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
     ::std::vector<AST::Path>    new_imports;
     for( auto& imp : mod.imports() )
     {
+        const Span  span = Span();
         AST::Path& p = imp.data;
         DEBUG("p = " << p);
         switch( p.class_tag() )
@@ -1502,7 +1559,7 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
                     break ;
                 }
                 modpath_tmp.nodes().pop_back();
-                resolve_path(crate, modpath_tmp);
+                resolve_path(span, crate, modpath_tmp);
                 DEBUG("modpath_tmp = " << modpath_tmp);
                 assert( modpath_tmp.binding().is_Module() );
                 mod_ptr = modpath_tmp.binding().as_Module().module_;
@@ -1520,7 +1577,7 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
         
         // Run resolution on import
         // TODO: Need to truely absolutise? (WTF does that mean? Silly Mutabah)
-        resolve_path(crate, imp.data);
+        resolve_path(span, crate, imp.data);
         DEBUG("Resolved import : " << imp.data);
         
         // If wildcard, make sure it's sane
@@ -1602,6 +1659,11 @@ void ResolvePaths(AST::Crate& crate)
     INDENT();
     ResolvePaths_HandleModule_Use(crate, AST::Path("", {}), crate.root_module());
     UNINDENT();
+
+    // Resolve traits next, to ensure they're usable
+    //ResolvePaths_HandleModule_Trait(crate, AST::Path("", {}), crate.root_module());
+    // Resolve impl block headers
+    //ResolvePaths_HandleModule_Impl(crate, AST::Path("", {}), crate.root_module());
     
     // Then do path resolution on all other items
     CPathResolver pr(crate);
