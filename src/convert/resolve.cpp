@@ -1523,6 +1523,51 @@ void CPathResolver::handle_function(AST::Path path, AST::Function& fcn)
     m_scope_stack.pop_back();
 }
 
+
+void absolutise_path(const Span& span, const AST::Crate& crate, const AST::Path& modpath, AST::Path& path)
+{
+    // TODO: Should this code resolve encountered use statements into the real path?
+    TU_MATCH(AST::Path::Class, (path.m_class), (info),
+    (Absolute,
+        // Nothing needs to be done
+        ),
+    (Super,
+        // TODO: Super supports multiple instances
+        auto newpath = modpath;
+        newpath.nodes().pop_back();
+        newpath += path;
+        DEBUG("Absolutised path " << path << " into " << newpath);
+        path = ::std::move(newpath);
+        ),
+    (Self,
+        auto modpath_tmp = modpath;
+        const AST::Module* mod_ptr = &mod;
+        while( modpath_tmp.size() > 0 && modpath_tmp.nodes().back().name()[0] == '#' )
+        {
+            if( !mod_ptr->find_item(path.nodes()[0].name()).is_None() ) {
+                break ;
+            }
+            modpath_tmp.nodes().pop_back();
+            resolve_path(span, crate, modpath_tmp);
+            DEBUG("modpath_tmp = " << modpath_tmp);
+            assert( modpath_tmp.binding().is_Module() );
+            mod_ptr = modpath_tmp.binding().as_Module().module_;
+        }
+        auto newpath = modpath_tmp + path;
+        DEBUG("Absolutised path " << path << " into " << newpath);
+        path = ::std::move(newpath);
+        )
+    (Relative,
+        auto newpath = modpath + path;
+        DEBUG("Absolutised path " << path << " into " << newpath);
+        path = ::std::move(newpath);
+        ),
+    (UFCS,
+        throw ParseError::Generic( FMT("Invalid path type encounted - UFCS " << path) );
+        )
+    )
+}
+
 void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& modpath, AST::Module& mod)
 {
     TRACE_FUNCTION_F("modpath = " << modpath);
@@ -1530,53 +1575,9 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
     for( auto& imp : mod.imports() )
     {
         const Span  span = Span();
-        AST::Path& p = imp.data;
-        DEBUG("p = " << p);
-        switch( p.class_tag() )
-        {
-        case AST::Path::Class::Absolute:
-            // - No action
-            break;
-        // 'super' - Add parent path
-        // - TODO: Handle nested modules correctly.
-        // - TODO: Chaining 'super' is valid
-        case AST::Path::Class::Super: {
-            if( modpath.size() < 1 )
-                throw ParseError::Generic("Encountered 'super' at crate root");
-            auto newpath = modpath;
-            newpath.nodes().pop_back();
-            newpath += p;
-            DEBUG("Absolutised path " << p << " into " << newpath);
-            p = ::std::move(newpath);
-            break; }
-        // 'self' - Add parent path
-        // - TODO: Handle nested modules correctly.
-        case AST::Path::Class::Self: {
-            auto modpath_tmp = modpath;
-            const AST::Module* mod_ptr = &mod;
-            while( modpath_tmp.size() > 0 && modpath_tmp.nodes().back().name()[0] == '#' ) {
-                if( !mod_ptr->find_item(p.nodes()[0].name()).is_None() ) {
-                    break ;
-                }
-                modpath_tmp.nodes().pop_back();
-                resolve_path(span, crate, modpath_tmp);
-                DEBUG("modpath_tmp = " << modpath_tmp);
-                assert( modpath_tmp.binding().is_Module() );
-                mod_ptr = modpath_tmp.binding().as_Module().module_;
-            }
-            auto newpath = modpath_tmp + p;
-            DEBUG("Absolutised path " << p << " into " << newpath);
-            p = ::std::move(newpath);
-            break; }
-        // Any other class is an error
-        case AST::Path::Class::Relative:
-            throw ParseError::Generic( FMT("Encountered relative path in 'use': " << p) );
-        default:
-            throw ParseError::Generic( FMT("Invalid path type encounted in 'use' : " << p.class_tag() << " " << p) );
-        }
+        DEBUG("p = " << imp.data);
+        absolutise_path(span, crate, modpath, imp.data);
         
-        // Run resolution on import
-        // TODO: Need to truely absolutise? (WTF does that mean? Silly Mutabah)
         resolve_path(span, crate, imp.data);
         DEBUG("Resolved import : " << imp.data);
         
