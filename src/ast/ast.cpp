@@ -730,7 +730,7 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
                 // - If it's a module, recurse
                 (Module,
                     auto rv = info.module_->find_item(needle);
-                    if( rv.tag() != Module::ItemRef::None ) {
+                    if( !rv.is_None() ) {
                         // Don't return RV, return the import (so caller can rewrite path if need be)
                         return ItemRef(imp);
                         //return rv;
@@ -921,7 +921,7 @@ SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
 }
 
 
-#define SERIALISE_TU_ARM(CLASS, NAME, TAG, ...)    case CLASS::TAG: { *this = CLASS::make_null_##TAG(); auto& NAME = this->as_##TAG(); (void)&NAME; __VA_ARGS__ } break;
+#define SERIALISE_TU_ARM(CLASS, NAME, TAG, ...)    case CLASS::TAG_##TAG: { *this = CLASS::make_null_##TAG(); auto& NAME = this->as_##TAG(); (void)&NAME; __VA_ARGS__ } break;
 #define SERIALISE_TU_ARMS(CLASS, NAME, ...)    TU_GMA(__VA_ARGS__)(SERIALISE_TU_ARM, (CLASS, NAME), __VA_ARGS__)
 #define SERIALISE_TU(PATH, TAG, NAME, ...) \
     void operator%(::Serialiser& s, PATH::Tag c) { s << PATH::tag_to_str(c); } \

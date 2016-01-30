@@ -135,8 +135,8 @@ int main(int argc, char *argv[])
             return 0;
         }
         // Flatten modules into "mangled" set
-        g_cur_phase = "Flatten";
-        AST::Flat flat_crate = Convert_Flatten(crate);
+        //g_cur_phase = "Flatten";
+        //AST::Flat flat_crate = Convert_Flatten(crate);
 
         // Convert structures to C structures / tagged enums
         //Convert_Render(flat_crate, stdout);

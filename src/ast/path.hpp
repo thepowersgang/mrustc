@@ -252,15 +252,17 @@ public:
     void match_args(const Path& other, ::std::function<void(const char*,const TypeRef&)> fcn) const;
     
     bool is_trivial() const {
-        switch(m_class.tag())
-        {
-        case Class::Local:  return true;
-        case Class::Relative: {
-            auto& e = m_class.as_Relative();
+        TU_MATCH_DEF(Class, (m_class), (e),
+        (
+            return false;
+            ),
+        (Local,
+            return true;
+            ),
+        (Relative,
             return e.nodes.size() == 1 && e.nodes[0].args().size() == 0;
-            }
-        default:    return false;
-        }
+            )
+        )
     }
     
     bool is_valid() const { return !m_class.is_Invalid(); }

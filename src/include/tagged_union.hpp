@@ -26,7 +26,7 @@
 #define _DISP8(n, v, ...)   n v _DISP7(n, __VA_ARGS__)
 #define _DISP9(n, a1,a2,a3,a4, b1,b2,b3,b4, c1)   _DISP4(n, a1,a2,a3,a4) _DISP3(n, b1,b2,b3)  _DISP2(n, b4,c1)
 #define _DISP10(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2)   _DISP4(n, a1,a2,a3,a4) _DISP4(n, b1,b2,b3,b4) _DISP2(n, c1,c2)
-#define _DISP11(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3)   _DISP4(n, a1,a2,a3,a4) _DISP4(n, b1,b2,b3,b4) _DISP2(n, c1,c2,c3)
+#define _DISP11(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3)   _DISP4(n, a1,a2,a3,a4) _DISP4(n, b1,b2,b3,b4) _DISP3(n, c1,c2,c3)
 #define _DISP12(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3,c4)   _DISP4(n, a1,a2,a3,a4) _DISP4(n, b1,b2,b3,b4) _DISP4(n, c1,c2,c3,c4)
 #define _DISP13(n, a1,a2,a3,a4,a5, b1,b2,b3,b4, c1,c2,c3,c4)   _DISP5(n, a1,a2,a3,a4,a5) _DISP4(n, b1,b2,b3,b4) _DISP4(n, c1,c2,c3,c4)
 #define _DISP14(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4)   _DISP5(n, a1,a2,a3,a4,a5) _DISP5(n, b1,b2,b3,b4,b5) _DISP4(n, c1,c2,c3,c4)
@@ -88,28 +88,28 @@
 #define TU_MATCH_BIND1(TAG, VAR, NAME)  /*MATCH_BIND*/ auto& NAME = VAR.as_##TAG(); (void)&NAME;
 #define TU_MATCH_BIND2_(TAG, v1,v2, n1,n2)   TU_MATCH_BIND1(TAG, v1, n1) TU_MATCH_BIND1(TAG, v2, n2)
 #define TU_MATCH_BIND2(...) TU_MATCH_BIND2_(__VA_ARGS__)
-#define TU_MATCH_ARM(CLASS, VAR, NAME, TAG, ...)  case CLASS::TAG: {/*
+#define TU_MATCH_ARM(CLASS, VAR, NAME, TAG, ...)  case CLASS::TAG_##TAG: {/*
 */    TU_GM(TU_MATCH_BIND, TU_EXP VAR)(TAG, TU_EXP VAR , TU_EXP NAME)/*
 */    __VA_ARGS__/*
 */} break;
 #define TU_MATCH_ARMS(CLASS, VAR, NAME, ...)    TU_GMA(__VA_ARGS__)(TU_MATCH_ARM, (CLASS, VAR, NAME), __VA_ARGS__)
 
-#define TU_IFLET(CLASS, VAR, TAG, NAME, ...) if(VAR.tag() == CLASS::TAG) { auto& NAME = VAR.as_##TAG(); (void)&NAME; __VA_ARGS__ }
+#define TU_IFLET(CLASS, VAR, TAG, NAME, ...) if(VAR.tag() == CLASS::TAG_##TAG) { auto& NAME = VAR.as_##TAG(); (void)&NAME; __VA_ARGS__ }
 
 
 #define TU_DATANAME(name)   Data_##name
 // Internals of TU_CONS
 #define TU_CONS_I(__name, __tag, __type) \
-    __name(__type v): m_tag(__tag) { new (m_data) __type( ::std::move(v) ); } \
-    static self_t make_null_##__tag() { self_t ret; ret.m_tag = __tag; new (ret.m_data) __type; return ::std::move(ret); } \
+    __name(__type v): m_tag(TAG_##__tag) { new (m_data) __type( ::std::move(v) ); } \
+    static self_t make_null_##__tag() { self_t ret; ret.m_tag = TAG_##__tag; new (ret.m_data) __type; return ::std::move(ret); } \
     static self_t make_##__tag(__type v) \
     {\
         return __name( ::std::move(v) );\
     }\
-    bool is_##__tag() const { return m_tag == __tag; } \
-    const __type& as_##__tag() const { assert(m_tag == __tag); return reinterpret_cast<const __type&>(m_data); } \
-    __type& as_##__tag() { assert(m_tag == __tag); return reinterpret_cast<__type&>(m_data); } \
-    __type unwrap_##__tag() { assert(m_tag == __tag); return ::std::move(reinterpret_cast<__type&>(m_data)); } \
+    bool is_##__tag() const { return m_tag == TAG_##__tag; } \
+    const __type& as_##__tag() const { assert(m_tag == TAG_##__tag); return reinterpret_cast<const __type&>(m_data); } \
+    __type& as_##__tag() { assert(m_tag == TAG_##__tag); return reinterpret_cast<__type&>(m_data); } \
+    __type unwrap_##__tag() { assert(m_tag == TAG_##__tag); return ::std::move(reinterpret_cast<__type&>(m_data)); } \
 // Define a tagged union constructor
 #define TU_CONS(__name, name, _) TU_CONS_I(__name, name, TU_DATANAME(name))
 
@@ -118,21 +118,21 @@
 #define TU_TYPEDEF(name, content)    struct TU_DATANAME(name) { TU_EXP content; };/*
 */
 
-#define TU_TAG(name, _)  name,
+#define TU_TAG(name, _)  TAG_##name,
 
 // Destructor internals
-#define TU_DEST_CASE(tag, _)  case tag: as_##tag().~TU_DATANAME(tag)(); break;/*
+#define TU_DEST_CASE(tag, _)  case TAG_##tag: as_##tag().~TU_DATANAME(tag)(); break;/*
 */
 
 // move constructor internals
-#define TU_MOVE_CASE(tag, _)  case tag: new(m_data) TU_DATANAME(tag)(x.unwrap_##tag()); break;/*
+#define TU_MOVE_CASE(tag, _)  case TAG_##tag: new(m_data) TU_DATANAME(tag)(x.unwrap_##tag()); break;/*
 */
 
 // "tag_to_str" internals
-#define TU_TOSTR_CASE(tag,_)    case tag: return #tag;/*
+#define TU_TOSTR_CASE(tag,_)    case TAG_##tag: return #tag;/*
 */
 // "tag_from_str" internals
-#define TU_FROMSTR_CASE(tag,_)    else if(str == #tag) return tag;/*
+#define TU_FROMSTR_CASE(tag,_)    else if(str == #tag) return TAG_##tag;/*
 */
 
 #define MAXS(...)          TU_GM(MAXS,__VA_ARGS__)(__VA_ARGS__)
@@ -170,7 +170,7 @@ class _name TU_EXP _inherit { \
     Tag m_tag; \
     char m_data[MAXS _variants];/*
 */ public:\
-    _name(): m_tag(_def) { new((void*)m_data) TU_DATANAME(_def); }\
+    _name(): m_tag(TAG_##_def) { new((void*)m_data) TU_DATANAME(_def); }\
     _name(const _name&) = delete; \
     _name(_name&& x) noexcept: m_tag(x.m_tag) { switch(m_tag) {  TU_MOVE_CASES _variants } } \
     _name& operator =(_name&& x) { this->~_name(); m_tag = x.m_tag; switch(m_tag) { TU_MOVE_CASES _variants }; return *this; } \

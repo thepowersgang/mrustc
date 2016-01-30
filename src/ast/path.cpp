@@ -537,7 +537,7 @@ void operator%(::Deserialiser& s, Path::Class::Tag& c) {
     s.item(n);
     c = Path::Class::tag_from_str(n);
 }
-#define _D(VAR, ...)  case Class::VAR: { m_class = Class::make_null_##VAR(); auto& ent = m_class.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
+#define _D(VAR, ...)  case Class::TAG_##VAR: { m_class = Class::make_null_##VAR(); auto& ent = m_class.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
 SERIALISE_TYPE(Path::, "AST_Path", {
     s % m_class.tag();
     TU_MATCH(Path::Class, (m_class), (ent),

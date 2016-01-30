@@ -14,32 +14,31 @@ namespace AST {
 ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat)
 {
     os << "Pattern(" << pat.m_binding << " @ ";
-    switch(pat.m_data.tag())
-    {
-    case Pattern::Data::Any:
+    TU_MATCH(Pattern::Data, (pat.m_data), (ent),
+    (Any,
         os << "_";
-        break;
-    case Pattern::Data::MaybeBind:
+        ),
+    (MaybeBind,
         os << "?";
-        break;
-    case Pattern::Data::Ref:
-        os << "&" << (pat.m_data.as_Ref().mut ? "mut " : "") << *pat.m_data.as_Ref().sub;
-        break;
-    case Pattern::Data::Value:
-        os << *pat.m_data.as_Value().start;
-        if( pat.m_data.as_Value().end.get() )
-            os << " ... " << *pat.m_data.as_Value().end;
-        break;
-    case Pattern::Data::Tuple:
-        os << "(" << pat.m_data.as_Tuple().sub_patterns << ")";
-        break;
-    case Pattern::Data::StructTuple:
-        os << pat.m_data.as_StructTuple().path << " (" << pat.m_data.as_StructTuple().sub_patterns << ")";
-        break;
-    case Pattern::Data::Struct:
-        os << pat.m_data.as_Struct().path << " {" << pat.m_data.as_Struct().sub_patterns << "}";
-        break;
-    }
+        ),
+    (Ref,
+        os << "&" << (ent.mut ? "mut " : "") << *ent.sub;
+        ),
+    (Value,
+        os << *ent.start;
+        if( ent.end.get() )
+            os << " ... " << *ent.end;
+        ),
+    (Tuple,
+        os << "(" << ent.sub_patterns << ")";
+        ),
+    (StructTuple,
+        os << ent.path << " (" << ent.sub_patterns << ")";
+        ),
+    (Struct,
+        os << ent.path << " {" << ent.sub_patterns << "}";
+        )
+    )
     os << ")";
     return os;
 }
@@ -51,71 +50,63 @@ void operator%(::Deserialiser& s, Pattern::Data::Tag& c) {
     s.item(n);
     c = Pattern::Data::tag_from_str(n);
 }
+#define _D(VAR, ...)  case Pattern::Data::TAG_##VAR: { m_data = Pattern::Data::make_null_##VAR(); auto& ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
 SERIALISE_TYPE(Pattern::, "Pattern", {
     s.item(m_binding);
     s % m_data.tag();
-    switch(m_data.tag())
-    {
-    case Pattern::Data::Any:
-        break;
-    case Pattern::Data::MaybeBind:
-        break;
-    case Pattern::Data::Ref:
-        s << m_data.as_Ref().mut;
-        s << m_data.as_Ref().sub;
-        break;
-    case Pattern::Data::Value:
-        s << m_data.as_Value().start;
-        s << m_data.as_Value().end;
-        break;
-    case Pattern::Data::Tuple:
-        s << m_data.as_Tuple().sub_patterns;
-        break;
-    case Pattern::Data::StructTuple:
-        s << m_data.as_StructTuple().path;
-        s << m_data.as_StructTuple().sub_patterns;
-        break;
-    case Pattern::Data::Struct:
-        s << m_data.as_Struct().path;
-        s << m_data.as_Struct().sub_patterns;
-        break;
-    }
+    TU_MATCH(Pattern::Data, (m_data), (e),
+    (Any,
+        ),
+    (MaybeBind,
+        ),
+    (Ref,
+        s << e.mut;
+        s << e.sub;
+        ),
+    (Value,
+        s << e.start;
+        s << e.end;
+        ),
+    (Tuple,
+        s << e.sub_patterns;
+        ),
+    (StructTuple,
+        s << e.path;
+        s << e.sub_patterns;
+        ),
+    (Struct,
+        s << e.path;
+        s << e.sub_patterns;
+        )
+    )
 },{
     s.item(m_binding);
     Pattern::Data::Tag  tag;
     s % tag;
     switch(tag)
     {
-    case Pattern::Data::Any:
-        m_data = Pattern::Data::make_null_Any();
-        break;
-    case Pattern::Data::MaybeBind:
-        m_data = Pattern::Data::make_null_MaybeBind();
-        break;
-    case Pattern::Data::Ref:
-        m_data = Pattern::Data::make_null_Ref();
-        s.item( m_data.as_Ref().mut );
-        s.item( m_data.as_Ref().sub );
-        break;
-    case Pattern::Data::Value:
-        m_data = Pattern::Data::make_null_Value();
-        s.item( m_data.as_Value().start );
-        s.item( m_data.as_Value().end );
-        break;
-    case Pattern::Data::Tuple:
-        m_data = Pattern::Data::make_null_Tuple();
-        s.item( m_data.as_Tuple().sub_patterns );
-        break;
-    case Pattern::Data::StructTuple:
-        m_data = Pattern::Data::make_null_StructTuple();
-        s.item( m_data.as_StructTuple().path );
-        s.item( m_data.as_StructTuple().sub_patterns );
-        break;
-    case Pattern::Data::Struct:
-        m_data = Pattern::Data::make_null_Struct();
-        s.item( m_data.as_Struct().path );
-        s.item( m_data.as_Struct().sub_patterns );
-        break;
+    _D(Any, )
+    _D(MaybeBind,
+        )
+    _D(Ref,
+        s.item( ent.mut );
+        s.item( ent.sub );
+        )
+    _D(Value,
+        s.item( ent.start );
+        s.item( ent.end );
+        )
+    _D(Tuple,
+        s.item( ent.sub_patterns );
+        )
+    _D(StructTuple,
+        s.item( ent.path );
+        s.item( ent.sub_patterns );
+        )
+    _D(Struct,
+        s.item( ent.path );
+        s.item( ent.sub_patterns );
+        )
     }
 });
 

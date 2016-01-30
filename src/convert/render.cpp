@@ -21,12 +21,12 @@ void Render_Type(::std::ostream& os, const TypeRef& type, const char *name)
 void Render_CStruct(::std::ostream& os, const AST::CStruct& str)
 {
     os << "struct " << str.name() << "{\n";
-    for(auto& f : str.fields())
-    {
-        os << "\t";
-        Render_Type(os, f.data, f.name.c_str());
-        os << ";\n";
-    }
+    //for(auto& f : str.fields())
+    //{
+    //    os << "\t";
+    //    Render_Type(os, f.data, f.name.c_str());
+    //    os << ";\n";
+    //}
     os << "}\n";
 }
 
@@ -36,24 +36,24 @@ void Render_Crate(::std::ostream& os, const AST::Flat& crate)
     for(const auto& s : crate.structs())
         os << "struct " << s.mangled_name() << ";\n";
 
-    for(const auto& item : crate.functions())
-    {
-        const auto& name = item.first;
-        const auto& fcn = item.second;
-        Render_Type(os, fcn.rettype(), nullptr);
-        os << " " << name << "(";
-        //bool is_first = true;
-        //for(const auto& f : fcn.args())
-        //{
-        //    if( !is_first )
-        //        os << ", ";
-        //    is_first = false;
-        //    // TODO: handle pattern
-        //    //Render_Type(os, f.second, f.first.c_str());
-        //}
-        os << ")\n{\n";
-        // Dump expression AST
-        os << "}\n";
-    }
+    //for(const auto& item : crate.functions())
+    //{
+    //    const auto& name = item.first;
+    //    const auto& fcn = item.second;
+    //    Render_Type(os, fcn.rettype(), nullptr);
+    //    os << " " << name << "(";
+    //    //bool is_first = true;
+    //    //for(const auto& f : fcn.args())
+    //    //{
+    //    //    if( !is_first )
+    //    //        os << ", ";
+    //    //    is_first = false;
+    //    //    // TODO: handle pattern
+    //    //    //Render_Type(os, f.second, f.first.c_str());
+    //    //}
+    //    os << ")\n{\n";
+    //    // Dump expression AST
+    //    os << "}\n";
+    //}
 }
 

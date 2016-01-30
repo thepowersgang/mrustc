@@ -618,13 +618,13 @@ void CPathResolver::handle_path_int(const Span& span, AST::Path& path, CASTItera
     // - This means converting all partial forms (i.e. not UFCS, Variable, or Absolute)
     switch( path.class_tag() )
     {
-    case AST::Path::Class::Invalid:
+    case AST::Path::Class::TAG_Invalid:
         // TODO: Throw an error
         assert( !path.m_class.is_Invalid() );
         return;
     // --- Already absolute forms
     // > Absolute: Resolve
-    case AST::Path::Class::Absolute:
+    case AST::Path::Class::TAG_Absolute:
         DEBUG("Absolute - binding");
         INDENT();
         handle_path_abs(span, path, mode);
@@ -640,12 +640,12 @@ void CPathResolver::handle_path_int(const Span& span, AST::Path& path, CASTItera
         UNINDENT();
         break;
     // > UFCS: Resolve the type and trait
-    case AST::Path::Class::UFCS:
+    case AST::Path::Class::TAG_UFCS:
         handle_path_ufcs(span, path, mode);
         break;
     // > Variable: (wait, how is this known already?)
     // - 'self', 'Self'
-    case AST::Path::Class::Local:
+    case AST::Path::Class::TAG_Local:
         DEBUG("Check local");
         if( !path.binding().is_Unbound() )
         {
@@ -684,12 +684,12 @@ void CPathResolver::handle_path_int(const Span& span, AST::Path& path, CASTItera
         if(0)
     
     // Unannotated relative
-    case AST::Path::Class::Relative:
+    case AST::Path::Class::TAG_Relative:
         handle_path_rel(span, path, mode);
         if(0)
     
     // Module relative
-    case AST::Path::Class::Self:
+    case AST::Path::Class::TAG_Self:
         {
             if( this->find_self_mod_item(span, path, path[0].name()) ) {
                 // Fall
@@ -703,7 +703,7 @@ void CPathResolver::handle_path_int(const Span& span, AST::Path& path, CASTItera
         if(0)
     // Parent module relative
     // TODO: "super::" can be chained
-    case AST::Path::Class::Super:
+    case AST::Path::Class::TAG_Super:
         {
             if( this->find_super_mod_item(span, path, path[0].name()) ) {
                 // Fall
@@ -1473,7 +1473,7 @@ void CPathResolver::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
 {
     TRACE_FUNCTION_F("pat = " << pat);
     // Resolve "Maybe Bind" entries
-    if( pat.data().tag() == AST::Pattern::Data::MaybeBind )
+    if( pat.data().is_MaybeBind() )
     {
         ::std::string   name = pat.binding();
         // Locate a _constant_ within the current namespace which matches this name

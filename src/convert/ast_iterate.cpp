@@ -9,41 +9,39 @@ void CASTIterator::handle_path(AST::Path& path, CASTIterator::PathMode pm)
 void CASTIterator::handle_type(TypeRef& type)
 {
     TRACE_FUNCTION_F("type = " << type);
-    #define _(VAR, ...) case TypeData::VAR: { auto &ent = type.m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
-    switch(type.m_data.tag())
-    {
-    _(None)
-    _(Any)
-    _(Unit)
-    _(Primitive)
-    _(Path,
+    
+    TU_MATCH(TypeData, (type.m_data), (ent),
+    (None),
+    (Any),
+    (Unit),
+    (Primitive),
+    (Path,
         handle_path(ent.path, MODE_TYPE);
-        )
-    _(Tuple,
+        ),
+    (Tuple,
         for(auto& subtype : ent.inner_types)
             handle_type(subtype);
-        )
-    _(Borrow,
+        ),
+    (Borrow,
         handle_type(*ent.inner);
-        )
-    _(Pointer,
+        ),
+    (Pointer,
         handle_type(*ent.inner);
-        )
-    _(Array,
+        ),
+    (Array,
         handle_type(*ent.inner);
-        )
-    _(Function,
+        ),
+    (Function,
         handle_type(*ent.info.m_rettype);
         for(auto& arg : ent.info.m_arg_types)
             handle_type(arg);
-        )
-    _(Generic)
-    _(TraitObject,
+        ),
+    (Generic),
+    (TraitObject,
         for(auto& trait : ent.traits)
             handle_path(trait, MODE_TYPE);
         )
-    }
-    #undef _
+    )
 }
 void CASTIterator::handle_expr(AST::ExprNode& node)
 {
@@ -121,12 +119,11 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
 {
     //DEBUG("pat = " << pat);
     // Resolve names
-    switch(pat.data().tag())
-    {
-    case AST::Pattern::Data::Any:
+    TU_MATCH(AST::Pattern::Data, (pat.data()), (v),
+    (Any,
         // Wildcard, nothing to do
-        break;
-    case AST::Pattern::Data::Ref: {
+        ),
+    (Ref, {
         auto& v = pat.data().as_Ref();
         if( type_hint.is_wildcard() )
             handle_pattern(*v.sub, (const TypeRef&)TypeRef());
@@ -134,16 +131,17 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
             throw ::std::runtime_error( FMT("Ref pattern on non-ref value: " << type_hint) );
         else
             handle_pattern(*v.sub, type_hint.inner_type());
-        break; }
-    case AST::Pattern::Data::MaybeBind:
+        }),
+    (MaybeBind,
         throw ::std::runtime_error("Calling CASTIterator::handle_pattern on MAYBE_BIND, not valid");
-    case AST::Pattern::Data::Value: {
+        ),
+    (Value, {
         auto& v = pat.data().as_Value();
         handle_expr( *v.start );
         if( v.end.get() )
             handle_expr( *v.end );
-        break; }
-    case AST::Pattern::Data::Tuple: {
+        }),
+    (Tuple, {
         auto& v = pat.data().as_Tuple();
         // Tuple is handled by subpattern code
         if( type_hint.is_wildcard() )
@@ -167,8 +165,8 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
                 handle_pattern(v.sub_patterns[i], inner_types[i]);
             }
         }
-        break; }
-    case AST::Pattern::Data::Struct: {
+        }),
+    (Struct, {
         auto& v = pat.data().as_Struct();
         handle_path( v.path, CASTIterator::MODE_TYPE );
         if( type_hint.is_wildcard() )
@@ -184,8 +182,8 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
         {
             throw ::std::runtime_error("TODO: Struct typecheck/iterate");
         }
-        break; }
-    case AST::Pattern::Data::StructTuple: {
+        }),
+    (StructTuple, {
         auto& v = pat.data().as_StructTuple();
         // Resolve the path!
         handle_path( v.path, CASTIterator::MODE_TYPE );
@@ -227,8 +225,8 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
                 )
             )
         }
-        break; }
-    }
+        })
+    )
     // Extract bindings and add to namespace
     if( pat.binding().size() > 0 )
     {

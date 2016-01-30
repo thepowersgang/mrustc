@@ -720,34 +720,33 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
     if( p.binding() != "" ) {
         m_os << p.binding();
         // If binding is irrefutable, and would be binding against a wildcard, just emit the name
-        if( !is_refutable && p.data().tag() == AST::Pattern::Data::Any )
+        if( !is_refutable && p.data().is_Any() )
         {
             return ;
         }
         m_os << " @ ";
     }
-    switch(p.data().tag())
-    {
-    case AST::Pattern::Data::Any:
+    TU_MATCH(AST::Pattern::Data, (p.data()), (v),
+    (Any,
         m_os << "_";
-        break;
-    case AST::Pattern::Data::MaybeBind:
+        ),
+    (MaybeBind,
         m_os << "_ /*?*/";
-        break;
-    case AST::Pattern::Data::Ref: {
+        ),
+    (Ref, {
         const auto& v = p.data().as_Ref();
         m_os << "& ";
         print_pattern(*v.sub, is_refutable);
-        break; }
-    case AST::Pattern::Data::Value: {
+        }),
+    (Value, {
         auto& v = p.data().as_Value();
         v.start->visit(*this);
         if( v.end.get() ) {
             m_os << " ... ";
             v.end->visit(*this);
         }
-        break; }
-    case AST::Pattern::Data::StructTuple: {
+        }),
+    (StructTuple, {
         const auto& v = p.data().as_StructTuple();
         m_os << v.path << "(";
         for(const auto& sp : v.sub_patterns) {
@@ -755,8 +754,8 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
             m_os << ",";
         }
         m_os << ")";
-        break; }
-    case AST::Pattern::Data::Struct: {
+        }),
+    (Struct, {
         const auto& v = p.data().as_Struct();
         m_os << v.path << "(";
         for(const auto& sp : v.sub_patterns) {
@@ -765,8 +764,8 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
             m_os << ",";
         }
         m_os << ")";
-        break; }
-    case AST::Pattern::Data::Tuple: {
+        }),
+    (Tuple, {
         const auto& v = p.data().as_Tuple();
         m_os << "(";
         for(const auto& sp : v.sub_patterns) {
@@ -774,8 +773,8 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
             m_os << ",";
         }
         m_os << ")";
-        break; }
-    }
+        })
+    )
 }
 
 void RustPrinter::print_type(const TypeRef& t)

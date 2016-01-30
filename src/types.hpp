@@ -110,8 +110,8 @@ public:
     {
         switch( other.m_data.tag() )
         {
-        #define _COPY(VAR)  case TypeData::VAR: m_data = TypeData::make_##VAR(other.m_data.as_##VAR()); break;
-        #define _CLONE(VAR, code...)    case TypeData::VAR: { auto& old = other.m_data.as_##VAR(); m_data = TypeData::make_##VAR(code); } break;
+        #define _COPY(VAR)  case TypeData::TAG_##VAR: m_data = TypeData::make_##VAR(other.m_data.as_##VAR()); break;
+        #define _CLONE(VAR, code...)    case TypeData::TAG_##VAR: { auto& old = other.m_data.as_##VAR(); m_data = TypeData::make_##VAR(code); } break;
         _COPY(None)
         _COPY(Any)
         _COPY(Unit)
@@ -247,22 +247,20 @@ public:
     //}
 
     const TypeRef& inner_type() const {
-        switch(m_data.tag())
-        {
-        case TypeData::Borrow:  return *m_data.as_Borrow().inner;
-        case TypeData::Pointer: return *m_data.as_Pointer().inner;
-        case TypeData::Array:   return *m_data.as_Array().inner;
-        default:    throw ::std::runtime_error("Called inner_type on non-wrapper");
-        }
+        TU_MATCH_DEF(TypeData, (m_data), (e),
+        ( throw ::std::runtime_error("Called inner_type on non-wrapper"); ),
+        (Borrow,  return *e.inner; ),
+        (Pointer, return *e.inner; ),
+        (Array,   return *e.inner; )
+        )
     }
     TypeRef& inner_type() {
-        switch(m_data.tag())
-        {
-        case TypeData::Borrow:  return *m_data.as_Borrow().inner;
-        case TypeData::Pointer: return *m_data.as_Pointer().inner;
-        case TypeData::Array:   return *m_data.as_Array().inner;
-        default:    throw ::std::runtime_error("Called inner_type on non-wrapper");
-        }
+        TU_MATCH_DEF(TypeData, (m_data), (e),
+        ( throw ::std::runtime_error("Called inner_type on non-wrapper"); ),
+        (Borrow,  return *e.inner; ),
+        (Pointer, return *e.inner; ),
+        (Array,   return *e.inner; )
+        )
     }
     //::std::vector<TypeRef>& sub_types() { return m_inner_types; }
     //const ::std::vector<TypeRef>& sub_types() const { return m_inner_types; }

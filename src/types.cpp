@@ -62,16 +62,16 @@ Ordering Type_Function::ord(const Type_Function& x) const
 /// Replace this type reference with a dereferenced version
 bool TypeRef::deref(bool is_implicit)
 {
-    #define _(VAR, ...) case TypeData::VAR: { auto &ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
+    #define _(VAR, ...) case TypeData::TAG_##VAR: { auto &ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
     switch(m_data.tag())
     {
-    case TypeData::None:        throw ::std::runtime_error("Dereferencing ! - bugcheck");
-    case TypeData::Any:         throw ::std::runtime_error("Dereferencing _");
-    case TypeData::Unit:        throw ::std::runtime_error("Dereferencing ()");
-    case TypeData::Primitive:   throw ::std::runtime_error("Dereferencing a primtive type");
-    case TypeData::Function:    throw ::std::runtime_error("Dereferencing a function");
+    case TypeData::TAG_None:        throw ::std::runtime_error("Dereferencing ! - bugcheck");
+    case TypeData::TAG_Any:         throw ::std::runtime_error("Dereferencing _");
+    case TypeData::TAG_Unit:        throw ::std::runtime_error("Dereferencing ()");
+    case TypeData::TAG_Primitive:   throw ::std::runtime_error("Dereferencing a primtive type");
+    case TypeData::TAG_Function:    throw ::std::runtime_error("Dereferencing a function");
     
-    case TypeData::Generic:
+    case TypeData::TAG_Generic:
         // TODO: Check for Deref<Output=?> bound
         throw ::std::runtime_error("TODO: Check for a Deref bound on generic");
     _(Borrow,
@@ -85,11 +85,11 @@ bool TypeRef::deref(bool is_implicit)
         *this = *ent.inner;
         return true;
         )
-    case TypeData::Tuple:
-    case TypeData::Array:
-    case TypeData::Path:
+    case TypeData::TAG_Tuple:
+    case TypeData::TAG_Array:
+    case TypeData::TAG_Path:
         throw ::std::runtime_error("TODO: Search for an impl of Deref");
-    case TypeData::TraitObject:
+    case TypeData::TAG_TraitObject:
         throw ::std::runtime_error("TODO: TypeRef::deref on MULTIDST");
     }
     #undef _
@@ -128,22 +128,20 @@ void TypeRef::merge_with(const TypeRef& other)
     }
     
     
-    #define _(VAR, ...) case TypeData::VAR: { auto &ent = m_data.as_##VAR(); (void)&ent; const auto &other_ent = other.m_data.as_##VAR(); (void)&other_ent; __VA_ARGS__ } break;
-    switch(m_data.tag())
-    {
-    _(None,
+    TU_MATCH(TypeData, (m_data, other.m_data), (ent, other_ent),
+    (None,
         throw ::std::runtime_error("TypeRef::merge_with - Reached concrete/wildcard");
-        )
-    _(Any,
+        ),
+    (Any,
         throw ::std::runtime_error("TypeRef::merge_with - Reached concrete/wildcard");
-        )
-    _(Unit,
+        ),
+    (Unit,
         throw ::std::runtime_error("TypeRef::merge_with - Reached concrete/wildcard");
-        )
-    _(Primitive,
+        ),
+    (Primitive,
         throw ::std::runtime_error("TypeRef::merge_with - Reached concrete/wildcard");
-        )
-    _(Function,
+        ),
+    (Function,
         ent.info.m_rettype->merge_with( *other_ent.info.m_rettype );
         
         if( ent.info.m_arg_types.size() != other_ent.info.m_arg_types.size() )
@@ -152,8 +150,8 @@ void TypeRef::merge_with(const TypeRef& other)
         {
             ent.info.m_arg_types[i].merge_with( other_ent.info.m_arg_types[i] );
         }
-        )
-    _(Tuple,
+        ),
+    (Tuple,
         // Other is known not to be wildcard, and is also a tuple, so it must be the same size
         if( ent.inner_types.size() != other_ent.inner_types.size() )
             throw ::std::runtime_error("TypeRef::merge_with - Types not compatible [tuple sz]");
@@ -161,31 +159,30 @@ void TypeRef::merge_with(const TypeRef& other)
         {
             ent.inner_types[i].merge_with( other_ent.inner_types[i] );
         }
-        )
-    _(Borrow,
+        ),
+    (Borrow,
         if( ent.is_mut != other_ent.is_mut )
             throw ::std::runtime_error("TypeRef::merge_with - Types not compatible [inner mut]");
         ent.inner->merge_with( *other_ent.inner );
-        )
-    _(Pointer,
+        ),
+    (Pointer,
         if( ent.is_mut != other_ent.is_mut )
             throw ::std::runtime_error("TypeRef::merge_with - Types not compatible [inner mut]");
         ent.inner->merge_with( *other_ent.inner );
-        )
-    _(Array,
+        ),
+    (Array,
         throw ::std::runtime_error("TODO: TypeRef::merge_with on ARRAY");
-        )
-    _(Generic,
+        ),
+    (Generic,
         throw ::std::runtime_error("TODO: TypeRef::merge_with on GENERIC");
-        )
-    _(Path,
+        ),
+    (Path,
         throw ::std::runtime_error("TODO: TypeRef::merge_with on PATH");
-        )
-    _(TraitObject,
+        ),
+    (TraitObject,
         throw ::std::runtime_error("TODO: TypeRef::merge_with on MULTIDST");
         )
-    }
-    #undef _
+    )
 }
 
 /// Resolve all Generic/Argument types to the value returned by the passed closure
@@ -195,7 +192,7 @@ void TypeRef::merge_with(const TypeRef& other)
 void TypeRef::resolve_args(::std::function<TypeRef(const char*)> fcn)
 {
     DEBUG("" << *this);
-    #define _(VAR, ...) case TypeData::VAR: { auto &ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
+    #define _(VAR, ...) case TypeData::TAG_##VAR: { auto &ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
     switch(m_data.tag())
     {
     _(None,
@@ -245,14 +242,14 @@ void TypeRef::resolve_args(::std::function<TypeRef(const char*)> fcn)
 void TypeRef::match_args(const TypeRef& other, ::std::function<void(const char*,const TypeRef&)> fcn) const
 {
     // If this type is a generic, then call the closure with the other type
-    if( m_data.tag() == TypeData::Generic ) {
+    if( m_data.tag() == TypeData::TAG_Generic ) {
         fcn( m_data.as_Generic().name.c_str(), other );
         return ;
     }
     
     // If the other type is a wildcard, early return
     // - TODO - Might want to restrict the other type to be of the same form as this type
-    if( other.m_data.tag() == TypeData::Any )
+    if( other.m_data.tag() == TypeData::TAG_Any )
         return;
     
     DEBUG("this = " << *this << ", other = " << other);
@@ -260,23 +257,21 @@ void TypeRef::match_args(const TypeRef& other, ::std::function<void(const char*,
     // Any other case, it's a "pattern" match
     if( m_data.tag() != other.m_data.tag() )
         throw ::std::runtime_error("Type mismatch (class)");
-    #define _(VAR, ...) case TypeData::VAR: { const auto &ent = m_data.as_##VAR(); const auto &other_ent = other.m_data.as_##VAR(); (void)&ent; (void)&other_ent; __VA_ARGS__ } break;
-    switch(m_data.tag())
-    {
-    _(None,
+    TU_MATCH(TypeData, (m_data, other.m_data), (ent, other_ent),
+    (None,
         throw ::std::runtime_error("TypeRef::match_args on !");
-        )
-    _(Any,
+        ),
+    (Any,
         // Wait, isn't this an error?
         throw ::std::runtime_error("Encountered '_' in match_args");
-        )
-    _(Unit)
-    _(Primitive,
+        ),
+    (Unit),
+    (Primitive,
         // TODO: Should check if the type matches
         if( ent.core_type != other_ent.core_type )
             throw ::std::runtime_error("Type mismatch (core)");
-        )
-    _(Function,
+        ),
+    (Function,
         if( ent.info.m_abi != other_ent.info.m_abi )
             throw ::std::runtime_error("Type mismatch (function abi)");
         ent.info.m_rettype->match_args( *other_ent.info.m_rettype, fcn );
@@ -285,86 +280,83 @@ void TypeRef::match_args(const TypeRef& other, ::std::function<void(const char*,
             throw ::std::runtime_error("Type mismatch (function size)");
         for(unsigned int i = 0; i < ent.info.m_arg_types.size(); i ++ )
             ent.info.m_arg_types[i].match_args( other_ent.info.m_arg_types[i], fcn );
-        )
-    _(Tuple,
+        ),
+    (Tuple,
         if( ent.inner_types.size() != other_ent.inner_types.size() )
             throw ::std::runtime_error("Type mismatch (tuple size)");
         for(unsigned int i = 0; i < ent.inner_types.size(); i ++ )
             ent.inner_types[i].match_args( other_ent.inner_types[i], fcn );
-        )
-    _(Borrow,
+        ),
+    (Borrow,
         if( ent.is_mut != other_ent.is_mut )
             throw ::std::runtime_error("Type mismatch (inner mutable)");
         ent.inner->match_args( *other_ent.inner, fcn );
-        )
-    _(Pointer,
+        ),
+    (Pointer,
         if( ent.is_mut != other_ent.is_mut )
             throw ::std::runtime_error("Type mismatch (inner mutable)");
         ent.inner->match_args( *other_ent.inner, fcn );
-        )
-    _(Array,
+        ),
+    (Array,
         ent.inner->match_args( *other_ent.inner, fcn );
         if(ent.size.get() || other_ent.size.get())
         {
             throw ::std::runtime_error("TODO: Sized array match_args");
         }
-        )
-    _(Generic,
+        ),
+    (Generic,
         throw ::std::runtime_error("Encountered GENERIC in match_args");
-        )
-    _(Path,
+        ),
+    (Path,
         ent.path.match_args(other_ent.path, fcn);
-        )
-    _(TraitObject,
+        ),
+    (TraitObject,
         throw ::std::runtime_error("TODO: TypeRef::match_args on MULTIDST");
         )
-    }
-    #undef _
+    )
 }
 
 bool TypeRef::impls_wildcard(const AST::Crate& crate, const AST::Path& trait) const
 {
-    #define _(VAR, ...) case TypeData::VAR: { const auto &ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
-    switch(m_data.tag())
-    {
-    _(None,
+    TU_MATCH(TypeData, (m_data), (ent),
+    (None,
         throw CompileError::BugCheck("TypeRef::impls_wildcard on !");
-        )
-    _(Any,
+        ),
+    (Any,
         throw CompileError::BugCheck("TypeRef::impls_wildcard on _");
-        )
+        ),
     // Generics are an error?
-    _(Generic,
+    (Generic,
         // TODO: Include an annotation to the TypeParams structure relevant to this type
         // - Allows searching the params for the impl, without having to pass the params down
         throw CompileError::Todo("TypeRef::impls_wildcard - param");
-        )
+        ),
     // Primitives always impl
-    _(Unit, return true; )
-    _(Primitive, return true; )
+    (Unit, return true; ),
+    (Primitive, return true; ),
     // Functions are pointers (currently), so they implement the trait
-    _(Function, return true; )
+    (Function, return true; ),
     // Pointers/arrays inherit directly
-    _(Borrow,
+    (Borrow,
         return crate.find_impl(trait, *ent.inner, nullptr, nullptr);
-        )
-    _(Pointer,
+        ),
+    (Pointer,
         return crate.find_impl(trait, *ent.inner, nullptr, nullptr);
-        )
-    _(Array,
+        ),
+    (Array,
         return crate.find_impl(trait, *ent.inner, nullptr, nullptr);
-        )
+        ),
     // Tuples just destructure
-    _(Tuple,
+    (Tuple,
         for( const auto& fld : ent.inner_types )
         {
             if( !crate.find_impl(trait, fld, nullptr, nullptr) )
                 return false;
         }
         return true;
-        )
+        ),
     // Path types destructure
-    _(Path,
+    (Path,
         // - structs need all fields to impl this trait (cache result)
         // - same for enums, tuples, arrays, pointers...
         // - traits check the Self bounds
@@ -405,14 +397,13 @@ bool TypeRef::impls_wildcard(const AST::Crate& crate, const AST::Path& trait) co
             return true;
             )
         )
-        )
+        ),
     // MultiDST is special - It only impls if this trait is in the list
     //  (or if a listed trait requires/impls the trait)
-    _(TraitObject,
+    (TraitObject,
         throw CompileError::Todo("TypeRef::impls_wildcard - MULTIDST");
         )
-    }
-    #undef _
+    )
     throw CompileError::BugCheck("TypeRef::impls_wildcard - Fell off end");
 }
 
@@ -420,51 +411,50 @@ bool TypeRef::impls_wildcard(const AST::Crate& crate, const AST::Path& trait) co
 bool TypeRef::is_concrete() const
 {
     #define _(VAR, ...) case TypeData::VAR: { const auto &ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
-    switch(m_data.tag())
-    {
-    _(None,
+    TU_MATCH(TypeData, (m_data), (ent),
+    (None,
         throw ::std::runtime_error("TypeRef::is_concrete on !");
-        )
-    _(Any, return false;)
-    _(Unit, return true; )
-    _(Primitive, return true; )
-    _(Function,
+        ),
+    (Any, return false;),
+    (Unit, return true; ),
+    (Primitive, return true; ),
+    (Function,
         if( not ent.info.m_rettype->is_concrete() )
             return false;
         for(const auto& t : ent.info.m_arg_types )
             if( not t.is_concrete() )
                 return false;
         return true;
-        )
-    _(Tuple,
+        ),
+    (Tuple,
         for(const auto& t : ent.inner_types)
             if( not t.is_concrete() )
                 return false;
         return true;
-        )
-    _(Borrow,
+        ),
+    (Borrow,
         return ent.inner->is_concrete();
-        )
-    _(Pointer,
+        ),
+    (Pointer,
         return ent.inner->is_concrete();
-        )
-    _(Array,
+        ),
+    (Array,
         return ent.inner->is_concrete();
-        )
-    _(Generic,
+        ),
+    (Generic,
         // Well, I guess a generic param is "concrete"
         return true;
-        )
-    _(Path,
+        ),
+    (Path,
         return ent.path.is_concrete();
-        )
-    _(TraitObject,
+        ),
+    (TraitObject,
         for(const auto& p : ent.traits )
             if( not p.is_concrete() )
                 return false;
         return true;
         )
-    }
+    )
     #undef _
     throw ::std::runtime_error( FMT("BUGCHECK - Invalid type class on " << *this) );
 }
@@ -472,45 +462,44 @@ bool TypeRef::is_concrete() const
 int TypeRef::equal_no_generic(const TypeRef& x) const
 {
     //DEBUG(*this << ", " << x);
-    if( m_data.tag() == TypeData::Generic ) //|| x.m_class == TypeRef::GENERIC )
+    if( m_data.tag() == TypeData::TAG_Generic ) //|| x.m_class == TypeRef::GENERIC )
         return 1;
     if( m_data.tag() != x.m_data.tag() )  return -1;
-    #define _(VAR, ...) case TypeData::VAR: { const auto &ent = m_data.as_##VAR(); const auto& x_ent = x.m_data.as_##VAR(); (void)&ent; (void)&x_ent; __VA_ARGS__ } break;
-    switch(m_data.tag())
-    {
-    _(None, return 0;)
-    _(Unit, return 0;)
-    _(Any, return 0;)
-    _(Primitive,
+
+    TU_MATCH(TypeData, (m_data, x.m_data), (ent, x_ent),
+    (None, return 0;),
+    (Unit, return 0;),
+    (Any, return 0;),
+    (Primitive,
         if( ent.core_type != x_ent.core_type )  return -1;
         return 0;
-        )
-    _(Function,
+        ),
+    (Function,
         if( ent.info.m_abi != x_ent.info.m_abi )    return -1;
         throw CompileError::Todo("TypeRef::equal_no_generic - FUNCTION");
-        )
-    _(Generic,
+        ),
+    (Generic,
         throw CompileError::BugCheck("equal_no_generic - Generic should have been handled above");
-        )
-    _(Path,
+        ),
+    (Path,
         return ent.path.equal_no_generic( x_ent.path );
-        )
-    _(Borrow,
+        ),
+    (Borrow,
         if( ent.is_mut != x_ent.is_mut )
             return -1;
         return ent.inner->equal_no_generic( *x_ent.inner );
-        )
-    _(Pointer,
+        ),
+    (Pointer,
         if( ent.is_mut != x_ent.is_mut )
             return -1;
         return ent.inner->equal_no_generic( *x_ent.inner );
-        )
-    _(Array,
+        ),
+    (Array,
         if( ent.size.get() || x_ent.size.get() )
             throw CompileError::Todo("TypeRef::equal_no_generic - sized array");
         return ent.inner->equal_no_generic( *x_ent.inner );
-        )
-    _(Tuple,
+        ),
+    (Tuple,
         bool fuzzy = false;
         if( ent.inner_types.size() != x_ent.inner_types.size() )
             return -1;
@@ -521,12 +510,11 @@ int TypeRef::equal_no_generic(const TypeRef& x) const
             if(rv > 0)  fuzzy = true;
         }
         return (fuzzy ? 1 : 0);
-        )
-    _(TraitObject,
+        ),
+    (TraitObject,
         throw CompileError::Todo("TypeRef::equal_no_generic - MULTIDST");
         )
-    }
-    #undef _
+    )
     throw CompileError::BugCheck("equal_no_generic - Ran off end");
 }
 Ordering TypeRef::ord(const TypeRef& x) const
@@ -536,32 +524,30 @@ Ordering TypeRef::ord(const TypeRef& x) const
     rv = ::ord( (unsigned)m_data.tag(), (unsigned)x.m_data.tag() );
     if(rv != OrdEqual)  return rv;
     
-    #define _(VAR, ...) case TypeData::VAR: { const auto &ent = m_data.as_##VAR(); const auto& x_ent = x.m_data.as_##VAR(); (void)&ent; (void)&x_ent; __VA_ARGS__ } break;
-    switch(x.m_data.tag())
-    {
-    _(None, return OrdEqual;)
-    _(Any,  return OrdEqual;)
-    _(Unit, return OrdEqual;)
-    _(Primitive,
+    TU_MATCH(TypeData, (m_data, x.m_data), (ent, x_ent),
+    (None, return OrdEqual;),
+    (Any,  return OrdEqual;),
+    (Unit, return OrdEqual;),
+    (Primitive,
         return ::ord( (unsigned)ent.core_type, (unsigned)x_ent.core_type );
-        )
-    _(Function,
+        ),
+    (Function,
         return ent.info.ord( x_ent.info );
-        )
-    _(Tuple,
+        ),
+    (Tuple,
         return ::ord(ent.inner_types, x_ent.inner_types);
-        )
-    _(Borrow,
+        ),
+    (Borrow,
         rv = ::ord(ent.is_mut, x_ent.is_mut);
         if(rv != OrdEqual)  return rv;
         return (*ent.inner).ord(*x_ent.inner);
-        )
-    _(Pointer,
+        ),
+    (Pointer,
         rv = ::ord(ent.is_mut, x_ent.is_mut);
         if(rv != OrdEqual)  return rv;
         return (*ent.inner).ord(*x_ent.inner);
-        )
-    _(Array,
+        ),
+    (Array,
         rv = (*ent.inner).ord( *x_ent.inner );
         if(rv != OrdEqual)  return rv;
         if(ent.size.get())
@@ -569,8 +555,8 @@ Ordering TypeRef::ord(const TypeRef& x) const
             throw ::std::runtime_error("TODO: Sized array comparisons");
         }
         return OrdEqual;
-        )
-    _(Generic,
+        ),
+    (Generic,
         if( ent.params != x_ent.params )
         {
             DEBUG(*this << " == " << x);
@@ -582,15 +568,14 @@ Ordering TypeRef::ord(const TypeRef& x) const
         else {
         }
         return ::ord(ent.name, x_ent.name);
-        )
-    _(Path,
+        ),
+    (Path,
         return ent.path.ord( x_ent.path );
-        )
-    _(TraitObject,
+        ),
+    (TraitObject,
         return ::ord(ent.traits, x_ent.traits);
         )
-    }
-    #undef _
+    )
     throw ::std::runtime_error(FMT("BUGCHECK - Unhandled TypeRef class '" << m_data.tag() << "'"));
 }
 
@@ -600,7 +585,7 @@ Ordering TypeRef::ord(const TypeRef& x) const
 
 ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr) {
     //os << "TypeRef(";
-    #define _(VAR, ...) case TypeData::VAR: { const auto &ent = tr.m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
+    #define _(VAR, ...) case TypeData::TAG_##VAR: { const auto &ent = tr.m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
     switch(tr.m_data.tag())
     {
     _(None,
@@ -705,8 +690,8 @@ void operator%(::Deserialiser& s, TypeData::Tag& c) {
     return box$(n);
 }
 
-#define _S(VAR, ...)  case TypeData::VAR: { const auto& ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
-#define _D(VAR, ...)  case TypeData::VAR: { m_data = TypeData::make_null_##VAR(); auto& ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
+#define _S(VAR, ...)  case TypeData::TAG_##VAR: { const auto& ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
+#define _D(VAR, ...)  case TypeData::TAG_##VAR: { m_data = TypeData::make_null_##VAR(); auto& ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
 SERIALISE_TYPE(TypeRef::, "TypeRef", {
     s % m_data.tag();
     switch(m_data.tag())

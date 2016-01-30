@@ -25,6 +25,8 @@
 
 #include "expr.hpp"
 
+
+#if 1
 namespace AST {
 
 using ::std::unique_ptr;
@@ -724,30 +726,30 @@ public:
     public:
         enum Type
         {
-            None,
-            Module,
-            Crate,
-            TypeAlias,
-            Function,
-            Trait,
-            Struct,
-            Enum,
-            Static,
-            Use,
+            TAG_None,
+            TAG_Module,
+            TAG_Crate,
+            TAG_TypeAlias,
+            TAG_Function,
+            TAG_Trait,
+            TAG_Struct,
+            TAG_Enum,
+            TAG_Static,
+            TAG_Use,
         };
     private:    
         Type    m_type;
         const void* m_ref;
     public:
-        ItemRef(): m_type(None) {}
+        ItemRef(): m_type(TAG_None) {}
         
         Type tag() const { return m_type; }
-        bool is_None() const { return m_type == None; }
+        bool is_None() const { return m_type == TAG_None; }
         const Type& as_None() const { return m_type; }  // HACK: Returns &Type in place of &void
         #define _(ty,ident) \
-            ItemRef(const ty& ref): m_type(ident), m_ref(&ref) {} \
-            bool is_##ident() const { return m_type == ident; } \
-            const ty& as_##ident() const { assert(m_type == ident); return *(const ty*)m_ref; }
+            ItemRef(const ty& ref): m_type(TAG_##ident), m_ref(&ref) {} \
+            bool is_##ident() const { return m_type == TAG_##ident; } \
+            const ty& as_##ident() const { assert(m_type == TAG_##ident); return *(const ty*)m_ref; }
         _(AST::Module, Module)
         _(::std::string, Crate)
         _(AST::TypeAlias, TypeAlias)
@@ -890,23 +892,28 @@ public:
     
     SERIALISABLE_PROTOTYPES();
 };
+}
+#endif
+
+namespace AST
+{
 
 class CStruct
 {
-    ::std::vector<StructItem>   m_fields;
+//    ::std::vector<StructItem>   m_fields;
 public:
     const char* name() const { return "TODO"; }
     const char* mangled_name() const { return "TODO"; }
-    const ::std::vector<StructItem>& fields() const { return m_fields; }
+//    const ::std::vector<StructItem>& fields() const { return m_fields; }
 };
 
 class Flat
 {
     ::std::vector<CStruct>  m_structs;
-    ::std::vector< ::std::pair< ::std::string,Function> > m_functions;
+//    ::std::vector< ::std::pair< ::std::string,Function> > m_functions;
 public:
     
-    const ::std::vector< ::std::pair< ::std::string, Function> >& functions() const { return m_functions; }
+//    const ::std::vector< ::std::pair< ::std::string, Function> >& functions() const { return m_functions; }
     const ::std::vector<CStruct>& structs() const { return m_structs; }
 };
 
@@ -914,7 +921,7 @@ public:
 
 class GenericResolveClosure
 {
-    const AST::TypeParams&  m_params;
+    const ::AST::TypeParams&  m_params;
     const ::std::vector<TypeRef>&   m_args;
 public:
     GenericResolveClosure(const AST::TypeParams& params, const ::std::vector<TypeRef>& args):
