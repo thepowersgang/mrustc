@@ -88,7 +88,10 @@ AST::TypeParams Parse_TypeParams(TokenStream& lex)
     Token tok;
     do {
         bool is_lifetime = false;
-        switch( GET_TOK(tok, lex) )
+        if( GET_TOK(tok, lex) == TOK_GT ) {
+            break ;
+        }
+        switch( tok.type() )
         {
         case TOK_IDENT:
             break;
@@ -853,9 +856,15 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
         break; }
     case TOK_RWORD_CONST:
-        if( GET_TOK(tok, lex) != TOK_RWORD_FN )
+        if( GET_TOK(tok, lex) != TOK_RWORD_FN && tok.type() != TOK_RWORD_UNSAFE )
         {
-            throw ParseError::Todo("Associated const");
+            BUG(lex.end_span(lex.start_span()), "TODO: Associated const");
+        }
+        else if( tok.type() == TOK_RWORD_UNSAFE )
+        {
+            if( GET_TOK(tok, lex) != TOK_RWORD_FN )
+                ERROR(lex.end_span(lex.start_span()), E0000, "");
+            item_attrs.push_back( AST::MetaItem("#UNSAFE") );
         }
         if( 0 )
     case TOK_RWORD_EXTERN:
@@ -1696,6 +1705,10 @@ AST::Crate Parse_Crate(::std::string mainfile)
     for( const auto& attr : rootmod.attrs().m_items )
     {
         if( attr.name() == "no_std" ) {
+            crate.m_load_std = false;
+            // TODO: Load core instead
+        }
+        else if( attr.name() == "no_core" ) {
             crate.m_load_std = false;
         }
         else {

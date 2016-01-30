@@ -153,6 +153,8 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
         return AST::Pattern( );
     case TOK_DOUBLE_DOT:
         return AST::Pattern( AST::Pattern::TagWildcard() );
+    case TOK_DOUBLE_AMP:
+        lex.putback(TOK_AMP);
     case TOK_AMP:
         DEBUG("Ref");
         // NOTE: Falls back into "Pattern" not "PatternReal" to handle MaybeBind again

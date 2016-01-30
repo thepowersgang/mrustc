@@ -548,6 +548,8 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
     TRACE_FUNCTION;
     Token   tok;
 
+    CLEAR_PARSE_FLAG(lex, disallow_struct_literal);
+
     ::std::vector<ExprNodeP> rv;
     GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
     if( GET_TOK(tok, lex) != TOK_PAREN_CLOSE )
@@ -579,6 +581,8 @@ ExprNodeP Parse_Expr0(TokenStream& lex)
         op = AST::ExprNode_Assign::MUL; if(0)
     case TOK_SLASH_EQUAL:
         op = AST::ExprNode_Assign::DIV; if(0)
+    case TOK_PERCENT_EQUAL:
+        op = AST::ExprNode_Assign::MOD; if(0)
     
     case TOK_AMP_EQUAL:
         op = AST::ExprNode_Assign::AND; if(0)
@@ -918,7 +922,7 @@ ExprNodeP Parse_ExprVal_Closure(TokenStream& lex, bool is_move)
     CHECK_TOK(tok, TOK_PIPE);
     
     TypeRef rt;
-    if( GET_TOK(tok, lex) == TOK_COLON )
+    if( GET_TOK(tok, lex) == TOK_THINARROW )
         rt = Parse_Type(lex);
     else
         lex.putback(tok);

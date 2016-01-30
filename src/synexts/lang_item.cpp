@@ -44,6 +44,17 @@ void handle_lang_item(AST::Crate& crate, const AST::Path& path, const ::std::str
     else if( name == "bitxor" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "shl" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "shr" ) { DEBUG("Bind '"<<name<<"' to " << path); }
+
+    else if( name == "add_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
+    else if( name == "sub_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
+    else if( name == "div_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
+    else if( name == "rem_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
+    else if( name == "mul_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
+    else if( name == "bitand_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
+    else if( name == "bitor_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
+    else if( name == "bitxor_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
+    else if( name == "shl_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
+    else if( name == "shr_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     
     else if( name == "index" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "deref" ) { DEBUG("Bind '"<<name<<"' to " << path); }
