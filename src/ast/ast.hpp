@@ -25,8 +25,6 @@
 
 #include "expr.hpp"
 
-
-#if 1
 namespace AST {
 
 using ::std::unique_ptr;
@@ -892,11 +890,6 @@ public:
     
     SERIALISABLE_PROTOTYPES();
 };
-}
-#endif
-
-namespace AST
-{
 
 class CStruct
 {
@@ -917,7 +910,7 @@ public:
     const ::std::vector<CStruct>& structs() const { return m_structs; }
 };
 
-}
+} // namespace AST
 
 class GenericResolveClosure
 {
