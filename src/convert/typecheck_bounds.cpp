@@ -11,7 +11,7 @@ class CGenericBoundChecker:
     void check_is_trait(const AST::Path& trait) const;
 public:
     virtual void handle_expr(AST::ExprNode& root) override;
-    virtual void handle_params(AST::TypeParams& params) override;
+    virtual void handle_params(AST::GenericParams& params) override;
 };
 
 void CGenericBoundChecker::handle_expr(AST::ExprNode& root)
@@ -32,7 +32,7 @@ void CGenericBoundChecker::check_is_trait(const AST::Path& trait) const {
     }
 }
 
-void CGenericBoundChecker::handle_params(AST::TypeParams& params)
+void CGenericBoundChecker::handle_params(AST::GenericParams& params)
 {
     for(auto& bound : params.bounds())
     {

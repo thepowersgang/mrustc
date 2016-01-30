@@ -327,7 +327,7 @@ bool TypeRef::impls_wildcard(const AST::Crate& crate, const AST::Path& trait) co
         ),
     // Generics are an error?
     (Generic,
-        // TODO: Include an annotation to the TypeParams structure relevant to this type
+        // TODO: Include an annotation to the GenericParams structure relevant to this type
         // - Allows searching the params for the impl, without having to pass the params down
         throw CompileError::Todo("TypeRef::impls_wildcard - param");
         ),

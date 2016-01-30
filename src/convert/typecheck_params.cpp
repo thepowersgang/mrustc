@@ -13,13 +13,13 @@ class CGenericParamChecker:
      int    m_within_expr = 0;
     struct LocalType {
         const ::std::string name;
-        const AST::TypeParams*  source_params;  // if nullptr, use fixed_type
+        const AST::GenericParams*  source_params;  // if nullptr, use fixed_type
         TypeRef fixed_type;
     
         LocalType():
             name("")
         {}
-        LocalType(const ::std::string& n, const AST::TypeParams* tps):
+        LocalType(const ::std::string& n, const AST::GenericParams* tps):
             name(n), source_params(tps)
         {}
         LocalType(const ::std::string& n, TypeRef ty):
@@ -43,12 +43,12 @@ public:
     void start_scope() override;
     void local_type(::std::string name, TypeRef type) override;
     void end_scope() override;
-    virtual void handle_params(AST::TypeParams& params) override;
+    virtual void handle_params(AST::GenericParams& params) override;
     
 private:
     bool has_impl_for_param(const ::std::string name, const AST::Path& trait) const;
     bool has_impl(const TypeRef& type, const AST::Path& trait) const;
-    void check_generic_params(const AST::TypeParams& info, ::std::vector<TypeRef>& types, TypeRef self_type, bool allow_infer = false);
+    void check_generic_params(const AST::GenericParams& info, ::std::vector<TypeRef>& types, TypeRef self_type, bool allow_infer = false);
     
     const LocalType* find_type_by_name(const ::std::string& name) const;
 };
@@ -71,7 +71,7 @@ bool CGenericParamChecker::has_impl_for_param(const ::std::string name, const AS
     if( m_crate.is_trait_implicit(trait) )
         return true;
     
-    const AST::TypeParams*  tps = nullptr;
+    const AST::GenericParams*  tps = nullptr;
     // Locate params set that contains the passed name
     for( const auto lt : m_types_stack )
     {
@@ -143,7 +143,7 @@ bool CGenericParamChecker::has_impl(const TypeRef& type, const AST::Path& trait)
 /// \param info Generic item information (param names and bounds)
 /// \param types Type parameters being passed to the generic item
 /// \param allow_infer  Allow inferrence (mutates \a types with conditions from \a info)
-void CGenericParamChecker::check_generic_params(const AST::TypeParams& info, ::std::vector<TypeRef>& types, TypeRef self_type, bool allow_infer)
+void CGenericParamChecker::check_generic_params(const AST::GenericParams& info, ::std::vector<TypeRef>& types, TypeRef self_type, bool allow_infer)
 {
     TRACE_FUNCTION_F("info = " << info << ", types = {" << types << "}");
     // TODO: Need to correctly handle lifetime params here, they should be in a different list
@@ -237,7 +237,7 @@ void CGenericParamChecker::handle_path(AST::Path& path, CASTIterator::PathMode p
     TRACE_FUNCTION_F("path = " << path);
     AST::PathNode& last_node = path[path.size()-1];
     
-    auto comm = [&](const AST::TypeParams& params) {
+    auto comm = [&](const AST::GenericParams& params) {
             auto lt = find_type_by_name("Self");
             TypeRef self_type;  // =TypeRef(TypeRef::TagPath(), path)
             if( lt )
@@ -315,7 +315,7 @@ void CGenericParamChecker::end_scope()
     // pop the separator
     m_types_stack.pop_back();
 }
-void CGenericParamChecker::handle_params(AST::TypeParams& params)
+void CGenericParamChecker::handle_params(AST::GenericParams& params)
 {
     DEBUG("params = " << params);
     for( const auto& p : params.ty_params())

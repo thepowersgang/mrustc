@@ -9,7 +9,7 @@ namespace AST {
 
 class ExprNode;
 class Pattern;
-class TypeParams;
+class GenericParams;
 class Impl;
 class ImplDef;
 class EnumVariant;
@@ -30,7 +30,7 @@ public:
     virtual void handle_type(TypeRef& type);
     virtual void handle_expr(AST::ExprNode& node);
 
-    virtual void handle_params(AST::TypeParams& params);
+    virtual void handle_params(AST::GenericParams& params);
     
     virtual void start_scope();
     virtual void local_type(::std::string name, TypeRef type);
@@ -41,7 +41,7 @@ public:
     virtual void handle_pattern(AST::Pattern& pat, const TypeRef& type_hint);
     virtual void handle_pattern_enum(
             ::std::vector<TypeRef>& pat_args, const ::std::vector<TypeRef>& hint_args,
-            const AST::TypeParams& enum_params, const AST::EnumVariant& var,
+            const AST::GenericParams& enum_params, const AST::EnumVariant& var,
             ::std::vector<AST::Pattern>& sub_patterns
             );
     

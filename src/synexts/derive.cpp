@@ -24,7 +24,7 @@ static inline AST::ExprNodeP mk_exprnodep(AST::ExprNode* en){ return AST::ExprNo
 /// Interface for derive handlers
 struct Deriver
 {
-    virtual AST::Impl handle_item(const AST::TypeParams& params, const TypeRef& type, const AST::Struct& str) const = 0;
+    virtual AST::Impl handle_item(const AST::GenericParams& params, const TypeRef& type, const AST::Struct& str) const = 0;
 };
 
 /// 'Debug' derive handler
@@ -45,7 +45,7 @@ class Deriver_Debug:
     //}
     
 public:
-    AST::Impl handle_item(const AST::TypeParams& p, const TypeRef& type, const AST::Struct& str) const override
+    AST::Impl handle_item(const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
         // TODO: be correct herhe and use "core" as the crate name
         // - Requires handling the crate_name crate attribute correctly
@@ -83,7 +83,7 @@ public:
         DEBUG("node = " << *node);
         
         AST::Function fcn(
-            AST::MetaItems(), AST::TypeParams(),
+            AST::MetaItems(), AST::GenericParams(),
             ret_type,
             vec$(
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), false, TypeRef("Self")) ),

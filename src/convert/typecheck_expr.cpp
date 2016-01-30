@@ -36,11 +36,11 @@ public:
     virtual void local_type(::std::string name, TypeRef type) override;
     virtual void end_scope() override;
     
-    virtual void handle_params(AST::TypeParams& params) override;
+    virtual void handle_params(AST::GenericParams& params) override;
     
     virtual void handle_pattern_enum(
             ::std::vector<TypeRef>& pat_args, const ::std::vector<TypeRef>& hint_args,
-            const AST::TypeParams& enum_params, const AST::EnumVariant& var,
+            const AST::GenericParams& enum_params, const AST::EnumVariant& var,
             ::std::vector<AST::Pattern>& sub_patterns
             ) override;
     
@@ -57,7 +57,7 @@ private:
     
     void check_enum_variant(
         ::std::vector<TypeRef>& path_args, const ::std::vector<TypeRef>& argtypes,
-        const AST::TypeParams& params, const AST::EnumVariant& var
+        const AST::GenericParams& params, const AST::EnumVariant& var
         );
     void iterate_traits(::std::function<bool(const TypeRef& trait)> fcn);
 };
@@ -103,7 +103,7 @@ void CTypeChecker::end_scope()
     m_scopes.pop_back();
 }
 
-void CTypeChecker::handle_params(AST::TypeParams& params)
+void CTypeChecker::handle_params(AST::GenericParams& params)
 {
     ::std::map<std::string,TypeRef>  trs;
     
@@ -129,7 +129,7 @@ void CTypeChecker::handle_params(AST::TypeParams& params)
 }
 void CTypeChecker::handle_pattern_enum(
         ::std::vector<TypeRef>& pat_args, const ::std::vector<TypeRef>& hint_args,
-        const AST::TypeParams& enum_params, const AST::EnumVariant& var,
+        const AST::GenericParams& enum_params, const AST::EnumVariant& var,
         ::std::vector<AST::Pattern>& sub_patterns
         )
 {
@@ -254,7 +254,7 @@ void CTypeChecker::iterate_traits(::std::function<bool(const TypeRef& trait)> fc
     }
 }
 
-void CTypeChecker::check_enum_variant(::std::vector<TypeRef>& path_args, const ::std::vector<TypeRef>& argtypes, const AST::TypeParams& params, const AST::EnumVariant& var)
+void CTypeChecker::check_enum_variant(::std::vector<TypeRef>& path_args, const ::std::vector<TypeRef>& argtypes, const AST::GenericParams& params, const AST::EnumVariant& var)
 {
     // We know the enum, but it might have type params, need to handle that case
     // TODO: Check for more parameters than required

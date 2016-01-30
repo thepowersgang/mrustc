@@ -31,7 +31,7 @@ struct TypeArgRef
 {
     ::std::string   name;
     unsigned int    level;
-    const AST::TypeParams*  params;
+    const AST::GenericParams*  params;
 };
 
 struct Type_Function:
@@ -84,7 +84,7 @@ TAGGED_UNION(TypeData, None,
     (Generic, (
         ::std::string name;
         unsigned int level;
-        const AST::TypeParams* params;
+        const ::AST::GenericParams* params;
         )),
     (Path, (
         AST::Path path;
@@ -185,7 +185,7 @@ public:
     TypeRef(TagArg, ::std::string name):
         m_data(TypeData::make_Generic({ name, 0, nullptr }))
     {}
-    TypeRef(TagArg, ::std::string name, const AST::TypeParams& params):
+    TypeRef(TagArg, ::std::string name, const AST::GenericParams& params):
         m_data(TypeData::make_Generic({ name, 0, &params }))
     {}
     TypeRef(::std::string name):
@@ -231,9 +231,9 @@ public:
     
     bool is_type_param() const { return m_data.is_Generic(); }
     const ::std::string& type_param() const { return m_data.as_Generic().name; }
-    void set_type_params_ptr(const AST::TypeParams& p) { m_data.as_Generic().params = &p; };
-    const AST::TypeParams* type_params_ptr() const {
-        return reinterpret_cast<const AST::TypeParams*>( m_data.as_Generic().params );
+    void set_type_params_ptr(const AST::GenericParams& p) { m_data.as_Generic().params = &p; };
+    const AST::GenericParams* type_params_ptr() const {
+        return reinterpret_cast<const AST::GenericParams*>( m_data.as_Generic().params );
     }
     
     bool is_reference() const { return m_data.is_Borrow(); }

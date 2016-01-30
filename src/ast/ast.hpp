@@ -110,26 +110,26 @@ TAGGED_UNION_EX( GenericBound, (: public Serialisable), Lifetime,
 
 ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x);
 
-class TypeParams:
+class GenericParams:
     public Serialisable
 {
     ::std::vector<TypeParam>    m_type_params;
     ::std::vector< ::std::string > m_lifetime_params;
     ::std::vector<GenericBound>    m_bounds;
 public:
-    TypeParams() {}
-    TypeParams(TypeParams&& x) noexcept:
+    GenericParams() {}
+    GenericParams(GenericParams&& x) noexcept:
         m_type_params( mv$(x.m_type_params) ),
         m_lifetime_params( mv$(x.m_lifetime_params) ),
         m_bounds( mv$(x.m_bounds) )
     {}
-    TypeParams& operator=(TypeParams&& x) {
+    GenericParams& operator=(GenericParams&& x) {
         m_type_params = mv$(x.m_type_params);
         m_lifetime_params = mv$(x.m_lifetime_params);
         m_bounds = mv$(x.m_bounds);
         return *this;
     }
-    TypeParams(const TypeParams& x):
+    GenericParams(const GenericParams& x):
         m_type_params(x.m_type_params),
         m_lifetime_params(x.m_lifetime_params),
         m_bounds()
@@ -155,7 +155,7 @@ public:
     bool check_params(Crate& crate, const ::std::vector<TypeRef>& types) const;
     bool check_params(Crate& crate, ::std::vector<TypeRef>& types, bool allow_infer) const;
     
-    friend ::std::ostream& operator<<(::std::ostream& os, const TypeParams& tp);
+    friend ::std::ostream& operator<<(::std::ostream& os, const GenericParams& tp);
     SERIALISABLE_PROTOTYPES();
 };
 
@@ -292,21 +292,21 @@ class TypeAlias:
     public Serialisable
 {
     MetaItems   m_attrs;
-    TypeParams  m_params;
+    GenericParams  m_params;
     TypeRef m_type;
 public:
     TypeAlias() {}
-    TypeAlias(MetaItems attrs, TypeParams params, TypeRef type):
+    TypeAlias(MetaItems attrs, GenericParams params, TypeRef type):
         m_attrs( move(attrs) ),
         m_params( move(params) ),
         m_type( move(type) )
     {}
     
     const MetaItems& attrs() const { return m_attrs; }
-    const TypeParams& params() const { return m_params; }
+    const GenericParams& params() const { return m_params; }
     const TypeRef& type() const { return m_type; }
     
-    TypeParams& params() { return m_params; }
+    GenericParams& params() { return m_params; }
     TypeRef& type() { return m_type; }
     
     SERIALISABLE_PROTOTYPES();
@@ -358,7 +358,7 @@ public:
 private:
     MetaItems   m_attrs;
     ::std::string   m_lifetime;
-    TypeParams  m_params;
+    GenericParams  m_params;
     Expr    m_code;
     TypeRef m_rettype;
     Arglist m_args;
@@ -367,7 +367,7 @@ public:
     {}
     Function(const Function&) = delete;
     Function(Function&&) noexcept = default;
-    Function(MetaItems attrs, TypeParams params, TypeRef ret_type, Arglist args):
+    Function(MetaItems attrs, GenericParams params, TypeRef ret_type, Arglist args):
         m_attrs( move(attrs) ),
         m_params( move(params) ),
         m_rettype( move(ret_type) ),
@@ -379,12 +379,12 @@ public:
     void set_self_lifetime(::std::string s) { m_lifetime = s; }
     
     const MetaItems& attrs() const { return m_attrs; }
-    const TypeParams& params() const { return m_params; }
+    const GenericParams& params() const { return m_params; }
     const Expr& code() const { return m_code; }
     const TypeRef& rettype() const { return m_rettype; }
     const Arglist& args() const { return m_args; }
     
-    TypeParams& params() { return m_params; }
+    GenericParams& params() { return m_params; }
     Expr& code() { return m_code; }
     TypeRef& rettype() { return m_rettype; }
     Arglist& args() { return m_args; }
@@ -396,13 +396,13 @@ class Trait:
     public Serialisable
 {
     MetaItems   m_attrs;
-    TypeParams  m_params;
+    GenericParams  m_params;
     ::std::vector<AST::Path>    m_supertraits;
     ItemList<TypeAlias> m_types;
     ItemList<Function>  m_functions;
 public:
     Trait() {}
-    Trait(MetaItems attrs, TypeParams params, ::std::vector<Path> supertraits):
+    Trait(MetaItems attrs, GenericParams params, ::std::vector<Path> supertraits):
         m_attrs( mv$(attrs) ),
         m_params( mv$(params) ),
         m_supertraits( mv$(supertraits) )
@@ -410,18 +410,18 @@ public:
     }
     
     const MetaItems& attrs() const { return m_attrs; }
-    const TypeParams& params() const { return m_params; }
+    const GenericParams& params() const { return m_params; }
     const ::std::vector<Path>& supertraits() const { return m_supertraits; }
     const ItemList<Function>& functions() const { return m_functions; }
     const ItemList<TypeAlias>& types() const { return m_types; }
 
-    TypeParams& params() { return m_params; }
+    GenericParams& params() { return m_params; }
     ::std::vector<Path>& supertraits() { return m_supertraits; }
     ItemList<Function>& functions() { return m_functions; }
     ItemList<TypeAlias>& types() { return m_types; }
     
     void add_type(::std::string name, TypeRef type) {
-        m_types.push_back( Item<TypeAlias>(move(name), TypeAlias(MetaItems(), TypeParams(), move(type)), true) );
+        m_types.push_back( Item<TypeAlias>(move(name), TypeAlias(MetaItems(), GenericParams(), move(type)), true) );
     }
     void add_function(::std::string name, Function fcn) {
         m_functions.push_back( Item<Function>(::std::move(name), ::std::move(fcn), true) );
@@ -485,21 +485,21 @@ class Enum:
     public Serialisable
 {
     MetaItems   m_attrs;
-    TypeParams    m_params;
+    GenericParams    m_params;
     ::std::vector<EnumVariant>   m_variants;
 public:
     Enum() {}
-    Enum( MetaItems attrs, TypeParams params, ::std::vector<EnumVariant> variants ):
+    Enum( MetaItems attrs, GenericParams params, ::std::vector<EnumVariant> variants ):
         m_attrs( move(attrs) ),
         m_params( move(params) ),
         m_variants( move(variants) )
     {}
     
     const MetaItems& attrs() const { return m_attrs; }
-    const TypeParams& params() const { return m_params; }
+    const GenericParams& params() const { return m_params; }
     const ::std::vector<EnumVariant>& variants() const { return m_variants; }
     
-    TypeParams& params() { return m_params; }
+    GenericParams& params() { return m_params; }
     ::std::vector<EnumVariant>& variants() { return m_variants; }
     
     SERIALISABLE_PROTOTYPES();
@@ -509,22 +509,22 @@ class Struct:
     public Serialisable
 {
     MetaItems   m_attrs;
-    TypeParams    m_params;
+    GenericParams    m_params;
     ::std::vector<StructItem>   m_fields;
 public:
     Struct() {}
-    Struct( MetaItems attrs, TypeParams params, ::std::vector<StructItem> fields ):
+    Struct( MetaItems attrs, GenericParams params, ::std::vector<StructItem> fields ):
         m_attrs( move(attrs) ),
         m_params( move(params) ),
         m_fields( move(fields) )
     {}
     
     const MetaItems&    attrs()  const { return m_attrs; }
-    const TypeParams&   params() const { return m_params; }
+    const GenericParams&   params() const { return m_params; }
     const ::std::vector<StructItem>& fields() const { return m_fields; }
     
     MetaItems&  attrs()  { return m_attrs; }
-    TypeParams& params() { return m_params; }
+    GenericParams& params() { return m_params; }
     ::std::vector<StructItem>& fields() { return m_fields; }
     
     TypeRef get_field_type(const char *name, const ::std::vector<TypeRef>& args);
@@ -536,13 +536,13 @@ class ImplDef:
     public Serialisable
 {
     MetaItems   m_attrs;
-    TypeParams  m_params;
+    GenericParams  m_params;
     Path    m_trait;
     TypeRef m_type;
 public:
     ImplDef() {}
     ImplDef(ImplDef&&) noexcept = default;
-    ImplDef(MetaItems attrs, TypeParams params, Path trait_type, TypeRef impl_type):
+    ImplDef(MetaItems attrs, GenericParams params, Path trait_type, TypeRef impl_type):
         m_attrs( move(attrs) ),
         m_params( move(params) ),
         m_trait( move(trait_type) ),
@@ -551,11 +551,11 @@ public:
     
     // Accessors
     const MetaItems& attrs() const { return m_attrs; }
-    const TypeParams& params() const { return m_params; }
+    const GenericParams& params() const { return m_params; }
     const Path& trait() const { return m_trait; }
     const TypeRef& type() const { return m_type; }
 
-    TypeParams& params() { return m_params; }
+    GenericParams& params() { return m_params; }
     Path& trait() { return m_trait; }
     TypeRef& type() { return m_type; }
     
@@ -578,7 +578,7 @@ class Impl:
 public:
     Impl() {}
     Impl(Impl&&) noexcept = default;
-    Impl(MetaItems attrs, TypeParams params, TypeRef impl_type, Path trait_type):
+    Impl(MetaItems attrs, GenericParams params, TypeRef impl_type, Path trait_type):
         m_def( move(attrs), move(params), move(trait_type), move(impl_type) )
     {}
 
@@ -921,10 +921,10 @@ public:
 
 class GenericResolveClosure
 {
-    const ::AST::TypeParams&  m_params;
+    const ::AST::GenericParams&  m_params;
     const ::std::vector<TypeRef>&   m_args;
 public:
-    GenericResolveClosure(const AST::TypeParams& params, const ::std::vector<TypeRef>& args):
+    GenericResolveClosure(const AST::GenericParams& params, const ::std::vector<TypeRef>& args):
         m_params(params),
         m_args(args)
     {}

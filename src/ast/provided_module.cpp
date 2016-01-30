@@ -12,7 +12,7 @@ void AST_InitProvidedModule()
 {
     // "struct str([u8])"
     g_compiler_module.add_struct(true, "str",
-        AST::Struct( AST::MetaItems(), AST::TypeParams(), ::std::vector<AST::StructItem> {
+        AST::Struct( AST::MetaItems(), AST::GenericParams(), ::std::vector<AST::StructItem> {
             AST::StructItem("", TypeRef(TypeRef::TagUnsizedArray(), TypeRef(CORETYPE_U8)), false),
         }));
     
@@ -31,7 +31,7 @@ void AST_InitProvidedModule_Impls()
     }
     
     #define impl(trait, type) \
-        g_compiler_module.add_impl(AST::Impl(AST::MetaItems(), AST::TypeParams(), type, trait))
+        g_compiler_module.add_impl(AST::Impl(AST::MetaItems(), AST::GenericParams(), type, trait))
     impl(g_copy_marker_path, TypeRef(CORETYPE_U8));
     impl(g_copy_marker_path, TypeRef(CORETYPE_U16));
     impl(g_copy_marker_path, TypeRef(CORETYPE_U32));
@@ -49,7 +49,7 @@ void AST_InitProvidedModule_Impls()
     impl(g_sized_marker_path, TypeRef());
     
     {
-        AST::TypeParams tps;
+        AST::GenericParams tps;
         tps.add_ty_param( AST::TypeParam("T") );
         g_compiler_module.add_neg_impl(AST::ImplDef(
             AST::MetaItems(), ::std::move(tps),

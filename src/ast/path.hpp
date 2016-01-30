@@ -18,7 +18,7 @@ class TypeRef;
 
 namespace AST {
 
-class TypeParams;
+class GenericParams;
 class Crate;
 class Module;
 class TypeAlias;
@@ -326,7 +326,7 @@ private:
     static void match_args_nl(const ::std::vector<PathNode>& nodes_a, const ::std::vector<PathNode>& nodes_b, ::std::function<void(const char*,const TypeRef&)> fcn);
     static int node_lists_equal_no_generic(const ::std::vector<PathNode>& nodes_a, const ::std::vector<PathNode>& nodes_b);
     
-    void check_param_counts(const TypeParams& params, bool expect_params, PathNode& node);
+    void check_param_counts(const GenericParams& params, bool expect_params, PathNode& node);
 public:
     void bind_module(const Module& mod);
     void bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args={});

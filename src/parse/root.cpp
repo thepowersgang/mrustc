@@ -39,7 +39,7 @@ void Parse_ModRoot(TokenStream& lex, AST::Crate& crate, AST::Module& mod, LList<
     return lifetimes;
 }
 /// Parse type parameters in a definition
-void Parse_TypeBound(TokenStream& lex, AST::TypeParams& ret, TypeRef checked_type, ::std::vector< ::std::string> lifetimes = {})
+void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_type, ::std::vector< ::std::string> lifetimes = {})
 {
     TRACE_FUNCTION;
     Token tok;
@@ -80,11 +80,11 @@ void Parse_TypeBound(TokenStream& lex, AST::TypeParams& ret, TypeRef checked_typ
 }
 
 /// Parse type parameters within '<' and '>' (definition)
-AST::TypeParams Parse_TypeParams(TokenStream& lex)
+AST::GenericParams Parse_GenericParams(TokenStream& lex)
 {
     TRACE_FUNCTION;
 
-    AST::TypeParams ret;
+    AST::GenericParams ret;
     Token tok;
     do {
         bool is_lifetime = false;
@@ -136,7 +136,7 @@ AST::TypeParams Parse_TypeParams(TokenStream& lex)
 
 
 /// Parse the contents of a 'where' clause
-void Parse_WhereClause(TokenStream& lex, AST::TypeParams& params)
+void Parse_WhereClause(TokenStream& lex, AST::GenericParams& params)
 {
     TRACE_FUNCTION;
     Token   tok;
@@ -210,10 +210,10 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
     Token   tok;
 
     // Parameters
-    AST::TypeParams params;
+    AST::GenericParams params;
     if( GET_TOK(tok, lex) == TOK_LT )
     {
-        params = Parse_TypeParams(lex);
+        params = Parse_GenericParams(lex);
         GET_CHECK_TOK(tok, lex, TOK_GT);
     }
     else {
@@ -359,10 +359,10 @@ AST::TypeAlias Parse_TypeAlias(TokenStream& lex, AST::MetaItems meta_items)
 
     // Params
     tok = lex.getToken();
-    AST::TypeParams params;
+    AST::GenericParams params;
     if( tok.type() == TOK_LT )
     {
-        params = Parse_TypeParams(lex);
+        params = Parse_GenericParams(lex);
         GET_CHECK_TOK(tok, lex, TOK_GT);
         tok = lex.getToken();
     }
@@ -383,10 +383,10 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems meta_items)
     Token   tok;
 
     tok = lex.getToken();
-    AST::TypeParams params;
+    AST::GenericParams params;
     if( tok.type() == TOK_LT )
     {
-        params = Parse_TypeParams(lex);
+        params = Parse_GenericParams(lex);
         GET_CHECK_TOK(tok, lex, TOK_GT);
         tok = lex.getToken();
         if(tok.type() == TOK_RWORD_WHERE)
@@ -484,10 +484,10 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
 
     Token   tok;
     
-    AST::TypeParams params;
+    AST::GenericParams params;
     if( GET_TOK(tok, lex) == TOK_LT )
     {
-        params = Parse_TypeParams(lex);
+        params = Parse_GenericParams(lex);
         GET_CHECK_TOK(tok, lex, TOK_GT);
         tok = lex.getToken();
     }
@@ -614,10 +614,10 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems meta_items)
     
     tok = lex.getToken();
     // Type params supporting "where"
-    AST::TypeParams params;
+    AST::GenericParams params;
     if( tok.type() == TOK_LT )
     {
-        params = Parse_TypeParams(lex);
+        params = Parse_GenericParams(lex);
         GET_CHECK_TOK(tok, lex, TOK_GT);
         tok = lex.getToken();
         if(tok.type() == TOK_RWORD_WHERE)
@@ -713,11 +713,11 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, bool is_unsafe/*=false*/)
     TRACE_FUNCTION;
     Token   tok;
 
-    AST::TypeParams params;
+    AST::GenericParams params;
     // 1. (optional) type parameters
     if( GET_TOK(tok, lex) == TOK_LT )
     {
-        params = Parse_TypeParams(lex);
+        params = Parse_GenericParams(lex);
         GET_CHECK_TOK(tok, lex, TOK_GT);
     }
     else {

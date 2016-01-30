@@ -136,7 +136,7 @@ AST::Path::Path(const Path& x):
 }
 
 /*
-void Path::check_param_counts(const TypeParams& params, bool expect_params, PathNode& node)
+void Path::check_param_counts(const GenericParams& params, bool expect_params, PathNode& node)
 {
     if( !expect_params )
     {

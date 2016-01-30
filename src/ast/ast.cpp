@@ -145,7 +145,7 @@ Impl Impl::make_concrete(const ::std::vector<TypeRef>& types) const
     
     GenericResolveClosure   resolver(m_def.params(), types);
     
-    Impl    ret( MetaItems(), TypeParams(), m_def.type(), m_def.trait() );
+    Impl    ret( MetaItems(), GenericParams(), m_def.type(), m_def.trait() );
     ret.m_def.trait().resolve_args( resolver );
     ret.m_def.type().resolve_args( resolver );
     
@@ -153,7 +153,7 @@ Impl Impl::make_concrete(const ::std::vector<TypeRef>& types) const
 /*
     for(const auto& fcn : m_functions)
     {
-        TypeParams  new_fcn_params = fcn.data.params();
+        GenericParams  new_fcn_params = fcn.data.params();
         for( auto& b : new_fcn_params.bounds() )
             b.type().resolve_args(resolver);
         TypeRef new_ret_type = fcn.data.rettype();
@@ -960,7 +960,7 @@ SERIALISE_TU(GenericBound, "GenericBound", ent,
         )
 )
 
-int TypeParams::find_name(const char* name) const
+int GenericParams::find_name(const char* name) const
 {
     for( unsigned int i = 0; i < m_type_params.size(); i ++ )
     {
@@ -971,11 +971,11 @@ int TypeParams::find_name(const char* name) const
     return -1;
 }
 
-bool TypeParams::check_params(Crate& crate, const ::std::vector<TypeRef>& types) const
+bool GenericParams::check_params(Crate& crate, const ::std::vector<TypeRef>& types) const
 {
     return check_params( crate, const_cast< ::std::vector<TypeRef>&>(types), false );
 }
-bool TypeParams::check_params(Crate& crate, ::std::vector<TypeRef>& types, bool allow_infer) const
+bool GenericParams::check_params(Crate& crate, ::std::vector<TypeRef>& types, bool allow_infer) const
 {
     // Check parameter counts
     if( types.size() > m_type_params.size() )
@@ -1044,11 +1044,11 @@ bool TypeParams::check_params(Crate& crate, ::std::vector<TypeRef>& types, bool 
     return true;
 }
 
-::std::ostream& operator<<(::std::ostream& os, const TypeParams& tps)
+::std::ostream& operator<<(::std::ostream& os, const GenericParams& tps)
 {
     return os << "<" << tps.m_lifetime_params << "," << tps.m_type_params << "> where {" << tps.m_bounds << "}";
 }
-SERIALISE_TYPE_S(TypeParams, {
+SERIALISE_TYPE_S(GenericParams, {
     s.item(m_type_params);
     s.item(m_lifetime_params);
     s.item(m_bounds);

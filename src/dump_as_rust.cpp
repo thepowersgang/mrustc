@@ -503,8 +503,8 @@ private:
         m_os << ")";
     }
     
-    void print_params(const AST::TypeParams& params);
-    void print_bounds(const AST::TypeParams& params);
+    void print_params(const AST::GenericParams& params);
+    void print_bounds(const AST::GenericParams& params);
     void print_pattern(const AST::Pattern& p, bool is_refutable);
     void print_type(const TypeRef& t);
     
@@ -642,7 +642,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
     }
 }
 
-void RustPrinter::print_params(const AST::TypeParams& params)
+void RustPrinter::print_params(const AST::GenericParams& params)
 {
     if( params.ty_params().size() > 0 || params.lft_params().size() > 0 )
     {
@@ -670,7 +670,7 @@ void RustPrinter::print_params(const AST::TypeParams& params)
     }
 }
 
-void RustPrinter::print_bounds(const AST::TypeParams& params)
+void RustPrinter::print_bounds(const AST::GenericParams& params)
 {
     if( params.bounds().size() )
     {

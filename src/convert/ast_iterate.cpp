@@ -46,7 +46,7 @@ void CASTIterator::handle_type(TypeRef& type)
 void CASTIterator::handle_expr(AST::ExprNode& node)
 {
 }
-void CASTIterator::handle_params(AST::TypeParams& params)
+void CASTIterator::handle_params(AST::GenericParams& params)
 {
     DEBUG("params");
     for( auto& param : params.ty_params() )
@@ -239,7 +239,7 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
 }
 void CASTIterator::handle_pattern_enum(
         ::std::vector<TypeRef>& pat_args, const ::std::vector<TypeRef>& hint_args,
-        const AST::TypeParams& enum_params, const AST::EnumVariant& var,
+        const AST::GenericParams& enum_params, const AST::EnumVariant& var,
         ::std::vector<AST::Pattern>& sub_patterns
         )
 {

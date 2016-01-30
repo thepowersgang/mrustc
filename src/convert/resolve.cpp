@@ -81,7 +81,7 @@ public:
 
     CPathResolver(const AST::Crate& crate);
 
-    void handle_params(AST::TypeParams& params) override;
+    void handle_params(AST::GenericParams& params) override;
 
     virtual void handle_path(AST::Path& path, CASTIterator::PathMode mode) override;
     void handle_path_abs(const Span& span, AST::Path& path, CASTIterator::PathMode mode);
@@ -517,7 +517,7 @@ bool lookup_path_in_module(const Span &span, const AST::Crate& crate, const AST:
 }
 
 /// Perform path resolution within a generic definition block
-void CPathResolver::handle_params(AST::TypeParams& params)
+void CPathResolver::handle_params(AST::GenericParams& params)
 {
     TRACE_FUNCTION;
     // Parameters
