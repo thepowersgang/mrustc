@@ -1524,10 +1524,16 @@ void CPathResolver::handle_function(AST::Path path, AST::Function& fcn)
 }
 
 
-void absolutise_path(const Span& span, const AST::Crate& crate, const AST::Path& modpath, AST::Path& path)
+void absolutise_path(const Span& span, const AST::Crate& crate, const AST::Module& mod, const AST::Path& modpath, AST::Path& path)
 {
     // TODO: Should this code resolve encountered use statements into the real path?
     TU_MATCH(AST::Path::Class, (path.m_class), (info),
+    (Invalid,
+        BUG(span, "Invalid path type encountered - Class::Invalid");
+        ),
+    (Local,
+        // Known-local paths don't need to be absolutised
+        ),
     (Absolute,
         // Nothing needs to be done
         ),
@@ -1556,7 +1562,7 @@ void absolutise_path(const Span& span, const AST::Crate& crate, const AST::Path&
         auto newpath = modpath_tmp + path;
         DEBUG("Absolutised path " << path << " into " << newpath);
         path = ::std::move(newpath);
-        )
+        ),
     (Relative,
         auto newpath = modpath + path;
         DEBUG("Absolutised path " << path << " into " << newpath);
@@ -1576,7 +1582,7 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
     {
         const Span  span = Span();
         DEBUG("p = " << imp.data);
-        absolutise_path(span, crate, modpath, imp.data);
+        absolutise_path(span, crate, mod, modpath, imp.data);
         
         resolve_path(span, crate, imp.data);
         DEBUG("Resolved import : " << imp.data);
