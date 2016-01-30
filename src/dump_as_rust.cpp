@@ -8,7 +8,11 @@
 #include "ast/expr.hpp"
 #include <main_bindings.hpp>
 
+#include <cpp_unpack.h>
+
 #define IS(v, c)    (dynamic_cast<c*>(&v) != 0)
+#define WRAPIF_CMD(v, t)  || IS(v, t)
+#define WRAPIF(uniq_ptr, class1, ...) do { auto& _v = *(uniq_ptr); if( IS(_v, class1) CC_ITERATE(WRAPIF_CMD, (_v), __VA_ARGS__) ) { paren_wrap(uniq_ptr); } else { AST::NodeVisitor::visit(uniq_ptr); } } while(0)
 
 class RustPrinter:
     public AST::NodeVisitor
@@ -32,6 +36,9 @@ public:
 
     virtual bool is_const() const override { return true; }
     virtual void visit(AST::ExprNode_Block& n) override {
+        if( n.m_is_unsafe ) {
+            m_os << "unsafe ";
+        }
         m_os << "{";
         inc_indent();
         if( n.m_inner_mod.get() )
@@ -118,9 +125,12 @@ public:
     }
     virtual void visit(AST::ExprNode_CallMethod& n) override {
         m_expr_root = false;
-        m_os << "(";
-        AST::NodeVisitor::visit(n.m_val);
-        m_os << ")." << n.m_method;
+        WRAPIF( n.m_val
+            , AST::ExprNode_Deref, AST::ExprNode_UniOp
+            , AST::ExprNode_Cast, AST::ExprNode_BinOp, AST::ExprNode_Assign
+            , AST::ExprNode_Match, AST::ExprNode_If, AST::ExprNode_IfLet, AST::ExprNode_Match
+            );
+        m_os << "." << n.m_method;
         m_os << "(";
         bool is_first = true;
         for( auto& arg : n.m_args )
@@ -419,15 +429,21 @@ public:
     }
     virtual void visit(AST::ExprNode_Field& n) override {
         m_expr_root = false;
-        m_os << "(";
-        AST::NodeVisitor::visit(n.m_obj);
-        m_os << ")." << n.m_name;
+        WRAPIF( n.m_obj
+            , AST::ExprNode_Deref, AST::ExprNode_UniOp
+            , AST::ExprNode_Cast, AST::ExprNode_BinOp, AST::ExprNode_Assign
+            , AST::ExprNode_Match, AST::ExprNode_If, AST::ExprNode_IfLet, AST::ExprNode_Match
+            );
+        m_os << "." << n.m_name;
     }
     virtual void visit(AST::ExprNode_Index& n) override {
         m_expr_root = false;
-        m_os << "(";
-        AST::NodeVisitor::visit(n.m_obj);
-        m_os << ")[";
+        WRAPIF( n.m_obj
+            , AST::ExprNode_Deref, AST::ExprNode_UniOp
+            , AST::ExprNode_Cast, AST::ExprNode_BinOp, AST::ExprNode_Assign
+            , AST::ExprNode_Match, AST::ExprNode_If, AST::ExprNode_IfLet, AST::ExprNode_Match
+            );
+        m_os << "[";
         AST::NodeVisitor::visit(n.m_idx);
         m_os << "]";
     }
@@ -444,12 +460,9 @@ public:
     }
     virtual void visit(AST::ExprNode_BinOp& n) override {
         m_expr_root = false;
-        if( IS(*n.m_left, AST::ExprNode_Cast) )
-            paren_wrap(n.m_left);
-        else if( IS(*n.m_left, AST::ExprNode_BinOp) )
-            paren_wrap(n.m_left);
-        else
-            AST::NodeVisitor::visit(n.m_left);
+        WRAPIF(n.m_left
+            , AST::ExprNode_Cast, AST::ExprNode_BinOp
+            );
         m_os << " ";
         switch(n.m_type)
         {

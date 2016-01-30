@@ -90,8 +90,9 @@ public:
     const ::std::vector<TypeRef>&   args() const;
     
     Ordering ord(const PathNode& x) const;
+    void print_pretty(::std::ostream& os, bool is_type_context) const;
+    
     bool operator==(const PathNode& x) const { return ord(x) == OrdEqual; }
-    void print_pretty(::std::ostream& os) const;
     friend ::std::ostream& operator<<(::std::ostream& os, const PathNode& pn);
     
     SERIALISABLE_PROTOTYPES();
@@ -317,7 +318,7 @@ public:
     bool operator<(const Path& x) const { return ord(x) != OrdLess; }
     
     SERIALISABLE_PROTOTYPES(); 
-    void print_pretty(::std::ostream& os) const;
+    void print_pretty(::std::ostream& os, bool is_type_context) const;
     friend ::std::ostream& operator<<(::std::ostream& os, const Path& path);
     friend ::Serialiser& operator<<(Serialiser& s, Path::Class pc);
     friend void operator>>(Deserialiser& s, Path::Class& pc);

@@ -967,10 +967,12 @@ void CPathResolver::handle_path_abs__into_ufcs(const Span& span, AST::Path& path
         DEBUG("type_path = " << type_path << ", nodes[i] = " << nodes[i]);
         resolve_path(span, m_crate, type_path);
         // If the type path refers to a trait, put it in the trait location
-        if(type_path.binding().is_Trait())
+        if(type_path.binding().is_Trait()) {
             type_path = AST::Path(AST::Path::TagUfcs(), TypeRef(), TypeRef(mv$(type_path)), {mv$(nodes[i])} );
-        else
+        }
+        else {
             type_path = AST::Path(AST::Path::TagUfcs(), TypeRef(mv$(type_path)), TypeRef(), {mv$(nodes[i])} );
+        }
     }
     
     path = mv$(type_path);
@@ -1008,8 +1010,10 @@ void CPathResolver::handle_path_ufcs(const Span& span, AST::Path& path, CASTIter
     // - Impl heads and trait heads could be resolved in an earlier pass
     if( info.trait->is_wildcard() )
     {
-        #if 0
+        // 1. Search inherent impls
+        // 2. If doing a late pass (after module-level names are resolved) search for traits
         if( this->m_second_pass ) {
+            #if 0
             const ::std::string&    item_name = info.nodes[0].name();
             DEBUG("Searching for matching trait for '"<<item_name<<"' on type " << *info.type);
             
@@ -1122,8 +1126,31 @@ void CPathResolver::handle_path_ufcs(const Span& span, AST::Path& path, CASTIter
 
                 throw ParseError::Todo( FMT("CPathResolver::handle_path_ufcs - UFCS, find trait, for type " << *info.type) );
             }
+            #endif
         }
-        #endif
+        else
+        {
+            const auto& name = path.nodes()[0].name();
+            if( info.type->is_path() )
+            {
+                // 1. Search for enum constructors
+                TU_MATCH_DEF(AST::PathBinding, (info.type->path().binding()), (i),
+                ( ),
+                (Enum,
+                    const auto& e = *i.enum_;
+                    for(const auto& var : e.variants())
+                    {
+                        if( var.m_name == name ) {
+                            path.bind_enum_var(e, name);
+                            info.trait = make_unique_ptr( TypeRef(TypeRef::TagInvalid()) );
+                            return ;
+                        }
+                    }
+                    )
+                )
+
+            }
+        }
     }
     else {
         #if 0
@@ -1231,8 +1258,24 @@ void CPathResolver::handle_path_rel(const Span& span, AST::Path& path, CASTItera
         path = AST::Path(AST::Path::TagLocal(), path[0].name());
         return ;
     }
+
+    // 5. Check if the unresolved name is a primitive type
+    {
+        if( path[0].name() == "str" ) {
+            TODO(span, "Expand `str` to internal path");
+        }
+        else if( auto ct = coretype_fromstring(path[0].name()) ) {
+            auto ty = TypeRef(TypeRef::TagPrimitive(), ct);
+            auto newpath = AST::Path(AST::Path::TagUfcs(), ty, TypeRef());
+            newpath.add_tailing(path);
+            path = mv$(newpath);
+            return ;
+        }
+        else {
+        }
+    }
     
-    // 5. Otherwise, error
+    // Z. Otherwise, error
     ERROR(span, E0000, "CPathResolver::handle_path - Name resolution failed");
 }
 
@@ -1382,6 +1425,7 @@ void CPathResolver::handle_type(TypeRef& type)
         }
         else if( name == "Self" )
         {
+            // TODO: Should I always resolve `Self` when it's concretely known?
             // If the name was "Self", but Self isn't already defined... then we need to make it an arg?
             if( this->m_self_type.empty() || this->m_self_type.back().is_None() ) {
                 ERROR(type.path().span(), E0000, "Unexpected 'Self'");

@@ -10,29 +10,6 @@
 #include "../types.hpp"
 #include "../ast/ast.hpp"
 
-/// Mappings from internal type names to the core type enum
-static const struct {
-    const char* name;
-    enum eCoreType  type;
-} CORETYPES[] = {
-    {"bool", CORETYPE_BOOL},
-    {"char", CORETYPE_CHAR},
-    {"f32", CORETYPE_F32},
-    {"f64", CORETYPE_F64},
-    {"i16", CORETYPE_I16},
-    {"i32", CORETYPE_I32},
-    {"i64", CORETYPE_I64},
-    {"i8", CORETYPE_I8},
-    {"int", CORETYPE_INT},
-    {"isize", CORETYPE_INT},
-    {"u16", CORETYPE_U16},
-    {"u32", CORETYPE_U32},
-    {"u64", CORETYPE_U64},
-    {"u8",  CORETYPE_U8},
-    {"uint", CORETYPE_UINT},
-    {"usize", CORETYPE_UINT},
-};
-
 // === PROTOTYPES ===
 TypeRef Parse_Type(TokenStream& lex);
 TypeRef Parse_Type_Int(TokenStream& lex);
@@ -77,35 +54,15 @@ TypeRef Parse_Type_Int(TokenStream& lex)
     case TOK_LT:
         lex.putback(tok);
         return TypeRef(TypeRef::TagPath(), Parse_Path(lex, PATH_GENERIC_TYPE));
-        #if 0
-        {
-        DEBUG("Associated type");
-        // TODO: This should instead use the path code, not a special case in typing
-        // <Type as Trait>::Inner
-        TypeRef base = Parse_Type(lex);
-        GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
-        TypeRef trait = Parse_Type(lex);
-        GET_CHECK_TOK(tok, lex, TOK_GT);
-        // TODO: Is just '<Type as Trait>' valid?
-        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-        GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        ::std::string   inner_name = tok.str();
-        return TypeRef(TypeRef::TagAssoc(), ::std::move(base), ::std::move(trait), ::std::move(inner_name));
-        }
-        #endif
     // <ident> - Either a primitive, or a path
     case TOK_IDENT:
         // or a primitive
-        for(unsigned int i = 0; i < sizeof(CORETYPES)/sizeof(CORETYPES[0]); i ++)
+        if( auto ct = coretype_fromstring(tok.str()) )
         {
-            if( tok.str() < CORETYPES[i].name )
-                break;
-            if( tok.str() == CORETYPES[i].name )
-                return TypeRef(TypeRef::TagPrimitive(), CORETYPES[i].type);
+            return TypeRef(TypeRef::TagPrimitive(), ct);
         }
         if( tok.str() == "str" )
         {
-            // TODO: Create an internal newtype for 'str'
             return TypeRef(TypeRef::TagPath(), AST::Path("", { AST::PathNode("#",{}), AST::PathNode("str",{}) }));
         }
         // - Fall through to path handling

@@ -180,8 +180,6 @@ signed int Lexer::getSymbol()
         const char* const chars = TOKENMAP[i].chars;
         const size_t len = TOKENMAP[i].len;
 
-        //::std::cout << "ofs=" << ofs << ", chars[ofs] = " << chars[ofs] << ", ch = " << ch << ", len = " << len << ::std::endl;
-
         if( ofs >= len || chars[ofs] > ch ) {
             this->ungetc();
             return best;
@@ -370,6 +368,7 @@ Token Lexer::getTokenInt()
                     // Single dot
                     else if( !isdigit(ch) )
                     {
+                        this->ungetc();
                         this->m_next_token = Token(TOK_DOT);
                         return Token(val, CORETYPE_ANY);
                     }

@@ -8,6 +8,8 @@
 #ifndef INCLUDED_TAGGED_UNION_H_
 #define INCLUDED_TAGGED_UNION_H_
 
+//#include "cpp_unpack.h"
+
 #define TU_CASE_ITEM(src, mod, var, name)	mod auto& name = src.as_##var(); (void)&name;
 #define TU_CASE_BODY(class,var, ...)	case class::var: { __VA_ARGS__ } break;
 #define TU_CASE(mod, class, var,  name,src, ...)	TU_CASE_BODY(mod,class,var, TU_CASE_ITEM(src,mod,var,name) __VA_ARGS__)
@@ -18,8 +20,8 @@
 // Argument iteration
 #define _DISP1(n, _1)   n _1
 #define _DISP2(n, _1, _2)   n _1 n _2
-#define _DISP3(n, v, v2, v3)   n v n v2 n v3    // _DISP2(n, __VA_ARGS__)
-#define _DISP4(n, v, v2, v3, v4)   n v n v2 n v3 n v4    // #define _DISP4(n, v, ...)   n v _DISP3(n, __VA_ARGS__)
+#define _DISP3(n, v, v2, v3)   n v n v2 n v3
+#define _DISP4(n, v, v2, v3, v4)   n v n v2 n v3 n v4
 #define _DISP5(n, v, ...)   n v _DISP4(n, __VA_ARGS__)
 #define _DISP6(n, v, ...)   n v _DISP5(n, __VA_ARGS__)
 #define _DISP7(n, v, ...)   n v _DISP6(n, __VA_ARGS__)

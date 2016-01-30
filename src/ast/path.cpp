@@ -55,14 +55,20 @@ Ordering PathNode::ord(const PathNode& x) const
     if(rv != OrdEqual)  return rv;
     return OrdEqual;
 }
-::std::ostream& operator<<(::std::ostream& os, const PathNode& pn) {
-    os << pn.m_name;
-    if( pn.m_params.size() )
+void PathNode::print_pretty(::std::ostream& os, bool is_type_context) const
+{
+    os << m_name;
+    if( m_params.size() )
     {
-        os << "::<";
-        os << pn.m_params;
+        if( is_type_context )
+            os << "::";
+        os << "<";
+        os << m_params;
         os << ">";
     }
+}
+::std::ostream& operator<<(::std::ostream& os, const PathNode& pn) {
+    pn.print_pretty(os, false);
     return os;
 }
 SERIALISE_TYPE(PathNode::, "PathNode", {
@@ -424,98 +430,75 @@ Ordering Path::ord(const Path& x) const
     return OrdEqual;
 }
 
-void Path::print_pretty(::std::ostream& os) const
+void Path::print_pretty(::std::ostream& os, bool is_type_context) const
 {
     TU_MATCH(Path::Class, (m_class), (ent),
-    (Invalid, os << "/* inv */"; ),
-    (Local, os << ent.name;),
+    (Invalid,
+        os << "/*inv*/";
+        ),
+    (Local,
+        // Only print comment if there's no binding
+        if( m_binding.is_Unbound() )
+            os << "/*var*/";
+        else
+            assert( m_binding.is_Variable() );
+        os << ent.name;
+        ),
     (Relative,
-        for(const auto& n : ent.nodes)    os << "::" << n;
+        for(const auto& n : ent.nodes)
+        {
+            if( &n != &ent.nodes[0] ) {
+                os << "::";
+            }
+            n.print_pretty(os, is_type_context);
+        }
         ),
     (Self,
         os << "self";
-        for(const auto& n : ent.nodes)    os << "::" << n;
+        for(const auto& n : ent.nodes)
+        {
+            os << "::";
+            n.print_pretty(os, is_type_context);
+        }
         ),
     (Super,
         os << "super";
-        for(const auto& n : ent.nodes)    os << "::" << n;
+        for(const auto& n : ent.nodes)
+        {
+            os << "::";
+            n.print_pretty(os, is_type_context);
+        }
         ),
     (Absolute,
         if( m_crate != "" )
             os << "::\"" << m_crate << "\"";
         for(const auto& n : ent.nodes)
-            os << "::" << n;
+        {
+            os << "::";
+            n.print_pretty(os, is_type_context);
+        }
         ),
     (UFCS,
-        throw ParseError::Todo("Path::print_pretty - UFCS");
+        //os << "/*ufcs*/";
+        if( ! ent.trait->m_data.is_None() ) {
+            os << "<" << *ent.type << " as " << *ent.trait << ">";
+        }
+        else {
+            os << "<" << *ent.type << ">";
+        }
+        for(const auto& n : ent.nodes) {
+            os << "::";
+            n.print_pretty(os, is_type_context);
+        }
         )
     )
+    os << "/*" << m_binding << "*/";
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const Path& path)
 {
-    //if( path.m_nodes.size() == 0 && path.m_class == Path::RELATIVE )
-    //{
-    //    os << "/* null path */";
-    //    return os;
-    //}
     #if PRETTY_PATH_PRINT
-    TU_MATCH(Path::Class, (path.m_class), (ent),
-    (Invalid,
-        os << "/*inv*/";
-        ),
-    (Local,
-        os << "/*var*/" << ent.name;
-        ),
-    (Relative,
-        for(const auto& n : ent.nodes)
-        {
-            #if PRETTY_PATH_PRINT
-            if( &n != &ent.nodes[0] ) {
-                os << "::";
-            }
-            #endif
-            os << n;
-        }
-        ),
-    (Self,
-        os << "self";
-        for(const auto& n : ent.nodes)
-        {
-            #if PRETTY_PATH_PRINT
-            os << "::";
-            #endif
-            os << n;
-        }
-        ),
-    (Super,
-        os << "super";
-        for(const auto& n : ent.nodes)
-        {
-            #if PRETTY_PATH_PRINT
-            os << "::";
-            #endif
-            os << n;
-        }
-        ),
-    (Absolute,
-        if( path.m_crate != "" )
-            os << "::\""<<path.m_crate<<"\"";
-        for(const auto& n : ent.nodes)
-        {
-            #if PRETTY_PATH_PRINT
-            os << "::";
-            #endif
-            os << n;
-        }
-        ),
-    (UFCS,
-        os << "/*ufcs*/<" << *ent.type << " as " << *ent.trait << ">";
-        for(const auto& n : ent.nodes)
-            os << "::" << n;
-        )
-    )
-    os << "/*" << path.m_binding << "*/";
+    path.print_pretty(os, false);
     #else
     switch(path.m_class)
     {
