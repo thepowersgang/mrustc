@@ -299,6 +299,14 @@ void CASTIterator::handle_module(AST::Path path, AST::Module& mod)
         DEBUG("Handling submod '" << submod.first.name() << "'");
         handle_module(path + submod.first.name(), submod.first);
     }
+    unsigned int anon_mod_idx = 0;
+    for( auto& anonmod : mod.anon_mods() )
+    {
+        auto& submod = *anonmod;
+        DEBUG("Handling submod #" << anon_mod_idx);
+        handle_module(path + FMT("#" << anon_mod_idx), submod);
+        anon_mod_idx += 1;
+    }
     UNINDENT();
 }
 void CASTIterator::handle_function(AST::Path path, AST::Function& fcn)

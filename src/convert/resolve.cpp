@@ -21,6 +21,7 @@ class CPathResolver:
     const AST::Crate&   m_crate;
     AST::Module*  m_module;
     AST::Path m_module_path;
+    ::std::vector< ::std::pair<AST::Module*, AST::Path> > m_module_stack;
     
     struct LocalItem
     {
@@ -358,7 +359,7 @@ void resolve_path(const Span& span, const AST::Crate& root_crate, AST::Path& pat
                     }
                 }
                 if( path.binding().is_Enum() ) {
-                    throw ParseError::Generic( FMT("Unable to find component '" << node.name() << "' of import " << path << " (enum)") );
+                    ERROR(span, E0000, "Unable to find component '" << node.name() << "' of import " << path << " (enum)" );
                 }
                 break;
             }
@@ -790,7 +791,7 @@ void CPathResolver::handle_path_abs(const Span& span, AST::Path& path, CASTItera
                 
                 continue ;
             }
-            throw ParseError::Generic("Unable to find component '" + node.name() + "'");
+            ERROR(span, E0000, "Unable to find component '" << node.name() << "' of path " << path);
             ),
         // Sub-module
         (Module,
@@ -1361,13 +1362,25 @@ bool CPathResolver::find_local_item(const Span& span, AST::Path& path, const ::s
     return false;
 }
 bool CPathResolver::find_mod_item(const Span& span, AST::Path& path, const ::std::string& name) {
+    TRACE_FUNCTION_F("path="<<path<<", name="<<name);
     const AST::Module* mod = m_module;
-    do {
-        if( lookup_path_in_module(span, m_crate, *mod, m_module_path, path, name, path.size()==1) )
+    const AST::Path* modpath = &m_module_path;
+    unsigned int idx = m_module_stack.size() - 1;
+    for(;;)
+    {
+        DEBUG("modpath = " << *modpath << ", mod->name() = '" << mod->name() << "'");
+        if( lookup_path_in_module(span, m_crate, *mod, *modpath, path, name, path.size()==1) )
             return true;
-        if( mod->name() == "" )
-            throw ParseError::Todo("Handle anon modules when resoling unqualified relative paths");
-    } while( mod->name() == "" );
+        DEBUG("mod->name() = '" << mod->name() << "', idx = " << idx);
+        if( mod->name() == "" && idx > 0 ) {
+            idx --;
+            mod = m_module_stack[idx].first;
+            modpath = &m_module_stack[idx].second;
+        }
+        else {
+            break ;
+        }
+    }
     return false;
 }
 bool CPathResolver::find_self_mod_item(const Span& span, AST::Path& path, const ::std::string& name) {
@@ -1549,7 +1562,9 @@ void CPathResolver::handle_module(AST::Path path, AST::Module& mod)
     // NOTE: Assigning here is safe, as the CASTIterator handle_module iterates submodules as the last action
     m_module = &mod;
     m_module_path = AST::Path(path);
+    m_module_stack.push_back( ::std::make_pair(&mod, m_module_path) );
     CASTIterator::handle_module(mv$(path), mod);
+    m_module_stack.pop_back();
     m_scope_stack = mv$(saved);
 }
 void CPathResolver::handle_trait(AST::Path path, AST::Trait& trait)

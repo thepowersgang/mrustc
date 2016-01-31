@@ -26,8 +26,8 @@ namespace AST {
     (StructMethod, os << "StructMethod"; ),
     (TraitMethod,  os << "TraitMethod";  ),
     
-    (TypeParameter, os << "TypeParameter(" << i.level << " # " << i.idx << ")"; ),
-    (Variable, os << "Variable(" << i.slot << ")"; )
+    (TypeParameter, os << "TyParam(" << i.level << " # " << i.idx << ")"; ),
+    (Variable, os << "Var(" << i.slot << ")"; )
     )
     return os;
 }
@@ -60,7 +60,7 @@ void PathNode::print_pretty(::std::ostream& os, bool is_type_context) const
     os << m_name;
     if( m_params.size() )
     {
-        if( is_type_context )
+        if( ! is_type_context )
             os << "::";
         os << "<";
         os << m_params;
