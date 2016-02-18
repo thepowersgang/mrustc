@@ -265,7 +265,6 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
         else
         {
             // Unbound method
-            lex.putback(tok);   // un-eat the '&'
         }
     }
     else if( tok.type() == TOK_RWORD_MUT )

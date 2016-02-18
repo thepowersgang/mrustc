@@ -108,6 +108,10 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
             return Parse_PatternReal_Path(lex, path, is_refutable);
         }
     }
+    else
+    {
+        // Otherwise, fall through
+    }
     
     lex.putback(tok);
     AST::Pattern pat = Parse_PatternReal(lex, is_refutable);
@@ -153,6 +157,8 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
         return AST::Pattern( );
     case TOK_DOUBLE_DOT:
         return AST::Pattern( AST::Pattern::TagWildcard() );
+    case TOK_RWORD_BOX:
+        return AST::Pattern( AST::Pattern::TagBox(), Parse_Pattern(lex, is_refutable) );
     case TOK_DOUBLE_AMP:
         lex.putback(TOK_AMP);
     case TOK_AMP:

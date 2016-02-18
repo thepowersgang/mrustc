@@ -21,6 +21,9 @@ namespace AST {
     (MaybeBind,
         os << "?";
         ),
+    (Box,
+        os << "box " << *ent.sub;
+        ),
     (Ref,
         os << "&" << (ent.mut ? "mut " : "") << *ent.sub;
         ),
@@ -59,6 +62,9 @@ SERIALISE_TYPE(Pattern::, "Pattern", {
         ),
     (MaybeBind,
         ),
+    (Box,
+        s << e.sub;
+        ),
     (Ref,
         s << e.mut;
         s << e.sub;
@@ -87,6 +93,9 @@ SERIALISE_TYPE(Pattern::, "Pattern", {
     {
     _D(Any, )
     _D(MaybeBind,
+        )
+    _D(Box,
+        s.item( ent.sub );
         )
     _D(Ref,
         s.item( ent.mut );

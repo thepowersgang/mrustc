@@ -21,6 +21,7 @@ public:
     TAGGED_UNION(Data, Any,
         (Any,       () ),
         (MaybeBind, () ),
+        (Box,       (unique_ptr<Pattern> sub;) ),
         (Ref,       (bool mut; unique_ptr<Pattern> sub;) ),
         (Value,     (unique_ptr<ExprNode> start; unique_ptr<ExprNode> end;) ),
         (Tuple,     (::std::vector<Pattern> sub_patterns;) ),
@@ -50,6 +51,11 @@ public:
     Pattern(TagMaybeBind, ::std::string name):
         m_binding(name),
         m_data( Data::make_MaybeBind({}) )
+    {}
+
+    struct TagBox {};
+    Pattern(TagBox, Pattern sub):
+        m_data( Data::make_Box({ unique_ptr<Pattern>(new Pattern(mv$(sub))) }) )
     {}
 
     struct TagValue {};

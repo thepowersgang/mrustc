@@ -746,9 +746,17 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
     (MaybeBind,
         m_os << "_ /*?*/";
         ),
+    (Box, {
+        const auto& v = p.data().as_Box();
+        m_os << "& ";
+        print_pattern(*v.sub, is_refutable);
+        }),
     (Ref, {
         const auto& v = p.data().as_Ref();
-        m_os << "& ";
+        if(v.mut)
+            m_os << "&mut ";
+        else
+            m_os << "& ";
         print_pattern(*v.sub, is_refutable);
         }),
     (Value, {

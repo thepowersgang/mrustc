@@ -123,6 +123,15 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
     (Any,
         // Wildcard, nothing to do
         ),
+    (Box, {
+        auto& v = pat.data().as_Box();
+        if( type_hint.is_wildcard() )
+            handle_pattern(*v.sub, (const TypeRef&)TypeRef());
+        else {
+            throw ::std::runtime_error("TODO: Handle box patterns in CASTIterator::handle_pattern");
+            handle_pattern(*v.sub, type_hint.inner_type());
+        }
+        }),
     (Ref, {
         auto& v = pat.data().as_Ref();
         if( type_hint.is_wildcard() )

@@ -989,7 +989,7 @@ void TokenStream::putback(Token tok)
 {
     if( m_cache_valid )
     {
-        DEBUG("" << getPosition());
+        DEBUG("" << getPosition() << " - Double putback: " << tok << " but " << m_cache);
         throw ParseError::BugCheck("Double putback");
     }
     else
