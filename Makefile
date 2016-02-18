@@ -53,11 +53,18 @@ output/%.ast: samples/%.rs $(BIN)
 	@mkdir -p output/
 	$(DBG) $(BIN) $< --emit ast -o $@ $(PIPECMD)
 
-RUSTCSRC := ~/Source/rust/rustc-nightly/
+RUSTCSRC := /home/tpg/Source/rust/rustc-nightly/
 output/core.ast: $(RUSTCSRC)src/libcore/lib.rs $(BIN)
 	@mkdir -p output/
 	$(DBG) $(BIN) $< --emit ast -o $@ $(PIPECMD)
-	
+
+.PHONY: rust_tests
+RUST_TESTS_DIR := $(RUSTCSRC)src/test/
+rust_tests: $(patsubst $(RUST_TESTS_DIR)%.rs,.rust_tests_out/%.txt,$(wildcard $(RUST_TESTS_DIR)rpass/*.rs))
+
+output/rust/%.txt: $(RUST_TESTS_DIR)%.rs $(BIN)
+	@mkdir -p $(dir $@)
+	$(BIN) $< --stop-after parse > $@ 2>&1
 
 test: output/core.ast $(BIN)
 # output/std.ast output/log.ast output/env_logger.ast output/getopts.ast

@@ -31,6 +31,14 @@ struct ProgramParams
 {
     static const unsigned int EMIT_C = 0x1;
     static const unsigned int EMIT_AST = 0x2;
+    enum eLastStage {
+        STAGE_PARSE,
+        STAGE_EXPAND,
+        STAGE_RESOLVE,
+        STAGE_TYPECK,
+        STAGE_BORROWCK,
+        STAGE_ALL,
+    } last_stage = STAGE_ALL;
 
     const char *infile = NULL;
     ::std::string   outfile;
@@ -68,10 +76,15 @@ int main(int argc, char *argv[])
         AST::Crate crate = CompilePhase<AST::Crate>("Parse", [&]() {
             return Parse_Crate(params.infile);
             });
+
+        if( params.emit_flags == ProgramParams::STAGE_PARSE ) {
+            return 0;
+        }
     
         // Iterate all items in the AST, applying syntax extensions
         CompilePhaseV("Decorators", [&]() {
             Process_Decorators(crate);
+            Process_Synexts(crate);
             });
             
         // Run a quick post-parse pass
@@ -84,7 +97,11 @@ int main(int argc, char *argv[])
         CompilePhaseV("Temp output - Parsed", [&]() {
             Dump_Rust( FMT(params.outfile << "_0_pp.rs").c_str(), crate );
             });
-    
+
+        if( params.emit_flags == ProgramParams::STAGE_EXPAND ) {
+            return 0;
+        }
+        
         // Resolve names to be absolute names (include references to the relevant struct/global/function)
         // - This does name checking on types and free functions.
         // - Resolves all identifiers/paths to references
@@ -207,6 +224,20 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     this->emit_flags = EMIT_C;
                 else {
                     ::std::cerr << "Unknown argument to --emit : '" << arg << "'" << ::std::endl;
+                    exit(1);
+                }
+            }
+            else if( strcmp(arg, "--stop-after") == 0 ) {
+                if( i == argc - 1 ) {
+                    // TODO: BAIL!
+                    exit(1);
+                }
+                
+                arg = argv[++i];
+                if( strcmp(arg, "parse") == 0 )
+                    this->last_stage = STAGE_PARSE;
+                else {
+                    ::std::cerr << "Unknown argument to --stop-after : '" << arg << "'" << ::std::endl;
                     exit(1);
                 }
             }

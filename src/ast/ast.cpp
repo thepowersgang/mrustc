@@ -217,6 +217,16 @@ void Crate::post_parse()
         };
     iterate_module(m_root_module, cb);
     iterate_module(g_compiler_module, cb);
+
+    // Create a map of inherent impls
+    for( const auto& impl : m_impl_index )
+    {
+        if( impl->def().trait().is_valid() == false )
+        {
+            auto& ent = m_impl_map[impl->def().type()];
+            ent.push_back( impl );
+        }
+    }
 }
 
 void Crate::iterate_functions(fcn_visitor_t* visitor)
@@ -286,24 +296,31 @@ bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type) const
 }
 
 
-::std::vector<ImplRef>  Crate::find_inherent_impls(const TypeRef& type) const
+bool Crate::find_inherent_impls(const TypeRef& type, ::std::function<bool(const Impl& , ::std::vector<TypeRef> )> callback) const
 {
     assert( !type.is_type_param() );
-    
-    ::std::vector<ImplRef>  ret;
     
     for( auto implptr : m_impl_index )
     {
         Impl& impl = *implptr;
-        DEBUG("- " << impl.def());
-        ::std::vector<TypeRef>  out_params;
-        if( impl.def().matches(out_params, AST::Path(), type) )
+        if( impl.def().trait().is_valid() )
         {
-            ret.push_back( ImplRef(impl, out_params) );
+            // Trait
+        }
+        else
+        {
+            DEBUG("- " << impl.def());
+            ::std::vector<TypeRef>  out_params;
+            if( impl.def().matches(out_params, AST::Path(), type) )
+            {
+                if( callback(impl, out_params) ) {
+                    return true;
+                }
+            }
         }
     }
     
-    return ret;
+    return false;
 }
 
 ::rust::option<ImplRef> Crate::find_impl(const Path& trait, const TypeRef& type) const

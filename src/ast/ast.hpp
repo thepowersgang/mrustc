@@ -819,6 +819,8 @@ struct ImplRef
 class Crate:
     public Serialisable
 {
+public:
+    ::std::map< TypeRef, ::std::vector<Impl*> >  m_impl_map;
     ::std::vector<Impl*>    m_impl_index;
     ::std::vector<const ImplDef*> m_neg_impl_index;
     
@@ -848,7 +850,8 @@ public:
     bool is_trait_implicit(const Path& trait) const;
     
 
-    ::std::vector<ImplRef> find_inherent_impls(const TypeRef& type) const;
+    //::std::vector<ImplRef> find_inherent_impls(const TypeRef& type) const;
+    bool find_inherent_impls(const TypeRef& type, ::std::function<bool(const Impl& , ::std::vector<TypeRef> )>) const;
     ::rust::option<ImplRef> find_impl(const Path& trait, const TypeRef& type) const;
     bool find_impl(const Path& trait, const TypeRef& type, Impl** out_impl, ::std::vector<TypeRef>* out_prams=nullptr) const;
     const ::rust::option<Impl&> get_impl(const Path& trait, const TypeRef& type) {

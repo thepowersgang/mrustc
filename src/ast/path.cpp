@@ -335,6 +335,9 @@ bool Path::is_concrete() const
 ///   cause two different paths to look the same.
 int Path::equal_no_generic(const Path& x) const
 {
+    if( m_class.is_Invalid() && x.m_class.is_Invalid() )
+        return 0;
+    DEBUG("equal_no_generic(this = " << *this << ", x = " << x << ")");
     if( m_class.tag() != x.m_class.tag() )
         return -1;
     if( m_crate != x.m_crate )
@@ -435,6 +438,8 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context) const
     TU_MATCH(Path::Class, (m_class), (ent),
     (Invalid,
         os << "/*inv*/";
+        // NOTE: Don't print the binding for invalid paths
+        return ;
         ),
     (Local,
         // Only print comment if there's no binding

@@ -837,19 +837,21 @@ void RustPrinter::handle_enum(const AST::Enum& s)
 
     m_os << indent() << "{\n";
     inc_indent();
+    unsigned int idx = 0;
     for( const auto& i : s.variants() )
     {
-        m_os << indent() << i.m_name;
+        m_os << indent() << "/*"<<idx<<"*/" << i.m_name;
         if( i.m_sub_types.size() )
         {
             for( const auto& t : i.m_sub_types )
                 m_os << t.print_pretty() << ", ";
         }
-        else
+        else if(i.m_value > 0)
         {
             m_os << " = " << i.m_value;
         }
         m_os << ",\n";
+        idx ++;
     }
     dec_indent();
     m_os << indent() << "}\n";

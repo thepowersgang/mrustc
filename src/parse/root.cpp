@@ -1715,18 +1715,6 @@ AST::Crate Parse_Crate(::std::string mainfile)
             // TODO:
         }
     }
-        
-    if( crate.m_load_std )
-    {
-        // Load the standard library (add 'extern crate std;')
-        crate.load_extern_crate("std");
-        rootmod.add_ext_crate("std", "std");
-        rootmod.add_macro_import(crate, "std", "");
-        // Prelude imports are handled in Parse_ModRoot
-    }
-    
-    // Include the std if the 'no_std' attribute was absent
-    // - First need to load the std macros, then can import the prelude
     
     Parse_ModRoot(lex, crate, rootmod, NULL, mainpath);
     

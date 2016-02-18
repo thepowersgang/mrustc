@@ -89,7 +89,7 @@ public:
     void handle_path_abs__into_ufcs(const Span& span, AST::Path& path, unsigned slice_from, unsigned split_point);
     void handle_path_ufcs(const Span& span, AST::Path& path, CASTIterator::PathMode mode);
     void handle_path_rel(const Span& span, AST::Path& path, CASTIterator::PathMode mode);
-    bool find_trait_item(const Span& span, const AST::Path& path, AST::Trait& trait, const ::std::string& item_name, bool& out_is_method, AST::Path& out_trait_path);
+    bool find_trait_item(const Span& span, const AST::Path& path, AST::Trait& trait, const ::std::string& item_name, bool& out_is_method, const void*& out_ptr, AST::Path& out_trait_path);
     virtual void handle_type(TypeRef& type) override;
     virtual void handle_expr(AST::ExprNode& node) override;
     
@@ -152,6 +152,7 @@ private:
     ::std::vector< ::std::pair<AST::Path, const AST::Trait&> > inscope_traits() const
     {
         ::std::vector< ::std::pair<AST::Path, const AST::Trait&> >    ret;
+        DEBUG("m_module_path = " << m_module_path);
         for( auto it = m_scope_stack.rbegin(); it != m_scope_stack.rend(); ++it )
         {
             for( const auto& t : it->traits ) {
@@ -159,7 +160,33 @@ private:
                 //assert(t.first.binding().is_Trait());
                 ret.push_back(t);
             }
+            if( it->module ) {
+                for( const auto& t : it->module->traits() ) {
+                    auto trait_path = it->module_path + t.name;
+                    DEBUG("t = " << trait_path);
+                    ::std::pair<AST::Path, const AST::Trait&>   tr(trait_path, t.data);
+                    ret.push_back( tr );
+                }
+            }
         }
+
+        for( const auto& t : m_module->traits() ) {
+            auto trait_path = m_module_path + t.name;
+            DEBUG("(mod) t = " << trait_path);
+            ::std::pair<AST::Path, const AST::Trait&>   tr(trait_path, t.data);
+            ret.push_back( tr );
+        }
+        for( const auto& i : m_module->imports() ) {
+            if( i.data.binding().is_Trait() )
+            {
+                auto& t = *i.data.binding().as_Trait().trait_;
+                
+                DEBUG("(use) t = " << i.data);
+                ::std::pair<AST::Path, const AST::Trait&>   tr(i.data, t);
+                ret.push_back( tr );
+            }
+        }
+        
         return ret;
     }
 
@@ -828,6 +855,7 @@ void CPathResolver::handle_path_abs(const Span& span, AST::Path& path, CASTItera
             }
             else {
                 this->handle_path_abs__into_ufcs(span, path, slice_from, i+1);
+                this->handle_path_ufcs(span, path, mode);
                 // Explicit return - rebase slicing is already done
                 return ;
             }
@@ -851,6 +879,23 @@ void CPathResolver::handle_path_abs(const Span& span, AST::Path& path, CASTItera
         (Trait,
             const auto& t = item;
             DEBUG("Found trait");
+            auto& node_args = nodes[i].args();
+            if( mode == MODE_TYPE )
+            {
+                const auto& params = t.params();
+                if( params.ty_params().size() != node_args.size() )
+                {
+                    if( node_args.size() == 0 )
+                    {
+                        while( node_args.size() < params.ty_params().size() )
+                            node_args.push_back( params.ty_params()[node_args.size()].get_default() );
+                    }
+                    else
+                    {
+                        ERROR(span, E0000, "Incorrect number of type parameters");
+                    }
+                }
+            }
             if( is_last ) {
                 //check_param_counts(t.params(), expect_params, nodes[i]);
                 path.bind_trait(t);
@@ -858,6 +903,7 @@ void CPathResolver::handle_path_abs(const Span& span, AST::Path& path, CASTItera
             }
             else {
                 this->handle_path_abs__into_ufcs(span, path, slice_from, i+1);
+                this->handle_path_ufcs(span, path, mode);
                 // Explicit return - rebase slicing is already done
                 return ;
             }
@@ -867,6 +913,22 @@ void CPathResolver::handle_path_abs(const Span& span, AST::Path& path, CASTItera
         (Struct,
             const auto& str = item;
             DEBUG("Found struct");
+            auto& node_args = nodes[i].args();
+            if( mode == MODE_TYPE )
+            {
+                if( str.params().ty_params().size() != node_args.size() )
+                {
+                    if( node_args.size() == 0 )
+                    {
+                        while( node_args.size() < str.params().ty_params().size() )
+                            node_args.push_back( str.params().ty_params()[node_args.size()].get_default() );
+                    }
+                    else
+                    {
+                        ERROR(span, E0000, "Incorrect number of type parameters");
+                    }
+                }
+            }
             if( is_last ) {
                 //check_param_counts(str.params(), expect_params, nodes[i]);
                 path.bind_struct(str, node.args());
@@ -874,6 +936,7 @@ void CPathResolver::handle_path_abs(const Span& span, AST::Path& path, CASTItera
             }
             else {
                 this->handle_path_abs__into_ufcs(span, path, slice_from, i+1);
+                this->handle_path_ufcs(span, path, mode);
                 // Explicit return - rebase slicing is already done
                 return ;
             }
@@ -890,6 +953,7 @@ void CPathResolver::handle_path_abs(const Span& span, AST::Path& path, CASTItera
             }
             else {
                 this->handle_path_abs__into_ufcs(span, path, slice_from, i+1);
+                this->handle_path_ufcs(span, path, mode);
                 // Explicit return - rebase slicing is already done
                 return ;
             }
@@ -1014,7 +1078,7 @@ void CPathResolver::handle_path_ufcs(const Span& span, AST::Path& path, CASTIter
         // 1. Search inherent impls
         // 2. If doing a late pass (after module-level names are resolved) search for traits
         if( this->m_second_pass ) {
-            #if 0
+            #if 1
             const ::std::string&    item_name = info.nodes[0].name();
             DEBUG("Searching for matching trait for '"<<item_name<<"' on type " << *info.type);
             
@@ -1036,15 +1100,20 @@ void CPathResolver::handle_path_ufcs(const Span& span, AST::Path& path, CASTIter
                 AST::Trait& t = *const_cast<AST::Trait*>(m_self_type.back().as_Trait().trait);
                 
                 bool is_method;
+                const void* ptr;
                 AST::Path   found_trait_path;
-                if( this->find_trait_item(span, p, t, item_name,  is_method, found_trait_path) ) {
+                if( this->find_trait_item(span, p, t, item_name,  is_method, ptr, found_trait_path) ) {
                     if( is_method ) {
                         if( info.nodes.size() != 1 )
                             ERROR(path.span(), E0000, "CPathResolver::handle_path_ufcs - Sub-nodes to method");
+                        auto f = reinterpret_cast<const ::AST::Function*>(ptr);
+                        path.bind_function(*f, path.nodes()[0].args());
                     }
                     else {
                         if( info.nodes.size() != 1 )
                             throw ParseError::Todo("CPathResolver::handle_path_ufcs - Sub nodes on associated type");
+                        auto t = reinterpret_cast<const ::AST::TypeAlias*>(ptr);
+                        path.bind_type_alias(*t);
                     }
                     *info.trait = TypeRef( mv$(found_trait_path) );
                 }
@@ -1054,6 +1123,7 @@ void CPathResolver::handle_path_ufcs(const Span& span, AST::Path& path, CASTIter
             }
             else if( info.type->is_type_param() )
             {
+                #if 0
                 DEBUG("Checking applicable generic bounds");
                 const auto& tp = *info.type->type_params_ptr();
                 assert(&tp != nullptr);
@@ -1098,34 +1168,47 @@ void CPathResolver::handle_path_ufcs(const Span& span, AST::Path& path, CASTIter
                     throw ParseError::Todo( FMT("CPathResolver::handle_path_ufcs - UFCS, find trait for generic matching '" << item_name << "'") );
                 // - re-handle, to ensure that the bound is resolved
                 handle_type(*info.trait);
+                #endif
             }
             else
             {
+                const auto& name = path.nodes()[0].name();
                 DEBUG("(maybe) known type");
                 // Iterate all inherent impls
-                for( auto impl : m_crate.find_inherent_impls(*info.type) ) {
-                    IF_OPTION_SOME(item, impl.find_named_item(item_name), {
-                        DEBUG("Found matching inherent impl");
-                        *info.trait = TypeRef(TypeRef::TagInvalid());
-                        return ;
-                    })
-                }
+                DEBUG("Searching for inherent impls on " << *info.type);
+                bool found = m_crate.find_inherent_impls( *info.type, [&](const AST::Impl& impl, ::std::vector<TypeRef> _) -> bool {
+                    DEBUG("Searching impl " << impl);
+                    for( const auto& fcn : impl.functions() )
+                    {
+                        if( fcn.name == name) {
+                            path.bind_function(fcn.data, path.nodes()[0].args());
+                            info.trait = make_unique_ptr( TypeRef(TypeRef::TagInvalid()) );
+                            return true;
+                        }
+                    }
+                    return false;
+                    });
+                if( found )
+                    return ;
+                
+                DEBUG("Searching traits");
                 // Iterate all traits in scope, and find one that is implemented for this type
                 // - TODO: Iterate traits to find match for <Type as _>
                 for( const auto& trait_ref : this->inscope_traits() )
                 {
                     const auto& trait_p = trait_ref.first;
                     const auto& trait = trait_ref.second;
+                    DEBUG("Searching trait: " << trait_p);
                     bool is_fcn;
                     if( trait.has_named_item(item_name, is_fcn) ) {
-                        IF_OPTION_SOME(impl, m_crate.find_impl( trait_p, *info.type ), {
+                        IF_OPTION_SOME(impl, m_crate.find_impl( trait_p, *info.type ),
                             *info.trait = TypeRef( trait_p );
                             return ;
-                        })
+                        )
                     }
                 }
 
-                throw ParseError::Todo( FMT("CPathResolver::handle_path_ufcs - UFCS, find trait, for type " << *info.type) );
+                TODO(span, "CPathResolver::handle_path_ufcs - UFCS, find trait, for type " << *info.type << " - name='"<<name<<"'");
             }
             #endif
         }
@@ -1149,11 +1232,11 @@ void CPathResolver::handle_path_ufcs(const Span& span, AST::Path& path, CASTIter
                     }
                     )
                 )
-
             }
         }
     }
-    else {
+    else
+    {
         #if 0
         const auto& name = path.nodes()[0].name();
         // Trait is known, need to ensure that the named item exists
@@ -1280,7 +1363,7 @@ void CPathResolver::handle_path_rel(const Span& span, AST::Path& path, CASTItera
     ERROR(span, E0000, "CPathResolver::handle_path - Name resolution failed");
 }
 
-bool CPathResolver::find_trait_item(const Span& span, const AST::Path& path, AST::Trait& trait, const ::std::string& item_name, bool& out_is_method, AST::Path& out_trait_path)
+bool CPathResolver::find_trait_item(const Span& span, const AST::Path& path, AST::Trait& trait, const ::std::string& item_name, bool& out_is_method, const void*& out_ptr, AST::Path& out_trait_path)
 {
     TRACE_FUNCTION_F("path=" << path << ", trait=..., item_name=" << item_name);
     {
@@ -1290,6 +1373,7 @@ bool CPathResolver::find_trait_item(const Span& span, const AST::Path& path, AST
         if( it != fcns.end() ) {
             // Found it.
             out_is_method = true;
+            out_ptr = &it->data;
             out_trait_path = AST::Path(path);
             DEBUG("Fcn, out_trait_path = " << out_trait_path);
             return true;
@@ -1301,6 +1385,7 @@ bool CPathResolver::find_trait_item(const Span& span, const AST::Path& path, AST
         if( it != types.end() ) {
             // Found it.
             out_is_method = false;
+            out_ptr = &it->data;
             out_trait_path = AST::Path(path);
             DEBUG("Ty, out_trait_path = " << out_trait_path << "  path=" << path);
             return true;
@@ -1313,13 +1398,15 @@ bool CPathResolver::find_trait_item(const Span& span, const AST::Path& path, AST
             //BUG(st.span(), "Supertrait path '"<<st<<"' of '"<<path<<"' is not bound");
         }
         AST::Trait& super_t = *const_cast<AST::Trait*>(st.binding().as_Trait().trait_);
-        if( this->find_trait_item(span, st, super_t, item_name,  out_is_method, out_trait_path) ) {
+        if( this->find_trait_item(span, st, super_t, item_name,  out_is_method, out_ptr, out_trait_path) ) {
             DEBUG("path = " << path << ", super_t.params() = " << super_t.params() << ", out_trait_path = " << out_trait_path);
             // 
-            out_trait_path.resolve_args([&](const char* name) {
+            out_trait_path.resolve_args([&](const char* name) -> TypeRef {
                 int idx = trait.params().find_name(name);
                 if(idx < 0)
                     ERROR(st.span(), E0000, "Parameter " << name << " not found");
+                if(static_cast<unsigned int>(idx) >= path.nodes().back().args().size())
+                    ERROR(st.span(), E0000, "Path '"<<path<<"' had too few args");
                 const auto& tr = path.nodes().back().args().at(idx);
                 DEBUG("Replacing '" << name << "' with " << tr);
                 return tr;
@@ -1504,7 +1591,9 @@ void CPathResolver::handle_type(TypeRef& type)
         // No change
     }
     DEBUG("type = " << type);
-    
+   
+    //if
+ 
     //if( type.is_type_param() && type.type_param() == "Self" )
     //{
     //    auto l = lookup_local(LocalItem::TYPE, "Self");
