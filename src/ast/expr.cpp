@@ -102,9 +102,15 @@ NODE(ExprNode_Block, {
 
 NODE(ExprNode_Macro, {
     s.item(m_name);
-    //s.item(m_tokens);
+    s.item(m_ident);
+    s.item(m_tokens);
 },{
-    os << m_name << "!(" << ")";
+    os << m_name << "!";
+    if( m_ident.size() > 0 )
+    {
+        os << " " << m_ident << " ";
+    }
+    os << "(" << ")";
 })
 
 void operator%(::Serialiser& s, const ExprNode_Flow::Type t) {

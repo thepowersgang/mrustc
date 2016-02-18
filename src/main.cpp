@@ -84,7 +84,7 @@ int main(int argc, char *argv[])
         // Iterate all items in the AST, applying syntax extensions
         CompilePhaseV("Decorators", [&]() {
             Process_Decorators(crate);
-            Process_Synexts(crate);
+            //Process_Synexts(crate);
             });
             
         // Run a quick post-parse pass

@@ -829,25 +829,25 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
     ::std::string   abi = "rust";
     switch(tok.type())
     {
-    case TOK_MACRO:
-        {
-            TokenTree tt = Parse_TT(lex, true);
-            if( tt.is_token() ) {
-                DEBUG("TT was a single token (not a sub-tree)");
-                throw ParseError::Unexpected(lex, tt.tok());
-            }
-            
-            auto expanded_macro = Macro_Invoke(lex, tok.str().c_str(), tt);
-            auto& lex = *expanded_macro;
-            while( GET_TOK(tok, lex) != TOK_EOF )
-            {
-                lex.putback(tok);
-                Parse_Impl_Item(lex, impl);
-            }
-        }
-        if(GET_TOK(tok, lex) != TOK_SEMICOLON)
-            lex.putback(tok);
-        break;
+    //case TOK_MACRO:
+    //    {
+    //        TokenTree tt = Parse_TT(lex, true);
+    //        if( tt.is_token() ) {
+    //            DEBUG("TT was a single token (not a sub-tree)");
+    //            throw ParseError::Unexpected(lex, tt.tok());
+    //        }
+    //        
+    //        auto expanded_macro = Macro_Invoke(lex, tok.str().c_str(), tt);
+    //        auto& lex = *expanded_macro;
+    //        while( GET_TOK(tok, lex) != TOK_EOF )
+    //        {
+    //            lex.putback(tok);
+    //            Parse_Impl_Item(lex, impl);
+    //        }
+    //    }
+    //    if(GET_TOK(tok, lex) != TOK_SEMICOLON)
+    //        lex.putback(tok);
+    //    break;
     case TOK_RWORD_TYPE: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         ::std::string name = tok.str();
@@ -1308,24 +1308,23 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
         // root-level macros
         if( GET_TOK(tok, lex) == TOK_MACRO )
         {
+            ::std::string   name = mv$(tok.str());
             // `macro_rules! ...`
-            if( tok.str() == "macro_rules" )
+            if( name == "macro_rules" )
             {
                 Parse_MacroRules(lex, mod, mv$(meta_items));
             }
             else
             {
-                DEBUG("Invoke macro '"<<tok.str()<<"'");
-                TokenTree tt = Parse_TT(lex, true);
-                if( tt.is_token() ) {
-                    DEBUG("TT was a single token (not a sub-tree)");
-                    throw ParseError::Unexpected(lex, tt.tok());
+                ::std::string   ident;
+                if( GET_TOK(tok, lex) == TOK_IDENT ) {
+                    ident = mv$(tok.str());
                 }
-                ::std::string name = tok.str();
-                
-                auto expanded_macro = Macro_Invoke(lex, name.c_str(), tt);
-                // Pass "!" as 'path' to allow termination on EOF
-                Parse_ModRoot_Items(*expanded_macro, crate, mod, modstack, "!");
+                else {
+                    lex.putback(tok);
+                }
+                TokenTree tt = Parse_TT(lex, true);
+                mod.add_macro_invocation( ::AST::MacroItem( mv$(meta_items), mv$(name), mv$(ident), mv$(tt)) );
             }
             // - Silently consume ';' after the macro
             if( GET_TOK(tok, lex) != TOK_SEMICOLON )

@@ -500,6 +500,12 @@ SERIALISE_TYPE(ExternCrate::, "AST_ExternCrate", {
 },{
 })
 
+SERIALISE_TYPE_A(MacroItem::, "AST_MacroItem", {
+    s.item(m_macro_name);
+    s.item(m_ident);
+    s.item(m_input);
+})
+
 SERIALISE_TYPE_A(Module::, "AST_Module", {
     s.item(m_name);
     s.item(m_attrs);

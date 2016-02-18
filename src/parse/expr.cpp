@@ -1141,34 +1141,20 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
             }
         }
         throw ParseError::BugCheck(lex, "Array literal fell");
-    case TOK_MACRO:
-        if( CHECK_PARSE_FLAG(lex, no_expand_macros) )
-        {
-            ::std::string name = tok.str();
-            TokenTree tt = Parse_TT(lex, true);
-            if( tt.is_token() ) {
-                throw ParseError::Unexpected(lex, tt.tok());
-            }
-            return NEWNODE(AST::ExprNode_Macro, ::std::move(name), ::std::move(tt));
+    case TOK_MACRO: {
+        ::std::string name = tok.str();
+        ::std::string ident;
+        if( GET_TOK(tok, lex) == TOK_IDENT ) {
+            ident = mv$(tok.str());
         }
-        else
-        {
-            TokenTree tt = Parse_TT(lex, true);
-            if( tt.is_token() ) {
-                throw ParseError::Unexpected(lex, tt.tok());
-            }
-            ::std::string name = tok.str();
-            
-            if( name == "format_args" )
-            {
-                TTStream    slex(tt);
-                return Parse_FormatArgs(slex);
-            }
-            else
-            {
-                auto expanded_macro = Macro_Invoke(lex, name, tt);
-                return Parse_Expr0(*expanded_macro);
-            }
+        else {
+            lex.putback(tok);
+        }
+        TokenTree tt = Parse_TT(lex, true);
+        if( tt.is_token() ) {
+            throw ParseError::Unexpected(lex, tt.tok());
+        }
+        return NEWNODE(AST::ExprNode_Macro, mv$(name), mv$(ident), mv$(tt));
         }
     default:
         throw ParseError::Unexpected(lex, tok);

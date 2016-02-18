@@ -70,11 +70,13 @@ struct ExprNode_Macro:
     public ExprNode
 {
     ::std::string   m_name;
+    ::std::string   m_ident;
     ::TokenTree m_tokens;
     
     ExprNode_Macro() {}
-    ExprNode_Macro(::std::string name, ::TokenTree&& tokens):
+    ExprNode_Macro(::std::string name, ::std::string ident, ::TokenTree&& tokens):
         m_name(name),
+        m_ident(ident),
         m_tokens( move(tokens) )
     {}
     

@@ -4,7 +4,8 @@
 #include "lex.hpp"
 
 
-class TokenTree
+class TokenTree:
+    public Serialisable
 {
     Token   m_tok;
     ::std::vector<TokenTree>    m_subtrees;
@@ -38,6 +39,8 @@ public:
         else
             return os << "TokenTree([" << tt.m_subtrees << "])";
     }
+
+    SERIALISABLE_PROTOTYPES();
 };
 
 class TTStream:

@@ -1042,3 +1042,9 @@ Span TokenStream::end_span(ProtoSpan ps) const
         );
 }
 
+
+SERIALISE_TYPE_A(TokenTree::, "TokenTree", {
+    s.item(m_tok);
+    s.item(m_subtrees);
+})
+

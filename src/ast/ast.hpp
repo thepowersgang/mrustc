@@ -615,6 +615,29 @@ class Module;
 
 typedef void fcn_visitor_t(const AST::Crate& crate, const AST::Module& mod, Function& fcn);
 
+class MacroItem:
+    public Serialisable
+{
+    MetaItems   m_attrs;
+    ::std::string   m_macro_name;
+    ::std::string   m_ident;
+    TokenTree   m_input;
+public:
+    MacroItem()
+    {
+    }
+    
+    MacroItem(MetaItems attrs, ::std::string macro, ::std::string ident, TokenTree input):
+        m_attrs( mv$(attrs) ),
+        m_macro_name( mv$(macro) ),
+        m_ident( mv$(ident) ),
+        m_input( mv$(input) )
+    {
+    }
+
+    SERIALISABLE_PROTOTYPES();
+};
+
 /// Representation of a parsed (and being converted) function
 class Module:
     public Serialisable
@@ -641,6 +664,7 @@ class Module:
     itemlist_macros_t   m_macros;
     macro_imports_t m_macro_imports;    // module => macro
     ::std::vector< ItemNS<const MacroRules*> > m_macro_import_res; // Vec of imported macros (not serialised)
+    ::std::vector<MacroItem>    m_macro_invocations;
     
     
     
@@ -704,6 +728,9 @@ public:
         m_macros.push_back( Item<MacroRules>( move(name), move(macro), is_exported ) );
     }
     void add_macro_import(const Crate& crate, ::std::string mod, ::std::string name);
+    void add_macro_invocation(MacroItem item) {
+        m_macro_invocations.push_back( mv$(item) );
+    }
 
     void add_attr(MetaItem item) {
         m_attrs.push_back(item);
