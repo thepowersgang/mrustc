@@ -123,6 +123,9 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
     (Any,
         // Wildcard, nothing to do
         ),
+    (Macro,
+        // Macro, nothing really (should be impossible?)
+        ),
     (Box, {
         auto& v = pat.data().as_Box();
         if( type_hint.is_wildcard() )

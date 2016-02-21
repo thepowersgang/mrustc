@@ -14,6 +14,7 @@
 TypeRef Parse_Type(TokenStream& lex);
 TypeRef Parse_Type_Int(TokenStream& lex);
 TypeRef Parse_Type_Fn(TokenStream& lex);
+TypeRef Parse_Type_Path(TokenStream& lex, ::std::vector<::std::string> hrls);
 
 // === CODE ===
 TypeRef Parse_Type(TokenStream& lex)
@@ -52,8 +53,26 @@ TypeRef Parse_Type_Int(TokenStream& lex)
         return Parse_Type_Fn(lex);
     // '<' - An associated type cast
     case TOK_LT:
+    case TOK_DOUBLE_LT:
         lex.putback(tok);
         return TypeRef(TypeRef::TagPath(), Parse_Path(lex, PATH_GENERIC_TYPE));
+    // 
+    case TOK_RWORD_FOR: {
+        GET_CHECK_TOK(tok, lex, TOK_LT);
+        ::std::vector<::std::string>    hrls;
+        do {
+            GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
+            hrls.push_back( mv$(tok.str()) );
+        } while( GET_TOK(tok, lex) == TOK_COMMA );
+        CHECK_TOK(tok, TOK_GT);
+        if( LOOK_AHEAD(lex) == TOK_RWORD_FN || LOOK_AHEAD(lex) == TOK_RWORD_EXTERN ) {
+            // TODO: Handle HRLS in fn types
+            return Parse_Type_Fn(lex);
+        }
+        else {
+            return Parse_Type_Path(lex, hrls);
+        }
+        }
     // <ident> - Either a primitive, or a path
     case TOK_IDENT:
         // or a primitive
@@ -65,33 +84,17 @@ TypeRef Parse_Type_Int(TokenStream& lex)
         {
             return TypeRef(TypeRef::TagPath(), AST::Path("", { AST::PathNode("#",{}), AST::PathNode("str",{}) }));
         }
+        lex.putback(tok);
+        return Parse_Type_Path(lex, {});
         // - Fall through to path handling
     // '::' - Absolute path
-    case TOK_DOUBLE_COLON: {
+    case TOK_DOUBLE_COLON:
         lex.putback(tok);
-        ::std::vector<AST::Path>    traits;
-        ::std::vector< ::std::string>   lifetimes;
-        do {
-            if( LOOK_AHEAD(lex) == TOK_LIFETIME ) {
-                GET_TOK(tok, lex);
-                lifetimes.push_back( tok.str() );
-            }
-            else
-                traits.push_back( Parse_Path(lex, PATH_GENERIC_TYPE) );
-        } while( GET_TOK(tok, lex) == TOK_PLUS );
-        lex.putback(tok);
-        if( traits.size() > 1 || lifetimes.size() > 0 ) {
-            if( lifetimes.size() )
-                DEBUG("TODO: Lifetime bounds on trait objects");
-            return TypeRef(::std::move(traits));
-        }
-        else 
-            return TypeRef(TypeRef::TagPath(), traits.at(0));
-        }
+        return Parse_Type_Path(lex, {});
     // 'super' - Parent relative path
     case TOK_RWORD_SUPER:
-        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-        return TypeRef(TypeRef::TagPath(), AST::Path(AST::Path::TagSuper(), Parse_PathNodes(lex, PATH_GENERIC_TYPE)));
+        lex.putback(tok);
+        return Parse_Type_Path(lex, {});
 
     // HACK! Convert && into & &
     case TOK_DOUBLE_AMP:
@@ -206,9 +209,13 @@ TypeRef Parse_Type_Fn(TokenStream& lex)
     }
     if( tok.type() == TOK_RWORD_EXTERN )
     {
-        GET_CHECK_TOK(tok, lex, TOK_STRING);
-        abi = tok.str();
-        GET_TOK(tok, lex);
+        if( GET_TOK(tok, lex) == TOK_STRING ) {
+            abi = tok.str();
+            GET_TOK(tok, lex);
+        }
+        else {
+            abi = "C";
+        }
     }
     CHECK_TOK(tok, TOK_RWORD_FN);
 
@@ -234,5 +241,30 @@ TypeRef Parse_Type_Fn(TokenStream& lex)
     }
     
     return TypeRef(TypeRef::TagFunction(), ::std::move(abi), ::std::move(args), ::std::move(ret_type));
+}
+
+TypeRef Parse_Type_Path(TokenStream& lex, ::std::vector<::std::string> hrls)
+{
+    Token   tok;
+
+    ::std::vector<AST::Path>    traits;
+    ::std::vector< ::std::string>   lifetimes;
+    do {
+        if( LOOK_AHEAD(lex) == TOK_LIFETIME ) {
+            GET_TOK(tok, lex);
+            lifetimes.push_back( tok.str() );
+        }
+        else
+            traits.push_back( Parse_Path(lex, PATH_GENERIC_TYPE) );
+    } while( GET_TOK(tok, lex) == TOK_PLUS );
+    lex.putback(tok);
+    if( hrls.size() > 0 || traits.size() > 1 || lifetimes.size() > 0 ) {
+        if( lifetimes.size() )
+            DEBUG("TODO: Lifetime bounds on trait objects");
+        return TypeRef(mv$(hrls), ::std::move(traits));
+    }
+    else {
+        return TypeRef(TypeRef::TagPath(), traits.at(0));
+    }
 }
 

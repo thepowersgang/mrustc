@@ -60,11 +60,11 @@ output/core.ast: $(RUSTCSRC)src/libcore/lib.rs $(BIN)
 
 .PHONY: rust_tests
 RUST_TESTS_DIR := $(RUSTCSRC)src/test/
-rust_tests: $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%.txt,$(wildcard $(RUST_TESTS_DIR)run-pass/*.rs))
+rust_tests: $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%.txt,$(wildcard $(RUST_TESTS_DIR)run-pass/*.rs)))
 
 output/rust/%.txt: $(RUST_TESTS_DIR)%.rs $(BIN)
 	@mkdir -p $(dir $@)
-	$(BIN) $< --stop-after parse > $@ 2>&1
+	$(BIN) $< -o $@.o --stop-after parse > $@ 2>&1
 
 test: output/core.ast $(BIN)
 # output/std.ast output/log.ast output/env_logger.ast output/getopts.ast

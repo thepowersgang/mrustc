@@ -39,13 +39,18 @@ extern ::std::vector<TypeRef>   Parse_Path_GenericList(TokenStream& lex);
 
 
 extern AST::MetaItem   Parse_MetaItem(TokenStream& lex);
+extern ::AST::MacroInvocation Parse_MacroInvocation(::AST::MetaItems meta_items, ::std::string name, TokenStream& lex);
 extern TypeRef     Parse_Type(TokenStream& lex);
 extern AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable);
 
 extern void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)> fcn);
 extern AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems meta_items);
+extern AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems meta_items);
+extern AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items);
 extern void Parse_Impl(TokenStream& lex, AST::Module& mod, bool is_unsafe=false);
 extern void Parse_MacroRules(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_items);
+extern void Parse_ExternCrate(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_items);
+
 
 extern AST::Function    Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self, bool can_be_prototype);
 extern AST::Function    Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self);

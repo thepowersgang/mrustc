@@ -172,6 +172,13 @@ public:
 #define CLEAR_PARSE_FLAG(lex, flag)    SavedParseState _sps(lex, lex.parse_state()); lex.parse_state().flag = false
 #define CHECK_PARSE_FLAG(lex, flag) (lex.parse_state().flag == true)
 
+struct Codepoint {
+    uint32_t    v;
+    friend ::std::string& operator+=(::std::string& s, const Codepoint& cp) {
+        return s;
+    }
+};
+
 class Lexer:
     public TokenStream
 {
@@ -193,11 +200,14 @@ private:
     Token getTokenInt();
     
     signed int getSymbol();
+    Token getTokenInt_RawString(bool is_byte);
+    Token getTokenInt_Identifier(char ch);
     double parseFloat(uint64_t whole);
     uint32_t parseEscape(char enclosing);
 
     char getc();
     char getc_num();
+    Codepoint getc_codepoint();
     void ungetc();
 
     class EndOfFile {};

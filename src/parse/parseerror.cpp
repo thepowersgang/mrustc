@@ -78,7 +78,14 @@ ParseError::Unexpected::Unexpected(const TokenStream& lex, Token tok, ::std::vec
     if(pos.filename == "")
         pos = lex.getPosition();
     ::std::cout << pos << ": Unexpected " << tok << ", expected ";
-    ::std::cout << exp << ")" << ::std::endl;
+    bool f = true;
+    for(auto v: exp) {
+        if(!f)
+            ::std::cout << " or ";
+        f = false;
+        ::std::cout << Token::typestr(v);
+    }
+    ::std::cout << ::std::endl;
 }
 ParseError::Unexpected::~Unexpected() throw()
 {

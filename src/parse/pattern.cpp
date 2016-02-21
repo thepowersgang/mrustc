@@ -37,6 +37,11 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     Token   tok;
     tok = lex.getToken();
     
+    if( tok.type() == TOK_MACRO )
+    {
+        return AST::Pattern( AST::Pattern::TagMacro(), box$(Parse_MacroInvocation(AST::MetaItems(), tok.str(), lex)));
+    }
+   
     bool expect_bind = false;
     bool is_mut = false;
     bool is_ref = false;
@@ -189,6 +194,8 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
     case TOK_RWORD_FALSE:
         return AST::Pattern( AST::Pattern::TagValue(), NEWNODE( AST::ExprNode_Bool, false ) );
     case TOK_STRING:
+        return AST::Pattern( AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_String, tok.str()) );
+    case TOK_BYTESTRING:
         return AST::Pattern( AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_String, tok.str()) );
     case TOK_PAREN_OPEN:
         return AST::Pattern(AST::Pattern::TagTuple(), Parse_PatternList(lex, is_refutable));

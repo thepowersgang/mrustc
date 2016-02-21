@@ -200,11 +200,13 @@ signed int Lexer::getSymbol()
     return best;
 }
 
-bool issym(char ch)
+bool issym(int ch)
 {
     if( ::std::isalnum(ch) )
         return true;
     if( ch == '_' )
+        return true;
+    if( ch >= 128 || ch < 0 )
         return true;
     return false;
 }
@@ -279,7 +281,7 @@ Token Lexer::getTokenInt()
                 uint64_t    val = 0;
                 if( ch == '0' ) {
                     // Octal/hex handling
-                    ch = this->getc();
+                    ch = this->getc_num();
                     if( ch == 'x' ) {
                         num_mode = HEX;
                         while( isxdigit(ch = this->getc_num()) )
@@ -323,7 +325,7 @@ Token Lexer::getTokenInt()
                     }
                 }
 
-                if(ch == 'u' || ch == 'i') {
+                if(issym(ch)) {
                     // Unsigned
                     ::std::string   suffix;
                     while( issym(ch) )
@@ -344,6 +346,8 @@ Token Lexer::getTokenInt()
                     else if(suffix == "u32") num_type = CORETYPE_U32;
                     else if(suffix == "u64") num_type = CORETYPE_U64;
                     else if(suffix == "usize") num_type = CORETYPE_UINT;
+                    else if(suffix == "f32") num_type = CORETYPE_F32;
+                    else if(suffix == "f64") num_type = CORETYPE_F64;
                     else
                         throw ParseError::Generic(*this, FMT("Unknown integer suffix '" << suffix << "'"));
                     return Token(val, num_type);
@@ -375,7 +379,7 @@ Token Lexer::getTokenInt()
                     
                     this->ungetc();
                     double fval = this->parseFloat(val);
-                    if( (ch = this->getc()) == 'f' )
+                    if( issym(ch = this->getc()) )
                     {
                         ::std::string   suffix;
                         while( issym(ch) )
@@ -403,61 +407,59 @@ Token Lexer::getTokenInt()
                     return Token(val, num_type);
                 }
             }
+            // Byte/Raw strings
+            else if( ch == 'b' || ch == 'r' )
+            {
+                bool is_byte = false;
+                if(ch == 'b') {
+                    is_byte = true;
+                    ch = this->getc();
+                }
+                
+                if(ch == 'r') {
+                    return this->getTokenInt_RawString(is_byte);
+                }
+                else {
+                    assert(is_byte);
+                    
+                    // Byte string
+                    if( ch == '"' ) {
+                        ::std::string str;
+                        while( (ch = this->getc()) != '"' )
+                        {
+                            if( ch == '\\' )
+                                ch = this->parseEscape('"');
+                            str.push_back(ch);
+                        }
+                        return Token(TOK_BYTESTRING, str);
+                    }
+                    // Byte constant
+                    else if( ch == '\'' ) {
+                        // Byte constant
+                        ch = this->getc();
+                        if( ch == '\\' ) {
+                            uint32_t val = this->parseEscape('\'');
+                            if( this->getc() != '\'' )
+                                throw ParseError::Generic(*this, "Multi-byte character literal");
+                            return Token((uint64_t)val, CORETYPE_U8);
+                        }
+                        else {
+                            if( this->getc() != '\'' )
+                                throw ParseError::Generic(*this, "Multi-byte character literal");
+                            return Token((uint64_t)ch, CORETYPE_U8);
+                        }
+                    }
+                    else {
+                        assert(is_byte);
+                        this->ungetc();
+                        return this->getTokenInt_Identifier('b');
+                    }
+                }
+            }
             // Symbols
             else if( issym(ch) )
             {
-                ::std::string   str;
-                while( issym(ch) )
-                {
-                    str.push_back(ch);
-                    ch = this->getc();
-                }
-
-                if( ch == '!' )
-                {
-                    return Token(TOK_MACRO, str);
-                }
-                else
-                {
-                    if( str == "b" )
-                    {
-                        if( ch == '\'' ) {
-                            // Byte constant
-                            ch = this->getc();
-                            if( ch == '\\' ) {
-                                uint32_t val = this->parseEscape('\'');
-                                if( this->getc() != '\'' )
-                                    throw ParseError::Generic(*this, "Multi-byte character literal");
-                                return Token((uint64_t)val, CORETYPE_U8);
-                            }
-                            else {
-                                if( this->getc() != '\'' )
-                                    throw ParseError::Generic(*this, "Multi-byte character literal");
-                                return Token((uint64_t)ch, CORETYPE_U8);
-                            }
-                        }
-                        else if( ch == '"') {
-                            ::std::string str;
-                            while( (ch = this->getc()) != '"' )
-                            {
-                                if( ch == '\\' )
-                                    ch = this->parseEscape('"');
-                                str.push_back(ch);
-                            }
-                            return Token(TOK_BYTESTRING, str);
-                        }
-                        else {
-                        }
-                    }
-                
-                    this->ungetc();
-                    for( unsigned int i = 0; i < LEN(RWORDS); i ++ )
-                    {
-                        if( str < RWORDS[i].chars ) break;
-                        if( str == RWORDS[i].chars )    return Token((enum eTokenType)RWORDS[i].type);
-                    }
-                    return Token(TOK_IDENT, str);
-                }
+                return this->getTokenInt_Identifier(ch);
             }
             else
             {
@@ -497,17 +499,25 @@ Token Lexer::getTokenInt()
                 }
                 return Token(TOK_COMMENT, str); }
             case SINGLEQUOTE: {
-                char firstchar = this->getc();
-                if( firstchar != '\\' ) {
+                auto firstchar = this->getc_codepoint();
+                if( firstchar.v == '\\' ) {
+                    // Character constant with an escape code
+                    uint32_t val = this->parseEscape('\'');
+                    if(this->getc() != '\'') {
+                        throw ParseError::Todo("Proper error for lex failures");
+                    }
+                    return Token((uint64_t)val, CORETYPE_CHAR);
+                }
+                else {
                     ch = this->getc();
                     if( ch == '\'' ) {
                         // Character constant
-                        return Token((uint64_t)firstchar, CORETYPE_CHAR);
+                        return Token((uint64_t)firstchar.v, CORETYPE_CHAR);
                     }
-                    else {
+                    else if( issym(firstchar.v) ) {
                         // Lifetime name
                         ::std::string   str;
-                        str.push_back(firstchar);
+                        str += firstchar;
                         while( issym(ch) )
                         {
                             str.push_back(ch);
@@ -516,14 +526,9 @@ Token Lexer::getTokenInt()
                         this->ungetc();
                         return Token(TOK_LIFETIME, str);
                     }
-                }
-                else {
-                    // Character constant with an escape code
-                    uint32_t val = this->parseEscape('\'');
-                    if(this->getc() != '\'') {
-                        throw ParseError::Todo("Proper error for lex failures");
+                    else {
+                        throw ParseError::Todo("Lex Fail - Expected ' after character constant");
                     }
-                    return Token((uint64_t)val, CORETYPE_CHAR);
                 }
                 break; }
             case DOUBLEQUOTE: {
@@ -546,6 +551,72 @@ Token Lexer::getTokenInt()
         return Token(TOK_EOF);
     }
     //assert(!"bugcheck");
+}
+
+Token Lexer::getTokenInt_RawString(bool is_byte)
+{
+    // Raw string (possibly byte)
+    char ch = this->getc();
+    unsigned int hashes = 0;
+    while(ch == '#')
+    {
+        hashes ++;
+        ch = this->getc();
+    }
+    if( hashes == 0 && ch != '"' ) {
+        this->ungetc();
+        return this->getTokenInt_Identifier('r');
+    }
+    char terminator = ch;
+    ::std::string   val;
+
+    for(;;)
+    {
+        ch = this->getc();
+        if( ch == terminator ) {
+            for(unsigned i = 0; i < hashes; i ++)
+            {
+                ch = this->getc();
+                if( ch != '#' ) {
+                    val += terminator;
+                    while( i -- )
+                        val += '#';
+                    break ;
+                }
+            }
+            if( hashes == 0 || ch == '#' ) {
+                return Token(is_byte ? TOK_BYTESTRING : TOK_STRING, val);
+            }
+        }
+        else {
+            val += ch;
+        }
+    }
+}
+Token Lexer::getTokenInt_Identifier(char leader)
+{
+    char ch = leader;
+    ::std::string   str;
+    while( issym(ch) )
+    {
+        str.push_back(ch);
+        ch = this->getc();
+    }
+
+    if( ch == '!' )
+    {
+        return Token(TOK_MACRO, str);
+    }
+    else
+    {
+        this->ungetc();
+        for( unsigned int i = 0; i < LEN(RWORDS); i ++ )
+        {
+            if( str < RWORDS[i].chars ) break;
+            if( str == RWORDS[i].chars )    return Token((enum eTokenType)RWORDS[i].type);
+        }
+        return Token(TOK_IDENT, str);
+    }
 }
 
 // Takes the VERY lazy way of reading the float into a string then passing to strtod
@@ -615,6 +686,8 @@ uint32_t Lexer::parseEscape(char enclosing)
         else
             ;
         return val; }
+    case '0':
+        return '\0';
     case '\\':
         return '\\';
     case '\'':
@@ -628,7 +701,7 @@ uint32_t Lexer::parseEscape(char enclosing)
     case 't':
         return '\t';
     case '\n':
-	    m_line ++;
+        m_line ++;
         while( isspace(ch) )
             ch = this->getc();
         return ch;
@@ -661,6 +734,16 @@ char Lexer::getc_num()
         ch = this->getc();
     } while( ch == '_' );
     return ch;
+}
+Codepoint Lexer::getc_codepoint()
+{
+    uint8_t v1 = this->getc();
+    if( v1 < 128 ) {
+        return {v1};
+    }
+    else {
+        throw ParseError::Todo("getc_codepoint");
+    }
 }
 
 void Lexer::ungetc()

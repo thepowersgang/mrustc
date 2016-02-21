@@ -15,11 +15,14 @@ namespace AST {
 {
     os << "Pattern(" << pat.m_binding << " @ ";
     TU_MATCH(Pattern::Data, (pat.m_data), (ent),
-    (Any,
-        os << "_";
-        ),
     (MaybeBind,
         os << "?";
+        ),
+    (Macro,
+        os << *ent.inv;
+        ),
+    (Any,
+        os << "_";
         ),
     (Box,
         os << "box " << *ent.sub;
@@ -62,6 +65,9 @@ SERIALISE_TYPE(Pattern::, "Pattern", {
         ),
     (MaybeBind,
         ),
+    (Macro,
+        s.item( e.inv );
+        ),
     (Box,
         s << e.sub;
         ),
@@ -93,6 +99,9 @@ SERIALISE_TYPE(Pattern::, "Pattern", {
     {
     _D(Any, )
     _D(MaybeBind,
+        )
+    _D(Macro,
+        s.item( ent.inv );
         )
     _D(Box,
         s.item( ent.sub );

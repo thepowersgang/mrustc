@@ -4,19 +4,29 @@
 
 OBJS := main.o rust.tab.o rust.lex.o
 
-RUSTSRC := ../../rust_os/rustc_src/
+RUSTSRC := /home/tpg/Source/rust/rustc-nightly/src/
 
 TSTFILES := ../samples/1.rs
 TSTFILES += $(addprefix $(RUSTSRC), libcore/lib.rs libstd/lib.rs)
 
+BIN := ./test.bin
 
 
-all: test.bin
+all: $(BIN)
 
-test: test.bin $(TSTFILES)
+test: $(BIN) $(TSTFILES)
 	$(foreach f,$(TSTFILES), $(DBG) ./test.bin "$f" &&) true
 
-test.bin: $(OBJS)
+
+.PHONY: rust_tests
+RUST_TESTS_DIR := $(RUSTSRC)test/
+rust_tests: $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%.txt,$(wildcard $(RUST_TESTS_DIR)run-pass/*.rs))
+
+output/rust/%.txt: $(RUST_TESTS_DIR)%.rs $(BIN)
+	@mkdir -p $(dir $@)
+	$(BIN) $< > $@ 2>&1
+
+$(BIN): $(OBJS)
 	g++ -std=c++11 $(OBJS) -o $@
 
 %.o: %.cpp ast_types.hpp lex.hpp

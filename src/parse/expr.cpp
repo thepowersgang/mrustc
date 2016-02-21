@@ -93,7 +93,13 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
         // 'extern' blocks
         case TOK_RWORD_EXTERN:
             keep_mod = true;
-            Parse_ExternBlock(lex, ::std::move(item_attrs), local_mod->functions());
+            if( GET_TOK(tok, lex) == TOK_RWORD_CRATE ) {
+                Parse_ExternCrate(lex, *local_mod, mv$(item_attrs));
+            }
+            else {
+                lex.putback(tok);
+                Parse_ExternBlock(lex, ::std::move(item_attrs), local_mod->functions());
+            }
             break;
         // - 'const'
         case TOK_RWORD_CONST:
@@ -141,6 +147,20 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string name = tok.str();
             local_mod->add_struct(false, mv$(name), Parse_Struct(lex, item_attrs));
+            break; }
+        // - 'enum'
+        case TOK_RWORD_ENUM: {
+            keep_mod = true;
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            auto name = mv$(tok.str());
+            local_mod->add_enum(false, mv$(name), Parse_EnumDef(lex, item_attrs));
+            break; }
+        // - 'trait'
+        case TOK_RWORD_TRAIT: {
+            keep_mod = true;
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            auto name = tok.str();
+            local_mod->add_trait(false, mv$(name), Parse_TraitDef(lex, mv$(item_attrs)));
             break; }
         // - 'impl'
         case TOK_RWORD_IMPL:
@@ -306,8 +326,9 @@ void Parse_ExternBlock(TokenStream& lex, AST::MetaItems attrs, ::std::vector< AS
     if( GET_TOK(tok, lex) == TOK_STRING ) {
         abi = tok.str();
     }
-    else
+    else {
         lex.putback(tok);
+    }
     
     bool is_block = false;
     if( GET_TOK(tok, lex) == TOK_BRACE_OPEN ) {
@@ -507,8 +528,17 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
     {
     case TOK_RWORD_RETURN: {
         ExprNodeP   val;
-        if( LOOK_AHEAD(lex) != TOK_SEMICOLON && LOOK_AHEAD(lex) != TOK_COMMA && LOOK_AHEAD(lex) != TOK_BRACE_CLOSE ) {
+        switch(LOOK_AHEAD(lex))
+        {
+        case TOK_SEMICOLON:
+        case TOK_COMMA:
+        case TOK_BRACE_CLOSE:
+        case TOK_PAREN_CLOSE:
+        case TOK_SQUARE_CLOSE:
+            break;
+        default:
             val = Parse_Expr1(lex);
+            break;
         }
         return NEWNODE( AST::ExprNode_Flow, AST::ExprNode_Flow::RETURN, "", ::std::move(val) );
         }
@@ -529,14 +559,22 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
             GET_TOK(tok, lex);
         }
         ExprNodeP   val;
-        if( tok.type() != TOK_SEMICOLON && tok.type() != TOK_COMMA && tok.type() != TOK_BRACE_CLOSE ) {
+        switch(tok.type())
+        {
+        case TOK_SEMICOLON:
+        case TOK_COMMA:
+        case TOK_BRACE_CLOSE:
+        case TOK_PAREN_CLOSE:
+        case TOK_SQUARE_CLOSE:
+            lex.putback(tok);
+            break;
+        default:
             lex.putback(tok);
             val = Parse_Expr1(lex);
+            break;
         }
-        else
-            lex.putback(tok);
         return NEWNODE( AST::ExprNode_Flow, type, lifetime, ::std::move(val) );
-        } 
+        }
     default:
         lex.putback(tok);
         return Parse_Expr0(lex);
@@ -556,7 +594,7 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
     {
         lex.putback(tok);
         do {
-            rv.push_back( Parse_Expr0(lex) );
+            rv.push_back( Parse_Stmt(lex) );
         } while( GET_TOK(tok, lex) == TOK_COMMA );
         CHECK_TOK(tok, TOK_PAREN_CLOSE);
     }
@@ -598,7 +636,7 @@ ExprNodeP Parse_Expr0(TokenStream& lex)
 
     case TOK_EQUAL:
         op = AST::ExprNode_Assign::NONE;
-        return NEWNODE( AST::ExprNode_Assign, op, ::std::move(rv), Parse_Expr1(lex) );
+        return NEWNODE( AST::ExprNode_Assign, op, ::std::move(rv), Parse_Expr0(lex) );
     
     default:
         lex.putback(tok);
@@ -1091,7 +1129,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
             CLEAR_PARSE_FLAG(lex, disallow_struct_literal);
             lex.putback(tok);
             
-            ExprNodeP rv = Parse_Expr0(lex);
+            ExprNodeP rv = Parse_Stmt(lex);
             if( GET_TOK(tok, lex) == TOK_COMMA ) {
                 ::std::vector<ExprNodeP> ents;
                 ents.push_back( ::std::move(rv) );
@@ -1099,7 +1137,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
                     if( GET_TOK(tok, lex) == TOK_PAREN_CLOSE )
                         break;
                     lex.putback(tok);
-                    ents.push_back( Parse_Expr0(lex) );
+                    ents.push_back( Parse_Stmt(lex) );
                 } while( GET_TOK(tok, lex) == TOK_COMMA );
                 rv = NEWNODE( AST::ExprNode_Tuple, ::std::move(ents) );
             }

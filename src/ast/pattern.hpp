@@ -11,6 +11,7 @@ namespace AST {
 
 using ::std::unique_ptr;
 using ::std::move;
+class MacroInvocation;
 
 class ExprNode;
 
@@ -19,8 +20,9 @@ class Pattern:
 {
 public:
     TAGGED_UNION(Data, Any,
-        (Any,       () ),
         (MaybeBind, () ),
+        (Macro,     (unique_ptr<::AST::MacroInvocation> inv;) ),
+        (Any,       () ),
         (Box,       (unique_ptr<Pattern> sub;) ),
         (Ref,       (bool mut; unique_ptr<Pattern> sub;) ),
         (Value,     (unique_ptr<ExprNode> start; unique_ptr<ExprNode> end;) ),
@@ -36,6 +38,17 @@ public:
     Pattern()
     {}
 
+    struct TagMaybeBind {};
+    Pattern(TagMaybeBind, ::std::string name):
+        m_binding(name),
+        m_data( Data::make_MaybeBind({}) )
+    {}
+
+    struct TagMacro {};
+    Pattern(TagMacro, unique_ptr<::AST::MacroInvocation> inv):
+        m_data( Data::make_Macro({mv$(inv)}) )
+    {}
+
     // Wildcard = '..', distinct from '_'
     // TODO: Store wildcard as a different pattern type
     struct TagWildcard {};
@@ -45,12 +58,6 @@ public:
     struct TagBind {};
     Pattern(TagBind, ::std::string name):
         m_binding(name)
-    {}
-
-    struct TagMaybeBind {};
-    Pattern(TagMaybeBind, ::std::string name):
-        m_binding(name),
-        m_data( Data::make_MaybeBind({}) )
     {}
 
     struct TagBox {};

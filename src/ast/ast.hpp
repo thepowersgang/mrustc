@@ -398,6 +398,7 @@ class Trait:
     ::std::vector<AST::Path>    m_supertraits;
     ItemList<TypeAlias> m_types;
     ItemList<Function>  m_functions;
+    ItemList<Static>    m_statics;
 public:
     Trait() {}
     Trait(MetaItems attrs, GenericParams params, ::std::vector<Path> supertraits):
@@ -412,6 +413,7 @@ public:
     const ::std::vector<Path>& supertraits() const { return m_supertraits; }
     const ItemList<Function>& functions() const { return m_functions; }
     const ItemList<TypeAlias>& types() const { return m_types; }
+    const ItemList<Static>& statics() const { return m_statics; }
 
     GenericParams& params() { return m_params; }
     ::std::vector<Path>& supertraits() { return m_supertraits; }
@@ -423,6 +425,9 @@ public:
     }
     void add_function(::std::string name, Function fcn) {
         m_functions.push_back( Item<Function>(::std::move(name), ::std::move(fcn), true) );
+    }
+    void add_static(::std::string name, Static v) {
+        m_statics.push_back( Item<Static>(mv$(name), mv$(v), true) );
     }
     
     bool has_named_item(const ::std::string& name, bool& out_is_fcn) const {
@@ -450,25 +455,31 @@ struct EnumVariant:
     MetaItems   m_attrs;
     ::std::string   m_name;
     ::std::vector<TypeRef>  m_sub_types;
-    int64_t m_value;
+    ::std::vector<StructItem>  m_fields;
+    AST::Expr m_value;
     
-    EnumVariant():
-        m_value(0)
+    EnumVariant()
     {
     }
     
-    EnumVariant(MetaItems attrs, ::std::string name, int64_t value):
-        m_attrs( move(attrs) ),
-        m_name( ::std::move(name) ),
-        m_value( value )
+    EnumVariant(MetaItems attrs, ::std::string name, Expr&& value):
+        m_attrs( mv$(attrs) ),
+        m_name( mv$(name) ),
+        m_value( mv$(value) )
     {
     }
     
     EnumVariant(MetaItems attrs, ::std::string name, ::std::vector<TypeRef> sub_types):
         m_attrs( move(attrs) ),
         m_name( ::std::move(name) ),
-        m_sub_types( ::std::move(sub_types) ),
-        m_value(0)
+        m_sub_types( ::std::move(sub_types) )
+    {
+    }
+    
+    EnumVariant(MetaItems attrs, ::std::string name, ::std::vector<StructItem> fields):
+        m_attrs( move(attrs) ),
+        m_name( ::std::move(name) ),
+        m_fields( ::std::move(fields) )
     {
     }
     
@@ -571,6 +582,7 @@ class Impl:
     
     ItemList<TypeRef>   m_types;
     ItemList<Function>  m_functions;
+    ItemList<Static>    m_statics;
     
     ::std::vector< ::std::pair< ::std::vector<TypeRef>, Impl > > m_concrete_impls;
 public:
@@ -585,6 +597,9 @@ public:
     }
     void add_type(bool is_public, ::std::string name, TypeRef type) {
         m_types.push_back( Item<TypeRef>( ::std::move(name), ::std::move(type), is_public ) );
+    }
+    void add_static(bool is_public, ::std::string name, Static v) {
+        m_statics.push_back( Item<Static>( mv$(name), mv$(v), is_public ) );
     }
     
     const ImplDef& def() const { return m_def; }
@@ -615,7 +630,7 @@ class Module;
 
 typedef void fcn_visitor_t(const AST::Crate& crate, const AST::Module& mod, Function& fcn);
 
-class MacroItem:
+class MacroInvocation:
     public Serialisable
 {
     MetaItems   m_attrs;
@@ -623,11 +638,11 @@ class MacroItem:
     ::std::string   m_ident;
     TokenTree   m_input;
 public:
-    MacroItem()
+    MacroInvocation()
     {
     }
     
-    MacroItem(MetaItems attrs, ::std::string macro, ::std::string ident, TokenTree input):
+    MacroInvocation(MetaItems attrs, ::std::string macro, ::std::string ident, TokenTree input):
         m_attrs( mv$(attrs) ),
         m_macro_name( mv$(macro) ),
         m_ident( mv$(ident) ),
@@ -635,7 +650,18 @@ public:
     {
     }
 
+    static ::std::unique_ptr<MacroInvocation> from_deserialiser(Deserialiser& s) {
+        auto i = new MacroInvocation;
+        s.item( *i );
+        return ::std::unique_ptr<MacroInvocation>(i);
+    }
+
     SERIALISABLE_PROTOTYPES();
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const MacroInvocation& x) {
+        os << x.m_attrs << x.m_macro_name << "! " << x.m_ident << x.m_input;
+        return os;
+    }
 };
 
 /// Representation of a parsed (and being converted) function
@@ -664,7 +690,7 @@ class Module:
     itemlist_macros_t   m_macros;
     macro_imports_t m_macro_imports;    // module => macro
     ::std::vector< ItemNS<const MacroRules*> > m_macro_import_res; // Vec of imported macros (not serialised)
-    ::std::vector<MacroItem>    m_macro_invocations;
+    ::std::vector<MacroInvocation>    m_macro_invocations;
     
     
     
@@ -728,7 +754,7 @@ public:
         m_macros.push_back( Item<MacroRules>( move(name), move(macro), is_exported ) );
     }
     void add_macro_import(const Crate& crate, ::std::string mod, ::std::string name);
-    void add_macro_invocation(MacroItem item) {
+    void add_macro_invocation(MacroInvocation item) {
         m_macro_invocations.push_back( mv$(item) );
     }
 

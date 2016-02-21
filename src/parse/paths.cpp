@@ -21,6 +21,8 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
     {
     case TOK_DOUBLE_COLON:
         return Parse_Path(lex, true, generic_mode);
+    case TOK_DOUBLE_LT:
+        lex.putback( Token(TOK_LT) );
     case TOK_LT: {
         TypeRef ty = Parse_Type(lex);
         TypeRef trait;

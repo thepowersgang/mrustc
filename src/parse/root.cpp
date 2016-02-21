@@ -52,27 +52,26 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
         else if( tok.type() == TOK_QMARK ) {
             ret.add_bound(AST::GenericBound::make_MaybeTrait( {type: checked_type, trait: Parse_Path(lex, PATH_GENERIC_TYPE)} ));
         }
-        //else if( tok.type() == TOK_RWORD_FOR )
-        //{
-        //    ::std::vector< ::std::string>   lifetimes;
-        //    GET_CHECK_TOK(tok, lex, TOK_LT);
-        //    do {
-        //        switch(GET_TOK(tok, lex))
-        //        {
-        //        case TOK_LIFETIME:
-        //            lifetimes.push_back(tok.str());
-        //            break;    
-        //        default:
-        //            throw ParseError::Unexpected(lex, tok, Token(TOK_LIFETIME));
-        //        }
-        //    } while( GET_TOK(tok, lex) == TOK_COMMA );
-        //    CHECK_TOK(tok, TOK_GT);
-        //    
-        //    ret.add_bound( AST::GenericBound::make_IsTrait( {type: checked_type, hrls: lifetimes, trait: Parse_Path(lex, PATH_GENERIC_TYPE) }) );
-        //}
-        else
-        {
-            lex.putback(tok);
+        else {
+            if( tok.type() == TOK_RWORD_FOR )
+            {
+                GET_CHECK_TOK(tok, lex, TOK_LT);
+                do {
+                    switch(GET_TOK(tok, lex))
+                    {
+                    case TOK_LIFETIME:
+                        lifetimes.push_back(tok.str());
+                        break;    
+                    default:
+                        throw ParseError::Unexpected(lex, tok, Token(TOK_LIFETIME));
+                    }
+                } while( GET_TOK(tok, lex) == TOK_COMMA );
+                CHECK_TOK(tok, TOK_GT);
+            }
+            else {
+                lex.putback(tok);
+            }
+            
             ret.add_bound( AST::GenericBound::make_IsTrait( {type: checked_type, hrls: lifetimes, trait: Parse_Path(lex, PATH_GENERIC_TYPE) }) );
         }
     } while( GET_TOK(tok, lex) == TOK_PLUS );
@@ -274,7 +273,16 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
             GET_TOK(tok, lex);
             if( allow_self == false )
                 throw ParseError::Generic(lex, "Self binding not expected");
-            args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef("Self")) );
+            TypeRef ty;
+            if( GET_TOK(tok, lex) == TOK_COLON ) {
+                // Typed mut self
+                ty = Parse_Type(lex);
+            }
+            else {
+                lex.putback(tok);
+                ty = TypeRef("Self");
+            }
+            args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), ty) );
             GET_TOK(tok, lex);
         }
     }
@@ -283,7 +291,16 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
         // By-value method
         if( allow_self == false )
             throw ParseError::Generic(lex, "Self binding not expected");
-        args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef("Self")) );
+        TypeRef ty;
+        if( GET_TOK(tok, lex) == TOK_COLON ) {
+            // Typed mut self
+            ty = Parse_Type(lex);
+        }
+        else {
+            lex.putback(tok);
+            ty = TypeRef("Self");
+        }
+        args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), ty) );
         GET_TOK(tok, lex);
     }
     else
@@ -534,7 +551,35 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
         switch(tok.type())
         {
         case TOK_RWORD_STATIC: {
-            throw ParseError::Todo("Associated static");
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            auto name = mv$(tok.str());
+            GET_CHECK_TOK(tok, lex, TOK_COLON);
+            auto ty = Parse_Type(lex);
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+            
+            ::AST::Expr val;
+            if(GET_TOK(tok, lex) == TOK_EQUAL) {
+                val = Parse_Expr(lex, true);
+                GET_TOK(tok, lex);
+            }
+            CHECK_TOK(tok, TOK_SEMICOLON);
+            
+            trait.add_static( mv$(name), ::AST::Static(mv$(item_attrs), AST::Static::STATIC, mv$(ty), val) );
+            break; }
+        case TOK_RWORD_CONST: {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            auto name = mv$(tok.str());
+            GET_CHECK_TOK(tok, lex, TOK_COLON);
+            auto ty = Parse_Type(lex);
+            
+            ::AST::Expr val;
+            if(GET_TOK(tok, lex) == TOK_EQUAL) {
+                val = Parse_Expr(lex, true);
+                GET_TOK(tok, lex);
+            }
+            CHECK_TOK(tok, TOK_SEMICOLON);
+            
+            trait.add_static( mv$(name), ::AST::Static(mv$(item_attrs), AST::Static::CONST, mv$(ty), val) );
             break; }
         // Associated type
         case TOK_RWORD_TYPE: {
@@ -631,6 +676,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems meta_items)
     ::std::vector<AST::EnumVariant>   variants;
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
+        auto sp = lex.start_span();
         AST::MetaItems  item_attrs;
         while( tok.type() == TOK_ATTR_OPEN )
         {
@@ -653,16 +699,26 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems meta_items)
             GET_TOK(tok, lex);
             variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), mv$(types)) );
         }
+        else if( tok.type() == TOK_BRACE_OPEN )
+        {
+            ::std::vector<::AST::StructItem>   fields;
+            do
+            {
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                auto name = mv$(tok.str());
+                GET_CHECK_TOK(tok, lex, TOK_COLON);
+                auto ty = Parse_Type(lex);
+                fields.push_back( ::AST::Item<TypeRef>(mv$(name), mv$(ty), true) );
+            } while( GET_TOK(tok, lex) == TOK_COMMA );
+            CHECK_TOK(tok, TOK_BRACE_CLOSE);
+            GET_TOK(tok, lex);
+            
+            variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), mv$(fields)) );
+        }
         else if( tok.type() == TOK_EQUAL )
         {
-            bool is_neg = false;
-            if( GET_TOK(tok, lex) == TOK_DASH )
-                is_neg = true;
-            else
-                lex.putback(tok);
-            GET_CHECK_TOK(tok, lex, TOK_INTEGER);
-            int64_t val = (is_neg ? -tok.intval() : tok.intval());
-            variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), val) );
+            auto node = Parse_Expr(lex, true);
+            variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), mv$(node)) );
             GET_TOK(tok, lex);
         }
         else
@@ -857,7 +913,16 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
     case TOK_RWORD_CONST:
         if( GET_TOK(tok, lex) != TOK_RWORD_FN && tok.type() != TOK_RWORD_UNSAFE )
         {
-            BUG(lex.end_span(lex.start_span()), "TODO: Associated const");
+            CHECK_TOK(tok, TOK_IDENT);
+            auto name = mv$(tok.str());
+            GET_CHECK_TOK(tok, lex, TOK_COLON);
+            auto ty = Parse_Type(lex);
+            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+            auto val = Parse_Expr(lex, true);
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+            
+            impl.add_static( is_public, mv$(name), ::AST::Static(mv$(item_attrs), AST::Static::CONST, mv$(ty), mv$(val)) );
+            break ;
         }
         else if( tok.type() == TOK_RWORD_UNSAFE )
         {
@@ -934,8 +999,12 @@ void Parse_Use_Set(TokenStream& lex, const AST::Path& base_path, ::std::function
 
     Token   tok;
     do {
+        
         if( GET_TOK(tok, lex) == TOK_RWORD_SELF ) {
             fcn(base_path, base_path[base_path.size()-1].name());
+        }
+        else if( tok.type() == TOK_BRACE_CLOSE ) {
+            break ;
         }
         else {
             CHECK_TOK(tok, TOK_IDENT);
@@ -1024,6 +1093,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
     else
     {
         lex.putback(tok);
+        assert(path.nodes().size() > 0);
         name = path.nodes().back().name();
     }
     
@@ -1255,10 +1325,20 @@ void Parse_MacroRules(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_it
     GET_CHECK_TOK(tok, lex, TOK_IDENT);
     ::std::string name = tok.str();
     
-    GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
+    eTokenType  close;
+    switch(GET_TOK(tok,lex))
+    {
+    case TOK_BRACE_OPEN:    close = TOK_BRACE_CLOSE;    break;
+    case TOK_PAREN_OPEN:    close = TOK_PAREN_CLOSE;    break;
+    case TOK_SQUARE_OPEN:   close = TOK_SQUARE_CLOSE;   break;
+    default:
+        // TODO: Synerror
+        throw ParseError::Unexpected(lex, tok, {TOK_BRACE_OPEN, TOK_PAREN_OPEN, TOK_SQUARE_OPEN});
+        break;
+    }
     
     ::std::vector<MacroRule>    rules;
-    while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
+    while( GET_TOK(tok, lex) != close )
     {
         lex.putback(tok);
         
@@ -1272,6 +1352,68 @@ void Parse_MacroRules(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_it
     bool is_pub = meta_items.has("macro_export");
     
     mod.add_macro( is_pub, name, MacroRules(move(rules)) );
+}
+
+::AST::MacroInvocation Parse_MacroInvocation(::AST::MetaItems meta_items, ::std::string name, TokenStream& lex)
+{
+    Token   tok;
+    ::std::string   ident;
+    if( GET_TOK(tok, lex) == TOK_IDENT ) {
+        ident = mv$(tok.str());
+    }
+    else {
+        lex.putback(tok);
+    }
+    TokenTree tt = Parse_TT(lex, true);
+    return ::AST::MacroInvocation( mv$(meta_items), mv$(name), mv$(ident), mv$(tt));
+}
+
+void Parse_ExternCrate(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_items)
+{
+    Token   tok;
+    ::std::string   path, name;
+    switch( GET_TOK(tok, lex) )
+    {
+    // `extern crate "crate-name" as crate_name;`
+    // TODO: rustc no longer supports this feature
+    case TOK_STRING:
+        path = tok.str();
+        GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        name = tok.str();
+        break;
+    // `extern crate crate_name;`
+    case TOK_IDENT:
+        name = tok.str();
+        if(GET_TOK(tok, lex) == TOK_RWORD_AS) {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            name = mv$(tok.str());
+        }
+        else {
+            lex.putback(tok);
+            name = path;
+        }
+        break;
+    default:
+        throw ParseError::Unexpected(lex, tok, {TOK_STRING, TOK_IDENT});
+    }
+    GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+    
+    mod.add_ext_crate(path, name);
+
+    // Handle #[macro_use]/#[macro_use(...)]
+    //auto at = meta_items.get("macro_use");
+    //if( at )
+    //{
+    //    if( at->has_sub_items() )
+    //    {
+    //        throw ParseError::Todo("selective macro_use");
+    //    }
+    //    else
+    //    {
+    //        mod.add_macro_import(crate, name, "");
+    //    }
+    //}
 }
 
 void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, LList<AST::Module*>& modstack, const ::std::string& path)
@@ -1309,22 +1451,14 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
         {
             ::std::string   name = mv$(tok.str());
             // `macro_rules! ...`
-            if( name == "macro_rules" )
-            {
-                Parse_MacroRules(lex, mod, mv$(meta_items));
-            }
-            else
-            {
-                ::std::string   ident;
-                if( GET_TOK(tok, lex) == TOK_IDENT ) {
-                    ident = mv$(tok.str());
-                }
-                else {
-                    lex.putback(tok);
-                }
-                TokenTree tt = Parse_TT(lex, true);
-                mod.add_macro_invocation( ::AST::MacroItem( mv$(meta_items), mv$(name), mv$(ident), mv$(tt)) );
-            }
+            //if( name == "macro_rules" )
+            //{
+            //    Parse_MacroRules(lex, mod, mv$(meta_items));
+            //}
+            //else
+            //{
+                mod.add_macro_invocation( Parse_MacroInvocation( mv$(meta_items), mv$(name), lex ) );
+            //}
             // - Silently consume ';' after the macro
             if( GET_TOK(tok, lex) != TOK_SEMICOLON )
                 lex.putback(tok);
@@ -1387,44 +1521,9 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
                 break;
             // `extern crate "crate-name" as crate_name;`
             // `extern crate crate_name;`
-            case TOK_RWORD_CRATE: {
-                ::std::string   path, name;
-                switch( GET_TOK(tok, lex) )
-                {
-                // `extern crate "crate-name" as crate_name;`
-                // TODO: rustc no longer supports this feature
-                case TOK_STRING:
-                    path = tok.str();
-                    GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
-                    GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                    name = tok.str();
-                    break;
-                // `extern crate crate_name;`
-                case TOK_IDENT:
-                    path = name = tok.str();
-                    break;
-                default:
-                    throw ParseError::Unexpected(lex, tok, {TOK_STRING, TOK_IDENT});
-                }
-                crate.load_extern_crate(path);
-                mod.add_ext_crate(path, name);
-            
-                // Handle #[macro_use]/#[macro_use(...)]
-                auto at = meta_items.get("macro_use");
-                if( at )
-                {
-                    if( at->has_sub_items() )
-                    {
-                        throw ParseError::Todo("selective macro_use");
-                    }
-                    else
-                    {
-                        mod.add_macro_import(crate, name, "");
-                    }
-                }    
-            
-                GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-                break; }
+            case TOK_RWORD_CRATE:
+                Parse_ExternCrate(lex, mod, mv$(meta_items));
+                break;
             default:
                 throw ParseError::Unexpected(lex, tok, {TOK_STRING, TOK_RWORD_FN, TOK_BRACE_OPEN, TOK_RWORD_CRATE});
             }
@@ -1487,6 +1586,19 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
             meta_items.push_back( AST::MetaItem("#UNSAFE") );
             switch(GET_TOK(tok, lex))
             {
+            // `unsafe extern fn`
+            case TOK_RWORD_EXTERN: {
+                ::std::string   abi = "C";
+                if(GET_TOK(tok, lex) == TOK_STRING) {
+                    abi = mv$(tok.str());
+                }
+                else {
+                    lex.putback(tok);
+                }
+                GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                mod.add_function(is_public, tok.str(), Parse_FunctionDefWithCode(lex, abi, ::std::move(meta_items), false));
+                break; }
             // `unsafe fn`
             case TOK_RWORD_FN:
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
@@ -1498,6 +1610,7 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
             case TOK_RWORD_TRAIT: {
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 ::std::string name = tok.str();
+                // TODO: Mark as unsafe
                 mod.add_trait(is_public, name, Parse_TraitDef(lex, meta_items));
                 break; }
             // `unsafe impl`

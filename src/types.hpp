@@ -90,6 +90,7 @@ TAGGED_UNION(TypeData, None,
         AST::Path path;
         )),
     (TraitObject, (
+        ::std::vector<::std::string>    hrls;
         ::std::vector<AST::Path> traits;
         ))
     );
@@ -200,8 +201,8 @@ public:
         TypeRef(TagPath(), ::std::move(path))
     {}
    
-    TypeRef( ::std::vector<AST::Path> traits ):
-        m_data(TypeData::make_TraitObject({ ::std::move(traits) }))
+    TypeRef( ::std::vector<::std::string> hrls, ::std::vector<AST::Path> traits ):
+        m_data(TypeData::make_TraitObject({ mv$(hrls), ::std::move(traits) }))
     {}
     
     

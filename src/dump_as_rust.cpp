@@ -746,6 +746,9 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
     (MaybeBind,
         m_os << "_ /*?*/";
         ),
+    (Macro,
+        m_os << *v.inv;
+        ),
     (Box, {
         const auto& v = p.data().as_Box();
         m_os << "& ";
@@ -854,9 +857,12 @@ void RustPrinter::handle_enum(const AST::Enum& s)
             for( const auto& t : i.m_sub_types )
                 m_os << t.print_pretty() << ", ";
         }
-        else if(i.m_value > 0)
+        else if(i.m_value.is_valid())
         {
             m_os << " = " << i.m_value;
+        }
+        else
+        {
         }
         m_os << ",\n";
         idx ++;
