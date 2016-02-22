@@ -741,8 +741,54 @@ Codepoint Lexer::getc_codepoint()
     if( v1 < 128 ) {
         return {v1};
     }
+    else if( (v1 & 0xC0) == 0x80 ) {
+        // Invalid (continuation)
+        return {0xFFFE};
+    }
+    else if( (v1 & 0xE0) == 0xC0 ) {
+        // Two bytes
+        uint8_t e1 = this->getc();
+        if( (e1 & 0xC0) != 0x80 )  return {0xFFFE};
+        
+        uint32_t outval
+            = ((v1 & 0x1F) << 6)
+            | ((e1 & 0x3F) <<0)
+            ;
+        return {outval};
+    }
+    else if( (v1 & 0xF0) == 0xE0 ) {
+        // Three bytes
+        uint8_t e1 = this->getc();
+        if( (e1 & 0xC0) != 0x80 )  return {0xFFFE};
+        uint8_t e2 = this->getc();
+        if( (e2 & 0xC0) != 0x80 )  return {0xFFFE};
+        
+        uint32_t outval
+            = ((v1 & 0x0F) << 12)
+            | ((e1 & 0x3F) <<  6)
+            | ((e2 & 0x3F) <<  0)
+            ;
+        return {outval};
+    }
+    else if( (v1 & 0xF8) == 0xF0 ) {
+        // Four bytes
+        uint8_t e1 = this->getc();
+        if( (e1 & 0xC0) != 0x80 )  return {0xFFFE};
+        uint8_t e2 = this->getc();
+        if( (e2 & 0xC0) != 0x80 )  return {0xFFFE};
+        uint8_t e3 = this->getc();
+        if( (e3 & 0xC0) != 0x80 )  return {0xFFFE};
+        
+        uint32_t outval
+            = ((v1 & 0x07) << 18)
+            | ((e1 & 0x3F) << 12)
+            | ((e2 & 0x3F) <<  6)
+            | ((e3 & 0x3F) <<  0)
+            ;
+        return {outval};
+    }
     else {
-        throw ParseError::Todo("getc_codepoint");
+        throw ParseError::Generic("Invalid UTF-8 (too long)");
     }
 }
 
