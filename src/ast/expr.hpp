@@ -10,6 +10,7 @@
 #include "../parse/tokentree.hpp"
 #include "../types.hpp"
 #include "pattern.hpp"
+#include "attrs.hpp"
 
 namespace AST {
 
@@ -235,6 +236,7 @@ struct ExprNode_Match:
     struct Arm:
         public Serialisable
     {
+        MetaItems   m_attrs;
         ::std::vector<Pattern>  m_patterns;
         unique_ptr<ExprNode>    m_cond;
         

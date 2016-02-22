@@ -490,6 +490,15 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
             break;
         lex.putback(tok);
         AST::ExprNode_Match::Arm    arm;
+        
+        ::AST::MetaItems   arm_attrs;
+        while( LOOK_AHEAD(lex) == TOK_ATTR_OPEN ) {
+            GET_TOK(tok, lex);
+            arm_attrs.push_back( Parse_MetaItem(lex) );
+            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+        }
+        arm.m_attrs = mv$(arm_attrs);
+        
         do {
             // Refutable pattern
             arm.m_patterns.push_back( Parse_Pattern(lex, true) );
