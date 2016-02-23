@@ -22,6 +22,7 @@ class ExprNode:
     public Serialisable
 {
     TypeRef m_res_type;
+    MetaItems   m_attrs;
     Position    m_pos;
 public:
     virtual ~ExprNode() = 0;
@@ -32,6 +33,10 @@ public:
     
     void set_pos(Position p) { m_pos = ::std::move(p); }
     const Position& get_pos() const { return m_pos; }
+
+    void set_attrs(MetaItems&& mi) {
+        m_attrs = mv$(mi);
+    }
     
     TypeRef& get_res_type() { return m_res_type; }
     

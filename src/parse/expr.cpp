@@ -202,6 +202,8 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
             lex.putback(tok);
             bool    expect_end = false;
             nodes.push_back(Parse_ExprBlockLine(lex, &expect_end));
+            // TODO: VVV
+            //nodes.back().set_attrs( item_attrs );
             // Set to TRUE if there was no semicolon after a statement
             if( expect_end )
             {
@@ -615,6 +617,14 @@ ExprNodeP Parse_Expr0(TokenStream& lex)
 {
     TRACE_FUNCTION;
     Token tok;
+    
+    ::AST::MetaItems  expr_attrs;
+    while( LOOK_AHEAD(lex) == TOK_ATTR_OPEN )
+    {
+        GET_TOK(tok, lex);
+        expr_attrs.push_back( Parse_MetaItem(lex) );
+        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+    }
 
     ExprNodeP rv = Parse_Expr1(lex);
     auto op = AST::ExprNode_Assign::NONE;
@@ -645,10 +655,13 @@ ExprNodeP Parse_Expr0(TokenStream& lex)
 
     case TOK_EQUAL:
         op = AST::ExprNode_Assign::NONE;
-        return NEWNODE( AST::ExprNode_Assign, op, ::std::move(rv), Parse_Expr0(lex) );
+        rv = NEWNODE( AST::ExprNode_Assign, op, ::std::move(rv), Parse_Expr0(lex) );
+        rv->set_attrs(mv$(expr_attrs));
+        return rv;
     
     default:
         lex.putback(tok);
+        rv->set_attrs(mv$(expr_attrs));
         return rv;
     }
 }
