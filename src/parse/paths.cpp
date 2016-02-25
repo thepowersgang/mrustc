@@ -196,7 +196,13 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
     } while( GET_TOK(tok, lex) == TOK_COMMA );
 
     // HACK: Split >> into >
-    if(tok.type() == TOK_DOUBLE_GT) {
+    if(tok.type() == TOK_DOUBLE_GT_EQUAL) {
+        lex.putback(Token(TOK_GTE));
+    }
+    else if(tok.type() == TOK_GTE) {
+        lex.putback(Token(TOK_EQUAL));
+    }
+    else if(tok.type() == TOK_DOUBLE_GT) {
         lex.putback(Token(TOK_GT));
     }
     else {
