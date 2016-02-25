@@ -233,7 +233,7 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
     bool is_trailing = false;
     while(GET_TOK(tok, lex) != TOK_SQUARE_CLOSE)
     {
-        if( tok.type() == TOK_IDENT && lex.lookahead(1) == TOK_DOUBLE_DOT) {
+        if( tok.type() == TOK_IDENT && lex.lookahead(0) == TOK_DOUBLE_DOT) {
             if(is_trailing)
                 ERROR(lex.end_span(sp), E0000, "Multiple instances of .. in a slice pattern");
             rv_array.extra_bind = mv$(tok.str());
