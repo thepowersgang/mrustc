@@ -567,17 +567,26 @@ Token Lexer::getTokenInt_RawString(bool is_byte)
         ch = this->getc();
     }
     if( hashes == 0 && ch != '"' ) {
-        this->ungetc();
-        assert( !is_byte );
-        return this->getTokenInt_Identifier('r');
+        this->ungetc(); // Unget the not '"'
+        if( is_byte )
+            return this->getTokenInt_Identifier('b', 'r');
+        else
+            return this->getTokenInt_Identifier('r');
     }
     char terminator = ch;
     ::std::string   val;
+    DEBUG("terminator = '" << terminator << "', hashes = " << hashes);
 
     unsigned terminating_hashes = 0;
     for(;;)
     {
-        ch = this->getc();
+        try {
+            ch = this->getc();
+        }
+        catch( Lexer::EndOfFile e ) {
+            throw ParseError::Generic(*this, "EOF reached in raw string");
+        }
+        
         if( terminating_hashes > 0 )
         {
             assert(terminating_hashes > 0);
@@ -585,8 +594,11 @@ Token Lexer::getTokenInt_RawString(bool is_byte)
                 val += terminator;
                 while( terminating_hashes < hashes ) {
                     val += '#';
+                    terminating_hashes += 1;
                 }
                 terminating_hashes = 0;
+                
+                this->ungetc();
             }
             else {
                 terminating_hashes -= 1;
@@ -610,10 +622,12 @@ Token Lexer::getTokenInt_RawString(bool is_byte)
     }
     return Token(is_byte ? TOK_BYTESTRING : TOK_STRING, val);
 }
-Token Lexer::getTokenInt_Identifier(char leader)
+Token Lexer::getTokenInt_Identifier(char leader, char leader2)
 {
-    char ch = leader;
     ::std::string   str;
+    if( leader2 != '\0' )
+        str += leader;
+    char ch = leader2 == '\0' ? leader : leader2;
     while( issym(ch) )
     {
         str.push_back(ch);

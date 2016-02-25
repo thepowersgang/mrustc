@@ -201,7 +201,7 @@ private:
     
     signed int getSymbol();
     Token getTokenInt_RawString(bool is_byte);
-    Token getTokenInt_Identifier(char ch);
+    Token getTokenInt_Identifier(char ch, char ch2='\0');
     double parseFloat(uint64_t whole);
     uint32_t parseEscape(char enclosing);
 
