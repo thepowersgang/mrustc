@@ -13,7 +13,7 @@
 // === PROTOTYPES ===
 TypeRef Parse_Type(TokenStream& lex);
 TypeRef Parse_Type_Int(TokenStream& lex);
-TypeRef Parse_Type_Fn(TokenStream& lex);
+TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls = {});
 TypeRef Parse_Type_Path(TokenStream& lex, ::std::vector<::std::string> hrls);
 
 // === CODE ===
@@ -39,18 +39,16 @@ TypeRef Parse_Type_Int(TokenStream& lex)
     // '_' = Wildcard (type inferrence variable)
     case TOK_UNDERSCORE:
         return TypeRef();
+    
     // 'unsafe' - An unsafe function type
     case TOK_RWORD_UNSAFE:
-        lex.putback(tok);
-        return Parse_Type_Fn(lex);
     // 'extern' - A function type with an ABI
     case TOK_RWORD_EXTERN:
-        lex.putback(tok);
-        return Parse_Type_Fn(lex);
     // 'fn' - Rust function
     case TOK_RWORD_FN:
         lex.putback(tok);
         return Parse_Type_Fn(lex);
+    
     // '<' - An associated type cast
     case TOK_LT:
     case TOK_DOUBLE_LT:
@@ -65,11 +63,14 @@ TypeRef Parse_Type_Int(TokenStream& lex)
             hrls.push_back( mv$(tok.str()) );
         } while( GET_TOK(tok, lex) == TOK_COMMA );
         CHECK_TOK(tok, TOK_GT);
-        if( LOOK_AHEAD(lex) == TOK_RWORD_FN || LOOK_AHEAD(lex) == TOK_RWORD_EXTERN ) {
+        switch(LOOK_AHEAD(lex))
+        {
+        case TOK_RWORD_UNSAFE:
+        case TOK_RWORD_EXTERN:
+        case TOK_RWORD_FN:
             // TODO: Handle HRLS in fn types
-            return Parse_Type_Fn(lex);
-        }
-        else {
+            return Parse_Type_Fn(lex, hrls);
+        default:
             return Parse_Type_Path(lex, hrls);
         }
         }
@@ -193,8 +194,9 @@ TypeRef Parse_Type_Int(TokenStream& lex)
     throw ParseError::BugCheck("Reached end of Parse_Type");
 }
 
-TypeRef Parse_Type_Fn(TokenStream& lex)
+TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
 {
+    // TODO: HRLs
     TRACE_FUNCTION;
     Token   tok;
     
