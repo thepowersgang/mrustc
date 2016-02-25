@@ -308,13 +308,23 @@ Token Lexer::getTokenInt()
                                 throw ParseError::Generic("Invalid digit in binary literal");
                         }
                     }
-                    else if( isdigit(ch) ) {
+                    else if( ch == 'o' ) {
                         num_mode = OCT;
-                        throw ParseError::Todo(*this, "Lex octal numbers");
+                        while( isdigit(ch = this->getc_num()) ) {
+                            val *= 8;
+                            if('0' <= ch && ch <= '7')
+                                val += ch - '0';
+                            else
+                                throw ParseError::Generic("Invalid digit in octal literal");
+                        }
                     }
                     else {
                         num_mode = DEC;
-                        val = 0;
+                        while( isdigit(ch) ) {
+                            val *= 10;
+                            val += ch - '0';
+                            ch = this->getc_num();
+                        }
                     }
                 }
                 else {
