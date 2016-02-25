@@ -51,6 +51,8 @@ extern void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs,
 extern void Parse_MacroRules(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_items);
 extern void Parse_ExternCrate(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_items);
 
+extern void Parse_Mod_Item(TokenStream& lex, LList<AST::Module*>& modstack, const ::std::string& file_path, AST::Module& mod, bool is_public, AST::MetaItems meta_items);
+
 
 extern AST::Function    Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self, bool can_be_prototype);
 extern AST::Function    Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self);

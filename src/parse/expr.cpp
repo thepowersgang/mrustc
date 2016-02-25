@@ -76,117 +76,32 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
         switch(tok.type())
         {
         case TOK_CATTR_OPEN:
+            // TODO: Handle `#![` by having a pointer to the parent item (e.g. function)'s attribute list.
             /*node_attrs.push_back(*/ Parse_MetaItem(lex) /*)*/;
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
             break;
         // Items:
-        // - 'use'
+        case TOK_RWORD_TYPE:
         case TOK_RWORD_USE:
-            keep_mod = true;
-            Parse_Use(
-                lex,
-                [&local_mod](AST::Path p, std::string s) {
-                    local_mod->imports().push_back( AST::Item<AST::Path>( ::std::move(s), ::std::move(p), false ) );
-                }
-                );
-            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-            break;
-        // 'extern' blocks
         case TOK_RWORD_EXTERN:
-            keep_mod = true;
-            if( GET_TOK(tok, lex) == TOK_RWORD_CRATE ) {
-                Parse_ExternCrate(lex, *local_mod, mv$(item_attrs));
-            }
-            else {
-                lex.putback(tok);
-                Parse_ExternBlock(lex, ::std::move(item_attrs), local_mod->functions());
-            }
-            break;
-        // - 'const'
         case TOK_RWORD_CONST:
-            keep_mod = true;
-            {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            ::std::string   name = tok.str();
-            GET_CHECK_TOK(tok, lex, TOK_COLON);
-            TypeRef type = Parse_Type(lex);
-            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-            auto val = Parse_Expr1(lex);
-            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-            
-            local_mod->statics().push_back( AST::Item<AST::Static>(
-                ::std::move(name),
-                AST::Static(mv$(item_attrs), AST::Static::CONST, mv$(type), mv$(val)),
-                false ) );
-            break;
-            }
-        // - 'static'
         case TOK_RWORD_STATIC:
-            keep_mod = true;
-            {
-            bool is_mut = false;
-            if( GET_TOK(tok, lex) == TOK_RWORD_MUT )
-                is_mut = true;
-            else
-                lex.putback(tok);
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            ::std::string   name = tok.str();
-            GET_CHECK_TOK(tok, lex, TOK_COLON);
-            TypeRef type = Parse_Type(lex);
-            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-            auto val = Parse_Expr1(lex);
-            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-            
-            local_mod->add_static(false, mv$(name),
-                AST::Static(mv$(item_attrs), (is_mut ? AST::Static::MUT : AST::Static::STATIC), mv$(type), mv$(val))
-                );
-            break;
-            }
-        // - 'struct'
-        case TOK_RWORD_STRUCT: {
-            keep_mod = true;
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            ::std::string name = tok.str();
-            local_mod->add_struct(false, mv$(name), Parse_Struct(lex, item_attrs));
-            break; }
-        // - 'enum'
-        case TOK_RWORD_ENUM: {
-            keep_mod = true;
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            auto name = mv$(tok.str());
-            local_mod->add_enum(false, mv$(name), Parse_EnumDef(lex, item_attrs));
-            break; }
-        // - 'trait'
-        case TOK_RWORD_TRAIT: {
-            keep_mod = true;
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            auto name = tok.str();
-            local_mod->add_trait(false, mv$(name), Parse_TraitDef(lex, mv$(item_attrs)));
-            break; }
-        // - 'impl'
+        case TOK_RWORD_STRUCT:
+        case TOK_RWORD_ENUM:
+        case TOK_RWORD_TRAIT:
         case TOK_RWORD_IMPL:
-            keep_mod = true;
-            Parse_Impl(lex, *local_mod, mv$(item_attrs), false);
-            break;
-        // - 'fn'
         case TOK_RWORD_FN:
+            lex.putback(tok);
             keep_mod = true;
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            // - self not allowed, not prototype
-            local_mod->add_function(
-                false, tok.str(), Parse_FunctionDefWithCode(lex, "rust", ::std::move(item_attrs), false)
-                );
+            Parse_Mod_Item(lex, modstack, "!", *local_mod, false, mv$(item_attrs));
             break;
+        // 'unsafe' - Check if the next token isn't a `{`, if so it's an item. Otherwise, fall through
         case TOK_RWORD_UNSAFE:
-            if( LOOK_AHEAD(lex) == TOK_RWORD_FN )
+            if( LOOK_AHEAD(lex) != TOK_BRACE_OPEN )
             {
-                GET_TOK(tok, lex);
+                lex.putback(tok);
                 keep_mod = true;
-                GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                // - self not allowed, not prototype
-                local_mod->add_function(
-                    false, tok.str(), Parse_FunctionDefWithCode(lex, "rust", ::std::move(item_attrs), false)
-                    );
+                Parse_Mod_Item(lex, modstack, "!", *local_mod, false, mv$(item_attrs));
                 break;
             }
             if(0)

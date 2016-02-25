@@ -16,7 +16,7 @@
 #include <cassert>
 
 AST::MetaItem   Parse_MetaItem(TokenStream& lex);
-void Parse_ModRoot(TokenStream& lex, AST::Crate& crate, AST::Module& mod, LList<AST::Module*> *prev_modstack, const ::std::string& path);
+void Parse_ModRoot(TokenStream& lex, AST::Module& mod, LList<AST::Module*> *prev_modstack, const ::std::string& path);
 
 ::std::vector< ::std::string> Parse_HRB(TokenStream& lex)
 {
@@ -1467,10 +1467,282 @@ void Parse_ExternCrate(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_i
     //}
 }
 
-void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, LList<AST::Module*>& modstack, const ::std::string& path)
+void Parse_Mod_Item(TokenStream& lex, LList<AST::Module*>& modstack, const ::std::string& file_path, AST::Module& mod, bool is_public, AST::MetaItems meta_items)
 {
     //TRACE_FUNCTION;
-    const bool nested_module = (path == "-" || path == "!");  // 'mod name { code }', as opposed to 'mod name;'
+    const bool nested_module = (file_path == "-" || file_path == "!");  // 'mod name { code }', as opposed to 'mod name;'
+    Token   tok;
+
+    // The actual item!
+    switch( GET_TOK(tok, lex) )
+    {
+    // `use ...`
+    case TOK_RWORD_USE:
+        Parse_Use(lex, [&mod,is_public,&file_path](AST::Path p, std::string s) {
+                DEBUG(file_path << " - use " << p << " as '" << s << "'");
+                mod.add_alias(is_public, mv$(p), s);
+            });
+        GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+        break;
+    
+    case TOK_RWORD_EXTERN:
+        switch( GET_TOK(tok, lex) )
+        {
+        // `extern "<ABI>" fn ...`
+        // `extern "<ABI>" { ...`
+        case TOK_STRING: {
+            ::std::string abi = tok.str();
+            switch(GET_TOK(tok, lex))
+            {
+            // `extern "<ABI>" fn ...`
+            case TOK_RWORD_FN:
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                mod.add_function(is_public, tok.str(), Parse_FunctionDefWithCode(lex, abi, ::std::move(meta_items), false));
+                break;
+            // `extern "<ABI>" { ...`
+            case TOK_BRACE_OPEN:
+                Parse_ExternBlock(lex, mod, ::std::move(abi));
+                break;
+            default:
+                throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_BRACE_OPEN});
+            }
+            break; }
+        // `extern fn ...`
+        case TOK_RWORD_FN:
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            mod.add_function(is_public, tok.str(), Parse_FunctionDefWithCode(lex, "C", ::std::move(meta_items), false));
+            break;
+        // `extern { ...`
+        case TOK_BRACE_OPEN:
+            Parse_ExternBlock(lex, mod, "C");
+            break;
+        // `extern crate "crate-name" as crate_name;`
+        // `extern crate crate_name;`
+        case TOK_RWORD_CRATE:
+            Parse_ExternCrate(lex, mod, mv$(meta_items));
+            break;
+        default:
+            throw ParseError::Unexpected(lex, tok, {TOK_STRING, TOK_RWORD_FN, TOK_BRACE_OPEN, TOK_RWORD_CRATE});
+        }
+        break;
+    
+    // `const NAME`
+    // `const fn`
+    case TOK_RWORD_CONST: {
+        switch( GET_TOK(tok, lex) )
+        {
+        case TOK_IDENT: {
+            ::std::string name = tok.str();
+
+            GET_CHECK_TOK(tok, lex, TOK_COLON);
+            TypeRef type = Parse_Type(lex);
+            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+            AST::Expr val = Parse_Expr(lex, true);
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+            mod.add_static(is_public, name, AST::Static(::std::move(meta_items), AST::Static::CONST, type, val));
+            break; }
+        case TOK_RWORD_UNSAFE:
+            GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            mod.add_function(is_public, tok.str(), Parse_FunctionDefWithCode(lex, "rust", ::std::move(meta_items), false));
+            break;
+        case TOK_RWORD_FN: {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            // - self not allowed, not prototype
+            // TODO: Mark as const
+            mod.add_function(is_public, tok.str(), Parse_FunctionDefWithCode(lex, "rust", ::std::move(meta_items), false));
+            break; }
+        default:
+            throw ParseError::Unexpected(lex, tok, {TOK_IDENT, TOK_RWORD_FN});
+        }
+        break; }
+    // `static NAME`
+    // `static mut NAME`
+    case TOK_RWORD_STATIC: {
+        tok = lex.getToken();
+        bool is_mut = false;
+        if(tok.type() == TOK_RWORD_MUT) {
+            is_mut = true;
+            tok = lex.getToken();
+        }
+        CHECK_TOK(tok, TOK_IDENT);
+        ::std::string name = tok.str();
+
+        GET_CHECK_TOK(tok, lex, TOK_COLON);
+        TypeRef type = Parse_Type(lex);
+
+        GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+
+        AST::Expr val = Parse_Expr(lex, true);
+
+        GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+        mod.add_static(is_public, name,
+            AST::Static(::std::move(meta_items), (is_mut ? AST::Static::MUT : AST::Static::STATIC), type, val)
+            );
+        break; }
+
+    // `unsafe fn`
+    // `unsafe trait`
+    // `unsafe impl`
+    case TOK_RWORD_UNSAFE:
+        meta_items.push_back( AST::MetaItem("#UNSAFE") );
+        switch(GET_TOK(tok, lex))
+        {
+        // `unsafe extern fn`
+        case TOK_RWORD_EXTERN: {
+            ::std::string   abi = "C";
+            if(GET_TOK(tok, lex) == TOK_STRING) {
+                abi = mv$(tok.str());
+            }
+            else {
+                lex.putback(tok);
+            }
+            GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            mod.add_function(is_public, tok.str(), Parse_FunctionDefWithCode(lex, abi, ::std::move(meta_items), false));
+            break; }
+        // `unsafe fn`
+        case TOK_RWORD_FN:
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            // - self not allowed, not prototype
+            // TODO: Mark as unsafe
+            mod.add_function(is_public, tok.str(), Parse_FunctionDefWithCode(lex, "rust", ::std::move(meta_items), false));
+            break;
+        // `unsafe trait`
+        case TOK_RWORD_TRAIT: {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            ::std::string name = tok.str();
+            // TODO: Mark as unsafe
+            mod.add_trait(is_public, name, Parse_TraitDef(lex, meta_items));
+            break; }
+        // `unsafe impl`
+        case TOK_RWORD_IMPL:
+            Parse_Impl(lex, mod, mv$(meta_items), true);
+            break;
+        default:
+            throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_TRAIT, TOK_RWORD_IMPL});
+        }
+        break;
+    // `fn`
+    case TOK_RWORD_FN: {
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        ::std::string name = tok.str();
+        // - self not allowed, not prototype
+        mod.add_function(is_public, name, Parse_FunctionDefWithCode(lex, "rust", ::std::move(meta_items), false));
+        break; }
+    // `type`
+    case TOK_RWORD_TYPE: {
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        ::std::string name = tok.str();
+        mod.add_typealias(is_public, name, Parse_TypeAlias(lex, meta_items));
+        break; }
+    // `struct`
+    case TOK_RWORD_STRUCT: {
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        ::std::string name = tok.str();
+        mod.add_struct( is_public, name, Parse_Struct(lex, meta_items) );
+        break; }
+    // `enum`
+    case TOK_RWORD_ENUM: {
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        ::std::string name = tok.str();
+        mod.add_enum(is_public, name, Parse_EnumDef(lex, meta_items));
+        break; }
+    // `impl`
+    case TOK_RWORD_IMPL:
+        Parse_Impl(lex, mod, mv$(meta_items));
+        break;
+    // `trait`
+    case TOK_RWORD_TRAIT: {
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        ::std::string name = tok.str();
+        mod.add_trait(is_public, name, Parse_TraitDef(lex, meta_items));
+        break; }
+
+    case TOK_RWORD_MOD: {
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        ::std::string name = tok.str();
+        
+        // TODO: Remove this copy, by keeping record of macro_use()
+        AST::Module submod(meta_items, name);
+        DEBUG("Sub module '"<<name<<"'");
+        switch( GET_TOK(tok, lex) )
+        {
+        case TOK_BRACE_OPEN: {
+            ::std::string   subpath = ( file_path.back() != '/' ? "-" : file_path + name + "/" );
+            Parse_ModRoot(lex, submod, &modstack, subpath);
+            GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
+            break; }
+        case TOK_SEMICOLON:
+            DEBUG("Mod = " << name << ", curpath = " << file_path);
+            if( nested_module ) {
+                throw ParseError::Generic(lex, "Cannot load module from file within nested context");
+            }
+            else if( file_path.back() != '/' )
+            {
+                throw ParseError::Generic( FMT("Can't load from files outside of mod.rs or crate root") );
+            }
+            else if( submod.attrs().has("path") )
+            {
+                ::std::string newpath_dir  = file_path + submod.attrs().get("path")->string();
+                ::std::ifstream ifs_dir (newpath_dir);
+                if( !ifs_dir.is_open() )
+                {
+                }
+                else
+                {
+                    ::std::string   newdir( newpath_dir.begin(), newpath_dir.begin() + newpath_dir.find_last_of('/') );
+                    Lexer sub_lex(newpath_dir);
+                    Parse_ModRoot(sub_lex, submod, &modstack, newdir);
+                    GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
+                }
+            }
+            else
+            {
+                ::std::string newpath_dir  = file_path + name + "/";
+                ::std::string newpath_file = file_path + name + ".rs";
+                ::std::ifstream ifs_dir (newpath_dir + "mod.rs");
+                ::std::ifstream ifs_file(newpath_file);
+                if( ifs_dir.is_open() && ifs_file.is_open() )
+                {
+                    // Collision
+                }
+                else if( ifs_dir.is_open() )
+                {
+                    // Load from dir
+                    Lexer sub_lex(newpath_dir + "mod.rs");
+                    Parse_ModRoot(sub_lex, submod, &modstack, newpath_dir);
+                    GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
+                }
+                else if( ifs_file.is_open() )
+                {
+                    // Load from file
+                    Lexer sub_lex(newpath_file);
+                    Parse_ModRoot(sub_lex, submod, &modstack, newpath_file);
+                    GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
+                }
+                else
+                {
+                    // Can't find file
+                    throw ParseError::Generic( FMT("Can't find file for " << name << " in '" << file_path << "'") );
+                }
+            }
+            break;
+        default:
+            throw ParseError::Generic("Expected { or ; after module name");
+        }
+        submod.prescan();
+        mod.add_submod(is_public, ::std::move(submod));
+        Macro_SetModule(modstack);
+        break; }
+
+    default:
+        throw ParseError::Unexpected(lex, tok);
+    }
+}
+
+void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, LList<AST::Module*>& modstack, const ::std::string& path)
+{
     Token   tok;
 
     for(;;)
@@ -1528,309 +1800,17 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
             lex.putback(tok);
         }
 
-        // The actual item!
-        switch( GET_TOK(tok, lex) )
-        {
-        // `use ...`
-        case TOK_RWORD_USE:
-            Parse_Use(lex, [&mod,is_public,&path](AST::Path p, std::string s) {
-                    DEBUG(path << " - use " << p << " as '" << s << "'");
-                    mod.add_alias(is_public, mv$(p), s);
-                });
-            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-            break;
-        
-        case TOK_RWORD_EXTERN:
-            switch( GET_TOK(tok, lex) )
-            {
-            // `extern "<ABI>" fn ...`
-            // `extern "<ABI>" { ...`
-            case TOK_STRING: {
-                ::std::string abi = tok.str();
-                switch(GET_TOK(tok, lex))
-                {
-                // `extern "<ABI>" fn ...`
-                case TOK_RWORD_FN:
-                    GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                    mod.add_function(is_public, tok.str(), Parse_FunctionDefWithCode(lex, abi, ::std::move(meta_items), false));
-                    break;
-                // `extern "<ABI>" { ...`
-                case TOK_BRACE_OPEN:
-                    Parse_ExternBlock(lex, mod, ::std::move(abi));
-                    break;
-                default:
-                    throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_BRACE_OPEN});
-                }
-                break; }
-            // `extern fn ...`
-            case TOK_RWORD_FN:
-                GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                mod.add_function(is_public, tok.str(), Parse_FunctionDefWithCode(lex, "C", ::std::move(meta_items), false));
-                break;
-            // `extern { ...`
-            case TOK_BRACE_OPEN:
-                Parse_ExternBlock(lex, mod, "C");
-                break;
-            // `extern crate "crate-name" as crate_name;`
-            // `extern crate crate_name;`
-            case TOK_RWORD_CRATE:
-                Parse_ExternCrate(lex, mod, mv$(meta_items));
-                break;
-            default:
-                throw ParseError::Unexpected(lex, tok, {TOK_STRING, TOK_RWORD_FN, TOK_BRACE_OPEN, TOK_RWORD_CRATE});
-            }
-            break;
-        
-        // `const NAME`
-        // `const fn`
-        case TOK_RWORD_CONST: {
-            switch( GET_TOK(tok, lex) )
-            {
-            case TOK_IDENT: {
-                ::std::string name = tok.str();
-
-                GET_CHECK_TOK(tok, lex, TOK_COLON);
-                TypeRef type = Parse_Type(lex);
-                GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-                AST::Expr val = Parse_Expr(lex, true);
-                GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-                mod.add_static(is_public, name, AST::Static(::std::move(meta_items), AST::Static::CONST, type, val));
-                break; }
-            case TOK_RWORD_UNSAFE:
-                GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
-                GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                mod.add_function(is_public, tok.str(), Parse_FunctionDefWithCode(lex, "rust", ::std::move(meta_items), false));
-                break;
-            case TOK_RWORD_FN: {
-                GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                // - self not allowed, not prototype
-                // TODO: Mark as const
-                mod.add_function(is_public, tok.str(), Parse_FunctionDefWithCode(lex, "rust", ::std::move(meta_items), false));
-                break; }
-            default:
-                throw ParseError::Unexpected(lex, tok, {TOK_IDENT, TOK_RWORD_FN});
-            }
-            break; }
-        // `static NAME`
-        // `static mut NAME`
-        case TOK_RWORD_STATIC: {
-            tok = lex.getToken();
-            bool is_mut = false;
-            if(tok.type() == TOK_RWORD_MUT) {
-                is_mut = true;
-                tok = lex.getToken();
-            }
-            CHECK_TOK(tok, TOK_IDENT);
-            ::std::string name = tok.str();
-
-            GET_CHECK_TOK(tok, lex, TOK_COLON);
-            TypeRef type = Parse_Type(lex);
-
-            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-
-            AST::Expr val = Parse_Expr(lex, true);
-
-            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-            mod.add_static(is_public, name,
-                AST::Static(::std::move(meta_items), (is_mut ? AST::Static::MUT : AST::Static::STATIC), type, val)
-                );
-            break; }
-
-        // `unsafe fn`
-        // `unsafe trait`
-        // `unsafe impl`
-        case TOK_RWORD_UNSAFE:
-            meta_items.push_back( AST::MetaItem("#UNSAFE") );
-            switch(GET_TOK(tok, lex))
-            {
-            // `unsafe extern fn`
-            case TOK_RWORD_EXTERN: {
-                ::std::string   abi = "C";
-                if(GET_TOK(tok, lex) == TOK_STRING) {
-                    abi = mv$(tok.str());
-                }
-                else {
-                    lex.putback(tok);
-                }
-                GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
-                GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                mod.add_function(is_public, tok.str(), Parse_FunctionDefWithCode(lex, abi, ::std::move(meta_items), false));
-                break; }
-            // `unsafe fn`
-            case TOK_RWORD_FN:
-                GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                // - self not allowed, not prototype
-                // TODO: Mark as unsafe
-                mod.add_function(is_public, tok.str(), Parse_FunctionDefWithCode(lex, "rust", ::std::move(meta_items), false));
-                break;
-            // `unsafe trait`
-            case TOK_RWORD_TRAIT: {
-                GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                ::std::string name = tok.str();
-                // TODO: Mark as unsafe
-                mod.add_trait(is_public, name, Parse_TraitDef(lex, meta_items));
-                break; }
-            // `unsafe impl`
-            case TOK_RWORD_IMPL:
-                Parse_Impl(lex, mod, mv$(meta_items), true);
-                break;
-            default:
-                throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_TRAIT, TOK_RWORD_IMPL});
-            }
-            break;
-        // `fn`
-        case TOK_RWORD_FN: {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            ::std::string name = tok.str();
-            // - self not allowed, not prototype
-            mod.add_function(is_public, name, Parse_FunctionDefWithCode(lex, "rust", ::std::move(meta_items), false));
-            break; }
-        // `type`
-        case TOK_RWORD_TYPE: {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            ::std::string name = tok.str();
-            mod.add_typealias(is_public, name, Parse_TypeAlias(lex, meta_items));
-            break; }
-        // `struct`
-        case TOK_RWORD_STRUCT: {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            ::std::string name = tok.str();
-            mod.add_struct( is_public, name, Parse_Struct(lex, meta_items) );
-            break; }
-        // `enum`
-        case TOK_RWORD_ENUM: {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            ::std::string name = tok.str();
-            mod.add_enum(is_public, name, Parse_EnumDef(lex, meta_items));
-            break; }
-        // `impl`
-        case TOK_RWORD_IMPL:
-            Parse_Impl(lex, mod, mv$(meta_items));
-            break;
-        // `trait`
-        case TOK_RWORD_TRAIT: {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            ::std::string name = tok.str();
-            mod.add_trait(is_public, name, Parse_TraitDef(lex, meta_items));
-            break; }
-
-        case TOK_RWORD_MOD: {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            ::std::string name = tok.str();
-            
-            // TODO: Remove this copy, by keeping record of macro_use()
-            AST::Module submod(meta_items, name);
-            DEBUG("Sub module '"<<name<<"'");
-            switch( GET_TOK(tok, lex) )
-            {
-            case TOK_BRACE_OPEN: {
-                ::std::string   subpath = ( path.back() != '/' ? "-" : path + name + "/" );
-                Parse_ModRoot(lex, crate, submod, &modstack, subpath);
-                GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
-                break; }
-            case TOK_SEMICOLON:
-                DEBUG("Mod = " << name << ", curpath = " << path);
-                if( nested_module ) {
-                    throw ParseError::Generic(lex, "Cannot load module from file within nested context");
-                }
-                else if( path.back() != '/' )
-                {
-                    throw ParseError::Generic( FMT("Can't load from files outside of mod.rs or crate root") );
-                }
-                else if( submod.attrs().has("path") )
-                {
-                    ::std::string newpath_dir  = path + submod.attrs().get("path")->string();
-                    ::std::ifstream ifs_dir (newpath_dir);
-                    if( !ifs_dir.is_open() )
-                    {
-                    }
-                    else
-                    {
-                        ::std::string   newdir( newpath_dir.begin(), newpath_dir.begin() + newpath_dir.find_last_of('/') );
-                        Lexer sub_lex(newpath_dir);
-                        Parse_ModRoot(sub_lex, crate, submod, &modstack, newdir);
-                        GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
-                    }
-                }
-                else
-                {
-                    ::std::string newpath_dir  = path + name + "/";
-                    ::std::string newpath_file = path + name + ".rs";
-                    ::std::ifstream ifs_dir (newpath_dir + "mod.rs");
-                    ::std::ifstream ifs_file(newpath_file);
-                    if( ifs_dir.is_open() && ifs_file.is_open() )
-                    {
-                        // Collision
-                    }
-                    else if( ifs_dir.is_open() )
-                    {
-                        // Load from dir
-                        Lexer sub_lex(newpath_dir + "mod.rs");
-                        Parse_ModRoot(sub_lex, crate, submod, &modstack, newpath_dir);
-                        GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
-                    }
-                    else if( ifs_file.is_open() )
-                    {
-                        // Load from file
-                        Lexer sub_lex(newpath_file);
-                        Parse_ModRoot(sub_lex, crate, submod, &modstack, newpath_file);
-                        GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
-                    }
-                    else
-                    {
-                        // Can't find file
-                        throw ParseError::Generic( FMT("Can't find file for " << name << " in '" << path << "'") );
-                    }
-                }
-                break;
-            default:
-                throw ParseError::Generic("Expected { or ; after module name");
-            }
-            submod.prescan();
-            mod.add_submod(is_public, ::std::move(submod));
-            Macro_SetModule(modstack);
-        
-            // import macros
-            {
-                auto at = meta_items.get("macro_use");
-                if( at )
-                {
-                    if( at->has_sub_items() )
-                    {
-                        throw ParseError::Todo("selective macro_use");
-                    }
-                    else
-                    {
-                        mod.add_macro_import(crate, name, "");
-                    }
-                }
-            }
-            break; }
-
-        default:
-            throw ParseError::Unexpected(lex, tok);
-        }
+        Parse_Mod_Item(lex, modstack, path,  mod, is_public, mv$(meta_items));
     }
 }
 
-void Parse_ModRoot(TokenStream& lex, AST::Crate& crate, AST::Module& mod, LList<AST::Module*> *prev_modstack, const ::std::string& path)
+void Parse_ModRoot(TokenStream& lex, AST::Module& mod, LList<AST::Module*> *prev_modstack, const ::std::string& path)
 {
     TRACE_FUNCTION;
     LList<AST::Module*>  modstack(prev_modstack, &mod);
     Macro_SetModule(modstack);
 
     Token   tok;
-
-    if( crate.m_load_std )
-    {
-        // Import the prelude
-        AST::Path   prelude_path = AST::Path( "std", { AST::PathNode("prelude", {}), AST::PathNode("v1", {}) } );
-        Parse_Use_Wildcard( mv$(prelude_path),
-            [&mod](AST::Path p, std::string s) {
-                mod.add_alias(false, p, s);
-                }
-            );
-    }
 
     // Attributes on module/crate (will continue loop)
     while( GET_TOK(tok, lex) == TOK_CATTR_OPEN )
@@ -1844,7 +1824,7 @@ void Parse_ModRoot(TokenStream& lex, AST::Crate& crate, AST::Module& mod, LList<
 
     // TODO: Iterate attributes, and check for handlers on each
     
-    Parse_ModRoot_Items(lex, crate, mod, modstack, path);
+    Parse_ModRoot_Items(lex, mod, modstack, path);
 }
 
 AST::Crate Parse_Crate(::std::string mainfile)
@@ -1884,7 +1864,7 @@ AST::Crate Parse_Crate(::std::string mainfile)
         }
     }
     
-    Parse_ModRoot(lex, crate, rootmod, NULL, mainpath);
+    Parse_ModRoot(lex, rootmod, NULL, mainpath);
     
     return crate;
 }

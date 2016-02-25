@@ -603,12 +603,6 @@ void Module::resolve_macro_import(const Crate& crate, const ::std::string& modna
     throw ::std::runtime_error( FMT("Could not find sub-module '" << modname << "' for macro import") );
 }
 
-void Module::add_macro_import(const Crate& crate, ::std::string modname, ::std::string macro_name)
-{
-    resolve_macro_import(crate, modname, macro_name);
-    m_macro_imports.insert( ::std::make_pair( move(modname), move(macro_name) ) );
-}
-
 void Module::iterate_functions(fcn_visitor_t *visitor, const Crate& crate)
 {
     for( auto& fcn_item : this->m_functions )
