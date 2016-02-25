@@ -47,7 +47,7 @@ extern void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::s
 extern AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems meta_items);
 extern AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems meta_items);
 extern AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items);
-extern void Parse_Impl(TokenStream& lex, AST::Module& mod, bool is_unsafe=false);
+extern void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool is_unsafe=false);
 extern void Parse_MacroRules(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_items);
 extern void Parse_ExternCrate(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_items);
 

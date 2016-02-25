@@ -776,10 +776,10 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
     }
 }
 
-void Parse_Impl(TokenStream& lex, AST::Module& mod, bool is_unsafe/*=false*/);
+void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool is_unsafe/*=false*/);
 void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl);
 
-void Parse_Impl(TokenStream& lex, AST::Module& mod, bool is_unsafe/*=false*/)
+void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool is_unsafe/*=false*/)
 {
     TRACE_FUNCTION;
     Token   tok;
@@ -858,8 +858,15 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, bool is_unsafe/*=false*/)
     }
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
 
+    while( LOOK_AHEAD(lex) == TOK_CATTR_OPEN )
+    {
+        GET_TOK(tok, lex);
+        attrs.push_back( Parse_MetaItem(lex) );
+        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+    }
+    
     // TODO: Pass #[] attrs to impl blocks
-    AST::Impl   impl( AST::MetaItems(), ::std::move(params), ::std::move(impl_type), ::std::move(trait_path) );
+    AST::Impl   impl( mv$(attrs), ::std::move(params), ::std::move(impl_type), ::std::move(trait_path) );
 
     // A sequence of method implementations
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
@@ -1665,7 +1672,7 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
                 break; }
             // `unsafe impl`
             case TOK_RWORD_IMPL:
-                Parse_Impl(lex, mod, true);
+                Parse_Impl(lex, mod, mv$(meta_items), true);
                 break;
             default:
                 throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_TRAIT, TOK_RWORD_IMPL});
@@ -1698,7 +1705,7 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Crate& crate, AST::Module& mod, 
             break; }
         // `impl`
         case TOK_RWORD_IMPL:
-            Parse_Impl(lex, mod);
+            Parse_Impl(lex, mod, mv$(meta_items));
             break;
         // `trait`
         case TOK_RWORD_TRAIT: {
