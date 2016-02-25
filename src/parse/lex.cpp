@@ -568,33 +568,47 @@ Token Lexer::getTokenInt_RawString(bool is_byte)
     }
     if( hashes == 0 && ch != '"' ) {
         this->ungetc();
+        assert( !is_byte );
         return this->getTokenInt_Identifier('r');
     }
     char terminator = ch;
     ::std::string   val;
 
+    unsigned terminating_hashes = 0;
     for(;;)
     {
         ch = this->getc();
-        if( ch == terminator ) {
-            for(unsigned i = 0; i < hashes; i ++)
-            {
-                ch = this->getc();
-                if( ch != '#' ) {
-                    val += terminator;
-                    while( i -- )
-                        val += '#';
-                    break ;
+        if( terminating_hashes > 0 )
+        {
+            assert(terminating_hashes > 0);
+            if( ch != '#' ) {
+                val += terminator;
+                while( terminating_hashes < hashes ) {
+                    val += '#';
+                }
+                terminating_hashes = 0;
+            }
+            else {
+                terminating_hashes -= 1;
+                if( terminating_hashes == 0 ) {
+                    break;
                 }
             }
-            if( hashes == 0 || ch == '#' ) {
-                return Token(is_byte ? TOK_BYTESTRING : TOK_STRING, val);
+        }
+        else
+        {
+            if( ch == terminator ) {
+                if( hashes == 0 ) {
+                    break;
+                }
+                terminating_hashes = hashes;
+            }
+            else {
+                val += ch;
             }
         }
-        else {
-            val += ch;
-        }
     }
+    return Token(is_byte ? TOK_BYTESTRING : TOK_STRING, val);
 }
 Token Lexer::getTokenInt_Identifier(char leader)
 {
