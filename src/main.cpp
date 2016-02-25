@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
             return Parse_Crate(params.infile);
             });
 
-        if( params.emit_flags == ProgramParams::STAGE_PARSE ) {
+        if( params.last_stage == ProgramParams::STAGE_PARSE ) {
             return 0;
         }
     
@@ -98,7 +98,7 @@ int main(int argc, char *argv[])
             Dump_Rust( FMT(params.outfile << "_0_pp.rs").c_str(), crate );
             });
 
-        if( params.emit_flags == ProgramParams::STAGE_EXPAND ) {
+        if( params.last_stage == ProgramParams::STAGE_EXPAND ) {
             return 0;
         }
         
