@@ -698,6 +698,15 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems meta_items)
                     GET_TOK(tok, lex);
                     break;
                 }
+                
+                AST::MetaItems  field_attrs;
+                while( LOOK_AHEAD(lex) == TOK_ATTR_OPEN )
+                {
+                    GET_TOK(tok, lex);
+                    field_attrs.push_back( Parse_MetaItem(lex) );
+                    GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+                }
+                
                 types.push_back( Parse_Type(lex) );
             } while( GET_TOK(tok, lex) == TOK_COMMA );
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
@@ -714,10 +723,20 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems meta_items)
                     GET_TOK(tok, lex);
                     break;
                 }
+                
+                AST::MetaItems  field_attrs;
+                while( LOOK_AHEAD(lex) == TOK_ATTR_OPEN )
+                {
+                    GET_TOK(tok, lex);
+                    field_attrs.push_back( Parse_MetaItem(lex) );
+                    GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+                }
+                
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 auto name = mv$(tok.str());
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
                 auto ty = Parse_Type(lex);
+                // TODO: Field attributes
                 fields.push_back( ::AST::Item<TypeRef>(mv$(name), mv$(ty), true) );
             } while( GET_TOK(tok, lex) == TOK_COMMA );
             CHECK_TOK(tok, TOK_BRACE_CLOSE);
