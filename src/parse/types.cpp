@@ -223,6 +223,11 @@ TypeRef Parse_Type_Fn(TokenStream& lex)
     GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
     while( LOOK_AHEAD(lex) != TOK_PAREN_CLOSE )
     {
+        // Handle `ident: `
+        if( lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_COLON ) {
+            GET_TOK(tok, lex);
+            GET_TOK(tok, lex);
+        }
         args.push_back( Parse_Type(lex) );
         if( GET_TOK(tok, lex) != TOK_COMMA ) {
             lex.putback(tok);
