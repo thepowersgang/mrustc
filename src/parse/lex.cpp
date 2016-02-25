@@ -325,56 +325,32 @@ Token Lexer::getTokenInt()
                     }
                 }
 
-                if(issym(ch)) {
-                    // Unsigned
-                    ::std::string   suffix;
-                    while( issym(ch) )
-                    {
-                        suffix.push_back(ch);
-                        ch = this->getc();
-                    }
-                    this->ungetc();
-                    
-                    if(0)   ;
-                    else if(suffix == "i8")  num_type = CORETYPE_I8;
-                    else if(suffix == "i16") num_type = CORETYPE_I16;
-                    else if(suffix == "i32") num_type = CORETYPE_I32;
-                    else if(suffix == "i64") num_type = CORETYPE_I64;
-                    else if(suffix == "isize") num_type = CORETYPE_INT;
-                    else if(suffix == "u8")  num_type = CORETYPE_U8;
-                    else if(suffix == "u16") num_type = CORETYPE_U16;
-                    else if(suffix == "u32") num_type = CORETYPE_U32;
-                    else if(suffix == "u64") num_type = CORETYPE_U64;
-                    else if(suffix == "usize") num_type = CORETYPE_UINT;
-                    else if(suffix == "f32") num_type = CORETYPE_F32;
-                    else if(suffix == "f64") num_type = CORETYPE_F64;
-                    else
-                        throw ParseError::Generic(*this, FMT("Unknown integer suffix '" << suffix << "'"));
-                    return Token(val, num_type);
-                }
-                else if( ch == '.' ) {
+                if( ch == 'e' || ch == 'E' || ch == '.' ) {
                     if( num_mode != DEC )
                         throw ParseError::Todo("Non-decimal floats");
                     
-                    ch = this->getc();
-                    
-                    // Double/Triple Dot
-                    if( ch == '.' ) {
-                        if( this->getc() == '.') {
-                            this->m_next_token = Token(TOK_TRIPLE_DOT);
-                        }
-                        else {
-                            this->ungetc();
-                            this->m_next_token = Token(TOK_DOUBLE_DOT);
-                        }
-                        return Token(val, CORETYPE_ANY);
-                    }
-                    // Single dot
-                    else if( !isdigit(ch) )
+                    if( ch == '.' )
                     {
-                        this->ungetc();
-                        this->m_next_token = Token(TOK_DOT);
-                        return Token(val, CORETYPE_ANY);
+                        ch = this->getc();
+                        
+                        // Double/Triple Dot
+                        if( ch == '.' ) {
+                            if( this->getc() == '.') {
+                                this->m_next_token = Token(TOK_TRIPLE_DOT);
+                            }
+                            else {
+                                this->ungetc();
+                                this->m_next_token = Token(TOK_DOUBLE_DOT);
+                            }
+                            return Token(val, CORETYPE_ANY);
+                        }
+                        // Single dot
+                        else if( !isdigit(ch) )
+                        {
+                            this->ungetc();
+                            this->m_next_token = Token(TOK_DOT);
+                            return Token(val, CORETYPE_ANY);
+                        }
                     }
                     
                     this->ungetc();
@@ -401,6 +377,33 @@ Token Lexer::getTokenInt()
                     }
                     return Token( fval, num_type);
 
+                }
+                else if( issym(ch)) {
+                    // Unsigned
+                    ::std::string   suffix;
+                    while( issym(ch) )
+                    {
+                        suffix.push_back(ch);
+                        ch = this->getc();
+                    }
+                    this->ungetc();
+                    
+                    if(0)   ;
+                    else if(suffix == "i8")  num_type = CORETYPE_I8;
+                    else if(suffix == "i16") num_type = CORETYPE_I16;
+                    else if(suffix == "i32") num_type = CORETYPE_I32;
+                    else if(suffix == "i64") num_type = CORETYPE_I64;
+                    else if(suffix == "isize") num_type = CORETYPE_INT;
+                    else if(suffix == "u8")  num_type = CORETYPE_U8;
+                    else if(suffix == "u16") num_type = CORETYPE_U16;
+                    else if(suffix == "u32") num_type = CORETYPE_U32;
+                    else if(suffix == "u64") num_type = CORETYPE_U64;
+                    else if(suffix == "usize") num_type = CORETYPE_UINT;
+                    else if(suffix == "f32") num_type = CORETYPE_F32;
+                    else if(suffix == "f64") num_type = CORETYPE_F64;
+                    else
+                        throw ParseError::Generic(*this, FMT("Unknown integer suffix '" << suffix << "'"));
+                    return Token(val, num_type);
                 }
                 else {
                     this->ungetc();
