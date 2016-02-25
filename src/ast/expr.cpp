@@ -7,15 +7,19 @@ namespace AST {
 
 void Expr::visit_nodes(NodeVisitor& v)
 {
-	assert(!!m_node);
-    m_node->visit(v);
+    if( m_node )
+    {
+        m_node->visit(v);
+    }
 }
 void Expr::visit_nodes(NodeVisitor& v) const
 {
-	assert(!!m_node);
-	assert(v.is_const());
-    //const_cast<const ExprNode*>(m_node.get())->visit(v);
-	m_node->visit(v);
+    if( m_node )
+    {
+        assert(v.is_const());
+        //const_cast<const ExprNode*>(m_node.get())->visit(v);
+        m_node->visit(v);
+    }
 }
 ::std::ostream& operator<<(::std::ostream& os, const Expr& pat)
 {

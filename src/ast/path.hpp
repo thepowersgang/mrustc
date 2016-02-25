@@ -114,6 +114,7 @@ public:
             ::std::vector<PathNode> nodes;
             ) ),
         (Super, (   // Parent-relative
+            unsigned int count;
             ::std::vector<PathNode> nodes;
             ) ),
         (Absolute, (    // Absolute
@@ -184,8 +185,8 @@ public:
     {}
     // SUPER
     struct TagSuper {};
-    Path(TagSuper, ::std::vector<PathNode> nodes):
-        m_class( Class::make_Super({nodes: nodes}) )
+    Path(TagSuper, unsigned int count, ::std::vector<PathNode> nodes):
+        m_class( Class::make_Super({count: count, nodes: mv$(nodes)}) )
     {}
     
     void set_crate(::std::string crate) {

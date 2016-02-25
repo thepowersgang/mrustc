@@ -171,6 +171,10 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
     ::std::map< ::std::string, TypeRef> assoc_bounds;
     ::std::vector<unsigned int> int_args;
     do {
+        if( LOOK_AHEAD(lex) == TOK_GT || LOOK_AHEAD(lex) == TOK_DOUBLE_GT ) {
+            GET_TOK(tok, lex);
+            break;
+        }
         switch(GET_TOK(tok, lex))
         {
         case TOK_LIFETIME:

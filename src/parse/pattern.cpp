@@ -16,6 +16,7 @@ using AST::ExprNode;
 
 
 ::std::vector<AST::Pattern> Parse_PatternList(TokenStream& lex, bool is_refutable);
+AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable);
 AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path, bool is_refutable);
 AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable);
 AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refutable);
@@ -198,9 +199,9 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
     case TOK_BYTESTRING:
         return AST::Pattern( AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_String, tok.str()) );
     case TOK_PAREN_OPEN:
-        return AST::Pattern(AST::Pattern::TagTuple(), Parse_PatternList(lex, is_refutable));
+        return AST::Pattern( AST::Pattern::TagTuple(), Parse_PatternList(lex, is_refutable) );
     case TOK_SQUARE_OPEN:
-        throw ParseError::Todo(lex, "array patterns");
+        return Parse_PatternReal_Slice(lex, is_refutable);
     default:
         throw ParseError::Unexpected(lex, tok);
     }
@@ -219,6 +220,49 @@ AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path, bool is_re
         lex.putback(tok);
         return AST::Pattern(AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_NamedValue, ::std::move(path)));
     }
+}
+
+AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
+{
+    auto sp = lex.start_span();
+    Token   tok;
+    
+    auto rv = ::AST::Pattern( AST::Pattern::TagSlice() );
+    auto& rv_array = rv.data().as_Slice();
+    
+    bool is_trailing = false;
+    while(GET_TOK(tok, lex) != TOK_SQUARE_CLOSE)
+    {
+        if( tok.type() == TOK_IDENT && lex.lookahead(1) == TOK_DOUBLE_DOT) {
+            if(is_trailing)
+                ERROR(lex.end_span(sp), E0000, "Multiple instances of .. in a slice pattern");
+            rv_array.extra_bind = mv$(tok.str());
+            is_trailing = true;
+            
+            GET_TOK(tok, lex);  // TOK_DOUBLE_DOT
+        }
+        else if( tok.type() == TOK_DOUBLE_DOT ) {
+            if(is_trailing)
+                ERROR(lex.end_span(sp), E0000, "Multiple instances of .. in a slice pattern");
+            rv_array.extra_bind = "_";
+            is_trailing = true;
+        }
+        else {
+            lex.putback(tok);
+            if(is_trailing) {
+                rv_array.trailing.push_back( Parse_Pattern(lex, is_refutable) );
+            }
+            else {
+                rv_array.leading.push_back( Parse_Pattern(lex, is_refutable) );
+            }
+        }
+        
+        if( GET_TOK(tok, lex) != TOK_COMMA )
+            break;
+    }
+    CHECK_TOK(tok, TOK_SQUARE_CLOSE);
+    
+    return rv;
 }
 
 ::std::vector<AST::Pattern> Parse_PatternList(TokenStream& lex, bool is_refutable)

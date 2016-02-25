@@ -797,7 +797,31 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
             m_os << ",";
         }
         m_os << ")";
-        })
+        }),
+    (Slice,
+        m_os << "[";
+        bool needs_comma = false;
+        if(v.leading.size()) {
+            m_os << v.leading;
+            needs_comma = true;
+        }
+        if(v.extra_bind.size() > 0) {
+            if( needs_comma ) {
+                m_os << ", ";
+            }
+            if(v.extra_bind != "_")
+                m_os << v.extra_bind;
+            m_os << "..";
+            needs_comma = true;
+        }
+        if(v.trailing.size()) {
+            if( needs_comma ) {
+                m_os << ", ";
+            }
+            m_os << v.trailing;
+        }
+        m_os << "]";
+        )
     )
 }
 

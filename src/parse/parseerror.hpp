@@ -32,7 +32,7 @@ public:
 
 };
 
-#define ASSERT(lex, cnd)    do { if( !(cnd) ) throw CompileError::BugCheck(lex, "Assertion failed: "#cnd); } while(0)
+#define ASSERT(lex, cnd)    do { if( !(cnd) ) throw CompileError::BugCheck(lex, "Assertion failed: " __FILE__ " - " #cnd); } while(0)
 
 }
 

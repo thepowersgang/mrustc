@@ -43,6 +43,30 @@ namespace AST {
         ),
     (Struct,
         os << ent.path << " {" << ent.sub_patterns << "}";
+        ),
+    (Slice,
+        os << "[";
+        bool needs_comma = false;
+        if(ent.leading.size()) {
+            os << ent.leading;
+            needs_comma = true;
+        }
+        if(ent.extra_bind.size() > 0) {
+            if( needs_comma ) {
+                os << ", ";
+            }
+            if(ent.extra_bind != "_")
+                os << ent.extra_bind;
+            os << "..";
+            needs_comma = true;
+        }
+        if(ent.trailing.size()) {
+            if( needs_comma ) {
+                os << ", ";
+            }
+            os << ent.trailing;
+        }
+        os << "]";
         )
     )
     os << ")";
@@ -89,6 +113,11 @@ SERIALISE_TYPE(Pattern::, "Pattern", {
     (Struct,
         s << e.path;
         s << e.sub_patterns;
+        ),
+    (Slice,
+        s << e.leading;
+        s << e.extra_bind;
+        s << e.trailing;
         )
     )
 },{
@@ -124,6 +153,11 @@ SERIALISE_TYPE(Pattern::, "Pattern", {
     _D(Struct,
         s.item( ent.path );
         s.item( ent.sub_patterns );
+        )
+    _D(Slice,
+        s.item( ent.leading );
+        s.item( ent.extra_bind );
+        s.item( ent.trailing );
         )
     }
 });

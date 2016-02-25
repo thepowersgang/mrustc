@@ -28,7 +28,8 @@ public:
         (Value,     (unique_ptr<ExprNode> start; unique_ptr<ExprNode> end;) ),
         (Tuple,     (::std::vector<Pattern> sub_patterns;) ),
         (StructTuple, (Path path; ::std::vector<Pattern> sub_patterns;) ),
-        (Struct,    (Path path; ::std::vector< ::std::pair< ::std::string,Pattern> > sub_patterns;) )
+        (Struct,    (Path path; ::std::vector< ::std::pair< ::std::string,Pattern> > sub_patterns;) ),
+        (Slice,     (::std::vector<Pattern> leading; ::std::string extra_bind; ::std::vector<Pattern> trailing;) )
         );
 private:
     ::std::string   m_binding;
@@ -92,6 +93,11 @@ public:
     struct TagStruct {};
     Pattern(TagStruct, Path path, ::std::vector< ::std::pair< ::std::string,Pattern> > sub_patterns):
         m_data( Data::make_Struct( { ::std::move(path), ::std::move(sub_patterns) } ) ) 
+    {}
+
+    struct TagSlice {};
+    Pattern(TagSlice):
+        m_data( Data::make_Slice( {} ) )
     {}
     
     // Mutators

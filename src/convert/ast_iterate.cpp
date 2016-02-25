@@ -237,7 +237,37 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
                 )
             )
         }
-        })
+        }),
+    (Slice,
+        TypeRef null_type;
+        const auto* inner_type = &null_type;
+        if( !type_hint.is_wildcard() )
+        {
+            TU_MATCH_DEF( TypeData, (type_hint.m_data), (v),
+            (
+                ERROR(Span(), E0000, "Slice pattern on non-slice/array");
+                ),
+            (Array,
+                inner_type = v.inner.get();
+                ),
+            (Borrow,
+                if( v.inner->is_wildcard() ) {
+                }
+                else if( v.inner->m_data.is_Array() ) {
+                    inner_type = v.inner->m_data.as_Array().inner.get();
+                }
+                else {
+                    // TODO: Deref more?
+                    ERROR(Span(), E0000, "Slice pattern on non-slice/array");
+                }
+                )
+            )
+        }
+        for( auto& sp : v.leading )
+            handle_pattern(sp, *inner_type);
+        for( auto& sp : v.trailing )
+            handle_pattern(sp, *inner_type);
+        )
     )
     // Extract bindings and add to namespace
     if( pat.binding().size() > 0 )
@@ -289,7 +319,10 @@ void CASTIterator::handle_module(AST::Path path, AST::Module& mod)
     {
         DEBUG("handling static " << stat.name);
         handle_type(stat.data.type());
-        handle_expr(stat.data.value().node());
+        if( stat.data.value().is_valid() )
+        {
+            handle_expr(stat.data.value().node());
+        }
     }
     
     for( auto& fcn : mod.functions() )

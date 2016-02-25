@@ -110,7 +110,7 @@ AST::Path::Path(const Path& x):
         m_class = Class::make_Self({nodes: ent.nodes});
         ),
     (Super,
-        m_class = Class::make_Super({nodes: ent.nodes});
+        m_class = Class::make_Super({count: ent.count, nodes: ent.nodes});
         ),
     (Absolute,
         m_class = Class::make_Absolute({nodes: ent.nodes});

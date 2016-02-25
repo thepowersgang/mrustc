@@ -113,8 +113,10 @@ static const Deriver* find_impl(const ::std::string& trait_name)
 template<typename T>
 static void derive_item(AST::Module& mod, const AST::MetaItem& attr, const AST::Path& path, const T& item)
 {
-    if( !attr.has_sub_items() )
-        throw CompileError::Generic("#[derive()] requires a list of known traits to derive");
+    if( !attr.has_sub_items() ) {
+        //throw CompileError::Generic("#[derive()] requires a list of known traits to derive");
+        return ;
+    }
     
     DEBUG("path = " << path);
     bool    fail = false;

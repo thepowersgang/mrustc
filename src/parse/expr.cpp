@@ -64,6 +64,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
     
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
+        DEBUG("tok = " << tok);
         AST::MetaItems  item_attrs;
         while( tok.type() == TOK_ATTR_OPEN )
         {
@@ -202,8 +203,12 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
             lex.putback(tok);
             bool    expect_end = false;
             nodes.push_back(Parse_ExprBlockLine(lex, &expect_end));
-            // TODO: VVV
-            //nodes.back().set_attrs( item_attrs );
+            if( nodes.back() ) {
+                nodes.back()->set_attrs( mv$(item_attrs) );
+            }
+            else {
+                // TODO: Error if attribute on void expression?
+            }
             // Set to TRUE if there was no semicolon after a statement
             if( expect_end )
             {
@@ -477,13 +482,14 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
     TRACE_FUNCTION;
     Token tok;
     
+    CLEAR_PARSE_FLAG(lex, disallow_struct_literal);
     // 1. Get expression
     ExprNodeP   switch_val;
     {
         SET_PARSE_FLAG(lex, disallow_struct_literal);
         switch_val = Parse_Expr1(lex);
     }
-    ASSERT(lex, !CHECK_PARSE_FLAG(lex, disallow_struct_literal) );
+    //ASSERT(lex, !CHECK_PARSE_FLAG(lex, disallow_struct_literal) );
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
     
     ::std::vector< AST::ExprNode_Match::Arm >    arms;
@@ -586,6 +592,9 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
         }
         return NEWNODE( AST::ExprNode_Flow, type, lifetime, ::std::move(val) );
         }
+    case TOK_BRACE_OPEN:
+        lex.putback(tok);
+        return Parse_ExprBlockNode(lex);
     default:
         lex.putback(tok);
         return Parse_Expr0(lex);
@@ -605,6 +614,10 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
     {
         lex.putback(tok);
         do {
+            if( LOOK_AHEAD(lex) == TOK_PAREN_CLOSE ) {
+                GET_TOK(tok, lex);
+                break;
+            }
             rv.push_back( Parse_Stmt(lex) );
         } while( GET_TOK(tok, lex) == TOK_COMMA );
         CHECK_TOK(tok, TOK_PAREN_CLOSE);
@@ -1077,7 +1090,13 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     case TOK_RWORD_SUPER:
         {
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-            path = AST::Path(AST::Path::TagSuper(), Parse_PathNodes(lex, PATH_GENERIC_EXPR));
+            unsigned int count = 1;
+            while( LOOK_AHEAD(lex) == TOK_RWORD_SUPER ) {
+                count += 1;
+                GET_TOK(tok, lex);
+                GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+            }
+            path = AST::Path(AST::Path::TagSuper(), count, Parse_PathNodes(lex, PATH_GENERIC_EXPR));
         }
         if(0)
     case TOK_IDENT:
