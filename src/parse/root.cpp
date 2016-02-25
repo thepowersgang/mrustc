@@ -1024,17 +1024,28 @@ void Parse_Use_Set(TokenStream& lex, const AST::Path& base_path, ::std::function
 
     Token   tok;
     do {
-        
+        AST::Path   path;
+        ::std::string   name;
         if( GET_TOK(tok, lex) == TOK_RWORD_SELF ) {
-            fcn(base_path, base_path[base_path.size()-1].name());
+            path = ::AST::Path(base_path);
+            name = base_path[base_path.size()-1].name();
         }
         else if( tok.type() == TOK_BRACE_CLOSE ) {
             break ;
         }
         else {
             CHECK_TOK(tok, TOK_IDENT);
-            fcn(base_path + AST::PathNode(tok.str(), {}), tok.str());
+            path = base_path + AST::PathNode(tok.str(), {});
+            name = mv$(tok.str());
         }
+        if( GET_TOK(tok, lex) == TOK_RWORD_AS ) {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            name = mv$(tok.str());
+        }
+        else {
+            lex.putback(tok);
+        }
+        fcn(mv$(path), mv$(name));
     } while( GET_TOK(tok, lex) == TOK_COMMA );
     lex.putback(tok);
 }
