@@ -192,7 +192,14 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
         }
         else
         {
-            throw ::std::runtime_error("TODO: Struct typecheck/iterate");
+            auto& path = type_hint.m_data.as_Path().path;
+            if( path.is_bound() ) {
+                throw ::std::runtime_error("TODO: Typecheck/iterate struct pattern (with known type)");
+            }
+            else {
+                for( auto& sp : v.sub_patterns )
+                    handle_pattern(sp.second, (const TypeRef&)TypeRef());
+            }
         }
         }),
     (StructTuple, {
