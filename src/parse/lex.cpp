@@ -440,9 +440,17 @@ Token Lexer::getTokenInt()
                         ::std::string str;
                         while( (ch = this->getc()) != '"' )
                         {
-                            if( ch == '\\' )
-                                ch = this->parseEscape('"');
-                            str.push_back(ch);
+                            if( ch == '\\' ) {
+                                auto v = this->parseEscape('"');
+                                if( v != ~0u ) {
+                                    if( v > 256 )
+                                        throw ParseError::Generic(*this, "Value out of range for byte literal");
+                                    str += (char)v;
+                                }
+                            }
+                            else {
+                                str.push_back(ch);
+                            }
                         }
                         return Token(TOK_BYTESTRING, str);
                     }
@@ -745,7 +753,11 @@ uint32_t Lexer::parseEscape(char enclosing)
         m_line ++;
         while( isspace(ch) )
             ch = this->getc();
-        return ch;
+        this->ungetc();
+        if( ch == enclosing )
+            return ~0;
+        else
+            return ch;
     default:
         throw ParseError::Todo( FMT("Unknown escape sequence \\" << ch) );
     }
@@ -1056,6 +1068,7 @@ SERIALISE_TYPE_S(Token, {
     switch(tok.type())
     {
     case TOK_STRING:
+    case TOK_BYTESTRING:
     case TOK_IDENT:
     case TOK_MACRO:
     case TOK_LIFETIME:

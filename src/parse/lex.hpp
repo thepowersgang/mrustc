@@ -174,7 +174,14 @@ public:
 
 struct Codepoint {
     uint32_t    v;
+    Codepoint(uint32_t v): v(v) { }
     friend ::std::string& operator+=(::std::string& s, const Codepoint& cp) {
+        if( cp.v < 128 ) {
+            s += (char)cp.v;
+        }
+        else {
+            throw ::std::runtime_error("TODO: Encode UTF-8 codepoint");
+        }
         return s;
     }
 };
