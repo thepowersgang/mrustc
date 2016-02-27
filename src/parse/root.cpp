@@ -336,6 +336,12 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
                 GET_TOK(tok, lex);
                 break;
             }
+            if( LOOK_AHEAD(lex) == TOK_TRIPLE_DOT ) {
+                GET_TOK(tok, lex);
+                // TODO: Mark function as vardic
+                GET_TOK(tok, lex);
+                break; 
+            }
             args.push_back( Parse_Function_Arg(lex, !can_be_prototype) );
         } while( GET_TOK(tok, lex) == TOK_COMMA );
         CHECK_TOK(tok, TOK_PAREN_CLOSE);

@@ -227,6 +227,11 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
     GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
     while( LOOK_AHEAD(lex) != TOK_PAREN_CLOSE )
     {
+        if( LOOK_AHEAD(lex) == TOK_TRIPLE_DOT ) {
+            GET_TOK(tok, lex);
+            // TODO: Mark function as vardic
+            break; 
+        }
         // Handle `ident: `
         if( lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_COLON ) {
             GET_TOK(tok, lex);
