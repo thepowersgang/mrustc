@@ -214,6 +214,40 @@ using ItemList = ::std::vector<Item<T> >;
 typedef Item<TypeRef>    StructItem;
 class Crate;
 
+class MacroInvocation:
+    public Serialisable
+{
+    MetaItems   m_attrs;
+    ::std::string   m_macro_name;
+    ::std::string   m_ident;
+    TokenTree   m_input;
+public:
+    MacroInvocation()
+    {
+    }
+    
+    MacroInvocation(MetaItems attrs, ::std::string macro, ::std::string ident, TokenTree input):
+        m_attrs( mv$(attrs) ),
+        m_macro_name( mv$(macro) ),
+        m_ident( mv$(ident) ),
+        m_input( mv$(input) )
+    {
+    }
+
+    static ::std::unique_ptr<MacroInvocation> from_deserialiser(Deserialiser& s) {
+        auto i = new MacroInvocation;
+        s.item( *i );
+        return ::std::unique_ptr<MacroInvocation>(i);
+    }
+
+    SERIALISABLE_PROTOTYPES();
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const MacroInvocation& x) {
+        os << x.m_attrs << x.m_macro_name << "! " << x.m_ident << x.m_input;
+        return os;
+    }
+};
+
 class TypeAlias:
     public Serialisable
 {
@@ -511,6 +545,7 @@ class Impl:
     ItemList<TypeRef>   m_types;
     ItemList<Function>  m_functions;
     ItemList<Static>    m_statics;
+    ::std::vector<MacroInvocation>    m_macro_invocations;
     
     ::std::vector< ::std::pair< ::std::vector<TypeRef>, Impl > > m_concrete_impls;
 public:
@@ -528,6 +563,9 @@ public:
     }
     void add_static(bool is_public, ::std::string name, Static v) {
         m_statics.push_back( Item<Static>( mv$(name), mv$(v), is_public ) );
+    }
+    void add_macro_invocation( MacroInvocation inv ) {
+        m_macro_invocations.push_back( mv$(inv) );
     }
     
     const ImplDef& def() const { return m_def; }
@@ -557,40 +595,6 @@ class ExternCrate;
 class Module;
 
 typedef void fcn_visitor_t(const AST::Crate& crate, const AST::Module& mod, Function& fcn);
-
-class MacroInvocation:
-    public Serialisable
-{
-    MetaItems   m_attrs;
-    ::std::string   m_macro_name;
-    ::std::string   m_ident;
-    TokenTree   m_input;
-public:
-    MacroInvocation()
-    {
-    }
-    
-    MacroInvocation(MetaItems attrs, ::std::string macro, ::std::string ident, TokenTree input):
-        m_attrs( mv$(attrs) ),
-        m_macro_name( mv$(macro) ),
-        m_ident( mv$(ident) ),
-        m_input( mv$(input) )
-    {
-    }
-
-    static ::std::unique_ptr<MacroInvocation> from_deserialiser(Deserialiser& s) {
-        auto i = new MacroInvocation;
-        s.item( *i );
-        return ::std::unique_ptr<MacroInvocation>(i);
-    }
-
-    SERIALISABLE_PROTOTYPES();
-    
-    friend ::std::ostream& operator<<(::std::ostream& os, const MacroInvocation& x) {
-        os << x.m_attrs << x.m_macro_name << "! " << x.m_ident << x.m_input;
-        return os;
-    }
-};
 
 /// Representation of a parsed (and being converted) function
 class Module:

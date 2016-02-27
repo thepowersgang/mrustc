@@ -894,8 +894,18 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
     // A sequence of method implementations
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
-        lex.putback(tok);
-        Parse_Impl_Item(lex, impl);
+        if( tok.type() == TOK_MACRO )
+        {
+            impl.add_macro_invocation( Parse_MacroInvocation( AST::MetaItems(), mv$(tok.str()), lex ) );
+            // - Silently consume ';' after the macro
+            if( GET_TOK(tok, lex) != TOK_SEMICOLON )
+                lex.putback(tok);
+        }
+        else
+        {
+            lex.putback(tok);
+            Parse_Impl_Item(lex, impl);
+        }
     }
 
     mod.add_impl( ::std::move(impl) );
@@ -930,25 +940,6 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
     ::std::string   abi = "rust";
     switch(tok.type())
     {
-    //case TOK_MACRO:
-    //    {
-    //        TokenTree tt = Parse_TT(lex, true);
-    //        if( tt.is_token() ) {
-    //            DEBUG("TT was a single token (not a sub-tree)");
-    //            throw ParseError::Unexpected(lex, tt.tok());
-    //        }
-    //        
-    //        auto expanded_macro = Macro_Invoke(lex, tok.str().c_str(), tt);
-    //        auto& lex = *expanded_macro;
-    //        while( GET_TOK(tok, lex) != TOK_EOF )
-    //        {
-    //            lex.putback(tok);
-    //            Parse_Impl_Item(lex, impl);
-    //        }
-    //    }
-    //    if(GET_TOK(tok, lex) != TOK_SEMICOLON)
-    //        lex.putback(tok);
-    //    break;
     case TOK_RWORD_TYPE: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         ::std::string name = tok.str();
