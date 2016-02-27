@@ -1004,6 +1004,15 @@ void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi)
 {
     TRACE_FUNCTION;
     Token   tok;
+
+    AST::MetaItems  block_attrs;
+    while( GET_TOK(tok, lex) == TOK_CATTR_OPEN )
+    {
+        block_attrs.push_back( Parse_MetaItem(lex) );
+        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+    }
+    lex.putback(tok);
+    // TODO: Use `block_attrs`
     
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
