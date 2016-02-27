@@ -496,6 +496,7 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
         {
         case TOK_SEMICOLON:
         case TOK_COMMA:
+        case TOK_BRACE_OPEN:
         case TOK_BRACE_CLOSE:
         case TOK_PAREN_CLOSE:
         case TOK_SQUARE_CLOSE:
