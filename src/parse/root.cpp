@@ -148,7 +148,11 @@ void Parse_WhereClause(TokenStream& lex, AST::GenericParams& params)
         
         if( tok.type() == TOK_LIFETIME )
         {
-            throw ParseError::Todo(lex, "Lifetime bounds in 'where' clauses");
+            auto lhs = mv$(tok.str());
+            GET_CHECK_TOK(tok, lex, TOK_COLON);
+            GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
+            auto rhs = mv$(tok.str());
+            params.add_bound( AST::GenericBound::make_Lifetime({lhs, rhs}) );
         }
         // Higher-ranked types/lifetimes
         else if( tok.type() == TOK_RWORD_FOR )
