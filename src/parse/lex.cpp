@@ -758,6 +758,7 @@ uint32_t Lexer::parseEscape(char enclosing)
         return '\n';
     case 't':
         return '\t';
+    case '\r':
     case '\n':
         m_line ++;
         while( isspace(ch) )
