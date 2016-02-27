@@ -392,6 +392,7 @@ void operator%(::Serialiser& s, const ExprNode_BinOp::Type t) {
 	_(MODULO);
 	_(ADD);
 	_(SUB);
+    _(PLACE_IN);
     #undef _
     }
 }
@@ -450,6 +451,7 @@ NODE(ExprNode_BinOp, {
 	case ADD:   os << "+"; break;
 	case SUB:   os << "-"; break;
 	case RANGE:   os << ".."; break;
+    case PLACE_IN:  os << "<-"; break;
     }
     os << " " << *m_right << ")";
 })

@@ -485,6 +485,7 @@ public:
         case AST::ExprNode_BinOp::ADD:   m_os << "+"; break;
         case AST::ExprNode_BinOp::SUB:   m_os << "-"; break;
         case AST::ExprNode_BinOp::RANGE: m_os << ".."; break;
+        case AST::ExprNode_BinOp::PLACE_IN: m_os << "<-"; break;
         }
         m_os << " ";
         if( IS(*n.m_right, AST::ExprNode_BinOp) )

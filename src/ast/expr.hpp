@@ -527,6 +527,8 @@ struct ExprNode_BinOp:
 		MODULO,
 		ADD,
 		SUB,
+        
+        PLACE_IN,   // `in PLACE { expr }` or `PLACE <- expr`
     };
 
     Type    m_type;

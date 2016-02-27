@@ -629,6 +629,7 @@ bool Parse_IsTokValue(eTokenType tok_type)
     case TOK_RWORD_SELF:
     case TOK_RWORD_SUPER:
     case TOK_RWORD_BOX:
+    case TOK_RWORD_IN:
     case TOK_PAREN_OPEN:
     
     case TOK_MACRO:
@@ -781,6 +782,15 @@ ExprNodeP Parse_Expr12(TokenStream& lex)
         return NEWNODE( AST::ExprNode_Deref, Parse_Expr12(lex) );
     case TOK_RWORD_BOX:
         return NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::BOX, Parse_Expr12(lex) );
+    case TOK_RWORD_IN: {
+        ExprNodeP   dest;
+        {
+            SET_PARSE_FLAG(lex, disallow_struct_literal);
+            dest = Parse_Expr1(lex);
+        }
+        auto val = Parse_ExprBlockNode(lex);
+        return NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::PLACE_IN, mv$(dest), mv$(val));
+        }
     case TOK_DOUBLE_AMP:
         // HACK: Split && into & &
         lex.putback( Token(TOK_AMP) );
