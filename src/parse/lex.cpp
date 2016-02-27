@@ -508,15 +508,38 @@ Token Lexer::getTokenInt()
                 return Token(TOK_COMMENT, str); }
             case BLOCKCOMMENT: {
                 ::std::string   str;
+                unsigned int level = 0;
                 while(true)
                 {
-                    if( ch == '*' ) {
-                        ch = this->getc();
-                        if( ch == '/' ) break;
-                        this->ungetc();
-                    }
-                    str.push_back(ch);
                     ch = this->getc();
+                    
+                    if( ch == '/' ) {
+                        str.push_back(ch);
+                        ch = this->getc();
+                        if( ch == '*' ) {
+                            level ++;
+                        }
+                        str.push_back(ch);
+                    }
+                    else {
+                        if( ch == '*' ) {
+                            ch = this->getc();
+                            if( ch == '/' ) {
+                                if( level == 0 )
+                                    break;
+                                level --;
+                                str.push_back('*');
+                                str.push_back('/');
+                            }
+                            else {
+                                str.push_back('*');
+                                str.push_back(ch);
+                            }
+                        }
+                        else {
+                            str.push_back(ch);
+                        }
+                    }
                 }
                 return Token(TOK_COMMENT, str); }
             case SINGLEQUOTE: {
