@@ -1630,7 +1630,7 @@ void CPathResolver::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
         {
             // It's a name binding (desugar to 'name @ _')
             pat = AST::Pattern();
-            pat.set_bind(name, false, false);
+            pat.set_bind(name, AST::Pattern::BIND_MOVE, false);
         }
         else
         {

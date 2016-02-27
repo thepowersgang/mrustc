@@ -47,20 +47,32 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     }
    
     bool expect_bind = false;
+    ::AST::Pattern::BindType    bind_type = AST::Pattern::BIND_MOVE;
     bool is_mut = false;
-    bool is_ref = false;
     // 1. Mutablity + Reference
     if( tok.type() == TOK_RWORD_REF )
     {
-        is_ref = true;
         expect_bind = true;
         tok = lex.getToken();
+        if( tok.type() == TOK_RWORD_MUT )
+        {
+            bind_type = AST::Pattern::BIND_MUTREF;
+            GET_TOK(tok, lex);
+        }
+        else
+        {
+            bind_type = AST::Pattern::BIND_REF;
+        }
     }
-    if( tok.type() == TOK_RWORD_MUT )
+    else if( tok.type() == TOK_RWORD_MUT )
     {
         is_mut = true;
         expect_bind = true;
         tok = lex.getToken();
+    }
+    else
+    {
+        // Fall through
     }
     
     ::std::string   bind_name;
@@ -133,7 +145,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     
     lex.putback(tok);
     AST::Pattern pat = Parse_PatternReal(lex, is_refutable);
-    pat.set_bind(bind_name, is_ref, is_mut);
+    pat.set_bind(bind_name, bind_type, is_mut);
     return ::std::move(pat);
 }
 
@@ -326,11 +338,27 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
         }
         
         bool is_short_bind = false;
-        if( tok.type() == TOK_RWORD_REF ) {
+        bool is_box = false;
+        AST::Pattern::BindType bind_type = AST::Pattern::BIND_MOVE;
+        bool is_mut = false;
+        if( tok.type() == TOK_RWORD_BOX ) {
+            is_box = true;
             is_short_bind = true;
             GET_TOK(tok, lex);
         }
-        if( tok.type() == TOK_RWORD_MUT ) {
+        if( tok.type() == TOK_RWORD_REF ) {
+            is_short_bind = true;
+            GET_TOK(tok, lex);
+            if( tok.type() == TOK_RWORD_MUT ) {
+                bind_type = AST::Pattern::BIND_MUTREF;
+                GET_TOK(tok, lex);
+            }
+            else {
+                bind_type = AST::Pattern::BIND_REF;
+            }
+        }
+        else if( tok.type() == TOK_RWORD_MUT ) {
+            is_mut = true;
             is_short_bind = true;
             GET_TOK(tok, lex);
         }
@@ -343,6 +371,11 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
         if( is_short_bind || tok.type() != TOK_COLON ) {
             lex.putback(tok);
             pat = AST::Pattern(AST::Pattern::TagBind(), field);
+            pat.set_bind(field, bind_type, is_mut);
+            if( is_box )
+            {
+                pat = AST::Pattern(AST::Pattern::TagBox(), mv$(pat));
+            }
         }
         else {
             CHECK_TOK(tok, TOK_COLON);

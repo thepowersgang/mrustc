@@ -19,6 +19,11 @@ class Pattern:
     public Serialisable
 {
 public:
+    enum BindType {
+        BIND_MOVE,
+        BIND_REF,
+        BIND_MUTREF,
+    };
     TAGGED_UNION(Data, Any,
         (MaybeBind, () ),
         (Macro,     (unique_ptr<::AST::MacroInvocation> inv;) ),
@@ -33,6 +38,8 @@ public:
         );
 private:
     ::std::string   m_binding;
+    BindType    m_binding_type;
+    bool    m_binding_mut;
     Data m_data;
     
 public:
@@ -101,8 +108,10 @@ public:
     {}
     
     // Mutators
-    void set_bind(::std::string name, bool is_ref, bool is_mut) {
+    void set_bind(::std::string name, BindType type, bool is_mut) {
         m_binding = name;
+        m_binding_type = type;
+        m_binding_mut = is_mut;
     }
     
     ::std::unique_ptr<ExprNode> take_node() {
