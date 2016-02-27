@@ -21,6 +21,9 @@ AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path, bool is_re
 AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable);
 AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refutable);
 
+AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable);
+AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable);
+
 
 /// Parse a pattern
 ///
@@ -97,6 +100,15 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
             case TOK_PAREN_OPEN:
                 lex.putback(tok);
                 return Parse_PatternReal_Path(lex, path, is_refutable);
+            // - If the next token is a `...`, it's a constant
+            case TOK_TRIPLE_DOT: {
+                auto leftval = NEWNODE(AST::ExprNode_NamedValue, ::std::move(path));
+                auto    right_pat = Parse_PatternReal1(lex, is_refutable);
+                if( !right_pat.data().is_Value() )
+                    throw ParseError::Generic(lex, "Using '...' with a non-value on right");
+                auto    rightval = right_pat.take_node();
+                return AST::Pattern(AST::Pattern::TagValue(), ::std::move(leftval), ::std::move(rightval));
+                }
             //  - Else, treat as a MaybeBind
             default:
                 lex.putback(tok);
@@ -124,9 +136,6 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     pat.set_bind(bind_name, is_ref, is_mut);
     return ::std::move(pat);
 }
-
-AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable);
-AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable);
 
 AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable)
 {
