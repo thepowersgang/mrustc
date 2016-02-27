@@ -31,7 +31,20 @@ Lexer::Lexer(::std::string filename):
     {
         throw ::std::runtime_error("Unable to open file");
     }
+    if( this->getc() == '\xef' )
+    {
+        if( this->getc() != '\xbb' )
+            ;
+        if( this->getc() != '\xbf' )
+            ;
+        m_line_ofs = 0;
+    }
+    else
+    {
+        this->ungetc();
+    }
 }
+
 
 #define LINECOMMENT -1
 #define BLOCKCOMMENT -2
