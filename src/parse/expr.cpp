@@ -91,6 +91,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
         case TOK_RWORD_TRAIT:
         case TOK_RWORD_IMPL:
         case TOK_RWORD_FN:
+        case TOK_RWORD_MOD:
             lex.putback(tok);
             keep_mod = true;
             Parse_Mod_Item(lex, modstack, "!", *local_mod, false, mv$(item_attrs));
