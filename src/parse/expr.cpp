@@ -958,6 +958,13 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         lex.putback(tok);
         return Parse_ExprBlockNode(lex);
     
+    // TODO: Return/break/continue/... here?
+    case TOK_RWORD_RETURN:
+    case TOK_RWORD_CONTINUE:
+    case TOK_RWORD_BREAK:
+        lex.putback(tok);
+        return Parse_Stmt(lex);
+    
     case TOK_RWORD_LOOP:
         return NEWNODE( AST::ExprNode_Loop, "", Parse_ExprBlockNode(lex) );
     case TOK_RWORD_WHILE:
