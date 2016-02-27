@@ -798,16 +798,14 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
         return AST::MetaItem(name, tok.str());
     case TOK_PAREN_OPEN: {
         ::std::vector<AST::MetaItem>    items;
-        if( LOOK_AHEAD(lex) != TOK_PAREN_CLOSE )
-        {
-            do {
-                items.push_back(Parse_MetaItem(lex));
-            } while(GET_TOK(tok, lex) == TOK_COMMA);
-            CHECK_TOK(tok, TOK_PAREN_CLOSE);
-        }
-        else {
-            GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
-        }
+        do {
+            if(LOOK_AHEAD(lex) == TOK_PAREN_CLOSE) {
+                GET_TOK(tok, lex);
+                break;
+            }
+            items.push_back(Parse_MetaItem(lex));
+        } while(GET_TOK(tok, lex) == TOK_COMMA);
+        CHECK_TOK(tok, TOK_PAREN_CLOSE);
         return AST::MetaItem(name, items); }
     default:
         lex.putback(tok);

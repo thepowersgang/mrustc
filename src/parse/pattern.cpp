@@ -260,6 +260,14 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
             
             GET_TOK(tok, lex);  // TOK_DOUBLE_DOT
         }
+        else if( tok.type() == TOK_UNDERSCORE && lex.lookahead(0) == TOK_DOUBLE_DOT) {
+            if(is_trailing)
+                ERROR(lex.end_span(sp), E0000, "Multiple instances of .. in a slice pattern");
+            rv_array.extra_bind = "_";
+            is_trailing = true;
+            
+            GET_TOK(tok, lex);  // TOK_DOUBLE_DOT
+        }
         else if( tok.type() == TOK_DOUBLE_DOT ) {
             if(is_trailing)
                 ERROR(lex.end_span(sp), E0000, "Multiple instances of .. in a slice pattern");
