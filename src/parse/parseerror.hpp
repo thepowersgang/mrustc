@@ -15,7 +15,7 @@ class BadChar:
 {
     char    m_char;
 public:
-    BadChar(char character);
+    BadChar(const TokenStream& lex, char character);
     virtual ~BadChar() throw ();
 
 };

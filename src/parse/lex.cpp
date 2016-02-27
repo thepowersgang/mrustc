@@ -36,6 +36,7 @@ Lexer::Lexer(::std::string filename):
 #define BLOCKCOMMENT -2
 #define SINGLEQUOTE -3
 #define DOUBLEQUOTE -4
+#define SHEBANG -5
 
 // NOTE: This array must be kept sorted, or symbols are will be skipped
 #define TOKENT(str, sym)    {sizeof(str)-1, str, sym}
@@ -48,6 +49,7 @@ static const struct {
   TOKENT("!=", TOK_EXCLAM_EQUAL),
   TOKENT("\"", DOUBLEQUOTE),
   TOKENT("#",  0),
+  TOKENT("#!", SHEBANG),
   TOKENT("#![",TOK_CATTR_OPEN),
   TOKENT("#[", TOK_ATTR_OPEN),
   TOKENT("$",  TOK_DOLLAR),
@@ -251,6 +253,31 @@ Token Lexer::getTokenInt()
     try
     {
         char ch = this->getc();
+        
+        if( ch == '#' && m_line == 1 && m_line_ofs == 1 ) {
+            switch(ch = this->getc())
+            {
+            case '!':
+                switch(ch = this->getc())
+                {
+                case '/':
+                    // SHEBANG!
+                    while( ch != '\n' )
+                        ch = this->getc();
+                    return Token(TOK_NEWLINE);
+                case '[':
+                    return Token(TOK_CATTR_OPEN);
+                default:
+                    throw ParseError::BadChar(*this, ch);
+                }
+            case '[':
+                return Token(TOK_ATTR_OPEN);
+            default:
+                this->ungetc();
+                //return Token(TOK_HASH);
+                throw ParseError::BadChar(*this, ch);
+            }
+        }
 
         if( ch == '\n' )
             return Token(TOK_NEWLINE);
@@ -484,7 +511,7 @@ Token Lexer::getTokenInt()
             }
             else
             {
-                throw ParseError::BadChar(ch);
+                throw ParseError::BadChar(*this, ch);
             }
         }
         else if( sym > 0 )
