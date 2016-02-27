@@ -252,27 +252,30 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
     bool is_trailing = false;
     while(GET_TOK(tok, lex) != TOK_SQUARE_CLOSE)
     {
-        if( tok.type() == TOK_IDENT && lex.lookahead(0) == TOK_DOUBLE_DOT) {
-            if(is_trailing)
-                ERROR(lex.end_span(sp), E0000, "Multiple instances of .. in a slice pattern");
-            rv_array.extra_bind = mv$(tok.str());
-            is_trailing = true;
-            
-            GET_TOK(tok, lex);  // TOK_DOUBLE_DOT
+        ::std::string   binding_name;
+        if( tok.type() == TOK_RWORD_REF && lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_DOUBLE_DOT ) {
+            GET_TOK(tok, lex);
+            binding_name = tok.str();
+        }
+        else if( tok.type() == TOK_IDENT && lex.lookahead(0) == TOK_DOUBLE_DOT) {
+            binding_name = tok.str();
         }
         else if( tok.type() == TOK_UNDERSCORE && lex.lookahead(0) == TOK_DOUBLE_DOT) {
-            if(is_trailing)
-                ERROR(lex.end_span(sp), E0000, "Multiple instances of .. in a slice pattern");
-            rv_array.extra_bind = "_";
-            is_trailing = true;
-            
-            GET_TOK(tok, lex);  // TOK_DOUBLE_DOT
+            binding_name = "_";
         }
         else if( tok.type() == TOK_DOUBLE_DOT ) {
+            binding_name = "_";
+            lex.putback(tok);
+        }
+        else {
+        }
+        
+        if( binding_name != "" ) {
             if(is_trailing)
                 ERROR(lex.end_span(sp), E0000, "Multiple instances of .. in a slice pattern");
-            rv_array.extra_bind = "_";
+            rv_array.extra_bind = mv$(binding_name);
             is_trailing = true;
+            GET_TOK(tok, lex);  // TOK_DOUBLE_DOT
         }
         else {
             lex.putback(tok);
