@@ -171,7 +171,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
     ::std::map< ::std::string, TypeRef> assoc_bounds;
     ::std::vector<unsigned int> int_args;
     do {
-        if( LOOK_AHEAD(lex) == TOK_GT || LOOK_AHEAD(lex) == TOK_DOUBLE_GT ) {
+        if( LOOK_AHEAD(lex) == TOK_GT || LOOK_AHEAD(lex) == TOK_DOUBLE_GT || LOOK_AHEAD(lex) == TOK_GTE || LOOK_AHEAD(lex) == TOK_DOUBLE_GT_EQUAL ) {
             GET_TOK(tok, lex);
             break;
         }

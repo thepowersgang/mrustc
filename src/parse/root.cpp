@@ -321,6 +321,10 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
         
         // Argument list
         do {
+            if( LOOK_AHEAD(lex) == TOK_PAREN_CLOSE ) {
+                GET_TOK(tok, lex);
+                break;
+            }
             args.push_back( Parse_Function_Arg(lex, !can_be_prototype) );
         } while( GET_TOK(tok, lex) == TOK_COMMA );
         CHECK_TOK(tok, TOK_PAREN_CLOSE);
