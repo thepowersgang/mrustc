@@ -19,6 +19,19 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
     Token   tok;
     switch( GET_TOK(tok, lex) )
     {
+    case TOK_RWORD_SELF:
+        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        return Parse_Path(lex, false, generic_mode);
+    case TOK_RWORD_SUPER: {
+        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        unsigned int count = 1;
+        while( LOOK_AHEAD(lex) == TOK_RWORD_SUPER ) {
+            count += 1;
+            GET_TOK(tok, lex);
+            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        }
+        return AST::Path(AST::Path::TagSuper(), count, Parse_PathNodes(lex, generic_mode));
+        }
     case TOK_DOUBLE_COLON:
         return Parse_Path(lex, true, generic_mode);
     case TOK_DOUBLE_LT:
@@ -32,9 +45,9 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
         else
             lex.putback(tok);
         GET_CHECK_TOK(tok, lex, TOK_GT);
-        // TODO: Terminating the "path" here is sometimes valid
+        // TODO: Terminating the "path" here is sometimes valid?
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-        return AST::Path(AST::Path::TagUfcs(), ty, trait, Parse_PathNodes(lex, PATH_GENERIC_EXPR));
+        return AST::Path(AST::Path::TagUfcs(), ty, trait, Parse_PathNodes(lex, generic_mode));
         }
     default:
         lex.putback(tok);

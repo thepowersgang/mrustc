@@ -1006,21 +1006,15 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
             }
             else
             {
-                GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-                path = Parse_Path(lex, false, PATH_GENERIC_EXPR);
+                lex.putback(tok);
+                path = Parse_Path(lex, PATH_GENERIC_EXPR);
             }
         }
         if(0)
     case TOK_RWORD_SUPER:
         {
-            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-            unsigned int count = 1;
-            while( LOOK_AHEAD(lex) == TOK_RWORD_SUPER ) {
-                count += 1;
-                GET_TOK(tok, lex);
-                GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-            }
-            path = AST::Path(AST::Path::TagSuper(), count, Parse_PathNodes(lex, PATH_GENERIC_EXPR));
+            lex.putback(tok);
+            path = Parse_Path(lex, PATH_GENERIC_EXPR);
         }
         if(0)
     case TOK_IDENT:

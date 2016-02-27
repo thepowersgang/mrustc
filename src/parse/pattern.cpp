@@ -178,9 +178,11 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
             return AST::Pattern( AST::Pattern::TagReference(), Parse_Pattern(lex, is_refutable) );
         lex.putback(tok);
         return AST::Pattern( AST::Pattern::TagReference(), Parse_Pattern(lex, is_refutable) );
+    case TOK_RWORD_SELF:
+    case TOK_RWORD_SUPER:
     case TOK_IDENT:
         lex.putback(tok);
-        return Parse_PatternReal_Path( lex, Parse_Path(lex, false, PATH_GENERIC_EXPR), is_refutable );
+        return Parse_PatternReal_Path( lex, Parse_Path(lex, PATH_GENERIC_EXPR), is_refutable );
     case TOK_DOUBLE_COLON:
         // 2. Paths are enum/struct names
         return Parse_PatternReal_Path( lex, Parse_Path(lex, true, PATH_GENERIC_EXPR), is_refutable );
