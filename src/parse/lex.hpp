@@ -8,7 +8,9 @@
 #ifndef LEX_HPP_INCLUDED
 #define LEX_HPP_INCLUDED
 
-#include "../types.hpp"
+#include <debug.hpp>
+#include <serialise.hpp>
+#include "../coretypes.hpp"
 #include <string>
 #include <fstream>
 

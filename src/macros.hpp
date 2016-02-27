@@ -9,6 +9,10 @@
 
 class MacroExpander;
 
+namespace AST {
+    class Module;
+}
+
 class MacroRuleEnt:
     public Serialisable
 {

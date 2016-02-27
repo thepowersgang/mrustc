@@ -2,7 +2,7 @@
 #define TOKENTREE_HPP_INCLUDED
 
 #include "lex.hpp"
-
+#include "../include/serialise.hpp"
 
 class TokenTree:
     public Serialisable

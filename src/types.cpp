@@ -101,6 +101,7 @@ bool TypeRef::deref(bool is_implicit)
     switch(m_data.tag())
     {
     case TypeData::TAG_None:        throw ::std::runtime_error("Dereferencing ! - bugcheck");
+    case TypeData::TAG_Macro:       throw ::std::runtime_error("Dereferencing unexpanded macro - bugcheck");
     case TypeData::TAG_Any:         throw ::std::runtime_error("Dereferencing _");
     case TypeData::TAG_Unit:        throw ::std::runtime_error("Dereferencing ()");
     case TypeData::TAG_Primitive:   throw ::std::runtime_error("Dereferencing a primtive type");
@@ -166,6 +167,9 @@ void TypeRef::merge_with(const TypeRef& other)
     TU_MATCH(TypeData, (m_data, other.m_data), (ent, other_ent),
     (None,
         throw ::std::runtime_error("TypeRef::merge_with - Reached concrete/wildcard");
+        ),
+    (Macro,
+        throw ::std::runtime_error("TypeRef::merge_with - Reached unexpanded macro");
         ),
     (Any,
         throw ::std::runtime_error("TypeRef::merge_with - Reached concrete/wildcard");
@@ -233,6 +237,9 @@ void TypeRef::resolve_args(::std::function<TypeRef(const char*)> fcn)
     _(None,
         throw ::std::runtime_error("TypeRef::resolve_args on !");
         )
+    _(Macro,
+        throw ::std::runtime_error("TypeRef::resolve_args on unexpanded macro");
+        )
     // TODO: Is resolving args on an ANY an erorr?
     _(Any)
     _(Unit)
@@ -296,6 +303,9 @@ void TypeRef::match_args(const TypeRef& other, ::std::function<void(const char*,
     (None,
         throw ::std::runtime_error("TypeRef::match_args on !");
         ),
+    (Macro,
+        throw CompileError::BugCheck("TypeRef::match_args - unexpanded macro");
+        ),
     (Any,
         // Wait, isn't this an error?
         throw ::std::runtime_error("Encountered '_' in match_args");
@@ -356,6 +366,9 @@ bool TypeRef::impls_wildcard(const AST::Crate& crate, const AST::Path& trait) co
     TU_MATCH(TypeData, (m_data), (ent),
     (None,
         throw CompileError::BugCheck("TypeRef::impls_wildcard on !");
+        ),
+    (Macro,
+        throw CompileError::BugCheck("TypeRef::impls_wildcard - unexpanded macro");
         ),
     (Any,
         throw CompileError::BugCheck("TypeRef::impls_wildcard on _");
@@ -450,6 +463,7 @@ bool TypeRef::is_concrete() const
     (None,
         throw ::std::runtime_error("TypeRef::is_concrete on !");
         ),
+    (Macro, throw CompileError::BugCheck("TypeRef::is_concrete - unexpanded macro");),
     (Any, return false;),
     (Unit, return true; ),
     (Primitive, return true; ),
@@ -503,6 +517,7 @@ int TypeRef::equal_no_generic(const TypeRef& x) const
 
     TU_MATCH(TypeData, (m_data, x.m_data), (ent, x_ent),
     (None, return 0;),
+    (Macro, throw CompileError::BugCheck("TypeRef::equal_no_generic - unexpanded macro");),
     (Unit, return 0;),
     (Any, return 0;),
     (Primitive,
@@ -561,6 +576,7 @@ Ordering TypeRef::ord(const TypeRef& x) const
     
     TU_MATCH(TypeData, (m_data, x.m_data), (ent, x_ent),
     (None, return OrdEqual;),
+    (Macro, throw CompileError::BugCheck("TypeRef::ord - unexpanded macro");),
     (Any,  return OrdEqual;),
     (Unit, return OrdEqual;),
     (Primitive,
@@ -628,6 +644,9 @@ Ordering TypeRef::ord(const TypeRef& x) const
         )
     _(Any,
         os << "_";
+        )
+    _(Macro,
+        os << ent.inv;
         )
     _(Unit,
         os << "()";
@@ -732,6 +751,9 @@ SERIALISE_TYPE(TypeRef::, "TypeRef", {
     switch(m_data.tag())
     {
     _S(None)
+    _S(Macro,
+        s.item( ent.inv );
+        )
     _S(Any)
     _S(Unit)
     _S(Primitive,
@@ -778,6 +800,9 @@ SERIALISE_TYPE(TypeRef::, "TypeRef", {
     _D(None)
     _D(Any)
     _D(Unit)
+    _D(Macro,
+        s.item( ent.inv );
+        )
     _D(Primitive,
         s % ent.core_type;
         )

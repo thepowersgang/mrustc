@@ -6,6 +6,7 @@
 #include "common.hpp"
 #include "coretypes.hpp"
 #include "ast/path.hpp"
+#include "ast/macro.hpp"
 #include <serialise.hpp>
 #include <tagged_union.hpp>
 
@@ -60,6 +61,9 @@ TAGGED_UNION(TypeData, None,
     (None, ()),
     (Any,  ()),
     (Unit, ()),
+    (Macro, (
+        ::AST::MacroInvocation inv;
+        )),
     (Primitive, (
         enum eCoreType core_type;
         )),
@@ -115,6 +119,7 @@ public:
         #define _CLONE(VAR, code...)    case TypeData::TAG_##VAR: { auto& old = other.m_data.as_##VAR(); m_data = TypeData::make_##VAR(code); } break;
         _COPY(None)
         _COPY(Any)
+        _COPY(Macro)
         _COPY(Unit)
         _COPY(Primitive)
         _COPY(Function)
@@ -141,6 +146,11 @@ public:
     struct TagInvalid {};
     TypeRef(TagInvalid):
         m_data(TypeData::make_None({}))
+    {}
+    
+    struct TagMacro {};
+    TypeRef(TagMacro, ::AST::MacroInvocation inv):
+        m_data(TypeData::make_Macro({mv$(inv)}))
     {}
 
     struct TagUnit {};  // unit maps to a zero-length tuple, just easier to type

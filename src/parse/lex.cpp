@@ -13,6 +13,7 @@
 #include "lex.hpp"
 #include "tokentree.hpp"
 #include "parseerror.hpp"
+#include "../common.hpp"
 #include <cassert>
 #include <iostream>
 #include <cstdlib>  // strtol

@@ -2,6 +2,7 @@
  */
 #pragma once
 #include <sstream>
+#include <cassert>
 
 extern int g_debug_indent_level;
 

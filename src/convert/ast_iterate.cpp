@@ -14,6 +14,7 @@ void CASTIterator::handle_type(TypeRef& type)
     (None),
     (Any),
     (Unit),
+    (Macro),
     (Primitive),
     (Path,
         handle_path(ent.path, MODE_TYPE);

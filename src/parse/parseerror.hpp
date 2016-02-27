@@ -3,6 +3,7 @@
 
 #include <stdexcept>
 #include "lex.hpp"
+#include <compile_error.hpp>
 
 namespace ParseError {
 
