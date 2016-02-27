@@ -1046,13 +1046,19 @@ void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi)
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
             break;
         case TOK_RWORD_STATIC: {
+            bool is_mut = false;
+            if( GET_TOK(tok, lex) == TOK_RWORD_MUT )
+                is_mut = true;
+            else
+                lex.putback(tok);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             auto name = mv$(tok.str());
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             auto type = Parse_Type(lex);
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
             
-            mod.add_static(is_public, mv$(name), ::AST::Static(mv$(meta_items), ::AST::Static::STATIC,  type, ::AST::Expr()));
+            auto static_class = is_mut ? ::AST::Static::MUT : ::AST::Static::STATIC;
+            mod.add_static(is_public, mv$(name), ::AST::Static(mv$(meta_items), static_class,  type, ::AST::Expr()));
             break; }
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_STATIC});
