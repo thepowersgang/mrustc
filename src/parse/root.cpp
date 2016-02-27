@@ -15,8 +15,15 @@
 #include "../macros.hpp"
 #include <cassert>
 
+::std::string dirname(::std::string input) {
+    while( input.size() > 0 && input.back() != '/' ) {
+        input.pop_back();
+    }
+    return input;
+}
+
 AST::MetaItem   Parse_MetaItem(TokenStream& lex);
-void Parse_ModRoot(TokenStream& lex, AST::Module& mod, LList<AST::Module*> *prev_modstack, const ::std::string& path);
+void Parse_ModRoot(TokenStream& lex, AST::Module& mod, LList<AST::Module*> *prev_modstack, bool file_controls_dir, const ::std::string& path);
 
 ::std::vector< ::std::string> Parse_HRB(TokenStream& lex)
 {
@@ -1499,10 +1506,9 @@ void Parse_ExternCrate(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_i
     //}
 }
 
-void Parse_Mod_Item(TokenStream& lex, LList<AST::Module*>& modstack, const ::std::string& file_path, AST::Module& mod, bool is_public, AST::MetaItems meta_items)
+void Parse_Mod_Item(TokenStream& lex, LList<AST::Module*>& modstack, bool file_controls_dir, const ::std::string& file_path, AST::Module& mod, bool is_public, AST::MetaItems meta_items)
 {
     //TRACE_FUNCTION;
-    const bool nested_module = (file_path == "-" || file_path == "!");  // 'mod name { code }', as opposed to 'mod name;'
     Token   tok;
 
     // The actual item!
@@ -1693,70 +1699,83 @@ void Parse_Mod_Item(TokenStream& lex, LList<AST::Module*>& modstack, const ::std
 
     case TOK_RWORD_MOD: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        ::std::string name = tok.str();
+        auto name = tok.str();
+        DEBUG("Sub module '" << name << "'");
+        AST::Module submod( mv$(meta_items), mv$(tok.str()));
         
-        // TODO: Remove this copy, by keeping record of macro_use()
-        AST::Module submod(meta_items, name);
-        DEBUG("Sub module '"<<name<<"'");
+        // Rules for external files (/ path handling):
+        // - IF using stdin (path='-') - Disallow and propagate '-' as path
+        // - IF a #[path] attribute was passed, allow
+        // - IF in crate root or mod.rs, allow (input flag)
+        // - else, disallow and set flag
+        ::std::string path_attr = (submod.attrs().has("path") ? submod.attrs().get("path")->string() : "");
+        
+        ::std::string   sub_path;
+        bool    sub_file_controls_dir = true;
+        if( file_path == "-" ) {
+            if( path_attr.size() ) {
+                throw ParseError::Generic(lex, "Attempt to set path when reading stdin");
+            }
+            sub_path = "-";
+        }
+        else if( path_attr.size() > 0 )
+        {
+            sub_path = dirname(file_path) + path_attr;
+        }
+        else if( file_controls_dir )
+        {
+            sub_path = dirname(file_path) + name;
+        }
+        else
+        {
+            sub_path = file_path;
+            sub_file_controls_dir = false;
+        }
+        DEBUG("Mod '" << name << "', sub_path = " << sub_path);
+        
         switch( GET_TOK(tok, lex) )
         {
         case TOK_BRACE_OPEN: {
-            ::std::string   subpath = ( file_path.back() != '/' ? "-" : file_path + name + "/" );
-            Parse_ModRoot(lex, submod, &modstack, subpath);
+            Parse_ModRoot(lex, submod, &modstack, sub_file_controls_dir, sub_path+"/");
             GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
             break; }
         case TOK_SEMICOLON:
-            DEBUG("Mod = " << name << ", curpath = " << file_path);
-            if( nested_module ) {
-                throw ParseError::Generic(lex, "Cannot load module from file within nested context");
+            if( sub_path == "-" ) {
+                throw ParseError::Generic(lex, "Cannot load module from file when reading stdin");
             }
-            else if( file_path.back() != '/' )
+            else if( path_attr.size() == 0 && ! file_controls_dir )
             {
-                throw ParseError::Generic( FMT("Can't load from files outside of mod.rs or crate root") );
-            }
-            else if( submod.attrs().has("path") )
-            {
-                ::std::string newpath_dir  = file_path + submod.attrs().get("path")->string();
-                ::std::ifstream ifs_dir (newpath_dir);
-                if( !ifs_dir.is_open() )
-                {
-                }
-                else
-                {
-                    ::std::string   newdir( newpath_dir.begin(), newpath_dir.begin() + newpath_dir.find_last_of('/') );
-                    Lexer sub_lex(newpath_dir);
-                    Parse_ModRoot(sub_lex, submod, &modstack, newdir);
-                    GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
-                }
+                throw ParseError::Generic(lex, "Can't load from files outside of mod.rs or crate root");
             }
             else
             {
-                ::std::string newpath_dir  = file_path + name + "/";
-                ::std::string newpath_file = file_path + name + ".rs";
+                ::std::string newpath_dir  = sub_path + "/";
+                ::std::string newpath_file = path_attr.size() > 0 ? sub_path : sub_path + ".rs";
                 ::std::ifstream ifs_dir (newpath_dir + "mod.rs");
                 ::std::ifstream ifs_file(newpath_file);
                 if( ifs_dir.is_open() && ifs_file.is_open() )
                 {
                     // Collision
+                    throw ParseError::Generic(lex, "Both modname.rs and modname/mod.rs exist");
                 }
                 else if( ifs_dir.is_open() )
                 {
                     // Load from dir
                     Lexer sub_lex(newpath_dir + "mod.rs");
-                    Parse_ModRoot(sub_lex, submod, &modstack, newpath_dir);
+                    Parse_ModRoot(sub_lex, submod, &modstack, sub_file_controls_dir, newpath_dir);
                     GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
                 }
                 else if( ifs_file.is_open() )
                 {
                     // Load from file
                     Lexer sub_lex(newpath_file);
-                    Parse_ModRoot(sub_lex, submod, &modstack, newpath_file);
+                    Parse_ModRoot(sub_lex, submod, &modstack, sub_file_controls_dir, newpath_file);
                     GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
                 }
                 else
                 {
                     // Can't find file
-                    throw ParseError::Generic( FMT("Can't find file for " << name << " in '" << file_path << "'") );
+                    throw ParseError::Generic(lex, FMT("Can't find file for '" << name << "' in '" << file_path << "'") );
                 }
             }
             break;
@@ -1773,7 +1792,7 @@ void Parse_Mod_Item(TokenStream& lex, LList<AST::Module*>& modstack, const ::std
     }
 }
 
-void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, LList<AST::Module*>& modstack, const ::std::string& path)
+void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, LList<AST::Module*>& modstack, bool file_controls_dir, const ::std::string& path)
 {
     Token   tok;
 
@@ -1832,11 +1851,11 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, LList<AST::Module*>
             lex.putback(tok);
         }
 
-        Parse_Mod_Item(lex, modstack, path,  mod, is_public, mv$(meta_items));
+        Parse_Mod_Item(lex, modstack, file_controls_dir,path,  mod, is_public, mv$(meta_items));
     }
 }
 
-void Parse_ModRoot(TokenStream& lex, AST::Module& mod, LList<AST::Module*> *prev_modstack, const ::std::string& path)
+void Parse_ModRoot(TokenStream& lex, AST::Module& mod, LList<AST::Module*> *prev_modstack, bool file_controls_dir, const ::std::string& path)
 {
     TRACE_FUNCTION;
     LList<AST::Module*>  modstack(prev_modstack, &mod);
@@ -1856,7 +1875,7 @@ void Parse_ModRoot(TokenStream& lex, AST::Module& mod, LList<AST::Module*> *prev
 
     // TODO: Iterate attributes, and check for handlers on each
     
-    Parse_ModRoot_Items(lex, mod, modstack, path);
+    Parse_ModRoot_Items(lex, mod, modstack, file_controls_dir, path);
 }
 
 AST::Crate Parse_Crate(::std::string mainfile)
@@ -1896,7 +1915,7 @@ AST::Crate Parse_Crate(::std::string mainfile)
         }
     }
     
-    Parse_ModRoot(lex, rootmod, NULL, mainpath);
+    Parse_ModRoot(lex, rootmod, NULL, true, mainpath);
     
     return crate;
 }
