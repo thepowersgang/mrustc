@@ -387,6 +387,11 @@ AST::TypeAlias Parse_TypeAlias(TokenStream& lex, AST::MetaItems meta_items)
         tok = lex.getToken();
     }
     
+    if( tok.type() == TOK_RWORD_WHERE )
+    {
+        Parse_WhereClause(lex, params);
+        GET_TOK(tok, lex);
+    }
     CHECK_TOK(tok, TOK_EQUAL);
     
     // Type
