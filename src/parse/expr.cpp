@@ -544,7 +544,7 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
 // 0: Assign
 ExprNodeP Parse_Expr0(TokenStream& lex)
 {
-    TRACE_FUNCTION;
+    //TRACE_FUNCTION;
     Token tok;
     
     ::AST::MetaItems  expr_attrs;
@@ -1098,7 +1098,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
             CLEAR_PARSE_FLAG(lex, disallow_struct_literal);
             lex.putback(tok);
             
-            ExprNodeP rv = Parse_Stmt(lex);
+            ExprNodeP rv = Parse_Expr0(lex);
             if( GET_TOK(tok, lex) == TOK_COMMA ) {
                 ::std::vector<ExprNodeP> ents;
                 ents.push_back( ::std::move(rv) );
@@ -1106,7 +1106,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
                     if( GET_TOK(tok, lex) == TOK_PAREN_CLOSE )
                         break;
                     lex.putback(tok);
-                    ents.push_back( Parse_Stmt(lex) );
+                    ents.push_back( Parse_Expr0(lex) );
                 } while( GET_TOK(tok, lex) == TOK_COMMA );
                 rv = NEWNODE( AST::ExprNode_Tuple, ::std::move(ents) );
             }
