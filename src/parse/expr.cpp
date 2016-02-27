@@ -767,9 +767,25 @@ LEFTASSOC(Parse_Expr11, Parse_Expr12,
         rv = NEWNODE( AST::ExprNode_Cast, ::std::move(rv), Parse_Type(lex) );
         break;
 )
-// 12: Unaries
-ExprNodeP Parse_ExprFC(TokenStream& lex);
+// 12: Type Ascription
+ExprNodeP Parse_Expr13(TokenStream& lex);
 ExprNodeP Parse_Expr12(TokenStream& lex)
+{
+    Token   tok;
+    auto rv = Parse_Expr13(lex);
+    if(GET_TOK(tok, lex) == TOK_COLON)
+    {
+        rv->get_res_type() = Parse_Type(lex);
+    }
+    else
+    {
+        lex.putback(tok);
+    }
+    return rv;
+}
+// 13: Unaries
+ExprNodeP Parse_ExprFC(TokenStream& lex);
+ExprNodeP Parse_Expr13(TokenStream& lex)
 {
     Token   tok;
     switch(GET_TOK(tok, lex))
