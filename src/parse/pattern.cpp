@@ -93,49 +93,31 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     // Otherwise, handle MaybeBind
     else if( tok.type() == TOK_IDENT )
     {
-        lex.putback(tok);
-        AST::Path path = Parse_Path(lex, false, PATH_GENERIC_EXPR);
-        // - If the path is trivial
-        //if( path.is_relative() && path.size() == 1 && path[0].args().size() == 0 )
-        if( path.is_trivial() )
+        switch( LOOK_AHEAD(lex) )
         {
-            switch( GET_TOK(tok, lex) )
-            {
-            //  - If the next token after that is '@', use as bind name and expect an actual pattern
-            case TOK_AT:
-                bind_name = path[0].name();
-                GET_TOK(tok, lex);
-                // - Fall though
-                break;
-            //  - Else, if the next token is  a '(' or '{', treat as a struct/enum
-            case TOK_BRACE_OPEN:
-            case TOK_PAREN_OPEN:
-                lex.putback(tok);
-                return Parse_PatternReal_Path(lex, path, is_refutable);
-            // - If the next token is a `...`, it's a constant
-            case TOK_TRIPLE_DOT: {
-                auto leftval = NEWNODE(AST::ExprNode_NamedValue, ::std::move(path));
-                auto    right_pat = Parse_PatternReal1(lex, is_refutable);
-                if( !right_pat.data().is_Value() )
-                    throw ParseError::Generic(lex, "Using '...' with a non-value on right");
-                auto    rightval = right_pat.take_node();
-                return AST::Pattern(AST::Pattern::TagValue(), ::std::move(leftval), ::std::move(rightval));
-                }
-            //  - Else, treat as a MaybeBind
-            default:
-                lex.putback(tok);
-                // if the pattern can be refuted (i.e this could be an enum variant), return MaybeBind
-                if( is_refutable )
-                    return AST::Pattern(AST::Pattern::TagMaybeBind(), path[0].name());
-                // Otherwise, it IS a binding
-                else
-                    return AST::Pattern(AST::Pattern::TagBind(), path[0].name());
-            }
-        }
-        else
-        {
-            // non-trivial path, has to be a pattern (not a bind)
-            return Parse_PatternReal_Path(lex, path, is_refutable);
+        // Known path `ident::`
+        case TOK_DOUBLE_COLON:
+            break;
+        // Known struct `Ident {` or `Ident (`
+        case TOK_BRACE_OPEN:
+        case TOK_PAREN_OPEN:
+            break;
+        // Known value `IDENT ...`
+        case TOK_TRIPLE_DOT:
+            break;
+        // Known binding `ident @`
+        case TOK_AT:
+            bind_name = mv$(tok.str());
+            GET_TOK(tok, lex);
+            GET_TOK(tok, lex);  // Match lex.putback() below
+            break;
+        default:  // Maybe bind
+            // if the pattern can be refuted (i.e this could be an enum variant), return MaybeBind
+            if( is_refutable )
+                return AST::Pattern(AST::Pattern::TagMaybeBind(), mv$(tok.str()));
+            // Otherwise, it IS a binding
+            else
+                return AST::Pattern(AST::Pattern::TagBind(), mv$(tok.str()));
         }
     }
     else
