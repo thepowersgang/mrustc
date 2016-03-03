@@ -112,7 +112,10 @@ _(expr_value)
 #endif
  | '(' ')'
  | '(' expr ',' expr_list ')'
- | '[' expr_list opt_comma ']'
+ | '[' ']'
+ | '[' expr ']'
+ | '[' expr ',' ']'
+ | '[' expr ',' expr_list_p opt_comma ']'
  | '[' expr ';' expr ']'
  | MACRO tt_paren	{ bnf_trace(context, "Expr macro invocation"); }
  | MACRO tt_square	{ bnf_trace(context, "Expr macro invocation"); }

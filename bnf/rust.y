@@ -43,7 +43,7 @@
 %type <TokenTree*> /* tt_item */ tt_paren tt_square tt_brace tt_subtree
 %type <bool>	opt_pub opt_mut
 %type <::std::string*>	opt_lifetime
-%type <AttrList*>	super_attrs attrs
+%type <AttrList*>	super_attrs attrs attrs_p
 %type <MetaItem*>	super_attr attr
 %type <ItemList*>	module_body extern_items
 %type <MetaItem*>	meta_item
@@ -136,6 +136,10 @@ module_body
  | module_body attrs macro_item { $3->add_attrs( consume($2) ); $1->push_back( box_raw($3) ); $$ = $1; }
  ;
 
+attrs_p
+ : attr	{ $$ = new AttrList(); $$->push_back( consume($1) ); }
+ | attrs attr	{ $$ = $1; $$->push_back( consume($2) ); }
+ ;
 attrs
  :	{ $$ = new AttrList(); }
  | attrs attr	{ $$ = $1; $$->push_back( consume($2) ); }
@@ -277,7 +281,7 @@ fn_qualifiers
  : RWD_extern extern_abi
  | RWD_const
  | RWD_unsafe
- | RWD_unsafe RWD_const
+ | RWD_const RWD_unsafe
  ;
 
 /* --- Type --- */
@@ -384,6 +388,8 @@ impl_item
  | opt_pub opt_unsafe RWD_fn fn_def
  | opt_pub RWD_type generic_def IDENT '=' type ';'
  | opt_pub RWD_const const_def
+ | opt_pub RWD_const RWD_fn fn_def
+ | opt_pub RWD_const RWD_unsafe RWD_fn fn_def
  | MACRO tt_group_item
  ;
 
@@ -499,15 +505,13 @@ type_ele
  | type_nopath
  ;
 type_nopath
- : opt_unsafe RWD_fn '(' fn_def_arg_list_PROTO ')' fn_def_ret
- | opt_unsafe RWD_extern extern_abi RWD_fn '(' fn_def_arg_list_PROTO ')' fn_def_ret
+ : hrlb_def opt_unsafe RWD_fn '(' fn_def_arg_list_PROTO ')' fn_def_ret
+ | hrlb_def opt_unsafe RWD_extern extern_abi RWD_fn '(' fn_def_arg_list_PROTO ')' fn_def_ret
  | '_'
  | '&' opt_lifetime type_ele
  | DOUBLEAMP opt_lifetime type_ele
-/* | '&' LIFETIME type_ele */
  | '&' opt_lifetime RWD_mut type_ele
  | DOUBLEAMP opt_lifetime RWD_mut type_ele
-/* | '&' LIFETIME RWD_mut type_ele */
  | '*' RWD_const type_ele
  | '*' RWD_mut type_ele
  | '[' type ']'
@@ -611,11 +615,11 @@ flow_control
  ;
 block_lines
  : 
- | attrs expr
+ | attrs expr_na
  | attrs MACRO tt_paren
  | super_attr     block_lines
  | ';' block_lines
- | attrs expr ';' block_lines
+ | attrs expr_na ';' block_lines
  | attrs expr_blocks block_lines
  | attrs block    block_lines
  | attrs item     block_lines
@@ -633,6 +637,7 @@ let_binding
  ;
 
 expr_list: expr_list ',' expr | expr | /* mt */;
+expr_list_p: expr_list ',' expr | expr;
 
 struct_literal_ent: IDENT | IDENT ':' expr;
 struct_literal_list
@@ -640,20 +645,24 @@ struct_literal_list
  | struct_literal_ent
  ;
 
-expr
+expr_na
  : '{' block_contents '}'
- | attrs expr_noblock
  | expr_noblock
+ ;
+
+expr
+ : expr_na
+ | attrs_p expr_na
  ;
 expr_NOSTRLIT
  : block
- | attrs expr_noblock_NOSTRLIT
- | expr_noblock_NOSTRLIT
+ | attrs_p expr_noblock_NOSTRLIT
+ |         expr_noblock_NOSTRLIT
  ;
 expr_NOBRACE
  : block
- | attrs expr_noblock_NOBRACE
- | expr_noblock_NOBRACE
+ | attrs_p expr_noblock_NOBRACE
+ |         expr_noblock_NOBRACE
  ;
 
 expr_blocks
