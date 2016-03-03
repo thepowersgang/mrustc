@@ -1,7 +1,7 @@
 _(expr_noblock): _(expr_assign);
 
 _(expr_assign)
- : _(expr_0) assign_op _(expr_0)
+ : _(expr_0) assign_op _(expr_assign)
  | _(expr_0)
  ;
 
@@ -80,6 +80,7 @@ _(expr_12)
  | '*' _(expr_12)
 /* | RWD_box expr_12 */
  | '&' _(expr_12)
+ | '&' block /*HACK*/
  | '&' RWD_mut _(expr_12)
  | DOUBLEAMP _(expr_12) { }
  | DOUBLEAMP RWD_mut _(expr_12) { }
@@ -99,13 +100,16 @@ _(expr_value)
  | expr_blocks
  | expr_path '(' expr_list opt_comma ')'	{ bnf_trace(context, "function call"); }
 #ifndef SUFFIX_is__NOSTRLIT
- | expr_path '{' struct_literal_list '}'
- | expr_path '{' struct_literal_list ',' '}'
- | expr_path '{' struct_literal_list ',' DOUBLEDOT expr_0 '}'
+ | expr_path '{' struct_literal_list '}'	{ bnf_trace(context, "struct literal"); }
+ | expr_path '{' struct_literal_list ',' '}'	{ bnf_trace(context, "struct literal"); }
+ | expr_path '{' struct_literal_list ',' DOUBLEDOT expr_0 '}'	{ bnf_trace(context, "struct literal (with default)"); }
 #endif
  | expr_path
  | RWD_self
  | '(' expr ')'
+#ifndef SUFFIX_is__NOBRACE
+//| block
+#endif
  | '(' ')'
  | '(' expr ',' expr_list ')'
  | '[' expr_list opt_comma ']'

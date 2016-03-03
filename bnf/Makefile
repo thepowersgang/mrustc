@@ -1,6 +1,7 @@
 
 .SUFFIXES:
 
+CXXFLAGS := -std=c++11 -x c++ -I . -g
 
 OBJS := main.o rust.tab.o rust.lex.o
 
@@ -14,25 +15,28 @@ BIN := ./test.bin
 
 all: $(BIN)
 
+clean:
+	rm $(BIN) $(OBJS)
+
 test: $(BIN) $(TSTFILES)
 	$(foreach f,$(TSTFILES), $(DBG) ./test.bin "$f" &&) true
 
 
 .PHONY: rust_tests
 RUST_TESTS_DIR := $(RUSTSRC)test/
-rust_tests: $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%.txt,$(wildcard $(RUST_TESTS_DIR)run-pass/*.rs))
+rust_tests: $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%.txt,$(sort $(wildcard $(RUST_TESTS_DIR)run-pass/*.rs)))
 
 output/rust/%.txt: $(RUST_TESTS_DIR)%.rs $(BIN)
 	@mkdir -p $(dir $@)
 	$(BIN) $< > $@ 2>&1
 
 $(BIN): $(OBJS)
-	g++ -std=c++11 $(OBJS) -o $@
+	g++ -std=c++11 $(OBJS) -o $@ -g
 
-%.o: %.cpp ast_types.hpp lex.hpp
-	g++  -x c++ -std=c++11 $< -c -o $@ -I .
-%.o: .gen/%.cpp ast_types.hpp lex.hpp
-	g++  -x c++ -std=c++11 $< -c -o $@ -I .
+%.o: %.cpp
+	g++ $(CXXFLAGS) $< -c -o $@ -MMD -MP -MF $@.dep
+%.o: .gen/%.cpp
+	g++ $(CXXFLAGS) $< -c -o $@ -MMD -MP -MF $@.dep
 	
 .gen/rust.tab.cpp: .gen/.rust.y
 	@mkdir -p $(dir $@)
@@ -56,4 +60,6 @@ $(BIN): $(OBJS)
 
 
 main.cpp: .gen/rust.tab.hpp
+
+-include $(OBJS:%=%.dep)
 

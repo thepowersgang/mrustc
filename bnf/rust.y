@@ -49,7 +49,7 @@
 %type <MetaItem*>	meta_item
 %type <MetaItems*>	meta_items
 
-%type <Item*>	item vis_item unsafe_item unsafe_vis_item 
+%type <Item*>	item macro_item vis_item unsafe_item unsafe_vis_item 
 %type <UseSet*>	use_def
 %type <TypeAlias*>	type_def
 %type <Module*>	module_def
@@ -133,6 +133,7 @@ opt_lifetime: { $$ = nullptr; } | LIFETIME;
 module_body
  :	{ $$ = new ::std::vector< ::std::unique_ptr<Item> >(); }
  | module_body attrs item { $3->add_attrs( consume($2) ); $1->push_back( box_raw($3) ); $$ = $1; }
+ | module_body attrs macro_item { $3->add_attrs( consume($2) ); $1->push_back( box_raw($3) ); $$ = $1; }
  ;
 
 attrs
@@ -159,7 +160,12 @@ meta_item
  ;
 
 
-
+macro_item
+ : MACRO IDENT tt_brace	{ $$ = new Macro(consume($1), consume($2), consume($3)); }
+ | MACRO IDENT tt_paren ';'	{ $$ = new Macro(consume($1), consume($2), consume($3)); }
+ | MACRO tt_brace	{ $$ = new Macro(consume($1), consume($2)); }
+ | MACRO tt_paren ';'	{ $$ = new Macro(consume($1), consume($2)); }
+ ;
 /*
 ==========================
 Root Items
@@ -174,10 +180,6 @@ item
  | RWD_extern extern_block	{ $$ = $2; }
  | RWD_extern RWD_crate extern_crate	{ $$ = $3; }
  | RWD_pub RWD_extern RWD_crate extern_crate	{ $$ = $4; $$->set_pub(); }
- | MACRO IDENT tt_brace	{ $$ = new Macro(consume($1), consume($2), consume($3)); }
- | MACRO IDENT tt_paren ';'	{ $$ = new Macro(consume($1), consume($2), consume($3)); }
- | MACRO tt_brace	{ $$ = new Macro(consume($1), consume($2)); }
- | MACRO tt_paren ';'	{ $$ = new Macro(consume($1), consume($2)); }
  ;
 /* Items for which visibility is valid */
 vis_item
@@ -266,6 +268,7 @@ fn_def_arg: pattern ':' type;
 fn_def_arg_list_PROTO: fn_def_arg_PROTO | fn_def_arg_list_PROTO ',' fn_def_arg_PROTO;
 fn_def_arg_PROTO
  : IDENT ':' type
+ | '_' ':' type
  | RWD_mut IDENT ':' type
  | type
  ;
@@ -351,34 +354,36 @@ enum_variant_
  ;
 
 /* --- Trait --- */
-trait_def: IDENT generic_def trait_bounds '{' trait_items '}' { $$ = new Trait(); };
+trait_def: IDENT generic_def trait_bounds where_clause '{' trait_items '}' { $$ = new Trait(); };
 trait_bounds: ':' trait_bound_list | ;
 trait_bound_list: trait_bound_list '+' bound | bound;
 
 trait_items: | trait_items attrs trait_item;
 trait_item
- : RWD_type IDENT ';'
- | RWD_type IDENT ':' trait_bound_list ';'
- | RWD_type IDENT '=' type ';'
+ : RWD_type IDENT trait_bounds ';'
+ | RWD_type IDENT trait_bounds '=' type ';'
+ | RWD_const IDENT ':' type opt_assign_value ';'
  | opt_unsafe RWD_fn fn_def_hdr_PROTO ';'
  | opt_unsafe fn_qualifiers RWD_fn fn_def_hdr_PROTO ';'
  | opt_unsafe RWD_fn fn_def_hdr_PROTO code 
  | opt_unsafe fn_qualifiers RWD_fn fn_def_hdr_PROTO code 
  ;
+opt_assign_value: | '=' expr;
 
 /* --- Impl --- */
-impl_def: impl_def_line '{' impl_items '}' { $$ = new Impl(); };
+impl_def: generic_def impl_def_line '{' impl_items '}' { $$ = new Impl(); };
 impl_def_line
- : generic_def trait_path RWD_for type where_clause	{ bnf_trace(context, "trait impl"); }
- | generic_def '!' trait_path RWD_for type where_clause	{ bnf_trace(context, "negative trait impl"); }
- | generic_def trait_path RWD_for DOUBLEDOT where_clause	{ bnf_trace(context, "wildcard impl"); }
- | generic_def type where_clause	{ bnf_trace(context, "inherent impl"); }
+ : trait_path RWD_for type where_clause	{ bnf_trace(context, "trait impl"); }
+ | '!' trait_path RWD_for type where_clause	{ bnf_trace(context, "negative trait impl"); }
+ | trait_path RWD_for DOUBLEDOT where_clause	{ bnf_trace(context, "wildcard impl"); }
+ | type_noufcs where_clause	{ bnf_trace(context, "inherent impl"); }
  ;
 impl_items: | impl_items attrs impl_item;
 impl_item
  : opt_pub opt_unsafe fn_qualifiers RWD_fn fn_def
  | opt_pub opt_unsafe RWD_fn fn_def
  | opt_pub RWD_type generic_def IDENT '=' type ';'
+ | opt_pub RWD_const const_def
  | MACRO tt_group_item
  ;
 
@@ -407,7 +412,7 @@ where_clause_ent
 hrlb_def: | RWD_for '<' lifetime_list '>';
 lifetime_list: LIFETIME | lifetime_list ',' LIFETIME
 bounds: bounds '+' bound | bound;
-bound: LIFETIME | '?' trait_path | trait_path;
+bound: LIFETIME | '?' trait_path | hrlb_def trait_path;
 
 /*
 =========================================
@@ -455,7 +460,9 @@ type_path
  : ufcs_path DOUBLECOLON IDENT
  | trait_path
  ;
-ufcs_path: '<' ufcs_path_tail;
+ufcs_path
+ : '<' ufcs_path_tail
+ | DOUBLELT ufcs_path_tail DOUBLECOLON ufcs_path_tail;
 ufcs_path_tail
  : type '>'
  | type RWD_as trait_path '>'
@@ -482,9 +489,17 @@ type
  : trait_list
  | type_ele
  ;
+type_noufcs
+ : trait_list
+ | trait_path
+ | type_nopath
+ ;
 type_ele
  : type_path
- | opt_unsafe RWD_fn '(' fn_def_arg_list_PROTO ')' fn_def_ret
+ | type_nopath
+ ;
+type_nopath
+ : opt_unsafe RWD_fn '(' fn_def_arg_list_PROTO ')' fn_def_ret
  | opt_unsafe RWD_extern extern_abi RWD_fn '(' fn_def_arg_list_PROTO ')' fn_def_ret
  | '_'
  | '&' opt_lifetime type_ele
@@ -518,7 +533,14 @@ struct_pattern
 	: expr_path '{' struct_pattern_items '}'
 	| expr_path '(' pattern_list ')'
 	;
-struct_pattern_item: IDENT | IDENT ':' pattern | DOUBLEDOT;
+struct_pattern_item
+ : IDENT
+ | RWD_ref IDENT
+ | RWD_ref RWD_mut IDENT
+ | RWD_mut IDENT
+ | IDENT ':' pattern
+ | DOUBLEDOT
+ ;
 struct_pattern_items: struct_pattern_items ',' struct_pattern_item | struct_pattern_item;
 
 slice_pattern
@@ -550,6 +572,7 @@ nonbind_pattern
  | '&' RWD_mut pattern
  | DOUBLEAMP pattern
  | DOUBLEAMP RWD_mut pattern
+ | RWD_box pattern
  ;
 value_pattern
  : expr_path
@@ -574,13 +597,11 @@ code: block	{ bnf_trace(context, "code parsed"); };
 
 block: '{' block_contents '}';
 
-block_contents
- : block_lines
- | block_lines tail_expr
- ;
+block_contents: block_lines;
 tail_expr
- : expr_noblock
+ : expr_noblock_NOBRACE
  | flow_control
+ |
  ;
 flow_control
  : RWD_return {}
@@ -588,30 +609,27 @@ flow_control
  | RWD_break opt_lifetime {}
  | RWD_continue opt_lifetime {}
  ;
-block_lines: | block_lines block_line;
-block_line
- : RWD_let let_binding ';'
- | MACRO IDENT tt_brace 
- | MACRO IDENT tt_paren ';'
- | MACRO tt_brace
- | super_attr
- | attrs item
- | expr_blocks
- | RWD_unsafe RWD_extern extern_abi RWD_fn fn_def
- | RWD_unsafe RWD_fn fn_def
- | block
- | stmt
- | LIFETIME ':' loop_block
+block_lines
+ : 
+ | attrs expr
+ | attrs MACRO tt_paren
+ | super_attr     block_lines
+ | ';' block_lines
+ | attrs expr ';' block_lines
+ | attrs expr_blocks block_lines
+ | attrs block    block_lines
+ | attrs item     block_lines
+ | attrs RWD_let let_binding ';' block_lines
+ | attrs MACRO IDENT tt_brace block_lines
+ | attrs MACRO tt_brace block_lines
+ | attrs MACRO tt_paren ';' block_lines
+ | LIFETIME ':' loop_block block_lines
  ;
 
 opt_type_annotation: | ':' type;
 let_binding
  : pattern opt_type_annotation '=' expr
  | pattern opt_type_annotation
-
-stmt
- : expr ';'
- | ';'
  ;
 
 expr_list: expr_list ',' expr | expr | /* mt */;
@@ -624,11 +642,18 @@ struct_literal_list
 
 expr
  : '{' block_contents '}'
+ | attrs expr_noblock
  | expr_noblock
  ;
 expr_NOSTRLIT
  : block
+ | attrs expr_noblock_NOSTRLIT
  | expr_noblock_NOSTRLIT
+ ;
+expr_NOBRACE
+ : block
+ | attrs expr_noblock_NOBRACE
+ | expr_noblock_NOBRACE
  ;
 
 expr_blocks
@@ -657,12 +682,12 @@ if_block_head
 match_arms: match_arms_list match_arm_last;
 match_arms_list
  :
- | match_arms_list match_arm ','
- | match_arms_list match_arm_brace
+ | match_arms_list attrs match_arm ','
+ | match_arms_list attrs match_arm_brace
  ;
 match_arm_last
- : match_arm 
- | match_arm ','
+ : attrs match_arm 
+ | attrs match_arm ','
  ;
 match_pattern
  : pattern
@@ -673,10 +698,10 @@ match_patterns
  | match_pattern
  ;
 match_arm
- : match_arm_expr
- | match_arm_brace
+ : match_arm_brace
+ | match_arm_expr
  ;
-match_arm_brace : match_patterns FATARROW '{' block_contents '}'	{ };
+match_arm_brace: match_patterns FATARROW '{' block_contents '}'	{ };
 match_arm_expr: match_patterns FATARROW tail_expr	{ bnf_trace(context, "match_arm"); };
 
 
