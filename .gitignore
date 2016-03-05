@@ -9,7 +9,9 @@
 /output
 
 /bnf/*.o
-/bnf/.gen
+/bnf/*.dep
+/bnf/.gen/
+/bnf/output/
 /bnf/.rust.y
 /bnf/rust.lex.c
 /bnf/rust.tab.c
