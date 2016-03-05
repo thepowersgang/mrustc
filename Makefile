@@ -60,7 +60,12 @@ output/core.ast: $(RUSTCSRC)src/libcore/lib.rs $(BIN)
 
 .PHONY: rust_tests
 RUST_TESTS_DIR := $(RUSTCSRC)src/test/
-rust_tests: $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%.txt,$(wildcard $(RUST_TESTS_DIR)run-pass/*.rs)))
+rust_tests: rust_tests-run-pass rust_tests-run-fail rust_tests-compile-fail
+
+DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%.txt,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
+rust_tests-run-pass: $(call DEF_RUST_TESTS,run-pass)
+rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
+rust_tests-compile-fail: $(call DEF_RUST_TESTS,compile-fail)
 
 output/rust/%.txt: $(RUST_TESTS_DIR)%.rs $(BIN)
 	@mkdir -p $(dir $@)

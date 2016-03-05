@@ -939,8 +939,16 @@ ExprNodeP Parse_ExprVal_Closure(TokenStream& lex, bool is_move)
     CHECK_TOK(tok, TOK_PIPE);
     
     TypeRef rt;
-    if( GET_TOK(tok, lex) == TOK_THINARROW )
-        rt = Parse_Type(lex);
+    if( GET_TOK(tok, lex) == TOK_THINARROW ) {
+    
+        if( GET_TOK(tok, lex) == TOK_EXCLAM ) {
+            rt = TypeRef(TypeRef::TagInvalid());
+        }
+        else {
+            lex.putback(tok);
+            rt = Parse_Type(lex);
+        }
+    }
     else
         lex.putback(tok);
     
