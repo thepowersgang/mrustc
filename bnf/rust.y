@@ -154,7 +154,8 @@ attr
  | DOC_COMMENT	{ $$ = new MetaItem("doc", consume($1)); }
  ;
 meta_items
- : meta_item	{ $$ = new MetaItems(); $$->push_back( consume($1) ); }
+ :	{ $$ = new MetaItems(); }
+ | meta_item	{ $$ = new MetaItems(); $$->push_back( consume($1) ); }
  | meta_items ',' meta_item	{ $$ = $1; $$->push_back( consume($3) ); }
  ;
 meta_item
@@ -280,7 +281,7 @@ fn_def_arg_PROTO
 fn_qualifiers
  : RWD_extern extern_abi
  | RWD_const
- | RWD_unsafe
+/* | RWD_unsafe */
  | RWD_const RWD_unsafe
  ;
 
@@ -347,14 +348,14 @@ struct_def_item: attrs opt_pub IDENT ':' type;
 
 /* --- Enum --- */
 enum_def: IDENT generic_def where_clause '{' enum_variants '}' { $$ = new Enum(); };
-enum_variants: | enum_variant_list | enum_variant_list ',';
-enum_variant_list: enum_variant | enum_variant_list ',' enum_variant;
+enum_variants: | enum_variant_list;
+enum_variant_list: enum_variant | enum_variant ',' | enum_variant ',' enum_variant_list;
 enum_variant: attrs enum_variant_;
 enum_variant_
  : IDENT
  | IDENT '=' expr
  | IDENT '(' type_list ')'
- | IDENT '{' struct_def_items '}'
+ | IDENT '{' struct_def_items opt_comma '}'
  ;
 
 /* --- Trait --- */
@@ -508,10 +509,14 @@ type_nopath
  : hrlb_def opt_unsafe RWD_fn '(' fn_def_arg_list_PROTO ')' fn_def_ret
  | hrlb_def opt_unsafe RWD_extern extern_abi RWD_fn '(' fn_def_arg_list_PROTO ')' fn_def_ret
  | '_'
- | '&' opt_lifetime type_ele
- | DOUBLEAMP opt_lifetime type_ele
- | '&' opt_lifetime RWD_mut type_ele
- | DOUBLEAMP opt_lifetime RWD_mut type_ele
+ | '&'  type_ele
+ | '&' LIFETIME type_ele
+ | DOUBLEAMP          type_ele
+ | DOUBLEAMP LIFETIME type_ele
+ | '&'          RWD_mut type_ele
+ | '&' LIFETIME RWD_mut type_ele
+ | DOUBLEAMP          RWD_mut type_ele
+ | DOUBLEAMP LIFETIME RWD_mut type_ele
  | '*' RWD_const type_ele
  | '*' RWD_mut type_ele
  | '[' type ']'

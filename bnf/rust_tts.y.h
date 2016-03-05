@@ -6,6 +6,7 @@ tt_tok
  | _T(CHARLIT) | _T(INTEGER)
  | _T(FLOAT)
  | _C(',') | _C(';') | _C('_')
+ | _T(RWD_mod)
  | _T(RWD_self) | _T(RWD_super) | _T(RWD_mut) | _T(RWD_ref) | _T(RWD_let) | _T(RWD_where) | _T(RWD_pub) | _T(RWD_in) | _T(RWD_as)
  | _T(RWD_for ) | _T(RWD_while) | _T(RWD_loop) | _T(RWD_if) | _T(RWD_else) | _T(RWD_match) | _T(RWD_box) | _T(RWD_move)
  | _T(RWD_return) | _T(RWD_continue) | _T(RWD_break)

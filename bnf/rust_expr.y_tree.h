@@ -1,8 +1,8 @@
 _(expr_noblock): _(expr_assign);
 
 _(expr_assign)
- : _(expr_0) assign_op _(expr_assign)
- | _(expr_0)
+ : _(expr_0)
+ | _(expr_0) assign_op _(expr_assign)
  ;
 
 _(expr_0): _(expr_range);
@@ -10,8 +10,8 @@ _(expr_0): _(expr_range);
 _(expr_range)
  : _(expr_range_n)
  | _(expr_range_n) DOUBLEDOT
- |                 DOUBLEDOT _(expr_range_n)
  | _(expr_range_n) DOUBLEDOT _(expr_range_n)
+ |                 DOUBLEDOT _(expr_range_n)
  | DOUBLEDOT
  ;
 _(expr_range_n): _(expr_bor);
