@@ -5,6 +5,8 @@
  * dump_as_rust.cpp
  * - Dumps the AST of a crate as rust code (annotated)
  */
+#include "ast/crate.hpp"
+#include "ast/ast.hpp"
 #include "ast/expr.hpp"
 #include <main_bindings.hpp>
 
@@ -32,7 +34,7 @@ public:
     void handle_enum(const AST::Enum& s);
     void handle_trait(const AST::Trait& s);
 
-    void handle_function(const AST::Item<AST::Function>& f);
+    void handle_function(bool is_pub, const ::std::string& name, const AST::Function& f);
 
     virtual bool is_const() const override { return true; }
     virtual void visit(AST::ExprNode_Block& n) override {
@@ -557,76 +559,97 @@ void RustPrinter::handle_module(const AST::Module& mod)
     }
     need_nl = true;
     
-    for( const auto& sm : mod.submods() )
+    for( const auto& item : mod.items() )
     {
+        if( !item.data.is_Module() )    continue ;
+        const auto& e = item.data.as_Module().e;
+        
         m_os << "\n";
-        m_os << indent() << (sm.second ? "pub " : "") << "mod " << sm.first.name() << "\n";
+        m_os << indent() << (item.is_pub ? "pub " : "") << "mod " << item.name << "\n";
         m_os << indent() << "{\n";
         inc_indent();
-        handle_module(sm.first);
+        handle_module(e);
         dec_indent();
         m_os << indent() << "}\n";
         m_os << "\n";
     }
     
-    for( const auto& i : mod.type_aliases() )
+    for( const auto& item : mod.items() )
     {
+        if( !item.data.is_Type() )    continue ;
+        const auto& e = item.data.as_Type().e;
+        
         if(need_nl) {
             m_os << "\n";
             need_nl = false;
         }
-        m_os << indent() << (i.is_pub ? "pub " : "") << "type " << i.name;
-        print_params(i.data.params());
-        m_os << " = " << i.data.type();
-        print_bounds(i.data.params());
+        m_os << indent() << (item.is_pub ? "pub " : "") << "type " << item.name;
+        print_params(e.params());
+        m_os << " = " << e.type();
+        print_bounds(e.params());
         m_os << ";\n";
         m_os << "\n";
     }
     need_nl = true;
     
-    for( const auto& i : mod.structs() )
+    for( const auto& item : mod.items() )
     {
+        if( !item.data.is_Struct() )    continue ;
+        const auto& e = item.data.as_Struct().e;
+        
         m_os << "\n";
-        m_os << indent() << (i.is_pub ? "pub " : "") << "struct " << i.name;
-        handle_struct(i.data);
+        m_os << indent() << (item.is_pub ? "pub " : "") << "struct " << item.name;
+        handle_struct(e);
     }
     
-    for( const auto& i : mod.enums() )
+    for( const auto& item : mod.items() )
     {
+        if( !item.data.is_Enum() )    continue ;
+        const auto& e = item.data.as_Enum().e;
+        
         m_os << "\n";
-        m_os << indent() << (i.is_pub ? "pub " : "") << "enum " << i.name;
-        handle_enum(i.data);
+        m_os << indent() << (item.is_pub ? "pub " : "") << "enum " << item.name;
+        handle_enum(e);
     }
     
-    for( const auto& i : mod.traits() )
+    for( const auto& item : mod.items() )
     {
+        if( !item.data.is_Trait() )    continue ;
+        const auto& e = item.data.as_Trait().e;
+        
         m_os << "\n";
-        m_os << indent() << (i.is_pub ? "pub " : "") << "trait " << i.name;
-        handle_trait(i.data);
+        m_os << indent() << (item.is_pub ? "pub " : "") << "trait " << item.name;
+        handle_trait(e);
     }
     
-    for( const auto& i : mod.statics() )
+    for( const auto& item : mod.items() )
     {
+        if( !item.data.is_Static() )    continue ;
+        const auto& e = item.data.as_Static().e;
+        
         if(need_nl) {
             m_os << "\n";
             need_nl = false;
         }
-        m_os << indent() << (i.is_pub ? "pub " : "");
-        switch( i.data.s_class() )
+        m_os << indent() << (item.is_pub ? "pub " : "");
+        switch( e.s_class() )
         {
         case AST::Static::CONST:  m_os << "const ";   break;
         case AST::Static::STATIC: m_os << "static ";   break;
         case AST::Static::MUT:    m_os << "static mut ";   break;
         }
-        m_os << i.name << ": " << i.data.type() << " = ";
-        i.data.value().visit_nodes(*this);
+        m_os << item.name << ": " << e.type() << " = ";
+        e.value().visit_nodes(*this);
         m_os << ";\n";
     }
     
-    for( const auto& i : mod.functions() )
+    for( const auto& item : mod.items() )
     {
+        if( !item.data.is_Function() )    continue ;
+        const auto& e = item.data.as_Function().e;
+        
         m_os << "\n";
-        handle_function(i);
+        handle_function(item.is_pub, item.name, e);
     }
 
     for( const auto& i : mod.impls() )
@@ -649,7 +672,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         }
         for( const auto& t : i.functions() )
         {
-            handle_function(t);
+            handle_function(t.is_pub, t.name, t.data);
         }
         dec_indent();
         m_os << indent() << "}\n";
@@ -912,7 +935,7 @@ void RustPrinter::handle_trait(const AST::Trait& s)
     }
     for( const auto& i : s.functions() )
     {
-        handle_function(i);
+        handle_function(false, i.name, i.data);
     }
     
     dec_indent();
@@ -920,14 +943,18 @@ void RustPrinter::handle_trait(const AST::Trait& s)
     m_os << "\n";
 }
 
-void RustPrinter::handle_function(const AST::Item<AST::Function>& f)
+void RustPrinter::handle_function(bool is_pub, const ::std::string& name, const AST::Function& f)
 {
     m_os << "\n";
-    m_os << indent() << (f.is_pub ? "pub " : "") << "fn " << f.name;
-    print_params(f.data.params());
+    m_os << indent();
+    m_os << (is_pub ? "pub " : "");
+    // TODO: Unsafe
+    // TODO: Const
+    m_os << "fn " << name;
+    print_params(f.params());
     m_os << "(";
     bool is_first = true;
-    for( const auto& a : f.data.args() )
+    for( const auto& a : f.args() )
     {
         if( !is_first )
             m_os << ", ";
@@ -936,24 +963,24 @@ void RustPrinter::handle_function(const AST::Item<AST::Function>& f)
         is_first = false;
     }
     m_os << ")";
-    if( !f.data.rettype().is_unit() )
+    if( !f.rettype().is_unit() )
     {
-        m_os << " -> " << f.data.rettype().print_pretty();
+        m_os << " -> " << f.rettype().print_pretty();
     }
     
-    if( f.data.code().is_valid() )
+    if( f.code().is_valid() )
     {
         m_os << "\n";
-        print_bounds(f.data.params());
+        print_bounds(f.params());
         
         m_os << indent();
-        f.data.code().visit_nodes(*this);
+        f.code().visit_nodes(*this);
         m_os << "\n";
         //m_os << indent() << f.data.code() << "\n";
     }
     else
     {
-        print_bounds(f.data.params());
+        print_bounds(f.params());
         m_os << ";\n";
     }
 }

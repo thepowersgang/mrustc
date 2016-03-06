@@ -43,7 +43,7 @@ AST::Expr Parse_ExprBlock(TokenStream& lex)
 
 ExprNodeP Parse_ExprBlockNode(TokenStream& lex);
 ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end);
-void Parse_ExternBlock(TokenStream& lex, AST::MetaItems attrs, ::std::vector< AST::Item<AST::Function> >& imports);
+void Parse_ExternBlock(TokenStream& lex, AST::MetaItems attrs, ::std::vector< AST::Named<AST::Function> >& imports);
 
 ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
 {
@@ -52,7 +52,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
 
     ::std::vector<ExprNodeP> nodes;
     
-    ::std::unique_ptr<AST::Module>    local_mod( new AST::Module(AST::MetaItems(),"") );
+    ::std::unique_ptr<AST::Module>    local_mod( new AST::Module("") );
     bool    keep_mod = false;
     
     const LList<AST::Module*>* prev_modstack = Macro_GetModule();
@@ -240,7 +240,7 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end)
     }
 }
 /// Extern block within a block
-void Parse_ExternBlock(TokenStream& lex, AST::MetaItems attrs, ::std::vector< AST::Item<AST::Function> >& imports)
+void Parse_ExternBlock(TokenStream& lex, AST::MetaItems attrs, ::std::vector< AST::Named<AST::Function> >& imports)
 {
     Token tok;
     
@@ -281,7 +281,7 @@ void Parse_ExternBlock(TokenStream& lex, AST::MetaItems attrs, ::std::vector< AS
         case TOK_RWORD_FN:
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             name = tok.str();
-            imports.push_back( AST::Item<AST::Function>(
+            imports.push_back( AST::Named<AST::Function>(
                 ::std::move(name),
                 Parse_FunctionDef(lex, abi, AST::MetaItems(), false, true),
                 false

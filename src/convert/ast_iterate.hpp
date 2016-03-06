@@ -13,7 +13,7 @@ class GenericParams;
 class Impl;
 class ImplDef;
 class EnumVariant;
-template<typename T> struct Item;
+template<typename T> struct Named;
 
 };
 

@@ -9,6 +9,7 @@
  */
 #include "types.hpp"
 #include "ast/ast.hpp"
+#include "ast/crate.hpp"
 
 /// Mappings from internal type names to the core type enum
 static const struct {

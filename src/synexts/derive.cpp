@@ -83,7 +83,7 @@ public:
         DEBUG("node = " << *node);
         
         AST::Function fcn(
-            AST::MetaItems(), AST::GenericParams(),
+            AST::GenericParams(),
             ret_type,
             vec$(
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), false, TypeRef("Self")) ),
@@ -145,14 +145,21 @@ static void derive_item(AST::Module& mod, const AST::MetaItem& attr, const AST::
 }
 
 class Decorator_Derive:
-    public CDecoratorHandler
+    public ExpandDecorator
 {
 public:
-    void handle_item(AST::Crate& , AST::Module& mod, const AST::MetaItem& attr, const AST::Path& path, AST::Struct& str) const override
+    bool expand_before_macros() const override { return false; }
+    void handle(const AST::MetaItem& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
-        derive_item(mod, attr, path, str);
+        TU_MATCH_DEF(::AST::Item, (i), (e),
+        (
+            ),
+        (Struct,
+            derive_item(mod, attr, path, e.e);
+            )
+        )
     }
 };
 
-STATIC_SYNEXT(Decorator, "derive", Decorator_Derive)
+STATIC_DECORATOR("derive", Decorator_Derive)
 

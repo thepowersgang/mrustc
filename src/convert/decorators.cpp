@@ -7,6 +7,7 @@
  */
 #include "ast_iterate.hpp"
 #include "../ast/ast.hpp"
+#include "../ast/crate.hpp"
 #include <main_bindings.hpp>
 #include <unordered_map>    // C++11, hashmap
 #include <synext.hpp>

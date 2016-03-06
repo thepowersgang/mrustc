@@ -7,6 +7,8 @@
  */
 #include <main_bindings.hpp>
 #include "ast_iterate.hpp"
+#include "../ast/expr.hpp"
+#include "../ast/crate.hpp"
 #include "../common.hpp"
 #include <stdexcept>
 

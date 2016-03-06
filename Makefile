@@ -7,7 +7,7 @@ LINKFLAGS := -g
 LIBS :=
 CXXFLAGS := -g -Wall -std=c++11 -Werror
 #CXXFLAGS += -O3
-CPPFLAGS := -I src/include/
+CPPFLAGS := -I src/include/ -I src/
 
 SHELL = bash
 
@@ -25,13 +25,14 @@ BIN := bin/mrustc$(EXESUF)
 
 OBJ := main.o macros.o types.o serialise.o
 OBJ += span.o
-OBJ += ast/ast.o ast/path.o ast/expr.o ast/pattern.o
+OBJ += ast/ast.o ast/crate.o ast/path.o ast/expr.o ast/pattern.o
 OBJ += ast/provided_module.o
 OBJ += parse/parseerror.o parse/lex.o
 OBJ += parse/root.o parse/paths.o parse/types.o parse/expr.o parse/pattern.o
+OBJ += expand/mod.o
 OBJ += dump_as_rust.o
 OBJ += convert/ast_iterate.o
-OBJ += convert/decorators.o
+#OBJ += convert/decorators.o
 OBJ += convert/resolve.o convert/typecheck_bounds.o convert/typecheck_params.o convert/typecheck_expr.o
 OBJ += convert/flatten.o convert/render.o
 OBJ += synexts/derive.o synexts/lang_item.o

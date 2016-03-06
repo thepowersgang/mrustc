@@ -9,6 +9,7 @@
  */
 #include "../common.hpp"
 #include "../ast/ast.hpp"
+#include "../ast/crate.hpp"
 #include "../parse/parseerror.hpp"
 #include "ast_iterate.hpp"
 
@@ -161,20 +162,22 @@ private:
                 ret.push_back(t);
             }
             if( it->module ) {
-                for( const auto& t : it->module->traits() ) {
-                    auto trait_path = it->module_path + t.name;
+                for( const auto& i : it->module->items() ) {
+                    if( !i.data.is_Trait() )    continue ;
+                    const auto& t = i.data.as_Trait().e;
+                    auto trait_path = it->module_path + i.name;
                     DEBUG("t = " << trait_path);
-                    ::std::pair<AST::Path, const AST::Trait&>   tr(trait_path, t.data);
-                    ret.push_back( tr );
+                    ret.push_back( ::std::pair<AST::Path, const AST::Trait&>(trait_path, t) );
                 }
             }
         }
 
-        for( const auto& t : m_module->traits() ) {
-            auto trait_path = m_module_path + t.name;
+        for( const auto& i : m_module->items() ) {
+            if( !i.data.is_Trait() )    continue ;
+            const auto& t = i.data.as_Trait().e;
+            auto trait_path = m_module_path + i.name;
             DEBUG("(mod) t = " << trait_path);
-            ::std::pair<AST::Path, const AST::Trait&>   tr(trait_path, t.data);
-            ret.push_back( tr );
+            ret.push_back( ::std::pair<AST::Path, const AST::Trait&>(trait_path, t) );
         }
         for( const auto& i : m_module->imports() ) {
             if( i.data.binding().is_Trait() )
@@ -1369,7 +1372,7 @@ bool CPathResolver::find_trait_item(const Span& span, const AST::Path& path, AST
     {
         const auto& fcns = trait.functions();
         //DEBUG("fcns = " << fcns);
-        auto it = ::std::find_if( fcns.begin(), fcns.end(), [&](const AST::Item<AST::Function>& a) { DEBUG("fcn " << a.name); return a.name == item_name; } );
+        auto it = ::std::find_if( fcns.begin(), fcns.end(), [&](const AST::Named<AST::Function>& a) { DEBUG("fcn " << a.name); return a.name == item_name; } );
         if( it != fcns.end() ) {
             // Found it.
             out_is_method = true;
@@ -1381,7 +1384,7 @@ bool CPathResolver::find_trait_item(const Span& span, const AST::Path& path, AST
     }
     {
         const auto& types = trait.types();
-        auto it = ::std::find_if( types.begin(), types.end(), [&](const AST::Item<AST::TypeAlias>& a) { DEBUG("type " << a.name); return a.name == item_name; } );
+        auto it = ::std::find_if( types.begin(), types.end(), [&](const AST::Named<AST::TypeAlias>& a) { DEBUG("type " << a.name); return a.name == item_name; } );
         if( it != types.end() ) {
             // Found it.
             out_is_method = false;
@@ -1756,12 +1759,14 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
         //if( new_imp.binding().is_Unbound() ) {
         //    new_imp.resolve(crate, false);
         //}
-        mod.add_alias(false, new_imp, new_imp[new_imp.size()-1].name());
+        // TODO: Get attributes from the source import
+        mod.add_alias(false, new_imp, new_imp[new_imp.size()-1].name(), ::AST::MetaItems());
     }
     
-    for( auto& submod : mod.submods() )
-    {
-        ResolvePaths_HandleModule_Use(crate, modpath + submod.first.name(), submod.first);
+    for(auto& item : mod.items()) {
+        if( item.data.is_Module() ) {
+            ResolvePaths_HandleModule_Use(crate, modpath + item.name, item.data.as_Module().e);
+        }
     }
 }
 
@@ -1776,8 +1781,11 @@ void SetCrateName_Type(const AST::Crate& crate, ::std::string name, TypeRef& typ
 
 void SetCrateName_Mod(const AST::Crate& crate, ::std::string name, AST::Module& mod)
 {
-    for(auto& submod : mod.submods())
-        SetCrateName_Mod(crate, name, submod.first);
+    for(auto& item : mod.items()) {
+        if( item.data.is_Module() ) {
+            SetCrateName_Mod(crate, name, item.data.as_Module().e);
+        }
+    }
     // Imports 'use' statements
     for(auto& imp : mod.imports())
     {
@@ -1787,9 +1795,10 @@ void SetCrateName_Mod(const AST::Crate& crate, ::std::string name, AST::Module& 
     }
     
     // TODO: All other types
-    for(auto& fcn : mod.functions())
-    {
-        SetCrateName_Type(crate, name, fcn.data.rettype());
+    for(auto& item : mod.items()) {
+        if( item.data.is_Function() ) {
+            SetCrateName_Type(crate, name, item.data.as_Function().e.rettype());
+        }
     }
 }
 
@@ -1801,6 +1810,7 @@ void ResolvePaths(AST::Crate& crate)
 {
     DEBUG(" >>>");
     // Pre-process external crates to tag all paths
+    #if 0
     DEBUG(" --- Extern crates");
     INDENT();
     for(auto& ec : crate.extern_crates())
@@ -1808,6 +1818,7 @@ void ResolvePaths(AST::Crate& crate)
         SetCrateName_Mod(crate, ec.first, ec.second.root_module());
     }
     UNINDENT();
+    #endif
     
     // Handle 'use' statements in an initial parss
     DEBUG(" --- Use Statements");

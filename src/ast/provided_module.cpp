@@ -12,9 +12,9 @@ void AST_InitProvidedModule()
 {
     // "struct str([u8])"
     g_compiler_module.add_struct(true, "str",
-        AST::Struct( AST::MetaItems(), AST::GenericParams(), ::std::vector<AST::StructItem> {
+        AST::Struct( AST::GenericParams(), ::std::vector<AST::StructItem> {
             AST::StructItem("", TypeRef(TypeRef::TagUnsizedArray(), TypeRef(CORETYPE_U8)), false),
-        }));
+        }), AST::MetaItems());
     
     // TODO: Defer this until AFTER 
     AST_InitProvidedModule_Impls();

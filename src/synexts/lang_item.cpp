@@ -8,6 +8,7 @@
 #include <synext.hpp>
 #include "../common.hpp"
 #include "../ast/ast.hpp"
+#include "../ast/crate.hpp"
 
 
 void handle_lang_item(AST::Crate& crate, const AST::Path& path, const ::std::string& name, AST::eItemType type)
@@ -76,18 +77,28 @@ void handle_lang_item(AST::Crate& crate, const AST::Path& path, const ::std::str
     else {
         throw CompileError::Generic(FMT("Unknown lang item '" << name << "'"));
     }
+
+    
 }
 
 class Decorator_LangItem:
-    public CDecoratorHandler
+    public ExpandDecorator
 {
 public:
-    void handle_item(AST::Crate& crate, AST::Module& mod, const AST::MetaItem& attr, const AST::Path& path, AST::Trait& t) const override
+    bool expand_before_macros() const override { return true; }
+    void handle(const AST::MetaItem& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
-        handle_lang_item(crate, path, attr.string(), AST::ITEM_TRAIT);
+        TU_MATCH_DEF(::AST::Item, (i), (e),
+        (
+            // TODO: Error
+            ),
+        (Trait,
+            handle_lang_item(crate, path, attr.string(), AST::ITEM_TRAIT);
+            )
+        )
     }
 };
 
-STATIC_SYNEXT(Decorator, "lang", Decorator_LangItem)
+STATIC_DECORATOR("lang", Decorator_LangItem)
 
 

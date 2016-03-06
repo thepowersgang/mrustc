@@ -3,12 +3,26 @@
 #ifndef _MAIN_BINDINGS_HPP_
 #define _MAIN_BINDINGS_HPP_
 
-#include "../ast/ast.hpp"
+#include <string>
+
+namespace AST {
+    class Crate;
+    class Flat;
+}
 
 /// Parse a crate from the given file
 extern AST::Crate Parse_Crate(::std::string mainfile);
+
+
+extern void Expand_Decorators_Pre(::AST::Crate& crate);
+extern void Expand_Macros(::AST::Crate& crate);
+extern void Expand_Decorators_Post(::AST::Crate& crate);
+extern void Expand_Sugar(::AST::Crate& crate);
+
 /// Process #[] decorators
 extern void Process_Decorators(AST::Crate& crate);
+
+
 /// Resolve all in-text paths to absolute variants
 extern void ResolvePaths(AST::Crate& crate);
 /// Check that generic bounds are valid

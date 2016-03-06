@@ -303,41 +303,49 @@ void CASTIterator::handle_module(AST::Path path, AST::Module& mod)
     INDENT();
     start_scope();
     
-    for( auto& item : mod.structs() )
+    for( auto& item : mod.items() )
     {
-        DEBUG("Handling struct " << item.name);
-        handle_struct(path + item.name, item.data);
-    }
-    for( auto& item : mod.enums() )
-    {
-        DEBUG("Handling enum " << item.name);
-        handle_enum(path + item.name, item.data);
-    }
-    for( auto& item : mod.traits() )
-    {
-        DEBUG("Handling trait " << item.name);
-        handle_trait(path + item.name, item.data);
-    }
-    for( auto& item : mod.type_aliases() )
-    {
-        DEBUG("Handling alias " << item.name);
-        handle_alias(path + item.name, item.data);
-    }
-    for( auto& stat : mod.statics() )
-    {
-        DEBUG("handling static " << stat.name);
-        handle_type(stat.data.type());
-        if( stat.data.value().is_valid() )
-        {
-            handle_expr(stat.data.value().node());
-        }
+        TU_MATCH(::AST::Item, (item.data), (e),
+        (None,
+            // Explicitly ignored (represents a deleted item)
+            ),
+        (Crate,
+            // Nothing to be done
+            ),
+        (Struct,
+            DEBUG("Handling struct " << item.name);
+            handle_struct(path + item.name, e.e);
+            ),
+        (Enum,
+            DEBUG("Handling enum " << item.name);
+            handle_enum(path + item.name, e.e);
+            ),
+        (Trait,
+            DEBUG("Handling trait " << item.name);
+            handle_trait(path + item.name, e.e);
+            ),
+        (Type,
+            DEBUG("Handling alias " << item.name);
+            handle_alias(path + item.name, e.e);
+            ),
+        (Static,
+            DEBUG("handling static " << item.name);
+            handle_type(e.e.type());
+            if( e.e.value().is_valid() )
+            {
+                handle_expr(e.e.value().node());
+            }
+            ),
+        (Function,
+            DEBUG("Handling function '" << item.name << "'");
+            handle_function(path + item.name, e.e);
+            ),
+        (Module,
+            // Skip, done after all items
+            )
+        )
     }
     
-    for( auto& fcn : mod.functions() )
-    {
-        DEBUG("Handling function '" << fcn.name << "'");
-        handle_function(path + fcn.name, fcn.data);
-    }
     for( auto& impl : mod.impls() )
     {
         DEBUG("Handling 'impl' " << impl);
@@ -347,10 +355,12 @@ void CASTIterator::handle_module(AST::Path path, AST::Module& mod)
     // End scope before handling sub-modules
     end_scope(); 
  
-    for( auto& submod : mod.submods() )
+    for( auto& item : mod.items() )
     {
-        DEBUG("Handling submod '" << submod.first.name() << "'");
-        handle_module(path + submod.first.name(), submod.first);
+        if(!item.data.is_Module())    continue;
+        auto& submod = item.data.as_Module().e;
+        DEBUG("Handling submod '" << item.name << "'");
+        handle_module(path + item.name, submod);
     }
     unsigned int anon_mod_idx = 0;
     for( auto& anonmod : mod.anon_mods() )

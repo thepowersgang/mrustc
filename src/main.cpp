@@ -10,6 +10,7 @@
 #include "parse/lex.hpp"
 #include "parse/parseerror.hpp"
 #include "ast/ast.hpp"
+#include "ast/crate.hpp"
 #include <serialiser_texttree.hpp>
 #include <cstring>
 #include <main_bindings.hpp>
@@ -80,17 +81,23 @@ int main(int argc, char *argv[])
         if( params.last_stage == ProgramParams::STAGE_PARSE ) {
             return 0;
         }
+
+        // Load external crates.
+        CompilePhaseV("LoadCrates", [&]() {
+            crate.load_externs();
+            });
     
         // Iterate all items in the AST, applying syntax extensions
-        CompilePhaseV("Decorators", [&]() {
-            Process_Decorators(crate);
-            //Process_Synexts(crate);
+        CompilePhaseV("Expand", [&]() {
+            Expand_Decorators_Pre(crate);
+            Expand_Macros(crate);
+            Expand_Decorators_Post(crate);
+            Expand_Sugar(crate);
             });
             
         // Run a quick post-parse pass
-        // TODO: What does this do?
         CompilePhaseV("PostParse", [&]() {
-            crate.post_parse();
+            crate.index_impls();
             });
 
         // XXX: Dump crate before resolve

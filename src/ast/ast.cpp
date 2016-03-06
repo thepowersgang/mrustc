@@ -1,6 +1,7 @@
 /*
  */
 #include "ast.hpp"
+#include "crate.hpp"
 #include "../types.hpp"
 #include "../common.hpp"
 #include <iostream>
@@ -182,12 +183,6 @@ SERIALISE_TYPE(Impl::, "AST_Impl", {
     s.item(m_functions);
 })
 
-Crate::Crate():
-    m_root_module(MetaItems(), ""),
-    m_load_std(true)
-{
-}
-
 ::rust::option<char> ImplRef::find_named_item(const ::std::string& name) const
 {
     if( this->impl.has_named_item(name) ) {
@@ -199,307 +194,6 @@ Crate::Crate():
 }
 
 
-static void iterate_module(Module& mod, ::std::function<void(Module& mod)> fcn)
-{
-    fcn(mod);
-    for( auto& sm : mod.submods() )
-        iterate_module(sm.first, fcn);
-}
-
-void Crate::post_parse()
-{
-    // Iterate all modules, grabbing pointers to all impl blocks
-    auto cb = [this](Module& mod){
-        for( auto& impl : mod.impls() )
-            m_impl_index.push_back( &impl );
-        for( auto& impl : mod.neg_impls() )
-            m_neg_impl_index.push_back( &impl );
-        };
-    iterate_module(m_root_module, cb);
-    iterate_module(g_compiler_module, cb);
-
-    // Create a map of inherent impls
-    for( const auto& impl : m_impl_index )
-    {
-        if( impl->def().trait().is_valid() == false )
-        {
-            auto& ent = m_impl_map[impl->def().type()];
-            ent.push_back( impl );
-        }
-    }
-}
-
-void Crate::iterate_functions(fcn_visitor_t* visitor)
-{
-    m_root_module.iterate_functions(visitor, *this);
-}
-Module& Crate::get_root_module(const ::std::string& name) {
-    return const_cast<Module&>( const_cast<const Crate*>(this)->get_root_module(name) );
-}
-const Module& Crate::get_root_module(const ::std::string& name) const {
-    if( name == "" )
-        return m_root_module;
-    auto it = m_extern_crates.find(name);
-    if( it != m_extern_crates.end() )
-        return it->second.root_module();
-    throw ParseError::Generic("crate name unknown");
-}
-
-bool Crate::is_trait_implicit(const Path& trait) const
-{
-    // 1. Handle lang_item traits (e.g. FhantomFn)
-    if( m_lang_item_PhantomFn.is_valid() && trait.equal_no_generic( m_lang_item_PhantomFn ) >= 0 )
-    {
-        return true;
-    }
-    return false;
-}
-
-/**
- * \brief Checks if a type implements the provided wildcard trait
- * \param trait Trait path
- * \param type  Type in question
- * \note Wildcard trait = A trait for which there exists a 'impl Trait for ..' definition
- *
- * \return True if the trait is implemented (either exlicitly, or implicitly)
- */
-bool Crate::check_impls_wildcard(const Path& trait, const TypeRef& type) const
-{
-    ::std::vector<TypeRef>  _params;
-    TRACE_FUNCTION_F("trait="<<trait<<", type="<<type);
-    
-    // 1. Look for a negative impl for this type
-    for( auto implptr : m_neg_impl_index )
-    {
-        const ImplDef& neg_impl = *implptr;
-        
-        if( neg_impl.matches(_params, trait, type) )
-        {
-            return false;
-        }
-    }
-    DEBUG("No negative impl of " << trait << " for " << type);
-    
-    // 2. Look for a positive impl for this type (i.e. an unsafe impl)
-    for( auto implptr : m_impl_index )
-    {
-        const Impl& impl = *implptr;
-        if( impl.def().matches(_params, trait, type) )
-        {
-            return true;
-        }
-    }
-    DEBUG("No positive impl of " << trait << " for " << type);
-    
-    // 3. If none found, destructure the type
-    return type.impls_wildcard(*this, trait);
-}
-
-
-bool Crate::find_inherent_impls(const TypeRef& type, ::std::function<bool(const Impl& , ::std::vector<TypeRef> )> callback) const
-{
-    assert( !type.is_type_param() );
-    
-    for( auto implptr : m_impl_index )
-    {
-        Impl& impl = *implptr;
-        if( impl.def().trait().is_valid() )
-        {
-            // Trait
-        }
-        else
-        {
-            DEBUG("- " << impl.def());
-            ::std::vector<TypeRef>  out_params;
-            if( impl.def().matches(out_params, AST::Path(), type) )
-            {
-                if( callback(impl, out_params) ) {
-                    return true;
-                }
-            }
-        }
-    }
-    
-    return false;
-}
-
-::rust::option<ImplRef> Crate::find_impl(const Path& trait, const TypeRef& type) const
-{
-    ::std::vector<TypeRef>  params;
-    Impl    *out_impl;
-    if( find_impl(trait, type, &out_impl, &params) )
-    {
-        return ::rust::Some( ImplRef(*out_impl, params) );
-    }
-    else {
-        return ::rust::None<ImplRef>();
-    }
-}
-
-bool Crate::find_impl(const Path& trait, const TypeRef& type, Impl** out_impl, ::std::vector<TypeRef>* out_params) const 
-{
-    TRACE_FUNCTION_F("trait = " << trait << ", type = " << type);
-    
-    // If no params output provided, use a dud locaton
-    ::std::vector<TypeRef>  dud_params;
-    if(out_params)
-        *out_params = ::std::vector<TypeRef>();
-    else
-        out_params = &dud_params;
-    
-    // Zero output
-    if(out_impl)
-        *out_impl = nullptr;
-    
-    if( is_trait_implicit(trait) )
-    {
-        if(out_impl)    throw CompileError::BugCheck("find_impl - Asking for concrete impl of a marker trait");
-        return true;
-    }
-    
-    // 0. Handle generic bounds
-    // TODO: Handle more complex bounds like "[T]: Trait"
-    if( type.is_type_param() )
-    {
-        if( trait.is_valid() )
-        {
-            assert(type.type_params_ptr());
-            // Search bounds for type: trait
-            for( const auto& bound : type.type_params_ptr()->bounds() )
-            {
-                DEBUG("bound = " << bound);
-                TU_MATCH_DEF(GenericBound, (bound), (ent),
-                (),
-                (IsTrait,
-                    if(ent.type == type && ent.trait == trait) {
-                        // If found, success!
-                        DEBUG("- Success!");
-                        // TODO: What should be returned, kinda need to return a boolean
-                        if(out_impl)    throw CompileError::BugCheck("find_impl - Asking for a concrete impl, but generic passed");
-                        return true;
-                    }
-                    )
-                )
-            }
-            // Else, failure
-            DEBUG("- No impl :(");
-            //if(out_impl)    throw CompileError::BugCheck("find_impl - Asking for a concrete impl, but generic passed");
-            return false;
-        }
-        else
-        {
-            DEBUG("- No inherent impl for generic params");
-            return false;
-        }
-    }
-    
-    // TODO: Do a sort to allow a binary search
-    // 1. Search for wildcard traits (i.e. ones like "impl Send for ..")
-    // - These require special handling, as negatives apply
-    for( auto implptr : m_impl_index )
-    {
-        Impl& impl = *implptr;
-        ::std::vector<TypeRef>  _p;
-        if( impl.def().matches(_p, trait, TypeRef()) )
-        {
-            assert(_p.size() == 0);
-            // This is a wildcard trait, need to locate either a negative, or check contents
-            if( check_impls_wildcard(trait, type) )
-            {
-                if(out_impl)    *out_impl = &impl;
-                return true;
-            }
-            else {
-                return false;
-            }
-        }
-        
-    }
-    
-    // 2. Check real impls
-    DEBUG("Not wildcard");
-    for( auto implptr : m_impl_index )
-    {
-        Impl& impl = *implptr;
-        // TODO: What if there's two impls that match this combination?
-        if( impl.def().matches(*out_params, trait, type) )
-        {
-            if(out_impl)    *out_impl = &impl;
-            return true;
-        }
-    }
-    DEBUG("No impl of " << trait << " for " << type);
-    return false;
-}
-
-Function& Crate::lookup_method(const TypeRef& type, const char *name)
-{
-    throw ParseError::Generic( FMT("TODO: Lookup method "<<name<<" for type " <<type));
-}
-
-void Crate::load_extern_crate(::std::string name)
-{
-    ::std::ifstream is("output/"+name+".ast");
-    if( !is.is_open() )
-    {
-        throw ParseError::Generic("Can't open crate '" + name + "'");
-    }
-    Deserialiser_TextTree   ds(is);
-    Deserialiser&   d = ds;
-    
-    ExternCrate ret;
-    d.item( ret.crate() );
-    
-    ret.prescan();
-    
-    m_extern_crates.insert( make_pair(::std::move(name), ::std::move(ret)) );
-}
-SERIALISE_TYPE_A(Crate::, "AST_Crate", {
-    s.item(m_load_std);
-    s.item(m_extern_crates);
-    s.item(m_root_module);
-})
-
-ExternCrate::ExternCrate()
-{
-}
-
-ExternCrate::ExternCrate(const char *path)
-{
-    throw ParseError::Todo("Load extern crate from a file");
-}
-
-// Fill runtime-generated structures in the crate
-void ExternCrate::prescan()
-{
-    TRACE_FUNCTION;
-    
-    Crate& cr = m_crate;
-
-    cr.m_root_module.prescan();
-    
-    for( const auto& mi : cr.m_root_module.macro_imports_res() )
-    {
-        DEBUG("Macro (I) '"<<mi.name<<"' is_pub="<<mi.is_pub);
-        if( mi.is_pub )
-        {
-            m_crate.m_exported_macros.insert( ::std::make_pair(mi.name, mi.data) );
-        }
-    }
-    for( const auto& mi : cr.m_root_module.macros() )
-    {
-        DEBUG("Macro '"<<mi.name<<"' is_pub="<<mi.is_pub);
-        if( mi.is_pub )
-        {
-            m_crate.m_exported_macros.insert( ::std::make_pair(mi.name, &mi.data) );
-        }
-    }
-}
-
-SERIALISE_TYPE(ExternCrate::, "AST_ExternCrate", {
-},{
-})
-
 SERIALISE_TYPE_A(MacroInvocation::, "AST_MacroInvocation", {
     s.item(m_attrs);
     s.item(m_macro_name);
@@ -509,43 +203,71 @@ SERIALISE_TYPE_A(MacroInvocation::, "AST_MacroInvocation", {
 
 SERIALISE_TYPE_A(Module::, "AST_Module", {
     s.item(m_name);
-    s.item(m_attrs);
     
-    s.item(m_extern_crates);
-    s.item(m_submods);
+    s.item(m_items);
     
     s.item(m_macros);
     
     s.item(m_imports);
-    s.item(m_type_aliases);
     
-    s.item(m_traits);
-    s.item(m_enums);
-    s.item(m_structs);
-    s.item(m_statics);
-    
-    s.item(m_functions);
     s.item(m_impls);
 })
 
+void Module::add_item(bool is_pub, ::std::string name, Item it, MetaItems attrs) {
+    m_items.push_back( Named<Item>( mv$(name), mv$(it), is_pub ) );
+    m_items.back().data.attrs = mv$(attrs);
+}
+void Module::add_ext_crate(::std::string ext_name, ::std::string imp_name, MetaItems attrs) {
+    // TODO: Extern crates can be public
+    this->add_item( false, imp_name, Item::make_Crate({mv$(ext_name)}), mv$(attrs) );
+}
+void Module::add_alias(bool is_public, Path path, ::std::string name, MetaItems attrs) {
+    // TODO: Attributes on aliases / imports
+    m_imports.push_back( Named<Path>( move(name), move(path), is_public) );
+}
+void Module::add_typealias(bool is_public, ::std::string name, TypeAlias alias, MetaItems attrs) {
+    this->add_item( is_public, name, Item::make_Type({mv$(alias)}), mv$(attrs) );
+}
+void Module::add_static(bool is_public, ::std::string name, Static item, MetaItems attrs) {
+    this->add_item( is_public, name, Item::make_Static({mv$(item)}), mv$(attrs) );
+}
+void Module::add_trait(bool is_public, ::std::string name, Trait item, MetaItems attrs) {
+    this->add_item( is_public, name, Item::make_Trait({mv$(item)}), mv$(attrs) );
+}
+void Module::add_struct(bool is_public, ::std::string name, Struct item, MetaItems attrs) {
+    this->add_item( is_public, name, Item::make_Struct({mv$(item)}), mv$(attrs) );
+}
+void Module::add_enum(bool is_public, ::std::string name, Enum item, MetaItems attrs) {
+    this->add_item( is_public, name, Item::make_Enum({mv$(item)}), mv$(attrs) );
+}
+void Module::add_function(bool is_public, ::std::string name, Function item, MetaItems attrs) {
+    this->add_item( is_public, name, Item::make_Function({mv$(item)}), mv$(attrs) );
+}
+void Module::add_submod(bool is_public, Module mod, MetaItems attrs) {
+    this->add_item( is_public, mod.m_name, Item::make_Module({mv$(mod)}), mv$(attrs) );
+}
+
 void Module::prescan()
 {
-    TRACE_FUNCTION;
-    DEBUG("- '"<<m_name<<"'"); 
-    
-    for( auto& sm_p : m_submods )
-    {
-        sm_p.first.prescan();
-    }
-    
-    for( const auto& macro_imp : m_macro_imports )
-    {
-        resolve_macro_import( *(Crate*)0, macro_imp.first, macro_imp.second );
-    }
+    //TRACE_FUNCTION;
+    //DEBUG("- '"<<m_name<<"'"); 
+    //
+    //for( auto& sm_p : m_submods )
+    //{
+    //    sm_p.first.prescan();
+    //}
+    //
+    ///*
+    //for( const auto& macro_imp : m_macro_imports )
+    //{
+    //    resolve_macro_import( *(Crate*)0, macro_imp.first, macro_imp.second );
+    //}
+    //*/
 }
 
 void Module::resolve_macro_import(const Crate& crate, const ::std::string& modname, const ::std::string& macro_name)
 {
+    /*
     DEBUG("Import macros from " << modname << " matching '" << macro_name << "'");
     for( const auto& sm_p : m_submods )
     {
@@ -601,20 +323,26 @@ void Module::resolve_macro_import(const Crate& crate, const ::std::string& modna
     }
     
     throw ::std::runtime_error( FMT("Could not find sub-module '" << modname << "' for macro import") );
+    */
 }
 
 void Module::iterate_functions(fcn_visitor_t *visitor, const Crate& crate)
 {
-    for( auto& fcn_item : this->m_functions )
+    for( auto& item : this->m_items )
     {
-        visitor(crate, *this, fcn_item.data);
+        TU_MATCH_DEF(::AST::Item, (item.data), (e),
+        ( ),
+        (Function,
+            visitor(crate, *this, e.e);
+            )
+        )
     }
 }
 
 template<typename T>
-typename ::std::vector<Item<T> >::const_iterator find_named(const ::std::vector<Item<T> >& vec, const ::std::string& name)
+typename ::std::vector<Named<T> >::const_iterator find_named(const ::std::vector<Named<T> >& vec, const ::std::string& name)
 {
-    return ::std::find_if(vec.begin(), vec.end(), [&name](const Item<T>& x) {
+    return ::std::find_if(vec.begin(), vec.end(), [&name](const Named<T>& x) {
         //DEBUG("find_named - x.name = " << x.name);
         return x.name == name;
     });
@@ -624,87 +352,36 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
 {
     TRACE_FUNCTION_F("needle = " << needle);
     
-    // Sub-modules
     {
-        auto& sms = submods();
-        auto it = ::std::find_if(sms.begin(), sms.end(), [&needle](const ::std::pair<Module,bool>& x) {
-                return x.first.name() == needle;
-            });
-        if( it != sms.end() ) {
-            return ItemRef(it->first);
-        }
-    }
-    
-    // External crates
-    {
-        auto& crates = this->extern_crates();
-        auto it = find_named(crates, needle);
-        if( it != crates.end() ) {
-            return ItemRef(it->data);
-        }
-    }
-
-    // Type Aliases
-    {
-        auto& items = this->type_aliases();
-        auto it = find_named(items, needle);
-        if( it != items.end() ) {
-            return ItemRef(it->data);
-        }
-    }
-
-    // Functions
-    {
-        auto& items = this->functions();
-        auto it = find_named(items, needle);
-        if( it != items.end() ) {
-            if( allow_leaves )
-                return ItemRef(it->data);
-            else
-                DEBUG("Skipping function, leaves not allowed");
+        auto it = find_named(this->items(), needle);
+        if( it != this->items().end() ) {
+            TU_MATCH(::AST::Item, (it->data), (e),
+            (None,
+                break;
+                ),
+            (Module, return ItemRef(e.e); ),
+            (Crate, return ItemRef(e.name); ),
+            (Type,  return ItemRef(e.e); ),
+            (Struct, return ItemRef(e.e); ),
+            (Enum,  return ItemRef(e.e); ),
+            (Trait, return ItemRef(e.e); ),
+            (Function,
+                if( allow_leaves )
+                    return ItemRef(e.e);
+                else
+                    DEBUG("Skipping function, leaves not allowed");
+                ),
+            (Static,
+                if( allow_leaves )
+                    return ItemRef(e.e);
+                else
+                    DEBUG("Skipping function, leaves not allowed");
+                )
+            )
+            DEBUG("Item not checked at this level, try re-export list");
         }
     }
 
-    // Traits
-    {
-        auto& items = this->traits();
-        auto it = find_named(items, needle);
-        if( it != items.end() ) {
-            return ItemRef(it->data);
-        }
-    }
-
-    // Structs
-    {
-        auto& items = this->structs();
-        auto it = find_named(items, needle);
-        if( it != items.end() ) {
-            return ItemRef(it->data);
-        }
-    }
-
-    // Enums
-    {
-        auto& items = this->enums();
-        auto it = find_named(items, needle);
-        if( it != items.end() ) {
-            return ItemRef(it->data);
-        }
-    }
-
-    // Statics
-    {
-        auto& items = this->statics();
-        auto it = find_named(items, needle);
-        if( it != items.end() ) {
-            if( allow_leaves ) {
-                return ItemRef(it->data);
-            }
-            else
-                DEBUG("Skipping static, leaves not allowed");
-        }
-    }
-    
     // - Re-exports
     //  > Comes last, as it's a potentially expensive operation
     {
@@ -778,6 +455,12 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
     
     return Module::ItemRef();
 }
+
+SERIALISE_TYPE(Item::, "AST_Item", {
+    s.item(attrs);
+},{
+    s.item(attrs);
+})
 
 SERIALISE_TYPE(TypeAlias::, "AST_TypeAlias", {
     s << m_params;
