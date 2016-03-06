@@ -89,10 +89,7 @@ int main(int argc, char *argv[])
     
         // Iterate all items in the AST, applying syntax extensions
         CompilePhaseV("Expand", [&]() {
-            Expand_Decorators_Pre(crate);
-            Expand_Macros(crate);
-            Expand_Decorators_Post(crate);
-            Expand_Sugar(crate);
+            Expand(crate);
             });
             
         // Run a quick post-parse pass

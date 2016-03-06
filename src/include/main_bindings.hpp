@@ -14,10 +14,7 @@ namespace AST {
 extern AST::Crate Parse_Crate(::std::string mainfile);
 
 
-extern void Expand_Decorators_Pre(::AST::Crate& crate);
-extern void Expand_Macros(::AST::Crate& crate);
-extern void Expand_Decorators_Post(::AST::Crate& crate);
-extern void Expand_Sugar(::AST::Crate& crate);
+extern void Expand(::AST::Crate& crate);
 
 /// Process #[] decorators
 extern void Process_Decorators(AST::Crate& crate);

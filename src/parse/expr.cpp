@@ -30,6 +30,7 @@ ExprNodeP Parse_WhileStmt(TokenStream& lex, ::std::string lifetime);
 ExprNodeP Parse_ForStmt(TokenStream& lex, ::std::string lifetime);
 ExprNodeP Parse_Expr_Match(TokenStream& lex);
 ExprNodeP Parse_Expr1(TokenStream& lex);
+ExprNodeP Parse_ExprMacro(TokenStream& lex, Token tok);
 
 AST::Expr Parse_Expr(TokenStream& lex, bool const_only)
 {
@@ -103,15 +104,6 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
                 lex.putback(tok);
                 keep_mod = true;
                 Parse_Mod_Item(lex, modstack, false,"!", *local_mod, false, mv$(item_attrs));
-                break;
-            }
-            if(0)
-        // Macros - If not macro_rules, fall though to expression
-        case TOK_MACRO:
-            if( tok.str() == "macro_rules" )
-            {
-                keep_mod = true;
-                Parse_MacroRules(lex, *local_mod, ::std::move(item_attrs));
                 break;
             }
             // fall
@@ -224,6 +216,11 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end)
             return rv;
             }
         
+        case TOK_MACRO:
+            // If a braced macro invocation is the first part of a statement, don't expect a semicolon
+            if( LOOK_AHEAD(lex) == TOK_BRACE_OPEN || (lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_BRACE_OPEN) ) {
+                return Parse_ExprMacro(lex, tok);
+            }
         // Fall through to the statement code
         default: {
             lex.putback(tok);
@@ -1173,24 +1170,27 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
             }
         }
         throw ParseError::BugCheck(lex, "Array literal fell");
-    case TOK_MACRO: {
-        ::std::string name = tok.str();
-        ::std::string ident;
-        if( GET_TOK(tok, lex) == TOK_IDENT ) {
-            ident = mv$(tok.str());
-        }
-        else {
-            lex.putback(tok);
-        }
-        TokenTree tt = Parse_TT(lex, true);
-        if( tt.is_token() ) {
-            throw ParseError::Unexpected(lex, tt.tok());
-        }
-        return NEWNODE(AST::ExprNode_Macro, mv$(name), mv$(ident), mv$(tt));
-        }
+    case TOK_MACRO:
+        return Parse_ExprMacro(lex, tok);
     default:
         throw ParseError::Unexpected(lex, tok);
     }
+}
+ExprNodeP Parse_ExprMacro(TokenStream& lex, Token tok)
+{
+    ::std::string name = tok.str();
+    ::std::string ident;
+    if( GET_TOK(tok, lex) == TOK_IDENT ) {
+        ident = mv$(tok.str());
+    }
+    else {
+        lex.putback(tok);
+    }
+    TokenTree tt = Parse_TT(lex, true);
+    if( tt.is_token() ) {
+        throw ParseError::Unexpected(lex, tt.tok());
+    }
+    return NEWNODE(AST::ExprNode_Macro, mv$(name), mv$(ident), mv$(tt));
 }
 
 // Token Tree Parsing

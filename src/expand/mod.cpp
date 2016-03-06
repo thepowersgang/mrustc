@@ -12,28 +12,60 @@
 void Register_Synext_Decorator(::std::string name, ::std::unique_ptr<ExpandDecorator> handler) {
     g_decorators[name] = mv$(handler);
 }
+void Register_Synext_Macro(::std::string name, ::std::unique_ptr<ExpandProcMacro> handler) {
+    g_macros[name] = mv$(handler);
+}
 
-void Expand_Decorators_Mod(::AST::Crate& crate, bool is_before_macros, ::AST::Path modpath, ::AST::Module& mod)
+void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate, const ::AST::Path& path, ::AST::Module& mod, ::AST::Item& item)
 {
-    TRACE_FUNCTION_F("modpath = " << modpath);
+    for( auto& a : attrs.m_items )
+    {
+        for( auto& d : g_decorators ) {
+            if( d.first == a.name() && d.second->stage() == stage ) {
+                d.second->handle(a, crate, path, mod, item);
+            }
+        }
+    }
+}
+
+void Expand_Mod(bool is_early, ::AST::Crate& crate, ::AST::Path modpath, ::AST::Module& mod)
+{
+    TRACE_FUNCTION_F("is_early = " << is_early << ", modpath = " << modpath);
+    
+    // 1. Macros first
+    for( auto& mi : mod.macro_invs() )
+    {
+        if( mi.name() == "" )
+            continue ;
+        for( auto& m : g_macros ) {
+            if( mi.name() == m.first && m.second->expand_early() == is_early ) {
+                m.second->expand(mi.input_ident(), mi.input_tt(), mod, MacroPosition::Item);
+                
+                mi.clear();
+                break;
+            }
+        }
+        
+        if( ! is_early && mi.name() != "" ) {
+            // TODO: Error - Unknown macro name
+            throw ::std::runtime_error( FMT("Unknown macro '" << mi.name() << "'") );
+        }
+    }
+    
+    // 2. General items
+    DEBUG("Items");
     for( auto& i : mod.items() )
     {
         ::AST::Path path = modpath + i.name;
-        for( auto& a : i.data.attrs.m_items )
-        {
-            for( auto& d : g_decorators ) {
-                if( d.first == a.name() && d.second->expand_before_macros() == is_before_macros ) {
-                    d.second->handle(a, crate, path, mod, i.data);
-                }
-            }
-        }
+        
+        Expand_Attrs(i.data.attrs, (is_early ? AttrStage::EarlyPre : AttrStage::LatePre),  crate, path, mod, i.data);
         
         TU_MATCH(::AST::Item, (i.data), (e),
         (None,
             // Skip, nothing
             ),
         (Module,
-            Expand_Decorators_Mod(crate, is_before_macros, path, e.e);
+            Expand_Mod(is_early, crate, path, e.e);
             ),
         (Crate,
             // Skip, no recursion
@@ -57,15 +89,19 @@ void Expand_Decorators_Mod(::AST::Crate& crate, bool is_before_macros, ::AST::Pa
             // TODO: 
             )
         )
+        
+        Expand_Attrs(i.data.attrs, (is_early ? AttrStage::EarlyPost : AttrStage::LatePost),  crate, path, mod, i.data);
     }
+
+    // 3. Post-recurse macros (everything else)
 }
-void Expand_Decorators(::AST::Crate& crate, bool is_before_macros)
+void Expand(::AST::Crate& crate)
 {
     // 1. Crate attributes
     for( auto& a : crate.m_attrs.m_items )
     {
         for( auto& d : g_decorators ) {
-            if( d.first == a.name() && d.second->expand_before_macros() == is_before_macros ) {
+            if( d.first == a.name() && d.second->stage() == AttrStage::EarlyPre ) {
                 d.second->handle(a, crate);
             }
         }
@@ -75,37 +111,35 @@ void Expand_Decorators(::AST::Crate& crate, bool is_before_macros)
     for( auto& a : crate.m_attrs.m_items )
     {
         for( auto& d : g_decorators ) {
-            if( d.first == a.name() && d.second->expand_before_macros() == is_before_macros ) {
+            if( d.first == a.name() && d.second->stage() == AttrStage::EarlyPre ) {
                 //d.second->handle(a, crate, ::AST::Path(), crate.m_root_module, crate.m_root_module);
             }
         }
     }
     
     // 3. Module tree
-    Expand_Decorators_Mod(crate, is_before_macros, ::AST::Path(), crate.m_root_module);
+    Expand_Mod(true , crate, ::AST::Path(), crate.m_root_module);
+    Expand_Mod(false, crate, ::AST::Path(), crate.m_root_module);
+    
+    // Post-process
+    #if 0
+    for( auto& a : crate.m_attrs.m_items )
+    {
+        for( auto& d : g_decorators ) {
+            if( d.first == a.name() && d.second->expand_before_macros() == false ) {
+                //d.second->handle(a, crate, ::AST::Path(), crate.m_root_module, crate.m_root_module);
+            }
+        }
+    }
+    for( auto& a : crate.m_attrs.m_items )
+    {
+        for( auto& d : g_decorators ) {
+            if( d.first == a.name() && d.second->expand_before_macros() == false ) {
+                d.second->handle(a, crate);
+            }
+        }
+    }
+    #endif
 }
 
-/// Expand decorators that apply before macros are expanded
-/// - E.g. #[cfg] #![no_std] ...
-void Expand_Decorators_Pre(::AST::Crate& crate)
-{
-    Expand_Decorators(crate, true);
-}
-
-/// Expand macros
-void Expand_Macros(::AST::Crate& crate)
-{
-}
-
-/// Expand decorators that apply _after_ macros
-/// - E.g. #[derive]
-void Expand_Decorators_Post(::AST::Crate& crate)
-{
-    Expand_Decorators(crate, false);
-}
-
-/// Expand syntax sugar (e.g. for loops)
-void Expand_Sugar(::AST::Crate& crate)
-{
-}
 

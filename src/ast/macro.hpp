@@ -33,6 +33,18 @@ public:
         return ::std::unique_ptr<MacroInvocation>(i);
     }
 
+    void clear() {
+        m_macro_name = "";
+        m_ident = "";
+        m_input = TokenTree();
+    }
+
+    const ::std::string& name() const { return m_macro_name; }
+
+    const ::std::string& input_ident() const { return m_ident; }
+    const TokenTree& input_tt() const { return m_input; }
+
+
     SERIALISABLE_PROTOTYPES();
     
     friend ::std::ostream& operator<<(::std::ostream& os, const MacroInvocation& x) {

@@ -85,7 +85,7 @@ class Decorator_LangItem:
     public ExpandDecorator
 {
 public:
-    bool expand_before_macros() const override { return true; }
+    AttrStage stage() const override { return AttrStage::EarlyPost; }
     void handle(const AST::MetaItem& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
         TU_MATCH_DEF(::AST::Item, (i), (e),

@@ -435,6 +435,8 @@ public:
     void add_macro_invocation(MacroInvocation item) {
         m_macro_invocations.push_back( mv$(item) );
     }
+    
+    
 
     unsigned int add_anon_module(Module* mod_ptr) {
         auto it = ::std::find(m_anon_modules.begin(), m_anon_modules.end(), mod_ptr);
@@ -505,6 +507,7 @@ public:
     const ::std::vector<Module*>&   anon_mods() const { return m_anon_modules; }
     
 
+    ::std::vector<MacroInvocation>& macro_invs() { return m_macro_invocations; }
     const NamedList<MacroRules>&    macros()  const { return m_macros; }
     const ::std::vector<NamedNS<const MacroRules*> >  macro_imports_res() const { return m_macro_import_res; }
 

@@ -26,11 +26,18 @@ class TokenTree;
 #include <string>
 #include <memory>
 
+enum class AttrStage
+{
+    EarlyPre,
+    EarlyPost,
+    LatePre,
+    LatePost,
+};
 
 class ExpandDecorator
 {
 public:
-    virtual bool    expand_before_macros() const = 0;
+    virtual AttrStage   stage() const = 0;
     
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate) const {}
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, AST::MacroInvocation& mac) const {}
@@ -38,11 +45,21 @@ public:
     virtual void    handle(const AST::MetaItem& mi, AST::ExprNode& expr) const {};
 };
 
+enum class MacroPosition
+{
+    Item,
+    Stmt,
+    Expr,
+    Type,
+    Pattern,
+};
 
 class ExpandProcMacro
 {
 public:
-    virtual AST::Expr   expand(const ::std::string& ident, const TokenTree& tt, AST::Module& mod) = 0;
+    virtual bool    expand_early() const = 0;
+    
+    virtual AST::Expr   expand(const ::std::string& ident, const TokenTree& tt, AST::Module& mod, MacroPosition position) = 0;
 };
 
 #define STATIC_DECORATOR(ident, _handler_class) \
@@ -51,8 +68,15 @@ public:
             Register_Synext_Decorator( ident, ::std::unique_ptr<ExpandDecorator>(new _handler_class()) ); \
         } \
     } s_register_##_handler_class;
+#define STATIC_MACRO(ident, _handler_class) \
+    struct register_##_handler_class##_c {\
+        register_##_handler_class##_c() {\
+            Register_Synext_Macro( ident, ::std::unique_ptr<ExpandProcMacro>(new _handler_class()) ); \
+        } \
+    } s_register_##_handler_class;
 
 extern void Register_Synext_Decorator(::std::string name, ::std::unique_ptr<ExpandDecorator> handler);
+extern void Register_Synext_Macro(::std::string name, ::std::unique_ptr<ExpandProcMacro> handler);
 
 #endif
 
