@@ -1731,9 +1731,9 @@ void Parse_Mod_Item(TokenStream& lex, LList<AST::Module*>& modstack, bool file_c
 
     case TOK_RWORD_MOD: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        auto name = tok.str();
+        auto name = mv$(tok.str());
         DEBUG("Sub module '" << name << "'");
-        AST::Module submod( mv$(tok.str()));
+        AST::Module submod( name );
         
         // Rules for external files (/ path handling):
         // - IF using stdin (path='-') - Disallow and propagate '-' as path

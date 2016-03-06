@@ -9,17 +9,13 @@
 ::std::map< ::std::string, ::std::unique_ptr<ExpandDecorator> >  g_decorators;
 ::std::map< ::std::string, ::std::unique_ptr<ExpandProcMacro> >  g_macros;
 
-void init() __attribute__((constructor(101)));
-void init()
-{
-}
-
 void Register_Synext_Decorator(::std::string name, ::std::unique_ptr<ExpandDecorator> handler) {
     g_decorators[name] = mv$(handler);
 }
 
 void Expand_Decorators_Mod(::AST::Crate& crate, bool is_before_macros, ::AST::Path modpath, ::AST::Module& mod)
 {
+    TRACE_FUNCTION_F("modpath = " << modpath);
     for( auto& i : mod.items() )
     {
         ::AST::Path path = modpath + i.name;

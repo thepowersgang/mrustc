@@ -403,7 +403,7 @@ void resolve_path(const Span& span, const AST::Crate& root_crate, AST::Path& pat
         // HACK: Not actually a normal TU, but it fits the same pattern
         TU_MATCH(AST::Module::ItemRef, (item), (i),
         (None,
-            throw ParseError::Generic( FMT("Unable to find component '" << node.name() << "' of import " << path) );
+            ERROR(span, E0000, "Unable to find component '" << node.name() << "' of import " << path);
             ),
         (Module,
             mod = &i;
@@ -1727,7 +1727,7 @@ void absolutise_path(const Span& span, const AST::Crate& crate, const AST::Modul
 
 void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& modpath, AST::Module& mod)
 {
-    TRACE_FUNCTION_F("modpath = " << modpath);
+    TRACE_FUNCTION_F("modpath = " << modpath << ", mod = {name:" << mod.name() << "}");
     ::std::vector<AST::Path>    new_imports;
     for( auto& imp : mod.imports() )
     {

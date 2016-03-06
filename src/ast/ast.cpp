@@ -244,7 +244,9 @@ void Module::add_function(bool is_public, ::std::string name, Function item, Met
     this->add_item( is_public, name, Item::make_Function({mv$(item)}), mv$(attrs) );
 }
 void Module::add_submod(bool is_public, Module mod, MetaItems attrs) {
-    this->add_item( is_public, mod.m_name, Item::make_Module({mv$(mod)}), mv$(attrs) );
+    auto name = mod.m_name;
+    DEBUG("mod.m_name = " << name);
+    this->add_item( is_public, mv$(name), Item::make_Module({mv$(mod)}), mv$(attrs) );
 }
 
 void Module::prescan()
@@ -343,7 +345,7 @@ template<typename T>
 typename ::std::vector<Named<T> >::const_iterator find_named(const ::std::vector<Named<T> >& vec, const ::std::string& name)
 {
     return ::std::find_if(vec.begin(), vec.end(), [&name](const Named<T>& x) {
-        //DEBUG("find_named - x.name = " << x.name);
+        DEBUG("find_named - x.name = " << x.name);
         return x.name == name;
     });
 }
