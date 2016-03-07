@@ -5,6 +5,7 @@
 #include <main_bindings.hpp>
 #include <synext.hpp>
 #include <map>
+#include "macro_rules.hpp"
 
 ::std::map< ::std::string, ::std::unique_ptr<ExpandDecorator> >  g_decorators;
 ::std::map< ::std::string, ::std::unique_ptr<ExpandProcMacro> >  g_macros;
@@ -21,11 +22,61 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
     for( auto& a : attrs.m_items )
     {
         for( auto& d : g_decorators ) {
-            if( d.first == a.name() && d.second->stage() == stage ) {
-                d.second->handle(a, crate, path, mod, item);
+            if( d.first == a.name() ) {
+                DEBUG("#[" << d.first << "]");
+                if( d.second->stage() == stage ) {
+                    d.second->handle(a, crate, path, mod, item);
+                }
             }
         }
     }
+}
+
+AST::Expr Expand_Macro(bool is_early, ::AST::Module& mod, ::AST::MacroInvocation& mi, MacroPosition pos)
+{
+    for( const auto& m : g_macros )
+    {
+        if( mi.name() == m.first && m.second->expand_early() == is_early )
+        {
+            auto e = m.second->expand(mi.input_ident(), mi.input_tt(), mod, MacroPosition::Item);
+            mi.clear();
+            return e;
+        }
+    }
+    
+    
+    for( const auto& mr : mod.macros() )
+    {
+        if( mr.name == mi.name() )
+        {
+            if( mi.input_ident() != "" )
+                ;   // TODO: ERROR - macro_rules! macros can't take an ident
+            
+            auto e = Macro_Invoke(mr.name.c_str(), mr.data, mi.input_tt(), mod, MacroPosition::Item);
+            mi.clear();
+            return e;
+        }
+    }
+    for( const auto& mri : mod.macro_imports_res() )
+    {
+        if( mri.name == mi.name() )
+        {
+            if( mi.input_ident() != "" )
+                ;   // TODO: ERROR - macro_rules! macros can't take an ident
+            
+            auto e = Macro_Invoke(mi.name().c_str(), *mri.data, mi.input_tt(), mod, MacroPosition::Item);
+            mi.clear();
+            return e;
+        }
+    }
+    
+    if( ! is_early ) {
+        // TODO: Error - Unknown macro name
+        throw ::std::runtime_error( FMT("Unknown macro '" << mi.name() << "'") );
+    }
+    
+    // Leave valid and return an empty expression
+    return AST::Expr();
 }
 
 void Expand_Mod(bool is_early, ::AST::Crate& crate, ::AST::Path modpath, ::AST::Module& mod)
@@ -33,22 +84,23 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, ::AST::Path modpath, ::AST::
     TRACE_FUNCTION_F("is_early = " << is_early << ", modpath = " << modpath);
     
     // 1. Macros first
-    for( auto& mi : mod.macro_invs() )
+    //for( auto& mi : mod.macro_invs() )
+    for(unsigned int i = 0; i < mod.macro_invs().size(); i ++ )
     {
-        if( mi.name() == "" )
-            continue ;
-        for( auto& m : g_macros ) {
-            if( mi.name() == m.first && m.second->expand_early() == is_early ) {
-                m.second->expand(mi.input_ident(), mi.input_tt(), mod, MacroPosition::Item);
-                
-                mi.clear();
-                break;
+        auto& mi = mod.macro_invs()[i];
+        if( mi.name() != "" )
+        {
+            // Move out of the module to avoid invalidation if a new macro invocation is added
+            auto mi_owned = mv$(mi);
+            
+            auto rv = Expand_Macro(is_early, mod, mi_owned, MacroPosition::Item);
+            if( rv.is_valid() )
+                ;   // TODO: ERROR - macro yeilded an expression in item position
+            
+            if( mi_owned.name() != "" )
+            {
+                mod.macro_invs()[i] = mv$(mi_owned);
             }
-        }
-        
-        if( ! is_early && mi.name() != "" ) {
-            // TODO: Error - Unknown macro name
-            throw ::std::runtime_error( FMT("Unknown macro '" << mi.name() << "'") );
         }
     }
     
@@ -56,6 +108,7 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, ::AST::Path modpath, ::AST::
     DEBUG("Items");
     for( auto& i : mod.items() )
     {
+        DEBUG("- " << i.name);
         ::AST::Path path = modpath + i.name;
         
         Expand_Attrs(i.data.attrs, (is_early ? AttrStage::EarlyPre : AttrStage::LatePre),  crate, path, mod, i.data);

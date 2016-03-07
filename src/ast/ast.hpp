@@ -431,7 +431,9 @@ public:
     void add_macro(bool is_exported, ::std::string name, MacroRules macro) {
         m_macros.push_back( Named<MacroRules>( move(name), move(macro), is_exported ) );
     }
-    void add_macro_import(const Crate& crate, ::std::string mod, ::std::string name);
+    void add_macro_import(::std::string name, const MacroRules& mr) {
+        m_macro_import_res.push_back( NamedNS<const MacroRules*>( mv$(name), &mr, false ) );
+    }
     void add_macro_invocation(MacroInvocation item) {
         m_macro_invocations.push_back( mv$(item) );
     }

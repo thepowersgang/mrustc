@@ -108,7 +108,6 @@ class MacroExpander:
 public:
 
 private:
-    const TokenStream&  m_olex;
     const ::std::string m_crate_name;
     const ::std::vector<MacroRuleEnt>&  m_root_contents;
     const ParameterMappings m_mappings;
@@ -131,7 +130,6 @@ private:
     
 public:
     MacroExpander(const MacroExpander& x):
-        m_olex(x.m_olex),
         m_crate_name(x.m_crate_name),
         m_root_contents(x.m_root_contents),
         m_mappings(x.m_mappings),
@@ -140,8 +138,7 @@ public:
     {
         prep_counts();
     }
-    MacroExpander(const TokenStream& olex, const ::std::vector<MacroRuleEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
-        m_olex(olex),
+    MacroExpander(const ::std::vector<MacroRuleEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
         m_crate_name(crate_name),
         m_root_contents(contents),
         m_mappings(mappings),
@@ -354,7 +351,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
     return true;
 }
 
-::std::unique_ptr<TokenStream> Macro_InvokeInt(const TokenStream& olex, const char *name, const MacroRules& rules, TokenTree input)
+::std::unique_ptr<TokenStream> Macro_InvokeRules(const char *name, const MacroRules& rules, TokenTree input)
 {
     TRACE_FUNCTION;
     
@@ -396,7 +393,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
             }
             
             DEBUG("TODO: Obtain crate name correctly");
-            TokenStream* ret_ptr = new MacroExpander(olex, rule.m_contents, bound_tts, "");
+            TokenStream* ret_ptr = new MacroExpander(rule.m_contents, bound_tts, "");
             // HACK! Disable nested macro expansion
             //ret_ptr->parse_state().no_expand_macros = true;
             
@@ -409,9 +406,10 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
         i ++;
     }
     DEBUG("");
-    throw ParseError::Todo(olex, "Error when macro fails to match");
+    throw ParseError::Todo(/*source_span, */"Error when macro fails to match");
 }
 
+#if 0
 ::std::unique_ptr<TokenStream> Macro_Invoke(const TokenStream& olex, const ::std::string& name, TokenTree input)
 {
     DEBUG("Invoke " << name << " from " << olex.getPosition());
@@ -445,7 +443,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
     t_macro_regs::iterator macro_reg = g_macro_registrations.find(name);
     if( macro_reg != g_macro_registrations.end() )
     {
-        return Macro_InvokeInt(olex, macro_reg->first.c_str(), macro_reg->second, input);
+        return Macro_InvokeRules(olex.getPosition(), macro_reg->first.c_str(), macro_reg->second, input);
     }
     
     // Search import list
@@ -459,7 +457,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
             DEBUG("- [local] " << m.name);
             if( m.name == name )
             {
-                return Macro_InvokeInt(olex, m.name.c_str(), m.data, input);
+                return Macro_InvokeRules(olex.getPosition(), m.name.c_str(), m.data, input);
             }
         }
         
@@ -468,18 +466,18 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
             DEBUG("- [imp]" << mi.name);
             if( mi.name == name )
             {
-                return Macro_InvokeInt(olex, mi.name.c_str(), *mi.data, input);
+                return Macro_InvokeRules(olex.getPosition(), mi.name.c_str(), *mi.data, input);
             }
         }
     }
 
     throw ParseError::Generic(olex, FMT("Macro '" << name << "' was not found") );
 }
+#endif
 
 
 Position MacroExpander::getPosition() const
 {
-    DEBUG("olex.getPosition() = " << m_olex.getPosition());
     return Position(FMT("Macro:" << ""), 0, m_offsets[0].read_pos);
 }
 Token MacroExpander::realGetToken()
@@ -722,10 +720,10 @@ void Macro_Invoke_Concat_Once(::std::string& s, TokenStream& lex, enum eTokenTyp
         {
             // Special case, expand both concat! and stringify! internally
             // TODO: Invoke
-            auto tt = Parse_TT(lex, false);
-            auto slex = Macro_Invoke(lex, tok.str(), tt);
-            Macro_Invoke_Concat_Once(s, (*slex), exp);
-            GET_CHECK_TOK(tok, (*slex), TOK_EOF);
+            //auto tt = Parse_TT(lex, false);
+            //auto slex = Macro_Invoke(lex, tok.str(), tt);
+            //Macro_Invoke_Concat_Once(s, (*slex), exp);
+            //GET_CHECK_TOK(tok, (*slex), TOK_EOF);
         }
         else if( tok.type() == exp )
         {
