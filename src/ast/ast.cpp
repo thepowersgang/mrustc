@@ -216,6 +216,7 @@ SERIALISE_TYPE_A(Module::, "AST_Module", {
 void Module::add_item(bool is_pub, ::std::string name, Item it, MetaItems attrs) {
     m_items.push_back( Named<Item>( mv$(name), mv$(it), is_pub ) );
     m_items.back().data.attrs = mv$(attrs);
+    DEBUG("Item " << ::AST::Item::tag_to_str( m_items.back().data.tag() ) << " - attrs = " << m_items.back().data.attrs);
 }
 void Module::add_ext_crate(::std::string ext_name, ::std::string imp_name, MetaItems attrs) {
     // TODO: Extern crates can be public
@@ -245,7 +246,7 @@ void Module::add_function(bool is_public, ::std::string name, Function item, Met
 }
 void Module::add_submod(bool is_public, Module mod, MetaItems attrs) {
     auto name = mod.m_name;
-    DEBUG("mod.m_name = " << name);
+    DEBUG("mod.m_name = " << name << ", attrs = " << attrs);
     this->add_item( is_public, mv$(name), Item::make_Module({mv$(mod)}), mv$(attrs) );
 }
 

@@ -551,6 +551,8 @@ TAGGED_UNION_EX(Item, (: public Serialisable), None,
         Static e;
         ))
     ),
+    
+    (, attrs(mv$(x.attrs))), (attrs = mv$(x.attrs);),
     (
     public:
         MetaItems   attrs;

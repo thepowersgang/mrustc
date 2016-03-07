@@ -18,6 +18,7 @@
 #define TU_FIRST(a, ...)    a
 
 // Argument iteration
+#define _DISP0(n)   
 #define _DISP1(n, _1)   n _1
 #define _DISP2(n, _1, _2)   n _1 n _2
 #define _DISP3(n, v, v2, v3)   n v n v2 n v3
@@ -32,6 +33,22 @@
 #define _DISP12(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3,c4)   _DISP4(n, a1,a2,a3,a4) _DISP4(n, b1,b2,b3,b4) _DISP4(n, c1,c2,c3,c4)
 #define _DISP13(n, a1,a2,a3,a4,a5, b1,b2,b3,b4, c1,c2,c3,c4)   _DISP5(n, a1,a2,a3,a4,a5) _DISP4(n, b1,b2,b3,b4) _DISP4(n, c1,c2,c3,c4)
 #define _DISP14(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4)   _DISP5(n, a1,a2,a3,a4,a5) _DISP5(n, b1,b2,b3,b4,b5) _DISP4(n, c1,c2,c3,c4)
+
+#define _DISPO0(n)   
+#define _DISPO1(n, _1)   n(_1)
+#define _DISPO2(n, _1, _2)   n(_1) n(_2)
+#define _DISPO3(n, v, v2, v3)   n(v) n(v2) n(v3)
+#define _DISPO4(n, v, v2, v3, v4)   n(v) n(v2) n(v3) n(v4)
+#define _DISPO5(n, v, ...)   n v _DISPO4(n, __VA_ARGS__)
+#define _DISPO6(n, v, ...)   n v _DISPO5(n, __VA_ARGS__)
+#define _DISPO7(n, v, ...)   n v _DISPO6(n, __VA_ARGS__)
+#define _DISPO8(n, v, ...)   n v _DISPO7(n, __VA_ARGS__)
+#define _DISPO9(n, a1,a2,a3,a4, b1,b2,b3,b4, c1)   _DISPO4(n, a1,a2,a3,a4) _DISPO3(n, b1,b2,b3)  _DISPO2(n, b4,c1)
+#define _DISPO10(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2)   _DISPO4(n, a1,a2,a3,a4) _DISPO4(n, b1,b2,b3,b4) _DISPO2(n, c1,c2)
+#define _DISPO11(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3)   _DISPO4(n, a1,a2,a3,a4) _DISPO4(n, b1,b2,b3,b4) _DISPO3(n, c1,c2,c3)
+#define _DISPO12(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3,c4)   _DISPO4(n, a1,a2,a3,a4) _DISPO4(n, b1,b2,b3,b4) _DISPO4(n, c1,c2,c3,c4)
+#define _DISPO13(n, a1,a2,a3,a4,a5, b1,b2,b3,b4, c1,c2,c3,c4)   _DISPO5(n, a1,a2,a3,a4,a5) _DISPO4(n, b1,b2,b3,b4) _DISPO4(n, c1,c2,c3,c4)
+#define _DISPO14(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4)   _DISPO5(n, a1,a2,a3,a4,a5) _DISPO5(n, b1,b2,b3,b4,b5) _DISPO4(n, c1,c2,c3,c4)
 
 #define TU_DISPA(n, a)   n a
 #define TU_DISPA1(n, a, _1)   TU_DISPA(n, (TU_EXP a, TU_EXP _1))
@@ -56,10 +73,10 @@
 // Macro to obtain a numbered macro for argument counts
 // - Raw variant
 #define TU_GM_I(SUF,_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,COUNT,...) SUF##COUNT
-#define TU_GM(SUF,...) TU_GM_I(SUF,__VA_ARGS__,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1)
+#define TU_GM(SUF,...) TU_GM_I(SUF, __VA_ARGS__,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0)
 // - _DISP based variant (for iteration)
-#define TU_GMX(...) TU_GM(_DISP,__VA_ARGS__)
-#define TU_GMA(...) TU_GM(TU_DISPA,__VA_ARGS__)
+#define TU_GMX(...) TU_GM(_DISP, __VA_ARGS__)
+#define TU_GMA(...) TU_GM(TU_DISPA, __VA_ARGS__)
 
 // Sizes of structures
 #define TU_SO(name, _)   sizeof(TU_DATANAME(name))
@@ -146,6 +163,11 @@
 #define TU_TOSTR_CASES(...)   TU_GMX(__VA_ARGS__)(TU_TOSTR_CASE  ,__VA_ARGS__)
 #define TU_FROMSTR_CASES(...) TU_GMX(__VA_ARGS__)(TU_FROMSTR_CASE,__VA_ARGS__)
 
+#define TU_MC_FIELD(_field)  ,_field(::std::move(x._field))
+#define TU_MC_FIELDS(...) TU_GM(_DISPO ,## __VA_ARGS__)(TU_MC_FIELD ,## __VA_ARGS__)
+#define TU_MA_FIELD(_field)  _field = ::std::move(x._field);
+#define TU_MA_FIELDS(...) TU_GM(_DISPO ,## __VA_ARGS__)(TU_MA_FIELD ,## __VA_ARGS__)
+
 /**
  * Define a new tagged union
  *
@@ -159,8 +181,8 @@
  *     );
  * ```
  */
-#define TAGGED_UNION(_name, _def, ...)  TAGGED_UNION_EX(_name, (), _def, (__VA_ARGS__), ())
-#define TAGGED_UNION_EX(_name, _inherit, _def, _variants,  _extra) \
+#define TAGGED_UNION(_name, _def, ...)  TAGGED_UNION_EX(_name, (), _def, (__VA_ARGS__), (), (), ())
+#define TAGGED_UNION_EX(_name, _inherit, _def, _variants, _extra_move, _extra_assign, _extra) \
 class _name TU_EXP _inherit { \
     typedef _name self_t;/*
 */  TU_TYPEDEFS _variants/*
@@ -172,11 +194,11 @@ class _name TU_EXP _inherit { \
     Tag m_tag; \
     char m_data[MAXS _variants];/*
 */ public:\
-    _name(): m_tag(TAG_##_def) { new((void*)m_data) TU_DATANAME(_def); }\
-    _name(const _name&) = delete; \
-    _name(_name&& x) noexcept: m_tag(x.m_tag) { switch(m_tag) {  TU_MOVE_CASES _variants } } \
-    _name& operator =(_name&& x) { this->~_name(); m_tag = x.m_tag; switch(m_tag) { TU_MOVE_CASES _variants }; return *this; } \
-    ~_name() { switch(m_tag) { TU_DEST_CASES _variants } } \
+    _name(): m_tag(TAG_##_def) { new((void*)m_data) TU_DATANAME(_def); }/*
+*/  _name(const _name&) = delete;/*
+*/  _name(_name&& x) noexcept: m_tag(x.m_tag) TU_EXP _extra_move { switch(m_tag) {  TU_MOVE_CASES _variants } }/*
+*/  _name& operator =(_name&& x) { this->~_name(); m_tag = x.m_tag; TU_EXP _extra_assign switch(m_tag) { TU_MOVE_CASES _variants }; return *this; }/*
+*/  ~_name() { switch(m_tag) { TU_DEST_CASES _variants } } \
     \
     Tag tag() const { return m_tag; }\
     TU_CONSS(_name, TU_EXP _variants) \

@@ -64,6 +64,8 @@ TAGGED_UNION_EX( GenericBound, (: public Serialisable), Lifetime,
         TypeRef replacement;
         ))
     ),
+    
+    (), (),
     (
     public:
         SERIALISABLE_PROTOTYPES();

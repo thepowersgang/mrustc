@@ -108,7 +108,7 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, ::AST::Path modpath, ::AST::
     DEBUG("Items");
     for( auto& i : mod.items() )
     {
-        DEBUG("- " << i.name);
+        DEBUG("- " << i.name << " :: " << i.data.attrs);
         ::AST::Path path = modpath + i.name;
         
         Expand_Attrs(i.data.attrs, (is_early ? AttrStage::EarlyPre : AttrStage::LatePre),  crate, path, mod, i.data);
