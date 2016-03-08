@@ -32,6 +32,7 @@ class CMacroUseHandler:
     
     void handle(const AST::MetaItem& mi, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
+        TRACE_FUNCTION_F("path=" << path);
         if( !i.is_Module() )
             throw ::std::runtime_error("ERROR: Use of #[macro_use] on non-module");
         
@@ -39,16 +40,21 @@ class CMacroUseHandler:
         
         if( mi.has_sub_items() )
         {
+            throw ::std::runtime_error("TODO: #[macro_use]");
         }
         else
         {
             for( const auto& mr : submod.macros() )
             {
+                DEBUG("Imported " << mr.name);
                 mod.add_macro_import( mr.name, mr.data );
             }
+            for( const auto& mri : submod.macro_imports_res() )
+            {
+                DEBUG("Imported " << mri.name << " (propagate)");
+                mod.add_macro_import( mri.name, *mri.data );
+            }
         }
-        
-        throw ::std::runtime_error("TODO: #[macro_use]");
     }
     
 };

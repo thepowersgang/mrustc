@@ -138,7 +138,7 @@ AST::Path::Path(const Path& x):
     //(Variable, os << "Variable(" << i.slot << ")"; )
     //)
     
-    DEBUG("clone, x = " << x << ", this = " << *this );
+    //DEBUG("clone, x = " << x << ", this = " << *this );
 }
 
 /*

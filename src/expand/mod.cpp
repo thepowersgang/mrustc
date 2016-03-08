@@ -23,7 +23,7 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
     {
         for( auto& d : g_decorators ) {
             if( d.first == a.name() ) {
-                DEBUG("#[" << d.first << "]");
+                DEBUG("#[" << d.first << "] " << (int)d.second->stage() << "-" << (int)stage);
                 if( d.second->stage() == stage ) {
                     d.second->handle(a, crate, path, mod, item);
                 }
@@ -32,7 +32,7 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
     }
 }
 
-AST::Expr Expand_Macro(bool is_early, ::AST::Module& mod, ::AST::MacroInvocation& mi, MacroPosition pos)
+AST::Expr Expand_Macro(bool is_early, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::MacroInvocation& mi, MacroPosition pos)
 {
     for( const auto& m : g_macros )
     {
@@ -45,8 +45,12 @@ AST::Expr Expand_Macro(bool is_early, ::AST::Module& mod, ::AST::MacroInvocation
     }
     
     
+    //for(auto mp: modstack)
+    //{
+    //}
     for( const auto& mr : mod.macros() )
     {
+        //DEBUG("- " << mr.name);
         if( mr.name == mi.name() )
         {
             if( mi.input_ident() != "" )
@@ -59,6 +63,7 @@ AST::Expr Expand_Macro(bool is_early, ::AST::Module& mod, ::AST::MacroInvocation
     }
     for( const auto& mri : mod.macro_imports_res() )
     {
+        //DEBUG("- " << mri.name);
         if( mri.name == mi.name() )
         {
             if( mi.input_ident() != "" )
@@ -70,8 +75,11 @@ AST::Expr Expand_Macro(bool is_early, ::AST::Module& mod, ::AST::MacroInvocation
         }
     }
     
+    // TODO: Check parent modules
+    
     if( ! is_early ) {
         // TODO: Error - Unknown macro name
+        // TODO: Get a span via MacroInvocation and emit a good error
         throw ::std::runtime_error( FMT("Unknown macro '" << mi.name() << "'") );
     }
     
@@ -79,21 +87,25 @@ AST::Expr Expand_Macro(bool is_early, ::AST::Module& mod, ::AST::MacroInvocation
     return AST::Expr();
 }
 
-void Expand_Mod(bool is_early, ::AST::Crate& crate, ::AST::Path modpath, ::AST::Module& mod)
+void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod)
 {
     TRACE_FUNCTION_F("is_early = " << is_early << ", modpath = " << modpath);
+    
+    for( const auto& mi: mod.macro_imports_res() )
+        DEBUG("- Imports '" << mi.name << "'");
     
     // 1. Macros first
     //for( auto& mi : mod.macro_invs() )
     for(unsigned int i = 0; i < mod.macro_invs().size(); i ++ )
     {
         auto& mi = mod.macro_invs()[i];
+        DEBUG("> Macro invoke '"<<mi.name()<<"'");
         if( mi.name() != "" )
         {
             // Move out of the module to avoid invalidation if a new macro invocation is added
             auto mi_owned = mv$(mi);
             
-            auto rv = Expand_Macro(is_early, mod, mi_owned, MacroPosition::Item);
+            auto rv = Expand_Macro(is_early, modstack, mod, mi_owned, MacroPosition::Item);
             if( rv.is_valid() )
                 ;   // TODO: ERROR - macro yeilded an expression in item position
             
@@ -118,7 +130,8 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, ::AST::Path modpath, ::AST::
             // Skip, nothing
             ),
         (Module,
-            Expand_Mod(is_early, crate, path, e.e);
+            LList<const AST::Module*>   sub_modstack(&modstack, &e.e);
+            Expand_Mod(is_early, crate, sub_modstack, path, e.e);
             ),
         (Crate,
             // Skip, no recursion
@@ -145,6 +158,9 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, ::AST::Path modpath, ::AST::
         
         Expand_Attrs(i.data.attrs, (is_early ? AttrStage::EarlyPost : AttrStage::LatePost),  crate, path, mod, i.data);
     }
+    
+    for( const auto& mi: mod.macro_imports_res() )
+        DEBUG("- Imports '" << mi.name << "'");
 
     // 3. Post-recurse macros (everything else)
 }
@@ -171,8 +187,8 @@ void Expand(::AST::Crate& crate)
     }
     
     // 3. Module tree
-    Expand_Mod(true , crate, ::AST::Path(), crate.m_root_module);
-    Expand_Mod(false, crate, ::AST::Path(), crate.m_root_module);
+    Expand_Mod(true , crate, LList<const ::AST::Module*>(nullptr, &crate.m_root_module), ::AST::Path(), crate.m_root_module);
+    Expand_Mod(false, crate, LList<const ::AST::Module*>(nullptr, &crate.m_root_module), ::AST::Path(), crate.m_root_module);
     
     // Post-process
     #if 0
