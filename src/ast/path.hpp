@@ -130,6 +130,7 @@ public:
 private:
     /// The crate defining the root of this path (used for path resolution)
     ::std::string   m_crate;
+    Span    m_span;
 
 public:
     Class   m_class;
@@ -197,6 +198,9 @@ public:
     }
 
     
+    const Span& span() const {
+        return m_span;
+    }
     Class::Tag class_tag() const {
         return m_class.tag();
     }

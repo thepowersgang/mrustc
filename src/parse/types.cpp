@@ -28,13 +28,14 @@ TypeRef Parse_Type(TokenStream& lex)
 TypeRef Parse_Type_Int(TokenStream& lex)
 {
     //TRACE_FUNCTION;
+    auto ps = lex.start_span();
 
     Token tok;
     
     switch( GET_TOK(tok, lex) )
     {
     case TOK_MACRO:
-        return TypeRef(TypeRef::TagMacro(), Parse_MacroInvocation(AST::MetaItems(), mv$(tok.str()), lex));
+        return TypeRef(TypeRef::TagMacro(), Parse_MacroInvocation(ps, AST::MetaItems(), mv$(tok.str()), lex));
     // '!' - Only ever used as part of function prototypes, but is kinda a type... not allowed here though
     case TOK_EXCLAM:
         throw ParseError::Generic(lex, "! is not a real type");

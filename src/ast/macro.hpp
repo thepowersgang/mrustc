@@ -3,6 +3,7 @@
 #define _AST_MACRO_HPP_
 
 #include "../parse/tokentree.hpp"
+#include <span.hpp>
 #include "attrs.hpp"
 
 namespace AST {
@@ -10,6 +11,8 @@ namespace AST {
 class MacroInvocation:
     public Serialisable
 {
+    Span    m_span;
+    
     ::AST::MetaItems   m_attrs;
     ::std::string   m_macro_name;
     ::std::string   m_ident;
@@ -19,7 +22,8 @@ public:
     {
     }
     
-    MacroInvocation(MetaItems attrs, ::std::string macro, ::std::string ident, TokenTree input):
+    MacroInvocation(Span span, MetaItems attrs, ::std::string macro, ::std::string ident, TokenTree input):
+        m_span( mv$(span) ),
         m_attrs( mv$(attrs) ),
         m_macro_name( mv$(macro) ),
         m_ident( mv$(ident) ),
@@ -39,6 +43,7 @@ public:
         m_input = TokenTree();
     }
 
+    const Span& span() const { return m_span; }
     const ::std::string& name() const { return m_macro_name; }
 
     const ::std::string& input_ident() const { return m_ident; }

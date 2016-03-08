@@ -37,13 +37,14 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable);
 AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
 {
     TRACE_FUNCTION;
+    auto ps = lex.start_span();
 
     Token   tok;
     tok = lex.getToken();
     
     if( tok.type() == TOK_MACRO )
     {
-        return AST::Pattern( AST::Pattern::TagMacro(), box$(Parse_MacroInvocation(AST::MetaItems(), tok.str(), lex)));
+        return AST::Pattern( AST::Pattern::TagMacro(), box$(Parse_MacroInvocation(ps, AST::MetaItems(), tok.str(), lex)));
     }
    
     bool expect_bind = false;

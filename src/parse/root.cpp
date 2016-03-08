@@ -917,9 +917,10 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
     // A sequence of method implementations
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
+        auto ps = lex.start_span();
         if( tok.type() == TOK_MACRO )
         {
-            impl.add_macro_invocation( Parse_MacroInvocation( AST::MetaItems(), mv$(tok.str()), lex ) );
+            impl.add_macro_invocation( Parse_MacroInvocation( ps, AST::MetaItems(), mv$(tok.str()), lex ) );
             // - Silently consume ';' after the macro
             if( GET_TOK(tok, lex) != TOK_SEMICOLON )
                 lex.putback(tok);
@@ -1206,7 +1207,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
 }
 
 
-::AST::MacroInvocation Parse_MacroInvocation(::AST::MetaItems meta_items, ::std::string name, TokenStream& lex)
+::AST::MacroInvocation Parse_MacroInvocation(ProtoSpan span_start, ::AST::MetaItems meta_items, ::std::string name, TokenStream& lex)
 {
     Token   tok;
     ::std::string   ident;
@@ -1217,7 +1218,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
         lex.putback(tok);
     }
     TokenTree tt = Parse_TT(lex, true);
-    return ::AST::MacroInvocation( mv$(meta_items), mv$(name), mv$(ident), mv$(tt));
+    return ::AST::MacroInvocation( lex.end_span(span_start), mv$(meta_items), mv$(name), mv$(ident), mv$(tt));
 }
 
 void Parse_ExternCrate(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_items)
@@ -1598,10 +1599,11 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, LList<AST::Module*>
         DEBUG("meta_items = " << meta_items);
 
         // root-level macros
+        auto ps = lex.start_span();
         if( GET_TOK(tok, lex) == TOK_MACRO )
         {
             ::std::string   name = mv$(tok.str());
-            mod.add_macro_invocation( Parse_MacroInvocation( mv$(meta_items), mv$(name), lex ) );
+            mod.add_macro_invocation( Parse_MacroInvocation( ps, mv$(meta_items), mv$(name), lex ) );
             // - Silently consume ';' after the macro
             // TODO: Check the tt next token before parsing to tell if this is needed
             if( GET_TOK(tok, lex) != TOK_SEMICOLON )

@@ -103,6 +103,7 @@ TAGGED_UNION(TypeData, None,
 class TypeRef:
     public Serialisable
 {
+    Span    m_span;
 public:
     TypeData    m_data;
     
@@ -215,7 +216,9 @@ public:
         m_data(TypeData::make_TraitObject({ mv$(hrls), ::std::move(traits) }))
     {}
     
-    
+
+    const Span& span() const { return m_span; }
+ 
     /// Dereference the type (return the result of *type_instance)
     bool deref(bool is_implicit);
     /// Merge with another type (combines known aspects, conflitcs cause an exception)

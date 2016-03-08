@@ -80,7 +80,7 @@ AST::Expr Expand_Macro(bool is_early, LList<const AST::Module*> modstack, ::AST:
     if( ! is_early ) {
         // TODO: Error - Unknown macro name
         // TODO: Get a span via MacroInvocation and emit a good error
-        throw ::std::runtime_error( FMT("Unknown macro '" << mi.name() << "'") );
+        ERROR(mi.span(), E0000, "Unknown macro '" << mi.name() << "'");
     }
     
     // Leave valid and return an empty expression
