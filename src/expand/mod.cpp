@@ -45,41 +45,40 @@ AST::Expr Expand_Macro(bool is_early, LList<const AST::Module*> modstack, ::AST:
     }
     
     
-    //for(auto mp: modstack)
-    //{
-    //}
-    for( const auto& mr : mod.macros() )
+    // Iterate up the module tree, using the first located macro
+    for(const auto* ll = &modstack; ll; ll = ll->m_prev)
     {
-        //DEBUG("- " << mr.name);
-        if( mr.name == mi.name() )
+        const auto& mac_mod = *ll->m_item;
+        for( const auto& mr : mac_mod.macros() )
         {
-            if( mi.input_ident() != "" )
-                ;   // TODO: ERROR - macro_rules! macros can't take an ident
-            
-            auto e = Macro_Invoke(mr.name.c_str(), mr.data, mi.input_tt(), mod, MacroPosition::Item);
-            mi.clear();
-            return e;
+            //DEBUG("- " << mr.name);
+            if( mr.name == mi.name() )
+            {
+                if( mi.input_ident() != "" )
+                    ;   // TODO: ERROR - macro_rules! macros can't take an ident
+                
+                auto e = Macro_Invoke(mr.name.c_str(), mr.data, mi.input_tt(), mod, MacroPosition::Item);
+                mi.clear();
+                return e;
+            }
+        }
+        for( const auto& mri : mac_mod.macro_imports_res() )
+        {
+            //DEBUG("- " << mri.name);
+            if( mri.name == mi.name() )
+            {
+                if( mi.input_ident() != "" )
+                    ;   // TODO: ERROR - macro_rules! macros can't take an ident
+                
+                auto e = Macro_Invoke(mi.name().c_str(), *mri.data, mi.input_tt(), mod, MacroPosition::Item);
+                mi.clear();
+                return e;
+            }
         }
     }
-    for( const auto& mri : mod.macro_imports_res() )
-    {
-        //DEBUG("- " << mri.name);
-        if( mri.name == mi.name() )
-        {
-            if( mi.input_ident() != "" )
-                ;   // TODO: ERROR - macro_rules! macros can't take an ident
-            
-            auto e = Macro_Invoke(mi.name().c_str(), *mri.data, mi.input_tt(), mod, MacroPosition::Item);
-            mi.clear();
-            return e;
-        }
-    }
-    
-    // TODO: Check parent modules
     
     if( ! is_early ) {
-        // TODO: Error - Unknown macro name
-        // TODO: Get a span via MacroInvocation and emit a good error
+        // Error - Unknown macro name
         ERROR(mi.span(), E0000, "Unknown macro '" << mi.name() << "'");
     }
     
