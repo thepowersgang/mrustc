@@ -8,6 +8,24 @@
 #include <functional>
 #include <iostream>
 #include <span.hpp>
+#include <parse/lex.hpp>
+
+Span::Span(const Span& x):
+    filename(x.filename),
+    start_line(x.start_line),
+    start_ofs(x.start_ofs),
+    end_line(x.end_line),
+    end_ofs(x.end_ofs)
+{
+}
+Span::Span(const Position& pos):
+    filename(pos.filename.c_str()),
+    start_line(pos.line),
+    start_ofs(pos.ofs),
+    end_line(pos.line),
+    end_ofs(pos.ofs)
+{
+}
 
 void Span::bug(::std::function<void(::std::ostream&)> msg) const
 {

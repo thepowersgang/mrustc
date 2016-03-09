@@ -211,7 +211,7 @@ public:
     }
 
     void visit(AST::ExprNode_Macro& node) {
-        throw ParseError::Todo("Resolve-time expanding of macros");
+        BUG(node.get_pos(), "Un-resolved macro in expression");
         
         //MacroExpander expanded_macro = Macro_Invoke(node.m_name.c_str(), node.m_tokens);
         // TODO: Requires being able to replace the node with a completely different type of node

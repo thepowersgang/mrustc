@@ -291,7 +291,7 @@ class ImplDef:
     TypeRef m_type;
 public:
     ImplDef() {}
-    ImplDef(ImplDef&&) noexcept = default;
+    ImplDef(ImplDef&&) /*noexcept*/ = default;
     ImplDef(MetaItems attrs, GenericParams params, Path trait_type, TypeRef impl_type):
         m_attrs( move(attrs) ),
         m_params( move(params) ),
@@ -329,7 +329,7 @@ class Impl:
     ::std::vector< ::std::pair< ::std::vector<TypeRef>, Impl > > m_concrete_impls;
 public:
     Impl() {}
-    Impl(Impl&&) noexcept = default;
+    Impl(Impl&&) /*noexcept*/ = default;
     Impl(MetaItems attrs, GenericParams params, TypeRef impl_type, Path trait_type):
         m_def( move(attrs), move(params), move(trait_type), move(impl_type) )
     {}

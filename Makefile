@@ -5,7 +5,7 @@ V ?= @
 
 LINKFLAGS := -g
 LIBS :=
-CXXFLAGS := -g -Wall -std=c++11 -Werror
+CXXFLAGS := -g -Wall -std=c++14 -Werror
 #CXXFLAGS += -O3
 CPPFLAGS := -I src/include/ -I src/
 
