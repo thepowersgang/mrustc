@@ -6,6 +6,7 @@
 #include <synext.hpp>
 #include <map>
 #include "macro_rules.hpp"
+#include "../parse/common.hpp"  // For reparse from macros
 
 ::std::map< ::std::string, ::std::unique_ptr<ExpandDecorator> >  g_decorators;
 ::std::map< ::std::string, ::std::unique_ptr<ExpandProcMacro> >  g_macros;
@@ -32,13 +33,13 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
     }
 }
 
-AST::Expr Expand_Macro(bool is_early, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::MacroInvocation& mi, MacroPosition pos)
+::std::unique_ptr<TokenStream> Expand_Macro(bool is_early, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::MacroInvocation& mi)
 {
     for( const auto& m : g_macros )
     {
         if( mi.name() == m.first && m.second->expand_early() == is_early )
         {
-            auto e = m.second->expand(mi.input_ident(), mi.input_tt(), mod, MacroPosition::Item);
+            auto e = m.second->expand(mi.input_ident(), mi.input_tt(), mod);
             mi.clear();
             return e;
         }
@@ -57,7 +58,7 @@ AST::Expr Expand_Macro(bool is_early, LList<const AST::Module*> modstack, ::AST:
                 if( mi.input_ident() != "" )
                     ;   // TODO: ERROR - macro_rules! macros can't take an ident
                 
-                auto e = Macro_Invoke(mr.name.c_str(), mr.data, mi.input_tt(), mod, MacroPosition::Item);
+                auto e = Macro_Invoke(mr.name.c_str(), mr.data, mi.input_tt(), mod);
                 mi.clear();
                 return e;
             }
@@ -70,7 +71,7 @@ AST::Expr Expand_Macro(bool is_early, LList<const AST::Module*> modstack, ::AST:
                 if( mi.input_ident() != "" )
                     ;   // TODO: ERROR - macro_rules! macros can't take an ident
                 
-                auto e = Macro_Invoke(mi.name().c_str(), *mri.data, mi.input_tt(), mod, MacroPosition::Item);
+                auto e = Macro_Invoke(mi.name().c_str(), *mri.data, mi.input_tt(), mod);
                 mi.clear();
                 return e;
             }
@@ -83,7 +84,7 @@ AST::Expr Expand_Macro(bool is_early, LList<const AST::Module*> modstack, ::AST:
     }
     
     // Leave valid and return an empty expression
-    return AST::Expr();
+    return ::std::unique_ptr<TokenStream>();
 }
 
 void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod)
@@ -92,6 +93,9 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
     
     for( const auto& mi: mod.macro_imports_res() )
         DEBUG("- Imports '" << mi.name << "'");
+    
+    // TODO: Have the AST representation of a module include the definition order,
+    //  mixing macro invocations, general items, use statements, and `impl`s
     
     // 1. Macros first
     //for( auto& mi : mod.macro_invs() )
@@ -104,13 +108,17 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             // Move out of the module to avoid invalidation if a new macro invocation is added
             auto mi_owned = mv$(mi);
             
-            auto rv = Expand_Macro(is_early, modstack, mod, mi_owned, MacroPosition::Item);
-            if( rv.is_valid() )
-                ;   // TODO: ERROR - macro yeilded an expression in item position
+            auto ttl = Expand_Macro(is_early, modstack, mod, mi_owned);
             
             if( mi_owned.name() != "" )
             {
                 mod.macro_invs()[i] = mv$(mi_owned);
+            }
+            else
+            {
+                // Re-parse tt
+                assert(ttl.get());
+                Parse_ModRoot_Items(*ttl, mod, false, "-");
             }
         }
     }
@@ -140,22 +148,30 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             // TODO: Struct items
             ),
         (Enum,
+            // TODO: Enum variants
             ),
         (Trait,
+            // TODO: Trait definition
             ),
         (Type,
             // TODO: Do type aliases require recursion?
             ),
         
         (Function,
-            // TODO:
+            // TODO: Recurse into function code (and types)
             ),
         (Static,
-            // TODO: 
+            // TODO: Recurse into static values
             )
         )
         
         Expand_Attrs(i.data.attrs, (is_early ? AttrStage::EarlyPost : AttrStage::LatePost),  crate, path, mod, i.data);
+    }
+    
+    DEBUG("Impls");
+    for( auto& i : mod.impls() )
+    {
+        DEBUG("- " << i);
     }
     
     for( const auto& mi: mod.macro_imports_res() )

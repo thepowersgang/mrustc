@@ -10,7 +10,7 @@ class CMacroRulesExpander:
 {
     bool    expand_early() const override { return true; }
     
-    AST::Expr expand(const ::std::string& ident, const TokenTree& tt, AST::Module& mod, MacroPosition position)
+    ::std::unique_ptr<TokenStream> expand(const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
         if( ident == "" ) {
             throw ::std::runtime_error( "ERROR: macro_rules! requires an identifier" );
@@ -21,7 +21,8 @@ class CMacroRulesExpander:
         // TODO: Place into current module using `ident` as the name
         mod.add_macro( false, ident, mac );
         
-        return AST::Expr();
+        static TokenTree    empty_tt;
+        return box$( TTStream(empty_tt) );
     }
 };
 
@@ -59,23 +60,9 @@ class CMacroUseHandler:
     
 };
 
-AST::Expr Macro_Invoke(const char* name, const MacroRules& rules, const TokenTree& tt, AST::Module& mod, MacroPosition position)
+::std::unique_ptr<TokenStream>  Macro_Invoke(const char* name, const MacroRules& rules, const TokenTree& tt, AST::Module& mod)
 {
-    auto out_tt = Macro_InvokeRules(name, rules, tt);
-    TokenStream& lex = *out_tt;
-    // TODO: Expand out_tt
-    switch(position)
-    {
-    case MacroPosition::Item: {
-        LList<AST::Module*> l(nullptr, &mod);
-        Parse_ModRoot_Items(lex, mod, l, false, "-");
-        return AST::Expr();
-        }
-    default:
-        throw ::std::runtime_error("TODO: Macro in non-item position");
-    //case MacroPosition::Stmt: {
-    //    break; }
-    }
+    return Macro_InvokeRules(name, rules, tt);
 }
 
 

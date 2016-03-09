@@ -24,7 +24,7 @@
 }
 
 AST::MetaItem   Parse_MetaItem(TokenStream& lex);
-void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs, LList<AST::Module*> *prev_modstack, bool file_controls_dir, const ::std::string& path);
+void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs, bool file_controls_dir, const ::std::string& path);
 
 ::std::vector< ::std::string> Parse_HRB(TokenStream& lex)
 {
@@ -1269,7 +1269,7 @@ void Parse_ExternCrate(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_i
     //}
 }
 
-void Parse_Mod_Item(TokenStream& lex, LList<AST::Module*>& modstack, bool file_controls_dir, const ::std::string& file_path, AST::Module& mod, bool is_public, AST::MetaItems meta_items)
+void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::string& file_path, AST::Module& mod, bool is_public, AST::MetaItems meta_items)
 {
     //TRACE_FUNCTION;
     Token   tok;
@@ -1514,7 +1514,7 @@ void Parse_Mod_Item(TokenStream& lex, LList<AST::Module*>& modstack, bool file_c
         switch( GET_TOK(tok, lex) )
         {
         case TOK_BRACE_OPEN: {
-            Parse_ModRoot(lex, submod, meta_items, &modstack, sub_file_controls_dir, sub_path+"/");
+            Parse_ModRoot(lex, submod, meta_items, sub_file_controls_dir, sub_path+"/");
             GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
             break; }
         case TOK_SEMICOLON:
@@ -1540,14 +1540,14 @@ void Parse_Mod_Item(TokenStream& lex, LList<AST::Module*>& modstack, bool file_c
                 {
                     // Load from dir
                     Lexer sub_lex(newpath_dir + "mod.rs");
-                    Parse_ModRoot(sub_lex, submod, meta_items, &modstack, sub_file_controls_dir, newpath_dir);
+                    Parse_ModRoot(sub_lex, submod, meta_items, sub_file_controls_dir, newpath_dir);
                     GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
                 }
                 else if( ifs_file.is_open() )
                 {
                     // Load from file
                     Lexer sub_lex(newpath_file);
-                    Parse_ModRoot(sub_lex, submod, meta_items, &modstack, sub_file_controls_dir, newpath_file);
+                    Parse_ModRoot(sub_lex, submod, meta_items, sub_file_controls_dir, newpath_file);
                     GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
                 }
                 else
@@ -1562,7 +1562,6 @@ void Parse_Mod_Item(TokenStream& lex, LList<AST::Module*>& modstack, bool file_c
         }
         submod.prescan();
         mod.add_submod(is_public,  ::std::move(submod), mv$(meta_items));
-        Macro_SetModule(modstack);
         break; }
 
     default:
@@ -1570,7 +1569,7 @@ void Parse_Mod_Item(TokenStream& lex, LList<AST::Module*>& modstack, bool file_c
     }
 }
 
-void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, LList<AST::Module*>& modstack, bool file_controls_dir, const ::std::string& path)
+void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, bool file_controls_dir, const ::std::string& path)
 {
     Token   tok;
 
@@ -1623,15 +1622,13 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, LList<AST::Module*>
             lex.putback(tok);
         }
 
-        Parse_Mod_Item(lex, modstack, file_controls_dir,path,  mod, is_public, mv$(meta_items));
+        Parse_Mod_Item(lex, file_controls_dir,path,  mod, is_public, mv$(meta_items));
     }
 }
 
-void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs, LList<AST::Module*> *prev_modstack, bool file_controls_dir, const ::std::string& path)
+void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs, bool file_controls_dir, const ::std::string& path)
 {
     TRACE_FUNCTION;
-    LList<AST::Module*>  modstack(prev_modstack, &mod);
-    Macro_SetModule(modstack);
 
     Token   tok;
 
@@ -1645,9 +1642,7 @@ void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs
     }
     lex.putback(tok);
 
-    // TODO: Iterate attributes, and check for handlers on each
-    
-    Parse_ModRoot_Items(lex, mod, modstack, file_controls_dir, path);
+    Parse_ModRoot_Items(lex, mod, file_controls_dir, path);
 }
 
 AST::Crate Parse_Crate(::std::string mainfile)
@@ -1661,7 +1656,7 @@ AST::Crate Parse_Crate(::std::string mainfile)
      
     AST::Crate  crate;
 
-    Parse_ModRoot(lex, crate.root_module(), crate.m_attrs, NULL, true, mainpath);
+    Parse_ModRoot(lex, crate.root_module(), crate.m_attrs, true, mainpath);
     
     return crate;
 }

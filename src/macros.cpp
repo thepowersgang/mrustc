@@ -11,7 +11,6 @@
 typedef ::std::map< ::std::string, MacroRules>  t_macro_regs;
 
 t_macro_regs g_macro_registrations;
-const LList<AST::Module*>*  g_macro_module;
 
 class ParameterMappings
 {
@@ -179,15 +178,6 @@ public:
 
 ::std::unique_ptr<TokenStream> Macro_Invoke_Concat(const TokenTree& input, enum eTokenType exp);
 ::std::unique_ptr<TokenStream> Macro_Invoke_Cfg(const TokenTree& input);
-
-void Macro_SetModule(const LList<AST::Module*>& mod)
-{
-    g_macro_module = &mod;
-}
-const LList<AST::Module*>* Macro_GetModule()
-{
-    return g_macro_module;
-}
 
 void Macro_InitDefaults()
 {
@@ -414,9 +404,6 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
 {
     DEBUG("Invoke " << name << " from " << olex.getPosition());
     // XXX: EVIL HACK! - This should be removed when std loading is implemented
-    if( g_macro_registrations.size() == 0 ) {
-        Macro_InitDefaults();
-    }
    
     if( name == "concat_idents" ) {
         return Macro_Invoke_Concat(input, TOK_IDENT);
@@ -444,31 +431,6 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
     if( macro_reg != g_macro_registrations.end() )
     {
         return Macro_InvokeRules(olex.getPosition(), macro_reg->first.c_str(), macro_reg->second, input);
-    }
-    
-    // Search import list
-    for( auto ent = g_macro_module; ent; ent = ent->m_prev )
-    {
-        const AST::Module& mm = *ent->m_item;
-        DEBUG("Module '" << mm.name() << "'");
-        for( unsigned int i = mm.macros().size(); i --; )
-        {
-            const auto& m = mm.macros()[i];
-            DEBUG("- [local] " << m.name);
-            if( m.name == name )
-            {
-                return Macro_InvokeRules(olex.getPosition(), m.name.c_str(), m.data, input);
-            }
-        }
-        
-        for( const auto& mi : mm.macro_imports_res() )
-        {
-            DEBUG("- [imp]" << mi.name);
-            if( mi.name == name )
-            {
-                return Macro_InvokeRules(olex.getPosition(), mi.name.c_str(), *mi.data, input);
-            }
-        }
     }
 
     throw ParseError::Generic(olex, FMT("Macro '" << name << "' was not found") );

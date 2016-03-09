@@ -56,11 +56,6 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
     ::std::unique_ptr<AST::Module>    local_mod( new AST::Module("") );
     bool    keep_mod = false;
     
-    const LList<AST::Module*>* prev_modstack = Macro_GetModule();
-    LList<AST::Module*> modstack(prev_modstack, local_mod.get());
-    Macro_SetModule(modstack);
-    
-    
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
     
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
@@ -95,7 +90,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
         case TOK_RWORD_MOD:
             lex.putback(tok);
             keep_mod = true;
-            Parse_Mod_Item(lex, modstack, false,"!", *local_mod, false, mv$(item_attrs));
+            Parse_Mod_Item(lex, false,"!", *local_mod, false, mv$(item_attrs));
             break;
         // 'unsafe' - Check if the next token isn't a `{`, if so it's an item. Otherwise, fall through
         case TOK_RWORD_UNSAFE:
@@ -103,7 +98,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
             {
                 lex.putback(tok);
                 keep_mod = true;
-                Parse_Mod_Item(lex, modstack, false,"!", *local_mod, false, mv$(item_attrs));
+                Parse_Mod_Item(lex, false,"!", *local_mod, false, mv$(item_attrs));
                 break;
             }
             // fall
@@ -132,7 +127,6 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
         }
     }
     
-    Macro_SetModule( *prev_modstack );
     if( !keep_mod ) {
         local_mod.reset();
     }

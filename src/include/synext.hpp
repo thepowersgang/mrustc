@@ -20,6 +20,7 @@ namespace AST {
     class MacroInvocation;
 }
 class TokenTree;
+class TokenStream;
 
 
 #include "../common.hpp"   // for mv$ and other things
@@ -59,7 +60,7 @@ class ExpandProcMacro
 public:
     virtual bool    expand_early() const = 0;
     
-    virtual AST::Expr   expand(const ::std::string& ident, const TokenTree& tt, AST::Module& mod, MacroPosition position) = 0;
+    virtual ::std::unique_ptr<TokenStream>  expand(const ::std::string& ident, const TokenTree& tt, AST::Module& mod) = 0;
 };
 
 #define STATIC_DECORATOR(ident, _handler_class) \

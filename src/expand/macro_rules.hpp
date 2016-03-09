@@ -11,5 +11,6 @@ namespace AST {
     class Module;
 }
 class TokenTree;
+class TokenStream;
 
-extern AST::Expr Macro_Invoke(const char* name, const MacroRules& rules, const TokenTree& tt, AST::Module& mod, MacroPosition position);
+extern ::std::unique_ptr<TokenStream>   Macro_Invoke(const char* name, const MacroRules& rules, const TokenTree& tt, AST::Module& mod);
