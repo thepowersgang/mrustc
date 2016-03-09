@@ -159,9 +159,12 @@ void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
                 Span(node.get_pos()),
                 node.m_name, node.m_ident, node.m_tokens
                 );
-            // TODO: Reparse as expression / item
-            // TODO: Then call visit on it again
-            BUG(node.get_pos(), "TODO: Expand expression macros");
+            // Reparse as expression / item
+            auto newexpr = Parse_Expr0(*ttl);
+            // Then call visit on it again
+            this->visit(newexpr);
+            // And schedule it to replace the previous
+            replacement = mv$(newexpr);
         }
         
         void visit(::AST::ExprNode_Block& node) override {
@@ -355,6 +358,8 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
 }
 void Expand(::AST::Crate& crate)
 {
+    auto modstack = LList<const ::AST::Module*>(nullptr, &crate.m_root_module);
+    
     // 1. Crate attributes
     for( auto& a : crate.m_attrs.m_items )
     {
@@ -376,8 +381,8 @@ void Expand(::AST::Crate& crate)
     }
     
     // 3. Module tree
-    Expand_Mod(true , crate, LList<const ::AST::Module*>(nullptr, &crate.m_root_module), ::AST::Path(), crate.m_root_module);
-    Expand_Mod(false, crate, LList<const ::AST::Module*>(nullptr, &crate.m_root_module), ::AST::Path(), crate.m_root_module);
+    Expand_Mod(true , crate, modstack, ::AST::Path(), crate.m_root_module);
+    Expand_Mod(false, crate, modstack, ::AST::Path(), crate.m_root_module);
     
     // Post-process
     #if 0

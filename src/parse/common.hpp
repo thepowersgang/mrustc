@@ -59,6 +59,7 @@ extern AST::Function    Parse_FunctionDef(TokenStream& lex, ::std::string abi, A
 extern AST::Function    Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self);
 extern AST::Expr   Parse_Expr(TokenStream& lex, bool const_only);
 extern AST::Expr   Parse_ExprBlock(TokenStream& lex);
+extern AST::ExprNodeP   Parse_Expr0(TokenStream& lex);
 
 extern bool Parse_IsTokValue(eTokenType tok_type);
 
