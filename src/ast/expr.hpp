@@ -37,6 +37,7 @@ public:
     void set_attrs(MetaItems&& mi) {
         m_attrs = mv$(mi);
     }
+    MetaItems& attrs() { return m_attrs; }
     
     TypeRef& get_res_type() { return m_res_type; }
     

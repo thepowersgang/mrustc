@@ -7,6 +7,7 @@
 #include <map>
 #include "macro_rules.hpp"
 #include "../parse/common.hpp"  // For reparse from macros
+#include <ast/expr.hpp>
 
 ::std::map< ::std::string, ::std::unique_ptr<ExpandDecorator> >  g_decorators;
 ::std::map< ::std::string, ::std::unique_ptr<ExpandProcMacro> >  g_macros;
@@ -18,7 +19,16 @@ void Register_Synext_Macro(::std::string name, ::std::unique_ptr<ExpandProcMacro
     g_macros[name] = mv$(handler);
 }
 
-void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate, const ::AST::Path& path, ::AST::Module& mod, ::AST::Item& item)
+namespace {
+    AttrStage stage_pre(bool is_early) {
+        return (is_early ? AttrStage::EarlyPre : AttrStage::LatePre);
+    }
+    AttrStage stage_post(bool is_early) {
+        return (is_early ? AttrStage::EarlyPost : AttrStage::LatePost);
+    }
+}
+
+void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::std::function<void(const ExpandDecorator& d,const ::AST::MetaItem& a)> f)
 {
     for( auto& a : attrs.m_items )
     {
@@ -26,21 +36,27 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
             if( d.first == a.name() ) {
                 DEBUG("#[" << d.first << "] " << (int)d.second->stage() << "-" << (int)stage);
                 if( d.second->stage() == stage ) {
-                    d.second->handle(a, crate, path, mod, item);
+                    f(*d.second, a);
                 }
             }
         }
     }
 }
+void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate, const ::AST::Path& path, ::AST::Module& mod, ::AST::Item& item)
+{
+    Expand_Attrs(attrs, stage,  [&](const auto& d, const auto& a){ d.handle(a, crate, path, mod, item); });
+}
 
-::std::unique_ptr<TokenStream> Expand_Macro(bool is_early, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::MacroInvocation& mi)
+::std::unique_ptr<TokenStream> Expand_Macro(
+    bool is_early, LList<const AST::Module*> modstack, ::AST::Module& mod,
+    Span mi_span, const ::std::string& name, const ::std::string& input_ident, const TokenTree& input_tt
+    )
 {
     for( const auto& m : g_macros )
     {
-        if( mi.name() == m.first && m.second->expand_early() == is_early )
+        if( name == m.first && m.second->expand_early() == is_early )
         {
-            auto e = m.second->expand(mi.input_ident(), mi.input_tt(), mod);
-            mi.clear();
+            auto e = m.second->expand(input_ident, input_tt, mod);
             return e;
         }
     }
@@ -53,26 +69,24 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
         for( const auto& mr : mac_mod.macros() )
         {
             //DEBUG("- " << mr.name);
-            if( mr.name == mi.name() )
+            if( mr.name == name )
             {
-                if( mi.input_ident() != "" )
-                    ;   // TODO: ERROR - macro_rules! macros can't take an ident
+                if( input_ident != "" )
+                    ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
                 
-                auto e = Macro_Invoke(mr.name.c_str(), mr.data, mi.input_tt(), mod);
-                mi.clear();
+                auto e = Macro_Invoke(name.c_str(), mr.data, input_tt, mod);
                 return e;
             }
         }
         for( const auto& mri : mac_mod.macro_imports_res() )
         {
             //DEBUG("- " << mri.name);
-            if( mri.name == mi.name() )
+            if( mri.name == name )
             {
-                if( mi.input_ident() != "" )
-                    ;   // TODO: ERROR - macro_rules! macros can't take an ident
+                if( input_ident != "" )
+                    ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
                 
-                auto e = Macro_Invoke(mi.name().c_str(), *mri.data, mi.input_tt(), mod);
-                mi.clear();
+                auto e = Macro_Invoke(name.c_str(), *mri.data, input_tt, mod);
                 return e;
             }
         }
@@ -80,11 +94,167 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
     
     if( ! is_early ) {
         // Error - Unknown macro name
-        ERROR(mi.span(), E0000, "Unknown macro '" << mi.name() << "'");
+        ERROR(mi_span, E0000, "Unknown macro '" << name << "'");
     }
     
     // Leave valid and return an empty expression
     return ::std::unique_ptr<TokenStream>();
+}
+
+void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path item_path, AST::Expr& node)
+{
+    struct CExpandExpr:
+        public ::AST::NodeVisitor
+    {
+        bool is_early;
+        LList<const AST::Module*>   modstack;
+        ::std::unique_ptr<::AST::ExprNode> replacement;
+        
+        CExpandExpr(bool is_early, LList<const AST::Module*> ms):
+            is_early(is_early),
+            modstack(ms)
+        {
+        }
+        
+        void visit(::std::unique_ptr<AST::ExprNode>& cnode) {
+            if(cnode.get())
+                Expand_Attrs(cnode->attrs(), stage_pre(is_early),  [&](const auto& d, const auto& a){ d.handle(a, *cnode); });
+            if(cnode.get())
+            {
+                cnode->visit(*this);
+                if( this->replacement.get() ) {
+                    cnode = mv$(this->replacement);
+                }
+            }
+            
+            if(cnode.get())
+                Expand_Attrs(cnode->attrs(), stage_post(is_early),  [&](const auto& d, const auto& a){ d.handle(a, *cnode); });
+        }
+        void visit_nodelete(const ::AST::ExprNode& parent, ::std::unique_ptr<AST::ExprNode>& cnode) {
+            if( cnode.get() != nullptr )
+            {
+                this->visit(cnode);
+                if(cnode.get() == nullptr)
+                    ERROR(parent.get_pos(), E0000, "#[cfg] not allowed in this position");
+            }
+        }
+        void visit_vector(::std::vector< ::std::unique_ptr<AST::ExprNode> >& cnodes) {
+            for( auto& child : cnodes ) {
+                this->visit(child);
+            }
+            // Delete null children
+            for( auto it = cnodes.begin(); it != cnodes.end(); ) {
+                if( it->get() == nullptr ) {
+                    it = cnodes.erase( it );
+                }
+                else {
+                    ++ it;
+                }
+            }
+        }
+        
+        void visit(::AST::ExprNode_Macro& node) override {
+            auto ttl = Expand_Macro(
+                false, modstack, *(::AST::Module*)(modstack.m_item),
+                Span(node.get_pos()),
+                node.m_name, node.m_ident, node.m_tokens
+                );
+            // TODO: Reparse as expression / item
+            // TODO: Then call visit on it again
+            BUG(node.get_pos(), "TODO: Expand expression macros");
+        }
+        
+        void visit(::AST::ExprNode_Block& node) override {
+            this->visit_vector(node.m_nodes);
+        }
+        void visit(::AST::ExprNode_Flow& node) override {
+            this->visit_nodelete(node, node.m_value);
+        }
+        void visit(::AST::ExprNode_LetBinding& node) override {
+            // TODO: Pattern and type
+            this->visit_nodelete(node, node.m_value);
+        }
+        void visit(::AST::ExprNode_Assign& node) override {
+            this->visit_nodelete(node, node.m_slot);
+            this->visit_nodelete(node, node.m_value);
+        }
+        void visit(::AST::ExprNode_CallPath& node) override {
+            // TODO: path?
+            this->visit_vector(node.m_args);
+        }
+        void visit(::AST::ExprNode_CallMethod& node) override {
+            this->visit_nodelete(node, node.m_val);
+            this->visit_vector(node.m_args);
+        }
+        void visit(::AST::ExprNode_CallObject& node) override {
+            this->visit_nodelete(node, node.m_val);
+            this->visit_vector(node.m_args);
+        }
+        void visit(::AST::ExprNode_Loop& node) override {
+            this->visit_nodelete(node, node.m_cond);
+            this->visit_nodelete(node, node.m_code);
+        }
+        void visit(::AST::ExprNode_Match& node) override {
+            this->visit_nodelete(node, node.m_val);
+            // TODO: Arms
+        }
+        void visit(::AST::ExprNode_If& node) override {
+            this->visit_nodelete(node, node.m_cond);
+            this->visit_nodelete(node, node.m_true);
+            this->visit_nodelete(node, node.m_false);   // TODO: Can the false branch be `#[cfg]`d off?
+        }
+        void visit(::AST::ExprNode_IfLet& node) override {
+            // TODO: Pattern
+            this->visit_nodelete(node, node.m_value);
+            this->visit_nodelete(node, node.m_true);
+            this->visit_nodelete(node, node.m_false);   // TODO: Can the false branch be `#[cfg]`d off?
+        }
+        void visit(::AST::ExprNode_Integer& node) override { }
+        void visit(::AST::ExprNode_Float& node) override { }
+        void visit(::AST::ExprNode_Bool& node) override { }
+        void visit(::AST::ExprNode_String& node) override { }
+        void visit(::AST::ExprNode_Closure& node) override {
+            // TODO: Arg patterns and types
+            // TODO: Return type
+            this->visit_nodelete(node, node.m_code);
+        }
+        void visit(::AST::ExprNode_StructLiteral& node) override {
+            this->visit_nodelete(node, node.m_base_value);
+            // TODO: Values (with #[cfg] support)
+        }
+        void visit(::AST::ExprNode_Array& node) override {
+            this->visit_nodelete(node, node.m_size);
+            this->visit_vector(node.m_values);
+        }
+        void visit(::AST::ExprNode_Tuple& node) override {
+            this->visit_vector(node.m_values);
+        }
+        void visit(::AST::ExprNode_NamedValue& node) override { }
+        void visit(::AST::ExprNode_Field& node) override {
+            this->visit_nodelete(node, node.m_obj);
+        }
+        void visit(::AST::ExprNode_Index& node) override {
+            this->visit_nodelete(node, node.m_obj);
+            this->visit_nodelete(node, node.m_idx);
+        }
+        void visit(::AST::ExprNode_Deref& node) override {
+            this->visit_nodelete(node, node.m_value);
+        }
+        void visit(::AST::ExprNode_Cast& node) override {
+            this->visit_nodelete(node, node.m_value);
+            // TODO: Type
+        }
+        void visit(::AST::ExprNode_BinOp& node) override {
+            this->visit_nodelete(node, node.m_left);
+            this->visit_nodelete(node, node.m_right);
+        }
+        void visit(::AST::ExprNode_UniOp& node) override {
+            this->visit_nodelete(node, node.m_value);
+        }
+    };
+
+    auto visitor = CExpandExpr(is_early, modstack);
+    node.visit_nodes(visitor);
 }
 
 void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod)
@@ -108,10 +278,11 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             // Move out of the module to avoid invalidation if a new macro invocation is added
             auto mi_owned = mv$(mi);
             
-            auto ttl = Expand_Macro(is_early, modstack, mod, mi_owned);
-            
-            if( mi_owned.name() != "" )
+            auto ttl = Expand_Macro(is_early, modstack, mod, mi_owned.span(), mi_owned.name(), mi_owned.input_ident(), mi_owned.input_tt());
+
+            if( ! ttl.get() )
             {
+                // - Return ownership to the list
                 mod.macro_invs()[i] = mv$(mi_owned);
             }
             else
@@ -119,6 +290,7 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
                 // Re-parse tt
                 assert(ttl.get());
                 Parse_ModRoot_Items(*ttl, mod, false, "-");
+                // - Any new macro invocations ends up at the end of the list and handled
             }
         }
     }
@@ -130,7 +302,7 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
         DEBUG("- " << i.name << " :: " << i.data.attrs);
         ::AST::Path path = modpath + i.name;
         
-        Expand_Attrs(i.data.attrs, (is_early ? AttrStage::EarlyPre : AttrStage::LatePre),  crate, path, mod, i.data);
+        Expand_Attrs(i.data.attrs, stage_pre(is_early),  crate, path, mod, i.data);
         
         TU_MATCH(::AST::Item, (i.data), (e),
         (None,
@@ -158,14 +330,16 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             ),
         
         (Function,
-            // TODO: Recurse into function code (and types)
+            // TODO: Recurse into argument patterns + types
+            Expand_Expr(is_early, crate, modstack, path, e.e.code());
             ),
         (Static,
-            // TODO: Recurse into static values
+            // Recurse into static values
+            Expand_Expr(is_early, crate, modstack, path, e.e.value());
             )
         )
         
-        Expand_Attrs(i.data.attrs, (is_early ? AttrStage::EarlyPost : AttrStage::LatePost),  crate, path, mod, i.data);
+        Expand_Attrs(i.data.attrs, stage_post(is_early),  crate, path, mod, i.data);
     }
     
     DEBUG("Impls");

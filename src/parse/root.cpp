@@ -1253,20 +1253,6 @@ void Parse_ExternCrate(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_i
     GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
     
     mod.add_ext_crate(path, name, mv$(meta_items));
-
-    // Handle #[macro_use]/#[macro_use(...)]
-    //auto at = meta_items.get("macro_use");
-    //if( at )
-    //{
-    //    if( at->has_sub_items() )
-    //    {
-    //        throw ParseError::Todo("selective macro_use");
-    //    }
-    //    else
-    //    {
-    //        mod.add_macro_import(crate, name, "");
-    //    }
-    //}
 }
 
 void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::string& file_path, AST::Module& mod, bool is_public, AST::MetaItems meta_items)
