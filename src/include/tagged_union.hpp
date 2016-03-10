@@ -197,8 +197,8 @@ class _name TU_EXP _inherit { \
     _name(): m_tag(TAG_##_def) { new((void*)m_data) TU_DATANAME(_def); }/*
 */  _name(const _name&) = delete;/*
 */  _name(_name&& x) noexcept: m_tag(x.m_tag) TU_EXP _extra_move { switch(m_tag) {  TU_MOVE_CASES _variants } }/*
-*/  _name& operator =(_name&& x) { this->~_name(); m_tag = x.m_tag; TU_EXP _extra_assign switch(m_tag) { TU_MOVE_CASES _variants }; return *this; }/*
-*/  ~_name() { switch(m_tag) { TU_DEST_CASES _variants } } \
+*/  _name& operator =(_name&& x) { switch(m_tag) { TU_DEST_CASES _variants } m_tag = x.m_tag; TU_EXP _extra_assign switch(m_tag) { TU_MOVE_CASES _variants }; return *this; }/*
+*/  ~_name() { switch(m_tag) { TU_DEST_CASES _variants } m_tag = TAG_##_def; new((void*)m_data) TU_DATANAME(_def); } \
     \
     Tag tag() const { return m_tag; }\
     TU_CONSS(_name, TU_EXP _variants) \
