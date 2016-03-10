@@ -60,6 +60,24 @@ protected:
     virtual Token realGetToken() override;
 };
 
+class TTStreamO:
+    public TokenStream
+{
+    Position    m_last_pos;
+    const TokenTree m_input_tt;
+    ::std::vector< ::std::pair<unsigned int, const TokenTree*> > m_stack;
+public:
+    TTStreamO(const TokenTree input_tt);
+    ~TTStreamO();
+
+    TTStreamO& operator=(const TTStreamO& x) { m_stack = x.m_stack; return *this; }
+    
+    virtual Position getPosition() const override;
+
+protected:
+    virtual Token realGetToken() override;
+};
+
 // unwrapped = Exclude the enclosing brackets (used by macro parse code)
 extern TokenTree Parse_TT(TokenStream& lex, bool unwrapped);
 extern TokenTree Parse_TT_Pattern(TokenStream& lex);

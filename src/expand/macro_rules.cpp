@@ -10,19 +10,17 @@ class CMacroRulesExpander:
 {
     bool    expand_early() const override { return true; }
     
-    ::std::unique_ptr<TokenStream> expand(const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(Span sp, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
-        if( ident == "" ) {
-            throw ::std::runtime_error( "ERROR: macro_rules! requires an identifier" );
-        }
+        if( ident == "" )
+            ERROR(sp, E0000, "macro_rules! requires an identifier" );
         
         TTStream    lex(tt);
         auto mac = Parse_MacroRules(lex);
         // TODO: Place into current module using `ident` as the name
         mod.add_macro( false, ident, mac );
         
-        static TokenTree    empty_tt;
-        return box$( TTStream(empty_tt) );
+        return box$( TTStreamO(TokenTree()) );
     }
 };
 

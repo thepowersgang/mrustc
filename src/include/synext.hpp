@@ -5,6 +5,7 @@
 #define _SYNEXT_HPP_
 
 #include "../ast/item.hpp"
+#include <span.hpp>
 
 namespace AST {
     class Crate;
@@ -60,7 +61,7 @@ class ExpandProcMacro
 public:
     virtual bool    expand_early() const = 0;
     
-    virtual ::std::unique_ptr<TokenStream>  expand(const ::std::string& ident, const TokenTree& tt, AST::Module& mod) = 0;
+    virtual ::std::unique_ptr<TokenStream>  expand(Span sp, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) = 0;
 };
 
 #define STATIC_DECORATOR(ident, _handler_class) \

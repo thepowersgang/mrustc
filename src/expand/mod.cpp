@@ -56,7 +56,7 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
     {
         if( name == m.first && m.second->expand_early() == is_early )
         {
-            auto e = m.second->expand(input_ident, input_tt, mod);
+            auto e = m.second->expand(mi_span, input_ident, input_tt, mod);
             return e;
         }
     }
@@ -155,16 +155,19 @@ void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
         
         void visit(::AST::ExprNode_Macro& node) override {
             auto ttl = Expand_Macro(
-                false, modstack, *(::AST::Module*)(modstack.m_item),
+                is_early, modstack, *(::AST::Module*)(modstack.m_item),
                 Span(node.get_pos()),
                 node.m_name, node.m_ident, node.m_tokens
                 );
-            // Reparse as expression / item
-            auto newexpr = Parse_Expr0(*ttl);
-            // Then call visit on it again
-            this->visit(newexpr);
-            // And schedule it to replace the previous
-            replacement = mv$(newexpr);
+            if( ttl.get() != nullptr && ttl->lookahead(0) != TOK_EOF )
+            {
+                // Reparse as expression / item
+                auto newexpr = Parse_Expr0(*ttl);
+                // Then call visit on it again
+                this->visit(newexpr);
+                // And schedule it to replace the previous
+                replacement = mv$(newexpr);
+            }
         }
         
         void visit(::AST::ExprNode_Block& node) override {
