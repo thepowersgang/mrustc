@@ -9,6 +9,9 @@
 #include "../parse/common.hpp"  // For reparse from macros
 #include <ast/expr.hpp>
 
+
+extern bool check_cfg(const ::AST::MetaItem& mi);
+
 ::std::map< ::std::string, ::std::unique_ptr<ExpandDecorator> >  g_decorators;
 ::std::map< ::std::string, ::std::unique_ptr<ExpandProcMacro> >  g_macros;
 
@@ -28,17 +31,28 @@ namespace {
     }
 }
 
+void Expand_Attr(const ::AST::MetaItem& a, AttrStage stage,  ::std::function<void(const ExpandDecorator& d,const ::AST::MetaItem& a)> f)
+{
+    for( auto& d : g_decorators ) {
+        if( d.first == a.name() ) {
+            DEBUG("#[" << d.first << "] " << (int)d.second->stage() << "-" << (int)stage);
+            if( d.second->stage() == stage ) {
+                f(*d.second, a);
+            }
+        }
+    }
+}
 void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::std::function<void(const ExpandDecorator& d,const ::AST::MetaItem& a)> f)
 {
     for( auto& a : attrs.m_items )
     {
-        for( auto& d : g_decorators ) {
-            if( d.first == a.name() ) {
-                DEBUG("#[" << d.first << "] " << (int)d.second->stage() << "-" << (int)stage);
-                if( d.second->stage() == stage ) {
-                    f(*d.second, a);
-                }
+        if( a.name() == "cfg_attr" ) {
+            if( check_cfg(a.items().m_items.at(0)) ) {
+                Expand_Attr(a.items().m_items.at(1), stage, f);
             }
+        }
+        else {
+            Expand_Attr(a, stage, f);
         }
     }
 }
@@ -118,7 +132,7 @@ void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
         
         void visit(::std::unique_ptr<AST::ExprNode>& cnode) {
             if(cnode.get())
-                Expand_Attrs(cnode->attrs(), stage_pre(is_early),  [&](const auto& d, const auto& a){ d.handle(a, *cnode); });
+                Expand_Attrs(cnode->attrs(), stage_pre(is_early),  [&](const auto& d, const auto& a){ d.handle(a, cnode); });
             if(cnode.get())
             {
                 cnode->visit(*this);
@@ -128,7 +142,7 @@ void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
             }
             
             if(cnode.get())
-                Expand_Attrs(cnode->attrs(), stage_post(is_early),  [&](const auto& d, const auto& a){ d.handle(a, *cnode); });
+                Expand_Attrs(cnode->attrs(), stage_post(is_early),  [&](const auto& d, const auto& a){ d.handle(a, cnode); });
         }
         void visit_nodelete(const ::AST::ExprNode& parent, ::std::unique_ptr<AST::ExprNode>& cnode) {
             if( cnode.get() != nullptr )

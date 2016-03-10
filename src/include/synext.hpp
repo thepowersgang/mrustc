@@ -44,7 +44,7 @@ public:
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate) const {}
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, AST::MacroInvocation& mac) const {}
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const {}
-    virtual void    handle(const AST::MetaItem& mi, AST::ExprNode& expr) const {};
+    virtual void    handle(const AST::MetaItem& mi, ::std::unique_ptr<AST::ExprNode>& expr) const {};
 };
 
 enum class MacroPosition
