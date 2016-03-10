@@ -95,6 +95,30 @@ Ordering Type_Function::ord(const Type_Function& x) const
     return (*m_rettype).ord( *x.m_rettype );
 }
 
+TypeRef::TypeRef(const TypeRef& other)
+{
+    switch( other.m_data.tag() )
+    {
+    #define _COPY(VAR)  case TypeData::TAG_##VAR: m_data = TypeData::make_##VAR(other.m_data.as_##VAR()); break;
+    #define _CLONE(VAR, code...)    case TypeData::TAG_##VAR: { auto& old = other.m_data.as_##VAR(); m_data = TypeData::make_##VAR(code); } break;
+    _COPY(None)
+    _COPY(Any)
+    case TypeData::TAG_Macro:   throw ::std::runtime_error("Copying an unexpanded type macro");
+    _COPY(Unit)
+    _COPY(Primitive)
+    _COPY(Function)
+    _COPY(Tuple)
+    _CLONE(Borrow,  { old.is_mut, box$(TypeRef(*old.inner)) })
+    _CLONE(Pointer, { old.is_mut, box$(TypeRef(*old.inner)) })
+    _CLONE(Array, { box$(TypeRef(*old.inner)), old.size })
+    _COPY(Generic)
+    _COPY(Path)
+    _COPY(TraitObject)
+    #undef _COPY
+    #undef _CLONE
+    }
+}
+
 /// Replace this type reference with a dereferenced version
 bool TypeRef::deref(bool is_implicit)
 {

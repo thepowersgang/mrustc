@@ -55,8 +55,8 @@ extern void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std
 extern void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, bool file_controls_dir, const ::std::string& path);
 
 
-extern AST::Function    Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self, bool can_be_prototype);
-extern AST::Function    Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self);
+extern AST::Function    Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaItems& attrs, bool allow_self, bool can_be_prototype);
+extern AST::Function    Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST::MetaItems& attrs, bool allow_self);
 extern AST::Expr   Parse_Expr(TokenStream& lex, bool const_only);
 extern AST::Expr   Parse_ExprBlock(TokenStream& lex);
 extern AST::ExprNodeP   Parse_Expr0(TokenStream& lex);

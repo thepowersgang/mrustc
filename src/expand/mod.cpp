@@ -47,8 +47,8 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::std::functi
     for( auto& a : attrs.m_items )
     {
         if( a.name() == "cfg_attr" ) {
-            if( check_cfg(a.items().m_items.at(0)) ) {
-                Expand_Attr(a.items().m_items.at(1), stage, f);
+            if( check_cfg(a.items().at(0)) ) {
+                Expand_Attr(a.items().at(1), stage, f);
             }
         }
         else {

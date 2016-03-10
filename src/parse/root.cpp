@@ -214,7 +214,7 @@ void Parse_WhereClause(TokenStream& lex, AST::GenericParams& params)
 }
 
 /// Parse a function definition (after the 'fn <name>')
-AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self, bool can_be_prototype)
+AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaItems& attrs, bool allow_self, bool can_be_prototype)
 {
     TRACE_FUNCTION;
 
@@ -379,10 +379,10 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
     return AST::Function(::std::move(params), ::std::move(ret_type), ::std::move(args));
 }
 
-AST::Function Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST::MetaItems attrs, bool allow_self)
+AST::Function Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST::MetaItems& attrs, bool allow_self)
 {
     Token   tok;
-    auto ret = Parse_FunctionDef(lex, abi, ::std::move(attrs), allow_self, false);
+    auto ret = Parse_FunctionDef(lex, abi, attrs, allow_self, false);
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
     lex.putback(tok);
     ret.set_code( Parse_ExprBlock(lex) );
@@ -815,7 +815,7 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
             items.push_back(Parse_MetaItem(lex));
         } while(GET_TOK(tok, lex) == TOK_COMMA);
         CHECK_TOK(tok, TOK_PAREN_CLOSE);
-        return AST::MetaItem(name, items); }
+        return AST::MetaItem(name, mv$(items)); }
     default:
         lex.putback(tok);
         return AST::MetaItem(name);
@@ -1009,7 +1009,8 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         ::std::string name = tok.str();
         // - Self allowed, can't be prototype-form
-        impl.add_function(is_public, ::std::move(name), Parse_FunctionDefWithCode(lex, abi, ::std::move(item_attrs), true));
+        auto fcn = Parse_FunctionDefWithCode(lex, abi, item_attrs, true);
+        impl.add_function(is_public, ::std::move(name), mv$(fcn));
         break; }
 
     default:
@@ -1265,9 +1266,9 @@ void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::strin
     {
     // `use ...`
     case TOK_RWORD_USE:
-        Parse_Use(lex, [&mod,is_public,&file_path,meta_items](AST::Path p, std::string s) {
+        Parse_Use(lex, [&mod,is_public,&file_path,&meta_items](AST::Path p, std::string s) {
                 DEBUG(file_path << " - use " << p << " as '" << s << "'");
-                mod.add_alias(is_public, mv$(p), s, meta_items);
+                mod.add_alias(is_public, mv$(p), s, meta_items.clone());
             });
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
         break;
@@ -1410,7 +1411,7 @@ void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::strin
             ::std::string name = tok.str();
             // TODO: Mark as unsafe
             auto i = Parse_TraitDef(lex, meta_items);
-            mod.add_trait(is_public, name, mv$(i), meta_items);
+            mod.add_trait(is_public, name, mv$(i), mv$(meta_items));
             break; }
         // `unsafe impl`
         case TOK_RWORD_IMPL:
@@ -1624,7 +1625,7 @@ void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs
         AST::MetaItem item = Parse_MetaItem(lex);
         GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
 
-        mod_attrs.push_back( item );
+        mod_attrs.push_back( mv$(item) );
     }
     lex.putback(tok);
 

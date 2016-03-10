@@ -126,7 +126,7 @@ static void derive_item(AST::Module& mod, const AST::MetaItem& attr, const AST::
     for( const auto& param : params.ty_params() )
         type.path().nodes().back().args().push_back( TypeRef(TypeRef::TagArg(), param.name()) );
     
-    for( const auto& trait : attr.items().m_items )
+    for( const auto& trait : attr.items() )
     {
         DEBUG("- " << trait.name());
         auto dp = find_impl(trait.name());

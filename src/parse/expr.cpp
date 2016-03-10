@@ -44,7 +44,6 @@ AST::Expr Parse_ExprBlock(TokenStream& lex)
 
 ExprNodeP Parse_ExprBlockNode(TokenStream& lex);
 ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end);
-void Parse_ExternBlock(TokenStream& lex, AST::MetaItems attrs, ::std::vector< AST::Named<AST::Function> >& imports);
 
 ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
 {
@@ -229,64 +228,6 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end)
             }
         }
     }
-}
-/// Extern block within a block
-void Parse_ExternBlock(TokenStream& lex, AST::MetaItems attrs, ::std::vector< AST::Named<AST::Function> >& imports)
-{
-    Token tok;
-    
-    // - default ABI is "C"
-    ::std::string    abi = "C";
-    if( GET_TOK(tok, lex) == TOK_STRING ) {
-        abi = tok.str();
-    }
-    else {
-        lex.putback(tok);
-    }
-    
-    bool is_block = false;
-    if( GET_TOK(tok, lex) == TOK_BRACE_OPEN ) {
-        is_block = true;
-    }
-    else
-        lex.putback(tok);
-    
-    do {
-        AST::MetaItems  inner_attrs;
-        if( is_block )
-        {
-            while( GET_TOK(tok, lex) == TOK_ATTR_OPEN )
-            {
-                inner_attrs.push_back( Parse_MetaItem(lex) );
-                GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-            }
-            lex.putback(tok);
-        }
-        else
-        {
-            inner_attrs = attrs;
-        }
-        ::std::string   name;
-        switch( GET_TOK(tok, lex) )
-        {
-        case TOK_RWORD_FN:
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            name = tok.str();
-            imports.push_back( AST::Named<AST::Function>(
-                ::std::move(name),
-                Parse_FunctionDef(lex, abi, AST::MetaItems(), false, true),
-                false
-                ) );
-            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-            break;
-        default:
-            throw ParseError::Unexpected(lex, tok);
-        }
-    } while( is_block && LOOK_AHEAD(lex) != TOK_BRACE_CLOSE );
-    if( is_block )
-        GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
-    else
-        GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
 }
 /// While loop (either as a statement, or as part of an expression)
 ExprNodeP Parse_WhileStmt(TokenStream& lex, ::std::string lifetime)

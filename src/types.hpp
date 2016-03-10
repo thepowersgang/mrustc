@@ -112,29 +112,7 @@ public:
         m_data( mv$(other.m_data) )
     {}
     
-    TypeRef(const TypeRef& other)
-    {
-        switch( other.m_data.tag() )
-        {
-        #define _COPY(VAR)  case TypeData::TAG_##VAR: m_data = TypeData::make_##VAR(other.m_data.as_##VAR()); break;
-        #define _CLONE(VAR, code...)    case TypeData::TAG_##VAR: { auto& old = other.m_data.as_##VAR(); m_data = TypeData::make_##VAR(code); } break;
-        _COPY(None)
-        _COPY(Any)
-        _COPY(Macro)
-        _COPY(Unit)
-        _COPY(Primitive)
-        _COPY(Function)
-        _COPY(Tuple)
-        _CLONE(Borrow,  { old.is_mut, box$(TypeRef(*old.inner)) })
-        _CLONE(Pointer, { old.is_mut, box$(TypeRef(*old.inner)) })
-        _CLONE(Array, { box$(TypeRef(*old.inner)), old.size })
-        _COPY(Generic)
-        _COPY(Path)
-        _COPY(TraitObject)
-        #undef _COPY
-        #undef _CLONE
-        }
-    }
+    TypeRef(const TypeRef& other);
     TypeRef& operator=(const TypeRef& other) {
         m_data = TypeRef(other).m_data;
         return *this;

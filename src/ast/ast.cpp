@@ -12,6 +12,21 @@
 namespace AST {
 
 
+namespace {
+    ::std::vector<MetaItem> clone_mivec(const ::std::vector<MetaItem>& v) {
+        ::std::vector<MetaItem>    ri;
+        ri.reserve(v.size());
+        for(const auto& i : v)
+            ri.push_back( i.clone() );
+        return ri;
+    }
+}
+
+MetaItems MetaItems::clone() const
+{
+    return MetaItems( clone_mivec(m_items) );
+}
+
 void MetaItems::push_back(MetaItem i)
 {
     m_items.push_back( ::std::move(i) );
@@ -30,14 +45,32 @@ SERIALISE_TYPE_A(MetaItems::, "AST_MetaItems", {
     s.item(m_items);
 })
 
+
+MetaItem MetaItem::clone() const
+{
+    TU_MATCH(MetaItemData, (m_data), (e),
+    (None,
+        return MetaItem(m_name);
+        ),
+    (String,
+        return MetaItem(m_name, e.val);
+        ),
+    (List,
+        return MetaItem(m_name, clone_mivec(e.sub_items));
+        )
+    )
+    throw ::std::runtime_error("MetaItem::clone - Fell off end");
+}
+
+
 SERIALISE_TYPE(MetaItem::, "AST_MetaItem", {
     s << m_name;
-    s << m_str_val;
-    s << m_sub_items;
+    //s << m_str_val;
+    //s << m_sub_items;
 },{
     s.item(m_name);
-    s.item(m_str_val);
-    s.item(m_sub_items);
+    //s.item(m_str_val);
+    //s.item(m_sub_items);
 })
 
 bool ImplDef::matches(::std::vector<TypeRef>& out_types, const Path& trait, const TypeRef& type) const
