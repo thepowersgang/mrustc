@@ -13,6 +13,9 @@
 ::std::map< ::std::string, ::std::unique_ptr<ExpandDecorator> >  g_decorators;
 ::std::map< ::std::string, ::std::unique_ptr<ExpandProcMacro> >  g_macros;
 
+void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::std::function<void(const ExpandDecorator& d,const ::AST::MetaItem& a)> f);
+void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod);
+
 void Register_Synext_Decorator(::std::string name, ::std::unique_ptr<ExpandDecorator> handler) {
     g_decorators[name] = mv$(handler);
 }
@@ -119,11 +122,13 @@ void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
         public ::AST::NodeVisitor
     {
         bool is_early;
+        ::AST::Crate&    crate;
         LList<const AST::Module*>   modstack;
         ::std::unique_ptr<::AST::ExprNode> replacement;
         
-        CExpandExpr(bool is_early, LList<const AST::Module*> ms):
+        CExpandExpr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> ms):
             is_early(is_early),
+            crate(crate),
             modstack(ms)
         {
         }
@@ -183,6 +188,10 @@ void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
         }
         
         void visit(::AST::ExprNode_Block& node) override {
+            // TODO! Use a proper path here
+            if( node.m_inner_mod ) {
+                Expand_Mod(is_early, crate, modstack, AST::Path(), *node.m_inner_mod);
+            }
             this->visit_vector(node.m_nodes);
         }
         void visit(::AST::ExprNode_Flow& node) override {
@@ -271,7 +280,7 @@ void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
         }
     };
 
-    auto visitor = CExpandExpr(is_early, modstack);
+    auto visitor = CExpandExpr(is_early, crate, modstack);
     node.visit_nodes(visitor);
 }
 
