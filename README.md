@@ -7,13 +7,16 @@ The short-term goal is to compile pre-borrowchecked rust code into C, for passin
 
 Current Features
 ===
-- Successfully parses libcore
+- Successfully parses libcore and rustc's run-pass tests
+- (incomplte) Attribute and macro expansion
+ - Rewrite in progress, missing some syntax extensions
 - Resolves all paths to absolute forms
 - Outputs the processed AST as (almost) rust code
  - Almost because it uses special path types to handle: external crates, 'str', and anonymous modules.
 
 Short-Term Plans
 ===
+- Complete rewrite/audit of resolve section to reduce chance of bugs.
 - Type resolution and checking (quite interlinked)
 - Converting operator invocations to explicit calls
 
@@ -22,4 +25,5 @@ Medium-Term Goals
 - Flattening AST into an intermediate form with no module higherarchy or generics
 - Converting flat AST into C
  - Bonus points for making it readable C
+ - NOTE: Due to `#[cfg]` attributes being resolved already, the C code won't be portable.
 
