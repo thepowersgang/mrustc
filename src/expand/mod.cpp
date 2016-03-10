@@ -8,9 +8,7 @@
 #include "macro_rules.hpp"
 #include "../parse/common.hpp"  // For reparse from macros
 #include <ast/expr.hpp>
-
-
-extern bool check_cfg(const ::AST::MetaItem& mi);
+#include "cfg.hpp"
 
 ::std::map< ::std::string, ::std::unique_ptr<ExpandDecorator> >  g_decorators;
 ::std::map< ::std::string, ::std::unique_ptr<ExpandProcMacro> >  g_macros;
@@ -47,7 +45,7 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::std::functi
     for( auto& a : attrs.m_items )
     {
         if( a.name() == "cfg_attr" ) {
-            if( check_cfg(a.items().at(0)) ) {
+            if( check_cfg(Span(), a.items().at(0)) ) {
                 Expand_Attr(a.items().at(1), stage, f);
             }
         }

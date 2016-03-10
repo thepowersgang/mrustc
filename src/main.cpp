@@ -15,6 +15,7 @@
 #include <cstring>
 #include <main_bindings.hpp>
 
+#include "expand/cfg.hpp"
 
 int g_debug_indent_level = 0;
 ::std::string g_cur_phase;
@@ -69,6 +70,11 @@ int main(int argc, char *argv[])
     
     
     ProgramParams   params(argc, argv);
+    
+    // Set up cfg values
+    Cfg_SetFlag("linux");
+    Cfg_SetValue("target_pointer_width", "64");
+    
     
     
     try

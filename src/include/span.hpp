@@ -64,6 +64,7 @@ struct Spanned
 };
 
 #define ERROR(span, code, msg)  do { ::Span(span).error(code, [&](::std::ostream& os) { os << msg; }); throw ::std::runtime_error("Error fell through" #code); } while(0)
+#define WARNING(span, code, msg)  do { ::Span(span).warning(code, [&](::std::ostream& os) { os << msg; }); } while(0)
 #define BUG(span, msg)  do { ::Span(span).bug([&](::std::ostream& os) { os << msg; }); throw ::std::runtime_error("Bug fell through"); } while(0)
 #define TODO(span, msg)  do { ::Span(span).bug([&](::std::ostream& os) { os << "TODO: " << msg; }); throw ::std::runtime_error("Bug (todo) fell through"); } while(0)
 
