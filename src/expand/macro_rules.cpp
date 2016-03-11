@@ -10,14 +10,13 @@ class CMacroRulesExpander:
 {
     bool    expand_early() const override { return true; }
     
-    ::std::unique_ptr<TokenStream> expand(Span sp, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(Span sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
         if( ident == "" )
             ERROR(sp, E0000, "macro_rules! requires an identifier" );
         
         TTStream    lex(tt);
         auto mac = Parse_MacroRules(lex);
-        // TODO: Place into current module using `ident` as the name
         mod.add_macro( false, ident, mac );
         
         return box$( TTStreamO(TokenTree()) );
@@ -29,7 +28,7 @@ class CMacroUseHandler:
 {
     AttrStage stage() const override { return AttrStage::EarlyPost; }
     
-    void handle(const AST::MetaItem& mi, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
         TRACE_FUNCTION_F("path=" << path);
         if( !i.is_Module() )

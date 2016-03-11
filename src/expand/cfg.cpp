@@ -72,7 +72,7 @@ class CCfgExpander:
 {
     bool    expand_early() const override { return true; }
     
-    ::std::unique_ptr<TokenStream> expand(Span sp, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(Span sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
         if( ident != "" ) {
             ERROR(sp, E0000, "cfg! doesn't take an identifier");
@@ -98,7 +98,7 @@ class CCfgHandler:
     AttrStage   stage() const override { return AttrStage::EarlyPre; }
     
     
-    void handle(const AST::MetaItem& mi, AST::Crate& crate, AST::MacroInvocation& mac) const override {
+    void handle(const AST::MetaItem& mi, ::AST::Crate& crate, AST::MacroInvocation& mac) const override {
         if( check_cfg(mac.span(), mi) ) {
             // Leave as is
         }
@@ -106,7 +106,7 @@ class CCfgHandler:
             mac.clear();
         }
     }
-    void handle(const AST::MetaItem& mi, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
+    void handle(const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
         if( check_cfg(Span(), mi) ) {
             // Leave
         }
@@ -114,7 +114,7 @@ class CCfgHandler:
             i = AST::Item::make_None({});
         }
     }
-    void handle(const AST::MetaItem& mi, ::std::unique_ptr<AST::ExprNode>& expr) const override {
+    void handle(const AST::MetaItem& mi, ::AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const override {
         if( check_cfg(Span(expr->get_pos()), mi) ) {
             // Leave
         }

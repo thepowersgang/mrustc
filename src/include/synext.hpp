@@ -44,7 +44,7 @@ public:
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate) const {}
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, AST::MacroInvocation& mac) const {}
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const {}
-    virtual void    handle(const AST::MetaItem& mi, ::std::unique_ptr<AST::ExprNode>& expr) const {};
+    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const {};
 };
 
 enum class MacroPosition
@@ -61,7 +61,7 @@ class ExpandProcMacro
 public:
     virtual bool    expand_early() const = 0;
     
-    virtual ::std::unique_ptr<TokenStream>  expand(Span sp, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) = 0;
+    virtual ::std::unique_ptr<TokenStream>  expand(Span sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) = 0;
 };
 
 #define STATIC_DECORATOR(ident, _handler_class) \
@@ -79,6 +79,9 @@ public:
 
 extern void Register_Synext_Decorator(::std::string name, ::std::unique_ptr<ExpandDecorator> handler);
 extern void Register_Synext_Macro(::std::string name, ::std::unique_ptr<ExpandProcMacro> handler);
+
+
+extern void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::unique_ptr<AST::ExprNode>& node);
 
 #endif
 

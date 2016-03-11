@@ -30,6 +30,7 @@ OBJ += ast/provided_module.o
 OBJ += parse/parseerror.o parse/lex.o
 OBJ += parse/root.o parse/paths.o parse/types.o parse/expr.o parse/pattern.o parse/macro_rules.o
 OBJ += expand/mod.o expand/macro_rules.o expand/cfg.o expand/format_args.o
+OBJ +=  expand/concat.o expand/stringify.o expand/file_line.o
 OBJ += dump_as_rust.o
 OBJ += convert/ast_iterate.o
 #OBJ += convert/decorators.o

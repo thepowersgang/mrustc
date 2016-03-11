@@ -63,7 +63,7 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
 }
 
 ::std::unique_ptr<TokenStream> Expand_Macro(
-    bool is_early, LList<const AST::Module*> modstack, ::AST::Module& mod,
+    bool is_early, const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod,
     Span mi_span, const ::std::string& name, const ::std::string& input_ident, const TokenTree& input_tt
     )
 {
@@ -71,7 +71,7 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
     {
         if( name == m.first && m.second->expand_early() == is_early )
         {
-            auto e = m.second->expand(mi_span, input_ident, input_tt, mod);
+            auto e = m.second->expand(mi_span, crate, input_ident, input_tt, mod);
             return e;
         }
     }
@@ -115,68 +115,72 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
     // Leave valid and return an empty expression
     return ::std::unique_ptr<TokenStream>();
 }
-
-void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path item_path, AST::Expr& node)
+struct CExpandExpr:
+    public ::AST::NodeVisitor
 {
-    struct CExpandExpr:
-        public ::AST::NodeVisitor
+    bool is_early;
+    ::AST::Crate&    crate;
+    LList<const AST::Module*>   modstack;
+    ::std::unique_ptr<::AST::ExprNode> replacement;
+    
+    CExpandExpr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> ms):
+        is_early(is_early),
+        crate(crate),
+        modstack(ms)
     {
-        bool is_early;
-        ::AST::Crate&    crate;
-        LList<const AST::Module*>   modstack;
-        ::std::unique_ptr<::AST::ExprNode> replacement;
-        
-        CExpandExpr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> ms):
-            is_early(is_early),
-            crate(crate),
-            modstack(ms)
+    }
+    
+    void visit(::std::unique_ptr<AST::ExprNode>& cnode) {
+        if(cnode.get())
+            Expand_Attrs(cnode->attrs(), stage_pre(is_early),  [&](const auto& d, const auto& a){ d.handle(a, this->crate, cnode); });
+        if(cnode.get())
         {
-        }
-        
-        void visit(::std::unique_ptr<AST::ExprNode>& cnode) {
-            if(cnode.get())
-                Expand_Attrs(cnode->attrs(), stage_pre(is_early),  [&](const auto& d, const auto& a){ d.handle(a, cnode); });
-            if(cnode.get())
+            cnode->visit(*this);
+            if( auto* n_mac = dynamic_cast<AST::ExprNode_Macro*>(cnode.get()) )
             {
-                cnode->visit(*this);
-                if( this->replacement.get() ) {
-                    cnode = mv$(this->replacement);
-                }
+                if( n_mac->m_name == "" )
+                    cnode.reset();
             }
-            
-            if(cnode.get())
-                Expand_Attrs(cnode->attrs(), stage_post(is_early),  [&](const auto& d, const auto& a){ d.handle(a, cnode); });
-        }
-        void visit_nodelete(const ::AST::ExprNode& parent, ::std::unique_ptr<AST::ExprNode>& cnode) {
-            if( cnode.get() != nullptr )
-            {
-                this->visit(cnode);
-                if(cnode.get() == nullptr)
-                    ERROR(parent.get_pos(), E0000, "#[cfg] not allowed in this position");
-            }
-        }
-        void visit_vector(::std::vector< ::std::unique_ptr<AST::ExprNode> >& cnodes) {
-            for( auto& child : cnodes ) {
-                this->visit(child);
-            }
-            // Delete null children
-            for( auto it = cnodes.begin(); it != cnodes.end(); ) {
-                if( it->get() == nullptr ) {
-                    it = cnodes.erase( it );
-                }
-                else {
-                    ++ it;
-                }
+            if( this->replacement.get() ) {
+                cnode = mv$(this->replacement);
             }
         }
         
-        void visit(::AST::ExprNode_Macro& node) override {
-            auto ttl = Expand_Macro(
-                is_early, modstack, *(::AST::Module*)(modstack.m_item),
-                Span(node.get_pos()),
-                node.m_name, node.m_ident, node.m_tokens
-                );
-            if( ttl.get() != nullptr && ttl->lookahead(0) != TOK_EOF )
+        if(cnode.get())
+            Expand_Attrs(cnode->attrs(), stage_post(is_early),  [&](const auto& d, const auto& a){ d.handle(a, this->crate, cnode); });
+    }
+    void visit_nodelete(const ::AST::ExprNode& parent, ::std::unique_ptr<AST::ExprNode>& cnode) {
+        if( cnode.get() != nullptr )
+        {
+            this->visit(cnode);
+            if(cnode.get() == nullptr)
+                ERROR(parent.get_pos(), E0000, "#[cfg] not allowed in this position");
+        }
+    }
+    void visit_vector(::std::vector< ::std::unique_ptr<AST::ExprNode> >& cnodes) {
+        for( auto& child : cnodes ) {
+            this->visit(child);
+        }
+        // Delete null children
+        for( auto it = cnodes.begin(); it != cnodes.end(); ) {
+            if( it->get() == nullptr ) {
+                it = cnodes.erase( it );
+            }
+            else {
+                ++ it;
+            }
+        }
+    }
+    
+    void visit(::AST::ExprNode_Macro& node) override {
+        auto ttl = Expand_Macro(
+            is_early, crate, modstack, *(::AST::Module*)(modstack.m_item),
+            Span(node.get_pos()),
+            node.m_name, node.m_ident, node.m_tokens
+            );
+        if( ttl.get() != nullptr )
+        {
+            if( ttl->lookahead(0) != TOK_EOF )
             {
                 // Reparse as expression / item
                 auto newexpr = Parse_Expr0(*ttl);
@@ -185,101 +189,112 @@ void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
                 // And schedule it to replace the previous
                 replacement = mv$(newexpr);
             }
-        }
-        
-        void visit(::AST::ExprNode_Block& node) override {
-            // TODO! Use a proper path here
-            if( node.m_inner_mod ) {
-                Expand_Mod(is_early, crate, modstack, AST::Path(), *node.m_inner_mod);
+            else
+            {
+                node.m_name = "";
             }
-            this->visit_vector(node.m_nodes);
         }
-        void visit(::AST::ExprNode_Flow& node) override {
-            this->visit_nodelete(node, node.m_value);
+    }
+    
+    void visit(::AST::ExprNode_Block& node) override {
+        // TODO! Use a proper path here
+        if( node.m_inner_mod ) {
+            Expand_Mod(is_early, crate, modstack, AST::Path(), *node.m_inner_mod);
         }
-        void visit(::AST::ExprNode_LetBinding& node) override {
-            // TODO: Pattern and type
-            this->visit_nodelete(node, node.m_value);
-        }
-        void visit(::AST::ExprNode_Assign& node) override {
-            this->visit_nodelete(node, node.m_slot);
-            this->visit_nodelete(node, node.m_value);
-        }
-        void visit(::AST::ExprNode_CallPath& node) override {
-            // TODO: path?
-            this->visit_vector(node.m_args);
-        }
-        void visit(::AST::ExprNode_CallMethod& node) override {
-            this->visit_nodelete(node, node.m_val);
-            this->visit_vector(node.m_args);
-        }
-        void visit(::AST::ExprNode_CallObject& node) override {
-            this->visit_nodelete(node, node.m_val);
-            this->visit_vector(node.m_args);
-        }
-        void visit(::AST::ExprNode_Loop& node) override {
-            this->visit_nodelete(node, node.m_cond);
-            this->visit_nodelete(node, node.m_code);
-        }
-        void visit(::AST::ExprNode_Match& node) override {
-            this->visit_nodelete(node, node.m_val);
-            // TODO: Arms
-        }
-        void visit(::AST::ExprNode_If& node) override {
-            this->visit_nodelete(node, node.m_cond);
-            this->visit_nodelete(node, node.m_true);
-            this->visit_nodelete(node, node.m_false);   // TODO: Can the false branch be `#[cfg]`d off?
-        }
-        void visit(::AST::ExprNode_IfLet& node) override {
-            // TODO: Pattern
-            this->visit_nodelete(node, node.m_value);
-            this->visit_nodelete(node, node.m_true);
-            this->visit_nodelete(node, node.m_false);   // TODO: Can the false branch be `#[cfg]`d off?
-        }
-        void visit(::AST::ExprNode_Integer& node) override { }
-        void visit(::AST::ExprNode_Float& node) override { }
-        void visit(::AST::ExprNode_Bool& node) override { }
-        void visit(::AST::ExprNode_String& node) override { }
-        void visit(::AST::ExprNode_Closure& node) override {
-            // TODO: Arg patterns and types
-            // TODO: Return type
-            this->visit_nodelete(node, node.m_code);
-        }
-        void visit(::AST::ExprNode_StructLiteral& node) override {
-            this->visit_nodelete(node, node.m_base_value);
-            // TODO: Values (with #[cfg] support)
-        }
-        void visit(::AST::ExprNode_Array& node) override {
-            this->visit_nodelete(node, node.m_size);
-            this->visit_vector(node.m_values);
-        }
-        void visit(::AST::ExprNode_Tuple& node) override {
-            this->visit_vector(node.m_values);
-        }
-        void visit(::AST::ExprNode_NamedValue& node) override { }
-        void visit(::AST::ExprNode_Field& node) override {
-            this->visit_nodelete(node, node.m_obj);
-        }
-        void visit(::AST::ExprNode_Index& node) override {
-            this->visit_nodelete(node, node.m_obj);
-            this->visit_nodelete(node, node.m_idx);
-        }
-        void visit(::AST::ExprNode_Deref& node) override {
-            this->visit_nodelete(node, node.m_value);
-        }
-        void visit(::AST::ExprNode_Cast& node) override {
-            this->visit_nodelete(node, node.m_value);
-            // TODO: Type
-        }
-        void visit(::AST::ExprNode_BinOp& node) override {
-            this->visit_nodelete(node, node.m_left);
-            this->visit_nodelete(node, node.m_right);
-        }
-        void visit(::AST::ExprNode_UniOp& node) override {
-            this->visit_nodelete(node, node.m_value);
-        }
-    };
+        this->visit_vector(node.m_nodes);
+    }
+    void visit(::AST::ExprNode_Flow& node) override {
+        this->visit_nodelete(node, node.m_value);
+    }
+    void visit(::AST::ExprNode_LetBinding& node) override {
+        // TODO: Pattern and type
+        this->visit_nodelete(node, node.m_value);
+    }
+    void visit(::AST::ExprNode_Assign& node) override {
+        this->visit_nodelete(node, node.m_slot);
+        this->visit_nodelete(node, node.m_value);
+    }
+    void visit(::AST::ExprNode_CallPath& node) override {
+        // TODO: path?
+        this->visit_vector(node.m_args);
+    }
+    void visit(::AST::ExprNode_CallMethod& node) override {
+        this->visit_nodelete(node, node.m_val);
+        this->visit_vector(node.m_args);
+    }
+    void visit(::AST::ExprNode_CallObject& node) override {
+        this->visit_nodelete(node, node.m_val);
+        this->visit_vector(node.m_args);
+    }
+    void visit(::AST::ExprNode_Loop& node) override {
+        this->visit_nodelete(node, node.m_cond);
+        this->visit_nodelete(node, node.m_code);
+    }
+    void visit(::AST::ExprNode_Match& node) override {
+        this->visit_nodelete(node, node.m_val);
+        // TODO: Arms
+    }
+    void visit(::AST::ExprNode_If& node) override {
+        this->visit_nodelete(node, node.m_cond);
+        this->visit_nodelete(node, node.m_true);
+        this->visit_nodelete(node, node.m_false);   // TODO: Can the false branch be `#[cfg]`d off?
+    }
+    void visit(::AST::ExprNode_IfLet& node) override {
+        // TODO: Pattern
+        this->visit_nodelete(node, node.m_value);
+        this->visit_nodelete(node, node.m_true);
+        this->visit_nodelete(node, node.m_false);   // TODO: Can the false branch be `#[cfg]`d off?
+    }
+    void visit(::AST::ExprNode_Integer& node) override { }
+    void visit(::AST::ExprNode_Float& node) override { }
+    void visit(::AST::ExprNode_Bool& node) override { }
+    void visit(::AST::ExprNode_String& node) override { }
+    void visit(::AST::ExprNode_Closure& node) override {
+        // TODO: Arg patterns and types
+        // TODO: Return type
+        this->visit_nodelete(node, node.m_code);
+    }
+    void visit(::AST::ExprNode_StructLiteral& node) override {
+        this->visit_nodelete(node, node.m_base_value);
+        // TODO: Values (with #[cfg] support)
+    }
+    void visit(::AST::ExprNode_Array& node) override {
+        this->visit_nodelete(node, node.m_size);
+        this->visit_vector(node.m_values);
+    }
+    void visit(::AST::ExprNode_Tuple& node) override {
+        this->visit_vector(node.m_values);
+    }
+    void visit(::AST::ExprNode_NamedValue& node) override { }
+    void visit(::AST::ExprNode_Field& node) override {
+        this->visit_nodelete(node, node.m_obj);
+    }
+    void visit(::AST::ExprNode_Index& node) override {
+        this->visit_nodelete(node, node.m_obj);
+        this->visit_nodelete(node, node.m_idx);
+    }
+    void visit(::AST::ExprNode_Deref& node) override {
+        this->visit_nodelete(node, node.m_value);
+    }
+    void visit(::AST::ExprNode_Cast& node) override {
+        this->visit_nodelete(node, node.m_value);
+        // TODO: Type
+    }
+    void visit(::AST::ExprNode_BinOp& node) override {
+        this->visit_nodelete(node, node.m_left);
+        this->visit_nodelete(node, node.m_right);
+    }
+    void visit(::AST::ExprNode_UniOp& node) override {
+        this->visit_nodelete(node, node.m_value);
+    }
+};
 
+void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::unique_ptr<AST::ExprNode>& node) {
+    auto visitor = CExpandExpr(is_early, crate, modstack);
+    visitor.visit(node);
+}
+void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path item_path, AST::Expr& node)
+{
     auto visitor = CExpandExpr(is_early, crate, modstack);
     node.visit_nodes(visitor);
 }
@@ -305,7 +320,8 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             // Move out of the module to avoid invalidation if a new macro invocation is added
             auto mi_owned = mv$(mi);
             
-            auto ttl = Expand_Macro(is_early, modstack, mod, mi_owned.span(), mi_owned.name(), mi_owned.input_ident(), mi_owned.input_tt());
+            auto ttl = Expand_Macro(is_early, crate, modstack, mod,
+                mi_owned.span(), mi_owned.name(), mi_owned.input_ident(), mi_owned.input_tt());
 
             if( ! ttl.get() )
             {
@@ -385,14 +401,7 @@ void Expand(::AST::Crate& crate)
     auto modstack = LList<const ::AST::Module*>(nullptr, &crate.m_root_module);
     
     // 1. Crate attributes
-    for( auto& a : crate.m_attrs.m_items )
-    {
-        for( auto& d : g_decorators ) {
-            if( d.first == a.name() && d.second->stage() == AttrStage::EarlyPre ) {
-                d.second->handle(a, crate);
-            }
-        }
-    }
+    Expand_Attrs(crate.m_attrs, AttrStage::EarlyPre,  [&](const auto& d, const auto& a){ d.handle(a, crate); });
     
     // 2. Module attributes
     for( auto& a : crate.m_attrs.m_items )
