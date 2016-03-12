@@ -103,7 +103,7 @@ TypeRef::TypeRef(const TypeRef& other)
     #define _CLONE(VAR, code...)    case TypeData::TAG_##VAR: { auto& old = other.m_data.as_##VAR(); m_data = TypeData::make_##VAR(code); } break;
     _COPY(None)
     _COPY(Any)
-    case TypeData::TAG_Macro:   throw ::std::runtime_error("Copying an unexpanded type macro");
+    case TypeData::TAG_Macro:   assert( !"Copying an unexpanded type macro" );
     _COPY(Unit)
     _COPY(Primitive)
     _COPY(Function)

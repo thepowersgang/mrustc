@@ -76,6 +76,8 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
             break;
         // Items:
+        case TOK_RWORD_PUB:
+            GET_TOK(tok, lex);
         case TOK_RWORD_TYPE:
         case TOK_RWORD_USE:
         case TOK_RWORD_EXTERN:

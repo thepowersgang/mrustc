@@ -113,6 +113,10 @@ public:
     {}
     
     TypeRef(const TypeRef& other);
+    TypeRef& operator=(TypeRef&& other) {
+        m_data = mv$( other.m_data );
+        return *this;
+    }
     TypeRef& operator=(const TypeRef& other) {
         m_data = TypeRef(other).m_data;
         return *this;
