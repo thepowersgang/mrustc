@@ -397,7 +397,7 @@ class Module:
     
 
     // --- Runtime caches and state ---
-    ::std::vector<Module*>  m_anon_modules; // TODO: Should this be serialisable?
+    ::std::vector<Module*>  m_anon_modules;
     
     ::std::vector< NamedNS<const MacroRules*> > m_macro_import_res; // Vec of imported macros (not serialised)
     ::std::vector< Named<MacroRules> >  m_macros;
@@ -573,25 +573,6 @@ struct ImplRef
     {}
     
     ::rust::option<char> find_named_item(const ::std::string& name) const;
-};
-
-class CStruct
-{
-//    ::std::vector<StructItem>   m_fields;
-public:
-    const char* name() const { return "TODO"; }
-    const char* mangled_name() const { return "TODO"; }
-//    const ::std::vector<StructItem>& fields() const { return m_fields; }
-};
-
-class Flat
-{
-    ::std::vector<CStruct>  m_structs;
-//    ::std::vector< ::std::pair< ::std::string,Function> > m_functions;
-public:
-    
-//    const ::std::vector< ::std::pair< ::std::string, Function> >& functions() const { return m_functions; }
-    const ::std::vector<CStruct>& structs() const { return m_structs; }
 };
 
 } // namespace AST
