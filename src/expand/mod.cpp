@@ -237,13 +237,13 @@ struct CExpandExpr:
     void visit(::AST::ExprNode_If& node) override {
         this->visit_nodelete(node, node.m_cond);
         this->visit_nodelete(node, node.m_true);
-        this->visit_nodelete(node, node.m_false);   // TODO: Can the false branch be `#[cfg]`d off?
+        this->visit_nodelete(node, node.m_false);
     }
     void visit(::AST::ExprNode_IfLet& node) override {
         // TODO: Pattern
         this->visit_nodelete(node, node.m_value);
         this->visit_nodelete(node, node.m_true);
-        this->visit_nodelete(node, node.m_false);   // TODO: Can the false branch be `#[cfg]`d off?
+        this->visit_nodelete(node, node.m_false);
     }
     void visit(::AST::ExprNode_Integer& node) override { }
     void visit(::AST::ExprNode_Float& node) override { }
@@ -402,6 +402,8 @@ void Expand(::AST::Crate& crate)
     
     // 1. Crate attributes
     Expand_Attrs(crate.m_attrs, AttrStage::EarlyPre,  [&](const auto& d, const auto& a){ d.handle(a, crate); });
+    
+    // TODO: Load std/core
     
     // 2. Module attributes
     for( auto& a : crate.m_attrs.m_items )

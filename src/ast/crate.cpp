@@ -336,6 +336,14 @@ void ExternCrate::prescan()
 }
 #endif
 
+const MacroRules* ExternCrate::find_macro_rules(const ::std::string& name)
+{
+    auto i = m_mr_macros.find(name);
+    if(i != m_mr_macros.end())
+        return &i->second;
+    return nullptr;
+}
+
 SERIALISE_TYPE(ExternCrate::, "AST_ExternCrate", {
 },{
 })

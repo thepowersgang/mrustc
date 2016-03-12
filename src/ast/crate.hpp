@@ -84,12 +84,7 @@ public:
     ExternCrate();
     ExternCrate(const char *path);
     
-    MacroRules& find_macro(const ::std::string& name) {
-        auto i = m_mr_macros.find(name);
-        if(i != m_mr_macros.end())
-            return i->second;
-        throw ::std::runtime_error( FMT("TODO: Unable to find macro '" << name << "'") );
-    }
+    const MacroRules* find_macro_rules(const ::std::string& name);
     
     //Crate& crate() { return m_crate; }
     //const Crate& crate() const { return m_crate; }
