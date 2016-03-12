@@ -38,7 +38,29 @@ class CMacroUseHandler:
         
         if( mi.has_sub_items() )
         {
-            throw ::std::runtime_error("TODO: #[macro_use]");
+            for( const auto& si : mi.items() )
+            {
+                const auto& name = si.name();
+                for( const auto& mr : submod.macros() )
+                {
+                    if( mr.name == name ) {
+                        DEBUG("Imported " << mr.name);
+                        mod.add_macro_import( mr.name, mr.data );
+                        goto _good;
+                    }
+                }
+                for( const auto& mri : submod.macro_imports_res() )
+                {
+                    if( mri.name == name ) {
+                        DEBUG("Imported " << mri.name << " (propagate)");
+                        mod.add_macro_import( mri.name, *mri.data );
+                        goto _good;
+                    }
+                }
+                ERROR(Span(), E0000, "Couldn't find macro " << name);
+            _good:
+                (void)0;
+            }
         }
         else
         {
