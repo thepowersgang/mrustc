@@ -41,7 +41,7 @@ TypeRef Parse_Type_Int(TokenStream& lex)
         throw ParseError::Generic(lex, "! is not a real type");
     // '_' = Wildcard (type inferrence variable)
     case TOK_UNDERSCORE:
-        return TypeRef();
+        return TypeRef(Span(tok.get_pos()));
     
     // 'unsafe' - An unsafe function type
     case TOK_RWORD_UNSAFE:
@@ -54,9 +54,11 @@ TypeRef Parse_Type_Int(TokenStream& lex)
     
     // '<' - An associated type cast
     case TOK_LT:
-    case TOK_DOUBLE_LT:
+    case TOK_DOUBLE_LT: {
         lex.putback(tok);
-        return TypeRef(TypeRef::TagPath(), Parse_Path(lex, PATH_GENERIC_TYPE));
+        auto path = Parse_Path(lex, PATH_GENERIC_TYPE);
+        return TypeRef(TypeRef::TagPath(), lex.end_span(ps), mv$(path));
+        }
     // 
     case TOK_RWORD_FOR: {
         GET_CHECK_TOK(tok, lex, TOK_LT);
@@ -82,11 +84,11 @@ TypeRef Parse_Type_Int(TokenStream& lex)
         // or a primitive
         if( auto ct = coretype_fromstring(tok.str()) )
         {
-            return TypeRef(TypeRef::TagPrimitive(), ct);
+            return TypeRef(TypeRef::TagPrimitive(), Span(tok.get_pos()), ct);
         }
         if( tok.str() == "str" )
         {
-            return TypeRef(TypeRef::TagPath(), AST::Path("", { AST::PathNode("#",{}), AST::PathNode("str",{}) }));
+            return TypeRef(TypeRef::TagPath(), Span(tok.get_pos()), AST::Path("", { AST::PathNode("#",{}), AST::PathNode("str",{}) }));
         }
         lex.putback(tok);
         return Parse_Type_Path(lex, {});
@@ -114,12 +116,12 @@ TypeRef Parse_Type_Int(TokenStream& lex)
         }
         if( tok.type() == TOK_RWORD_MUT ) {
             // Mutable reference
-            return TypeRef(TypeRef::TagReference(), true, Parse_Type(lex));
+            return TypeRef(TypeRef::TagReference(), lex.end_span(ps), true, Parse_Type(lex));
         }
         else {
             lex.putback(tok);
             // Immutable reference
-            return TypeRef(TypeRef::TagReference(), false, Parse_Type(lex));
+            return TypeRef(TypeRef::TagReference(), lex.end_span(ps), false, Parse_Type(lex));
         }
         throw ParseError::BugCheck("Reached end of Parse_Type:AMP");
         }
@@ -130,12 +132,12 @@ TypeRef Parse_Type_Int(TokenStream& lex)
         {
         case TOK_RWORD_MUT:
             // Mutable pointer
-            return TypeRef(TypeRef::TagPointer(), true, Parse_Type(lex));
+            return TypeRef(TypeRef::TagPointer(), lex.end_span(ps), true, Parse_Type(lex));
         case TOK_RWORD_CONST:
             // Immutable pointer
-            return TypeRef(TypeRef::TagPointer(), false, Parse_Type(lex));
+            return TypeRef(TypeRef::TagPointer(), lex.end_span(ps), false, Parse_Type(lex));
         default:
-            throw ParseError::Unexpected(lex, tok, Token(TOK_RWORD_CONST));
+            throw ParseError::Unexpected(lex, tok, {TOK_RWORD_CONST, TOK_RWORD_MUT});
         }
         throw ParseError::BugCheck("Reached end of Parse_Type:STAR");
     // '[' - Array type
@@ -146,11 +148,11 @@ TypeRef Parse_Type_Int(TokenStream& lex)
             // Sized array
             AST::Expr array_size = Parse_Expr(lex);
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-            return TypeRef(TypeRef::TagSizedArray(), inner, array_size.take_node());
+            return TypeRef(TypeRef::TagSizedArray(), lex.end_span(ps), inner, array_size.take_node());
         }
         else if( tok.type() == TOK_SQUARE_CLOSE )
         {
-            return TypeRef(TypeRef::TagUnsizedArray(), inner);
+            return TypeRef(TypeRef::TagUnsizedArray(), lex.end_span(ps), inner);
         }
         else {
             throw ParseError::Unexpected(lex, tok/*, "; or ]"*/);
@@ -161,7 +163,7 @@ TypeRef Parse_Type_Int(TokenStream& lex)
     case TOK_PAREN_OPEN: {
         DEBUG("Tuple");
         if( GET_TOK(tok, lex) == TOK_PAREN_CLOSE )
-            return TypeRef(TypeRef::TagTuple(), {});
+            return TypeRef(TypeRef::TagTuple(), lex.end_span(ps), {});
         lex.putback(tok);
         
         TypeRef inner = Parse_Type(lex);
@@ -189,7 +191,7 @@ TypeRef Parse_Type_Int(TokenStream& lex)
                 types.push_back(Parse_Type(lex));
             }
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
-            return TypeRef(TypeRef::TagTuple(), types); }
+            return TypeRef(TypeRef::TagTuple(), lex.end_span(ps), types); }
         }
     default:
         throw ParseError::Unexpected(lex, tok);
@@ -199,6 +201,7 @@ TypeRef Parse_Type_Int(TokenStream& lex)
 
 TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
 {
+    auto ps = lex.start_span();
     // TODO: HRLs
     TRACE_FUNCTION;
     Token   tok;
@@ -246,7 +249,7 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
     }
     GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
     
-    TypeRef ret_type = TypeRef(TypeRef::TagUnit());
+    TypeRef ret_type = TypeRef(TypeRef::TagUnit(), Span(tok.get_pos()));
     if( GET_TOK(tok, lex) == TOK_THINARROW )
     {
         ret_type = Parse_Type(lex);
@@ -255,13 +258,15 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
         lex.putback(tok);
     }
     
-    return TypeRef(TypeRef::TagFunction(), ::std::move(abi), ::std::move(args), ::std::move(ret_type));
+    return TypeRef(TypeRef::TagFunction(), lex.end_span(ps), ::std::move(abi), ::std::move(args), ::std::move(ret_type));
 }
 
 TypeRef Parse_Type_Path(TokenStream& lex, ::std::vector<::std::string> hrls)
 {
     Token   tok;
 
+    auto ps = lex.start_span();
+    
     ::std::vector<AST::Path>    traits;
     ::std::vector< ::std::string>   lifetimes;
     do {
@@ -276,10 +281,10 @@ TypeRef Parse_Type_Path(TokenStream& lex, ::std::vector<::std::string> hrls)
     if( hrls.size() > 0 || traits.size() > 1 || lifetimes.size() > 0 ) {
         if( lifetimes.size() )
             DEBUG("TODO: Lifetime bounds on trait objects");
-        return TypeRef(mv$(hrls), ::std::move(traits));
+        return TypeRef(lex.end_span(ps), mv$(hrls), ::std::move(traits));
     }
     else {
-        return TypeRef(TypeRef::TagPath(), traits.at(0));
+        return TypeRef(TypeRef::TagPath(), lex.end_span(ps), traits.at(0));
     }
 }
 

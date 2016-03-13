@@ -13,7 +13,7 @@ void AST_InitProvidedModule()
     // "struct str([u8])"
     g_compiler_module.add_struct(true, "str",
         AST::Struct( AST::GenericParams(), ::std::vector<AST::StructItem> {
-            AST::StructItem("", TypeRef(TypeRef::TagUnsizedArray(), TypeRef(CORETYPE_U8)), false),
+            AST::StructItem("", TypeRef(TypeRef::TagUnsizedArray(), Span(), TypeRef(Span(), CORETYPE_U8)), false),
         }), AST::MetaItems());
     
     // TODO: Defer this until AFTER 
@@ -32,18 +32,18 @@ void AST_InitProvidedModule_Impls()
     
     #define impl(trait, type) \
         g_compiler_module.add_impl(AST::Impl(AST::MetaItems(), AST::GenericParams(), type, trait))
-    impl(g_copy_marker_path, TypeRef(CORETYPE_U8));
-    impl(g_copy_marker_path, TypeRef(CORETYPE_U16));
-    impl(g_copy_marker_path, TypeRef(CORETYPE_U32));
-    impl(g_copy_marker_path, TypeRef(CORETYPE_U64));
-    impl(g_copy_marker_path, TypeRef(CORETYPE_UINT));
-    impl(g_copy_marker_path, TypeRef(CORETYPE_I8));
-    impl(g_copy_marker_path, TypeRef(CORETYPE_I16));
-    impl(g_copy_marker_path, TypeRef(CORETYPE_I32));
-    impl(g_copy_marker_path, TypeRef(CORETYPE_I64));
-    impl(g_copy_marker_path, TypeRef(CORETYPE_INT));
-    impl(g_copy_marker_path, TypeRef(CORETYPE_F32));
-    impl(g_copy_marker_path, TypeRef(CORETYPE_F64));
+    impl(g_copy_marker_path, TypeRef(Span(), CORETYPE_U8));
+    impl(g_copy_marker_path, TypeRef(Span(), CORETYPE_U16));
+    impl(g_copy_marker_path, TypeRef(Span(), CORETYPE_U32));
+    impl(g_copy_marker_path, TypeRef(Span(), CORETYPE_U64));
+    impl(g_copy_marker_path, TypeRef(Span(), CORETYPE_UINT));
+    impl(g_copy_marker_path, TypeRef(Span(), CORETYPE_I8));
+    impl(g_copy_marker_path, TypeRef(Span(), CORETYPE_I16));
+    impl(g_copy_marker_path, TypeRef(Span(), CORETYPE_I32));
+    impl(g_copy_marker_path, TypeRef(Span(), CORETYPE_I64));
+    impl(g_copy_marker_path, TypeRef(Span(), CORETYPE_INT));
+    impl(g_copy_marker_path, TypeRef(Span(), CORETYPE_F32));
+    impl(g_copy_marker_path, TypeRef(Span(), CORETYPE_F64));
     
     // A hacky default impl of 'Sized', with a negative impl on [T]
     impl(g_sized_marker_path, TypeRef());
@@ -54,7 +54,7 @@ void AST_InitProvidedModule_Impls()
         g_compiler_module.add_neg_impl(AST::ImplDef(
             AST::MetaItems(), ::std::move(tps),
             g_sized_marker_path,
-            TypeRef(TypeRef::TagUnsizedArray(), TypeRef(TypeRef::TagArg(), "T"))
+            TypeRef(TypeRef::TagUnsizedArray(), Span(), TypeRef(TypeRef::TagArg(), "T"))
             ));
     }
 }

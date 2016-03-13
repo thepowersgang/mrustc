@@ -32,7 +32,7 @@ Span::Span():
     start_line(0), start_ofs(0),
     end_line(0), end_ofs(0) // */
 {
-    //DEBUG("Empty span");
+    DEBUG("Empty span");
     //filename = FMT(":" << __builtin_return_address(0));
 }
 

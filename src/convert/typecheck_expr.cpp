@@ -208,24 +208,6 @@ void CTypeChecker::handle_function(AST::Path path, AST::Function& fcn)
 
     handle_type(fcn.rettype());
     
-    //switch(fcn.fcn_class())
-    //{
-    //case AST::Function::CLASS_UNBOUND:
-    //    break;
-    //case AST::Function::CLASS_REFMETHOD:
-    //    local_variable(false, "self", TypeRef(TypeRef::TagReference(), false, get_local_type("Self")));
-    //    break;
-    //case AST::Function::CLASS_MUTMETHOD:
-    //    local_variable(false, "self", TypeRef(TypeRef::TagReference(), true, get_local_type("Self")));
-    //    break;
-    //case AST::Function::CLASS_VALMETHOD:
-    //    local_variable(false, "self", TypeRef(get_local_type("Self")));
-    //    break;
-    //case AST::Function::CLASS_MUTVALMETHOD:
-    //    local_variable(true, "self", TypeRef(get_local_type("Self")));
-    //    break;
-    //}
-    
     for( auto& arg : fcn.args() )
     {
         handle_type(arg.second);
@@ -248,7 +230,7 @@ void CTypeChecker::iterate_traits(::std::function<bool(const TypeRef& trait)> fc
     {
         for( auto& trait : scopei->traits )
         {
-            if( !fcn(trait) )
+            if( !fcn(TypeRef(Span(), trait)) )
             {
                 return;
             }
@@ -273,7 +255,7 @@ void CTypeChecker::check_enum_variant(::std::vector<TypeRef>& path_args, const :
         for( unsigned int i = 0; i < var.m_sub_types.size(); i ++ )
         {
             var.m_sub_types[i].match_args(
-                TypeRef(TypeRef::TagTuple(), argtypes),
+                TypeRef(TypeRef::TagTuple(), Span(), argtypes),
                 [&](const char *name, const TypeRef& t) {
                         DEBUG("Binding " << name << " to type " << t);
                         int idx = params.find_name(name);
@@ -325,7 +307,7 @@ void CTC_NodeVisitor::visit(AST::ExprNode_NamedValue& node)
                 throw ::std::runtime_error( FMT("Too many arguments to enum variant - " << p) );
             while(pn.args().size() < num_params)
                 pn.args().push_back( TypeRef() );
-            node.get_res_type() = TypeRef(tp);
+            node.get_res_type() = TypeRef(Span(node.get_pos()), tp);
             )
         )
     }
@@ -342,7 +324,7 @@ void CTC_NodeVisitor::visit(AST::ExprNode_LetBinding& node)
 {
     DEBUG("ExprNode_LetBinding");
     
-    node.get_res_type() = TypeRef(TypeRef::TagUnit());
+    node.get_res_type() = TypeRef(TypeRef::TagUnit(), Span(node.get_pos()));
     
     // Evaluate value
     AST::NodeVisitor::visit(node.m_value);
@@ -371,7 +353,7 @@ void CTC_NodeVisitor::visit(AST::ExprNode_LetBinding& node)
 
 void CTC_NodeVisitor::visit(AST::ExprNode_Assign& node)
 {
-    node.get_res_type() = TypeRef(TypeRef::TagUnit());
+    node.get_res_type() = TypeRef(TypeRef::TagUnit(), Span(node.get_pos()));
     AST::NodeVisitor::visit(node.m_slot);
     AST::NodeVisitor::visit(node.m_value);
 }
@@ -601,7 +583,7 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallPath& node)
     
         AST::Path   p = node.m_path;
         p.nodes().pop_back();
-        TypeRef ty( ::std::move(p) );
+        TypeRef ty(Span(), ::std::move(p) );
         
         DEBUG("ExprNode_CallPath - enum t = " << ty);
         node.get_res_type().merge_with(ty);

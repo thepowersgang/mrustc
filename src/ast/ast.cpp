@@ -708,7 +708,7 @@ bool GenericParams::check_params(Crate& crate, ::std::vector<TypeRef>& types, bo
                 {
                     const auto& trait = bound.as_IsTrait().trait;
                     // Check if 'type' impls 'trait'
-                    if( !crate.find_impl(trait, trait, nullptr, nullptr) )
+                    if( !crate.find_impl(trait, TypeRef(Span(), trait), nullptr, nullptr) )
                     {
                         throw ::std::runtime_error( FMT("No matching impl of "<<trait<<" for "<<type));
                     }

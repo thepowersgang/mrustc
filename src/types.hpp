@@ -116,6 +116,7 @@ public:
     TypeRef(const TypeRef& other);
     TypeRef& operator=(TypeRef&& other) {
         m_data = mv$( other.m_data );
+        m_span = mv$( other.m_span );
         return *this;
     }
     TypeRef& operator=(const TypeRef& other) {
@@ -123,56 +124,67 @@ public:
         return *this;
     }
     
-    TypeRef():
+    TypeRef(Span sp=Span()):
         m_data(TypeData::make_Any({}))
     {}
     
     struct TagInvalid {};
-    TypeRef(TagInvalid):
+    TypeRef(TagInvalid, Span sp):
+        m_span(mv$(sp)),
         m_data(TypeData::make_None({}))
     {}
     
     struct TagMacro {};
     TypeRef(TagMacro, ::AST::MacroInvocation inv):
+        m_span(inv.span()),
         m_data(TypeData::make_Macro({mv$(inv)}))
     {}
 
     struct TagUnit {};  // unit maps to a zero-length tuple, just easier to type
-    TypeRef(TagUnit):
+    TypeRef(TagUnit, Span sp):
+        m_span(mv$(sp)),
         m_data(TypeData::make_Unit({}))
     {}
 
     struct TagPrimitive {};
-    TypeRef(TagPrimitive, enum eCoreType type):
+    TypeRef(TagPrimitive, Span sp, enum eCoreType type):
+        m_span(mv$(sp)),
         m_data(TypeData::make_Primitive({type}))
     {}
-    TypeRef(enum eCoreType type):
+    TypeRef(Span sp, enum eCoreType type):
+        m_span(mv$(sp)),
         m_data(TypeData::make_Primitive({type}))
     {}
 
     struct TagTuple {};
-    TypeRef(TagTuple _, ::std::vector<TypeRef> inner_types):
+    TypeRef(TagTuple _, Span sp, ::std::vector<TypeRef> inner_types):
+        m_span(mv$(sp)),
         m_data(TypeData::make_Tuple({::std::move(inner_types)}))
     {}
     struct TagFunction {};
-    TypeRef(TagFunction, ::std::string abi, ::std::vector<TypeRef> args, TypeRef ret):
+    TypeRef(TagFunction, Span sp, ::std::string abi, ::std::vector<TypeRef> args, TypeRef ret):
+        m_span(mv$(sp)),
         m_data(TypeData::make_Function({ Type_Function( false, abi, box$(ret), mv$(args) ) }))
     {}
     
     struct TagReference {};
-    TypeRef(TagReference _, bool is_mut, TypeRef inner_type):
+    TypeRef(TagReference _, Span sp, bool is_mut, TypeRef inner_type):
+        m_span(mv$(sp)),
         m_data(TypeData::make_Borrow({ is_mut, ::make_unique_ptr(mv$(inner_type)) }))
     {}
     struct TagPointer {};
-    TypeRef(TagPointer _, bool is_mut, TypeRef inner_type):
+    TypeRef(TagPointer _, Span sp, bool is_mut, TypeRef inner_type):
+        m_span(mv$(sp)),
         m_data(TypeData::make_Pointer({ is_mut, ::make_unique_ptr(mv$(inner_type)) }))
     {}
     struct TagSizedArray {};
-    TypeRef(TagSizedArray _, TypeRef inner_type, ::std::shared_ptr<AST::ExprNode> size):
+    TypeRef(TagSizedArray _, Span sp, TypeRef inner_type, ::std::shared_ptr<AST::ExprNode> size):
+        m_span(mv$(sp)),
         m_data(TypeData::make_Array({ ::make_unique_ptr(mv$(inner_type)), mv$(size) }))
     {}
     struct TagUnsizedArray {};
-    TypeRef(TagUnsizedArray _, TypeRef inner_type):
+    TypeRef(TagUnsizedArray _, Span sp, TypeRef inner_type):
+        m_span(mv$(sp)),
         m_data(TypeData::make_Array({ ::make_unique_ptr(mv$(inner_type)), ::std::shared_ptr<AST::ExprNode>() }))
     {}
 
@@ -188,14 +200,16 @@ public:
     {}
 
     struct TagPath {};
-    TypeRef(TagPath, AST::Path path):
+    TypeRef(TagPath, Span sp, AST::Path path):
+        m_span(mv$(sp)),
         m_data(TypeData::make_Path({ ::std::move(path) }))
     {}
-    TypeRef(AST::Path path):
-        TypeRef(TagPath(), ::std::move(path))
+    TypeRef(Span sp, AST::Path path):
+        TypeRef(TagPath(), mv$(sp), mv$(path))
     {}
    
-    TypeRef( ::std::vector<::std::string> hrls, ::std::vector<AST::Path> traits ):
+    TypeRef( Span sp, ::std::vector<::std::string> hrls, ::std::vector<AST::Path> traits ):
+        m_span(mv$(sp)),
         m_data(TypeData::make_TraitObject({ mv$(hrls), ::std::move(traits) }))
     {}
     
@@ -215,6 +229,8 @@ public:
     
     /// Returns true if the type is fully known (all sub-types are not wildcards)
     bool is_concrete() const;
+    
+    bool is_valid() const { return ! m_data.is_None(); }
 
     bool is_unbounded() const { return m_data.is_Any(); }
     bool is_wildcard() const { return m_data.is_Any(); }

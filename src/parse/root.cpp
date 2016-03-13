@@ -248,6 +248,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
         
         if( lex.lookahead(ofs) == TOK_RWORD_SELF || (lex.lookahead(ofs) == TOK_RWORD_MUT && lex.lookahead(ofs+1) == TOK_RWORD_SELF) )
         {
+            auto ps = lex.start_span();
             ::std::string   lifetime;
             if( GET_TOK(tok, lex) == TOK_LIFETIME ) {
                 lifetime = tok.str();
@@ -256,11 +257,11 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
             if( tok.type() == TOK_RWORD_MUT )
             {
                 GET_CHECK_TOK(tok, lex, TOK_RWORD_SELF);
-                args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), true, TypeRef("Self"))) );
+                args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), lex.end_span(ps), true, TypeRef("Self"))) );
             }
             else
             {
-                args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), false, TypeRef("Self"))) );
+                args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), lex.end_span(ps), false, TypeRef("Self"))) );
             }
             DEBUG("TODO: UFCS / self lifetimes");
             if( allow_self == false )
@@ -351,12 +352,12 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
         // Eat 'tok', negative comparison
     }
 
-    TypeRef ret_type = TypeRef(TypeRef::TagUnit());;
+    TypeRef ret_type = TypeRef(TypeRef::TagUnit(), Span(tok.get_pos()));
     if( GET_TOK(tok, lex) == TOK_THINARROW )
     {
         // Return type
         if( GET_TOK(tok, lex) == TOK_EXCLAM ) {
-            ret_type = TypeRef(TypeRef::TagInvalid());
+            ret_type = TypeRef(TypeRef::TagInvalid(), Span(tok.get_pos()));
         }
         else {
             lex.putback(tok);
@@ -619,7 +620,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, AST::Module& mod, const AST::MetaIte
             if( GET_TOK(tok, lex) == TOK_COLON )
             {
                 // Bounded associated type
-                TypeRef a_type = TypeRef( AST::Path(AST::Path::TagUfcs(), TypeRef(TypeRef::TagArg(), "Self"), TypeRef(), {AST::PathNode(name)}) );
+                TypeRef a_type = TypeRef( Span(), AST::Path(AST::Path::TagUfcs(), TypeRef(TypeRef::TagArg(), "Self"), TypeRef(Span()), {AST::PathNode(name)}) );
                 //TypeRef a_type = TypeRef(TypeRef::TagAssoc(), TypeRef(TypeRef::TagArg(), "Self"), TypeRef(), name);
                 Parse_TypeBound(lex, params, a_type);
                 GET_TOK(tok, lex);

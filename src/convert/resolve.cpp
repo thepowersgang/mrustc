@@ -1036,10 +1036,10 @@ void CPathResolver::handle_path_abs__into_ufcs(const Span& span, AST::Path& path
         resolve_path(span, m_crate, type_path);
         // If the type path refers to a trait, put it in the trait location
         if(type_path.binding().is_Trait()) {
-            type_path = AST::Path(AST::Path::TagUfcs(), TypeRef(), TypeRef(mv$(type_path)), {mv$(nodes[i])} );
+            type_path = AST::Path(AST::Path::TagUfcs(), TypeRef(span), TypeRef(span, mv$(type_path)), {mv$(nodes[i])} );
         }
         else {
-            type_path = AST::Path(AST::Path::TagUfcs(), TypeRef(mv$(type_path)), TypeRef(), {mv$(nodes[i])} );
+            type_path = AST::Path(AST::Path::TagUfcs(), TypeRef(span, mv$(type_path)), TypeRef(span), {mv$(nodes[i])} );
         }
     }
     
@@ -1108,20 +1108,20 @@ void CPathResolver::handle_path_ufcs(const Span& span, AST::Path& path, CASTIter
                 if( this->find_trait_item(span, p, t, item_name,  is_method, ptr, found_trait_path) ) {
                     if( is_method ) {
                         if( info.nodes.size() != 1 )
-                            ERROR(path.span(), E0000, "CPathResolver::handle_path_ufcs - Sub-nodes to method");
+                            ERROR(span, E0000, "CPathResolver::handle_path_ufcs - Sub-nodes to method");
                         auto f = reinterpret_cast<const ::AST::Function*>(ptr);
                         path.bind_function(*f, path.nodes()[0].args());
                     }
                     else {
                         if( info.nodes.size() != 1 )
-                            throw ParseError::Todo("CPathResolver::handle_path_ufcs - Sub nodes on associated type");
+                            TODO(span, "CPathResolver::handle_path_ufcs - Sub nodes on associated type");
                         auto t = reinterpret_cast<const ::AST::TypeAlias*>(ptr);
                         path.bind_type_alias(*t);
                     }
-                    *info.trait = TypeRef( mv$(found_trait_path) );
+                    *info.trait = TypeRef( span, mv$(found_trait_path) );
                 }
                 else {
-                    ERROR(path.span(), E0000, "Cannot find item '" << item_name << "' on Self");
+                    ERROR(span, E0000, "Cannot find item '" << item_name << "' on Self");
                 }
             }
             else if( info.type->is_type_param() )
@@ -1183,9 +1183,9 @@ void CPathResolver::handle_path_ufcs(const Span& span, AST::Path& path, CASTIter
                     DEBUG("Searching impl " << impl);
                     for( const auto& fcn : impl.functions() )
                     {
-                        if( fcn.name == name) {
+                        if( fcn.name == name ) {
                             path.bind_function(fcn.data, path.nodes()[0].args());
-                            info.trait = make_unique_ptr( TypeRef(TypeRef::TagInvalid()) );
+                            info.trait = make_unique_ptr( TypeRef(TypeRef::TagInvalid(), span) );
                             return true;
                         }
                     }
@@ -1205,7 +1205,7 @@ void CPathResolver::handle_path_ufcs(const Span& span, AST::Path& path, CASTIter
                     bool is_fcn;
                     if( trait.has_named_item(item_name, is_fcn) ) {
                         IF_OPTION_SOME(impl, m_crate.find_impl( trait_p, *info.type ),
-                            *info.trait = TypeRef( trait_p );
+                            *info.trait = TypeRef( span, trait_p );
                             return ;
                         )
                     }
@@ -1229,7 +1229,7 @@ void CPathResolver::handle_path_ufcs(const Span& span, AST::Path& path, CASTIter
                     {
                         if( var.m_name == name ) {
                             path.bind_enum_var(e, name);
-                            info.trait = make_unique_ptr( TypeRef(TypeRef::TagInvalid()) );
+                            info.trait = make_unique_ptr( TypeRef(TypeRef::TagInvalid(), span) );
                             return ;
                         }
                     }
@@ -1352,7 +1352,7 @@ void CPathResolver::handle_path_rel(const Span& span, AST::Path& path, CASTItera
             TODO(span, "Expand `str` to internal path");
         }
         else if( auto ct = coretype_fromstring(path[0].name()) ) {
-            auto ty = TypeRef(TypeRef::TagPrimitive(), ct);
+            auto ty = TypeRef(TypeRef::TagPrimitive(), span, ct);
             auto newpath = AST::Path(AST::Path::TagUfcs(), ty, TypeRef());
             newpath.add_tailing(path);
             path = mv$(newpath);
@@ -1407,9 +1407,9 @@ bool CPathResolver::find_trait_item(const Span& span, const AST::Path& path, AST
             out_trait_path.resolve_args([&](const char* name) -> TypeRef {
                 int idx = trait.params().find_name(name);
                 if(idx < 0)
-                    ERROR(st.span(), E0000, "Parameter " << name << " not found");
+                    ERROR(span, E0000, "Parameter " << name << " not found");
                 if(static_cast<unsigned int>(idx) >= path.nodes().back().args().size())
-                    ERROR(st.span(), E0000, "Path '"<<path<<"' had too few args");
+                    ERROR(span, E0000, "Path '"<<path<<"' had too few args");
                 const auto& tr = path.nodes().back().args().at(idx);
                 DEBUG("Replacing '" << name << "' with " << tr);
                 return tr;
@@ -1531,7 +1531,7 @@ void CPathResolver::handle_type(TypeRef& type)
             // TODO: Should I always resolve `Self` when it's concretely known?
             // If the name was "Self", but Self isn't already defined... then we need to make it an arg?
             if( this->m_self_type.empty() || this->m_self_type.back().is_None() ) {
-                ERROR(type.path().span(), E0000, "Unexpected 'Self'");
+                ERROR(Span(), E0000, "Unexpected 'Self'");
             }
             else {
                 TU_MATCH(SelfType, (this->m_self_type.back()), (ent),

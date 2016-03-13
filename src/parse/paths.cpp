@@ -110,6 +110,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
             // HACK - 'Fn*(...) -> ...' notation
             else if( tok.type() == TOK_PAREN_OPEN )
             {
+                auto ps = lex.start_span();
                 DEBUG("Fn() hack");
                 ::std::vector<TypeRef>  args;
                 if( GET_TOK(tok, lex) == TOK_PAREN_CLOSE )
@@ -125,7 +126,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                 }
                 CHECK_TOK(tok, TOK_PAREN_CLOSE);
                 
-                TypeRef ret_type = TypeRef( TypeRef::TagUnit() );
+                TypeRef ret_type = TypeRef( TypeRef::TagUnit(), Span(tok.get_pos()) );
                 if( GET_TOK(tok, lex) == TOK_THINARROW ) {
                     ret_type = Parse_Type(lex);
                 }
@@ -135,7 +136,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                 DEBUG("- Fn("<<args<<")->"<<ret_type<<"");
                 
                 // Encode into path, by converting Fn(A,B)->C into Fn<(A,B),Ret=C>
-                params = ::std::vector<TypeRef> { TypeRef(TypeRef::TagTuple(), ::std::move(args)) };
+                params = ::std::vector<TypeRef> { TypeRef(TypeRef::TagTuple(), lex.end_span(ps), ::std::move(args)) };
                 // TODO: Use 'ret_type' as an associated type bound
                 
                 GET_TOK(tok, lex);

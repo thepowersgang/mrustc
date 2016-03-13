@@ -50,9 +50,9 @@ public:
         // TODO: be correct herhe and use "core" as the crate name
         // - Requires handling the crate_name crate attribute correctly
         const AST::Path    debug_trait("", { AST::PathNode("fmt", {}), AST::PathNode("Debug", {}) });
-        const TypeRef  ret_type(AST::Path("", {AST::PathNode("fmt",{}), AST::PathNode("Result",{})}) );
-        const TypeRef  f_type(TypeRef::TagReference(), true,
-            TypeRef(AST::Path("", {AST::PathNode("fmt",{}), AST::PathNode("Formatter", {})}))
+        const TypeRef  ret_type(Span(), AST::Path("", {AST::PathNode("fmt",{}), AST::PathNode("Result",{})}) );
+        const TypeRef  f_type(TypeRef::TagReference(), Span(), true,
+            TypeRef(Span(), AST::Path("", {AST::PathNode("fmt",{}), AST::PathNode("Formatter", {})}))
             );
         const ::std::string& name = type.path().nodes().back().name();
         
@@ -86,7 +86,7 @@ public:
             AST::GenericParams(),
             ret_type,
             vec$(
-                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), false, TypeRef("Self")) ),
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), Span(), false, TypeRef("Self")) ),
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "f"), f_type )
                 )
             );
@@ -122,7 +122,7 @@ static void derive_item(AST::Module& mod, const AST::MetaItem& attr, const AST::
     bool    fail = false;
     
     const auto& params = item.params();
-    TypeRef type(path);
+    TypeRef type(Span(), path);
     for( const auto& param : params.ty_params() )
         type.path().nodes().back().args().push_back( TypeRef(TypeRef::TagArg(), param.name()) );
     

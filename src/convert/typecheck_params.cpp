@@ -212,7 +212,7 @@ void CGenericParamChecker::check_generic_params(const AST::GenericParams& info, 
         TU_IFLET(AST::GenericBound, bound, IsTrait, ent,
             auto ra_fcn = [&](const char *a){
                 if( strcmp(a, "Self") == 0 ) {
-                    if( self_type == TypeRef(TypeRef::TagInvalid()) )
+                    if( ! self_type.is_valid() )
                         throw CompileError::Generic("Unexpected use of 'Self' in bounds");
                     return self_type;
                 }
@@ -266,7 +266,7 @@ void CGenericParamChecker::handle_path(AST::Path& path, CASTIterator::PathMode p
         comm( info.alias_->params() );
         ),
     (Function,
-        check_generic_params(info.func_->params(), last_node.args(), TypeRef(TypeRef::TagInvalid()), (m_within_expr > 0));
+        check_generic_params(info.func_->params(), last_node.args(), TypeRef(TypeRef::TagInvalid(), Span()), (m_within_expr > 0));
         ),
     
     (EnumVar,
