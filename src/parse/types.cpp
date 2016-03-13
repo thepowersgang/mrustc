@@ -144,7 +144,7 @@ TypeRef Parse_Type_Int(TokenStream& lex)
         TypeRef inner = Parse_Type(lex);
         if( GET_TOK(tok, lex)  == TOK_SEMICOLON ) {
             // Sized array
-            AST::Expr array_size = Parse_Expr(lex, true);
+            AST::Expr array_size = Parse_Expr(lex);
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
             return TypeRef(TypeRef::TagSizedArray(), inner, array_size.take_node());
         }

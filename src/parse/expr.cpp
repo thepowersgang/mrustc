@@ -23,6 +23,7 @@ static inline ExprNodeP mk_exprnodep(const TokenStream& lex, AST::ExprNode* en){
 #define NEWNODE(type, ...)  mk_exprnodep(lex, new type(__VA_ARGS__))
 
 ExprNodeP Parse_ExprBlockNode(TokenStream& lex);
+ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end);
 ExprNodeP Parse_Stmt(TokenStream& lex);
 ExprNodeP Parse_Expr0(TokenStream& lex);
 ExprNodeP Parse_IfStmt(TokenStream& lex);
@@ -32,18 +33,15 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex);
 ExprNodeP Parse_Expr1(TokenStream& lex);
 ExprNodeP Parse_ExprMacro(TokenStream& lex, Token tok);
 
-AST::Expr Parse_Expr(TokenStream& lex, bool const_only)
+AST::Expr Parse_Expr(TokenStream& lex)
 {
-    return AST::Expr(Parse_Expr0(lex));
+    return ::AST::Expr( Parse_Expr0(lex) );
 }
 
 AST::Expr Parse_ExprBlock(TokenStream& lex)
 {
-    return AST::Expr(Parse_ExprBlockNode(lex));
+    return ::AST::Expr( Parse_ExprBlockNode(lex) );
 }
-
-ExprNodeP Parse_ExprBlockNode(TokenStream& lex);
-ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end);
 
 ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
 {
@@ -52,8 +50,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
 
     ::std::vector<ExprNodeP> nodes;
     
-    ::std::unique_ptr<AST::Module>    local_mod( new AST::Module("") );
-    bool    keep_mod = false;
+    ::std::unique_ptr<AST::Module> local_mod;
     
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
     
@@ -90,7 +87,9 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
         case TOK_RWORD_FN:
         case TOK_RWORD_MOD:
             lex.putback(tok);
-            keep_mod = true;
+            if( !local_mod ) {
+                local_mod = lex.parse_state().get_current_mod().add_anon();
+            }
             Parse_Mod_Item(lex, false,"!", *local_mod, false, mv$(item_attrs));
             break;
         // 'unsafe' - Check if the next token isn't a `{`, if so it's an item. Otherwise, fall through
@@ -98,7 +97,9 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
             if( LOOK_AHEAD(lex) != TOK_BRACE_OPEN )
             {
                 lex.putback(tok);
-                keep_mod = true;
+                if( !local_mod ) {
+                    local_mod = lex.parse_state().get_current_mod().add_anon();
+                }
                 Parse_Mod_Item(lex, false,"!", *local_mod, false, mv$(item_attrs));
                 break;
             }
@@ -128,10 +129,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
         }
     }
     
-    if( !keep_mod ) {
-        local_mod.reset();
-    }
-    return NEWNODE( AST::ExprNode_Block, ::std::move(nodes), ::std::move(local_mod) );
+    return NEWNODE( AST::ExprNode_Block, ::std::move(nodes), mv$(local_mod) );
 }
 
 /// Parse a single line from a block

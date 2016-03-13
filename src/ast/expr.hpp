@@ -55,15 +55,15 @@ struct ExprNode_Block:
     public ExprNode
 {
 	bool m_is_unsafe;
-    ::std::unique_ptr<Module>   m_inner_mod;
+    ::std::unique_ptr<AST::Module> m_local_mod;
     ::std::vector< ::std::unique_ptr<ExprNode> >    m_nodes;
 
     ExprNode_Block():
 		m_is_unsafe(false)
 	{}
-    ExprNode_Block(::std::vector< ::std::unique_ptr<ExprNode> >&& nodes, ::std::unique_ptr<Module> inner_mod):
+    ExprNode_Block(::std::vector< ::std::unique_ptr<ExprNode> >&& nodes, ::std::unique_ptr<AST::Module> local_mod):
 		m_is_unsafe(false),
-        m_inner_mod( move(inner_mod) ),
+        m_local_mod( move(local_mod) ),
         m_nodes( move(nodes) )
     {
     }

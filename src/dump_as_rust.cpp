@@ -43,9 +43,9 @@ public:
         }
         m_os << "{";
         inc_indent();
-        if( n.m_inner_mod.get() )
+        if( n.m_local_mod )
         {
-            handle_module(*n.m_inner_mod);
+            handle_module(*n.m_local_mod);
         }
         bool is_first = true;
         for( auto& child : n.m_nodes )

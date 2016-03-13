@@ -43,23 +43,15 @@ extern ::AST::MacroInvocation Parse_MacroInvocation(ProtoSpan ps, ::AST::MetaIte
 extern TypeRef     Parse_Type(TokenStream& lex);
 extern AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable);
 
-extern void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)> fcn);
-extern AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items);
-extern AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items);
-extern AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items);
-extern void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool is_unsafe=false);
 extern MacroRules Parse_MacroRules(TokenStream& lex);
-extern void Parse_ExternCrate(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_items);
 
 extern void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::string& file_path, AST::Module& mod, bool is_public, AST::MetaItems meta_items);
 extern void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, bool file_controls_dir, const ::std::string& path);
 
 
-extern AST::Function    Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaItems& attrs, bool allow_self, bool can_be_prototype);
-extern AST::Function    Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST::MetaItems& attrs, bool allow_self);
-extern AST::Expr   Parse_Expr(TokenStream& lex, bool const_only);
+extern AST::Expr   Parse_Expr(TokenStream& lex);
 extern AST::Expr   Parse_ExprBlock(TokenStream& lex);
-extern AST::ExprNodeP   Parse_Expr0(TokenStream& lex);
+extern AST::ExprNodeP Parse_Expr0(TokenStream& lex);
 
 extern bool Parse_IsTokValue(eTokenType tok_type);
 

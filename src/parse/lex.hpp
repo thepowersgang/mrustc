@@ -109,6 +109,12 @@ public:
 
 extern ::std::ostream&  operator<<(::std::ostream& os, const Token& tok);
 
+
+namespace AST {
+    class Module;
+    class MetaItems;
+}
+
 /// State the parser needs to pass down via a second channel.
 struct ParseState
 {
@@ -116,6 +122,14 @@ struct ParseState
     bool disallow_struct_literal = false;
     // A debugging hook that disables expansion of macros
     bool no_expand_macros = false;
+    
+    ::AST::Module*  module = nullptr;
+    ::AST::MetaItems*   parent_attrs = nullptr;
+    
+    ::AST::Module& get_current_mod() {
+        assert(this->module);
+        return *this->module;
+    }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const ParseState& ps) {
         os << "ParseState {";
@@ -170,6 +184,8 @@ public:
     }
 };
 
+#define SET_MODULE(lex, mod)    SavedParseState _sps(lex, lex.parse_state()); lex.parse_state().module = &(mod)
+#define SET_ATTRS(lex, attrs)    SavedParseState _sps(lex, lex.parse_state()); lex.parse_state().parent_attrs = &(attrs)
 #define SET_PARSE_FLAG(lex, flag)    SavedParseState _sps(lex, lex.parse_state()); lex.parse_state().flag = true
 #define CLEAR_PARSE_FLAG(lex, flag)    SavedParseState _sps(lex, lex.parse_state()); lex.parse_state().flag = false
 #define CHECK_PARSE_FLAG(lex, flag) (lex.parse_state().flag == true)

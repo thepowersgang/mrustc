@@ -173,8 +173,9 @@ struct CExpandExpr:
     }
     
     void visit(::AST::ExprNode_Macro& node) override {
+        auto& mod = *(::AST::Module*)(modstack.m_item);
         auto ttl = Expand_Macro(
-            is_early, crate, modstack, *(::AST::Module*)(modstack.m_item),
+            is_early, crate, modstack, mod,
             Span(node.get_pos()),
             node.m_name, node.m_ident, node.m_tokens
             );
@@ -182,6 +183,7 @@ struct CExpandExpr:
         {
             if( ttl->lookahead(0) != TOK_EOF )
             {
+                SET_MODULE( (*ttl), mod );
                 // Reparse as expression / item
                 auto newexpr = Parse_Expr0(*ttl);
                 // Then call visit on it again
@@ -197,9 +199,8 @@ struct CExpandExpr:
     }
     
     void visit(::AST::ExprNode_Block& node) override {
-        // TODO! Use a proper path here
-        if( node.m_inner_mod ) {
-            Expand_Mod(is_early, crate, modstack, AST::Path(), *node.m_inner_mod);
+        if( node.m_local_mod ) {
+            Expand_Mod(is_early, crate, modstack, node.m_local_mod->path(), *node.m_local_mod);
         }
         this->visit_vector(node.m_nodes);
     }

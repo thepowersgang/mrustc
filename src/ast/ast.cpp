@@ -235,7 +235,7 @@ SERIALISE_TYPE_A(MacroInvocation::, "AST_MacroInvocation", {
 })
 
 SERIALISE_TYPE_A(Module::, "AST_Module", {
-    s.item(m_name);
+    s.item(m_my_path);
     
     s.item(m_items);
     
@@ -245,6 +245,14 @@ SERIALISE_TYPE_A(Module::, "AST_Module", {
     
     s.item(m_impls);
 })
+
+::std::unique_ptr<AST::Module> Module::add_anon() {
+    auto rv = box$( Module(m_my_path + FMT("#" << m_anon_modules.size())) );
+    
+    m_anon_modules.push_back( rv.get() );
+    
+    return rv;
+}
 
 void Module::add_item(bool is_pub, ::std::string name, Item it, MetaItems attrs) {
     m_items.push_back( Named<Item>( mv$(name), mv$(it), is_pub ) );
@@ -277,8 +285,7 @@ void Module::add_enum(bool is_public, ::std::string name, Enum item, MetaItems a
 void Module::add_function(bool is_public, ::std::string name, Function item, MetaItems attrs) {
     this->add_item( is_public, name, Item::make_Function({mv$(item)}), mv$(attrs) );
 }
-void Module::add_submod(bool is_public, Module mod, MetaItems attrs) {
-    auto name = mod.m_name;
+void Module::add_submod(bool is_public, ::std::string name, Module mod, MetaItems attrs) {
     DEBUG("mod.m_name = " << name << ", attrs = " << attrs);
     this->add_item( is_public, mv$(name), Item::make_Module({mv$(mod)}), mv$(attrs) );
 }

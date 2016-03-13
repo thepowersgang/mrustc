@@ -380,11 +380,11 @@ class Module:
 {
     typedef ::std::vector< Named<Path> > itemlist_use_t;
     
-    ::std::string   m_name;
+    ::AST::Path m_my_path;
 
     // Module-level items
     /// General items
-    ::std::vector<Named<Item>>  m_items;    
+    ::std::vector<Named<Item>>  m_items;
     /// `use` imports (public and private)
     itemlist_use_t  m_imports;
     /// Macro invocations
@@ -403,13 +403,20 @@ class Module:
     ::std::vector< Named<MacroRules> >  m_macros;
 public:
     Module() {}
-    Module(::std::string name):
-        m_name(name)
+    Module(::AST::Path path):
+        m_my_path( mv$(path) )
     {
+    }
+    
+    bool is_anon() const {
+        return m_my_path.nodes().back().name()[0] == '#';
     }
     
     // Called when module is loaded from a serialised format
     void prescan();
+    
+    /// Create an anon module (for use inside expressions)
+    ::std::unique_ptr<AST::Module> add_anon();
     
     void add_item(bool is_pub, ::std::string name, Item it, MetaItems attrs);
     void add_ext_crate(::std::string ext_name, ::std::string imp_name, MetaItems attrs);
@@ -420,7 +427,7 @@ public:
     void add_struct(bool is_public, ::std::string name, Struct item, MetaItems attrs);
     void add_enum(bool is_public, ::std::string name, Enum inst, MetaItems attrs);
     void add_function(bool is_public, ::std::string name, Function item, MetaItems attrs);
-    void add_submod(bool is_public, Module mod, MetaItems attrs);
+    void add_submod(bool is_public, ::std::string name, Module mod, MetaItems attrs);
     
     void add_impl(Impl impl) {
         m_impls.emplace_back( ::std::move(impl) );
@@ -450,7 +457,7 @@ public:
 
     void iterate_functions(fcn_visitor_t* visitor, const Crate& crate);
 
-    const ::std::string& name() const { return m_name; }
+    const ::AST::Path& path() const { return m_my_path; }
     class ItemRef
     {
     public:

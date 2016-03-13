@@ -230,7 +230,7 @@ public:
     
     void visit(AST::ExprNode_Block& node) {
         // If there's an inner module on this node
-        if( node.m_inner_mod.get() )
+        if( node.m_local_mod.get() )
         {
             
             // Add a reference to it to the parent node (add_anon_module will do dedup)
@@ -239,7 +239,7 @@ public:
                 if(e.module != nullptr)
                     parent_mod_p = e.module;
             AST::Module& parent_mod = *parent_mod_p;
-            auto idx = parent_mod.add_anon_module( node.m_inner_mod.get() );
+            auto idx = parent_mod.add_anon_module( node.m_local_mod.get() );
             
             // Obtain the path
             AST::Path   local_path = m_res.m_module_path;
@@ -251,11 +251,11 @@ public:
             local_path.nodes().push_back( AST::PathNode(FMT("#" << idx), {}) );
 
             // And add to the list of modules to use in lookup
-            m_res.m_scope_stack.push_back( {idx, node.m_inner_mod.get(), local_path, {}} );
+            m_res.m_scope_stack.push_back( {idx, node.m_local_mod.get(), local_path, {}} );
             
             // Do use resolution on this module
             // TODO: When is more advanced resolution done?
-            ResolvePaths_HandleModule_Use(m_res.m_crate, m_res.m_scope_stack.back().module_path, *node.m_inner_mod);
+            ResolvePaths_HandleModule_Use(m_res.m_crate, m_res.m_scope_stack.back().module_path, *node.m_local_mod);
         }
         else {
             m_res.m_scope_stack.push_back( {0, nullptr, AST::Path(), {}} );
@@ -1458,11 +1458,11 @@ bool CPathResolver::find_mod_item(const Span& span, AST::Path& path, const ::std
     unsigned int idx = m_module_stack.size() - 1;
     for(;;)
     {
-        DEBUG("modpath = " << *modpath << ", mod->name() = '" << mod->name() << "'");
+        DEBUG("modpath = " << *modpath << ", mod->path() = '" << mod->path() << "'");
         if( lookup_path_in_module(span, m_crate, *mod, *modpath, path, name, path.size()==1) )
             return true;
-        DEBUG("mod->name() = '" << mod->name() << "', idx = " << idx);
-        if( mod->name() == "" && idx > 0 ) {
+        DEBUG("mod->path() = '" << mod->path() << "', idx = " << idx);
+        if( mod->is_anon() && idx > 0 ) {
             idx --;
             mod = m_module_stack[idx].first;
             modpath = &m_module_stack[idx].second;
@@ -1474,13 +1474,13 @@ bool CPathResolver::find_mod_item(const Span& span, AST::Path& path, const ::std
     return false;
 }
 bool CPathResolver::find_self_mod_item(const Span& span, AST::Path& path, const ::std::string& name) {
-    if( m_module->name() == "" )
+    if( m_module->is_anon() )
         throw ParseError::Todo("Correct handling of 'self' in anon modules");
     
     return lookup_path_in_module(span, m_crate, *m_module, m_module_path, path, name, path.size()==1);
 }
 bool CPathResolver::find_super_mod_item(const Span& span, AST::Path& path, const ::std::string& name) {
-    if( m_module->name() == "" )
+    if( m_module->is_anon() )
         throw ParseError::Todo("Correct handling of 'super' in anon modules");
     
     // 1. Construct path to parent module
@@ -1727,7 +1727,7 @@ void absolutise_path(const Span& span, const AST::Crate& crate, const AST::Modul
 
 void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& modpath, AST::Module& mod)
 {
-    TRACE_FUNCTION_F("modpath = " << modpath << ", mod = {name:" << mod.name() << "}");
+    TRACE_FUNCTION_F("modpath = " << modpath << ", mod = {path:" << mod.path() << "}");
     ::std::vector<AST::Path>    new_imports;
     for( auto& imp : mod.imports() )
     {
