@@ -44,11 +44,7 @@ struct Span
     {}
     Span(const Span& x);
     Span(const Position& position);
-    Span():
-        filename("")/*,
-        start_line(0), start_ofs(0),
-        end_line(0), end_ofs(0) // */
-    {}
+    Span();
     
     void bug(::std::function<void(::std::ostream&)> msg) const;
     void error(ErrorType tag, ::std::function<void(::std::ostream&)> msg) const;

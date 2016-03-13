@@ -9,6 +9,7 @@
 #include <iostream>
 #include <span.hpp>
 #include <parse/lex.hpp>
+#include <common.hpp>
 
 Span::Span(const Span& x):
     filename(x.filename),
@@ -25,6 +26,14 @@ Span::Span(const Position& pos):
     end_line(pos.line),
     end_ofs(pos.ofs)
 {
+}
+Span::Span():
+    filename("")/*,
+    start_line(0), start_ofs(0),
+    end_line(0), end_ofs(0) // */
+{
+    //DEBUG("Empty span");
+    //filename = FMT(":" << __builtin_return_address(0));
 }
 
 void Span::bug(::std::function<void(::std::ostream&)> msg) const

@@ -179,7 +179,7 @@ void Expand_Type(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
     (Primitive,
         ),
     (Function,
-        TODO(ty.span(), "Expand function type");
+        TODO(ty.span(), "Expand function type " << ty);
         ),
     (Tuple,
         for(auto& st : e.inner_types)
@@ -454,7 +454,8 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
         DEBUG("- " << i.name << " :: " << i.data.attrs);
         ::AST::Path path = modpath + i.name;
         
-        Expand_Attrs(i.data.attrs, stage_pre(is_early),  crate, path, mod, i.data);
+        auto attrs = mv$(i.data.attrs);
+        Expand_Attrs(attrs, stage_pre(is_early),  crate, path, mod, i.data);
         
         TU_MATCH(::AST::Item, (i.data), (e),
         (None,
@@ -494,7 +495,9 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             )
         )
         
-        Expand_Attrs(i.data.attrs, stage_post(is_early),  crate, path, mod, i.data);
+        Expand_Attrs(attrs, stage_post(is_early),  crate, path, mod, i.data);
+        if( i.data.attrs.m_items.size() == 0 )
+            i.data.attrs = mv$(attrs);
     }
     
     DEBUG("Impls");

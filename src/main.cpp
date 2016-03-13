@@ -52,6 +52,7 @@ struct ProgramParams
 
 template <typename Rv, typename Fcn>
 Rv CompilePhase(const char *name, Fcn f) {
+    ::std::cout << name << ": V V V" << ::std::endl;
     g_cur_phase = name;
     auto rv = f();
     g_cur_phase = "";

@@ -108,9 +108,10 @@ public:
     TypeData    m_data;
     
     TypeRef(TypeRef&& other) noexcept:
-        //m_span( mv$(other.m_span) ),
         m_data( mv$(other.m_data) )
-    {}
+    {
+        m_span = mv$(other.m_span);
+    }
     
     TypeRef(const TypeRef& other);
     TypeRef& operator=(TypeRef&& other) {
