@@ -15,6 +15,7 @@
 
 void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::std::function<void(const ExpandDecorator& d,const ::AST::MetaItem& a)> f);
 void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod);
+void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Expr& node);
 
 void Register_Synext_Decorator(::std::string name, ::std::unique_ptr<ExpandDecorator> handler) {
     g_decorators[name] = mv$(handler);
@@ -115,6 +116,95 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
     // Leave valid and return an empty expression
     return ::std::unique_ptr<TokenStream>();
 }
+::std::unique_ptr<TokenStream> Expand_Macro(bool is_early, const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, const ::AST::MacroInvocation& mi)
+{
+    return Expand_Macro(is_early, crate, modstack, mod,  mi.span(), mi.name(), mi.input_ident(), mi.input_tt());
+}
+
+void Expand_Pattern(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::Pattern& pat)
+{
+    TU_MATCH(::AST::Pattern::Data, (pat.data()), (e),
+    (MaybeBind,
+        ),
+    (Macro,
+        auto tt = Expand_Macro(is_early, crate, modstack, mod,  *e.inv);
+        TODO(e.inv->span(), "Expand macro invocation in pattern");
+        ),
+    (Any,
+        ),
+    (Box,
+        Expand_Pattern(is_early, crate, modstack, mod,  *e.sub);
+        ),
+    (Ref,
+        Expand_Pattern(is_early, crate, modstack, mod,  *e.sub);
+        ),
+    (Value,
+        Expand_Expr(is_early, crate, modstack, e.start);
+        Expand_Expr(is_early, crate, modstack, e.end);
+        ),
+    (Tuple,
+        for(auto& sp : e.sub_patterns)
+            Expand_Pattern(is_early, crate, modstack, mod, sp);
+        ),
+    (StructTuple,
+        for(auto& sp : e.sub_patterns)
+            Expand_Pattern(is_early, crate, modstack, mod, sp);
+        ),
+    (Struct,
+        for(auto& sp : e.sub_patterns)
+            Expand_Pattern(is_early, crate, modstack, mod, sp.second);
+        ),
+    (Slice,
+        for(auto& sp : e.leading)
+            Expand_Pattern(is_early, crate, modstack, mod, sp);
+        for(auto& sp : e.trailing)
+            Expand_Pattern(is_early, crate, modstack, mod, sp);
+        )
+    )
+}
+
+void Expand_Type(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::TypeRef& ty)
+{
+    TU_MATCH(::TypeData, (ty.m_data), (e),
+    (None,
+        ),
+    (Any,
+        ),
+    (Unit,
+        ),
+    (Macro,
+        auto tt = Expand_Macro(is_early, crate, modstack, mod,  e.inv);
+        TODO(e.inv.span(), "Expand macro invocation in type");
+        ),
+    (Primitive,
+        ),
+    (Function,
+        TODO(ty.span(), "Expand function type");
+        ),
+    (Tuple,
+        for(auto& st : e.inner_types)
+            Expand_Type(is_early, crate, modstack, mod,  st);
+        ),
+    (Borrow,
+        Expand_Type(is_early, crate, modstack, mod,  *e.inner);
+        ),
+    (Pointer,
+        Expand_Type(is_early, crate, modstack, mod,  *e.inner);
+        ),
+    (Array,
+        Expand_Type(is_early, crate, modstack, mod,  *e.inner);
+        // TODO: Array size expression
+        //Expand_Expr(is_early, crate, modstack,  e.size);
+        ),
+    (Generic,
+        ),
+    (Path,
+        ),
+    (TraitObject,
+        )
+    )
+}
+
 struct CExpandExpr:
     public ::AST::NodeVisitor
 {
@@ -128,6 +218,10 @@ struct CExpandExpr:
         crate(crate),
         modstack(ms)
     {
+    }
+    
+    ::AST::Module& cur_mod() {
+        return *(::AST::Module*)(modstack.m_item);
     }
     
     void visit(::std::unique_ptr<AST::ExprNode>& cnode) {
@@ -173,7 +267,7 @@ struct CExpandExpr:
     }
     
     void visit(::AST::ExprNode_Macro& node) override {
-        auto& mod = *(::AST::Module*)(modstack.m_item);
+        auto& mod = this->cur_mod();
         auto ttl = Expand_Macro(
             is_early, crate, modstack, mod,
             Span(node.get_pos()),
@@ -208,7 +302,8 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_value);
     }
     void visit(::AST::ExprNode_LetBinding& node) override {
-        // TODO: Pattern and type
+        Expand_Type(is_early, crate, modstack, this->cur_mod(),  node.m_type);
+        Expand_Pattern(is_early, crate, modstack, this->cur_mod(),  node.m_pat);
         this->visit_nodelete(node, node.m_value);
     }
     void visit(::AST::ExprNode_Assign& node) override {
@@ -216,7 +311,6 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_value);
     }
     void visit(::AST::ExprNode_CallPath& node) override {
-        // TODO: path?
         this->visit_vector(node.m_args);
     }
     void visit(::AST::ExprNode_CallMethod& node) override {
@@ -233,7 +327,15 @@ struct CExpandExpr:
     }
     void visit(::AST::ExprNode_Match& node) override {
         this->visit_nodelete(node, node.m_val);
-        // TODO: Arms
+        for(auto& arm : node.m_arms)
+        {
+            // TODO: Attributes on match arms (is it only #[cfg] that's allowed?)
+            for(auto& pat : arm.m_patterns) {
+                Expand_Pattern(is_early, crate, modstack, this->cur_mod(),  pat);
+            }
+            this->visit_nodelete(node, arm.m_cond);
+            this->visit_nodelete(node, arm.m_code);
+        }
     }
     void visit(::AST::ExprNode_If& node) override {
         this->visit_nodelete(node, node.m_cond);
@@ -241,7 +343,7 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_false);
     }
     void visit(::AST::ExprNode_IfLet& node) override {
-        // TODO: Pattern
+        Expand_Pattern(is_early, crate, modstack, this->cur_mod(),  node.m_pattern);
         this->visit_nodelete(node, node.m_value);
         this->visit_nodelete(node, node.m_true);
         this->visit_nodelete(node, node.m_false);
@@ -251,13 +353,20 @@ struct CExpandExpr:
     void visit(::AST::ExprNode_Bool& node) override { }
     void visit(::AST::ExprNode_String& node) override { }
     void visit(::AST::ExprNode_Closure& node) override {
-        // TODO: Arg patterns and types
-        // TODO: Return type
+        for(auto& arg : node.m_args) {
+            Expand_Pattern(is_early, crate, modstack, this->cur_mod(),  arg.first);
+            Expand_Type(is_early, crate, modstack, this->cur_mod(),  arg.second);
+        }
+        Expand_Type(is_early, crate, modstack, this->cur_mod(),  node.m_return);
         this->visit_nodelete(node, node.m_code);
     }
     void visit(::AST::ExprNode_StructLiteral& node) override {
         this->visit_nodelete(node, node.m_base_value);
-        // TODO: Values (with #[cfg] support)
+        for(auto& val : node.m_values)
+        {
+            // TODO: Attributes on struct literal items (#[cfg] only?)
+            this->visit_nodelete(node, val.second);
+        }
     }
     void visit(::AST::ExprNode_Array& node) override {
         this->visit_nodelete(node, node.m_size);
@@ -279,7 +388,7 @@ struct CExpandExpr:
     }
     void visit(::AST::ExprNode_Cast& node) override {
         this->visit_nodelete(node, node.m_value);
-        // TODO: Type
+        Expand_Type(is_early, crate, modstack, this->cur_mod(),  node.m_type);
     }
     void visit(::AST::ExprNode_BinOp& node) override {
         this->visit_nodelete(node, node.m_left);
@@ -294,7 +403,7 @@ void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
     auto visitor = CExpandExpr(is_early, crate, modstack);
     visitor.visit(node);
 }
-void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path item_path, AST::Expr& node)
+void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Expr& node)
 {
     auto visitor = CExpandExpr(is_early, crate, modstack);
     node.visit_nodes(visitor);
@@ -321,8 +430,7 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             // Move out of the module to avoid invalidation if a new macro invocation is added
             auto mi_owned = mv$(mi);
             
-            auto ttl = Expand_Macro(is_early, crate, modstack, mod,
-                mi_owned.span(), mi_owned.name(), mi_owned.input_ident(), mi_owned.input_tt());
+            auto ttl = Expand_Macro(is_early, crate, modstack, mod, mi_owned);
 
             if( ! ttl.get() )
             {
@@ -357,7 +465,7 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             Expand_Mod(is_early, crate, sub_modstack, path, e.e);
             ),
         (Crate,
-            // Skip, no recursion
+            // Can't recurse into an `extern crate`
             ),
         
         (Struct,
@@ -370,16 +478,19 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             // TODO: Trait definition
             ),
         (Type,
-            // TODO: Do type aliases require recursion?
+            Expand_Type(is_early, crate, modstack, mod,  e.e.type());
             ),
         
         (Function,
-            // TODO: Recurse into argument patterns + types
-            Expand_Expr(is_early, crate, modstack, path, e.e.code());
+            for(auto& arg : e.e.args()) {
+                Expand_Pattern(is_early, crate, modstack, mod,  arg.first);
+                Expand_Type(is_early, crate, modstack, mod,  arg.second);
+            }
+            Expand_Type(is_early, crate, modstack, mod,  e.e.rettype());
+            Expand_Expr(is_early, crate, modstack, e.e.code());
             ),
         (Static,
-            // Recurse into static values
-            Expand_Expr(is_early, crate, modstack, path, e.e.value());
+            Expand_Expr(is_early, crate, modstack, e.e.value());
             )
         )
         
