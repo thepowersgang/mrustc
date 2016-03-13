@@ -259,9 +259,8 @@ void Module::add_item(bool is_pub, ::std::string name, Item it, MetaItems attrs)
     m_items.back().data.attrs = mv$(attrs);
     DEBUG("Item " << ::AST::Item::tag_to_str( m_items.back().data.tag() ) << " - attrs = " << m_items.back().data.attrs);
 }
-void Module::add_ext_crate(::std::string ext_name, ::std::string imp_name, MetaItems attrs) {
-    // TODO: Extern crates can be public
-    this->add_item( false, imp_name, Item::make_Crate({mv$(ext_name)}), mv$(attrs) );
+void Module::add_ext_crate(bool is_public, ::std::string ext_name, ::std::string imp_name, MetaItems attrs) {
+    this->add_item( is_public, imp_name, Item::make_Crate({mv$(ext_name)}), mv$(attrs) );
 }
 void Module::add_alias(bool is_public, Path path, ::std::string name, MetaItems attrs) {
     // TODO: Attributes on aliases / imports
@@ -299,74 +298,6 @@ void Module::prescan()
     //{
     //    sm_p.first.prescan();
     //}
-    //
-    ///*
-    //for( const auto& macro_imp : m_macro_imports )
-    //{
-    //    resolve_macro_import( *(Crate*)0, macro_imp.first, macro_imp.second );
-    //}
-    //*/
-}
-
-void Module::resolve_macro_import(const Crate& crate, const ::std::string& modname, const ::std::string& macro_name)
-{
-    /*
-    DEBUG("Import macros from " << modname << " matching '" << macro_name << "'");
-    for( const auto& sm_p : m_submods )
-    {
-        const AST::Module& sm = sm_p.first;
-        if( sm.name() == modname )
-        {
-            DEBUG("Using module");
-            if( macro_name == "" )
-            {
-                for( const auto& macro_p : sm.m_macro_import_res )
-                    m_macro_import_res.push_back( macro_p );
-                for( const auto& macro_i : sm.m_macros )
-                    m_macro_import_res.push_back( ItemNS<const MacroRules*>( ::std::string(macro_i.name), &macro_i.data, false ) );
-                return ;
-            }
-            else
-            {
-                for( const auto& macro_p : sm.m_macro_import_res )
-                {
-                    if( macro_p.name == macro_name ) {
-                        m_macro_import_res.push_back( macro_p );
-                        return ;
-                    }   
-                }
-                throw ::std::runtime_error("Macro not in module");
-            }
-        }
-    }
-    
-    for( const auto& cr : m_extern_crates )
-    {
-        if( cr.name == modname )
-        {
-            DEBUG("Using crate import " << cr.name << " == '" << cr.data << "'");
-            if( macro_name == "" ) {
-                for( const auto& macro_p : crate.extern_crates().at(cr.data).crate().m_exported_macros )
-                    m_macro_import_res.push_back( ItemNS<const MacroRules*>( ::std::string(macro_p.first), &*macro_p.second, false ) );
-                return ;
-            }
-            else {
-                for( const auto& macro_p : crate.extern_crates().at(cr.data).crate().m_exported_macros )
-                {
-                    DEBUG("Macro " << macro_p.first);
-                    if( macro_p.first == macro_name ) {
-                        // TODO: Handle #[macro_export] on extern crate
-                        m_macro_import_res.push_back( ItemNS<const MacroRules*>( ::std::string(macro_p.first), &*macro_p.second, false ) );
-                        return ;
-                    }
-                }
-                throw ::std::runtime_error("Macro not in crate");
-            }
-        }
-    }
-    
-    throw ::std::runtime_error( FMT("Could not find sub-module '" << modname << "' for macro import") );
-    */
 }
 
 void Module::iterate_functions(fcn_visitor_t *visitor, const Crate& crate)

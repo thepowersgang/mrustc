@@ -419,7 +419,7 @@ public:
     ::std::unique_ptr<AST::Module> add_anon();
     
     void add_item(bool is_pub, ::std::string name, Item it, MetaItems attrs);
-    void add_ext_crate(::std::string ext_name, ::std::string imp_name, MetaItems attrs);
+    void add_ext_crate(bool is_public, ::std::string ext_name, ::std::string imp_name, MetaItems attrs);
     void add_alias(bool is_public, Path path, ::std::string name, MetaItems attrs);
     void add_typealias(bool is_public, ::std::string name, TypeAlias alias, MetaItems attrs);
     void add_static(bool is_public, ::std::string name, Static item, MetaItems attrs);

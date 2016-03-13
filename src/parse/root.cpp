@@ -1021,12 +1021,11 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
     }
 }
 
-void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi)
+void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi, ::AST::MetaItems block_attrs)
 {
     TRACE_FUNCTION;
     Token   tok;
 
-    AST::MetaItems  block_attrs;
     while( GET_TOK(tok, lex) == TOK_CATTR_OPEN )
     {
         block_attrs.push_back( Parse_MetaItem(lex) );
@@ -1226,24 +1225,26 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
     return ::AST::MacroInvocation( lex.end_span(span_start), mv$(meta_items), mv$(name), mv$(ident), mv$(tt));
 }
 
-void Parse_ExternCrate(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_items)
+void Parse_ExternCrate(TokenStream& lex, AST::Module& mod, bool is_public, AST::MetaItems meta_items)
 {
     Token   tok;
     ::std::string   path, name;
     switch( GET_TOK(tok, lex) )
     {
     // `extern crate "crate-name" as crate_name;`
-    // TODO: rustc no longer supports this feature
+    // NOTE: rustc doesn't allow this, keep in mrustc for for reparse support
     case TOK_STRING:
-        path = tok.str();
+        path = mv$(tok.str());
         GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        name = tok.str();
+        name = mv$(tok.str());
         break;
     // `extern crate crate_name;`
+    // `extern crate crate_name as other_name;`
     case TOK_IDENT:
-        name = tok.str();
+        name = mv$(tok.str());
         if(GET_TOK(tok, lex) == TOK_RWORD_AS) {
+            path = mv$(name);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             name = mv$(tok.str());
         }
@@ -1257,7 +1258,7 @@ void Parse_ExternCrate(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_i
     }
     GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
     
-    mod.add_ext_crate(path, name, mv$(meta_items));
+    mod.add_ext_crate(is_public, mv$(path), mv$(name), mv$(meta_items));
 }
 
 void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::string& file_path, AST::Module& mod, bool is_public, AST::MetaItems meta_items)
@@ -1297,8 +1298,7 @@ void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::strin
                 break; }
             // `extern "<ABI>" { ...`
             case TOK_BRACE_OPEN:
-                // TODO: Use meta items on extern block
-                Parse_ExternBlock(lex, mod, mv$(abi));
+                Parse_ExternBlock(lex, mod, mv$(abi), mv$(meta_items));
                 break;
             default:
                 throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_BRACE_OPEN});
@@ -1312,12 +1312,12 @@ void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::strin
             break; }
         // `extern { ...`
         case TOK_BRACE_OPEN:
-            Parse_ExternBlock(lex, mod, "C");
+            Parse_ExternBlock(lex, mod, "C", mv$(meta_items));
             break;
         // `extern crate "crate-name" as crate_name;`
         // `extern crate crate_name;`
         case TOK_RWORD_CRATE:
-            Parse_ExternCrate(lex, mod, mv$(meta_items));
+            Parse_ExternCrate(lex, mod, is_public, mv$(meta_items));
             break;
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_STRING, TOK_RWORD_FN, TOK_BRACE_OPEN, TOK_RWORD_CRATE});

@@ -417,8 +417,8 @@ void Expand(::AST::Crate& crate)
     }
     
     // 3. Module tree
-    Expand_Mod(true , crate, modstack, ::AST::Path(), crate.m_root_module);
-    Expand_Mod(false, crate, modstack, ::AST::Path(), crate.m_root_module);
+    Expand_Mod(true , crate, modstack, ::AST::Path("",{}), crate.m_root_module);
+    Expand_Mod(false, crate, modstack, ::AST::Path("",{}), crate.m_root_module);
     
     // Post-process
     #if 0

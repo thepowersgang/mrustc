@@ -76,7 +76,6 @@ int main(int argc, char *argv[])
     Cfg_SetValue("target_pointer_width", "64");
     
     
-    
     try
     {
         // Parse the crate into AST

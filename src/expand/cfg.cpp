@@ -15,7 +15,7 @@ void Cfg_SetFlag(::std::string name) {
     g_cfg_flags.insert( mv$(name) );
 }
 void Cfg_SetValue(::std::string name, ::std::string val) {
-    g_cfg_values.insert( ::std::make_pair(mv$(name), mv$(name)) );
+    g_cfg_values.insert( ::std::make_pair(mv$(name), mv$(val)) );
 }
 
 bool check_cfg(Span sp, const ::AST::MetaItem& mi) {
@@ -51,6 +51,7 @@ bool check_cfg(Span sp, const ::AST::MetaItem& mi) {
         auto it = g_cfg_values.find(mi.name());
         if( it != g_cfg_values.end() )
         {
+            DEBUG(""<<mi.name()<<": '"<<it->second<<"' == '"<<mi.string()<<"'");
             return it->second == mi.string();
         }
         else
@@ -99,6 +100,7 @@ class CCfgHandler:
     
     
     void handle(const AST::MetaItem& mi, ::AST::Crate& crate, AST::MacroInvocation& mac) const override {
+        DEBUG("#[cfg] mac! - " << mi);
         if( check_cfg(mac.span(), mi) ) {
             // Leave as is
         }
@@ -107,6 +109,7 @@ class CCfgHandler:
         }
     }
     void handle(const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
+        DEBUG("#[cfg] item - " << mi);
         if( check_cfg(Span(), mi) ) {
             // Leave
         }
@@ -115,6 +118,7 @@ class CCfgHandler:
         }
     }
     void handle(const AST::MetaItem& mi, ::AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const override {
+        DEBUG("#[cfg] expr - " << mi);
         if( check_cfg(Span(expr->get_pos()), mi) ) {
             // Leave
         }
