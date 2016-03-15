@@ -7,16 +7,21 @@
 #include "../ast/item.hpp"
 #include <span.hpp>
 
+class TypeRef;
 namespace AST {
     class Crate;
     class MetaItem;
     class Path;
+
+//    class StructItem;
+    typedef Named<::TypeRef>  StructItem;
     
     class Module;
     class Item;
     
-    class ExprNode;
     class Expr;
+    class ExprNode;
+    class ExprNode_Match_Arm;
     
     class MacroInvocation;
 }
@@ -44,16 +49,12 @@ public:
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate) const {}
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, AST::MacroInvocation& mac) const {}
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const {}
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const {};
-};
-
-enum class MacroPosition
-{
-    Item,
-    Stmt,
-    Expr,
-    Type,
-    Pattern,
+    // NOTE: To delete, set the type to Invalid
+    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::StructItem& si) const {}
+    
+    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const {}
+    // NOTE: To delete, clear the patterns vector
+    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::ExprNode_Match_Arm& expr) const {}
 };
 
 class ExpandProcMacro

@@ -179,7 +179,10 @@ void Expand_Type(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
     (Primitive,
         ),
     (Function,
-        TODO(ty.span(), "Expand function type " << ty);
+        Type_Function& tf = e.info;
+        Expand_Type(is_early, crate, modstack, mod,  *tf.m_rettype);
+        for(auto& st : tf.m_arg_types)
+            Expand_Type(is_early, crate, modstack, mod,  st);
         ),
     (Tuple,
         for(auto& st : e.inner_types)
@@ -470,7 +473,10 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             ),
         
         (Struct,
-            // TODO: Struct items
+            for(auto& fld : e.e.fields()) {
+                // TODO: Attributes on struct items
+                Expand_Type(is_early, crate, modstack, mod,  fld.data);
+            }
             ),
         (Enum,
             // TODO: Enum variants
@@ -504,6 +510,7 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
     for( auto& i : mod.impls() )
     {
         DEBUG("- " << i);
+        // TODO: Expand impls
     }
     
     for( const auto& mi: mod.macro_imports_res() )

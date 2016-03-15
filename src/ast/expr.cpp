@@ -237,7 +237,7 @@ NODE(ExprNode_Loop, {
     //os << "LOOP [" << m_label << "] " << m_pattern << " in/= " << m_cond << " " << m_code;
 })
 
-SERIALISE_TYPE_A(ExprNode_Match::Arm::, "ExprNode_Match_Arm", {
+SERIALISE_TYPE_A(ExprNode_Match_Arm::, "ExprNode_Match_Arm", {
     s.item(m_patterns);
     s.item(m_cond);
     s.item(m_code);

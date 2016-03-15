@@ -340,12 +340,12 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
     //ASSERT(lex, !CHECK_PARSE_FLAG(lex, disallow_struct_literal) );
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
     
-    ::std::vector< AST::ExprNode_Match::Arm >    arms;
+    ::std::vector< AST::ExprNode_Match_Arm >    arms;
     do {
         if( GET_TOK(tok, lex) == TOK_BRACE_CLOSE )
             break;
         lex.putback(tok);
-        AST::ExprNode_Match::Arm    arm;
+        AST::ExprNode_Match_Arm    arm;
         
         ::AST::MetaItems   arm_attrs;
         while( LOOK_AHEAD(lex) == TOK_ATTR_OPEN ) {

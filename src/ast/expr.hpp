@@ -236,26 +236,26 @@ struct ExprNode_Loop:
     NODE_METHODS();
 };
 
+struct ExprNode_Match_Arm:
+    public Serialisable
+{
+    MetaItems   m_attrs;
+    ::std::vector<Pattern>  m_patterns;
+    unique_ptr<ExprNode>    m_cond;
+    
+    unique_ptr<ExprNode>    m_code;
+
+    SERIALISABLE_PROTOTYPES();
+};
+    
 struct ExprNode_Match:
     public ExprNode
 {
-    struct Arm:
-        public Serialisable
-    {
-        MetaItems   m_attrs;
-        ::std::vector<Pattern>  m_patterns;
-        unique_ptr<ExprNode>    m_cond;
-        
-        unique_ptr<ExprNode>    m_code;
-    
-        SERIALISABLE_PROTOTYPES();
-    };
-    
     unique_ptr<ExprNode>    m_val;
-    ::std::vector<Arm>  m_arms;
+    ::std::vector<ExprNode_Match_Arm>  m_arms;
 
     ExprNode_Match() {}
-    ExprNode_Match(unique_ptr<ExprNode> val, ::std::vector<Arm> arms):
+    ExprNode_Match(unique_ptr<ExprNode> val, ::std::vector<ExprNode_Match_Arm> arms):
         m_val( ::std::move(val) ),
         m_arms( ::std::move(arms) )
     {

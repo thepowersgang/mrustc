@@ -44,6 +44,7 @@ enum eItemType
 };
 
 typedef Named<TypeRef>    StructItem;
+
 class Crate;
 
 class TypeAlias:
@@ -321,6 +322,7 @@ class Impl:
 {
     ImplDef m_def;
     
+    //NamedList<Item>   m_items;
     NamedList<TypeRef>   m_types;
     NamedList<Function>  m_functions;
     NamedList<Static>    m_statics;
