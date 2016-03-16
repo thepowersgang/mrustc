@@ -14,6 +14,7 @@ namespace AST {
     class Path;
 
     class StructItem;
+    class TupleItem;
     class EnumVariant;
     
     class Module;
@@ -51,6 +52,8 @@ public:
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const {}
     // NOTE: To delete, clear the name
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::StructItem& si) const {}
+    // NOTE: To delete, make the type invalid
+    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::TupleItem& si) const {}
     // NOTE: To delete, clear the name
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::EnumVariant& ev) const {}
     

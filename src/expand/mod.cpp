@@ -500,9 +500,9 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             (Tuple,
                 for(auto it = sd.ents.begin(); it != sd.ents.end(); ) {
                     auto& si = *it;
-                    //Expand_Attrs(si.m_attrs, stage_pre (is_early), [&](const auto& d, const auto& a){ d.handle(a, crate, si); });
+                    Expand_Attrs(si.m_attrs, stage_pre (is_early), [&](const auto& d, const auto& a){ d.handle(a, crate, si); });
                     Expand_Type(is_early, crate, modstack, mod,  si.m_type);
-                    //Expand_Attrs(si.m_attrs, stage_post(is_early), [&](const auto& d, const auto& a){ d.handle(a, crate, si); });
+                    Expand_Attrs(si.m_attrs, stage_post(is_early), [&](const auto& d, const auto& a){ d.handle(a, crate, si); });
 
                     if( ! si.m_type.is_valid() )
                         it = sd.ents.erase(it);
