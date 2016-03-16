@@ -771,7 +771,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, AST::Module& mod, const AST::MetaItems
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
                 auto ty = Parse_Type(lex);
                 // TODO: Field attributes
-                fields.push_back( ::AST::Named<TypeRef>(mv$(name), mv$(ty), true) );
+                fields.push_back( ::AST::StructItem(mv$(name), mv$(ty), true) );
             } while( GET_TOK(tok, lex) == TOK_COMMA );
             CHECK_TOK(tok, TOK_BRACE_CLOSE);
             GET_TOK(tok, lex);

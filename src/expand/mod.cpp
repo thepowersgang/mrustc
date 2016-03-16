@@ -332,12 +332,22 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_val);
         for(auto& arm : node.m_arms)
         {
-            // TODO: Attributes on match arms (is it only #[cfg] that's allowed?)
+            Expand_Attrs(arm.m_attrs, stage_pre (is_early),  [&](const auto& d, const auto& a){ d.handle(a, crate,  arm); });
+            if( arm.m_patterns.size() == 0 )
+                continue ;
             for(auto& pat : arm.m_patterns) {
                 Expand_Pattern(is_early, crate, modstack, this->cur_mod(),  pat);
             }
             this->visit_nodelete(node, arm.m_cond);
             this->visit_nodelete(node, arm.m_code);
+            Expand_Attrs(arm.m_attrs, stage_post(is_early),  [&](const auto& d, const auto& a){ d.handle(a, crate,  arm); });
+        }
+        // Prune deleted arms
+        for(auto it = node.m_arms.begin(); it != node.m_arms.end(); ) {
+            if( it->m_patterns.size() == 0 )
+                it = node.m_arms.erase(it);
+            else
+                ++ it;
         }
     }
     void visit(::AST::ExprNode_If& node) override {
@@ -479,7 +489,18 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             }
             ),
         (Enum,
-            // TODO: Enum variants
+            for(auto& var : e.e.variants()) {
+                Expand_Attrs(var.m_attrs, stage_pre (is_early),  [&](const auto& d, const auto& a){ d.handle(a, crate, var); });
+                for(auto& ty : var.m_sub_types) {
+                    Expand_Type(is_early, crate, modstack, mod,  ty);
+                }
+                for(auto& si : var.m_fields) {
+                    // TODO: Attributes on struct items
+                    Expand_Type(is_early, crate, modstack, mod,  si.data);
+                }
+                Expand_Expr(is_early, crate, modstack,  var.m_value);
+                Expand_Attrs(var.m_attrs, stage_post(is_early),  [&](const auto& d, const auto& a){ d.handle(a, crate, var); });
+            }
             ),
         (Trait,
             // TODO: Trait definition
@@ -515,8 +536,6 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
     
     for( const auto& mi: mod.macro_imports_res() )
         DEBUG("- Imports '" << mi.name << "'");
-
-    // 3. Post-recurse macros (everything else)
 }
 void Expand(::AST::Crate& crate)
 {
