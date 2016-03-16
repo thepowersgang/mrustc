@@ -858,33 +858,38 @@ void RustPrinter::handle_struct(const AST::Struct& s)
 {
     print_params(s.params());
     
-    if( s.fields().size() == 0 )
-    {
-        m_os << " /* unit-like */\n";
-        print_bounds(s.params());
-        m_os << indent() << ";\n";
-    }
-    else if( s.fields().size() == 1 && s.fields()[0].name == "" )
-    {
-        const auto& tuple = s.fields()[0].data;
-        m_os << "(" << tuple.print_pretty() <<")\n";
-        print_bounds(s.params());
-        m_os << indent() << ";\n";
-    }
-    else
-    {
+    TU_MATCH(AST::StructData, (s.m_data), (e),
+    (Tuple,
+        if( e.ents.size() == 0 )
+        {
+            m_os << " /* unit-like */\n";
+            print_bounds(s.params());
+            m_os << indent() << ";\n";
+        }
+        else
+        {
+            m_os << "(";
+            for( const auto& i : e.ents )
+                m_os << i.m_type << ", ";
+            m_os << ")\n";
+            print_bounds(s.params());
+            m_os << indent() << ";\n";
+        }
+        ),
+    (Struct,
         m_os << "\n";
         print_bounds(s.params());
         
         m_os << indent() << "{\n";
         inc_indent();
-        for( const auto& i : s.fields() )
+        for( const auto& i : e.ents )
         {
-            m_os << indent() << (i.is_pub ? "pub " : "") << i.name << ": " << i.data.print_pretty() << "\n";
+            m_os << indent() << (i.m_is_public ? "pub " : "") << i.m_name << ": " << i.m_type.print_pretty() << "\n";
         }
         dec_indent();
         m_os << indent() << "}\n";
-    }
+        )
+    )
     m_os << "\n";
 }
 
@@ -900,18 +905,27 @@ void RustPrinter::handle_enum(const AST::Enum& s)
     for( const auto& i : s.variants() )
     {
         m_os << indent() << "/*"<<idx<<"*/" << i.m_name;
-        if( i.m_sub_types.size() )
-        {
-            for( const auto& t : i.m_sub_types )
+        TU_MATCH(AST::EnumVariantData, (i.m_data), (e),
+        (Value,
+            m_os << " = " << e.m_value;
+            ),
+        (Tuple,
+            m_os << "(";
+            for( const auto& t : e.m_sub_types )
                 m_os << t.print_pretty() << ", ";
-        }
-        else if(i.m_value.is_valid())
-        {
-            m_os << " = " << i.m_value;
-        }
-        else
-        {
-        }
+            m_os << ")";
+            ),
+        (Struct,
+            m_os << "{\n";
+            inc_indent();
+            for( const auto& i : e.m_fields )
+            {
+                m_os << indent() << i.m_name << ": " << i.m_type.print_pretty() << "\n";
+            }
+            dec_indent();
+            m_os << indent() << "}";
+            )
+        )
         m_os << ",\n";
         idx ++;
     }

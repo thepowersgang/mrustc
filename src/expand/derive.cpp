@@ -58,27 +58,34 @@ public:
         
         // Generate code for Debug
         AST::ExprNodeP  node;
-        node = NEWNODE(AST::ExprNode_NamedValue, AST::Path("f"));
-        node = NEWNODE(AST::ExprNode_CallMethod,
-            mv$(node), AST::PathNode("debug_struct",{}),
-            vec$( NEWNODE(AST::ExprNode_String, name) )
-            );
-        for( const auto& fld : str.fields() )
-        {
+        TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Struct,
+            node = NEWNODE(AST::ExprNode_NamedValue, AST::Path("f"));
             node = NEWNODE(AST::ExprNode_CallMethod,
-                mv$(node), AST::PathNode("field",{}),
-                vec$(
-                    NEWNODE(AST::ExprNode_String, fld.name),
-                    NEWNODE(AST::ExprNode_UniOp, AST::ExprNode_UniOp::REF,
-                        NEWNODE(AST::ExprNode_Field,
-                            NEWNODE(AST::ExprNode_NamedValue, AST::Path("self")),
-                            fld.name
-                            )
-                        )
-                )
+                mv$(node), AST::PathNode("debug_struct",{}),
+                vec$( NEWNODE(AST::ExprNode_String, name) )
                 );
-        }
-        node = NEWNODE(AST::ExprNode_CallMethod, mv$(node), AST::PathNode("finish",{}), {});
+            for( const auto& fld : e.ents )
+            {
+                node = NEWNODE(AST::ExprNode_CallMethod,
+                    mv$(node), AST::PathNode("field",{}),
+                    vec$(
+                        NEWNODE(AST::ExprNode_String, fld.m_name),
+                        NEWNODE(AST::ExprNode_UniOp, AST::ExprNode_UniOp::REF,
+                            NEWNODE(AST::ExprNode_Field,
+                                NEWNODE(AST::ExprNode_NamedValue, AST::Path("self")),
+                                fld.m_name
+                                )
+                            )
+                    )
+                    );
+            }
+            node = NEWNODE(AST::ExprNode_CallMethod, mv$(node), AST::PathNode("finish",{}), {});
+            ),
+        (Tuple,
+            assert(!"TODO: derive() debug on tuple struct");
+            )
+        )
         
         DEBUG("node = " << *node);
         

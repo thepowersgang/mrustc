@@ -13,8 +13,7 @@ namespace AST {
     class MetaItem;
     class Path;
 
-//    class StructItem;
-    typedef Named<::TypeRef>  StructItem;
+    class StructItem;
     class EnumVariant;
     
     class Module;

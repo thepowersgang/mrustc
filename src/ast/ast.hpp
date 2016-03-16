@@ -43,7 +43,57 @@ enum eItemType
     ITEM_FN,
 };
 
-typedef Named<TypeRef>    StructItem;
+struct StructItem:
+    public Serialisable
+{
+    ::AST::MetaItems    m_attrs;
+    bool    m_is_public;
+    ::std::string   m_name;
+    TypeRef m_type;
+    
+    StructItem()
+    {
+    }
+    
+    StructItem(::AST::MetaItems attrs, bool is_pub, ::std::string name, TypeRef ty):
+        m_attrs( mv$(attrs) ),
+        m_is_public(is_pub),
+        m_name( mv$(name) ),
+        m_type( mv$(ty) )
+    {
+    }
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const StructItem& x) {
+        return os << (x.m_is_public ? "pub " : "") << x.m_name << ": " << x.m_type;
+    }
+    
+    SERIALISABLE_PROTOTYPES();
+};
+
+struct TupleItem:
+    public Serialisable
+{
+    ::AST::MetaItems    m_attrs;
+    bool    m_is_public;
+    TypeRef m_type;
+    
+    TupleItem()
+    {
+    }
+    
+    TupleItem(::AST::MetaItems attrs, bool is_pub, TypeRef ty):
+        m_attrs( mv$(attrs) ),
+        m_is_public(is_pub),
+        m_type( mv$(ty) )
+    {
+    }
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const TupleItem& x) {
+        return os << (x.m_is_public ? "pub " : "") << x.m_type;
+    }
+    
+    SERIALISABLE_PROTOTYPES();
+};
 
 class Crate;
 
@@ -198,14 +248,31 @@ public:
     SERIALISABLE_PROTOTYPES();
 };
 
+TAGGED_UNION_EX(EnumVariantData, (: public Serialisable), Value,
+    (
+    (Value, (
+        ::AST::Expr m_value;
+        )),
+    (Tuple, (
+        ::std::vector<TypeRef>  m_sub_types;
+        )),
+    (Struct, (
+        ::std::vector<StructItem>   m_fields;
+        ))
+    ),
+    (), (),
+    (
+    public:
+        SERIALISABLE_PROTOTYPES();
+    )
+    );
+
 struct EnumVariant:
     public Serialisable
 {
     MetaItems   m_attrs;
     ::std::string   m_name;
-    ::std::vector<TypeRef>  m_sub_types;
-    ::std::vector<StructItem>  m_fields;
-    AST::Expr m_value;
+    EnumVariantData m_data;
     
     EnumVariant()
     {
@@ -214,26 +281,39 @@ struct EnumVariant:
     EnumVariant(MetaItems attrs, ::std::string name, Expr&& value):
         m_attrs( mv$(attrs) ),
         m_name( mv$(name) ),
-        m_value( mv$(value) )
+        m_data( EnumVariantData::make_Value({mv$(value)}) )
     {
     }
     
     EnumVariant(MetaItems attrs, ::std::string name, ::std::vector<TypeRef> sub_types):
         m_attrs( mv$(attrs) ),
         m_name( ::std::move(name) ),
-        m_sub_types( ::std::move(sub_types) )
+        m_data( EnumVariantData::make_Tuple( {mv$(sub_types)} ) )
     {
     }
     
     EnumVariant(MetaItems attrs, ::std::string name, ::std::vector<StructItem> fields):
         m_attrs( mv$(attrs) ),
         m_name( ::std::move(name) ),
-        m_fields( ::std::move(fields) )
+        m_data( EnumVariantData::make_Struct( {mv$(fields)} ) )
     {
     }
     
-    friend ::std::ostream& operator<<(::std::ostream& os, const EnumVariant& x) {
-        return os << "EnumVariant(" << x.m_name << "(" << x.m_sub_types << ") = " << x.m_value << ")";
+    friend ::std::ostream& operator<<(::std::ostream& os, const EnumVariant& x)
+    {
+        os << "EnumVariant(" << x.m_name;
+        TU_MATCH(EnumVariantData, (x.m_data), (e),
+        (Value,
+            os << " = " << e.m_value;
+            ),
+        (Tuple,
+            os << "(" << e.m_sub_types << ")";
+            ),
+        (Struct,
+            os << " { " << e.m_fields << " }";
+            )
+        )
+        return os << ")";
     }
     
     SERIALISABLE_PROTOTYPES();
@@ -260,23 +340,38 @@ public:
     SERIALISABLE_PROTOTYPES();
 };
 
+TAGGED_UNION_EX(StructData, (: public Serialisable), Struct,
+    (
+    (Tuple, (
+        ::std::vector<TupleItem>    ents;
+        )),
+    (Struct, (
+        ::std::vector<StructItem>   ents;
+        ))
+    ),
+    (),(),
+    (
+    public:
+        SERIALISABLE_PROTOTYPES();
+        )
+    );
+
 class Struct:
     public Serialisable
 {
     GenericParams    m_params;
-    ::std::vector<StructItem>   m_fields;
 public:
+    StructData  m_data;
+    
     Struct() {}
     Struct( GenericParams params, ::std::vector<StructItem> fields ):
         m_params( move(params) ),
-        m_fields( move(fields) )
+        m_data( StructData::make_Struct({mv$(fields)}) )
     {}
     
     const GenericParams&   params() const { return m_params; }
-    const ::std::vector<StructItem>& fields() const { return m_fields; }
     
     GenericParams& params() { return m_params; }
-    ::std::vector<StructItem>& fields() { return m_fields; }
     
     TypeRef get_field_type(const char *name, const ::std::vector<TypeRef>& args);
     

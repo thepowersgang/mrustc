@@ -483,22 +483,61 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             ),
         
         (Struct,
-            for(auto& fld : e.e.fields()) {
-                // TODO: Attributes on struct items
-                Expand_Type(is_early, crate, modstack, mod,  fld.data);
-            }
+            TU_MATCH(AST::StructData, (e.e.m_data), (sd),
+            (Struct,
+                for(auto it = sd.ents.begin(); it != sd.ents.end(); ) {
+                    auto& si = *it;
+                    Expand_Attrs(si.m_attrs, stage_pre (is_early), [&](const auto& d, const auto& a){ d.handle(a, crate, si); });
+                    Expand_Type(is_early, crate, modstack, mod,  si.m_type);
+                    Expand_Attrs(si.m_attrs, stage_post(is_early), [&](const auto& d, const auto& a){ d.handle(a, crate, si); });
+
+                    if( si.m_name == "" )
+                        it = sd.ents.erase(it);
+                    else
+                        ++it;
+                }
+                ),
+            (Tuple,
+                for(auto it = sd.ents.begin(); it != sd.ents.end(); ) {
+                    auto& si = *it;
+                    //Expand_Attrs(si.m_attrs, stage_pre (is_early), [&](const auto& d, const auto& a){ d.handle(a, crate, si); });
+                    Expand_Type(is_early, crate, modstack, mod,  si.m_type);
+                    //Expand_Attrs(si.m_attrs, stage_post(is_early), [&](const auto& d, const auto& a){ d.handle(a, crate, si); });
+
+                    if( ! si.m_type.is_valid() )
+                        it = sd.ents.erase(it);
+                    else
+                        ++it;
+                }
+                )
+            )
             ),
         (Enum,
             for(auto& var : e.e.variants()) {
                 Expand_Attrs(var.m_attrs, stage_pre (is_early),  [&](const auto& d, const auto& a){ d.handle(a, crate, var); });
-                for(auto& ty : var.m_sub_types) {
-                    Expand_Type(is_early, crate, modstack, mod,  ty);
-                }
-                for(auto& si : var.m_fields) {
-                    // TODO: Attributes on struct items
-                    Expand_Type(is_early, crate, modstack, mod,  si.data);
-                }
-                Expand_Expr(is_early, crate, modstack,  var.m_value);
+                TU_MATCH(::AST::EnumVariantData, (var.m_data), (e),
+                (Value,
+                    Expand_Expr(is_early, crate, modstack,  e.m_value);
+                    ),
+                (Tuple,
+                    for(auto& ty : e.m_sub_types) {
+                        Expand_Type(is_early, crate, modstack, mod,  ty);
+                    }
+                    ),
+                (Struct,
+                    for(auto it = e.m_fields.begin(); it != e.m_fields.end(); ) {
+                        auto& si = *it;
+                        Expand_Attrs(si.m_attrs, stage_pre (is_early), [&](const auto& d, const auto& a){ d.handle(a, crate, si); });
+                        Expand_Type(is_early, crate, modstack, mod,  si.m_type);
+                        Expand_Attrs(si.m_attrs, stage_post(is_early), [&](const auto& d, const auto& a){ d.handle(a, crate, si); });
+
+                        if( si.m_name == "" )
+                            it = e.m_fields.erase(it);
+                        else
+                            ++it;
+                    }
+                    )
+                )
                 Expand_Attrs(var.m_attrs, stage_post(is_early),  [&](const auto& d, const auto& a){ d.handle(a, crate, var); });
             }
             ),

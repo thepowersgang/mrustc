@@ -441,15 +441,30 @@ bool TypeRef::impls_wildcard(const AST::Crate& crate, const AST::Path& trait) co
         (Struct,
             const auto &s = *info.struct_;
             GenericResolveClosure   resolve_fn( s.params(), ent.path.nodes().back().args() );
-            for(const auto& fld : s.fields())
-            {
-                TypeRef fld_ty = fld.data;
-                fld_ty.resolve_args( resolve_fn );
-                DEBUG("- Fld '" << fld.name << "' := " << fld.data << " => " << fld_ty);
-                // TODO: Defer failure until after all fields are processed
-                if( !crate.find_impl(trait, fld_ty, nullptr, nullptr) )
-                    return false;
-            }
+            TU_MATCH(::AST::StructData, (s.m_data), (e),
+            (Struct,
+                for(const auto& fld : e.ents)
+                {
+                    auto fld_ty = fld.m_type;
+                    fld_ty.resolve_args( resolve_fn );
+                    DEBUG("- Fld '" << fld.m_name << "' := " << fld.m_type << " => " << fld_ty);
+                    // TODO: Defer failure until after all fields are processed
+                    if( !crate.find_impl(trait, fld_ty, nullptr, nullptr) )
+                        return false;
+                }
+                ),
+            (Tuple,
+                for(const auto& fld : e.ents)
+                {
+                    auto fld_ty = fld.m_type;
+                    fld_ty.resolve_args( resolve_fn );
+                    DEBUG("- Fld ? := " << fld.m_type << " => " << fld_ty);
+                    // TODO: Defer failure until after all fields are processed
+                    if( !crate.find_impl(trait, fld_ty, nullptr, nullptr) )
+                        return false;
+                }
+                )
+            )
             return true;
             ),
         (Enum,
@@ -457,15 +472,32 @@ bool TypeRef::impls_wildcard(const AST::Crate& crate, const AST::Path& trait) co
             GenericResolveClosure   resolve_fn( i.params(), ent.path.nodes().back().args() );
             for( const auto& var : i.variants() )
             {
-                for( const auto& ty : var.m_sub_types )
-                {
-                    TypeRef real_ty = ty;
-                    real_ty.resolve_args( resolve_fn );
-                    DEBUG("- Var '" << var.m_name << "' := " << ty << " => " << real_ty);
-                    // TODO: Defer failure until after all fields are processed
-                    if( !crate.find_impl(trait, real_ty, nullptr, nullptr) )
-                        return false;
-                }
+                TU_MATCH(AST::EnumVariantData, (var.m_data), (e),
+                (Value,
+                    ),
+                (Tuple,
+                    for( const auto& ty : e.m_sub_types )
+                    {
+                        TypeRef real_ty = ty;
+                        real_ty.resolve_args( resolve_fn );
+                        DEBUG("- Var '" << var.m_name << "' := " << ty << " => " << real_ty);
+                        // TODO: Defer failure until after all fields are processed
+                        if( !crate.find_impl(trait, real_ty, nullptr, nullptr) )
+                            return false;
+                    }
+                    ),
+                (Struct,
+                    for( const auto& fld : e.m_fields )
+                    {
+                        auto fld_ty = fld.m_type;
+                        fld_ty.resolve_args( resolve_fn );
+                        DEBUG("- Fld '" << fld.m_name << "' := " << fld.m_type << " => " << fld_ty);
+                        // TODO: Defer failure until after all fields are processed
+                        if( !crate.find_impl(trait, fld_ty, nullptr, nullptr) )
+                            return false;
+                    }
+                    )
+                )
             }
             return true;
             )

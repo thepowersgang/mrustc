@@ -497,9 +497,13 @@ SERIALISE_TYPE(Trait::, "AST_Trait", {
 })
 
 SERIALISE_TYPE_A(EnumVariant::, "AST_EnumVariant", {
+    s.item(m_attrs);
     s.item(m_name);
-    s.item(m_sub_types);
-    s.item(m_value);
+    s.item(m_data);
+})
+SERIALISE_TYPE(EnumVariantData::, "AST_EnumVariantData", {
+    // TODO: Serialise AST::EnumVariantData
+},{
 })
 
 SERIALISE_TYPE(Enum::, "AST_Enum", {
@@ -517,20 +521,20 @@ TypeRef Struct::get_field_type(const char *name, const ::std::vector<TypeRef>& a
         throw ::std::runtime_error("Incorrect parameter count for struct");
     }
     // TODO: Should the bounds be checked here? Or is the count sufficient?
-    for(const auto& f : m_fields)
+    for(const auto& f : m_data.as_Struct().ents)
     {
-        if( f.name == name )
+        if( f.m_name == name )
         {
             // Found it!
             if( args.size() )
             {
-                TypeRef res = f.data;
+                TypeRef res = f.m_type;
                 res.resolve_args( GenericResolveClosure(m_params, args) );
                 return res;
             }
             else
             {
-                return f.data;
+                return f.m_type;
             }
         }
     }
@@ -540,10 +544,22 @@ TypeRef Struct::get_field_type(const char *name, const ::std::vector<TypeRef>& a
 
 SERIALISE_TYPE(Struct::, "AST_Struct", {
     s << m_params;
-    s << m_fields;
+    s << m_data;
 },{
     s.item(m_params);
-    s.item(m_fields);
+    s.item(m_data);
+})
+SERIALISE_TYPE(StructData::, "AST_StructData", {
+    // TODO: AST::StructData serialise
+},{
+})
+SERIALISE_TYPE(StructItem::, "AST_StructItem", {
+    // TODO: AST::StructItem serialise
+},{
+})
+SERIALISE_TYPE(TupleItem::, "AST_TupleItem", {
+    // TODO: AST::TupleItem serialise
+},{
 })
 
 ::std::ostream& operator<<(::std::ostream& os, const TypeParam& tp)

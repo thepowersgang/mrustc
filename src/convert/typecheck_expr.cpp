@@ -135,6 +135,7 @@ void CTypeChecker::handle_pattern_enum(
         ::std::vector<AST::Pattern>& sub_patterns
         )
 {
+    #if 0
     check_enum_variant(pat_args, hint_args, enum_params, var);
     
     // Ensure that sub_patterns is the same length as the variant
@@ -153,6 +154,9 @@ void CTypeChecker::handle_pattern_enum(
             });
         handle_pattern(sub_patterns[i], var_types[i]);
     }
+    #else
+    throw ::std::runtime_error("TODO: CTypeChecker::handle_pattern_enum ");
+    #endif
 }
 
 TypeRef& CTypeChecker::get_local_var(const char* name)
@@ -240,6 +244,7 @@ void CTypeChecker::iterate_traits(::std::function<bool(const TypeRef& trait)> fc
 
 void CTypeChecker::check_enum_variant(::std::vector<TypeRef>& path_args, const ::std::vector<TypeRef>& argtypes, const AST::GenericParams& params, const AST::EnumVariant& var)
 {
+    #if 0
     // We know the enum, but it might have type params, need to handle that case
     // TODO: Check for more parameters than required
     if( params.ty_params().size() > 0 )
@@ -274,6 +279,9 @@ void CTypeChecker::check_enum_variant(::std::vector<TypeRef>& path_args, const :
         }
         DEBUG("new path_args = [" << path_args << "]");
     }
+    #else
+    throw ::std::runtime_error("TODO: CTypeChecker::check_enum_variant");
+    #endif
 }
 
 /// Named value - leaf
@@ -296,8 +304,8 @@ void CTC_NodeVisitor::visit(AST::ExprNode_NamedValue& node)
             auto idx = info.idx;
             // Enum variant:
             // - Check that this variant takes no arguments
-            if( enm.variants()[idx].m_sub_types.size() > 0 )
-                throw ::std::runtime_error( FMT("Used a non-unit variant as a raw value - " << enm.variants()[idx].m_sub_types));
+            if( ! enm.variants()[idx].m_data.is_Value() )
+                throw ::std::runtime_error( "Used a non-unit variant as a raw value" );
             // - Set output type to the enum (wildcard params, not default)
             AST::Path tp = p;
             tp.nodes().pop_back();

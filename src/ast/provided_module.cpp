@@ -11,10 +11,9 @@ AST::Path   g_sized_marker_path;
 void AST_InitProvidedModule()
 {
     // "struct str([u8])"
-    g_compiler_module.add_struct(true, "str",
-        AST::Struct( AST::GenericParams(), ::std::vector<AST::StructItem> {
-            AST::StructItem("", TypeRef(TypeRef::TagUnsizedArray(), Span(), TypeRef(Span(), CORETYPE_U8)), false),
-        }), AST::MetaItems());
+    ::std::vector<AST::StructItem>  fields;
+    fields.push_back( AST::StructItem(AST::MetaItems(), false, "", TypeRef(TypeRef::TagUnsizedArray(), Span(), TypeRef(Span(), CORETYPE_U8))) );
+    g_compiler_module.add_struct(true, "str", AST::Struct(AST::GenericParams(), mv$(fields)), AST::MetaItems());
     
     // TODO: Defer this until AFTER 
     AST_InitProvidedModule_Impls();

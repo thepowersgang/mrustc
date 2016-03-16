@@ -463,8 +463,16 @@ void CASTIterator::handle_struct(AST::Path path, AST::Struct& str)
 {
     start_scope();
     handle_params( str.params() );
-    for( auto& f : str.fields() )
-        handle_type( f.data );
+    TU_MATCH(AST::StructData, (str.m_data), (e),
+    (Tuple,
+        for( auto& f : e.ents )
+            handle_type( f.m_type );
+        ),
+    (Struct,
+        for( auto& f : e.ents )
+            handle_type( f.m_type );
+        )
+    )
     end_scope();
 }
 void CASTIterator::handle_enum(AST::Path path, AST::Enum& enm)
@@ -473,8 +481,18 @@ void CASTIterator::handle_enum(AST::Path path, AST::Enum& enm)
     handle_params( enm.params() );
     for( auto& f : enm.variants() )
     {
-        for( auto& t : f.m_sub_types )
-            handle_type(t);
+        TU_MATCH(AST::EnumVariantData, (f.m_data), (e),
+        (Value,
+            ),
+        (Tuple,
+            for( auto& t : e.m_sub_types )
+                handle_type(t);
+            ),
+        (Struct,
+            for( auto& t : e.m_fields )
+                handle_type(t.m_type);
+            )
+        )
     }
     end_scope();
 }

@@ -441,6 +441,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
     if(tok.type() == TOK_PAREN_OPEN)
     {
         // Tuple structs
+        // TODO: Using `StructItem` here isn't the best option. Should have another type
         ::std::vector<AST::StructItem>  refs;
         while(GET_TOK(tok, lex) != TOK_PAREN_CLOSE)
         {
@@ -459,8 +460,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
             else
                 lex.putback(tok);
             
-            // TODO: Save item_attrs
-            refs.push_back( AST::StructItem( "", Parse_Type(lex), is_pub ) );
+            refs.push_back( AST::StructItem( mv$(item_attrs), is_pub, "", Parse_Type(lex) ) );
             if( GET_TOK(tok, lex) != TOK_COMMA )
                 break;
         }
@@ -471,7 +471,6 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
             GET_TOK(tok, lex);
             Parse_WhereClause(lex, params);
         }
-        // TODO: Where block
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
         //if( refs.size() == 0 )
         //    WARNING( , W000, "Use 'struct Name;' instead of 'struct Name();' ... ning-nong");
@@ -507,8 +506,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             TypeRef type = Parse_Type(lex);
             
-            // TODO: Save item_attrs
-            items.push_back( AST::StructItem( ::std::move(name), ::std::move(type), is_pub ) );
+            items.push_back( AST::StructItem( mv$(item_attrs), is_pub, mv$(name), mv$(type) ) );
             if(GET_TOK(tok, lex) == TOK_BRACE_CLOSE)
                 break;
             CHECK_TOK(tok, TOK_COMMA);
@@ -771,7 +769,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, AST::Module& mod, const AST::MetaItems
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
                 auto ty = Parse_Type(lex);
                 // TODO: Field attributes
-                fields.push_back( ::AST::StructItem(mv$(name), mv$(ty), true) );
+                fields.push_back( ::AST::StructItem(mv$(field_attrs), true, mv$(name), mv$(ty)) );
             } while( GET_TOK(tok, lex) == TOK_COMMA );
             CHECK_TOK(tok, TOK_BRACE_CLOSE);
             GET_TOK(tok, lex);
