@@ -74,6 +74,21 @@ void handle_lang_item(AST::Crate& crate, const AST::Path& path, const ::std::str
     
     else if( name == "debug_trait" ) { /* TODO: Poke derive() with this */ }
     
+    // Structs
+    else if( name == "non_zero" ) { }
+    else if( name == "phantom_data" ) { }
+    else if( name == "range_full" ) { }
+    else if( name == "range" ) { }
+    else if( name == "range_from" ) { }
+    else if( name == "range_to" ) { }
+    else if( name == "unsafe_cell" ) { }
+    
+    // Functions
+    else if( name == "panic" ) { }
+    else if( name == "panic_bounds_check" ) { }
+    else if( name == "panic_fmt" ) { }
+    else if( name == "str_eq" ) { }
+    
     else {
         throw CompileError::Generic(FMT("Unknown lang item '" << name << "'"));
     }
@@ -90,7 +105,13 @@ public:
     {
         TU_MATCH_DEF(::AST::Item, (i), (e),
         (
-            // TODO: Error
+            TODO(Span(), "Unknown item type with #[lang] attached at " << path);
+            ),
+        (Function,
+            handle_lang_item(crate, path, attr.string(), AST::ITEM_FN);
+            ),
+        (Struct,
+            handle_lang_item(crate, path, attr.string(), AST::ITEM_STRUCT);
             ),
         (Trait,
             handle_lang_item(crate, path, attr.string(), AST::ITEM_TRAIT);

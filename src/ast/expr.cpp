@@ -510,7 +510,7 @@ NV(ExprNode_Block, {
 })
 NV(ExprNode_Macro,
 {
-    DEBUG("TODO: Macro");
+    BUG(node.get_pos(), "Hit unexpanded macro in expression");
 })
 NV(ExprNode_Flow,
 {
@@ -518,7 +518,7 @@ NV(ExprNode_Flow,
 })
 NV(ExprNode_LetBinding,
 {
-    // TODO: Handle recurse into Let pattern
+    // TODO: Handle recurse into Let pattern?
     visit(node.m_value);
 })
 NV(ExprNode_Assign,

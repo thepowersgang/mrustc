@@ -448,7 +448,6 @@ bool TypeRef::impls_wildcard(const AST::Crate& crate, const AST::Path& trait) co
                     auto fld_ty = fld.m_type;
                     fld_ty.resolve_args( resolve_fn );
                     DEBUG("- Fld '" << fld.m_name << "' := " << fld.m_type << " => " << fld_ty);
-                    // TODO: Defer failure until after all fields are processed
                     if( !crate.find_impl(trait, fld_ty, nullptr, nullptr) )
                         return false;
                 }
@@ -459,7 +458,6 @@ bool TypeRef::impls_wildcard(const AST::Crate& crate, const AST::Path& trait) co
                     auto fld_ty = fld.m_type;
                     fld_ty.resolve_args( resolve_fn );
                     DEBUG("- Fld ? := " << fld.m_type << " => " << fld_ty);
-                    // TODO: Defer failure until after all fields are processed
                     if( !crate.find_impl(trait, fld_ty, nullptr, nullptr) )
                         return false;
                 }
@@ -481,7 +479,6 @@ bool TypeRef::impls_wildcard(const AST::Crate& crate, const AST::Path& trait) co
                         TypeRef real_ty = ty;
                         real_ty.resolve_args( resolve_fn );
                         DEBUG("- Var '" << var.m_name << "' := " << ty << " => " << real_ty);
-                        // TODO: Defer failure until after all fields are processed
                         if( !crate.find_impl(trait, real_ty, nullptr, nullptr) )
                             return false;
                     }
@@ -492,7 +489,6 @@ bool TypeRef::impls_wildcard(const AST::Crate& crate, const AST::Path& trait) co
                         auto fld_ty = fld.m_type;
                         fld_ty.resolve_args( resolve_fn );
                         DEBUG("- Fld '" << fld.m_name << "' := " << fld.m_type << " => " << fld_ty);
-                        // TODO: Defer failure until after all fields are processed
                         if( !crate.find_impl(trait, fld_ty, nullptr, nullptr) )
                             return false;
                     }
