@@ -514,8 +514,22 @@ void CASTIterator::handle_trait(AST::Path path, AST::Trait& trait)
         }
     }
     
-    for( auto& fcn : trait.functions() )
-        handle_function( path + fcn.name, fcn.data );
+    for( auto& i : trait.items() )
+    {
+        TU_MATCH_DEF(AST::Item, (i.data), (e),
+        (
+            ),
+        (Type,
+            // TODO: Can trait associated types have default types?
+            ),
+        (Static,
+            handle_type(e.e.type());
+            ),
+        (Function,
+            handle_function( path + i.name, e.e );
+            )
+        )
+    }
     pop_self();
     end_scope();
 }

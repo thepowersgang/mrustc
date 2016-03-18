@@ -1377,28 +1377,33 @@ bool CPathResolver::find_trait_item(const Span& span, const AST::Path& path, AST
 {
     TRACE_FUNCTION_F("path=" << path << ", trait=..., item_name=" << item_name);
     {
-        const auto& fcns = trait.functions();
-        //DEBUG("fcns = " << fcns);
-        auto it = ::std::find_if( fcns.begin(), fcns.end(), [&](const AST::Named<AST::Function>& a) { DEBUG("fcn " << a.name); return a.name == item_name; } );
-        if( it != fcns.end() ) {
+        const auto& items = trait.items();
+        auto it = ::std::find_if( items.begin(), items.end(), [&](const auto& a) { DEBUG("fcn " << a.name); return a.name == item_name; } );
+        if( it != items.end() ) {
             // Found it.
-            out_is_method = true;
-            out_ptr = &it->data;
-            out_trait_path = AST::Path(path);
-            DEBUG("Fcn, out_trait_path = " << out_trait_path);
-            return true;
-        }
-    }
-    {
-        const auto& types = trait.types();
-        auto it = ::std::find_if( types.begin(), types.end(), [&](const AST::Named<AST::TypeAlias>& a) { DEBUG("type " << a.name); return a.name == item_name; } );
-        if( it != types.end() ) {
-            // Found it.
-            out_is_method = false;
-            out_ptr = &it->data;
-            out_trait_path = AST::Path(path);
-            DEBUG("Ty, out_trait_path = " << out_trait_path << "  path=" << path);
-            return true;
+            const auto& i = *it;
+            TU_MATCH_DEF(AST::Item, (i.data), (e),
+            (
+                BUG(Span(), "Unknown item type in trait");
+                ),
+            (Function,
+                out_is_method = true;
+                out_ptr = &e.e;
+                out_trait_path = AST::Path(path);
+                DEBUG("Fcn, out_trait_path = " << out_trait_path);
+                return true;
+                ),
+            (Type,
+                out_is_method = false;
+                out_ptr = &it->data;
+                out_trait_path = AST::Path(path);
+                DEBUG("Ty, out_trait_path = " << out_trait_path << "  path=" << path);
+                return true;
+                ),
+            (Static,
+                TODO(Span(), "Handle resolving associated statics/consts in traits (CPathResolver::find_trait_item)");
+                )
+            )
         }
     }
     

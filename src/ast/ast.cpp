@@ -501,13 +501,31 @@ SERIALISE_TYPE(Function::, "AST_Function", {
 
 SERIALISE_TYPE(Trait::, "AST_Trait", {
     s << m_params;
-    s << m_types;
-    s << m_functions;
+    s << m_items;
 },{
     s.item(m_params);
-    s.item(m_types);
-    s.item(m_functions);
+    s.item(m_items);
 })
+void Trait::add_type(::std::string name, TypeRef type) {
+    m_items.push_back( Named<Item>(mv$(name), Item::make_Type({TypeAlias(GenericParams(), mv$(type))}), true) );
+}
+void Trait::add_function(::std::string name, Function fcn) {
+    m_items.push_back( Named<Item>(mv$(name), Item::make_Function({mv$(fcn)}), true) );
+}
+void Trait::add_static(::std::string name, Static v) {
+    m_items.push_back( Named<Item>(mv$(name), Item::make_Static({mv$(v)}), true) );
+}
+bool Trait::has_named_item(const ::std::string& name, bool& out_is_fcn) const
+{
+    for( const auto& i : m_items )
+    {
+        if( i.name == name ) {
+            out_is_fcn = i.data.is_Function();
+            return true;
+        }
+    }
+    return false;
+}
 
 SERIALISE_TYPE_A(EnumVariant::, "AST_EnumVariant", {
     s.item(m_attrs);

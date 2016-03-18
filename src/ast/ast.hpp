@@ -198,9 +198,8 @@ class Trait:
 {
     GenericParams  m_params;
     ::std::vector<AST::Path>    m_supertraits;
-    NamedList<TypeAlias> m_types;
-    NamedList<Function>  m_functions;
-    NamedList<Static>    m_statics;
+    
+    NamedList<Item> m_items;
 public:
     Trait() {}
     Trait(GenericParams params, ::std::vector<Path> supertraits):
@@ -210,41 +209,18 @@ public:
     }
     
     const GenericParams& params() const { return m_params; }
+          GenericParams& params()       { return m_params; }
     const ::std::vector<Path>& supertraits() const { return m_supertraits; }
-    const NamedList<Function>& functions() const { return m_functions; }
-    const NamedList<TypeAlias>& types() const { return m_types; }
-    const NamedList<Static>& statics() const { return m_statics; }
-
-    GenericParams& params() { return m_params; }
-    ::std::vector<Path>& supertraits() { return m_supertraits; }
-    NamedList<Function>& functions() { return m_functions; }
-    NamedList<TypeAlias>& types() { return m_types; }
+          ::std::vector<Path>& supertraits()       { return m_supertraits; }
     
-    void add_type(::std::string name, TypeRef type) {
-        m_types.push_back( Named<TypeAlias>(move(name), TypeAlias(GenericParams(), move(type)), true) );
-    }
-    void add_function(::std::string name, Function fcn) {
-        m_functions.push_back( Named<Function>(::std::move(name), ::std::move(fcn), true) );
-    }
-    void add_static(::std::string name, Static v) {
-        m_statics.push_back( Named<Static>(mv$(name), mv$(v), true) );
-    }
+    const NamedList<Item>& items() const { return m_items; }
+          NamedList<Item>& items()       { return m_items; }
     
-    bool has_named_item(const ::std::string& name, bool& out_is_fcn) const {
-        for( const auto& f : m_functions )
-            if( f.name == name ) {
-                out_is_fcn = true;
-                return true;
-            }
-        for( const auto& f : m_types )
-            if( f.name == name ) {
-                out_is_fcn = false;
-                return true;
-            }
-        
-        //for( const auto& st : 
-        return false;
-    }
+    void add_type(::std::string name, TypeRef type);
+    void add_function(::std::string name, Function fcn);
+    void add_static(::std::string name, Static v);
+    
+    bool has_named_item(const ::std::string& name, bool& out_is_fcn) const;
     
     SERIALISABLE_PROTOTYPES();
 };

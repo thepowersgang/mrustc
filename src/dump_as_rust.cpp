@@ -949,13 +949,18 @@ void RustPrinter::handle_trait(const AST::Trait& s)
     m_os << indent() << "{\n";
     inc_indent();
     
-    for( const auto& i : s.types() )
+    for( const auto& i : s.items() )
     {
-        m_os << indent() << "type " << i.name << ";\n";
-    }
-    for( const auto& i : s.functions() )
-    {
-        handle_function(false, i.name, i.data);
+        TU_MATCH_DEF(AST::Item, (i.data), (e),
+        (
+            ),
+        (Type,
+            m_os << indent() << "type " << i.name << ";\n";
+            ),
+        (Function,
+            handle_function(false, i.name, e.e);
+            )
+        )
     }
     
     dec_indent();
