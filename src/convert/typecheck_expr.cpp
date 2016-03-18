@@ -502,11 +502,11 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallMethod& node)
             {
                 AST::Impl& impl = oimpl.unwrap();
                 // 1.1. Search impl for this method
-                for(auto& fcn : impl.functions())
+                for(auto& i : impl.items())
                 {
-                    if( fcn.name == name )
+                    if( i.name == name && i.data.is_Function() )
                     {
-                        fcnp = &fcn.data;
+                        fcnp = &i.data.as_Function().e;
                         break;
                     }
                 }
@@ -520,11 +520,11 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallMethod& node)
                 if( oimpl.is_some() )
                 {
                     AST::Impl& impl = oimpl.unwrap();
-                    for(auto& fcn : impl.functions())
+                    for(auto& i : impl.items())
                     {
-                        if( fcn.name == name )
+                        if( i.name == name && i.data.is_Function() )
                         {
-                            fcnp = &fcn.data;
+                            fcnp = &i.data.as_Function().e;
                             break;
                         }
                     }

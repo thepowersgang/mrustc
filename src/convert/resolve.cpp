@@ -1181,12 +1181,19 @@ void CPathResolver::handle_path_ufcs(const Span& span, AST::Path& path, CASTIter
                 DEBUG("Searching for inherent impls on " << *info.type);
                 bool found = m_crate.find_inherent_impls( *info.type, [&](const AST::Impl& impl, ::std::vector<TypeRef> _) -> bool {
                     DEBUG("Searching impl " << impl);
-                    for( const auto& fcn : impl.functions() )
+                    for( const auto& i : impl.items() )
                     {
-                        if( fcn.name == name ) {
-                            path.bind_function(fcn.data, path.nodes()[0].args());
-                            info.trait = make_unique_ptr( TypeRef(TypeRef::TagInvalid(), span) );
-                            return true;
+                        if( i.name == name ) {
+                            TU_MATCH_DEF(AST::Item, (i.data), (e),
+                            (
+                                // Ignore?
+                                ),
+                            (Function,
+                                path.bind_function(e.e, path.nodes()[0].args());
+                                info.trait = make_unique_ptr( TypeRef(TypeRef::TagInvalid(), span) );
+                                return true;
+                                )
+                            )
                         }
                     }
                     return false;

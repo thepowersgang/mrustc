@@ -15,7 +15,6 @@ void AST_InitProvidedModule()
     fields.push_back( AST::StructItem(AST::MetaItems(), false, "", TypeRef(TypeRef::TagUnsizedArray(), Span(), TypeRef(Span(), CORETYPE_U8))) );
     g_compiler_module.add_struct(true, "str", AST::Struct(AST::GenericParams(), mv$(fields)), AST::MetaItems());
     
-    // TODO: Defer this until AFTER 
     AST_InitProvidedModule_Impls();
 }
 

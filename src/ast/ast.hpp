@@ -33,6 +33,9 @@ namespace AST {
 
 class Crate;
 
+class Module;
+class Item;
+
 using ::std::unique_ptr;
 using ::std::move;
 
@@ -94,8 +97,6 @@ struct TupleItem:
     
     SERIALISABLE_PROTOTYPES();
 };
-
-class Crate;
 
 class TypeAlias:
     public Serialisable
@@ -417,10 +418,10 @@ class Impl:
 {
     ImplDef m_def;
     
-    //NamedList<Item>   m_items;
-    NamedList<TypeRef>   m_types;
-    NamedList<Function>  m_functions;
-    NamedList<Static>    m_statics;
+    NamedList<Item>   m_items;
+    //NamedList<TypeRef>   m_types;
+    //NamedList<Function>  m_functions;
+    //NamedList<Static>    m_statics;
     ::std::vector<MacroInvocation>    m_macro_invocations;
     
     ::std::vector< ::std::pair< ::std::vector<TypeRef>, Impl > > m_concrete_impls;
@@ -431,26 +432,18 @@ public:
         m_def( move(attrs), move(params), move(trait_type), move(impl_type) )
     {}
 
-    void add_function(bool is_public, ::std::string name, Function fcn) {
-        m_functions.push_back( Named<Function>( ::std::move(name), ::std::move(fcn), is_public ) );
-    }
-    void add_type(bool is_public, ::std::string name, TypeRef type) {
-        m_types.push_back( Named<TypeRef>( ::std::move(name), ::std::move(type), is_public ) );
-    }
-    void add_static(bool is_public, ::std::string name, Static v) {
-        m_statics.push_back( Named<Static>( mv$(name), mv$(v), is_public ) );
-    }
+    void add_function(bool is_public, ::std::string name, Function fcn);
+    void add_type(bool is_public, ::std::string name, TypeRef type);
+    void add_static(bool is_public, ::std::string name, Static v);
     void add_macro_invocation( MacroInvocation inv ) {
         m_macro_invocations.push_back( mv$(inv) );
     }
     
     const ImplDef& def() const { return m_def; }
-    const NamedList<Function>& functions() const { return m_functions; }
-    const NamedList<TypeRef>& types() const { return m_types; }
+    const NamedList<Item>& items() const { return m_items; }
 
     ImplDef& def() { return m_def; }
-    NamedList<Function>& functions() { return m_functions; }
-    NamedList<TypeRef>& types() { return m_types; }
+    NamedList<Item>& items() { return m_items; }
     
     bool has_named_item(const ::std::string& name) const;
 
@@ -465,9 +458,6 @@ private:
     Impl make_concrete(const ::std::vector<TypeRef>& types) const;
 };
 
-
-class Module;
-class Item;
 
 typedef void fcn_visitor_t(const AST::Crate& crate, const AST::Module& mod, Function& fcn);
 

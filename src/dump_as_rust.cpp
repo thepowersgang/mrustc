@@ -666,13 +666,19 @@ void RustPrinter::handle_module(const AST::Module& mod)
         print_bounds(i.def().params());
         m_os << indent() << "{\n";
         inc_indent();
-        for( const auto& t : i.types() )
+        for( const auto& it : i.items() )
         {
-            m_os << indent() << "type " << t.name << " = " << t.data << ";\n";
-        }
-        for( const auto& t : i.functions() )
-        {
-            handle_function(t.is_pub, t.name, t.data);
+            TU_MATCH_DEF(AST::Item, (it.data), (e),
+            (
+                throw ::std::runtime_error("Unexpected item type in impl block");
+                ),
+            (Type,
+                m_os << indent() << "type " << it.name << " = " << e.e.type() << ";\n";
+                ),
+            (Function,
+                handle_function(it.is_pub, it.name, e.e);
+                )
+            )
         }
         dec_indent();
         m_os << indent() << "}\n";

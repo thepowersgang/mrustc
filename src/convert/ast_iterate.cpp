@@ -442,17 +442,20 @@ void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
     handle_impl_def(impl.def());
     
     // Associated types
-    for( auto& at : impl.types() )
+    for( auto& it : impl.items() )
     {
-        DEBUG("- Type '" << at.name << "'");
-        handle_type( at.data );
-    }
-    
-    // Functions
-    for( auto& fcn : impl.functions() )
-    {
-        DEBUG("- Function '" << fcn.name << "'");
-        handle_function(AST::Path(AST::Path::TagRelative(), { AST::PathNode(fcn.name) }), fcn.data);
+        TU_MATCH_DEF(AST::Item, (it.data), (e),
+        (
+            ),
+        (Type,
+            DEBUG("- Type '" << it.name << "'");
+            handle_type( e.e.type() );
+            ),
+        (Function,
+            DEBUG("- Function '" << it.name << "'");
+            handle_function(AST::Path(AST::Path::TagRelative(), { AST::PathNode(it.name) }), e.e);
+            )
+        )
     }
     
     pop_self();

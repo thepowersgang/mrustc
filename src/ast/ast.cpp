@@ -140,9 +140,22 @@ SERIALISE_TYPE(ImplDef::, "AST_ImplDef", {
     s.item(m_type);
 })
 
+void Impl::add_function(bool is_public, ::std::string name, Function fcn)
+{
+    m_items.push_back( Named<Item>( mv$(name), Item::make_Function({::std::move(fcn)}), is_public ) );
+}
+void Impl::add_type(bool is_public, ::std::string name, TypeRef type)
+{
+    m_items.push_back( Named<Item>( mv$(name), Item::make_Type({TypeAlias(GenericParams(), mv$(type))}), is_public ) );
+}
+void Impl::add_static(bool is_public, ::std::string name, Static v)
+{
+    m_items.push_back( Named<Item>( mv$(name), Item::make_Static({mv$(v)}), is_public ) );
+}
+
 bool Impl::has_named_item(const ::std::string& name) const
 {
-    for( const auto& it : this->functions() )
+    for( const auto& it : this->items() )
     {
         if( it.name == name ) {
             return true;
@@ -210,10 +223,10 @@ Impl Impl::make_concrete(const ::std::vector<TypeRef>& types) const
 }
 SERIALISE_TYPE(Impl::, "AST_Impl", {
     s << m_def;
-    s << m_functions;
+    s << m_items;
 },{
     s.item(m_def);
-    s.item(m_functions);
+    s.item(m_items);
 })
 
 ::rust::option<char> ImplRef::find_named_item(const ::std::string& name) const
