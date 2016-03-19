@@ -542,7 +542,36 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             }
             ),
         (Trait,
-            // TODO: Trait definition
+            for(auto& ti : e.e.items())
+            {
+                auto attrs = mv$(ti.data.attrs);
+                Expand_Attrs(attrs, stage_pre(is_early),  crate, AST::Path(), mod, ti.data);
+                
+                TU_MATCH_DEF(AST::Item, (ti.data), (e),
+                (
+                    throw ::std::runtime_error("BUG: Unknown item type in impl block");
+                    ),
+                (None, ),
+                (Function,
+                    for(auto& arg : e.e.args()) {
+                        Expand_Pattern(is_early, crate, modstack, mod,  arg.first);
+                        Expand_Type(is_early, crate, modstack, mod,  arg.second);
+                    }
+                    Expand_Type(is_early, crate, modstack, mod,  e.e.rettype());
+                    Expand_Expr(is_early, crate, modstack, e.e.code());
+                    ),
+                (Static,
+                    Expand_Expr(is_early, crate, modstack, e.e.value());
+                    ),
+                (Type,
+                    Expand_Type(is_early, crate, modstack, mod,  e.e.type());
+                    )
+                )
+                
+                Expand_Attrs(attrs, stage_post(is_early),  crate, AST::Path(), mod, ti.data);
+                if( ti.data.attrs.m_items.size() == 0 )
+                    ti.data.attrs = mv$(attrs);
+            }
             ),
         (Type,
             Expand_Type(is_early, crate, modstack, mod,  e.e.type());
@@ -567,10 +596,78 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
     }
     
     DEBUG("Impls");
-    for( auto& i : mod.impls() )
+    for( auto& impl : mod.impls() )
     {
-        DEBUG("- " << i);
-        // TODO: Expand impls
+        DEBUG("- " << impl);
+        Expand_Type(is_early, crate, modstack, mod,  impl.def().type());
+        //Expand_Type(is_early, crate, modstack, mod,  impl.def().trait());
+        
+        // - Macro invocation
+        for(unsigned int i = 0; i < impl.m_macro_invocations.size(); i ++ )
+        {
+            auto& mi = impl.m_macro_invocations[i];
+            DEBUG("> Macro invoke '"<<mi.name()<<"'");
+            if( mi.name() != "" )
+            {
+            // Move out of the module to avoid invalidation if a new macro invocation is added
+            auto mi_owned = mv$(mi);
+            
+            auto ttl = Expand_Macro(is_early, crate, modstack, mod, mi_owned);
+
+            if( ! ttl.get() )
+            {
+                // - Return ownership to the list
+                mod.macro_invs()[i] = mv$(mi_owned);
+            }
+            else
+            {
+                // Re-parse tt
+                assert(ttl.get());
+                while( ttl->lookahead(0) != TOK_EOF )
+                {
+                    Parse_Impl_Item(*ttl, impl);
+                }
+                // - Any new macro invocations ends up at the end of the list and handled
+            }
+            }
+        }
+        
+        DEBUG("> Items");
+        for( auto& i : impl.items() )
+        {
+            DEBUG("  - " << i.name << " :: " << i.data.attrs);
+            // TODO: Make a path from the impl definition? Requires having the impl def resolved to be correct
+            // - Does it? the namespace is essentially the same
+            //::AST::Path path = modpath + i.name;
+            
+            auto attrs = mv$(i.data.attrs);
+            Expand_Attrs(attrs, stage_pre(is_early),  crate, AST::Path(), mod, i.data);
+            
+            TU_MATCH_DEF(AST::Item, (i.data), (e),
+            (
+                throw ::std::runtime_error("BUG: Unknown item type in impl block");
+                ),
+            (None, ),
+            (Function,
+                for(auto& arg : e.e.args()) {
+                    Expand_Pattern(is_early, crate, modstack, mod,  arg.first);
+                    Expand_Type(is_early, crate, modstack, mod,  arg.second);
+                }
+                Expand_Type(is_early, crate, modstack, mod,  e.e.rettype());
+                Expand_Expr(is_early, crate, modstack, e.e.code());
+                ),
+            (Static,
+                Expand_Expr(is_early, crate, modstack, e.e.value());
+                ),
+            (Type,
+                Expand_Type(is_early, crate, modstack, mod,  e.e.type());
+                )
+            )
+            
+            Expand_Attrs(attrs, stage_post(is_early),  crate, AST::Path(), mod, i.data);
+            if( i.data.attrs.m_items.size() == 0 )
+                i.data.attrs = mv$(attrs);
+        }
     }
     
     for( const auto& mi: mod.macro_imports_res() )

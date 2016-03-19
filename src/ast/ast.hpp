@@ -398,10 +398,11 @@ class Impl:
     //NamedList<TypeRef>   m_types;
     //NamedList<Function>  m_functions;
     //NamedList<Static>    m_statics;
-    ::std::vector<MacroInvocation>    m_macro_invocations;
     
     ::std::vector< ::std::pair< ::std::vector<TypeRef>, Impl > > m_concrete_impls;
 public:
+    ::std::vector<MacroInvocation>    m_macro_invocations;
+    
     Impl() {}
     Impl(Impl&&) /*noexcept*/ = default;
     Impl(MetaItems attrs, GenericParams params, TypeRef impl_type, Path trait_type):

@@ -825,8 +825,6 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
     }
 }
 
-void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl);
-
 void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool is_unsafe=false)
 {
     TRACE_FUNCTION;
