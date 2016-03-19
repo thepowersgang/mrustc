@@ -636,8 +636,9 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
         for( auto& i : impl.items() )
         {
             DEBUG("  - " << i.name << " :: " << i.data.attrs);
+            
             // TODO: Make a path from the impl definition? Requires having the impl def resolved to be correct
-            // - Does it? the namespace is essentially the same
+            // - Does it? the namespace is essentially the same. There may be issues with wherever the path is used though
             //::AST::Path path = modpath + i.name;
             
             auto attrs = mv$(i.data.attrs);
@@ -680,7 +681,22 @@ void Expand(::AST::Crate& crate)
     // 1. Crate attributes
     Expand_Attrs(crate.m_attrs, AttrStage::EarlyPre,  [&](const auto& d, const auto& a){ d.handle(a, crate); });
     
-    // TODO: Load std/core
+    // Load libstd/libcore
+    switch( crate.m_load_std )
+    {
+    case ::AST::Crate::LOAD_STD:
+        if( crate.m_prelude_path != AST::Path() )
+            crate.m_prelude_path = AST::Path("std", {AST::PathNode("prelude"), AST::PathNode("v1")});
+        TODO(Span(), "Load libstd");
+        break;
+    case ::AST::Crate::LOAD_CORE:
+        if( crate.m_prelude_path != AST::Path() )
+            crate.m_prelude_path = AST::Path("core", {AST::PathNode("prelude")});
+        TODO(Span(), "Load libcore");
+        break;
+    case ::AST::Crate::LOAD_NONE:
+        break;
+    }
     
     // 2. Module attributes
     for( auto& a : crate.m_attrs.m_items )

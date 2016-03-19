@@ -33,6 +33,7 @@ OBJ += expand/mod.o expand/macro_rules.o expand/cfg.o
 OBJ +=  expand/format_args.o
 OBJ +=  expand/concat.o expand/stringify.o expand/file_line.o
 OBJ +=  expand/derive.o expand/lang_item.o
+OBJ +=  expand/std_prelude.o
 OBJ += dump_as_rust.o
 OBJ += convert/ast_iterate.o
 #OBJ += convert/decorators.o

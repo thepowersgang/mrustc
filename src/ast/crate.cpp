@@ -27,7 +27,7 @@ namespace AST {
 
 Crate::Crate():
     m_root_module(::AST::Path()),
-    m_load_std(true)
+    m_load_std(LOAD_STD)
 {
 }
 
@@ -292,8 +292,15 @@ void Crate::load_extern_crate(::std::string name)
     
     m_extern_crates.insert( make_pair(::std::move(name), ::std::move(ret)) );
 }
-SERIALISE_TYPE_A(Crate::, "AST_Crate", {
-    s.item(m_load_std);
+SERIALISE_TYPE(Crate::, "AST_Crate", {
+    unsigned ls = m_load_std;
+    s.item(ls);
+    s.item(m_extern_crates);
+    s.item(m_root_module);
+},{
+    unsigned ls = m_load_std;
+    s.item(ls);
+    m_load_std = (::AST::Crate::LoadStd)ls;
     s.item(m_extern_crates);
     s.item(m_root_module);
 })

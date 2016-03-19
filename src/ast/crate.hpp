@@ -26,7 +26,12 @@ public:
     // Mapping filled by searching for (?visible) macros with is_pub=true
     ::std::map< ::std::string, const MacroRules*> m_exported_macros;
     
-    bool    m_load_std;
+    enum LoadStd {
+        LOAD_STD,
+        LOAD_CORE,
+        LOAD_NONE,
+    } m_load_std;
+    AST::Path   m_prelude_path;
 
     Crate();
 
