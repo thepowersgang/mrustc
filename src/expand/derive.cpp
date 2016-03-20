@@ -162,7 +162,7 @@ public:
         (
             ),
         (Struct,
-            derive_item(mod, attr, path, e.e);
+            derive_item(mod, attr, path, e);
             )
         )
     }

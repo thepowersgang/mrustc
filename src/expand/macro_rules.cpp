@@ -34,7 +34,7 @@ class CMacroUseHandler:
         if( !i.is_Module() )
             throw ::std::runtime_error("ERROR: Use of #[macro_use] on non-module");
         
-        const auto& submod = i.as_Module().e;
+        const auto& submod = i.as_Module();
         
         if( mi.has_sub_items() )
         {

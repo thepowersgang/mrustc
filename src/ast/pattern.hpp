@@ -25,16 +25,16 @@ public:
         BIND_MUTREF,
     };
     TAGGED_UNION(Data, Any,
-        (MaybeBind, () ),
-        (Macro,     (unique_ptr<::AST::MacroInvocation> inv;) ),
-        (Any,       () ),
-        (Box,       (unique_ptr<Pattern> sub;) ),
-        (Ref,       (bool mut; unique_ptr<Pattern> sub;) ),
-        (Value,     (unique_ptr<ExprNode> start; unique_ptr<ExprNode> end;) ),
-        (Tuple,     (::std::vector<Pattern> sub_patterns;) ),
-        (StructTuple, (Path path; ::std::vector<Pattern> sub_patterns;) ),
-        (Struct,    (Path path; ::std::vector< ::std::pair< ::std::string,Pattern> > sub_patterns;) ),
-        (Slice,     (::std::vector<Pattern> leading; ::std::string extra_bind; ::std::vector<Pattern> trailing;) )
+        (MaybeBind, struct { } ),
+        (Macro,     struct { unique_ptr<::AST::MacroInvocation> inv; } ),
+        (Any,       struct { } ),
+        (Box,       struct { unique_ptr<Pattern> sub; } ),
+        (Ref,       struct { bool mut; unique_ptr<Pattern> sub; } ),
+        (Value,     struct { unique_ptr<ExprNode> start; unique_ptr<ExprNode> end; } ),
+        (Tuple,     struct { ::std::vector<Pattern> sub_patterns; } ),
+        (StructTuple, struct { Path path; ::std::vector<Pattern> sub_patterns; } ),
+        (Struct,    struct { Path path; ::std::vector< ::std::pair< ::std::string, Pattern> > sub_patterns; } ),
+        (Slice,     struct { ::std::vector<Pattern> leading; ::std::string extra_bind; ::std::vector<Pattern> trailing; } )
         );
 private:
     ::std::string   m_binding;

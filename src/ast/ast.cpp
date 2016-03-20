@@ -320,7 +320,7 @@ void Module::iterate_functions(fcn_visitor_t *visitor, const Crate& crate)
         TU_MATCH_DEF(::AST::Item, (item.data), (e),
         ( ),
         (Function,
-            visitor(crate, *this, e.e);
+            visitor(crate, *this, e);
             )
         )
     }
@@ -346,21 +346,21 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
             (None,
                 break;
                 ),
-            (Module, return ItemRef(e.e); ),
+            (Module, return ItemRef(e); ),
             (Crate, return ItemRef(e.name); ),
-            (Type,  return ItemRef(e.e); ),
-            (Struct, return ItemRef(e.e); ),
-            (Enum,  return ItemRef(e.e); ),
-            (Trait, return ItemRef(e.e); ),
+            (Type,  return ItemRef(e); ),
+            (Struct, return ItemRef(e); ),
+            (Enum,  return ItemRef(e); ),
+            (Trait, return ItemRef(e); ),
             (Function,
                 if( allow_leaves )
-                    return ItemRef(e.e);
+                    return ItemRef(e);
                 else
                     DEBUG("Skipping function, leaves not allowed");
                 ),
             (Static,
                 if( allow_leaves )
-                    return ItemRef(e.e);
+                    return ItemRef(e);
                 else
                     DEBUG("Skipping function, leaves not allowed");
                 )

@@ -33,36 +33,36 @@ public:
 TAGGED_UNION_EX( GenericBound, (: public Serialisable), Lifetime,
     (
     // Lifetime bound: 'test must be valid for 'bound
-    (Lifetime, (
+    (Lifetime, struct {
         ::std::string   test;
         ::std::string   bound;
-        )),
+        }),
     // Type lifetime bound
-    (TypeLifetime, (
+    (TypeLifetime, struct {
         TypeRef type;
         ::std::string   bound;
-        )),
+        }),
     // Standard trait bound: "Type: [for<'a>] Trait"
-    (IsTrait, (
+    (IsTrait, struct {
         TypeRef type;
         ::std::vector< ::std::string>   hrls; // Higher-ranked lifetimes
         AST::Path   trait;
-        )),
+        }),
     // Removed trait bound: "Type: ?Trait"
-    (MaybeTrait, (
+    (MaybeTrait, struct {
         TypeRef type;
         AST::Path   trait;
-        )),
+        }),
     // Negative trait bound: "Type: !Trait"
-    (NotTrait, (
+    (NotTrait, struct {
         TypeRef type;
         AST::Path   trait;
-        )),
+        }),
     // Type equality: "Type = Replacement"
-    (Equality, (
+    (Equality, struct {
         TypeRef type;
         TypeRef replacement;
-        ))
+        })
     ),
     
     (), (),

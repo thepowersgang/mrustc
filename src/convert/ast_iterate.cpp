@@ -314,31 +314,31 @@ void CASTIterator::handle_module(AST::Path path, AST::Module& mod)
             ),
         (Struct,
             DEBUG("Handling struct " << item.name);
-            handle_struct(path + item.name, e.e);
+            handle_struct(path + item.name, e);
             ),
         (Enum,
             DEBUG("Handling enum " << item.name);
-            handle_enum(path + item.name, e.e);
+            handle_enum(path + item.name, e);
             ),
         (Trait,
             DEBUG("Handling trait " << item.name);
-            handle_trait(path + item.name, e.e);
+            handle_trait(path + item.name, e);
             ),
         (Type,
             DEBUG("Handling alias " << item.name);
-            handle_alias(path + item.name, e.e);
+            handle_alias(path + item.name, e);
             ),
         (Static,
             DEBUG("handling static " << item.name);
-            handle_type(e.e.type());
-            if( e.e.value().is_valid() )
+            handle_type(e.type());
+            if( e.value().is_valid() )
             {
-                handle_expr(e.e.value().node());
+                handle_expr(e.value().node());
             }
             ),
         (Function,
             DEBUG("Handling function '" << item.name << "'");
-            handle_function(path + item.name, e.e);
+            handle_function(path + item.name, e);
             ),
         (Module,
             // Skip, done after all items
@@ -358,7 +358,7 @@ void CASTIterator::handle_module(AST::Path path, AST::Module& mod)
     for( auto& item : mod.items() )
     {
         if(!item.data.is_Module())    continue;
-        auto& submod = item.data.as_Module().e;
+        auto& submod = item.data.as_Module();
         DEBUG("Handling submod '" << item.name << "'");
         handle_module(path + item.name, submod);
     }
@@ -449,11 +449,11 @@ void CASTIterator::handle_impl(AST::Path modpath, AST::Impl& impl)
             ),
         (Type,
             DEBUG("- Type '" << it.name << "'");
-            handle_type( e.e.type() );
+            handle_type( e.type() );
             ),
         (Function,
             DEBUG("- Function '" << it.name << "'");
-            handle_function(AST::Path(AST::Path::TagRelative(), { AST::PathNode(it.name) }), e.e);
+            handle_function(AST::Path(AST::Path::TagRelative(), { AST::PathNode(it.name) }), e);
             )
         )
     }
@@ -523,10 +523,10 @@ void CASTIterator::handle_trait(AST::Path path, AST::Trait& trait)
             // TODO: Can trait associated types have default types?
             ),
         (Static,
-            handle_type(e.e.type());
+            handle_type(e.type());
             ),
         (Function,
-            handle_function( path + i.name, e.e );
+            handle_function( path + i.name, e );
             )
         )
     }

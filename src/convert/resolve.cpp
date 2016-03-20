@@ -65,14 +65,14 @@ class CPathResolver:
     
     
     TAGGED_UNION(SelfType, None,
-        (None, ()),
-        (Type, (
+        (None, struct {}),
+        (Type, struct {
             TypeRef type;
-            )),
-        (Trait, (
+            }),
+        (Trait, struct {
             AST::Path   path;
             const AST::Trait* trait;
-            ))
+            })
         );
     ::std::vector<SelfType>  m_self_type;
     
@@ -164,7 +164,7 @@ private:
             if( it->module ) {
                 for( const auto& i : it->module->items() ) {
                     if( !i.data.is_Trait() )    continue ;
-                    const auto& t = i.data.as_Trait().e;
+                    const auto& t = i.data.as_Trait();
                     auto trait_path = it->module_path + i.name;
                     DEBUG("t = " << trait_path);
                     ret.push_back( ::std::pair<AST::Path, const AST::Trait&>(trait_path, t) );
@@ -174,7 +174,7 @@ private:
 
         for( const auto& i : m_module->items() ) {
             if( !i.data.is_Trait() )    continue ;
-            const auto& t = i.data.as_Trait().e;
+            const auto& t = i.data.as_Trait();
             auto trait_path = m_module_path + i.name;
             DEBUG("(mod) t = " << trait_path);
             ret.push_back( ::std::pair<AST::Path, const AST::Trait&>(trait_path, t) );
@@ -1189,7 +1189,7 @@ void CPathResolver::handle_path_ufcs(const Span& span, AST::Path& path, CASTIter
                                 // Ignore?
                                 ),
                             (Function,
-                                path.bind_function(e.e, path.nodes()[0].args());
+                                path.bind_function(e, path.nodes()[0].args());
                                 info.trait = make_unique_ptr( TypeRef(TypeRef::TagInvalid(), span) );
                                 return true;
                                 )
@@ -1388,7 +1388,7 @@ bool CPathResolver::find_trait_item(const Span& span, const AST::Path& path, AST
                 ),
             (Function,
                 out_is_method = true;
-                out_ptr = &e.e;
+                out_ptr = &e;
                 out_trait_path = AST::Path(path);
                 DEBUG("Fcn, out_trait_path = " << out_trait_path);
                 return true;
@@ -1777,7 +1777,7 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
     
     for(auto& item : mod.items()) {
         if( item.data.is_Module() ) {
-            ResolvePaths_HandleModule_Use(crate, modpath + item.name, item.data.as_Module().e);
+            ResolvePaths_HandleModule_Use(crate, modpath + item.name, item.data.as_Module());
         }
     }
 }
@@ -1795,7 +1795,7 @@ void SetCrateName_Mod(const AST::Crate& crate, ::std::string name, AST::Module& 
 {
     for(auto& item : mod.items()) {
         if( item.data.is_Module() ) {
-            SetCrateName_Mod(crate, name, item.data.as_Module().e);
+            SetCrateName_Mod(crate, name, item.data.as_Module());
         }
     }
     // Imports 'use' statements
@@ -1809,7 +1809,7 @@ void SetCrateName_Mod(const AST::Crate& crate, ::std::string name, AST::Module& 
     // TODO: All other types
     for(auto& item : mod.items()) {
         if( item.data.is_Function() ) {
-            SetCrateName_Type(crate, name, item.data.as_Function().e.rettype());
+            SetCrateName_Type(crate, name, item.data.as_Function().rettype());
         }
     }
 }

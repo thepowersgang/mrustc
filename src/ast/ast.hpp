@@ -227,15 +227,15 @@ public:
 
 TAGGED_UNION_EX(EnumVariantData, (: public Serialisable), Value,
     (
-    (Value, (
+    (Value, struct {
         ::AST::Expr m_value;
-        )),
-    (Tuple, (
+        }),
+    (Tuple, struct {
         ::std::vector<TypeRef>  m_sub_types;
-        )),
-    (Struct, (
+        }),
+    (Struct, struct {
         ::std::vector<StructItem>   m_fields;
-        ))
+        })
     ),
     (), (),
     (
@@ -319,12 +319,12 @@ public:
 
 TAGGED_UNION_EX(StructData, (: public Serialisable), Struct,
     (
-    (Tuple, (
+    (Tuple, struct {
         ::std::vector<TupleItem>    ents;
-        )),
-    (Struct, (
+        }),
+    (Struct, struct {
         ::std::vector<StructItem>   ents;
-        ))
+        })
     ),
     (),(),
     (
@@ -593,34 +593,19 @@ private:
 
 TAGGED_UNION_EX(Item, (: public Serialisable), None,
     (
-    (None, (
-        )),
-    (Module, (
-        Module  e;
-        )),
-    (Crate, (
+    (None, struct {} ),
+    (Module, Module),
+    (Crate, struct {
         ::std::string   name;
-        )),
+        }),
     
-    (Type, (
-        TypeAlias e;
-        )),
-    (Struct, (
-        Struct e;
-        )),
-    (Enum, (
-        Enum e;
-        )),
-    (Trait, (
-        Trait e;
-        )),
+    (Type, TypeAlias),
+    (Struct, Struct),
+    (Enum, Enum),
+    (Trait, Trait),
     
-    (Function, (
-        Function e;
-        )),
-    (Static, (
-        Static e;
-        ))
+    (Function, Function),
+    (Static, Static)
     ),
     
     (, attrs(mv$(x.attrs))), (attrs = mv$(x.attrs);),

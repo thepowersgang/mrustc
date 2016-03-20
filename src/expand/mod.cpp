@@ -486,15 +486,15 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             // Skip, nothing
             ),
         (Module,
-            LList<const AST::Module*>   sub_modstack(&modstack, &e.e);
-            Expand_Mod(is_early, crate, sub_modstack, path, e.e);
+            LList<const AST::Module*>   sub_modstack(&modstack, &e);
+            Expand_Mod(is_early, crate, sub_modstack, path, e);
             ),
         (Crate,
             // Can't recurse into an `extern crate`
             ),
         
         (Struct,
-            TU_MATCH(AST::StructData, (e.e.m_data), (sd),
+            TU_MATCH(AST::StructData, (e.m_data), (sd),
             (Struct,
                 for(auto it = sd.ents.begin(); it != sd.ents.end(); ) {
                     auto& si = *it;
@@ -524,7 +524,7 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             )
             ),
         (Enum,
-            for(auto& var : e.e.variants()) {
+            for(auto& var : e.variants()) {
                 Expand_Attrs(var.m_attrs, stage_pre (is_early),  [&](const auto& d, const auto& a){ d.handle(a, crate, var); });
                 TU_MATCH(::AST::EnumVariantData, (var.m_data), (e),
                 (Value,
@@ -553,7 +553,7 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             }
             ),
         (Trait,
-            for(auto& ti : e.e.items())
+            for(auto& ti : e.items())
             {
                 auto attrs = mv$(ti.data.attrs);
                 Expand_Attrs(attrs, stage_pre(is_early),  crate, AST::Path(), mod, ti.data);
@@ -564,18 +564,18 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
                     ),
                 (None, ),
                 (Function,
-                    for(auto& arg : e.e.args()) {
+                    for(auto& arg : e.args()) {
                         Expand_Pattern(is_early, crate, modstack, mod,  arg.first);
                         Expand_Type(is_early, crate, modstack, mod,  arg.second);
                     }
-                    Expand_Type(is_early, crate, modstack, mod,  e.e.rettype());
-                    Expand_Expr(is_early, crate, modstack, e.e.code());
+                    Expand_Type(is_early, crate, modstack, mod,  e.rettype());
+                    Expand_Expr(is_early, crate, modstack, e.code());
                     ),
                 (Static,
-                    Expand_Expr(is_early, crate, modstack, e.e.value());
+                    Expand_Expr(is_early, crate, modstack, e.value());
                     ),
                 (Type,
-                    Expand_Type(is_early, crate, modstack, mod,  e.e.type());
+                    Expand_Type(is_early, crate, modstack, mod,  e.type());
                     )
                 )
                 
@@ -585,19 +585,19 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             }
             ),
         (Type,
-            Expand_Type(is_early, crate, modstack, mod,  e.e.type());
+            Expand_Type(is_early, crate, modstack, mod,  e.type());
             ),
         
         (Function,
-            for(auto& arg : e.e.args()) {
+            for(auto& arg : e.args()) {
                 Expand_Pattern(is_early, crate, modstack, mod,  arg.first);
                 Expand_Type(is_early, crate, modstack, mod,  arg.second);
             }
-            Expand_Type(is_early, crate, modstack, mod,  e.e.rettype());
-            Expand_Expr(is_early, crate, modstack, e.e.code());
+            Expand_Type(is_early, crate, modstack, mod,  e.rettype());
+            Expand_Expr(is_early, crate, modstack, e.code());
             ),
         (Static,
-            Expand_Expr(is_early, crate, modstack, e.e.value());
+            Expand_Expr(is_early, crate, modstack, e.value());
             )
         )
         
@@ -661,18 +661,18 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
                 ),
             (None, ),
             (Function,
-                for(auto& arg : e.e.args()) {
+                for(auto& arg : e.args()) {
                     Expand_Pattern(is_early, crate, modstack, mod,  arg.first);
                     Expand_Type(is_early, crate, modstack, mod,  arg.second);
                 }
-                Expand_Type(is_early, crate, modstack, mod,  e.e.rettype());
-                Expand_Expr(is_early, crate, modstack, e.e.code());
+                Expand_Type(is_early, crate, modstack, mod,  e.rettype());
+                Expand_Expr(is_early, crate, modstack, e.code());
                 ),
             (Static,
-                Expand_Expr(is_early, crate, modstack, e.e.value());
+                Expand_Expr(is_early, crate, modstack, e.value());
                 ),
             (Type,
-                Expand_Type(is_early, crate, modstack, mod,  e.e.type());
+                Expand_Type(is_early, crate, modstack, mod,  e.type());
                 )
             )
             

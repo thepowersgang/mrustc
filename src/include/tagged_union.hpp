@@ -79,7 +79,7 @@
 #define TU_GMA(...) TU_GM(TU_DISPA, __VA_ARGS__)
 
 // Sizes of structures
-#define TU_SO(name, _)   sizeof(TU_DATANAME(name))
+#define TU_SO(name, ...)   sizeof(TU_DATANAME(name))
 #define MAX2(a, b)  (a < b ? b : a)
 #define MAXS2(a, b)  (TU_SO a < TU_SO b ? TU_SO b : TU_SO a)
 #define MAXS3(a, b, c)   MAX2(MAXS2(a, b), TU_SO c)
@@ -130,28 +130,28 @@
     __type& as_##__tag() { assert(m_tag == TAG_##__tag); return reinterpret_cast<__type&>(m_data); } \
     __type unwrap_##__tag() { assert(m_tag == TAG_##__tag); return ::std::move(reinterpret_cast<__type&>(m_data)); } \
 // Define a tagged union constructor
-#define TU_CONS(__name, name, _) TU_CONS_I(__name, name, TU_DATANAME(name))
+#define TU_CONS(__name, name, ...) TU_CONS_I(__name, name, TU_DATANAME(name))
 
 // Type definitions
 #define TU_EXP(...)  __VA_ARGS__
-#define TU_TYPEDEF(name, content)    struct TU_DATANAME(name) { TU_EXP content; };/*
+#define TU_TYPEDEF(name, ...)    typedef __VA_ARGS__ TU_DATANAME(name);/*
 */
 
-#define TU_TAG(name, _)  TAG_##name,
+#define TU_TAG(name, ...)  TAG_##name,
 
 // Destructor internals
-#define TU_DEST_CASE(tag, _)  case TAG_##tag: as_##tag().~TU_DATANAME(tag)(); break;/*
+#define TU_DEST_CASE(tag, ...)  case TAG_##tag: as_##tag().~TU_DATANAME(tag)(); break;/*
 */
 
 // move constructor internals
-#define TU_MOVE_CASE(tag, _)  case TAG_##tag: new(m_data) TU_DATANAME(tag)(x.unwrap_##tag()); break;/*
+#define TU_MOVE_CASE(tag, ...)  case TAG_##tag: new(m_data) TU_DATANAME(tag)(x.unwrap_##tag()); break;/*
 */
 
 // "tag_to_str" internals
-#define TU_TOSTR_CASE(tag,_)    case TAG_##tag: return #tag;/*
+#define TU_TOSTR_CASE(tag,...)    case TAG_##tag: return #tag;/*
 */
 // "tag_from_str" internals
-#define TU_FROMSTR_CASE(tag,_)    else if(str == #tag) return TAG_##tag;/*
+#define TU_FROMSTR_CASE(tag,...)    else if(str == #tag) return TAG_##tag;/*
 */
 
 #define MAXS(...)          TU_GM(MAXS,__VA_ARGS__)(__VA_ARGS__)

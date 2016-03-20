@@ -15,7 +15,7 @@ namespace {
             TU_MATCH_DEF(::AST::Item, (sm.data), (e),
             ( ),
             (Module,
-                iterate_module(e.e, fcn);
+                iterate_module(e, fcn);
                 )
             )
         }

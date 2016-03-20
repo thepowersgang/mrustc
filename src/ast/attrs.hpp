@@ -40,13 +40,13 @@ public:
 
 
 TAGGED_UNION(MetaItemData, None,
-    (None, ()),
-    (String, (
+    (None, struct {}),
+    (String, struct {
         ::std::string   val;
-        )),
-    (List, (
+        }),
+    (List, struct {
         ::std::vector<MetaItem> sub_items;
-        ))
+        })
     );
 
 class MetaItem:

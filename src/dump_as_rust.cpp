@@ -562,7 +562,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
     for( const auto& item : mod.items() )
     {
         if( !item.data.is_Module() )    continue ;
-        const auto& e = item.data.as_Module().e;
+        const auto& e = item.data.as_Module();
         
         m_os << "\n";
         m_os << indent() << (item.is_pub ? "pub " : "") << "mod " << item.name << "\n";
@@ -577,7 +577,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
     for( const auto& item : mod.items() )
     {
         if( !item.data.is_Type() )    continue ;
-        const auto& e = item.data.as_Type().e;
+        const auto& e = item.data.as_Type();
         
         if(need_nl) {
             m_os << "\n";
@@ -595,7 +595,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
     for( const auto& item : mod.items() )
     {
         if( !item.data.is_Struct() )    continue ;
-        const auto& e = item.data.as_Struct().e;
+        const auto& e = item.data.as_Struct();
         
         m_os << "\n";
         m_os << indent() << (item.is_pub ? "pub " : "") << "struct " << item.name;
@@ -605,7 +605,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
     for( const auto& item : mod.items() )
     {
         if( !item.data.is_Enum() )    continue ;
-        const auto& e = item.data.as_Enum().e;
+        const auto& e = item.data.as_Enum();
         
         m_os << "\n";
         m_os << indent() << (item.is_pub ? "pub " : "") << "enum " << item.name;
@@ -615,7 +615,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
     for( const auto& item : mod.items() )
     {
         if( !item.data.is_Trait() )    continue ;
-        const auto& e = item.data.as_Trait().e;
+        const auto& e = item.data.as_Trait();
         
         m_os << "\n";
         m_os << indent() << (item.is_pub ? "pub " : "") << "trait " << item.name;
@@ -625,7 +625,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
     for( const auto& item : mod.items() )
     {
         if( !item.data.is_Static() )    continue ;
-        const auto& e = item.data.as_Static().e;
+        const auto& e = item.data.as_Static();
         
         if(need_nl) {
             m_os << "\n";
@@ -646,7 +646,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
     for( const auto& item : mod.items() )
     {
         if( !item.data.is_Function() )    continue ;
-        const auto& e = item.data.as_Function().e;
+        const auto& e = item.data.as_Function();
         
         m_os << "\n";
         handle_function(item.is_pub, item.name, e);
@@ -673,10 +673,10 @@ void RustPrinter::handle_module(const AST::Module& mod)
                 throw ::std::runtime_error("Unexpected item type in impl block");
                 ),
             (Type,
-                m_os << indent() << "type " << it.name << " = " << e.e.type() << ";\n";
+                m_os << indent() << "type " << it.name << " = " << e.type() << ";\n";
                 ),
             (Function,
-                handle_function(it.is_pub, it.name, e.e);
+                handle_function(it.is_pub, it.name, e);
                 )
             )
         }
@@ -958,7 +958,7 @@ void RustPrinter::handle_trait(const AST::Trait& s)
             m_os << indent() << "type " << i.name << ";\n";
             ),
         (Function,
-            handle_function(false, i.name, e.e);
+            handle_function(false, i.name, e);
             )
         )
     }

@@ -506,7 +506,7 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallMethod& node)
                 {
                     if( i.name == name && i.data.is_Function() )
                     {
-                        fcnp = &i.data.as_Function().e;
+                        fcnp = &i.data.as_Function();
                         break;
                     }
                 }
@@ -524,7 +524,7 @@ void CTC_NodeVisitor::visit(AST::ExprNode_CallMethod& node)
                     {
                         if( i.name == name && i.data.is_Function() )
                         {
-                            fcnp = &i.data.as_Function().e;
+                            fcnp = &i.data.as_Function();
                             break;
                         }
                     }

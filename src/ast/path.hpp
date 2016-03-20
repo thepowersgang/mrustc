@@ -29,49 +29,49 @@ class Static;
 class Function;
 
 TAGGED_UNION(PathBinding, Unbound,
-    (Unbound, (
-        )),
-    (Module, (
+    (Unbound, struct {
+        }),
+    (Module, struct {
         const Module* module_;
-        )),
-    (Enum,   (
+        }),
+    (Enum,   struct {
         const Enum* enum_;
-        )),
-    (Struct, (
+        }),
+    (Struct, struct {
         const Struct* struct_;
-        )),
-    (Trait,  (
+        }),
+    (Trait,  struct {
         const Trait* trait_;
-        )),
-    (Static, (
+        }),
+    (Static, struct {
         const Static* static_;
-        )),
-    (Function, (
+        }),
+    (Function, struct {
         const Function* func_;
-        )),
-    (EnumVar, (
+        }),
+    (EnumVar, struct {
         const Enum* enum_;
         unsigned int idx;
-        )),
-    (TypeAlias, (
+        }),
+    (TypeAlias, struct {
         const TypeAlias* alias_;
-        )),
-    (StructMethod, (
+        }),
+    (StructMethod, struct {
         const Struct* struct_;
         ::std::string name;
-        )),
-    (TraitMethod, (
+        }),
+    (TraitMethod, struct {
         const Trait* struct_;
         ::std::string name;
-        )),
+        }),
 
-    (TypeParameter, (
+    (TypeParameter, struct {
         unsigned int level;
         unsigned int idx;
-        )),
-    (Variable, (
+        }),
+    (Variable, struct {
         unsigned int slot;
-        ))
+        })
     );
 
 extern ::std::ostream& operator<<(::std::ostream& os, const PathBinding& x);
@@ -103,28 +103,28 @@ class Path:
 {
 public:
     TAGGED_UNION(Class, Invalid,
-        (Invalid, ()),
-        (Local, (   // Variable / Type param (resolved)
+        (Invalid, struct {}),
+        (Local, struct {   // Variable / Type param (resolved)
             ::std::string name;
-            ) ),
-        (Relative, (    // General relative
+            } ),
+        (Relative, struct {    // General relative
             ::std::vector<PathNode> nodes;
-            ) ),
-        (Self, (    // Module-relative
+            } ),
+        (Self, struct {    // Module-relative
             ::std::vector<PathNode> nodes;
-            ) ),
-        (Super, (   // Parent-relative
+            } ),
+        (Super, struct {   // Parent-relative
             unsigned int count;
             ::std::vector<PathNode> nodes;
-            ) ),
-        (Absolute, (    // Absolute
+            } ),
+        (Absolute, struct {    // Absolute
             ::std::vector<PathNode> nodes;
-            ) ),
-        (UFCS, (    // Type-relative
+            } ),
+        (UFCS, struct {    // Type-relative
             ::std::unique_ptr<TypeRef> type;
             ::std::unique_ptr<TypeRef> trait;
             ::std::vector<PathNode> nodes;
-            ) )
+            } )
         );
     
 private:

@@ -58,45 +58,45 @@ struct Type_Function:
 };
 
 TAGGED_UNION(TypeData, None,
-    (None, ()),
-    (Any,  ()),
-    (Unit, ()),
-    (Macro, (
+    (None, struct { }),
+    (Any,  struct { }),
+    (Unit, struct { }),
+    (Macro, struct {
         ::AST::MacroInvocation inv;
-        )),
-    (Primitive, (
+        }),
+    (Primitive, struct {
         enum eCoreType core_type;
-        )),
-    (Function, (
-        Type_Function   info;
-        )),
-    (Tuple, (
+        }),
+    (Function, struct {
+	Type_Function   info;
+        }),
+    (Tuple, struct {
         ::std::vector<TypeRef> inner_types;
-        )),
-    (Borrow, (
+        }),
+    (Borrow, struct {
         bool is_mut;
         ::std::unique_ptr<TypeRef> inner;
-        )),
-    (Pointer, (
+        }),
+    (Pointer, struct {
         bool is_mut;
         ::std::unique_ptr<TypeRef> inner;
-        )),
-    (Array, (
+        }),
+    (Array, struct {
         ::std::unique_ptr<TypeRef> inner;
         ::std::shared_ptr<AST::ExprNode> size;
-        )),
-    (Generic, (
+        }),
+    (Generic, struct {
         ::std::string name;
         unsigned int level;
         const ::AST::GenericParams* params;
-        )),
-    (Path, (
+        }),
+    (Path, struct {
         AST::Path path;
-        )),
-    (TraitObject, (
+        }),
+    (TraitObject, struct {
         ::std::vector<::std::string>    hrls;
         ::std::vector<AST::Path> traits;
-        ))
+        })
     );
 
 /// A type
