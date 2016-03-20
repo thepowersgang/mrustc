@@ -16,6 +16,7 @@
 void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::std::function<void(const ExpandDecorator& d,const ::AST::MetaItem& a)> f);
 void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod);
 void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Expr& node);
+void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::shared_ptr<AST::ExprNode>& node);
 
 void Register_Synext_Decorator(::std::string name, ::std::unique_ptr<ExpandDecorator> handler) {
     g_decorators[name] = mv$(handler);
@@ -196,8 +197,9 @@ void Expand_Type(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
         ),
     (Array,
         Expand_Type(is_early, crate, modstack, mod,  *e.inner);
-        // TODO: Array size expression
-        //Expand_Expr(is_early, crate, modstack,  e.size);
+        if( e.size ) {
+            Expand_Expr(is_early, crate, modstack,  e.size);
+        }
         ),
     (Generic,
         ),
@@ -412,9 +414,18 @@ struct CExpandExpr:
     }
 };
 
-void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::unique_ptr<AST::ExprNode>& node) {
+void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::unique_ptr<AST::ExprNode>& node)
+{
     auto visitor = CExpandExpr(is_early, crate, modstack);
     visitor.visit(node);
+}
+void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::shared_ptr<AST::ExprNode>& node)
+{
+    auto visitor = CExpandExpr(is_early, crate, modstack);
+    node->visit(visitor);
+    if( visitor.replacement ) {
+        node.reset( visitor.replacement.release() );
+    }
 }
 void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Expr& node)
 {
