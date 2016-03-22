@@ -14,22 +14,10 @@
 
 #include <macros.hpp>   // DAMNIT - Why can't I have it be incomplete
 
+#include <hir/type.hpp>
+#include <hir/path.hpp>
+
 namespace HIR {
-
-class TypeRef {
-};
-
-/// Simple path - Absolute with no generic parameters
-class SimplePath {
-};
-/// Type path - Simple path with one lot of generic params
-class TypePath {
-public:
-    SimplePath  m_path;
-    ::std::vector<TypeRef>  m_params;
-};
-class Path {
-};
 
 class Expr {
 };
@@ -109,7 +97,7 @@ TAGGED_UNION(TraitValueItem, Static,
 struct Trait
 {
     GenericParams   m_params;
-    ::std::vector< ::HIR::TypePath >  m_parent_traits;
+    ::std::vector< ::HIR::GenericPath >  m_parent_traits;
     
     ::std::unordered_map< ::std::string, AssociatedType >   m_types;
     ::std::unordered_map< ::std::string, TraitValueItem >   m_values;

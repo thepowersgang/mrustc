@@ -13,7 +13,7 @@
 ::HIR::Crate LowerHIR_FromAST(::AST::Crate crate)
 {
     ::std::unordered_map< ::std::string, MacroRules >   macros;
-    auto rootmod = LowerHIR_Module( mv$(crate.m_root_module), ::HIR::SimplePath() );
+    auto rootmod = LowerHIR_Module( mv$(crate.m_root_module), ::HIR::SimplePath("") );
     return { mv$(rootmod), mv$(macros) };
 }
 
