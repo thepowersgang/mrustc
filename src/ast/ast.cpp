@@ -331,20 +331,20 @@ typename ::std::vector<Named<T> >::const_iterator find_named(const ::std::vector
 {
     return ::std::find_if(vec.begin(), vec.end(), [&name](const Named<T>& x) {
         //DEBUG("find_named - x.name = " << x.name);
-        return x.name == name;
+        return x.name == name && !x.data.is_None();
     });
 }
 
 Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves, bool ignore_private_wildcard) const
 {
-    TRACE_FUNCTION_F("needle = " << needle);
+    TRACE_FUNCTION_F("path = " << m_my_path << ", needle = " << needle);
     
     {
         auto it = find_named(this->items(), needle);
         if( it != this->items().end() ) {
             TU_MATCH(::AST::Item, (it->data), (e),
             (None,
-                break;
+                throw ::std::runtime_error("BUG: Hit a None item");
                 ),
             (Module, return ItemRef(e); ),
             (Crate, return ItemRef(e.name); ),
