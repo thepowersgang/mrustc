@@ -235,18 +235,21 @@ struct CExpandExpr:
         if(cnode.get())
         {
             cnode->visit(*this);
+            // If the node was a macro, and it was consumed, reset it
             if( auto* n_mac = dynamic_cast<AST::ExprNode_Macro*>(cnode.get()) )
             {
                 if( n_mac->m_name == "" )
                     cnode.reset();
             }
-            if( this->replacement.get() ) {
+            DEBUG("replacement = " << replacement.get());
+            if( this->replacement ) {
                 cnode = mv$(this->replacement);
             }
         }
         
         if(cnode.get())
             Expand_Attrs(cnode->attrs(), stage_post(is_early),  [&](const auto& d, const auto& a){ d.handle(a, this->crate, cnode); });
+        assert( ! this->replacement );
     }
     void visit_nodelete(const ::AST::ExprNode& parent, ::std::unique_ptr<AST::ExprNode>& cnode) {
         if( cnode.get() != nullptr )
@@ -255,6 +258,7 @@ struct CExpandExpr:
             if(cnode.get() == nullptr)
                 ERROR(parent.get_pos(), E0000, "#[cfg] not allowed in this position");
         }
+        assert( ! this->replacement );
     }
     void visit_vector(::std::vector< ::std::unique_ptr<AST::ExprNode> >& cnodes) {
         for( auto& child : cnodes ) {
@@ -271,7 +275,9 @@ struct CExpandExpr:
         }
     }
     
-    void visit(::AST::ExprNode_Macro& node) override {
+    void visit(::AST::ExprNode_Macro& node) override
+    {
+        TRACE_FUNCTION_F("name = " << node.m_name);
         auto& mod = this->cur_mod();
         auto ttl = Expand_Macro(
             is_early, crate, modstack, mod,
@@ -286,14 +292,13 @@ struct CExpandExpr:
                 // Reparse as expression / item
                 auto newexpr = Parse_Expr0(*ttl);
                 // Then call visit on it again
+                DEBUG("--- Visiting new node");
                 this->visit(newexpr);
                 // And schedule it to replace the previous
                 replacement = mv$(newexpr);
             }
-            else
-            {
-                node.m_name = "";
-            }
+            DEBUG("replacement = " << replacement.get());
+            node.m_name = "";
         }
     }
     
@@ -431,6 +436,9 @@ void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
 {
     auto visitor = CExpandExpr(is_early, crate, modstack);
     node.visit_nodes(visitor);
+    if( visitor.replacement ) {
+        node = AST::Expr( mv$(visitor.replacement) );
+    }
 }
 
 void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod)
