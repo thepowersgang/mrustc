@@ -976,6 +976,40 @@ enum eTokenType Token::typefromstr(const ::std::string& s)
         return TOK_NULL;
 }
 
+struct EscapedString {
+    const ::std::string& s;
+    EscapedString(const ::std::string& s): s(s) {}
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const EscapedString& x) {
+        for(auto b : x.s) {
+            if( b < 0 || b >= 128 ) {
+                os << b;
+            }
+            else {
+                switch(b)
+                {
+                case '"':
+                    os << "\\\"";
+                    break;
+                case '\\':
+                    os << "\\\\";
+                    break;
+                case '\n':
+                    os << "\\n";
+                    break;
+                default:
+                    if( ' ' <= b && b < 0x7F )
+                        os << b;
+                    else
+                        os << "\\u{" << ::std::hex << (unsigned int)b << "}";
+                    break;
+                }
+            }
+        }
+        return os;
+    }
+};
+
 ::std::string Token::to_str() const
 {
     switch(m_type)
@@ -993,8 +1027,8 @@ enum eTokenType Token::typefromstr(const ::std::string& s)
     case TOK_INTEGER:   return FMT(m_intval);    // TODO: suffix for type
     case TOK_CHAR:      return FMT("'\\u{"<< ::std::hex << m_intval << "}");
     case TOK_FLOAT:     return FMT(m_floatval);
-    case TOK_STRING:    return "\"" + m_str + "\"";
-    case TOK_BYTESTRING:return "b\"" + m_str + "\"";
+    case TOK_STRING:    return FMT("\"" << EscapedString(m_str) << "\"");
+    case TOK_BYTESTRING:return FMT("b\"" << m_str << "\"");
     case TOK_CATTR_OPEN:return "#![";
     case TOK_ATTR_OPEN: return "#[";
     case TOK_UNDERSCORE:return "_";
@@ -1146,7 +1180,7 @@ SERIALISE_TYPE_S(Token, {
     case TOK_IDENT:
     case TOK_MACRO:
     case TOK_LIFETIME:
-        os << "\"" << tok.str() << "\"";
+        os << "\"" << EscapedString(tok.str()) << "\"";
         break;
     case TOK_INTEGER:
         os << ":" << tok.intval();

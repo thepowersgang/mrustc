@@ -241,7 +241,6 @@ struct CExpandExpr:
                 if( n_mac->m_name == "" )
                     cnode.reset();
             }
-            DEBUG("replacement = " << replacement.get());
             if( this->replacement ) {
                 cnode = mv$(this->replacement);
             }
@@ -277,7 +276,7 @@ struct CExpandExpr:
     
     void visit(::AST::ExprNode_Macro& node) override
     {
-        TRACE_FUNCTION_F("name = " << node.m_name);
+        TRACE_FUNCTION_F("ExprNode_Macro - name = " << node.m_name);
         auto& mod = this->cur_mod();
         auto ttl = Expand_Macro(
             is_early, crate, modstack, mod,
@@ -297,7 +296,7 @@ struct CExpandExpr:
                 // And schedule it to replace the previous
                 replacement = mv$(newexpr);
             }
-            DEBUG("replacement = " << replacement.get());
+            DEBUG("ExprNode_Macro - replacement = " << replacement.get());
             node.m_name = "";
         }
     }
