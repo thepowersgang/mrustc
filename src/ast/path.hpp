@@ -28,7 +28,7 @@ class Trait;
 class Static;
 class Function;
 
-TAGGED_UNION(PathBinding, Unbound,
+TAGGED_UNION_EX(PathBinding, (), Unbound, (
     (Unbound, struct {
         }),
     (Module, struct {
@@ -72,6 +72,12 @@ TAGGED_UNION(PathBinding, Unbound,
     (Variable, struct {
         unsigned int slot;
         })
+    ),
+    (), (),
+    (
+    public:
+        PathBinding clone() const;
+        )
     );
 
 extern ::std::ostream& operator<<(::std::ostream& os, const PathBinding& x);
@@ -342,6 +348,10 @@ public:
     }
     void bind_type_alias(const TypeAlias& ent, const ::std::vector<TypeRef>& args={}) {
         m_binding = PathBinding::make_TypeAlias({&ent});
+    }
+    
+    void bind(::AST::PathBinding pb) {
+        m_binding = mv$(pb);
     }
 };
 

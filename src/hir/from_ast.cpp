@@ -8,7 +8,7 @@
 /// \brief Converts the AST into HIR format
 ///
 /// - Removes all possibility for unexpanded macros
-/// - Performs name resolution and partial UFCS conversion? (TODO: This should be done on the AST, as it requires two passes with state)
+/// - Performs name resolution and partial UFCS conversion?
 /// - Performs desugaring of for/if-let/while-let/...
 ::HIR::Crate LowerHIR_FromAST(::AST::Crate crate)
 {

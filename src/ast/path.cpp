@@ -31,6 +31,10 @@ namespace AST {
     )
     return os;
 }
+PathBinding PathBinding::clone() const
+{
+    assert(!"TODO: PathBinding::clone()");
+}
 
 // --- AST::PathNode
 PathNode::PathNode(::std::string name, ::std::vector<TypeRef> args):

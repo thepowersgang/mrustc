@@ -22,7 +22,7 @@ int g_debug_indent_level = 0;
 
 bool debug_enabled()
 {
-    return true;
+    return g_cur_phase != "Parse";
 }
 ::std::ostream& debug_output(int indent, const char* function)
 {
@@ -116,6 +116,9 @@ int main(int argc, char *argv[])
         // - This does name checking on types and free functions.
         // - Resolves all identifiers/paths to references
         CompilePhaseV("Resolve", [&]() {
+            Resolve_Use(crate);
+            //Resolve_Absolutise(crate);
+            //Resolve_UfcsPaths(crate);
             ResolvePaths(crate);
             });
         

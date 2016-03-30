@@ -482,7 +482,7 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
     DEBUG("Items");
     for( auto& i : mod.items() )
     {
-        DEBUG("- " << i.name << " :: " << i.data.attrs);
+        DEBUG("- " << i.name << " (" << ::AST::Item::tag_to_str(i.data.tag()) << ") :: " << i.data.attrs);
         ::AST::Path path = modpath + i.name;
         
         auto attrs = mv$(i.data.attrs);
