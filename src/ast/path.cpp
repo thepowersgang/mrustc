@@ -33,7 +33,23 @@ namespace AST {
 }
 PathBinding PathBinding::clone() const
 {
-    assert(!"TODO: PathBinding::clone()");
+    TU_MATCH(::AST::PathBinding, (*this), (e),
+    (Unbound , return PathBinding::make_Unbound({}); ),
+    (Module  , return PathBinding::make_Module(e);   ),
+    (Trait   , return PathBinding::make_Trait(e);    ),
+    (Struct  , return PathBinding::make_Struct(e);   ),
+    (Enum    , return PathBinding::make_Enum(e);     ),
+    (Static  , return PathBinding::make_Static(e);   ),
+    (Function, return PathBinding::make_Function(e); ),
+    (TypeAlias, return PathBinding::make_TypeAlias(e); ),
+    (EnumVar , return PathBinding::make_EnumVar(e);  ),
+    (StructMethod, return PathBinding::make_StructMethod(e); ),
+    (TraitMethod, return PathBinding::make_TraitMethod(e); ),
+    
+    (TypeParameter, return PathBinding::make_TypeParameter(e); ),
+    (Variable, return PathBinding::make_Variable(e); )
+    )
+    throw "BUG: Fell off the end of PathBinding::clone";
 }
 
 // --- AST::PathNode

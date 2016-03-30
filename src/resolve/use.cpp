@@ -145,6 +145,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             if( imp.data.binding().is_Unbound() ) {
                 DEBUG(" > Needs resolve");
                 const Span sp2;
+                // TODO: Handle possibility of recursion
                 return Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp.data));
             }
             else {
@@ -158,6 +159,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             const auto* binding = &imp.data.binding();
             if( binding->is_Unbound() ) {
                 DEBUG("Temp resolving wildcard " << imp.data);
+                // TODO: Handle possibility of recursion
                 binding_ = Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp.data));
                 binding = &binding_;
             }

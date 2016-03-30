@@ -97,14 +97,14 @@
 
 // "match"-like statement
 // TU_MATCH(Class, m_data, ent, (Variant, CODE), (Variant2, CODE))
-#define TU_MATCH(CLASS, VAR, NAME, ...)   switch( TU_FIRST VAR.tag()) {/*
+#define TU_MATCH(CLASS, VAR, NAME, ...)   switch( (TU_FIRST VAR).tag()) {/*
 */    TU_MATCH_ARMS(CLASS, VAR, NAME, __VA_ARGS__)/*
 */}
-#define TU_MATCH_DEF(CLASS, VAR, NAME, DEF, ...)   switch( TU_FIRST VAR.tag()) {/*
+#define TU_MATCH_DEF(CLASS, VAR, NAME, DEF, ...)   switch( (TU_FIRST VAR).tag()) {/*
 */    TU_MATCH_ARMS(CLASS, VAR, NAME, __VA_ARGS__)/*
 */    default: {TU_EXP DEF;} break;/*
 */}
-#define TU_MATCH_BIND1(TAG, VAR, NAME)  /*MATCH_BIND*/ auto& NAME = VAR.as_##TAG(); (void)&NAME;
+#define TU_MATCH_BIND1(TAG, VAR, NAME)  /*MATCH_BIND*/ auto& NAME = (VAR).as_##TAG(); (void)&NAME;
 #define TU_MATCH_BIND2_(TAG, v1,v2, n1,n2)   TU_MATCH_BIND1(TAG, v1, n1) TU_MATCH_BIND1(TAG, v2, n2)
 #define TU_MATCH_BIND2(...) TU_MATCH_BIND2_(__VA_ARGS__)
 #define TU_MATCH_ARM(CLASS, VAR, NAME, TAG, ...)  case CLASS::TAG_##TAG: {/*
