@@ -551,7 +551,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         {
             m_os << "::*";
         }
-        else if( i.data.nodes().back().name() != i.name )
+        else if( i.data.path.nodes().back().name() != i.name )
         {
             m_os << " as " << i.name;
         }

@@ -16,7 +16,7 @@ struct NamedNS
     NamedNS():
         is_pub(false)
     {}
-    NamedNS(NamedNS&&) noexcept = default;
+    NamedNS(NamedNS&&) = default;
     NamedNS(const NamedNS&) = default;
     NamedNS(::std::string name, T data, bool is_pub):
         name( ::std::move(name) ),
@@ -38,7 +38,7 @@ struct Named:
     Named():
         NamedNS<T>()
     {}
-    Named(Named&&) noexcept = default;
+    Named(Named&&) = default;
     Named(const Named&) = default;
     Named(::std::string name, T data, bool is_pub):
         NamedNS<T>( ::std::move(name), ::std::move(data), is_pub )

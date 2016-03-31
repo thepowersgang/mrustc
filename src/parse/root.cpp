@@ -1079,11 +1079,11 @@ void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi, ::
     }
 }
 
-void Parse_Use_Wildcard(AST::Path base_path, ::std::function<void(AST::Path, ::std::string)> fcn)
+void Parse_Use_Wildcard(Span sp, AST::Path base_path, ::std::function<void(AST::UseStmt, ::std::string)> fcn)
 {
-    fcn( mv$(base_path), ""); // HACK! Empty path indicates wilcard import
+    fcn( AST::UseStmt(mv$(sp), mv$(base_path)), "" ); // HACK! Empty path indicates wilcard import
 }
-void Parse_Use_Set(TokenStream& lex, const AST::Path& base_path, ::std::function<void(AST::Path, ::std::string)> fcn)
+void Parse_Use_Set(TokenStream& lex, const ProtoSpan& ps, const AST::Path& base_path, ::std::function<void(AST::UseStmt, ::std::string)> fcn)
 {
     TRACE_FUNCTION;
 
@@ -1110,12 +1110,12 @@ void Parse_Use_Set(TokenStream& lex, const AST::Path& base_path, ::std::function
         else {
             lex.putback(tok);
         }
-        fcn(mv$(path), mv$(name));
+        fcn(AST::UseStmt(lex.end_span(ps), mv$(path)), mv$(name));
     } while( GET_TOK(tok, lex) == TOK_COMMA );
     lex.putback(tok);
 }
 
-void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)> fcn)
+void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::string)> fcn)
 {
     TRACE_FUNCTION;
 
@@ -1156,7 +1156,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
         }
         break;
     case TOK_BRACE_OPEN:
-        Parse_Use_Set(lex, path, fcn);
+        Parse_Use_Set(lex, span_start, path, fcn);
         GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
         return;
     default:
@@ -1174,11 +1174,11 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
             switch( tok.type() )
             {
             case TOK_BRACE_OPEN:
-                Parse_Use_Set(lex, mv$(path), fcn);
+                Parse_Use_Set(lex, span_start, mv$(path), fcn);
                 GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
                 break ;
             case TOK_STAR:
-                Parse_Use_Wildcard( mv$(path), fcn );
+                Parse_Use_Wildcard( lex.end_span(span_start), mv$(path), fcn );
                 break ;
             default:
                 throw ParseError::Unexpected(lex, tok);
@@ -1204,7 +1204,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::Path, ::std::string)>
         name = path.nodes().back().name();
     }
     
-    fcn(path, name);
+    fcn( AST::UseStmt(lex.end_span(span_start), mv$(path)), name);
 }
 
 
@@ -1271,7 +1271,7 @@ void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::strin
     {
     // `use ...`
     case TOK_RWORD_USE:
-        Parse_Use(lex, [&mod,is_public,&file_path,&meta_items](AST::Path p, std::string s) {
+        Parse_Use(lex, [&mod,is_public,&file_path,&meta_items](AST::UseStmt p, std::string s) {
                 DEBUG(file_path << " - use " << p << " as '" << s << "'");
                 mod.add_alias(is_public, mv$(p), s, meta_items.clone());
             });

@@ -14,7 +14,7 @@ public:
     ::std::vector<MetaItem> m_items;
     
     MetaItems() {}
-    MetaItems(MetaItems&&) = default;
+    MetaItems(MetaItems&&) noexcept = default;
     MetaItems& operator=(MetaItems&&) = default;
     MetaItems(const MetaItems&) = delete;
     MetaItems(::std::vector<MetaItem> items):

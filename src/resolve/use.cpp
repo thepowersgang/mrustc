@@ -59,21 +59,21 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     TRACE_FUNCTION_F("path = " << path << ", mod.path() = " << mod.path());
     for(auto& use_stmt : mod.imports())
     {
-        const Span  span;
-        use_stmt.data = Resolve_Use_AbsolutisePath(span, path, mv$(use_stmt.data));
-        if( !use_stmt.data.m_class.is_Absolute() )
+        const Span& span = use_stmt.data.sp;
+        use_stmt.data.path = Resolve_Use_AbsolutisePath(span, path, mv$(use_stmt.data.path));
+        if( !use_stmt.data.path.m_class.is_Absolute() )
             BUG(span, "Use path is not absolute after absolutisation");
         
         // TODO: Is this a valid assertion?
-        if( use_stmt.data.crate() != "" )
+        if( use_stmt.data.path.crate() != "" )
             BUG(span, "Use path crate was set before resolve");
         
-        use_stmt.data.bind( Resolve_Use_GetBinding(span, crate, use_stmt.data) );
+        use_stmt.data.path.bind( Resolve_Use_GetBinding(span, crate, use_stmt.data.path) );
         
         // - If doing a glob, ensure the item type is valid
         if( use_stmt.name == "" )
         {
-            TU_MATCH_DEF(::AST::PathBinding, (use_stmt.data.binding()), (e),
+            TU_MATCH_DEF(::AST::PathBinding, (use_stmt.data.path.binding()), (e),
             (
                 ERROR(span, E0000, "Wildcard import of invalid item type");
                 ),
@@ -140,27 +140,26 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     // Imports
     for( const auto& imp : mod.imports() )
     {
+        const Span& sp2 = imp.data.sp;
         if( imp.name == des_item_name ) {
             DEBUG("- Named import " << imp.name << " = " << imp.data);
-            if( imp.data.binding().is_Unbound() ) {
+            if( imp.data.path.binding().is_Unbound() ) {
                 DEBUG(" > Needs resolve");
-                const Span sp2;
                 // TODO: Handle possibility of recursion
-                return Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp.data));
+                return Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp.data.path));
             }
             else {
-                return imp.data.binding().clone();
+                return imp.data.path.binding().clone();
             }
         }
         if( imp.is_pub && imp.name == "" ) {
-            const Span sp2;
             // INEFFICIENT! Resolves and throws away the result (because we can't/shouldn't mutate here)
             ::AST::PathBinding  binding_;
-            const auto* binding = &imp.data.binding();
+            const auto* binding = &imp.data.path.binding();
             if( binding->is_Unbound() ) {
                 DEBUG("Temp resolving wildcard " << imp.data);
                 // TODO: Handle possibility of recursion
-                binding_ = Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp.data));
+                binding_ = Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp.data.path));
                 binding = &binding_;
             }
             

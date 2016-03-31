@@ -435,6 +435,25 @@ private:
     Impl make_concrete(const ::std::vector<TypeRef>& types) const;
 };
 
+struct UseStmt:
+    public Serialisable
+{
+    Span    sp;
+    ::AST::Path path;
+    ::AST::MetaItems    attrs;
+    
+    UseStmt(UseStmt&&) = default;
+    UseStmt(){}
+    UseStmt(Span sp, Path p):
+        sp(sp),
+        path(p)
+    {
+    }
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const UseStmt& x);
+    
+    SERIALISABLE_PROTOTYPES();
+};
 
 typedef void fcn_visitor_t(const AST::Crate& crate, const AST::Module& mod, Function& fcn);
 
@@ -442,7 +461,7 @@ typedef void fcn_visitor_t(const AST::Crate& crate, const AST::Module& mod, Func
 class Module:
     public Serialisable
 {
-    typedef ::std::vector< Named<Path> > itemlist_use_t;
+    typedef ::std::vector< Named<UseStmt> > itemlist_use_t;
     
     ::AST::Path m_my_path;
 
@@ -484,7 +503,7 @@ public:
     
     void add_item(bool is_pub, ::std::string name, Item it, MetaItems attrs);
     void add_ext_crate(bool is_public, ::std::string ext_name, ::std::string imp_name, MetaItems attrs);
-    void add_alias(bool is_public, Path path, ::std::string name, MetaItems attrs);
+    void add_alias(bool is_public, UseStmt path, ::std::string name, MetaItems attrs);
     void add_typealias(bool is_public, ::std::string name, TypeAlias alias, MetaItems attrs);
     void add_static(bool is_public, ::std::string name, Static item, MetaItems attrs);
     void add_trait(bool is_public, ::std::string name, Trait item, MetaItems attrs);
@@ -559,7 +578,7 @@ public:
         _(AST::Struct, Struct)
         _(AST::Enum, Enum)
         _(AST::Static, Static)
-        _(AST::Named<Path>, Use)
+        _(AST::Named<UseStmt>, Use)
         #undef _
     };
     ItemRef find_item(const ::std::string& needle, bool allow_leaves = true, bool ignore_private_wildcard = true) const;

@@ -239,6 +239,17 @@ SERIALISE_TYPE(Impl::, "AST_Impl", {
     }
 }
 
+::std::ostream& operator<<(::std::ostream& os, const UseStmt& x)
+{
+    return os;
+}
+
+SERIALISE_TYPE_A(UseStmt::, "AST_UseStmt", {
+    //s.item(sp);
+    s.item(attrs);
+    s.item(path);
+})
+
 
 SERIALISE_TYPE_A(MacroInvocation::, "AST_MacroInvocation", {
     s.item(m_attrs);
@@ -275,9 +286,9 @@ void Module::add_item(bool is_pub, ::std::string name, Item it, MetaItems attrs)
 void Module::add_ext_crate(bool is_public, ::std::string ext_name, ::std::string imp_name, MetaItems attrs) {
     this->add_item( is_public, imp_name, Item::make_Crate({mv$(ext_name)}), mv$(attrs) );
 }
-void Module::add_alias(bool is_public, Path path, ::std::string name, MetaItems attrs) {
-    // TODO: Attributes on aliases / imports
-    m_imports.push_back( Named<Path>( move(name), move(path), is_public) );
+void Module::add_alias(bool is_public, UseStmt us, ::std::string name, MetaItems attrs) {
+    us.attrs = mv$(attrs);
+    m_imports.push_back( Named<UseStmt>( mv$(name), mv$(us), is_public) );
 }
 void Module::add_typealias(bool is_public, ::std::string name, TypeAlias alias, MetaItems attrs) {
     this->add_item( is_public, name, Item::make_Type({mv$(alias)}), mv$(attrs) );
@@ -391,7 +402,7 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
                 //if( &imp.data == this )
                 //    continue ;
                 //
-                const auto& binding = imp.data.binding();
+                const auto& binding = imp.data.path.binding();
                 if( binding.is_Unbound() )
                 {
                     // not yet bound, so run resolution (recursion)
@@ -403,7 +414,7 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
                 TU_MATCH_DEF(AST::PathBinding, (binding), (info),
                 // - any other type - error
                 (
-                    DEBUG("ERROR: Import of invalid class : " << imp.data);
+                    DEBUG("ERROR: Import of invalid class : " << imp.data.path);
                     throw ParseError::Generic("Wildcard import of non-module/enum");
                     ),
                 (Unbound,

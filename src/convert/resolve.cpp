@@ -180,12 +180,12 @@ private:
             ret.push_back( ::std::pair<AST::Path, const AST::Trait&>(trait_path, t) );
         }
         for( const auto& i : m_module->imports() ) {
-            if( i.data.binding().is_Trait() )
+            if( i.data.path.binding().is_Trait() )
             {
-                auto& t = *i.data.binding().as_Trait().trait_;
+                auto& t = *i.data.path.binding().as_Trait().trait_;
                 
                 DEBUG("(use) t = " << i.data);
-                ::std::pair<AST::Path, const AST::Trait&>   tr(i.data, t);
+                ::std::pair<AST::Path, const AST::Trait&>   tr(i.data.path, t);
                 ret.push_back( tr );
             }
         }
@@ -520,14 +520,14 @@ bool lookup_path_in_module(const Span& span, const AST::Crate& crate, const AST:
         {
             DEBUG("Wildcard import found, " << imp.data << " + " << path);
             // Wildcard path, prefix entirely with the path
-            path = imp.data + path;
+            path = imp.data.path + path;
             //path.resolve( crate );
             return true;
         }
         else
         {
             DEBUG("Named import found, " << imp.data << " + " << path << " [1..]");
-            path = AST::Path::add_tailing(imp.data, path);
+            path = AST::Path::add_tailing(imp.data.path, path);
             //path.resolve( crate );
             return true;
         }
@@ -979,7 +979,7 @@ void CPathResolver::handle_path_abs(const Span& span, AST::Path& path, CASTItera
         // Re-export
         (Use,
             const auto& imp = item;
-            AST::Path   newpath = imp.data;
+            AST::Path   newpath = imp.data.path;
             auto& newnodes = newpath.m_class.as_Absolute().nodes;
             DEBUG("Re-exported path " << imp.data);
             if( imp.name == "" )
@@ -1743,17 +1743,17 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
     ::std::vector<AST::Path>    new_imports;
     for( auto& imp : mod.imports() )
     {
-        const Span  span = Span();
+        const Span& span = imp.data.sp;
         DEBUG("p = " << imp.data);
-        absolutise_path(span, crate, mod, modpath, imp.data);
+        absolutise_path(span, crate, mod, modpath, imp.data.path);
         
-        resolve_path(span, crate, imp.data);
+        resolve_path(span, crate, imp.data.path);
         DEBUG("Resolved import : " << imp.data);
         
         // If wildcard, make sure it's sane
         if( imp.name == "" )
         {
-            TU_MATCH_DEF(AST::PathBinding, (imp.data.binding()), (info),
+            TU_MATCH_DEF(AST::PathBinding, (imp.data.path.binding()), (info),
             (
                 throw ParseError::Generic("Wildcard imports are only allowed on modules and enums");
                 ),
@@ -1772,7 +1772,7 @@ void ResolvePaths_HandleModule_Use(const AST::Crate& crate, const AST::Path& mod
         //    new_imp.resolve(crate, false);
         //}
         // TODO: Get attributes from the source import
-        mod.add_alias(false, new_imp, new_imp[new_imp.size()-1].name(), ::AST::MetaItems());
+        mod.add_alias(false, ::AST::UseStmt(Span(), new_imp), new_imp[new_imp.size()-1].name(), ::AST::MetaItems());
     }
     
     for(auto& item : mod.items()) {
@@ -1801,7 +1801,7 @@ void SetCrateName_Mod(const AST::Crate& crate, ::std::string name, AST::Module& 
     // Imports 'use' statements
     for(auto& imp : mod.imports())
     {
-        imp.data.set_crate(name);
+        imp.data.path.set_crate(name);
         // - Disable expectation of type parameters
         //imp.data.resolve(crate, false);
     }
