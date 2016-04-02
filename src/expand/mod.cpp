@@ -25,6 +25,12 @@ void Register_Synext_Macro(::std::string name, ::std::unique_ptr<ExpandProcMacro
     g_macros[name] = mv$(handler);
 }
 
+
+void ExpandDecorator::unexpected(const AST::MetaItem& mi, const char* loc_str) const
+{
+    ERROR(Span(), E0000, "Unexpected attribute " << mi.name() << " on " << loc_str);
+}
+
 namespace {
     AttrStage stage_pre(bool is_early) {
         return (is_early ? AttrStage::EarlyPre : AttrStage::LatePre);
@@ -459,14 +465,14 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
     for(unsigned int i = 0; i < mod.macro_invs().size(); i ++ )
     {
         auto& mi = mod.macro_invs()[i];
-        DEBUG("> Macro invoke '"<<mi.name()<<"'");
+        DEBUG("> Macro invoke " << mi);
         
         if( mi.name() != "" )
         {
             // Move out of the module to avoid invalidation if a new macro invocation is added
             auto mi_owned = mv$(mi);
             
-            auto& attrs = mi.attrs();
+            auto& attrs = mi_owned.attrs();
             Expand_Attrs(attrs, stage_pre(is_early),  [&](const auto& d, const auto& a){ d.handle(a, crate, mi_owned); });
             
             auto ttl = Expand_Macro(is_early, crate, modstack, mod, mi_owned);

@@ -44,22 +44,23 @@ enum class AttrStage
 
 class ExpandDecorator
 {
+    void unexpected(const AST::MetaItem& mi, const char* loc_str) const;
 public:
     virtual AttrStage   stage() const = 0;
     
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate) const {}
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, AST::MacroInvocation& mac) const {}
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const {}
+    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate) const { unexpected(mi, "crate"); }
+    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, AST::MacroInvocation& mac) const { unexpected(mi, "macro invocation"); }
+    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const { unexpected(mi, "item"); }
     // NOTE: To delete, clear the name
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::StructItem& si) const {}
+    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::StructItem& si) const { unexpected(mi, "struct item"); }
     // NOTE: To delete, make the type invalid
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::TupleItem& si) const {}
+    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::TupleItem& si) const { unexpected(mi, "tuple item"); }
     // NOTE: To delete, clear the name
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::EnumVariant& ev) const {}
+    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::EnumVariant& ev) const { unexpected(mi, "enum variant"); }
     
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const {}
+    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const { unexpected(mi, "expression"); }
     // NOTE: To delete, clear the patterns vector
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::ExprNode_Match_Arm& expr) const {}
+    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::ExprNode_Match_Arm& expr) const { unexpected(mi, "match arm"); }
 };
 
 class ExpandProcMacro

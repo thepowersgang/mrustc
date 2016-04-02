@@ -56,7 +56,10 @@ public:
     SERIALISABLE_PROTOTYPES();
     
     friend ::std::ostream& operator<<(::std::ostream& os, const MacroInvocation& x) {
-        os << x.m_attrs << x.m_macro_name << "! " << x.m_ident << x.m_input;
+        os << x.m_attrs;
+        if(x.m_attrs.m_items.size() > 0)
+            os << " ";
+        os << x.m_macro_name << "! " << x.m_ident << x.m_input;
         return os;
     }
 };
