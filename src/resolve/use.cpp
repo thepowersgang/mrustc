@@ -96,6 +96,22 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
 
 ::AST::PathBinding Resolve_Use_GetBinding_Mod(const Span& span, const ::AST::Crate& crate, const ::AST::Module& mod, const ::std::string& des_item_name)
 {
+    // HACK - Catch the possibiliy of a name clash (not sure if this is really an erro)
+    {
+        bool found = false;
+        for( const auto& item : mod.items() )
+        {
+            if( item.data.is_None() )
+                continue ;
+            if( item.name == des_item_name ) {
+                if( found ) {
+                    TODO(span, "Duplicate name found resolving use statement searching in module " << mod.path());
+                }
+                found = true;
+            }
+        }
+    }
+    
     for( const auto& item : mod.items() )
     {
         if( item.data.is_None() )

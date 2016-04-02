@@ -42,6 +42,9 @@ public:
         m_ident = "";
         m_input = TokenTree();
     }
+    
+          ::AST::MetaItems& attrs()       { return m_attrs; }
+    const ::AST::MetaItems& attrs() const { return m_attrs; }
 
     const Span& span() const { return m_span; }
     const ::std::string& name() const { return m_macro_name; }

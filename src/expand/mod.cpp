@@ -69,6 +69,10 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
     Span mi_span, const ::std::string& name, const ::std::string& input_ident, const TokenTree& input_tt
     )
 {
+    if( name == "" ) {
+        return ::std::unique_ptr<TokenStream>();
+    }
+    
     for( const auto& m : g_macros )
     {
         if( name == m.first && m.second->expand_early() == is_early )
@@ -456,15 +460,20 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
     {
         auto& mi = mod.macro_invs()[i];
         DEBUG("> Macro invoke '"<<mi.name()<<"'");
+        
         if( mi.name() != "" )
         {
             // Move out of the module to avoid invalidation if a new macro invocation is added
             auto mi_owned = mv$(mi);
             
+            auto& attrs = mi.attrs();
+            Expand_Attrs(attrs, stage_pre(is_early),  [&](const auto& d, const auto& a){ d.handle(a, crate, mi_owned); });
+            
             auto ttl = Expand_Macro(is_early, crate, modstack, mod, mi_owned);
 
             if( ! ttl.get() )
             {
+                Expand_Attrs(attrs, stage_post(is_early),  [&](const auto& d, const auto& a){ d.handle(a, crate, mi_owned); });
                 // - Return ownership to the list
                 mod.macro_invs()[i] = mv$(mi_owned);
             }
@@ -475,6 +484,7 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
                 Parse_ModRoot_Items(*ttl, mod, false, "-");
                 // - Any new macro invocations ends up at the end of the list and handled
             }
+            
         }
     }
     

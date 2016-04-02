@@ -14,6 +14,7 @@
 #include "../coretypes.hpp"
 #include <memory>
 #include <map>
+#include <unordered_map>
 #include <algorithm>
 
 #include "../parse/tokentree.hpp"
@@ -461,6 +462,66 @@ typedef void fcn_visitor_t(const AST::Crate& crate, const AST::Module& mod, Func
 class Module:
     public Serialisable
 {
+public:
+    class ItemRef
+    {
+    public:
+        enum Type
+        {
+            TAG_None,
+            TAG_Module,
+            TAG_Crate,
+            TAG_TypeAlias,
+            TAG_Function,
+            TAG_Trait,
+            TAG_Struct,
+            TAG_Enum,
+            TAG_Static,
+            TAG_Use,
+        };
+    private:    
+        Type    m_type;
+        const void* m_ref;
+    public:
+        ItemRef(): m_type(TAG_None) {}
+        
+        Type tag() const { return m_type; }
+        bool is_None() const { return m_type == TAG_None; }
+        const Type& as_None() const { return m_type; }  // HACK: Returns &Type in place of &void
+        #define _(ty,ident) \
+            ItemRef(const ty& ref): m_type(TAG_##ident), m_ref(&ref) {} \
+            bool is_##ident() const { return m_type == TAG_##ident; } \
+            const ty& as_##ident() const { assert(m_type == TAG_##ident); return *(const ty*)m_ref; }
+        _(AST::Module, Module)
+        _(::std::string, Crate)
+        _(AST::TypeAlias, TypeAlias)
+        _(AST::Function, Function)
+        _(AST::Trait, Trait)
+        _(AST::Struct, Struct)
+        _(AST::Enum, Enum)
+        _(AST::Static, Static)
+        _(AST::Named<UseStmt>, Use)
+        #undef _
+        friend ::std::ostream& operator<<(::std::ostream& os, const ItemRef& x) {
+            switch(x.m_type)
+            {
+            #define _(ident)    case TAG_##ident:  return os << "ItemRef(" #ident ")";
+            _(None)
+            _(Module)
+            _(Crate)
+            _(TypeAlias)
+            _(Function)
+            _(Trait)
+            _(Struct)
+            _(Enum)
+            _(Static)
+            _(Use)
+            #undef _
+            }
+            throw "";
+        }
+    };
+private:
     typedef ::std::vector< Named<UseStmt> > itemlist_use_t;
     
     ::AST::Path m_my_path;
@@ -481,9 +542,14 @@ class Module:
 
     // --- Runtime caches and state ---
     ::std::vector<Module*>  m_anon_modules;
-    
+
     ::std::vector< NamedNS<const MacroRules*> > m_macro_import_res; // Vec of imported macros (not serialised)
     ::std::vector< Named<MacroRules> >  m_macros;
+
+public:
+    ::std::unordered_map< ::std::string, ::std::pair<bool, PathBinding> >    m_type_items;
+    ::std::unordered_map< ::std::string, ::std::pair<bool, PathBinding> >    m_value_items;
+
 public:
     Module() {}
     Module(::AST::Path path):
@@ -541,46 +607,6 @@ public:
     void iterate_functions(fcn_visitor_t* visitor, const Crate& crate);
 
     const ::AST::Path& path() const { return m_my_path; }
-    class ItemRef
-    {
-    public:
-        enum Type
-        {
-            TAG_None,
-            TAG_Module,
-            TAG_Crate,
-            TAG_TypeAlias,
-            TAG_Function,
-            TAG_Trait,
-            TAG_Struct,
-            TAG_Enum,
-            TAG_Static,
-            TAG_Use,
-        };
-    private:    
-        Type    m_type;
-        const void* m_ref;
-    public:
-        ItemRef(): m_type(TAG_None) {}
-        
-        Type tag() const { return m_type; }
-        bool is_None() const { return m_type == TAG_None; }
-        const Type& as_None() const { return m_type; }  // HACK: Returns &Type in place of &void
-        #define _(ty,ident) \
-            ItemRef(const ty& ref): m_type(TAG_##ident), m_ref(&ref) {} \
-            bool is_##ident() const { return m_type == TAG_##ident; } \
-            const ty& as_##ident() const { assert(m_type == TAG_##ident); return *(const ty*)m_ref; }
-        _(AST::Module, Module)
-        _(::std::string, Crate)
-        _(AST::TypeAlias, TypeAlias)
-        _(AST::Function, Function)
-        _(AST::Trait, Trait)
-        _(AST::Struct, Struct)
-        _(AST::Enum, Enum)
-        _(AST::Static, Static)
-        _(AST::Named<UseStmt>, Use)
-        #undef _
-    };
     ItemRef find_item(const ::std::string& needle, bool allow_leaves = true, bool ignore_private_wildcard = true) const;
 
     ::std::vector<Named<Item>>& items() { return m_items; }

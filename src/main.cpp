@@ -116,7 +116,8 @@ int main(int argc, char *argv[])
         // - This does name checking on types and free functions.
         // - Resolves all identifiers/paths to references
         CompilePhaseV("Resolve", [&]() {
-            Resolve_Use(crate);
+            Resolve_Use(crate); // - Absolutise and resolve use statements
+            Resolve_Index(crate); // - Build up a per-module index of avalable names (faster and simpler later resolve)
             //Resolve_Absolutise(crate);
             //Resolve_UfcsPaths(crate);
             ResolvePaths(crate);
