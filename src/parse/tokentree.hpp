@@ -35,9 +35,9 @@ public:
     
     friend ::std::ostream& operator<<(::std::ostream& os, const TokenTree& tt) {
         if( tt.m_subtrees.size() == 0 )
-            return os << "TokenTree(" << tt.m_tok << ")";
+            return os << tt.m_tok;
         else
-            return os << "TokenTree([" << tt.m_subtrees << "])";
+            return os << "TT([" << tt.m_subtrees << "])";
     }
 
     SERIALISABLE_PROTOTYPES();

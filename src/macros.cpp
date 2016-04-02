@@ -831,28 +831,28 @@ SERIALISE_TYPE_S(MacroPatEnt, {
 });
 ::std::ostream& operator<<(::std::ostream& os, const MacroPatEnt& x)
 {
-    os << "MacroPatEnt(";
     switch(x.type)
     {
-    case MacroPatEnt::PAT_TOKEN: os << "token "; break;
-    case MacroPatEnt::PAT_TT:    os << "tt ";    break;
-    case MacroPatEnt::PAT_PAT:   os << "pat ";   break;
-    case MacroPatEnt::PAT_IDENT: os << "ident "; break;
-    case MacroPatEnt::PAT_PATH:  os << "path ";  break;
-    case MacroPatEnt::PAT_TYPE:  os << "type ";  break;
-    case MacroPatEnt::PAT_EXPR:  os << "expr ";  break;
-    case MacroPatEnt::PAT_STMT:  os << "stmt ";  break;
-    case MacroPatEnt::PAT_BLOCK: os << "block "; break;
-    case MacroPatEnt::PAT_META:  os << "meta "; break;
-    case MacroPatEnt::PAT_LOOP:  os << "loop ";  break;
+    case MacroPatEnt::PAT_TOKEN: os << "=" << x.tok; break;
+    case MacroPatEnt::PAT_LOOP:  os << "loop w/ "  << x.tok << " [" << x.subpats << "]";  break;
+    default:
+        os << "$" << x.name << ":";
+        switch(x.type)
+        {
+        case MacroPatEnt::PAT_TOKEN: throw "";
+        case MacroPatEnt::PAT_LOOP:  throw "";
+        case MacroPatEnt::PAT_TT:    os << "tt";    break;
+        case MacroPatEnt::PAT_PAT:   os << "pat";   break;
+        case MacroPatEnt::PAT_IDENT: os << "ident"; break;
+        case MacroPatEnt::PAT_PATH:  os << "path";  break;
+        case MacroPatEnt::PAT_TYPE:  os << "type";  break;
+        case MacroPatEnt::PAT_EXPR:  os << "expr";  break;
+        case MacroPatEnt::PAT_STMT:  os << "stmt";  break;
+        case MacroPatEnt::PAT_BLOCK: os << "block"; break;
+        case MacroPatEnt::PAT_META:  os << "meta"; break;
+        }
+        break;
     }
-    if(x.name.size())
-        os << "'"<<x.name<<"'";
-    else if( x.subpats.size() )
-        os << x.tok << " [" << x.subpats << "]";
-    else
-        os << x.tok;
-    os << ")";
     return os;
 }
 
@@ -864,13 +864,11 @@ SERIALISE_TYPE_S(MacroRuleEnt, {
 
 ::std::ostream& operator<<(::std::ostream& os, const MacroRuleEnt& x)
 {
-    os << "MacroRuleEnt(";
     if(x.name.size())
-        os << "'"<<x.name<<"'";
+        os << "$"<<x.name;
     else if( x.subpats.size() )
-        os << x.tok << " [" << x.subpats << "]";
+        os << "expand w/ " << x.tok << " [" << x.subpats << "]";
     else
-        os << x.tok;
-    os << ")";
+        os << "=" << x.tok;
     return os;
 }
