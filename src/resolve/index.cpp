@@ -5,23 +5,30 @@
 #include <ast/crate.hpp>
 #include <main_bindings.hpp>
 
-void _add_item(AST::Module& mod, bool is_type, const ::std::string& name, bool is_pub, ::AST::PathBinding ir)
+void _add_item(AST::Module& mod, bool is_type, const ::std::string& name, bool is_pub, ::AST::PathBinding ir, bool error_on_collision)
 {
     DEBUG("Add " << (is_type ? "type" : "value") << " item '" << name << "': " << ir);
     auto& list = (is_type ? mod.m_type_items : mod.m_value_items);
     
     if( false == list.insert( ::std::make_pair(name, ::std::make_pair(is_pub, mv$(ir))) ).second )
     {
-        ERROR(Span(), E0000, "Duplicate definition of name '" << name << "' in " << (is_type ? "type" : "value") << " scope (" << mod.path() << ")");
+        if( error_on_collision ) 
+        {
+            ERROR(Span(), E0000, "Duplicate definition of name '" << name << "' in " << (is_type ? "type" : "value") << " scope (" << mod.path() << ")");
+        }
+        else
+        {
+            DEBUG("Name collision " << mod.path() << ", ignored");
+        }
     }
 }
-void _add_item_type(AST::Module& mod, const ::std::string& name, bool is_pub, ::AST::PathBinding ir)
+void _add_item_type(AST::Module& mod, const ::std::string& name, bool is_pub, ::AST::PathBinding ir, bool error_on_collision=true)
 {
-    _add_item(mod, true, name, is_pub, mv$(ir));
+    _add_item(mod, true, name, is_pub, mv$(ir), error_on_collision);
 }
-void _add_item_value(AST::Module& mod, const ::std::string& name, bool is_pub, ::AST::PathBinding ir)
+void _add_item_value(AST::Module& mod, const ::std::string& name, bool is_pub, ::AST::PathBinding ir, bool error_on_collision=true)
 {
-    _add_item(mod, false, name, is_pub, mv$(ir));
+    _add_item(mod, false, name, is_pub, mv$(ir), error_on_collision);
 }
 
 void Resolve_Index_Module(AST::Module& mod)
@@ -66,6 +73,7 @@ void Resolve_Index_Module(AST::Module& mod)
         )
     }
     
+    // Named imports
     for( const auto& i : mod.imports() )
     {
         if( i.name != "" )
@@ -104,7 +112,75 @@ void Resolve_Index_Module(AST::Module& mod)
             )
         }
     }
+    mod.m_index_populated = 1;
     
+    // Glob/wildcard imports
+    for( const auto& i : mod.imports() )
+    {
+        if( i.name == "" )
+        {
+            const auto& sp = i.data.sp;
+            const auto& b = i.data.path.binding();
+            TU_MATCH_DEF(::AST::PathBinding, (b), (e),
+            (
+                BUG(sp, "Glob import of invalid type encountered");
+                ),
+            (Unbound,
+                BUG(sp, "Import left unbound");
+                ),
+            (Variable,
+                BUG(sp, "Import was bound to variable");
+                ),
+            (TypeParameter,
+                BUG(sp, "Import was bound to type parameter");
+                ),
+            (TraitMethod,
+                BUG(sp, "Import was bound to trait method");
+                ),
+            (StructMethod,
+                BUG(sp, "Import was bound to struct method");
+                ),
+            
+            (Module,
+                if( e.module_ == &mod ) {
+                    ERROR(sp, E0000, "Glob import of self");
+                }
+                // 1. Begin indexing of this module if it is not already indexed
+                if( !e.module_->m_index_populated )
+                {
+                    TODO(sp, "Handle glob import of module not yet indexed");
+                    //Resolve_Index_Module( *e.module_ );
+                }
+                for(const auto& vi : e.module_->m_type_items) {
+                    if( vi.second.first ) {
+                        _add_item_type( mod, vi.first, i.is_pub, vi.second.second.clone(), false );
+                    }
+                }
+                for(const auto& vi : e.module_->m_value_items) {
+                    if( vi.second.first ) {
+                        _add_item_value( mod, vi.first, i.is_pub, vi.second.second.clone(), false );
+                    }
+                }
+                ),
+            (Enum,
+                unsigned int idx = 0;
+                for( const auto& ev : e.enum_->variants() ) {
+                    if( ev.m_data.is_Struct() ) {
+                        _add_item_type ( mod, ev.m_name, i.is_pub, ::AST::PathBinding::make_EnumVar({e.enum_, idx}), false );
+                    }
+                    else {
+                        _add_item_value( mod, ev.m_name, i.is_pub, ::AST::PathBinding::make_EnumVar({e.enum_, idx}), false );
+                    }
+                    
+                    idx += 1;
+                }
+                )
+            )
+        }
+    }
+    mod.m_index_populated = 2;
+    
+    // Handle child modules
     for( auto& i : mod.items() )
     {
         TU_MATCH_DEF(AST::Item, (i.data), (e),

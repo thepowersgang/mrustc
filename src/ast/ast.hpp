@@ -547,6 +547,7 @@ private:
     ::std::vector< Named<MacroRules> >  m_macros;
 
 public:
+    char    m_index_populated = 0;  // 0 = no, 1 = partial, 2 = complete
     ::std::unordered_map< ::std::string, ::std::pair<bool, PathBinding> >    m_type_items;
     ::std::unordered_map< ::std::string, ::std::pair<bool, PathBinding> >    m_value_items;
 
