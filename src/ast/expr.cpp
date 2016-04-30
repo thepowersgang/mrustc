@@ -380,6 +380,7 @@ void operator%(::Serialiser& s, const ExprNode_BinOp::Type t) {
     _(CMPGT);
     _(CMPGTE);
     _(RANGE);
+    _(RANGE_INC);
     _(BOOLAND);
     _(BOOLOR);
     _(BITAND);
@@ -408,6 +409,7 @@ void operator%(::Deserialiser& s, ExprNode_BinOp::Type& t) {
     _(CMPGT);
     _(CMPGTE);
     _(RANGE);
+    _(RANGE_INC);
     _(BOOLAND);
     _(BOOLOR);
     _(BITAND);
@@ -451,6 +453,7 @@ NODE(ExprNode_BinOp, {
 	case ADD:   os << "+"; break;
 	case SUB:   os << "-"; break;
 	case RANGE:   os << ".."; break;
+	case RANGE_INC:   os << "..."; break;
     case PLACE_IN:  os << "<-"; break;
     }
     os << " " << *m_right << ")";
@@ -465,6 +468,7 @@ void operator%(::Serialiser& s, const ExprNode_UniOp::Type t) {
     _(BOX)
     _(REF)
     _(REFMUT)
+    _(QMARK)
     #undef _
     }
 }
@@ -478,6 +482,7 @@ void operator%(::Deserialiser& s, enum ExprNode_UniOp::Type& t) {
     _(BOX)
     _(REF)
     _(REFMUT)
+    _(QMARK)
     #undef _
     else
         throw ::std::runtime_error( FMT("No uniop type for '" << n << "'") );
@@ -493,6 +498,7 @@ NODE(ExprNode_UniOp, {
     case BOX: os << "(box "; break;
     case REF: os << "(&"; break;
     case REFMUT: os << "(&mut "; break;
+    case QMARK: os << "(" << *m_value << "?)"; return;
     }
     os << *m_value << ")";
 })

@@ -487,6 +487,7 @@ public:
         case AST::ExprNode_BinOp::ADD:   m_os << "+"; break;
         case AST::ExprNode_BinOp::SUB:   m_os << "-"; break;
         case AST::ExprNode_BinOp::RANGE: m_os << ".."; break;
+        case AST::ExprNode_BinOp::RANGE_INC: m_os << "..."; break;
         case AST::ExprNode_BinOp::PLACE_IN: m_os << "<-"; break;
         }
         m_os << " ";
@@ -504,11 +505,19 @@ public:
         case AST::ExprNode_UniOp::BOX:      m_os << "box ";    break;
         case AST::ExprNode_UniOp::REF:    m_os << "&";    break;
         case AST::ExprNode_UniOp::REFMUT: m_os << "&mut ";    break;
+        case AST::ExprNode_UniOp::QMARK: break;
         }
         
         if( IS(*n.m_value, AST::ExprNode_BinOp) )
-            m_os << " ";
+            m_os << "(";
         AST::NodeVisitor::visit(n.m_value);
+        if( IS(*n.m_value, AST::ExprNode_BinOp) )
+            m_os << ")";
+        switch(n.m_type)
+        {
+        case AST::ExprNode_UniOp::QMARK: m_os << "?"; break;
+        default:    break;
+        }
     }
 
 

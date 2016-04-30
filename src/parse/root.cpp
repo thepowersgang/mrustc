@@ -972,7 +972,8 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
         break; }
     case TOK_RWORD_CONST:
-        if( GET_TOK(tok, lex) != TOK_RWORD_FN && tok.type() != TOK_RWORD_UNSAFE )
+        GET_TOK(tok, lex);
+        if( tok.type() != TOK_RWORD_FN && tok.type() != TOK_RWORD_UNSAFE )
         {
             CHECK_TOK(tok, TOK_IDENT);
             auto name = mv$(tok.str());
@@ -989,11 +990,14 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         }
         else if( tok.type() == TOK_RWORD_UNSAFE )
         {
-            if( GET_TOK(tok, lex) != TOK_RWORD_FN )
-                ERROR(lex.end_span(lex.start_span()), E0000, "");
+            GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
+            // TODO: Use a better marker
             item_attrs.push_back( AST::MetaItem("#UNSAFE") );
         }
+        // TODO: Mark `const fn` as const (properly)
+        item_attrs.push_back( AST::MetaItem("#CONST") );
         if( 0 )
+        // FALL
     case TOK_RWORD_EXTERN:
         {
             abi = "C";
@@ -1005,6 +1009,7 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
             GET_TOK(tok, lex);
         }
         CHECK_TOK(tok, TOK_RWORD_FN);
+        // FALL
     case TOK_RWORD_FN: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         ::std::string name = tok.str();
@@ -1012,6 +1017,21 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         auto fcn = Parse_FunctionDefWithCode(lex, abi, item_attrs, true);
         impl.add_function(is_public, ::std::move(name), mv$(fcn));
         break; }
+    
+    case TOK_IDENT:
+        if( tok.str() == "default" ) {
+            // TODO: Mark `default` functions as default (i.e. specialisable)
+            GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            ::std::string name = tok.str();
+            // - Self allowed, can't be prototype-form
+            auto fcn = Parse_FunctionDefWithCode(lex, abi, item_attrs, true);
+            impl.add_function(is_public, ::std::move(name), mv$(fcn));
+        }
+        else {
+            throw ParseError::Unexpected(lex, tok);
+        }
+        break;
 
     default:
         throw ParseError::Unexpected(lex, tok);
@@ -1340,13 +1360,16 @@ void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::strin
             GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             // TODO: Mark as const and unsafe
+            meta_items.push_back( AST::MetaItem("#UNSAFE") );
+            meta_items.push_back( AST::MetaItem("#CONST") );
             auto i = Parse_FunctionDefWithCode(lex, "rust", meta_items, false);
             mod.add_function(is_public, tok.str(), mv$(i), mv$(meta_items));
             break; }
         case TOK_RWORD_FN: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            // - self not allowed, not prototype
             // TODO: Mark as const
+            meta_items.push_back( AST::MetaItem("#CONST") );
+            // - self not allowed, not prototype
             auto i = Parse_FunctionDefWithCode(lex, "rust", meta_items, false);
             mod.add_function(is_public, tok.str(), mv$(i), mv$(meta_items));
             break; }
@@ -1403,8 +1426,9 @@ void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::strin
         // `unsafe fn`
         case TOK_RWORD_FN: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            // - self not allowed, not prototype
             // TODO: Mark as unsafe
+            meta_items.push_back( AST::MetaItem("#UNSAFE") );
+            // - self not allowed, not prototype
             auto i = Parse_FunctionDefWithCode(lex, "rust", meta_items, false);
             //i.set_unsafe();
             mod.add_function(is_public, tok.str(), mv$(i), mv$(meta_items));

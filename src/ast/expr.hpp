@@ -513,6 +513,7 @@ struct ExprNode_BinOp:
 		CMPGTE,
         
         RANGE,
+        RANGE_INC,
         BOOLAND,
         BOOLOR,
 
@@ -551,11 +552,12 @@ struct ExprNode_UniOp:
     public ExprNode
 {
     enum Type {
-        REF,
-        REFMUT,
-        BOX,
-        INVERT,
-        NEGATE,
+        REF,    // '& <expr>'
+        REFMUT, // '&mut <expr>'
+        BOX,    // 'box <expr>'
+        INVERT, // '!<expr>'
+        NEGATE, // '-<expr>'
+        QMARK, // '<expr>?'
     };
     
     enum Type   m_type;

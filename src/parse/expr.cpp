@@ -578,12 +578,12 @@ bool Parse_IsTokValue(eTokenType tok_type)
     }
     
 }
-ExprNodeP Parse_Expr1_5(TokenStream& lex);
+ExprNodeP Parse_Expr1_1(TokenStream& lex);
 // Very evil handling for '..'
 ExprNodeP Parse_Expr1(TokenStream& lex)
 {
     Token   tok;
-    ExprNodeP (*next)(TokenStream&) = Parse_Expr1_5;
+    ExprNodeP (*next)(TokenStream&) = Parse_Expr1_1;
     ExprNodeP   left, right;
     
     if( GET_TOK(tok, lex) != TOK_DOUBLE_DOT )
@@ -610,6 +610,12 @@ ExprNodeP Parse_Expr1(TokenStream& lex)
     
     return NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::RANGE, ::std::move(left), ::std::move(right) );
 }
+// TODO: Is this left associative?
+LEFTASSOC(Parse_Expr1_1, Parse_Expr1_5,
+    case TOK_TRIPLE_DOT:
+        rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::RANGE_INC, mv$(rv), next(lex) );
+        break;
+)
 // 1: Bool OR
 LEFTASSOC(Parse_Expr1_5, Parse_Expr2,
     case TOK_DOUBLE_PIPE:
@@ -765,6 +771,10 @@ ExprNodeP Parse_ExprFC(TokenStream& lex)
         Token   tok;
         switch(GET_TOK(tok, lex))
         {
+        case TOK_QMARK:
+            val = NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::QMARK, mv$(val) );
+            break;
+        
         case TOK_PAREN_OPEN:
             // Expression method call
             lex.putback(tok);
