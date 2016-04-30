@@ -31,7 +31,7 @@ void _add_item_value(AST::Module& mod, const ::std::string& name, bool is_pub, :
     _add_item(mod, false, name, is_pub, mv$(ir), error_on_collision);
 }
 
-void Resolve_Index_Module(AST::Module& mod)
+void Resolve_Index_Module_Base(AST::Module& mod)
 {
     TRACE_FUNCTION_F("mod = " << mod.path());
     for( const auto& i : mod.items() )
@@ -73,6 +73,7 @@ void Resolve_Index_Module(AST::Module& mod)
         )
     }
     
+    bool has_pub_wildcard = false;
     // Named imports
     for( const auto& i : mod.imports() )
     {
@@ -82,7 +83,7 @@ void Resolve_Index_Module(AST::Module& mod)
             const auto& b = i.data.path.binding();
             TU_MATCH(::AST::PathBinding, (b), (e),
             (Unbound,
-                BUG(sp, "Import left unbound");
+                BUG(sp, "Import left unbound ("<<i.data.path<<")");
                 ),
             (Variable,
                 BUG(sp, "Import was bound to variable");
@@ -111,13 +112,41 @@ void Resolve_Index_Module(AST::Module& mod)
             (EnumVar , _add_item_value(mod, i.name, i.is_pub,  b.clone()); )
             )
         }
+        else
+        {
+            if( i.is_pub )
+            {
+                has_pub_wildcard = true;
+            }
+        }
     }
-    mod.m_index_populated = 1;
     
+    mod.m_index_populated = (has_pub_wildcard ? 1 : 2);
+    
+    // Handle child modules
+    for( auto& i : mod.items() )
+    {
+        TU_MATCH_DEF(AST::Item, (i.data), (e),
+        (
+            ),
+        (Module,
+            Resolve_Index_Module_Base(e);
+            )
+        )
+    }
+    for(auto& mp : mod.anon_mods())
+    {
+        Resolve_Index_Module_Base(*mp);
+    }
+}
+
+void Resolve_Index_Module_Wildcard(AST::Module& mod, bool handle_pub)
+{
+    TRACE_FUNCTION_F("mod = " << mod.path());
     // Glob/wildcard imports
     for( const auto& i : mod.imports() )
     {
-        if( i.name == "" )
+        if( i.name == "" && i.is_pub == handle_pub )
         {
             const auto& sp = i.data.sp;
             const auto& b = i.data.path.binding();
@@ -126,7 +155,7 @@ void Resolve_Index_Module(AST::Module& mod)
                 BUG(sp, "Glob import of invalid type encountered");
                 ),
             (Unbound,
-                BUG(sp, "Import left unbound");
+                BUG(sp, "Import left unbound ("<<i.data.path<<")");
                 ),
             (Variable,
                 BUG(sp, "Import was bound to variable");
@@ -146,9 +175,10 @@ void Resolve_Index_Module(AST::Module& mod)
                     ERROR(sp, E0000, "Glob import of self");
                 }
                 // 1. Begin indexing of this module if it is not already indexed
-                if( !e.module_->m_index_populated )
+                if( e.module_->m_index_populated == 1 )
                 {
-                    TODO(sp, "Handle glob import of module not yet indexed");
+                    // TODO: Handle wildcard import of a module with a public wildcard import
+                    TODO(sp, "Handle wildcard import of module with a wildcard (" << e.module_->path() << " by " << mod.path() << ")");
                     //Resolve_Index_Module( *e.module_ );
                 }
                 for(const auto& vi : e.module_->m_type_items) {
@@ -178,6 +208,8 @@ void Resolve_Index_Module(AST::Module& mod)
             )
         }
     }
+    
+    // handle_pub == true first, leading to full resoltion no matter what
     mod.m_index_populated = 2;
     
     // Handle child modules
@@ -187,13 +219,19 @@ void Resolve_Index_Module(AST::Module& mod)
         (
             ),
         (Module,
-            Resolve_Index_Module(e);
+            Resolve_Index_Module_Wildcard(e, handle_pub);
             )
         )
+    }
+    for(auto& mp : mod.anon_mods())
+    {
+        Resolve_Index_Module_Wildcard(*mp, handle_pub);
     }
 }
 
 void Resolve_Index(AST::Crate& crate)
 {
-    Resolve_Index_Module(crate.m_root_module);
+    Resolve_Index_Module_Base(crate.m_root_module);
+    Resolve_Index_Module_Wildcard(crate.m_root_module, true);
+    Resolve_Index_Module_Wildcard(crate.m_root_module, false);
 }

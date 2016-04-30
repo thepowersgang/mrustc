@@ -4,10 +4,12 @@
 #include <main_bindings.hpp>
 #include <ast/crate.hpp>
 #include <ast/ast.hpp>
+#include <ast/expr.hpp>
 
-void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path path);
 ::AST::Path Resolve_Use_AbsolutisePath(const ::AST::Path& base_path, ::AST::Path path);
-::AST::PathBinding Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path);
+void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path path, slice< const ::AST::Module* > parent_modules={});
+::AST::PathBinding Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, slice< const ::AST::Module* > parent_modules);
+
 
 void Resolve_Use(::AST::Crate& crate)
 {
@@ -54,7 +56,7 @@ void Resolve_Use(::AST::Crate& crate)
     throw "BUG: Reached end of Resolve_Use_AbsolutisePath";
 }
 
-void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path path)
+void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path path, slice< const ::AST::Module* > parent_modules)
 {
     TRACE_FUNCTION_F("path = " << path << ", mod.path() = " << mod.path());
     for(auto& use_stmt : mod.imports())
@@ -68,7 +70,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         if( use_stmt.data.path.crate() != "" )
             BUG(span, "Use path crate was set before resolve");
         
-        use_stmt.data.path.bind( Resolve_Use_GetBinding(span, crate, use_stmt.data.path) );
+        use_stmt.data.path.bind( Resolve_Use_GetBinding(span, crate, use_stmt.data.path, parent_modules) );
         
         // - If doing a glob, ensure the item type is valid
         if( use_stmt.name == "" )
@@ -92,11 +94,60 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             Resolve_Use_Mod(crate, i.data.as_Module(), path + i.name);
         }
     }
+    /*
+    unsigned int idx = 0;
+    for(auto& mp : mod.anon_mods())
+    {
+        Resolve_Use_Mod(crate, *mp, path + FMT("#" << idx));
+        idx ++;
+    }
+    */
+    // TODO: Handle anon modules by iterating code (allowing correct item mappings)
+
+    struct NV:
+        public AST::NodeVisitorDef
+    {
+        const AST::Crate& crate;
+        ::std::vector< const AST::Module* >   parent_modules;
+        
+        NV(const AST::Crate& crate, const AST::Module& cur_module):
+            crate(crate),
+            parent_modules()
+        {
+            parent_modules.push_back( &cur_module );
+        }
+        
+        void visit(AST::ExprNode_Block& node) override {
+            // TODO: Recurse into module, with a stack of immediate-scope modules for resolution.
+            if( node.m_local_mod ) {
+                Resolve_Use_Mod(this->crate, *node.m_local_mod, node.m_local_mod->path(), this->parent_modules);
+                
+                parent_modules.push_back(&*node.m_local_mod);
+            }
+            AST::NodeVisitorDef::visit(node);
+            if( node.m_local_mod ) {
+                parent_modules.pop_back();
+            }
+        }
+    } expr_iter(crate, mod);
+    
+    for(auto& i : mod.items())
+    {
+        TU_MATCH_DEF( AST::Item, (i.data), (e),
+        (
+            ),
+        (Function,
+            if( e.code().is_valid() ) {
+                e.code().node().visit( expr_iter );
+            }
+            )
+        )
+    }
 }
 
-::AST::PathBinding Resolve_Use_GetBinding_Mod(const Span& span, const ::AST::Crate& crate, const ::AST::Module& mod, const ::std::string& des_item_name)
+::AST::PathBinding Resolve_Use_GetBinding_Mod(const Span& span, const ::AST::Crate& crate, const ::AST::Module& mod, const ::std::string& des_item_name, slice< const ::AST::Module* > parent_modules)
 {
-    // HACK - Catch the possibiliy of a name clash (not sure if this is really an erro)
+    // HACK - Catch the possibiliy of a name clash (not sure if this is really an error)
     {
         bool found = false;
         for( const auto& item : mod.items() )
@@ -112,6 +163,17 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         }
     }
     
+    if( des_item_name[0] == '#' ) {
+        unsigned int idx = 0;
+        if( ::std::sscanf(des_item_name.c_str(), "#%u", &idx) != 1 ) {
+            BUG(span, "Invalid anon path segment '" << des_item_name << "'");
+        }
+        if( idx >= mod.anon_mods().size() ) {
+            BUG(span, "Invalid anon path segment '" << des_item_name << "'");
+        }
+        return ::AST::PathBinding::make_Module({mod.anon_mods()[idx]});
+    }
+    
     for( const auto& item : mod.items() )
     {
         if( item.data.is_None() )
@@ -120,7 +182,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         if( item.name == des_item_name ) {
             TU_MATCH(::AST::Item, (item.data), (e),
             (None,
-                // IMPOSSIBLe - Handled above
+                // IMPOSSIBLE - Handled above
                 ),
             (Crate,
                 //return ::AST::PathBinding::make_Crate({&e});
@@ -162,7 +224,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             if( imp.data.path.binding().is_Unbound() ) {
                 DEBUG(" > Needs resolve");
                 // TODO: Handle possibility of recursion
-                return Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp.data.path));
+                return Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp.data.path), parent_modules);
             }
             else {
                 return imp.data.path.binding().clone();
@@ -175,7 +237,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             if( binding->is_Unbound() ) {
                 DEBUG("Temp resolving wildcard " << imp.data);
                 // TODO: Handle possibility of recursion
-                binding_ = Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp.data.path));
+                binding_ = Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp.data.path), parent_modules);
                 binding = &binding_;
             }
             
@@ -193,16 +255,22 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         }
     }
 
-    ERROR(span, E0000, "Could not find node '" << des_item_name << "' in module " << mod.path());
+    if( mod.path().nodes().back().name()[0] == '#' ) {
+        assert( parent_modules.size() > 0 );
+        return Resolve_Use_GetBinding_Mod(span, crate, *parent_modules.back(), des_item_name, parent_modules.subslice(0, parent_modules.size()-1));
+    }
+    else {
+        ERROR(span, E0000, "Could not find node '" << des_item_name << "' in module " << mod.path());
+    }
 }
 
-::AST::PathBinding Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path)
+::AST::PathBinding Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, slice< const ::AST::Module* > parent_modules)
 {
     const AST::Module* mod = &crate.m_root_module;
     const auto& nodes = path.nodes();
     for( unsigned int i = 0; i < nodes.size()-1; i ++ )
     {
-        auto b = Resolve_Use_GetBinding_Mod(span, crate, *mod, nodes[i].name());
+        auto b = Resolve_Use_GetBinding_Mod(span, crate, *mod, nodes[i].name(), parent_modules);
         TU_MATCH_DEF(::AST::PathBinding, (b), (e),
         (
             ERROR(span, E0000, "Unexpected item type in import");
@@ -235,6 +303,6 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         )
     }
     
-    return Resolve_Use_GetBinding_Mod(span, crate, *mod, nodes.back().name());
+    return Resolve_Use_GetBinding_Mod(span, crate, *mod, nodes.back().name(), parent_modules);
 }
 

@@ -629,6 +629,8 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             i.data.attrs = mv$(attrs);
     }
     
+    // IGNORE m_anon_modules, handled as part of expressions
+    
     DEBUG("Impls");
     for( auto& impl : mod.impls() )
     {

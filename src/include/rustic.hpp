@@ -8,9 +8,21 @@ class slice
     T*  m_first;
     unsigned int    m_len;
 public:
+    slice():
+        m_first(nullptr),
+        m_len(0)
+    {}
+    slice(const ::std::vector<T>& v):
+        m_first(&v[0]),
+        m_len(v.size())
+    {}
     slice(::std::vector<T>& v):
         m_first(&v[0]),
         m_len(v.size())
+    {}
+    slice(T* ptr, unsigned int len):
+        m_first(ptr),
+        m_len(len)
     {}
     
     ::std::vector<T> to_vec() const {
@@ -24,9 +36,18 @@ public:
         assert(i < m_len);
         return m_first[i];
     }
+    slice<T> subslice(unsigned int ofs, unsigned int len) const {
+        assert(ofs < m_len);
+        assert(len <= m_len);
+        assert(ofs + len <= m_len);
+        return slice { m_first + ofs, len };
+    }
     
     T* begin() const { return m_first; }
     T* end() const { return m_first + m_len; }
+
+    T& front() const { return m_first[0]; }
+    T& back() const { return m_first[m_len-1]; }
 };
 
 template<typename T>
