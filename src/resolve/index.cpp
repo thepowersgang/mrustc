@@ -59,7 +59,8 @@ void Resolve_Index_Module_Base(AST::Module& mod)
         // - Mixed
         (Struct,
             _add_item_type(mod, i.name, i.is_pub,  ::AST::PathBinding::make_Struct({&e}));
-            if( e.m_data.is_Struct() ) {
+            // - If the struct is a tuple-like struct, it presents in the value namespace
+            if( e.m_data.is_Tuple() ) {
                 _add_item_value(mod, i.name, i.is_pub,  ::AST::PathBinding::make_Struct({&e}));
             }
             ),

@@ -68,7 +68,7 @@ TAGGED_UNION(TypeData, None,
         enum eCoreType core_type;
         }),
     (Function, struct {
-	Type_Function   info;
+        Type_Function   info;
         }),
     (Tuple, struct {
         ::std::vector<TypeRef> inner_types;
