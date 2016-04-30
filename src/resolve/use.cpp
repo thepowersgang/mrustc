@@ -118,7 +118,6 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         }
         
         void visit(AST::ExprNode_Block& node) override {
-            // TODO: Recurse into module, with a stack of immediate-scope modules for resolution.
             if( node.m_local_mod ) {
                 Resolve_Use_Mod(this->crate, *node.m_local_mod, node.m_local_mod->path(), this->parent_modules);
                 
@@ -131,6 +130,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         }
     } expr_iter(crate, mod);
     
+    // TODO: Check that all code blocks are covered by these two
     for(auto& i : mod.items())
     {
         TU_MATCH_DEF( AST::Item, (i.data), (e),
@@ -140,8 +140,33 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             if( e.code().is_valid() ) {
                 e.code().node().visit( expr_iter );
             }
+            ),
+        (Static,
+            if( e.value().is_valid() ) {
+                e.value().node().visit( expr_iter );
+            }
             )
         )
+    }
+    for(auto& im : mod.impls())
+    {
+        for(auto& i : im.items())
+        {
+            TU_MATCH_DEF( AST::Item, (i.data), (e),
+            (
+                ),
+            (Function,
+                if( e.code().is_valid() ) {
+                    e.code().node().visit( expr_iter );
+                }
+                ),
+            (Static,
+                if( e.value().is_valid() ) {
+                    e.value().node().visit( expr_iter );
+                }
+                )
+            )
+        }
     }
 }
 

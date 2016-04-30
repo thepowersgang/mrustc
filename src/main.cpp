@@ -118,8 +118,10 @@ int main(int argc, char *argv[])
         CompilePhaseV("Resolve", [&]() {
             Resolve_Use(crate); // - Absolutise and resolve use statements
             Resolve_Index(crate); // - Build up a per-module index of avalable names (faster and simpler later resolve)
-            //Resolve_Absolutise(crate);
+            Resolve_Absolutise(crate);
             //Resolve_UfcsPaths(crate);
+            
+            // OLD resolve code, kinda bad
             ResolvePaths(crate);
             });
         
