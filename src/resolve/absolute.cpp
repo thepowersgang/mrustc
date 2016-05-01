@@ -132,6 +132,9 @@ struct Context
     AST::Path lookup_type(const Span& sp, const ::std::string& name) const {
         return this->lookup(sp, name, true);
     }
+    AST::Path lookup_constant(const Span& sp, const ::std::string& name) const {
+        return this->lookup(sp, name, false);
+    }
     AST::Path lookup_value(const Span& sp, const ::std::string& name) const {
         return this->lookup(sp, name, false);
     }
@@ -150,15 +153,30 @@ struct Context
                     // ignore
                 }
                 else {
-                    TODO(sp, "resolve/absolute.cpp - Context::lookup - Handle VarBlock");
+                    for( auto it2 = e.variables.rbegin(); it2 != e.variables.rend(); ++ it2 )
+                    {
+                        if( it2->name == name ) {
+                            ::AST::Path rv(name);
+                            rv.bind_variable( it2->value );
+                            return rv;
+                        }
+                    }
                 }
                 ),
             (Generic,
                 if( is_type ) {
-                    TODO(sp, "resolve/absolute.cpp - Context::lookup - Handle Generic");
+                    for( auto it2 = e.types.rbegin(); it2 != e.types.rend(); ++ it2 )
+                    {
+                        if( it2->name == name ) {
+                            ::AST::Path rv(name);
+                            rv.bind_variable( it2->value.index * (it2->value.level == GenericSlot::Level::Method ? 256 : 0) );
+                            return rv;
+                        }
+                    }
                 }
                 else {
-                    // ignore
+                    // ignore.
+                    // TODO: Integer generics
                 }
                 )
             )
@@ -177,9 +195,9 @@ struct Context
 
 
 void Resolve_Absolute_Path(const Context& context, const Span& sp, bool is_type,  ::AST::Path& path);
-void Resolve_Absolute_Type(const Context& context,  TypeRef& type);
-void Resolve_Absolute_Expr(const Context& context,  ::AST::Expr& expr);
-void Resolve_Absolute_Expr(const Context& context,  ::AST::ExprNode& node);
+void Resolve_Absolute_Type(Context& context,  TypeRef& type);
+void Resolve_Absolute_Expr(Context& context,  ::AST::Expr& expr);
+void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node);
 void Resolve_Absolute_Pattern(Context& context, bool allow_refutable, ::AST::Pattern& pat);
 void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod);
 
@@ -240,7 +258,7 @@ void Resolve_Absolute_Path(const Context& context, const Span& sp, bool is_type,
     )
 }
 
-void Resolve_Absolute_Type(const Context& context,  TypeRef& type)
+void Resolve_Absolute_Type(Context& context,  TypeRef& type)
 {
     const auto& sp = type.span();
     TU_MATCH(TypeData, (type.m_data), (e),
@@ -272,13 +290,14 @@ void Resolve_Absolute_Type(const Context& context,  TypeRef& type)
         ),
     (Array,
         Resolve_Absolute_Type(context,  *e.inner);
+        // TODO: Prevent variables from being picked as the array size
         Resolve_Absolute_Expr(context,  *e.size);
         ),
     (Generic,
-        TODO(sp, "Resolve_Absolute_Type - Encountered generic");
+        // TODO: Should this be bound to the relevant index, or just leave as-is?
         ),
     (Path,
-        TODO(sp, "Resolve_Absolute_Type - Path");
+        Resolve_Absolute_Path(context, type.span(), true, e.path);
         ),
     (TraitObject,
         TODO(sp, "Resolve_Absolute_Type - TraitObject");
@@ -286,50 +305,59 @@ void Resolve_Absolute_Type(const Context& context,  TypeRef& type)
     )
 }
 
-void Resolve_Absolute_Expr(const Context& context,  ::AST::Expr& expr)
+void Resolve_Absolute_Expr(Context& context,  ::AST::Expr& expr)
 {
     if( expr.is_valid() )
     {
         Resolve_Absolute_Expr(context, expr.node());
     }
 }
-void Resolve_Absolute_Expr(const Context& context,  ::AST::ExprNode& node)
+void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
 {
     TRACE_FUNCTION_F("");
     struct NV:
         public AST::NodeVisitorDef
     {
-        const Context& context;
+        Context& context;
         
-        NV(const Context& context):
+        NV(Context& context):
             context(context)
         {
         }
         
         void visit(AST::ExprNode_Block& node) override {
             if( node.m_local_mod ) {
+                // NOTE: Makes a new context for itself
                 Resolve_Absolute_Mod(this->context.m_crate, *node.m_local_mod);
                 
-                //this->context.push( *node.m_local_mod );
+                this->context.push( *node.m_local_mod );
             }
+            this->context.push_block();
             AST::NodeVisitorDef::visit(node);
+            this->context.pop_block();
             if( node.m_local_mod ) {
-                //this->context.pop();
+                this->context.pop( *node.m_local_mod );
             }
         }
         
         void visit(AST::ExprNode_Match& node) override {
             TODO(node.get_pos(), "Resolve_Absolute_Expr - ExprNode_Match");
         }
+        void visit(AST::ExprNode_Loop& node) override {
+            TODO(node.get_pos(), "Resolve_Absolute_Expr - ExprNode_Loop");
+        }
         
         void visit(AST::ExprNode_LetBinding& node) override {
-            TODO(Span(), "Resolve_Absolute_Expr - ExprNode_LetBinding");
+            Resolve_Absolute_Type(this->context, node.m_type);
+            AST::NodeVisitorDef::visit(node);
+            Resolve_Absolute_Pattern(this->context, false, node.m_pat);
         }
         void visit(AST::ExprNode_StructLiteral& node) override {
             TODO(Span(), "Resolve_Absolute_Expr - ExprNode_StructLiteral");
         }
         void visit(AST::ExprNode_CallPath& node) override {
-            TODO(Span(), "Resolve_Absolute_Expr - ExprNode_CallPath");
+            Resolve_Absolute_Path(this->context, Span(node.get_pos()), false,  node.m_path);
+            AST::NodeVisitorDef::visit(node);
         }
         void visit(AST::ExprNode_NamedValue& node) override {
             Resolve_Absolute_Path(this->context, Span(node.get_pos()), false,  node.m_path);
@@ -427,6 +455,47 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
     )
 }
 
+void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST::Item >& items)
+{
+    TRACE_FUNCTION_F("()");
+    for(auto& i : items)
+    {
+        TU_MATCH(AST::Item, (i.data), (e),
+        (None, ),
+        (Module, BUG(Span(), "Resolve_Absolute_ImplItems - Module");),
+        (Crate , BUG(Span(), "Resolve_Absolute_ImplItems - Crate");),
+        (Enum  , BUG(Span(), "Resolve_Absolute_ImplItems - Enum");),
+        (Trait , BUG(Span(), "Resolve_Absolute_ImplItems - Trait");),
+        (Struct, BUG(Span(), "Resolve_Absolute_ImplItems - Struct");),
+        (Type,
+            TODO(Span(), "Resolve_Absolute_ImplItems - Type");
+            ),
+        (Function,
+            DEBUG("Function - " << i.name);
+            item_context.push( e.params(), GenericSlot::Level::Method );
+            
+            Resolve_Absolute_Type( item_context, e.rettype() );
+            for(auto& arg : e.args())
+                Resolve_Absolute_Type( item_context, arg.second );
+            
+            item_context.push_block();
+            for(auto& arg : e.args()) {
+                Resolve_Absolute_Pattern( item_context, false, arg.first );
+            }
+            
+            Resolve_Absolute_Expr( item_context, e.code() );
+            
+            item_context.pop_block();
+            
+            item_context.pop( e.params() );
+            ),
+        (Static,
+            TODO(Span(), "Resolve_Absolute_ImplItems - Static");
+            )
+        )
+    }
+}
+
 void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod)
 {
     TRACE_FUNCTION_F("(mod="<<mod.path()<<")");
@@ -448,12 +517,39 @@ void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod)
             DEBUG("Enum - " << i.name);
             item_context.push( e.params(), GenericSlot::Level::Top );
             Resolve_Absolute_Generic(item_context,  e.params());
-            TODO(Span(), "Resolve_Absolute_Mod - Enum");
+            
+            for(auto& variant : e.variants())
+            {
+                TU_MATCH(::AST::EnumVariantData, (variant.m_data), (s),
+                (Value,
+                    Resolve_Absolute_Expr(item_context,  s.m_value);
+                    ),
+                (Tuple,
+                    for(auto& field : s.m_sub_types) {
+                        Resolve_Absolute_Type(item_context,  field);
+                    }
+                    ),
+                (Struct,
+                    for(auto& field : s.m_fields) {
+                        Resolve_Absolute_Type(item_context,  field.m_type);
+                    }
+                    )
+                )
+            }
+            
             item_context.pop( e.params() );
             ),
         (Trait,
             DEBUG("Trait - " << i.name);
-            TODO(Span(), "Resolve_Absolute_Mod - Trait");
+            item_context.push( e.params(), GenericSlot::Level::Top );
+            Resolve_Absolute_Generic(item_context,  e.params());
+            
+            for(auto& st : e.supertraits())
+                Resolve_Absolute_Path(item_context, Span(), true,  st);
+            
+            Resolve_Absolute_ImplItems(item_context, e.items());
+            
+            item_context.pop( e.params() );
             ),
         (Type,
             DEBUG("Type - " << i.name);
@@ -482,6 +578,7 @@ void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod)
         (Function,
             DEBUG("Function - " << i.name);
             item_context.push( e.params(), GenericSlot::Level::Top );
+            Resolve_Absolute_Generic(item_context,  e.params());
             
             Resolve_Absolute_Type( item_context, e.rettype() );
             for(auto& arg : e.args())
@@ -504,6 +601,36 @@ void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod)
             Resolve_Absolute_Expr( item_context, e.value() );
             )
         )
+    }
+    
+    for(auto& impl : mod.impls())
+    {
+        Context item_context { crate, mod };
+        
+        item_context.push(impl.def().params(), GenericSlot::Level::Top);
+        Resolve_Absolute_Generic(item_context,  impl.def().params());
+        
+        Resolve_Absolute_Type(item_context, impl.def().type());
+        Resolve_Absolute_Path(item_context, Span(), true, impl.def().trait());
+        
+        Resolve_Absolute_ImplItems(item_context,  impl.items());
+        
+        item_context.pop(impl.def().params());
+    }
+    
+    for(auto& impl_def : mod.neg_impls())
+    {
+        Context item_context { crate, mod };
+        
+        item_context.push(impl_def.params(), GenericSlot::Level::Top);
+        Resolve_Absolute_Generic(item_context,  impl_def.params());
+        
+        Resolve_Absolute_Type(item_context, impl_def.type());
+        Resolve_Absolute_Path(item_context, Span(), true, impl_def.trait());
+        
+        // No items
+        
+        item_context.pop(impl_def.params());
     }
 }
 

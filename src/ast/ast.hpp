@@ -616,10 +616,10 @@ public:
     itemlist_use_t& imports() { return m_imports; }
     const itemlist_use_t& imports() const { return m_imports; }
     
-    ::std::vector<Impl>&    impls() { return m_impls; }
+          ::std::vector<Impl>&  impls()       { return m_impls; }
     const ::std::vector<Impl>&  impls() const { return m_impls; }
     
-    // No need to mutate this list
+          ::std::vector<ImplDef>&   neg_impls()       { return m_neg_impls; }
     const ::std::vector<ImplDef>&   neg_impls() const { return m_neg_impls; }
 
     ::std::vector<Module*>&   anon_mods() { return m_anon_modules; }
