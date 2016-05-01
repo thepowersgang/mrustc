@@ -351,6 +351,19 @@ void Resolve_Absolute_Generic(const Context& context, ::AST::GenericParams& para
     }
 }
 
+// Locals shouldn't be possible, as they'd end up as MaybeBind. Will assert the path class.
+void Resolve_Absolute_PatternValue(const Context& context, ::AST::Pattern::Value& val)
+{
+    TU_MATCH(::AST::Pattern::Value, (val), (e),
+    (Invalid, ),
+    (Integer, ),
+    (String, ),
+    (Named,
+        assert( ! e.is_trivial() );
+        Resolve_Absolute_Path(context, Span(), true, e);
+        )
+    )
+}
 void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pattern& pat)
 {
     if( pat.binding() != "" ) {
@@ -361,7 +374,12 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
 
     TU_MATCH( ::AST::Pattern::Data, (pat.data()), (e),
     (MaybeBind,
-        BUG(Span(), "Resolve_Absolute_Pattern - Encountered MaybeBind");
+        if( allow_refutable ) {
+            TODO(Span(), "Resolve_Absolute_Pattern - Encountered MaybeBind in refutable context");
+        }
+        else {
+            TODO(Span(), "Resolve_Absolute_Pattern - Encountered MaybeBind in irrefutable context - replace with binding");
+        }
         ),
     (Macro,
         BUG(Span(), "Resolve_Absolute_Pattern - Encountered Macro");
@@ -378,10 +396,8 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
     (Value,
         if( ! allow_refutable )
             BUG(Span(), "Resolve_Absolute_Pattern - Enountered refutable pattern where only irrefutable allowed");
-        // TODO: Value patterns should be resolved with a different context (disallowing locals)
-        Resolve_Absolute_Expr(context, *e.start);
-        if( e.end )
-            Resolve_Absolute_Expr(context, *e.end);
+        Resolve_Absolute_PatternValue(context, e.start);
+        Resolve_Absolute_PatternValue(context, e.end);
         ),
     (Tuple,
         for(auto& sp : e.sub_patterns)

@@ -1652,7 +1652,7 @@ void CPathResolver::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
             // It's a constant (enum variant usually)
             pat = AST::Pattern(
                 AST::Pattern::TagValue(),
-                ::std::unique_ptr<AST::ExprNode>( new AST::ExprNode_NamedValue( ::std::move(newpath) ) )
+                AST::Pattern::Value::make_Named( mv$(newpath) )
                 );
         }
     }

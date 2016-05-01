@@ -13,8 +13,6 @@ using ::std::unique_ptr;
 using ::std::move;
 class MacroInvocation;
 
-class ExprNode;
-
 class Pattern:
     public Serialisable
 {
@@ -24,13 +22,23 @@ public:
         BIND_REF,
         BIND_MUTREF,
     };
+    TAGGED_UNION(Value, Invalid,
+        (Invalid, struct {}),
+        (Integer, struct {
+            enum eCoreType type;
+            uint64_t value; // Signed numbers are encoded as 2's complement
+            }),
+        (String, ::std::string),
+        (Named, Path)
+        );
+
     TAGGED_UNION(Data, Any,
         (MaybeBind, struct { } ),
         (Macro,     struct { unique_ptr<::AST::MacroInvocation> inv; } ),
         (Any,       struct { } ),
         (Box,       struct { unique_ptr<Pattern> sub; } ),
         (Ref,       struct { bool mut; unique_ptr<Pattern> sub; } ),
-        (Value,     struct { unique_ptr<ExprNode> start; unique_ptr<ExprNode> end; } ),
+        (Value,     struct { Value start; Value end; } ),
         (Tuple,     struct { ::std::vector<Pattern> sub_patterns; } ),
         (StructTuple, struct { Path path; ::std::vector<Pattern> sub_patterns; } ),
         (Struct,    struct { Path path; ::std::vector< ::std::pair< ::std::string, Pattern> > sub_patterns; } ),
@@ -74,8 +82,8 @@ public:
     {}
 
     struct TagValue {};
-    Pattern(TagValue, unique_ptr<ExprNode> node, unique_ptr<ExprNode> node2 = 0):
-        m_data( Data::make_Value({ ::std::move(node), ::std::move(node2) }) )
+    Pattern(TagValue, Value val, Value end = Value()):
+        m_data( Data::make_Value({ ::std::move(val), ::std::move(end) }) )
     {}
     
     
@@ -114,21 +122,11 @@ public:
         m_binding_mut = is_mut;
     }
     
-    ::std::unique_ptr<ExprNode> take_node() {
-        assert(m_data.is_Value());
-        return ::std::move(m_data.unwrap_Value().start);
-    }
     
     // Accessors
     const ::std::string& binding() const { return m_binding; }
     Data& data() { return m_data; }
     const Data& data() const { return m_data; }
-    ExprNode& node() {
-        return *m_data.as_Value().start;
-    }
-    const ExprNode& node() const {
-        return *m_data.as_Value().start;
-    }
     Path& path() { return m_data.as_StructTuple().path; }
     const Path& path() const { return m_data.as_StructTuple().path; }
 
@@ -141,6 +139,8 @@ public:
         return ::std::move(ret);
     }
 };
+
+::std::ostream& operator<<(::std::ostream& os, const Pattern::Value& val);
 
 };
 

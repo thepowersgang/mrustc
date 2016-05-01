@@ -11,6 +11,36 @@
 
 namespace AST {
 
+::std::ostream& operator<<(::std::ostream& os, const Pattern::Value& val)
+{
+    TU_MATCH(Pattern::Value, (val), (e),
+    (Invalid,
+        os << "/*BAD PAT VAL*/";
+        ),
+    (Integer,
+        switch(e.type)
+        {
+        case CORETYPE_BOOL:
+            os << (e.value ? "true" : "false");
+            break;
+        case CORETYPE_F32:
+        case CORETYPE_F64:
+            BUG(Span(), "Hit F32/f64 in printing pattern literal");
+            break;
+        default:
+            os << e.value;
+            break;
+        }
+        ),
+    (String,
+        os << "\"" << e << "\"";
+        ),
+    (Named,
+        os << e;
+        )
+    )
+    return os;
+}
 ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat)
 {
     os << "Pattern(" << pat.m_binding << " @ ";
@@ -31,9 +61,9 @@ namespace AST {
         os << "&" << (ent.mut ? "mut " : "") << *ent.sub;
         ),
     (Value,
-        os << *ent.start;
-        if( ent.end.get() )
-            os << " ... " << *ent.end;
+        os << ent.start;
+        if( ! ent.end.is_Invalid() )
+            os << " ... " << ent.end;
         ),
     (Tuple,
         os << "(" << ent.sub_patterns << ")";
@@ -72,6 +102,56 @@ namespace AST {
     os << ")";
     return os;
 }
+void operator%(Serialiser& s, Pattern::Value::Tag c) {
+    s << Pattern::Value::tag_to_str(c);
+}
+void operator%(::Deserialiser& s, Pattern::Value::Tag& c) {
+    ::std::string   n;
+    s.item(n);
+    c = Pattern::Value::tag_from_str(n);
+}
+void operator%(::Serialiser& s, const Pattern::Value& v) {
+    s % v.tag();
+    TU_MATCH(Pattern::Value, (v), (e),
+    (Invalid, ),
+    (Integer,
+        s % e.type;
+        s.item( e.value );
+        ),
+    (String,
+        s.item( e );
+        ),
+    (Named,
+        s.item(e);
+        )
+    )
+}
+void operator%(::Deserialiser& s, Pattern::Value& v) {
+    Pattern::Value::Tag  tag;
+    s % tag;
+    switch(tag)
+    {
+    case Pattern::Value::TAG_Invalid:
+        v = Pattern::Value::make_Invalid({});
+        break;
+    case Pattern::Value::TAG_Integer: {
+        enum eCoreType ct;  s % ct;
+        uint64_t val;  s.item( val );
+        v = Pattern::Value::make_Integer({ct, val});
+        break; }
+    case Pattern::Value::TAG_String: {
+        ::std::string val;
+        s.item( val );
+        v = Pattern::Value::make_String(val);
+        break; }
+    case Pattern::Value::TAG_Named: {
+        ::AST::Path val;
+        s.item( val );
+        v = Pattern::Value::make_Named(val);
+        break; }
+    }
+}
+
 void operator%(Serialiser& s, Pattern::Data::Tag c) {
     s << Pattern::Data::tag_to_str(c);
 }
@@ -100,8 +180,8 @@ SERIALISE_TYPE(Pattern::, "Pattern", {
         s << e.sub;
         ),
     (Value,
-        s << e.start;
-        s << e.end;
+        s % e.start;
+        s % e.end;
         ),
     (Tuple,
         s << e.sub_patterns;
@@ -140,8 +220,8 @@ SERIALISE_TYPE(Pattern::, "Pattern", {
         s.item( ent.sub );
         )
     _D(Value,
-        s.item( ent.start );
-        s.item( ent.end );
+        s % ent.start;
+        s % ent.end;
         )
     _D(Tuple,
         s.item( ent.sub_patterns );

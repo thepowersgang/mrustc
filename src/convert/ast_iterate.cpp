@@ -148,12 +148,14 @@ void CASTIterator::handle_pattern(AST::Pattern& pat, const TypeRef& type_hint)
     (MaybeBind,
         throw ::std::runtime_error("Calling CASTIterator::handle_pattern on MAYBE_BIND, not valid");
         ),
-    (Value, {
-        auto& v = pat.data().as_Value();
-        handle_expr( *v.start );
-        if( v.end.get() )
-            handle_expr( *v.end );
-        }),
+    (Value,
+        TU_IFLET(AST::Pattern::Value, v.start, Named, e,
+            handle_path(e, CASTIterator::MODE_TYPE);
+        )
+        TU_IFLET(AST::Pattern::Value, v.end, Named, e,
+            handle_path(e, CASTIterator::MODE_TYPE);
+        )
+        ),
     (Tuple, {
         auto& v = pat.data().as_Tuple();
         // Tuple is handled by subpattern code

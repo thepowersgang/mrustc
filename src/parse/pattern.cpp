@@ -140,13 +140,15 @@ AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable)
     {
         if( !ret.data().is_Value() )
             throw ParseError::Generic(lex, "Using '...' with a non-value on left");
-        auto    leftval = ret.take_node();
+        auto& ret_v = ret.data().as_Value();
+        
         auto    right_pat = Parse_PatternReal1(lex, is_refutable);
         if( !right_pat.data().is_Value() )
             throw ParseError::Generic(lex, "Using '...' with a non-value on right");
-        auto    rightval = right_pat.take_node();
+        auto    rightval = mv$( right_pat.data().as_Value().start );
+        ret_v.end = mv$(rightval);
         
-        return AST::Pattern(AST::Pattern::TagValue(), ::std::move(leftval), ::std::move(rightval));
+        return ret;
     }
     else
     {
@@ -193,31 +195,32 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
             auto dt = tok.datatype();
             if(dt == CORETYPE_ANY)
                 dt = CORETYPE_I32;
-            return AST::Pattern( AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_Integer, -tok.intval(), dt) );
+            return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Integer({dt, -tok.intval()}) );
         }
-        else if( tok.type() == TOK_FLOAT )
-        {
-            auto dt = tok.datatype();
-            if(dt == CORETYPE_ANY)
-                dt = CORETYPE_F32;
-            return AST::Pattern( AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_Float, -tok.floatval(), dt) );
-        }
+        //else if( tok.type() == TOK_FLOAT )
+        //{
+        //    auto dt = tok.datatype();
+        //    if(dt == CORETYPE_ANY)
+        //        dt = CORETYPE_F32;
+        //    return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Integer({dt, reinterpret_cast<uint64_t>(-tok.floatval()), dt}) );
+        //}
         else
         {
             throw ParseError::Unexpected(lex, tok, {TOK_INTEGER, TOK_FLOAT});
         }
-    case TOK_FLOAT:
-        return AST::Pattern( AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_Float, tok.floatval(), tok.datatype()) );
+    //case TOK_FLOAT:
+    //    return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Integer({tok.datatype(), reinterpret_cast<uint64_t>(tok.floatval())}) );
     case TOK_INTEGER:
-        return AST::Pattern( AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_Integer, tok.intval(), tok.datatype()) );
+        return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Integer({tok.datatype(), tok.intval()}) );
     case TOK_RWORD_TRUE:
-        return AST::Pattern( AST::Pattern::TagValue(), NEWNODE( AST::ExprNode_Bool, true ) );
+        return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Integer({CORETYPE_BOOL, 1}) );
     case TOK_RWORD_FALSE:
-        return AST::Pattern( AST::Pattern::TagValue(), NEWNODE( AST::ExprNode_Bool, false ) );
+        return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Integer({CORETYPE_BOOL, 0}) );
     case TOK_STRING:
-        return AST::Pattern( AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_String, tok.str()) );
+        return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_String( mv$(tok.str()) ) );
     case TOK_BYTESTRING:
-        return AST::Pattern( AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_String, tok.str()) );
+        // TODO: Differentiate byte and UTF-8 strings
+        return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_String( mv$(tok.str()) ) );
     case TOK_PAREN_OPEN:
         return AST::Pattern( AST::Pattern::TagTuple(), Parse_PatternList(lex, is_refutable) );
     case TOK_SQUARE_OPEN:
@@ -233,12 +236,12 @@ AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path, bool is_re
     switch( GET_TOK(tok, lex) )
     {
     case TOK_PAREN_OPEN:
-        return AST::Pattern(AST::Pattern::TagEnumVariant(), ::std::move(path), Parse_PatternList(lex, is_refutable));
+        return AST::Pattern( AST::Pattern::TagEnumVariant(), ::std::move(path), Parse_PatternList(lex, is_refutable) );
     case TOK_BRACE_OPEN:
         return Parse_PatternStruct(lex, ::std::move(path), is_refutable);
     default:
         lex.putback(tok);
-        return AST::Pattern(AST::Pattern::TagValue(), NEWNODE(AST::ExprNode_NamedValue, ::std::move(path)));
+        return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(mv$(path)) );
     }
 }
 
