@@ -32,6 +32,7 @@ struct Context
     (Module, struct {
         const ::AST::Module* mod;
         }),
+    (ConcreteSelf, const TypeRef* ),
     (VarBlock, struct {
         unsigned int level;
         // "Map" of names to function-level variable slots
@@ -58,10 +59,14 @@ struct Context
         m_block_level(0)
     {}
     
-    void push(const ::AST::GenericParams& params, GenericSlot::Level level) {
+    void push(const ::AST::GenericParams& params, GenericSlot::Level level, bool has_self=false) {
         auto   e = Ent::make_Generic({});
         auto& data = e.as_Generic();
         
+        if( has_self ) {
+            assert( level == GenericSlot::Level::Top );
+            data.types.push_back( Named<GenericSlot> { "Self", GenericSlot { level, 0xFFFF } } );
+        }
         if( params.ty_params().size() > 0 ) {
             const auto& typs = params.ty_params();
             for(unsigned int i = 0; i < typs.size(); i ++ ) {
@@ -88,6 +93,18 @@ struct Context
         m_name_context.pop_back();
     }
     
+    void push_self(const TypeRef& tr) {
+        m_name_context.push_back( Ent::make_ConcreteSelf(&tr) );
+    }
+    void pop_self(const TypeRef& tr) {
+        TU_IFLET(Ent, m_name_context.back(), ConcreteSelf, e,
+            m_name_context.pop_back();
+        )
+        else {
+            BUG(Span(), "resolve/absolute.cpp - Context::pop(TypeRef) - Mismatched pop");
+        }
+    }
+
     void push_block() {
         m_block_level += 1;
     }
@@ -157,6 +174,11 @@ struct Context
                 ::AST::Path rv;
                 if( this->lookup_in_mod(*e.mod, name, mode,  rv) ) {
                     return rv;
+                }
+                ),
+            (ConcreteSelf,
+                if( mode == LookupMode::Type && name == "Self" ) {
+                    TODO(Span(), "Handle lookup_opt Self = " << *e);
                 }
                 ),
             (VarBlock,
@@ -265,6 +287,7 @@ void Resolve_Absolute_Path(const Context& context, const Span& sp, bool is_type,
         // Nothing to do (TODO: Bind?)
         ),
     (UFCS,
+        Resolve_Absolute_Type(context, e.type);
         TODO(sp, "Resolve_Absolute_Path - UFCS");
         )
     )
@@ -386,7 +409,8 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
         }
         void visit(AST::ExprNode_StructLiteral& node) override {
             DEBUG("ExprNode_StructLiteral");
-            TODO(Span(), "Resolve_Absolute_Expr - ExprNode_StructLiteral");
+            Resolve_Absolute_Path(this->context, Span(node.get_pos()), true, node.m_path);
+            AST::NodeVisitorDef::visit(node);
         }
         void visit(AST::ExprNode_CallPath& node) override {
             DEBUG("ExprNode_CallPath");
@@ -407,11 +431,34 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
     node.visit( expr_iter );
 }
 
-void Resolve_Absolute_Generic(const Context& context, ::AST::GenericParams& params)
+void Resolve_Absolute_Generic(Context& context, ::AST::GenericParams& params)
 {
     for( auto& bound : params.bounds() )
     {
-        TODO(Span(), "Resolve_Absolute_Generic - " << bound);
+        TU_MATCH(::AST::GenericBound, (bound), (e),
+        (Lifetime,
+            // TODO: Link lifetime names to params
+            ),
+        (TypeLifetime,
+            Resolve_Absolute_Type(context, e.type);
+            ),
+        (IsTrait,
+            Resolve_Absolute_Type(context, e.type);
+            Resolve_Absolute_Path(context, Span(), true, e.trait);
+            ),
+        (MaybeTrait,
+            Resolve_Absolute_Type(context, e.type);
+            Resolve_Absolute_Path(context, Span(), true, e.trait);
+            ),
+        (NotTrait,
+            Resolve_Absolute_Type(context, e.type);
+            Resolve_Absolute_Path(context, Span(), true, e.trait);
+            ),
+        (Equality,
+            Resolve_Absolute_Type(context, e.type);
+            Resolve_Absolute_Type(context, e.replacement);
+            )
+        )
     }
 }
 
@@ -595,7 +642,7 @@ void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod)
             ),
         (Trait,
             DEBUG("Trait - " << i.name);
-            item_context.push( e.params(), GenericSlot::Level::Top );
+            item_context.push( e.params(), GenericSlot::Level::Top, true );
             Resolve_Absolute_Generic(item_context,  e.params());
             
             for(auto& st : e.supertraits())
@@ -661,6 +708,7 @@ void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod)
     {
         Context item_context { crate, mod };
         
+        item_context.push_self( impl.def().type() );
         item_context.push(impl.def().params(), GenericSlot::Level::Top);
         Resolve_Absolute_Generic(item_context,  impl.def().params());
         
@@ -670,12 +718,14 @@ void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod)
         Resolve_Absolute_ImplItems(item_context,  impl.items());
         
         item_context.pop(impl.def().params());
+        item_context.pop_self( impl.def().type() );
     }
     
     for(auto& impl_def : mod.neg_impls())
     {
         Context item_context { crate, mod };
         
+        item_context.push_self( impl_def.type() );
         item_context.push(impl_def.params(), GenericSlot::Level::Top);
         Resolve_Absolute_Generic(item_context,  impl_def.params());
         
@@ -685,6 +735,7 @@ void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod)
         // No items
         
         item_context.pop(impl_def.params());
+        item_context.pop_self( impl_def.type() );
     }
 }
 
