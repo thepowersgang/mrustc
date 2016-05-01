@@ -33,7 +33,7 @@ public:
         );
 
     TAGGED_UNION(Data, Any,
-        (MaybeBind, struct { } ),
+        (MaybeBind, struct { ::std::string name; } ),
         (Macro,     struct { unique_ptr<::AST::MacroInvocation> inv; } ),
         (Any,       struct { } ),
         (Box,       struct { unique_ptr<Pattern> sub; } ),
@@ -56,8 +56,8 @@ public:
 
     struct TagMaybeBind {};
     Pattern(TagMaybeBind, ::std::string name):
-        m_binding(name),
-        m_data( Data::make_MaybeBind({}) )
+        m_binding(""),
+        m_data( Data::make_MaybeBind({name}) )
     {}
 
     struct TagMacro {};

@@ -109,10 +109,31 @@ struct Context
         m_block_level -= 1;
     }
    
-
-    bool lookup_in_mod(const ::AST::Module& mod, const ::std::string& name, bool is_type,  ::AST::Path& path) const {
+    
+    enum class LookupMode {
+        Type,
+        Constant,
+        Variable,
+    };
+    AST::Path lookup_type(const Span& sp, const ::std::string& name) const {
+        return this->lookup(sp, name, LookupMode::Type);
+    }
+    AST::Path lookup_constant(const Span& sp, const ::std::string& name) const {
+        return this->lookup(sp, name, LookupMode::Constant);
+    }
+    AST::Path lookup_value(const Span& sp, const ::std::string& name) const {
+        return this->lookup(sp, name, LookupMode::Variable);
+    }
+    AST::Path lookup(const Span& sp, const ::std::string& name, LookupMode mode) const {
+        auto rv = this->lookup_opt(name, mode);
+        if( !rv.is_valid() ) {
+            ERROR(sp, E0000, "Couldn't find name '" << name << "'");
+        }
+        return rv;
+    }
+    bool lookup_in_mod(const ::AST::Module& mod, const ::std::string& name, LookupMode mode,  ::AST::Path& path) const {
         // TODO: m_type_items/m_value_items should store the path
-        if( is_type ) {
+        if( mode == LookupMode::Type ) {
             auto v = mod.m_type_items.find(name);
             if( v != mod.m_type_items.end() ) {
                 path = mod.path() + name;
@@ -128,28 +149,18 @@ struct Context
         }
         return false;
     }
-    
-    AST::Path lookup_type(const Span& sp, const ::std::string& name) const {
-        return this->lookup(sp, name, true);
-    }
-    AST::Path lookup_constant(const Span& sp, const ::std::string& name) const {
-        return this->lookup(sp, name, false);
-    }
-    AST::Path lookup_value(const Span& sp, const ::std::string& name) const {
-        return this->lookup(sp, name, false);
-    }
-    AST::Path lookup(const Span& sp, const ::std::string& name, bool is_type) const {
+    AST::Path lookup_opt(const ::std::string& name, LookupMode mode) const {
         for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
         {
             TU_MATCH(Ent, (*it), (e),
             (Module,
                 ::AST::Path rv;
-                if( this->lookup_in_mod(*e.mod, name, is_type,  rv) ) {
+                if( this->lookup_in_mod(*e.mod, name, mode,  rv) ) {
                     return rv;
                 }
                 ),
             (VarBlock,
-                if( is_type ) {
+                if( mode != LookupMode::Variable ) {
                     // ignore
                 }
                 else {
@@ -164,7 +175,7 @@ struct Context
                 }
                 ),
             (Generic,
-                if( is_type ) {
+                if( mode == LookupMode::Type ) {
                     for( auto it2 = e.types.rbegin(); it2 != e.types.rend(); ++ it2 )
                     {
                         if( it2->name == name ) {
@@ -184,11 +195,11 @@ struct Context
         
         // Top-level module
         ::AST::Path rv;
-        if( this->lookup_in_mod(m_mod, name, is_type,  rv) ) {
+        if( this->lookup_in_mod(m_mod, name, mode,  rv) ) {
             return rv;
         }
         
-        ERROR(sp, E0000, "Couldn't find name '" << name << "'");
+        return AST::Path();
     }
 };
 
@@ -204,6 +215,7 @@ void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod);
 
 void Resolve_Absolute_Path(const Context& context, const Span& sp, bool is_type,  ::AST::Path& path)
 {
+    DEBUG("is_type = " << is_type << ", path = " << path);
     TU_MATCH(::AST::Path::Class, (path.m_class), (e),
     (Invalid,
         BUG(sp, "Encountered invalid path");
@@ -326,6 +338,7 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
         }
         
         void visit(AST::ExprNode_Block& node) override {
+            DEBUG("ExprNode_Block");
             if( node.m_local_mod ) {
                 // NOTE: Makes a new context for itself
                 Resolve_Absolute_Mod(this->context.m_crate, *node.m_local_mod);
@@ -341,28 +354,51 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
         }
         
         void visit(AST::ExprNode_Match& node) override {
-            TODO(node.get_pos(), "Resolve_Absolute_Expr - ExprNode_Match");
+            DEBUG("ExprNode_Match");
+            node.m_val->visit( *this );
+            for( auto& arm : node.m_arms )
+            {
+                this->context.push_block();
+                if( arm.m_patterns.size() > 1 ) {
+                    TODO(node.get_pos(), "Resolve_Absolute_Expr - ExprNode_Match - Multiple patterns");
+                    // Requires ensuring that the binding set is the same.
+                }
+                else {
+                    Resolve_Absolute_Pattern(this->context, true,  arm.m_patterns[0]);
+                }
+                
+                if(arm.m_cond)
+                    arm.m_cond->visit( *this );
+                arm.m_code->visit( *this );
+                
+                this->context.pop_block();
+            }
         }
         void visit(AST::ExprNode_Loop& node) override {
             TODO(node.get_pos(), "Resolve_Absolute_Expr - ExprNode_Loop");
         }
         
         void visit(AST::ExprNode_LetBinding& node) override {
+            DEBUG("ExprNode_LetBinding");
             Resolve_Absolute_Type(this->context, node.m_type);
             AST::NodeVisitorDef::visit(node);
             Resolve_Absolute_Pattern(this->context, false, node.m_pat);
         }
         void visit(AST::ExprNode_StructLiteral& node) override {
+            DEBUG("ExprNode_StructLiteral");
             TODO(Span(), "Resolve_Absolute_Expr - ExprNode_StructLiteral");
         }
         void visit(AST::ExprNode_CallPath& node) override {
+            DEBUG("ExprNode_CallPath");
             Resolve_Absolute_Path(this->context, Span(node.get_pos()), false,  node.m_path);
             AST::NodeVisitorDef::visit(node);
         }
         void visit(AST::ExprNode_NamedValue& node) override {
+            DEBUG("ExprNode_NamedValue");
             Resolve_Absolute_Path(this->context, Span(node.get_pos()), false,  node.m_path);
         }
         void visit(AST::ExprNode_Cast& node) override {
+            DEBUG("ExprNode_Cast");
             Resolve_Absolute_Type(this->context,  node.m_type);
             AST::NodeVisitorDef::visit(node);
         }
@@ -403,7 +439,15 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
     TU_MATCH( ::AST::Pattern::Data, (pat.data()), (e),
     (MaybeBind,
         if( allow_refutable ) {
-            TODO(Span(), "Resolve_Absolute_Pattern - Encountered MaybeBind in refutable context");
+            auto name = mv$( e.name );
+            // Attempt to resolve the name in the current namespace, and if it fails, it's a binding
+            auto p = context.lookup_opt( name, Context::LookupMode::Constant );
+            if( p.is_valid() ) {
+                pat = ::AST::Pattern(::AST::Pattern::TagValue(), ::AST::Pattern::Value::make_Named(mv$(p)));
+            }
+            else {
+                pat = ::AST::Pattern(::AST::Pattern::TagBind(), mv$(name));
+            }
         }
         else {
             TODO(Span(), "Resolve_Absolute_Pattern - Encountered MaybeBind in irrefutable context - replace with binding");
@@ -468,11 +512,18 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
         (Trait , BUG(Span(), "Resolve_Absolute_ImplItems - Trait");),
         (Struct, BUG(Span(), "Resolve_Absolute_ImplItems - Struct");),
         (Type,
-            TODO(Span(), "Resolve_Absolute_ImplItems - Type");
+            DEBUG("Type - " << i.name);
+            //item_context.push( e.params(), GenericSlot::Level::Method );
+            //Resolve_Absolute_Generic(item_context,  e.params());
+            
+            Resolve_Absolute_Type( item_context, e.type() );
+            
+            //item_context.pop( e.params() );
             ),
         (Function,
             DEBUG("Function - " << i.name);
             item_context.push( e.params(), GenericSlot::Level::Method );
+            Resolve_Absolute_Generic(item_context,  e.params());
             
             Resolve_Absolute_Type( item_context, e.rettype() );
             for(auto& arg : e.args())
@@ -490,6 +541,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
             item_context.pop( e.params() );
             ),
         (Static,
+            DEBUG("Static - " << i.name);
             TODO(Span(), "Resolve_Absolute_ImplItems - Static");
             )
         )
