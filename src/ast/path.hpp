@@ -120,7 +120,7 @@ public:
             ::std::vector<PathNode> nodes;
             } ),
         (Super, struct {   // Parent-relative
-            unsigned int count;
+            unsigned int count; // Number of `super` keywords, must be >= 1
             ::std::vector<PathNode> nodes;
             } ),
         (Absolute, struct {    // Absolute
