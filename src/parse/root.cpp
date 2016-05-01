@@ -442,7 +442,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
     {
         // Tuple structs
         // TODO: Using `StructItem` here isn't the best option. Should have another type
-        ::std::vector<AST::StructItem>  refs;
+        ::std::vector<AST::TupleItem>  refs;
         while(GET_TOK(tok, lex) != TOK_PAREN_CLOSE)
         {
             AST::MetaItems  item_attrs;
@@ -460,7 +460,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
             else
                 lex.putback(tok);
             
-            refs.push_back( AST::StructItem( mv$(item_attrs), is_pub, "", Parse_Type(lex) ) );
+            refs.push_back( AST::TupleItem( mv$(item_attrs), is_pub, Parse_Type(lex) ) );
             if( GET_TOK(tok, lex) != TOK_COMMA )
                 break;
         }
@@ -474,12 +474,12 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
         //if( refs.size() == 0 )
         //    WARNING( , W000, "Use 'struct Name;' instead of 'struct Name();' ... ning-nong");
-        return AST::Struct(::std::move(params), ::std::move(refs));
+        return AST::Struct(mv$(params), mv$(refs));
     }
     else if(tok.type() == TOK_SEMICOLON)
     {
         // Unit-like struct
-        return AST::Struct(::std::move(params), ::std::vector<AST::StructItem>());
+        return AST::Struct(mv$(params), ::std::vector<AST::TupleItem>());
     }
     else if(tok.type() == TOK_BRACE_OPEN)
     {

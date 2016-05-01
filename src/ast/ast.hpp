@@ -346,6 +346,10 @@ public:
         m_params( move(params) ),
         m_data( StructData::make_Struct({mv$(fields)}) )
     {}
+    Struct( GenericParams params, ::std::vector<TupleItem> fields ):
+        m_params( move(params) ),
+        m_data( StructData::make_Tuple({mv$(fields)}) )
+    {}
     
     const GenericParams&   params() const { return m_params; }
     

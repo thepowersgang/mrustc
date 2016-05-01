@@ -83,7 +83,26 @@ public:
             node = NEWNODE(AST::ExprNode_CallMethod, mv$(node), AST::PathNode("finish",{}), {});
             ),
         (Tuple,
-            assert(!"TODO: derive() debug on tuple struct");
+            node = NEWNODE(AST::ExprNode_NamedValue, AST::Path("f"));
+            node = NEWNODE(AST::ExprNode_CallMethod,
+                mv$(node), AST::PathNode("debug_tuple",{}),
+                vec$( NEWNODE(AST::ExprNode_String, name) )
+                );
+            for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
+            {
+                node = NEWNODE(AST::ExprNode_CallMethod,
+                    mv$(node), AST::PathNode("field",{}),
+                    vec$(
+                        NEWNODE(AST::ExprNode_UniOp, AST::ExprNode_UniOp::REF,
+                            NEWNODE(AST::ExprNode_Field,
+                                NEWNODE(AST::ExprNode_NamedValue, AST::Path("self")),
+                                FMT(idx)
+                                )
+                            )
+                        )
+                    );
+            }
+            node = NEWNODE(AST::ExprNode_CallMethod, mv$(node), AST::PathNode("finish",{}), {});
             )
         )
         

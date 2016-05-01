@@ -107,6 +107,10 @@ void Resolve_Index_Module_Base(AST::Module& mod)
             
             (Struct,
                 _add_item_type(mod, i.name, i.is_pub,  b.clone());
+                // - If the struct is a tuple-like struct, it presents in the value namespace
+                if( e.struct_->m_data.is_Tuple() ) {
+                    _add_item_value(mod, i.name, i.is_pub,  b.clone());
+                }
                 ),
             (Static  , _add_item_value(mod, i.name, i.is_pub,  b.clone()); ),
             (Function, _add_item_value(mod, i.name, i.is_pub,  b.clone()); ),

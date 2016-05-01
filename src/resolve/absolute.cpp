@@ -229,7 +229,7 @@ void Resolve_Absolute_Path(const Context& context, const Span& sp, bool is_type,
         if(e.nodes.size() > 1 || is_type) {
             // Look up type
             auto p = context.lookup_type(sp, e.nodes[0].name());
-            DEBUG("Found - " << p);
+            DEBUG("Found type/mod - " << p);
             path = mv$(p);
         }
         else {
@@ -501,7 +501,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
 
 void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST::Item >& items)
 {
-    TRACE_FUNCTION_F("()");
+    TRACE_FUNCTION_F("");
     for(auto& i : items)
     {
         TU_MATCH(AST::Item, (i.data), (e),
@@ -513,8 +513,10 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
         (Struct, BUG(Span(), "Resolve_Absolute_ImplItems - Struct");),
         (Type,
             DEBUG("Type - " << i.name);
+            assert( e.params().ty_params().size() == 0 );
+            assert( e.params().lft_params().size() == 0 );
             //item_context.push( e.params(), GenericSlot::Level::Method );
-            //Resolve_Absolute_Generic(item_context,  e.params());
+            Resolve_Absolute_Generic(item_context,  e.params());
             
             Resolve_Absolute_Type( item_context, e.type() );
             
