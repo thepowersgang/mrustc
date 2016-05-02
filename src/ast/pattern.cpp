@@ -43,10 +43,12 @@ namespace AST {
 }
 ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat)
 {
-    os << "Pattern(" << pat.m_binding << " @ ";
+    os << "Pattern(";
+    if(pat.m_binding != "")
+        os << pat.m_binding << " @ ";
     TU_MATCH(Pattern::Data, (pat.m_data), (ent),
     (MaybeBind,
-        os << "?";
+        os << ent.name << "?";
         ),
     (Macro,
         os << *ent.inv;

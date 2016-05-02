@@ -74,7 +74,7 @@ struct Context
             }
         }
         if( params.lft_params().size() > 0 ) {
-            TODO(Span(), "resolve/absolute.cpp - Context::push(GenericParams) - " << params);
+            //TODO(Span(), "resolve/absolute.cpp - Context::push(GenericParams) - Lifetime params - " << params);
         }
         
         m_name_context.push_back(mv$(e));
@@ -178,7 +178,7 @@ struct Context
                 ),
             (ConcreteSelf,
                 if( mode == LookupMode::Type && name == "Self" ) {
-                    TODO(Span(), "Handle lookup_opt Self = " << *e);
+                    return ::AST::Path( ::AST::Path::TagUfcs(), *e, ::std::vector< ::AST::PathNode>() );
                 }
                 ),
             (VarBlock,
@@ -263,6 +263,19 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, bool is_t
             // Look up type
             auto p = context.lookup_type(sp, e.nodes[0].name());
             DEBUG("Found type/mod - " << p);
+            
+            if( e.nodes.size() > 1 )
+            {
+                if( p.m_class.is_Local() ) {
+                    p = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(sp, mv$(p)) );
+                }
+                assert( p.nodes().back().args().size() == 0 );
+                p.nodes().back().args() = mv$( e.nodes[0].args() );
+                for( unsigned int i = 1; i < e.nodes.size(); i ++ )
+                {
+                    p.nodes().push_back( mv$(e.nodes[i]) );
+                }
+            }
             path = mv$(p);
         }
         else {
@@ -340,8 +353,10 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
         ),
     (Array,
         Resolve_Absolute_Type(context,  *e.inner);
-        // TODO: Prevent variables from being picked as the array size
-        Resolve_Absolute_Expr(context,  *e.size);
+        if( e.size ) {
+            // TODO: Prevent variables from being picked as the array size
+            Resolve_Absolute_Expr(context,  *e.size);
+        }
         ),
     (Generic,
         // TODO: Should this be bound to the relevant index, or just leave as-is?
@@ -413,7 +428,21 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
             }
         }
         void visit(AST::ExprNode_Loop& node) override {
-            TODO(node.get_pos(), "Resolve_Absolute_Expr - ExprNode_Loop");
+            AST::NodeVisitorDef::visit(node.m_cond);
+            this->context.push_block();
+            switch( node.m_type )
+            {
+            case ::AST::ExprNode_Loop::LOOP:
+                break;
+            case ::AST::ExprNode_Loop::WHILE:
+                break;
+            case ::AST::ExprNode_Loop::WHILELET:
+            case ::AST::ExprNode_Loop::FOR:
+                Resolve_Absolute_Pattern(this->context, true, node.m_pattern);
+                break;
+            }
+            node.m_code->visit( *this );
+            this->context.pop_block();
         }
         
         void visit(AST::ExprNode_LetBinding& node) override {
@@ -421,6 +450,19 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
             Resolve_Absolute_Type(this->context, node.m_type);
             AST::NodeVisitorDef::visit(node);
             Resolve_Absolute_Pattern(this->context, false, node.m_pat);
+        }
+        void visit(AST::ExprNode_IfLet& node) override {
+            DEBUG("ExprNode_IfLet");
+            node.m_value->visit( *this );
+            this->context.push_block();
+            Resolve_Absolute_Pattern(this->context, false, node.m_pattern);
+            
+            assert( node.m_true );
+            node.m_true->visit( *this );
+            if(node.m_false)
+                node.m_false->visit(*this);
+            
+            this->context.pop_block();
         }
         void visit(AST::ExprNode_StructLiteral& node) override {
             DEBUG("ExprNode_StructLiteral");
@@ -492,6 +534,7 @@ void Resolve_Absolute_PatternValue(/*const*/ Context& context, ::AST::Pattern::V
 }
 void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pattern& pat)
 {
+    TRACE_FUNCTION_F("allow_refutable = " << allow_refutable << ", pat = " << pat);
     if( pat.binding() != "" ) {
         if( !pat.data().is_Any() && ! allow_refutable )
             TODO(Span(), "Resolve_Absolute_Pattern - Encountered bound destructuring pattern");
@@ -538,6 +581,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
         ),
     (StructTuple,
+        // TODO: This isn't a type lookup, it's a pattern lookup (allowing imported enum variants, e.g. `Some(_)` to work)
         Resolve_Absolute_Path(context, Span(), true, e.path);
         for(auto& sp : e.sub_patterns)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
