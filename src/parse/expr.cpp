@@ -964,16 +964,19 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         lex.putback(tok);
     case TOK_LT: {
         TypeRef ty = Parse_Type(lex);
-        TypeRef trait;// = TypeRef(TypeRef::TagInvalid());
         if( GET_TOK(tok, lex) == TOK_RWORD_AS ) {
-            trait = Parse_Type(lex);
+            auto trait = Parse_Path(lex, PATH_GENERIC_TYPE);
+            GET_CHECK_TOK(tok, lex, TOK_GT);
+            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+            path = AST::Path(AST::Path::TagUfcs(), ty, trait, Parse_PathNodes(lex, PATH_GENERIC_EXPR));
         }
-        else
+        else {
             lex.putback(tok);
-        GET_CHECK_TOK(tok, lex, TOK_GT);
-        // TODO: Terminating the "path" here is sometimes valid
-        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-        path = AST::Path(AST::Path::TagUfcs(), ty, trait, Parse_PathNodes(lex, PATH_GENERIC_EXPR));
+            GET_CHECK_TOK(tok, lex, TOK_GT);
+            // TODO: Terminating the "path" here is sometimes valid
+            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+            path = AST::Path(AST::Path::TagUfcs(), ty, Parse_PathNodes(lex, PATH_GENERIC_EXPR));
+        }
         }
         if(0)
     case TOK_RWORD_SELF:

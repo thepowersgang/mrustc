@@ -91,9 +91,9 @@ class PathNode:
 public:
     PathNode() {}
     PathNode(::std::string name, ::std::vector<TypeRef> args = {});
-    const ::std::string& name() const;
-    ::std::vector<TypeRef>&   args() { return m_params; }
-    const ::std::vector<TypeRef>&   args() const;
+    const ::std::string& name() const { return m_name; }
+          ::std::vector<TypeRef>& args()       { return m_params; }
+    const ::std::vector<TypeRef>& args() const { return m_params; }
     
     Ordering ord(const PathNode& x) const;
     void print_pretty(::std::ostream& os, bool is_type_context) const;
@@ -127,8 +127,8 @@ public:
             ::std::vector<PathNode> nodes;
             } ),
         (UFCS, struct {    // Type-relative
-            ::std::unique_ptr<TypeRef> type;
-            ::std::unique_ptr<TypeRef> trait;
+            ::std::unique_ptr<TypeRef> type;    // always non-null
+            ::std::unique_ptr<Path> trait;   // nullptr = inherent, Invalid = unknown trait
             ::std::vector<PathNode> nodes;
             } )
         );
@@ -166,9 +166,8 @@ public:
     
     // UFCS
     struct TagUfcs {};
-    // TODO: Replace with "Path(TagUfcs, TypeRef, Path, PathNode)" and "Path(TagUfcs, TypeRef, PathNode)"
-    // - Making Class::UFCS.trait be a nullable Path pointer
-    Path(TagUfcs, TypeRef type, TypeRef trait, ::std::vector<PathNode> nodes={});
+    Path(TagUfcs, TypeRef type, ::std::vector<PathNode> nodes={});
+    Path(TagUfcs, TypeRef type, Path trait, ::std::vector<PathNode> nodes={});
     
     // VARIABLE
     struct TagLocal {};
@@ -324,6 +323,7 @@ public:
     bool operator!=(const Path& x) const { return ord(x) != OrdEqual; }
     bool operator<(const Path& x) const { return ord(x) != OrdLess; }
     
+    static ::std::unique_ptr<Path> from_deserialiser(Deserialiser& s);
     SERIALISABLE_PROTOTYPES(); 
     void print_pretty(::std::ostream& os, bool is_type_context) const;
     friend ::std::ostream& operator<<(::std::ostream& os, const Path& path);

@@ -618,7 +618,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, AST::Module& mod, const AST::MetaIte
             if( GET_TOK(tok, lex) == TOK_COLON )
             {
                 // Bounded associated type
-                TypeRef a_type = TypeRef( Span(), AST::Path(AST::Path::TagUfcs(), TypeRef(TypeRef::TagArg(), "Self"), TypeRef(Span()), {AST::PathNode(name)}) );
+                TypeRef a_type = TypeRef( Span(), AST::Path(AST::Path::TagUfcs(), TypeRef(TypeRef::TagArg(), "Self"), AST::Path(), {AST::PathNode(name)}) );
                 //TypeRef a_type = TypeRef(TypeRef::TagAssoc(), TypeRef(TypeRef::TagArg(), "Self"), TypeRef(), name);
                 Parse_TypeBound(lex, params, a_type);
                 GET_TOK(tok, lex);

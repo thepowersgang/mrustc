@@ -122,7 +122,7 @@ int main(int argc, char *argv[])
             //Resolve_UfcsPaths(crate);
             
             // OLD resolve code, kinda bad
-            ResolvePaths(crate);
+            //ResolvePaths(crate);
             });
         
         // XXX: Dump crate before typecheck

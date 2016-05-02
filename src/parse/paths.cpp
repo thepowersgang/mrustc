@@ -38,16 +38,26 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
         lex.putback( Token(TOK_LT) );
     case TOK_LT: {
         TypeRef ty = Parse_Type(lex);
-        TypeRef trait;
         if( GET_TOK(tok, lex) == TOK_RWORD_AS ) {
-            trait = Parse_Type(lex);
+            ::AST::Path trait;
+            if( GET_TOK(tok, lex) == TOK_DOUBLE_COLON ) {
+                trait = Parse_Path(lex, false, PATH_GENERIC_TYPE);
+            }
+            else {
+                lex.putback(tok);
+                trait = Parse_Path(lex, true, PATH_GENERIC_TYPE);
+            }
+            GET_CHECK_TOK(tok, lex, TOK_GT);
+            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+            return AST::Path(AST::Path::TagUfcs(), ty, trait, Parse_PathNodes(lex, generic_mode));
         }
-        else
+        else {
             lex.putback(tok);
-        GET_CHECK_TOK(tok, lex, TOK_GT);
-        // TODO: Terminating the "path" here is sometimes valid?
-        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-        return AST::Path(AST::Path::TagUfcs(), ty, trait, Parse_PathNodes(lex, generic_mode));
+            GET_CHECK_TOK(tok, lex, TOK_GT);
+            // TODO: Terminating the "path" here is sometimes valid?
+            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+            return AST::Path(AST::Path::TagUfcs(), ty, Parse_PathNodes(lex, generic_mode));
+        }
         }
     default:
         lex.putback(tok);

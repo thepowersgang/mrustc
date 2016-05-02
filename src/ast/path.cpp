@@ -58,14 +58,6 @@ PathNode::PathNode(::std::string name, ::std::vector<TypeRef> args):
     m_params(args)
 {
 }
-const ::std::string& PathNode::name() const
-{
-    return m_name;
-}
-const ::std::vector<TypeRef>& PathNode::args() const
-{
-    return m_params;
-}
 Ordering PathNode::ord(const PathNode& x) const
 {
     Ordering    rv;
@@ -109,7 +101,11 @@ typename ::std::vector<Named<T> >::const_iterator find_named(const ::std::vector
 }
 
 // --- AST::Path
-AST::Path::Path(TagUfcs, TypeRef type, TypeRef trait, ::std::vector<AST::PathNode> nodes):
+AST::Path::Path(TagUfcs, TypeRef type, ::std::vector<AST::PathNode> nodes):
+    m_class( AST::Path::Class::make_UFCS({box$(type), nullptr, nodes}) )
+{
+}
+AST::Path::Path(TagUfcs, TypeRef type, Path trait, ::std::vector<AST::PathNode> nodes):
     m_class( AST::Path::Class::make_UFCS({box$(type), box$(trait), nodes}) )
 {
 }
@@ -136,7 +132,10 @@ AST::Path::Path(const Path& x):
         m_class = Class::make_Absolute({nodes: ent.nodes});
         ),
     (UFCS,
-        m_class = Class::make_UFCS({ box$(TypeRef(*ent.type)), box$(TypeRef(*ent.trait)), ent.nodes });
+        if( ent.trait )
+            m_class = Class::make_UFCS({ box$(TypeRef(*ent.type)), ::std::unique_ptr<Path>(new Path(*ent.trait)), ent.nodes });
+        else
+            m_class = Class::make_UFCS({ box$(TypeRef(*ent.type)), nullptr, ent.nodes });
         )
     )
     
@@ -505,8 +504,15 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context) const
         ),
     (UFCS,
         //os << "/*ufcs*/";
-        if( ! ent.trait->m_data.is_None() ) {
-            os << "<" << *ent.type << " as " << *ent.trait << ">";
+        if( ent.trait ) {
+            os << "<" << *ent.type << " as ";
+            if( ent.trait->m_class.is_Invalid() ) {
+                os << "_";
+            }
+            else {
+                os << *ent.trait;
+            }
+            os << ">";
         }
         else {
             os << "<" << *ent.type << ">";
@@ -546,6 +552,11 @@ void operator%(::Deserialiser& s, Path::Class::Tag& c) {
     c = Path::Class::tag_from_str(n);
 }
 #define _D(VAR, ...)  case Class::TAG_##VAR: { m_class = Class::make_null_##VAR(); auto& ent = m_class.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
+::std::unique_ptr<Path> Path::from_deserialiser(Deserialiser& s) {
+    Path    p;
+    s.item(p);
+    return ::std::unique_ptr<Path>( new Path( mv$(p) ) );
+}
 SERIALISE_TYPE(Path::, "AST_Path", {
     s % m_class.tag();
     TU_MATCH(Path::Class, (m_class), (ent),

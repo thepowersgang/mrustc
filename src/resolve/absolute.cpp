@@ -227,7 +227,7 @@ struct Context
 
 
 
-void Resolve_Absolute_Path(const Context& context, const Span& sp, bool is_type,  ::AST::Path& path);
+void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, bool is_type,  ::AST::Path& path);
 void Resolve_Absolute_Type(Context& context,  TypeRef& type);
 void Resolve_Absolute_Expr(Context& context,  ::AST::Expr& expr);
 void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node);
@@ -235,9 +235,20 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable, ::AST::Pat
 void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod);
 
 
-void Resolve_Absolute_Path(const Context& context, const Span& sp, bool is_type,  ::AST::Path& path)
+void Resolve_Absolute_PathNodes(/*const*/ Context& context, const Span& sp, bool is_type, ::std::vector< ::AST::PathNode >& nodes)
+{
+    for(auto& node : nodes)
+    {
+        for(auto& arg : node.args())
+        {
+            Resolve_Absolute_Type(context, arg);
+        }
+    }
+}
+void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, bool is_type,  ::AST::Path& path)
 {
     DEBUG("is_type = " << is_type << ", path = " << path);
+    
     TU_MATCH(::AST::Path::Class, (path.m_class), (e),
     (Invalid,
         BUG(sp, "Encountered invalid path");
@@ -287,8 +298,12 @@ void Resolve_Absolute_Path(const Context& context, const Span& sp, bool is_type,
         // Nothing to do (TODO: Bind?)
         ),
     (UFCS,
-        Resolve_Absolute_Type(context, e.type);
-        TODO(sp, "Resolve_Absolute_Path - UFCS");
+        Resolve_Absolute_Type(context, *e.type);
+        if( e.trait ) {
+            Resolve_Absolute_Path(context, Span(), true, *e.trait);
+        }
+        
+        Resolve_Absolute_PathNodes(context, Span(), is_type,  e.nodes);
         )
     )
 }
@@ -463,7 +478,7 @@ void Resolve_Absolute_Generic(Context& context, ::AST::GenericParams& params)
 }
 
 // Locals shouldn't be possible, as they'd end up as MaybeBind. Will assert the path class.
-void Resolve_Absolute_PatternValue(const Context& context, ::AST::Pattern::Value& val)
+void Resolve_Absolute_PatternValue(/*const*/ Context& context, ::AST::Pattern::Value& val)
 {
     TU_MATCH(::AST::Pattern::Value, (val), (e),
     (Invalid, ),
