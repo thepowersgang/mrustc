@@ -317,7 +317,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
     
     TU_MATCH(::AST::Path::Class, (path.m_class), (e),
     (Invalid,
-        BUG(sp, "Encountered invalid path");
+        BUG(sp, "Attempted resolution of invalid path");
         ),
     (Local,
         // Nothing to do (TODO: Check that it's valid?)
@@ -485,7 +485,16 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
             {
                 this->context.push_block();
                 if( arm.m_patterns.size() > 1 ) {
-                    TODO(node.get_pos(), "Resolve_Absolute_Expr - ExprNode_Match - Multiple patterns");
+                    // TODO: Save the context, ensure that each arm results in the same state.
+                    // - Or just an equivalent state
+                    for( auto& pat : arm.m_patterns )
+                    {
+                        auto old_count = this->context.m_var_count;
+                        Resolve_Absolute_Pattern(this->context, true,  pat);
+                        if( old_count != this->context.m_var_count ) {
+                            TODO(node.get_pos(), "Resolve_Absolute_Expr - ExprNode_Match - Multiple patterns with bindings");
+                        }
+                    }
                     // Requires ensuring that the binding set is the same.
                 }
                 else {
@@ -555,6 +564,16 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
             Resolve_Absolute_Type(this->context,  node.m_type);
             AST::NodeVisitorDef::visit(node);
         }
+        void visit(AST::ExprNode_Closure& node) override {
+            DEBUG("ExprNode_Closure");
+            Resolve_Absolute_Type(this->context,  node.m_return);
+            for( auto& arg : node.m_args ) {
+                Resolve_Absolute_Type(this->context,  arg.second);
+                Resolve_Absolute_Pattern(this->context, false,  arg.first);
+            }
+            
+            node.m_code->visit(*this);
+        }
     } expr_iter(context);
 
     node.visit( expr_iter );
@@ -610,6 +629,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
     if( pat.binding() != "" ) {
         if( !pat.data().is_Any() && ! allow_refutable )
             TODO(Span(), "Resolve_Absolute_Pattern - Encountered bound destructuring pattern");
+        // TODO: Record the local variable number in the binding
         context.push_var( pat.binding() );
     }
 
@@ -847,7 +867,8 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
         Resolve_Absolute_Generic(item_context,  impl.def().params());
         
         Resolve_Absolute_Type(item_context, impl.def().type());
-        Resolve_Absolute_Path(item_context, Span(), Context::LookupMode::Type, impl.def().trait());
+        if( impl.def().trait().is_valid() )
+            Resolve_Absolute_Path(item_context, Span(), Context::LookupMode::Type, impl.def().trait());
         
         Resolve_Absolute_ImplItems(item_context,  impl.items());
         
@@ -862,6 +883,8 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
         Resolve_Absolute_Generic(item_context,  impl_def.params());
         
         Resolve_Absolute_Type(item_context, impl_def.type());
+        if( !impl_def.trait().is_valid() )
+            BUG(Span(), "Encountered negative impl with no trait");
         Resolve_Absolute_Path(item_context, Span(), Context::LookupMode::Type, impl_def.trait());
         
         // No items
