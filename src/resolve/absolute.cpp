@@ -420,7 +420,10 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
     (Primitive,
         ),
     (Function,
-        TODO(sp, "Resolve_Absolute_Type - Function - " << type);
+        Resolve_Absolute_Type(context,  *e.info.m_rettype);
+        for(auto& t : e.info.m_arg_types) {
+            Resolve_Absolute_Type(context,  t);
+        }
         ),
     (Tuple,
         for(auto& t : e.inner_types)
@@ -446,7 +449,11 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
         Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, e.path);
         ),
     (TraitObject,
-        TODO(sp, "Resolve_Absolute_Type - TraitObject");
+        //context.push_lifetimes( e.hrls );
+        for(auto& trait : e.traits) {
+            Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, trait);
+        }
+        //context.pop_lifetimes();
         )
     )
 }
@@ -809,8 +816,15 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             item_context.push( e.params(), GenericSlot::Level::Top, true );
             Resolve_Absolute_Generic(item_context,  e.params());
             
-            for(auto& st : e.supertraits())
-                Resolve_Absolute_Path(item_context, Span(), Context::LookupMode::Type,  st);
+            for(auto& st : e.supertraits()) {
+                if( !st.is_valid() ) {
+                    DEBUG("- ST 'static");
+                }
+                else {
+                    DEBUG("- ST " << st);
+                    Resolve_Absolute_Path(item_context, Span(), Context::LookupMode::Type,  st);
+                }
+            }
             
             Resolve_Absolute_ImplItems(item_context, e.items());
             
