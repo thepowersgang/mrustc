@@ -818,7 +818,12 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             ),
         (Type,
             DEBUG("Type - " << i.name);
-            TODO(Span(), "Resolve_Absolute_Mod - Type");
+            item_context.push( e.params(), GenericSlot::Level::Top, true );
+            Resolve_Absolute_Generic(item_context,  e.params());
+            
+            Resolve_Absolute_Type( item_context, e.type() );
+            
+            item_context.pop( e.params() );
             ),
         (Struct,
             DEBUG("Struct - " << i.name);
