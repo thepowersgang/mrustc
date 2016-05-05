@@ -323,6 +323,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         // Nothing to do (TODO: Check that it's valid?)
         ),
     (Relative,
+        DEBUG("- Relative");
         if(e.nodes.size() == 0)
             BUG(sp, "Resolve_Absolute_Path - Relative path with no nodes");
         if(e.nodes.size() > 1 || mode == Context::LookupMode::Type) {
@@ -335,8 +336,12 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                 if( p.m_class.is_Local() ) {
                     p = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(sp, mv$(p)) );
                 }
-                assert( p.nodes().back().args().size() == 0 );
-                p.nodes().back().args() = mv$( e.nodes[0].args() );
+                if( e.nodes[0].args().size() > 0 )
+                {
+                    assert( p.nodes().size() > 0 );
+                    assert( p.nodes().back().args().size() == 0 );
+                    p.nodes().back().args() = mv$( e.nodes[0].args() );
+                }
                 for( unsigned int i = 1; i < e.nodes.size(); i ++ )
                 {
                     p.nodes().push_back( mv$(e.nodes[i]) );
@@ -355,9 +360,11 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
             Resolve_Absolute_PathNodes(context, Span(),  path.nodes());
         ),
     (Self,
+        DEBUG("- Self");
         TODO(sp, "Resolve_Absolute_Path - Self-relative paths - " << path);
         ),
     (Super,
+        DEBUG("- Super");
         // - Determine how many components of the `self` path to use
         const auto& mp_nodes = context.m_mod.path().nodes();
         assert( e.count >= 1 );
@@ -380,9 +387,11 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         path = mv$(np);
         ),
     (Absolute,
+        DEBUG("- Absolute");
         // Nothing to do (TODO: Bind?)
         ),
     (UFCS,
+        DEBUG("- UFCS");
         Resolve_Absolute_Type(context, *e.type);
         if( e.trait ) {
             Resolve_Absolute_Path(context, Span(), Context::LookupMode::Type, *e.trait);
@@ -645,9 +654,8 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
             }
             else {
                 pat = ::AST::Pattern(::AST::Pattern::TagBind(), mv$(name));
+                context.push_var( pat.binding() );
             }
-
-            context.push_var( pat.binding() );
         }
         else {
             TODO(Span(), "Resolve_Absolute_Pattern - Encountered MaybeBind in irrefutable context - replace with binding");
