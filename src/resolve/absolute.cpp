@@ -51,12 +51,14 @@ struct Context
     ::std::vector<Ent>  m_name_context;
     unsigned int m_var_count;
     unsigned int m_block_level;
+    bool m_frozen_bind_set;
     
     Context(const ::AST::Crate& crate, const ::AST::Module& mod):
         m_crate(crate),
         m_mod(mod),
         m_var_count(0),
-        m_block_level(0)
+        m_block_level(0),
+        m_frozen_bind_set( false )
     {}
     
     void push(const ::AST::GenericParams& params, GenericSlot::Level level, bool has_self=false) {
@@ -108,13 +110,33 @@ struct Context
     void push_block() {
         m_block_level += 1;
     }
-    void push_var(const ::std::string& name) {
-        assert( m_block_level > 0 );
-        if( !m_name_context.back().is_VarBlock() ) {
-            m_name_context.push_back( Ent::make_VarBlock({ m_block_level, {} }) );
+    unsigned int push_var(const ::std::string& name) {
+        // TODO: Handle avoiding duplicate bindings in a pattern
+        if( m_frozen_bind_set )
+        {
+            if( !m_name_context.back().is_VarBlock() ) {
+                BUG(Span(), "resolve/absolute.cpp - Context::push_var - No block");
+            }
+            auto& vb = m_name_context.back().as_VarBlock();
+            for( const auto& v : vb.variables )
+            {
+                // TODO: Error when a binding is used twice or not at all
+                if( v.name == name ) {
+                    return v.value;
+                }
+            }
+            ERROR(Span(), E0000, "Mismatched bindings in pattern");
         }
-        m_name_context.back().as_VarBlock().variables.push_back( Named<unsigned int> { name, m_var_count } );
-        m_var_count += 1;
+        else
+        {
+            assert( m_block_level > 0 );
+            if( !m_name_context.back().is_VarBlock() ) {
+                m_name_context.push_back( Ent::make_VarBlock({ m_block_level, {} }) );
+            }
+            m_name_context.back().as_VarBlock().variables.push_back( Named<unsigned int> { name, m_var_count } );
+            m_var_count += 1;
+            return m_var_count - 1;
+        }
     }
     void pop_block() {
         assert( m_block_level > 0 );
@@ -124,6 +146,21 @@ struct Context
             }
         }
         m_block_level -= 1;
+    }
+    
+    /// Indicate that a multiple-pattern binding is started
+    void start_patbind() {
+        assert( m_block_level > 0 );
+        m_name_context.push_back( Ent::make_VarBlock({ m_block_level, {} }) );
+        assert( m_frozen_bind_set == false );
+    }
+    /// Freeze the set of pattern bindings
+    void freeze_patbind() {
+        m_frozen_bind_set = true;
+    }
+    /// End a multiple-pattern binding state (unfreeze really)
+    void end_patbind() {
+        m_frozen_bind_set = false;
     }
    
     
@@ -158,11 +195,12 @@ struct Context
     bool lookup_in_mod(const ::AST::Module& mod, const ::std::string& name, LookupMode mode,  ::AST::Path& path) const {
         // TODO: m_type_items/m_value_items should store the path
         if( mode == LookupMode::Type ) {
-            if( name == "Option" ) {
-                for(const auto& v : mod.m_type_items) {
-                    DEBUG("- " << v.first << " = " << (v.second.first ? "pub " : "") << v.second.second);
-                }
-            }
+            //if( name == "SizeHint" ) {
+            //    DEBUG("lookup_in_mod(mod="<<mod.path()<<")");
+            //    for(const auto& v : mod.m_type_items) {
+            //        DEBUG("- " << v.first << " = " << (v.second.first ? "pub " : "") << v.second.second);
+            //    }
+            //}
             auto v = mod.m_type_items.find(name);
             if( v != mod.m_type_items.end() ) {
                 path = mod.path() + name;
@@ -481,10 +519,10 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
         void visit(AST::ExprNode_Block& node) override {
             DEBUG("ExprNode_Block");
             if( node.m_local_mod ) {
+                this->context.push( *node.m_local_mod );
+
                 // Clone just the module stack part of the current context
                 Resolve_Absolute_Mod(this->context.clone_mod(), *node.m_local_mod);
-                
-                this->context.push( *node.m_local_mod );
             }
             this->context.push_block();
             AST::NodeVisitorDef::visit(node);
@@ -503,14 +541,14 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
                 if( arm.m_patterns.size() > 1 ) {
                     // TODO: Save the context, ensure that each arm results in the same state.
                     // - Or just an equivalent state
+                    // OR! Have a mode in the context that handles multiple bindings.
+                    this->context.start_patbind();
                     for( auto& pat : arm.m_patterns )
                     {
-                        auto old_count = this->context.m_var_count;
                         Resolve_Absolute_Pattern(this->context, true,  pat);
-                        if( old_count != this->context.m_var_count ) {
-                            TODO(node.get_pos(), "Resolve_Absolute_Expr - ExprNode_Match - Multiple patterns with bindings");
-                        }
+                        this->context.freeze_patbind();
                     }
+                    this->context.end_patbind();
                     // Requires ensuring that the binding set is the same.
                 }
                 else {
@@ -661,6 +699,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
             }
             else {
                 pat = ::AST::Pattern(::AST::Pattern::TagBind(), mv$(name));
+                // TODO: Record the local variable number in the binding
                 context.push_var( pat.binding() );
             }
         }
