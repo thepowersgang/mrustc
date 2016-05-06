@@ -165,6 +165,7 @@ struct Context
    
     
     enum class LookupMode {
+        //Namespace,
         Type,
         Constant,
         Pattern,
@@ -300,6 +301,13 @@ struct Context
         ::AST::Path rv;
         if( this->lookup_in_mod(m_mod, name, mode,  rv) ) {
             return rv;
+        }
+        
+        // Look up primitive types
+        auto ct = coretype_fromstring(name);
+        if( ct != CORETYPE_INVAL )
+        {
+            return ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span(), ct), ::std::vector< ::AST::PathNode>() );
         }
         
         return AST::Path();
