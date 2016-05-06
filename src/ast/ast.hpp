@@ -552,8 +552,14 @@ private:
 
 public:
     char    m_index_populated = 0;  // 0 = no, 1 = partial, 2 = complete
-    ::std::unordered_map< ::std::string, ::std::pair<bool, PathBinding> >    m_type_items;
-    ::std::unordered_map< ::std::string, ::std::pair<bool, PathBinding> >    m_value_items;
+    // TODO: Add "namespace" list (separate to types)
+    struct IndexEnt {
+        bool is_pub;
+        ::AST::Path path;
+    };
+    ::std::unordered_map< ::std::string, IndexEnt >    m_namespace_items;
+    ::std::unordered_map< ::std::string, IndexEnt >    m_type_items;
+    ::std::unordered_map< ::std::string, IndexEnt >    m_value_items;
 
 public:
     Module() {}

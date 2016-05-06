@@ -165,12 +165,15 @@ struct Context
    
     
     enum class LookupMode {
-        //Namespace,
+        Namespace,
         Type,
         Constant,
         Pattern,
         Variable,
     };
+    AST::Path lookup_mod(const Span& sp, const ::std::string& name) const {
+        return this->lookup(sp, name, LookupMode::Namespace);
+    }
     AST::Path lookup_type(const Span& sp, const ::std::string& name) const {
         return this->lookup(sp, name, LookupMode::Type);
     }
@@ -185,6 +188,7 @@ struct Context
         if( !rv.is_valid() ) {
             switch(mode)
             {
+            case LookupMode::Namespace: ERROR(sp, E0000, "Couldn't find path component '" << name << "'");
             case LookupMode::Type:      ERROR(sp, E0000, "Couldn't find type name '" << name << "'");
             case LookupMode::Pattern:   ERROR(sp, E0000, "Couldn't find pattern name '" << name << "'");
             case LookupMode::Constant:  ERROR(sp, E0000, "Couldn't find constant name '" << name << "'");
@@ -194,29 +198,49 @@ struct Context
         return rv;
     }
     bool lookup_in_mod(const ::AST::Module& mod, const ::std::string& name, LookupMode mode,  ::AST::Path& path) const {
-        // TODO: m_type_items/m_value_items should store the path
-        if( mode == LookupMode::Type ) {
-            //if( name == "SizeHint" ) {
-            //    DEBUG("lookup_in_mod(mod="<<mod.path()<<")");
-            //    for(const auto& v : mod.m_type_items) {
-            //        DEBUG("- " << v.first << " = " << (v.second.first ? "pub " : "") << v.second.second);
-            //    }
-            //}
-            auto v = mod.m_type_items.find(name);
-            if( v != mod.m_type_items.end() ) {
-                path = mod.path() + name;
-                return true;
+        switch(mode)
+        {
+        case LookupMode::Namespace:
+            {
+                auto v = mod.m_namespace_items.find(name);
+                if( v != mod.m_namespace_items.end() ) {
+                    path = ::AST::Path( v->second.path );
+                    return true;
+                }
             }
-        }
-        else if( mode == LookupMode::Pattern ) {
             {
                 auto v = mod.m_type_items.find(name);
                 if( v != mod.m_type_items.end() ) {
-                    const auto& b = v->second.second;
+                    path = ::AST::Path( v->second.path );
+                    return true;
+                }
+            }
+            break;
+        
+        case LookupMode::Type:
+            //if( name == "SizeHint" ) {
+            //    DEBUG("lookup_in_mod(mod="<<mod.path()<<")");
+            //    for(const auto& v : mod.m_type_items) {
+            //        DEBUG("- " << v.first << " = " << (v.second.is_pub ? "pub " : "") << v.second.path);
+            //    }
+            //}
+            {
+                auto v = mod.m_type_items.find(name);
+                if( v != mod.m_type_items.end() ) {
+                    path = ::AST::Path( v->second.path );
+                    return true;
+                }
+            }
+            break;
+        case LookupMode::Pattern:
+            {
+                auto v = mod.m_type_items.find(name);
+                if( v != mod.m_type_items.end() ) {
+                    const auto& b = v->second.path.binding();
                     switch( b.tag() )
                     {
                     case ::AST::PathBinding::TAG_Struct:
-                        path = mod.path() + name;
+                        path = ::AST::Path( v->second.path );
                         return true;
                     default:
                         break;
@@ -226,25 +250,29 @@ struct Context
             {
                 auto v = mod.m_value_items.find(name);
                 if( v != mod.m_value_items.end() ) {
-                    const auto& b = v->second.second;
+                    const auto& b = v->second.path.binding();
                     switch( b.tag() )
                     {
                     case ::AST::PathBinding::TAG_EnumVar:
                     case ::AST::PathBinding::TAG_Static:
-                        path = mod.path() + name;
+                        path = ::AST::Path( v->second.path );
                         return true;
                     default:
                         break;
                     }
                 }
             }
-        }
-        else {
-            auto v = mod.m_value_items.find(name);
-            if( v != mod.m_value_items.end() ) {
-                path = mod.path() + name;
-                return true;
+            break;
+        case LookupMode::Constant:
+        case LookupMode::Variable:
+            {
+                auto v = mod.m_value_items.find(name);
+                if( v != mod.m_value_items.end() ) {
+                    path = ::AST::Path( v->second.path );
+                    return true;
+                }
             }
+            break;
         }
         return false;
     }
@@ -259,7 +287,7 @@ struct Context
                 }
                 ),
             (ConcreteSelf,
-                if( mode == LookupMode::Type && name == "Self" ) {
+                if( ( mode == LookupMode::Type || mode == LookupMode::Namespace ) && name == "Self" ) {
                     return ::AST::Path( ::AST::Path::TagUfcs(), *e, ::std::vector< ::AST::PathNode>() );
                 }
                 ),
@@ -279,7 +307,7 @@ struct Context
                 }
                 ),
             (Generic,
-                if( mode == LookupMode::Type ) {
+                if( mode == LookupMode::Type || mode == LookupMode::Namespace ) {
                     for( auto it2 = e.types.rbegin(); it2 != e.types.rend(); ++ it2 )
                     {
                         if( it2->name == name ) {
@@ -328,6 +356,7 @@ struct Context
 ::std::ostream& operator<<(::std::ostream& os, const Context::LookupMode& v) {
     switch(v)
     {
+    case Context::LookupMode::Namespace:os << "Namespace";  break;
     case Context::LookupMode::Type:     os << "Type";       break;
     case Context::LookupMode::Pattern:  os << "Pattern";    break;
     case Context::LookupMode::Constant: os << "Constant";   break;
@@ -372,9 +401,10 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         DEBUG("- Relative");
         if(e.nodes.size() == 0)
             BUG(sp, "Resolve_Absolute_Path - Relative path with no nodes");
-        if(e.nodes.size() > 1 || mode == Context::LookupMode::Type) {
+        if(e.nodes.size() > 1)
+        {
             // Look up type
-            auto p = context.lookup_type(sp, e.nodes[0].name());
+            auto p = context.lookup(sp, e.nodes[0].name(), Context::LookupMode::Namespace);
             DEBUG("Found type/mod - " << p);
             
             if( e.nodes.size() > 1 )

@@ -5,16 +5,48 @@
 #include <ast/crate.hpp>
 #include <main_bindings.hpp>
 
-void _add_item(AST::Module& mod, bool is_type, const ::std::string& name, bool is_pub, ::AST::PathBinding ir, bool error_on_collision)
+enum class IndexName
 {
-    DEBUG("Add " << (is_type ? "type" : "value") << " item '" << name << "': " << ir);
-    auto& list = (is_type ? mod.m_type_items : mod.m_value_items);
+    Namespace,
+    Type,
+    Value,
+};
+::std::ostream& operator<<(::std::ostream& os, const IndexName& loc)
+{
+    switch(loc)
+    {
+    case IndexName::Namespace:
+        return os << "namespace";
+    case IndexName::Type:
+        return os << "type";
+    case IndexName::Value:
+        return os << "value";
+    }
+    throw "";
+}
+::std::unordered_map< ::std::string, ::AST::Module::IndexEnt >& get_mod_index(::AST::Module& mod, IndexName location) {
+    switch(location)
+    {
+    case IndexName::Namespace:
+        return mod.m_namespace_items;
+    case IndexName::Type:
+        return mod.m_type_items;
+    case IndexName::Value:
+        return mod.m_value_items;
+    }
+    throw "";
+}
+
+void _add_item(AST::Module& mod, IndexName location, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
+{
+    DEBUG("Add " << location << " item '" << name << "': " << ir);
+    auto& list = get_mod_index(mod, location);
     
-    if( false == list.insert( ::std::make_pair(name, ::std::make_pair(is_pub, mv$(ir))) ).second )
+    if( false == list.insert(::std::make_pair(name, ::AST::Module::IndexEnt { is_pub, mv$(ir) } )).second )
     {
         if( error_on_collision ) 
         {
-            ERROR(Span(), E0000, "Duplicate definition of name '" << name << "' in " << (is_type ? "type" : "value") << " scope (" << mod.path() << ")");
+            ERROR(Span(), E0000, "Duplicate definition of name '" << name << "' in " << location << " scope (" << mod.path() << ")");
         }
         else
         {
@@ -22,13 +54,14 @@ void _add_item(AST::Module& mod, bool is_type, const ::std::string& name, bool i
         }
     }
 }
-void _add_item_type(AST::Module& mod, const ::std::string& name, bool is_pub, ::AST::PathBinding ir, bool error_on_collision=true)
+void _add_item_type(AST::Module& mod, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
 {
-    _add_item(mod, true, name, is_pub, mv$(ir), error_on_collision);
+    _add_item(mod, IndexName::Namespace, name, is_pub, ::AST::Path(ir), error_on_collision);
+    _add_item(mod, IndexName::Type, name, is_pub, mv$(ir), error_on_collision);
 }
-void _add_item_value(AST::Module& mod, const ::std::string& name, bool is_pub, ::AST::PathBinding ir, bool error_on_collision=true)
+void _add_item_value(AST::Module& mod, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
 {
-    _add_item(mod, false, name, is_pub, mv$(ir), error_on_collision);
+    _add_item(mod, IndexName::Value, name, is_pub, mv$(ir), error_on_collision);
 }
 
 void Resolve_Index_Module_Base(AST::Module& mod)
@@ -36,40 +69,50 @@ void Resolve_Index_Module_Base(AST::Module& mod)
     TRACE_FUNCTION_F("mod = " << mod.path());
     for( const auto& i : mod.items() )
     {
+        ::AST::Path p = mod.path() + i.name;
+        
         TU_MATCH(AST::Item, (i.data), (e),
         (None,
             ),
         // - Types/modules only
         (Module,
-            _add_item_type(mod, i.name, i.is_pub,  ::AST::PathBinding::make_Module({&e}));
+            p.bind( ::AST::PathBinding::make_Module({&e}) );
+            _add_item(mod, IndexName::Namespace, i.name, i.is_pub,  mv$(p));
             ),
         (Crate,
             TODO(Span(), "Crate in Resolve_Index_Module");
-            //_add_item_type(mod, i.name, i.is_pub,  ::AST::PathBinding::make_Crate(e));
+            //p.bind( ::AST::PathBinding::make_Crate(e) );
+            //_add_item(mod, IndexName::Namespace, i.name, i.is_pub,  mv$(p));
             ),
         (Enum,
-            _add_item_type(mod, i.name, i.is_pub,  ::AST::PathBinding::make_Enum({&e}));
+            p.bind( ::AST::PathBinding::make_Enum({&e}) );
+            _add_item_type(mod, i.name, i.is_pub,  mv$(p));
             ),
         (Trait,
-            _add_item_type(mod, i.name, i.is_pub,  ::AST::PathBinding::make_Trait({&e}));
+            p.bind( ::AST::PathBinding::make_Trait({&e}) );
+            _add_item_type(mod, i.name, i.is_pub,  mv$(p));
             ),
         (Type,
-            _add_item_type(mod, i.name, i.is_pub,  ::AST::PathBinding::make_TypeAlias({&e}));
+            p.bind( ::AST::PathBinding::make_TypeAlias({&e}) );
+            _add_item_type(mod, i.name, i.is_pub,  mv$(p));
             ),
         // - Mixed
         (Struct,
-            _add_item_type(mod, i.name, i.is_pub,  ::AST::PathBinding::make_Struct({&e}));
-            // - If the struct is a tuple-like struct, it presents in the value namespace
+            p.bind( ::AST::PathBinding::make_Struct({&e}) );
+            // - If the struct is a tuple-like struct (or unit-like), it presents in the value namespace
             if( e.m_data.is_Tuple() ) {
-                _add_item_value(mod, i.name, i.is_pub,  ::AST::PathBinding::make_Struct({&e}));
+                _add_item_value(mod, i.name, i.is_pub,  p);
             }
+            _add_item_type(mod, i.name, i.is_pub,  mv$(p));
             ),
         // - Values only
         (Function,
-            _add_item_value(mod, i.name, i.is_pub,  ::AST::PathBinding::make_Function({&e}));
+            p.bind( ::AST::PathBinding::make_Function({&e}) );
+            _add_item_value(mod, i.name, i.is_pub,  mv$(p));
             ),
         (Static,
-            _add_item_value(mod, i.name, i.is_pub,  ::AST::PathBinding::make_Static({&e}));
+            p.bind( ::AST::PathBinding::make_Static({&e}) );
+            _add_item_value(mod, i.name, i.is_pub,  mv$(p));
             )
         )
     }
@@ -99,22 +142,22 @@ void Resolve_Index_Module_Base(AST::Module& mod)
                 BUG(sp, "Import was bound to struct method");
                 ),
             
-            (Module,  _add_item_type(mod, i.name, i.is_pub,  b.clone()); ),
-            //(Crate,   _add_item_type(mod, i.name, i.is_pub,  b.clone()); ),
-            (Enum,    _add_item_type(mod, i.name, i.is_pub,  b.clone()); ),
-            (Trait,   _add_item_type(mod, i.name, i.is_pub,  b.clone()); ),
-            (TypeAlias, _add_item_type(mod, i.name, i.is_pub,  b.clone()); ),
+            (Module,  _add_item(mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path); ),
+            //(Crate,   _add_item_type(mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path); ),
+            (Enum,    _add_item_type(mod, i.name, i.is_pub,  i.data.path); ),
+            (Trait,   _add_item_type(mod, i.name, i.is_pub,  i.data.path); ),
+            (TypeAlias, _add_item_type(mod, i.name, i.is_pub,  i.data.path); ),
             
             (Struct,
-                _add_item_type(mod, i.name, i.is_pub,  b.clone());
+                _add_item_type(mod, i.name, i.is_pub,  i.data.path);
                 // - If the struct is a tuple-like struct, it presents in the value namespace
                 if( e.struct_->m_data.is_Tuple() ) {
-                    _add_item_value(mod, i.name, i.is_pub,  b.clone());
+                    _add_item_value(mod, i.name, i.is_pub,  i.data.path);
                 }
                 ),
-            (Static  , _add_item_value(mod, i.name, i.is_pub,  b.clone()); ),
-            (Function, _add_item_value(mod, i.name, i.is_pub,  b.clone()); ),
-            (EnumVar , _add_item_value(mod, i.name, i.is_pub,  b.clone()); )
+            (Static  , _add_item_value(mod, i.name, i.is_pub,  i.data.path); ),
+            (Function, _add_item_value(mod, i.name, i.is_pub,  i.data.path); ),
+            (EnumVar , _add_item_value(mod, i.name, i.is_pub,  i.data.path); )
             )
         }
         else
@@ -187,24 +230,26 @@ void Resolve_Index_Module_Wildcard(AST::Module& mod, bool handle_pub)
                     //Resolve_Index_Module( *e.module_ );
                 }
                 for(const auto& vi : e.module_->m_type_items) {
-                    if( vi.second.first ) {
-                        _add_item_type( mod, vi.first, i.is_pub, vi.second.second.clone(), false );
+                    if( vi.second.is_pub ) {
+                        _add_item_type( mod, vi.first, i.is_pub, vi.second.path, false );
                     }
                 }
                 for(const auto& vi : e.module_->m_value_items) {
-                    if( vi.second.first ) {
-                        _add_item_value( mod, vi.first, i.is_pub, vi.second.second.clone(), false );
+                    if( vi.second.is_pub ) {
+                        _add_item_value( mod, vi.first, i.is_pub, vi.second.path, false );
                     }
                 }
                 ),
             (Enum,
                 unsigned int idx = 0;
                 for( const auto& ev : e.enum_->variants() ) {
+                    ::AST::Path p = mod.path() + ev.m_name;
+                    p.bind( ::AST::PathBinding::make_EnumVar({e.enum_, idx}) );
                     if( ev.m_data.is_Struct() ) {
-                        _add_item_type ( mod, ev.m_name, i.is_pub, ::AST::PathBinding::make_EnumVar({e.enum_, idx}), false );
+                        _add_item_type ( mod, ev.m_name, i.is_pub, mv$(p), false );
                     }
                     else {
-                        _add_item_value( mod, ev.m_name, i.is_pub, ::AST::PathBinding::make_EnumVar({e.enum_, idx}), false );
+                        _add_item_value( mod, ev.m_name, i.is_pub, mv$(p), false );
                     }
                     
                     idx += 1;

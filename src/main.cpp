@@ -129,6 +129,10 @@ int main(int argc, char *argv[])
         CompilePhaseV("Temp output - Resolved", [&]() {
             Dump_Rust( FMT(params.outfile << "_1_res.rs").c_str(), crate );
             });
+        
+        CompilePhaseV("HIR Lower", [&]() {
+            //hir_crate = LowerHIR_FromAST(mv$( crate ));
+            });
 
         // Replace type aliases (`type`) into the actual type
         CompilePhaseV("Resolve Type Aliases", [&]() {
