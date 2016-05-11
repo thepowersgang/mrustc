@@ -4,6 +4,8 @@
 #define _MAIN_BINDINGS_HPP_
 
 #include <string>
+#include <memory>
+#include <hir/crate_ptr.hpp>
 
 namespace AST {
     class Crate;
@@ -22,6 +24,8 @@ extern void Process_Decorators(AST::Crate& crate);
 extern void Resolve_Use(::AST::Crate& crate);
 extern void Resolve_Index(::AST::Crate& crate);
 extern void Resolve_Absolutise(::AST::Crate& crate);
+
+extern ::HIR::CratePtr  LowerHIR_FromAST(::AST::Crate crate);
 
 /// Resolve all in-text paths to absolute variants
 extern void ResolvePaths(AST::Crate& crate);

@@ -36,6 +36,7 @@ OBJ +=  expand/derive.o expand/lang_item.o
 OBJ +=  expand/std_prelude.o
 OBJ += resolve/use.o resolve/index.o resolve/absolute.o
 OBJ += hir/from_ast.o
+OBJ +=  hir/crate_ptr.o
 OBJ += dump_as_rust.o
 OBJ += convert/ast_iterate.o
 #OBJ += convert/decorators.o

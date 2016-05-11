@@ -12,6 +12,10 @@ class TypeRef;
 /// Simple path - Absolute with no generic parameters
 struct SimplePath
 {
+    SimplePath():
+        m_crate_name("")
+    {
+    }
     SimplePath(::std::string crate):
         m_crate_name( mv$(crate) )
     {

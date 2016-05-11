@@ -1,5 +1,6 @@
 
 #include "hir.hpp"
+#include <main_bindings.hpp>
 #include <ast/ast.hpp>
 #include <ast/crate.hpp>
 
@@ -8,17 +9,17 @@
 /// \brief Converts the AST into HIR format
 ///
 /// - Removes all possibility for unexpanded macros
-/// - Performs name resolution and partial UFCS conversion?
 /// - Performs desugaring of for/if-let/while-let/...
-::HIR::Crate LowerHIR_FromAST(::AST::Crate crate)
+::HIR::CratePtr LowerHIR_FromAST(::AST::Crate crate)
 {
     ::std::unordered_map< ::std::string, MacroRules >   macros;
     auto rootmod = LowerHIR_Module( mv$(crate.m_root_module), ::HIR::SimplePath("") );
-    return { mv$(rootmod), mv$(macros) };
+    return ::HIR::CratePtr( ::HIR::Crate { mv$(rootmod), mv$(macros) } );
 }
 
 ::HIR::Module LowerHIR_Module(::AST::Module module, ::HIR::SimplePath path)
 {
-    throw ::std::runtime_error("");
+    ::HIR::Module   mod { };
+    throw ::std::runtime_error("TODO: LowerHIR_Module");
 }
 

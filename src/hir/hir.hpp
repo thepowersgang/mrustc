@@ -110,14 +110,12 @@ public:
     ::std::unordered_map< ::std::string, ::std::unique_ptr<VisEnt<ValueItem>> > m_value_items;
     // Contains types, traits, and modules
     ::std::unordered_map< ::std::string, ::std::unique_ptr<VisEnt<TypeItem>> > m_mod_items;
-    // Glob imports
-    ::std::vector< VisEnt<::HIR::Path> >   m_glob_imports;
 };
 
 // --------------------------------------------------------------------
 
 TAGGED_UNION(TypeItem, Import,
-    (Import, ::HIR::Path),
+    (Import, ::HIR::SimplePath),  // `pub use` statements (no globs)
     (Module, Module),
     (TypeAlias, TypeAlias), // NOTE: These don't introduce new values
     (Enum,      Enum),
@@ -125,7 +123,7 @@ TAGGED_UNION(TypeItem, Import,
     (Trait,     Trait)
     );
 TAGGED_UNION(ValueItem, Import,
-    (Import,    ::HIR::Path),
+    (Import,    ::HIR::SimplePath),
     (Static,    Static),
     (StructConstant,    struct { ::HIR::TypeRef ty; }),
     (Function,  Function),

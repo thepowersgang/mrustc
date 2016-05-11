@@ -54,9 +54,11 @@ template <typename Rv, typename Fcn>
 Rv CompilePhase(const char *name, Fcn f) {
     ::std::cout << name << ": V V V" << ::std::endl;
     g_cur_phase = name;
+    auto start = clock();
     auto rv = f();
+    auto end = clock();
     g_cur_phase = "";
-    ::std::cout << name << ": DONE" << ::std::endl;
+    ::std::cout << name << ": DONE (" << static_cast<double>(end - start) / static_cast<double>(CLOCKS_PER_SEC) << " s)" << ::std::endl;
     return rv;
 }
 template <typename Fcn>
@@ -130,8 +132,9 @@ int main(int argc, char *argv[])
             Dump_Rust( FMT(params.outfile << "_1_res.rs").c_str(), crate );
             });
         
+        ::HIR::CratePtr hir_crate;
         CompilePhaseV("HIR Lower", [&]() {
-            //hir_crate = LowerHIR_FromAST(mv$( crate ));
+            hir_crate = LowerHIR_FromAST(mv$( crate ));
             });
 
         // Replace type aliases (`type`) into the actual type
