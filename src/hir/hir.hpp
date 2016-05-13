@@ -21,6 +21,8 @@ namespace HIR {
 
 class Expr {
 };
+class Pattern {
+};
 
 class Crate;
 class Module;
@@ -48,11 +50,27 @@ struct GenericParams
 // --------------------------------------------------------------------
 struct Static
 {
+    //GenericParams   m_params;
+    
+    bool    m_is_mut;
+    TypeRef m_type;
+    Expr    m_value;
+};
+struct Constant
+{
     GenericParams   m_params;
+    
+    TypeRef m_type;
+    Expr    m_value;
 };
 struct Function
 {
     GenericParams   m_params;
+    
+    ::std::vector< ::std::pair< Pattern, TypeRef > >    m_args;
+    TypeRef m_return;
+    
+    Expr    m_code;
 };
 
 // --------------------------------------------------------------------
@@ -124,6 +142,7 @@ TAGGED_UNION(TypeItem, Import,
     );
 TAGGED_UNION(ValueItem, Import,
     (Import,    ::HIR::SimplePath),
+    (Constant,  Constant),
     (Static,    Static),
     (StructConstant,    struct { ::HIR::TypeRef ty; }),
     (Function,  Function),

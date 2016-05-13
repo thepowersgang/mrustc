@@ -620,10 +620,10 @@ public:
     const ::AST::Path& path() const { return m_my_path; }
     ItemRef find_item(const ::std::string& needle, bool allow_leaves = true, bool ignore_private_wildcard = true) const;
 
-    ::std::vector<Named<Item>>& items() { return m_items; }
+          ::std::vector<Named<Item>>& items()       { return m_items; }
     const ::std::vector<Named<Item>>& items() const { return m_items; }
     
-    itemlist_use_t& imports() { return m_imports; }
+          itemlist_use_t& imports()       { return m_imports; }
     const itemlist_use_t& imports() const { return m_imports; }
     
           ::std::vector<Impl>&  impls()       { return m_impls; }

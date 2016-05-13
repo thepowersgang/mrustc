@@ -23,6 +23,9 @@ struct SimplePath
 
     ::std::string   m_crate_name;
     ::std::vector< ::std::string>   m_components;
+
+    
+    SimplePath operator+(const ::std::string& s) const;
 };
 /// Generic path - Simple path with one lot of generic params
 class GenericPath
