@@ -632,7 +632,7 @@ public:
           ::std::vector<ImplDef>&   neg_impls()       { return m_neg_impls; }
     const ::std::vector<ImplDef>&   neg_impls() const { return m_neg_impls; }
 
-    ::std::vector<Module*>&   anon_mods() { return m_anon_modules; }
+          ::std::vector<Module*>&   anon_mods()       { return m_anon_modules; }
     const ::std::vector<Module*>&   anon_mods() const { return m_anon_modules; }
     
 

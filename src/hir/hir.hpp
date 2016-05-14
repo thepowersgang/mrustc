@@ -16,11 +16,10 @@
 
 #include <hir/type.hpp>
 #include <hir/path.hpp>
+#include <hir/expr_ptr.hpp>
 
 namespace HIR {
 
-class Expr {
-};
 class Pattern {
 };
 
@@ -54,14 +53,14 @@ struct Static
     
     bool    m_is_mut;
     TypeRef m_type;
-    Expr    m_value;
+    ExprPtr m_value;
 };
 struct Constant
 {
     GenericParams   m_params;
     
     TypeRef m_type;
-    Expr    m_value;
+    ExprPtr m_value;
 };
 struct Function
 {
@@ -70,7 +69,7 @@ struct Function
     ::std::vector< ::std::pair< Pattern, TypeRef > >    m_args;
     TypeRef m_return;
     
-    Expr    m_code;
+    ExprPtr m_code;
 };
 
 // --------------------------------------------------------------------
@@ -85,7 +84,7 @@ struct Enum
 {
     TAGGED_UNION(Variant, Unit,
         (Unit, struct{}),
-        (Value, ::HIR::Expr),
+        (Value, ::HIR::ExprPtr),
         (Tuple, ::std::vector<::HIR::TypeRef>),
         (Struct, ::std::pair< ::std::string, ::HIR::TypeRef>)
         );

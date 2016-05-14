@@ -4,10 +4,10 @@
 #pragma once
 
 #include <common.hpp>
+#include <tagged_union.hpp>
+#include <hir/type_ptr.hpp>
 
 namespace HIR {
-
-class TypeRef;
 
 /// Simple path - Absolute with no generic parameters
 struct SimplePath
@@ -26,6 +26,7 @@ struct SimplePath
 
     
     SimplePath operator+(const ::std::string& s) const;
+    friend ::std::ostream& operator<<(::std::ostream& os, const SimplePath& x);
 };
 /// Generic path - Simple path with one lot of generic params
 class GenericPath
@@ -33,13 +34,29 @@ class GenericPath
 public:
     SimplePath  m_path;
     ::std::vector<TypeRef>  m_params;
+
+    GenericPath();
+    GenericPath(::HIR::SimplePath sp);
 };
 
 class Path
 {
+public:
     // Two possibilities
     // - UFCS
     // - Generic path
+    TAGGED_UNION(Data, Generic,
+    (Generic, GenericPath),
+    (UFCS, struct {
+        TypeRefPtr  type;
+        GenericPath trait;
+        ::std::string   item;
+        })
+    );
+
+private:
+    Data m_data;
+
 public:
     Path(GenericPath _);
     Path(SimplePath _);

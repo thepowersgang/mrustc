@@ -14,16 +14,23 @@
 ::HIR::CratePtr LowerHIR_FromAST(::AST::Crate crate)
 {
     ::std::unordered_map< ::std::string, MacroRules >   macros;
+    // TODO: Extract macros from root module
+    for( const auto& mac : crate.m_root_module.macros() ) {
+        //if( mac.data.export ) {
+        macros.insert( ::std::make_pair( mac.name, mac.data ) );
+        //}
+    }
     auto rootmod = LowerHIR_Module( crate.m_root_module, ::HIR::SimplePath("") );
     return ::HIR::CratePtr( ::HIR::Crate { mv$(rootmod), mv$(macros) } );
 }
 
+// --------------------------------------------------------------------
 ::HIR::GenericParams LowerHIR_GenericParams(const ::AST::GenericParams& gp)
 {
     throw ::std::runtime_error("TODO: LowerHIR_GenericParams");
 }
 
-::HIR::Expr LowerHIR_Expr(const ::AST::Expr& e)
+::HIR::ExprPtr LowerHIR_Expr(const ::AST::Expr& e)
 {
     throw ::std::runtime_error("TODO: LowerHIR_Expr");
 }
@@ -69,8 +76,9 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
     mod.m_value_items.insert( ::std::make_pair( mv$(name), ::make_unique_ptr(::HIR::VisEnt< ::HIR::ValueItem> { is_pub, mv$(ti) }) ) );
 }
 
-::HIR::Module LowerHIR_Module(::AST::Module& module, ::HIR::SimplePath path)
+::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::SimplePath path)
 {
+    TRACE_FUNCTION_F("path = " << path);
     ::HIR::Module   mod { };
 
     for( const auto& item : module.items() )
@@ -84,11 +92,13 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             ),
         (Crate,
             // TODO: All 'extern crate' items should be normalised into a list in the crate root
+            // - If public, add a namespace import here referring to the root of the imported crate
             ),
         (Type,
             _add_mod_ns_item( mod,  item.name, item.is_pub, ::HIR::TypeItem::make_TypeAlias( LowerHIR_TypeAlias(e) ) );
             ),
         (Struct,
+            /// Add value reference
             TU_IFLET( ::AST::StructData, e.m_data, Struct, e2,
                 ::HIR::TypeRef ty = ::HIR::TypeRef( ::HIR::Path(mv$(item_path)) );
                 if( e2.ents.size() == 0 )
@@ -125,7 +135,15 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
         )
     }
     
-    throw ::std::runtime_error("TODO: LowerHIR_Module");
+    for( unsigned int i = 0; i < module.anon_mods().size(); i ++ )
+    {
+        auto& submod = *module.anon_mods()[i];
+        ::std::string name = FMT("#" << i);
+        auto item_path = path + name;
+        _add_mod_ns_item( mod,  name, false, LowerHIR_Module(submod, mv$(item_path)) );
+    }
+
+    return mod;
 }
 
 

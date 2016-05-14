@@ -111,6 +111,10 @@ public:
 };
 
 /// A sigle 'macro_rules!' block
+//struct MacroRules {
+//    bool export;
+//    ::std::vector<MacroRule>  m_rules;
+//};
 typedef ::std::vector<MacroRule>    MacroRules;
 
 extern ::std::unique_ptr<TokenStream>   Macro_InvokeRules(const char *name, const MacroRules& rules, TokenTree input);
