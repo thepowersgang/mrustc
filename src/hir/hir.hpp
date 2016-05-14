@@ -108,7 +108,9 @@ struct AssociatedType
     GenericParams   m_params;   // For bounds, and maybe HKT?
     ::HIR::TypeRef  m_default;
 };
-TAGGED_UNION(TraitValueItem, Static,
+TAGGED_UNION(TraitValueItem, None,
+    (None,      struct {}),
+    (Constant,  Constant),
     (Static,    Static),
     (Function,  Function)
     );

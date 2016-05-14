@@ -162,7 +162,7 @@ void operator%(::Deserialiser& s, Pattern::Data::Tag& c) {
     s.item(n);
     c = Pattern::Data::tag_from_str(n);
 }
-#define _D(VAR, ...)  case Pattern::Data::TAG_##VAR: { m_data = Pattern::Data::make_null_##VAR(); auto& ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
+#define _D(VAR, ...)  case Pattern::Data::TAG_##VAR: { m_data = Pattern::Data::make_##VAR({}); auto& ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
 SERIALISE_TYPE(Pattern::, "Pattern", {
     s.item(m_binding);
     s % m_data.tag();

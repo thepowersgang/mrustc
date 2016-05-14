@@ -654,7 +654,7 @@ SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
 }
 
 
-#define SERIALISE_TU_ARM(CLASS, NAME, TAG, ...)    case CLASS::TAG_##TAG: { *this = CLASS::make_null_##TAG(); auto& NAME = this->as_##TAG(); (void)&NAME; __VA_ARGS__ } break;
+#define SERIALISE_TU_ARM(CLASS, NAME, TAG, ...)    case CLASS::TAG_##TAG: { *this = CLASS::make_##TAG({}); auto& NAME = this->as_##TAG(); (void)&NAME; __VA_ARGS__ } break;
 #define SERIALISE_TU_ARMS(CLASS, NAME, ...)    TU_GMA(__VA_ARGS__)(SERIALISE_TU_ARM, (CLASS, NAME), __VA_ARGS__)
 #define SERIALISE_TU(PATH, TAG, NAME, ...) \
     void operator%(::Serialiser& s, PATH::Tag c) { s << PATH::tag_to_str(c); } \

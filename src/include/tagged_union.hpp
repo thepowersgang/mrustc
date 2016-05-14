@@ -120,7 +120,7 @@
 // Internals of TU_CONS
 #define TU_CONS_I(__name, __tag, __type) \
     __name(__type v): m_tag(TAG_##__tag) { new (m_data) __type( ::std::move(v) ); } \
-    static self_t make_null_##__tag() { self_t ret; ret.m_tag = TAG_##__tag; new (ret.m_data) __type; return ::std::move(ret); } \
+    /*static self_t make_null_##__tag() { self_t ret; ret.m_tag = TAG_##__tag; new (ret.m_data) __type; return ::std::move(ret); }*/ \
     static self_t make_##__tag(__type v) \
     {\
         return __name( ::std::move(v) );\

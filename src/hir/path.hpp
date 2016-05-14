@@ -40,6 +40,9 @@ class Path
     // Two possibilities
     // - UFCS
     // - Generic path
+public:
+    Path(GenericPath _);
+    Path(SimplePath _);
 };
 
 }   // namespace HIR

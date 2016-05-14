@@ -798,7 +798,7 @@ void operator%(::Deserialiser& s, TypeData::Tag& c) {
 }
 
 #define _S(VAR, ...)  case TypeData::TAG_##VAR: { const auto& ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
-#define _D(VAR, ...)  case TypeData::TAG_##VAR: { m_data = TypeData::make_null_##VAR(); auto& ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
+#define _D(VAR, ...)  case TypeData::TAG_##VAR: { m_data = TypeData::make_##VAR({}); auto& ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
 SERIALISE_TYPE(TypeRef::, "TypeRef", {
     s % m_data.tag();
     switch(m_data.tag())
@@ -854,6 +854,7 @@ SERIALISE_TYPE(TypeRef::, "TypeRef", {
     _D(Any)
     _D(Unit)
     _D(Macro,
+        m_data = TypeData::make_Macro({});
         s.item( ent.inv );
         )
     _D(Primitive,

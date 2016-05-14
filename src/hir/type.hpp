@@ -18,6 +18,8 @@ class TypeRef
     // - Tuple
     // - Borrow
     // - Pointer
+public:
+    TypeRef(::HIR::Path _);
 };
 
 }   // namespace HIR

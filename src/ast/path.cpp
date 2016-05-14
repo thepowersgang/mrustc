@@ -551,7 +551,7 @@ void operator%(::Deserialiser& s, Path::Class::Tag& c) {
     s.item(n);
     c = Path::Class::tag_from_str(n);
 }
-#define _D(VAR, ...)  case Class::TAG_##VAR: { m_class = Class::make_null_##VAR(); auto& ent = m_class.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
+#define _D(VAR, ...)  case Class::TAG_##VAR: { m_class = Class::make_##VAR({}); auto& ent = m_class.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
 ::std::unique_ptr<Path> Path::from_deserialiser(Deserialiser& s) {
     Path    p;
     s.item(p);
