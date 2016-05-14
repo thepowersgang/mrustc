@@ -349,7 +349,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
     // 3. Bind names
     // 4. Return expander
     int i = 0;
-    for(const auto& rule : rules)
+    for(const auto& rule : rules.m_rules)
     {
         Token   tok;
         // Create token stream for input tree
@@ -872,3 +872,9 @@ SERIALISE_TYPE_S(MacroRuleEnt, {
         os << "=" << x.tok;
     return os;
 }
+
+SERIALISE_TYPE_S(MacroRules, {
+    s.item( m_exported );
+    s.item( m_rules );
+});
+

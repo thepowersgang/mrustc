@@ -3,6 +3,7 @@
 
 #include "parse/lex.hpp"
 #include "parse/tokentree.hpp"
+#include <common.hpp>
 #include <map>
 #include <memory>
 #include <cstring>
@@ -111,11 +112,23 @@ public:
 };
 
 /// A sigle 'macro_rules!' block
-//struct MacroRules {
-//    bool export;
-//    ::std::vector<MacroRule>  m_rules;
-//};
-typedef ::std::vector<MacroRule>    MacroRules;
+class MacroRules:
+    public Serialisable
+{
+public:
+    bool m_exported;
+    ::std::vector<MacroRule>  m_rules;
+    
+    MacroRules()
+    {
+    }
+    MacroRules( ::std::vector<MacroRule> rules ):
+        m_rules( mv$(rules) )
+    {
+    }
+    
+    SERIALISABLE_PROTOTYPES();
+};
 
 extern ::std::unique_ptr<TokenStream>   Macro_InvokeRules(const char *name, const MacroRules& rules, TokenTree input);
 extern ::std::unique_ptr<TokenStream>   Macro_Invoke(const TokenStream& lex, const ::std::string& name, TokenTree input);

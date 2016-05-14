@@ -20,6 +20,11 @@
         macros.insert( ::std::make_pair( mac.name, mac.data ) );
         //}
     }
+    for( const auto& mac : crate.m_root_module.macro_imports_res() ) {
+        //if( mac.data->export ) {
+        macros.insert( ::std::make_pair( mac.name, *mac.data ) );
+        //}
+    }
     auto rootmod = LowerHIR_Module( crate.m_root_module, ::HIR::SimplePath("") );
     return ::HIR::CratePtr( ::HIR::Crate { mv$(rootmod), mv$(macros) } );
 }

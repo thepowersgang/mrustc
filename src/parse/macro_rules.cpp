@@ -241,5 +241,5 @@ MacroRules Parse_MacroRules(TokenStream& lex)
         }
     }
     
-    return MacroRules(mv$(rules));
+    return MacroRules( mv$(rules) );
 }
