@@ -35,13 +35,108 @@
     throw ::std::runtime_error("TODO: LowerHIR_GenericParams");
 }
 
+::HIR::ExprPtr LowerHIR_Expr(const ::std::shared_ptr< ::AST::ExprNode>& e)
+{
+    throw ::std::runtime_error("TODO: LowerHIR_Expr");
+}
 ::HIR::ExprPtr LowerHIR_Expr(const ::AST::Expr& e)
 {
     throw ::std::runtime_error("TODO: LowerHIR_Expr");
 }
-::HIR::TypeRef LowerHIR_Type(const ::TypeRef& e)
+
+::HIR::GenericPath LowerHIR_GenericPath(const ::AST::Path& path)
 {
-    throw ::std::runtime_error("TODO: LowerHIR_Type");
+    throw ::std::runtime_error("TODO: LowerHIR_GenericPath");
+}
+::HIR::Path LowerHIR_Path(const ::AST::Path& path)
+{
+    throw ::std::runtime_error("TODO: LowerHIR_Path");
+}
+
+::HIR::TypeRef LowerHIR_Type(const ::TypeRef& ty)
+{
+    TU_MATCH(::TypeData, (ty.m_data), (e),
+    (None,
+        TODO(ty.span(), "TypeData::None");
+        ),
+    (Any,
+        return ::HIR::TypeRef();
+        ),
+    (Unit,
+        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Tuple({}) );
+        ),
+    (Macro,
+        BUG(ty.span(), "TypeData::None");
+        ),
+    (Primitive,
+        switch(e.core_type)
+        {
+        case CORETYPE_BOOL: return ::HIR::TypeRef( ::HIR::CoreType::Bool );
+        case CORETYPE_CHAR: return ::HIR::TypeRef( ::HIR::CoreType::Char );
+        case CORETYPE_F32:  return ::HIR::TypeRef( ::HIR::CoreType::F32 );
+        case CORETYPE_F64:  return ::HIR::TypeRef( ::HIR::CoreType::F64 );
+        
+        case CORETYPE_I8 :  return ::HIR::TypeRef( ::HIR::CoreType::I8 );
+        case CORETYPE_U8 :  return ::HIR::TypeRef( ::HIR::CoreType::U8 );
+        case CORETYPE_I16:  return ::HIR::TypeRef( ::HIR::CoreType::I16 );
+        case CORETYPE_U16:  return ::HIR::TypeRef( ::HIR::CoreType::U16 );
+        case CORETYPE_I32:  return ::HIR::TypeRef( ::HIR::CoreType::I32 );
+        case CORETYPE_U32:  return ::HIR::TypeRef( ::HIR::CoreType::U32 );
+        case CORETYPE_I64:  return ::HIR::TypeRef( ::HIR::CoreType::I64 );
+        case CORETYPE_U64:  return ::HIR::TypeRef( ::HIR::CoreType::U64 );
+
+        case CORETYPE_INT:  return ::HIR::TypeRef( ::HIR::CoreType::Isize );
+        case CORETYPE_UINT: return ::HIR::TypeRef( ::HIR::CoreType::Usize );
+        case CORETYPE_ANY:
+            TODO(ty.span(), "TypeData::Primitive - CORETYPE_ANY");
+        case CORETYPE_INVAL:
+            BUG(ty.span(), "TypeData::Primitive - CORETYPE_INVAL");
+        }
+        ),
+    (Tuple,
+        ::HIR::TypeRef::Data::Data_Tuple v;
+        for( const auto& st : e.inner_types )
+        {
+            v.push_back( LowerHIR_Type(st) );
+        }
+        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Tuple(mv$(v)) );
+        ),
+    (Borrow,
+        auto cl = (e.is_mut ? ::HIR::BorrowType::Unique : ::HIR::BorrowType::Shared);
+        return ::HIR::TypeRef( ::HIR::TypeRef::Data( ::HIR::TypeRef::Data::Data_Borrow { cl, box$(LowerHIR_Type(*e.inner)) } ) );
+        ),
+    (Pointer,
+        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Pointer({e.is_mut, box$(LowerHIR_Type(*e.inner))}) );
+        ),
+    (Array,
+        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Array({
+            box$( LowerHIR_Type(*e.inner) ),
+            LowerHIR_Expr( e.size )
+            }) );
+        ),
+    
+    (Path,
+        return ::HIR::TypeRef( LowerHIR_Path(e.path) );
+        ),
+    (TraitObject,
+        if( e.hrls.size() > 0 )
+            TODO(ty.span(), "TODO: TraitObjects with HRLS");
+        ::HIR::TypeRef::Data::Data_TraitObject  v;
+        for(const auto& t : e.traits)
+        {
+            v.m_traits.push_back( LowerHIR_GenericPath(t) );
+        }
+        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_TraitObject( mv$(v) ) );
+        ),
+    (Function,
+        ::HIR::FunctionType f;
+        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function( mv$(f) ) );
+        ),
+    (Generic,
+        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Generic({ e.name, 0 }) );
+        )
+    )
+    throw "BUGCHECK: Reached end of LowerHIR_Type";
 }
 
 ::HIR::TypeAlias LowerHIR_TypeAlias(const ::AST::TypeAlias& ta)

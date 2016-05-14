@@ -185,9 +185,9 @@
 #define TAGGED_UNION_EX(_name, _inherit, _def, _variants, _extra_move, _extra_assign, _extra) \
 class _name TU_EXP _inherit { \
     typedef _name self_t;/*
-*/  TU_TYPEDEFS _variants/*
 */public:\
-    enum Tag { \
+    TU_TYPEDEFS _variants/*
+*/  enum Tag { \
         TU_TAGS _variants\
     };/*
 */ private:\

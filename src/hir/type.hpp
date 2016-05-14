@@ -9,6 +9,8 @@
 
 namespace HIR {
 
+struct TypeRef;
+
 enum class CoreType
 {
     Usize, Isize,
@@ -19,6 +21,7 @@ enum class CoreType
     
     F32, F64,
     
+    Bool,
     Char, Str,
 };
 enum class BorrowType
@@ -26,6 +29,19 @@ enum class BorrowType
     Shared,
     Unique,
     Owned,
+};
+
+struct LifetimeRef
+{
+    ::std::string   name;
+};
+
+struct FunctionType
+{
+    bool    is_unsafe;
+    ::std::string   m_abi;
+    ::std::unique_ptr<TypeRef>  m_rettype;
+    ::std::vector<TypeRef>  m_arg_types;
 };
 
 struct TypeRef
@@ -44,6 +60,14 @@ struct TypeRef
     (Infer, struct {}),
     (Primitive, ::HIR::CoreType),
     (Path,  ::HIR::Path),
+    (Generic, struct {
+        ::std::string   name;
+        unsigned int    binding;
+        }),
+    (TraitObject, struct {
+        ::std::vector< ::HIR::GenericPath > m_traits;
+        ::HIR::LifetimeRef  m_lifetime;
+        }),
     (Array, struct {
         ::std::unique_ptr<TypeRef>  inner;
         ::HIR::ExprPtr size;
@@ -56,13 +80,25 @@ struct TypeRef
     (Pointer, struct {
         bool    is_mut;
         ::std::unique_ptr<TypeRef>  inner;
-        })
+        }),
+    (Function, FunctionType)
     );
     
-    Data   type;
+    Data   m_data;
     
+    TypeRef() {}
+    TypeRef(TypeRef&& ) = default;
+    TypeRef(const TypeRef& ) = delete;
     
-    TypeRef(::HIR::Path _);
+    TypeRef(::HIR::TypeRef::Data x):
+        m_data( mv$(x) )
+    {}
+    TypeRef(::HIR::CoreType ct):
+        m_data( Data::make_Primitive(mv$(ct)) )
+    {}
+    TypeRef(::HIR::Path p):
+        m_data( Data::make_Path(mv$(p)) )
+    {}
 };
 
 }   // namespace HIR
