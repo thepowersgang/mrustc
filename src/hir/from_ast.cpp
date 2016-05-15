@@ -4,8 +4,7 @@
 #include <main_bindings.hpp>
 #include <ast/ast.hpp>
 #include <ast/crate.hpp>
-
-extern ::HIR::ExprPtr LowerHIR_ExprNode(const ::AST::ExprNode& e);
+#include "from_ast.hpp"
 
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::SimplePath path);
 
@@ -37,6 +36,11 @@ extern ::HIR::ExprPtr LowerHIR_ExprNode(const ::AST::ExprNode& e);
 ::HIR::GenericParams LowerHIR_GenericParams(const ::AST::GenericParams& gp)
 {
     throw ::std::runtime_error("TODO: LowerHIR_GenericParams");
+}
+
+::HIR::Pattern LowerHIR_Pattern(const ::AST::Pattern& pat)
+{
+    throw ::std::runtime_error("TODO: LowerHIR_Pattern");
 }
 
 ::HIR::ExprPtr LowerHIR_Expr(const ::std::shared_ptr< ::AST::ExprNode>& e)

@@ -16,12 +16,10 @@
 
 #include <hir/type.hpp>
 #include <hir/path.hpp>
+#include <hir/pattern.hpp>
 #include <hir/expr_ptr.hpp>
 
 namespace HIR {
-
-class Pattern {
-};
 
 class Crate;
 class Module;

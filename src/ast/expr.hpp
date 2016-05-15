@@ -573,6 +573,8 @@ struct ExprNode_UniOp:
     NODE_METHODS();
 };
 
+#undef NODE_METHODS
+
 class NodeVisitor
 {
 public:
