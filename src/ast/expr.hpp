@@ -46,30 +46,30 @@ public:
 };
 
 #define NODE_METHODS()  \
-	virtual void visit(NodeVisitor& nv) override;\
-	virtual void print(::std::ostream& os) const override; \
-	SERIALISABLE_PROTOTYPES();/* \
-	virtual void visit(NodeVisitor& nv) const override;*/
+    virtual void visit(NodeVisitor& nv) override;\
+    virtual void print(::std::ostream& os) const override; \
+    SERIALISABLE_PROTOTYPES();/* \
+    virtual void visit(NodeVisitor& nv) const override;*/
 
 struct ExprNode_Block:
     public ExprNode
 {
-	bool m_is_unsafe;
+    bool m_is_unsafe;
     ::std::unique_ptr<AST::Module> m_local_mod;
     ::std::vector< ::std::unique_ptr<ExprNode> >    m_nodes;
 
     ExprNode_Block():
-		m_is_unsafe(false)
-	{}
+        m_is_unsafe(false)
+    {}
     ExprNode_Block(::std::vector< ::std::unique_ptr<ExprNode> >&& nodes, ::std::unique_ptr<AST::Module> local_mod):
-		m_is_unsafe(false),
+        m_is_unsafe(false),
         m_local_mod( move(local_mod) ),
         m_nodes( move(nodes) )
     {
     }
     
-	void set_unsafe() { m_is_unsafe = true; }
-	
+    void set_unsafe() { m_is_unsafe = true; }
+    
     NODE_METHODS();
 };
 
@@ -507,10 +507,10 @@ struct ExprNode_BinOp:
     enum Type {
         CMPEQU,
         CMPNEQU,
-		CMPLT,
-		CMPLTE,
-		CMPGT,
-		CMPGTE,
+        CMPLT,
+        CMPLTE,
+        CMPGT,
+        CMPGTE,
         
         RANGE,
         RANGE_INC,
@@ -523,12 +523,12 @@ struct ExprNode_BinOp:
 
         SHL,
         SHR,
-	
-		MULTIPLY,
-		DIVIDE,
-		MODULO,
-		ADD,
-		SUB,
+    
+        MULTIPLY,
+        DIVIDE,
+        MODULO,
+        ADD,
+        SUB,
         
         PLACE_IN,   // `in PLACE { expr }` or `PLACE <- expr`
     };
@@ -580,12 +580,12 @@ public:
         if(cnode.get())
             cnode->visit(*this);
     }
-	virtual bool is_const() const { return false; }
+    virtual bool is_const() const { return false; }
   
     #define NT(nt) \
-		virtual void visit(nt& node) = 0/*; \
-		virtual void visit(const nt& node) = 0*/
-	NT(ExprNode_Block);  
+        virtual void visit(nt& node) = 0/*; \
+        virtual void visit(const nt& node) = 0*/
+    NT(ExprNode_Block);
     NT(ExprNode_Macro);
     NT(ExprNode_Flow);
     NT(ExprNode_LetBinding);
@@ -614,10 +614,10 @@ public:
     NT(ExprNode_Cast);
     NT(ExprNode_BinOp);
     NT(ExprNode_UniOp);
-	#undef NT
+    #undef NT
 };
 class NodeVisitorDef:
-	public NodeVisitor
+    public NodeVisitor
 {
 public:
     inline void visit(const unique_ptr<ExprNode>& cnode) {
@@ -625,9 +625,9 @@ public:
             cnode->visit(*this);
     }
     #define NT(nt) \
-		virtual void visit(nt& node) override;/* \
-		virtual void visit(const nt& node) override*/
-	NT(ExprNode_Block);  
+        virtual void visit(nt& node) override;/* \
+        virtual void visit(const nt& node) override*/
+    NT(ExprNode_Block);
     NT(ExprNode_Macro);
     NT(ExprNode_Flow);
     NT(ExprNode_LetBinding);
@@ -656,7 +656,7 @@ public:
     NT(ExprNode_Cast);
     NT(ExprNode_BinOp);
     NT(ExprNode_UniOp);
-	#undef NT
+    #undef NT
 };
 
 class Expr:
