@@ -5,6 +5,8 @@
 #include <ast/ast.hpp>
 #include <ast/crate.hpp>
 
+extern ::HIR::ExprPtr LowerHIR_ExprNode(const ::AST::ExprNode& e);
+
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::SimplePath path);
 
 /// \brief Converts the AST into HIR format
@@ -14,7 +16,8 @@
 ::HIR::CratePtr LowerHIR_FromAST(::AST::Crate crate)
 {
     ::std::unordered_map< ::std::string, MacroRules >   macros;
-    // TODO: Extract macros from root module
+    
+    // - Extract macros from root module
     for( const auto& mac : crate.m_root_module.macros() ) {
         //if( mac.data.export ) {
         macros.insert( ::std::make_pair( mac.name, mac.data ) );
@@ -25,6 +28,7 @@
         macros.insert( ::std::make_pair( mac.name, *mac.data ) );
         //}
     }
+    
     auto rootmod = LowerHIR_Module( crate.m_root_module, ::HIR::SimplePath("") );
     return ::HIR::CratePtr( ::HIR::Crate { mv$(rootmod), mv$(macros) } );
 }
@@ -37,11 +41,21 @@
 
 ::HIR::ExprPtr LowerHIR_Expr(const ::std::shared_ptr< ::AST::ExprNode>& e)
 {
-    throw ::std::runtime_error("TODO: LowerHIR_Expr");
+    if( e.get() ) {
+        return LowerHIR_ExprNode(*e);
+    }
+    else {
+        return ::HIR::ExprPtr();
+    }
 }
 ::HIR::ExprPtr LowerHIR_Expr(const ::AST::Expr& e)
 {
-    throw ::std::runtime_error("TODO: LowerHIR_Expr");
+    if( e.is_valid() ) {
+        return LowerHIR_ExprNode(e.node());
+    }
+    else {
+        return ::HIR::ExprPtr();
+    }
 }
 
 ::HIR::GenericPath LowerHIR_GenericPath(const ::AST::Path& path)
