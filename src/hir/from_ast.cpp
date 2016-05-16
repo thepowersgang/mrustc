@@ -35,7 +35,22 @@
 // --------------------------------------------------------------------
 ::HIR::GenericParams LowerHIR_GenericParams(const ::AST::GenericParams& gp)
 {
-    throw ::std::runtime_error("TODO: LowerHIR_GenericParams");
+    ::HIR::GenericParams    rv;
+    
+    if( gp.ty_params().size() > 0 )
+    {
+        throw ::std::runtime_error("TODO: LowerHIR_GenericParams - types");
+    }
+    if( gp.lft_params().size() > 0 )
+    {
+        throw ::std::runtime_error("TODO: LowerHIR_GenericParams - lifetimes");
+    }
+    if( gp.bounds().size() > 0 )
+    {
+        throw ::std::runtime_error("TODO: LowerHIR_GenericParams - bounds");
+    }
+    
+    return rv;
 }
 
 ::HIR::Pattern LowerHIR_Pattern(const ::AST::Pattern& pat)
@@ -107,7 +122,7 @@
         throw "BUG: Encountered Invalid path in LowerHIR_Path";
         ),
     (Local,
-        throw "TODO: What to do wth Path::Class::Local in LowerHIR_Path";
+        BUG(Span(), "TODO: What to do wth Path::Class::Local in LowerHIR_Path - " << path);
         ),
     (Relative,
         throw "BUG: Encountered `Relative` path in LowerHIR_Path";
@@ -132,7 +147,7 @@
             );
         )
     )
-    throw ::std::runtime_error("TODO: LowerHIR_Path");
+    throw "BUGCHECK: Reached end of LowerHIR_Path";
 }
 
 ::HIR::TypeRef LowerHIR_Type(const ::TypeRef& ty)
@@ -198,7 +213,20 @@
         ),
     
     (Path,
-        return ::HIR::TypeRef( LowerHIR_Path(e.path) );
+        TU_IFLET(::AST::Path::Class, e.path.m_class, Local, l,
+            unsigned int slot;
+            // NOTE: TypeParameter is unused
+            TU_IFLET(::AST::PathBinding, e.path.binding(), Variable, p,
+                slot = p.slot;
+            )
+            else {
+                BUG(ty.span(), "Unbound local encountered in " << e.path);
+            }
+            return ::HIR::TypeRef( l.name, slot );
+        )
+        else {
+            return ::HIR::TypeRef( LowerHIR_Path(e.path) );
+        }
         ),
     (TraitObject,
         if( e.hrls.size() > 0 )
@@ -226,14 +254,34 @@
     throw ::std::runtime_error("TODO: LowerHIR_TypeAlias");
 }
 
-::HIR::Struct LowerHIR_Struct(const ::AST::Struct& ta)
+::HIR::Struct LowerHIR_Struct(const ::AST::Struct& ent)
 {
     ::HIR::Struct::Data data;
-
-    throw ::std::runtime_error("TODO: LowerHIR_Struct");
     
+    TU_MATCH(::AST::StructData, (ent.m_data), (e),
+    (Tuple,
+        if( e.ents.size() == 0 ) {
+            data = ::HIR::Struct::Data::make_Unit({});
+        }
+        else {
+            ::HIR::Struct::Data::Data_Tuple fields;
+            
+            for(const auto& field : e.ents)
+                fields.push_back( { field.m_is_public, LowerHIR_Type(field.m_type) } );
+            
+            data = ::HIR::Struct::Data::make_Tuple( mv$(fields) );
+        }
+        ),
+    (Struct,
+        ::HIR::Struct::Data::Data_Named fields;
+        for(const auto& field : e.ents)
+            fields.push_back( ::std::make_pair( field.m_name, ::HIR::VisEnt< ::HIR::TypeRef> { field.m_is_public, LowerHIR_Type(field.m_type) } ) );
+        data = ::HIR::Struct::Data::make_Named( mv$(fields) );
+        )
+    )
+
     return ::HIR::Struct {
-        LowerHIR_GenericParams(ta.params()),
+        LowerHIR_GenericParams(ent.params()),
         mv$(data)
         };
 }

@@ -191,6 +191,11 @@ int main(int argc, char *argv[])
         ::std::cerr << "Misc Error: " << e.what() << ::std::endl;
         return 2;
     }
+    //catch(const char* e)
+    //{
+    //    ::std::cerr << "Internal Compiler Error: " << e << ::std::endl;
+    //    return 2;
+    //}
     return 0;
 }
 

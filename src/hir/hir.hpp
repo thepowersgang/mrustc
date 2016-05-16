@@ -91,6 +91,13 @@ struct Enum
 };
 struct Struct
 {
+    enum class Repr
+    {
+        Rust,
+        C,
+        Packed,
+        //Union,
+    };
     TAGGED_UNION(Data, Unit,
         (Unit, struct {}),
         (Tuple, ::std::vector< VisEnt<::HIR::TypeRef> >),
