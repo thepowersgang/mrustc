@@ -39,7 +39,10 @@
     
     if( gp.ty_params().size() > 0 )
     {
-        throw ::std::runtime_error("TODO: LowerHIR_GenericParams - types");
+        for(const auto& tp : gp.ty_params())
+        {
+            rv.m_types.push_back({ tp.name(), LowerHIR_Type(tp.get_default()) });
+        }
     }
     if( gp.lft_params().size() > 0 )
     {
@@ -239,8 +242,9 @@
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_TraitObject( mv$(v) ) );
         ),
     (Function,
-        ::HIR::FunctionType f;
-        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function( mv$(f) ) );
+        TODO(ty.span(), "Function types");
+        //::HIR::FunctionType f;
+        //return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function( mv$(f) ) );
         ),
     (Generic,
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Generic({ e.name, 0 }) );
@@ -296,7 +300,18 @@
 }
 ::HIR::Function LowerHIR_Function(const ::AST::Function& f)
 {
-    throw ::std::runtime_error("TODO: LowerHIR_Function");
+    ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef > >    args;
+    for(const auto& arg : f.args())
+        args.push_back( ::std::make_pair( LowerHIR_Pattern(arg.first), LowerHIR_Type(arg.second) ) );
+    
+    // TODO: ABI and unsafety/constness
+    return ::HIR::Function {
+        "rust", false, false,
+        LowerHIR_GenericParams(f.params()),
+        mv$(args),
+        LowerHIR_Type( f.rettype() ),
+        LowerHIR_Expr( f.code() )
+        };
 }
 
 void _add_mod_ns_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::HIR::TypeItem ti) {

@@ -18,6 +18,7 @@
 #include <hir/path.hpp>
 #include <hir/pattern.hpp>
 #include <hir/expr_ptr.hpp>
+#include <hir/generic_params.hpp>
 
 namespace HIR {
 
@@ -37,10 +38,6 @@ struct VisEnt
     Ent ent;
 };
 
-
-struct GenericParams
-{
-};
 
 // --------------------------------------------------------------------
 // Type structures
@@ -62,6 +59,10 @@ struct Constant
 };
 struct Function
 {
+    ::std::string   m_abi;
+    bool    m_unsafe;
+    bool    m_const;
+    
     GenericParams   m_params;
     
     ::std::vector< ::std::pair< Pattern, TypeRef > >    m_args;
