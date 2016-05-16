@@ -165,6 +165,21 @@ struct LowerHIR_ExprNode_Visitor:
             ) );
     }
     virtual void visit(::AST::ExprNode_CallMethod& v) override {
+        ::std::vector< ::HIR::ExprNodeP> args;
+        for(const auto& arg : v.m_args)
+            args.push_back( LowerHIR_ExprNode_Inner(*arg) );
+        
+        // TODO: Should this be abstracted?
+        ::HIR::PathParams   params;
+        for(const auto& param : v.m_method.args())
+            params.m_types.push_back( LowerHIR_Type(param) );
+        
+        m_rv.reset( new ::HIR::ExprNode_CallMethod(
+            LowerHIR_ExprNode_Inner(*v.m_val),
+            v.m_method.name(),
+            mv$(params),
+            mv$(args)
+            ) );
     }
     virtual void visit(::AST::ExprNode_CallObject& v) override {
     }
@@ -179,9 +194,11 @@ struct LowerHIR_ExprNode_Visitor:
     
     virtual void visit(::AST::ExprNode_Integer& v) override {
         struct H {
-            static ::HIR::CoreType get_type(::eCoreType ct) {
+            static ::HIR::CoreType get_type(Span sp, ::eCoreType ct) {
                 switch(ct)
                 {
+                case CORETYPE_ANY:  return ::HIR::CoreType::Str;
+
                 case CORETYPE_I8 :  return ::HIR::CoreType::I8;
                 case CORETYPE_U8 :  return ::HIR::CoreType::U8;
                 case CORETYPE_I16:  return ::HIR::CoreType::I16;
@@ -194,22 +211,36 @@ struct LowerHIR_ExprNode_Visitor:
                 case CORETYPE_INT:  return ::HIR::CoreType::Isize;
                 case CORETYPE_UINT: return ::HIR::CoreType::Usize;
                 default:
-                    return ::HIR::CoreType::Str;
+                    BUG(sp, "Unknown type for integer literal");
                 }
             }
         };
         m_rv.reset( new ::HIR::ExprNode_Literal(
             ::HIR::ExprNode_Literal::Data::make_Integer({
-                H::get_type( v.m_datatype ),
+                H::get_type( Span(v.get_pos()), v.m_datatype ),
                 v.m_value
                 })
             ) );
     }
     virtual void visit(::AST::ExprNode_Float& v) override {
+        ::HIR::CoreType ct;
+        switch(v.m_datatype)
+        {
+        case CORETYPE_ANY:  ct = ::HIR::CoreType::Str;  break;
+        case CORETYPE_F32:  ct = ::HIR::CoreType::F32;  break;
+        case CORETYPE_F64:  ct = ::HIR::CoreType::F64;  break;
+        default:
+            BUG(v.get_pos(), "Unknown type for float literal");
+        }
+        m_rv.reset( new ::HIR::ExprNode_Literal( ::HIR::ExprNode_Literal::Data::make_Float({
+            ct, v.m_value
+            }) ) );
     }
     virtual void visit(::AST::ExprNode_Bool& v) override {
+        m_rv.reset( new ::HIR::ExprNode_Literal( ::HIR::ExprNode_Literal::Data::make_Boolean( v.m_value ) ) );
     }
     virtual void visit(::AST::ExprNode_String& v) override {
+        m_rv.reset( new ::HIR::ExprNode_Literal( ::HIR::ExprNode_Literal::Data::make_String( v.m_value ) ) );
     }
     virtual void visit(::AST::ExprNode_Closure& v) override {
     }
@@ -220,6 +251,13 @@ struct LowerHIR_ExprNode_Visitor:
     virtual void visit(::AST::ExprNode_Tuple& v) override {
     }
     virtual void visit(::AST::ExprNode_NamedValue& v) override {
+        if( v.m_path.is_trivial() ) {
+            auto slot = v.m_path.binding().as_Variable().slot;
+            m_rv.reset( new ::HIR::ExprNode_Variable( v.m_path.nodes()[0].name(), slot ) );
+        }
+        else {
+            m_rv.reset( new ::HIR::ExprNode_PathValue( LowerHIR_Path(v.m_path) ) );
+        }
     }
     
     virtual void visit(::AST::ExprNode_Field& v) override {

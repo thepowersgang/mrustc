@@ -31,6 +31,10 @@ namespace HIR {
     }
 }
 
+::HIR::PathParams::PathParams()
+{
+}
+
 ::HIR::GenericPath::GenericPath()
 {
 }

@@ -28,12 +28,21 @@ struct SimplePath
     SimplePath operator+(const ::std::string& s) const;
     friend ::std::ostream& operator<<(::std::ostream& os, const SimplePath& x);
 };
+
+
+struct PathParams
+{
+    ::std::vector<TypeRef>  m_types;
+    
+    PathParams();
+};
+
 /// Generic path - Simple path with one lot of generic params
 class GenericPath
 {
 public:
     SimplePath  m_path;
-    ::std::vector<TypeRef>  m_params;
+    PathParams  m_params;
 
     GenericPath();
     GenericPath(::HIR::SimplePath sp);

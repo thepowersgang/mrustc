@@ -19,8 +19,11 @@ DEF_VISIT(ExprNode_UniOp)
 DEF_VISIT(ExprNode_Cast)
 
 DEF_VISIT(ExprNode_CallPath)
+DEF_VISIT(ExprNode_CallMethod)
 
 DEF_VISIT(ExprNode_Literal)
+DEF_VISIT(ExprNode_PathValue);
+DEF_VISIT(ExprNode_Variable);
 
 #undef DEF_VISIT
 

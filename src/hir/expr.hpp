@@ -181,6 +181,25 @@ struct ExprNode_CallPath:
     
     NODE_METHODS();
 };
+struct ExprNode_CallMethod:
+    public ExprNode
+{
+    ::HIR::ExprNodeP    m_val;
+    ::std::string   m_method;
+    ::HIR::PathParams  m_params;
+    ::std::vector< ::HIR::ExprNodeP>    m_args;
+
+    ExprNode_CallMethod() {}
+    ExprNode_CallMethod(::HIR::ExprNodeP val, ::std::string method_name, ::HIR::PathParams params, ::std::vector< ::HIR::ExprNodeP> args):
+        m_val( mv$(val) ),
+        m_method( mv$(method_name) ),
+        m_params( mv$(params) ),
+        m_args( mv$(args) )
+    {
+    }
+    
+    NODE_METHODS();
+};
 
 struct ExprNode_Literal:
     public ExprNode
@@ -207,6 +226,30 @@ struct ExprNode_Literal:
     
     NODE_METHODS();
 };
+struct ExprNode_PathValue:
+    public ExprNode
+{
+    ::HIR::Path m_path;
+    
+    ExprNode_PathValue(::HIR::Path path):
+        m_path( mv$(path) )
+    {}
+    
+    NODE_METHODS();
+};
+struct ExprNode_Variable:
+    public ExprNode
+{
+    ::std::string   m_name;
+    unsigned int    m_slot;
+    
+    ExprNode_Variable(::std::string name, unsigned int slot):
+        m_name( mv$(name) ),
+        m_slot( slot )
+    {}
+    
+    NODE_METHODS();
+};
 
 #undef NODE_METHODS
 
@@ -227,8 +270,11 @@ public:
     NV(ExprNode_Cast)
     
     NV(ExprNode_CallPath);
+    NV(ExprNode_CallMethod);
 
     NV(ExprNode_Literal);
+    NV(ExprNode_PathValue);
+    NV(ExprNode_Variable);
 };
 
 }
