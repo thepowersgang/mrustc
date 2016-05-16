@@ -62,12 +62,76 @@
     }
 }
 
+::HIR::SimplePath LowerHIR_SimplePath(const ::AST::Path& path, bool allow_final_generic = false)
+{
+    TU_IFLET(::AST::Path::Class, path.m_class, Absolute, e,
+        ::HIR::SimplePath   rv( path.crate() );
+        for( const auto& node : e.nodes )
+        {
+            if( node.args().size() > 0 )
+            {
+                if( allow_final_generic && &node == &e.nodes.back() ) {
+                    // Let it pass
+                }
+                else {
+                    throw "BUG: Encountered path with parameters when creating ::HIR::GenericPath";
+                }
+            }
+            
+            rv.m_components.push_back( node.name() );
+        }
+        return rv;
+    )
+    else {
+        throw "BUG: Encountered non-Absolute path when creating ::HIR::GenericPath";
+    }
+}
 ::HIR::GenericPath LowerHIR_GenericPath(const ::AST::Path& path)
 {
-    throw ::std::runtime_error("TODO: LowerHIR_GenericPath");
+    TU_IFLET(::AST::Path::Class, path.m_class, Absolute, e,
+        auto sp = LowerHIR_SimplePath(path, true);
+        ::HIR::PathParams   params;
+        for(const auto& param : e.nodes.back().args()) {
+            params.m_types.push_back( LowerHIR_Type(param) );
+        }
+        return ::HIR::GenericPath(mv$(sp), mv$(params));
+    )
+    else {
+        throw "BUG: Encountered non-Absolute path when creating ::HIR::GenericPath";
+    }
 }
 ::HIR::Path LowerHIR_Path(const ::AST::Path& path)
 {
+    TU_MATCH(::AST::Path::Class, (path.m_class), (e),
+    (Invalid,
+        throw "BUG: Encountered Invalid path in LowerHIR_Path";
+        ),
+    (Local,
+        throw "TODO: What to do wth Path::Class::Local in LowerHIR_Path";
+        ),
+    (Relative,
+        throw "BUG: Encountered `Relative` path in LowerHIR_Path";
+        ),
+    (Self,
+        throw "BUG: Encountered `Self` path in LowerHIR_Path";
+        ),
+    (Super,
+        throw "BUG: Encountered `Super` path in LowerHIR_Path";
+        ),
+    (Absolute,
+        return ::HIR::Path( LowerHIR_GenericPath(path) );
+        ),
+    (UFCS,
+        if( e.nodes.size() != 1 )
+            throw "TODO: Handle UFCS with multiple nodes";
+        return ::HIR::Path(
+            LowerHIR_Type(*e.type),
+            LowerHIR_GenericPath(*e.trait),
+            e.nodes[0].name(),
+            {}
+            );
+        )
+    )
     throw ::std::runtime_error("TODO: LowerHIR_Path");
 }
 

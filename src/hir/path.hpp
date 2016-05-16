@@ -46,6 +46,7 @@ public:
 
     GenericPath();
     GenericPath(::HIR::SimplePath sp);
+    GenericPath(::HIR::SimplePath sp, ::HIR::PathParams params);
 };
 
 class Path
@@ -60,6 +61,7 @@ public:
         TypeRefPtr  type;
         GenericPath trait;
         ::std::string   item;
+        PathParams  params;
         })
     );
 
@@ -68,6 +70,7 @@ private:
 
 public:
     Path(GenericPath _);
+    Path(TypeRefPtr type, GenericPath trait, ::std::string item, PathParams params);
     Path(SimplePath _);
 };
 

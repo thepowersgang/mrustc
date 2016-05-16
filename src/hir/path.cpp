@@ -42,7 +42,23 @@ namespace HIR {
     m_path( mv$(sp) )
 {
 }
+::HIR::GenericPath::GenericPath(::HIR::SimplePath sp, ::HIR::PathParams params):
+    m_path( mv$(sp) ),
+    m_params( mv$(params) )
+{
+}
 
+
+::HIR::Path::Path(::HIR::GenericPath gp):
+    m_data( ::HIR::Path::Data::make_Generic( mv$(gp) ) )
+{
+}
+::HIR::Path::Path(::HIR::TypeRefPtr type, ::HIR::GenericPath trait, ::std::string item, ::HIR::PathParams params):
+    m_data( ::HIR::Path::Data::make_UFCS({
+        mv$(type), mv$(trait), mv$(item), mv$(params)
+        }) )
+{
+}
 ::HIR::Path::Path(::HIR::SimplePath sp):
     m_data( ::HIR::Path::Data::make_Generic(::HIR::GenericPath(mv$(sp))) )
 {
