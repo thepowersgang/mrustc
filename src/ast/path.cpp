@@ -203,12 +203,12 @@ void Path::bind_variable(unsigned int slot)
 void Path::bind_module(const Module& mod) {
     m_binding = PathBinding::make_Module({&mod});
 }
-void Path::bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args)
+void Path::bind_enum(const Enum& ent, const ::std::vector<TypeRef>& /*args*/)
 {
     DEBUG("Bound to enum");
     m_binding = PathBinding::make_Enum({&ent});
 }
-void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std::vector<TypeRef>& args)
+void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std::vector<TypeRef>& /*args*/)
 {
     unsigned int idx = 0;
     for( idx = 0; idx < ent.variants().size(); idx ++ )
@@ -230,7 +230,7 @@ void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std
     DEBUG("Bound to enum variant '" << name << "' (#" << idx << ")");
     m_binding = PathBinding::make_EnumVar({&ent, idx});
 }
-void Path::bind_struct(const Struct& ent, const ::std::vector<TypeRef>& args)
+void Path::bind_struct(const Struct& ent, const ::std::vector<TypeRef>& /*args*/)
 {
     //if( args.size() > 0 )
     //{
@@ -244,7 +244,7 @@ void Path::bind_struct(const Struct& ent, const ::std::vector<TypeRef>& args)
     DEBUG("Bound to struct");
     m_binding = PathBinding::make_Struct({&ent});
 }
-void Path::bind_struct_member(const Struct& ent, const ::std::vector<TypeRef>& args, const PathNode& member_node)
+void Path::bind_struct_member(const Struct& ent, const ::std::vector<TypeRef>& /*args*/, const PathNode& member_node)
 {
     DEBUG("Binding to struct item. This needs to be deferred");
     m_binding = PathBinding::make_StructMethod({&ent, member_node.name()});
@@ -253,7 +253,7 @@ void Path::bind_static(const Static& ent)
 {
     m_binding = PathBinding::make_Static({&ent});
 }
-void Path::bind_trait(const Trait& ent, const ::std::vector<TypeRef>& args)
+void Path::bind_trait(const Trait& ent, const ::std::vector<TypeRef>& /*args*/)
 {
     m_binding = PathBinding::make_Trait({&ent});
 }

@@ -23,7 +23,7 @@ public:
     bool is_token() const {
         return m_tok.type() != TOK_NULL;
     }
-    const unsigned int size() const {
+    unsigned int size() const {
         return m_subtrees.size();
     }
     const TokenTree& operator[](unsigned int idx) const {

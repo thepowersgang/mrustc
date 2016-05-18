@@ -234,7 +234,7 @@ NODE(ExprNode_Loop, {
     s.item(m_cond);
     s.item(m_code);
 },{
-    //os << "LOOP [" << m_label << "] " << m_pattern << " in/= " << m_cond << " " << m_code;
+    os << "LOOP [" << m_label << "] " << m_pattern << " in/= " << *m_cond << " " << *m_code;
 })
 
 SERIALISE_TYPE_A(ExprNode_Match_Arm::, "ExprNode_Match_Arm", {
@@ -592,10 +592,10 @@ NV(ExprNode_IfLet,
     UNINDENT();
 })
 
-NV(ExprNode_Integer, {})
-NV(ExprNode_Float, {})
-NV(ExprNode_Bool, {})
-NV(ExprNode_String, {})
+NV(ExprNode_Integer, {(void)node;})
+NV(ExprNode_Float, {(void)node;})
+NV(ExprNode_Bool, {(void)node;})
+NV(ExprNode_String, {(void)node;})
 
 NV(ExprNode_Closure,
 {
@@ -620,6 +620,7 @@ NV(ExprNode_Tuple,
 })
 NV(ExprNode_NamedValue,
 {
+    (void)node;
     // LEAF
 })
 

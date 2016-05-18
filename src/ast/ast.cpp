@@ -241,6 +241,7 @@ SERIALISE_TYPE(Impl::, "AST_Impl", {
 
 ::std::ostream& operator<<(::std::ostream& os, const UseStmt& x)
 {
+    os << "Use(" << x.path << ")";
     return os;
 }
 
@@ -545,7 +546,9 @@ SERIALISE_TYPE_A(EnumVariant::, "AST_EnumVariant", {
 })
 SERIALISE_TYPE(EnumVariantData::, "AST_EnumVariantData", {
     // TODO: Serialise AST::EnumVariantData
+    (void)s;
 },{
+    (void)s;
 })
 
 SERIALISE_TYPE(Enum::, "AST_Enum", {
@@ -593,15 +596,21 @@ SERIALISE_TYPE(Struct::, "AST_Struct", {
 })
 SERIALISE_TYPE(StructData::, "AST_StructData", {
     // TODO: AST::StructData serialise
+    (void)s;
 },{
+    (void)s;
 })
 SERIALISE_TYPE(StructItem::, "AST_StructItem", {
     // TODO: AST::StructItem serialise
+    (void)s;
 },{
+    (void)s;
 })
 SERIALISE_TYPE(TupleItem::, "AST_TupleItem", {
     // TODO: AST::TupleItem serialise
+    (void)s;
 },{
+    (void)s;
 })
 
 ::std::ostream& operator<<(::std::ostream& os, const TypeParam& tp)

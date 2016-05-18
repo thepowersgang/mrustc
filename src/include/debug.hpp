@@ -13,7 +13,7 @@ extern int g_debug_indent_level;
 #else
 #define INDENT()    do { } while(0)
 #define UNINDENT()    do {} while(0)
-#define DEBUG(ss)   do{ } while(0)
+#define DEBUG(ss)   do{ (void)(::NullSink() << ss); } while(0)
 #endif
 
 extern bool debug_enabled();
@@ -29,6 +29,13 @@ struct RepeatLitStr
             os << r.s;
         return os;
     }
+};
+
+class NullSink:
+    public ::std::ostream
+{
+public:
+    NullSink() {}
 };
 
 class TraceLog

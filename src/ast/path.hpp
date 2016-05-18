@@ -224,8 +224,8 @@ public:
             nodes().back().args() = b[0].args();
         else if( b[0].args().size() > 0 )
             throw ::std::runtime_error("add_tail to empty path, but generics in source");
-        else
-            ;
+        else {
+        }
         for(unsigned int i = 1; i < b_r.nodes.size(); i ++)
             nodes().push_back(b_r.nodes[i]);
         m_binding = PathBinding();
@@ -344,9 +344,11 @@ public:
     void bind_static(const Static& ent);
     void bind_trait(const Trait& ent, const ::std::vector<TypeRef>& args={});
     void bind_function(const Function& ent, const ::std::vector<TypeRef>& args={}) {
+        (void)args;
         m_binding = PathBinding::make_Function({&ent});
     }
     void bind_type_alias(const TypeAlias& ent, const ::std::vector<TypeRef>& args={}) {
+        (void)args;
         m_binding = PathBinding::make_TypeAlias({&ent});
     }
     

@@ -311,7 +311,7 @@ ExternCrate::ExternCrate()
 
 ExternCrate::ExternCrate(const char *path)
 {
-    throw ParseError::Todo("Load extern crate from a file");
+    throw ParseError::Todo( FMT("Load extern crate from a file - '" << path << "'") );
 }
 
 // Fill runtime-generated structures in the crate
@@ -352,7 +352,9 @@ const MacroRules* ExternCrate::find_macro_rules(const ::std::string& name)
 }
 
 SERIALISE_TYPE(ExternCrate::, "AST_ExternCrate", {
+    (void)s;
 },{
+    (void)s;
 })
 
 

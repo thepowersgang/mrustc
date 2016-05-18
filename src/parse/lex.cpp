@@ -31,12 +31,13 @@ Lexer::Lexer(::std::string filename):
     {
         throw ::std::runtime_error("Unable to open file");
     }
+    // Consume the BOM
     if( this->getc() == '\xef' )
     {
-        if( this->getc() != '\xbb' )
-            ;
-        if( this->getc() != '\xbf' )
-            ;
+        if( this->getc() != '\xbb' ) {
+        }
+        if( this->getc() != '\xbf' ) {
+        }
         m_line_ofs = 0;
     }
     else
@@ -805,8 +806,8 @@ uint32_t Lexer::parseEscape(char enclosing)
                 this->ungetc();
         else if( ch != '}' )
             throw ParseError::Generic(*this, "Expected terminating } in \\u sequence");
-        else
-            ;
+        else {
+        }
         return val; }
     case '0':
         return '\0';
@@ -982,28 +983,23 @@ struct EscapedString {
     
     friend ::std::ostream& operator<<(::std::ostream& os, const EscapedString& x) {
         for(auto b : x.s) {
-            if( b < 0 || b >= 128 ) {
-                os << b;
-            }
-            else {
-                switch(b)
-                {
-                case '"':
-                    os << "\\\"";
-                    break;
-                case '\\':
-                    os << "\\\\";
-                    break;
-                case '\n':
-                    os << "\\n";
-                    break;
-                default:
-                    if( ' ' <= b && b < 0x7F )
-                        os << b;
-                    else
-                        os << "\\u{" << ::std::hex << (unsigned int)b << "}";
-                    break;
-                }
+            switch(b)
+            {
+            case '"':
+                os << "\\\"";
+                break;
+            case '\\':
+                os << "\\\\";
+                break;
+            case '\n':
+                os << "\\n";
+                break;
+            default:
+                if( ' ' <= b && b < 0x7F )
+                    os << b;
+                else
+                    os << "\\u{" << ::std::hex << (unsigned int)b << "}";
+                break;
             }
         }
         return os;

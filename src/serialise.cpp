@@ -42,7 +42,7 @@ void Serialiser_TextTree::start_object(const char *tag) {
     m_os << tag << " {\n";
     indent();
 }
-void Serialiser_TextTree::end_object(const char *_tag) {
+void Serialiser_TextTree::end_object(const char * /*tag*/) {
     unindent();
     print_indent();
     m_os << "}\n";
@@ -253,7 +253,7 @@ void Deserialiser_TextTree::start_object(const char *tag)
     if( c != '{' )
         throw DeserialiseFailure("start_object", "no {");
 }
-void Deserialiser_TextTree::end_object(const char *tag)
+void Deserialiser_TextTree::end_object(const char * /*tag*/)
 {
     eat_ws();
     char c = getc();

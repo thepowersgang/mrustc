@@ -125,6 +125,7 @@ public:
     }
     
     TypeRef(Span sp=Span()):
+        m_span( mv$(sp) ),
         m_data(TypeData::make_Any({}))
     {}
     
@@ -157,7 +158,7 @@ public:
     {}
 
     struct TagTuple {};
-    TypeRef(TagTuple _, Span sp, ::std::vector<TypeRef> inner_types):
+    TypeRef(TagTuple , Span sp, ::std::vector<TypeRef> inner_types):
         m_span(mv$(sp)),
         m_data(TypeData::make_Tuple({::std::move(inner_types)}))
     {}
@@ -168,22 +169,22 @@ public:
     {}
     
     struct TagReference {};
-    TypeRef(TagReference _, Span sp, bool is_mut, TypeRef inner_type):
+    TypeRef(TagReference , Span sp, bool is_mut, TypeRef inner_type):
         m_span(mv$(sp)),
         m_data(TypeData::make_Borrow({ is_mut, ::make_unique_ptr(mv$(inner_type)) }))
     {}
     struct TagPointer {};
-    TypeRef(TagPointer _, Span sp, bool is_mut, TypeRef inner_type):
+    TypeRef(TagPointer , Span sp, bool is_mut, TypeRef inner_type):
         m_span(mv$(sp)),
         m_data(TypeData::make_Pointer({ is_mut, ::make_unique_ptr(mv$(inner_type)) }))
     {}
     struct TagSizedArray {};
-    TypeRef(TagSizedArray _, Span sp, TypeRef inner_type, ::std::shared_ptr<AST::ExprNode> size):
+    TypeRef(TagSizedArray , Span sp, TypeRef inner_type, ::std::shared_ptr<AST::ExprNode> size):
         m_span(mv$(sp)),
         m_data(TypeData::make_Array({ ::make_unique_ptr(mv$(inner_type)), mv$(size) }))
     {}
     struct TagUnsizedArray {};
-    TypeRef(TagUnsizedArray _, Span sp, TypeRef inner_type):
+    TypeRef(TagUnsizedArray , Span sp, TypeRef inner_type):
         m_span(mv$(sp)),
         m_data(TypeData::make_Array({ ::make_unique_ptr(mv$(inner_type)), ::std::shared_ptr<AST::ExprNode>() }))
     {}

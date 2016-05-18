@@ -45,13 +45,13 @@ void Span::bug(::std::function<void(::std::ostream&)> msg) const
 }
 
 void Span::error(ErrorType tag, ::std::function<void(::std::ostream&)> msg) const {
-    ::std::cerr << this->filename << ":" << this->start_line << ": error:";
+    ::std::cerr << this->filename << ":" << this->start_line << ": error:" << tag <<":";
     msg(::std::cerr);
     ::std::cerr << ::std::endl;
     abort();
 }
 void Span::warning(WarningType tag, ::std::function<void(::std::ostream&)> msg) const {
-    ::std::cerr << this->filename << ":" << this->start_line << ": warning:";
+    ::std::cerr << this->filename << ":" << this->start_line << ": warning:" << tag << ":";
     msg(::std::cerr);
     ::std::cerr << ::std::endl;
     //abort();
