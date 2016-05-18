@@ -49,6 +49,13 @@ public:
     GenericPath(::HIR::SimplePath sp, ::HIR::PathParams params);
 };
 
+class TraitPath
+{
+public:
+    GenericPath m_path;
+    ::std::vector< ::std::string>   m_hrls;
+};
+
 class Path
 {
 public:

@@ -10,9 +10,32 @@ struct TypeParamDef
     ::HIR::TypeRef  m_default;
 };
 
-struct GenericBound
-{
-};
+TAGGED_UNION(GenericBound, Lifetime,
+(Lifetime, struct {
+    ::std::string   test;
+    ::std::string   valid_for;
+    }),
+(TypeLifetime, struct {
+    ::HIR::TypeRef  type;
+    ::std::string   valid_for;
+    }),
+(TraitBound, struct {
+    ::HIR::TypeRef  type;
+    ::HIR::TraitPath    trait;
+    }),
+(TraitUnbound, struct {
+    ::HIR::TypeRef  type;
+    ::HIR::GenericPath    trait;
+    }),
+//(NotTrait, struct {
+//    ::HIR::TypeRef  type;
+//    ::HIR::GenricPath    trait;
+//    }),
+(TypeEquality, struct {
+    ::HIR::TypeRef  type;
+    ::HIR::TypeRef  other_type;
+    })
+);
 
 struct GenericParams
 {

@@ -85,10 +85,18 @@ struct Enum
         (Unit, struct{}),
         (Value, ::HIR::ExprPtr),
         (Tuple, ::std::vector<::HIR::TypeRef>),
-        (Struct, ::std::pair< ::std::string, ::HIR::TypeRef>)
+        (Struct, ::std::vector< ::std::pair< ::std::string, ::HIR::TypeRef> >)
         );
+    enum class Repr
+    {
+        Rust,
+        C,
+        U8, U16, U32,
+    };
+    
     GenericParams   m_params;
-    ::std::vector< Variant >    m_variants;
+    Repr    m_repr;
+    ::std::vector< ::std::pair< ::std::string, Variant > >    m_variants;
 };
 struct Struct
 {
@@ -104,8 +112,10 @@ struct Struct
         (Tuple, ::std::vector< VisEnt<::HIR::TypeRef> >),
         (Named, ::std::vector< ::std::pair< ::std::string, VisEnt<::HIR::TypeRef> > >)
         );
+    
     GenericParams   m_params;
-    Data  m_data;
+    Repr    m_repr;
+    Data    m_data;
 };
 
 struct AssociatedType

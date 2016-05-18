@@ -7,6 +7,7 @@
 #include "from_ast.hpp"
 
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::SimplePath path);
+::HIR::Function LowerHIR_Function(const ::AST::Function& f);
 
 /// \brief Converts the AST into HIR format
 ///
@@ -50,7 +51,45 @@
     }
     if( gp.bounds().size() > 0 )
     {
-        throw ::std::runtime_error("TODO: LowerHIR_GenericParams - bounds");
+        for(const auto& bound : gp.bounds())
+        {
+            TU_MATCH(::AST::GenericBound, (bound), (e),
+            (Lifetime,
+                rv.m_bounds.push_back(::HIR::GenericBound::make_Lifetime({
+                    e.test,
+                    e.bound
+                    }));
+                ),
+            (TypeLifetime,
+                rv.m_bounds.push_back(::HIR::GenericBound::make_TypeLifetime({
+                    LowerHIR_Type(e.type),
+                    e.bound
+                    }));
+                ),
+            (IsTrait,
+                rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
+                    LowerHIR_Type(e.type),
+                    ::HIR::TraitPath { LowerHIR_GenericPath(e.trait), e.hrls }
+                    }));
+                ),
+            (MaybeTrait,
+                rv.m_bounds.push_back(::HIR::GenericBound::make_TraitUnbound({
+                    LowerHIR_Type(e.type),
+                    LowerHIR_GenericPath(e.trait)
+                    }));
+                ),
+            (NotTrait,
+                TODO(Span(), "Negative trait bounds");
+                ),
+            
+            (Equality,
+                rv.m_bounds.push_back(::HIR::GenericBound::make_TypeEquality({
+                    LowerHIR_Type(e.type),
+                    LowerHIR_Type(e.replacement)
+                    }));
+                )
+            )
+        }
     }
     
     return rv;
@@ -498,17 +537,95 @@
 
     return ::HIR::Struct {
         LowerHIR_GenericParams(ent.params()),
+        // TODO: Get repr from attributes
+        ::HIR::Struct::Repr::Rust,
         mv$(data)
         };
 }
 
 ::HIR::Enum LowerHIR_Enum(const ::AST::Enum& f)
 {
-    throw ::std::runtime_error("TODO: LowerHIR_Enum");
+    ::std::vector< ::std::pair< ::std::string, ::HIR::Enum::Variant> >  variants;
+    
+    for(const auto& var : f.variants())
+    {
+        TU_MATCH(::AST::EnumVariantData, (var.m_data), (e),
+        (Value,
+            variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Value(LowerHIR_Expr(e.m_value)) ) );
+            ),
+        (Tuple,
+            if( e.m_sub_types.size() == 0 ) {
+                variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Unit({})) );
+            }
+            else {
+                ::std::vector< ::HIR::TypeRef>   types;
+                for(const auto& st : e.m_sub_types)
+                    types.push_back( LowerHIR_Type(st) );
+                variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Tuple(mv$(types))) );
+            }
+            ),
+        (Struct,
+            ::std::vector< ::std::pair< ::std::string, ::HIR::TypeRef> >    ents;
+            for( const auto& ent : e.m_fields )
+                ents.push_back( ::std::make_pair( ent.m_name, LowerHIR_Type(ent.m_type) ) );
+            variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Struct(mv$(ents))) );
+            )
+        )
+    }
+    
+    return ::HIR::Enum {
+        LowerHIR_GenericParams(f.params()),
+        // TODO: Get repr from attributes
+        ::HIR::Enum::Repr::Rust,
+        mv$(variants)
+        };
 }
 ::HIR::Trait LowerHIR_Trait(const ::AST::Trait& f)
 {
-    throw ::std::runtime_error("TODO: LowerHIR_Trait");
+    ::std::vector< ::HIR::GenericPath>    supertraits;
+    for(const auto& st : f.supertraits())
+        supertraits.push_back( LowerHIR_GenericPath(st) );
+    ::HIR::Trait    rv {
+        LowerHIR_GenericParams(f.params()),
+        mv$(supertraits),
+        {},
+        {}
+        };
+    
+    for(const auto& item : f.items())
+    {
+        TU_MATCH_DEF(::AST::Item, (item.data), (i),
+        (
+            BUG(Span(), "Encountered unexpected item type in trait");
+            ),
+        (Type,
+            rv.m_types.insert( ::std::make_pair(item.name, ::HIR::AssociatedType {
+                LowerHIR_GenericParams(i.params()),
+                LowerHIR_Type(i.type()) 
+                }) );
+            ),
+        (Function,
+            rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Function( LowerHIR_Function(i) )) );
+            ),
+        (Static,
+            if( i.s_class() == ::AST::Static::CONST )
+                rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Constant(::HIR::Constant {
+                    ::HIR::GenericParams {},
+                    LowerHIR_Type( i.type() ),
+                    LowerHIR_Expr( i.value() )
+                    })) );
+            else {
+                rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Static(::HIR::Static {
+                    (i.s_class() == ::AST::Static::MUT),
+                    LowerHIR_Type( i.type() ),
+                    LowerHIR_Expr( i.value() )
+                    })) );
+            }
+            )
+        )
+    }
+    
+    return rv;
 }
 ::HIR::Function LowerHIR_Function(const ::AST::Function& f)
 {
