@@ -15,6 +15,8 @@ ifeq ($(DBGTPL),)
   
 else ifeq ($(DBGTPL),gdb)
   DBG := echo -e "r\nbt 7\nq" | gdb --args
+else ifeq ($(DBGTPL),valgrind)
+  DBG := valgrind
 else
   $(error "Unknown debug template")
 endif

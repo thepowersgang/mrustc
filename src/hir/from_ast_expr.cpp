@@ -251,10 +251,10 @@ struct LowerHIR_ExprNode_Visitor:
     virtual void visit(::AST::ExprNode_Tuple& v) override {
     }
     virtual void visit(::AST::ExprNode_NamedValue& v) override {
-        if( v.m_path.is_trivial() ) {
+        TU_IFLET(::AST::Path::Class, v.m_path.m_class, Local, e,
             auto slot = v.m_path.binding().as_Variable().slot;
-            m_rv.reset( new ::HIR::ExprNode_Variable( v.m_path.nodes()[0].name(), slot ) );
-        }
+            m_rv.reset( new ::HIR::ExprNode_Variable( e.name, slot ) );
+        )
         else {
             m_rv.reset( new ::HIR::ExprNode_PathValue( LowerHIR_Path(v.m_path) ) );
         }

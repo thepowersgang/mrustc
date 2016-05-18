@@ -73,7 +73,9 @@ public:
 
     struct TagBind {};
     Pattern(TagBind, ::std::string name):
-        m_binding(name)
+        m_binding(name),
+        m_binding_type( BIND_MOVE ),
+        m_binding_mut(false)
     {}
 
     struct TagBox {};
@@ -125,9 +127,12 @@ public:
     
     // Accessors
     const ::std::string& binding() const { return m_binding; }
-    Data& data() { return m_data; }
+    const BindType& binding_type() const { assert(m_binding != ""); return m_binding_type; }
+    bool binding_mut() const { assert(m_binding != ""); return m_binding_mut; }
+    
+          Data& data()       { return m_data; }
     const Data& data() const { return m_data; }
-    Path& path() { return m_data.as_StructTuple().path; }
+          Path& path()       { return m_data.as_StructTuple().path; }
     const Path& path() const { return m_data.as_StructTuple().path; }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat);

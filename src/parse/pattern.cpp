@@ -259,9 +259,11 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
         ::std::string   binding_name;
         if( tok.type() == TOK_RWORD_REF && lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_DOUBLE_DOT ) {
             GET_TOK(tok, lex);
+            // TODO: Bind type
             binding_name = tok.str();
         }
         else if( tok.type() == TOK_IDENT && lex.lookahead(0) == TOK_DOUBLE_DOT) {
+            // TODO: Bind type
             binding_name = tok.str();
         }
         else if( tok.type() == TOK_UNDERSCORE && lex.lookahead(0) == TOK_DOUBLE_DOT) {

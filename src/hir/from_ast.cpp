@@ -58,6 +58,218 @@
 
 ::HIR::Pattern LowerHIR_Pattern(const ::AST::Pattern& pat)
 {
+    ::HIR::PatternBinding   binding;
+    if( pat.binding() != "" )
+    {
+        ::HIR::PatternBinding::Type bt;
+        switch(pat.binding_type())
+        {
+        case ::AST::Pattern::BIND_MOVE: bt = ::HIR::PatternBinding::Type::Move; break;
+        case ::AST::Pattern::BIND_REF:  bt = ::HIR::PatternBinding::Type::Ref;  break;
+        case ::AST::Pattern::BIND_MUTREF: bt = ::HIR::PatternBinding::Type::MutRef; break;
+        }
+        // TODO: Get bound slot
+        binding = ::HIR::PatternBinding(pat.binding_mut(), bt, pat.binding(), 0);
+    }
+    TU_MATCH(::AST::Pattern::Data, (pat.data()), (e),
+    (MaybeBind,
+        BUG(Span(), "Encountered MaybeBind pattern");
+        ),
+    (Macro,
+        BUG(Span(), "Encountered Macro pattern");
+        ),
+    (Any,
+        return ::HIR::Pattern {
+            mv$(binding),
+            ::HIR::Pattern::Data::make_Any({})
+            };
+        ),
+    (Box,
+        return ::HIR::Pattern {
+            mv$(binding),
+            ::HIR::Pattern::Data::make_Box({
+                box$(LowerHIR_Pattern( *e.sub ))
+                })
+            };
+        ),
+    (Ref,
+        return ::HIR::Pattern {
+            mv$(binding),
+            ::HIR::Pattern::Data::make_Ref({
+                (e.mut ? ::HIR::BorrowType::Unique : ::HIR::BorrowType::Shared),
+                box$(LowerHIR_Pattern( *e.sub ))
+                })
+            };
+        ),
+    (Tuple,
+        ::std::vector< ::HIR::Pattern>  sub_patterns;
+        for(const auto& sp : e.sub_patterns)
+            sub_patterns.push_back( LowerHIR_Pattern(sp) );
+        
+        return ::HIR::Pattern {
+            mv$(binding),
+            ::HIR::Pattern::Data::make_Tuple({
+                mv$(sub_patterns)
+                })
+            };
+        ),
+    
+    (StructTuple,
+        ::std::vector< ::HIR::Pattern>  sub_patterns;
+        for(const auto& sp : e.sub_patterns)
+            sub_patterns.push_back( LowerHIR_Pattern(sp) );
+        
+        TU_MATCH_DEF(::AST::PathBinding, (e.path.binding()), (pb),
+        (
+            BUG(Span(), "Encountered StructTuple pattern not pointing to a enum variant or a struct");
+            ),
+        (EnumVar,
+            return ::HIR::Pattern {
+                mv$(binding),
+                ::HIR::Pattern::Data::make_EnumTuple({
+                    LowerHIR_GenericPath(e.path),
+                    mv$(sub_patterns)
+                    })
+                };
+            ),
+        (Struct,
+            return ::HIR::Pattern {
+                mv$(binding),
+                ::HIR::Pattern::Data::make_StructTuple({
+                    LowerHIR_GenericPath(e.path),
+                    mv$(sub_patterns)
+                    })
+                };
+            )
+        )
+        ),
+    (Struct,
+        ::std::vector< ::std::pair< ::std::string, ::HIR::Pattern> > sub_patterns;
+        for(const auto& sp : e.sub_patterns)
+            sub_patterns.push_back( ::std::make_pair(sp.first, LowerHIR_Pattern(sp.second)) );
+        
+        
+        TU_MATCH_DEF(::AST::PathBinding, (e.path.binding()), (pb),
+        (
+            BUG(Span(), "Encountered Struct pattern not pointing to a enum variant or a struct");
+            ),
+        (EnumVar,
+            return ::HIR::Pattern {
+                mv$(binding),
+                ::HIR::Pattern::Data::make_EnumStruct({
+                    LowerHIR_GenericPath(e.path),
+                    mv$(sub_patterns)
+                    })
+                };
+            ),
+        (Struct,
+            return ::HIR::Pattern {
+                mv$(binding),
+                ::HIR::Pattern::Data::make_Struct({
+                    LowerHIR_GenericPath(e.path),
+                    mv$(sub_patterns)
+                    })
+                };
+            )
+        )
+        ),
+    
+    (Value,
+        struct H {
+            static ::HIR::CoreType get_int_type(const ::eCoreType ct) {
+                switch(ct)
+                {
+                case CORETYPE_ANY:  return ::HIR::CoreType::Str;
+
+                case CORETYPE_I8 :  return ::HIR::CoreType::I8;
+                case CORETYPE_U8 :  return ::HIR::CoreType::U8;
+                case CORETYPE_I16:  return ::HIR::CoreType::I16;
+                case CORETYPE_U16:  return ::HIR::CoreType::U16;
+                case CORETYPE_I32:  return ::HIR::CoreType::I32;
+                case CORETYPE_U32:  return ::HIR::CoreType::U32;
+                case CORETYPE_I64:  return ::HIR::CoreType::I64;
+                case CORETYPE_U64:  return ::HIR::CoreType::U64;
+
+                case CORETYPE_INT:  return ::HIR::CoreType::Isize;
+                case CORETYPE_UINT: return ::HIR::CoreType::Usize;
+                default:
+                    BUG(Span(), "Unknown type for integer literal");
+                }
+            }
+            static ::HIR::Pattern::Value lowerhir_pattern_value(const ::AST::Pattern::Value& v) {
+                TU_MATCH(::AST::Pattern::Value, (v), (e),
+                (Invalid,
+                    BUG(Span(), "Encountered Invalid value in Pattern");
+                    ),
+                (Integer,
+                    return ::HIR::Pattern::Value::make_Integer({
+                        H::get_int_type(e.type),
+                        e.value
+                        });
+                    ),
+                (String,
+                    return ::HIR::Pattern::Value::make_String(e);
+                    ),
+                (Named,
+                    return ::HIR::Pattern::Value::make_Named( LowerHIR_Path(e) );
+                    )
+                )
+                throw "BUGCHECK: Reached end of LowerHIR_Pattern::H::lowerhir_pattern_value";
+            }
+        };
+        if( e.end.is_Invalid() ) {
+            return ::HIR::Pattern {
+                mv$(binding),
+                ::HIR::Pattern::Data::make_Value({
+                    H::lowerhir_pattern_value(e.start)
+                    })
+                };
+        }
+        else {
+            return ::HIR::Pattern {
+                mv$(binding),
+                ::HIR::Pattern::Data::make_Range({
+                    H::lowerhir_pattern_value(e.start),
+                    H::lowerhir_pattern_value(e.end)
+                    })
+                };
+        }
+        ),
+    (Slice,
+        ::std::vector< ::HIR::Pattern>  leading;
+        for(const auto& sp : e.leading)
+            leading.push_back( LowerHIR_Pattern(sp) );
+        
+        if( e.extra_bind != "" || e.trailing.size() > 0 ) {
+            ::std::vector< ::HIR::Pattern>  trailing;
+            for(const auto& sp : e.trailing)
+                trailing.push_back( LowerHIR_Pattern(sp) );
+            
+            auto extra_bind = (e.extra_bind == "_" || e.extra_bind == "")
+                ? ::HIR::PatternBinding()
+                // TODO: Get slot name for `extra_bind`
+                : ::HIR::PatternBinding(false, ::HIR::PatternBinding::Type::Ref, e.extra_bind, 0)
+                ;
+            
+            return ::HIR::Pattern {
+                mv$(binding),
+                ::HIR::Pattern::Data::make_SplitSlice({
+                    mv$(leading),
+                    mv$(extra_bind),
+                    mv$(trailing)
+                    })
+                };
+        }
+        else {
+            return ::HIR::Pattern {
+                mv$(binding),
+                ::HIR::Pattern::Data::make_Slice({
+                    mv$(leading)
+                    })
+                };
+        }
+        )
+    )
     throw ::std::runtime_error("TODO: LowerHIR_Pattern");
 }
 
