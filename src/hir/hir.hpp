@@ -135,6 +135,10 @@ public:
     ::std::unordered_map< ::std::string, ::std::unique_ptr<VisEnt<ValueItem>> > m_value_items;
     // Contains types, traits, and modules
     ::std::unordered_map< ::std::string, ::std::unique_ptr<VisEnt<TypeItem>> > m_mod_items;
+    
+    Module() {}
+    Module(const Module&) = delete;
+    Module(Module&& x) = default;
 };
 
 // --------------------------------------------------------------------

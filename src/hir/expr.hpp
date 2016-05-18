@@ -73,7 +73,7 @@ struct ExprNode_Let:
     ExprNode_Let(::HIR::Pattern pat, ::HIR::TypeRef ty, ::HIR::ExprNodeP val):
         m_pattern( mv$(pat) ),
         m_type( mv$(ty) ),
-        m_value( mv$(m_value) )
+        m_value( mv$(val) )
     {}
     
     NODE_METHODS();

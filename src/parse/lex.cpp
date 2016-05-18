@@ -1304,6 +1304,7 @@ Token TokenStream::innerGetToken()
 }
 Token TokenStream::getToken()
 {
+    const bool DEBUG_PRINT_TOKENS = false;
     if( m_cache_valid )
     {
         m_cache_valid = false;
@@ -1313,13 +1314,17 @@ Token TokenStream::getToken()
     {
         Token ret = m_lookahead.front();
         m_lookahead.erase(m_lookahead.begin());
-        ::std::cout << "getToken[" << typeid(*this).name() << "] - " << ret << ::std::endl;
+        if( DEBUG_PRINT_TOKENS ) {
+            ::std::cout << "getToken[" << typeid(*this).name() << "] - " << ret << ::std::endl;
+        }
         return ret;
     }
     else
     {
         Token ret = this->innerGetToken();
-        ::std::cout << "getToken[" << typeid(*this).name() << "] - " << ret << ::std::endl;
+        if( DEBUG_PRINT_TOKENS ) {
+            ::std::cout << "getToken[" << typeid(*this).name() << "] - " << ret << ::std::endl;
+        }
         return ret;
     }
 }
