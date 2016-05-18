@@ -126,9 +126,9 @@
         return __name( ::std::move(v) );\
     }\
     bool is_##__tag() const { return m_tag == TAG_##__tag; } \
-    const __type& as_##__tag() const { assert(m_tag == TAG_##__tag); return reinterpret_cast<const __type&>(m_data); } \
-    __type& as_##__tag() { assert(m_tag == TAG_##__tag); return reinterpret_cast<__type&>(m_data); } \
-    __type unwrap_##__tag() { assert(m_tag == TAG_##__tag); return ::std::move(reinterpret_cast<__type&>(m_data)); } \
+    const __type& as_##__tag() const { assert(m_tag == TAG_##__tag); return *reinterpret_cast<const __type*>(this->data_ptr()); } \
+    __type& as_##__tag() { assert(m_tag == TAG_##__tag); return *reinterpret_cast<__type*>(this->data_ptr()); } \
+    __type unwrap_##__tag() { return ::std::move(this->as_##__tag()); } \
 // Define a tagged union constructor
 #define TU_CONS(__name, name, ...) TU_CONS_I(__name, name, TU_DATANAME(name))
 
@@ -193,6 +193,8 @@ class _name TU_EXP _inherit { \
 */ private:\
     Tag m_tag; \
     char m_data[MAXS _variants];/*
+*/  const void* data_ptr() const { return m_data; } /*
+*/        void* data_ptr()       { return m_data; } /*
 */ public:\
     _name(): m_tag(TAG_##_def) { new((void*)m_data) TU_DATANAME(_def); }/*
 */  _name(const _name&) = delete;/*

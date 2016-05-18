@@ -61,7 +61,7 @@
     ::HIR::PatternBinding   binding;
     if( pat.binding() != "" )
     {
-        ::HIR::PatternBinding::Type bt;
+        ::HIR::PatternBinding::Type bt = ::HIR::PatternBinding::Type::Move;
         switch(pat.binding_type())
         {
         case ::AST::Pattern::BIND_MOVE: bt = ::HIR::PatternBinding::Type::Move; break;

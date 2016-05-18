@@ -7,7 +7,7 @@ LINKFLAGS := -g
 LIBS :=
 CXXFLAGS := -g -Wall -std=c++14 -Werror
 #CXXFLAGS += -Wextra
-#CXXFLAGS += -O3
+CXXFLAGS += -O3
 CPPFLAGS := -I src/include/ -I src/
 
 SHELL = bash

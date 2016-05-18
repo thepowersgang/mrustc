@@ -73,6 +73,9 @@ class option
 {
     char    m_data[ sizeof(T) ];
     bool    m_set;
+    
+          void* data_ptr()       { return m_data; }
+    const void* data_ptr() const { return m_data; }
 public:
     option(T ent):
         m_set(true)
@@ -84,7 +87,7 @@ public:
     {}
     ~option() {
         if( m_set ) {
-            reinterpret_cast<T*>(m_data)->~T();
+            reinterpret_cast<T*>(data_ptr())->~T();
         }
     }
     
