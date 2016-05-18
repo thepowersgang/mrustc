@@ -133,6 +133,7 @@ void operator%(::Deserialiser& s, Pattern::Value& v) {
     s % tag;
     switch(tag)
     {
+    case Pattern::Value::TAGDEAD: throw "";
     case Pattern::Value::TAG_Invalid:
         v = Pattern::Value::make_Invalid({});
         break;
@@ -208,6 +209,7 @@ SERIALISE_TYPE(Pattern::, "Pattern", {
     s % tag;
     switch(tag)
     {
+    case Pattern::Data::TAGDEAD: throw "";
     _D(Any, )
     _D(MaybeBind,
         )

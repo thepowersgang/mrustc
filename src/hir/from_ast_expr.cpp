@@ -186,6 +186,26 @@ struct LowerHIR_ExprNode_Visitor:
     virtual void visit(::AST::ExprNode_Loop& v) override {
     }
     virtual void visit(::AST::ExprNode_Match& v) override {
+        ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
+        
+        for(const auto& arm : v.m_arms)
+        {
+            ::HIR::ExprNode_Match::Arm  new_arm {
+                {},
+                LowerHIR_ExprNode_Inner_Opt(arm.m_cond.get()),
+                LowerHIR_ExprNode_Inner(*arm.m_code)
+                };
+            
+            for(const auto& pat : arm.m_patterns)
+                new_arm.m_patterns.push_back( LowerHIR_Pattern(pat) );
+        
+            arms.push_back( mv$(new_arm) );
+        }
+        
+        m_rv.reset( new ::HIR::ExprNode_Match(
+            LowerHIR_ExprNode_Inner(*v.m_val),
+            mv$(arms)
+            ));
     }
     virtual void visit(::AST::ExprNode_If& v) override {
     }
@@ -245,6 +265,14 @@ struct LowerHIR_ExprNode_Visitor:
     virtual void visit(::AST::ExprNode_Closure& v) override {
     }
     virtual void visit(::AST::ExprNode_StructLiteral& v) override {
+        ::HIR::ExprNode_StructLiteral::t_values values;
+        for(const auto& val : v.m_values)
+            values.push_back( ::std::make_pair(val.first, LowerHIR_ExprNode_Inner(*val.second)) );
+        m_rv.reset( new ::HIR::ExprNode_StructLiteral(
+            LowerHIR_GenericPath(v.m_path),
+            LowerHIR_ExprNode_Inner_Opt(v.m_base_value.get()),
+            mv$(values)
+            ) );
     }
     virtual void visit(::AST::ExprNode_Array& v) override {
     }

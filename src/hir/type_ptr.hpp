@@ -9,6 +9,7 @@ class TypeRefPtr {
     TypeRef*    m_ptr;
 public:
     TypeRefPtr(TypeRef _);
+    TypeRefPtr(TypeRefPtr&& _);
     ~TypeRefPtr();
 };
 

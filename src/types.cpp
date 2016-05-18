@@ -99,6 +99,7 @@ TypeRef::TypeRef(const TypeRef& other)
 {
     switch( other.m_data.tag() )
     {
+    case TypeData::TAGDEAD: throw "";
     #define _COPY(VAR)  case TypeData::TAG_##VAR: m_data = TypeData::make_##VAR(other.m_data.as_##VAR()); break;
     #define _CLONE(VAR, code...)    case TypeData::TAG_##VAR: { auto& old = other.m_data.as_##VAR(); m_data = TypeData::make_##VAR(code); } break;
     _COPY(None)
@@ -125,6 +126,7 @@ bool TypeRef::deref(bool is_implicit)
     #define _(VAR, ...) case TypeData::TAG_##VAR: { auto &ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
     switch(m_data.tag())
     {
+    case TypeData::TAGDEAD: throw "";
     case TypeData::TAG_None:        throw ::std::runtime_error("Dereferencing ! - bugcheck");
     case TypeData::TAG_Macro:       throw ::std::runtime_error("Dereferencing unexpanded macro - bugcheck");
     case TypeData::TAG_Any:         throw ::std::runtime_error("Dereferencing _");
@@ -259,6 +261,7 @@ void TypeRef::resolve_args(::std::function<TypeRef(const char*)> fcn)
     #define _(VAR, ...) case TypeData::TAG_##VAR: { auto &ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
     switch(m_data.tag())
     {
+    case TypeData::TAGDEAD: throw "";
     _(None,
         throw ::std::runtime_error("TypeRef::resolve_args on !");
         )
@@ -692,6 +695,7 @@ Ordering TypeRef::ord(const TypeRef& x) const
     #define _(VAR, ...) case TypeData::TAG_##VAR: { const auto &ent = tr.m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
     switch(tr.m_data.tag())
     {
+    case TypeData::TAGDEAD: throw "";
     _(None,
         os << "!";
         )
@@ -803,6 +807,7 @@ SERIALISE_TYPE(TypeRef::, "TypeRef", {
     s % m_data.tag();
     switch(m_data.tag())
     {
+    case TypeData::TAGDEAD: throw "";
     _S(None)
     _S(Macro,
         s.item( ent.inv );
@@ -850,6 +855,7 @@ SERIALISE_TYPE(TypeRef::, "TypeRef", {
     s % tag;
     switch(tag)
     {
+    case TypeData::TAGDEAD: throw "";
     _D(None)
     _D(Any)
     _D(Unit)

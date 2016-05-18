@@ -79,6 +79,27 @@ struct ExprNode_Let:
     NODE_METHODS();
 };
 
+struct ExprNode_Match:
+    public ExprNode
+{
+    struct Arm
+    {
+        ::std::vector< ::HIR::Pattern>  m_patterns;
+        ::HIR::ExprNodeP    m_cond;
+        ::HIR::ExprNodeP    m_code;
+    };
+    
+    ::HIR::ExprNodeP    m_value;
+    ::std::vector<Arm> m_arms;
+
+    ExprNode_Match(::HIR::ExprNodeP val, ::std::vector<Arm> arms):
+        m_value( mv$(val) ),
+        m_arms( mv$(arms) )
+    {}
+
+    NODE_METHODS();
+};
+
 struct ExprNode_Assign:
     public ExprNode
 {
@@ -251,6 +272,24 @@ struct ExprNode_Variable:
     NODE_METHODS();
 };
 
+struct ExprNode_StructLiteral:
+    public ExprNode
+{
+    typedef ::std::vector< ::std::pair< ::std::string, ExprNodeP > > t_values;
+    
+    ::HIR::GenericPath  m_path;
+    ::HIR::ExprNodeP    m_base_value;
+    t_values    m_values;
+    
+    ExprNode_StructLiteral(::HIR::GenericPath path, ::HIR::ExprNodeP base_value, t_values values):
+        m_path( mv$(path) ),
+        m_base_value( mv$(base_value) ),
+        m_values( mv$(values) )
+    {}
+    
+    NODE_METHODS();
+};
+
 #undef NODE_METHODS
 
 class ExprVisitor
@@ -263,6 +302,7 @@ public:
     NV(ExprNode_Let)
     NV(ExprNode_Loop)
     NV(ExprNode_LoopControl)
+    NV(ExprNode_Match)
     
     NV(ExprNode_Assign)
     NV(ExprNode_BinOp)
@@ -275,6 +315,7 @@ public:
     NV(ExprNode_Literal);
     NV(ExprNode_PathValue);
     NV(ExprNode_Variable);
+    NV(ExprNode_StructLiteral);
 };
 
 }

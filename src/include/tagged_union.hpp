@@ -98,9 +98,11 @@
 // "match"-like statement
 // TU_MATCH(Class, m_data, ent, (Variant, CODE), (Variant2, CODE))
 #define TU_MATCH(CLASS, VAR, NAME, ...)   switch( (TU_FIRST VAR).tag()) {/*
+*/    case CLASS::TAGDEAD: throw "ERROR: destructed tagged union used";/*
 */    TU_MATCH_ARMS(CLASS, VAR, NAME, __VA_ARGS__)/*
 */}
 #define TU_MATCH_DEF(CLASS, VAR, NAME, DEF, ...)   switch( (TU_FIRST VAR).tag()) {/*
+*/    case CLASS::TAGDEAD: throw "ERROR: destructed tagged union used";/*
 */    TU_MATCH_ARMS(CLASS, VAR, NAME, __VA_ARGS__)/*
 */    default: {TU_EXP DEF;} break;/*
 */}
@@ -188,6 +190,7 @@ class _name TU_EXP _inherit { \
 */public:\
     TU_TYPEDEFS _variants/*
 */  enum Tag { \
+        TAGDEAD, \
         TU_TAGS _variants\
     };/*
 */ private:\
@@ -198,15 +201,16 @@ class _name TU_EXP _inherit { \
 */ public:\
     _name(): m_tag(TAG_##_def) { new((void*)m_data) TU_DATANAME(_def); }/*
 */  _name(const _name&) = delete;/*
-*/  _name(_name&& x) noexcept: m_tag(x.m_tag) TU_EXP _extra_move { switch(m_tag) {  TU_MOVE_CASES _variants } }/*
-*/  _name& operator =(_name&& x) { switch(m_tag) { TU_DEST_CASES _variants } m_tag = x.m_tag; TU_EXP _extra_assign switch(m_tag) { TU_MOVE_CASES _variants }; return *this; }/*
-*/  ~_name() { switch(m_tag) { TU_DEST_CASES _variants } m_tag = TAG_##_def; new((void*)m_data) TU_DATANAME(_def); } \
+*/  _name(_name&& x) noexcept: m_tag(x.m_tag) TU_EXP _extra_move { switch(m_tag) { case TAGDEAD: break; TU_MOVE_CASES _variants } x.m_tag = TAGDEAD; }/*
+*/  _name& operator =(_name&& x) { switch(m_tag) { case TAGDEAD: break; TU_DEST_CASES _variants } m_tag = x.m_tag; TU_EXP _extra_assign switch(m_tag) { case TAGDEAD: break; TU_MOVE_CASES _variants }; return *this; }/*
+*/  ~_name() { switch(m_tag) { case TAGDEAD: break; TU_DEST_CASES _variants } m_tag = TAGDEAD; } \
     \
     Tag tag() const { return m_tag; }\
     TU_CONSS(_name, TU_EXP _variants) \
 /*
 */    static const char *tag_to_str(Tag tag) { \
         switch(tag) {/*
+*/          case TAGDEAD: return "";/*
 */          TU_TOSTR_CASES _variants/*
 */      } return ""; \
     }/*

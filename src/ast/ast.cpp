@@ -671,7 +671,7 @@ SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
     SERIALISE_TYPE(PATH::, TAG, {\
         s % this->tag(); TU_MATCH(PATH, ((*this)), (NAME), __VA_ARGS__)\
     }, {\
-        PATH::Tag tag; s % tag; switch(tag) { SERIALISE_TU_ARMS(PATH, NAME, __VA_ARGS__) } \
+        PATH::Tag tag; s % tag; switch(tag) { case PATH::TAGDEAD: throw ""; SERIALISE_TU_ARMS(PATH, NAME, __VA_ARGS__) } \
     })
 
 SERIALISE_TU(GenericBound, "GenericBound", ent,

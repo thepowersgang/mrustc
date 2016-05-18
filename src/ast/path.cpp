@@ -577,6 +577,7 @@ SERIALISE_TYPE(Path::, "AST_Path", {
     s % tag;
     switch(tag)
     {
+    case Class::TAGDEAD: throw "";
     _D(Invalid)
     _D(Local   , s.item( ent.name ); )
     
