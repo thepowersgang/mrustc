@@ -238,6 +238,17 @@ struct LowerHIR_ExprNode_Visitor:
                 ) );
             break; }
         case ::AST::ExprNode_Loop::FOR: {
+            // TODO: Desugar into:
+            // {
+            //     let mut it = <_ as IntoIterator>::into_iter(`m_cond`);
+            //     `m_label`: loop {
+            //         match it.next() {
+            //         Some(`m_pattern`) => `m_code`,
+            //         None => break `m_label`,
+            //         }
+            //     }
+            // }
+            TODO(v.get_pos(), "Desugar for loop");
             break; }
         }
     }
@@ -271,6 +282,24 @@ struct LowerHIR_ExprNode_Visitor:
             ));
     }
     virtual void visit(::AST::ExprNode_IfLet& v) override {
+        ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
+        
+        // - Matches pattern - Take true branch
+        arms.push_back(::HIR::ExprNode_Match::Arm {
+            ::make_vec1( LowerHIR_Pattern(v.m_pattern) ),
+            ::HIR::ExprNodeP(),
+            LowerHIR_ExprNode_Inner(*v.m_true)
+            });
+        // - Matches anything else - take false branch
+        arms.push_back(::HIR::ExprNode_Match::Arm {
+            ::make_vec1( ::HIR::Pattern() ),
+            ::HIR::ExprNodeP(),
+            v.m_false ? LowerHIR_ExprNode_Inner(*v.m_false) : ::HIR::ExprNodeP( new ::HIR::ExprNode_Tuple({}) )
+            });
+        m_rv.reset( new ::HIR::ExprNode_Match(
+            LowerHIR_ExprNode_Inner(*v.m_value),
+            mv$(arms)
+            ));
     }
     
     virtual void visit(::AST::ExprNode_Integer& v) override {
