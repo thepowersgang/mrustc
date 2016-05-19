@@ -100,6 +100,22 @@ struct ExprNode_Match:
     NODE_METHODS();
 };
 
+struct ExprNode_If:
+    public ExprNode
+{
+    ::HIR::ExprNodeP    m_cond;
+    ::HIR::ExprNodeP    m_true;
+    ::HIR::ExprNodeP    m_false;
+    
+    ExprNode_If(::HIR::ExprNodeP cond, ::HIR::ExprNodeP true_code, ::HIR::ExprNodeP false_code):
+        m_cond( mv$(cond) ),
+        m_true( mv$(true_code) ),
+        m_false( mv$(false_code) )
+    {}
+    
+    NODE_METHODS();
+};
+
 struct ExprNode_Assign:
     public ExprNode
 {
@@ -186,6 +202,31 @@ struct ExprNode_Cast:
         m_value( mv$(value) ),
         m_type( mv$(dst_type) )
     {}
+    
+    NODE_METHODS();
+};
+struct ExprNode_Index:
+    public ExprNode
+{
+    ::HIR::ExprNodeP    m_val;
+    ::HIR::ExprNodeP    m_index;
+    
+    ExprNode_Index(::HIR::ExprNodeP val, ::HIR::ExprNodeP index):
+        m_val( mv$(val) ),
+        m_index( mv$(index) )
+    {}
+    
+    NODE_METHODS();
+};
+struct ExprNode_Deref:
+    public ExprNode
+{
+    ::HIR::ExprNodeP    m_val;
+    
+    ExprNode_Deref(::HIR::ExprNodeP val):
+        m_val( mv$(val) )
+    {}
+    
     NODE_METHODS();
 };
 
@@ -197,6 +238,19 @@ struct ExprNode_CallPath:
     
     ExprNode_CallPath(::HIR::Path path, ::std::vector< ::HIR::ExprNodeP> args):
         m_path( mv$(path) ),
+        m_args( mv$(args) )
+    {}
+    
+    NODE_METHODS();
+};
+struct ExprNode_CallValue:
+    public ExprNode
+{
+    ::HIR::ExprNodeP m_val;
+    ::std::vector<ExprNodeP> m_args;
+    
+    ExprNode_CallValue(::HIR::ExprNodeP val, ::std::vector< ::HIR::ExprNodeP> args):
+        m_val( mv$(val) ),
         m_args( mv$(args) )
     {}
     
@@ -218,6 +272,19 @@ struct ExprNode_CallMethod:
         m_args( mv$(args) )
     {
     }
+    
+    NODE_METHODS();
+};
+struct ExprNode_Field:
+    public ExprNode
+{
+    ::HIR::ExprNodeP    m_val;
+    ::std::string   m_field;
+    
+    ExprNode_Field(::HIR::ExprNodeP val, ::std::string field):
+        m_val( mv$(val) ),
+        m_field( mv$(field) )
+    {}
     
     NODE_METHODS();
 };
@@ -289,6 +356,41 @@ struct ExprNode_StructLiteral:
     
     NODE_METHODS();
 };
+struct ExprNode_Tuple:
+    public ExprNode
+{
+    ::std::vector< ::HIR::ExprNodeP>    m_vals;
+    
+    ExprNode_Tuple(::std::vector< ::HIR::ExprNodeP> vals):
+        m_vals( mv$(vals) )
+    {}
+    
+    NODE_METHODS();
+};
+struct ExprNode_ArrayList:
+    public ExprNode
+{
+    ::std::vector< ::HIR::ExprNodeP>    m_vals;
+    
+    ExprNode_ArrayList(::std::vector< ::HIR::ExprNodeP> vals):
+        m_vals( mv$(vals) )
+    {}
+    
+    NODE_METHODS();
+};
+struct ExprNode_ArraySized:
+    public ExprNode
+{
+    ::HIR::ExprNodeP    m_val;
+    ::HIR::ExprNodeP    m_size; // TODO: Has to be constant
+    
+    ExprNode_ArraySized(::HIR::ExprNodeP val, ::HIR::ExprNodeP size):
+        m_val( mv$(val) ),
+        m_size( mv$(size) )
+    {}
+    
+    NODE_METHODS();
+};
 
 #undef NODE_METHODS
 
@@ -303,19 +405,28 @@ public:
     NV(ExprNode_Loop)
     NV(ExprNode_LoopControl)
     NV(ExprNode_Match)
+    NV(ExprNode_If)
     
     NV(ExprNode_Assign)
     NV(ExprNode_BinOp)
     NV(ExprNode_UniOp)
     NV(ExprNode_Cast)
+    NV(ExprNode_Index)
+    NV(ExprNode_Deref)
     
     NV(ExprNode_CallPath);
+    NV(ExprNode_CallValue);
     NV(ExprNode_CallMethod);
+    NV(ExprNode_Field);
 
     NV(ExprNode_Literal);
     NV(ExprNode_PathValue);
     NV(ExprNode_Variable);
+    
     NV(ExprNode_StructLiteral);
+    NV(ExprNode_Tuple);
+    NV(ExprNode_ArrayList);
+    NV(ExprNode_ArraySized);
 };
 
 }

@@ -208,6 +208,11 @@ struct LowerHIR_ExprNode_Visitor:
             ));
     }
     virtual void visit(::AST::ExprNode_If& v) override {
+        m_rv.reset( new ::HIR::ExprNode_If(
+            LowerHIR_ExprNode_Inner(*v.m_cond),
+            LowerHIR_ExprNode_Inner(*v.m_true),
+            LowerHIR_ExprNode_Inner_Opt(&*v.m_false)
+            ));
     }
     virtual void visit(::AST::ExprNode_IfLet& v) override {
     }
@@ -275,8 +280,27 @@ struct LowerHIR_ExprNode_Visitor:
             ) );
     }
     virtual void visit(::AST::ExprNode_Array& v) override {
+        if( v.m_size )
+        {
+            m_rv.reset( new ::HIR::ExprNode_ArraySized(
+                LowerHIR_ExprNode_Inner( *v.m_values.at(0) ),
+                // TODO: Should this size be a full expression on its own?
+                LowerHIR_ExprNode_Inner( *v.m_size )
+                ) );
+        }
+        else
+        {
+            ::std::vector< ::HIR::ExprNodeP>    vals;
+            for(const auto& val : v.m_values)
+                vals.push_back( LowerHIR_ExprNode_Inner(*val) );
+            m_rv.reset( new ::HIR::ExprNode_ArrayList( mv$(vals) ) );
+        }
     }
     virtual void visit(::AST::ExprNode_Tuple& v) override {
+        ::std::vector< ::HIR::ExprNodeP>    vals;
+        for(const auto& val : v.m_values)
+            vals.push_back( LowerHIR_ExprNode_Inner(*val ) );
+        m_rv.reset( new ::HIR::ExprNode_Tuple( mv$(vals) ) );
     }
     virtual void visit(::AST::ExprNode_NamedValue& v) override {
         TU_IFLET(::AST::Path::Class, v.m_path.m_class, Local, e,
@@ -289,10 +313,21 @@ struct LowerHIR_ExprNode_Visitor:
     }
     
     virtual void visit(::AST::ExprNode_Field& v) override {
+        m_rv.reset( new ::HIR::ExprNode_Field(
+            LowerHIR_ExprNode_Inner(*v.m_obj),
+            v.m_name
+            ));
     }
     virtual void visit(::AST::ExprNode_Index& v) override {
+        m_rv.reset( new ::HIR::ExprNode_Index(
+            LowerHIR_ExprNode_Inner(*v.m_obj),
+            LowerHIR_ExprNode_Inner(*v.m_idx)
+            ));
     }
     virtual void visit(::AST::ExprNode_Deref& v) override {
+        m_rv.reset( new ::HIR::ExprNode_Deref(
+            LowerHIR_ExprNode_Inner(*v.m_value)
+            ));
     }
 };
 
