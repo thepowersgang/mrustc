@@ -29,6 +29,12 @@ struct LowerHIR_ExprNode_Visitor:
                 rv->m_nodes.push_back( LowerHIR_ExprNode_Inner( *n ) );
             }
         }
+        
+        if( v.m_local_mod )
+        {
+            // TODO: Populate m_traits from the local module's import list
+        }
+        
         m_rv.reset( static_cast< ::HIR::ExprNode*>(rv) );
     }
     virtual void visit(::AST::ExprNode_Macro& v) override {
@@ -184,6 +190,56 @@ struct LowerHIR_ExprNode_Visitor:
     virtual void visit(::AST::ExprNode_CallObject& v) override {
     }
     virtual void visit(::AST::ExprNode_Loop& v) override {
+        switch( v.m_type )
+        {
+        case ::AST::ExprNode_Loop::LOOP:
+            m_rv.reset( new ::HIR::ExprNode_Loop(
+                v.m_label,
+                LowerHIR_ExprNode_Inner(*v.m_code)
+                ) );
+            break;
+        case ::AST::ExprNode_Loop::WHILE: {
+            ::std::vector< ::HIR::ExprNodeP>    code;
+            // - if `m_cond` { () } else { break `m_label` }
+            code.push_back( ::HIR::ExprNodeP(new ::HIR::ExprNode_If(
+                LowerHIR_ExprNode_Inner(*v.m_cond),
+                ::HIR::ExprNodeP( new ::HIR::ExprNode_Tuple({}) ),
+                ::HIR::ExprNodeP( new ::HIR::ExprNode_LoopControl(v.m_label, false) )
+                )) );
+            code.push_back( LowerHIR_ExprNode_Inner(*v.m_code) );
+            
+            m_rv.reset( new ::HIR::ExprNode_Loop(
+                v.m_label,
+                ::HIR::ExprNodeP(new ::HIR::ExprNode_Block(false, mv$(code)))
+                ) );
+            break; }
+        case ::AST::ExprNode_Loop::WHILELET: {
+            ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
+            
+            // - Matches pattern - Run inner code
+            arms.push_back(::HIR::ExprNode_Match::Arm {
+                ::make_vec1( LowerHIR_Pattern(v.m_pattern) ),
+                ::HIR::ExprNodeP(),
+                LowerHIR_ExprNode_Inner(*v.m_code)
+                });
+            // - Matches anything else - break
+            arms.push_back(::HIR::ExprNode_Match::Arm {
+                ::make_vec1( ::HIR::Pattern() ),
+                ::HIR::ExprNodeP(),
+                ::HIR::ExprNodeP( new ::HIR::ExprNode_LoopControl(v.m_label, false) )
+                });
+            
+            m_rv.reset( new ::HIR::ExprNode_Loop(
+                v.m_label,
+                ::HIR::ExprNodeP(new ::HIR::ExprNode_Match(
+                    LowerHIR_ExprNode_Inner(*v.m_cond),
+                    mv$(arms)
+                    ))
+                ) );
+            break; }
+        case ::AST::ExprNode_Loop::FOR: {
+            break; }
+        }
     }
     virtual void visit(::AST::ExprNode_Match& v) override {
         ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;

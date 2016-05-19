@@ -27,6 +27,15 @@ struct ExprNode_Block:
 {
     bool    m_is_unsafe;
     ::std::vector< ExprNodeP >  m_nodes;
+    ::std::vector< ::HIR::SimplePath>   m_traits;
+    
+    ExprNode_Block():
+        m_is_unsafe(false)
+    {}
+    ExprNode_Block(bool is_unsafe, ::std::vector<ExprNodeP> nodes):
+        m_is_unsafe(is_unsafe),
+        m_nodes( mv$(nodes) )
+    {}
     
     NODE_METHODS();
 };
@@ -46,6 +55,11 @@ struct ExprNode_Loop:
 {
     ::std::string   m_label;
     ::HIR::ExprNodeP    m_code;
+    
+    ExprNode_Loop(::std::string label, ::HIR::ExprNodeP code):
+        m_label( mv$(label) ),
+        m_code( mv$(code) )
+    {}
     
     NODE_METHODS();
 };

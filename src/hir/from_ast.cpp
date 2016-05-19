@@ -47,7 +47,8 @@
     }
     if( gp.lft_params().size() > 0 )
     {
-        throw ::std::runtime_error("TODO: LowerHIR_GenericParams - lifetimes");
+        for(const auto& lft_name : gp.lft_params())
+            rv.m_lifetimes.push_back( lft_name );
     }
     if( gp.bounds().size() > 0 )
     {
@@ -716,7 +717,10 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
         auto item_path = path + name;
         _add_mod_ns_item( mod,  mv$(name), false, ::HIR::TypeItem::make_Module( LowerHIR_Module(submod, mv$(item_path)) ) );
     }
-
+    
+    
+    // TODO: Populate trait list
+    
     return mod;
 }
 

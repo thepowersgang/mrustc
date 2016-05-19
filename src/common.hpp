@@ -28,6 +28,12 @@ template<typename T>
 ::std::shared_ptr<T> make_shared_ptr(T&& v) {
     return ::std::shared_ptr<T>(new T(mv$(v)));
 }
+template<typename T>
+::std::vector<T> make_vec1(T&& v) {
+    ::std::vector<T>    rv;
+    rv.push_back( mv$(v) );
+    return rv;
+}
 
 enum Ordering
 {

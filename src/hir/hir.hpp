@@ -141,6 +141,9 @@ struct Trait
 class Module
 {
 public:
+    // List of in-scope traits in this module
+    ::std::vector< ::HIR::SimplePath>   m_traits;
+    
     // Contains all values and functions (including type constructors)
     ::std::unordered_map< ::std::string, ::std::unique_ptr<VisEnt<ValueItem>> > m_value_items;
     // Contains types, traits, and modules
