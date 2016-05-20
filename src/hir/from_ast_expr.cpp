@@ -380,6 +380,9 @@ struct LowerHIR_ExprNode_Visitor:
     }
     virtual void visit(::AST::ExprNode_NamedValue& v) override {
         TU_IFLET(::AST::Path::Class, v.m_path.m_class, Local, e,
+            if( !v.m_path.binding().is_Variable() ) {
+                BUG(v.get_pos(), "Named value was a local, but wasn't bound - " << v.m_path);
+            }
             auto slot = v.m_path.binding().as_Variable().slot;
             m_rv.reset( new ::HIR::ExprNode_Variable( e.name, slot ) );
         )

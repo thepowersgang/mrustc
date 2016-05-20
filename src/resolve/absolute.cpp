@@ -341,6 +341,44 @@ struct Context
         return AST::Path();
     }
 
+    unsigned int lookup_local(const Span& sp, const ::std::string name, LookupMode mode) {
+        for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
+        {
+            TU_MATCH(Ent, (*it), (e),
+            (Module,
+                ),
+            (ConcreteSelf,
+                ),
+            (VarBlock,
+                if( mode == LookupMode::Variable ) {
+                    for( auto it2 = e.variables.rbegin(); it2 != e.variables.rend(); ++ it2 )
+                    {
+                        if( it2->name == name ) {
+                            return it2->value;
+                        }
+                    }
+                }
+                ),
+            (Generic,
+                if( mode == LookupMode::Type ) {
+                    for( auto it2 = e.types.rbegin(); it2 != e.types.rend(); ++ it2 )
+                    {
+                        if( it2->name == name ) {
+                            return it2->value.index * (it2->value.level == GenericSlot::Level::Method ? 256 : 0);
+                        }
+                    }
+                }
+                else {
+                    // ignore.
+                    // TODO: Integer generics
+                }
+                )
+            )
+        }
+        
+        ERROR(sp, E0000, "Unable to find local " << (mode == LookupMode::Variable ? "variable" : "type") << " '" << name << "'");
+    }
+    
     /// Clones the context, including only the module-level items (i.e. just the Module entries)
     Context clone_mod() const {
         auto rv = Context(this->m_crate, this->m_mod);
@@ -598,6 +636,14 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         ),
     (Local,
         // Nothing to do (TODO: Check that it's valid?)
+        if( mode == Context::LookupMode::Variable ) {
+            path.bind_variable( context.lookup_local(sp, e.name, mode) );
+        }
+        else if( mode == Context::LookupMode::Type ) {
+            path.bind_variable( context.lookup_local(sp, e.name, mode) );
+        }
+        else {
+        }
         ),
     (Relative,
         DEBUG("- Relative");
@@ -688,7 +734,10 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         BUG(sp, "Path wasn't absolutised correctly");
         ),
     (Local,
-        // TODO: Ensure that local paths are bound to the variable/type index
+        if( path.binding().is_Unbound() )
+        {
+            TODO(sp, "Bind unbound local path - " << path);
+        }
         ),
     (Absolute,
         Resolve_Absolute_Path_BindAbsolute(context, sp, mode,  path);
@@ -880,7 +929,7 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
             AST::NodeVisitorDef::visit(node);
         }
         void visit(AST::ExprNode_NamedValue& node) override {
-            DEBUG("ExprNode_NamedValue");
+            DEBUG("ExprNode_NamedValue - " << node.m_path);
             Resolve_Absolute_Path(this->context, Span(node.get_pos()), Context::LookupMode::Variable,  node.m_path);
         }
         void visit(AST::ExprNode_Cast& node) override {
