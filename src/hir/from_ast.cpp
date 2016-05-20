@@ -394,12 +394,31 @@
     (UFCS,
         if( e.nodes.size() != 1 )
             throw "TODO: Handle UFCS with multiple nodes";
-        return ::HIR::Path(
-            LowerHIR_Type(*e.type),
-            LowerHIR_GenericPath(*e.trait),
-            e.nodes[0].name(),
-            {}
-            );
+        if( ! e.trait )
+        {
+            return ::HIR::Path(::HIR::Path::Data::make_UfcsInherent({
+                LowerHIR_Type(*e.type),
+                e.nodes[0].name(),
+                {}
+                }));
+        }
+        else if( ! e.trait->is_valid() )
+        {
+            return ::HIR::Path(::HIR::Path::Data::make_UfcsUnknown({
+                LowerHIR_Type(*e.type),
+                e.nodes[0].name(),
+                {}
+                }));
+        }
+        else
+        {
+            return ::HIR::Path(
+                LowerHIR_Type(*e.type),
+                LowerHIR_GenericPath(*e.trait),
+                e.nodes[0].name(),
+                {}
+                );
+        }
         )
     )
     throw "BUGCHECK: Reached end of LowerHIR_Path";

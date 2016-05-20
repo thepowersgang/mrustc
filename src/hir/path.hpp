@@ -64,9 +64,20 @@ public:
     // - Generic path
     TAGGED_UNION(Data, Generic,
     (Generic, GenericPath),
-    (UFCS, struct {
+    (UfcsInherent, struct {
+        TypeRefPtr  type;
+        ::std::string   item;
+        PathParams  params;
+        }),
+    (UfcsKnown, struct {
         TypeRefPtr  type;
         GenericPath trait;
+        ::std::string   item;
+        PathParams  params;
+        }),
+    (UfcsUnknown, struct {
+        TypeRefPtr  type;
+        //GenericPath ??;
         ::std::string   item;
         PathParams  params;
         })
@@ -76,6 +87,9 @@ private:
     Data m_data;
 
 public:
+    Path(Data data):
+        m_data(mv$(data))
+    {}
     Path(GenericPath _);
     Path(TypeRefPtr type, GenericPath trait, ::std::string item, PathParams params);
     Path(SimplePath _);

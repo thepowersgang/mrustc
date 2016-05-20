@@ -54,7 +54,7 @@ namespace HIR {
 {
 }
 ::HIR::Path::Path(::HIR::TypeRefPtr type, ::HIR::GenericPath trait, ::std::string item, ::HIR::PathParams params):
-    m_data( ::HIR::Path::Data::make_UFCS({
+    m_data( ::HIR::Path::Data::make_UfcsKnown({
         mv$(type), mv$(trait), mv$(item), mv$(params)
         }) )
 {
