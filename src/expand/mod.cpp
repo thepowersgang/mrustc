@@ -343,6 +343,52 @@ struct CExpandExpr:
     void visit(::AST::ExprNode_Loop& node) override {
         this->visit_nodelete(node, node.m_cond);
         this->visit_nodelete(node, node.m_code);
+        Expand_Pattern(is_early, crate, modstack, this->cur_mod(),  node.m_pattern);
+        if(node.m_type == ::AST::ExprNode_Loop::FOR)
+        {
+            // TODO: Desugar into:
+            // {
+            //     let mut it = <_ as IntoIterator>::into_iter(`m_cond`);
+            //     `m_label`: loop {
+            //         match it.next() {
+            //         Some(`m_pattern`) => `m_code`,
+            //         None => break `m_label`,
+            //         }
+            //     }
+            // }
+            ::std::vector< ::AST::ExprNode_Match_Arm>   arms;
+            arms.push_back( ::AST::ExprNode_Match_Arm(
+                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagEnumVariant(), ::AST::Path(::AST::Path::TagRelative(), {::AST::PathNode("Some")}), ::make_vec1( mv$(node.m_pattern) ) ) ),
+                nullptr,
+                mv$(node.m_code)
+                ) );
+            arms.push_back( ::AST::ExprNode_Match_Arm(
+                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagValue(), ::AST::Pattern::Value::make_Named(::AST::Path(::AST::Path::TagRelative(), {::AST::PathNode("None")})) ) ),
+                nullptr,
+                ::AST::ExprNodeP(new ::AST::ExprNode_Flow(::AST::ExprNode_Flow::BREAK, node.m_label, nullptr))
+                ) );
+            ::std::vector< ::AST::ExprNodeP>    block_nodes;
+            block_nodes.push_back( ::AST::ExprNodeP(new ::AST::ExprNode_LetBinding(
+                ::AST::Pattern(::AST::Pattern::TagBind(), "it"),
+                TypeRef(),
+                ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
+                    ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(), ::AST::Path(::AST::Path::TagRelative(), {::AST::PathNode("IntoIterator")}), { ::AST::PathNode("into_iter") } ),
+                    ::make_vec1( mv$(node.m_cond) )
+                    ))
+                )) );
+            block_nodes.push_back( ::AST::ExprNodeP(new ::AST::ExprNode_Loop(
+                node.m_label,
+                ::AST::ExprNodeP(new ::AST::ExprNode_Match(
+                    ::AST::ExprNodeP(new ::AST::ExprNode_CallMethod(
+                        ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue( ::AST::Path("it") )),
+                        ::AST::PathNode("next"),
+                        {}
+                        )),
+                    mv$(arms)
+                    ))
+                )) );
+            replacement.reset(new ::AST::ExprNode_Block( mv$(block_nodes), nullptr ));
+        }
     }
     void visit(::AST::ExprNode_Match& node) override {
         this->visit_nodelete(node, node.m_val);

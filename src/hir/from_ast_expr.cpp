@@ -237,19 +237,10 @@ struct LowerHIR_ExprNode_Visitor:
                     ))
                 ) );
             break; }
-        case ::AST::ExprNode_Loop::FOR: {
-            // TODO: Desugar into:
-            // {
-            //     let mut it = <_ as IntoIterator>::into_iter(`m_cond`);
-            //     `m_label`: loop {
-            //         match it.next() {
-            //         Some(`m_pattern`) => `m_code`,
-            //         None => break `m_label`,
-            //         }
-            //     }
-            // }
+        case ::AST::ExprNode_Loop::FOR:
+            // NOTE: This should already be desugared (as a pass before resolve)
             TODO(v.get_pos(), "Desugar for loop");
-            break; }
+            break;
         }
     }
     virtual void visit(::AST::ExprNode_Match& v) override {

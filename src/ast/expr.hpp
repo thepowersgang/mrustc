@@ -245,6 +245,15 @@ struct ExprNode_Match_Arm:
     
     unique_ptr<ExprNode>    m_code;
 
+
+    ExprNode_Match_Arm()
+    {}
+    ExprNode_Match_Arm(::std::vector<Pattern> patterns, unique_ptr<ExprNode> cond, unique_ptr<ExprNode> code):
+        m_patterns( mv$(patterns) ),
+        m_cond( mv$(cond) ),
+        m_code( mv$(code) )
+    {}
+
     SERIALISABLE_PROTOTYPES();
 };
     

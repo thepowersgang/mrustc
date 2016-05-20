@@ -595,6 +595,7 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
                 
                 if(arm.m_cond)
                     arm.m_cond->visit( *this );
+                assert( arm.m_code );
                 arm.m_code->visit( *this );
                 
                 this->context.pop_block();
@@ -710,7 +711,7 @@ void Resolve_Absolute_PatternValue(/*const*/ Context& context, ::AST::Pattern::V
     (Integer, ),
     (String, ),
     (Named,
-        assert( ! e.is_trivial() );
+        //assert( ! e.is_trivial() );
         Resolve_Absolute_Path(context, Span(), Context::LookupMode::Constant, e);
         )
     )
