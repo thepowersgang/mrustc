@@ -218,7 +218,7 @@ struct Context
             break;
         
         case LookupMode::Type:
-            //if( name == "SizeHint" ) {
+            //if( name == "IntoIterator" ) {
             //    DEBUG("lookup_in_mod(mod="<<mod.path()<<")");
             //    for(const auto& v : mod.m_type_items) {
             //        DEBUG("- " << v.first << " = " << (v.second.is_pub ? "pub " : "") << v.second.path);
@@ -465,6 +465,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
     (Absolute,
         DEBUG("- Absolute");
         // Nothing to do (TODO: Bind?)
+        Resolve_Absolute_PathNodes(context, Span(),  e.nodes);
         ),
     (UFCS,
         DEBUG("- UFCS");
@@ -476,6 +477,26 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         Resolve_Absolute_PathNodes(context, Span(),  e.nodes);
         )
     )
+    
+    #if 0
+    TU_MATCH_DEF(::AST::Path::Class, (path.m_class), (e),
+    (
+        BUG(sp, "Path wasn't absolutised correctly");
+        ),
+    (Local,
+        // TODO: Ensure that local paths are bound to the variable/type index
+        ),
+    (Absolute,
+        if( e.crate != "" ) {
+            // TODO: Handle items from other crates (back-converting HIR paths)
+        }
+        TODO(sp, "Bind absolute paths to relevant items (and expand)");
+        ),
+    (UFCS,
+        // TODO: Resolve UFCS to item class (if possible)
+        )
+    )
+    #endif
 }
 
 void Resolve_Absolute_Type(Context& context,  TypeRef& type)

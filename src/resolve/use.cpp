@@ -39,7 +39,7 @@ void Resolve_Use(::AST::Crate& crate)
         ),
     (Super,
         assert(e.count >= 1);
-        AST::Path   np(base_path.crate(), {});
+        AST::Path   np("", {});
         if( e.count > base_path.nodes().size() ) {
             ERROR(span, E0000, "Too many `super` components");
         }
@@ -67,8 +67,8 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             BUG(span, "Use path is not absolute after absolutisation");
         
         // TODO: Is this a valid assertion?
-        if( use_stmt.data.path.crate() != "" )
-            BUG(span, "Use path crate was set before resolve");
+        //if( use_stmt.data.path.crate() != "" )
+        //    BUG(span, "Use path crate was set before resolve");
         
         use_stmt.data.path.bind( Resolve_Use_GetBinding(span, crate, use_stmt.data.path, parent_modules) );
         

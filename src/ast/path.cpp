@@ -110,7 +110,6 @@ AST::Path::Path(TagUfcs, TypeRef type, Path trait, ::std::vector<AST::PathNode> 
 {
 }
 AST::Path::Path(const Path& x):
-    m_crate(x.m_crate),
     m_class()
     //m_binding(x.m_binding)
 {
@@ -129,7 +128,7 @@ AST::Path::Path(const Path& x):
         m_class = Class::make_Super({count: ent.count, nodes: ent.nodes});
         ),
     (Absolute,
-        m_class = Class::make_Absolute({nodes: ent.nodes});
+        m_class = Class::make_Absolute({crate: ent.crate, nodes: ent.nodes});
         ),
     (UFCS,
         if( ent.trait )
@@ -359,15 +358,17 @@ int Path::equal_no_generic(const Path& x) const
     DEBUG("equal_no_generic(this = " << *this << ", x = " << x << ")");
     if( m_class.tag() != x.m_class.tag() )
         return -1;
-    if( m_crate != x.m_crate )
-        return -1;
     
     TU_MATCH(Path::Class, (m_class, x.m_class), (ent, x_ent),
     (Invalid, return 0; ),
     (Local,    return (ent.name == x_ent.name ? 0 : 1); ),
     
     (Relative, return Path::node_lists_equal_no_generic(ent.nodes, x_ent.nodes); ),
-    (Absolute, return Path::node_lists_equal_no_generic(ent.nodes, x_ent.nodes); ),
+    (Absolute,
+        if( ent.crate != x_ent.crate )
+            return -1;
+        return Path::node_lists_equal_no_generic(ent.nodes, x_ent.nodes);
+        ),
     (Self    , return Path::node_lists_equal_no_generic(ent.nodes, x_ent.nodes); ),
     (Super   , return Path::node_lists_equal_no_generic(ent.nodes, x_ent.nodes); ),
     (UFCS,
@@ -418,9 +419,6 @@ Ordering Path::ord(const Path& x) const
     rv = ::ord( (unsigned)m_class.tag(), (unsigned)x.m_class.tag() );
     if( rv != OrdEqual )    return rv;
     
-    rv = ::ord( m_crate, x.m_crate );
-    if( rv != OrdEqual )    return rv;
-    
     TU_MATCH(Path::Class, (m_class, x.m_class), (ent, x_ent),
     (Invalid,
         return OrdEqual;
@@ -438,6 +436,8 @@ Ordering Path::ord(const Path& x) const
         return ::ord(ent.nodes, x_ent.nodes);
         ),
     (Absolute,
+        rv = ::ord( ent.crate, x_ent.crate );
+        if( rv != OrdEqual )    return rv;
         return ::ord(ent.nodes, x_ent.nodes);
         ),
     (UFCS,
@@ -494,8 +494,8 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context) const
         }
         ),
     (Absolute,
-        if( m_crate != "" )
-            os << "::\"" << m_crate << "\"";
+        if( ent.crate != "" )
+            os << "::\"" << ent.crate << "\"";
         for(const auto& n : ent.nodes)
         {
             os << "::";
@@ -528,19 +528,7 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context) const
 
 ::std::ostream& operator<<(::std::ostream& os, const Path& path)
 {
-    #if PRETTY_PATH_PRINT
     path.print_pretty(os, false);
-    #else
-    switch(path.m_class)
-    {
-    case Path::RELATIVE:
-        os << "Path({" << path.m_nodes << "})";
-        break;
-    case Path::ABSOLUTE:
-        os << "Path(TagAbsolute, \""<<path.m_crate<<"\", {" << path.m_nodes << "})";
-        break;
-    }
-    #endif
     return os;
 }
 void operator%(Serialiser& s, Path::Class::Tag c) {

@@ -1168,7 +1168,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         if( LOOK_AHEAD(lex) == TOK_STRING )
         {
             GET_CHECK_TOK(tok, lex, TOK_STRING);
-            path.set_crate(tok.str());
+            path = ::AST::Path(tok.str(), {});
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         }
         else {

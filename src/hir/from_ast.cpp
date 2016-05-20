@@ -335,7 +335,7 @@
 ::HIR::SimplePath LowerHIR_SimplePath(const ::AST::Path& path, bool allow_final_generic = false)
 {
     TU_IFLET(::AST::Path::Class, path.m_class, Absolute, e,
-        ::HIR::SimplePath   rv( path.crate() );
+        ::HIR::SimplePath   rv( e.crate );
         for( const auto& node : e.nodes )
         {
             if( node.args().size() > 0 )

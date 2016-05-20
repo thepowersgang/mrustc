@@ -124,6 +124,7 @@ public:
             ::std::vector<PathNode> nodes;
             } ),
         (Absolute, struct {    // Absolute
+            ::std::string   crate;
             ::std::vector<PathNode> nodes;
             } ),
         (UFCS, struct {    // Type-relative
@@ -132,10 +133,6 @@ public:
             ::std::vector<PathNode> nodes;
             } )
         );
-    
-private:
-    /// The crate defining the root of this path (used for path resolution)
-    ::std::string   m_crate;
 
 public:
     Class   m_class;
@@ -149,7 +146,6 @@ public:
     {}
     Path(Path&&) noexcept = default;
     Path& operator=(AST::Path&& x) {
-        m_crate = mv$(x.m_crate);
         m_class = mv$(x.m_class);
         m_binding = mv$(x.m_binding);
         //DEBUG("Path, " << x);
@@ -160,8 +156,7 @@ public:
     
     // ABSOLUTE
     Path(::std::string crate, ::std::vector<PathNode> nodes):
-        m_crate( ::std::move(crate) ),
-        m_class( Class::make_Absolute({nodes: mv$(nodes)}) )
+        m_class( Class::make_Absolute({crate: mv$(crate), nodes: mv$(nodes)}) )
     {}
     
     // UFCS
@@ -194,12 +189,12 @@ public:
         m_class( Class::make_Super({count: count, nodes: mv$(nodes)}) )
     {}
     
-    void set_crate(::std::string crate) {
-        if( m_crate == "" ) {
-            m_crate = crate;
-            DEBUG("crate set to " << m_crate);
-        }
-    }
+    //void set_crate(::std::string crate) {
+    //    if( m_crate == "" ) {
+    //        m_crate = crate;
+    //        DEBUG("crate set to " << m_crate);
+    //    }
+    //}
 
     
     Class::Tag class_tag() const {
@@ -288,7 +283,7 @@ public:
         )
         throw ::std::runtime_error("Path::nodes() fell off");
     }
-    const ::std::string& crate() const { return m_crate; }
+    //const ::std::string& crate() const { return m_crate; }
 
     bool is_concrete() const;
     
