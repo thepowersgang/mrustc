@@ -86,10 +86,6 @@ TypeRef Parse_Type_Int(TokenStream& lex)
         {
             return TypeRef(TypeRef::TagPrimitive(), Span(tok.get_pos()), ct);
         }
-        if( tok.str() == "str" )
-        {
-            return TypeRef(TypeRef::TagPath(), Span(tok.get_pos()), AST::Path("", { AST::PathNode("#",{}), AST::PathNode("str",{}) }));
-        }
         lex.putback(tok);
         return Parse_Type_Path(lex, {});
         // - Fall through to path handling

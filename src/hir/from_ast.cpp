@@ -424,7 +424,8 @@
         switch(e.core_type)
         {
         case CORETYPE_BOOL: return ::HIR::TypeRef( ::HIR::CoreType::Bool );
-        case CORETYPE_CHAR: return ::HIR::TypeRef( ::HIR::CoreType::Char );
+        case CORETYPE_CHAR: return ::HIR::TypeRef( ::HIR::CoreType::Str );
+        case CORETYPE_STR : return ::HIR::TypeRef( ::HIR::CoreType::Char );
         case CORETYPE_F32:  return ::HIR::TypeRef( ::HIR::CoreType::F32 );
         case CORETYPE_F64:  return ::HIR::TypeRef( ::HIR::CoreType::F64 );
         

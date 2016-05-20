@@ -16,6 +16,7 @@ static const struct {
     const char* name;
     enum eCoreType  type;
 } CORETYPES[] = {
+    // NOTE: Sorted
     {"bool", CORETYPE_BOOL},
     {"char", CORETYPE_CHAR},
     {"f32", CORETYPE_F32},
@@ -26,6 +27,7 @@ static const struct {
     {"i8", CORETYPE_I8},
     {"int", CORETYPE_INT},
     {"isize", CORETYPE_INT},
+    {"str", CORETYPE_STR},
     {"u16", CORETYPE_U16},
     {"u32", CORETYPE_U32},
     {"u64", CORETYPE_U64},
@@ -52,6 +54,7 @@ const char* coretype_name(const eCoreType ct ) {
     case CORETYPE_INVAL:return "-";
     case CORETYPE_ANY:  return "_";
     case CORETYPE_CHAR: return "char";
+    case CORETYPE_STR:  return "str";
     case CORETYPE_BOOL: return "bool";
     case CORETYPE_UINT: return "usize";
     case CORETYPE_INT:  return "isize";

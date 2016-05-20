@@ -35,7 +35,17 @@ void Resolve_Use(::AST::Crate& crate)
         return base_path + path;
         ),
     (Self,
-        return base_path + path;
+        // EVIL HACK: If the current module is an anon module, refer to the parent
+        if( base_path.nodes().back().name()[0] == '#' ) {
+            AST::Path   np("", {});
+            for( unsigned int i = 0; i < base_path.nodes().size() - 1; i ++ )
+                np.nodes().push_back( base_path.nodes()[i] );
+            np += path;
+            return np;
+        }
+        else {
+            return base_path + path;
+        }
         ),
     (Super,
         assert(e.count >= 1);

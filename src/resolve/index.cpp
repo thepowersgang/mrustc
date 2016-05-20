@@ -42,7 +42,8 @@ void _add_item(AST::Module& mod, IndexName location, const ::std::string& name, 
     DEBUG("Add " << location << " item '" << name << "': " << ir);
     auto& list = get_mod_index(mod, location);
     
-    if( false == list.insert(::std::make_pair(name, ::AST::Module::IndexEnt { is_pub, mv$(ir) } )).second )
+    bool was_import = (ir != mod.path() + name);
+    if( false == list.insert(::std::make_pair(name, ::AST::Module::IndexEnt { is_pub, was_import, mv$(ir) } )).second )
     {
         if( error_on_collision ) 
         {

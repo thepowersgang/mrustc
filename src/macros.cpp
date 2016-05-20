@@ -107,6 +107,8 @@ class MacroExpander:
 public:
 
 private:
+    const ::std::string m_macro_name;
+
     const ::std::string m_crate_name;
     const ::std::vector<MacroRuleEnt>&  m_root_contents;
     const ParameterMappings m_mappings;
@@ -129,6 +131,7 @@ private:
     
 public:
     MacroExpander(const MacroExpander& x):
+        m_macro_name( x.m_macro_name ),
         m_crate_name(x.m_crate_name),
         m_root_contents(x.m_root_contents),
         m_mappings(x.m_mappings),
@@ -137,10 +140,11 @@ public:
     {
         prep_counts();
     }
-    MacroExpander(const ::std::vector<MacroRuleEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
-        m_crate_name(crate_name),
+    MacroExpander(::std::string macro_name, const ::std::vector<MacroRuleEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
+        m_macro_name( mv$(macro_name) ),
+        m_crate_name( mv$(crate_name) ),
         m_root_contents(contents),
-        m_mappings(mappings),
+        m_mappings( mv$(mappings) ),
         m_offsets({ {0,0,0} }),
         m_cur_ents(&m_root_contents)
     {
@@ -383,7 +387,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
             }
             
             DEBUG("TODO: Obtain crate name correctly");
-            TokenStream* ret_ptr = new MacroExpander(rule.m_contents, bound_tts, "");
+            TokenStream* ret_ptr = new MacroExpander(name, rule.m_contents, bound_tts, "");
             // HACK! Disable nested macro expansion
             //ret_ptr->parse_state().no_expand_macros = true;
             
@@ -440,7 +444,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
 
 Position MacroExpander::getPosition() const
 {
-    return Position(FMT("Macro:" << ""), 0, m_offsets[0].read_pos);
+    return Position(FMT("Macro:" << m_macro_name << ":"), 0, m_offsets[0].read_pos);
 }
 Token MacroExpander::realGetToken()
 {
