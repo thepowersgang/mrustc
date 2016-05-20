@@ -94,11 +94,38 @@ struct LowerHIR_ExprNode_Visitor:
         ::HIR::ExprNode_BinOp::Op   op;
         switch(v.m_type)
         {
-        case ::AST::ExprNode_BinOp::RANGE:
-            TODO(v.get_pos(), "Desugar range");
-            break;
+        case ::AST::ExprNode_BinOp::RANGE: {
+            // TODO: Lang items
+            auto path_Range     = ::HIR::GenericPath( ::HIR::SimplePath("", {"ops", "Range"}) );
+            auto path_RangeFrom = ::HIR::GenericPath( ::HIR::SimplePath("", {"ops", "RangeFrom"}) );
+            auto path_RangeTo   = ::HIR::GenericPath( ::HIR::SimplePath("", {"ops", "RangeTo"}) );
+            auto path_RangeFull = ::HIR::GenericPath( ::HIR::SimplePath("", {"ops", "RangeFull"}) );
+            
+            ::HIR::ExprNode_StructLiteral::t_values values;
+            if( v.m_left )
+                values.push_back( ::std::make_pair( ::std::string("start"), LowerHIR_ExprNode_Inner( *v.m_left ) ) );
+            if( v.m_right )
+                values.push_back( ::std::make_pair( ::std::string("end")  , LowerHIR_ExprNode_Inner( *v.m_right ) ) );
+            
+            if( v.m_left ) {
+                if( v.m_right ) {
+                    m_rv.reset( new ::HIR::ExprNode_StructLiteral(mv$(path_Range), nullptr, mv$(values)) );
+                }
+                else {
+                    m_rv.reset( new ::HIR::ExprNode_StructLiteral(mv$(path_RangeFrom), nullptr, mv$(values)) );
+                }
+            }
+            else {
+                if( v.m_right ) {
+                    m_rv.reset( new ::HIR::ExprNode_StructLiteral(mv$(path_RangeTo), nullptr, mv$(values)) );
+                }
+                else {
+                    m_rv.reset( new ::HIR::ExprNode_PathValue(mv$(path_RangeFull)) );
+                }
+            }
+            break; }
         case ::AST::ExprNode_BinOp::RANGE_INC:
-            TODO(v.get_pos(), "Desugar range");
+            TODO(v.get_pos(), "Desugar range (inclusive)");
             break;
         case ::AST::ExprNode_BinOp::PLACE_IN:
             TODO(v.get_pos(), "Desugar placement syntax");
@@ -141,6 +168,7 @@ struct LowerHIR_ExprNode_Visitor:
             break;
         case ::AST::ExprNode_UniOp::QMARK:
             TODO(v.get_pos(), "Desugar question mark operator");
+            // NOTE: This operator doesn't use language items, ergo it's a basic desugar and is done in expand
             break;
         
         case ::AST::ExprNode_UniOp::REF:    op = ::HIR::ExprNode_UniOp::Op::Ref   ; if(0)
@@ -165,10 +193,20 @@ struct LowerHIR_ExprNode_Visitor:
         ::std::vector< ::HIR::ExprNodeP> args;
         for(const auto& arg : v.m_args)
             args.push_back( LowerHIR_ExprNode_Inner(*arg) );
-        m_rv.reset( new ::HIR::ExprNode_CallPath(
-            LowerHIR_Path(v.m_path),
-            mv$( args )
-            ) );
+        
+        TU_IFLET(::AST::Path::Class, v.m_path.m_class, Local, e,
+            m_rv.reset( new ::HIR::ExprNode_CallValue(
+                ::HIR::ExprNodeP(new ::HIR::ExprNode_Variable( e.name, v.m_path.binding().as_Variable().slot )),
+                mv$(args)
+                ) );
+        )
+        else
+        {
+            m_rv.reset( new ::HIR::ExprNode_CallPath(
+                LowerHIR_Path(v.m_path),
+                mv$( args )
+                ) );
+        }
     }
     virtual void visit(::AST::ExprNode_CallMethod& v) override {
         ::std::vector< ::HIR::ExprNodeP> args;
@@ -239,7 +277,7 @@ struct LowerHIR_ExprNode_Visitor:
             break; }
         case ::AST::ExprNode_Loop::FOR:
             // NOTE: This should already be desugared (as a pass before resolve)
-            TODO(v.get_pos(), "Desugar for loop");
+            BUG(v.get_pos(), "Encountered still-sugared for loop");
             break;
         }
     }
@@ -344,6 +382,18 @@ struct LowerHIR_ExprNode_Visitor:
         m_rv.reset( new ::HIR::ExprNode_Literal( ::HIR::ExprNode_Literal::Data::make_String( v.m_value ) ) );
     }
     virtual void visit(::AST::ExprNode_Closure& v) override {
+        ::HIR::ExprNode_Closure::args_t args;
+        for(const auto& arg : v.m_args) {
+            args.push_back( ::std::make_pair(
+                LowerHIR_Pattern( arg.first ),
+                LowerHIR_Type( arg.second )
+                ) );
+        }
+        m_rv.reset( new ::HIR::ExprNode_Closure(
+            mv$(args),
+            LowerHIR_Type(v.m_return),
+            LowerHIR_ExprNode_Inner(*v.m_code)
+            ) );
     }
     virtual void visit(::AST::ExprNode_StructLiteral& v) override {
         ::HIR::ExprNode_StructLiteral::t_values values;

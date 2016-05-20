@@ -482,6 +482,32 @@ struct CExpandExpr:
     }
     void visit(::AST::ExprNode_UniOp& node) override {
         this->visit_nodelete(node, node.m_value);
+        if( node.m_type == ::AST::ExprNode_UniOp::QMARK ) {
+            auto path_Ok  = ::AST::Path("", {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Ok")});
+            auto path_Err = ::AST::Path("", {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Err")});
+            auto path_From = ::AST::Path("", {::AST::PathNode("convert"), ::AST::PathNode("From")});
+            
+            ::std::vector< ::AST::ExprNode_Match_Arm>   arms;
+            arms.push_back(::AST::ExprNode_Match_Arm(
+                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagEnumVariant(), path_Ok, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), "v") )) ),
+                nullptr,
+                ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path(::AST::Path::TagLocal(), "v") ) )
+                ));
+            arms.push_back(::AST::ExprNode_Match_Arm(
+                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagEnumVariant(), path_Err, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), "e") )) ),
+                nullptr,
+                ::AST::ExprNodeP(new ::AST::ExprNode_Flow(
+                    ::AST::ExprNode_Flow::RETURN,
+                    "",
+                    ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
+                        ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(), mv$(path_From), { ::AST::PathNode("from") }),
+                        ::make_vec1( ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path(::AST::Path::TagLocal(), "e") ) ) )
+                        ))
+                    ))
+                ));
+
+            replacement.reset(new ::AST::ExprNode_Match( mv$(node.m_value), mv$(arms) ));
+        }
     }
 };
 

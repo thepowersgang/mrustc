@@ -12,6 +12,9 @@ namespace HIR {
 /// Simple path - Absolute with no generic parameters
 struct SimplePath
 {
+    ::std::string   m_crate_name;
+    ::std::vector< ::std::string>   m_components;
+
     SimplePath():
         m_crate_name("")
     {
@@ -20,9 +23,11 @@ struct SimplePath
         m_crate_name( mv$(crate) )
     {
     }
-
-    ::std::string   m_crate_name;
-    ::std::vector< ::std::string>   m_components;
+    SimplePath(::std::string crate, ::std::vector< ::std::string> components):
+        m_crate_name( mv$(crate) ),
+        m_components( mv$(components) )
+    {
+    }
 
     
     SimplePath operator+(const ::std::string& s) const;

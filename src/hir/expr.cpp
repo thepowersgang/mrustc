@@ -36,5 +36,7 @@ DEF_VISIT(ExprNode_Tuple)
 DEF_VISIT(ExprNode_ArrayList)
 DEF_VISIT(ExprNode_ArraySized)
 
+DEF_VISIT(ExprNode_Closure);
+
 #undef DEF_VISIT
 

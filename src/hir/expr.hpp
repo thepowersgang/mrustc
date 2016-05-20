@@ -44,8 +44,8 @@ struct ExprNode_Return:
 {
     ::HIR::ExprNodeP    m_value;
     
-    ExprNode_Return(::HIR::ExprNodeP v):
-        m_value( mv$(m_value) )
+    ExprNode_Return(::HIR::ExprNodeP value):
+        m_value( mv$(value) )
     {}
     
     NODE_METHODS();
@@ -406,6 +406,24 @@ struct ExprNode_ArraySized:
     NODE_METHODS();
 };
 
+struct ExprNode_Closure:
+    public ExprNode
+{
+    typedef ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >   args_t;
+    
+    args_t  m_args;
+    ::HIR::TypeRef  m_return;
+    ::HIR::ExprNodeP    m_code;
+    
+    ExprNode_Closure(args_t args, ::HIR::TypeRef rv, ::HIR::ExprNodeP code):
+        m_args( ::std::move(args) ),
+        m_return( ::std::move(rv) ),
+        m_code( ::std::move(code) )
+    {}
+    
+    NODE_METHODS();
+};
+
 #undef NODE_METHODS
 
 class ExprVisitor
@@ -441,6 +459,8 @@ public:
     NV(ExprNode_Tuple);
     NV(ExprNode_ArrayList);
     NV(ExprNode_ArraySized);
+    
+    NV(ExprNode_Closure);
 };
 
 }
