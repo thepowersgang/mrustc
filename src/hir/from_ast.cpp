@@ -161,7 +161,7 @@
         
         TU_MATCH_DEF(::AST::PathBinding, (e.path.binding()), (pb),
         (
-            BUG(Span(), "Encountered StructTuple pattern not pointing to a enum variant or a struct");
+            BUG(Span(), "Encountered StructTuple pattern not pointing to a enum variant or a struct - " << e.path);
             ),
         (EnumVar,
             return ::HIR::Pattern {

@@ -346,48 +346,59 @@ struct CExpandExpr:
         Expand_Pattern(is_early, crate, modstack, this->cur_mod(),  node.m_pattern);
         if(node.m_type == ::AST::ExprNode_Loop::FOR)
         {
-            // TODO: Desugar into:
+            auto path_Some = ::AST::Path("", {::AST::PathNode("option"), ::AST::PathNode("Option"), ::AST::PathNode("Some")});
+            auto path_None = ::AST::Path("", {::AST::PathNode("option"), ::AST::PathNode("Option"), ::AST::PathNode("None")});
+            auto path_IntoIterator = ::AST::Path("", {::AST::PathNode("iter"), ::AST::PathNode("IntoIterator")});
+            auto path_Iterator = ::AST::Path("", {::AST::PathNode("iter"), ::AST::PathNode("Iterator")});
+            // Desugar into:
             // {
-            //     let mut it = <_ as IntoIterator>::into_iter(`m_cond`);
-            //     `m_label`: loop {
-            //         match it.next() {
-            //         Some(`m_pattern`) => `m_code`,
-            //         None => break `m_label`,
+            //     match <_ as ::iter::IntoIterator>::into_iter(`m_cond`) {
+            //     mut it => {
+            //         `m_label`: loop {
+            //             match ::iter::Iterator::next(&mut it) {
+            //             Some(`m_pattern`) => `m_code`,
+            //             None => break `m_label`,
+            //             }
             //         }
             //     }
             // }
             ::std::vector< ::AST::ExprNode_Match_Arm>   arms;
+            // - `Some(pattern ) => code`
             arms.push_back( ::AST::ExprNode_Match_Arm(
-                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagEnumVariant(), ::AST::Path(::AST::Path::TagRelative(), {::AST::PathNode("Some")}), ::make_vec1( mv$(node.m_pattern) ) ) ),
+                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagEnumVariant(), path_Some, ::make_vec1( mv$(node.m_pattern) ) ) ),
                 nullptr,
                 mv$(node.m_code)
                 ) );
+            // - `None => break label`
             arms.push_back( ::AST::ExprNode_Match_Arm(
-                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagValue(), ::AST::Pattern::Value::make_Named(::AST::Path(::AST::Path::TagRelative(), {::AST::PathNode("None")})) ) ),
+                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagValue(), ::AST::Pattern::Value::make_Named(path_None)) ),
                 nullptr,
                 ::AST::ExprNodeP(new ::AST::ExprNode_Flow(::AST::ExprNode_Flow::BREAK, node.m_label, nullptr))
                 ) );
-            ::std::vector< ::AST::ExprNodeP>    block_nodes;
-            block_nodes.push_back( ::AST::ExprNodeP(new ::AST::ExprNode_LetBinding(
-                ::AST::Pattern(::AST::Pattern::TagBind(), "it"),
-                TypeRef(),
+            
+            replacement.reset(new ::AST::ExprNode_Match(
                 ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                    ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(), ::AST::Path(::AST::Path::TagRelative(), {::AST::PathNode("IntoIterator")}), { ::AST::PathNode("into_iter") } ),
+                    ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(), path_IntoIterator, { ::AST::PathNode("into_iter") } ),
                     ::make_vec1( mv$(node.m_cond) )
-                    ))
-                )) );
-            block_nodes.push_back( ::AST::ExprNodeP(new ::AST::ExprNode_Loop(
-                node.m_label,
-                ::AST::ExprNodeP(new ::AST::ExprNode_Match(
-                    ::AST::ExprNodeP(new ::AST::ExprNode_CallMethod(
-                        ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue( ::AST::Path("it") )),
-                        ::AST::PathNode("next"),
-                        {}
-                        )),
-                    mv$(arms)
-                    ))
-                )) );
-            replacement.reset(new ::AST::ExprNode_Block( mv$(block_nodes), nullptr ));
+                    )),
+                ::make_vec1(::AST::ExprNode_Match_Arm(
+                    ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), "it") ),
+                    nullptr,
+                    ::AST::ExprNodeP(new ::AST::ExprNode_Loop(
+                        node.m_label,
+                        ::AST::ExprNodeP(new ::AST::ExprNode_Match(
+                            ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
+                                ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(), path_Iterator, { ::AST::PathNode("next") } ),
+                                ::make_vec1( ::AST::ExprNodeP(new ::AST::ExprNode_UniOp(
+                                    ::AST::ExprNode_UniOp::REFMUT,
+                                    ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue( ::AST::Path("it") ))
+                                    )) )
+                                )),
+                            mv$(arms)
+                            ))
+                        )) )
+                    )
+                ) );
         }
     }
     void visit(::AST::ExprNode_Match& node) override {
