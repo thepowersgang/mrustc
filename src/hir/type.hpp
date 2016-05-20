@@ -58,6 +58,7 @@ struct TypeRef
 
     TAGGED_UNION(Data, Infer,
     (Infer, struct {}),
+    (Diverge, struct {}),
     (Primitive, ::HIR::CoreType),
     (Path,  ::HIR::Path),
     (Generic, struct {

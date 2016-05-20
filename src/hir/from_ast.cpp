@@ -428,7 +428,8 @@
 {
     TU_MATCH(::TypeData, (ty.m_data), (e),
     (None,
-        TODO(ty.span(), "TypeData::None");
+        // Aka diverging
+        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Diverge({}) );
         ),
     (Any,
         return ::HIR::TypeRef();
@@ -527,7 +528,10 @@
 
 ::HIR::TypeAlias LowerHIR_TypeAlias(const ::AST::TypeAlias& ta)
 {
-    throw ::std::runtime_error("TODO: LowerHIR_TypeAlias");
+    return ::HIR::TypeAlias {
+        LowerHIR_GenericParams(ta.params()),
+        LowerHIR_Type(ta.type())
+        };
 }
 
 ::HIR::Struct LowerHIR_Struct(const ::AST::Struct& ent)
