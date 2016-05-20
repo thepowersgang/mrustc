@@ -747,7 +747,8 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
         Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, e.path);
         TU_IFLET(::AST::Path::Class, e.path.m_class, UFCS, ufcs,
             if( ufcs.nodes.size() == 0 && ! ufcs.trait ) {
-                type = mv$(*ufcs.type);
+                auto ty = mv$(*ufcs.type);
+                type = mv$(ty);
                 return ;
             }
             assert( ufcs.nodes.size() == 1);
@@ -840,9 +841,10 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
             case ::AST::ExprNode_Loop::WHILE:
                 break;
             case ::AST::ExprNode_Loop::WHILELET:
-            case ::AST::ExprNode_Loop::FOR:
                 Resolve_Absolute_Pattern(this->context, true, node.m_pattern);
                 break;
+            case ::AST::ExprNode_Loop::FOR:
+                BUG(node.get_pos(), "`for` should be desugared");
             }
             node.m_code->visit( *this );
             this->context.pop_block();
