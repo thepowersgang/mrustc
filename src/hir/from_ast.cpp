@@ -367,7 +367,7 @@
         return ::HIR::GenericPath(mv$(sp), mv$(params));
     )
     else {
-        throw "BUG: Encountered non-Absolute path when creating ::HIR::GenericPath";
+        BUG(Span(), "Encountered non-Absolute path when creating ::HIR::GenericPath - " << path);
     }
 }
 ::HIR::Path LowerHIR_Path(const ::AST::Path& path)
