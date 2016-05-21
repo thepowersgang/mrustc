@@ -18,7 +18,7 @@ void Cfg_SetFlag(::std::string name) {
 void Cfg_SetValue(::std::string name, ::std::string val) {
     g_cfg_values.insert( ::std::make_pair(mv$(name), mv$(val)) );
 }
-void Cfg_SetValue(::std::string name, ::std::function<bool(const ::std::string&)> cb) {
+void Cfg_SetValueCb(::std::string name, ::std::function<bool(const ::std::string&)> cb) {
     g_cfg_value_fcns.insert( ::std::make_pair(mv$(name), mv$(cb)) );
 }
 

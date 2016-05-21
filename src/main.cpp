@@ -77,6 +77,11 @@ int main(int argc, char *argv[])
     // Set up cfg values
     Cfg_SetFlag("linux");
     Cfg_SetValue("target_pointer_width", "64");
+    Cfg_SetValueCb("target_has_atomic", [](const ::std::string& s) {
+        if(s == "8")    return true;    // Has an atomic byte
+        if(s == "ptr")  return true;    // Has an atomic pointer-sized value
+        return false;
+        });
     
     
     try
