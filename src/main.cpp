@@ -140,10 +140,11 @@ int main(int argc, char *argv[])
             return 0;
         }
         
-        ::HIR::CratePtr hir_crate;
-        CompilePhaseV("HIR Lower", [&]() {
-            hir_crate = LowerHIR_FromAST(mv$( crate ));
+        ::HIR::CratePtr hir_crate = CompilePhase< ::HIR::CratePtr>("HIR Lower", [&]() {
+            return LowerHIR_FromAST(mv$( crate ));
             });
+        // Deallocate the original crate
+        crate = ::AST::Crate();
 
         // Perform type checking on items
         // - Replace type aliases (`type`) into the actual type
@@ -177,18 +178,7 @@ int main(int argc, char *argv[])
         CompilePhaseV("Lower MIR", [&]() {
             //ConvertHIR_MIR(hir_crate);
             });
-
-        CompilePhaseV("Output", [&]() {
-            Dump_Rust( FMT(params.outfile << ".rs").c_str(), crate );
-            });
-    
-        if( params.emit_flags == ProgramParams::EMIT_AST )
-        {
-            ::std::ofstream os(params.outfile);
-            Serialiser_TextTree os_tt(os);
-            ((Serialiser&)os_tt) << crate;
-            return 0;
-        }
+        
         // Flatten modules into "mangled" set
         //g_cur_phase = "Flatten";
         //AST::Flat flat_crate = Convert_Flatten(crate);

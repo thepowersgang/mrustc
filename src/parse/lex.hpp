@@ -107,7 +107,7 @@ extern ::std::string& operator+=(::std::string& s, const Codepoint& cp);
 class Lexer:
     public TokenStream
 {
-    ::std::string   m_path;
+    RcString    m_path;
     unsigned int m_line;
     unsigned int m_line_ofs;
 
@@ -116,7 +116,7 @@ class Lexer:
     char    m_last_char;
     Token   m_next_token;   // Used when lexing generated two tokens
 public:
-    Lexer(::std::string filename);
+    Lexer(const ::std::string& filename);
 
     virtual Position getPosition() const override;
     virtual Token realGetToken() override;

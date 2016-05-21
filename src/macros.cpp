@@ -114,7 +114,7 @@ class MacroExpander:
 public:
 
 private:
-    const ::std::string m_macro_name;
+    const RcString  m_macro_filename;
 
     const ::std::string m_crate_name;
     const ::std::vector<MacroRuleEnt>&  m_root_contents;
@@ -148,8 +148,8 @@ public:
     //{
     //    prep_counts();
     //}
-    MacroExpander(::std::string macro_name, const ::std::vector<MacroRuleEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
-        m_macro_name( mv$(macro_name) ),
+    MacroExpander(const ::std::string& macro_name, const ::std::vector<MacroRuleEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
+        m_macro_filename( FMT("Macro:" << macro_name) ),
         m_crate_name( mv$(crate_name) ),
         m_root_contents(contents),
         m_mappings( mv$(mappings) ),
@@ -414,7 +414,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
 
 Position MacroExpander::getPosition() const
 {
-    return Position(FMT("Macro:" << m_macro_name << ":"), 0, m_offsets[0].read_pos);
+    return Position(m_macro_filename, 0, m_offsets[0].read_pos);
 }
 Token MacroExpander::realGetToken()
 {

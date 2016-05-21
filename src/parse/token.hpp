@@ -26,7 +26,7 @@ public:
         line(0),
         ofs(0)
     {}
-    Position(::std::string filename, unsigned int line, unsigned int ofs):
+    Position(RcString filename, unsigned int line, unsigned int ofs):
         filename(filename),
         line(line),
         ofs(ofs)

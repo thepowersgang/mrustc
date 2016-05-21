@@ -14,8 +14,18 @@ class CratePtr
 public:
     CratePtr();
     CratePtr(Crate c);
-    CratePtr(CratePtr&&) = default;
-    CratePtr& operator=(CratePtr&&) = default;
+    CratePtr(CratePtr&& x):
+        m_ptr( x.m_ptr )
+    {
+        x.m_ptr = nullptr;
+    }
+    CratePtr& operator=(CratePtr&& x)
+    {
+        this->~CratePtr();
+        m_ptr = x.m_ptr;
+        x.m_ptr = nullptr;
+        return *this;
+    }
     ~CratePtr();
 };
 

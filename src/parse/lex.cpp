@@ -22,8 +22,8 @@
 
 const bool DEBUG_PRINT_TOKENS = false;
 
-Lexer::Lexer(::std::string filename):
-    m_path(filename),
+Lexer::Lexer(const ::std::string& filename):
+    m_path(filename.c_str()),
     m_line(1),
     m_line_ofs(0),
     m_istream(filename.c_str()),

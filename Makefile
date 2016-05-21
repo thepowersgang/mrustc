@@ -7,7 +7,7 @@ LINKFLAGS := -g
 LIBS :=
 CXXFLAGS := -g -Wall -std=c++14 -Werror
 #CXXFLAGS += -Wextra
-CXXFLAGS += -O3
+CXXFLAGS += -O2
 CPPFLAGS := -I src/include/ -I src/
 
 SHELL = bash
@@ -17,7 +17,7 @@ ifeq ($(DBGTPL),)
 else ifeq ($(DBGTPL),gdb)
   DBG := echo -e "r\nbt 7\nq" | gdb --args
 else ifeq ($(DBGTPL),valgrind)
-  DBG := valgrind
+  DBG := valgrind --leak-check=full
 else
   $(error "Unknown debug template")
 endif
@@ -27,7 +27,7 @@ OBJDIR = .obj/
 BIN := bin/mrustc$(EXESUF)
 
 OBJ := main.o macros.o types.o serialise.o
-OBJ += span.o
+OBJ += span.o rc_string.o
 OBJ += ast/ast.o ast/crate.o ast/path.o ast/expr.o ast/pattern.o
 OBJ += ast/provided_module.o
 OBJ += parse/parseerror.o parse/lex.o parse/token.o

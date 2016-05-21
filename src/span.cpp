@@ -20,7 +20,7 @@ Span::Span(const Span& x):
 {
 }
 Span::Span(const Position& pos):
-    filename(pos.filename.c_str()),
+    filename(pos.filename),
     start_line(pos.line),
     start_ofs(pos.ofs),
     end_line(pos.line),

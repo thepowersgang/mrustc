@@ -46,10 +46,11 @@ struct Type_Function:
     Type_Function() {}
     Type_Function(bool is_unsafe, ::std::string abi, ::std::unique_ptr<TypeRef> ret, ::std::vector<TypeRef> args):
         is_unsafe(is_unsafe),
-        m_abi(abi),
+        m_abi(mv$(abi)),
         m_rettype(mv$(ret)),
         m_arg_types(mv$(args))
     {}
+    Type_Function(Type_Function&& other) = default;
     Type_Function(const Type_Function& other);
 
     Ordering ord(const Type_Function& x) const;
