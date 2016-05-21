@@ -232,8 +232,13 @@
 
                 case CORETYPE_INT:  return ::HIR::CoreType::Isize;
                 case CORETYPE_UINT: return ::HIR::CoreType::Usize;
+                
+                case CORETYPE_CHAR: return ::HIR::CoreType::Char;
+                
+                case CORETYPE_BOOL: return ::HIR::CoreType::Bool;
+                
                 default:
-                    BUG(Span(), "Unknown type for integer literal");
+                    BUG(Span(), "Unknown type for integer literal in pattern - " << ct );
                 }
             }
             static ::HIR::Pattern::Value lowerhir_pattern_value(const ::AST::Pattern::Value& v) {

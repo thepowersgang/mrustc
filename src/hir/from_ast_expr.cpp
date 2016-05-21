@@ -226,6 +226,14 @@ struct LowerHIR_ExprNode_Visitor:
             ) );
     }
     virtual void visit(::AST::ExprNode_CallObject& v) override {
+        ::std::vector< ::HIR::ExprNodeP> args;
+        for(const auto& arg : v.m_args)
+            args.push_back( LowerHIR_ExprNode_Inner(*arg) );
+        
+        m_rv.reset( new ::HIR::ExprNode_CallValue(
+            LowerHIR_ExprNode_Inner(*v.m_val),
+            mv$(args)
+            ) );
     }
     virtual void visit(::AST::ExprNode_Loop& v) override {
         switch( v.m_type )
@@ -353,7 +361,7 @@ struct LowerHIR_ExprNode_Visitor:
                 case CORETYPE_CHAR: return ::HIR::CoreType::Char;
                 
                 default:
-                    BUG(sp, "Unknown type for integer literal");
+                    BUG(sp, "Unknown type for integer literal - " << ct);
                 }
             }
         };
