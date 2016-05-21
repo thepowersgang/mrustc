@@ -135,6 +135,10 @@ int main(int argc, char *argv[])
         CompilePhaseV("Temp output - Resolved", [&]() {
             Dump_Rust( FMT(params.outfile << "_1_res.rs").c_str(), crate );
             });
+
+        if( params.last_stage == ProgramParams::STAGE_RESOLVE ) {
+            return 0;
+        }
         
         ::HIR::CratePtr hir_crate;
         CompilePhaseV("HIR Lower", [&]() {
@@ -144,7 +148,7 @@ int main(int argc, char *argv[])
         // Perform type checking on items
         // - Replace type aliases (`type`) into the actual type
         CompilePhaseV("Resolve Type Aliases", [&]() {
-            //Typecheck_ExpandAliases(hir_crate);
+            //ConvertHIR_ExpandAliases(hir_crate);
             });
         // Typecheck / type propagate module (type annotations of all values)
         // - Check all generic conditions (ensure referenced trait is valid)
@@ -160,14 +164,18 @@ int main(int argc, char *argv[])
         CompilePhaseV("TypecheckExpr", [&]() {
             //Typecheck_Expr(crate);
             });
+
+        if( params.last_stage == ProgramParams::STAGE_TYPECK ) {
+            return 0;
+        }
         
         // Expand closures into items
         CompilePhaseV("Lower Closures", [&]() {
-            //
+            //ConvertHIR_Closures(hir_crate);
             });
         // Lower expressions into MIR
         CompilePhaseV("Lower MIR", [&]() {
-            //
+            //ConvertHIR_MIR(hir_crate);
             });
 
         CompilePhaseV("Output", [&]() {
