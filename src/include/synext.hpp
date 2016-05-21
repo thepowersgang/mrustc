@@ -25,6 +25,8 @@ namespace AST {
     class ExprNode_Match_Arm;
     
     class MacroInvocation;
+    
+    class ImplDef;
 }
 class TokenTree;
 class TokenStream;
@@ -51,6 +53,8 @@ public:
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate) const { unexpected(mi, "crate"); }
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, AST::MacroInvocation& mac) const { unexpected(mi, "macro invocation"); }
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const { unexpected(mi, "item"); }
+    // NOTE: To delete, set the type to `_`
+    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const { unexpected(mi, "impl"); }
     // NOTE: To delete, clear the name
     virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::StructItem& si) const { unexpected(mi, "struct item"); }
     // NOTE: To delete, make the type invalid

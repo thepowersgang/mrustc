@@ -71,6 +71,7 @@ void Resolve_Index_Module_Base(AST::Module& mod)
     for( const auto& i : mod.items() )
     {
         ::AST::Path p = mod.path() + i.name;
+        DEBUG("- p = " << p << " : " << ::AST::Item::tag_to_str(i.data.tag()));
         
         TU_MATCH(AST::Item, (i.data), (e),
         (None,

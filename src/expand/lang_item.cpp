@@ -105,7 +105,7 @@ public:
     {
         TU_MATCH_DEF(::AST::Item, (i), (e),
         (
-            TODO(Span(), "Unknown item type with #[lang] attached at " << path);
+            TODO(Span(), "Unknown item type with #[lang=\""<<attr<<"\"] attached at " << path);
             ),
         (Function,
             handle_lang_item(crate, path, attr.string(), AST::ITEM_FN);
@@ -117,6 +117,26 @@ public:
             handle_lang_item(crate, path, attr.string(), AST::ITEM_TRAIT);
             )
         )
+    }
+    
+    void handle(const AST::MetaItem& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
+        const ::std::string& name = mi.string();
+        
+             if( name == "i8" ) {}
+        else if( name == "u8" ) {}
+        else if( name == "i16" ) {}
+        else if( name == "u16" ) {}
+        else if( name == "i32" ) {}
+        else if( name == "u32" ) {}
+        else if( name == "i64" ) {}
+        else if( name == "u64" ) {}
+        else if( name == "isize" ) {}
+        else if( name == "usize" ) {}
+        else if( name == "const_ptr" ) {}
+        else if( name == "mut_ptr" ) {}
+        else {
+            throw CompileError::Generic(FMT("Unknown lang item '" << name << "' on impl"));
+        }
     }
 };
 

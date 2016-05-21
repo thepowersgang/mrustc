@@ -9,6 +9,7 @@
 #include <set>
 
 ::std::map< ::std::string, ::std::string>   g_cfg_values;
+::std::map< ::std::string, ::std::function<bool(const ::std::string&)> >   g_cfg_value_fcns;
 ::std::set< ::std::string >   g_cfg_flags;
 
 void Cfg_SetFlag(::std::string name) {
@@ -16,6 +17,9 @@ void Cfg_SetFlag(::std::string name) {
 }
 void Cfg_SetValue(::std::string name, ::std::string val) {
     g_cfg_values.insert( ::std::make_pair(mv$(name), mv$(val)) );
+}
+void Cfg_SetValue(::std::string name, ::std::function<bool(const ::std::string&)> cb) {
+    g_cfg_value_fcns.insert( ::std::make_pair(mv$(name), mv$(cb)) );
 }
 
 bool check_cfg(Span sp, const ::AST::MetaItem& mi) {
@@ -54,11 +58,16 @@ bool check_cfg(Span sp, const ::AST::MetaItem& mi) {
             DEBUG(""<<mi.name()<<": '"<<it->second<<"' == '"<<mi.string()<<"'");
             return it->second == mi.string();
         }
-        else
+        
+        auto it2 = g_cfg_value_fcns.find(mi.name());
+        if(it2 != g_cfg_value_fcns.end() )
         {
-            WARNING(sp, W0000, "Unknown cfg() param '" << mi.name() << "'");
-            return false;
+            DEBUG(""<<mi.name()<<": ('"<<mi.string()<<"')?");
+            return it2->second( mi.string() );
         }
+        
+        WARNING(sp, W0000, "Unknown cfg() param '" << mi.name() << "'");
+        return false;
     }
     else {
         // Flag
@@ -124,6 +133,15 @@ class CCfgHandler:
         }
         else {
             expr.reset();
+        }
+    }
+    void handle(const AST::MetaItem& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
+        DEBUG("#[cfg] impl - " << mi);
+        if( check_cfg(Span(), mi) ) {
+            // Leave
+        }
+        else {
+            impl.type() = ::TypeRef();
         }
     }
 };

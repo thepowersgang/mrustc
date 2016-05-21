@@ -69,6 +69,10 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
 {
     Expand_Attrs(attrs, stage,  [&](const auto& d, const auto& a){ d.handle(a, crate, path, mod, item); });
 }
+void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate, ::AST::Module& mod, ::AST::ImplDef& impl)
+{
+    Expand_Attrs(attrs, stage,  [&](const auto& d, const auto& a){ d.handle(a, crate, mod, impl); });
+}
 
 ::std::unique_ptr<TokenStream> Expand_Macro(
     bool is_early, const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod,
@@ -718,6 +722,13 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
     for( auto& impl : mod.impls() )
     {
         DEBUG("- " << impl);
+        
+        Expand_Attrs(impl.def().attrs(), stage_pre(is_early),  crate, mod, impl.def());
+        if( impl.def().type().is_wildcard() ) {
+            DEBUG("Deleted");
+            continue ;
+        }
+        
         Expand_Type(is_early, crate, modstack, mod,  impl.def().type());
         //Expand_Type(is_early, crate, modstack, mod,  impl.def().trait());
         
@@ -788,6 +799,16 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             if( i.data.attrs.m_items.size() == 0 )
                 i.data.attrs = mv$(attrs);
         }
+
+        Expand_Attrs(impl.def().attrs(), stage_post(is_early),  crate, mod, impl.def());
+    }
+    
+    for( auto it = mod.impls().begin(); it != mod.impls().end(); )
+    {
+        if( it->def().type().is_wildcard() )
+            it = mod.impls().erase( it );
+        else
+            ++ it;
     }
     
     for( const auto& mi: mod.macro_imports_res() )

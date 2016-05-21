@@ -376,6 +376,7 @@ public:
         m_trait( move(trait_type) ),
         m_type( move(impl_type) )
     {}
+    ImplDef& operator=(ImplDef&&) = default;
     
     // Accessors
     const MetaItems& attrs() const { return m_attrs; }
@@ -413,6 +414,7 @@ public:
     Impl(MetaItems attrs, GenericParams params, TypeRef impl_type, Path trait_type):
         m_def( move(attrs), move(params), move(trait_type), move(impl_type) )
     {}
+    Impl& operator=(Impl&&) = default;
 
     void add_function(bool is_public, ::std::string name, Function fcn);
     void add_type(bool is_public, ::std::string name, TypeRef type);
