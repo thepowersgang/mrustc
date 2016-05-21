@@ -120,8 +120,7 @@ int main(int argc, char *argv[])
         CompilePhaseV("Resolve", [&]() {
             Resolve_Use(crate); // - Absolutise and resolve use statements
             Resolve_Index(crate); // - Build up a per-module index of avalable names (faster and simpler later resolve)
-            Resolve_Absolutise(crate);
-            //Resolve_UfcsPaths(crate);
+            Resolve_Absolutise(crate);  // - Convert all paths to Absolute or UFCS, and resolve variables
             
             // OLD resolve code, kinda bad
             //ResolvePaths(crate);
@@ -137,30 +136,33 @@ int main(int argc, char *argv[])
             hir_crate = LowerHIR_FromAST(mv$( crate ));
             });
 
-        // Replace type aliases (`type`) into the actual type
-        CompilePhaseV("Resolve Type Aliases", [&]() {
-            //
-            });
-        
         // Perform type checking on items
-        
-        // 
+        // - Replace type aliases (`type`) into the actual type
+        CompilePhaseV("Resolve Type Aliases", [&]() {
+            //Typecheck_ExpandAliases(hir_crate);
+            });
         // Typecheck / type propagate module (type annotations of all values)
         // - Check all generic conditions (ensure referenced trait is valid)
         //  > Also mark parameter with applicable traits
         CompilePhaseV("TypecheckBounds", [&]() {
             //Typecheck_GenericBounds(crate);
             });
-        
-        // - Check all generic parameters match required conditions
+        // - Check all generic parameters match required conditions (without doing full typeck)
         CompilePhaseV("TypecheckParams", [&]() {
             //Typecheck_GenericParams(crate);
             });
-        // - Typecheck statics and consts
-        // - Typecheck + propagate functions
-        //  > Forward pass first
+        // - Full function typeck
         CompilePhaseV("TypecheckExpr", [&]() {
             //Typecheck_Expr(crate);
+            });
+        
+        // Expand closures into items
+        CompilePhaseV("Lower Closures", [&]() {
+            //
+            });
+        // Lower expressions into MIR
+        CompilePhaseV("Lower MIR", [&]() {
+            //
             });
 
         CompilePhaseV("Output", [&]() {
