@@ -132,6 +132,7 @@ TAGGED_UNION(TraitValueItem, None,
 struct Trait
 {
     GenericParams   m_params;
+    ::std::string   m_lifetime;
     ::std::vector< ::HIR::GenericPath >  m_parent_traits;
     
     ::std::unordered_map< ::std::string, AssociatedType >   m_types;

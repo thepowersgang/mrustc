@@ -203,7 +203,7 @@ struct LowerHIR_ExprNode_Visitor:
         else
         {
             m_rv.reset( new ::HIR::ExprNode_CallPath(
-                LowerHIR_Path(v.m_path),
+                LowerHIR_Path(Span(v.get_pos()), v.m_path),
                 mv$( args )
                 ) );
         }
@@ -349,6 +349,9 @@ struct LowerHIR_ExprNode_Visitor:
 
                 case CORETYPE_INT:  return ::HIR::CoreType::Isize;
                 case CORETYPE_UINT: return ::HIR::CoreType::Usize;
+                
+                case CORETYPE_CHAR: return ::HIR::CoreType::Char;
+                
                 default:
                     BUG(sp, "Unknown type for integer literal");
                 }
@@ -400,7 +403,7 @@ struct LowerHIR_ExprNode_Visitor:
         for(const auto& val : v.m_values)
             values.push_back( ::std::make_pair(val.first, LowerHIR_ExprNode_Inner(*val.second)) );
         m_rv.reset( new ::HIR::ExprNode_StructLiteral(
-            LowerHIR_GenericPath(v.m_path),
+            LowerHIR_GenericPath(v.get_pos(), v.m_path),
             LowerHIR_ExprNode_Inner_Opt(v.m_base_value.get()),
             mv$(values)
             ) );
@@ -437,7 +440,7 @@ struct LowerHIR_ExprNode_Visitor:
             m_rv.reset( new ::HIR::ExprNode_Variable( e.name, slot ) );
         )
         else {
-            m_rv.reset( new ::HIR::ExprNode_PathValue( LowerHIR_Path(v.m_path) ) );
+            m_rv.reset( new ::HIR::ExprNode_PathValue( LowerHIR_Path(Span(v.get_pos()), v.m_path) ) );
         }
     }
     

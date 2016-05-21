@@ -954,6 +954,10 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
 
 void Resolve_Absolute_Generic(Context& context, ::AST::GenericParams& params)
 {
+    for( auto& param : params.ty_params() )
+    {
+        Resolve_Absolute_Type(context, param.get_default());
+    }
     for( auto& bound : params.bounds() )
     {
         TU_MATCH(::AST::GenericBound, (bound), (e),

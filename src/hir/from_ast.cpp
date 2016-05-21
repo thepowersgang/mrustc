@@ -70,13 +70,13 @@
             (IsTrait,
                 rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
                     LowerHIR_Type(e.type),
-                    ::HIR::TraitPath { LowerHIR_GenericPath(e.trait), e.hrls }
+                    ::HIR::TraitPath { LowerHIR_GenericPath(Span(), e.trait), e.hrls }
                     }));
                 ),
             (MaybeTrait,
                 rv.m_bounds.push_back(::HIR::GenericBound::make_TraitUnbound({
                     LowerHIR_Type(e.type),
-                    LowerHIR_GenericPath(e.trait)
+                    LowerHIR_GenericPath(Span(), e.trait)
                     }));
                 ),
             (NotTrait,
@@ -167,7 +167,7 @@
             return ::HIR::Pattern {
                 mv$(binding),
                 ::HIR::Pattern::Data::make_EnumTuple({
-                    LowerHIR_GenericPath(e.path),
+                    LowerHIR_GenericPath(Span(), e.path),
                     mv$(sub_patterns)
                     })
                 };
@@ -176,7 +176,7 @@
             return ::HIR::Pattern {
                 mv$(binding),
                 ::HIR::Pattern::Data::make_StructTuple({
-                    LowerHIR_GenericPath(e.path),
+                    LowerHIR_GenericPath(Span(), e.path),
                     mv$(sub_patterns)
                     })
                 };
@@ -197,7 +197,7 @@
             return ::HIR::Pattern {
                 mv$(binding),
                 ::HIR::Pattern::Data::make_EnumStruct({
-                    LowerHIR_GenericPath(e.path),
+                    LowerHIR_GenericPath(Span(), e.path),
                     mv$(sub_patterns)
                     })
                 };
@@ -206,7 +206,7 @@
             return ::HIR::Pattern {
                 mv$(binding),
                 ::HIR::Pattern::Data::make_Struct({
-                    LowerHIR_GenericPath(e.path),
+                    LowerHIR_GenericPath(Span(), e.path),
                     mv$(sub_patterns)
                     })
                 };
@@ -251,7 +251,7 @@
                     return ::HIR::Pattern::Value::make_String(e);
                     ),
                 (Named,
-                    return ::HIR::Pattern::Value::make_Named( LowerHIR_Path(e) );
+                    return ::HIR::Pattern::Value::make_Named( LowerHIR_Path(Span(), e) );
                     )
                 )
                 throw "BUGCHECK: Reached end of LowerHIR_Pattern::H::lowerhir_pattern_value";
@@ -356,7 +356,7 @@
         throw "BUG: Encountered non-Absolute path when creating ::HIR::GenericPath";
     }
 }
-::HIR::GenericPath LowerHIR_GenericPath(const ::AST::Path& path)
+::HIR::GenericPath LowerHIR_GenericPath(const Span& sp, const ::AST::Path& path)
 {
     TU_IFLET(::AST::Path::Class, path.m_class, Absolute, e,
         auto sp = LowerHIR_SimplePath(path, true);
@@ -370,30 +370,30 @@
         BUG(Span(), "Encountered non-Absolute path when creating ::HIR::GenericPath - " << path);
     }
 }
-::HIR::Path LowerHIR_Path(const ::AST::Path& path)
+::HIR::Path LowerHIR_Path(const Span& sp, const ::AST::Path& path)
 {
     TU_MATCH(::AST::Path::Class, (path.m_class), (e),
     (Invalid,
-        throw "BUG: Encountered Invalid path in LowerHIR_Path";
+        BUG(sp, "BUG: Encountered Invalid path in LowerHIR_Path");
         ),
     (Local,
-        BUG(Span(), "TODO: What to do wth Path::Class::Local in LowerHIR_Path - " << path);
+        TODO(sp, "What to do wth Path::Class::Local in LowerHIR_Path - " << path);
         ),
     (Relative,
-        throw "BUG: Encountered `Relative` path in LowerHIR_Path";
+        BUG(sp, "Encountered `Relative` path in LowerHIR_Path - " << path);
         ),
     (Self,
-        throw "BUG: Encountered `Self` path in LowerHIR_Path";
+        BUG(sp, "Encountered `Self` path in LowerHIR_Path - " << path);
         ),
     (Super,
-        throw "BUG: Encountered `Super` path in LowerHIR_Path";
+        BUG(sp, "Encountered `Super` path in LowerHIR_Path - " << path);
         ),
     (Absolute,
-        return ::HIR::Path( LowerHIR_GenericPath(path) );
+        return ::HIR::Path( LowerHIR_GenericPath(sp, path) );
         ),
     (UFCS,
         if( e.nodes.size() != 1 )
-            throw "TODO: Handle UFCS with multiple nodes";
+            TODO(Span(), "Handle UFCS with multiple nodes - " << path);
         if( ! e.trait )
         {
             return ::HIR::Path(::HIR::Path::Data::make_UfcsInherent({
@@ -414,7 +414,7 @@
         {
             return ::HIR::Path(
                 LowerHIR_Type(*e.type),
-                LowerHIR_GenericPath(*e.trait),
+                LowerHIR_GenericPath(sp, *e.trait),
                 e.nodes[0].name(),
                 {}
                 );
@@ -501,7 +501,7 @@
             return ::HIR::TypeRef( l.name, slot );
         )
         else {
-            return ::HIR::TypeRef( LowerHIR_Path(e.path) );
+            return ::HIR::TypeRef( LowerHIR_Path(ty.span(), e.path) );
         }
         ),
     (TraitObject,
@@ -510,14 +510,21 @@
         ::HIR::TypeRef::Data::Data_TraitObject  v;
         for(const auto& t : e.traits)
         {
-            v.m_traits.push_back( LowerHIR_GenericPath(t) );
+            v.m_traits.push_back( LowerHIR_GenericPath(ty.span(), t) );
         }
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_TraitObject( mv$(v) ) );
         ),
     (Function,
-        TODO(ty.span(), "Function types");
-        //::HIR::FunctionType f;
-        //return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function( mv$(f) ) );
+        ::std::vector< ::HIR::TypeRef>  args;
+        for(const auto& arg : e.info.m_arg_types)
+            args.push_back( LowerHIR_Type(arg) );
+        ::HIR::FunctionType f {
+            e.info.is_unsafe,
+            e.info.m_abi,
+            box$( LowerHIR_Type(*e.info.m_rettype) ),
+            mv$(args)
+            };
+        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function( mv$(f) ) );
         ),
     (Generic,
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Generic({ e.name, 0 }) );
@@ -607,11 +614,20 @@
 }
 ::HIR::Trait LowerHIR_Trait(const ::AST::Trait& f)
 {
+    ::std::string   lifetime;
+    
     ::std::vector< ::HIR::GenericPath>    supertraits;
-    for(const auto& st : f.supertraits())
-        supertraits.push_back( LowerHIR_GenericPath(st) );
+    for(const auto& st : f.supertraits()) {
+        if( st.is_valid() ) {
+            supertraits.push_back( LowerHIR_GenericPath(Span(), st) );
+        }
+        else {
+            lifetime = "static";
+        }
+    }
     ::HIR::Trait    rv {
         LowerHIR_GenericParams(f.params()),
+        mv$(lifetime),
         mv$(supertraits),
         {},
         {}
