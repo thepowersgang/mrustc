@@ -804,7 +804,7 @@ ExprNodeP Parse_ExprFC(TokenStream& lex)
                     break;
                 default:
                     val = NEWNODE( AST::ExprNode_Field, ::std::move(val), ::std::string(path.name()) );
-                    lex.putback(tok);
+                    PUTBACK(tok, lex);
                     break;
                 }
                 break; }
@@ -812,11 +812,11 @@ ExprNodeP Parse_ExprFC(TokenStream& lex)
                 val = NEWNODE( AST::ExprNode_Field, ::std::move(val), FMT(tok.intval()) );
                 break;
             default:
-                throw ParseError::Unexpected(lex, tok);
+                throw ParseError::Unexpected(lex, mv$(tok));
             }
             break;
         default:
-            lex.putback(tok);
+            PUTBACK(tok, lex);
             return val;
         }
     }
@@ -1178,7 +1178,7 @@ TokenTree Parse_TT(TokenStream& lex, bool unwrapped)
     }
     if( !unwrapped )
         items.push_back(tok);
-    return TokenTree(items);
+    return TokenTree(mv$(items));
 }
 
 /// A wrapping lexer that 

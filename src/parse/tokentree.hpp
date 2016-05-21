@@ -11,14 +11,16 @@ class TokenTree:
     ::std::vector<TokenTree>    m_subtrees;
 public:
     TokenTree() {}
+    TokenTree(TokenTree&&) = default;
     TokenTree(Token tok):
-        m_tok(tok)
+        m_tok( ::std::move(tok) )
     {
     }
     TokenTree(::std::vector<TokenTree> subtrees):
-        m_subtrees(subtrees)
+        m_subtrees( ::std::move(subtrees) )
     {
     }
+    TokenTree& operator=(TokenTree&&) = default;
 
     bool is_token() const {
         return m_tok.type() != TOK_NULL;
@@ -36,8 +38,18 @@ public:
     friend ::std::ostream& operator<<(::std::ostream& os, const TokenTree& tt) {
         if( tt.m_subtrees.size() == 0 )
             return os << tt.m_tok;
-        else
-            return os << "TT([" << tt.m_subtrees << "])";
+        else {
+            os << "TT([";
+            bool first = true;
+            for(const auto& i : tt.m_subtrees) {
+                if(!first)
+                    os << ", ";
+                os << i;
+                first = false;
+            }
+            os << "])";
+            return os;
+        }
     }
 
     SERIALISABLE_PROTOTYPES();
@@ -64,13 +76,15 @@ class TTStreamO:
     public TokenStream
 {
     Position    m_last_pos;
-    const TokenTree m_input_tt;
+    TokenTree	m_input_tt;
     ::std::vector< ::std::pair<unsigned int, const TokenTree*> > m_stack;
 public:
-    TTStreamO(const TokenTree input_tt);
+    TTStreamO(TokenTree input_tt);
+    TTStreamO(TTStreamO&& x) = default;
     ~TTStreamO();
 
     TTStreamO& operator=(const TTStreamO& x) { m_stack = x.m_stack; return *this; }
+    TTStreamO& operator=(TTStreamO&& x) = default;
     
     virtual Position getPosition() const override;
 

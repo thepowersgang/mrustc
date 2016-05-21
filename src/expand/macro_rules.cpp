@@ -19,7 +19,7 @@ class CMacroRulesExpander:
         auto mac = Parse_MacroRules(lex);
         mod.add_macro( false, ident, mac );
         
-        return box$( TTStreamO(TokenTree()) );
+        return ::std::unique_ptr<TokenStream>( new TTStreamO(TokenTree()) );
     }
 };
 

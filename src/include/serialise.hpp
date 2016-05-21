@@ -26,13 +26,13 @@ class Deserialiser;
 class DeserialiseFailure:
     public ::std::runtime_error
 {
-    const char *m_fcn;
-    const char *m_message;
+    //const char *m_fcn;
+    //const char *m_message;
 public:
     DeserialiseFailure(const char *fcn, const char *message):
-        ::std::runtime_error("Deserialise failure"),
-        m_fcn(fcn),
-        m_message(message)
+        ::std::runtime_error("Deserialise failure")//,
+        //m_fcn(fcn),
+        //m_message(message)
     {}
 };
 

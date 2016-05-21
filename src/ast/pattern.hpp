@@ -141,7 +141,7 @@ public:
     static ::std::unique_ptr<Pattern> from_deserialiser(Deserialiser& s) {
         ::std::unique_ptr<Pattern> ret(new Pattern);
         s.item(*ret);
-        return ::std::move(ret);
+        return ret;
     }
 };
 

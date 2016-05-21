@@ -9,6 +9,7 @@
 #define INCLUDED_TAGGED_UNION_H_
 
 //#include "cpp_unpack.h"
+#include <cassert>
 
 #define TU_CASE_ITEM(src, mod, var, name)	mod auto& name = src.as_##var(); (void)&name;
 #define TU_CASE_BODY(class,var, ...)	case class::var: { __VA_ARGS__ } break;

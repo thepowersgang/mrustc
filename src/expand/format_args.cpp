@@ -45,7 +45,10 @@ class CFormatArgsExpander:
         }
         
         // TODO: Expand format_args!
-        return box$( TTStreamO(TokenTree(::std::vector<TokenTree>{TokenTree(TOK_PAREN_OPEN), TokenTree(TOK_PAREN_CLOSE)})) );
+        ::std::vector<TokenTree>	toks;
+	toks.push_back( TokenTree(TOK_PAREN_OPEN) );
+	toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
+        return box$( TTStreamO(TokenTree(mv$(toks))) );
     }
 };
 

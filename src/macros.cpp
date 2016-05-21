@@ -17,25 +17,32 @@ class ParameterMappings
     // MultiMap (layer, name) -> TokenTree
     // - Multiple values are only allowed for layer>0
     typedef ::std::pair<unsigned, unsigned> t_mapping_block;
-    struct Mapping {
+    struct Mapping
+    {
         t_mapping_block block;
         ::std::vector<TokenTree>    entries;
         friend ::std::ostream& operator<<(::std::ostream& os, const Mapping& x) {
-            os << "(" << x.block.first << ", " << x.block.second << "): '"<<x.entries<<"')";
+            os << "(" << x.block.first << ", " << x.block.second << "): '" << x.entries << "')";
             return os;
         }
     };
     struct less_cstr {
         bool operator()(const char *a, const char *b) const { return ::std::strcmp(a,b) < 0; }
     };
-    ::std::map<const char *, Mapping, less_cstr> m_inner;
-    unsigned m_layer_count = 0;
+    
+    typedef ::std::map<const char *, Mapping, less_cstr>    t_inner_map;
+    
+    t_inner_map m_inner;
+    unsigned m_layer_count;
 public:
-    ParameterMappings()
+    ParameterMappings():
+        m_inner(),
+        m_layer_count(0)
     {
     }
+    ParameterMappings(ParameterMappings&&) = default;
     
-    const ::std::map<const char *, Mapping, less_cstr>& inner_() const {
+    const t_inner_map& inner_() const {
         return m_inner;
     }
     
@@ -50,7 +57,7 @@ public:
         if(v.first->second.block.first != layer) {
             throw ParseError::Generic(FMT("matching '"<<name<<"' at multiple layers"));
         }
-        v.first->second.entries.push_back( data );
+        v.first->second.entries.push_back( mv$(data) );
     }
     
     const TokenTree* get(unsigned int layer, unsigned int iteration, const char *name, unsigned int idx) const
@@ -130,16 +137,17 @@ private:
     ::std::unique_ptr<TTStream>   m_ttstream;
     
 public:
-    MacroExpander(const MacroExpander& x):
-        m_macro_name( x.m_macro_name ),
-        m_crate_name(x.m_crate_name),
-        m_root_contents(x.m_root_contents),
-        m_mappings(x.m_mappings),
-        m_offsets({ {0,0,0} }),
-        m_cur_ents(&m_root_contents)
-    {
-        prep_counts();
-    }
+    MacroExpander(const MacroExpander& x) = delete;
+    //MacroExpander(const MacroExpander& x):
+    //    m_macro_name( x.m_macro_name ),
+    //    m_crate_name(x.m_crate_name),
+    //    m_root_contents(x.m_root_contents),
+    //    m_mappings(x.m_mappings),
+    //    m_offsets({ {0,0,0} }),
+    //    m_cur_ents(&m_root_contents)
+    //{
+    //    prep_counts();
+    //}
     MacroExpander(::std::string macro_name, const ::std::vector<MacroRuleEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
         m_macro_name( mv$(macro_name) ),
         m_crate_name( mv$(crate_name) ),
@@ -195,11 +203,11 @@ bool Macro_TryPattern(TTStream& lex, const MacroPatEnt& pat)
     case MacroPatEnt::PAT_TOKEN: {
         Token tok = lex.getToken();
         if( tok != pat.tok ) {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
             return false;
         }
         else {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
             return true;
         }
         }
@@ -294,7 +302,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
             {
                 if( GET_TOK(tok, lex) != pat.tok.type() )
                 {
-                    lex.putback(tok);
+                    lex.putback( mv$(tok) );
                     break;
                 }
             }
@@ -307,7 +315,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
         if( GET_TOK(tok, lex) == TOK_EOF )
             throw ParseError::Unexpected(lex, TOK_EOF);
         else
-            lex.putback(tok);
+            PUTBACK(tok, lex);
         val = Parse_TT(lex, false);
         if(0)
     case MacroPatEnt::PAT_PAT:
@@ -345,7 +353,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
     return true;
 }
 
-::std::unique_ptr<TokenStream> Macro_InvokeRules(const char *name, const MacroRules& rules, TokenTree input)
+::std::unique_ptr<TokenStream> Macro_InvokeRules(const char *name, const MacroRules& rules, const TokenTree& input)
 {
     TRACE_FUNCTION;
     
@@ -387,7 +395,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
             }
             
             DEBUG("TODO: Obtain crate name correctly");
-            TokenStream* ret_ptr = new MacroExpander(name, rule.m_contents, bound_tts, "");
+            TokenStream* ret_ptr = new MacroExpander(name, rule.m_contents, mv$(bound_tts), "");
             // HACK! Disable nested macro expansion
             //ret_ptr->parse_state().no_expand_macros = true;
             
@@ -402,44 +410,6 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
     DEBUG("");
     throw ParseError::Todo(/*source_span, */"Error when macro fails to match");
 }
-
-#if 0
-::std::unique_ptr<TokenStream> Macro_Invoke(const TokenStream& olex, const ::std::string& name, TokenTree input)
-{
-    DEBUG("Invoke " << name << " from " << olex.getPosition());
-    // XXX: EVIL HACK! - This should be removed when std loading is implemented
-   
-    if( name == "concat_idents" ) {
-        return Macro_Invoke_Concat(input, TOK_IDENT);
-    }
-    else if( name == "concat_strings" || name == "concat" ) {
-        return Macro_Invoke_Concat(input, TOK_STRING);
-    }
-    else if( name == "cfg" ) {
-        return Macro_Invoke_Cfg(input);
-    }
-    else if( name == "stringify" ) {
-        return ::std::unique_ptr<TokenStream>( (TokenStream*)new MacroStringify(input) );
-    }
-    else if( name == "file" ) {
-        const ::std::string& pos = olex.getPosition().filename;
-        return ::std::unique_ptr<TokenStream>( (TokenStream*)new MacroToken(Token(TOK_STRING, pos)) );
-    }
-    else if( name == "line" ) {
-        auto pos = olex.getPosition().line;
-        return ::std::unique_ptr<TokenStream>( (TokenStream*)new MacroToken(Token((uint64_t)pos, CORETYPE_U32)) );
-    }
-     
-    // Look for macro in builtins
-    t_macro_regs::iterator macro_reg = g_macro_registrations.find(name);
-    if( macro_reg != g_macro_registrations.end() )
-    {
-        return Macro_InvokeRules(olex.getPosition(), macro_reg->first.c_str(), macro_reg->second, input);
-    }
-
-    throw ParseError::Generic(olex, FMT("Macro '" << name << "' was not found") );
-}
-#endif
 
 
 Position MacroExpander::getPosition() const

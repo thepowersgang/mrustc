@@ -5,8 +5,9 @@
  * include/span.hpp
  * - Spans and error handling
  */
-
 #pragma once
+
+#include <rc_string.hpp>
 
 enum ErrorType
 {
@@ -21,22 +22,22 @@ class Position;
 
 struct ProtoSpan
 {
-    ::std::string   filename;
+    RcString   filename;
     
     unsigned int start_line;
     unsigned int start_ofs;
 };
 struct Span
 {
-    ::std::string   filename;
+    RcString    filename;
     
     unsigned int start_line;
     unsigned int start_ofs;
     unsigned int end_line;
     unsigned int end_ofs;
     
-    Span(::std::string filename, unsigned int start_line, unsigned int start_ofs,  unsigned int end_line, unsigned int end_ofs):
-        filename(filename),
+    Span(RcString filename, unsigned int start_line, unsigned int start_ofs,  unsigned int end_line, unsigned int end_ofs):
+        filename( ::std::move(filename) ),
         start_line(start_line),
         start_ofs(start_ofs),
         end_line(end_line),

@@ -11,6 +11,7 @@
 #include "../ast/ast.hpp"
 
 #define GET_TOK(tok, lex) ((tok = lex.getToken()).type())
+#define PUTBACK(tok, lex) lex.putback( ::std::move(tok) )
 #define LOOK_AHEAD(lex) (lex.lookahead(0))
 #define GET_CHECK_TOK(tok, lex, exp) do {\
     if((tok = lex.getToken()).type() != exp) { \

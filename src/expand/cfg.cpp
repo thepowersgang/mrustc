@@ -88,7 +88,7 @@ class CCfgExpander:
             ERROR(sp, E0000, "cfg! doesn't take an identifier");
         }
         
-        auto lex = TTStreamO(tt);
+        auto lex = TTStream(tt);
         auto attrs = Parse_MetaItem(lex);
         DEBUG("cfg!() - " << attrs);
         

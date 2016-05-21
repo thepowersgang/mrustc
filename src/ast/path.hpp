@@ -156,7 +156,7 @@ public:
     
     // ABSOLUTE
     Path(::std::string crate, ::std::vector<PathNode> nodes):
-        m_class( Class::make_Absolute({crate: mv$(crate), nodes: mv$(nodes)}) )
+        m_class( Class::make_Absolute({ mv$(crate), mv$(nodes)}) )
     {}
     
     // UFCS
@@ -170,23 +170,23 @@ public:
         m_class( Class::make_Local({ mv$(name) }) )
     {}
     Path(::std::string name):
-        m_class( Class::make_Local({name: mv$(name)}) )
+        m_class( Class::make_Local({ mv$(name) }) )
     {}
     
     // RELATIVE
     struct TagRelative {};
     Path(TagRelative, ::std::vector<PathNode> nodes):
-        m_class( Class::make_Relative({nodes: mv$(nodes)}) )
+        m_class( Class::make_Relative({ mv$(nodes) }) )
     {}
     // SELF
     struct TagSelf {};
     Path(TagSelf, ::std::vector<PathNode> nodes):
-        m_class( Class::make_Self({nodes: nodes}) )
+        m_class( Class::make_Self({ nodes }) )
     {}
     // SUPER
     struct TagSuper {};
     Path(TagSuper, unsigned int count, ::std::vector<PathNode> nodes):
-        m_class( Class::make_Super({count: count, nodes: mv$(nodes)}) )
+        m_class( Class::make_Super({ count, mv$(nodes) }) )
     {}
     
     //void set_crate(::std::string crate) {

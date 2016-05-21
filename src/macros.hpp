@@ -29,17 +29,17 @@ public:
     {
     }
     MacroRuleEnt(Token tok):
-        tok(tok),
+        tok( mv$(tok) ),
         name("")
     {
     }
     MacroRuleEnt(::std::string name):
-        name(name)
+        name( mv$(name) )
     {
     }
     MacroRuleEnt(Token tok, ::std::vector<MacroRuleEnt> subpats):
-        tok(tok),
-        subpats(subpats)
+        tok( mv$(tok) ),
+        subpats( mv$(subpats) )
     {
     }
 
@@ -75,13 +75,13 @@ struct MacroPatEnt:
     {
     }
     MacroPatEnt(Token tok):
-        tok(tok),
+        tok( mv$(tok) ),
         type(PAT_TOKEN)
     {
     }
     
     MacroPatEnt(::std::string name, Type type):
-        name(name),
+        name( mv$(name) ),
         tok(),
         type(type)
     {
@@ -89,7 +89,7 @@ struct MacroPatEnt:
     
     MacroPatEnt(Token sep, bool need_once, ::std::vector<MacroPatEnt> ents):
         name( need_once ? "+" : "*" ),
-        tok(sep),
+        tok( mv$(sep) ),
         subpats( move(ents) ),
         type(PAT_LOOP)
     {
@@ -130,7 +130,7 @@ public:
     SERIALISABLE_PROTOTYPES();
 };
 
-extern ::std::unique_ptr<TokenStream>   Macro_InvokeRules(const char *name, const MacroRules& rules, TokenTree input);
-extern ::std::unique_ptr<TokenStream>   Macro_Invoke(const TokenStream& lex, const ::std::string& name, TokenTree input);
+extern ::std::unique_ptr<TokenStream>   Macro_InvokeRules(const char *name, const MacroRules& rules, const TokenTree& input);
+extern ::std::unique_ptr<TokenStream>   Macro_Invoke(const TokenStream& lex, const ::std::string& name, const TokenTree& input);
 
 #endif // MACROS_HPP_INCLUDED
