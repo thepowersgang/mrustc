@@ -171,6 +171,7 @@ public:
     {}
     Function(const Function&) = delete;
     Function(Function&&) noexcept = default;
+    Function& operator=(Function&&) = default;
     Function(GenericParams params, TypeRef ret_type, Arglist args):
         m_params( move(params) ),
         m_rettype( move(ret_type) ),

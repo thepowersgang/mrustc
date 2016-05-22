@@ -122,15 +122,14 @@
 #define TU_DATANAME(name)   Data_##name
 // Internals of TU_CONS
 #define TU_CONS_I(__name, __tag, __type) \
-    __name(__type v): m_tag(TAG_##__tag) { new (m_data) __type( ::std::move(v) ); } \
-    /*static self_t make_null_##__tag() { self_t ret; ret.m_tag = TAG_##__tag; new (ret.m_data) __type; return ::std::move(ret); }*/ \
+    __name(__type v): m_tag(TAG_##__tag) { new (&m_data.__tag) __type( ::std::move(v) ); } \
     static self_t make_##__tag(__type v) \
     {\
         return __name( ::std::move(v) );\
     }\
     bool is_##__tag() const { return m_tag == TAG_##__tag; } \
-    const __type& as_##__tag() const { assert(m_tag == TAG_##__tag); return *reinterpret_cast<const __type*>(this->data_ptr()); } \
-    __type& as_##__tag() { assert(m_tag == TAG_##__tag); return *reinterpret_cast<__type*>(this->data_ptr()); } \
+    const __type& as_##__tag() const { assert(m_tag == TAG_##__tag); return m_data.__tag; } \
+    __type& as_##__tag() { assert(m_tag == TAG_##__tag); return m_data.__tag; } \
     __type unwrap_##__tag() { return ::std::move(this->as_##__tag()); } \
 // Define a tagged union constructor
 #define TU_CONS(__name, name, ...) TU_CONS_I(__name, name, TU_DATANAME(name))
@@ -143,11 +142,11 @@
 #define TU_TAG(name, ...)  TAG_##name,
 
 // Destructor internals
-#define TU_DEST_CASE(tag, ...)  case TAG_##tag: as_##tag().~TU_DATANAME(tag)(); break;/*
+#define TU_DEST_CASE(tag, ...)  case TAG_##tag: m_data.tag.~TU_DATANAME(tag)(); break;/*
 */
 
 // move constructor internals
-#define TU_MOVE_CASE(tag, ...)  case TAG_##tag: new(m_data) TU_DATANAME(tag)(x.unwrap_##tag()); break;/*
+#define TU_MOVE_CASE(tag, ...)  case TAG_##tag: new(&m_data.tag) TU_DATANAME(tag)( ::std::move(x.m_data.tag) ); break;/*
 */
 
 // "tag_to_str" internals
@@ -156,6 +155,11 @@
 // "tag_from_str" internals
 #define TU_FROMSTR_CASE(tag,...)    else if(str == #tag) return TAG_##tag;/*
 */
+#define TU_FROMSTR_CASES(...) TU_GMX(__VA_ARGS__)(TU_FROMSTR_CASE,__VA_ARGS__)
+
+#define TU_UNION_FIELD(tag, ...)    TU_DATANAME(tag) tag;/*
+*/
+#define TU_UNION_FIELDS(...)    TU_GMX(__VA_ARGS__)(TU_UNION_FIELD,__VA_ARGS__)
 
 #define MAXS(...)          TU_GM(MAXS,__VA_ARGS__)(__VA_ARGS__)
 #define TU_CONSS(_name, ...)  TU_GMA(__VA_ARGS__)(TU_CONS, (_name), __VA_ARGS__)
@@ -164,12 +168,6 @@
 #define TU_DEST_CASES(...) TU_GMX(__VA_ARGS__)(TU_DEST_CASE,__VA_ARGS__)
 #define TU_MOVE_CASES(...) TU_GMX(__VA_ARGS__)(TU_MOVE_CASE,__VA_ARGS__)
 #define TU_TOSTR_CASES(...)   TU_GMX(__VA_ARGS__)(TU_TOSTR_CASE  ,__VA_ARGS__)
-#define TU_FROMSTR_CASES(...) TU_GMX(__VA_ARGS__)(TU_FROMSTR_CASE,__VA_ARGS__)
-
-#define TU_MC_FIELD(_field)  ,_field(::std::move(x._field))
-#define TU_MC_FIELDS(...) TU_GM(_DISPO ,## __VA_ARGS__)(TU_MC_FIELD ,## __VA_ARGS__)
-#define TU_MA_FIELD(_field)  _field = ::std::move(x._field);
-#define TU_MA_FIELDS(...) TU_GM(_DISPO ,## __VA_ARGS__)(TU_MA_FIELD ,## __VA_ARGS__)
 
 /**
  * Define a new tagged union
@@ -196,11 +194,9 @@ class _name TU_EXP _inherit { \
     };/*
 */ private:\
     Tag m_tag; \
-    char m_data[MAXS _variants];/*
-*/  const void* data_ptr() const { return m_data; } /*
-*/        void* data_ptr()       { return m_data; } /*
+    union DataUnion { TU_UNION_FIELDS _variants DataUnion() {} ~DataUnion() {} } m_data;/*
 */ public:\
-    _name(): m_tag(TAG_##_def) { new((void*)m_data) TU_DATANAME(_def); }/*
+    _name(): m_tag(TAG_##_def) { m_data._def = TU_DATANAME(_def)(); }/*
 */  _name(const _name&) = delete;/*
 */  _name(_name&& x) noexcept: m_tag(x.m_tag) TU_EXP _extra_move { switch(m_tag) { case TAGDEAD: break; TU_MOVE_CASES _variants } x.m_tag = TAGDEAD; }/*
 */  _name& operator =(_name&& x) { switch(m_tag) { case TAGDEAD: break; TU_DEST_CASES _variants } m_tag = x.m_tag; TU_EXP _extra_assign switch(m_tag) { case TAGDEAD: break; TU_MOVE_CASES _variants }; return *this; }/*
