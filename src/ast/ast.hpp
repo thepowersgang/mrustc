@@ -19,16 +19,17 @@
 
 #include "../parse/tokentree.hpp"
 #include "../types.hpp"
-#include "../macros.hpp"
 #include <serialise.hpp>
 
-#include "pattern.hpp"
-#include "attrs.hpp"
-#include "expr.hpp"
-#include "macro.hpp"
-#include "item.hpp"
+#include <ast/pattern.hpp>
+#include <ast/attrs.hpp>
+#include <ast/expr.hpp>
+#include <ast/item.hpp>
+#include <ast/macro.hpp>
 
 #include "generics.hpp"
+
+#include <macro_rules/macro_rules_ptr.hpp>
 
 namespace AST {
 
@@ -551,7 +552,7 @@ private:
     ::std::vector<Module*>  m_anon_modules;
 
     ::std::vector< NamedNS<const MacroRules*> > m_macro_import_res; // Vec of imported macros (not serialised)
-    ::std::vector< Named<MacroRules> >  m_macros;
+    ::std::vector< Named<MacroRulesPtr> >  m_macros;
 
 public:
     char    m_index_populated = 0;  // 0 = no, 1 = partial, 2 = complete
@@ -599,9 +600,7 @@ public:
     void add_neg_impl(ImplDef impl) {
         m_neg_impls.emplace_back( ::std::move(impl) );
     }
-    void add_macro(bool is_exported, ::std::string name, MacroRules macro) {
-        m_macros.push_back( Named<MacroRules>( move(name), move(macro), is_exported ) );
-    }
+    void add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro);
     void add_macro_import(::std::string name, const MacroRules& mr) {
         m_macro_import_res.push_back( NamedNS<const MacroRules*>( mv$(name), &mr, false ) );
     }
@@ -641,7 +640,7 @@ public:
     
 
     ::std::vector<MacroInvocation>& macro_invs() { return m_macro_invocations; }
-    const NamedList<MacroRules>&    macros()  const { return m_macros; }
+    const NamedList<MacroRulesPtr>&    macros()  const { return m_macros; }
     const ::std::vector<NamedNS<const MacroRules*> >  macro_imports_res() const { return m_macro_import_res; }
 
 

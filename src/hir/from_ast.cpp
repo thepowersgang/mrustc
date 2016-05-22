@@ -20,7 +20,7 @@
     // - Extract macros from root module
     for( const auto& mac : crate.m_root_module.macros() ) {
         //if( mac.data.export ) {
-        macros.insert( ::std::make_pair( mac.name, mac.data ) );
+        macros.insert( ::std::make_pair( mac.name, mv$(*mac.data) ) );
         //}
     }
     for( const auto& mac : crate.m_root_module.macro_imports_res() ) {

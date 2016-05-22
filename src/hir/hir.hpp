@@ -12,7 +12,7 @@
 
 #include <tagged_union.hpp>
 
-#include <macros.hpp>   // DAMNIT - Why can't I have it be incomplete
+#include <macro_rules/macro_rules.hpp>   // DAMNIT - Why can't I have it be incomplete
 
 #include <hir/type.hpp>
 #include <hir/path.hpp>

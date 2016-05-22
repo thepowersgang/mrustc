@@ -13,7 +13,6 @@
 #include "parseerror.hpp"
 #include "../ast/ast.hpp"
 #include "common.hpp"
-#include "../macros.hpp"
 #include <iostream>
 #include "tokentree.hpp"
 

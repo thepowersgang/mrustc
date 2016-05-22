@@ -4,6 +4,7 @@
 #include "../ast/ast.hpp"
 #include "../parse/common.hpp"
 #include "macro_rules.hpp"
+#include <macro_rules/macro_rules.hpp>
 
 class CMacroRulesExpander:
     public ExpandProcMacro
@@ -15,9 +16,10 @@ class CMacroRulesExpander:
         if( ident == "" )
             ERROR(sp, E0000, "macro_rules! requires an identifier" );
         
+        DEBUG("Parsing macro_rules! " << ident);
         TTStream    lex(tt);
         auto mac = Parse_MacroRules(lex);
-        mod.add_macro( false, ident, mac );
+        mod.add_macro( false, ident, mv$(mac) );
         
         return ::std::unique_ptr<TokenStream>( new TTStreamO(TokenTree()) );
     }
@@ -45,7 +47,7 @@ class CMacroUseHandler:
                 {
                     if( mr.name == name ) {
                         DEBUG("Imported " << mr.name);
-                        mod.add_macro_import( mr.name, mr.data );
+                        mod.add_macro_import( mr.name, *mr.data );
                         goto _good;
                     }
                 }
@@ -67,7 +69,7 @@ class CMacroUseHandler:
             for( const auto& mr : submod.macros() )
             {
                 DEBUG("Imported " << mr.name);
-                mod.add_macro_import( mr.name, mr.data );
+                mod.add_macro_import( mr.name, *mr.data );
             }
             for( const auto& mri : submod.macro_imports_res() )
             {

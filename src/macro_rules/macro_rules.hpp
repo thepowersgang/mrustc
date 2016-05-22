@@ -7,12 +7,9 @@
 #include <map>
 #include <memory>
 #include <cstring>
+#include "macro_rules_ptr.hpp"
 
 class MacroExpander;
-
-namespace AST {
-    class Module;
-}
 
 class MacroRuleEnt:
     public Serialisable
@@ -51,6 +48,7 @@ struct MacroPatEnt:
     public Serialisable
 {
     ::std::string   name;
+    unsigned int    name_index;
     Token   tok;
     
     ::std::vector<MacroPatEnt>  subpats;
@@ -81,8 +79,9 @@ struct MacroPatEnt:
     {
     }
     
-    MacroPatEnt(::std::string name, Type type):
+    MacroPatEnt(::std::string name, unsigned int name_index, Type type):
         name( mv$(name) ),
+        name_index( name_index ),
         tok(),
         type(type)
     {
@@ -101,13 +100,32 @@ struct MacroPatEnt:
     SERIALISABLE_PROTOTYPES();
 };
 
-/// A rule within a macro_rules! blcok
-class MacroRule:
+struct MacroRulesPatFrag:
     public Serialisable
 {
-public:
-    ::std::vector<MacroPatEnt>  m_pattern;
+    ::std::vector<MacroPatEnt>  m_pats_ents;
+    unsigned int    m_pattern_end;
+    ::std::vector< MacroRulesPatFrag >  m_next_frags;
+    
+    MacroRulesPatFrag():
+        m_pattern_end(~0)
+    {}
+    
+    SERIALISABLE_PROTOTYPES();
+};
+
+/// An arm within a macro_rules! blcok
+struct MacroRulesArm:
+    public Serialisable
+{
+    ::std::vector< ::std::string>   m_param_names;
     ::std::vector<MacroRuleEnt> m_contents;
+    
+    MacroRulesArm()
+    {}
+    MacroRulesArm(::std::vector<MacroRuleEnt> contents):
+        m_contents( mv$(contents) )
+    {}
     
     SERIALISABLE_PROTOTYPES();
 };
@@ -118,20 +136,18 @@ class MacroRules:
 {
 public:
     bool m_exported;
-    ::std::vector<MacroRule>  m_rules;
+    MacroRulesPatFrag  m_pattern;
+    ::std::vector<MacroRulesArm>  m_rules;
     
     MacroRules()
     {
     }
-    MacroRules( ::std::vector<MacroRule> rules ):
-        m_rules( mv$(rules) )
-    {
-    }
+    virtual ~MacroRules();
     
     SERIALISABLE_PROTOTYPES();
 };
 
 extern ::std::unique_ptr<TokenStream>   Macro_InvokeRules(const char *name, const MacroRules& rules, const TokenTree& input);
-extern ::std::unique_ptr<TokenStream>   Macro_Invoke(const TokenStream& lex, const ::std::string& name, const TokenTree& input);
+extern MacroRulesPtr    Parse_MacroRules(TokenStream& lex);
 
 #endif // MACROS_HPP_INCLUDED

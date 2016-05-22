@@ -105,7 +105,7 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
                 if( input_ident != "" )
                     ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
                 
-                auto e = Macro_Invoke(name.c_str(), mr.data, input_tt, mod);
+                auto e = Macro_Invoke(name.c_str(), *mr.data, input_tt, mod);
                 return e;
             }
         }

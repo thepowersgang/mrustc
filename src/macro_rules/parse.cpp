@@ -1,11 +1,22 @@
+/*
+ */
 #include <common.hpp>
 #include "../parse/common.hpp"
 #include "../parse/parseerror.hpp"
-#include "../macros.hpp"
+#include "macro_rules.hpp"
+#include "pattern_checks.hpp"
 
-MacroRules Parse_MacroRules(TokenStream& lex);
+MacroRulesPtr Parse_MacroRules(TokenStream& lex);
 
-::std::vector<MacroPatEnt> Parse_MacroRules_Pat(TokenStream& lex, bool allow_sub, enum eTokenType open, enum eTokenType close)
+/// A rule within a macro_rules! blcok
+class MacroRule
+{
+public:
+    ::std::vector<MacroPatEnt>  m_pattern;
+    ::std::vector<MacroRuleEnt> m_contents;
+};
+
+::std::vector<MacroPatEnt> Parse_MacroRules_Pat(TokenStream& lex, bool allow_sub, enum eTokenType open, enum eTokenType close,  ::std::vector< ::std::string>& names)
 {
     TRACE_FUNCTION;
     Token tok;
@@ -36,31 +47,36 @@ MacroRules Parse_MacroRules(TokenStream& lex);
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 ::std::string   type = tok.str();
+                
+                unsigned int idx = ::std::find( names.begin(), names.end(), name ) - names.begin();
+                if( idx == names.size() )
+                    names.push_back( name );
+                
                 if(0)
                     ;
                 else if( type == "tt" )
-                    ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_TT) );
+                    ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_TT) );
                 else if( type == "pat" )
-                    ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_PAT) );
+                    ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_PAT) );
                 else if( type == "ident" )
-                    ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_IDENT) );
+                    ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_IDENT) );
                 else if( type == "path" )
-                    ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_PATH) );
+                    ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_PATH) );
                 else if( type == "expr" )
-                    ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_EXPR) );
+                    ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_EXPR) );
                 else if( type == "ty" )
-                    ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_TYPE) );
+                    ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_TYPE) );
                 else if( type == "meta" )
-                    ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_META) );
+                    ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_META) );
                 else if( type == "block" )
-                    ret.push_back( MacroPatEnt(name, MacroPatEnt::PAT_BLOCK) );
+                    ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_BLOCK) );
                 else
                     throw ParseError::Generic(lex, FMT("Unknown fragment type '" << type << "'"));
                 break; }
             case TOK_PAREN_OPEN:
                 if( allow_sub )
                 {
-                    auto subpat = Parse_MacroRules_Pat(lex, true, TOK_PAREN_OPEN, TOK_PAREN_CLOSE);
+                    auto subpat = Parse_MacroRules_Pat(lex, true, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, names);
                     enum eTokenType joiner = TOK_NULL;
                     GET_TOK(tok, lex);
                     if( tok.type() != TOK_PLUS && tok.type() != TOK_STAR )
@@ -204,7 +220,8 @@ MacroRule Parse_MacroRules_Var(TokenStream& lex)
         throw ParseError::Unexpected(lex, tok);
     }
     // - Pattern entries
-    rule.m_pattern = Parse_MacroRules_Pat(lex, true, tok.type(), close);
+    ::std::vector< ::std::string>   names;
+    rule.m_pattern = Parse_MacroRules_Pat(lex, true, tok.type(), close,  names);
     
     GET_CHECK_TOK(tok, lex, TOK_FATARROW);
 
@@ -223,103 +240,14 @@ MacroRule Parse_MacroRules_Var(TokenStream& lex)
     return rule;
 }
 
-struct UnifiedPatFrag
-{
-    ::std::vector<MacroPatEnt>  m_pats_ents;
-    unsigned int    m_pattern_end;
-    ::std::vector< UnifiedPatFrag >  m_next_frags;
-    
-    UnifiedPatFrag():
-        m_pattern_end(~0)
-    {}
-    
-    UnifiedPatFrag split_at(unsigned int remaining_count) {
-        UnifiedPatFrag  rv;
-        for(unsigned int i = remaining_count; i < m_pats_ents.size(); i ++)
-            rv.m_pats_ents.push_back( mv$(m_pats_ents[i]) );
-        m_pats_ents.resize(remaining_count);
-        rv.m_pattern_end = m_pattern_end;   m_pattern_end = ~0;
-        rv.m_next_frags = mv$(m_next_frags);
-        return rv;
-    }
-};
-
-struct UnifiedMacroRules
-{
-    UnifiedPatFrag  m_pattern;
-};
-
-bool is_token_path(eTokenType tt) {
-    switch(tt)
-    {
-    case TOK_IDENT:
-    case TOK_DOUBLE_COLON:
-    case TOK_LT:
-    case TOK_DOUBLE_LT:
-    case TOK_RWORD_SELF:
-    case TOK_RWORD_SUPER:
-        return true;
-    default:
-        return false;
-    }
-}
-bool is_token_pat(eTokenType tt) {
-    if( is_token_path(tt) )
-        return true;
-    switch( tt )
-    {
-    case TOK_PAREN_OPEN:
-    case TOK_SQUARE_OPEN:
-    
-    case TOK_AMP:
-    case TOK_RWORD_BOX:
-    case TOK_RWORD_REF:
-    case TOK_RWORD_MUT:
-    case TOK_STRING:
-    case TOK_INTEGER:
-    case TOK_CHAR:
-        return true;
-    default:
-        return false;
-    }
-}
-bool is_token_type(eTokenType tt) {
-    if( is_token_path(tt) )
-        return true;
-    switch( tt )
-    {
-    case TOK_PAREN_OPEN:
-    case TOK_SQUARE_OPEN:
-    case TOK_STAR:
-    case TOK_AMP:
-        return true;
-    default:
-        return false;
-    }
-}
-bool is_token_expr(eTokenType tt) {
-    if( is_token_path(tt) )
-        return true;
-    switch( tt )
-    {
-    case TOK_AMP:
-    case TOK_STAR:
-    case TOK_PAREN_OPEN:
-    case TOK_MACRO:
-    case TOK_DASH:
-    
-    case TOK_INTEGER:
-    case TOK_STRING:
-        return true;
-    default:
-        return false;
-    }
-}
-
 bool patterns_are_same(const Span& sp, const MacroPatEnt& left, const MacroPatEnt& right)
 {
     if( left.type > right.type )
         return patterns_are_same(sp, right, left);
+    
+    //if( left.name != right.name ) {
+    //    TODO(sp, "Handle different binding names " << left << " != " << right);
+    //}
     
     // NOTE: left.type <= right.type
     switch(right.type)
@@ -414,16 +342,9 @@ bool patterns_are_same(const Span& sp, const MacroPatEnt& left, const MacroPatEn
         switch(left.type)
         {
         case MacroPatEnt::PAT_TOKEN:
-            switch(left.tok.type())
-            {
-            case TOK_BRACE_OPEN:
-            case TOK_RWORD_LET:
+            if( is_token_stmt(left.tok.type()) )
                 ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
-            default:
-                if( is_token_expr(left.tok.type()) )
-                    ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
-                return false;
-            }
+            return false;
         case MacroPatEnt::PAT_STMT:
             return true;
         default:
@@ -443,29 +364,56 @@ bool patterns_are_same(const Span& sp, const MacroPatEnt& left, const MacroPatEn
             return false;
         }
     // Matches meta/attribute fragments.
-    // - Compatible with everythin but a literal #[ token
     case MacroPatEnt::PAT_META:
         switch(left.type)
         {
         case MacroPatEnt::PAT_TOKEN:
-            if( left.tok.type() == TOK_ATTR_OPEN )
+            if( left.tok.type() == TOK_IDENT )
                 ERROR(sp, E0000, "Incompatible macro fragments");
             return false;
         case MacroPatEnt::PAT_META:
             return true;
         default:
-            return false;
+            ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
         }
     }
     throw "";
 }
 
-MacroRules Parse_MacroRules(TokenStream& lex)
+MacroRulesPatFrag split_fragment_at(MacroRulesPatFrag& frag, unsigned int remaining_count)
+{
+    MacroRulesPatFrag   rv;
+    for(unsigned int i = remaining_count; i < frag.m_pats_ents.size(); i ++)
+        rv.m_pats_ents.push_back( mv$(frag.m_pats_ents[i]) );
+    frag.m_pats_ents.resize(remaining_count);
+    rv.m_pattern_end = frag.m_pattern_end;   frag.m_pattern_end = ~0;
+    rv.m_next_frags = mv$(frag.m_next_frags);
+    return rv;
+}
+
+void enumerate_names(const ::std::vector<MacroPatEnt>& pats, ::std::vector< ::std::string>& names) {
+    for( const auto& pat : pats )
+    {
+        if( pat.type == MacroPatEnt::PAT_LOOP ) {
+            enumerate_names(pat.subpats, names);
+        }
+        else if( pat.name != "" ) {
+            auto b = names.begin();
+            auto e = names.end();
+            if( ::std::find(b, e, pat.name) == e ) {
+                names.push_back( pat.name );
+            }
+        }
+    }
+}
+
+MacroRulesPtr Parse_MacroRules(TokenStream& lex)
 {
     TRACE_FUNCTION_F("");
     
     Token tok;
     
+    // Parse the patterns and replacements
     ::std::vector<MacroRule>    rules;
     while( GET_TOK(tok, lex) != TOK_EOF )
     {
@@ -478,14 +426,18 @@ MacroRules Parse_MacroRules(TokenStream& lex)
         }
     }
     
-    UnifiedPatFrag  root_frag;
+    MacroRulesPatFrag   root_frag;
+    ::std::vector<MacroRulesArm>    rule_arms;
     
     // Re-parse the patterns into a unified form
     for(unsigned int rule_idx = 0; rule_idx < rules.size(); rule_idx ++)
     {
         const auto& rule = rules[rule_idx];
+        MacroRulesArm   arm( mv$(rule.m_contents) );
         
-        UnifiedPatFrag* cur_frag = &root_frag;
+        enumerate_names(rule.m_pattern,  arm.m_param_names);
+        
+        auto* cur_frag = &root_frag;
         unsigned int    frag_ofs = 0;
         for( const auto& pat : rule.m_pattern )
         {
@@ -509,7 +461,7 @@ MacroRules Parse_MacroRules(TokenStream& lex)
                     }
                     // If not, create a new frag
                     if( ! found ) {
-                        cur_frag->m_next_frags.push_back( UnifiedPatFrag() );
+                        cur_frag->m_next_frags.push_back( MacroRulesPatFrag() );
                         cur_frag = &cur_frag->m_next_frags.back();
                         cur_frag->m_pats_ents.push_back( pat );
                     }
@@ -518,12 +470,12 @@ MacroRules Parse_MacroRules(TokenStream& lex)
             }
             else if( ! patterns_are_same(sp, cur_frag->m_pats_ents[frag_ofs], pat) ) {
                 // Difference, split the block.
-                auto new_frag = cur_frag->split_at(frag_ofs);
+                auto new_frag = split_fragment_at(*cur_frag, frag_ofs);
                 assert( cur_frag->m_next_frags.size() == 0 );
                 cur_frag->m_next_frags.push_back( mv$(new_frag) );
                 
                 // - Update cur_frag to a newly pushed fragment, and push this pattern to it
-                cur_frag->m_next_frags.push_back( UnifiedPatFrag() );
+                cur_frag->m_next_frags.push_back( MacroRulesPatFrag() );
                 cur_frag = &cur_frag->m_next_frags.back();
                 cur_frag->m_pats_ents.push_back( pat );
                 frag_ofs = 1;
@@ -537,15 +489,21 @@ MacroRules Parse_MacroRules(TokenStream& lex)
         // If this pattern ended before the current fragment ended
         if( frag_ofs < cur_frag->m_pats_ents.size() ) {
             // Split the current fragment
-            auto new_frag = cur_frag->split_at(frag_ofs);
+            auto new_frag = split_fragment_at(*cur_frag, frag_ofs);
             assert( cur_frag->m_next_frags.size() == 0 );
             cur_frag->m_next_frags.push_back( mv$(new_frag) );
             // Keep cur_frag the same
         }
         cur_frag->m_pattern_end = rule_idx;
+        
+        rule_arms.push_back( mv$(arm) );
     }
     
     // TODO: use `root_frag` above for the actual evaluation
     
-    return MacroRules( mv$(rules) );
+    auto rv = new MacroRules();
+    rv->m_pattern = mv$(root_frag);
+    rv->m_rules = mv$(rule_arms);
+    
+    return MacroRulesPtr(rv);
 }

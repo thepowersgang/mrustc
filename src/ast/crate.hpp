@@ -79,7 +79,7 @@ private:
 class ExternCrate:
     public Serialisable
 {
-    ::std::map< ::std::string, MacroRules > m_mr_macros;
+    ::std::map< ::std::string, MacroRulesPtr > m_mr_macros;
     
     //::MIR::Module   m_root_module;
     
@@ -87,6 +87,8 @@ class ExternCrate:
 public:
     ExternCrate();
     ExternCrate(const char *path);
+    ExternCrate(const ExternCrate&) = delete;
+    ExternCrate(ExternCrate&&) = default;
     
     const MacroRules* find_macro_rules(const ::std::string& name);
     

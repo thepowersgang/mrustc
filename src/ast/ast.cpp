@@ -313,6 +313,9 @@ void Module::add_submod(bool is_public, ::std::string name, Module mod, MetaItem
     DEBUG("mod.m_name = " << name << ", attrs = " << attrs);
     this->add_item( is_public, mv$(name), Item::make_Module({mv$(mod)}), mv$(attrs) );
 }
+void Module::add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro) {
+    m_macros.push_back( Named<MacroRulesPtr>( mv$(name), mv$(macro), is_exported ) );
+}
 
 void Module::prescan()
 {

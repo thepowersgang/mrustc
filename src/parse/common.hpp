@@ -44,8 +44,6 @@ extern ::AST::MacroInvocation Parse_MacroInvocation(ProtoSpan ps, ::AST::MetaIte
 extern TypeRef     Parse_Type(TokenStream& lex);
 extern AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable);
 
-extern MacroRules Parse_MacroRules(TokenStream& lex);
-
 extern void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl);
 extern void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::string& file_path, AST::Module& mod, bool is_public, AST::MetaItems meta_items);
 extern void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, bool file_controls_dir, const ::std::string& path);

@@ -22,6 +22,7 @@ int g_debug_indent_level = 0;
 
 bool debug_enabled()
 {
+    //return g_cur_phase != "Parse";
     return g_cur_phase != "Parse" && g_cur_phase != "Expand";
 }
 ::std::ostream& debug_output(int indent, const char* function)
@@ -145,14 +146,16 @@ int main(int argc, char *argv[])
             });
         // Typecheck / type propagate module (type annotations of all values)
         // - Check all generic conditions (ensure referenced trait is valid)
-        //  > Also mark parameter with applicable traits
+        //  > Binds the trait path to the actual trait definition
         CompilePhaseV("TypecheckBounds", [&]() {
             //Typecheck_GenericBounds(crate);
             });
         // - Check all generic parameters match required conditions (without doing full typeck)
+        //  > 
         CompilePhaseV("TypecheckParams", [&]() {
             //Typecheck_GenericParams(crate);
             });
+        // TODO: Evaluate all constants (or MIR them then evaluate)
         // - Full function typeck
         CompilePhaseV("TypecheckExpr", [&]() {
             //Typecheck_Expr(crate);

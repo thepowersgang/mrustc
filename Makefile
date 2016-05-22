@@ -26,16 +26,17 @@ OBJDIR = .obj/
 
 BIN := bin/mrustc$(EXESUF)
 
-OBJ := main.o macros.o types.o serialise.o
+OBJ := main.o types.o serialise.o
 OBJ += span.o rc_string.o
 OBJ += ast/ast.o ast/crate.o ast/path.o ast/expr.o ast/pattern.o
 OBJ += parse/parseerror.o parse/lex.o parse/token.o
-OBJ += parse/root.o parse/paths.o parse/types.o parse/expr.o parse/pattern.o parse/macro_rules.o
+OBJ += parse/root.o parse/paths.o parse/types.o parse/expr.o parse/pattern.o
 OBJ += expand/mod.o expand/macro_rules.o expand/cfg.o
 OBJ +=  expand/format_args.o
 OBJ +=  expand/concat.o expand/stringify.o expand/file_line.o
 OBJ +=  expand/derive.o expand/lang_item.o
 OBJ +=  expand/std_prelude.o
+OBJ += macro_rules/mod.o macro_rules/eval.o macro_rules/parse.o
 OBJ += resolve/use.o resolve/index.o resolve/absolute.o
 OBJ += hir/from_ast.o hir/from_ast_expr.o
 OBJ +=  hir/crate_ptr.o hir/type_ptr.o hir/expr_ptr.o

@@ -13,7 +13,6 @@
 #include "../ast/crate.hpp"
 #include "parseerror.hpp"
 #include "common.hpp"
-#include "../macros.hpp"
 #include <cassert>
 
 ::std::string dirname(::std::string input) {
