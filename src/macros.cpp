@@ -357,6 +357,8 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
 {
     TRACE_FUNCTION;
     
+    // TODO: Use types in `parse/macro_rules.cpp` to evaluate
+    
     // 2. Check input token tree against possible variants
     // 3. Bind names
     // 4. Return expander
@@ -366,16 +368,6 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
         Token   tok;
         // Create token stream for input tree
         TTStream    lex(input);
-        /*
-        enum eTokenType close;
-        switch( GET_TOK(tok, lex) )
-        {
-        case TOK_PAREN_OPEN:    close = TOK_PAREN_CLOSE;    break;
-        case TOK_BRACE_OPEN:    close = TOK_BRACE_CLOSE;    break;
-        default:
-            throw ParseError::Unexpected(lex, tok);
-        }
-        */
         ParameterMappings   bound_tts;
         // Parse according to rules
         try

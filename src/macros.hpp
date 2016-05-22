@@ -56,9 +56,11 @@ struct MacroPatEnt:
     ::std::vector<MacroPatEnt>  subpats;
     
     enum Type {
-        PAT_TOKEN,
-        PAT_TT,
-        PAT_PAT,
+        PAT_TOKEN,  // A token
+        PAT_LOOP,   // $() Enables use of subpats
+        
+        PAT_TT, // :tt
+        PAT_PAT,    // :pat
         PAT_IDENT,
         PAT_PATH,
         PAT_TYPE,
@@ -66,7 +68,6 @@ struct MacroPatEnt:
         PAT_STMT,
         PAT_BLOCK,
         PAT_META,
-        PAT_LOOP,   // Enables use of subpats
     } type;
 
     MacroPatEnt():
