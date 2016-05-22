@@ -45,7 +45,6 @@ public:
  
     /// Load referenced crates
     void load_externs();
-    void index_impls();
     
     bool is_trait_implicit(const Path& trait) const;
     

@@ -29,7 +29,6 @@ BIN := bin/mrustc$(EXESUF)
 OBJ := main.o macros.o types.o serialise.o
 OBJ += span.o rc_string.o
 OBJ += ast/ast.o ast/crate.o ast/path.o ast/expr.o ast/pattern.o
-OBJ += ast/provided_module.o
 OBJ += parse/parseerror.o parse/lex.o parse/token.o
 OBJ += parse/root.o parse/paths.o parse/types.o parse/expr.o parse/pattern.o parse/macro_rules.o
 OBJ += expand/mod.o expand/macro_rules.o expand/cfg.o
@@ -42,10 +41,6 @@ OBJ += hir/from_ast.o hir/from_ast_expr.o
 OBJ +=  hir/crate_ptr.o hir/type_ptr.o hir/expr_ptr.o
 OBJ +=  hir/type.o hir/path.o hir/expr.o
 OBJ += dump_as_rust.o
-OBJ += convert/ast_iterate.o
-#OBJ += convert/decorators.o
-#OBJ += convert/resolve.o
-OBJ += convert/typecheck_bounds.o convert/typecheck_params.o convert/typecheck_expr.o
 
 PCHS := ast/ast.hpp
 

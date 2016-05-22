@@ -45,28 +45,6 @@ void Crate::load_externs()
     iterate_module(m_root_module, cb);
 }
 
-void Crate::index_impls()
-{
-    // Iterate all modules, grabbing pointers to all impl blocks
-    auto cb = [this](Module& mod){
-        for( auto& impl : mod.impls() )
-            m_impl_index.push_back( &impl );
-        for( auto& impl : mod.neg_impls() )
-            m_neg_impl_index.push_back( &impl );
-        };
-    iterate_module(m_root_module, cb);
-    iterate_module(g_compiler_module, cb);
-
-    // Create a map of inherent impls
-    for( const auto& impl : m_impl_index )
-    {
-        if( impl->def().trait().is_valid() == false )
-        {
-            auto& ent = m_impl_map[impl->def().type()];
-            ent.push_back( impl );
-        }
-    }
-}
 
 void Crate::iterate_functions(fcn_visitor_t* visitor)
 {

@@ -713,8 +713,5 @@ public:
     }
 };
 
-extern AST::Module  g_compiler_module;
-extern void AST_InitProvidedModule();  
-
 
 #endif // AST_HPP_INCLUDED

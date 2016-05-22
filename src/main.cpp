@@ -69,9 +69,6 @@ void CompilePhaseV(const char *name, Fcn f) {
 /// main!
 int main(int argc, char *argv[])
 {
-    AST_InitProvidedModule();
-    
-    
     ProgramParams   params(argc, argv);
     
     // Set up cfg values
@@ -103,11 +100,6 @@ int main(int argc, char *argv[])
         // Iterate all items in the AST, applying syntax extensions
         CompilePhaseV("Expand", [&]() {
             Expand(crate);
-            });
-            
-        // Run a quick post-parse pass
-        CompilePhaseV("PostParse", [&]() {
-            crate.index_impls();
             });
 
         // XXX: Dump crate before resolve
