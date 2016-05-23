@@ -24,6 +24,8 @@ enum class CoreType
     Bool,
     Char, Str,
 };
+extern ::std::ostream& operator<<(::std::ostream& os, const CoreType& ct);
+
 enum class BorrowType
 {
     Shared,
@@ -103,7 +105,13 @@ struct TypeRef
     TypeRef(::HIR::Path p):
         m_data( Data::make_Path(mv$(p)) )
     {}
+    
+    TypeRef clone() const;
+    
+    void fmt(::std::ostream& os) const;
 };
+
+extern ::std::ostream& operator<<(::std::ostream& os, const ::HIR::TypeRef& ty);
 
 }   // namespace HIR
 

@@ -29,6 +29,7 @@ struct SimplePath
     {
     }
 
+    SimplePath clone() const;
     
     SimplePath operator+(const ::std::string& s) const;
     friend ::std::ostream& operator<<(::std::ostream& os, const SimplePath& x);
@@ -40,6 +41,7 @@ struct PathParams
     ::std::vector<TypeRef>  m_types;
     
     PathParams();
+    PathParams clone() const;
 };
 
 /// Generic path - Simple path with one lot of generic params
@@ -52,6 +54,10 @@ public:
     GenericPath();
     GenericPath(::HIR::SimplePath sp);
     GenericPath(::HIR::SimplePath sp, ::HIR::PathParams params);
+    
+    GenericPath clone() const;
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const GenericPath& x);
 };
 
 class TraitPath
@@ -70,34 +76,35 @@ public:
     TAGGED_UNION(Data, Generic,
     (Generic, GenericPath),
     (UfcsInherent, struct {
-        TypeRefPtr  type;
+        ::std::unique_ptr<TypeRef>  type;
         ::std::string   item;
         PathParams  params;
         }),
     (UfcsKnown, struct {
-        TypeRefPtr  type;
+        ::std::unique_ptr<TypeRef>  type;
         GenericPath trait;
         ::std::string   item;
         PathParams  params;
         }),
     (UfcsUnknown, struct {
-        TypeRefPtr  type;
+        ::std::unique_ptr<TypeRef>  type;
         //GenericPath ??;
         ::std::string   item;
         PathParams  params;
         })
     );
 
-private:
     Data m_data;
 
-public:
     Path(Data data):
         m_data(mv$(data))
     {}
     Path(GenericPath _);
-    Path(TypeRefPtr type, GenericPath trait, ::std::string item, PathParams params);
     Path(SimplePath _);
+    
+    Path clone() const;
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const Path& x);
 };
 
 }   // namespace HIR

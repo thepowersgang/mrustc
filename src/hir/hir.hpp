@@ -38,6 +38,15 @@ struct VisEnt
     Ent ent;
 };
 
+/// Literal type used for constant evaluation
+/// NOTE: Intentionally minimal, just covers the values (not the types)
+TAGGED_UNION(Literal, Invalid,
+    (Invalid, struct {}),
+    (List, ::std::vector<Literal>),
+    (Integer, uint64_t),
+    (Float, double),
+    (String, ::std::string)
+    );
 
 // --------------------------------------------------------------------
 // Type structures
@@ -48,7 +57,9 @@ struct Static
     
     bool    m_is_mut;
     TypeRef m_type;
+    
     ExprPtr m_value;
+    //Literal   m_value_res;
 };
 struct Constant
 {
@@ -56,6 +67,7 @@ struct Constant
     
     TypeRef m_type;
     ExprPtr m_value;
+    //Literal   m_value_res;
 };
 struct Function
 {
@@ -169,9 +181,9 @@ TAGGED_UNION(ValueItem, Import,
     (Import,    ::HIR::SimplePath),
     (Constant,  Constant),
     (Static,    Static),
-    (StructConstant,    struct { ::HIR::TypeRef ty; }),
+    (StructConstant,    struct { ::HIR::SimplePath ty; }),
     (Function,  Function),
-    (StructConstructor, struct { ::HIR::TypeRef ty; })
+    (StructConstructor, struct { ::HIR::SimplePath ty; })
     );
 
 class Crate

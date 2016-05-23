@@ -43,6 +43,9 @@ void _add_item(AST::Module& mod, IndexName location, const ::std::string& name, 
     auto& list = get_mod_index(mod, location);
     
     bool was_import = (ir != mod.path() + name);
+    if( was_import ) {
+        DEBUG("### Import " << name << " = " << ir); 
+    }
     if( false == list.insert(::std::make_pair(name, ::AST::Module::IndexEnt { is_pub, was_import, mv$(ir) } )).second )
     {
         if( error_on_collision ) 
@@ -281,9 +284,91 @@ void Resolve_Index_Module_Wildcard(AST::Module& mod, bool handle_pub)
     }
 }
 
+
+void Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, ::AST::Path& path)
+{
+    const auto& info = path.m_class.as_Absolute();
+    if( info.crate != "" )  TODO(Span(), "Resolve_Index_Module_Normalise_Path - Crates");
+    
+    const ::AST::Module* mod = &crate.m_root_module;
+    for( unsigned int i = 0; i < info.nodes.size(); i ++ )
+    {
+        const auto& node = info.nodes[i];
+        bool is_last = (i == info.nodes.size() - 1);
+        
+        if( is_last ) {
+            auto it = mod->m_namespace_items.find( node.name() );
+            if( it == mod->m_namespace_items.end() )
+                it = mod->m_value_items.find( node.name() );
+            if( it == mod->m_value_items.end() )
+                ERROR(Span(), E0000,  "Couldn't find final node of path " << path);
+            const auto& ie = it->second;
+            
+            if( ie.is_import ) {
+                // TODO: Prevent infinite recursion if the user does something dumb
+                path = ::AST::Path(ie.path);
+                Resolve_Index_Module_Normalise_Path(crate, path);
+            }
+            else {
+                // All good
+            }
+        }
+        else {
+            auto it = mod->m_namespace_items.find( node.name() );
+            if( it == mod->m_namespace_items.end() )
+                ERROR(Span(), E0000,  "Couldn't find node " << i << " of path " << path);
+            const auto& ie = it->second;
+            
+            if( ie.is_import ) {
+                TODO(Span(), "Replace imports");
+            }
+            else {
+                TU_MATCH_DEF(::AST::PathBinding, (ie.path.binding()), (e),
+                (
+                    BUG(Span(), "Path " << path << " pointed to non-module " << ie.path);
+                    ),
+                (Module,
+                    mod = e.module_;
+                    ),
+                (Enum,
+                    // NOTE: Just assuming that if an Enum is hit, it's sane
+                    return ;
+                    )
+                )
+            }
+        }
+    }
+}
+void Resolve_Index_Module_Normalise(const ::AST::Crate& crate, ::AST::Module& mod)
+{
+    TRACE_FUNCTION_F("mod = " << mod.path());
+    for( auto& item : mod.items() )
+    {
+        TU_IFLET(AST::Item, item.data, Module, e,
+            Resolve_Index_Module_Normalise(crate, e);
+        )
+    }
+    
+    for( auto& ent : mod.m_namespace_items ) {
+        Resolve_Index_Module_Normalise_Path(crate, ent.second.path);
+    }
+    for( auto& ent : mod.m_type_items ) {
+        Resolve_Index_Module_Normalise_Path(crate, ent.second.path);
+    }
+    for( auto& ent : mod.m_value_items ) {
+        Resolve_Index_Module_Normalise_Path(crate, ent.second.path);
+    }
+}
+
 void Resolve_Index(AST::Crate& crate)
 {
+    // - Index all explicitly named items
     Resolve_Index_Module_Base(crate.m_root_module);
+    // - Add all public glob imported items - `pub use module::*`
     Resolve_Index_Module_Wildcard(crate.m_root_module, true);
+    // - Add all private glob imported items
     Resolve_Index_Module_Wildcard(crate.m_root_module, false);
+    
+    // - Normalise the index (ensuring all paths point directly to the item)
+    Resolve_Index_Module_Normalise(crate, crate.m_root_module);
 }

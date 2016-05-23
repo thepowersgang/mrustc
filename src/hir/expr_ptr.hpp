@@ -20,6 +20,8 @@ public:
         x.node = nullptr;
     }
     ~ExprPtr();
+    
+    ::HIR::ExprNode& operator*() { return *node; }
 };
 
 }   // namespace HIR

@@ -14,6 +14,8 @@
 #include <serialiser_texttree.hpp>
 #include <cstring>
 #include <main_bindings.hpp>
+#include "resolve/main_bindings.hpp"
+#include "hir_conv/main_bindings.hpp"
 
 #include "expand/cfg.hpp"
 
@@ -119,9 +121,6 @@ int main(int argc, char *argv[])
             Resolve_Use(crate); // - Absolutise and resolve use statements
             Resolve_Index(crate); // - Build up a per-module index of avalable names (faster and simpler later resolve)
             Resolve_Absolutise(crate);  // - Convert all paths to Absolute or UFCS, and resolve variables
-            
-            // OLD resolve code, kinda bad
-            //ResolvePaths(crate);
             });
         
         // XXX: Dump crate before typecheck
@@ -133,17 +132,25 @@ int main(int argc, char *argv[])
             return 0;
         }
         
+        // --------------------------------------
+        // HIR Section
+        // --------------------------------------
+        // Construc the HIR from the AST
         ::HIR::CratePtr hir_crate = CompilePhase< ::HIR::CratePtr>("HIR Lower", [&]() {
             return LowerHIR_FromAST(mv$( crate ));
             });
         // Deallocate the original crate
         crate = ::AST::Crate();
 
-        // Perform type checking on items
-        // - Replace type aliases (`type`) into the actual type
+        // Replace type aliases (`type`) into the actual type
         CompilePhaseV("Resolve Type Aliases", [&]() {
-            //ConvertHIR_ExpandAliases(hir_crate);
+            ConvertHIR_ExpandAliases(*hir_crate);
             });
+        
+        CompilePhaseV("Constant Evaluate", [&]() {
+            //ConvertHIR_ConstantEvaluate(hir_crate);
+            });
+        
         // Typecheck / type propagate module (type annotations of all values)
         // - Check all generic conditions (ensure referenced trait is valid)
         //  > Binds the trait path to the actual trait definition

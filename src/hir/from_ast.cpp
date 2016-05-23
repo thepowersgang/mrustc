@@ -402,7 +402,7 @@
         if( ! e.trait )
         {
             return ::HIR::Path(::HIR::Path::Data::make_UfcsInherent({
-                LowerHIR_Type(*e.type),
+                box$( LowerHIR_Type(*e.type) ),
                 e.nodes[0].name(),
                 {}
                 }));
@@ -410,19 +410,19 @@
         else if( ! e.trait->is_valid() )
         {
             return ::HIR::Path(::HIR::Path::Data::make_UfcsUnknown({
-                LowerHIR_Type(*e.type),
+                box$( LowerHIR_Type(*e.type) ),
                 e.nodes[0].name(),
                 {}
                 }));
         }
         else
         {
-            return ::HIR::Path(
-                LowerHIR_Type(*e.type),
+            return ::HIR::Path(::HIR::Path::Data::make_UfcsKnown({
+                box$(LowerHIR_Type(*e.type)),
                 LowerHIR_GenericPath(sp, *e.trait),
                 e.nodes[0].name(),
                 {}
-                );
+                }));
         }
         )
     )
@@ -720,11 +720,10 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
         (Struct,
             /// Add value reference
             TU_IFLET( ::AST::StructData, e.m_data, Struct, e2,
-                ::HIR::TypeRef ty = ::HIR::TypeRef( ::HIR::Path(mv$(item_path)) );
                 if( e2.ents.size() == 0 )
-                    _add_mod_val_item( mod,  item.name, item.is_pub, ::HIR::ValueItem::make_StructConstant({mv$(ty)}) );
+                    _add_mod_val_item( mod,  item.name, item.is_pub, ::HIR::ValueItem::make_StructConstant({mv$(item_path)}) );
                 else
-                    _add_mod_val_item( mod,  item.name, item.is_pub, ::HIR::ValueItem::make_StructConstructor({mv$(ty)}) );
+                    _add_mod_val_item( mod,  item.name, item.is_pub, ::HIR::ValueItem::make_StructConstructor({mv$(item_path)}) );
             )
             _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Struct(e) );
             ),

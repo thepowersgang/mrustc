@@ -27,6 +27,8 @@ public:
         return *this;
     }
     ~CratePtr();
+    
+    Crate& operator*() { return *m_ptr; }
 };
 
 }   // namespace HIR

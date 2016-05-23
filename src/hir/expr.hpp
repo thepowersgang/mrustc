@@ -13,6 +13,8 @@ class ExprVisitor;
 class ExprNode
 {
 public:
+    //::HIR::TypeRef    m_res_type;
+    
     virtual void visit(ExprVisitor& v) = 0;
     virtual ~ExprNode();
 };
@@ -461,6 +463,46 @@ public:
     NV(ExprNode_ArraySized);
     
     NV(ExprNode_Closure);
+    #undef NV
+};
+
+class ExprVisitorDef:
+    public ExprVisitor
+{
+public:
+    #define NV(nt)  virtual void visit(nt& n);
+    
+    NV(ExprNode_Block)
+    NV(ExprNode_Return)
+    NV(ExprNode_Let)
+    NV(ExprNode_Loop)
+    NV(ExprNode_LoopControl)
+    NV(ExprNode_Match)
+    NV(ExprNode_If)
+    
+    NV(ExprNode_Assign)
+    NV(ExprNode_BinOp)
+    NV(ExprNode_UniOp)
+    NV(ExprNode_Cast)
+    NV(ExprNode_Index)
+    NV(ExprNode_Deref)
+    
+    NV(ExprNode_CallPath);
+    NV(ExprNode_CallValue);
+    NV(ExprNode_CallMethod);
+    NV(ExprNode_Field);
+
+    NV(ExprNode_Literal);
+    NV(ExprNode_PathValue);
+    NV(ExprNode_Variable);
+    
+    NV(ExprNode_StructLiteral);
+    NV(ExprNode_Tuple);
+    NV(ExprNode_ArrayList);
+    NV(ExprNode_ArraySized);
+    
+    NV(ExprNode_Closure);
+    #undef NV
 };
 
 }

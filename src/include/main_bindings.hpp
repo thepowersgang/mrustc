@@ -21,20 +21,7 @@ extern void Expand(::AST::Crate& crate);
 /// Process #[] decorators
 extern void Process_Decorators(AST::Crate& crate);
 
-extern void Resolve_Use(::AST::Crate& crate);
-extern void Resolve_Index(::AST::Crate& crate);
-extern void Resolve_Absolutise(::AST::Crate& crate);
-
 extern ::HIR::CratePtr  LowerHIR_FromAST(::AST::Crate crate);
-
-/// Resolve all in-text paths to absolute variants
-extern void ResolvePaths(AST::Crate& crate);
-/// Check that generic bounds are valid
-extern void Typecheck_GenericBounds(AST::Crate& crate);
-/// Check that parameters for generics are valid
-extern void Typecheck_GenericParams(AST::Crate& crate);
-/// Type resolution (and hence checking) for expressions
-extern void Typecheck_Expr(AST::Crate& crate);
 
 /// Convert the AST to a flat tree
 extern AST::Flat Convert_Flatten(const AST::Crate& crate);
