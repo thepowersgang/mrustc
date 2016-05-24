@@ -8,22 +8,22 @@ The short-term goal is to compile pre-borrowchecked rust code into C, for passin
 Current Features
 ===
 - Successfully parses libcore and rustc's run-pass tests
-- (incomplte) Attribute and macro expansion
- - Rewrite in progress, missing some syntax extensions
+- Attribute and macro expansion
 - Resolves all paths to absolute forms
 - Outputs the processed AST as (almost) rust code
  - Almost because it uses special path types to handle: external crates, 'str', and anonymous modules.
+- Converts name-resolved AST into a more compact "HIR"
 
 Short-Term Plans
 ===
-- Complete rewrite/audit of resolve section to reduce chance of bugs.
+- Constant evaluation and insertion
+ - Will be done by "executing" the HIR expressions
 - Type resolution and checking (quite interlinked)
-- Converting operator invocations to explicit calls
+- Convert HIR expressions into a MIR similar to rustc's
 
 Medium-Term Goals
 ===
-- Flattening AST into an intermediate form with no module higherarchy or generics
-- Converting flat AST into C
+- Convert MIR or HIR into C
  - Bonus points for making it readable C
  - NOTE: Due to `#[cfg]` attributes being resolved already, the C code won't be portable.
 
