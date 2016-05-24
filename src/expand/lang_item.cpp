@@ -101,11 +101,11 @@ class Decorator_LangItem:
 {
 public:
     AttrStage stage() const override { return AttrStage::EarlyPost; }
-    void handle(const AST::MetaItem& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::MetaItem& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
         TU_MATCH_DEF(::AST::Item, (i), (e),
         (
-            TODO(Span(), "Unknown item type with #[lang=\""<<attr<<"\"] attached at " << path);
+            TODO(sp, "Unknown item type with #[lang=\""<<attr<<"\"] attached at " << path);
             ),
         (Function,
             handle_lang_item(crate, path, attr.string(), AST::ITEM_FN);
@@ -119,7 +119,7 @@ public:
         )
     }
     
-    void handle(const AST::MetaItem& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
+    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
         const ::std::string& name = mi.string();
         
              if( name == "i8" ) {}
@@ -135,7 +135,7 @@ public:
         else if( name == "const_ptr" ) {}
         else if( name == "mut_ptr" ) {}
         else {
-            throw CompileError::Generic(FMT("Unknown lang item '" << name << "' on impl"));
+            ERROR(sp, E0000, "Unknown lang item '" << name << "' on impl");
         }
     }
 };

@@ -37,7 +37,7 @@ enum class IndexName
     throw "";
 }
 
-void _add_item(AST::Module& mod, IndexName location, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
+void _add_item(const Span& sp, AST::Module& mod, IndexName location, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
 {
     DEBUG("Add " << location << " item '" << name << "': " << ir);
     auto& list = get_mod_index(mod, location);
@@ -50,7 +50,7 @@ void _add_item(AST::Module& mod, IndexName location, const ::std::string& name, 
     {
         if( error_on_collision ) 
         {
-            ERROR(Span(), E0000, "Duplicate definition of name '" << name << "' in " << location << " scope (" << mod.path() << ")");
+            ERROR(sp, E0000, "Duplicate definition of name '" << name << "' in " << location << " scope (" << mod.path() << ")");
         }
         else
         {
@@ -58,14 +58,14 @@ void _add_item(AST::Module& mod, IndexName location, const ::std::string& name, 
         }
     }
 }
-void _add_item_type(AST::Module& mod, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
+void _add_item_type(const Span& sp, AST::Module& mod, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
 {
-    _add_item(mod, IndexName::Namespace, name, is_pub, ::AST::Path(ir), error_on_collision);
-    _add_item(mod, IndexName::Type, name, is_pub, mv$(ir), error_on_collision);
+    _add_item(sp, mod, IndexName::Namespace, name, is_pub, ::AST::Path(ir), error_on_collision);
+    _add_item(sp, mod, IndexName::Type, name, is_pub, mv$(ir), error_on_collision);
 }
-void _add_item_value(AST::Module& mod, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
+void _add_item_value(const Span& sp, AST::Module& mod, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
 {
-    _add_item(mod, IndexName::Value, name, is_pub, mv$(ir), error_on_collision);
+    _add_item(sp, mod, IndexName::Value, name, is_pub, mv$(ir), error_on_collision);
 }
 
 void Resolve_Index_Module_Base(AST::Module& mod)
@@ -82,42 +82,42 @@ void Resolve_Index_Module_Base(AST::Module& mod)
         // - Types/modules only
         (Module,
             p.bind( ::AST::PathBinding::make_Module({&e}) );
-            _add_item(mod, IndexName::Namespace, i.name, i.is_pub,  mv$(p));
+            _add_item(i.data.span, mod, IndexName::Namespace, i.name, i.is_pub,  mv$(p));
             ),
         (Crate,
-            TODO(Span(), "Crate in Resolve_Index_Module");
+            TODO(i.data.span, "Crate in Resolve_Index_Module");
             //p.bind( ::AST::PathBinding::make_Crate(e) );
-            //_add_item(mod, IndexName::Namespace, i.name, i.is_pub,  mv$(p));
+            //_add_item(i.data.span, mod, IndexName::Namespace, i.name, i.is_pub,  mv$(p));
             ),
         (Enum,
             p.bind( ::AST::PathBinding::make_Enum({&e}) );
-            _add_item_type(mod, i.name, i.is_pub,  mv$(p));
+            _add_item_type(i.data.span, mod, i.name, i.is_pub,  mv$(p));
             ),
         (Trait,
             p.bind( ::AST::PathBinding::make_Trait({&e}) );
-            _add_item_type(mod, i.name, i.is_pub,  mv$(p));
+            _add_item_type(i.data.span, mod, i.name, i.is_pub,  mv$(p));
             ),
         (Type,
             p.bind( ::AST::PathBinding::make_TypeAlias({&e}) );
-            _add_item_type(mod, i.name, i.is_pub,  mv$(p));
+            _add_item_type(i.data.span, mod, i.name, i.is_pub,  mv$(p));
             ),
         // - Mixed
         (Struct,
             p.bind( ::AST::PathBinding::make_Struct({&e}) );
             // - If the struct is a tuple-like struct (or unit-like), it presents in the value namespace
             if( e.m_data.is_Tuple() ) {
-                _add_item_value(mod, i.name, i.is_pub,  p);
+                _add_item_value(i.data.span, mod, i.name, i.is_pub,  p);
             }
-            _add_item_type(mod, i.name, i.is_pub,  mv$(p));
+            _add_item_type(i.data.span, mod, i.name, i.is_pub,  mv$(p));
             ),
         // - Values only
         (Function,
             p.bind( ::AST::PathBinding::make_Function({&e}) );
-            _add_item_value(mod, i.name, i.is_pub,  mv$(p));
+            _add_item_value(i.data.span, mod, i.name, i.is_pub,  mv$(p));
             ),
         (Static,
             p.bind( ::AST::PathBinding::make_Static({&e}) );
-            _add_item_value(mod, i.name, i.is_pub,  mv$(p));
+            _add_item_value(i.data.span, mod, i.name, i.is_pub,  mv$(p));
             )
         )
     }
@@ -147,22 +147,22 @@ void Resolve_Index_Module_Base(AST::Module& mod)
                 BUG(sp, "Import was bound to struct method");
                 ),
             
-            (Module,  _add_item(mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path); ),
-            //(Crate,   _add_item_type(mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path); ),
-            (Enum,    _add_item_type(mod, i.name, i.is_pub,  i.data.path); ),
-            (Trait,   _add_item_type(mod, i.name, i.is_pub,  i.data.path); ),
-            (TypeAlias, _add_item_type(mod, i.name, i.is_pub,  i.data.path); ),
+            (Module,  _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path); ),
+            //(Crate,   _add_item_type(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path); ),
+            (Enum,    _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path); ),
+            (Trait,   _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path); ),
+            (TypeAlias, _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path); ),
             
             (Struct,
-                _add_item_type(mod, i.name, i.is_pub,  i.data.path);
+                _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path);
                 // - If the struct is a tuple-like struct, it presents in the value namespace
                 if( e.struct_->m_data.is_Tuple() ) {
-                    _add_item_value(mod, i.name, i.is_pub,  i.data.path);
+                    _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path);
                 }
                 ),
-            (Static  , _add_item_value(mod, i.name, i.is_pub,  i.data.path); ),
-            (Function, _add_item_value(mod, i.name, i.is_pub,  i.data.path); ),
-            (EnumVar , _add_item_value(mod, i.name, i.is_pub,  i.data.path); )
+            (Static  , _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path); ),
+            (Function, _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path); ),
+            (EnumVar , _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path); )
             )
         }
         else
@@ -236,12 +236,12 @@ void Resolve_Index_Module_Wildcard(AST::Module& mod, bool handle_pub)
                 }
                 for(const auto& vi : e.module_->m_type_items) {
                     if( vi.second.is_pub ) {
-                        _add_item_type( mod, vi.first, i.is_pub, vi.second.path, false );
+                        _add_item_type( sp, mod, vi.first, i.is_pub, vi.second.path, false );
                     }
                 }
                 for(const auto& vi : e.module_->m_value_items) {
                     if( vi.second.is_pub ) {
-                        _add_item_value( mod, vi.first, i.is_pub, vi.second.path, false );
+                        _add_item_value( sp, mod, vi.first, i.is_pub, vi.second.path, false );
                     }
                 }
                 ),
@@ -251,10 +251,10 @@ void Resolve_Index_Module_Wildcard(AST::Module& mod, bool handle_pub)
                     ::AST::Path p = mod.path() + ev.m_name;
                     p.bind( ::AST::PathBinding::make_EnumVar({e.enum_, idx}) );
                     if( ev.m_data.is_Struct() ) {
-                        _add_item_type ( mod, ev.m_name, i.is_pub, mv$(p), false );
+                        _add_item_type ( sp, mod, ev.m_name, i.is_pub, mv$(p), false );
                     }
                     else {
-                        _add_item_value( mod, ev.m_name, i.is_pub, mv$(p), false );
+                        _add_item_value( sp, mod, ev.m_name, i.is_pub, mv$(p), false );
                     }
                     
                     idx += 1;
@@ -285,10 +285,10 @@ void Resolve_Index_Module_Wildcard(AST::Module& mod, bool handle_pub)
 }
 
 
-void Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, ::AST::Path& path)
+void Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& sp, ::AST::Path& path)
 {
     const auto& info = path.m_class.as_Absolute();
-    if( info.crate != "" )  TODO(Span(), "Resolve_Index_Module_Normalise_Path - Crates");
+    if( info.crate != "" )  TODO(sp, "Resolve_Index_Module_Normalise_Path - Crates");
     
     const ::AST::Module* mod = &crate.m_root_module;
     for( unsigned int i = 0; i < info.nodes.size(); i ++ )
@@ -301,13 +301,13 @@ void Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, ::AST::Path&
             if( it == mod->m_namespace_items.end() )
                 it = mod->m_value_items.find( node.name() );
             if( it == mod->m_value_items.end() )
-                ERROR(Span(), E0000,  "Couldn't find final node of path " << path);
+                ERROR(sp, E0000,  "Couldn't find final node of path " << path);
             const auto& ie = it->second;
             
             if( ie.is_import ) {
                 // TODO: Prevent infinite recursion if the user does something dumb
                 path = ::AST::Path(ie.path);
-                Resolve_Index_Module_Normalise_Path(crate, path);
+                Resolve_Index_Module_Normalise_Path(crate, sp, path);
             }
             else {
                 // All good
@@ -316,16 +316,16 @@ void Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, ::AST::Path&
         else {
             auto it = mod->m_namespace_items.find( node.name() );
             if( it == mod->m_namespace_items.end() )
-                ERROR(Span(), E0000,  "Couldn't find node " << i << " of path " << path);
+                ERROR(sp, E0000,  "Couldn't find node " << i << " of path " << path);
             const auto& ie = it->second;
             
             if( ie.is_import ) {
-                TODO(Span(), "Replace imports");
+                TODO(sp, "Replace imports");
             }
             else {
                 TU_MATCH_DEF(::AST::PathBinding, (ie.path.binding()), (e),
                 (
-                    BUG(Span(), "Path " << path << " pointed to non-module " << ie.path);
+                    BUG(sp, "Path " << path << " pointed to non-module " << ie.path);
                     ),
                 (Module,
                     mod = e.module_;
@@ -339,24 +339,24 @@ void Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, ::AST::Path&
         }
     }
 }
-void Resolve_Index_Module_Normalise(const ::AST::Crate& crate, ::AST::Module& mod)
+void Resolve_Index_Module_Normalise(const ::AST::Crate& crate, const Span& mod_span, ::AST::Module& mod)
 {
     TRACE_FUNCTION_F("mod = " << mod.path());
     for( auto& item : mod.items() )
     {
         TU_IFLET(AST::Item, item.data, Module, e,
-            Resolve_Index_Module_Normalise(crate, e);
+            Resolve_Index_Module_Normalise(crate, item.data.span, e);
         )
     }
     
     for( auto& ent : mod.m_namespace_items ) {
-        Resolve_Index_Module_Normalise_Path(crate, ent.second.path);
+        Resolve_Index_Module_Normalise_Path(crate, mod_span, ent.second.path);
     }
     for( auto& ent : mod.m_type_items ) {
-        Resolve_Index_Module_Normalise_Path(crate, ent.second.path);
+        Resolve_Index_Module_Normalise_Path(crate, mod_span, ent.second.path);
     }
     for( auto& ent : mod.m_value_items ) {
-        Resolve_Index_Module_Normalise_Path(crate, ent.second.path);
+        Resolve_Index_Module_Normalise_Path(crate, mod_span, ent.second.path);
     }
 }
 
@@ -370,5 +370,5 @@ void Resolve_Index(AST::Crate& crate)
     Resolve_Index_Module_Wildcard(crate.m_root_module, false);
     
     // - Normalise the index (ensuring all paths point directly to the item)
-    Resolve_Index_Module_Normalise(crate, crate.m_root_module);
+    Resolve_Index_Module_Normalise(crate, Span(), crate.m_root_module);
 }

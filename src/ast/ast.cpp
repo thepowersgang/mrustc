@@ -24,7 +24,7 @@ namespace {
 
 MetaItems MetaItems::clone() const
 {
-    return MetaItems( clone_mivec(m_items) );
+    return MetaItems( m_span, clone_mivec(m_items) );
 }
 
 void MetaItems::push_back(MetaItem i)

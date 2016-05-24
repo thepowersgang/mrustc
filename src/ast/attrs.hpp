@@ -11,13 +11,15 @@ class MetaItems:
     public Serialisable
 {
 public:
+    Span    m_span;
     ::std::vector<MetaItem> m_items;
     
     MetaItems() {}
-    MetaItems(MetaItems&&) noexcept = default;
+    MetaItems(MetaItems&&) = default;
     MetaItems& operator=(MetaItems&&) = default;
     MetaItems(const MetaItems&) = delete;
-    MetaItems(::std::vector<MetaItem> items):
+    MetaItems(Span sp, ::std::vector<MetaItem> items):
+        m_span( mv$(sp) ),
         m_items( mv$(items) )
     {
     }

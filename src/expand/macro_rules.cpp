@@ -11,7 +11,7 @@ class CMacroRulesExpander:
 {
     bool    expand_early() const override { return true; }
     
-    ::std::unique_ptr<TokenStream> expand(Span sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
         if( ident == "" )
             ERROR(sp, E0000, "macro_rules! requires an identifier" );
@@ -30,11 +30,11 @@ class CMacroUseHandler:
 {
     AttrStage stage() const override { return AttrStage::EarlyPost; }
     
-    void handle(const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
         TRACE_FUNCTION_F("path=" << path);
         if( !i.is_Module() )
-            throw ::std::runtime_error("ERROR: Use of #[macro_use] on non-module");
+            ERROR(sp, E0000, "Use of #[macro_use] on non-module");
         
         const auto& submod = i.as_Module();
         
@@ -59,7 +59,7 @@ class CMacroUseHandler:
                         goto _good;
                     }
                 }
-                ERROR(Span(), E0000, "Couldn't find macro " << name);
+                ERROR(sp, E0000, "Couldn't find macro " << name);
             _good:
                 (void)0;
             }

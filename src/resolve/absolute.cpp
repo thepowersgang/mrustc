@@ -110,12 +110,12 @@ struct Context
     void push_block() {
         m_block_level += 1;
     }
-    unsigned int push_var(const ::std::string& name) {
+    unsigned int push_var(const Span& sp, const ::std::string& name) {
         // TODO: Handle avoiding duplicate bindings in a pattern
         if( m_frozen_bind_set )
         {
             if( !m_name_context.back().is_VarBlock() ) {
-                BUG(Span(), "resolve/absolute.cpp - Context::push_var - No block");
+                BUG(sp, "resolve/absolute.cpp - Context::push_var - No block");
             }
             auto& vb = m_name_context.back().as_VarBlock();
             for( const auto& v : vb.variables )
@@ -125,7 +125,7 @@ struct Context
                     return v.value;
                 }
             }
-            ERROR(Span(), E0000, "Mismatched bindings in pattern");
+            ERROR(sp, E0000, "Mismatched bindings in pattern");
         }
         else
         {
@@ -335,7 +335,7 @@ struct Context
         auto ct = coretype_fromstring(name);
         if( ct != CORETYPE_INVAL )
         {
-            return ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span(), ct), ::std::vector< ::AST::PathNode>() );
+            return ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span("-",0,0,0,0), ct), ::std::vector< ::AST::PathNode>() );
         }
         
         return AST::Path();
@@ -975,15 +975,15 @@ void Resolve_Absolute_Generic(Context& context, ::AST::GenericParams& params)
             ),
         (IsTrait,
             Resolve_Absolute_Type(context, e.type);
-            Resolve_Absolute_Path(context, Span(), Context::LookupMode::Type, e.trait);
+            Resolve_Absolute_Path(context, bound.span, Context::LookupMode::Type, e.trait);
             ),
         (MaybeTrait,
             Resolve_Absolute_Type(context, e.type);
-            Resolve_Absolute_Path(context, Span(), Context::LookupMode::Type, e.trait);
+            Resolve_Absolute_Path(context, bound.span, Context::LookupMode::Type, e.trait);
             ),
         (NotTrait,
             Resolve_Absolute_Type(context, e.type);
-            Resolve_Absolute_Path(context, Span(), Context::LookupMode::Type, e.trait);
+            Resolve_Absolute_Path(context, bound.span, Context::LookupMode::Type, e.trait);
             ),
         (Equality,
             Resolve_Absolute_Type(context, e.type);
@@ -994,7 +994,7 @@ void Resolve_Absolute_Generic(Context& context, ::AST::GenericParams& params)
 }
 
 // Locals shouldn't be possible, as they'd end up as MaybeBind. Will assert the path class.
-void Resolve_Absolute_PatternValue(/*const*/ Context& context, ::AST::Pattern::Value& val)
+void Resolve_Absolute_PatternValue(/*const*/ Context& context, const Span& sp, ::AST::Pattern::Value& val)
 {
     TU_MATCH(::AST::Pattern::Value, (val), (e),
     (Invalid, ),
@@ -1002,7 +1002,7 @@ void Resolve_Absolute_PatternValue(/*const*/ Context& context, ::AST::Pattern::V
     (String, ),
     (Named,
         //assert( ! e.is_trivial() );
-        Resolve_Absolute_Path(context, Span(), Context::LookupMode::Constant, e);
+        Resolve_Absolute_Path(context, sp, Context::LookupMode::Constant, e);
         )
     )
 }
@@ -1011,9 +1011,9 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
     TRACE_FUNCTION_F("allow_refutable = " << allow_refutable << ", pat = " << pat);
     if( pat.binding() != "" ) {
         if( !pat.data().is_Any() && ! allow_refutable )
-            TODO(Span(), "Resolve_Absolute_Pattern - Encountered bound destructuring pattern");
+            TODO(pat.span(), "Resolve_Absolute_Pattern - Encountered bound destructuring pattern");
         // TODO: Record the local variable number in the binding
-        context.push_var( pat.binding() );
+        context.push_var( pat.span(), pat.binding() );
     }
 
     TU_MATCH( ::AST::Pattern::Data, (pat.data()), (e),
@@ -1029,15 +1029,15 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
             else {
                 pat = ::AST::Pattern(::AST::Pattern::TagBind(), mv$(name));
                 // TODO: Record the local variable number in the binding
-                context.push_var( pat.binding() );
+                context.push_var( pat.span(), pat.binding() );
             }
         }
         else {
-            TODO(Span(), "Resolve_Absolute_Pattern - Encountered MaybeBind in irrefutable context - replace with binding");
+            TODO(pat.span(), "Resolve_Absolute_Pattern - Encountered MaybeBind in irrefutable context - replace with binding");
         }
         ),
     (Macro,
-        BUG(Span(), "Resolve_Absolute_Pattern - Encountered Macro");
+        BUG(pat.span(), "Resolve_Absolute_Pattern - Encountered Macro");
         ),
     (Any,
         // Ignore '_'
@@ -1050,9 +1050,9 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         ),
     (Value,
         if( ! allow_refutable )
-            BUG(Span(), "Resolve_Absolute_Pattern - Enountered refutable pattern where only irrefutable allowed");
-        Resolve_Absolute_PatternValue(context, e.start);
-        Resolve_Absolute_PatternValue(context, e.end);
+            BUG(pat.span(), "Resolve_Absolute_Pattern - Enountered refutable pattern where only irrefutable allowed");
+        Resolve_Absolute_PatternValue(context, pat.span(), e.start);
+        Resolve_Absolute_PatternValue(context, pat.span(), e.end);
         ),
     (Tuple,
         for(auto& sp : e.sub_patterns)
@@ -1060,22 +1060,22 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         ),
     (StructTuple,
         // TODO: This isn't a type lookup, it's a pattern lookup (allowing imported enum variants, e.g. `Some(_)` to work)
-        Resolve_Absolute_Path(context, Span(), Context::LookupMode::Pattern, e.path);
+        Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::Pattern, e.path);
         for(auto& sp : e.sub_patterns)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
         ),
     (Struct,
-        Resolve_Absolute_Path(context, Span(), Context::LookupMode::Type, e.path);
+        Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::Type, e.path);
         for(auto& sp : e.sub_patterns)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp.second);
         ),
     (Slice,
         if( !allow_refutable )
-            BUG(Span(), "Resolve_Absolute_Pattern - Enountered refutable pattern where only irrefutable allowed");
+            BUG(pat.span(), "Resolve_Absolute_Pattern - Enountered refutable pattern where only irrefutable allowed");
         for(auto& sp : e.leading)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
         if( e.extra_bind != "" && e.extra_bind != "_" ) {
-            context.push_var( e.extra_bind );
+            context.push_var( pat.span(), e.extra_bind );
         }
         for(auto& sp : e.trailing)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
@@ -1090,11 +1090,11 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
     {
         TU_MATCH(AST::Item, (i.data), (e),
         (None, ),
-        (Module, BUG(Span(), "Resolve_Absolute_ImplItems - Module");),
-        (Crate , BUG(Span(), "Resolve_Absolute_ImplItems - Crate");),
-        (Enum  , BUG(Span(), "Resolve_Absolute_ImplItems - Enum");),
-        (Trait , BUG(Span(), "Resolve_Absolute_ImplItems - Trait");),
-        (Struct, BUG(Span(), "Resolve_Absolute_ImplItems - Struct");),
+        (Module, BUG(i.data.span, "Resolve_Absolute_ImplItems - Module");),
+        (Crate , BUG(i.data.span, "Resolve_Absolute_ImplItems - Crate");),
+        (Enum  , BUG(i.data.span, "Resolve_Absolute_ImplItems - Enum");),
+        (Trait , BUG(i.data.span, "Resolve_Absolute_ImplItems - Trait");),
+        (Struct, BUG(i.data.span, "Resolve_Absolute_ImplItems - Struct");),
         (Type,
             DEBUG("Type - " << i.name);
             assert( e.params().ty_params().size() == 0 );
@@ -1128,7 +1128,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
             ),
         (Static,
             DEBUG("Static - " << i.name);
-            TODO(Span(), "Resolve_Absolute_ImplItems - Static");
+            TODO(i.data.span, "Resolve_Absolute_ImplItems - Static");
             )
         )
     }
@@ -1185,12 +1185,12 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             Resolve_Absolute_Generic(item_context,  e.params());
             
             for(auto& st : e.supertraits()) {
-                if( !st.is_valid() ) {
+                if( !st.ent.is_valid() ) {
                     DEBUG("- ST 'static");
                 }
                 else {
-                    DEBUG("- ST " << st);
-                    Resolve_Absolute_Path(item_context, Span(), Context::LookupMode::Type,  st);
+                    DEBUG("- ST " << st.ent);
+                    Resolve_Absolute_Path(item_context, st.sp, Context::LookupMode::Type,  st.ent);
                 }
             }
             
@@ -1266,7 +1266,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             Resolve_Absolute_Path(item_context, def.trait().sp, Context::LookupMode::Type, def.trait().ent);
             
             if( impl.items().size() != 0 ) {
-                ERROR(Span(), E0000, "impl Trait for .. with methods");
+                ERROR(def.span(), E0000, "impl Trait for .. with methods");
             }
             
             item_context.pop(def.params());
@@ -1299,7 +1299,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
         
         Resolve_Absolute_Type(item_context, impl_def.type());
         if( !impl_def.trait().ent.is_valid() )
-            BUG(Span(), "Encountered negative impl with no trait");
+            BUG(impl_def.span(), "Encountered negative impl with no trait");
         Resolve_Absolute_Path(item_context, impl_def.trait().sp, Context::LookupMode::Type, impl_def.trait().ent);
         
         // No items

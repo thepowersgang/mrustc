@@ -82,7 +82,7 @@ class CCfgExpander:
 {
     bool    expand_early() const override { return true; }
     
-    ::std::unique_ptr<TokenStream> expand(Span sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
         if( ident != "" ) {
             ERROR(sp, E0000, "cfg! doesn't take an identifier");
@@ -108,36 +108,36 @@ class CCfgHandler:
     AttrStage   stage() const override { return AttrStage::EarlyPre; }
     
     
-    void handle(const AST::MetaItem& mi, ::AST::Crate& crate, AST::MacroInvocation& mac) const override {
+    void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, AST::MacroInvocation& mac) const override {
         DEBUG("#[cfg] mac! - " << mi);
-        if( check_cfg(mac.span(), mi) ) {
+        if( check_cfg(sp, mi) ) {
             // Leave as is
         }
         else {
             mac.clear();
         }
     }
-    void handle(const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
         DEBUG("#[cfg] item - " << mi);
-        if( check_cfg(Span(), mi) ) {
+        if( check_cfg(sp, mi) ) {
             // Leave
         }
         else {
             i = AST::Item::make_None({});
         }
     }
-    void handle(const AST::MetaItem& mi, ::AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const override {
+    void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const override {
         DEBUG("#[cfg] expr - " << mi);
-        if( check_cfg(Span(expr->get_pos()), mi) ) {
+        if( check_cfg(sp, mi) ) {
             // Leave
         }
         else {
             expr.reset();
         }
     }
-    void handle(const AST::MetaItem& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
+    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
         DEBUG("#[cfg] impl - " << mi);
-        if( check_cfg(Span(), mi) ) {
+        if( check_cfg(sp, mi) ) {
             // Leave
         }
         else {

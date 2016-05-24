@@ -46,17 +46,17 @@
             (IsTrait,
                 rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
                     LowerHIR_Type(e.type),
-                    ::HIR::TraitPath { LowerHIR_GenericPath(Span(), e.trait), e.hrls }
+                    ::HIR::TraitPath { LowerHIR_GenericPath(bound.span, e.trait), e.hrls }
                     }));
                 ),
             (MaybeTrait,
                 rv.m_bounds.push_back(::HIR::GenericBound::make_TraitUnbound({
                     LowerHIR_Type(e.type),
-                    LowerHIR_GenericPath(Span(), e.trait)
+                    LowerHIR_GenericPath(bound.span, e.trait)
                     }));
                 ),
             (NotTrait,
-                TODO(Span(), "Negative trait bounds");
+                TODO(bound.span, "Negative trait bounds");
                 ),
             
             (Equality,
@@ -89,10 +89,10 @@
     }
     TU_MATCH(::AST::Pattern::Data, (pat.data()), (e),
     (MaybeBind,
-        BUG(Span(), "Encountered MaybeBind pattern");
+        BUG(pat.span(), "Encountered MaybeBind pattern");
         ),
     (Macro,
-        BUG(Span(), "Encountered Macro pattern");
+        BUG(pat.span(), "Encountered Macro pattern");
         ),
     (Any,
         return ::HIR::Pattern {
@@ -137,13 +137,13 @@
         
         TU_MATCH_DEF(::AST::PathBinding, (e.path.binding()), (pb),
         (
-            BUG(Span(), "Encountered StructTuple pattern not pointing to a enum variant or a struct - " << e.path);
+            BUG(pat.span(), "Encountered StructTuple pattern not pointing to a enum variant or a struct - " << e.path);
             ),
         (EnumVar,
             return ::HIR::Pattern {
                 mv$(binding),
                 ::HIR::Pattern::Data::make_EnumTuple({
-                    LowerHIR_GenericPath(Span(), e.path),
+                    LowerHIR_GenericPath(pat.span(), e.path),
                     mv$(sub_patterns)
                     })
                 };
@@ -152,7 +152,7 @@
             return ::HIR::Pattern {
                 mv$(binding),
                 ::HIR::Pattern::Data::make_StructTuple({
-                    LowerHIR_GenericPath(Span(), e.path),
+                    LowerHIR_GenericPath(pat.span(), e.path),
                     mv$(sub_patterns)
                     })
                 };
@@ -167,13 +167,13 @@
         
         TU_MATCH_DEF(::AST::PathBinding, (e.path.binding()), (pb),
         (
-            BUG(Span(), "Encountered Struct pattern not pointing to a enum variant or a struct");
+            BUG(pat.span(), "Encountered Struct pattern not pointing to a enum variant or a struct");
             ),
         (EnumVar,
             return ::HIR::Pattern {
                 mv$(binding),
                 ::HIR::Pattern::Data::make_EnumStruct({
-                    LowerHIR_GenericPath(Span(), e.path),
+                    LowerHIR_GenericPath(pat.span(), e.path),
                     mv$(sub_patterns)
                     })
                 };
@@ -182,7 +182,7 @@
             return ::HIR::Pattern {
                 mv$(binding),
                 ::HIR::Pattern::Data::make_Struct({
-                    LowerHIR_GenericPath(Span(), e.path),
+                    LowerHIR_GenericPath(pat.span(), e.path),
                     mv$(sub_patterns)
                     })
                 };
@@ -192,7 +192,7 @@
     
     (Value,
         struct H {
-            static ::HIR::CoreType get_int_type(const ::eCoreType ct) {
+            static ::HIR::CoreType get_int_type(const Span& sp, const ::eCoreType ct) {
                 switch(ct)
                 {
                 case CORETYPE_ANY:  return ::HIR::CoreType::Str;
@@ -214,17 +214,17 @@
                 case CORETYPE_BOOL: return ::HIR::CoreType::Bool;
                 
                 default:
-                    BUG(Span(), "Unknown type for integer literal in pattern - " << ct );
+                    BUG(sp, "Unknown type for integer literal in pattern - " << ct );
                 }
             }
-            static ::HIR::Pattern::Value lowerhir_pattern_value(const ::AST::Pattern::Value& v) {
+            static ::HIR::Pattern::Value lowerhir_pattern_value(const Span& sp, const ::AST::Pattern::Value& v) {
                 TU_MATCH(::AST::Pattern::Value, (v), (e),
                 (Invalid,
-                    BUG(Span(), "Encountered Invalid value in Pattern");
+                    BUG(sp, "Encountered Invalid value in Pattern");
                     ),
                 (Integer,
                     return ::HIR::Pattern::Value::make_Integer({
-                        H::get_int_type(e.type),
+                        H::get_int_type(sp, e.type),
                         e.value
                         });
                     ),
@@ -232,7 +232,7 @@
                     return ::HIR::Pattern::Value::make_String(e);
                     ),
                 (Named,
-                    return ::HIR::Pattern::Value::make_Named( LowerHIR_Path(Span(), e) );
+                    return ::HIR::Pattern::Value::make_Named( LowerHIR_Path(sp, e) );
                     )
                 )
                 throw "BUGCHECK: Reached end of LowerHIR_Pattern::H::lowerhir_pattern_value";
@@ -242,7 +242,7 @@
             return ::HIR::Pattern {
                 mv$(binding),
                 ::HIR::Pattern::Data::make_Value({
-                    H::lowerhir_pattern_value(e.start)
+                    H::lowerhir_pattern_value(pat.span(), e.start)
                     })
                 };
         }
@@ -250,8 +250,8 @@
             return ::HIR::Pattern {
                 mv$(binding),
                 ::HIR::Pattern::Data::make_Range({
-                    H::lowerhir_pattern_value(e.start),
-                    H::lowerhir_pattern_value(e.end)
+                    H::lowerhir_pattern_value(pat.span(), e.start),
+                    H::lowerhir_pattern_value(pat.span(), e.end)
                     })
                 };
         }
@@ -348,7 +348,7 @@
         return ::HIR::GenericPath(mv$(sp), mv$(params));
     )
     else {
-        BUG(Span(), "Encountered non-Absolute path when creating ::HIR::GenericPath - " << path);
+        BUG(sp, "Encountered non-Absolute path when creating ::HIR::GenericPath - " << path);
     }
 }
 ::HIR::Path LowerHIR_Path(const Span& sp, const ::AST::Path& path)
@@ -374,7 +374,7 @@
         ),
     (UFCS,
         if( e.nodes.size() != 1 )
-            TODO(Span(), "Handle UFCS with multiple nodes - " << path);
+            TODO(sp, "Handle UFCS with multiple nodes - " << path);
         if( ! e.trait )
         {
             return ::HIR::Path(::HIR::Path::Data::make_UfcsInherent({
@@ -599,8 +599,8 @@
     
     ::std::vector< ::HIR::GenericPath>    supertraits;
     for(const auto& st : f.supertraits()) {
-        if( st.is_valid() ) {
-            supertraits.push_back( LowerHIR_GenericPath(Span(), st) );
+        if( st.ent.is_valid() ) {
+            supertraits.push_back( LowerHIR_GenericPath(st.sp, st.ent) );
         }
         else {
             lifetime = "static";
@@ -618,7 +618,7 @@
     {
         TU_MATCH_DEF(::AST::Item, (item.data), (i),
         (
-            BUG(Span(), "Encountered unexpected item type in trait");
+            BUG(item.data.span, "Encountered unexpected item type in trait");
             ),
         (Type,
             rv.m_types.insert( ::std::make_pair(item.name, ::HIR::AssociatedType {
@@ -793,7 +793,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                 {
                     TU_MATCH_DEF(::AST::Item, (item.data), (e),
                     (
-                        ERROR(Span(), E0000, "Unexpected item type in trait impl");
+                        ERROR(item.data.span, E0000, "Unexpected item type in trait impl");
                         ),
                     // TODO: Associated constants
                     (Type,
@@ -825,7 +825,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
             {
                 TU_MATCH_DEF(::AST::Item, (item.data), (e),
                 (
-                    ERROR(Span(), E0000, "Unexpected item type in inherent impl");
+                    ERROR(item.data.span, E0000, "Unexpected item type in inherent impl");
                     ),
                 (Function,
                     methods.insert( ::std::make_pair(item.name,  LowerHIR_Function(e)) );

@@ -46,25 +46,25 @@ enum class AttrStage
 
 class ExpandDecorator
 {
-    void unexpected(const AST::MetaItem& mi, const char* loc_str) const;
+    void unexpected(const Span& sp, const AST::MetaItem& mi, const char* loc_str) const;
 public:
     virtual AttrStage   stage() const = 0;
     
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate) const { unexpected(mi, "crate"); }
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, AST::MacroInvocation& mac) const { unexpected(mi, "macro invocation"); }
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const { unexpected(mi, "item"); }
+    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const { unexpected(sp, mi, "crate"); }
+    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, AST::MacroInvocation& mac) const { unexpected(sp, mi, "macro invocation"); }
+    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const { unexpected(sp, mi, "item"); }
     // NOTE: To delete, set the type to `_`
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const { unexpected(mi, "impl"); }
+    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const { unexpected(sp, mi, "impl"); }
     // NOTE: To delete, clear the name
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::StructItem& si) const { unexpected(mi, "struct item"); }
+    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::StructItem& si) const { unexpected(sp, mi, "struct item"); }
     // NOTE: To delete, make the type invalid
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::TupleItem& si) const { unexpected(mi, "tuple item"); }
+    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::TupleItem& si) const { unexpected(sp, mi, "tuple item"); }
     // NOTE: To delete, clear the name
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::EnumVariant& ev) const { unexpected(mi, "enum variant"); }
+    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::EnumVariant& ev) const { unexpected(sp, mi, "enum variant"); }
     
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const { unexpected(mi, "expression"); }
+    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const { unexpected(sp, mi, "expression"); }
     // NOTE: To delete, clear the patterns vector
-    virtual void    handle(const AST::MetaItem& mi, AST::Crate& crate, ::AST::ExprNode_Match_Arm& expr) const { unexpected(mi, "match arm"); }
+    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::ExprNode_Match_Arm& expr) const { unexpected(sp, mi, "match arm"); }
 };
 
 class ExpandProcMacro
@@ -72,7 +72,7 @@ class ExpandProcMacro
 public:
     virtual bool    expand_early() const = 0;
     
-    virtual ::std::unique_ptr<TokenStream>  expand(Span sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) = 0;
+    virtual ::std::unique_ptr<TokenStream>  expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) = 0;
 };
 
 #define STATIC_DECORATOR(ident, _handler_class) \

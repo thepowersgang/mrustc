@@ -8,7 +8,7 @@ class CExpanderFile:
 {
     bool    expand_early() const override { return true; }
     
-    ::std::unique_ptr<TokenStream> expand(Span sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
         return box$( TTStreamO(TokenTree(Token(TOK_STRING, sp.filename.c_str()))) );
     }
@@ -19,7 +19,7 @@ class CExpanderLine:
 {
     bool    expand_early() const override { return true; }
     
-    ::std::unique_ptr<TokenStream> expand(Span sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
         return box$( TTStreamO(TokenTree(Token((uint64_t)sp.start_line, CORETYPE_I32))) );
     }

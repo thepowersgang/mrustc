@@ -65,10 +65,12 @@ TAGGED_UNION_EX( GenericBound, (: public Serialisable), Lifetime,
         })
     ),
     
-    (), (),
+    (, span(x.span) ), ( span = x.span; ),
     (
     public:
         SERIALISABLE_PROTOTYPES();
+        
+        Span    span;
         
         GenericBound clone() const {
             TU_MATCH(GenericBound, ( (*this) ), (ent),

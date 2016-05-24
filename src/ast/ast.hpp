@@ -200,13 +200,13 @@ class Trait:
     public Serialisable
 {
     GenericParams  m_params;
-    ::std::vector<AST::Path>    m_supertraits;
+    ::std::vector< Spanned<AST::Path> > m_supertraits;
     
     bool m_is_marker;
     NamedList<Item> m_items;
 public:
     Trait() {}
-    Trait(GenericParams params, ::std::vector<Path> supertraits):
+    Trait(GenericParams params, ::std::vector< Spanned<Path> > supertraits):
         m_params( mv$(params) ),
         m_supertraits( mv$(supertraits) )
     {
@@ -214,8 +214,8 @@ public:
     
     const GenericParams& params() const { return m_params; }
           GenericParams& params()       { return m_params; }
-    const ::std::vector<Path>& supertraits() const { return m_supertraits; }
-          ::std::vector<Path>& supertraits()       { return m_supertraits; }
+    const ::std::vector<Spanned<Path> >& supertraits() const { return m_supertraits; }
+          ::std::vector<Spanned<Path> >& supertraits()       { return m_supertraits; }
     
     const NamedList<Item>& items() const { return m_items; }
           NamedList<Item>& items()       { return m_items; }
@@ -386,6 +386,7 @@ public:
     ImplDef& operator=(ImplDef&&) = default;
     
     // Accessors
+    const Span& span() const { return m_span; }
     const MetaItems& attrs() const { return m_attrs; }
     
     const GenericParams& params() const { return m_params; }

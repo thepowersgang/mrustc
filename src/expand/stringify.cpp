@@ -8,7 +8,7 @@ class CExpander:
 {
     bool    expand_early() const override { return true; }
     
-    ::std::unique_ptr<TokenStream> expand(Span sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
         Token   tok;
         ::std::string rv;

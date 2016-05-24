@@ -11,7 +11,7 @@ class CFormatArgsExpander:
 {
     bool    expand_early() const override { return true; }
     
-    ::std::unique_ptr<TokenStream> expand(Span sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
         Token   tok;
         
@@ -45,9 +45,9 @@ class CFormatArgsExpander:
         }
         
         // TODO: Expand format_args!
-        ::std::vector<TokenTree>	toks;
-	toks.push_back( TokenTree(TOK_PAREN_OPEN) );
-	toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
+        ::std::vector<TokenTree> toks;
+        toks.push_back( TokenTree(TOK_PAREN_OPEN) );
+        toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
         return box$( TTStreamO(TokenTree(mv$(toks))) );
     }
 };

@@ -9,9 +9,9 @@ class Decorator_NoStd:
 public:
     AttrStage stage() const override { return AttrStage::EarlyPre; }
     
-    void handle(const AST::MetaItem& mi, AST::Crate& crate) const override {
+    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
         if( crate.m_load_std != AST::Crate::LOAD_STD ) {
-            ERROR(Span()/*mi.span()*/, E0000, "Invalid use of #![no_std] with itself or #![no_core]");
+            ERROR(sp, E0000, "Invalid use of #![no_std] with itself or #![no_core]");
         }
         crate.m_load_std = AST::Crate::LOAD_CORE;
     }
@@ -22,9 +22,9 @@ class Decorator_NoCore:
 public:
     AttrStage stage() const override { return AttrStage::EarlyPre; }
     
-    void handle(const AST::MetaItem& mi, AST::Crate& crate) const override {
+    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
         if( crate.m_load_std != AST::Crate::LOAD_STD ) {
-            ERROR(Span()/*mi.span()*/, E0000, "Invalid use of #![no_core] with itself or #![no_std]");
+            ERROR(sp, E0000, "Invalid use of #![no_core] with itself or #![no_std]");
         }
         crate.m_load_std = AST::Crate::LOAD_NONE;
     }

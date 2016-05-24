@@ -50,9 +50,9 @@ public:
         // TODO: be correct herhe and use "core" as the crate name
         // - Requires handling the crate_name crate attribute correctly
         const AST::Path    debug_trait("", { AST::PathNode("fmt", {}), AST::PathNode("Debug", {}) });
-        const TypeRef  ret_type(Span(), AST::Path("", {AST::PathNode("fmt",{}), AST::PathNode("Result",{})}) );
-        const TypeRef  f_type(TypeRef::TagReference(), Span(), true,
-            TypeRef(Span(), AST::Path("", {AST::PathNode("fmt",{}), AST::PathNode("Formatter", {})}))
+        const TypeRef  ret_type(sp, AST::Path("", {AST::PathNode("fmt",{}), AST::PathNode("Result",{})}) );
+        const TypeRef  f_type(TypeRef::TagReference(), sp, true,
+            TypeRef(sp, AST::Path("", {AST::PathNode("fmt",{}), AST::PathNode("Formatter", {})}))
             );
         const ::std::string& name = type.path().nodes().back().name();
         
@@ -112,7 +112,7 @@ public:
             AST::GenericParams(),
             ret_type,
             vec$(
-                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), Span(), false, TypeRef("Self")) ),
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self")) ),
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "f"), f_type )
                 )
             );
@@ -148,7 +148,7 @@ static void derive_item(const Span& sp, AST::Module& mod, const AST::MetaItem& a
     bool    fail = false;
     
     const auto& params = item.params();
-    TypeRef type(Span(), path);
+    TypeRef type(sp, path);
     for( const auto& param : params.ty_params() )
         type.path().nodes().back().args().push_back( TypeRef(TypeRef::TagArg(), param.name()) );
     
@@ -175,13 +175,13 @@ class Decorator_Derive:
 {
 public:
     AttrStage stage() const override { return AttrStage::LatePost; }
-    void handle(const AST::MetaItem& attr, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::MetaItem& attr, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
         TU_MATCH_DEF(::AST::Item, (i), (e),
         (
             ),
         (Struct,
-            derive_item(i.span, mod, attr, path, e);
+            derive_item(sp, mod, attr, path, e);
             )
         )
     }

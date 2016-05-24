@@ -45,6 +45,7 @@ public:
         (Slice,     struct { ::std::vector<Pattern> leading; ::std::string extra_bind; ::std::vector<Pattern> trailing; } )
         );
 private:
+    Span    m_span;
     ::std::string   m_binding;
     BindType    m_binding_type;
     bool    m_binding_mut;
@@ -125,6 +126,8 @@ public:
     }
     
     
+    const Span& span() const { return m_span; }
+    void set_span(Span sp) { m_span = mv$(sp); }
     // Accessors
     const ::std::string& binding() const { return m_binding; }
     const BindType& binding_type() const { assert(m_binding != ""); return m_binding_type; }
