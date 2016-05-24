@@ -147,6 +147,8 @@ struct Trait
     ::std::string   m_lifetime;
     ::std::vector< ::HIR::GenericPath >  m_parent_traits;
     
+    bool    m_is_marker;
+    
     ::std::unordered_map< ::std::string, AssociatedType >   m_types;
     ::std::unordered_map< ::std::string, TraitValueItem >   m_values;
 };
@@ -165,6 +167,8 @@ public:
     Module() {}
     Module(const Module&) = delete;
     Module(Module&& x) = default;
+    Module& operator=(const Module&) = delete;
+    Module& operator=(Module&&) = default;
 };
 
 // --------------------------------------------------------------------
@@ -186,11 +190,48 @@ TAGGED_UNION(ValueItem, Import,
     (StructConstructor, struct { ::HIR::SimplePath ty; })
     );
 
+class TypeImpl
+{
+public:
+    ::HIR::GenericParams    m_params;
+    ::HIR::TypeRef  m_type;
+    
+    ::std::map< ::std::string, ::HIR::Function> m_methods;
+};
+
+class TraitImpl
+{
+public:
+    ::HIR::GenericParams    m_params;
+    ::HIR::PathParams   m_trait_args;
+    ::HIR::TypeRef  m_type;
+    
+    ::std::map< ::std::string, ::HIR::Function> m_methods;
+    ::std::map< ::std::string, ::HIR::Constant> m_constants;
+    ::std::map< ::std::string, ::HIR::TypeAlias> m_types;
+};
+
+class MarkerImpl
+{
+public:
+    ::HIR::GenericParams    m_params;
+    ::HIR::PathParams   m_trait_args;
+    bool    is_positive;
+    ::HIR::TypeRef  m_type;
+};
+
 class Crate
 {
 public:
     Module  m_root_module;
     
+    /// Impl blocks on just a type
+    ::std::vector< ::HIR::TypeImpl > m_type_impls;
+    /// Impl blocks
+    ::std::multimap< ::HIR::SimplePath, ::HIR::TraitImpl > m_trait_impls;
+    ::std::multimap< ::HIR::SimplePath, ::HIR::MarkerImpl > m_marker_impls;
+    
+    /// Macros exported by this crate
     ::std::unordered_map< ::std::string, ::MacroRules >   m_exported_macros;
 };
 

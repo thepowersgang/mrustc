@@ -1,6 +1,7 @@
 /*
  * Expand `type` aliases in HIR
  */
+#include "main_bindings.hpp"
 #include <hir/hir.hpp>
 #include <hir/expr.hpp>
 

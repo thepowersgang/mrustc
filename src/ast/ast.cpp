@@ -530,6 +530,12 @@ void Trait::add_function(::std::string name, Function fcn) {
 void Trait::add_static(::std::string name, Static v) {
     m_items.push_back( Named<Item>(mv$(name), Item::make_Static({mv$(v)}), true) );
 }
+void Trait::set_is_marker() {
+    m_is_marker = true;
+}
+bool Trait::is_marker() const {
+    return m_is_marker;
+}
 bool Trait::has_named_item(const ::std::string& name, bool& out_is_fcn) const
 {
     for( const auto& i : m_items )

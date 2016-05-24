@@ -202,6 +202,7 @@ class Trait:
     GenericParams  m_params;
     ::std::vector<AST::Path>    m_supertraits;
     
+    bool m_is_marker;
     NamedList<Item> m_items;
 public:
     Trait() {}
@@ -222,6 +223,9 @@ public:
     void add_type(::std::string name, TypeRef type);
     void add_function(::std::string name, Function fcn);
     void add_static(::std::string name, Static v);
+    
+    void set_is_marker();
+    bool is_marker() const;
     
     bool has_named_item(const ::std::string& name, bool& out_is_fcn) const;
     

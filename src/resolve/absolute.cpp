@@ -928,6 +928,12 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
             Resolve_Absolute_Path(this->context, Span(node.get_pos()), Context::LookupMode::Variable,  node.m_path);
             AST::NodeVisitorDef::visit(node);
         }
+        void visit(AST::ExprNode_CallMethod& node) override {
+            DEBUG("ExprNode_CallMethod");
+            for(auto& param : node.m_method.args())
+                Resolve_Absolute_Type(this->context, param);
+            AST::NodeVisitorDef::visit(node);
+        }
         void visit(AST::ExprNode_NamedValue& node) override {
             DEBUG("ExprNode_NamedValue - " << node.m_path);
             Resolve_Absolute_Path(this->context, Span(node.get_pos()), Context::LookupMode::Variable,  node.m_path);
@@ -1251,18 +1257,37 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
     
     for(auto& impl : mod.impls())
     {
-        item_context.push_self( impl.def().type() );
-        item_context.push(impl.def().params(), GenericSlot::Level::Top);
-        Resolve_Absolute_Generic(item_context,  impl.def().params());
-        
-        Resolve_Absolute_Type(item_context, impl.def().type());
-        if( impl.def().trait().is_valid() )
+        if( ! impl.def().type().is_valid() )
+        {
+            item_context.push(impl.def().params(), GenericSlot::Level::Top);
+            Resolve_Absolute_Generic(item_context,  impl.def().params());
+            assert( impl.def().trait().is_valid() );
             Resolve_Absolute_Path(item_context, Span(), Context::LookupMode::Type, impl.def().trait());
-        
-        Resolve_Absolute_ImplItems(item_context,  impl.items());
-        
-        item_context.pop(impl.def().params());
-        item_context.pop_self( impl.def().type() );
+            
+            if( impl.items().size() != 0 ) {
+                ERROR(Span(), E0000, "impl Trait for .. with methods");
+            }
+            
+            item_context.pop(impl.def().params());
+            
+            const_cast< ::AST::Trait*>(impl.def().trait().binding().as_Trait().trait_)->set_is_marker();
+        }
+        else
+        {
+            item_context.push_self( impl.def().type() );
+            item_context.push(impl.def().params(), GenericSlot::Level::Top);
+            Resolve_Absolute_Generic(item_context,  impl.def().params());
+            
+            Resolve_Absolute_Type(item_context, impl.def().type());
+            if( impl.def().trait().is_valid() ) {
+                Resolve_Absolute_Path(item_context, Span(), Context::LookupMode::Type, impl.def().trait());
+            }
+            
+            Resolve_Absolute_ImplItems(item_context,  impl.items());
+            
+            item_context.pop(impl.def().params());
+            item_context.pop_self( impl.def().type() );
+        }
     }
     
     for(auto& impl_def : mod.neg_impls())

@@ -148,7 +148,7 @@ int main(int argc, char *argv[])
             });
         
         CompilePhaseV("Constant Evaluate", [&]() {
-            //ConvertHIR_ConstantEvaluate(hir_crate);
+            ConvertHIR_ConstantEvaluate(*hir_crate);
             });
         
         // Typecheck / type propagate module (type annotations of all values)

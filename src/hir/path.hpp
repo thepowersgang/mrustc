@@ -32,6 +32,14 @@ struct SimplePath
     SimplePath clone() const;
     
     SimplePath operator+(const ::std::string& s) const;
+    bool operator==(const SimplePath& x) const {
+        return m_crate_name == x.m_crate_name && m_components == x.m_components;
+    }
+    bool operator<(const SimplePath& x) const {
+        if( m_crate_name < x.m_crate_name ) return true;
+        if( m_components < x.m_components ) return true;
+        return false;
+    }
     friend ::std::ostream& operator<<(::std::ostream& os, const SimplePath& x);
 };
 
@@ -42,6 +50,9 @@ struct PathParams
     
     PathParams();
     PathParams clone() const;
+    
+    //bool operator==(const PathParams& x) const;
+    //bool operator<(const PathParams& x) const;
 };
 
 /// Generic path - Simple path with one lot of generic params
@@ -57,6 +68,9 @@ public:
     
     GenericPath clone() const;
     
+    //bool operator==(const GenericPath& x) const;
+    //bool operator<(const GenericPath& x) const;
+
     friend ::std::ostream& operator<<(::std::ostream& os, const GenericPath& x);
 };
 

@@ -9,30 +9,6 @@
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::SimplePath path);
 ::HIR::Function LowerHIR_Function(const ::AST::Function& f);
 
-/// \brief Converts the AST into HIR format
-///
-/// - Removes all possibility for unexpanded macros
-/// - Performs desugaring of for/if-let/while-let/...
-::HIR::CratePtr LowerHIR_FromAST(::AST::Crate crate)
-{
-    ::std::unordered_map< ::std::string, MacroRules >   macros;
-    
-    // - Extract macros from root module
-    for( const auto& mac : crate.m_root_module.macros() ) {
-        //if( mac.data.export ) {
-        macros.insert( ::std::make_pair( mac.name, mv$(*mac.data) ) );
-        //}
-    }
-    for( const auto& mac : crate.m_root_module.macro_imports_res() ) {
-        //if( mac.data->export ) {
-        macros.insert( ::std::make_pair( mac.name, *mac.data ) );
-        //}
-    }
-    
-    auto rootmod = LowerHIR_Module( crate.m_root_module, ::HIR::SimplePath("") );
-    return ::HIR::CratePtr( ::HIR::Crate { mv$(rootmod), mv$(macros) } );
-}
-
 // --------------------------------------------------------------------
 ::HIR::GenericParams LowerHIR_GenericParams(const ::AST::GenericParams& gp)
 {
@@ -762,10 +738,150 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
         _add_mod_ns_item( mod,  mv$(name), false, ::HIR::TypeItem::make_Module( LowerHIR_Module(submod, mv$(item_path)) ) );
     }
     
+    // TODO: Impl blocks
     
     // TODO: Populate trait list
     
     return mod;
+}
+
+void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crate)
+{
+    // Sub-modules
+    for( const auto& item : ast_mod.items() )
+    {
+        TU_IFLET(::AST::Item, item.data, Module, e,
+            LowerHIR_Module_Impls(e,  hir_crate);
+        )
+    }
+    for( const auto& submod_ptr : ast_mod.anon_mods() )
+    {
+        LowerHIR_Module_Impls(*submod_ptr,  hir_crate);
+    }
+    
+    // 
+    for( const auto& impl : ast_mod.impls() )
+    {
+        auto params = LowerHIR_GenericParams(impl.def().params());
+        auto type = LowerHIR_Type(impl.def().type());
+        
+        if( impl.def().trait().is_valid() )
+        {
+            bool is_marker = impl.def().trait().binding().as_Trait().trait_->is_marker();
+            auto trait = LowerHIR_GenericPath(Span(), impl.def().trait());
+            auto trait_name = mv$(trait.m_path);
+            auto trait_args = mv$(trait.m_params);
+            
+            // TODO: Determine if a trait is a marker (i.e. is a OIBIT)
+            
+            if( is_marker )
+            {
+                hir_crate.m_marker_impls.insert( ::std::make_pair( mv$(trait_name), ::HIR::MarkerImpl {
+                    mv$(params),
+                    mv$(trait_args),
+                    true,
+                    mv$(type)
+                    } ) );
+            }
+            else
+            {
+                ::std::map< ::std::string, ::HIR::Function> methods;
+                ::std::map< ::std::string, ::HIR::Constant> constants;
+                ::std::map< ::std::string, ::HIR::TypeAlias> types;
+                
+                for(const auto& item : impl.items())
+                {
+                    TU_MATCH_DEF(::AST::Item, (item.data), (e),
+                    (
+                        ERROR(Span(), E0000, "Unexpected item type in trait impl");
+                        ),
+                    (Type,
+                        types.insert( ::std::make_pair(item.name,  LowerHIR_TypeAlias(e)) );
+                        ),
+                    (Function,
+                        methods.insert( ::std::make_pair(item.name,  LowerHIR_Function(e)) );
+                        )
+                    )
+                }
+                
+                hir_crate.m_trait_impls.insert( ::std::make_pair(mv$(trait_name), ::HIR::TraitImpl {
+                    mv$(params),
+                    mv$(trait_args),
+                    mv$(type),
+                    
+                    mv$(methods),
+                    mv$(constants),
+                    mv$(types)
+                    }) );
+            }
+        }
+        else
+        {
+            // Inherent impls
+            ::std::map< ::std::string, ::HIR::Function> methods;
+            
+            for(const auto& item : impl.items())
+            {
+                TU_MATCH_DEF(::AST::Item, (item.data), (e),
+                (
+                    ERROR(Span(), E0000, "Unexpected item type in inherent impl");
+                    ),
+                (Function,
+                    methods.insert( ::std::make_pair(item.name,  LowerHIR_Function(e)) );
+                    )
+                )
+            }
+            
+            hir_crate.m_type_impls.push_back( ::HIR::TypeImpl {
+                mv$(params),
+                mv$(type),
+                mv$( methods )
+                } );
+        }
+    }
+    for( const auto& impl : ast_mod.neg_impls() )
+    {
+        auto params = LowerHIR_GenericParams(impl.params());
+        auto type = LowerHIR_Type(impl.type());
+        auto trait = LowerHIR_GenericPath(Span(), impl.trait());
+        auto trait_name = mv$(trait.m_path);
+        auto trait_args = mv$(trait.m_params);
+        
+        hir_crate.m_marker_impls.insert( ::std::make_pair( mv$(trait_name), ::HIR::MarkerImpl {
+            mv$(params),
+            mv$(trait_args),
+            false,
+            mv$(type)
+            } ) );
+    }
+}
+
+/// \brief Converts the AST into HIR format
+///
+/// - Removes all possibility for unexpanded macros
+/// - Performs desugaring of for/if-let/while-let/...
+::HIR::CratePtr LowerHIR_FromAST(::AST::Crate crate)
+{
+    ::HIR::Crate    rv;
+    auto& macros = rv.m_exported_macros;
+    
+    // - Extract macros from root module
+    for( const auto& mac : crate.m_root_module.macros() ) {
+        //if( mac.data.export ) {
+        macros.insert( ::std::make_pair( mac.name, mv$(*mac.data) ) );
+        //}
+    }
+    for( const auto& mac : crate.m_root_module.macro_imports_res() ) {
+        //if( mac.data->export ) {
+        macros.insert( ::std::make_pair( mac.name, *mac.data ) );
+        //}
+    }
+    
+    rv.m_root_module = LowerHIR_Module( crate.m_root_module, ::HIR::SimplePath("") );
+    
+    LowerHIR_Module_Impls(crate.m_root_module,  rv);
+    
+    return ::HIR::CratePtr( mv$(rv) );
 }
 
 

@@ -95,7 +95,7 @@ struct LowerHIR_ExprNode_Visitor:
         switch(v.m_type)
         {
         case ::AST::ExprNode_BinOp::RANGE: {
-            // TODO: Lang items
+            // NOTE: Not language items
             auto path_Range     = ::HIR::GenericPath( ::HIR::SimplePath("", {"ops", "Range"}) );
             auto path_RangeFrom = ::HIR::GenericPath( ::HIR::SimplePath("", {"ops", "RangeFrom"}) );
             auto path_RangeTo   = ::HIR::GenericPath( ::HIR::SimplePath("", {"ops", "RangeTo"}) );
@@ -124,9 +124,25 @@ struct LowerHIR_ExprNode_Visitor:
                 }
             }
             break; }
-        case ::AST::ExprNode_BinOp::RANGE_INC:
-            TODO(v.get_pos(), "Desugar range (inclusive)");
-            break;
+        case ::AST::ExprNode_BinOp::RANGE_INC: {
+            // NOTE: Not language items
+            auto path_RangeInclusive_NonEmpty = ::HIR::GenericPath( ::HIR::SimplePath("", {"ops", "RangeInclusive", "NonEmpty"}) );
+            auto path_RangeToInclusive        = ::HIR::GenericPath( ::HIR::SimplePath("", {"ops", "RangeToInclusive"}) );
+            
+            if( v.m_left )
+            {
+                ::HIR::ExprNode_StructLiteral::t_values values;
+                values.push_back( ::std::make_pair( ::std::string("start"), LowerHIR_ExprNode_Inner( *v.m_left ) ) );
+                values.push_back( ::std::make_pair( ::std::string("end")  , LowerHIR_ExprNode_Inner( *v.m_right ) ) );
+                m_rv.reset( new ::HIR::ExprNode_StructLiteral(mv$(path_RangeInclusive_NonEmpty), nullptr, mv$(values)) );
+            }
+            else
+            {
+                ::HIR::ExprNode_StructLiteral::t_values values;
+                values.push_back( ::std::make_pair( ::std::string("end")  , LowerHIR_ExprNode_Inner( *v.m_right ) ) );
+                m_rv.reset( new ::HIR::ExprNode_StructLiteral(mv$(path_RangeToInclusive), nullptr, mv$(values)) );
+            }
+            break; }
         case ::AST::ExprNode_BinOp::PLACE_IN:
             TODO(v.get_pos(), "Desugar placement syntax");
             break;
