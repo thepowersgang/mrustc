@@ -15,6 +15,16 @@
 #include "common.hpp"
 #include <cassert>
 
+template<typename T>
+Spanned<T> get_spanned(TokenStream& lex, ::std::function<T()> f) {
+    auto ps = lex.start_span();
+    auto v = f();
+    return Spanned<T> {
+        lex.end_span(ps),
+        mv$(v)
+        };
+}
+
 ::std::string dirname(::std::string input) {
     while( input.size() > 0 && input.back() != '/' ) {
         input.pop_back();
@@ -828,6 +838,7 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
 {
     TRACE_FUNCTION;
     Token   tok;
+    auto ps = lex.start_span();
 
     AST::GenericParams params;
     // 1. (optional) type parameters
@@ -841,13 +852,13 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
     }
     // 2. Either a trait name (with type params), or the type to impl
     
-    AST::Path   trait_path;
+    Spanned<AST::Path>   trait_path;
     TypeRef impl_type;
     // - Handle negative impls, which must be a trait
     // "impl !Trait for Type {}"
     if( GET_TOK(tok, lex) == TOK_EXCLAM )
     {
-        trait_path = Parse_Path(lex, PATH_GENERIC_TYPE);
+        trait_path = get_spanned< ::AST::Path>(lex, [&]() { return Parse_Path(lex, PATH_GENERIC_TYPE); });
         GET_CHECK_TOK(tok, lex, TOK_RWORD_FOR);
         impl_type = Parse_Type(lex);
         
@@ -860,7 +871,7 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
         // negative impls can't have any content
         GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
         
-        mod.add_neg_impl( AST::ImplDef( AST::MetaItems(), ::std::move(params), ::std::move(trait_path), ::std::move(impl_type) ) );
+        mod.add_neg_impl( AST::ImplDef(lex.end_span(ps), AST::MetaItems(), mv$(params), mv$(trait_path), mv$(impl_type) ) );
         return ;
     }
     else
@@ -875,7 +886,10 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
         {
             if( !impl_type.is_path() )
                 throw ParseError::Generic(lex, "Trait was not a path");
-            trait_path = mv$(impl_type.path());
+            trait_path = Spanned< AST::Path> {
+                impl_type.span(),
+                mv$(impl_type.path())
+                };
             // Implementing a trait for another type, get the target type
             if( GET_TOK(tok, lex) == TOK_DOUBLE_DOT )
             {
@@ -910,7 +924,7 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
         GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
     }
     
-    AST::Impl   impl( mv$(attrs), ::std::move(params), ::std::move(impl_type), ::std::move(trait_path) );
+    AST::Impl   impl( AST::ImplDef( lex.end_span(ps), mv$(attrs), mv$(params), mv$(trait_path), mv$(impl_type) ) );
 
     // A sequence of method implementations
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )

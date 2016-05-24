@@ -46,32 +46,9 @@ public:
     /// Load referenced crates
     void load_externs();
     
-    bool is_trait_implicit(const Path& trait) const;
-    
-
-    //::std::vector<ImplRef> find_inherent_impls(const TypeRef& type) const;
-    bool find_inherent_impls(const TypeRef& type, ::std::function<bool(const Impl& , ::std::vector<TypeRef> )>) const;
-    ::rust::option<ImplRef> find_impl(const Path& trait, const TypeRef& type) const;
-    bool find_impl(const Path& trait, const TypeRef& type, Impl** out_impl, ::std::vector<TypeRef>* out_prams=nullptr) const;
-    const ::rust::option<Impl&> get_impl(const Path& trait, const TypeRef& type) {
-        Impl*   impl_ptr;
-        ::std::vector<TypeRef>  params;
-        if( find_impl(trait, type, &impl_ptr, &params) ) {
-            return ::rust::option<Impl&>( impl_ptr->get_concrete(params) );
-        }
-        else {
-            return ::rust::option<Impl&>();
-        }
-    }
-    Function& lookup_method(const TypeRef& type, const char *name);
-    
     void load_extern_crate(::std::string name);
     
-    void iterate_functions( fcn_visitor_t* visitor );
-
     SERIALISABLE_PROTOTYPES();
-private:
-    bool check_impls_wildcard(const Path& trait, const TypeRef& type) const;
 };
 
 /// Representation of an imported crate

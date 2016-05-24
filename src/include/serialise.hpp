@@ -130,7 +130,11 @@ public:
     virtual void end_object(const char *tag) = 0;
     ::std::string start_object();
  
-    void item(Serialisable& v);    
+    void item(Serialisable& v);
+    Deserialiser& operator>>(Serialisable& v) {
+        this->item(v);
+        return *this;
+    }
 
     template<typename T>
     void item(::std::vector<T>& v) {

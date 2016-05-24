@@ -765,10 +765,10 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
         auto params = LowerHIR_GenericParams(impl.def().params());
         auto type = LowerHIR_Type(impl.def().type());
         
-        if( impl.def().trait().is_valid() )
+        if( impl.def().trait().ent.is_valid() )
         {
-            bool is_marker = impl.def().trait().binding().as_Trait().trait_->is_marker();
-            auto trait = LowerHIR_GenericPath(Span(), impl.def().trait());
+            bool is_marker = impl.def().trait().ent.binding().as_Trait().trait_->is_marker();
+            auto trait = LowerHIR_GenericPath(impl.def().trait().sp, impl.def().trait().ent);
             auto trait_name = mv$(trait.m_path);
             auto trait_args = mv$(trait.m_params);
             
@@ -844,7 +844,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
     {
         auto params = LowerHIR_GenericParams(impl.params());
         auto type = LowerHIR_Type(impl.type());
-        auto trait = LowerHIR_GenericPath(Span(), impl.trait());
+        auto trait = LowerHIR_GenericPath(impl.trait().sp, impl.trait().ent);
         auto trait_name = mv$(trait.m_path);
         auto trait_args = mv$(trait.m_params);
         

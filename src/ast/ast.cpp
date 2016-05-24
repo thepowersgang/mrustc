@@ -73,62 +73,20 @@ SERIALISE_TYPE(MetaItem::, "AST_MetaItem", {
     //s.item(m_sub_items);
 })
 
-bool ImplDef::matches(::std::vector<TypeRef>& out_types, const Path& trait, const TypeRef& type) const
-{
-    // 1. Check the type/trait counting parameters as wildcards (but flagging if one was seen)
-    //  > If that fails, just early return
-    int trait_match = m_trait.equal_no_generic(trait);
-    if( trait_match < 0 )
-        return false;
-    int type_match = m_type.equal_no_generic(type);
-    if( type_match < 0 )
-        return false;
-    DEBUG("Match Tr:" <<trait_match << ", Ty:" << type_match << " for Trait " << trait << ", Type " << type);
-    
-    // 2. If a parameter was seen, do the more expensive generic checks
-    //  > Involves checking that parameters are valid
-    if( m_params.ty_params().size() )
-    {
-        if( trait_match == 0 && type_match == 0 )
-            throw CompileError::Generic( "Unbound generic in impl" );
-    } 
-    
-    // If there was a fuzzy match, then make it less fuzzy.
-    if( !(trait_match == 0 && type_match == 0) )
-    {
-        out_types.clear();
-        out_types.resize(m_params.ty_params().size());
-        try
-        {
-            auto c = [&](const char* name,const TypeRef& ty) {
-                    if( strcmp(name, "Self") == 0 ) {
-                        if( ty != type )
-                            throw CompileError::Generic(FMT("Self mismatch : " << ty));
-                        return ;
-                    }
-                    int idx = m_params.find_name(name);
-                    assert( idx >= 0 );
-                    assert( (unsigned)idx < out_types.size() );
-                    out_types[idx].merge_with( ty );
-                };
-            m_trait.match_args(trait, c);
-            m_type.match_args(type, c);
-        }
-        catch(const CompileError::Base& e)
-        {
-            DEBUG("No match - " << e.what());
-            return false;
-        }
-        
-        // TODO: Validate params against bounds?
-    }
-    
-    // Perfect match
-    return true;
+template<typename T>
+void operator<<(Serialiser& s, const Spanned<T>& x) {
+    //s << x.sp;
+    s << x.ent;
 }
+template<typename T>
+void operator>>(Deserialiser& s, Spanned<T>& x) {
+    //s >> x.sp;
+    s >> x.ent;
+}
+
 ::std::ostream& operator<<(::std::ostream& os, const ImplDef& impl)
 {
-    return os << "impl<" << impl.m_params << "> " << impl.m_trait << " for " << impl.m_type << "";
+    return os << "impl<" << impl.m_params << "> " << impl.m_trait.ent << " for " << impl.m_type << "";
 }
 SERIALISE_TYPE(ImplDef::, "AST_ImplDef", {
     s << m_params;
@@ -136,7 +94,7 @@ SERIALISE_TYPE(ImplDef::, "AST_ImplDef", {
     s << m_type;
 },{
     s.item(m_params);
-    s.item(m_trait);
+    s >> m_trait;
     s.item(m_type);
 })
 
@@ -187,34 +145,7 @@ Impl& Impl::get_concrete(const ::std::vector<TypeRef>& param_types)
 
 Impl Impl::make_concrete(const ::std::vector<TypeRef>& types) const
 {
-    TRACE_FUNCTION_F("*this = " << *this << ", types={" << types << "}");
-    assert(m_def.params().ty_params().size());
-    
-    GenericResolveClosure   resolver(m_def.params(), types);
-    
-    Impl    ret( MetaItems(), GenericParams(), m_def.type(), m_def.trait() );
-    ret.m_def.trait().resolve_args( resolver );
-    ret.m_def.type().resolve_args( resolver );
-    
     throw ParseError::Todo("Impl::make_concrete");
-/*
-    for(const auto& fcn : m_functions)
-    {
-        GenericParams  new_fcn_params = fcn.data.params();
-        for( auto& b : new_fcn_params.bounds() )
-            b.type().resolve_args(resolver);
-        TypeRef new_ret_type = fcn.data.rettype();
-        new_ret_type.resolve_args(resolver);
-        Function::Arglist  new_args = fcn.data.args();
-        for( auto& t : new_args )
-            t.second.resolve_args(resolver);
-        
-        ret.add_function( fcn.is_pub, fcn.name, Function( ::std::move(new_fcn_params), fcn.data.fcn_class(), ::std::move(new_ret_type), ::std::move(new_args), Expr() ) );
-    }
-   
-    UNINDENT();
-    return ret;
-*/
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const Impl& impl)
@@ -326,19 +257,6 @@ void Module::prescan()
     //{
     //    sm_p.first.prescan();
     //}
-}
-
-void Module::iterate_functions(fcn_visitor_t *visitor, const Crate& crate)
-{
-    for( auto& item : this->m_items )
-    {
-        TU_MATCH_DEF(::AST::Item, (item.data), (e),
-        ( ),
-        (Function,
-            visitor(crate, *this, e);
-            )
-        )
-    }
 }
 
 template<typename T>
@@ -720,79 +638,6 @@ int GenericParams::find_name(const char* name) const
     }
     DEBUG("Type param '" << name << "' not in list");
     return -1;
-}
-
-bool GenericParams::check_params(Crate& crate, const ::std::vector<TypeRef>& types) const
-{
-    return check_params( crate, const_cast< ::std::vector<TypeRef>&>(types), false );
-}
-bool GenericParams::check_params(Crate& crate, ::std::vector<TypeRef>& types, bool allow_infer) const
-{
-    // Check parameter counts
-    if( types.size() > m_type_params.size() )
-    {
-        throw ::std::runtime_error(FMT("Too many generic params ("<<types.size()<<" passed, expecting "<< m_type_params.size()<<")"));
-    }
-    else if( types.size() < m_type_params.size() )
-    {
-        if( allow_infer )
-        {
-            while( types.size() < m_type_params.size() )
-            {
-                types.push_back( m_type_params[types.size()].get_default() );
-            }
-        }
-        else
-        {
-            throw ::std::runtime_error(FMT("Too few generic params, (" << types.size() << " passed, expecting " << m_type_params.size() << ")"));
-        }
-    }
-    else
-    {
-        // Counts are good, time to validate types
-    }
-    
-    for( unsigned int i = 0; i < types.size(); i ++ )
-    {
-        auto& type = types[i];
-        auto& param = m_type_params[i].name();
-        TypeRef test(TypeRef::TagArg(), param);
-        if( type.is_wildcard() )
-        {
-            for( const auto& bound : m_bounds )
-            {
-                if( bound.is_IsTrait() && bound.as_IsTrait().type == test )
-                {
-                    const auto& trait = bound.as_IsTrait().trait;
-                    //const auto& ty_traits = type.traits();
-                
-                    //auto it = ::std::find(ty_traits.begin(), ty_traits.end(), trait);
-                    //if( it == ty_traits.end() )
-                    {
-                        throw ::std::runtime_error( FMT("No matching impl of "<<trait<<" for "<<type));
-                    }
-                }
-            }
-        }
-        else
-        {
-            // Not a wildcard!
-            // Check that the type fits the bounds applied to it
-            for( const auto& bound : m_bounds )
-            {
-                if( bound.is_IsTrait() && bound.as_IsTrait().type == test )
-                {
-                    const auto& trait = bound.as_IsTrait().trait;
-                    // Check if 'type' impls 'trait'
-                    if( !crate.find_impl(trait, TypeRef(Span(), trait), nullptr, nullptr) )
-                    {
-                        throw ::std::runtime_error( FMT("No matching impl of "<<trait<<" for "<<type));
-                    }
-                }
-            }
-        }
-    }
-    return true;
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const GenericParams& tps)

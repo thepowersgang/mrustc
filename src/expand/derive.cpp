@@ -24,7 +24,7 @@ static inline AST::ExprNodeP mk_exprnodep(AST::ExprNode* en){ return AST::ExprNo
 /// Interface for derive handlers
 struct Deriver
 {
-    virtual AST::Impl handle_item(const AST::GenericParams& params, const TypeRef& type, const AST::Struct& str) const = 0;
+    virtual AST::Impl handle_item(Span sp, const AST::GenericParams& params, const TypeRef& type, const AST::Struct& str) const = 0;
 };
 
 /// 'Debug' derive handler
@@ -45,7 +45,7 @@ class Deriver_Debug:
     //}
     
 public:
-    AST::Impl handle_item(const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
+    AST::Impl handle_item(Span sp, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
         // TODO: be correct herhe and use "core" as the crate name
         // - Requires handling the crate_name crate attribute correctly
@@ -118,7 +118,7 @@ public:
             );
         fcn.set_code( NEWNODE(AST::ExprNode_Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         
-        AST::Impl   rv( AST::MetaItems(), p, type, debug_trait );
+        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), p, make_spanned(sp, debug_trait), type ) );
         rv.add_function(false, "fmt", mv$(fcn));
         return mv$(rv);
     }
@@ -137,7 +137,7 @@ static const Deriver* find_impl(const ::std::string& trait_name)
 }
 
 template<typename T>
-static void derive_item(AST::Module& mod, const AST::MetaItem& attr, const AST::Path& path, const T& item)
+static void derive_item(const Span& sp, AST::Module& mod, const AST::MetaItem& attr, const AST::Path& path, const T& item)
 {
     if( !attr.has_sub_items() ) {
         //throw CompileError::Generic("#[derive()] requires a list of known traits to derive");
@@ -162,7 +162,7 @@ static void derive_item(AST::Module& mod, const AST::MetaItem& attr, const AST::
             continue ;
         }
         
-        mod.add_impl( dp->handle_item(params, type, item) );
+        mod.add_impl( dp->handle_item(sp, params, type, item) );
     }
     
     if( fail ) {
@@ -181,7 +181,7 @@ public:
         (
             ),
         (Struct,
-            derive_item(mod, attr, path, e);
+            derive_item(i.span, mod, attr, path, e);
             )
         )
     }

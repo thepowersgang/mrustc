@@ -1257,20 +1257,21 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
     
     for(auto& impl : mod.impls())
     {
-        if( ! impl.def().type().is_valid() )
+        auto& def = impl.def();
+        if( ! def.type().is_valid() )
         {
-            item_context.push(impl.def().params(), GenericSlot::Level::Top);
-            Resolve_Absolute_Generic(item_context,  impl.def().params());
-            assert( impl.def().trait().is_valid() );
-            Resolve_Absolute_Path(item_context, Span(), Context::LookupMode::Type, impl.def().trait());
+            item_context.push(def.params(), GenericSlot::Level::Top);
+            Resolve_Absolute_Generic(item_context,  def.params());
+            assert( def.trait().ent.is_valid() );
+            Resolve_Absolute_Path(item_context, def.trait().sp, Context::LookupMode::Type, def.trait().ent);
             
             if( impl.items().size() != 0 ) {
                 ERROR(Span(), E0000, "impl Trait for .. with methods");
             }
             
-            item_context.pop(impl.def().params());
+            item_context.pop(def.params());
             
-            const_cast< ::AST::Trait*>(impl.def().trait().binding().as_Trait().trait_)->set_is_marker();
+            const_cast< ::AST::Trait*>(def.trait().ent.binding().as_Trait().trait_)->set_is_marker();
         }
         else
         {
@@ -1279,14 +1280,14 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             Resolve_Absolute_Generic(item_context,  impl.def().params());
             
             Resolve_Absolute_Type(item_context, impl.def().type());
-            if( impl.def().trait().is_valid() ) {
-                Resolve_Absolute_Path(item_context, Span(), Context::LookupMode::Type, impl.def().trait());
+            if( def.trait().ent.is_valid() ) {
+                Resolve_Absolute_Path(item_context, def.trait().sp, Context::LookupMode::Type, def.trait().ent);
             }
             
             Resolve_Absolute_ImplItems(item_context,  impl.items());
             
-            item_context.pop(impl.def().params());
-            item_context.pop_self( impl.def().type() );
+            item_context.pop(def.params());
+            item_context.pop_self( def.type() );
         }
     }
     
@@ -1297,9 +1298,9 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
         Resolve_Absolute_Generic(item_context,  impl_def.params());
         
         Resolve_Absolute_Type(item_context, impl_def.type());
-        if( !impl_def.trait().is_valid() )
+        if( !impl_def.trait().ent.is_valid() )
             BUG(Span(), "Encountered negative impl with no trait");
-        Resolve_Absolute_Path(item_context, Span(), Context::LookupMode::Type, impl_def.trait());
+        Resolve_Absolute_Path(item_context, impl_def.trait().sp, Context::LookupMode::Type, impl_def.trait().ent);
         
         // No items
         

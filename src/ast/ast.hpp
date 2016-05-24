@@ -357,9 +357,8 @@ public:
         m_data( StructData::make_Tuple({mv$(fields)}) )
     {}
     
-    const GenericParams&   params() const { return m_params; }
-    
-    GenericParams& params() { return m_params; }
+    const GenericParams& params() const { return m_params; }
+          GenericParams& params()       { return m_params; }
     
     TypeRef get_field_type(const char *name, const ::std::vector<TypeRef>& args);
     
@@ -369,33 +368,33 @@ public:
 class ImplDef:
     public Serialisable
 {
+    Span    m_span;
     MetaItems   m_attrs;
     GenericParams  m_params;
-    Path    m_trait;
+    Spanned<Path>   m_trait;
     TypeRef m_type;
 public:
     ImplDef() {}
     ImplDef(ImplDef&&) /*noexcept*/ = default;
-    ImplDef(MetaItems attrs, GenericParams params, Path trait_type, TypeRef impl_type):
-        m_attrs( move(attrs) ),
-        m_params( move(params) ),
-        m_trait( move(trait_type) ),
-        m_type( move(impl_type) )
+    ImplDef(Span sp, MetaItems attrs, GenericParams params, Spanned<Path> trait_type, TypeRef impl_type):
+        m_span( mv$(sp) ),
+        m_attrs( mv$(attrs) ),
+        m_params( mv$(params) ),
+        m_trait( mv$(trait_type) ),
+        m_type( mv$(impl_type) )
     {}
     ImplDef& operator=(ImplDef&&) = default;
     
     // Accessors
     const MetaItems& attrs() const { return m_attrs; }
-    const GenericParams& params() const { return m_params; }
-    const Path& trait() const { return m_trait; }
-    const TypeRef& type() const { return m_type; }
-
-    GenericParams& params() { return m_params; }
-    Path& trait() { return m_trait; }
-    TypeRef& type() { return m_type; }
     
-    /// Compare this impl against a trait,type pair
-    bool matches(::std::vector<TypeRef>& types, const Path& trait, const TypeRef& type) const;
+    const GenericParams& params() const { return m_params; }
+          GenericParams& params()       { return m_params; }
+    const Spanned<Path>& trait() const { return m_trait; }
+          Spanned<Path>& trait()       { return m_trait; }
+    const TypeRef& type() const { return m_type; }
+          TypeRef& type()       { return m_type; }
+
     
     friend ::std::ostream& operator<<(::std::ostream& os, const ImplDef& impl);
     SERIALISABLE_PROTOTYPES();
@@ -405,6 +404,7 @@ class Impl:
     public Serialisable
 {
     ImplDef m_def;
+    Span    m_span;
     
     NamedList<Item>   m_items;
     //NamedList<TypeRef>   m_types;
@@ -417,8 +417,8 @@ public:
     
     Impl() {}
     Impl(Impl&&) /*noexcept*/ = default;
-    Impl(MetaItems attrs, GenericParams params, TypeRef impl_type, Path trait_type):
-        m_def( move(attrs), move(params), move(trait_type), move(impl_type) )
+    Impl(ImplDef def):
+        m_def( mv$(def) )
     {}
     Impl& operator=(Impl&&) = default;
 
@@ -467,8 +467,6 @@ struct UseStmt:
     
     SERIALISABLE_PROTOTYPES();
 };
-
-typedef void fcn_visitor_t(const AST::Crate& crate, const AST::Module& mod, Function& fcn);
 
 /// Representation of a parsed (and being converted) function
 class Module:
@@ -599,10 +597,10 @@ public:
     void add_submod(bool is_public, ::std::string name, Module mod, MetaItems attrs);
     
     void add_impl(Impl impl) {
-        m_impls.emplace_back( ::std::move(impl) );
+        m_impls.emplace_back( mv$(impl) );
     }
     void add_neg_impl(ImplDef impl) {
-        m_neg_impls.emplace_back( ::std::move(impl) );
+        m_neg_impls.emplace_back( mv$(impl) );
     }
     void add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro);
     void add_macro_import(::std::string name, const MacroRules& mr) {
@@ -621,8 +619,6 @@ public:
         m_anon_modules.push_back(mod_ptr);
         return m_anon_modules.size()-1;
     }
-
-    void iterate_functions(fcn_visitor_t* visitor, const Crate& crate);
 
     const ::AST::Path& path() const { return m_my_path; }
     ItemRef find_item(const ::std::string& needle, bool allow_leaves = true, bool ignore_private_wildcard = true) const;
@@ -675,6 +671,7 @@ TAGGED_UNION_EX(Item, (: public Serialisable), None,
     (
     public:
         MetaItems   attrs;
+        Span    span;
         
         SERIALISABLE_PROTOTYPES();
     )

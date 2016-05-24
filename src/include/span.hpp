@@ -56,9 +56,13 @@ struct Span
 template<typename T>
 struct Spanned
 {
-    Span    m_span;
-    T   m_item;
+    Span    sp;
+    T   ent;
 };
+template<typename T>
+Spanned<T> make_spanned(Span sp, T val) {
+    return Spanned<T> { ::std::move(sp), ::std::move(val) };
+}
 
 #define ERROR(span, code, msg)  do { ::Span(span).error(code, [&](::std::ostream& os) { os << msg; }); throw ::std::runtime_error("Error fell through" #code); } while(0)
 #define WARNING(span, code, msg)  do { ::Span(span).warning(code, [&](::std::ostream& os) { os << msg; }); } while(0)
