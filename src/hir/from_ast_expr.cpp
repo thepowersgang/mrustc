@@ -28,6 +28,9 @@ struct LowerHIR_ExprNode_Visitor:
             if( n ) {
                 rv->m_nodes.push_back( LowerHIR_ExprNode_Inner( *n ) );
             }
+            else {
+                rv->m_nodes.push_back( ::HIR::ExprNodeP( new ::HIR::ExprNode_Tuple({}) ) );
+            }
         }
         
         if( v.m_local_mod )
@@ -44,7 +47,10 @@ struct LowerHIR_ExprNode_Visitor:
         switch( v.m_type )
         {
         case ::AST::ExprNode_Flow::RETURN:
-            m_rv.reset( new ::HIR::ExprNode_Return( LowerHIR_ExprNode_Inner_Opt(v.m_value.get()) ) );
+            if( v.m_value )
+                m_rv.reset( new ::HIR::ExprNode_Return( LowerHIR_ExprNode_Inner(*v.m_value) ) );
+            else
+                m_rv.reset( new ::HIR::ExprNode_Return( ::HIR::ExprNodeP(new ::HIR::ExprNode_Tuple({})) ) );
             break;
         case ::AST::ExprNode_Flow::CONTINUE:
         case ::AST::ExprNode_Flow::BREAK:

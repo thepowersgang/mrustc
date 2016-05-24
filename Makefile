@@ -41,6 +41,7 @@ OBJ += resolve/use.o resolve/index.o resolve/absolute.o
 OBJ += hir/from_ast.o hir/from_ast_expr.o
 OBJ +=  hir/crate_ptr.o hir/type_ptr.o hir/expr_ptr.o
 OBJ +=  hir/type.o hir/path.o hir/expr.o
+OBJ +=  hir/visitor.o
 OBJ += hir_conv/expand_type.o hir_conv/constant_evaluation.o
 OBJ += dump_as_rust.o
 

@@ -786,8 +786,8 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
             else
             {
                 ::std::map< ::std::string, ::HIR::Function> methods;
-                ::std::map< ::std::string, ::HIR::Constant> constants;
-                ::std::map< ::std::string, ::HIR::TypeAlias> types;
+                ::std::map< ::std::string, ::HIR::ExprPtr> constants;
+                ::std::map< ::std::string, ::HIR::TypeRef> types;
                 
                 for(const auto& item : impl.items())
                 {
@@ -795,8 +795,9 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                     (
                         ERROR(Span(), E0000, "Unexpected item type in trait impl");
                         ),
+                    // TODO: Associated constants
                     (Type,
-                        types.insert( ::std::make_pair(item.name,  LowerHIR_TypeAlias(e)) );
+                        types.insert( ::std::make_pair(item.name,  LowerHIR_Type(e.type())) );
                         ),
                     (Function,
                         methods.insert( ::std::make_pair(item.name,  LowerHIR_Function(e)) );

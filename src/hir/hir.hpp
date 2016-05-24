@@ -207,8 +207,8 @@ public:
     ::HIR::TypeRef  m_type;
     
     ::std::map< ::std::string, ::HIR::Function> m_methods;
-    ::std::map< ::std::string, ::HIR::Constant> m_constants;
-    ::std::map< ::std::string, ::HIR::TypeAlias> m_types;
+    ::std::map< ::std::string, ::HIR::ExprPtr> m_constants;
+    ::std::map< ::std::string, ::HIR::TypeRef> m_types;
 };
 
 class MarkerImpl

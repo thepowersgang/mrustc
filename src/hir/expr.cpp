@@ -9,10 +9,13 @@
 #define DEF_VISIT(nt, n, code)   void ::HIR::nt::visit(ExprVisitor& nv) { nv.visit(*this); } void ::HIR::ExprVisitorDef::visit(::HIR::nt& n) { code }
 
 DEF_VISIT(ExprNode_Block, node,
-    for(const auto& subnode : node.m_nodes)
+    for(const auto& subnode : node.m_nodes) {
+        assert(subnode);
         subnode->visit(*this);
+    }
 )
 DEF_VISIT(ExprNode_Return, node,
+    assert(node.m_value);
     node.m_value->visit(*this);
 )
 DEF_VISIT(ExprNode_Let, node,
@@ -21,15 +24,18 @@ DEF_VISIT(ExprNode_Let, node,
     }
 )
 DEF_VISIT(ExprNode_Loop, node,
+    assert(node.m_code);
     node.m_code->visit(*this);
 )
 DEF_VISIT(ExprNode_LoopControl, , )
 DEF_VISIT(ExprNode_Match, node,
+    assert(node.m_value);
     node.m_value->visit(*this);
     for(auto& arm : node.m_arms)
     {
         if( arm.m_cond )
             arm.m_cond->visit(*this);
+        assert(arm.m_code);
         arm.m_code->visit(*this);
     }
 )

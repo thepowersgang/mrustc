@@ -25,7 +25,8 @@ int g_debug_indent_level = 0;
 bool debug_enabled()
 {
     //return g_cur_phase != "Parse";
-    return g_cur_phase != "Parse" && g_cur_phase != "Expand";
+    //return g_cur_phase != "Parse" && g_cur_phase != "Expand";
+    return g_cur_phase != "Parse" && g_cur_phase != "Expand" && g_cur_phase != "Resolve";;
 }
 ::std::ostream& debug_output(int indent, const char* function)
 {
