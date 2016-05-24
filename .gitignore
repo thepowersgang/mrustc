@@ -2,11 +2,16 @@
 /bin
 /mrustc.depend
 /mrustc.layout
+/rustc-nightly-src.tar.gz
+/rustc-nightly
+
 /.obj
 *.gch
 *.gch.dep
 *.sw[po]
 /output
+
+/gitstats
 
 /bnf/*.o
 /bnf/*.dep

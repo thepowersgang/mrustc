@@ -63,10 +63,15 @@ output/%.ast: samples/%.rs $(BIN)
 	@mkdir -p output/
 	$(DBG) $(BIN) $< --emit ast -o $@ $(PIPECMD)
 
-RUSTCSRC := /home/tpg/Source/rust/rustc-nightly/
+RUSTCSRC := ./rustc-nightly/
 output/core.ast: $(RUSTCSRC)src/libcore/lib.rs $(BIN)
 	@mkdir -p output/
 	$(DBG) $(BIN) $< --emit ast -o $@ $(PIPECMD)
+
+.PHONY: UPDATE
+UPDATE:
+	wget https://static.rust-lang.org/dist/rustc-nightly-src.tar.gz
+	tar -xf rustc-nightly-src.tar.gz
 
 .PHONY: rust_tests
 RUST_TESTS_DIR := $(RUSTCSRC)src/test/

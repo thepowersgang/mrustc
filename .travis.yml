@@ -1,0 +1,10 @@
+language: cpp
+install: make
+
+before_script:
+ - make UPDATE
+
+script:
+ - make
+ - make test
+ - make rust_tests-run-pass
