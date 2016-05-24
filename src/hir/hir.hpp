@@ -42,9 +42,11 @@ struct VisEnt
 /// NOTE: Intentionally minimal, just covers the values (not the types)
 TAGGED_UNION(Literal, Invalid,
     (Invalid, struct {}),
+    // List = Array, Tuple, struct literal
     (List, ::std::vector<Literal>),
     (Integer, uint64_t),
     (Float, double),
+    // String = &'static str or &[u8; N]
     (String, ::std::string)
     );
 
@@ -53,21 +55,20 @@ TAGGED_UNION(Literal, Invalid,
 // --------------------------------------------------------------------
 struct Static
 {
-    //GenericParams   m_params;
-    
     bool    m_is_mut;
     TypeRef m_type;
     
     ExprPtr m_value;
-    //Literal   m_value_res;
+    Literal   m_value_res;
 };
 struct Constant
 {
+    // NOTE: The generics can't influence the value of this `const`
     GenericParams   m_params;
     
     TypeRef m_type;
     ExprPtr m_value;
-    //Literal   m_value_res;
+    Literal   m_value_res;
 };
 struct Function
 {
