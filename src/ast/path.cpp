@@ -2,7 +2,7 @@
  */
 #include "path.hpp"
 #include "ast.hpp"
-#include "../types.hpp"
+#include "types.hpp"
 #include <iostream>
 #include "../parse/parseerror.hpp"
 #include <algorithm>

@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "../parse/tokentree.hpp"
-#include "../types.hpp"
+#include "types.hpp"
 #include "pattern.hpp"
 #include "attrs.hpp"
 

@@ -2,7 +2,7 @@
  */
 #include "ast.hpp"
 #include "crate.hpp"
-#include "../types.hpp"
+#include "types.hpp"
 #include "../common.hpp"
 #include <iostream>
 #include "../parse/parseerror.hpp"

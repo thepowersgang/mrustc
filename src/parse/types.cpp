@@ -7,8 +7,8 @@
  */
 #include "common.hpp"
 #include "parseerror.hpp"
-#include "../types.hpp"
-#include "../ast/ast.hpp"
+#include <ast/types.hpp>
+#include <ast/ast.hpp>
 
 // === PROTOTYPES ===
 TypeRef Parse_Type(TokenStream& lex);

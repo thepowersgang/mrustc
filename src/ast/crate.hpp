@@ -2,7 +2,7 @@
 #pragma once
 
 #include "ast.hpp"
-#include "../types.hpp"
+#include "types.hpp"
 
 namespace AST {
 

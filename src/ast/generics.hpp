@@ -1,7 +1,7 @@
 #pragma once
 
 #include <string>
-#include "../types.hpp"
+#include "types.hpp"
 
 namespace AST {
 
