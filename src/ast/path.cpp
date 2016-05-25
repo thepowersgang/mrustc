@@ -54,8 +54,8 @@ PathBinding PathBinding::clone() const
 
 // --- AST::PathNode
 PathNode::PathNode(::std::string name, ::std::vector<TypeRef> args):
-    m_name(name),
-    m_params(args)
+    m_name( mv$(name) ),
+    m_params( mv$(args) )
 {
 }
 Ordering PathNode::ord(const PathNode& x) const
@@ -101,6 +101,9 @@ typename ::std::vector<Named<T> >::const_iterator find_named(const ::std::vector
 }
 
 // --- AST::Path
+AST::Path::~Path()
+{
+}
 AST::Path::Path(TagUfcs, TypeRef type, ::std::vector<AST::PathNode> nodes):
     m_class( AST::Path::Class::make_UFCS({box$(type), nullptr, nodes}) )
 {

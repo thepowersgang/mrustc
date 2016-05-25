@@ -18,6 +18,7 @@ bool is_token_path(eTokenType tt) {
     case TOK_DOUBLE_LT:
     case TOK_RWORD_SELF:
     case TOK_RWORD_SUPER:
+    case TOK_INTERPOLATED_PATH:
         return true;
     default:
         return false;
@@ -38,6 +39,7 @@ bool is_token_pat(eTokenType tt) {
     case TOK_STRING:
     case TOK_INTEGER:
     case TOK_CHAR:
+    case TOK_INTERPOLATED_PATTERN:
         return true;
     default:
         return false;
@@ -52,6 +54,7 @@ bool is_token_type(eTokenType tt) {
     case TOK_SQUARE_OPEN:
     case TOK_STAR:
     case TOK_AMP:
+    case TOK_INTERPOLATED_TYPE:
         return true;
     default:
         return false;
@@ -70,6 +73,7 @@ bool is_token_expr(eTokenType tt) {
     
     case TOK_INTEGER:
     case TOK_STRING:
+    case TOK_INTERPOLATED_EXPR:
         return true;
     default:
         return false;
@@ -82,6 +86,7 @@ bool is_token_stmt(eTokenType tt) {
     {
     case TOK_BRACE_OPEN:
     case TOK_RWORD_LET:
+    case TOK_INTERPOLATED_STMT:
         return true;
     default:
         return false;

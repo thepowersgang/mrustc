@@ -89,11 +89,20 @@ SERIALISE_TYPE(Expr::, "Expr", {
 ExprNode::~ExprNode() {
 }
 
-#define NODE(class, serialise, _print)\
-	void class::visit(NodeVisitor& nv) { nv.visit(*this); } \
-	/*void class::visit(NodeVisitor& nv) const { nv.visit(*this); }*/ \
-	void class::print(::std::ostream& os) const _print \
-	SERIALISE_TYPE_S(class, serialise) \
+#define NODE(class, serialise, _print, _clone)\
+    void class::visit(NodeVisitor& nv) { nv.visit(*this); } \
+    void class::print(::std::ostream& os) const _print \
+    ::std::unique_ptr<ExprNode> class::clone() const _clone \
+    SERIALISE_TYPE_S(class, serialise)
+#define OPT_CLONE(node) (node.get() ? node->clone() : ::AST::ExprNodeP())
+
+namespace {
+    static inline ExprNodeP mk_exprnodep(const Position& pos, AST::ExprNode* en) {
+        en->set_pos(pos);
+        return ExprNodeP(en);
+    }
+    #define NEWNODE(type, ...)  mk_exprnodep(get_pos(), new type(__VA_ARGS__))
+}
 
 NODE(ExprNode_Block, {
     s.item(m_nodes);
@@ -102,6 +111,13 @@ NODE(ExprNode_Block, {
     for(const auto& n : m_nodes)
         os << *n << ";";
     os << "}";
+},{
+    ::std::vector<ExprNodeP>    nodes;
+    for(const auto& n : m_nodes)
+        nodes.push_back( n->clone() );
+    if( m_local_mod )
+        TODO(get_pos(), "Handle cloning ExprNode_Block with a module");
+    return NEWNODE(ExprNode_Block, mv$(nodes), nullptr);
 })
 
 NODE(ExprNode_Macro, {
@@ -115,6 +131,8 @@ NODE(ExprNode_Macro, {
         os << " " << m_ident << " ";
     }
     os << "(" << ")";
+},{
+    return NEWNODE(ExprNode_Macro, m_name, m_ident, m_tokens.clone());
 })
 
 void operator%(::Serialiser& s, const ExprNode_Flow::Type t) {
@@ -151,6 +169,8 @@ NODE(ExprNode_Flow, {
     case CONTINUE:  os << "continue"; break;
     }
     os << " " << *m_value;
+},{
+    return NEWNODE(ExprNode_Flow, m_type, m_target, m_value->clone());
 })
 
 
@@ -160,6 +180,8 @@ NODE(ExprNode_LetBinding, {
     s.item(m_value);
 },{
     os << "let " << m_pat << ": " << m_type << " = " << *m_value;
+},{
+    return NEWNODE(ExprNode_LetBinding, m_pat.clone(), TypeRef(m_type), OPT_CLONE(m_value));
 })
 
 NODE(ExprNode_Assign, {
@@ -167,6 +189,8 @@ NODE(ExprNode_Assign, {
     s.item(m_value);
 },{
     os << *m_slot << " = " << *m_value;
+},{
+    return NEWNODE(ExprNode_Assign, m_op, m_slot->clone(), m_value->clone());
 })
 
 NODE(ExprNode_CallPath, {
@@ -178,6 +202,12 @@ NODE(ExprNode_CallPath, {
         os << *a << ",";
     }
     os << ")";
+},{
+    ::std::vector<ExprNodeP>    args;
+    for(const auto& a : m_args) {
+        args.push_back( a->clone() );
+    }
+    return NEWNODE(ExprNode_CallPath, AST::Path(m_path), mv$(args));
 })
 
 NODE(ExprNode_CallMethod, {
@@ -190,6 +220,12 @@ NODE(ExprNode_CallMethod, {
         os << *a << ",";
     }
     os << ")";
+},{
+    ::std::vector<ExprNodeP>    args;
+    for(const auto& a : m_args) {
+        args.push_back( a->clone() );
+    }
+    return NEWNODE(ExprNode_CallMethod, m_val->clone(), m_method, mv$(args));
 })
 
 NODE(ExprNode_CallObject, {
@@ -201,6 +237,12 @@ NODE(ExprNode_CallObject, {
         os << *a << ",";
     }
     os << ")";
+},{
+    ::std::vector<ExprNodeP>    args;
+    for(const auto& a : m_args) {
+        args.push_back( a->clone() );
+    }
+    return NEWNODE(ExprNode_CallObject, m_val->clone(), mv$(args));
 })
 
 void operator%(::Serialiser& s, const ExprNode_Loop::Type t) {
@@ -235,6 +277,8 @@ NODE(ExprNode_Loop, {
     s.item(m_code);
 },{
     os << "LOOP [" << m_label << "] " << m_pattern << " in/= " << *m_cond << " " << *m_code;
+},{
+    return NEWNODE(ExprNode_Loop, m_label, m_type, m_pattern.clone(), OPT_CLONE(m_cond), m_code->clone());
 })
 
 SERIALISE_TYPE_A(ExprNode_Match_Arm::, "ExprNode_Match_Arm", {
@@ -256,6 +300,17 @@ NODE(ExprNode_Match, {
         os << " => " << *arm.m_code << ",";
     }
     os << "}";
+},{
+    ::std::vector< ExprNode_Match_Arm>  arms;
+    for(const auto& arm : m_arms) {
+        ::std::vector< AST::Pattern>    patterns;
+        for( const auto& pat : arm.m_patterns ) {
+            patterns.push_back( pat.clone() );
+        }
+        arms.push_back( ExprNode_Match_Arm( mv$(patterns), OPT_CLONE(arm.m_cond), arm.m_code->clone() ) );
+        arms.back().m_attrs = arm.m_attrs.clone();
+    }
+    return NEWNODE(ExprNode_Match, m_val->clone(), mv$(arms));
 })
 
 NODE(ExprNode_If, {
@@ -264,6 +319,8 @@ NODE(ExprNode_If, {
     s.item(m_false);
 },{
     os << "if " << *m_cond << " { " << *m_true << " } else { " << *m_false << " }";
+},{
+    return NEWNODE(ExprNode_If, m_cond->clone(), m_true->clone(), OPT_CLONE(m_false));
 })
 NODE(ExprNode_IfLet, {
     s.item(m_pattern);
@@ -272,6 +329,8 @@ NODE(ExprNode_IfLet, {
     s.item(m_false);
 },{
     os << "if let " << m_pattern << " = (" << *m_value << ") { " << *m_true << " } else { " << *m_false << " }";
+},{
+    return NEWNODE(ExprNode_IfLet, m_pattern.clone(), m_value->clone(), m_true->clone(), OPT_CLONE(m_false));
 })
 
 NODE(ExprNode_Integer, {
@@ -279,22 +338,30 @@ NODE(ExprNode_Integer, {
     s.item(m_value);
 },{
     os << m_value;
+},{
+    return NEWNODE(ExprNode_Integer, m_value, m_datatype);
 })
 NODE(ExprNode_Float, {
     s % m_datatype;
     s.item(m_value);
 },{
     os << m_value;
+},{
+    return NEWNODE(ExprNode_Float, m_value, m_datatype);
 })
 NODE(ExprNode_Bool, {
     s.item(m_value);
 },{
     os << m_value;
+},{
+    return NEWNODE(ExprNode_Bool, m_value);
 })
 NODE(ExprNode_String, {
     s.item(m_value);
 },{
     os << "\"" << m_value << "\"";
+},{
+    return NEWNODE(ExprNode_String, m_value);
 })
 
 NODE(ExprNode_Closure, {
@@ -303,6 +370,12 @@ NODE(ExprNode_Closure, {
     s.item(m_code);
 },{
     os << "/* todo: closure */";
+},{
+    ExprNode_Closure::args_t    args;
+    for(const auto& a : m_args) {
+        args.push_back( ::std::make_pair(a.first.clone(), TypeRef(a.second)) );
+    }
+    return NEWNODE(ExprNode_Closure, mv$(args), TypeRef(m_return), m_code->clone());
 });
 
 NODE(ExprNode_StructLiteral, {
@@ -311,6 +384,14 @@ NODE(ExprNode_StructLiteral, {
     s.item(m_values);
 },{
     os << "/* todo: sl */";
+},{
+    ExprNode_StructLiteral::t_values    vals;
+    
+    for(const auto& v : m_values) {
+        vals.push_back( ::std::make_pair(v.first, v.second->clone()) );
+    }
+    
+    return NEWNODE(ExprNode_StructLiteral, AST::Path(m_path), OPT_CLONE(m_base_value), mv$(vals) );
 })
 
 NODE(ExprNode_Array, {
@@ -324,6 +405,18 @@ NODE(ExprNode_Array, {
         for(const auto& a : m_values)
             os << *a << ",";
     os << "]";
+},{
+    if( m_size.get() )
+    {
+        return NEWNODE(ExprNode_Array, m_values[0]->clone(), m_size->clone());
+    }
+    else
+    {
+        ::std::vector<ExprNodeP>    nodes;
+        for(const auto& n : m_values)
+            nodes.push_back( n->clone() );
+        return NEWNODE(ExprNode_Array, mv$(nodes));
+    }
 })
 
 NODE(ExprNode_Tuple, {
@@ -334,12 +427,19 @@ NODE(ExprNode_Tuple, {
         os << *a << ",";
     }
     os << ")";
+},{
+    ::std::vector<ExprNodeP>    nodes;
+    for(const auto& n : m_values)
+        nodes.push_back( n->clone() );
+    return NEWNODE(ExprNode_Tuple, mv$(nodes));
 })
 
 NODE(ExprNode_NamedValue, {
     s.item(m_path);
 },{
     os << m_path;
+},{
+    return NEWNODE(ExprNode_NamedValue, AST::Path(m_path));
 })
 
 NODE(ExprNode_Field, {
@@ -347,6 +447,8 @@ NODE(ExprNode_Field, {
     s.item(m_name);
 },{
     os << "(" << *m_obj << ")." << m_name;
+},{
+    return NEWNODE(ExprNode_Field, m_obj->clone(), m_name);
 })
 
 NODE(ExprNode_Index, {
@@ -354,12 +456,16 @@ NODE(ExprNode_Index, {
     s.item(m_idx);
 },{
     os << "(" << *m_obj << ")[" << *m_idx << "]";
+},{
+    return NEWNODE(ExprNode_Index, m_obj->clone(), m_idx->clone());
 })
 
 NODE(ExprNode_Deref, {
     s.item(m_value);
 },{
     os << "*(" << *m_value << ")";
+},{
+    return NEWNODE(ExprNode_Deref, m_value->clone());
 });
 
 NODE(ExprNode_Cast, {
@@ -367,9 +473,11 @@ NODE(ExprNode_Cast, {
     s.item(m_type);
 },{
     os << "(" << *m_value << " as " << m_type << ")";
+},{
+    return NEWNODE(ExprNode_Cast, m_value->clone(), TypeRef(m_type));
 })
 
-void operator%(::Serialiser& s, const ExprNode_BinOp::Type t) {
+void operator%(::Serialiser& s, const ExprNode_BinOp::Type& t) {
     switch(t)
     {
     #define _(v)    case ExprNode_BinOp::v: s << #v; return
@@ -388,11 +496,11 @@ void operator%(::Serialiser& s, const ExprNode_BinOp::Type t) {
     _(BITXOR);
     _(SHL);
     _(SHR);
-	_(MULTIPLY);
-	_(DIVIDE);
-	_(MODULO);
-	_(ADD);
-	_(SUB);
+    _(MULTIPLY);
+    _(DIVIDE);
+    _(MODULO);
+    _(ADD);
+    _(SUB);
     _(PLACE_IN);
     #undef _
     }
@@ -417,11 +525,11 @@ void operator%(::Deserialiser& s, ExprNode_BinOp::Type& t) {
     _(BITXOR);
     _(SHL);
     _(SHR);
-	_(MULTIPLY);
-	_(DIVIDE);
-	_(MODULO);
-	_(ADD);
-	_(SUB);
+    _(MULTIPLY);
+    _(DIVIDE);
+    _(MODULO);
+    _(ADD);
+    _(SUB);
     #undef _
     else
         throw ::std::runtime_error("");
@@ -447,16 +555,18 @@ NODE(ExprNode_BinOp, {
     case BITXOR:    os << "^"; break;
     case SHR:    os << ">>"; break;
     case SHL:    os << "<<"; break;
-	case MULTIPLY: os << "*"; break;
-	case DIVIDE:   os << "/"; break;
-	case MODULO:   os << "%"; break;
-	case ADD:   os << "+"; break;
-	case SUB:   os << "-"; break;
-	case RANGE:   os << ".."; break;
-	case RANGE_INC:   os << "..."; break;
+    case MULTIPLY: os << "*"; break;
+    case DIVIDE:   os << "/"; break;
+    case MODULO:   os << "%"; break;
+    case ADD:   os << "+"; break;
+    case SUB:   os << "-"; break;
+    case RANGE:   os << ".."; break;
+    case RANGE_INC:   os << "..."; break;
     case PLACE_IN:  os << "<-"; break;
     }
     os << " " << *m_right << ")";
+},{
+    return NEWNODE(ExprNode_BinOp, m_type, OPT_CLONE(m_left), OPT_CLONE(m_right));
 })
 
 void operator%(::Serialiser& s, const ExprNode_UniOp::Type t) {
@@ -501,12 +611,14 @@ NODE(ExprNode_UniOp, {
     case QMARK: os << "(" << *m_value << "?)"; return;
     }
     os << *m_value << ")";
+},{
+    return NEWNODE(ExprNode_UniOp, m_type, m_value->clone());
 })
 
 
 #define NV(type, actions)\
-	void NodeVisitorDef::visit(type& node) { DEBUG("DEF - "#type); actions }
-//	void NodeVisitorDef::visit(const type& node) { DEBUG("DEF - "#type" (const)"); actions }
+    void NodeVisitorDef::visit(type& node) { DEBUG("DEF - "#type); actions }
+//  void NodeVisitorDef::visit(const type& node) { DEBUG("DEF - "#type" (const)"); actions }
 
 NV(ExprNode_Block, {
     INDENT();

@@ -26,9 +26,9 @@ class Unexpected:
 {
     Token   m_tok;
 public:
-    Unexpected(const TokenStream& lex, Token tok);
-    Unexpected(const TokenStream& lex, Token tok, Token exp);
-    Unexpected(const TokenStream& lex, Token tok, ::std::vector<eTokenType> exp);
+    Unexpected(const TokenStream& lex, const Token& tok);
+    Unexpected(const TokenStream& lex, const Token& tok, Token exp);
+    Unexpected(const TokenStream& lex, const Token& tok, ::std::vector<eTokenType> exp);
     virtual ~Unexpected() throw ();
 
 };

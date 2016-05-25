@@ -19,6 +19,9 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
     Token   tok;
     switch( GET_TOK(tok, lex) )
     {
+    case TOK_INTERPOLATED_PATH:
+        return mv$(tok.frag_path());
+    
     case TOK_RWORD_SELF:
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         return Parse_Path(lex, false, generic_mode);
@@ -47,7 +50,7 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
                 trait = Parse_Path(lex, true, PATH_GENERIC_TYPE);
             }
             else {
-                lex.putback(tok);
+                PUTBACK(tok, lex);
                 trait = Parse_Path(lex, false, PATH_GENERIC_TYPE);
             }
             GET_CHECK_TOK(tok, lex, TOK_GT);
@@ -55,7 +58,7 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
             return AST::Path(AST::Path::TagUfcs(), ty, trait, Parse_PathNodes(lex, generic_mode));
         }
         else {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
             GET_CHECK_TOK(tok, lex, TOK_GT);
             // TODO: Terminating the "path" here is sometimes valid?
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
@@ -64,7 +67,7 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
         throw ""; }
     
     default:
-        lex.putback(tok);
+        PUTBACK(tok, lex);
         return Parse_Path(lex, false, generic_mode);
     }
 }
@@ -79,7 +82,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
             return AST::Path(cratename, Parse_PathNodes(lex, generic_mode));
         }
         else {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
             return AST::Path("", Parse_PathNodes(lex, generic_mode));
         }
     }
@@ -89,7 +92,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         //    return AST::Path( tok.str() );
         //}
         //else {
-        //    lex.putback(tok);
+        //    PUTBACK(tok, lex);
             return AST::Path(AST::Path::TagRelative(), Parse_PathNodes(lex, generic_mode));
         //}
     }
@@ -133,7 +136,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                 }
                 else
                 {
-                    lex.putback(tok);
+                    PUTBACK(tok, lex);
                     do {
                         args.push_back( Parse_Type(lex) );
                     } while( GET_TOK(tok, lex) == TOK_COMMA );
@@ -145,7 +148,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                     ret_type = Parse_Type(lex);
                 }
                 else {
-                    lex.putback(tok);
+                    PUTBACK(tok, lex);
                 }
                 DEBUG("- Fn("<<args<<")->"<<ret_type<<"");
                 
@@ -160,7 +163,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
             }
         }
         if( tok.type() != TOK_DOUBLE_COLON ) {
-            ret.push_back( AST::PathNode(component, params) );
+            ret.push_back( AST::PathNode(component, mv$(params)) );
             break;
         }
         tok = lex.getToken();
@@ -174,14 +177,14 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
             params = Parse_Path_GenericList(lex);
             tok = lex.getToken();
             if( tok.type() != TOK_DOUBLE_COLON ) {
-                ret.push_back( AST::PathNode(component, params) );
+                ret.push_back( AST::PathNode(component, mv$(params)) );
                 break;
             }
             GET_TOK(tok, lex);
         }
-        ret.push_back( AST::PathNode(component, params) );
+        ret.push_back( AST::PathNode(component, mv$(params)) );
     }
-    lex.putback(tok);
+    PUTBACK(tok, lex);
     //if( path.is_trivial() ) {
     //    path = AST::Path(path[0].name());
     //}
@@ -217,7 +220,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                 break;
             }
         default:
-            lex.putback(tok);
+            PUTBACK(tok, lex);
             types.push_back( Parse_Type(lex) );
             break;
         }

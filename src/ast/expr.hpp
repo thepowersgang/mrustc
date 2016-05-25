@@ -28,8 +28,8 @@ public:
     virtual ~ExprNode() = 0;
     
     virtual void visit(NodeVisitor& nv) = 0;
-    //virtual void visit(NodeVisitor& nv) const = 0;
     virtual void print(::std::ostream& os) const = 0;
+    virtual ::std::unique_ptr<ExprNode> clone() const = 0;
     
     void set_pos(Position p) { m_pos = ::std::move(p); }
     const Position& get_pos() const { return m_pos; }
@@ -46,10 +46,10 @@ public:
 };
 
 #define NODE_METHODS()  \
-    virtual void visit(NodeVisitor& nv) override;\
-    virtual void print(::std::ostream& os) const override; \
-    SERIALISABLE_PROTOTYPES();/* \
-    virtual void visit(NodeVisitor& nv) const override;*/
+    void visit(NodeVisitor& nv) override;\
+    void print(::std::ostream& os) const override; \
+    ::std::unique_ptr<ExprNode> clone() const override; \
+    SERIALISABLE_PROTOTYPES();
 
 struct ExprNode_Block:
     public ExprNode

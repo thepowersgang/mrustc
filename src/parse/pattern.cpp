@@ -46,6 +46,10 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     {
         return AST::Pattern( AST::Pattern::TagMacro(), box$(Parse_MacroInvocation(ps, AST::MetaItems(), tok.str(), lex)));
     }
+    if( tok.type() == TOK_INTERPOLATED_PATTERN )
+    {
+        return mv$(tok.frag_pattern());
+    }
    
     bool expect_bind = false;
     ::AST::Pattern::BindType    bind_type = AST::Pattern::BIND_MOVE;
@@ -85,7 +89,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
         // If there's no '@' after it, it's a name binding only (_ pattern)
         if( GET_TOK(tok, lex) != TOK_AT )
         {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
             return AST::Pattern(AST::Pattern::TagBind(), bind_name);
         }
         
@@ -126,7 +130,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
         // Otherwise, fall through
     }
     
-    lex.putback(tok);
+    PUTBACK(tok, lex);
     AST::Pattern pat = Parse_PatternReal(lex, is_refutable);
     pat.set_bind(bind_name, bind_type, is_mut);
     return ::std::move(pat);
@@ -152,7 +156,7 @@ AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable)
     }
     else
     {
-        lex.putback(tok);
+        PUTBACK(tok, lex);
         return ret;
     }
 }
@@ -179,12 +183,12 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
         if( GET_TOK(tok, lex) == TOK_RWORD_MUT )
             // TODO: Actually use mutability
             return AST::Pattern( AST::Pattern::TagReference(), Parse_Pattern(lex, is_refutable) );
-        lex.putback(tok);
+        PUTBACK(tok, lex);
         return AST::Pattern( AST::Pattern::TagReference(), Parse_Pattern(lex, is_refutable) );
     case TOK_RWORD_SELF:
     case TOK_RWORD_SUPER:
     case TOK_IDENT:
-        lex.putback(tok);
+        PUTBACK(tok, lex);
         return Parse_PatternReal_Path( lex, Parse_Path(lex, PATH_GENERIC_EXPR), is_refutable );
     case TOK_DOUBLE_COLON:
         // 2. Paths are enum/struct names
@@ -240,7 +244,7 @@ AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path, bool is_re
     case TOK_BRACE_OPEN:
         return Parse_PatternStruct(lex, ::std::move(path), is_refutable);
     default:
-        lex.putback(tok);
+        PUTBACK(tok, lex);
         return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(mv$(path)) );
     }
 }
@@ -271,7 +275,7 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
         }
         else if( tok.type() == TOK_DOUBLE_DOT ) {
             binding_name = "_";
-            lex.putback(tok);
+            PUTBACK(tok, lex);
         }
         else {
         }
@@ -284,7 +288,7 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
             GET_TOK(tok, lex);  // TOK_DOUBLE_DOT
         }
         else {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
             if(is_trailing) {
                 rv_array.trailing.push_back( Parse_Pattern(lex, is_refutable) );
             }
@@ -312,7 +316,7 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
         if( GET_TOK(tok, lex) == end )
             break;
         else
-            lex.putback(tok);
+            PUTBACK(tok, lex);
         
         AST::Pattern pat = Parse_Pattern(lex, is_refutable);
         DEBUG("pat = " << pat);
@@ -370,7 +374,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
         
         AST::Pattern    pat;
         if( is_short_bind || tok.type() != TOK_COLON ) {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
             pat = AST::Pattern(AST::Pattern::TagBind(), field);
             pat.set_bind(field, bind_type, is_mut);
             if( is_box )

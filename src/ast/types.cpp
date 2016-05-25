@@ -98,11 +98,15 @@ Ordering Type_Function::ord(const Type_Function& x) const
     return (*m_rettype).ord( *x.m_rettype );
 }
 
+TypeRef::~TypeRef()
+{
+}
+
 TypeRef::TypeRef(const TypeRef& other)
 {
     switch( other.m_data.tag() )
     {
-    case TypeData::TAGDEAD: throw "";
+    case TypeData::TAGDEAD: assert(!"Copying a destructed type");
     #define _COPY(VAR)  case TypeData::TAG_##VAR: m_data = TypeData::make_##VAR(other.m_data.as_##VAR()); break;
     #define _CLONE(VAR, code...)    case TypeData::TAG_##VAR: { auto& old = other.m_data.as_##VAR(); m_data = TypeData::make_##VAR(code); } break;
     _COPY(None)

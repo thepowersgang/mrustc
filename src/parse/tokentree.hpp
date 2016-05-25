@@ -10,8 +10,10 @@ class TokenTree:
     Token   m_tok;
     ::std::vector<TokenTree>    m_subtrees;
 public:
+    virtual ~TokenTree() {}
     TokenTree() {}
     TokenTree(TokenTree&&) = default;
+    TokenTree& operator=(TokenTree&&) = default;
     TokenTree(Token tok):
         m_tok( ::std::move(tok) )
     {
@@ -20,7 +22,8 @@ public:
         m_subtrees( ::std::move(subtrees) )
     {
     }
-    TokenTree& operator=(TokenTree&&) = default;
+    
+    TokenTree clone() const;
 
     bool is_token() const {
         return m_tok.type() != TOK_NULL;

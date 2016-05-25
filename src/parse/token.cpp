@@ -5,6 +5,40 @@
 #include "token.hpp"
 #include <common.hpp>
 #include <parse/parseerror.hpp>
+#include "interpolated_fragment.hpp"
+#include <ast/types.hpp>
+#include <ast/ast.hpp>
+
+Token::~Token()
+{
+    switch(m_type)
+    {
+    case TOK_INTERPOLATED_TYPE:
+        delete reinterpret_cast<TypeRef*>(m_data.as_Fragment());
+        break;
+    case TOK_INTERPOLATED_PATTERN:
+        delete reinterpret_cast<AST::Pattern*>(m_data.as_Fragment());
+        break;
+    case TOK_INTERPOLATED_PATH:
+        delete reinterpret_cast<AST::Path*>(m_data.as_Fragment());
+        break;
+    case TOK_INTERPOLATED_EXPR:
+        delete reinterpret_cast<AST::ExprNode*>(m_data.as_Fragment());
+        break;
+    case TOK_INTERPOLATED_STMT:
+        delete reinterpret_cast<AST::ExprNode*>(m_data.as_Fragment());
+        break;
+    case TOK_INTERPOLATED_BLOCK:
+        delete reinterpret_cast<AST::ExprNode*>(m_data.as_Fragment());
+        break;
+    case TOK_INTERPOLATED_META:
+        delete reinterpret_cast<AST::MetaItem*>(m_data.as_Fragment());
+        break;
+    default:
+        break;
+    }
+    
+}
 
 Token::Token():
     m_type(TOK_NULL)
@@ -28,6 +62,101 @@ Token::Token(double val, enum eCoreType datatype):
     m_type(TOK_FLOAT),
     m_data( Data::make_Float({datatype, val}) )
 {
+}
+Token::Token(InterpolatedFragment& frag)
+{
+    switch(frag.m_type)
+    {
+    case InterpolatedFragment::TT:  throw "";
+    case InterpolatedFragment::TYPE:
+        m_type = TOK_INTERPOLATED_TYPE;
+        m_data = new TypeRef( *reinterpret_cast<TypeRef*>(frag.m_ptr) );
+        break;
+    case InterpolatedFragment::PAT:
+        m_type = TOK_INTERPOLATED_PATTERN;
+        m_data = new AST::Pattern( reinterpret_cast<AST::Pattern*>(frag.m_ptr)->clone() );
+        break;
+    case InterpolatedFragment::PATH:
+        m_type = TOK_INTERPOLATED_PATH;
+        m_data = new AST::Path( *reinterpret_cast<AST::Path*>(frag.m_ptr) );
+        break;
+    case InterpolatedFragment::EXPR:
+        m_type = TOK_INTERPOLATED_EXPR;
+        m_data = reinterpret_cast<AST::ExprNode*>(frag.m_ptr)->clone().release();
+        break;
+    case InterpolatedFragment::STMT:
+        m_type = TOK_INTERPOLATED_STMT;
+        m_data = reinterpret_cast<AST::ExprNode*>(frag.m_ptr)->clone().release();
+        break;
+    case InterpolatedFragment::BLOCK:
+        m_type = TOK_INTERPOLATED_BLOCK;
+        m_data = reinterpret_cast<AST::ExprNode*>(frag.m_ptr)->clone().release();
+        break;
+    case InterpolatedFragment::META:
+        m_type = TOK_INTERPOLATED_META;
+        m_data = new AST::MetaItem( reinterpret_cast<AST::MetaItem*>(frag.m_ptr)->clone() );
+        break;
+    }
+}
+
+Token Token::clone() const
+{
+    Token   rv(m_type);
+    rv.m_pos = m_pos;
+    
+    assert( m_data.tag() != Data::TAGDEAD );
+    TU_MATCH(Data, (m_data), (e),
+    (None,
+        ),
+    (String,
+        rv.m_data = Data::make_String(e);
+        ),
+    (Integer,
+        rv.m_data = Data::make_Integer(e);
+        ),
+    (Float,
+        rv.m_data = Data::make_Float(e);
+        ),
+    (Fragment,
+        assert(e);
+        switch(m_type)
+        {
+        case TOK_INTERPOLATED_TYPE:
+            rv.m_data = new TypeRef( *reinterpret_cast<TypeRef*>(e) );
+            break;
+        case TOK_INTERPOLATED_PATTERN:
+            rv.m_data = new AST::Pattern( reinterpret_cast<AST::Pattern*>(e)->clone() );
+            break;
+        case TOK_INTERPOLATED_PATH:
+            rv.m_data = new AST::Path( *reinterpret_cast<AST::Path*>(e) );
+            break;
+        case TOK_INTERPOLATED_EXPR:
+            rv.m_data = reinterpret_cast<AST::ExprNode*>(e)->clone().release();
+            break;
+        case TOK_INTERPOLATED_STMT:
+            rv.m_data = reinterpret_cast<AST::ExprNode*>(e)->clone().release();
+            break;
+        case TOK_INTERPOLATED_BLOCK:
+            rv.m_data = reinterpret_cast<AST::ExprNode*>(e)->clone().release();
+            break;
+        case TOK_INTERPOLATED_META:
+            rv.m_data = new AST::MetaItem( reinterpret_cast<AST::MetaItem*>(e)->clone() );
+            break;
+        default:
+            assert(!"Token::clone() - fragment with invalid token type");
+            break;
+        }
+        )
+    )
+    return rv;
+}
+
+::std::unique_ptr<AST::ExprNode> Token::take_frag_node()
+{
+    assert( m_type == TOK_INTERPOLATED_EXPR || m_type == TOK_INTERPOLATED_STMT || m_type == TOK_INTERPOLATED_BLOCK );
+    auto ptr = m_data.as_Fragment();
+    m_data.as_Fragment() = nullptr;
+    return ::std::unique_ptr<AST::ExprNode>( reinterpret_cast<AST::ExprNode*>( ptr ) );
 }
 
 const char* Token::typestr(enum eTokenType type)
@@ -91,6 +220,13 @@ struct EscapedString {
     case TOK_NEWLINE:    return "\n";
     case TOK_WHITESPACE: return " ";
     case TOK_COMMENT:    return "/*" + m_data.as_String() + "*/";
+    case TOK_INTERPOLATED_TYPE: return "/*:ty*/";
+    case TOK_INTERPOLATED_PATH: return "/*:path*/";
+    case TOK_INTERPOLATED_PATTERN: return "/*:pat*/";
+    case TOK_INTERPOLATED_EXPR: return "/*:expr*/";
+    case TOK_INTERPOLATED_STMT: return "/*:stmt*/";
+    case TOK_INTERPOLATED_BLOCK: return "/*:block*/";
+    case TOK_INTERPOLATED_META: return "/*:meta*/";
     // Value tokens
     case TOK_IDENT:     return m_data.as_String();
     case TOK_MACRO:     return m_data.as_String() + "!";
@@ -251,6 +387,9 @@ SERIALISE_TYPE(Token::, "Token", {
     (Float,
         s % e.m_datatype;
         s.item( e.m_floatval );
+        ),
+    (Fragment,
+        assert(!"Serialising interpolated macro fragment");
         )
     )
 },{
@@ -284,6 +423,8 @@ SERIALISE_TYPE(Token::, "Token", {
         s.item( v );
         m_data = Token::Data::make_Float({dt, v});
         break; }
+    case Token::Data::TAG_Fragment:
+        assert(!"Serialising interpolated macro fragment");
     }
 });
 
@@ -297,10 +438,12 @@ SERIALISE_TYPE(Token::, "Token", {
     case TOK_IDENT:
     case TOK_MACRO:
     case TOK_LIFETIME:
-        os << "\"" << EscapedString(tok.str()) << "\"";
+        if( tok.m_data.is_String() )
+            os << "\"" << EscapedString(tok.str()) << "\"";
         break;
     case TOK_INTEGER:
-        os << ":" << tok.intval();
+        if( tok.m_data.is_Integer() )
+            os << ":" << tok.intval();
         break;
     default:
         break;
@@ -311,3 +454,4 @@ SERIALISE_TYPE(Token::, "Token", {
 {
     return os << p.filename << ":" << p.line;
 }
+

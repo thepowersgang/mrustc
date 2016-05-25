@@ -56,23 +56,23 @@ ParseError::BadChar::~BadChar() throw()
 {
 }
 
-ParseError::Unexpected::Unexpected(const TokenStream& lex, Token tok):
-    m_tok(tok)
+ParseError::Unexpected::Unexpected(const TokenStream& lex, const Token& tok)//:
+//    m_tok( mv$(tok) )
 {
     auto pos = tok.get_pos();
     if(pos.filename == "")
         pos = lex.getPosition();
     ::std::cout << pos << ": Unexpected(" << tok << ")" << ::std::endl;
 }
-ParseError::Unexpected::Unexpected(const TokenStream& lex, Token tok, Token exp):
-    m_tok(tok)
+ParseError::Unexpected::Unexpected(const TokenStream& lex, const Token& tok, Token exp)//:
+//    m_tok( mv$(tok) )
 {
     auto pos = tok.get_pos();
     if(pos.filename == "")
         pos = lex.getPosition();
     ::std::cout << pos << ": Unexpected(" << tok << ", " << exp << ")" << ::std::endl;
 }
-ParseError::Unexpected::Unexpected(const TokenStream& lex, Token tok, ::std::vector<eTokenType> exp)
+ParseError::Unexpected::Unexpected(const TokenStream& lex, const Token& tok, ::std::vector<eTokenType> exp)
 {
     auto pos = tok.get_pos();
     if(pos.filename == "")

@@ -14,6 +14,7 @@ public:
     Span    m_span;
     ::std::vector<MetaItem> m_items;
     
+    virtual ~MetaItems();
     MetaItems() {}
     MetaItems(MetaItems&&) = default;
     MetaItems& operator=(MetaItems&&) = default;
@@ -57,7 +58,10 @@ class MetaItem:
     ::std::string   m_name;
     MetaItemData    m_data;
 public:
+    virtual ~MetaItem();
     MetaItem() {}
+    MetaItem(MetaItem&& ) = default;
+    MetaItem& operator=(MetaItem&& ) = default;
     MetaItem(::std::string name):
         m_name(name),
         m_data( MetaItemData::make_None({}) )

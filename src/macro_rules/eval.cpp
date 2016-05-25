@@ -7,6 +7,10 @@
 #include <parse/common.hpp>
 #include <limits.h>
 #include "pattern_checks.hpp"
+#include <parse/interpolated_fragment.hpp>
+
+extern AST::ExprNodeP Parse_ExprBlockNode(TokenStream& lex);
+extern AST::ExprNodeP Parse_Stmt(TokenStream& lex);
 
 class ParameterMappings
 {
@@ -16,9 +20,9 @@ class ParameterMappings
     struct Mapping
     {
         t_mapping_block block;
-        ::std::vector<TokenTree>    entries;
+        ::std::vector<InterpolatedFragment>    entries;
         friend ::std::ostream& operator<<(::std::ostream& os, const Mapping& x) {
-            os << "(" << x.block.first << ", " << x.block.second << "): '" << x.entries << "')";
+            os << "(" << x.block.first << ", " << x.block.second << "): [" << x.entries << "])";
             return os;
         }
     };
@@ -51,7 +55,7 @@ public:
         return m_layer_count+1;
     }
     
-    void insert(unsigned int layer, unsigned int name_index, TokenTree data) {
+    void insert(unsigned int layer, unsigned int name_index, InterpolatedFragment data) {
         if(layer > m_layer_count)
             m_layer_count = layer;
         
@@ -83,14 +87,14 @@ public:
         }
     }    
 
-    const TokenTree* get(unsigned int layer, unsigned int iteration, const char *name, unsigned int idx) const
+    InterpolatedFragment* get(unsigned int layer, unsigned int iteration, const char *name, unsigned int idx)
     {
         const auto it = m_map.find( name );
         if( it == m_map.end() ) {
             DEBUG("m_map = " << m_map);
             return nullptr;
         }
-        const auto& e = *it->second;
+        auto& e = *it->second;
         if( e.block.first < layer ) {
             DEBUG(name<<" higher layer (" << e.block.first << ")");
             return nullptr;
@@ -141,7 +145,7 @@ private:
 
     const ::std::string m_crate_name;
     const ::std::vector<MacroRuleEnt>&  m_root_contents;
-    const ParameterMappings m_mappings;
+    ParameterMappings m_mappings;
     
 
     struct t_offset {
@@ -157,20 +161,11 @@ private:
     const ::std::vector<MacroRuleEnt>*  m_cur_ents;  // For faster lookup.
 
     Token   m_next_token;   // used for inserting a single token into the stream
-    ::std::unique_ptr<TTStream>   m_ttstream;
+    ::std::unique_ptr<TTStream>  m_ttstream;
     
 public:
     MacroExpander(const MacroExpander& x) = delete;
-    //MacroExpander(const MacroExpander& x):
-    //    m_macro_name( x.m_macro_name ),
-    //    m_crate_name(x.m_crate_name),
-    //    m_root_contents(x.m_root_contents),
-    //    m_mappings(x.m_mappings),
-    //    m_offsets({ {0,0,0} }),
-    //    m_cur_ents(&m_root_contents)
-    //{
-    //    prep_counts();
-    //}
+    
     MacroExpander(const ::std::string& macro_name, const ::std::vector<MacroRuleEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
         m_macro_filename( FMT("Macro:" << macro_name) ),
         m_crate_name( mv$(crate_name) ),
@@ -212,7 +207,7 @@ bool Macro_TryPattern(TTStream& lex, const MacroPatEnt& pat)
             return true;
         return Macro_TryPattern(lex, pat.subpats[0]);
     case MacroPatEnt::PAT_BLOCK:
-        return LOOK_AHEAD(lex) == TOK_BRACE_OPEN;
+        return LOOK_AHEAD(lex) == TOK_BRACE_OPEN || LOOK_AHEAD(lex) == TOK_INTERPOLATED_BLOCK;
     case MacroPatEnt::PAT_IDENT:
         return LOOK_AHEAD(lex) == TOK_IDENT;
     case MacroPatEnt::PAT_TT:
@@ -228,7 +223,7 @@ bool Macro_TryPattern(TTStream& lex, const MacroPatEnt& pat)
     case MacroPatEnt::PAT_PAT:
         return is_token_pat( LOOK_AHEAD(lex) );
     case MacroPatEnt::PAT_META:
-        return LOOK_AHEAD(lex) == TOK_IDENT;
+        return LOOK_AHEAD(lex) == TOK_IDENT || LOOK_AHEAD(lex) == TOK_INTERPOLATED_META;
     }
     throw ParseError::Todo(lex, FMT("Macro_TryPattern : " << pat));
 }
@@ -237,7 +232,6 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
 {
     TRACE_FUNCTION_F("layer = " << layer);
     Token   tok;
-    TokenTree   val;
     
     switch(pat.type)
     {
@@ -284,35 +278,32 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
             throw ParseError::Unexpected(lex, TOK_EOF);
         else
             PUTBACK(tok, lex);
-        val = Parse_TT(lex, false);
-        if(0)
+        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( Parse_TT(lex, false) ) );
+        break;
     case MacroPatEnt::PAT_PAT:
-        val = Parse_TT_Pattern(lex);
-        if(0)
+        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( Parse_Pattern(lex, true) ) );
+        break;
     case MacroPatEnt::PAT_TYPE:
-        val = Parse_TT_Type(lex);
-        if(0)
+        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( Parse_Type(lex) ) );
+        break;
     case MacroPatEnt::PAT_EXPR:
-        val = Parse_TT_Expr(lex);
-        if(0)
+        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( InterpolatedFragment::EXPR, Parse_Expr0(lex).release() ) );
+        break;
     case MacroPatEnt::PAT_STMT:
-        val = Parse_TT_Stmt(lex);
-        if(0)
+        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( InterpolatedFragment::STMT, Parse_Stmt(lex).release() ) );
+        break;
     case MacroPatEnt::PAT_PATH:
-        val = Parse_TT_Path(lex, false);    // non-expr mode
-        if(0)
+        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( Parse_Path(lex, PATH_GENERIC_TYPE) ) );    // non-expr mode
+        break;
     case MacroPatEnt::PAT_BLOCK:
-        val = Parse_TT_Block(lex);
-        if(0)
+        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( InterpolatedFragment::BLOCK, Parse_ExprBlockNode(lex).release() ) );
+        break;
     case MacroPatEnt::PAT_META:
-        val = Parse_TT_Meta(lex);
-        if(0)
+        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( Parse_MetaItem(lex) ) );
+        break;
     case MacroPatEnt::PAT_IDENT:
-        {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            val = TokenTree(tok);
-        }
-        bound_tts.insert( layer, pat.name_index, ::std::move(val) );
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( TokenTree(tok) ) );
         break;
     
     //default:
@@ -455,21 +446,28 @@ Token MacroExpander::realGetToken()
             else if( ent.name != "" )
             {
                 DEBUG("lookup '" << ent.name << "'");
-                const TokenTree* tt;
+                InterpolatedFragment* frag;
                 unsigned int search_layer = layer;
                 do {
                     unsigned int parent_iter = (search_layer > 0 ? m_layer_iters.at(search_layer-1) : 0);
                     const size_t iter_idx = m_offsets.at(search_layer).loop_index;
-                    tt = m_mappings.get(search_layer, parent_iter, ent.name.c_str(), iter_idx);
-                } while( !tt && search_layer-- > 0 );
-                if( ! tt )
+                    frag = m_mappings.get(search_layer, parent_iter, ent.name.c_str(), iter_idx);
+                } while( !frag && search_layer-- > 0 );
+                if( !frag )
                 {
                     throw ParseError::Generic(*this, FMT("Cannot find '" << ent.name << "' for " << layer));
                 }
                 else
                 {
-                    m_ttstream.reset( new TTStream(*tt) );
-                    return m_ttstream->getToken();
+                    if( frag->m_type == InterpolatedFragment::TT )
+                    {
+                        m_ttstream.reset( new TTStream( frag->as_tt() ) );
+                        return m_ttstream->getToken();
+                    }
+                    else
+                    {
+                        return Token( *frag );
+                    }
                 }
             }
             // - Descend into a repetition

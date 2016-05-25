@@ -163,6 +163,79 @@ void operator%(::Deserialiser& s, Pattern::Data::Tag& c) {
     s.item(n);
     c = Pattern::Data::tag_from_str(n);
 }
+
+Pattern::~Pattern()
+{
+}
+
+AST::Pattern AST::Pattern::clone() const
+{
+    AST::Pattern    rv;
+    rv.m_span = m_span;
+    rv.m_binding = m_binding;
+    rv.m_binding_mut = m_binding_mut;
+    
+    struct H {
+        static ::std::unique_ptr<Pattern> clone_sp(const ::std::unique_ptr<Pattern>& p) {
+            return ::std::make_unique<Pattern>( p->clone() );
+        }
+        static ::std::vector<Pattern> clone_list(const ::std::vector<Pattern>& list) {
+            ::std::vector<Pattern>  rv;
+            rv.reserve(list.size());
+            for(const auto& p : list)
+                rv.push_back( p.clone() );
+            return rv;
+        }
+        static AST::Pattern::Value clone_val(const AST::Pattern::Value& v) {
+            TU_MATCH(::AST::Pattern::Value, (v), (e),
+            (Invalid, return Value(e);),
+            (Integer, return Value(e);),
+            (String, return Value(e);),
+            (Named, return Value::make_Named( AST::Path(e) );)
+            )
+            throw "";
+        }
+    };
+    
+    TU_MATCH(Pattern::Data, (m_data), (e),
+    (Any,
+        rv.m_data = Data::make_Any(e);
+        ),
+    (MaybeBind,
+        rv.m_data = Data::make_MaybeBind(e);
+        ),
+    (Macro,
+        rv.m_data = Data::make_Macro({ ::std::make_unique<AST::MacroInvocation>( e.inv->clone() ) });
+        ),
+    (Box,
+        rv.m_data = Data::make_Box({ H::clone_sp(e.sub) });
+        ),
+    (Ref,
+        rv.m_data = Data::make_Ref({ e.mut, H::clone_sp(e.sub) });
+        ),
+    (Value,
+        rv.m_data = Data::make_Value({ H::clone_val(e.start), H::clone_val(e.end) });
+        ),
+    (Tuple,
+        rv.m_data = Data::make_Tuple({ H::clone_list(e.sub_patterns) });
+        ),
+    (StructTuple,
+        rv.m_data = Data::make_StructTuple({ ::AST::Path(e.path), H::clone_list(e.sub_patterns) });
+        ),
+    (Struct,
+        ::std::vector< ::std::pair< ::std::string, Pattern> >   sps;
+        for(const auto& sp : e.sub_patterns)
+            sps.push_back( ::std::make_pair(sp.first, sp.second.clone()) );
+        rv.m_data = Data::make_Struct({ ::AST::Path(e.path), mv$(sps) });
+        ),
+    (Slice,
+        rv.m_data = Data::make_Slice({ H::clone_list(e.leading), e.extra_bind, H::clone_list(e.trailing) });
+        )
+    )
+    
+    return rv;
+}
+
 #define _D(VAR, ...)  case Pattern::Data::TAG_##VAR: { m_data = Pattern::Data::make_##VAR({}); auto& ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
 SERIALISE_TYPE(Pattern::, "Pattern", {
     s.item(m_binding);

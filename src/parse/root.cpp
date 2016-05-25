@@ -87,13 +87,13 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
                 CHECK_TOK(tok, TOK_GT);
             }
             else {
-                lex.putback(tok);
+                PUTBACK(tok, lex);
             }
             
             ret.add_bound( AST::GenericBound::make_IsTrait( {type: checked_type, hrls: lifetimes, trait: Parse_Path(lex, PATH_GENERIC_TYPE) }) );
         }
     } while( GET_TOK(tok, lex) == TOK_PLUS );
-    lex.putback(tok);
+    PUTBACK(tok, lex);
 }
 
 /// Parse type parameters within '<' and '>' (definition)
@@ -147,7 +147,7 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
             GET_TOK(tok, lex);
         }
     } while( tok.type() == TOK_COMMA );
-    lex.putback(tok);
+    PUTBACK(tok, lex);
     return ret;
 }
 
@@ -183,13 +183,13 @@ void Parse_WhereClause(TokenStream& lex, AST::GenericParams& params)
         }
         else
         {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
             TypeRef type = Parse_Type(lex);
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             Parse_TypeBound(lex, params, type);
         }
     } while( GET_TOK(tok, lex) == TOK_COMMA );
-    lex.putback(tok);
+    PUTBACK(tok, lex);
 }
 
 // Parse a single function argument
@@ -238,7 +238,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
         GET_CHECK_TOK(tok, lex, TOK_GT);
     }
     else {
-        lex.putback(tok);
+        PUTBACK(tok, lex);
     }
 
     AST::Function::Arglist  args;
@@ -302,7 +302,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
                 ty = Parse_Type(lex);
             }
             else {
-                lex.putback(tok);
+                PUTBACK(tok, lex);
                 ty = TypeRef("Self");
             }
             args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), ty) );
@@ -320,7 +320,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
             ty = Parse_Type(lex);
         }
         else {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
             ty = TypeRef("Self");
         }
         args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), ty) );
@@ -339,7 +339,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
             CHECK_TOK(tok, TOK_COMMA);
         }
         else {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
         }
         
         // Argument list
@@ -370,13 +370,13 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
             ret_type = TypeRef(TypeRef::TagInvalid(), Span(tok.get_pos()));
         }
         else {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
             ret_type = Parse_Type(lex);
         }
     }
     else
     {
-        lex.putback(tok);
+        PUTBACK(tok, lex);
     }
 
     if( GET_TOK(tok, lex) == TOK_RWORD_WHERE )
@@ -384,7 +384,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
         Parse_WhereClause(lex, params);
     }
     else {
-        lex.putback(tok);
+        PUTBACK(tok, lex);
     }
 
     return AST::Function(::std::move(params), ::std::move(ret_type), ::std::move(args));
@@ -395,7 +395,7 @@ AST::Function Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST
     Token   tok;
     auto ret = Parse_FunctionDef(lex, abi, attrs, allow_self, false);
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
-    lex.putback(tok);
+    PUTBACK(tok, lex);
     ret.set_code( Parse_ExprBlock(lex) );
     return ret;
 }
@@ -468,7 +468,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
             if(tok.type() == TOK_RWORD_PUB)
                 is_pub = true;
             else
-                lex.putback(tok);
+                PUTBACK(tok, lex);
             
             refs.push_back( AST::TupleItem( mv$(item_attrs), is_pub, Parse_Type(lex) ) );
             if( GET_TOK(tok, lex) != TOK_COMMA )
@@ -555,7 +555,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, AST::Module& mod, const AST::MetaIte
                 supertraits.push_back( make_spanned( Span(tok.get_pos()), AST::Path() ) );
             }
             else {
-                lex.putback(tok);
+                PUTBACK(tok, lex);
                 supertraits.push_back( GET_SPANNED(::AST::Path, lex, Parse_Path(lex, PATH_GENERIC_TYPE)) );
             }
         } while( GET_TOK(tok, lex) == TOK_PLUS );
@@ -657,7 +657,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, AST::Module& mod, const AST::MetaIte
                 if( GET_TOK(tok, lex) == TOK_STRING )
                     abi = tok.str();
                 else
-                    lex.putback(tok);
+                    PUTBACK(tok, lex);
                 
                 GET_TOK(tok, lex);
             }
@@ -669,7 +669,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, AST::Module& mod, const AST::MetaIte
             auto fcn = Parse_FunctionDef(lex, abi, item_attrs, true, true);
             if( GET_TOK(tok, lex) == TOK_BRACE_OPEN )
             {
-                lex.putback(tok);
+                PUTBACK(tok, lex);
                 fcn.set_code( Parse_ExprBlock(lex) );
             }
             else if( tok.type() == TOK_SEMICOLON )
@@ -811,7 +811,13 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
 {
     TRACE_FUNCTION;
     Token tok;
-    GET_CHECK_TOK(tok, lex, TOK_IDENT);
+    GET_TOK(tok, lex);
+    
+    if( tok.type() == TOK_INTERPOLATED_META ) {
+        return mv$(tok.frag_meta());
+    }
+    
+    CHECK_TOK(tok, TOK_IDENT);
     ::std::string   name = tok.str();
     switch(GET_TOK(tok, lex))
     {
@@ -830,7 +836,7 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
         CHECK_TOK(tok, TOK_PAREN_CLOSE);
         return AST::MetaItem(name, mv$(items)); }
     default:
-        lex.putback(tok);
+        PUTBACK(tok, lex);
         return AST::MetaItem(name);
     }
 }
@@ -849,7 +855,7 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
         GET_CHECK_TOK(tok, lex, TOK_GT);
     }
     else {
-        lex.putback(tok);
+        PUTBACK(tok, lex);
     }
     // 2. Either a trait name (with type params), or the type to impl
     
@@ -861,7 +867,7 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
     {
         trait_path = GET_SPANNED(::AST::Path, lex, Parse_Path(lex, PATH_GENERIC_TYPE));
         GET_CHECK_TOK(tok, lex, TOK_RWORD_FOR);
-        impl_type = Parse_Type(lex);
+        impl_type = Parse_Type(lex, true);
         
         if( GET_TOK(tok, lex) == TOK_RWORD_WHERE )
         {
@@ -878,9 +884,9 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
     else
     {
         // - Don't care which at this stage
-        lex.putback(tok);
+        PUTBACK(tok, lex);
         
-        impl_type = Parse_Type(lex);
+        impl_type = Parse_Type(lex, true);
         // TODO: Handle the "impl Any + Send" syntax here
         
         if( GET_TOK(tok, lex) == TOK_RWORD_FOR )
@@ -899,12 +905,12 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
             }
             else
             {
-                lex.putback(tok);
-                impl_type = Parse_Type(lex);
+                PUTBACK(tok, lex);
+                impl_type = Parse_Type(lex, true);
             }
         }
         else {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
         }
     }
     
@@ -914,7 +920,7 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
         Parse_WhereClause(lex, params);
     }
     else {
-        lex.putback(tok);
+        PUTBACK(tok, lex);
     }
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
 
@@ -936,11 +942,11 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
             impl.add_macro_invocation( Parse_MacroInvocation( ps, AST::MetaItems(), mv$(tok.str()), lex ) );
             // - Silently consume ';' after the macro
             if( GET_TOK(tok, lex) != TOK_SEMICOLON )
-                lex.putback(tok);
+                PUTBACK(tok, lex);
         }
         else
         {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
             Parse_Impl_Item(lex, impl);
         }
     }
@@ -1020,7 +1026,7 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
             if( GET_TOK(tok, lex) == TOK_STRING )
                 abi = tok.str();
             else
-                lex.putback(tok);
+                PUTBACK(tok, lex);
             
             GET_TOK(tok, lex);
         }
@@ -1066,7 +1072,7 @@ void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi, ::
         block_attrs.push_back( Parse_MetaItem(lex) );
         GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
     }
-    lex.putback(tok);
+    PUTBACK(tok, lex);
     // TODO: Use `block_attrs`
     
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
@@ -1100,7 +1106,7 @@ void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi, ::
             if( GET_TOK(tok, lex) == TOK_RWORD_MUT )
                 is_mut = true;
             else
-                lex.putback(tok);
+                PUTBACK(tok, lex);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             auto name = mv$(tok.str());
             GET_CHECK_TOK(tok, lex, TOK_COLON);
@@ -1146,11 +1152,11 @@ void Parse_Use_Set(TokenStream& lex, const ProtoSpan& ps, const AST::Path& base_
             name = mv$(tok.str());
         }
         else {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
         }
         fcn(AST::UseStmt(lex.end_span(ps), mv$(path)), mv$(name));
     } while( GET_TOK(tok, lex) == TOK_COMMA );
-    lex.putback(tok);
+    PUTBACK(tok, lex);
 }
 
 void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::string)> fcn)
@@ -1190,7 +1196,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         }
         else {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
         }
         break;
     case TOK_BRACE_OPEN:
@@ -1237,7 +1243,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
     }
     else
     {
-        lex.putback(tok);
+        PUTBACK(tok, lex);
         assert(path.nodes().size() > 0);
         name = path.nodes().back().name();
     }
@@ -1254,7 +1260,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         ident = mv$(tok.str());
     }
     else {
-        lex.putback(tok);
+        PUTBACK(tok, lex);
     }
     TokenTree tt = Parse_TT(lex, true);
     return ::AST::MacroInvocation( lex.end_span(span_start), mv$(meta_items), mv$(name), mv$(ident), mv$(tt));
@@ -1284,7 +1290,7 @@ void Parse_ExternCrate(TokenStream& lex, AST::Module& mod, bool is_public, AST::
             name = mv$(tok.str());
         }
         else {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
             name = path;
         }
         break;
@@ -1442,7 +1448,7 @@ void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::strin
                 abi = mv$(tok.str());
             }
             else {
-                lex.putback(tok);
+                PUTBACK(tok, lex);
             }
             GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
@@ -1632,10 +1638,10 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, bool file_controls_
         {
         case TOK_BRACE_CLOSE:
         case TOK_EOF:
-            lex.putback(tok);
+            PUTBACK(tok, lex);
             return;
         default:
-            lex.putback(tok);
+            PUTBACK(tok, lex);
             break;
         }
 
@@ -1646,7 +1652,7 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, bool file_controls_
             meta_items.push_back( Parse_MetaItem(lex) );
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
         }
-        lex.putback(tok);
+        PUTBACK(tok, lex);
         DEBUG("meta_items = " << meta_items);
 
         // root-level macros
@@ -1658,11 +1664,11 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, bool file_controls_
             // - Silently consume ';' after the macro
             // TODO: Check the tt next token before parsing to tell if this is needed
             if( GET_TOK(tok, lex) != TOK_SEMICOLON )
-                lex.putback(tok);
+                PUTBACK(tok, lex);
             continue ;
         }
         else {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
         }
     
         // Module visibility
@@ -1671,7 +1677,7 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, bool file_controls_
             is_public = true;
         }
         else {
-            lex.putback(tok);
+            PUTBACK(tok, lex);
         }
 
         Parse_Mod_Item(lex, file_controls_dir,path,  mod, is_public, mv$(meta_items));
@@ -1692,7 +1698,7 @@ void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs
 
         mod_attrs.push_back( mv$(item) );
     }
-    lex.putback(tok);
+    PUTBACK(tok, lex);
 
     Parse_ModRoot_Items(lex, mod, file_controls_dir, path);
 }

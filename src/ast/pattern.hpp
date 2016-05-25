@@ -52,8 +52,12 @@ private:
     Data m_data;
     
 public:
+    virtual ~Pattern();
+    
     Pattern()
     {}
+    Pattern(Pattern&&) = default;
+    Pattern& operator=(Pattern&&) = default;
 
     struct TagMaybeBind {};
     Pattern(TagMaybeBind, ::std::string name):
@@ -128,6 +132,9 @@ public:
     
     const Span& span() const { return m_span; }
     void set_span(Span sp) { m_span = mv$(sp); }
+    
+    Pattern clone() const;
+    
     // Accessors
     const ::std::string& binding() const { return m_binding; }
     const BindType& binding_type() const { assert(m_binding != ""); return m_binding_type; }

@@ -19,8 +19,8 @@ class CFormatArgsExpander:
         if( ident != "" )
             ERROR(sp, E0000, "format_args! doesn't take an ident");
         
-        GET_CHECK_TOK(tok, lex, TOK_STRING);
-        auto format_string = mv$(tok.str());
+        auto n = Parse_ExprVal(lex);
+        auto format_string = dynamic_cast<AST::ExprNode_String&>(*n).m_value;
         
         // TODO: Interpolated expression "tokens"
         ::std::map< ::std::string, TokenTree>   named_args;

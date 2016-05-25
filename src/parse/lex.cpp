@@ -20,7 +20,8 @@
 #include <typeinfo>
 #include <algorithm>	// std::count
 
-const bool DEBUG_PRINT_TOKENS = false;
+//const bool DEBUG_PRINT_TOKENS = false;
+const bool DEBUG_PRINT_TOKENS = true;
 
 Lexer::Lexer(const ::std::string& filename):
     m_path(filename.c_str()),
@@ -956,7 +957,7 @@ Token TTStream::realGetToken()
             const TokenTree&    subtree = tree[idx];
             idx ++;
             if( subtree.size() == 0 ) {
-                return subtree.tok();
+                return subtree.tok().clone();
             }
             else {
                 m_stack.push_back( ::std::make_pair(0, &subtree ) );
@@ -1041,7 +1042,7 @@ Token TokenStream::getToken()
     if( m_cache_valid )
     {
         m_cache_valid = false;
-        return m_cache;
+        return mv$(m_cache);
     }
     else if( m_lookahead.size() )
     {
@@ -1119,6 +1120,19 @@ Span TokenStream::end_span(ProtoSpan ps) const
 }
 
 
+TokenTree TokenTree::clone() const
+{
+    if( m_subtrees.size() == 0 ) {
+        return TokenTree(m_tok.clone());
+    }
+    else {
+        ::std::vector< TokenTree>   ents;
+        ents.reserve( m_subtrees.size() );
+        for(const auto& sub : m_subtrees)
+            ents.push_back( sub.clone() );
+        return TokenTree( mv$(ents) );
+    }
+}
 SERIALISE_TYPE_A(TokenTree::, "TokenTree", {
     s.item(m_tok);
     s.item(m_subtrees);

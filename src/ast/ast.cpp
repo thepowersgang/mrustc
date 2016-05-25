@@ -22,6 +22,9 @@ namespace {
     }
 }
 
+MetaItems::~MetaItems()
+{
+}
 MetaItems MetaItems::clone() const
 {
     return MetaItems( m_span, clone_mivec(m_items) );
@@ -45,7 +48,9 @@ SERIALISE_TYPE_A(MetaItems::, "AST_MetaItems", {
     s.item(m_items);
 })
 
-
+MetaItem::~MetaItem()
+{
+}
 MetaItem MetaItem::clone() const
 {
     TU_MATCH(MetaItemData, (m_data), (e),
@@ -183,6 +188,10 @@ SERIALISE_TYPE_A(UseStmt::, "AST_UseStmt", {
 })
 
 
+MacroInvocation MacroInvocation::clone() const
+{
+    return MacroInvocation(m_span, m_attrs.clone(), m_macro_name, m_ident, m_input.clone());
+}
 SERIALISE_TYPE_A(MacroInvocation::, "AST_MacroInvocation", {
     s.item(m_attrs);
     s.item(m_macro_name);

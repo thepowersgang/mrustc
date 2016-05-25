@@ -18,6 +18,11 @@ class MacroInvocation:
     ::std::string   m_ident;
     TokenTree   m_input;
 public:
+    MacroInvocation(MacroInvocation&&) = default;
+    MacroInvocation& operator=(MacroInvocation&&) = default;
+    MacroInvocation(const MacroInvocation&) = delete;
+    MacroInvocation& operator=(const MacroInvocation&) = delete;
+    
     MacroInvocation()
     {
     }
@@ -30,6 +35,8 @@ public:
         m_input( mv$(input) )
     {
     }
+    
+    MacroInvocation clone() const;
 
     static ::std::unique_ptr<MacroInvocation> from_deserialiser(Deserialiser& s) {
         auto i = new MacroInvocation;

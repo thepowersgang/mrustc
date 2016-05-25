@@ -41,7 +41,7 @@ extern ::std::vector<TypeRef>   Parse_Path_GenericList(TokenStream& lex);
 
 extern AST::MetaItem   Parse_MetaItem(TokenStream& lex);
 extern ::AST::MacroInvocation Parse_MacroInvocation(ProtoSpan ps, ::AST::MetaItems meta_items, ::std::string name, TokenStream& lex);
-extern TypeRef     Parse_Type(TokenStream& lex);
+extern TypeRef     Parse_Type(TokenStream& lex, bool allow_trait_list = false);
 extern AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable);
 
 extern void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl);
@@ -51,7 +51,8 @@ extern void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, bool file_co
 
 extern AST::Expr   Parse_Expr(TokenStream& lex);
 extern AST::Expr   Parse_ExprBlock(TokenStream& lex);
-extern AST::ExprNodeP Parse_Expr0(TokenStream& lex);
+extern AST::ExprNodeP   Parse_Expr0(TokenStream& lex);
+extern AST::ExprNodeP   Parse_ExprVal(TokenStream& lex);
 
 extern bool Parse_IsTokValue(eTokenType tok_type);
 

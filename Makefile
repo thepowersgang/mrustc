@@ -15,9 +15,9 @@ SHELL = bash
 ifeq ($(DBGTPL),)
   
 else ifeq ($(DBGTPL),gdb)
-  DBG := echo -e "r\nbt 7\nq" | gdb --args
+  DBG := echo -e "r\nbt 9\nq" | gdb --args
 else ifeq ($(DBGTPL),valgrind)
-  DBG := valgrind --leak-check=full
+  DBG := valgrind --leak-check=full --num-callers=35
 else
   $(error "Unknown debug template")
 endif
@@ -30,7 +30,9 @@ OBJ := main.o serialise.o
 OBJ += span.o rc_string.o
 OBJ += ast/ast.o
 OBJ +=  ast/types.o ast/crate.o ast/path.o ast/expr.o ast/pattern.o
-OBJ += parse/parseerror.o parse/lex.o parse/token.o
+OBJ += parse/parseerror.o
+OBJ +=  parse/lex.o parse/token.o
+OBJ +=  parse/interpolated_fragment.o
 OBJ += parse/root.o parse/paths.o parse/types.o parse/expr.o parse/pattern.o
 OBJ += expand/mod.o expand/macro_rules.o expand/cfg.o
 OBJ +=  expand/format_args.o
@@ -70,7 +72,7 @@ output/core.ast: $(RUSTCSRC)src/libcore/lib.rs $(BIN)
 
 .PHONY: UPDATE
 UPDATE:
-	wget https://static.rust-lang.org/dist/rustc-nightly-src.tar.gz
+	wget -c https://static.rust-lang.org/dist/rustc-nightly-src.tar.gz
 	tar -xf rustc-nightly-src.tar.gz
 
 .PHONY: rust_tests

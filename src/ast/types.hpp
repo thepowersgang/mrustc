@@ -108,6 +108,8 @@ class TypeRef:
 public:
     TypeData    m_data;
     
+    virtual ~TypeRef();
+    
     TypeRef(TypeRef&& other) noexcept:
         m_data( mv$(other.m_data) )
     {

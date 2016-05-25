@@ -13,9 +13,9 @@ class Serialiser;
 class Deserialiser;
 
 #define SERIALISABLE_PROTOTYPES()\
-    virtual const char* serialise_tag() const override; \
-    virtual void serialise(::Serialiser& s) const override; \
-    virtual void deserialise(::Deserialiser& s) override
+    const char* serialise_tag() const override; \
+    void serialise(::Serialiser& s) const override; \
+    void deserialise(::Deserialiser& s) override
 #define SERIALISE_TYPE(method_prefix, tag_str, body, des_body) \
     const char* method_prefix serialise_tag() const { return tag_str; } \
     void method_prefix serialise(::Serialiser& s) const { body } \

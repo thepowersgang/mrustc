@@ -140,6 +140,7 @@ public:
 private:
     PathBinding m_binding;
 public:
+    virtual ~Path();
     // INVALID
     Path():
         m_class()
