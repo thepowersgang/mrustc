@@ -65,6 +65,9 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
     (Array,
         os << "[" << *e.inner << "; " << "/*sz*/" << "]";
         ),
+    (Slice,
+        os << "[" << *e.inner << "]";
+        ),
     (Tuple,
         os << "(";
         for(const auto& t : e)
@@ -130,6 +133,11 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         //    box$( e.inner->clone() ),
         //    /* huh */
         //    }) );
+        ),
+    (Slice,
+        return ::HIR::TypeRef( Data::make_Slice({
+            box$( e.inner->clone() )
+            }) );
         ),
     (Tuple,
         ::std::vector< ::HIR::TypeRef>  types;

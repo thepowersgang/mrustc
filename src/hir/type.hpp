@@ -75,6 +75,9 @@ struct TypeRef
         ::std::unique_ptr<TypeRef>  inner;
         ::HIR::ExprPtr size;
         }),
+    (Slice, struct {
+        ::std::unique_ptr<TypeRef>  inner;
+        }),
     (Tuple, ::std::vector<TypeRef>),
     (Borrow, struct {
         ::HIR::BorrowType   type;

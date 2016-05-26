@@ -43,12 +43,13 @@ struct VisEnt
 TAGGED_UNION(Literal, Invalid,
     (Invalid, struct {}),
     // List = Array, Tuple, struct literal
-    (List, ::std::vector<Literal>),
+    (List, ::std::vector<Literal>), // TODO: Have a variant for repetition lists
     (Integer, uint64_t),
     (Float, double),
     // String = &'static str or &[u8; N]
     (String, ::std::string)
     );
+extern ::std::ostream& operator<<(::std::ostream& os, const Literal& v);
 
 // --------------------------------------------------------------------
 // Type structures

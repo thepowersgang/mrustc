@@ -42,6 +42,7 @@ OBJ +=  expand/std_prelude.o
 OBJ += macro_rules/mod.o macro_rules/eval.o macro_rules/parse.o
 OBJ += resolve/use.o resolve/index.o resolve/absolute.o
 OBJ += hir/from_ast.o hir/from_ast_expr.o
+OBJ +=  hir/hir.o
 OBJ +=  hir/crate_ptr.o hir/type_ptr.o hir/expr_ptr.o
 OBJ +=  hir/type.o hir/path.o hir/expr.o
 OBJ +=  hir/visitor.o

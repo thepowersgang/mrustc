@@ -399,10 +399,12 @@ struct ExprNode_ArraySized:
 {
     ::HIR::ExprNodeP    m_val;
     ::HIR::ExprNodeP    m_size; // TODO: Has to be constant
+    size_t  m_size_val;
     
     ExprNode_ArraySized(::HIR::ExprNodeP val, ::HIR::ExprNodeP size):
         m_val( mv$(val) ),
-        m_size( mv$(size) )
+        m_size( mv$(size) ),
+        m_size_val( ~0u )
     {}
     
     NODE_METHODS();

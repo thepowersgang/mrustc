@@ -463,10 +463,17 @@
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Pointer({e.is_mut, box$(LowerHIR_Type(*e.inner))}) );
         ),
     (Array,
-        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Array({
-            box$( LowerHIR_Type(*e.inner) ),
-            LowerHIR_Expr( e.size )
-            }) );
+        if( e.size ) {
+            return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Array({
+                box$( LowerHIR_Type(*e.inner) ),
+                LowerHIR_Expr( e.size )
+                }) );
+        }
+        else {
+            return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Slice({
+                box$( LowerHIR_Type(*e.inner) )
+                }) );
+        }
         ),
     
     (Path,

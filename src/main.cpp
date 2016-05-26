@@ -77,11 +77,17 @@ int main(int argc, char *argv[])
     ProgramParams   params(argc, argv);
     
     // Set up cfg values
+    // TODO: Target spec
     Cfg_SetFlag("linux");
     Cfg_SetValue("target_pointer_width", "64");
+    Cfg_SetValue("target_endian", "little");
+    Cfg_SetValue("target_arch", "x86-noasm");   // TODO: asm! macro
     Cfg_SetValueCb("target_has_atomic", [](const ::std::string& s) {
         if(s == "8")    return true;    // Has an atomic byte
         if(s == "ptr")  return true;    // Has an atomic pointer-sized value
+        return false;
+        });
+    Cfg_SetValueCb("target_feature", [](const ::std::string& s) {
         return false;
         });
     

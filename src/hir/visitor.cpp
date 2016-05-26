@@ -254,6 +254,9 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
         this->visit_type( *e.inner );
         this->visit_expr( e.size );
         ),
+    (Slice,
+        this->visit_type( *e.inner );
+        ),
     (Tuple,
         for(auto& t : e) {
             this->visit_type(t);
