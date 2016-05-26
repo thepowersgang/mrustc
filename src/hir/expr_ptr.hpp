@@ -21,7 +21,10 @@ public:
     }
     ~ExprPtr();
     
-    ::HIR::ExprNode& operator*() { return *node; }
+          ::HIR::ExprNode& operator*()       { return *node; }
+    const ::HIR::ExprNode& operator*() const { return *node; }
+          ::HIR::ExprNode* operator->()       { return node; }
+    const ::HIR::ExprNode* operator->() const { return node; }
 };
 
 }   // namespace HIR

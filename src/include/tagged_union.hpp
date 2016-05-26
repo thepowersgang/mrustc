@@ -109,7 +109,7 @@
 */}
 #define TU_MATCH_BIND1(TAG, VAR, NAME)  /*MATCH_BIND*/ auto& NAME = (VAR).as_##TAG(); (void)&NAME;
 #define TU_MATCH_BIND2_(TAG, v1,v2, n1,n2)   TU_MATCH_BIND1(TAG, v1, n1) TU_MATCH_BIND1(TAG, v2, n2)
-#define TU_MATCH_BIND2(...) TU_MATCH_BIND2_(__VA_ARGS__)
+#define TU_MATCH_BIND2(...) TU_MATCH_BIND2_(__VA_ARGS__)    // << Exists to cause expansion of the vars
 #define TU_MATCH_ARM(CLASS, VAR, NAME, TAG, ...)  case CLASS::TAG_##TAG: {/*
 */    TU_GM(TU_MATCH_BIND, TU_EXP VAR)(TAG, TU_EXP VAR , TU_EXP NAME)/*
 */    __VA_ARGS__/*

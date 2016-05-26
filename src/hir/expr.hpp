@@ -5,6 +5,7 @@
 #include <memory>
 #include <hir/pattern.hpp>
 #include <hir/type.hpp>
+#include <span.hpp>
 
 namespace HIR {
 
@@ -14,6 +15,8 @@ class ExprNode
 {
 public:
     //::HIR::TypeRef    m_res_type;
+
+    const Span& span() const;
     
     virtual void visit(ExprVisitor& v) = 0;
     virtual ~ExprNode();

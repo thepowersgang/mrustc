@@ -74,6 +74,7 @@ struct TypeRef
     (Array, struct {
         ::std::unique_ptr<TypeRef>  inner;
         ::HIR::ExprPtr size;
+        size_t  size_val;
         }),
     (Slice, struct {
         ::std::unique_ptr<TypeRef>  inner;

@@ -466,7 +466,8 @@
         if( e.size ) {
             return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Array({
                 box$( LowerHIR_Type(*e.inner) ),
-                LowerHIR_Expr( e.size )
+                LowerHIR_Expr( e.size ),
+                ~0u
                 }) );
         }
         else {
