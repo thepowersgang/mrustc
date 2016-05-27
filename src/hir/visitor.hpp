@@ -35,9 +35,13 @@ public:
     virtual void visit_pattern_val(::HIR::Pattern::Value& val);
     virtual void visit_type(::HIR::TypeRef& tr);
     
-    virtual void visit_path(::HIR::Path& p);
+    enum class PathContext {
+        TYPE,
+        VALUE,
+    };
+    virtual void visit_path(::HIR::Path& p, PathContext );
     virtual void visit_path_params(::HIR::PathParams& p);
-    virtual void visit_generic_path(::HIR::GenericPath& p);
+    virtual void visit_generic_path(::HIR::GenericPath& p, PathContext );
 
     virtual void visit_expr(::HIR::ExprPtr& exp);
 };

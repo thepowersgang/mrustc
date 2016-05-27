@@ -199,6 +199,8 @@ public:
     ::HIR::TypeRef  m_type;
     
     ::std::map< ::std::string, ::HIR::Function> m_methods;
+    
+    bool matches_type(const ::HIR::TypeRef& tr) const;
 };
 
 class TraitImpl
@@ -211,6 +213,8 @@ public:
     ::std::map< ::std::string, ::HIR::Function> m_methods;
     ::std::map< ::std::string, ::HIR::ExprPtr> m_constants;
     ::std::map< ::std::string, ::HIR::TypeRef> m_types;
+    
+    bool matches_type(const ::HIR::TypeRef& tr) const;
 };
 
 class MarkerImpl
@@ -220,6 +224,8 @@ public:
     ::HIR::PathParams   m_trait_args;
     bool    is_positive;
     ::HIR::TypeRef  m_type;
+    
+    bool matches_type(const ::HIR::TypeRef& tr) const;
 };
 
 class Crate

@@ -114,7 +114,7 @@ void ::HIR::Visitor::visit_trait(::HIR::Trait& item)
 {
     this->visit_params(item.m_params);
     for(auto& par : item.m_parent_traits) {
-        this->visit_generic_path(par);
+        this->visit_generic_path(par, ::HIR::Visitor::PathContext::TYPE);
     }
     for(auto& i : item.m_types) {
         this->visit_params(i.second.m_params);
@@ -214,7 +214,7 @@ void ::HIR::Visitor::visit_params(::HIR::GenericParams& params)
             ),
         (TraitBound,
             this->visit_type(e.type);
-            this->visit_generic_path(e.trait.m_path);
+            this->visit_generic_path(e.trait.m_path, ::HIR::Visitor::PathContext::TYPE);
             ),
         (TraitUnbound,
             this->visit_type(e.type);
@@ -241,13 +241,13 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
     (Primitive,
         ),
     (Path,
-        this->visit_path(e);
+        this->visit_path(e, ::HIR::Visitor::PathContext::TYPE);
         ),
     (Generic,
         ),
     (TraitObject,
         for(auto& trait : e.m_traits) {
-            this->visit_generic_path(trait);
+            this->visit_generic_path(trait, ::HIR::Visitor::PathContext::TYPE);
         }
         ),
     (Array,
@@ -292,12 +292,12 @@ void ::HIR::Visitor::visit_pattern(::HIR::Pattern& pat)
             this->visit_pattern(sp);
         ),
     (StructTuple,
-        this->visit_generic_path(e.path);
+        this->visit_generic_path(e.path, ::HIR::Visitor::PathContext::TYPE);
         for(auto& sp : e.sub_patterns)
             this->visit_pattern(sp);
         ),
     (Struct,
-        this->visit_generic_path(e.path);
+        this->visit_generic_path(e.path, ::HIR::Visitor::PathContext::TYPE);
         for(auto& sp : e.sub_patterns)
             this->visit_pattern(sp.second);
         ),
@@ -310,12 +310,12 @@ void ::HIR::Visitor::visit_pattern(::HIR::Pattern& pat)
         this->visit_pattern_val(e.end);
         ),
     (EnumTuple,
-        this->visit_generic_path(e.path);
+        this->visit_generic_path(e.path, ::HIR::Visitor::PathContext::TYPE);
         for(auto& sp : e.sub_patterns)
             this->visit_pattern(sp);
         ),
     (EnumStruct,
-        this->visit_generic_path(e.path);
+        this->visit_generic_path(e.path, ::HIR::Visitor::PathContext::TYPE);
         for(auto& sp : e.sub_patterns)
             this->visit_pattern(sp.second);
         ),
@@ -339,15 +339,15 @@ void ::HIR::Visitor::visit_pattern_val(::HIR::Pattern::Value& val)
     (String,
         ),
     (Named,
-        this->visit_path(e);
+        this->visit_path(e, ::HIR::Visitor::PathContext::VALUE);
         )
     )
 }
-void ::HIR::Visitor::visit_path(::HIR::Path& p)
+void ::HIR::Visitor::visit_path(::HIR::Path& p, ::HIR::Visitor::PathContext pc)
 {
     TU_MATCH(::HIR::Path::Data, (p.m_data), (e),
     (Generic,
-        this->visit_generic_path(e);
+        this->visit_generic_path(e, pc);
         ),
     (UfcsInherent,
         this->visit_type(*e.type);
@@ -355,7 +355,7 @@ void ::HIR::Visitor::visit_path(::HIR::Path& p)
         ),
     (UfcsKnown,
         this->visit_type(*e.type);
-        this->visit_generic_path(e.trait);
+        this->visit_generic_path(e.trait, ::HIR::Visitor::PathContext::TYPE);
         this->visit_path_params(e.params);
         ),
     (UfcsUnknown,
@@ -371,7 +371,7 @@ void ::HIR::Visitor::visit_path_params(::HIR::PathParams& p)
         this->visit_type(ty);
     }
 }
-void ::HIR::Visitor::visit_generic_path(::HIR::GenericPath& p)
+void ::HIR::Visitor::visit_generic_path(::HIR::GenericPath& p, ::HIR::Visitor::PathContext /*pc*/)
 {
     this->visit_path_params(p.m_params);
 }
