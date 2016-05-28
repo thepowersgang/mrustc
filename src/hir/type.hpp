@@ -96,6 +96,8 @@ struct TypeRef
     TypeRef() {}
     TypeRef(TypeRef&& ) = default;
     TypeRef(const TypeRef& ) = delete;
+    TypeRef& operator=(TypeRef&& ) = default;
+    TypeRef& operator=(const TypeRef&) = delete;
     
     TypeRef(::std::string name, unsigned int slot):
         m_data( Data::make_Generic({ mv$(name), slot }) )

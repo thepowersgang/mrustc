@@ -110,6 +110,7 @@ namespace {
                         }
                         // Found it, just keep going (don't care about details here)
                         } break;
+                    case ::HIR::Visitor::PathContext::TRAIT:
                     case ::HIR::Visitor::PathContext::TYPE: {
                         auto it1 = trait.m_types.find( e.item );
                         if( it1 == trait.m_types.end() ) {
@@ -154,6 +155,7 @@ namespace {
                         }
                         // Found it, just keep going (don't care about details here)
                         } break;
+                    case ::HIR::Visitor::PathContext::TRAIT:
                     case ::HIR::Visitor::PathContext::TYPE: {
                         continue ;
                         // Found it, just keep going (don't care about details here)

@@ -16,8 +16,8 @@ public:
     virtual void visit_module(::HIR::Module& mod);
     
     virtual void visit_type_impl(::HIR::TypeImpl& impl);
-    virtual void visit_trait_impl(::HIR::TraitImpl& impl);
-    virtual void visit_marker_impl(::HIR::MarkerImpl& impl);
+    virtual void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl);
+    virtual void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl);
     
     // - Type Items
     virtual void visit_type_alias(::HIR::TypeAlias& item);
@@ -37,6 +37,8 @@ public:
     
     enum class PathContext {
         TYPE,
+        TRAIT,
+        
         VALUE,
     };
     virtual void visit_path(::HIR::Path& p, PathContext );

@@ -16,6 +16,7 @@
 #include <main_bindings.hpp>
 #include "resolve/main_bindings.hpp"
 #include "hir_conv/main_bindings.hpp"
+#include "hir_typeck/main_bindings.hpp"
 
 #include "expand/cfg.hpp"
 
@@ -26,8 +27,8 @@ bool debug_enabled()
 {
     //return true;
     //return g_cur_phase != "Parse";
-    //return g_cur_phase != "Parse" && g_cur_phase != "Expand";
-    return g_cur_phase != "Parse" && g_cur_phase != "Expand" && g_cur_phase != "Resolve";
+    return g_cur_phase != "Parse" && g_cur_phase != "Expand";
+    //return g_cur_phase != "Parse" && g_cur_phase != "Expand" && g_cur_phase != "Resolve";
 }
 ::std::ostream& debug_output(int indent, const char* function)
 {
@@ -157,26 +158,22 @@ int main(int argc, char *argv[])
         CompilePhaseV("Resolve UFCS paths", [&]() {
             ConvertHIR_ResolveUFCS(*hir_crate);
             });
-        
         CompilePhaseV("Constant Evaluate", [&]() {
             ConvertHIR_ConstantEvaluate(*hir_crate);
             });
         
-        // Typecheck / type propagate module (type annotations of all values)
-        // - Check all generic conditions (ensure referenced trait is valid)
-        //  > Binds the trait path to the actual trait definition
-        CompilePhaseV("TypecheckBounds", [&]() {
-            //Typecheck_GenericBounds(crate);
+        
+        // === Type checking ===
+        // - This can recurse and call the MIR lower to evaluate constants
+        
+        // Check outer items first (types of constants/functions/statics/impls/...)
+        // - Doesn't do any expressions except those in types
+        CompilePhaseV("Typecheck Outer", [&]() {
+            Typecheck_ModuleLevel(*hir_crate);
             });
-        // - Check all generic parameters match required conditions (without doing full typeck)
-        //  > 
-        CompilePhaseV("TypecheckParams", [&]() {
-            //Typecheck_GenericParams(crate);
-            });
-        // TODO: Evaluate all constants (or MIR them then evaluate)
-        // - Full function typeck
-        CompilePhaseV("TypecheckExpr", [&]() {
-            //Typecheck_Expr(crate);
+        // Check the rest of the expressions (including function bodies)
+        CompilePhaseV("Typecheck Expressions", [&]() {
+            //Typecheck_Expressions(*hir_crate);
             });
 
         if( params.last_stage == ProgramParams::STAGE_TYPECK ) {
@@ -184,6 +181,7 @@ int main(int argc, char *argv[])
         }
         
         // Expand closures into items
+        // - Now that all types are known, closures can be desugared
         CompilePhaseV("Lower Closures", [&]() {
             //ConvertHIR_Closures(hir_crate);
             });

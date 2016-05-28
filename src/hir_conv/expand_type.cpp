@@ -35,6 +35,7 @@
         
         TU_MATCH_DEF( ::HIR::TypeItem, (it->second->ent), (e2),
         (
+            // Anything else - leave it be
             ),
         (TypeAlias,
             if( e2.m_params.m_types.size() > 0 ) {
@@ -75,6 +76,7 @@ public:
             auto new_type = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e);
             if( ! new_type.m_data.is_Infer() ) {
                 DEBUG("Replacing " << ty << " with " << new_type);
+                ty = mv$(new_type);
             }
         )
     }

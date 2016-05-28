@@ -502,6 +502,7 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
 }
 void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path)
 {
+    TRACE_FUNCTION_F("path = " << path);
     const auto& path_abs = path.m_class.as_Absolute();
     
     if( path_abs.crate != "" ) {
@@ -544,6 +545,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                 ERROR(sp, E0000, "Couldn't find path component '" << n.name() << "' of " << path);
             }
             const auto& name_ref = it->second;
+            DEBUG("#" << i << " \"" << n.name() << "\" = " << name_ref.path << (name_ref.is_import ? " (import)" : "") );
             
             TU_MATCH_DEF(::AST::PathBinding, (name_ref.path.binding()), (e),
             (
@@ -623,7 +625,9 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
     }
     assert( ! tmp.binding().is_Unbound() );
     
-    path.bind( tmp.binding().clone() );
+    // Replaces the path with the one returned by `lookup_in_mod`, ensuring that `use` aliases are eliminated
+    DEBUG("Replace " << path << " with " << tmp);
+    path = mv$(tmp);
 }
 
 void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::LookupMode mode,  ::AST::Path& path)
@@ -676,7 +680,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         else {
             // Look up value
             auto p = context.lookup(sp, e.nodes[0].name(), mode);
-            DEBUG("Found val - " << p << " for " << path);
+            DEBUG("Found path " << p << " for " << path);
             path = mv$(p);
         }
         

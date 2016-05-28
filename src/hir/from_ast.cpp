@@ -345,7 +345,10 @@
         for(const auto& param : e.nodes.back().args()) {
             params.m_types.push_back( LowerHIR_Type(param) );
         }
-        return ::HIR::GenericPath(mv$(sp), mv$(params));
+        // TODO: Lifetime params (not encoded in AST::PathNode as yet)
+        auto rv = ::HIR::GenericPath(mv$(sp), mv$(params));
+        DEBUG(path << " => " << rv);
+        return rv;
     )
     else {
         BUG(sp, "Encountered non-Absolute path when creating ::HIR::GenericPath - " << path);

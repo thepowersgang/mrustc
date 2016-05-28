@@ -16,53 +16,66 @@ void ::HIR::Visitor::visit_crate(::HIR::Crate& crate)
     }
     for( auto& impl : crate.m_trait_impls )
     {
-        this->visit_trait_impl(impl.second);
+        this->visit_trait_impl(impl.first, impl.second);
     }
     for( auto& impl : crate.m_marker_impls )
     {
-        this->visit_marker_impl(impl.second);
+        this->visit_marker_impl(impl.first, impl.second);
     }
 }
 
 void ::HIR::Visitor::visit_module(::HIR::Module& mod)
 {
+    TRACE_FUNCTION;
     for( auto& named : mod.m_mod_items )
     {
+        const auto& name = named.first;
         auto& item = named.second->ent;
         TU_MATCH(::HIR::TypeItem, (item), (e),
         (Import, ),
         (Module,
+            DEBUG("mod " << name);
             this->visit_module(e);
             ),
         (TypeAlias,
+            DEBUG("type " << name);
             this->visit_type_alias(e);
             ),
         (Enum,
+            DEBUG("enum " << name);
             this->visit_enum(e);
             ),
         (Struct,
+            DEBUG("struct " << name);
             this->visit_struct(e);
             ),
         (Trait,
+            DEBUG("trait " << name);
             this->visit_trait(e);
             )
         )
     }
     for( auto& named : mod.m_value_items )
     {
+        const auto& name = named.first;
         auto& item = named.second->ent;
         TU_MATCH(::HIR::ValueItem, (item), (e),
-        (Import, ),
+        (Import,
+            // SimplePath - no visitor
+            ),
         (Constant,
+            DEBUG("const " << name);
             this->visit_constant(e);
             ),
         (Static,
+            DEBUG("static " << name);
             this->visit_static(e);
             ),
         (StructConstant,
             // Just a path
             ),
         (Function,
+            DEBUG("fn " << name);
             this->visit_function(e);
             ),
         (StructConstructor,
@@ -82,7 +95,7 @@ void ::HIR::Visitor::visit_type_impl(::HIR::TypeImpl& impl)
         this->visit_function(method.second);
     }
 }
-void ::HIR::Visitor::visit_trait_impl(::HIR::TraitImpl& impl)
+void ::HIR::Visitor::visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl)
 {
     this->visit_params(impl.m_params);
     this->visit_path_params(impl.m_trait_args);
@@ -98,7 +111,7 @@ void ::HIR::Visitor::visit_trait_impl(::HIR::TraitImpl& impl)
         this->visit_type(ent.second);
     }
 }
-void ::HIR::Visitor::visit_marker_impl(::HIR::MarkerImpl& impl)
+void ::HIR::Visitor::visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl)
 {
     this->visit_params(impl.m_params);
     this->visit_path_params(impl.m_trait_args);
