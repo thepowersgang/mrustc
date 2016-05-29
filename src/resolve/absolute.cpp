@@ -414,14 +414,23 @@ void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod);
 void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod );
 
 
+void Resolve_Absolute_PathParams(/*const*/ Context& context, const Span& sp, ::AST::PathParams& args)
+{
+    for(auto& arg : args.m_types)
+    {
+        Resolve_Absolute_Type(context, arg);
+    }
+    for(auto& arg : args.m_assoc)
+    {
+        Resolve_Absolute_Type(context, arg.second);
+    }
+}
+
 void Resolve_Absolute_PathNodes(/*const*/ Context& context, const Span& sp, ::std::vector< ::AST::PathNode >& nodes)
 {
     for(auto& node : nodes)
     {
-        for(auto& arg : node.args())
-        {
-            Resolve_Absolute_Type(context, arg);
-        }
+        Resolve_Absolute_PathParams(context, sp, node.args());
     }
 }
 
@@ -522,7 +531,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
         
 
         if( n.name()[0] == '#' ) {
-            if( n.args().size() > 0 ) {
+            if( ! n.args().is_empty() ) {
                 ERROR(sp, E0000, "Type parameters were not expected here");
             }
             
@@ -553,8 +562,9 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                 ),
             (Trait,
                 auto trait_path = ::AST::Path(name_ref.path);
-                if( n.args().size() )
+                if( !n.args().is_empty() ) {
                     trait_path.nodes().back().args() = mv$(n.args());
+                }
                 auto new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(), mv$(trait_path));
                 for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
                     new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
@@ -575,7 +585,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                                 ERROR(sp, E0000, "Unexpected enum in path " << path);
                             }
                             // NOTE: Type parameters for enums go after the _variant_
-                            if( n.args().size() ) {
+                            if( ! n.args().is_empty() ) {
                                 ERROR(sp, E0000, "Type parameters were not expected here (enum params go on the variant)");
                             }
                             
@@ -585,8 +595,9 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                     }
                     
                     auto type_path = ::AST::Path(name_ref.path);
-                    if( n.args().size() )
+                    if( !n.args().is_empty() ) {
                         type_path.nodes().back().args() = mv$(n.args());
+                    }
                     auto new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(type_path)), ::AST::Path());
                     for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
                         new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
@@ -597,8 +608,9 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                 ),
             (Struct,
                 auto type_path = ::AST::Path(name_ref.path);
-                if( n.args().size() )
+                if( ! n.args().is_empty() ) {
                     type_path.nodes().back().args() = mv$(n.args());
+                }
                 auto new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(type_path)), ::AST::Path());
                 for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
                     new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
@@ -627,6 +639,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
     
     // Replaces the path with the one returned by `lookup_in_mod`, ensuring that `use` aliases are eliminated
     DEBUG("Replace " << path << " with " << tmp);
+    tmp.nodes().back().args() = mv$(path.nodes().back().args());
     path = mv$(tmp);
 }
 
@@ -664,10 +677,10 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                 if( p.m_class.is_Local() ) {
                     p = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(sp, mv$(p)) );
                 }
-                if( e.nodes[0].args().size() > 0 )
+                if( ! e.nodes[0].args().is_empty() )
                 {
                     assert( p.nodes().size() > 0 );
-                    assert( p.nodes().back().args().size() == 0 );
+                    assert( p.nodes().back().args().is_empty() );
                     p.nodes().back().args() = mv$( e.nodes[0].args() );
                 }
                 for( unsigned int i = 1; i < e.nodes.size(); i ++ )
@@ -681,6 +694,10 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
             // Look up value
             auto p = context.lookup(sp, e.nodes[0].name(), mode);
             DEBUG("Found path " << p << " for " << path);
+            if( p.is_absolute() ) {
+                assert( !p.nodes().empty() );
+                p.nodes().back().args() = mv$(e.nodes.back().args());
+            }
             path = mv$(p);
         }
         
@@ -730,6 +747,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         )
     )
     
+    DEBUG("path = " << path);
     // TODO: Should this be deferred until the HIR?
     // - Doing it here so the HIR lowering has a bit more information
     // - Also handles splitting "absolute" paths into UFCS
@@ -934,8 +952,7 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
         }
         void visit(AST::ExprNode_CallMethod& node) override {
             DEBUG("ExprNode_CallMethod");
-            for(auto& param : node.m_method.args())
-                Resolve_Absolute_Type(this->context, param);
+            Resolve_Absolute_PathParams(this->context, Span(node.get_pos()),  node.m_method.args());
             AST::NodeVisitorDef::visit(node);
         }
         void visit(AST::ExprNode_NamedValue& node) override {

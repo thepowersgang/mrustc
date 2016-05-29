@@ -149,8 +149,10 @@ static void derive_item(const Span& sp, AST::Module& mod, const AST::MetaItem& a
     
     const auto& params = item.params();
     TypeRef type(sp, path);
-    for( const auto& param : params.ty_params() )
-        type.path().nodes().back().args().push_back( TypeRef(TypeRef::TagArg(), param.name()) );
+    auto& types_args = type.path().nodes().back().args();
+    for( const auto& param : params.ty_params() ) {
+        types_args.m_types.push_back( TypeRef(TypeRef::TagArg(), param.name()) );
+    }
     
     for( const auto& trait : attr.items() )
     {

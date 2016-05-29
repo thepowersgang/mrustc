@@ -220,20 +220,6 @@ public:
 
     const Span& span() const { return m_span; }
  
-    /// Dereference the type (return the result of *type_instance)
-    bool deref(bool is_implicit);
-    /// Merge with another type (combines known aspects, conflitcs cause an exception)
-    void merge_with(const TypeRef& other);
-    /// Replace 'GENERIC' entries with the return value of the closure
-    void resolve_args(::std::function<TypeRef(const char*)> fcn);
-    /// Match 'GENERIC' entries with another type, passing matches to a closure
-    void match_args(const TypeRef& other, ::std::function<void(const char*,const TypeRef&)> fcn) const;
-    
-    bool impls_wildcard(const AST::Crate& crate, const AST::Path& trait) const;
-    
-    /// Returns true if the type is fully known (all sub-types are not wildcards)
-    bool is_concrete() const;
-    
     bool is_valid() const { return ! m_data.is_None(); }
 
     bool is_unbounded() const { return m_data.is_Any(); }
@@ -285,9 +271,6 @@ public:
     //void add_trait(TypeRef trait) { assert(is_wildcard()); m_inner_types.push_back( ::std::move(trait) ); }
     //const ::std::vector<TypeRef>& traits() const { assert(is_wildcard()); return m_inner_types; }   
 
-    /// Returns 0 if types are identical, 1 if TypeRef::TagArg is present in one, and -1 if form differs
-    int equal_no_generic(const TypeRef& x) const;
-    
     Ordering ord(const TypeRef& x) const;
     bool operator==(const TypeRef& x) const { return ord(x) == OrdEqual; }
     bool operator!=(const TypeRef& x) const { return ord(x) != OrdEqual; }

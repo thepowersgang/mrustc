@@ -15,7 +15,7 @@ void handle_lang_item(AST::Crate& crate, const AST::Path& path, const ::std::str
 {
     if(name == "phantom_fn") {
         crate.m_lang_item_PhantomFn = AST::Path(path);
-        crate.m_lang_item_PhantomFn.nodes().back().args() = { TypeRef("A"), TypeRef("B") };
+        crate.m_lang_item_PhantomFn.nodes().back().args().m_types = { TypeRef("A"), TypeRef("B") };
     }
     else if( name == "send" ) {
         // Don't care, Send is fully library in mrustc

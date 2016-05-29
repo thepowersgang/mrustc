@@ -41,24 +41,6 @@ enum Ordering
     OrdEqual,
     OrdGreater,
 };
-template<typename T>
-Ordering ord(const ::std::vector<T>& l, const ::std::vector<T>& r)
-{
-    unsigned int i = 0;
-    for(const auto& it : l)
-    {
-        if( i >= r.size() )
-            return OrdGreater;
-        
-        auto rv = it.ord(r[i]);
-        if( rv != OrdEqual )
-            return rv;
-        
-        i ++;
-    }
-        
-    return OrdEqual;
-}
 static inline Ordering ord(bool l, bool r)
 {
     if(l == r)
@@ -85,6 +67,38 @@ static inline Ordering ord(const ::std::string& l, const ::std::string& r)
         return OrdGreater;
     else
         return OrdLess;
+}
+template<typename T>
+Ordering ord(const T& l, const T& r)
+{
+    return l.ord(r);
+}
+template<typename T, typename U>
+Ordering ord(const ::std::pair<T,U>& l, const ::std::pair<T,U>& r)
+{
+    Ordering    rv;
+    rv = ::ord(l.first, r.first);
+    if(rv != OrdEqual)   return rv;
+    rv = ::ord(l.second, r.second);
+    return rv;
+}
+template<typename T>
+Ordering ord(const ::std::vector<T>& l, const ::std::vector<T>& r)
+{
+    unsigned int i = 0;
+    for(const auto& it : l)
+    {
+        if( i >= r.size() )
+            return OrdGreater;
+        
+        auto rv = ::ord( it, r[i] );
+        if( rv != OrdEqual )
+            return rv;
+        
+        i ++;
+    }
+        
+    return OrdEqual;
 }
 
 

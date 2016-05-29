@@ -495,34 +495,6 @@ SERIALISE_TYPE(Enum::, "AST_Enum", {
     s.item(m_variants);
 })
 
-TypeRef Struct::get_field_type(const char *name, const ::std::vector<TypeRef>& args)
-{
-    if( args.size() != m_params.ty_params().size() )
-    {
-        throw ::std::runtime_error("Incorrect parameter count for struct");
-    }
-    // TODO: Should the bounds be checked here? Or is the count sufficient?
-    for(const auto& f : m_data.as_Struct().ents)
-    {
-        if( f.m_name == name )
-        {
-            // Found it!
-            if( args.size() )
-            {
-                TypeRef res = f.m_type;
-                res.resolve_args( GenericResolveClosure(m_params, args) );
-                return res;
-            }
-            else
-            {
-                return f.m_type;
-            }
-        }
-    }
-    
-    throw ::std::runtime_error(FMT("No such field " << name));
-}
-
 SERIALISE_TYPE(Struct::, "AST_Struct", {
     s << m_params;
     s << m_data;

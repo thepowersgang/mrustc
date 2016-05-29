@@ -319,7 +319,7 @@
         ::HIR::SimplePath   rv( e.crate );
         for( const auto& node : e.nodes )
         {
-            if( node.args().size() > 0 )
+            if( ! node.args().is_empty() )
             {
                 if( allow_final_generic && &node == &e.nodes.back() ) {
                     // Let it pass
@@ -342,7 +342,10 @@
     TU_IFLET(::AST::Path::Class, path.m_class, Absolute, e,
         auto sp = LowerHIR_SimplePath(path, true);
         ::HIR::PathParams   params;
-        for(const auto& param : e.nodes.back().args()) {
+        const auto& src_params = e.nodes.back().args();
+        //for(const auto& param : src_params.m_lifetimes) {
+        //}
+        for(const auto& param : src_params.m_types) {
             params.m_types.push_back( LowerHIR_Type(param) );
         }
         // TODO: Lifetime params (not encoded in AST::PathNode as yet)

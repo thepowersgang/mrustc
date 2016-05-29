@@ -237,7 +237,7 @@ struct LowerHIR_ExprNode_Visitor:
         
         // TODO: Should this be abstracted?
         ::HIR::PathParams   params;
-        for(const auto& param : v.m_method.args())
+        for(const auto& param : v.m_method.args().m_types)
             params.m_types.push_back( LowerHIR_Type(param) );
         
         m_rv.reset( new ::HIR::ExprNode_CallMethod(

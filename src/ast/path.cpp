@@ -52,8 +52,42 @@ PathBinding PathBinding::clone() const
     throw "BUG: Fell off the end of PathBinding::clone";
 }
 
+::std::ostream& operator<<(::std::ostream& os, const PathParams& x)
+{
+    bool needs_comma = false;
+    os << "<";
+    for(const auto& v : x.m_lifetimes) {
+        if(needs_comma) os << ", ";
+        needs_comma = true;
+        os << "'" << v;
+    }
+    for(const auto& v : x.m_types) {
+        if(needs_comma) os << ", ";
+        needs_comma = true;
+        os << v;
+    }
+    for(const auto& v : x.m_assoc) {
+        if(needs_comma) os << ", ";
+        needs_comma = true;
+        os << v.first << "=" << v.second;
+    }
+    os << ">";
+    return os;
+}
+Ordering PathParams::ord(const PathParams& x) const
+{
+    Ordering rv;
+    rv = ::ord(m_lifetimes, x.m_lifetimes);
+    if(rv != OrdEqual)  return rv;
+    rv = ::ord(m_types, x.m_types);
+    if(rv != OrdEqual)  return rv;
+    rv = ::ord(m_assoc, x.m_assoc);
+    if(rv != OrdEqual)  return rv;
+    return rv;
+}
+
 // --- AST::PathNode
-PathNode::PathNode(::std::string name, ::std::vector<TypeRef> args):
+PathNode::PathNode(::std::string name, PathParams args):
     m_name( mv$(name) ),
     m_params( mv$(args) )
 {
@@ -63,20 +97,18 @@ Ordering PathNode::ord(const PathNode& x) const
     Ordering    rv;
     rv = ::ord(m_name, x.m_name);
     if(rv != OrdEqual)  return rv;
-    rv = ::ord(m_params, x.m_params);
+    rv = m_params.ord(x.m_params);
     if(rv != OrdEqual)  return rv;
     return OrdEqual;
 }
 void PathNode::print_pretty(::std::ostream& os, bool is_type_context) const
 {
     os << m_name;
-    if( m_params.size() )
+    if( ! m_params.is_empty() )
     {
         if( ! is_type_context )
             os << "::";
-        os << "<";
         os << m_params;
-        os << ">";
     }
 }
 ::std::ostream& operator<<(::std::ostream& os, const PathNode& pn) {
@@ -85,10 +117,10 @@ void PathNode::print_pretty(::std::ostream& os, bool is_type_context) const
 }
 SERIALISE_TYPE(PathNode::, "PathNode", {
     s << m_name;
-    s << m_params;
+    //s << m_params;
 },{
     s.item(m_name);
-    s.item(m_params);
+    //s.item(m_params);
 })
 
 /// Return an iterator to the named item
@@ -260,34 +292,6 @@ void Path::bind_trait(const Trait& ent, const ::std::vector<TypeRef>& /*args*/)
     m_binding = PathBinding::make_Trait({&ent});
 }
 
-void Path::resolve_args(::std::function<TypeRef(const char*)> fcn)
-{
-    TRACE_FUNCTION_F(*this);
-    
-    TU_MATCH(Path::Class, (m_class), (ent),
-    (Invalid),
-    (Local,  ),
-    
-    (Relative, Path::resolve_args_nl(ent.nodes, fcn); ),
-    (Absolute, Path::resolve_args_nl(ent.nodes, fcn); ),
-    (Self    , Path::resolve_args_nl(ent.nodes, fcn); ),
-    (Super   , Path::resolve_args_nl(ent.nodes, fcn); ),
-    (UFCS,
-        ent.type->resolve_args(fcn);
-        ent.trait->resolve_args(fcn);
-        Path::resolve_args_nl(ent.nodes, fcn);
-        )
-    )
-}
-void Path::resolve_args_nl(::std::vector<PathNode>& nodes, ::std::function<TypeRef(const char*)> fcn)
-{
-    for(auto& n : nodes)
-    {
-        for(auto& p : n.args())
-            p.resolve_args(fcn);
-    }
-}
-
 Path& Path::operator+=(const Path& other)
 {
     for(auto& node : other.nodes())
@@ -295,124 +299,6 @@ Path& Path::operator+=(const Path& other)
     // If the path is modified, clear the binding
     m_binding = PathBinding();
     return *this;
-}
-
-/// Match two same-format (i.e. same components) paths together, calling TypeRef::match_args on arguments
-void Path::match_args(const Path& other, ::std::function<void(const char*,const TypeRef&)> fcn) const
-{
-    // TODO: Ensure that the two paths are of a compatible class (same class?)
-    // - This will crash atm if they aren't the same
-    TU_MATCH(Path::Class, (m_class, other.m_class), (ent, x_ent),
-    (Invalid),
-    (Local,  ),
-    
-    (Relative, Path::match_args_nl(ent.nodes, x_ent.nodes, fcn); ),
-    (Absolute, Path::match_args_nl(ent.nodes, x_ent.nodes, fcn); ),
-    (Self    , Path::match_args_nl(ent.nodes, x_ent.nodes, fcn); ),
-    (Super   , Path::match_args_nl(ent.nodes, x_ent.nodes, fcn); ),
-    (UFCS,
-        Path::match_args_nl(ent.nodes, x_ent.nodes, fcn);
-        throw ::std::runtime_error("TODO: UFCS Path::match_args");
-        )
-    )
-}
-
-void Path::match_args_nl(const ::std::vector<PathNode>& nodes_a, const ::std::vector<PathNode>& nodes_b, ::std::function<void(const char*,const TypeRef&)> fcn)
-{
-    if( nodes_a.size() != nodes_b.size() )
-        throw ::std::runtime_error("Type mismatch (path size)");
-    for( unsigned int i = 0; i < nodes_a.size(); i++ )
-    {
-        auto& pn1 = nodes_a[i];
-        auto& pn2 = nodes_b[i];
-        if( pn1.name() != pn2.name() )
-            throw ::std::runtime_error("Type mismatch (path component)");
-        if( pn1.args().size() != pn2.args().size() )
-            throw ::std::runtime_error("Type mismatch (path component param count)");
-        
-        for( unsigned int j = 0; j < pn1.args().size(); j ++ )
-        {
-            auto& t1 = pn1.args()[j];
-            auto& t2 = pn2.args()[j];
-            t1.match_args( t2, fcn );
-        }
-    }
-}
-
-bool Path::is_concrete() const
-{
-    for(const auto& n : this->nodes())
-    {
-        for(const auto& p : n.args())
-            if( not p.is_concrete() )
-                return false;
-    }
-    return true;
-}
-
-/// Compare if two paths refer to the same non-generic item
-///
-/// - This doesn't handle the (impossible?) case where a generic might
-///   cause two different paths to look the same.
-int Path::equal_no_generic(const Path& x) const
-{
-    if( m_class.is_Invalid() && x.m_class.is_Invalid() )
-        return 0;
-    DEBUG("equal_no_generic(this = " << *this << ", x = " << x << ")");
-    if( m_class.tag() != x.m_class.tag() )
-        return -1;
-    
-    TU_MATCH(Path::Class, (m_class, x.m_class), (ent, x_ent),
-    (Invalid, return 0; ),
-    (Local,    return (ent.name == x_ent.name ? 0 : 1); ),
-    
-    (Relative, return Path::node_lists_equal_no_generic(ent.nodes, x_ent.nodes); ),
-    (Absolute,
-        if( ent.crate != x_ent.crate )
-            return -1;
-        return Path::node_lists_equal_no_generic(ent.nodes, x_ent.nodes);
-        ),
-    (Self    , return Path::node_lists_equal_no_generic(ent.nodes, x_ent.nodes); ),
-    (Super   , return Path::node_lists_equal_no_generic(ent.nodes, x_ent.nodes); ),
-    (UFCS,
-        throw ::std::runtime_error("TODO: UFCS Path::equal_no_generic");
-        return Path::node_lists_equal_no_generic(ent.nodes, x_ent.nodes);
-        )
-    )
-    throw ::std::runtime_error("Path::equal_no_generic - fell off");
-}
-
-int Path::node_lists_equal_no_generic(const ::std::vector<PathNode>& nodes_a, const ::std::vector<PathNode>& nodes_b)
-{
-    if( nodes_a.size() != nodes_b.size() ) {
-        return -1;
-    }
-    
-    bool conditional_match = false;
-    unsigned int i = 0;
-    for( const auto &e : nodes_a )
-    {
-        const auto& xe = nodes_b[i];
-        if( e.name() != xe.name() )
-            return -1;
-        
-        if( e.args().size() || xe.args().size() )
-        {
-            DEBUG("e = " << e << ", xe = " << xe);
-            if( e.args().size() != xe.args().size() )
-                throw CompileError::BugCheck("Generics should be resolved, and hence have the correct argument count");
-            for( unsigned int j = 0; j < e.args().size(); j ++ )
-            {
-                int rv = e.args()[j].equal_no_generic( xe.args()[j] );
-                if(rv < 0) return rv;
-                if(rv > 0)  conditional_match = true;
-            }
-        }
-        
-        i ++;
-    }
-    
-    return (conditional_match ? 1 : 0);
 }
 
 Ordering Path::ord(const Path& x) const

@@ -82,18 +82,33 @@ TAGGED_UNION_EX(PathBinding, (), Unbound, (
 
 extern ::std::ostream& operator<<(::std::ostream& os, const PathBinding& x);
 
+struct PathParams
+{
+    ::std::vector< ::std::string >  m_lifetimes;
+    ::std::vector< TypeRef >    m_types;
+    ::std::vector< ::std::pair< ::std::string, TypeRef> >   m_assoc;
+    
+    bool is_empty() const {
+        return m_lifetimes.empty() && m_types.empty() && m_assoc.empty();
+    }
+    
+    Ordering ord(const PathParams& x) const;
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const PathParams& x);
+};
 
 class PathNode:
     public ::Serialisable
 {
     ::std::string   m_name;
-    ::std::vector<TypeRef>  m_params;
+    PathParams  m_params;
 public:
     PathNode() {}
-    PathNode(::std::string name, ::std::vector<TypeRef> args = {});
+    PathNode(::std::string name, PathParams args = {});
     const ::std::string& name() const { return m_name; }
-          ::std::vector<TypeRef>& args()       { return m_params; }
-    const ::std::vector<TypeRef>& args() const { return m_params; }
+    
+    const ::AST::PathParams& args() const { return m_params; }
+          ::AST::PathParams& args()       { return m_params; }
     
     Ordering ord(const PathNode& x) const;
     void print_pretty(::std::ostream& os, bool is_type_context) const;
@@ -218,7 +233,7 @@ public:
             ;
         else if( nodes().size() > 0 )
             nodes().back().args() = b[0].args();
-        else if( b[0].args().size() > 0 )
+        else if( ! b[0].args().is_empty() )
             throw ::std::runtime_error("add_tail to empty path, but generics in source");
         else {
         }
@@ -247,12 +262,6 @@ public:
         nodes().push_back(node);
         m_binding = PathBinding();
     }
-
-    /// Resolve generic arguments within the path
-    void resolve_args(::std::function<TypeRef(const char*)> fcn);
-    
-    /// Match args
-    void match_args(const Path& other, ::std::function<void(const char*,const TypeRef&)> fcn) const;
     
     bool is_trivial() const {
         TU_MATCH_DEF(Class, (m_class), (e),
@@ -263,7 +272,7 @@ public:
             return true;
             ),
         (Relative,
-            return e.nodes.size() == 1 && e.nodes[0].args().size() == 0;
+            return e.nodes.size() == 1 && e.nodes[0].args().is_empty();
             )
         )
     }
@@ -311,9 +320,6 @@ public:
     PathNode& operator[](int idx) { if(idx>=0) return nodes()[idx]; else return nodes()[size()+idx]; }
     const PathNode& operator[](int idx) const { return (*(Path*)this)[idx]; }
    
-    /// Returns 0 if paths are identical, 1 if TypeRef::TagArg is present in one, and -1 if a node differs
-    int equal_no_generic(const Path& x) const;
-    
     Ordering ord(const Path& x) const;
     bool operator==(const Path& x) const { return ord(x) == OrdEqual; }
     bool operator!=(const Path& x) const { return ord(x) != OrdEqual; }
@@ -327,8 +333,6 @@ public:
     friend void operator>>(Deserialiser& s, Path::Class& pc);
 private:
     static void resolve_args_nl(::std::vector<PathNode>& nodes, ::std::function<TypeRef(const char*)> fcn);
-    static void match_args_nl(const ::std::vector<PathNode>& nodes_a, const ::std::vector<PathNode>& nodes_b, ::std::function<void(const char*,const TypeRef&)> fcn);
-    static int node_lists_equal_no_generic(const ::std::vector<PathNode>& nodes_a, const ::std::vector<PathNode>& nodes_b);
     
     void check_param_counts(const GenericParams& params, bool expect_params, PathNode& node);
 public:
