@@ -35,6 +35,9 @@ struct SimplePath
     bool operator==(const SimplePath& x) const {
         return m_crate_name == x.m_crate_name && m_components == x.m_components;
     }
+    bool operator!=(const SimplePath& x) const {
+        return !(*this == x);
+    }
     bool operator<(const SimplePath& x) const {
         if( m_crate_name < x.m_crate_name ) return true;
         if( m_components < x.m_components ) return true;

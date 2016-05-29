@@ -8,6 +8,7 @@
 
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::SimplePath path);
 ::HIR::Function LowerHIR_Function(const ::AST::Function& f);
+::HIR::SimplePath LowerHIR_SimplePath(const Span& sp, const ::AST::Path& path, bool allow_final_generic = false);
 
 // --------------------------------------------------------------------
 ::HIR::GenericParams LowerHIR_GenericParams(const ::AST::GenericParams& gp)
@@ -330,7 +331,7 @@
     }
 }
 
-::HIR::SimplePath LowerHIR_SimplePath(const ::AST::Path& path, bool allow_final_generic = false)
+::HIR::SimplePath LowerHIR_SimplePath(const Span& sp, const ::AST::Path& path, bool allow_final_generic)
 {
     TU_IFLET(::AST::Path::Class, path.m_class, Absolute, e,
         ::HIR::SimplePath   rv( e.crate );
@@ -357,7 +358,7 @@
 ::HIR::GenericPath LowerHIR_GenericPath(const Span& sp, const ::AST::Path& path)
 {
     TU_IFLET(::AST::Path::Class, path.m_class, Absolute, e,
-        auto sp = LowerHIR_SimplePath(path, true);
+        auto simpepath = LowerHIR_SimplePath(sp, path, true);
         ::HIR::PathParams   params;
         const auto& src_params = e.nodes.back().args();
         //for(const auto& param : src_params.m_lifetimes) {
@@ -366,7 +367,7 @@
             params.m_types.push_back( LowerHIR_Type(param) );
         }
         // TODO: Lifetime params (not encoded in AST::PathNode as yet)
-        auto rv = ::HIR::GenericPath(mv$(sp), mv$(params));
+        auto rv = ::HIR::GenericPath(mv$(simpepath), mv$(params));
         DEBUG(path << " => " << rv);
         return rv;
     )

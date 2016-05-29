@@ -14,7 +14,7 @@ class ExprVisitor;
 class ExprNode
 {
 public:
-    //::HIR::TypeRef    m_res_type;
+    ::HIR::TypeRef    m_res_type;
 
     const Span& span() const;
     
@@ -436,6 +436,7 @@ struct ExprNode_Closure:
 class ExprVisitor
 {
 public:
+    virtual void visit_node(ExprNode& node);
     #define NV(nt)  virtual void visit(nt& n) = 0;
     
     NV(ExprNode_Block)

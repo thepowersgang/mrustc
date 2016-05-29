@@ -11,8 +11,10 @@ const Span& ::HIR::ExprNode::span() const
     return rv;
 }
 
-#define DEF_VISIT(nt, n, code)   void ::HIR::nt::visit(ExprVisitor& nv) { nv.visit(*this); } void ::HIR::ExprVisitorDef::visit(::HIR::nt& n) { code }
+#define DEF_VISIT(nt, n, code)   void ::HIR::nt::visit(ExprVisitor& nv) { nv.visit_node(*this); nv.visit(*this); } void ::HIR::ExprVisitorDef::visit(::HIR::nt& n) { code }
 
+void ::HIR::ExprVisitor::visit_node(::HIR::ExprNode& node) {
+}
 DEF_VISIT(ExprNode_Block, node,
     for(const auto& subnode : node.m_nodes) {
         assert(subnode);

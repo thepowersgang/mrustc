@@ -83,6 +83,16 @@ namespace {
         throw "";
     }
     
+    void fix_type_params(const Span& sp, const ::HIR::GenericParams& params_def, ::HIR::PathParams& params)
+    {
+        if( params.m_types.size() == 0 ) {
+            params.m_types.resize( params_def.m_types.size() );
+        }
+        if( params.m_types.size() != params_def.m_types.size() ) {
+            ERROR(sp, E0000, "Incorrect parameter count, expected " << params_def.m_types.size() << ", got " << params.m_types.size());
+        }
+    }
+    
     class Visitor:
         public ::HIR::Visitor
     {
@@ -111,6 +121,8 @@ namespace {
                 else {
                     ERROR(sp, E0000, "Struct tuple pattern on non-tuple struct " << e.path);
                 }
+                
+                fix_type_params(sp, str.m_params,  e.path.m_params);
                 e.binding = &str;
                 ),
             (Struct,
@@ -121,6 +133,7 @@ namespace {
                 else {
                     ERROR(sp, E0000, "Struct pattern on field-less struct " << e.path);
                 }
+                fix_type_params(sp, str.m_params,  e.path.m_params);
                 e.binding = &str;
                 ),
             (EnumTuple,
@@ -137,6 +150,7 @@ namespace {
                 else {
                     ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
                 }
+                fix_type_params(sp, enm.m_params,  e.path.m_params);
                 e.binding_ptr = &enm;
                 e.binding_idx = idx;
                 ),
@@ -154,6 +168,7 @@ namespace {
                 else {
                     ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
                 }
+                fix_type_params(sp, enm.m_params,  e.path.m_params);
                 e.binding_ptr = &enm;
                 e.binding_idx = idx;
                 )

@@ -60,6 +60,7 @@ struct Pattern
         (Ref,       struct { ::HIR::BorrowType type; ::std::unique_ptr<Pattern> sub; } ),
         (Tuple,     struct { ::std::vector<Pattern> sub_patterns; } ),
         (StructTuple, struct {
+            // NOTE: Type paths in patterns _can_ have parameters
             GenericPath path;
             const Struct*   binding;
             ::std::vector<Pattern> sub_patterns;
