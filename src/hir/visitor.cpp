@@ -300,6 +300,9 @@ void ::HIR::Visitor::visit_pattern(::HIR::Pattern& pat)
         for(auto& sp : e.sub_patterns)
             this->visit_pattern(sp);
         ),
+    (StructTupleWildcard,
+        this->visit_generic_path(e.path, ::HIR::Visitor::PathContext::TYPE);
+        ),
     (StructTuple,
         this->visit_generic_path(e.path, ::HIR::Visitor::PathContext::TYPE);
         for(auto& sp : e.sub_patterns)
@@ -317,6 +320,9 @@ void ::HIR::Visitor::visit_pattern(::HIR::Pattern& pat)
     (Range,
         this->visit_pattern_val(e.start);
         this->visit_pattern_val(e.end);
+        ),
+    (EnumTupleWildcard,
+        this->visit_generic_path(e.path, ::HIR::Visitor::PathContext::TYPE);
         ),
     (EnumTuple,
         this->visit_generic_path(e.path, ::HIR::Visitor::PathContext::TYPE);

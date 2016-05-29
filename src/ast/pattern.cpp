@@ -70,6 +70,9 @@ namespace AST {
     (Tuple,
         os << "(" << ent.sub_patterns << ")";
         ),
+    (WildcardStructTuple,
+        os << ent.path << " (..)";
+        ),
     (StructTuple,
         os << ent.path << " (" << ent.sub_patterns << ")";
         ),
@@ -220,6 +223,9 @@ AST::Pattern AST::Pattern::clone() const
     (Tuple,
         rv.m_data = Data::make_Tuple({ H::clone_list(e.sub_patterns) });
         ),
+    (WildcardStructTuple,
+        rv.m_data = Data::make_WildcardStructTuple({ ::AST::Path(e.path) });
+        ),
     (StructTuple,
         rv.m_data = Data::make_StructTuple({ ::AST::Path(e.path), H::clone_list(e.sub_patterns) });
         ),
@@ -263,6 +269,9 @@ SERIALISE_TYPE(Pattern::, "Pattern", {
     (Tuple,
         s << e.sub_patterns;
         ),
+    (WildcardStructTuple,
+        s << e.path;
+        ),
     (StructTuple,
         s << e.path;
         s << e.sub_patterns;
@@ -303,6 +312,9 @@ SERIALISE_TYPE(Pattern::, "Pattern", {
         )
     _D(Tuple,
         s.item( ent.sub_patterns );
+        )
+    _D(WildcardStructTuple,
+        s.item( ent.path );
         )
     _D(StructTuple,
         s.item( ent.path );

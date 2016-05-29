@@ -1082,8 +1082,10 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         for(auto& sp : e.sub_patterns)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
         ),
+    (WildcardStructTuple,
+        Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::Pattern, e.path);
+        ),
     (StructTuple,
-        // TODO: This isn't a type lookup, it's a pattern lookup (allowing imported enum variants, e.g. `Some(_)` to work)
         Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::Pattern, e.path);
         for(auto& sp : e.sub_patterns)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);

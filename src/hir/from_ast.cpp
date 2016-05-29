@@ -88,6 +88,8 @@
 
 ::HIR::Pattern LowerHIR_Pattern(const ::AST::Pattern& pat)
 {
+    TRACE_FUNCTION_F("@" << pat.span().filename << ":" << pat.span().start_line << " pat = " << pat);
+    
     ::HIR::PatternBinding   binding;
     if( pat.binding() != "" )
     {
@@ -144,6 +146,31 @@
             };
         ),
     
+    (WildcardStructTuple,
+        TU_MATCH_DEF(::AST::PathBinding, (e.path.binding()), (pb),
+        (
+            BUG(pat.span(), "Encountered StructTuple pattern not pointing to a enum variant or a struct - " << e.path);
+            ),
+        (EnumVar,
+            return ::HIR::Pattern {
+                mv$(binding),
+                ::HIR::Pattern::Data::make_EnumTupleWildcard({
+                    LowerHIR_GenericPath(pat.span(), e.path),
+                    nullptr, 0
+                    })
+                };
+            ),
+        (Struct,
+            return ::HIR::Pattern {
+                mv$(binding),
+                ::HIR::Pattern::Data::make_StructTupleWildcard({
+                    LowerHIR_GenericPath(pat.span(), e.path),
+                    nullptr
+                    })
+                };
+            )
+        )
+        ),
     (StructTuple,
         ::std::vector< ::HIR::Pattern>  sub_patterns;
         for(const auto& sp : e.sub_patterns)
@@ -191,7 +218,8 @@
                 ::HIR::Pattern::Data::make_EnumStruct({
                     LowerHIR_GenericPath(pat.span(), e.path),
                     nullptr, 0,
-                    mv$(sub_patterns)
+                    mv$(sub_patterns),
+                    e.is_exhaustive
                     })
                 };
             ),
@@ -201,7 +229,8 @@
                 ::HIR::Pattern::Data::make_Struct({
                     LowerHIR_GenericPath(pat.span(), e.path),
                     nullptr,
-                    mv$(sub_patterns)
+                    mv$(sub_patterns),
+                    e.is_exhaustive
                     })
                 };
             )

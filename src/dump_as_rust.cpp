@@ -808,15 +808,17 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
             m_os << " ... " << v.end;
         }
         ),
-    (StructTuple, {
-        const auto& v = p.data().as_StructTuple();
+    (WildcardStructTuple,
+        m_os << v.path << "(..)";
+        ),
+    (StructTuple,
         m_os << v.path << "(";
         for(const auto& sp : v.sub_patterns) {
             print_pattern(sp, is_refutable);
             m_os << ",";
         }
         m_os << ")";
-        }),
+        ),
     (Struct, {
         const auto& v = p.data().as_Struct();
         m_os << v.path << "(";

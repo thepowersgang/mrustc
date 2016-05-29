@@ -378,6 +378,28 @@ namespace {
                     )
                 )
                 ),
+            (StructTupleWildcard,
+                this->add_ivars_params( e.path.m_params );
+                if( type.m_data.is_Infer() ) {
+                    type.m_data = ::HIR::TypeRef::Data::make_Path( {e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)} );
+                }
+                assert(e.binding);
+                const auto& str = *e.binding;
+                // - assert check from earlier pass
+                assert( str.m_data.is_Tuple() );
+                
+                TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
+                (
+                    // TODO: Type mismatch
+                    ),
+                (Infer, throw ""; ),
+                (Path,
+                    if( ! te.binding.is_Struct() || te.binding.as_Struct() != &str ) {
+                        ERROR(sp, E0000, "Type mismatch in struct pattern - " << type << " is not " << e.path);
+                    }
+                    )
+                )
+                ),
             (Struct,
                 this->add_ivars_params( e.path.m_params );
                 if( type.m_data.is_Infer() ) {
@@ -453,9 +475,33 @@ namespace {
                             this->add_binding(e.sub_patterns[i], var_ty);
                         }
                         else {
-                            // SAFE: Can't have _ as monomorphise_type_needed checks for that
+                            // SAFE: Can't have a _ (monomorphise_type_needed checks for that)
                             this->add_binding(e.sub_patterns[i], const_cast< ::HIR::TypeRef&>(tup_var[i]));
                         }
+                    }
+                    )
+                )
+                ),
+            (EnumTupleWildcard,
+                this->add_ivars_params( e.path.m_params );
+                if( type.m_data.is_Infer() ) {
+                    auto path = e.path.clone();
+                    path.m_path.m_components.pop_back();
+                    type.m_data = ::HIR::TypeRef::Data::make_Path( {mv$(path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)} );
+                }
+                assert(e.binding_ptr);
+                const auto& enm = *e.binding_ptr;
+                const auto& var = enm.m_variants[e.binding_idx].second;
+                assert(var.is_Tuple());
+                
+                TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
+                (
+                    // TODO: Type mismatch
+                    ),
+                (Infer, throw ""; ),
+                (Path,
+                    if( ! te.binding.is_Enum() || te.binding.as_Enum() != &enm ) {
+                        ERROR(sp, E0000, "Type mismatch in enum pattern - " << type << " is not " << e.path);
                     }
                     )
                 )
@@ -619,6 +665,8 @@ namespace {
                     )
                 )
                 ),
+            (StructTupleWildcard,
+                ),
             (Struct,
                 if( ty.m_data.is_Infer() ) {
                     //TODO: Does this lead to issues with generic parameters?
@@ -650,6 +698,8 @@ namespace {
                 (Path,
                     )
                 )
+                ),
+            (EnumTupleWildcard,
                 ),
             (EnumStruct,
                 if( ty.m_data.is_Infer() ) {

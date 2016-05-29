@@ -40,8 +40,9 @@ public:
         (Ref,       struct { bool mut; unique_ptr<Pattern> sub; } ),
         (Value,     struct { Value start; Value end; } ),
         (Tuple,     struct { ::std::vector<Pattern> sub_patterns; } ),
+        (WildcardStructTuple, struct { Path path;  } ),
         (StructTuple, struct { Path path; ::std::vector<Pattern> sub_patterns; } ),
-        (Struct,    struct { Path path; ::std::vector< ::std::pair< ::std::string, Pattern> > sub_patterns; } ),
+        (Struct,    struct { Path path; ::std::vector< ::std::pair< ::std::string, Pattern> > sub_patterns; bool is_exhaustive; } ),
         (Slice,     struct { ::std::vector<Pattern> leading; ::std::string extra_bind; ::std::vector<Pattern> trailing; } )
         );
 private:
@@ -110,13 +111,16 @@ public:
     {}
 
     struct TagEnumVariant {};
+    Pattern(TagEnumVariant, Path path):
+        m_data( Data::make_WildcardStructTuple( { ::std::move(path) } ) ) 
+    {}
     Pattern(TagEnumVariant, Path path, ::std::vector<Pattern> sub_patterns):
         m_data( Data::make_StructTuple( { ::std::move(path), ::std::move(sub_patterns) } ) ) 
     {}
 
     struct TagStruct {};
-    Pattern(TagStruct, Path path, ::std::vector< ::std::pair< ::std::string,Pattern> > sub_patterns):
-        m_data( Data::make_Struct( { ::std::move(path), ::std::move(sub_patterns) } ) ) 
+    Pattern(TagStruct, Path path, ::std::vector< ::std::pair< ::std::string,Pattern> > sub_patterns, bool is_exhaustive):
+        m_data( Data::make_Struct( { ::std::move(path), ::std::move(sub_patterns), is_exhaustive } ) ) 
     {}
 
     struct TagSlice {};

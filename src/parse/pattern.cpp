@@ -171,8 +171,8 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
     {
     case TOK_UNDERSCORE:
         return AST::Pattern( );
-    case TOK_DOUBLE_DOT:
-        return AST::Pattern( AST::Pattern::TagWildcard() );
+    //case TOK_DOUBLE_DOT:
+    //    return AST::Pattern( AST::Pattern::TagWildcard() );
     case TOK_RWORD_BOX:
         return AST::Pattern( AST::Pattern::TagBox(), Parse_Pattern(lex, is_refutable) );
     case TOK_DOUBLE_AMP:
@@ -240,6 +240,11 @@ AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path, bool is_re
     switch( GET_TOK(tok, lex) )
     {
     case TOK_PAREN_OPEN:
+        if( LOOK_AHEAD(lex) == TOK_DOUBLE_DOT ) {
+            GET_TOK(tok, lex);
+            GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+            return AST::Pattern( AST::Pattern::TagEnumVariant(), ::std::move(path) );
+        }
         return AST::Pattern( AST::Pattern::TagEnumVariant(), ::std::move(path), Parse_PatternList(lex, is_refutable) );
     case TOK_BRACE_OPEN:
         return Parse_PatternStruct(lex, ::std::move(path), is_refutable);
@@ -331,6 +336,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
     TRACE_FUNCTION;
     Token tok;
     
+    bool is_exhaustive = true;
     ::std::vector< ::std::pair< ::std::string, AST::Pattern> >  subpats;
     do {
         GET_TOK(tok, lex);
@@ -338,6 +344,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
         if( tok.type() == TOK_BRACE_CLOSE )
             break;
         if( tok.type() == TOK_DOUBLE_DOT ) {
+            is_exhaustive = false;
             GET_TOK(tok, lex);
             break;
         }
@@ -391,6 +398,6 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
     } while( GET_TOK(tok, lex) == TOK_COMMA );
     CHECK_TOK(tok, TOK_BRACE_CLOSE);
     
-    return AST::Pattern(AST::Pattern::TagStruct(), ::std::move(path), ::std::move(subpats));
+    return AST::Pattern(AST::Pattern::TagStruct(), ::std::move(path), ::std::move(subpats), is_exhaustive);
 }
 

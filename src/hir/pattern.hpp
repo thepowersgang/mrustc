@@ -65,10 +65,15 @@ struct Pattern
             const Struct*   binding;
             ::std::vector<Pattern> sub_patterns;
             } ),
+        (StructTupleWildcard, struct {
+            GenericPath path;
+            const Struct*   binding;
+            }),
         (Struct,    struct {
             GenericPath path;
             const Struct*   binding;
             ::std::vector< ::std::pair< ::std::string, Pattern> > sub_patterns;
+            bool is_exhaustive;
             } ),
         // Refutable
         (Value,     struct { Value val; } ),
@@ -79,11 +84,17 @@ struct Pattern
             unsigned binding_idx;
             ::std::vector<Pattern> sub_patterns;
             } ),
+        (EnumTupleWildcard, struct {
+            GenericPath path;
+            const Enum* binding_ptr;
+            unsigned binding_idx;
+            } ),
         (EnumStruct, struct {
             GenericPath path;
             const Enum* binding_ptr;
             unsigned binding_idx;
             ::std::vector< ::std::pair< ::std::string, Pattern> > sub_patterns;
+            bool is_exhaustive;
             } ),
         (Slice,     struct {
             ::std::vector<Pattern> sub_patterns;

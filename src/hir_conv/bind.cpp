@@ -125,6 +125,18 @@ namespace {
                 fix_type_params(sp, str.m_params,  e.path.m_params);
                 e.binding = &str;
                 ),
+            (StructTupleWildcard,
+                const auto& str = *reinterpret_cast< const ::HIR::Struct*>( get_type_pointer(sp, m_crate, e.path.m_path, Target::Struct) );
+                TU_IFLET(::HIR::Struct::Data, str.m_data, Tuple, _,
+                    // All good
+                )
+                else {
+                    ERROR(sp, E0000, "Struct tuple pattern on non-tuple struct " << e.path);
+                }
+                
+                fix_type_params(sp, str.m_params,  e.path.m_params);
+                e.binding = &str;
+                ),
             (Struct,
                 const auto& str = *reinterpret_cast< const ::HIR::Struct*>( get_type_pointer(sp, m_crate, e.path.m_path, Target::Struct) );
                 TU_IFLET(::HIR::Struct::Data, str.m_data, Named, _,
@@ -137,6 +149,24 @@ namespace {
                 e.binding = &str;
                 ),
             (EnumTuple,
+                const auto& enm = *reinterpret_cast< const ::HIR::Enum*>( get_type_pointer(sp, m_crate, e.path.m_path, Target::EnumVariant) );
+                const auto& des_name = e.path.m_path.m_components.back();
+                unsigned int idx = ::std::find_if( enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x) { return x.first == des_name; }) - enm.m_variants.begin();
+                if( idx == enm.m_variants.size() ) {
+                    ERROR(sp, E0000, "Couldn't find enum variant " << e.path);
+                }
+                const auto& var = enm.m_variants[idx].second;
+                TU_IFLET(::HIR::Enum::Variant, var, Tuple, _,
+                    // All good
+                )
+                else {
+                    ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
+                }
+                fix_type_params(sp, enm.m_params,  e.path.m_params);
+                e.binding_ptr = &enm;
+                e.binding_idx = idx;
+                ),
+            (EnumTupleWildcard,
                 const auto& enm = *reinterpret_cast< const ::HIR::Enum*>( get_type_pointer(sp, m_crate, e.path.m_path, Target::EnumVariant) );
                 const auto& des_name = e.path.m_path.m_components.back();
                 unsigned int idx = ::std::find_if( enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x) { return x.first == des_name; }) - enm.m_variants.begin();
