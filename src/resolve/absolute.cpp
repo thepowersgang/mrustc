@@ -768,6 +768,9 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
         )
     )
+    
+    // TODO: Expand default type parameters?
+    // - Helps with cases like PartialOrd<Self>, but hinders when the default is a hint (in expressions)
 }
 
 void Resolve_Absolute_Type(Context& context,  TypeRef& type)

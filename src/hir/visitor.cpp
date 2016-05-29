@@ -229,10 +229,6 @@ void ::HIR::Visitor::visit_params(::HIR::GenericParams& params)
             this->visit_type(e.type);
             this->visit_generic_path(e.trait.m_path, ::HIR::Visitor::PathContext::TYPE);
             ),
-        (TraitUnbound,
-            this->visit_type(e.type);
-            // typeof(e.trait) == SimplePath
-            ),
         //(NotTrait, struct {
         //    ::HIR::TypeRef  type;
         //    ::HIR::GenricPath    trait;

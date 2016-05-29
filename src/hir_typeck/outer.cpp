@@ -100,6 +100,7 @@ namespace {
         
         ::HIR::GenericParams*   m_impl_generics;
         ::HIR::GenericParams*   m_item_generics;
+        ::std::vector< ::HIR::TypeRef* >    m_self_types;
     public:
         Visitor(::HIR::Crate& crate):
             crate(crate),
@@ -108,15 +109,101 @@ namespace {
         {
         }
         
+    private:
+        void update_self_type(const Span& sp, ::HIR::TypeRef& ty)
+        {
+            TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
+            (Generic,
+                if(e.name == "Self") {
+                    if( m_self_types.empty() )
+                        ERROR(sp, E0000, "Self appeared in unexpected location");
+                    if( !m_self_types.back() )
+                        ERROR(sp, E0000, "Self appeared in unexpected location");
+                    ty = m_self_types.back()->clone();
+                    return;
+                }
+                ),
+            
+            (Infer,
+                ),
+            (Diverge,
+                ),
+            (Primitive,
+                ),
+            (Path,
+                TODO(sp, "update_self_type - Path");
+                ),
+            (TraitObject,
+                // NOTE: Can't mention Self anywhere
+                TODO(sp, "update_self_type - TraitObject");
+                ),
+            (Tuple,
+                for(auto& sty : e)
+                    update_self_type(sp, sty);
+                ),
+            (Array,
+                update_self_type(sp, *e.inner);
+                ),
+            (Slice,
+                update_self_type(sp, *e.inner);
+                ),
+            (Borrow,
+                update_self_type(sp, *e.inner);
+                ),
+            (Pointer,
+                update_self_type(sp, *e.inner);
+                ),
+            (Function,
+                TODO(sp, "update_self_type - Function");
+                )
+            )
+        }
+        void check_parameters(const Span& sp, const ::HIR::GenericParams& param_def,  ::HIR::PathParams& param_vals)
+        {
+            while( param_vals.m_types.size() < param_def.m_types.size() ) {
+                unsigned int i = param_vals.m_types.size(); 
+                if( param_def.m_types[i].m_default.m_data.is_Infer() ) {
+                    ERROR(sp, E0000, "Unspecified parameter with no default");
+                }
+                
+                // Replace and expand
+                param_vals.m_types.push_back( param_def.m_types[i].m_default.clone() );
+                auto& ty = param_vals.m_types.back();
+                update_self_type(sp, ty);
+            }
+            
+            if( param_vals.m_types.size() != param_def.m_types.size() ) {
+                ERROR(sp, E0000, "Incorrect number of parameters - expected " << param_def.m_types.size() << ", got " << param_vals.m_types.size());
+            }
+            
+            // TODO: Check generic bounds
+            for( const auto& bound : param_def.m_bounds )
+            {
+                TU_MATCH(::HIR::GenericBound, (bound), (e),
+                (Lifetime,
+                    ),
+                (TypeLifetime,
+                    ),
+                (TraitBound,
+                    // TODO: Check for an implementation of this trait
+                    DEBUG("TODO: Check bound " << e.type << " : " << e.trait.m_path);
+                    ),
+                (TypeEquality,
+                    // TODO: Check that two types are equal in this case
+                    TODO(sp, "TypeEquality - " << e.type << " == " << e.other_type);
+                    )
+                )
+            }
+        }
+        
+    public:
         void visit_generic_path(::HIR::GenericPath& p, PathContext pc) override
         {
+            TRACE_FUNCTION_F("p = " << p);
             const auto& params = get_params_for_item(Span(), crate, p.m_path, pc);
             auto& args = p.m_params;
             
-            if( args.m_types.size() == 0 && params.m_types.size() > 0 ) {
-                args.m_types.resize( params.m_types.size() );
-                DEBUG("- Insert inferrence");
-            }
+            check_parameters(Span(), params, args);
             DEBUG("p = " << p);
         }
         void visit_path(::HIR::Path& p, ::HIR::Visitor::PathContext pc) override
@@ -128,7 +215,9 @@ namespace {
                 ),
             (UfcsKnown,
                 this->visit_type(*e.type);
+                m_self_types.push_back(&*e.type);
                 this->visit_generic_path(e.trait, ::HIR::Visitor::PathContext::TYPE);
+                m_self_types.pop_back();
                 // TODO: Locate impl block and check parameters
                 ),
             (UfcsInherent,
@@ -141,15 +230,56 @@ namespace {
             )
         }
         
+        void visit_params(::HIR::GenericParams& params) override
+        {
+            for(auto& tps : params.m_types)
+                this->visit_type( tps.m_default );
+            
+            for(auto& bound : params.m_bounds )
+            {
+                TU_MATCH(::HIR::GenericBound, (bound), (e),
+                (Lifetime,
+                    ),
+                (TypeLifetime,
+                    this->visit_type(e.type);
+                    ),
+                (TraitBound,
+                    this->visit_type(e.type);
+                    m_self_types.push_back(&e.type);
+                    this->visit_generic_path(e.trait.m_path, ::HIR::Visitor::PathContext::TYPE);
+                    m_self_types.pop_back();
+                    ),
+                //(NotTrait, struct {
+                //    ::HIR::TypeRef  type;
+                //    ::HIR::GenricPath    trait;
+                //    }),
+                (TypeEquality,
+                    this->visit_type(e.type);
+                    this->visit_type(e.other_type);
+                    )
+                )
+            }
+        }
+        
+        void visit_trait(::HIR::Trait& item) override
+        {
+            ::HIR::TypeRef tr { "Self", 0 };
+            m_self_types.push_back(&tr);
+            ::HIR::Visitor::visit_trait(item);
+            m_self_types.pop_back();
+        }
+        
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << impl.m_type);
             assert(m_impl_generics == nullptr);
             m_impl_generics = &impl.m_params;
+            m_self_types.push_back( &impl.m_type );
             
             ::HIR::Visitor::visit_type_impl(impl);
             // Check that the type is valid
             
+            m_self_types.pop_back();
             m_impl_generics = nullptr;
         }
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
@@ -157,10 +287,12 @@ namespace {
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
             assert(m_impl_generics == nullptr);
             m_impl_generics = &impl.m_params;
+            m_self_types.push_back( &impl.m_type );
             
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
             // Check that the type+trait is valid
             
+            m_self_types.pop_back();
             m_impl_generics = nullptr;
         }
         void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl)
@@ -168,10 +300,12 @@ namespace {
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type << " { }");
             assert(m_impl_generics == nullptr);
             m_impl_generics = &impl.m_params;
+            m_self_types.push_back( &impl.m_type );
             
             ::HIR::Visitor::visit_marker_impl(trait_path, impl);
             // Check that the type+trait is valid
             
+            m_self_types.pop_back();
             m_impl_generics = nullptr;
         }
     };

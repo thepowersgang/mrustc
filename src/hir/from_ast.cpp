@@ -18,7 +18,7 @@
     {
         for(const auto& tp : gp.ty_params())
         {
-            rv.m_types.push_back({ tp.name(), LowerHIR_Type(tp.get_default()) });
+            rv.m_types.push_back({ tp.name(), LowerHIR_Type(tp.get_default()), true });
         }
     }
     if( gp.lft_params().size() > 0 )
@@ -50,10 +50,23 @@
                     }));
                 ),
             (MaybeTrait,
-                rv.m_bounds.push_back(::HIR::GenericBound::make_TraitUnbound({
-                    LowerHIR_Type(e.type),
-                    LowerHIR_GenericPath(bound.span, e.trait)
-                    }));
+                if( ! e.type.m_data.is_Generic() )
+                    BUG(bound.span, "MaybeTrait on non-param");
+                const auto& param_name = e.type.m_data.as_Generic().name;
+                unsigned param_idx = ::std::find_if( rv.m_types.begin(), rv.m_types.end(), [&](const auto& x) { return x.m_name == param_name; } ) - rv.m_types.begin();
+                if( param_idx >= rv.m_types.size() ) {
+                    BUG(bound.span, "MaybeTrait on parameter not in parameter list");
+                }
+                
+                // Compare with list of known default traits (just Sized atm) and set a marker
+                const auto path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
+                auto trait = LowerHIR_GenericPath(bound.span, e.trait);
+                if( trait.m_path == path_Sized ) {
+                    rv.m_types[param_idx].m_is_sized = false;
+                }
+                else {
+                    ERROR(bound.span, E0000, "MaybeTrait on unknown trait " << trait.m_path);
+                }
                 ),
             (NotTrait,
                 TODO(bound.span, "Negative trait bounds");

@@ -34,6 +34,7 @@ namespace {
     {
         assert(! left.m_data.is_Infer() );
         if( right.m_data.is_Infer() ) {
+            // TODO: Why is this false? A _ type could match anything
             return false;
         }
         
@@ -68,7 +69,15 @@ namespace {
                 }
                 
                 if( ple.m_params.m_types.size() > 0 || pre.m_params.m_types.size() > 0 ) {
-                    TODO(Span(), "Match paths " << ple << " and " << pre);
+                    if( ple.m_params.m_types.size() != pre.m_params.m_types.size() ) {
+                        return true;
+                        //TODO(Span(), "Match generic paths " << ple << " and " << pre << " - count mismatch");
+                    }
+                    for( unsigned int i = 0; i < pre.m_params.m_types.size(); i ++ )
+                    {
+                        if( ! matches_type_int(params, ple.m_params.m_types[i], pre.m_params.m_types[i]) )
+                            return false;
+                    }
                 }
                 return true;
                 )
