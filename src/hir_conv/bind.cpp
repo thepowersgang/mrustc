@@ -93,6 +93,23 @@ namespace {
         }
     }
     
+    const ::HIR::Struct& get_struct_ptr(const Span& sp, const ::HIR::Crate& crate, ::HIR::GenericPath& path) {
+        const auto& str = *reinterpret_cast< const ::HIR::Struct*>( get_type_pointer(sp, crate, path.m_path, Target::Struct) );
+        fix_type_params(sp, str.m_params,  path.m_params);
+        return str;
+    }
+    ::std::pair< const ::HIR::Enum*, unsigned int> get_enum_ptr(const Span& sp, const ::HIR::Crate& crate, ::HIR::GenericPath& path) {
+        const auto& enm = *reinterpret_cast< const ::HIR::Enum*>( get_type_pointer(sp, crate, path.m_path, Target::EnumVariant) );
+        const auto& des_name = path.m_path.m_components.back();
+        unsigned int idx = ::std::find_if( enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x) { return x.first == des_name; }) - enm.m_variants.begin();
+        if( idx == enm.m_variants.size() ) {
+            ERROR(sp, E0000, "Couldn't find enum variant " << path);
+        }
+        
+        fix_type_params(sp, enm.m_params,  path.m_params);
+        return ::std::make_pair( &enm, idx );
+    }
+    
     class Visitor:
         public ::HIR::Visitor
     {
@@ -114,93 +131,65 @@ namespace {
             (
                 ),
             (StructTuple,
-                const auto& str = *reinterpret_cast< const ::HIR::Struct*>( get_type_pointer(sp, m_crate, e.path.m_path, Target::Struct) );
+                const auto& str = get_struct_ptr(sp, m_crate, e.path);
                 TU_IFLET(::HIR::Struct::Data, str.m_data, Tuple, _,
-                    // All good
+                    e.binding = &str;
                 )
                 else {
                     ERROR(sp, E0000, "Struct tuple pattern on non-tuple struct " << e.path);
                 }
-                
-                fix_type_params(sp, str.m_params,  e.path.m_params);
-                e.binding = &str;
                 ),
             (StructTupleWildcard,
-                const auto& str = *reinterpret_cast< const ::HIR::Struct*>( get_type_pointer(sp, m_crate, e.path.m_path, Target::Struct) );
+                const auto& str = get_struct_ptr(sp, m_crate, e.path);
                 TU_IFLET(::HIR::Struct::Data, str.m_data, Tuple, _,
-                    // All good
+                    e.binding = &str;
                 )
                 else {
                     ERROR(sp, E0000, "Struct tuple pattern on non-tuple struct " << e.path);
                 }
-                
-                fix_type_params(sp, str.m_params,  e.path.m_params);
-                e.binding = &str;
                 ),
             (Struct,
-                const auto& str = *reinterpret_cast< const ::HIR::Struct*>( get_type_pointer(sp, m_crate, e.path.m_path, Target::Struct) );
+                const auto& str = get_struct_ptr(sp, m_crate, e.path);
                 TU_IFLET(::HIR::Struct::Data, str.m_data, Named, _,
-                    // All good
+                    e.binding = &str;
                 )
                 else {
                     ERROR(sp, E0000, "Struct pattern on field-less struct " << e.path);
                 }
-                fix_type_params(sp, str.m_params,  e.path.m_params);
-                e.binding = &str;
                 ),
             (EnumTuple,
-                const auto& enm = *reinterpret_cast< const ::HIR::Enum*>( get_type_pointer(sp, m_crate, e.path.m_path, Target::EnumVariant) );
-                const auto& des_name = e.path.m_path.m_components.back();
-                unsigned int idx = ::std::find_if( enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x) { return x.first == des_name; }) - enm.m_variants.begin();
-                if( idx == enm.m_variants.size() ) {
-                    ERROR(sp, E0000, "Couldn't find enum variant " << e.path);
-                }
-                const auto& var = enm.m_variants[idx].second;
+                auto p = get_enum_ptr(sp, m_crate, e.path);
+                const auto& var = p.first->m_variants[p.second].second;
                 TU_IFLET(::HIR::Enum::Variant, var, Tuple, _,
-                    // All good
+                    e.binding_ptr = p.first;
+                    e.binding_idx = p.second;
                 )
                 else {
                     ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
                 }
-                fix_type_params(sp, enm.m_params,  e.path.m_params);
-                e.binding_ptr = &enm;
-                e.binding_idx = idx;
                 ),
             (EnumTupleWildcard,
-                const auto& enm = *reinterpret_cast< const ::HIR::Enum*>( get_type_pointer(sp, m_crate, e.path.m_path, Target::EnumVariant) );
-                const auto& des_name = e.path.m_path.m_components.back();
-                unsigned int idx = ::std::find_if( enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x) { return x.first == des_name; }) - enm.m_variants.begin();
-                if( idx == enm.m_variants.size() ) {
-                    ERROR(sp, E0000, "Couldn't find enum variant " << e.path);
-                }
-                const auto& var = enm.m_variants[idx].second;
+                auto p = get_enum_ptr(sp, m_crate, e.path);
+                const auto& var = p.first->m_variants[p.second].second;
                 TU_IFLET(::HIR::Enum::Variant, var, Tuple, _,
-                    // All good
+                    e.binding_ptr = p.first;
+                    e.binding_idx = p.second;
                 )
                 else {
                     ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
                 }
-                fix_type_params(sp, enm.m_params,  e.path.m_params);
-                e.binding_ptr = &enm;
-                e.binding_idx = idx;
                 ),
             (EnumStruct,
-                const auto& enm = *reinterpret_cast< const ::HIR::Enum*>( get_type_pointer(sp, m_crate, e.path.m_path, Target::EnumVariant) );
-                const auto& des_name = e.path.m_path.m_components.back();
-                unsigned int idx = ::std::find_if( enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x) { return x.first == des_name; }) - enm.m_variants.begin();
-                if( idx == enm.m_variants.size() ) {
-                    ERROR(sp, E0000, "Couldn't find enum variant " << e.path);
-                }
-                const auto& var = enm.m_variants[idx].second;
-                TU_IFLET(::HIR::Enum::Variant, var, Struct, e,
+                auto p = get_enum_ptr(sp, m_crate, e.path);
+                const auto& var = p.first->m_variants[p.second].second;
+                TU_IFLET(::HIR::Enum::Variant, var, Struct, _,
                     // All good
+                    e.binding_ptr = p.first;
+                    e.binding_idx = p.second;
                 )
                 else {
                     ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
                 }
-                fix_type_params(sp, enm.m_params,  e.path.m_params);
-                e.binding_ptr = &enm;
-                e.binding_idx = idx;
                 )
             )
         }
