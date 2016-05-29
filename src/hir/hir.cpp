@@ -51,9 +51,9 @@ namespace {
         (Diverge, return true; ),
         (Primitive, return le == re;),
         (Path,
-            if( le.m_data.tag() != re.m_data.tag() )
+            if( le.path.m_data.tag() != re.path.m_data.tag() )
                 return false;
-            TU_MATCH_DEF(::HIR::Path::Data, (le.m_data, re.m_data), (ple, pre),
+            TU_MATCH_DEF(::HIR::Path::Data, (le.path.m_data, re.path.m_data), (ple, pre),
             (
                 return false;
                 ),

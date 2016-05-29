@@ -250,7 +250,7 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
     (Primitive,
         ),
     (Path,
-        this->visit_path(e, ::HIR::Visitor::PathContext::TYPE);
+        this->visit_path(e.path, ::HIR::Visitor::PathContext::TYPE);
         ),
     (Generic,
         ),

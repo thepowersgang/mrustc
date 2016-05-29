@@ -203,11 +203,12 @@ class _name TU_EXP _inherit { \
 */  ~_name() { switch(m_tag) { case TAGDEAD: break; TU_DEST_CASES _variants } m_tag = TAGDEAD; } \
     \
     Tag tag() const { return m_tag; }\
+    const char* tag_str() const { return tag_to_str(m_tag); }\
     TU_CONSS(_name, TU_EXP _variants) \
 /*
 */    static const char *tag_to_str(Tag tag) { \
         switch(tag) {/*
-*/          case TAGDEAD: return "";/*
+*/          case TAGDEAD: return "ERR:DEAD";/*
 */          TU_TOSTR_CASES _variants/*
 */      } return ""; \
     }/*

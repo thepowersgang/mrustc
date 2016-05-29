@@ -157,6 +157,7 @@ int main(int argc, char *argv[])
             });
         CompilePhaseV("Resolve UFCS paths", [&]() {
             ConvertHIR_ResolveUFCS(*hir_crate);
+            ConvertHIR_Bind(*hir_crate);
             });
         CompilePhaseV("Constant Evaluate", [&]() {
             ConvertHIR_ConstantEvaluate(*hir_crate);

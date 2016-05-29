@@ -9,6 +9,9 @@
 
 namespace HIR {
 
+class Struct;
+class Enum;
+
 struct TypeRef;
 
 enum class CoreType
@@ -58,13 +61,23 @@ struct TypeRef
     // - Borrow
     // - Pointer
 
+    TAGGED_UNION(TypePathBinding, Unbound,
+    (Unbound, struct {}),   // Not yet bound (state during first part of lowering) - TODO kill
+    (Opaque, struct {}),
+    (Struct, const ::HIR::Struct*),
+    (Enum, const ::HIR::Enum*)
+    );
+
     TAGGED_UNION(Data, Infer,
     (Infer, struct {
         unsigned int index = 0;
         }),
     (Diverge, struct {}),
     (Primitive, ::HIR::CoreType),
-    (Path,  ::HIR::Path),
+    (Path, struct {
+        ::HIR::Path path;
+        TypePathBinding binding;
+        }),
     (Generic, struct {
         ::std::string   name;
         unsigned int    binding;
@@ -111,7 +124,7 @@ struct TypeRef
         m_data( Data::make_Primitive(mv$(ct)) )
     {}
     TypeRef(::HIR::Path p):
-        m_data( Data::make_Path(mv$(p)) )
+        m_data( Data::make_Path( {mv$(p), TypePathBinding()} ) )
     {}
     
     TypeRef clone() const;

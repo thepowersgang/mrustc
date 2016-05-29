@@ -73,7 +73,7 @@ public:
         ::HIR::Visitor::visit_type(ty);
         
         TU_IFLET(::HIR::TypeRef::Data, (ty.m_data), Path, (e),
-            auto new_type = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e);
+            auto new_type = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e.path);
             if( ! new_type.m_data.is_Infer() ) {
                 DEBUG("Replacing " << ty << " with " << new_type);
                 ty = mv$(new_type);

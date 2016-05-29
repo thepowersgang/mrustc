@@ -157,6 +157,7 @@
                 mv$(binding),
                 ::HIR::Pattern::Data::make_EnumTuple({
                     LowerHIR_GenericPath(pat.span(), e.path),
+                    nullptr, 0,
                     mv$(sub_patterns)
                     })
                 };
@@ -166,6 +167,7 @@
                 mv$(binding),
                 ::HIR::Pattern::Data::make_StructTuple({
                     LowerHIR_GenericPath(pat.span(), e.path),
+                    nullptr,
                     mv$(sub_patterns)
                     })
                 };
@@ -187,6 +189,7 @@
                 mv$(binding),
                 ::HIR::Pattern::Data::make_EnumStruct({
                     LowerHIR_GenericPath(pat.span(), e.path),
+                    nullptr, 0,
                     mv$(sub_patterns)
                     })
                 };
@@ -196,6 +199,7 @@
                 mv$(binding),
                 ::HIR::Pattern::Data::make_Struct({
                     LowerHIR_GenericPath(pat.span(), e.path),
+                    nullptr,
                     mv$(sub_patterns)
                     })
                 };

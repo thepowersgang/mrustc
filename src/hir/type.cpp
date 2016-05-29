@@ -50,7 +50,7 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         os << e;
         ),
     (Path,
-        os << e;
+        os << e.path;
         ),
     (Generic,
         os << e.name << "/*#" << e.binding << "*/";
@@ -106,6 +106,19 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         )
     )
 }
+
+namespace {
+    ::HIR::TypeRef::TypePathBinding clone_binding(const ::HIR::TypeRef::TypePathBinding& x) {
+        TU_MATCH(::HIR::TypeRef::TypePathBinding, (x), (e),
+        (Unbound, return ::HIR::TypeRef::TypePathBinding::make_Unbound({}); ),
+        (Opaque , return ::HIR::TypeRef::TypePathBinding::make_Opaque({}); ),
+        (Struct , return ::HIR::TypeRef::TypePathBinding(e); ),
+        (Enum   , return ::HIR::TypeRef::TypePathBinding(e); )
+        )
+        throw "";
+    }
+}
+
 ::HIR::TypeRef HIR::TypeRef::clone() const
 {
     TU_MATCH(::HIR::TypeRef::Data, (m_data), (e),
@@ -119,13 +132,22 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         return ::HIR::TypeRef( Data::make_Primitive(e) );
         ),
     (Path,
-        return ::HIR::TypeRef( Data::make_Path(e.clone()) );
+        return ::HIR::TypeRef( Data::make_Path({
+            e.path.clone(),
+            clone_binding(e.binding)
+            }) );
         ),
     (Generic,
         return ::HIR::TypeRef( Data::make_Generic(e) );
         ),
     (TraitObject,
-        TODO(Span(), "TypeRef::clone() - this = " << *this);
+        ::std::vector< ::HIR::GenericPath>  traits;
+        for(const auto& trait : e.m_traits)
+            traits.push_back( trait.clone() );
+        return ::HIR::TypeRef( Data::make_TraitObject({
+            mv$(traits),
+            e.m_lifetime
+            }) );
         ),
     (Array,
         TODO(Span(), "TypeRef::clone() - this = " << *this);

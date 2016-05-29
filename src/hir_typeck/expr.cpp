@@ -394,7 +394,7 @@ namespace {
             (Struct,
                 if( ty.m_data.is_Infer() ) {
                     //TODO: Does this lead to issues with generic parameters?
-                    ty.m_data = ::HIR::TypeRef::Data::make_Path( e.path.clone() );
+                    ty.m_data = ::HIR::TypeRef::Data::make_Path( {e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)} );
                     this->mark_change();
                 }
                 
@@ -404,11 +404,12 @@ namespace {
                     ),
                 (Infer, throw "";),
                 (Path,
-                    if( ! te.m_data.is_Generic() ) {
-                        ERROR(sp, E0000, "UFCS path being destructured - " << te);
+                    if( ! te.path.m_data.is_Generic() ) {
+                        ERROR(sp, E0000, "UFCS path being destructured - " << te.path);
                     }
-                    const auto& gp = te.m_data.as_Generic();
-                    TODO(sp, "Struct - destructure - " << te);
+                    const auto& s = *te.binding.as_Struct();
+                    assert(&s);
+                    TODO(sp, "Struct - destructure - " << te.path);
                     )
                 )
                 ),

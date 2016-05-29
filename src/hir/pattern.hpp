@@ -10,6 +10,9 @@
 
 namespace HIR {
 
+class Struct;
+class Enum;
+
 struct PatternBinding
 {
     enum class Type {
@@ -56,13 +59,31 @@ struct Pattern
         (Box,       struct { ::std::unique_ptr<Pattern> sub; }),
         (Ref,       struct { ::HIR::BorrowType type; ::std::unique_ptr<Pattern> sub; } ),
         (Tuple,     struct { ::std::vector<Pattern> sub_patterns; } ),
-        (StructTuple, struct { GenericPath path; ::std::vector<Pattern> sub_patterns; } ),
-        (Struct,    struct { GenericPath path; ::std::vector< ::std::pair< ::std::string, Pattern> > sub_patterns; } ),
+        (StructTuple, struct {
+            GenericPath path;
+            const Struct*   binding;
+            ::std::vector<Pattern> sub_patterns;
+            } ),
+        (Struct,    struct {
+            GenericPath path;
+            const Struct*   binding;
+            ::std::vector< ::std::pair< ::std::string, Pattern> > sub_patterns;
+            } ),
         // Refutable
         (Value,     struct { Value val; } ),
         (Range,     struct { Value start; Value end; } ),
-        (EnumTuple, struct { GenericPath path; ::std::vector<Pattern> sub_patterns; } ),
-        (EnumStruct, struct { GenericPath path; ::std::vector< ::std::pair< ::std::string, Pattern> > sub_patterns; } ),
+        (EnumTuple, struct {
+            GenericPath path;
+            const Enum* binding_ptr;
+            unsigned binding_idx;
+            ::std::vector<Pattern> sub_patterns;
+            } ),
+        (EnumStruct, struct {
+            GenericPath path;
+            const Enum* binding_ptr;
+            unsigned binding_idx;
+            ::std::vector< ::std::pair< ::std::string, Pattern> > sub_patterns;
+            } ),
         (Slice,     struct {
             ::std::vector<Pattern> sub_patterns;
             } ),

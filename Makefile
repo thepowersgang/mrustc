@@ -46,7 +46,7 @@ OBJ +=  hir/hir.o
 OBJ +=  hir/crate_ptr.o hir/type_ptr.o hir/expr_ptr.o
 OBJ +=  hir/type.o hir/path.o hir/expr.o
 OBJ +=  hir/visitor.o
-OBJ += hir_conv/expand_type.o hir_conv/constant_evaluation.o hir_conv/resolve_ufcs.o
+OBJ += hir_conv/expand_type.o hir_conv/constant_evaluation.o hir_conv/resolve_ufcs.o hir_conv/bind.o
 OBJ += hir_typeck/outer.o hir_typeck/expr.o
 OBJ += dump_as_rust.o
 
