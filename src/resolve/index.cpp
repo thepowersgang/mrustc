@@ -224,6 +224,7 @@ void Resolve_Index_Module_Wildcard(AST::Module& mod, bool handle_pub)
                 ),
             
             (Module,
+                DEBUG("Glob mod " << i.data.path);
                 if( e.module_ == &mod ) {
                     ERROR(sp, E0000, "Glob import of self");
                 }
@@ -246,9 +247,10 @@ void Resolve_Index_Module_Wildcard(AST::Module& mod, bool handle_pub)
                 }
                 ),
             (Enum,
+                DEBUG("Glob enum " << i.data.path);
                 unsigned int idx = 0;
                 for( const auto& ev : e.enum_->variants() ) {
-                    ::AST::Path p = mod.path() + ev.m_name;
+                    ::AST::Path p = i.data.path + ev.m_name;
                     p.bind( ::AST::PathBinding::make_EnumVar({e.enum_, idx}) );
                     if( ev.m_data.is_Struct() ) {
                         _add_item_type ( sp, mod, ev.m_name, i.is_pub, mv$(p), false );

@@ -37,7 +37,7 @@ namespace {
                     return &e2;
                 )
                 else {
-                    ERROR(sp, E0000, "Expected an enum at penultimate node of " << path << ", got a " << it->second->ent.tag_str());
+                    ERROR(sp, E0000, "Expected an enum at the penultimate node of " << path << ", got a " << it->second->ent.tag_str());
                 }
             }
             else {
