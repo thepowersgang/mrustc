@@ -205,10 +205,13 @@ class Trait:
     bool m_is_marker;
     NamedList<Item> m_items;
 public:
-    Trait() {}
+    Trait():
+        m_is_marker(false)
+    {}
     Trait(GenericParams params, ::std::vector< Spanned<Path> > supertraits):
         m_params( mv$(params) ),
-        m_supertraits( mv$(supertraits) )
+        m_supertraits( mv$(supertraits) ),
+        m_is_marker(false)
     {
     }
     

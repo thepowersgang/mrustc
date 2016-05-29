@@ -54,7 +54,8 @@ private:
 public:
     virtual ~Pattern();
     
-    Pattern()
+    Pattern():
+        m_binding_type(BIND_MOVE)
     {}
     Pattern(Pattern&&) = default;
     Pattern& operator=(Pattern&&) = default;
@@ -62,6 +63,7 @@ public:
     struct TagMaybeBind {};
     Pattern(TagMaybeBind, ::std::string name):
         m_binding(""),
+        m_binding_type(BIND_MOVE),
         m_data( Data::make_MaybeBind({name}) )
     {}
 

@@ -7,3 +7,4 @@ namespace HIR {
 };
 
 extern void Typecheck_ModuleLevel(::HIR::Crate& crate);
+extern void Typecheck_Expressions(::HIR::Crate& crate);

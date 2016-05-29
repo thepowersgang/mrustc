@@ -59,7 +59,9 @@ struct TypeRef
     // - Pointer
 
     TAGGED_UNION(Data, Infer,
-    (Infer, struct {}),
+    (Infer, struct {
+        unsigned int index = 0;
+        }),
     (Diverge, struct {}),
     (Primitive, ::HIR::CoreType),
     (Path,  ::HIR::Path),

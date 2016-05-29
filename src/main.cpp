@@ -173,7 +173,7 @@ int main(int argc, char *argv[])
             });
         // Check the rest of the expressions (including function bodies)
         CompilePhaseV("Typecheck Expressions", [&]() {
-            //Typecheck_Expressions(*hir_crate);
+            Typecheck_Expressions(*hir_crate);
             });
 
         if( params.last_stage == ProgramParams::STAGE_TYPECK ) {

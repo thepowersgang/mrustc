@@ -173,6 +173,7 @@ AST::Pattern AST::Pattern::clone() const
     AST::Pattern    rv;
     rv.m_span = m_span;
     rv.m_binding = m_binding;
+    rv.m_binding_type = m_binding_type;
     rv.m_binding_mut = m_binding_mut;
     
     struct H {
