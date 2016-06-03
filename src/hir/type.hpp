@@ -70,7 +70,7 @@ struct TypeRef
 
     TAGGED_UNION(Data, Infer,
     (Infer, struct {
-        unsigned int index = 0;
+        unsigned int index = ~0u;
         }),
     (Diverge, struct {}),
     (Primitive, ::HIR::CoreType),
@@ -114,6 +114,9 @@ struct TypeRef
     TypeRef& operator=(TypeRef&& ) = default;
     TypeRef& operator=(const TypeRef&) = delete;
     
+    TypeRef(::std::vector< ::HIR::TypeRef> sts):
+        m_data( Data::make_Tuple(mv$(sts)) )
+    {}
     TypeRef(::std::string name, unsigned int slot):
         m_data( Data::make_Generic({ mv$(name), slot }) )
     {}

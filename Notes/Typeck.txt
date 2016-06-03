@@ -1,0 +1,18 @@
+Type inferrence
+
+
+# Type equality procedure
+
+## Requirements
+- Called to indicate that two types (passed as `const ::HIR::TypeRef&` from the HIR) must be the same
+- Must handle cases where either of the passed typerefs point to aliased inferrence vars
+
+## Rough procedure
+- Locate real type pointed to by both arguments
+- If neither have concrete information, alias the right to the left
+- If both are concrete, ensure that both are equal (recursing for infer)
+- If only one is concrete, alias the infer to it
+
+
+<!-- vim: ft=markdown
+-->

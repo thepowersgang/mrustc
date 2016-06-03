@@ -19,6 +19,11 @@ public:
     const Span& span() const;
     
     virtual void visit(ExprVisitor& v) = 0;
+    ExprNode()
+    {}
+    ExprNode(::HIR::TypeRef ty):
+        m_res_type( mv$(ty) )
+    {}
     virtual ~ExprNode();
 };
 
@@ -50,8 +55,10 @@ struct ExprNode_Return:
     ::HIR::ExprNodeP    m_value;
     
     ExprNode_Return(::HIR::ExprNodeP value):
+        ExprNode(::HIR::TypeRef({})),
         m_value( mv$(value) )
-    {}
+    {
+    }
     
     NODE_METHODS();
 };
@@ -62,6 +69,7 @@ struct ExprNode_Loop:
     ::HIR::ExprNodeP    m_code;
     
     ExprNode_Loop(::std::string label, ::HIR::ExprNodeP code):
+        ExprNode(::HIR::TypeRef({})),
         m_label( mv$(label) ),
         m_code( mv$(code) )
     {}
@@ -76,6 +84,7 @@ struct ExprNode_LoopControl:
     //::HIR::ExprNodeP    m_value;
 
     ExprNode_LoopControl(::std::string label, bool cont):
+        ExprNode(::HIR::TypeRef({})),
         m_label( mv$(label) ),
         m_continue( cont )
     {}
@@ -90,6 +99,7 @@ struct ExprNode_Let:
     ::HIR::ExprNodeP    m_value;
     
     ExprNode_Let(::HIR::Pattern pat, ::HIR::TypeRef ty, ::HIR::ExprNodeP val):
+        ExprNode(::HIR::TypeRef({})),
         m_pattern( mv$(pat) ),
         m_type( mv$(ty) ),
         m_value( mv$(val) )
@@ -151,6 +161,7 @@ struct ExprNode_Assign:
     ExprNodeP   m_value;
 
     ExprNode_Assign(Op op, ::HIR::ExprNodeP slot, ::HIR::ExprNodeP value):
+        ExprNode(::HIR::TypeRef({})),
         m_op(op),
         m_slot( mv$(slot) ),
         m_value( mv$(value) )

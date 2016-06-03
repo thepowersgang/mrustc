@@ -151,9 +151,25 @@ namespace {
         ::std::vector< IVar >   m_ivars;
         bool    m_has_changed;
     public:
-        TypecheckContext(const ::HIR::TypeRef& result_type):
+        TypecheckContext():
             m_has_changed(false)
         {
+            // TODO: Use return type (should be moved to caller)
+        }
+        
+        
+        void dump() const {
+            DEBUG("TypecheckContext - " << m_ivars.size() << " ivars");
+            unsigned int i = 0;
+            for(const auto& v : m_ivars) {
+                if(v.is_alias()) {
+                    DEBUG("#" << i << " = " << v.alias);
+                }
+                else {
+                    DEBUG("#" << i << " = " << *v.type);
+                }
+                i ++ ;
+            }
         }
         
         bool take_changed() {
@@ -168,6 +184,7 @@ namespace {
         /// Adds a local variable binding (type is mutable so it can be inferred if required)
         void add_local(unsigned int index, ::HIR::TypeRef type)
         {
+            // TODO: Add local of this name (with ivar)
         }
         /// Add (and bind) all '_' types in `type`
         void add_ivars(::HIR::TypeRef& type)
@@ -719,13 +736,119 @@ namespace {
             )
         }
         // Adds a rule that two types must be equal
-        void apply_equality(const ::HIR::TypeRef& left, const ::HIR::TypeRef& right)
+        void apply_equality(const Span& sp, const ::HIR::TypeRef& left, const ::HIR::TypeRef& right)
         {
+            assert( !left.m_data.is_Infer() || left.m_data.as_Infer().index != ~0u );
+            assert( !right.m_data.is_Infer() || right.m_data.as_Infer().index != ~0u );
+            DEBUG("apply_equality(" << left << ", " << right << ")");
+            const auto& l_t = this->get_type(left);
+            const auto& r_t = this->get_type(right);
+            TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Infer, r_e,
+                TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Infer, l_e,
+                    // Both are infer, unify the two
+                    auto& root_ivar = this->get_pointed_ivar(l_e.index);
+                    if( !(&l_t == &*root_ivar.type) ) {
+                        this->dump();
+                        BUG(sp, "Left type (" << left << ") resolved to " << l_t << " but pointers mismatched - (" << (void*)&l_t << " != " << (void*)&*root_ivar.type << ")");
+                    }
+                    root_ivar.alias = r_e.index;
+                    root_ivar.type.reset();
+                )
+                else {
+                    // Righthand side is infer, alias it to the left
+                    auto& root_ivar = this->get_pointed_ivar(r_e.index);
+                    if( !(&r_t == &*root_ivar.type) ) {
+                        this->dump();
+                        BUG(sp, "Right type (" << right << ") resolved to " << r_t << " but pointers mismatched - (" << (void*)&r_t << " != " << (void*)&*root_ivar.type << ")");
+                    }
+                    
+                    // If the left type wasn't a reference to an ivar, store it in the righthand ivar
+                    TU_IFLET(::HIR::TypeRef::Data, left.m_data, Infer, l_e,
+                        root_ivar.alias = l_e.index;
+                        root_ivar.type.reset();
+                    )
+                    else {
+                        root_ivar.type = box$( left.clone() );
+                    }
+                }
+            )
+            else {
+                TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Infer, l_e,
+                    // Lefthand side is infer, alias it to the right
+                    auto& root_ivar = this->get_pointed_ivar(l_e.index);
+                    if( !(&l_t == &*root_ivar.type) ) {
+                        this->dump();
+                        BUG(sp, "Left type (" << left << ") resolved to " << l_t << " but pointers mismatched - (" << (void*)&l_t << " != " << (void*)&*root_ivar.type << ")");
+                    }
+                    
+                    // If the right type was an infer, set left's alias to it
+                    TU_IFLET(::HIR::TypeRef::Data, right.m_data, Infer, r_e,
+                        root_ivar.alias = r_e.index;
+                        root_ivar.type.reset();
+                    )
+                    else {
+                        // Otherwise, store a clone of right in left's ivar
+                        root_ivar.type = box$( right.clone() );
+                    }
+                )
+                else {
+                    // Neither are infer - both should be of the same form
+                    // TODO: What if one of these is `!`?
+                    if( l_t.m_data.tag() != r_t.m_data.tag() ) {
+                        // Type error
+                        this->dump();
+                        ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                    }
+                    TU_MATCH(::HIR::TypeRef::Data, (l_t.m_data, r_t.m_data), (l_e, r_e),
+                    (Infer,
+                        throw "";
+                        ),
+                    (Diverge,
+                        TODO(sp, "Handle !");
+                        ),
+                    (Primitive,
+                        if( l_e != r_e ) {
+                            ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                        }
+                        ),
+                    (Path,
+                        TODO(sp, "Recurse in apply_equality Path - " << l_t << " and " << r_t);
+                        ),
+                    (Generic,
+                        if( l_e.binding != r_e.binding ) {
+                            ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                        }
+                        ),
+                    (TraitObject,
+                        TODO(sp, "Recurse in apply_equality TraitObject - " << l_t << " and " << r_t);
+                        ),
+                    (Array,
+                        TODO(sp, "Recurse in apply_equality Array - " << l_t << " and " << r_t);
+                        ),
+                    (Slice,
+                        TODO(sp, "Recurse in apply_equality Slice - " << l_t << " and " << r_t);
+                        ),
+                    (Tuple,
+                        TODO(sp, "Recurse in apply_equality Tuple - " << l_t << " and " << r_t);
+                        ),
+                    (Borrow,
+                        TODO(sp, "Recurse in apply_equality Borrow - " << l_t << " and " << r_t);
+                        ),
+                    (Pointer,
+                        TODO(sp, "Recurse in apply_equality Pointer - " << l_t << " and " << r_t);
+                        ),
+                    (Function,
+                        TODO(sp, "Recurse in apply_equality Function - " << l_t << " and " << r_t);
+                        )
+                    )
+                }
+            }
         }
     public:
         unsigned int new_ivar()
         {
             m_ivars.push_back( IVar() );
+            m_ivars.back().type->m_data.as_Infer().index = m_ivars.size() - 1;
             return m_ivars.size() - 1;
         }
         ::HIR::TypeRef new_ivar_tr() {
@@ -734,14 +857,36 @@ namespace {
             return rv;
         }
         
+        IVar& get_pointed_ivar(unsigned int slot)
+        {
+            auto index = slot;
+            unsigned int count = 0;
+            while( m_ivars.at(index).is_alias() ) {
+                index = m_ivars.at(index).alias;
+                
+                if( count >= m_ivars.size() ) {
+                    this->dump();
+                    BUG(Span(), "Loop detected in ivar list when starting at " << slot << ", current is " << index);
+                }
+                count ++;
+            }
+            return m_ivars.at(index);
+        }
         ::HIR::TypeRef& get_type(::HIR::TypeRef& type)
         {
             TU_IFLET(::HIR::TypeRef::Data, type.m_data, Infer, e,
-                auto index = e.index;
-                while( m_ivars.at(index).is_alias() ) {
-                    index = m_ivars.at(index).alias;
-                }
-                return *m_ivars.at(index).type;
+                assert(e.index != ~0u);
+                return *get_pointed_ivar(e.index).type;
+            )
+            else {
+                return type;
+            }
+        }
+        const ::HIR::TypeRef& get_type(const ::HIR::TypeRef& type)
+        {
+            TU_IFLET(::HIR::TypeRef::Data, type.m_data, Infer, e,
+                assert(e.index != ~0u);
+                return *get_pointed_ivar(e.index).type;
             )
             else {
                 return type;
@@ -762,8 +907,16 @@ namespace {
         void visit_node(::HIR::ExprNode& node) override {
             this->context.add_ivars(node.m_res_type);
         }
+        void visit(::HIR::ExprNode_Block& node) override
+        {
+            ::HIR::ExprVisitorDef::visit(node);
+            assert( node.m_nodes.size() > 0 );
+            this->context.apply_equality(node.span(), node.m_res_type, node.m_nodes.back()->m_res_type);
+        }
         void visit(::HIR::ExprNode_Let& node) override
         {
+            ::HIR::ExprVisitorDef::visit(node);
+            
             this->context.add_ivars(node.m_type);
             
             this->context.add_binding(node.m_pattern, node.m_type);
@@ -777,8 +930,18 @@ namespace {
             {
                 for(auto& pat : arm.m_patterns)
                 {
-                    this->context.add_binding(pat, node.m_res_type);
+                    this->context.add_binding(pat, node.m_value->m_res_type);
                 }
+                // TODO: Span on the arm
+                this->context.apply_equality(node.span(), node.m_res_type, arm.m_code->m_res_type);
+            }
+        }
+        void visit(::HIR::ExprNode_If& node) override
+        {
+            ::HIR::ExprVisitorDef::visit(node);
+            this->context.apply_equality(node.span(), node.m_res_type, node.m_true->m_res_type);
+            if( node.m_false ) {
+                this->context.apply_equality(node.span(), node.m_res_type, node.m_false->m_res_type);
             }
         }
     };
@@ -795,16 +958,19 @@ namespace {
         
         void visit(::HIR::ExprNode_Let& node) override
         {
+            ::HIR::ExprVisitorDef::visit(node);
+            
             this->context.apply_pattern(node.m_pattern, node.m_type);
-            //if( node.m_value ) {
-            //    this->context.add_rule_equality(node.m_type, node.m_value->m_res_type);
-            //}
+            if( node.m_value ) {
+                this->context.apply_equality(node.span(), node.m_type, node.m_value->m_res_type);
+            }
         }
         
+        // TODO: Other nodes (propagate/equalize types down)
     };
-}
+};
 
-void Typecheck_Code(TypecheckContext context, ::HIR::ExprNode& root_node)
+void Typecheck_Code(TypecheckContext context, const ::HIR::TypeRef& result_type, ::HIR::ExprNode& root_node)
 {
     TRACE_FUNCTION;
     
@@ -813,6 +979,7 @@ void Typecheck_Code(TypecheckContext context, ::HIR::ExprNode& root_node)
         ExprVisitor_Enum    visitor { context };
         root_node.visit( visitor );
     }
+    context.apply_equality(root_node.span(), root_node.m_res_type, result_type);
     // 2. Iterate through nodes applying rules until nothing changes
     {
         ExprVisitor_Run visitor { context };
@@ -820,6 +987,10 @@ void Typecheck_Code(TypecheckContext context, ::HIR::ExprNode& root_node)
             root_node.visit( visitor );
         } while( context.take_changed() );
     }
+    
+    // 3. Check that there's no unresolved types left
+    // TODO
+    context.dump();
 }
 
 
@@ -916,8 +1087,9 @@ namespace {
         {
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
                 this->visit_type( *e.inner );
-                TypecheckContext    typeck_context { ::HIR::TypeRef(::HIR::CoreType::Usize) };
-                Typecheck_Code( mv$(typeck_context), *e.size );
+                TypecheckContext    typeck_context { };
+                DEBUG("Array size");
+                Typecheck_Code( mv$(typeck_context), ::HIR::TypeRef(::HIR::CoreType::Usize), *e.size );
             )
             else {
                 ::HIR::Visitor::visit_type(ty);
@@ -930,27 +1102,27 @@ namespace {
             auto _ = this->set_item_generics(item.m_params);
             if( &*item.m_code )
             {
-                TypecheckContext typeck_context { item.m_return };
+                TypecheckContext typeck_context { };
                 for( auto& arg : item.m_args ) {
                     typeck_context.add_binding( arg.first, arg.second );
                 }
-                Typecheck_Code( mv$(typeck_context), *item.m_code );
+                Typecheck_Code( mv$(typeck_context), item.m_return, *item.m_code );
             }
         }
         void visit_static(::HIR::Static& item) override {
             //auto _ = this->set_item_generics(item.m_params);
             if( &*item.m_value )
             {
-                TypecheckContext typeck_context { item.m_type };
-                Typecheck_Code( mv$(typeck_context), *item.m_value );
+                TypecheckContext typeck_context { };
+                Typecheck_Code( mv$(typeck_context), item.m_type, *item.m_value );
             }
         }
         void visit_constant(::HIR::Constant& item) override {
             auto _ = this->set_item_generics(item.m_params);
             if( &*item.m_value )
             {
-                TypecheckContext typeck_context { item.m_type };
-                Typecheck_Code( mv$(typeck_context), *item.m_value );
+                TypecheckContext typeck_context { };
+                Typecheck_Code( mv$(typeck_context), item.m_type, *item.m_value );
             }
         }
         void visit_enum(::HIR::Enum& item) override {
@@ -963,8 +1135,8 @@ namespace {
             for(auto& var : item.m_variants)
             {
                 TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-                    TypecheckContext typeck_context { enum_type };
-                    Typecheck_Code( mv$(typeck_context), *e );
+                    TypecheckContext typeck_context { };
+                    Typecheck_Code( mv$(typeck_context), enum_type, *e );
                 )
             }
         }
