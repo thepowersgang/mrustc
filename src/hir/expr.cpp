@@ -67,6 +67,9 @@ DEF_VISIT(ExprNode_UniOp, node,
 DEF_VISIT(ExprNode_Cast, node,
     node.m_value->visit(*this);
 )
+DEF_VISIT(ExprNode_Unsize, node,
+    node.m_value->visit(*this);
+)
 DEF_VISIT(ExprNode_Index, node,
     node.m_val->visit(*this);
     node.m_index->visit(*this);

@@ -191,6 +191,7 @@ namespace {
         {
             TU_MATCH(::HIR::TypeRef::Data, (type.m_data), (e),
             (Infer,
+                assert(e.index == ~0u);
                 e.index = this->new_ivar();
                 ),
             (Diverge,
@@ -775,8 +776,8 @@ namespace {
                         root_ivar.type.reset();
                     )
                     else {
+                        DEBUG("Set IVar " << r_e.index << " = " << left);
                         root_ivar.type = box$( left.clone() );
-                        DEBUG("Set IVar " << r_e.index << " = " << *root_ivar.type);
                     }
                 }
             )
@@ -796,6 +797,7 @@ namespace {
                     )
                     else {
                         // Otherwise, store a clone of right in left's ivar
+                        DEBUG("Set IVar " << l_e.index << " = " << right);
                         root_ivar.type = box$( right.clone() );
                     }
                 )
@@ -824,7 +826,39 @@ namespace {
                         }
                         ),
                     (Path,
-                        TODO(sp, "Recurse in apply_equality Path - " << l_t << " and " << r_t);
+                        struct H {
+                            static void equality_typeparams(const Span& sp, TypecheckContext& ctxt,  const ::HIR::PathParams& l, const ::HIR::PathParams& r) {
+                                if( l.m_types.size() != r.m_types.size() ) {
+                                    ERROR(sp, E0000, "Type mismatch in type params `" << l << "` and `" << r << "`");
+                                }
+                                for(unsigned int i = 0; i < l.m_types.size(); i ++)
+                                {
+                                    ctxt.apply_equality(sp, l.m_types[i], r.m_types[i]);
+                                }
+                            }
+                        };
+                        if( l_e.path.m_data.tag() != r_e.path.m_data.tag() ) {
+                            ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                        }
+                        TU_MATCH(::HIR::Path::Data, (l_e.path.m_data, r_e.path.m_data), (lpe, rpe),
+                        (Generic,
+                            if( lpe.m_path != rpe.m_path ) {
+                                ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                            }
+                            H::equality_typeparams(sp, *this, lpe.m_params, rpe.m_params);
+                            ),
+                        (UfcsInherent,
+                            this->apply_equality(sp, *lpe.type, *rpe.type);
+                            TODO(sp, "Recurse in apply_equality Path - " << l_t << " and " << r_t);
+                            ),
+                        (UfcsKnown,
+                            this->apply_equality(sp, *lpe.type, *rpe.type);
+                            TODO(sp, "Recurse in apply_equality Path - " << l_t << " and " << r_t);
+                            ),
+                        (UfcsUnknown,
+                            BUG(sp, "Encountered UfcsUnknown - TODO?");
+                            )
+                        )
                         ),
                     (Generic,
                         if( l_e.binding != r_e.binding ) {
@@ -835,7 +869,10 @@ namespace {
                         TODO(sp, "Recurse in apply_equality TraitObject - " << l_t << " and " << r_t);
                         ),
                     (Array,
-                        TODO(sp, "Recurse in apply_equality Array - " << l_t << " and " << r_t);
+                        this->apply_equality(sp, *l_e.inner, *r_e.inner);
+                        if( l_e.size_val != r_e.size_val ) {
+                            ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - sizes differ");
+                        }
                         ),
                     (Slice,
                         this->apply_equality(sp, *l_e.inner, *r_e.inner);
@@ -866,7 +903,9 @@ namespace {
                                 const auto& left_slice = l_e.inner->m_data.as_Slice();
                                 TU_IFLET(::HIR::TypeRef::Data, r_e.inner->m_data, Array, right_array,
                                     this->apply_equality(sp, *left_slice.inner, *right_array.inner);
-                                    TODO(sp, "Apply slice unsize coerce operation - " << l_t << " <- " << r_t);
+                                    *node_ptr_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(*node_ptr_ptr), l_t.clone() ));
+                                    (*node_ptr_ptr)->m_res_type = l_t.clone();
+                                    return ;
                                 )
                                 else
                                 {
@@ -904,6 +943,7 @@ namespace {
         {
             auto index = slot;
             unsigned int count = 0;
+            assert(index < m_ivars.size());
             while( m_ivars.at(index).is_alias() ) {
                 index = m_ivars.at(index).alias;
                 
@@ -1031,6 +1071,10 @@ void Typecheck_Code(TypecheckContext context, const ::HIR::TypeRef& result_type,
 {
     TRACE_FUNCTION;
     
+    // TODO: Perform type propagation "outward" from the root
+    
+    //context.apply_equality(expr->span(), result_type, expr->m_res_type);
+
     // 1. Enumerate inferrence variables and assign indexes to them
     {
         ExprVisitor_Enum    visitor { context };

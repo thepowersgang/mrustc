@@ -156,11 +156,14 @@ namespace {
             }) );
         ),
     (Array,
-        TODO(Span(), "TypeRef::clone() - this = " << *this);
-        //return ::HIR::TypeRef( Data::make_Array({
-        //    box$( e.inner->clone() ),
-        //    /* huh */
-        //    }) );
+        if( e.size_val == ~0u ) {
+            BUG(Span(), "Attempting to clone array with unknown size - " << *this);
+        }
+        return ::HIR::TypeRef( Data::make_Array({
+            box$( e.inner->clone() ),
+            ::HIR::ExprPtr(),
+            e.size_val
+            }) );
         ),
     (Slice,
         return ::HIR::TypeRef( Data::make_Slice({

@@ -55,7 +55,7 @@ struct ExprNode_Return:
     ::HIR::ExprNodeP    m_value;
     
     ExprNode_Return(::HIR::ExprNodeP value):
-        ExprNode(::HIR::TypeRef(TypeRef::TagUnit{})),
+        ExprNode(::HIR::TypeRef::Data::make_Diverge({})),
         m_value( mv$(value) )
     {
     }
@@ -84,7 +84,7 @@ struct ExprNode_LoopControl:
     //::HIR::ExprNodeP    m_value;
 
     ExprNode_LoopControl(::std::string label, bool cont):
-        ExprNode(::HIR::TypeRef(TypeRef::TagUnit{})),
+        ExprNode(::HIR::TypeRef::Data::make_Diverge({})),
         m_label( mv$(label) ),
         m_continue( cont )
     {}
@@ -198,7 +198,19 @@ struct ExprNode_BinOp:
         m_op(op),
         m_left( mv$(left) ),
         m_right( mv$(right) )
-    {}
+    {
+        switch(m_op)
+        {
+        case Op::BoolAnd:   case Op::BoolOr:
+        case Op::CmpEqu:    case Op::CmpNEqu:
+        case Op::CmpLt: case Op::CmpLtE:
+        case Op::CmpGt: case Op::CmpGtE:
+            m_res_type = ::HIR::TypeRef( ::HIR::CoreType::Bool );
+            break;
+        default:
+            break;
+        }
+    }
     
     NODE_METHODS();
 };
@@ -229,6 +241,19 @@ struct ExprNode_Cast:
     ::HIR::TypeRef  m_type;
 
     ExprNode_Cast(::HIR::ExprNodeP value, ::HIR::TypeRef dst_type):
+        m_value( mv$(value) ),
+        m_type( mv$(dst_type) )
+    {}
+    
+    NODE_METHODS();
+};
+struct ExprNode_Unsize:
+    public ExprNode
+{
+    ::HIR::ExprNodeP    m_value;
+    ::HIR::TypeRef  m_type;
+
+    ExprNode_Unsize(::HIR::ExprNodeP value, ::HIR::TypeRef dst_type):
         m_value( mv$(value) ),
         m_type( mv$(dst_type) )
     {}
@@ -414,7 +439,9 @@ struct ExprNode_StructLiteral:
         m_path( mv$(path) ),
         m_base_value( mv$(base_value) ),
         m_values( mv$(values) )
-    {}
+    {
+        // TODO: set m_res_type based on path
+    }
     
     NODE_METHODS();
 };
@@ -498,7 +525,8 @@ public:
     NV(ExprNode_Assign)
     NV(ExprNode_BinOp)
     NV(ExprNode_UniOp)
-    NV(ExprNode_Cast)
+    NV(ExprNode_Cast)   // Conversion
+    NV(ExprNode_Unsize) // Coercion
     NV(ExprNode_Index)
     NV(ExprNode_Deref)
     
@@ -538,6 +566,7 @@ public:
     NV(ExprNode_BinOp)
     NV(ExprNode_UniOp)
     NV(ExprNode_Cast)
+    NV(ExprNode_Unsize)
     NV(ExprNode_Index)
     NV(ExprNode_Deref)
     

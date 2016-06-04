@@ -342,6 +342,11 @@ namespace {
                 //auto val = mv$(m_rv);
                 //DEBUG("ExprNode_Cast - val = " << val << " as " << node.m_type);
             }
+            void visit(::HIR::ExprNode_Unsize& node) override {
+                node.m_value->visit(*this);
+                //auto val = mv$(m_rv);
+                //DEBUG("ExprNode_Unsize - val = " << val << " as " << node.m_type);
+            }
             void visit(::HIR::ExprNode_Index& node) override {
                 badnode(node);
             }
@@ -537,11 +542,13 @@ namespace {
         }
         void visit_constant(::HIR::Constant& item) override
         {
+            visit_type(item.m_type);
             item.m_value_res = evaluate_constant(m_crate, *item.m_value);
             DEBUG("constant: " << item.m_type <<  " = " << item.m_value_res);
         }
         void visit_static(::HIR::Static& item) override
         {
+            visit_type(item.m_type);
             item.m_value_res = evaluate_constant(m_crate, *item.m_value);
             DEBUG("static: " << item.m_type <<  " = " << item.m_value_res);
         }

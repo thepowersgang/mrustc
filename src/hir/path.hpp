@@ -56,6 +56,8 @@ struct PathParams
     
     //bool operator==(const PathParams& x) const;
     //bool operator<(const PathParams& x) const;
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const PathParams& x);
 };
 
 /// Generic path - Simple path with one lot of generic params
