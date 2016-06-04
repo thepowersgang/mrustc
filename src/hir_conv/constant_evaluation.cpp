@@ -572,7 +572,7 @@ namespace {
                 }
             };
             
-            if( &*expr != nullptr )
+            if( expr.get() != nullptr )
             {
                 Visitor v { this->m_crate };
                 (*expr).visit(v);

@@ -12,7 +12,7 @@ namespace HIR {
 class Struct;
 class Enum;
 
-struct TypeRef;
+class TypeRef;
 
 enum class CoreType
 {
@@ -49,8 +49,9 @@ struct FunctionType
     ::std::vector<TypeRef>  m_arg_types;
 };
 
-struct TypeRef
+class TypeRef
 {
+public:
     // Options:
     // - Primitive
     // - Parameter

@@ -243,6 +243,10 @@ public:
     bool is_pointer() const { return m_data.is_Pointer(); }
     bool is_tuple() const { return m_data.is_Tuple(); }
     
+    TypeRef clone() const {
+        return TypeRef(*this);
+    }
+
     //::option<const TypeData::Tuple&> as_tuple() const {
     //    switch(m_data.tag())
     //    {

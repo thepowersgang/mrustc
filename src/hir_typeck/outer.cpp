@@ -99,13 +99,13 @@ namespace {
         ::HIR::Crate& crate;
         
         ::HIR::GenericParams*   m_impl_generics;
-        ::HIR::GenericParams*   m_item_generics;
+        //::HIR::GenericParams*   m_item_generics;
         ::std::vector< ::HIR::TypeRef* >    m_self_types;
     public:
         Visitor(::HIR::Crate& crate):
             crate(crate),
-            m_impl_generics(nullptr),
-            m_item_generics(nullptr)
+            m_impl_generics(nullptr)/*,
+            m_item_generics(nullptr)*/
         {
         }
         

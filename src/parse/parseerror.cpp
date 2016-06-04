@@ -47,8 +47,7 @@ CompileError::Todo::~Todo() throw()
 {
 }
 
-ParseError::BadChar::BadChar(const TokenStream& lex, char character):
-    m_char(character)
+ParseError::BadChar::BadChar(const TokenStream& lex, char character)
 {
     ::std::cout << lex.getPosition() << ": BadChar(" << character << ")" << ::std::endl;
 }

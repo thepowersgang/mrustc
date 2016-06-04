@@ -280,7 +280,7 @@ namespace {
                 }
             };
             
-            if( &*expr != nullptr )
+            if( expr.get() != nullptr )
             {
                 ExprVisitor v { *this };
                 (*expr).visit(v);

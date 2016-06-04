@@ -1210,7 +1210,7 @@ namespace {
         // ------
         void visit_function(::HIR::Function& item) override {
             auto _ = this->set_item_generics(item.m_params);
-            if( &*item.m_code )
+            if( item.m_code )
             {
                 TypecheckContext typeck_context { };
                 for( auto& arg : item.m_args ) {
@@ -1222,7 +1222,7 @@ namespace {
         }
         void visit_static(::HIR::Static& item) override {
             //auto _ = this->set_item_generics(item.m_params);
-            if( &*item.m_value )
+            if( item.m_value )
             {
                 TypecheckContext typeck_context { };
                 DEBUG("Static value");
@@ -1231,7 +1231,7 @@ namespace {
         }
         void visit_constant(::HIR::Constant& item) override {
             auto _ = this->set_item_generics(item.m_params);
-            if( &*item.m_value )
+            if( item.m_value )
             {
                 TypecheckContext typeck_context { };
                 DEBUG("Const value");

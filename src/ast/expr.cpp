@@ -41,7 +41,7 @@ SERIALISE_TYPE(Expr::, "Expr", {
 
 ::std::ostream& operator<<(::std::ostream& os, const ExprNode& node)
 {
-    if( &node != nullptr ) {
+    if( static_cast<const void*>(&node) != nullptr ) {
         node.print(os);
     }
     else {

@@ -14,7 +14,7 @@ using CompileError::Todo;
 class BadChar:
     public CompileError::Base
 {
-    char    m_char;
+    //char    m_char;
 public:
     BadChar(const TokenStream& lex, char character);
     virtual ~BadChar() throw ();

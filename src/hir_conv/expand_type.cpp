@@ -125,7 +125,7 @@ public:
             }
         };
         
-        if( &*expr != nullptr )
+        if( expr.get() != nullptr )
         {
             Visitor v { *this };
             (*expr).visit(v);

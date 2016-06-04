@@ -930,8 +930,7 @@ void Lexer::ungetc()
     m_last_char_valid = true;
 }
 
-TTStream::TTStream(const TokenTree& input_tt):
-    m_input_tt(input_tt)
+TTStream::TTStream(const TokenTree& input_tt)
 {
     DEBUG("input_tt = [" << input_tt << "]");
     m_stack.push_back( ::std::make_pair(0, &input_tt) );

@@ -13,16 +13,16 @@ namespace AST {
     class MetaItem;
     class Path;
 
-    class StructItem;
-    class TupleItem;
-    class EnumVariant;
+    struct StructItem;
+    struct TupleItem;
+    struct EnumVariant;
     
     class Module;
     class Item;
     
     class Expr;
     class ExprNode;
-    class ExprNode_Match_Arm;
+    struct ExprNode_Match_Arm;
     
     class MacroInvocation;
     

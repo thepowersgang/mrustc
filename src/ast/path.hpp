@@ -217,30 +217,6 @@ public:
         return m_class.tag();
     }
     
-    /// Add the all nodes except the first from 'b' to 'a' and return
-    static Path add_tailing(const Path& a, const Path& b) {
-        Path    ret(a);
-        ret.add_tailing(b);
-        return ret;
-    }
-    /// Grab the args from the first node of b, and add the rest to the end of the path
-    // TODO: Args should probably be moved to the path, not the nodes
-    void add_tailing(const Path& b) {
-        assert( !this->m_class.is_Invalid() );
-        assert( b.m_class.is_Relative() );
-        const auto& b_r = b.m_class.as_Relative();
-        if( b_r.nodes.size() == 0 )
-            ;
-        else if( nodes().size() > 0 )
-            nodes().back().args() = b[0].args();
-        else if( ! b[0].args().is_empty() )
-            throw ::std::runtime_error("add_tail to empty path, but generics in source");
-        else {
-        }
-        for(unsigned int i = 1; i < b_r.nodes.size(); i ++)
-            nodes().push_back(b_r.nodes[i]);
-        m_binding = PathBinding();
-    }
     Path operator+(PathNode&& pn) const {
         Path tmp = Path(*this);
         tmp.nodes().push_back( pn );

@@ -151,19 +151,19 @@ AST::Path::Path(const Path& x):
     TU_MATCH(Class, (x.m_class), (ent),
     (Invalid, m_class = Class::make_Invalid({});),
     (Local,
-        m_class = Class::make_Local({name: ent.name});
+        m_class = Class::make_Local({ent.name});
         ),
     (Relative,
-        m_class = Class::make_Relative({nodes: ent.nodes});
+        m_class = Class::make_Relative({ent.nodes});
         ),
     (Self,
-        m_class = Class::make_Self({nodes: ent.nodes});
+        m_class = Class::make_Self({ent.nodes});
         ),
     (Super,
-        m_class = Class::make_Super({count: ent.count, nodes: ent.nodes});
+        m_class = Class::make_Super({ent.count, ent.nodes});
         ),
     (Absolute,
-        m_class = Class::make_Absolute({crate: ent.crate, nodes: ent.nodes});
+        m_class = Class::make_Absolute({ent.crate, ent.nodes});
         ),
     (UFCS,
         if( ent.trait )

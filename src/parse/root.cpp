@@ -65,10 +65,14 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
     do
     {
         if(GET_TOK(tok, lex) == TOK_LIFETIME) {
-            ret.add_bound(AST::GenericBound::make_TypeLifetime( {type: checked_type, bound: tok.str()} ));
+            ret.add_bound(AST::GenericBound::make_TypeLifetime( {
+                checked_type.clone(), tok.str()
+                } ));
         }
         else if( tok.type() == TOK_QMARK ) {
-            ret.add_bound(AST::GenericBound::make_MaybeTrait( {type: checked_type, trait: Parse_Path(lex, PATH_GENERIC_TYPE)} ));
+            ret.add_bound(AST::GenericBound::make_MaybeTrait( {
+                checked_type.clone(), Parse_Path(lex, PATH_GENERIC_TYPE)
+                } ));
         }
         else {
             if( tok.type() == TOK_RWORD_FOR )
@@ -90,7 +94,9 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
                 PUTBACK(tok, lex);
             }
             
-            ret.add_bound( AST::GenericBound::make_IsTrait( {type: checked_type, hrls: lifetimes, trait: Parse_Path(lex, PATH_GENERIC_TYPE) }) );
+            ret.add_bound( AST::GenericBound::make_IsTrait({
+                checked_type.clone(), mv$(lifetimes), Parse_Path(lex, PATH_GENERIC_TYPE)
+                }) );
         }
     } while( GET_TOK(tok, lex) == TOK_PLUS );
     PUTBACK(tok, lex);
@@ -131,7 +137,7 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
             {
                 do {
                     GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
-                    ret.add_bound(AST::GenericBound::make_Lifetime( {test: param_name, bound: tok.str()} ));
+                    ret.add_bound(AST::GenericBound::make_Lifetime( {param_name, tok.str()} ));
                 } while( GET_TOK(tok, lex) == TOK_PLUS );
             }
             else

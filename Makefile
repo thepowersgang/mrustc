@@ -10,6 +10,8 @@ CXXFLAGS := -g -Wall -std=c++14 -Werror
 CXXFLAGS += -O2
 CPPFLAGS := -I src/include/ -I src/
 
+#CXXFLAGS += -Wno-unused-private-field
+
 SHELL = bash
 
 ifeq ($(DBGTPL),)

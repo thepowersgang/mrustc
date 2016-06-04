@@ -54,8 +54,9 @@ extern ::std::ostream& operator<<(::std::ostream& os, const Literal& v);
 // --------------------------------------------------------------------
 // Type structures
 // --------------------------------------------------------------------
-struct Static
+class Static
 {
+public:
     bool    m_is_mut;
     TypeRef m_type;
     
@@ -71,8 +72,9 @@ struct Constant
     ExprPtr m_value;
     Literal   m_value_res;
 };
-struct Function
+class Function
 {
+public:
     ::std::string   m_abi;
     bool    m_unsafe;
     bool    m_const;
@@ -93,8 +95,9 @@ struct TypeAlias
     GenericParams   m_params;
     ::HIR::TypeRef  m_type;
 };
-struct Enum
+class Enum
 {
+public:
     TAGGED_UNION(Variant, Unit,
         (Unit, struct{}),
         (Value, ::HIR::ExprPtr),
@@ -112,8 +115,9 @@ struct Enum
     Repr    m_repr;
     ::std::vector< ::std::pair< ::std::string, Variant > >    m_variants;
 };
-struct Struct
+class Struct
 {
+public:
     enum class Repr
     {
         Rust,
@@ -153,6 +157,12 @@ struct Trait
     
     ::std::unordered_map< ::std::string, AssociatedType >   m_types;
     ::std::unordered_map< ::std::string, TraitValueItem >   m_values;
+    
+    Trait( GenericParams gps, ::std::string lifetime, ::std::vector< ::HIR::GenericPath> parents):
+        m_params( mv$(gps) ),
+        m_lifetime( mv$(lifetime) ),
+        m_parent_traits( mv$(parents) )
+    {}
 };
 
 class Module

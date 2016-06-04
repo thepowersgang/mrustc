@@ -670,9 +670,7 @@
     ::HIR::Trait    rv {
         LowerHIR_GenericParams(f.params()),
         mv$(lifetime),
-        mv$(supertraits),
-        {},
-        {}
+        mv$(supertraits)
         };
     
     for(const auto& item : f.items())

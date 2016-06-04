@@ -61,7 +61,6 @@ public:
 class TTStream:
     public TokenStream
 {
-    const TokenTree&    m_input_tt;
     ::std::vector< ::std::pair<unsigned int, const TokenTree*> > m_stack;
 public:
     TTStream(const TokenTree& input_tt);
