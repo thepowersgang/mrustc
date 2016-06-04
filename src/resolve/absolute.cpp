@@ -68,6 +68,7 @@ struct Context
         if( has_self ) {
             assert( level == GenericSlot::Level::Top );
             data.types.push_back( Named<GenericSlot> { "Self", GenericSlot { level, 0xFFFF } } );
+            m_name_context.push_back( Ent::make_ConcreteSelf(nullptr) );
         }
         if( params.ty_params().size() > 0 ) {
             const auto& typs = params.ty_params();
@@ -105,6 +106,25 @@ struct Context
         else {
             BUG(Span(), "resolve/absolute.cpp - Context::pop(TypeRef) - Mismatched pop");
         }
+    }
+    ::TypeRef get_self() const {
+        for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
+        {
+            TU_MATCH_DEF(Ent, (*it), (e),
+            (
+                ),
+            (ConcreteSelf,
+                if( e ) {
+                    return e->clone();
+                }
+                else {
+                    return ::TypeRef("Self");
+                }
+                )
+            )
+        }
+
+        TODO(Span(), "Error when get_self called with no self");
     }
 
     void push_block() {
@@ -815,7 +835,16 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
         }
         ),
     (Generic,
-        // TODO: Should this be bound to the relevant index, or just leave as-is?
+        if( e.name == "Self" )
+        {
+            type = context.get_self();
+        }
+        else
+        {
+            auto idx = context.lookup_local(type.span(), e.name, Context::LookupMode::Type);
+            // TODO: Should this be bound to the relevant index, or just leave as-is?
+            e.index = idx;
+        }
         ),
     (Path,
         Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, e.path);

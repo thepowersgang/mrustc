@@ -168,16 +168,6 @@ Ordering TypeRef::ord(const TypeRef& x) const
         return OrdEqual;
         ),
     (Generic,
-        if( ent.params != x_ent.params )
-        {
-            DEBUG(*this << " == " << x);
-            if( ent.params )   DEBUG("- (L) " << *ent.params);
-            if( x_ent.params ) DEBUG("- (R) " << *x_ent.params);
-            throw ::std::runtime_error("Can't compare mismatched generic types");
-            //BUG(m_span, "Can't compare mismatched generic types");
-        }
-        else {
-        }
         return ::ord(ent.name, x_ent.name);
         ),
     (Path,
@@ -245,7 +235,7 @@ Ordering TypeRef::ord(const TypeRef& x) const
         os << "]";
         )
     _(Generic,
-        os << "/* arg */ " << ent.name << "/*"<<ent.level<<"*/";
+        os << "/* arg */ " << ent.name << "/*"<<ent.index<<"*/";
         )
     _(Path,
         os << ent.path;
@@ -337,7 +327,7 @@ SERIALISE_TYPE(TypeRef::, "TypeRef", {
         )
     _S(Generic,
         s.item( ent.name );
-        s.item( ent.level );
+        s.item( ent.index );
         )
     _S(Array,
         s.item( ent.inner );
@@ -386,7 +376,7 @@ SERIALISE_TYPE(TypeRef::, "TypeRef", {
         )
     _D(Generic,
         s.item( ent.name );
-        s.item( ent.level );
+        s.item( ent.index );
         )
     _D(Array,
         s.item( ent.inner );

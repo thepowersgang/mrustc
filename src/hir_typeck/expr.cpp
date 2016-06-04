@@ -888,6 +888,7 @@ namespace {
                         // ------------------
                         if( node_ptr_ptr != nullptr )
                         {
+                            // TODO: Allow cases where `right`: ::core::ops::Unsize<`left`>
                             // - If left is a trait object, right can unsize
                             // - If left is a slice, right can unsize/deref
                             if( l_e.inner->m_data.is_Slice() && !r_e.inner->m_data.is_Slice() )
