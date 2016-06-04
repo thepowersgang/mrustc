@@ -15,3 +15,9 @@
 {
     delete node;
 }
+::std::unique_ptr< ::HIR::ExprNode> HIR::ExprPtr::into_unique()
+{
+    ::std::unique_ptr< ::HIR::ExprNode> rv( this->node );
+    this->node = nullptr;
+    return rv;
+}

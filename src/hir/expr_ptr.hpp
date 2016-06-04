@@ -19,7 +19,16 @@ public:
     {
         x.node = nullptr;
     }
+    ExprPtr& operator=(ExprPtr&& x)
+    {
+        this->~ExprPtr();
+        node = x.node;
+        x.node = nullptr;
+        return *this;
+    }
     ~ExprPtr();
+    
+    ::std::unique_ptr< ::HIR::ExprNode> into_unique();
     
           ::HIR::ExprNode& operator*()       { return *node; }
     const ::HIR::ExprNode& operator*() const { return *node; }

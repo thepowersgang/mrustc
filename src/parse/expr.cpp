@@ -1064,15 +1064,8 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         return NEWNODE( AST::ExprNode_Float, tok.floatval(), tok.datatype() );
     case TOK_STRING:
         return NEWNODE( AST::ExprNode_String, tok.str() );
-    case TOK_BYTESTRING: {
-        ::std::vector<ExprNodeP>    items;
-        for(char b: tok.str()) {
-            items.push_back( NEWNODE( AST::ExprNode_Integer, b, CORETYPE_U8 ) );
-        }
-        return NEWNODE( AST::ExprNode_Array, ::std::move(items) );
-        }
-        // TODO: Correct type here
-        return NEWNODE( AST::ExprNode_String, tok.str() );
+    case TOK_BYTESTRING:
+        return NEWNODE( AST::ExprNode_ByteString, tok.str() );
     case TOK_RWORD_TRUE:
         return NEWNODE( AST::ExprNode_Bool, true );
     case TOK_RWORD_FALSE:

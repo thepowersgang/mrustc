@@ -378,6 +378,10 @@ public:
         m_expr_root = false;
         m_os << "\"" << n.m_value << "\"";
     }
+    virtual void visit(AST::ExprNode_ByteString& n) override {
+        m_expr_root = false;
+        m_os << "b\"" << n.m_value << "\"";
+    }
     
     virtual void visit(AST::ExprNode_StructLiteral& n) override {
         m_expr_root = false;

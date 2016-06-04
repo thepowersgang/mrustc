@@ -406,8 +406,7 @@ namespace {
                     m_rv = ::HIR::Literal(e);
                     ),
                 (ByteString,
-                    TODO(node.span(), "Byte literal in constant");
-                    //m_rv = ::HIR::Literal::make_String(e);
+                    m_rv = ::HIR::Literal::make_String({e.begin(), e.end()});
                     )
                 )
             }

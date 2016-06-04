@@ -365,6 +365,19 @@ struct ExprNode_String:
     
     NODE_METHODS();
 };
+// Literal byte string
+struct ExprNode_ByteString:
+    public ExprNode
+{
+    ::std::string   m_value;
+    
+    ExprNode_ByteString() {}
+    ExprNode_ByteString(::std::string value):
+        m_value( ::std::move(value) )
+    {}
+    
+    NODE_METHODS();
+};
 
 // Closure / Lambda
 struct ExprNode_Closure:
@@ -613,6 +626,7 @@ public:
     NT(ExprNode_Float);
     NT(ExprNode_Bool);
     NT(ExprNode_String);
+    NT(ExprNode_ByteString);
     NT(ExprNode_Closure);
     NT(ExprNode_StructLiteral);
     NT(ExprNode_Array);
@@ -655,6 +669,7 @@ public:
     NT(ExprNode_Float);
     NT(ExprNode_Bool);
     NT(ExprNode_String);
+    NT(ExprNode_ByteString);
     NT(ExprNode_Closure);
     NT(ExprNode_StructLiteral);
     NT(ExprNode_Array);

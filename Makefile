@@ -34,6 +34,7 @@ OBJ += parse/parseerror.o
 OBJ +=  parse/lex.o parse/token.o
 OBJ +=  parse/interpolated_fragment.o
 OBJ += parse/root.o parse/paths.o parse/types.o parse/expr.o parse/pattern.o
+OBJ += dump_as_rust.o
 OBJ += expand/mod.o expand/macro_rules.o expand/cfg.o
 OBJ +=  expand/format_args.o
 OBJ +=  expand/concat.o expand/stringify.o expand/file_line.o
@@ -48,7 +49,6 @@ OBJ +=  hir/type.o hir/path.o hir/expr.o hir/pattern.o
 OBJ +=  hir/visitor.o
 OBJ += hir_conv/expand_type.o hir_conv/constant_evaluation.o hir_conv/resolve_ufcs.o hir_conv/bind.o
 OBJ += hir_typeck/outer.o hir_typeck/expr.o
-OBJ += dump_as_rust.o
 
 PCHS := ast/ast.hpp
 

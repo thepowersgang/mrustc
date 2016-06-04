@@ -738,7 +738,11 @@ namespace {
         // Adds a rule that two types must be equal
         // - NOTE: The ordering does matter, as the righthand side will get unsizing/deref coercions applied if possible
         // TODO: Support coercions
-        void apply_equality(const Span& sp, const ::HIR::TypeRef& left, const ::HIR::TypeRef& right)
+        /// \param sp   Span for reporting errors
+        /// \param left     Lefthand type (destination for coercions)
+        /// \param right    Righthand type (source for coercions)
+        /// \param node_ptr Pointer to ExprNodeP, updated with new nodes for coercions
+        void apply_equality(const Span& sp, const ::HIR::TypeRef& left, const ::HIR::TypeRef& right, ::HIR::ExprNodeP* node_ptr_ptr = nullptr)
         {
             TRACE_FUNCTION_F(left << ", " << right);
             assert( ! left.m_data.is_Infer() ||  left.m_data.as_Infer().index != ~0u );
@@ -834,7 +838,7 @@ namespace {
                         TODO(sp, "Recurse in apply_equality Array - " << l_t << " and " << r_t);
                         ),
                     (Slice,
-                        TODO(sp, "Recurse in apply_equality Slice - " << l_t << " and " << r_t);
+                        this->apply_equality(sp, *l_e.inner, *r_e.inner);
                         ),
                     (Tuple,
                         if( l_e.size() != r_e.size() ) {
@@ -847,10 +851,30 @@ namespace {
                         ),
                     (Borrow,
                         if( l_e.type != r_e.type ) {
-                            // TODO: This could be allowed (using coercions)
+                            // TODO: This could be allowed if left == Shared && right == Unique (reborrowing)
                             ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - Borrow classes differ");
                         }
-                        // TODO: Support coercions (have to be done here)?
+                        // ------------------
+                        // Coercions!
+                        // ------------------
+                        if( node_ptr_ptr != nullptr )
+                        {
+                            // - If left is a trait object, right can unsize
+                            // - If left is a slice, right can unsize/deref
+                            if( l_e.inner->m_data.is_Slice() && !r_e.inner->m_data.is_Slice() )
+                            {
+                                const auto& left_slice = l_e.inner->m_data.as_Slice();
+                                TU_IFLET(::HIR::TypeRef::Data, r_e.inner->m_data, Array, right_array,
+                                    this->apply_equality(sp, *left_slice.inner, *right_array.inner);
+                                    TODO(sp, "Apply slice unsize coerce operation - " << l_t << " <- " << r_t);
+                                )
+                                else
+                                {
+                                    // Apply deref coercions
+                                }
+                            }
+                            // - If right has a deref chain to left, build it
+                        }
                         this->apply_equality(sp, *l_e.inner, *r_e.inner);
                         ),
                     (Pointer,
@@ -933,7 +957,7 @@ namespace {
             TRACE_FUNCTION_F("{ }");
             
             if( node.m_nodes.size() ) {
-                this->context.apply_equality(node.span(), node.m_res_type, node.m_nodes.back()->m_res_type);
+                this->context.apply_equality(node.span(), node.m_res_type, node.m_nodes.back()->m_res_type,  &node.m_nodes.back());
             }
             else {
                 this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef( ::HIR::TypeRef::TagUnit() ));
@@ -948,7 +972,7 @@ namespace {
             
             this->context.add_binding(node.m_pattern, node.m_type);
             if( node.m_value ) {
-                this->context.apply_equality(node.span(), node.m_type, node.m_value->m_res_type);
+                this->context.apply_equality(node.span(), node.m_type, node.m_value->m_res_type,  &node.m_value);
             }
         }
         
@@ -1003,28 +1027,35 @@ namespace {
     };
 };
 
-void Typecheck_Code(TypecheckContext context, const ::HIR::TypeRef& result_type, ::HIR::ExprNode& root_node)
+void Typecheck_Code(TypecheckContext context, const ::HIR::TypeRef& result_type, ::HIR::ExprPtr& expr)
 {
     TRACE_FUNCTION;
     
     // 1. Enumerate inferrence variables and assign indexes to them
     {
         ExprVisitor_Enum    visitor { context };
-        root_node.visit( visitor );
+        expr->visit( visitor );
     }
+    // - Apply equality between the node result and the expected type
     DEBUG("- Apply RV");
-    context.apply_equality(root_node.span(), result_type, root_node.m_res_type);
+    {
+        // Convert ExprPtr into unique_ptr for the execution of this function
+        auto root_ptr = expr.into_unique();
+        context.apply_equality(root_ptr->span(), result_type, root_ptr->m_res_type,  &root_ptr);
+        expr = ::HIR::ExprPtr( mv$(root_ptr) );
+    }
+    
     context.dump();
     // 2. Iterate through nodes applying rules until nothing changes
     {
         ExprVisitor_Run visitor { context };
         do {
-            root_node.visit( visitor );
+            expr->visit( visitor );
         } while( context.take_changed() );
     }
     
     // 3. Check that there's no unresolved types left
-    // TODO
+    // TODO: Check for completed type resolution
     context.dump();
 }
 
@@ -1124,7 +1155,7 @@ namespace {
                 this->visit_type( *e.inner );
                 TypecheckContext    typeck_context { };
                 DEBUG("Array size");
-                Typecheck_Code( mv$(typeck_context), ::HIR::TypeRef(::HIR::CoreType::Usize), *e.size );
+                Typecheck_Code( mv$(typeck_context), ::HIR::TypeRef(::HIR::CoreType::Usize), e.size );
             )
             else {
                 ::HIR::Visitor::visit_type(ty);
@@ -1142,7 +1173,7 @@ namespace {
                     typeck_context.add_binding( arg.first, arg.second );
                 }
                 DEBUG("Function code");
-                Typecheck_Code( mv$(typeck_context), item.m_return, *item.m_code );
+                Typecheck_Code( mv$(typeck_context), item.m_return, item.m_code );
             }
         }
         void visit_static(::HIR::Static& item) override {
@@ -1151,7 +1182,7 @@ namespace {
             {
                 TypecheckContext typeck_context { };
                 DEBUG("Static value");
-                Typecheck_Code( mv$(typeck_context), item.m_type, *item.m_value );
+                Typecheck_Code( mv$(typeck_context), item.m_type, item.m_value );
             }
         }
         void visit_constant(::HIR::Constant& item) override {
@@ -1160,7 +1191,7 @@ namespace {
             {
                 TypecheckContext typeck_context { };
                 DEBUG("Const value");
-                Typecheck_Code( mv$(typeck_context), item.m_type, *item.m_value );
+                Typecheck_Code( mv$(typeck_context), item.m_type, item.m_value );
             }
         }
         void visit_enum(::HIR::Enum& item) override {
@@ -1175,7 +1206,7 @@ namespace {
                 TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
                     TypecheckContext typeck_context { };
                     DEBUG("Enum value");
-                    Typecheck_Code( mv$(typeck_context), enum_type, *e );
+                    Typecheck_Code( mv$(typeck_context), enum_type, e );
                 )
             }
         }

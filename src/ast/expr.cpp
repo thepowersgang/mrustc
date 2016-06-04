@@ -363,6 +363,13 @@ NODE(ExprNode_String, {
 },{
     return NEWNODE(ExprNode_String, m_value);
 })
+NODE(ExprNode_ByteString, {
+    s.item(m_value);
+},{
+    os << "b\"" << m_value << "\"";
+},{
+    return NEWNODE(ExprNode_ByteString, m_value);
+})
 
 NODE(ExprNode_Closure, {
     s.item(m_args);
@@ -708,6 +715,7 @@ NV(ExprNode_Integer, {(void)node;})
 NV(ExprNode_Float, {(void)node;})
 NV(ExprNode_Bool, {(void)node;})
 NV(ExprNode_String, {(void)node;})
+NV(ExprNode_ByteString, {(void)node;})
 
 NV(ExprNode_Closure,
 {

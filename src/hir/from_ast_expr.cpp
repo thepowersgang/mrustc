@@ -471,6 +471,10 @@ struct LowerHIR_ExprNode_Visitor:
     virtual void visit(::AST::ExprNode_String& v) override {
         m_rv.reset( new ::HIR::ExprNode_Literal( ::HIR::ExprNode_Literal::Data::make_String( v.m_value ) ) );
     }
+    virtual void visit(::AST::ExprNode_ByteString& v) override {
+        ::std::vector<char> dat { v.m_value.begin(), v.m_value.end() };
+        m_rv.reset( new ::HIR::ExprNode_Literal( ::HIR::ExprNode_Literal::Data::make_ByteString( mv$(dat) ) ) );
+    }
     virtual void visit(::AST::ExprNode_Closure& v) override {
         ::HIR::ExprNode_Closure::args_t args;
         for(const auto& arg : v.m_args) {

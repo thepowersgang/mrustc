@@ -444,6 +444,7 @@ struct CExpandExpr:
     void visit(::AST::ExprNode_Float& node) override { }
     void visit(::AST::ExprNode_Bool& node) override { }
     void visit(::AST::ExprNode_String& node) override { }
+    void visit(::AST::ExprNode_ByteString& node) override { }
     void visit(::AST::ExprNode_Closure& node) override {
         for(auto& arg : node.m_args) {
             Expand_Pattern(is_early, crate, modstack, this->cur_mod(),  arg.first);
