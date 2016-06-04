@@ -736,6 +736,8 @@ namespace {
             )
         }
         // Adds a rule that two types must be equal
+        // - NOTE: The ordering does matter, as the righthand side will get unsizing/deref coercions applied if possible
+        // TODO: Support coercions
         void apply_equality(const Span& sp, const ::HIR::TypeRef& left, const ::HIR::TypeRef& right)
         {
             TRACE_FUNCTION_F(left << ", " << right);
@@ -848,6 +850,7 @@ namespace {
                             // TODO: This could be allowed (using coercions)
                             ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - Borrow classes differ");
                         }
+                        // TODO: Support coercions (have to be done here)?
                         this->apply_equality(sp, *l_e.inner, *r_e.inner);
                         ),
                     (Pointer,
