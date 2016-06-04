@@ -26,7 +26,7 @@ struct PatternBinding
     ::std::string   m_name;
     unsigned int    m_slot;
     
-    bool is_valid() const { return m_name == ""; }
+    bool is_valid() const { return m_name != ""; }
     
     PatternBinding():
         m_mutable(false),

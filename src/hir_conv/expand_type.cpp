@@ -99,7 +99,7 @@ public:
             }
             void visit(::HIR::ExprNode_Cast& node) override
             {
-                upper_visitor.visit_type(node.m_type);
+                upper_visitor.visit_type(node.m_res_type);
                 ::HIR::ExprVisitorDef::visit(node);
             }
             

@@ -27,7 +27,7 @@ namespace HIR {
             case PatternBinding::Type::Ref:     os << "ref ";   break;
             case PatternBinding::Type::MutRef:  os << "ref mut ";   break;
             }
-            os << x.m_binding.m_name << " @ ";
+            os << x.m_binding.m_name << "/*"<<x.m_binding.m_slot<<"*/" << " @ ";
         }
         TU_MATCH(Pattern::Data, (x.m_data), (e),
         (Any,

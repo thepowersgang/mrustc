@@ -91,17 +91,17 @@
     TRACE_FUNCTION_F("@" << pat.span().filename << ":" << pat.span().start_line << " pat = " << pat);
     
     ::HIR::PatternBinding   binding;
-    if( pat.binding() != "" )
+    if( pat.binding().is_valid() )
     {
         ::HIR::PatternBinding::Type bt = ::HIR::PatternBinding::Type::Move;
-        switch(pat.binding_type())
+        switch(pat.binding().m_type)
         {
-        case ::AST::Pattern::BIND_MOVE: bt = ::HIR::PatternBinding::Type::Move; break;
-        case ::AST::Pattern::BIND_REF:  bt = ::HIR::PatternBinding::Type::Ref;  break;
-        case ::AST::Pattern::BIND_MUTREF: bt = ::HIR::PatternBinding::Type::MutRef; break;
+        case ::AST::PatternBinding::Type::MOVE: bt = ::HIR::PatternBinding::Type::Move; break;
+        case ::AST::PatternBinding::Type::REF:  bt = ::HIR::PatternBinding::Type::Ref;  break;
+        case ::AST::PatternBinding::Type::MUTREF: bt = ::HIR::PatternBinding::Type::MutRef; break;
         }
         // TODO: Get bound slot
-        binding = ::HIR::PatternBinding(pat.binding_mut(), bt, pat.binding(), 0);
+        binding = ::HIR::PatternBinding(pat.binding().m_mutable, bt, pat.binding().m_name, pat.binding().m_slot);
     }
     TU_MATCH(::AST::Pattern::Data, (pat.data()), (e),
     (MaybeBind,

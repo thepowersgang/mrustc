@@ -44,8 +44,9 @@ namespace AST {
 ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat)
 {
     os << "Pattern(";
-    if(pat.m_binding != "")
-        os << pat.m_binding << " @ ";
+    if( pat.m_binding.is_valid() ) {
+        os << pat.m_binding.m_name << " @ ";
+    }
     TU_MATCH(Pattern::Data, (pat.m_data), (ent),
     (MaybeBind,
         os << ent.name << "?";
@@ -176,8 +177,6 @@ AST::Pattern AST::Pattern::clone() const
     AST::Pattern    rv;
     rv.m_span = m_span;
     rv.m_binding = m_binding;
-    rv.m_binding_type = m_binding_type;
-    rv.m_binding_mut = m_binding_mut;
     
     struct H {
         static ::std::unique_ptr<Pattern> clone_sp(const ::std::unique_ptr<Pattern>& p) {
@@ -245,7 +244,7 @@ AST::Pattern AST::Pattern::clone() const
 
 #define _D(VAR, ...)  case Pattern::Data::TAG_##VAR: { m_data = Pattern::Data::make_##VAR({}); auto& ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
 SERIALISE_TYPE(Pattern::, "Pattern", {
-    s.item(m_binding);
+    //s.item(m_binding);
     s % m_data.tag();
     TU_MATCH(Pattern::Data, (m_data), (e),
     (Any,
@@ -287,7 +286,7 @@ SERIALISE_TYPE(Pattern::, "Pattern", {
         )
     )
 },{
-    s.item(m_binding);
+    //s.item(m_binding);
     Pattern::Data::Tag  tag;
     s % tag;
     switch(tag)

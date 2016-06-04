@@ -569,12 +569,12 @@ namespace {
                 }
                 void visit(::HIR::ExprNode_Cast& node) override {
                     ::HIR::ExprVisitorDef::visit(node);
-                    m_exp.visit_type(node.m_type);
+                    m_exp.visit_type(node.m_res_type);
                 }
                 // TODO: This shouldn't exist yet?
                 void visit(::HIR::ExprNode_Unsize& node) override {
                     ::HIR::ExprVisitorDef::visit(node);
-                    m_exp.visit_type(node.m_type);
+                    m_exp.visit_type(node.m_res_type);
                 }
                 void visit(::HIR::ExprNode_Closure& node) override {
                     ::HIR::ExprVisitorDef::visit(node);

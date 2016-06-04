@@ -238,11 +238,10 @@ struct ExprNode_Cast:
     public ExprNode
 {
     ::HIR::ExprNodeP    m_value;
-    ::HIR::TypeRef  m_type;
 
     ExprNode_Cast(::HIR::ExprNodeP value, ::HIR::TypeRef dst_type):
-        m_value( mv$(value) ),
-        m_type( mv$(dst_type) )
+        ExprNode( mv$(dst_type) ),
+        m_value( mv$(value) )
     {}
     
     NODE_METHODS();
@@ -251,11 +250,10 @@ struct ExprNode_Unsize:
     public ExprNode
 {
     ::HIR::ExprNodeP    m_value;
-    ::HIR::TypeRef  m_type;
 
     ExprNode_Unsize(::HIR::ExprNodeP value, ::HIR::TypeRef dst_type):
-        m_value( mv$(value) ),
-        m_type( mv$(dst_type) )
+        ExprNode( mv$(dst_type) ),
+        m_value( mv$(value) )
     {}
     
     NODE_METHODS();

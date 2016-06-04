@@ -136,10 +136,12 @@ namespace {
     
     struct IVar
     {
+        bool    deleted;
         unsigned int alias;
         ::std::unique_ptr< ::HIR::TypeRef> type;
         
         IVar():
+            deleted(false),
             alias(~0u),
             type(new ::HIR::TypeRef())
         {}
@@ -148,6 +150,7 @@ namespace {
     
     class TypecheckContext
     {
+        ::std::vector< ::HIR::TypeRef>  m_locals;
         ::std::vector< IVar >   m_ivars;
         bool    m_has_changed;
     public:
@@ -159,7 +162,7 @@ namespace {
         
         
         void dump() const {
-            DEBUG("TypecheckContext - " << m_ivars.size() << " ivars");
+            DEBUG("TypecheckContext - " << m_ivars.size() << " ivars, " << m_locals.size() << " locals");
             unsigned int i = 0;
             for(const auto& v : m_ivars) {
                 if(v.is_alias()) {
@@ -169,6 +172,11 @@ namespace {
                     DEBUG("#" << i << " = " << *v.type);
                 }
                 i ++ ;
+            }
+            i = 0;
+            for(const auto& v : m_locals) {
+                DEBUG("VAR " << i << " = " << v);
+                i ++;
             }
         }
         
@@ -184,8 +192,20 @@ namespace {
         /// Adds a local variable binding (type is mutable so it can be inferred if required)
         void add_local(unsigned int index, ::HIR::TypeRef type)
         {
-            // TODO: Add local of this name (with ivar)
+            if( m_locals.size() <= index )
+                m_locals.resize(index+1);
+            m_locals[index] = mv$(type);
         }
+
+        const ::HIR::TypeRef& get_var_type(unsigned int index)
+        {
+            if( index >= m_locals.size() ) {
+                this->dump();
+                BUG(Span(), "Local index out of range " << index << " >= " << m_locals.size());
+            }
+            return m_locals.at(index);
+        }
+
         /// Add (and bind) all '_' types in `type`
         void add_ivars(::HIR::TypeRef& type)
         {
@@ -255,6 +275,7 @@ namespace {
         
         void add_binding(::HIR::Pattern& pat, ::HIR::TypeRef& type)
         {
+            TRACE_FUNCTION_F("pat = " << pat << ", type = " << type);
             static Span _sp;
             const Span& sp = _sp;
             
@@ -919,6 +940,17 @@ namespace {
             m_ivars.back().type->m_data.as_Infer().index = m_ivars.size() - 1;
             return m_ivars.size() - 1;
         }
+        void del_ivar(unsigned int index)
+        {
+            DEBUG("Deleting ivar " << index << " of  " << m_ivars.size());
+            if( index == m_ivars.size() - 1 ) {
+                m_ivars.pop_back();
+            }
+            else {
+                assert(!"Can't delete an ivar after it's been used");
+                m_ivars[index].deleted = true;
+            }
+        }
         ::HIR::TypeRef new_ivar_tr() {
             ::HIR::TypeRef rv;
             rv.m_data.as_Infer().index = this->new_ivar();
@@ -931,6 +963,7 @@ namespace {
             unsigned int count = 0;
             assert(index < m_ivars.size());
             while( m_ivars.at(index).is_alias() ) {
+                assert( m_ivars.at(index).deleted == false );
                 index = m_ivars.at(index).alias;
                 
                 if( count >= m_ivars.size() ) {
@@ -939,6 +972,7 @@ namespace {
                 }
                 count ++;
             }
+            assert( m_ivars.at(index).deleted == false );
             return m_ivars.at(index);
         }
         ::HIR::TypeRef& get_type(::HIR::TypeRef& type)
@@ -995,9 +1029,11 @@ namespace {
         public ::HIR::ExprVisitorDef
     {
         TypecheckContext& context;
+        const ::HIR::TypeRef&   ret_type;
     public:
-        ExprVisitor_Enum(TypecheckContext& context):
-            context(context)
+        ExprVisitor_Enum(TypecheckContext& context, const ::HIR::TypeRef& ret_type):
+            context(context),
+            ret_type(ret_type)
         {
         }
         
@@ -1007,13 +1043,18 @@ namespace {
         }
         void visit(::HIR::ExprNode_Block& node) override
         {
+            ::HIR::ExprVisitorDef::visit(node);
             if( node.m_nodes.size() > 0 ) {
                 node.m_nodes.back()->m_res_type = node.m_res_type.clone();
             }
             else {
                 node.m_res_type = ::HIR::TypeRef::new_unit();
             }
+        }
+        void visit(::HIR::ExprNode_Return& node) override
+        {
             ::HIR::ExprVisitorDef::visit(node);
+            this->context.apply_equality(node.span(), this->ret_type, node.m_value->m_res_type,  &node.m_value);
         }
         
         void visit(::HIR::ExprNode_Let& node) override
@@ -1040,6 +1081,30 @@ namespace {
                 }
             }
         }
+        void visit(::HIR::ExprNode_Tuple& node) override
+        {
+            // - Remove the ivar created by the generic visitor
+            this->context.dump();
+            this->context.del_ivar( node.m_res_type.m_data.as_Infer().index );
+
+            ::HIR::ExprVisitorDef::visit(node);
+
+            ::std::vector< ::HIR::TypeRef>  types;
+            for( const auto& sn : node.m_vals )
+                types.push_back( sn->m_res_type.clone() );
+            node.m_res_type = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Tuple(mv$(types)) );
+        }
+        void visit(::HIR::ExprNode_Closure& node) override
+        {
+            for(auto& a : node.m_args) {
+                this->context.add_ivars(a.second);
+                this->context.add_binding(a.first, a.second);
+            }
+            this->context.add_ivars(node.m_return);
+            node.m_code->m_res_type = node.m_return.clone();
+
+            ::HIR::ExprVisitorDef::visit(node);
+        }
     };
     
     class ExprVisitor_Run:
@@ -1052,6 +1117,7 @@ namespace {
         {
         }
         
+        // - Block: Ignore all return values except the last one (which is yeilded)
         void visit(::HIR::ExprNode_Block& node) override
         {
             TRACE_FUNCTION_F("{ }");
@@ -1064,6 +1130,7 @@ namespace {
             }
             ::HIR::ExprVisitorDef::visit(node);
         }
+        // - Let: Equates inner to outer
         void visit(::HIR::ExprNode_Let& node) override
         {
             TRACE_FUNCTION_F("let " << node.m_pattern << " : " << node.m_type);
@@ -1074,6 +1141,7 @@ namespace {
             ::HIR::ExprVisitorDef::visit(node);
         }
         
+        // - If: Both branches have to agree
         void visit(::HIR::ExprNode_If& node) override
         {
             TRACE_FUNCTION_F("if ...");
@@ -1083,6 +1151,7 @@ namespace {
             }
             ::HIR::ExprVisitorDef::visit(node);
         }
+        // - Match: all branches match
         void visit(::HIR::ExprNode_Match& node) override
         {
             TRACE_FUNCTION_F("match ...");
@@ -1094,6 +1163,85 @@ namespace {
                 this->context.apply_equality(node.span(), node.m_res_type, arm.m_code->m_res_type, &arm.m_code);
             }
             ::HIR::ExprVisitorDef::visit(node);
+        }
+        // - Assign: both sides equal
+        void visit(::HIR::ExprNode_Assign& node) override
+        {
+            if( node.m_op == ::HIR::ExprNode_Assign::Op::None ) {
+                this->context.apply_equality(node.span(),
+                    node.m_slot->m_res_type, node.m_value->m_res_type,
+                    &node.m_value
+                    );
+            }
+            else {
+                // TODO: Look for overload
+            }
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        // - BinOp: Look for overload or primitive
+        void visit(::HIR::ExprNode_BinOp& node) override
+        {
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        // - UniOp: Look for overload or primitive
+        void visit(::HIR::ExprNode_UniOp& node) override
+        {
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        // - Cast: Nothing needs to happen
+        void visit(::HIR::ExprNode_Cast& node) override
+        {
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        // - Index: Look for implementation of the Index trait
+        void visit(::HIR::ExprNode_Index& node) override
+        {
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        // - Deref: Look for impl of Deref
+        void visit(::HIR::ExprNode_Deref& node) override
+        {
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        // - Call Path: Locate path and build return
+        void visit(::HIR::ExprNode_CallPath& node) override
+        {
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        // - Call Value: If type is known, locate impl of Fn/FnMut/FnOnce
+        void visit(::HIR::ExprNode_CallValue& node) override
+        {
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        // - Call Method: Locate method on type
+        void visit(::HIR::ExprNode_CallMethod& node) override
+        {
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        // - Field: Locate field on type
+        void visit(::HIR::ExprNode_Field& node) override
+        {
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        // - PathValue: Insert type from path
+        void visit(::HIR::ExprNode_PathValue& node) override
+        {
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        // - Variable: Bind to same ivar
+        void visit(::HIR::ExprNode_Variable& node) override
+        {
+            this->context.apply_equality(node.span(),
+                node.m_res_type, this->context.get_var_type(node.m_slot)
+                );
+        }
+        // - Struct literal: Semi-known types
+        void visit(::HIR::ExprNode_StructLiteral& node) override
+        {
+        }
+        // - Tuple literal: 
+        void visit(::HIR::ExprNode_Tuple& node) override
+        {
         }
         // TODO: Other nodes (propagate/equalize types down)
     };
@@ -1109,7 +1257,7 @@ void Typecheck_Code(TypecheckContext context, const ::HIR::TypeRef& result_type,
 
     // 1. Enumerate inferrence variables and assign indexes to them
     {
-        ExprVisitor_Enum    visitor { context };
+        ExprVisitor_Enum    visitor { context, result_type };
         expr->visit( visitor );
     }
     // - Apply equality between the node result and the expected type

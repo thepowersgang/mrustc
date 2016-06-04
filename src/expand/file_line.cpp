@@ -21,7 +21,7 @@ class CExpanderLine:
     
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(TokenTree(Token((uint64_t)sp.start_line, CORETYPE_I32))) );
+        return box$( TTStreamO(TokenTree(Token((uint64_t)sp.start_line, CORETYPE_U32))) );
     }
 };
 

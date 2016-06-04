@@ -13,15 +13,39 @@ using ::std::unique_ptr;
 using ::std::move;
 class MacroInvocation;
 
+class PatternBinding
+{
+public:
+    enum class Type {
+        MOVE,
+        REF,
+        MUTREF,
+    };
+    ::std::string   m_name;
+    Type    m_type;
+    bool    m_mutable;
+    unsigned int    m_slot;
+
+    PatternBinding():
+        m_name(""),
+        m_type(Type::MOVE),
+        m_mutable(false),
+        m_slot( ~0u )
+    {}
+    PatternBinding(::std::string name, Type ty, bool ismut):
+        m_name(name),
+        m_type(ty),
+        m_mutable(ismut),
+        m_slot( ~0u )
+    {}
+    
+    bool is_valid() const { return m_name != ""; }
+};
+
 class Pattern:
     public Serialisable
 {
 public:
-    enum BindType {
-        BIND_MOVE,
-        BIND_REF,
-        BIND_MUTREF,
-    };
     TAGGED_UNION(Value, Invalid,
         (Invalid, struct {}),
         (Integer, struct {
@@ -47,24 +71,20 @@ public:
         );
 private:
     Span    m_span;
-    ::std::string   m_binding;
-    BindType    m_binding_type;
-    bool    m_binding_mut;
+    PatternBinding  m_binding;
     Data m_data;
     
 public:
     virtual ~Pattern();
     
-    Pattern():
-        m_binding_type(BIND_MOVE)
+    Pattern()
     {}
     Pattern(Pattern&&) = default;
     Pattern& operator=(Pattern&&) = default;
 
     struct TagMaybeBind {};
     Pattern(TagMaybeBind, ::std::string name):
-        m_binding(""),
-        m_binding_type(BIND_MOVE),
+        m_binding(),
         m_data( Data::make_MaybeBind({name}) )
     {}
 
@@ -80,10 +100,8 @@ public:
     {}
 
     struct TagBind {};
-    Pattern(TagBind, ::std::string name):
-        m_binding(name),
-        m_binding_type( BIND_MOVE ),
-        m_binding_mut(false)
+    Pattern(TagBind, ::std::string name, PatternBinding::Type ty = PatternBinding::Type::MOVE, bool is_mut=false):
+        m_binding( PatternBinding(name, ty, is_mut) )
     {}
 
     struct TagBox {};
@@ -129,10 +147,8 @@ public:
     {}
     
     // Mutators
-    void set_bind(::std::string name, BindType type, bool is_mut) {
-        m_binding = name;
-        m_binding_type = type;
-        m_binding_mut = is_mut;
+    void set_bind(::std::string name, PatternBinding::Type type, bool is_mut) {
+        m_binding = PatternBinding(name, type, is_mut);
     }
     
     
@@ -142,10 +158,8 @@ public:
     Pattern clone() const;
     
     // Accessors
-    const ::std::string& binding() const { return m_binding; }
-    const BindType& binding_type() const { assert(m_binding != ""); return m_binding_type; }
-    bool binding_mut() const { assert(m_binding != ""); return m_binding_mut; }
-    
+          PatternBinding& binding()       { return m_binding; }
+    const PatternBinding& binding() const { return m_binding; }
           Data& data()       { return m_data; }
     const Data& data() const { return m_data; }
           Path& path()       { return m_data.as_StructTuple().path; }

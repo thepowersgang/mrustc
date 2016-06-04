@@ -774,8 +774,8 @@ void RustPrinter::print_bounds(const AST::GenericParams& params)
 
 void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
 {
-    if( p.binding() != "" ) {
-        m_os << p.binding();
+    if( p.binding().is_valid() ) {
+        m_os << p.binding().m_name;
         // If binding is irrefutable, and would be binding against a wildcard, just emit the name
         if( !is_refutable && p.data().is_Any() )
         {

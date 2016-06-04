@@ -842,7 +842,10 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::Expr& expr)
 {
     if( expr.is_valid() )
     {
+        auto ov = context.m_var_count;
+        context.m_var_count = 0;
         Resolve_Absolute_Expr(context, expr.node());
+        context.m_var_count = ov;
     }
 }
 void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
@@ -1033,27 +1036,30 @@ void Resolve_Absolute_PatternValue(/*const*/ Context& context, const Span& sp, :
 void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pattern& pat)
 {
     TRACE_FUNCTION_F("allow_refutable = " << allow_refutable << ", pat = " << pat);
-    if( pat.binding() != "" ) {
+    if( pat.binding().is_valid() ) {
         if( !pat.data().is_Any() && ! allow_refutable )
             TODO(pat.span(), "Resolve_Absolute_Pattern - Encountered bound destructuring pattern");
         // TODO: Record the local variable number in the binding
-        context.push_var( pat.span(), pat.binding() );
+        pat.binding().m_slot = context.push_var( pat.span(), pat.binding().m_name );
+        DEBUG("- Binding #" << pat.binding().m_slot << " '" << pat.binding().m_name << "'");
     }
 
     TU_MATCH( ::AST::Pattern::Data, (pat.data()), (e),
     (MaybeBind,
-        assert( pat.binding() == "" );
+        assert( pat.binding().is_valid() == false );
         if( allow_refutable ) {
             auto name = mv$( e.name );
             // Attempt to resolve the name in the current namespace, and if it fails, it's a binding
             auto p = context.lookup_opt( name, Context::LookupMode::Constant );
             if( p.is_valid() ) {
                 pat = ::AST::Pattern(::AST::Pattern::TagValue(), ::AST::Pattern::Value::make_Named(mv$(p)));
+                DEBUG("MaybeBind resolved to " << pat);
             }
             else {
                 pat = ::AST::Pattern(::AST::Pattern::TagBind(), mv$(name));
                 // TODO: Record the local variable number in the binding
-                context.push_var( pat.span(), pat.binding() );
+                pat.binding().m_slot = context.push_var( pat.span(), pat.binding().m_name );
+                DEBUG("- Binding #" << pat.binding().m_slot << " '" << pat.binding().m_name << "' (was MaybeBind)");
             }
         }
         else {

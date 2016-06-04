@@ -52,7 +52,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     }
    
     bool expect_bind = false;
-    ::AST::Pattern::BindType    bind_type = AST::Pattern::BIND_MOVE;
+    auto bind_type = AST::PatternBinding::Type::MOVE;
     bool is_mut = false;
     // 1. Mutablity + Reference
     if( tok.type() == TOK_RWORD_REF )
@@ -61,19 +61,19 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
         tok = lex.getToken();
         if( tok.type() == TOK_RWORD_MUT )
         {
-            bind_type = AST::Pattern::BIND_MUTREF;
+            bind_type = AST::PatternBinding::Type::MUTREF;
             GET_TOK(tok, lex);
         }
         else
         {
-            bind_type = AST::Pattern::BIND_REF;
+            bind_type = AST::PatternBinding::Type::REF;
         }
     }
     else if( tok.type() == TOK_RWORD_MUT )
     {
         is_mut = true;
         expect_bind = true;
-        tok = lex.getToken();
+        GET_TOK(tok, lex);
     }
     else
     {
@@ -90,10 +90,11 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
         if( GET_TOK(tok, lex) != TOK_AT )
         {
             PUTBACK(tok, lex);
-            return AST::Pattern(AST::Pattern::TagBind(), bind_name);
+            return AST::Pattern(AST::Pattern::TagBind(), bind_name, bind_type, is_mut);
         }
         
-        tok = lex.getToken();
+        // '@' consumed, move on to next token
+        GET_TOK(tok, lex);
     }
     // Otherwise, handle MaybeBind
     else if( tok.type() == TOK_IDENT )
@@ -118,11 +119,15 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
             break;
         default:  // Maybe bind
             // if the pattern can be refuted (i.e this could be an enum variant), return MaybeBind
-            if( is_refutable )
+            if( is_refutable ) {
+                assert(bind_type == ::AST::PatternBinding::Type::MOVE);
+                assert(is_mut == false);
                 return AST::Pattern(AST::Pattern::TagMaybeBind(), mv$(tok.str()));
+            }
             // Otherwise, it IS a binding
-            else
-                return AST::Pattern(AST::Pattern::TagBind(), mv$(tok.str()));
+            else {
+                return AST::Pattern(AST::Pattern::TagBind(), mv$(tok.str()), bind_type, is_mut);
+            }
         }
     }
     else
@@ -131,9 +136,9 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     }
     
     PUTBACK(tok, lex);
-    AST::Pattern pat = Parse_PatternReal(lex, is_refutable);
+    auto pat = Parse_PatternReal(lex, is_refutable);
     pat.set_bind(bind_name, bind_type, is_mut);
-    return ::std::move(pat);
+    return mv$(pat);
 }
 
 AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable)
@@ -351,7 +356,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
         
         bool is_short_bind = false;
         bool is_box = false;
-        AST::Pattern::BindType bind_type = AST::Pattern::BIND_MOVE;
+        auto bind_type = AST::PatternBinding::Type::MOVE;
         bool is_mut = false;
         if( tok.type() == TOK_RWORD_BOX ) {
             is_box = true;
@@ -362,11 +367,11 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
             is_short_bind = true;
             GET_TOK(tok, lex);
             if( tok.type() == TOK_RWORD_MUT ) {
-                bind_type = AST::Pattern::BIND_MUTREF;
+                bind_type = AST::PatternBinding::Type::MUTREF;
                 GET_TOK(tok, lex);
             }
             else {
-                bind_type = AST::Pattern::BIND_REF;
+                bind_type = AST::PatternBinding::Type::REF;
             }
         }
         else if( tok.type() == TOK_RWORD_MUT ) {
