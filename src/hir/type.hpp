@@ -114,6 +114,10 @@ struct TypeRef
     TypeRef& operator=(TypeRef&& ) = default;
     TypeRef& operator=(const TypeRef&) = delete;
     
+    struct TagUnit {};
+    TypeRef(TagUnit ):
+        m_data( Data::make_Tuple({}) )
+    {}
     TypeRef(::std::vector< ::HIR::TypeRef> sts):
         m_data( Data::make_Tuple(mv$(sts)) )
     {}

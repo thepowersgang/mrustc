@@ -265,6 +265,7 @@ struct LowerHIR_ExprNode_Visitor:
                 v.m_label,
                 LowerHIR_ExprNode_Inner(*v.m_code)
                 ) );
+            assert( m_rv->m_res_type.m_data.is_Tuple() );
             break;
         case ::AST::ExprNode_Loop::WHILE: {
             ::std::vector< ::HIR::ExprNodeP>    code;
@@ -280,6 +281,7 @@ struct LowerHIR_ExprNode_Visitor:
                 v.m_label,
                 ::HIR::ExprNodeP(new ::HIR::ExprNode_Block(false, mv$(code)))
                 ) );
+            assert( m_rv->m_res_type.m_data.is_Tuple() );
             break; }
         case ::AST::ExprNode_Loop::WHILELET: {
             ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
@@ -304,11 +306,66 @@ struct LowerHIR_ExprNode_Visitor:
                     mv$(arms)
                     ))
                 ) );
+            assert( m_rv->m_res_type.m_data.is_Tuple() );
             break; }
         case ::AST::ExprNode_Loop::FOR:
             // NOTE: This should already be desugared (as a pass before resolve)
             BUG(v.get_pos(), "Encountered still-sugared for loop");
             break;
+        }
+        
+        // TODO: Iterate the constructed loop and determine if there are any `break` statements pointing to it
+        {
+            struct LoopVisitor:
+                public ::HIR::ExprVisitorDef
+            {
+                const ::std::string& top_label;
+                bool    top_is_broken;
+                ::std::vector< const ::std::string*>   name_stack;
+                
+                LoopVisitor(const ::std::string& top_label):
+                    top_label(top_label),
+                    top_is_broken(false),
+                    name_stack()
+                {}
+                
+                void visit(::HIR::ExprNode_Loop& node) override {
+                    if( node.m_label != "" ) {
+                        this->name_stack.push_back( &node.m_label );
+                    }
+                    ::HIR::ExprVisitorDef::visit(node);
+                    if( node.m_label != "" ) {
+                        this->name_stack.pop_back( );
+                    }
+                }
+                void visit(::HIR::ExprNode_LoopControl& node) override {
+                    ::HIR::ExprVisitorDef::visit(node);
+                    
+                    if( node.m_continue ) {
+                    }
+                    else {
+                        for( auto it = this->name_stack.rbegin(); it != this->name_stack.rend(); ++ it )
+                        {
+                            if( node.m_label == **it )
+                                return ;
+                        }
+                        if( node.m_label == this->top_label ) {
+                            this->top_is_broken = true;
+                        }
+                        else {
+                            // break is for a higher loop
+                        }
+                    }
+                }
+            };
+            
+            auto& loop_node = dynamic_cast< ::HIR::ExprNode_Loop&>(*m_rv);;
+            LoopVisitor lv { loop_node.m_label };
+            loop_node.m_code->visit(lv);
+            if( ! lv.top_is_broken ) {
+                // If the loop never hit a 'break', the loop yields ! not ()
+                loop_node.m_res_type.m_data = ::HIR::TypeRef::Data::make_Diverge({});
+            }
         }
     }
     virtual void visit(::AST::ExprNode_Match& v) override {

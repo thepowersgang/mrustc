@@ -52,6 +52,7 @@ struct Pattern
         (String, ::std::string),
         (Named, Path)
         );
+    friend ::std::ostream& operator<<(::std::ostream& os, const Pattern::Value& x);
 
     TAGGED_UNION(Data, Any,
         // Irrefutable / destructuring
@@ -108,6 +109,8 @@ struct Pattern
 
     PatternBinding  m_binding;
     Data    m_data;
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const Pattern& x);
 };
 
 }

@@ -88,26 +88,32 @@ void ::HIR::Visitor::visit_module(::HIR::Module& mod)
 
 void ::HIR::Visitor::visit_type_impl(::HIR::TypeImpl& impl)
 {
+    TRACE_FUNCTION_F("impl.m_type=" << impl.m_type);
     this->visit_params(impl.m_params);
     this->visit_type(impl.m_type);
     
     for(auto& method : impl.m_methods) {
+        DEBUG("method " << method.first);
         this->visit_function(method.second);
     }
 }
 void ::HIR::Visitor::visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl)
 {
+    TRACE_FUNCTION_F("trait_path=" << trait_path);
     this->visit_params(impl.m_params);
     this->visit_path_params(impl.m_trait_args);
     this->visit_type(impl.m_type);
     
     for(auto& ent : impl.m_methods) {
+        DEBUG("method " << ent.first);
         this->visit_function(ent.second);
     }
     for(auto& ent : impl.m_constants) {
+        DEBUG("const " << ent.first);
         this->visit_expr(ent.second);
     }
     for(auto& ent : impl.m_types) {
+        DEBUG("type " << ent.first);
         this->visit_type(ent.second);
     }
 }
@@ -125,11 +131,13 @@ void ::HIR::Visitor::visit_type_alias(::HIR::TypeAlias& item)
 }
 void ::HIR::Visitor::visit_trait(::HIR::Trait& item)
 {
+    TRACE_FUNCTION;
     this->visit_params(item.m_params);
     for(auto& par : item.m_parent_traits) {
         this->visit_generic_path(par, ::HIR::Visitor::PathContext::TYPE);
     }
     for(auto& i : item.m_types) {
+        DEBUG("type " << i.first);
         this->visit_params(i.second.m_params);
         this->visit_type(i.second.m_default);
     }
@@ -137,12 +145,15 @@ void ::HIR::Visitor::visit_trait(::HIR::Trait& item)
         TU_MATCH(::HIR::TraitValueItem, (i.second), (e),
         (None, ),
         (Constant,
+            DEBUG("constant " << i.first);
             this->visit_constant(e);
             ),
         (Static,
+            DEBUG("static " << i.first);
             this->visit_static(e);
             ),
         (Function,
+            DEBUG("method " << i.first);
             this->visit_function(e);
             )
         )

@@ -738,11 +738,12 @@ namespace {
         // Adds a rule that two types must be equal
         void apply_equality(const Span& sp, const ::HIR::TypeRef& left, const ::HIR::TypeRef& right)
         {
-            assert( !left.m_data.is_Infer() || left.m_data.as_Infer().index != ~0u );
+            TRACE_FUNCTION_F(left << ", " << right);
+            assert( ! left.m_data.is_Infer() ||  left.m_data.as_Infer().index != ~0u );
             assert( !right.m_data.is_Infer() || right.m_data.as_Infer().index != ~0u );
-            DEBUG("apply_equality(" << left << ", " << right << ")");
             const auto& l_t = this->get_type(left);
             const auto& r_t = this->get_type(right);
+            DEBUG("- l_t = " << l_t << ", r_t = " << r_t);
             TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Infer, r_e,
                 TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Infer, l_e,
                     // Both are infer, unify the two
@@ -769,6 +770,7 @@ namespace {
                     )
                     else {
                         root_ivar.type = box$( left.clone() );
+                        DEBUG("Set IVar " << r_e.index << " = " << *root_ivar.type);
                     }
                 }
             )
@@ -793,7 +795,11 @@ namespace {
                 )
                 else {
                     // Neither are infer - both should be of the same form
-                    // TODO: What if one of these is `!`?
+                    // - If either side is `!`, return early (diverging type, matches anything)
+                    if( l_t.m_data.is_Diverge() || r_t.m_data.is_Diverge() ) {
+                        return ;
+                    }
+                    // - If tags don't match, error
                     if( l_t.m_data.tag() != r_t.m_data.tag() ) {
                         // Type error
                         this->dump();
@@ -829,10 +835,20 @@ namespace {
                         TODO(sp, "Recurse in apply_equality Slice - " << l_t << " and " << r_t);
                         ),
                     (Tuple,
-                        TODO(sp, "Recurse in apply_equality Tuple - " << l_t << " and " << r_t);
+                        if( l_e.size() != r_e.size() ) {
+                            ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - Tuples are of different length");
+                        }
+                        for(unsigned int i = 0; i < l_e.size(); i ++)
+                        {
+                            this->apply_equality(sp, l_e[i], r_e[i]);
+                        }
                         ),
                     (Borrow,
-                        TODO(sp, "Recurse in apply_equality Borrow - " << l_t << " and " << r_t);
+                        if( l_e.type != r_e.type ) {
+                            // TODO: This could be allowed (using coercions)
+                            ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - Borrow classes differ");
+                        }
+                        this->apply_equality(sp, *l_e.inner, *r_e.inner);
                         ),
                     (Pointer,
                         TODO(sp, "Recurse in apply_equality Pointer - " << l_t << " and " << r_t);
@@ -906,28 +922,41 @@ namespace {
         
         void visit_node(::HIR::ExprNode& node) override {
             this->context.add_ivars(node.m_res_type);
+            DEBUG(typeid(node).name() << " : " << node.m_res_type);
         }
         void visit(::HIR::ExprNode_Block& node) override
         {
             ::HIR::ExprVisitorDef::visit(node);
-            assert( node.m_nodes.size() > 0 );
-            this->context.apply_equality(node.span(), node.m_res_type, node.m_nodes.back()->m_res_type);
+            TRACE_FUNCTION_F("{ }");
+            
+            if( node.m_nodes.size() ) {
+                this->context.apply_equality(node.span(), node.m_res_type, node.m_nodes.back()->m_res_type);
+            }
+            else {
+                this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef( ::HIR::TypeRef::TagUnit() ));
+            }
         }
         void visit(::HIR::ExprNode_Let& node) override
         {
             ::HIR::ExprVisitorDef::visit(node);
+            TRACE_FUNCTION_F("let " << node.m_pattern << ": " << node.m_type);
             
             this->context.add_ivars(node.m_type);
             
             this->context.add_binding(node.m_pattern, node.m_type);
+            if( node.m_value ) {
+                this->context.apply_equality(node.span(), node.m_type, node.m_value->m_res_type);
+            }
         }
         
         void visit(::HIR::ExprNode_Match& node) override
         {
             ::HIR::ExprVisitorDef::visit(node);
+            TRACE_FUNCTION_F("match ...");
             
             for(auto& arm : node.m_arms)
             {
+                DEBUG("ARM " << arm.m_patterns);
                 for(auto& pat : arm.m_patterns)
                 {
                     this->context.add_binding(pat, node.m_value->m_res_type);
@@ -939,6 +968,7 @@ namespace {
         void visit(::HIR::ExprNode_If& node) override
         {
             ::HIR::ExprVisitorDef::visit(node);
+            TRACE_FUNCTION_F("if ...");
             this->context.apply_equality(node.span(), node.m_res_type, node.m_true->m_res_type);
             if( node.m_false ) {
                 this->context.apply_equality(node.span(), node.m_res_type, node.m_false->m_res_type);
@@ -979,7 +1009,9 @@ void Typecheck_Code(TypecheckContext context, const ::HIR::TypeRef& result_type,
         ExprVisitor_Enum    visitor { context };
         root_node.visit( visitor );
     }
-    context.apply_equality(root_node.span(), root_node.m_res_type, result_type);
+    DEBUG("- Apply RV");
+    context.apply_equality(root_node.span(), result_type, root_node.m_res_type);
+    context.dump();
     // 2. Iterate through nodes applying rules until nothing changes
     {
         ExprVisitor_Run visitor { context };
@@ -1106,6 +1138,7 @@ namespace {
                 for( auto& arg : item.m_args ) {
                     typeck_context.add_binding( arg.first, arg.second );
                 }
+                DEBUG("Function code");
                 Typecheck_Code( mv$(typeck_context), item.m_return, *item.m_code );
             }
         }
@@ -1114,6 +1147,7 @@ namespace {
             if( &*item.m_value )
             {
                 TypecheckContext typeck_context { };
+                DEBUG("Static value");
                 Typecheck_Code( mv$(typeck_context), item.m_type, *item.m_value );
             }
         }
@@ -1122,6 +1156,7 @@ namespace {
             if( &*item.m_value )
             {
                 TypecheckContext typeck_context { };
+                DEBUG("Const value");
                 Typecheck_Code( mv$(typeck_context), item.m_type, *item.m_value );
             }
         }
@@ -1136,6 +1171,7 @@ namespace {
             {
                 TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
                     TypecheckContext typeck_context { };
+                    DEBUG("Enum value");
                     Typecheck_Code( mv$(typeck_context), enum_type, *e );
                 )
             }

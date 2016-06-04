@@ -64,7 +64,12 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         os << ")";
         ),
     (Array,
-        os << "[" << *e.inner << "; " << "/*sz*/" << "]";
+        os << "[" << *e.inner << "; ";
+        if( e.size_val != ~0u )
+            os << e.size_val;
+        else
+            os << "/*sz*/";
+        os << "]";
         ),
     (Slice,
         os << "[" << *e.inner << "]";
@@ -124,7 +129,7 @@ namespace {
 {
     TU_MATCH(::HIR::TypeRef::Data, (m_data), (e),
     (Infer,
-        return ::HIR::TypeRef( Data::make_Infer({}) );
+        return ::HIR::TypeRef( Data::make_Infer(e) );
         ),
     (Diverge,
         return ::HIR::TypeRef( Data::make_Diverge({}) );

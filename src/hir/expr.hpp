@@ -55,7 +55,7 @@ struct ExprNode_Return:
     ::HIR::ExprNodeP    m_value;
     
     ExprNode_Return(::HIR::ExprNodeP value):
-        ExprNode(::HIR::TypeRef({})),
+        ExprNode(::HIR::TypeRef(TypeRef::TagUnit{})),
         m_value( mv$(value) )
     {
     }
@@ -69,7 +69,7 @@ struct ExprNode_Loop:
     ::HIR::ExprNodeP    m_code;
     
     ExprNode_Loop(::std::string label, ::HIR::ExprNodeP code):
-        ExprNode(::HIR::TypeRef({})),
+        ExprNode(::HIR::TypeRef(TypeRef::TagUnit{})),
         m_label( mv$(label) ),
         m_code( mv$(code) )
     {}
@@ -84,7 +84,7 @@ struct ExprNode_LoopControl:
     //::HIR::ExprNodeP    m_value;
 
     ExprNode_LoopControl(::std::string label, bool cont):
-        ExprNode(::HIR::TypeRef({})),
+        ExprNode(::HIR::TypeRef(TypeRef::TagUnit{})),
         m_label( mv$(label) ),
         m_continue( cont )
     {}
@@ -99,7 +99,7 @@ struct ExprNode_Let:
     ::HIR::ExprNodeP    m_value;
     
     ExprNode_Let(::HIR::Pattern pat, ::HIR::TypeRef ty, ::HIR::ExprNodeP val):
-        ExprNode(::HIR::TypeRef({})),
+        ExprNode(::HIR::TypeRef(TypeRef::TagUnit{})),
         m_pattern( mv$(pat) ),
         m_type( mv$(ty) ),
         m_value( mv$(val) )
@@ -161,7 +161,7 @@ struct ExprNode_Assign:
     ExprNodeP   m_value;
 
     ExprNode_Assign(Op op, ::HIR::ExprNodeP slot, ::HIR::ExprNodeP value):
-        ExprNode(::HIR::TypeRef({})),
+        ExprNode(::HIR::TypeRef(TypeRef::TagUnit{})),
         m_op(op),
         m_slot( mv$(slot) ),
         m_value( mv$(value) )
@@ -340,7 +340,39 @@ struct ExprNode_Literal:
 
     ExprNode_Literal(Data data):
         m_data( mv$(data) )
-    {}
+    {
+        TU_MATCH(Data, (m_data), (e),
+        (Integer,
+            if( e.m_type != ::HIR::CoreType::Str ) {
+                m_res_type = ::HIR::TypeRef::Data::make_Primitive(e.m_type);
+            }
+            ),
+        (Float,
+            if( e.m_type != ::HIR::CoreType::Str ) {
+                m_res_type = ::HIR::TypeRef::Data::make_Primitive(e.m_type);
+            }
+            ),
+        (Boolean,
+            m_res_type = ::HIR::TypeRef::Data::make_Primitive( ::HIR::CoreType::Bool );
+            ),
+        (String,
+            m_res_type = ::HIR::TypeRef::Data::make_Borrow({
+                ::HIR::BorrowType::Shared,
+                box$( ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Primitive(::HIR::CoreType::Str) ) )
+                });
+            ),
+        (ByteString,
+            m_res_type = ::HIR::TypeRef::Data::make_Borrow({
+                ::HIR::BorrowType::Shared,
+                box$( ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Array({
+                    box$( ::HIR::TypeRef(::HIR::TypeRef::Data::make_Primitive(::HIR::CoreType::U8)) ),
+                    ::HIR::ExprPtr(),
+                    e.size()
+                    }) ) )
+                });
+            )
+        )
+    }
     
     NODE_METHODS();
 };
@@ -403,6 +435,11 @@ struct ExprNode_ArrayList:
     ::std::vector< ::HIR::ExprNodeP>    m_vals;
     
     ExprNode_ArrayList(::std::vector< ::HIR::ExprNodeP> vals):
+        ExprNode( ::HIR::TypeRef::Data::make_Array({
+            box$( ::HIR::TypeRef() ),
+            ::HIR::ExprPtr(),
+            vals.size()
+            }) ),
         m_vals( mv$(vals) )
     {}
     
