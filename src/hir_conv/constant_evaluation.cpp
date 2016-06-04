@@ -557,14 +557,34 @@ namespace {
             struct Visitor:
                 public ::HIR::ExprVisitorDef
             {
-                const ::HIR::Crate& m_crate;
+                Expander& m_exp;
                 
-                Visitor(const ::HIR::Crate& crate):
-                    m_crate(crate)
+                Visitor(Expander& exp):
+                    m_exp(exp)
                 {}
                 
+                void visit(::HIR::ExprNode_Let& node) override {
+                    ::HIR::ExprVisitorDef::visit(node);
+                    m_exp.visit_type(node.m_type);
+                }
+                void visit(::HIR::ExprNode_Cast& node) override {
+                    ::HIR::ExprVisitorDef::visit(node);
+                    m_exp.visit_type(node.m_type);
+                }
+                // TODO: This shouldn't exist yet?
+                void visit(::HIR::ExprNode_Unsize& node) override {
+                    ::HIR::ExprVisitorDef::visit(node);
+                    m_exp.visit_type(node.m_type);
+                }
+                void visit(::HIR::ExprNode_Closure& node) override {
+                    ::HIR::ExprVisitorDef::visit(node);
+                    m_exp.visit_type(node.m_return);
+                    for(auto& a : node.m_args)
+                        m_exp.visit_type(a.second);
+                }
+
                 void visit(::HIR::ExprNode_ArraySized& node) override {
-                    auto val = evaluate_constant(m_crate, *node.m_size);
+                    auto val = evaluate_constant(m_exp.m_crate, *node.m_size);
                     if( !val.is_Integer() )
                         ERROR(node.span(), E0000, "Array size isn't an integer");
                     node.m_size_val = val.as_Integer();
@@ -574,7 +594,7 @@ namespace {
             
             if( expr.get() != nullptr )
             {
-                Visitor v { this->m_crate };
+                Visitor v { *this };
                 (*expr).visit(v);
             }
         }

@@ -119,6 +119,7 @@ public:
     TypeRef(TagUnit ):
         m_data( Data::make_Tuple({}) )
     {}
+
     TypeRef(::std::vector< ::HIR::TypeRef> sts):
         m_data( Data::make_Tuple(mv$(sts)) )
     {}
@@ -134,6 +135,16 @@ public:
     TypeRef(::HIR::Path p):
         m_data( Data::make_Path( {mv$(p), TypePathBinding()} ) )
     {}
+
+    static TypeRef new_unit() {
+        return TypeRef(Data::make_Tuple({}));
+    }
+    static TypeRef new_diverge() {
+        return TypeRef(Data::make_Diverge({}));
+    }
+    static TypeRef new_borrow(BorrowType bt, TypeRef inner) {
+        return TypeRef(Data::make_Borrow({bt, box$(mv$(inner))}));
+    }
     
     TypeRef clone() const;
     

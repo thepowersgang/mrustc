@@ -191,8 +191,9 @@ namespace {
         {
             TU_MATCH(::HIR::TypeRef::Data, (type.m_data), (e),
             (Infer,
-                assert(e.index == ~0u);
-                e.index = this->new_ivar();
+                if( e.index == ~0u ) {
+                    e.index = this->new_ivar();
+                }
                 ),
             (Diverge,
                 ),
@@ -753,58 +754,24 @@ namespace {
             DEBUG("- l_t = " << l_t << ", r_t = " << r_t);
             TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Infer, r_e,
                 TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Infer, l_e,
-                    // Both are infer, unify the two
-                    auto& root_ivar = this->get_pointed_ivar(l_e.index);
-                    if( !(&l_t == &*root_ivar.type) ) {
-                        this->dump();
-                        BUG(sp, "Left type (" << left << ") resolved to " << l_t << " but pointers mismatched - (" << (void*)&l_t << " != " << (void*)&*root_ivar.type << ")");
-                    }
-                    root_ivar.alias = r_e.index;
-                    root_ivar.type.reset();
+                    // If both are infer, unify the two ivars (alias right to point to left)
+                    this->ivar_unify(l_e.index, r_e.index);
                 )
                 else {
                     // Righthand side is infer, alias it to the left
-                    auto& root_ivar = this->get_pointed_ivar(r_e.index);
-                    if( !(&r_t == &*root_ivar.type) ) {
-                        this->dump();
-                        BUG(sp, "Right type (" << right << ") resolved to " << r_t << " but pointers mismatched - (" << (void*)&r_t << " != " << (void*)&*root_ivar.type << ")");
-                    }
-                    
-                    // If the left type wasn't a reference to an ivar, store it in the righthand ivar
-                    TU_IFLET(::HIR::TypeRef::Data, left.m_data, Infer, l_e,
-                        root_ivar.alias = l_e.index;
-                        root_ivar.type.reset();
-                    )
-                    else {
-                        DEBUG("Set IVar " << r_e.index << " = " << left);
-                        root_ivar.type = box$( left.clone() );
-                    }
+                    this->set_ivar_to(r_e.index, left);
                 }
             )
             else {
                 TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Infer, l_e,
                     // Lefthand side is infer, alias it to the right
-                    auto& root_ivar = this->get_pointed_ivar(l_e.index);
-                    if( !(&l_t == &*root_ivar.type) ) {
-                        this->dump();
-                        BUG(sp, "Left type (" << left << ") resolved to " << l_t << " but pointers mismatched - (" << (void*)&l_t << " != " << (void*)&*root_ivar.type << ")");
-                    }
-                    
-                    // If the right type was an infer, set left's alias to it
-                    TU_IFLET(::HIR::TypeRef::Data, right.m_data, Infer, r_e,
-                        root_ivar.alias = r_e.index;
-                        root_ivar.type.reset();
-                    )
-                    else {
-                        // Otherwise, store a clone of right in left's ivar
-                        DEBUG("Set IVar " << l_e.index << " = " << right);
-                        root_ivar.type = box$( right.clone() );
-                    }
+                    this->set_ivar_to(l_e.index, right);
                 )
                 else {
                     // Neither are infer - both should be of the same form
                     // - If either side is `!`, return early (diverging type, matches anything)
                     if( l_t.m_data.is_Diverge() || r_t.m_data.is_Diverge() ) {
+                        // TODO: Should diverge check be done elsewhere? what happens if a ! ends up in an ivar?
                         return ;
                     }
                     // - If tags don't match, error
@@ -849,14 +816,18 @@ namespace {
                             ),
                         (UfcsInherent,
                             this->apply_equality(sp, *lpe.type, *rpe.type);
-                            TODO(sp, "Recurse in apply_equality Path - " << l_t << " and " << r_t);
+                            H::equality_typeparams(sp, *this, lpe.params, rpe.params);
                             ),
                         (UfcsKnown,
                             this->apply_equality(sp, *lpe.type, *rpe.type);
-                            TODO(sp, "Recurse in apply_equality Path - " << l_t << " and " << r_t);
+                            H::equality_typeparams(sp, *this, lpe.trait.m_params, rpe.trait.m_params);
+                            H::equality_typeparams(sp, *this, lpe.params, rpe.params);
                             ),
                         (UfcsUnknown,
-                            BUG(sp, "Encountered UfcsUnknown - TODO?");
+                            this->apply_equality(sp, *lpe.type, *rpe.type);
+                            // TODO: If the type is fully known, locate a suitable trait item
+                            //BUG(sp, "Encountered UfcsUnknown - TODO?");
+                            H::equality_typeparams(sp, *this, lpe.params, rpe.params);
                             )
                         )
                         ),
@@ -917,10 +888,25 @@ namespace {
                         this->apply_equality(sp, *l_e.inner, *r_e.inner);
                         ),
                     (Pointer,
-                        TODO(sp, "Recurse in apply_equality Pointer - " << l_t << " and " << r_t);
+                        if( l_e.is_mut != r_e.is_mut ) {
+                            // TODO: This could be allowed if left == false && right == true (reborrowing)
+                            ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - Pointer mutability differs");
+                        }
+                        this->apply_equality(sp, *l_e.inner, *r_e.inner);
                         ),
                     (Function,
-                        TODO(sp, "Recurse in apply_equality Function - " << l_t << " and " << r_t);
+                        if( l_e.is_unsafe != r_e.is_unsafe
+                            || l_e.m_abi != r_e.m_abi
+                            || l_e.m_arg_types.size() != r_e.m_arg_types.size()
+                            )
+                        {
+                            ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                        }
+                        // NOTE: No inferrence in fn types?
+                        this->apply_equality(sp, *l_e.m_rettype, *r_e.m_rettype);
+                        for(unsigned int i = 0; i < l_e.m_arg_types.size(); i ++ ) {
+                            this->apply_equality(sp, l_e.m_arg_types[i], r_e.m_arg_types[i]);
+                        }
                         )
                     )
                 }
@@ -975,6 +961,34 @@ namespace {
                 return type;
             }
         }
+        
+        void set_ivar_to(unsigned int slot, const ::HIR::TypeRef& type)
+        {
+            auto& root_ivar = this->get_pointed_ivar(slot);
+            
+            // If the left type wasn't a reference to an ivar, store it in the righthand ivar
+            TU_IFLET(::HIR::TypeRef::Data, type.m_data, Infer, l_e,
+                assert( l_e.index != slot );
+                DEBUG("Set IVar " << slot << " = @" << l_e.index);
+                root_ivar.alias = l_e.index;
+                root_ivar.type.reset();
+            )
+            else {
+                DEBUG("Set IVar " << slot << " = " << type);
+                root_ivar.type = box$( type.clone() );
+            }
+        }
+
+        void ivar_unify(unsigned int left_slot, unsigned int right_slot)
+        {
+            if( left_slot != right_slot )
+            {
+                // TODO: Assert that setting this won't cause a loop.
+                auto& root_ivar = this->get_pointed_ivar(right_slot);
+                root_ivar.alias = left_slot;
+                root_ivar.type.reset();
+            }
+        }
     };
     
     class ExprVisitor_Enum:
@@ -993,16 +1007,15 @@ namespace {
         }
         void visit(::HIR::ExprNode_Block& node) override
         {
-            ::HIR::ExprVisitorDef::visit(node);
-            TRACE_FUNCTION_F("{ }");
-            
-            if( node.m_nodes.size() ) {
-                this->context.apply_equality(node.span(), node.m_res_type, node.m_nodes.back()->m_res_type,  &node.m_nodes.back());
+            if( node.m_nodes.size() > 0 ) {
+                node.m_nodes.back()->m_res_type = node.m_res_type.clone();
             }
             else {
-                this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef( ::HIR::TypeRef::TagUnit() ));
+                node.m_res_type = ::HIR::TypeRef::new_unit();
             }
+            ::HIR::ExprVisitorDef::visit(node);
         }
+        
         void visit(::HIR::ExprNode_Let& node) override
         {
             ::HIR::ExprVisitorDef::visit(node);
@@ -1011,9 +1024,6 @@ namespace {
             this->context.add_ivars(node.m_type);
             
             this->context.add_binding(node.m_pattern, node.m_type);
-            if( node.m_value ) {
-                this->context.apply_equality(node.span(), node.m_type, node.m_value->m_res_type,  &node.m_value);
-            }
         }
         
         void visit(::HIR::ExprNode_Match& node) override
@@ -1028,17 +1038,6 @@ namespace {
                 {
                     this->context.add_binding(pat, node.m_value->m_res_type);
                 }
-                // TODO: Span on the arm
-                this->context.apply_equality(node.span(), node.m_res_type, arm.m_code->m_res_type);
-            }
-        }
-        void visit(::HIR::ExprNode_If& node) override
-        {
-            ::HIR::ExprVisitorDef::visit(node);
-            TRACE_FUNCTION_F("if ...");
-            this->context.apply_equality(node.span(), node.m_res_type, node.m_true->m_res_type);
-            if( node.m_false ) {
-                this->context.apply_equality(node.span(), node.m_res_type, node.m_false->m_res_type);
             }
         }
     };
@@ -1053,16 +1052,49 @@ namespace {
         {
         }
         
+        void visit(::HIR::ExprNode_Block& node) override
+        {
+            TRACE_FUNCTION_F("{ }");
+            if( node.m_nodes.size() ) {
+                auto& lastnode = node.m_nodes.back();
+                this->context.apply_equality(node.span(), node.m_res_type, lastnode->m_res_type,  &lastnode);
+            }
+            else {
+                this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
+            }
+            ::HIR::ExprVisitorDef::visit(node);
+        }
         void visit(::HIR::ExprNode_Let& node) override
         {
-            ::HIR::ExprVisitorDef::visit(node);
-            
-            this->context.apply_pattern(node.m_pattern, node.m_type);
+            TRACE_FUNCTION_F("let " << node.m_pattern << " : " << node.m_type);
             if( node.m_value ) {
-                this->context.apply_equality(node.span(), node.m_type, node.m_value->m_res_type);
+                this->context.apply_equality(node.span(), node.m_type, node.m_value->m_res_type,  &node.m_value);
             }
+
+            ::HIR::ExprVisitorDef::visit(node);
         }
         
+        void visit(::HIR::ExprNode_If& node) override
+        {
+            TRACE_FUNCTION_F("if ...");
+            this->context.apply_equality(node.span(), node.m_res_type, node.m_true->m_res_type,  &node.m_true);
+            if( node.m_false ) {
+                this->context.apply_equality(node.span(), node.m_res_type, node.m_false->m_res_type, &node.m_false);
+            }
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        void visit(::HIR::ExprNode_Match& node) override
+        {
+            TRACE_FUNCTION_F("match ...");
+            
+            for(auto& arm : node.m_arms)
+            {
+                DEBUG("ARM " << arm.m_patterns);
+                // TODO: Span on the arm
+                this->context.apply_equality(node.span(), node.m_res_type, arm.m_code->m_res_type, &arm.m_code);
+            }
+            ::HIR::ExprVisitorDef::visit(node);
+        }
         // TODO: Other nodes (propagate/equalize types down)
     };
 };

@@ -183,7 +183,13 @@ namespace {
         return ::HIR::TypeRef( Data::make_Pointer({e.is_mut, box$(e.inner->clone())}) );
         ),
     (Function,
-        TODO(Span(), "TypeRef::clone() - this = " << *this);
+        FunctionType    ft;
+        ft.is_unsafe = e.is_unsafe;
+        ft.m_abi = e.m_abi;
+        ft.m_rettype = box$( e.m_rettype->clone() );
+        for(const auto& a : e.m_arg_types)
+            ft.m_arg_types.push_back( a.clone() );
+        return ::HIR::TypeRef(Data::make_Function( mv$(ft) ));
         )
     )
     throw "";
