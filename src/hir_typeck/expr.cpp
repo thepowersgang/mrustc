@@ -1170,6 +1170,26 @@ namespace {
 
             ::HIR::ExprVisitorDef::visit(node);
         }
+
+        void visit(::HIR::ExprNode_UniOp& node) override
+        {
+            ::HIR::ExprVisitorDef::visit(node);
+            
+            switch(node.m_op)
+            {
+            case ::HIR::ExprNode_UniOp::Op::Ref:
+                this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, node.m_value->m_res_type.clone()));
+                break;
+            case ::HIR::ExprNode_UniOp::Op::RefMut:
+                this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, node.m_value->m_res_type.clone()));
+                break;
+            case ::HIR::ExprNode_UniOp::Op::Invert:
+                break;
+            case ::HIR::ExprNode_UniOp::Op::Negate:
+                break;
+            }
+        }
+
         void visit(::HIR::ExprNode_Tuple& node) override
         {
             // Only delete and apply if the return type is an ivar
@@ -1292,6 +1312,19 @@ namespace {
         void visit(::HIR::ExprNode_UniOp& node) override
         {
             ::HIR::ExprVisitorDef::visit(node);
+            
+            switch(node.m_op)
+            {
+            case ::HIR::ExprNode_UniOp::Op::Ref:
+                //this->apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, node.m_value->m_res_type.clone()));
+                break;
+            case ::HIR::ExprNode_UniOp::Op::RefMut:
+                break;
+            case ::HIR::ExprNode_UniOp::Op::Invert:
+                break;
+            case ::HIR::ExprNode_UniOp::Op::Negate:
+                break;
+            }
         }
         // - Cast: Nothing needs to happen
         void visit(::HIR::ExprNode_Cast& node) override
@@ -1337,6 +1370,7 @@ namespace {
         void visit(::HIR::ExprNode_Variable& node) override
         {
             // TODO: How to apply deref coercions here?
+            // - Don't need to, instead construct "higher" nodes to avoid it
             TRACE_FUNCTION_F("var #"<<node.m_slot<<" '"<<node.m_name<<"'");
             this->context.apply_equality(node.span(),
                 node.m_res_type, this->context.get_var_type(node.span(), node.m_slot)
@@ -1345,12 +1379,97 @@ namespace {
         // - Struct literal: Semi-known types
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
+            ::HIR::ExprVisitorDef::visit(node);
         }
         // - Tuple literal: 
         void visit(::HIR::ExprNode_Tuple& node) override
         {
+            ::HIR::ExprVisitorDef::visit(node);
         }
-        // TODO: Other nodes (propagate/equalize types down)
+        // - Array list
+        void visit(::HIR::ExprNode_ArrayList& node) override
+        {
+            const auto& val_type = *node.m_res_type.m_data.as_Array().inner;
+            ::HIR::ExprVisitorDef::visit(node);
+            for(auto& sn : node.m_vals)
+                this->context.apply_equality(sn->span(), val_type, sn->m_res_type,  &sn);
+        }
+        // - Array (sized)
+        void visit(::HIR::ExprNode_ArraySized& node) override
+        {
+            const auto& val_type = *node.m_res_type.m_data.as_Array().inner;
+            ::HIR::ExprVisitorDef::visit(node);
+            this->context.apply_equality(node.span(), val_type, node.m_val->m_res_type,  &node.m_val);
+        }
+        // - Closure
+        void visit(::HIR::ExprNode_Closure& node) override
+        {
+            ::HIR::ExprVisitorDef::visit(node);
+            this->context.apply_equality(node.span(), node.m_return, node.m_code->m_res_type,  &node.m_code);
+        }
+    };
+    
+    /// Visitor that applies the inferred types, and checks that all of them are fully resolved
+    class ExprVisitor_Apply:
+        public ::HIR::ExprVisitorDef
+    {
+        TypecheckContext& context;
+    public:
+        ExprVisitor_Apply(TypecheckContext& context):
+            context(context)
+        {
+        }
+        void visit_node(::HIR::ExprNode& node) override {
+            //node.m_res_type = this->context.get_type(node.m_res_type).clone();
+            this->check_type_resolved(node.span(), node.m_res_type, node.m_res_type);
+        }
+        
+    private:
+        void check_type_resolved(const Span& sp, ::HIR::TypeRef& ty, const ::HIR::TypeRef& top_type) const {
+            TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
+            (Infer,
+                auto new_ty = this->context.get_type(ty).clone();
+                if( new_ty.m_data.is_Infer() ) {
+                    ERROR(sp, E0000, "Failed to infer type " << top_type);
+                }
+                ty = mv$(new_ty);
+                ),
+            (Diverge,
+                // Leaf
+                ),
+            (Primitive,
+                // Leaf
+                ),
+            (Path,
+                // TODO:
+                ),
+            (Generic,
+                // Leaf
+                ),
+            (TraitObject,
+                // TODO:
+                ),
+            (Array,
+                this->check_type_resolved(sp, *e.inner, top_type);
+                ),
+            (Slice,
+                this->check_type_resolved(sp, *e.inner, top_type);
+                ),
+            (Tuple,
+                for(auto& st : e)
+                    this->check_type_resolved(sp, st, top_type);
+                ),
+            (Borrow,
+                this->check_type_resolved(sp, *e.inner, top_type);
+                ),
+            (Pointer,
+                this->check_type_resolved(sp, *e.inner, top_type);
+                ),
+            (Function,
+                // TODO:
+                )
+            )
+        }
     };
 };
 
@@ -1388,6 +1507,10 @@ void Typecheck_Code(TypecheckContext context, const ::HIR::TypeRef& result_type,
     // 3. Check that there's no unresolved types left
     // TODO: Check for completed type resolution
     context.dump();
+    {
+        ExprVisitor_Apply   visitor { context };
+        expr->visit( visitor );
+    }
 }
 
 
@@ -1485,7 +1608,7 @@ namespace {
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
                 this->visit_type( *e.inner );
                 TypecheckContext    typeck_context { m_impl_generics, m_item_generics };
-                DEBUG("Array size");
+                DEBUG("Array size " << ty);
                 Typecheck_Code( mv$(typeck_context), ::HIR::TypeRef(::HIR::CoreType::Usize), e.size );
             )
             else {
@@ -1503,7 +1626,7 @@ namespace {
                 for( auto& arg : item.m_args ) {
                     typeck_context.add_binding( arg.first, arg.second );
                 }
-                DEBUG("Function code");
+                DEBUG("Function code " << p);
                 Typecheck_Code( mv$(typeck_context), item.m_return, item.m_code );
             }
         }
@@ -1512,7 +1635,7 @@ namespace {
             if( item.m_value )
             {
                 TypecheckContext typeck_context { m_impl_generics, m_item_generics };
-                DEBUG("Static value");
+                DEBUG("Static value " << p);
                 Typecheck_Code( mv$(typeck_context), item.m_type, item.m_value );
             }
         }
@@ -1521,7 +1644,7 @@ namespace {
             if( item.m_value )
             {
                 TypecheckContext typeck_context { m_impl_generics, m_item_generics };
-                DEBUG("Const value");
+                DEBUG("Const value " << p);
                 Typecheck_Code( mv$(typeck_context), item.m_type, item.m_value );
             }
         }
@@ -1536,7 +1659,7 @@ namespace {
             {
                 TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
                     TypecheckContext typeck_context { m_impl_generics, m_item_generics };
-                    DEBUG("Enum value");
+                    DEBUG("Enum value " << p << " - " << var.first);
                     Typecheck_Code( mv$(typeck_context), enum_type, e );
                 )
             }
