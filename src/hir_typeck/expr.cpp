@@ -169,9 +169,15 @@ namespace {
         ::std::vector< Variable>    m_locals;
         ::std::vector< IVar>    m_ivars;
         bool    m_has_changed;
+        
+        const ::HIR::GenericParams* m_impl_params;
+        const ::HIR::GenericParams* m_item_params;
+        
     public:
-        TypecheckContext():
-            m_has_changed(false)
+        TypecheckContext(const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params):
+            m_has_changed(false),
+            m_impl_params( impl_params ),
+            m_item_params( item_params )
         {
             // TODO: Use return type (should be moved to caller)
         }
@@ -918,7 +924,18 @@ namespace {
                         // ------------------
                         if( node_ptr_ptr != nullptr )
                         {
-                            // TODO: Allow cases where `right`: ::core::ops::Unsize<`left`>
+                            // Allow cases where `right`: ::core::marker::Unsize<`left`>
+                            // TODO: HACK: Should use the "unsize" lang item
+                            bool succ = this->find_trait_impls(::HIR::SimplePath("", {"marker", "Unsize"}), *r_e.inner, [&](const auto& args) {
+                                DEBUG("- Found unsizing with args " << args);
+                                return args.m_types[0] == *l_e.inner;
+                                });
+                            if( succ ) {
+                                auto span = (**node_ptr_ptr).span();
+                                *node_ptr_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(*node_ptr_ptr), l_t.clone() ));
+                                (*node_ptr_ptr)->m_res_type = l_t.clone();
+                                return ;
+                            }
                             // - If left is a trait object, right can unsize
                             // - If left is a slice, right can unsize/deref
                             if( l_e.inner->m_data.is_Slice() && !r_e.inner->m_data.is_Slice() )
@@ -968,6 +985,32 @@ namespace {
                 }
             }
         }
+        
+        /// Searches for a trait impl that matches the provided trait name and type
+        bool find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,  ::std::function<bool(const ::HIR::PathParams&)> callback)
+        {
+            TRACE_FUNCTION_F("trait = " << trait << ", type = " << type);
+            // 1. Search generic params
+            const ::HIR::GenericParams* v[2] = { m_item_params, m_impl_params };
+            for(auto p : v)
+            {
+                if( !p )    continue ;
+                for(const auto& b : p->m_bounds)
+                {
+                    TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
+                        DEBUG("Bound " << e.type << " : " << e.trait.m_path);
+                        if( e.type == type && e.trait.m_path.m_path == trait ) {
+                            if( callback(e.trait.m_path.m_params) ) {
+                                return true;
+                            }
+                        }
+                    )
+                }
+            }
+            // 2. Search crate-level impls
+            return false;
+        }
+        
     public:
         unsigned int new_ivar()
         {
@@ -1080,7 +1123,15 @@ namespace {
         {
             ::HIR::ExprVisitorDef::visit(node);
             if( node.m_nodes.size() > 0 ) {
-                node.m_nodes.back()->m_res_type = node.m_res_type.clone();
+                auto& ln = *node.m_nodes.back();
+                // If the child node didn't set a real return type, force it to be the same as this node's
+                if( ln.m_res_type.m_data.is_Infer() ) {
+                    ln.m_res_type = node.m_res_type.clone();
+                }
+                else {
+                    // If it was set, equate with possiblity of coercion
+                    this->context.apply_equality(ln.span(), node.m_res_type, ln.m_res_type, &node.m_nodes.back());
+                }
             }
             else {
                 node.m_res_type = ::HIR::TypeRef::new_unit();
@@ -1433,7 +1484,7 @@ namespace {
         {
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
                 this->visit_type( *e.inner );
-                TypecheckContext    typeck_context { };
+                TypecheckContext    typeck_context { m_impl_generics, m_item_generics };
                 DEBUG("Array size");
                 Typecheck_Code( mv$(typeck_context), ::HIR::TypeRef(::HIR::CoreType::Usize), e.size );
             )
@@ -1448,7 +1499,7 @@ namespace {
             auto _ = this->set_item_generics(item.m_params);
             if( item.m_code )
             {
-                TypecheckContext typeck_context { };
+                TypecheckContext typeck_context { m_impl_generics, m_item_generics };
                 for( auto& arg : item.m_args ) {
                     typeck_context.add_binding( arg.first, arg.second );
                 }
@@ -1460,7 +1511,7 @@ namespace {
             //auto _ = this->set_item_generics(item.m_params);
             if( item.m_value )
             {
-                TypecheckContext typeck_context { };
+                TypecheckContext typeck_context { m_impl_generics, m_item_generics };
                 DEBUG("Static value");
                 Typecheck_Code( mv$(typeck_context), item.m_type, item.m_value );
             }
@@ -1469,7 +1520,7 @@ namespace {
             auto _ = this->set_item_generics(item.m_params);
             if( item.m_value )
             {
-                TypecheckContext typeck_context { };
+                TypecheckContext typeck_context { m_impl_generics, m_item_generics };
                 DEBUG("Const value");
                 Typecheck_Code( mv$(typeck_context), item.m_type, item.m_value );
             }
@@ -1484,7 +1535,7 @@ namespace {
             for(auto& var : item.m_variants)
             {
                 TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-                    TypecheckContext typeck_context { };
+                    TypecheckContext typeck_context { m_impl_generics, m_item_generics };
                     DEBUG("Enum value");
                     Typecheck_Code( mv$(typeck_context), enum_type, e );
                 )
