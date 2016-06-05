@@ -384,18 +384,25 @@
         throw "BUG: Encountered non-Absolute path when creating ::HIR::GenericPath";
     }
 }
+::HIR::PathParams LowerHIR_PathParams(const Span& sp, const ::AST::PathParams& src_params)
+{
+    ::HIR::PathParams   params;
+    
+    // TODO: Lifetime params (not encoded in ::HIR::PathNode as yet)
+    //for(const auto& param : src_params.m_lifetimes) {
+    //}
+
+    for(const auto& param : src_params.m_types) {
+        params.m_types.push_back( LowerHIR_Type(param) );
+    }
+
+    return params;
+}
 ::HIR::GenericPath LowerHIR_GenericPath(const Span& sp, const ::AST::Path& path)
 {
     TU_IFLET(::AST::Path::Class, path.m_class, Absolute, e,
         auto simpepath = LowerHIR_SimplePath(sp, path, true);
-        ::HIR::PathParams   params;
-        const auto& src_params = e.nodes.back().args();
-        //for(const auto& param : src_params.m_lifetimes) {
-        //}
-        for(const auto& param : src_params.m_types) {
-            params.m_types.push_back( LowerHIR_Type(param) );
-        }
-        // TODO: Lifetime params (not encoded in AST::PathNode as yet)
+        ::HIR::PathParams   params = LowerHIR_PathParams(sp, e.nodes.back().args());
         auto rv = ::HIR::GenericPath(mv$(simpepath), mv$(params));
         DEBUG(path << " => " << rv);
         return rv;
@@ -428,12 +435,17 @@
     (UFCS,
         if( e.nodes.size() != 1 )
             TODO(sp, "Handle UFCS with multiple nodes - " << path);
+        auto params = LowerHIR_PathParams(sp, e.nodes.front().args());
         if( ! e.trait )
         {
+            auto type = box$( LowerHIR_Type(*e.type) );
+            if( type->m_data.is_Generic() ) {
+                BUG(sp, "Generics can't be used with UfcsInherent - " << path);
+            }
             return ::HIR::Path(::HIR::Path::Data::make_UfcsInherent({
-                box$( LowerHIR_Type(*e.type) ),
+                mv$(type),
                 e.nodes[0].name(),
-                {}
+                mv$(params)
                 }));
         }
         else if( ! e.trait->is_valid() )
@@ -441,7 +453,7 @@
             return ::HIR::Path(::HIR::Path::Data::make_UfcsUnknown({
                 box$( LowerHIR_Type(*e.type) ),
                 e.nodes[0].name(),
-                {}
+                mv$(params)
                 }));
         }
         else
@@ -450,7 +462,7 @@
                 box$(LowerHIR_Type(*e.type)),
                 LowerHIR_GenericPath(sp, *e.trait),
                 e.nodes[0].name(),
-                {}
+                mv$(params)
                 }));
         }
         )

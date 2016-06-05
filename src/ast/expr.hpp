@@ -33,6 +33,7 @@ public:
     
     void set_pos(Position p) { m_pos = ::std::move(p); }
     const Position& get_pos() const { return m_pos; }
+    Span span() const { return m_pos; }
 
     void set_attrs(MetaItems&& mi) {
         m_attrs = mv$(mi);

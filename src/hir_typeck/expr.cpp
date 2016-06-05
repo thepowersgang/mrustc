@@ -147,11 +147,27 @@ namespace {
         {}
         bool is_alias() const { return alias != ~0u; }
     };
+    static const ::std::string EMPTY_STRING;
+    struct Variable
+    {
+        ::std::string   name;
+        ::HIR::TypeRef  type;
+        
+        Variable()
+        {}
+        Variable(const ::std::string& name, ::HIR::TypeRef type):
+            name( name ),
+            type( mv$(type) )
+        {}
+        Variable(Variable&&) = default;
+        
+        Variable& operator=(Variable&&) = default;
+    };
     
     class TypecheckContext
     {
-        ::std::vector< ::HIR::TypeRef>  m_locals;
-        ::std::vector< IVar >   m_ivars;
+        ::std::vector< Variable>    m_locals;
+        ::std::vector< IVar>    m_ivars;
         bool    m_has_changed;
     public:
         TypecheckContext():
@@ -175,7 +191,7 @@ namespace {
             }
             i = 0;
             for(const auto& v : m_locals) {
-                DEBUG("VAR " << i << " = " << v);
+                DEBUG("VAR " << i << " '"<<v.name<<"' = " << v.type);
                 i ++;
             }
         }
@@ -190,20 +206,20 @@ namespace {
         }
         
         /// Adds a local variable binding (type is mutable so it can be inferred if required)
-        void add_local(unsigned int index, ::HIR::TypeRef type)
+        void add_local(unsigned int index, const ::std::string& name, ::HIR::TypeRef type)
         {
             if( m_locals.size() <= index )
                 m_locals.resize(index+1);
-            m_locals[index] = mv$(type);
+            m_locals[index] = Variable(name, mv$(type));
         }
 
-        const ::HIR::TypeRef& get_var_type(unsigned int index)
+        const ::HIR::TypeRef& get_var_type(const Span& sp, unsigned int index)
         {
             if( index >= m_locals.size() ) {
                 this->dump();
-                BUG(Span(), "Local index out of range " << index << " >= " << m_locals.size());
+                BUG(sp, "Local index out of range " << index << " >= " << m_locals.size());
             }
-            return m_locals.at(index);
+            return m_locals.at(index).type;
         }
 
         /// Add (and bind) all '_' types in `type`
@@ -262,13 +278,13 @@ namespace {
             switch( pb.m_type )
             {
             case ::HIR::PatternBinding::Type::Move:
-                this->add_local( pb.m_slot, mv$(type) );
+                this->add_local( pb.m_slot, pb.m_name, mv$(type) );
                 break;
             case ::HIR::PatternBinding::Type::Ref:
-                this->add_local( pb.m_slot,  ::HIR::TypeRef::Data::make_Borrow( {::HIR::BorrowType::Shared, box$(mv$(type))} ) );
+                this->add_local( pb.m_slot, pb.m_name, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(type)) );
                 break;
             case ::HIR::PatternBinding::Type::MutRef:
-                this->add_local( pb.m_slot,  ::HIR::TypeRef::Data::make_Borrow( {::HIR::BorrowType::Unique, box$(mv$(type))} ) );
+                this->add_local( pb.m_slot, pb.m_name, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, mv$(type)) );
                 break;
             }
         }
@@ -370,7 +386,7 @@ namespace {
                     for(auto& sp : e.trailing)
                         this->add_binding( sp, *te.inner );
                     if( e.extra_bind.is_valid() ) {
-                        this->add_local( e.extra_bind.m_slot, type.clone() );
+                        this->add_local( e.extra_bind.m_slot, e.extra_bind.m_name, type.clone() );
                     }
                     )
                 )
@@ -858,7 +874,21 @@ namespace {
                         }
                         ),
                     (TraitObject,
-                        TODO(sp, "Recurse in apply_equality TraitObject - " << l_t << " and " << r_t);
+                        if( l_e.m_traits.size() != r_e.m_traits.size() ) {
+                            // TODO: Possibly allow inferrence reducing the set?
+                            ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - trait counts differ");
+                        }
+                        // NOTE: Lifetime is ignored
+                        // TODO: Is this list sorted for consistency?
+                        for(unsigned int i = 0; i < l_e.m_traits.size(); i ++ )
+                        {
+                            auto& l_p = l_e.m_traits[i];
+                            auto& r_p = r_e.m_traits[i];
+                            if( l_p.m_path != r_p.m_path ) {
+                                ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                            }
+                            // TODO: Equality of params
+                        }
                         ),
                     (Array,
                         this->apply_equality(sp, *l_e.inner, *r_e.inner);
@@ -896,7 +926,8 @@ namespace {
                                 const auto& left_slice = l_e.inner->m_data.as_Slice();
                                 TU_IFLET(::HIR::TypeRef::Data, r_e.inner->m_data, Array, right_array,
                                     this->apply_equality(sp, *left_slice.inner, *right_array.inner);
-                                    *node_ptr_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(*node_ptr_ptr), l_t.clone() ));
+                                    auto span = (**node_ptr_ptr).span();
+                                    *node_ptr_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(*node_ptr_ptr), l_t.clone() ));
                                     (*node_ptr_ptr)->m_res_type = l_t.clone();
                                     return ;
                                 )
@@ -1073,8 +1104,9 @@ namespace {
         
         void visit(::HIR::ExprNode_Match& node) override
         {
-            ::HIR::ExprVisitorDef::visit(node);
             TRACE_FUNCTION_F("match ...");
+            
+            this->context.add_ivars(node.m_value->m_res_type);
             
             for(auto& arm : node.m_arms)
             {
@@ -1084,19 +1116,28 @@ namespace {
                     this->context.add_binding(pat, node.m_value->m_res_type);
                 }
             }
+
+            ::HIR::ExprVisitorDef::visit(node);
         }
         void visit(::HIR::ExprNode_Tuple& node) override
         {
-            // - Remove the ivar created by the generic visitor
-            this->context.dump();
-            this->context.del_ivar( node.m_res_type.m_data.as_Infer().index );
+            // Only delete and apply if the return type is an ivar
+            // - Can happen with `match (a, b)`
+            TU_IFLET(::HIR::TypeRef::Data, node.m_res_type.m_data, Infer, e,
+                // - Remove the ivar created by the generic visitor
+                this->context.dump();
+                this->context.del_ivar( e.index );
+            )
 
             ::HIR::ExprVisitorDef::visit(node);
 
-            ::std::vector< ::HIR::TypeRef>  types;
-            for( const auto& sn : node.m_vals )
-                types.push_back( sn->m_res_type.clone() );
-            node.m_res_type = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Tuple(mv$(types)) );
+            if( node.m_res_type.m_data.is_Infer() )
+            {
+                ::std::vector< ::HIR::TypeRef>  types;
+                for( const auto& sn : node.m_vals )
+                    types.push_back( sn->m_res_type.clone() );
+                node.m_res_type = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Tuple(mv$(types)) );
+            }
         }
         void visit(::HIR::ExprNode_Closure& node) override
         {
@@ -1112,8 +1153,10 @@ namespace {
         // - Variable: Bind to same ivar
         void visit(::HIR::ExprNode_Variable& node) override
         {
-            this->context.del_ivar( node.m_res_type.m_data.as_Infer().index );
-            node.m_res_type = this->context.get_var_type(node.m_slot).clone();
+            TU_IFLET(::HIR::TypeRef::Data, node.m_res_type.m_data, Infer, e,
+                this->context.del_ivar( e.index );
+            )
+            node.m_res_type = this->context.get_var_type(node.span(), node.m_slot).clone();
         }
     };
     
@@ -1177,6 +1220,7 @@ namespace {
         // - Assign: both sides equal
         void visit(::HIR::ExprNode_Assign& node) override
         {
+            TRACE_FUNCTION_F("... = ...");
             if( node.m_op == ::HIR::ExprNode_Assign::Op::None ) {
                 this->context.apply_equality(node.span(),
                     node.m_slot->m_res_type, node.m_value->m_res_type,
@@ -1242,8 +1286,9 @@ namespace {
         void visit(::HIR::ExprNode_Variable& node) override
         {
             // TODO: How to apply deref coercions here?
+            TRACE_FUNCTION_F("var #"<<node.m_slot<<" '"<<node.m_name<<"'");
             this->context.apply_equality(node.span(),
-                node.m_res_type, this->context.get_var_type(node.m_slot)
+                node.m_res_type, this->context.get_var_type(node.span(), node.m_slot)
                 );
         }
         // - Struct literal: Semi-known types

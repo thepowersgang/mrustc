@@ -5,11 +5,6 @@
 ::HIR::ExprNode::~ExprNode()
 {
 }
-const Span& ::HIR::ExprNode::span() const
-{
-    static Span rv = Span();
-    return rv;
-}
 
 #define DEF_VISIT(nt, n, code)   void ::HIR::nt::visit(ExprVisitor& nv) { nv.visit_node(*this); nv.visit(*this); } void ::HIR::ExprVisitorDef::visit(::HIR::nt& n) { code }
 

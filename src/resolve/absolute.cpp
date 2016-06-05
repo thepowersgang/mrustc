@@ -56,7 +56,7 @@ struct Context
     Context(const ::AST::Crate& crate, const ::AST::Module& mod):
         m_crate(crate),
         m_mod(mod),
-        m_var_count(0),
+        m_var_count(~0u),
         m_block_level(0),
         m_frozen_bind_set( false )
     {}
@@ -96,6 +96,28 @@ struct Context
         m_name_context.pop_back();
     }
     
+    class RootBlockScope {
+        friend class Context;
+        Context& ctxt;
+        unsigned int old_varcount;
+        RootBlockScope(Context& ctxt, unsigned int val):
+            ctxt(ctxt),
+            old_varcount(ctxt.m_var_count)
+        {
+            ctxt.m_var_count = val;
+        }
+    public:
+        ~RootBlockScope() {
+            ctxt.m_var_count = old_varcount;
+        }
+    };
+    RootBlockScope enter_rootblock() {
+        return RootBlockScope(*this, 0);
+    }
+    RootBlockScope clear_rootblock() {
+        return RootBlockScope(*this, ~0u);
+    }
+    
     void push_self(const TypeRef& tr) {
         m_name_context.push_back( Ent::make_ConcreteSelf(&tr) );
     }
@@ -131,6 +153,9 @@ struct Context
         m_block_level += 1;
     }
     unsigned int push_var(const Span& sp, const ::std::string& name) {
+        if( m_var_count == ~0u ) {
+            BUG(sp, "Assigning local when there's no variable context");
+        }
         // TODO: Handle avoiding duplicate bindings in a pattern
         if( m_frozen_bind_set )
         {
@@ -155,6 +180,7 @@ struct Context
             }
             m_name_context.back().as_VarBlock().variables.push_back( Named<unsigned int> { name, m_var_count } );
             m_var_count += 1;
+            assert( m_var_count >= m_name_context.back().as_VarBlock().variables.size() );
             return m_var_count - 1;
         }
     }
@@ -428,7 +454,7 @@ struct Context
 void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::LookupMode mode,  ::AST::Path& path);
 void Resolve_Absolute_Type(Context& context,  TypeRef& type);
 void Resolve_Absolute_Expr(Context& context,  ::AST::Expr& expr);
-void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node);
+void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node);
 void Resolve_Absolute_Pattern(Context& context, bool allow_refutable, ::AST::Pattern& pat);
 void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod);
 void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod );
@@ -695,7 +721,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
             if( e.nodes.size() > 1 )
             {
                 if( p.m_class.is_Local() ) {
-                    p = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(sp, mv$(p)) );
+                    p = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(sp, mv$(p)), ::AST::Path() );
                 }
                 if( ! e.nodes[0].args().is_empty() )
                 {
@@ -830,8 +856,8 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
     (Array,
         Resolve_Absolute_Type(context,  *e.inner);
         if( e.size ) {
-            // TODO: Prevent variables from being picked as the array size
-            Resolve_Absolute_Expr(context,  *e.size);
+            auto _h = context.enter_rootblock();
+            Resolve_Absolute_ExprNode(context,  *e.size);
         }
         ),
     (Generic,
@@ -871,15 +897,13 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::Expr& expr)
 {
     if( expr.is_valid() )
     {
-        auto ov = context.m_var_count;
-        context.m_var_count = 0;
-        Resolve_Absolute_Expr(context, expr.node());
-        context.m_var_count = ov;
+        Resolve_Absolute_ExprNode(context, expr.node());
     }
 }
-void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
+void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
 {
     TRACE_FUNCTION_F("");
+
     struct NV:
         public AST::NodeVisitorDef
     {
@@ -893,6 +917,7 @@ void Resolve_Absolute_Expr(Context& context,  ::AST::ExprNode& node)
         void visit(AST::ExprNode_Block& node) override {
             DEBUG("ExprNode_Block");
             if( node.m_local_mod ) {
+                auto _h = context.clear_rootblock();
                 this->context.push( *node.m_local_mod );
 
                 // Clone just the module stack part of the current context
@@ -1068,7 +1093,6 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
     if( pat.binding().is_valid() ) {
         if( !pat.data().is_Any() && ! allow_refutable )
             TODO(pat.span(), "Resolve_Absolute_Pattern - Encountered bound destructuring pattern");
-        // TODO: Record the local variable number in the binding
         pat.binding().m_slot = context.push_var( pat.span(), pat.binding().m_name );
         DEBUG("- Binding #" << pat.binding().m_slot << " '" << pat.binding().m_name << "'");
     }
@@ -1086,7 +1110,6 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
             }
             else {
                 pat = ::AST::Pattern(::AST::Pattern::TagBind(), mv$(name));
-                // TODO: Record the local variable number in the binding
                 pat.binding().m_slot = context.push_var( pat.span(), pat.binding().m_name );
                 DEBUG("- Binding #" << pat.binding().m_slot << " '" << pat.binding().m_name << "' (was MaybeBind)");
             }
@@ -1176,14 +1199,17 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
             for(auto& arg : e.args())
                 Resolve_Absolute_Type( item_context, arg.second );
             
-            item_context.push_block();
-            for(auto& arg : e.args()) {
-                Resolve_Absolute_Pattern( item_context, false, arg.first );
+            {
+                auto _h = item_context.enter_rootblock();
+                item_context.push_block();
+                for(auto& arg : e.args()) {
+                    Resolve_Absolute_Pattern( item_context, false, arg.first );
+                }
+                
+                Resolve_Absolute_Expr( item_context, e.code() );
+                
+                item_context.pop_block();
             }
-            
-            Resolve_Absolute_Expr( item_context, e.code() );
-            
-            item_context.pop_block();
             
             item_context.pop( e.params() );
             ),
@@ -1223,6 +1249,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             {
                 TU_MATCH(::AST::EnumVariantData, (variant.m_data), (s),
                 (Value,
+                    auto _h = item_context.enter_rootblock();
                     Resolve_Absolute_Expr(item_context,  s.m_value);
                     ),
                 (Tuple,
@@ -1297,20 +1324,24 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             for(auto& arg : e.args())
                 Resolve_Absolute_Type( item_context, arg.second );
             
-            item_context.push_block();
-            for(auto& arg : e.args()) {
-                Resolve_Absolute_Pattern( item_context, false, arg.first );
+            {
+                auto _h = item_context.enter_rootblock();
+                item_context.push_block();
+                for(auto& arg : e.args()) {
+                    Resolve_Absolute_Pattern( item_context, false, arg.first );
+                }
+                
+                Resolve_Absolute_Expr( item_context, e.code() );
+                
+                item_context.pop_block();
             }
-            
-            Resolve_Absolute_Expr( item_context, e.code() );
-            
-            item_context.pop_block();
             
             item_context.pop( e.params() );
             ),
         (Static,
             DEBUG("Static - " << i.name);
             Resolve_Absolute_Type( item_context, e.type() );
+            auto _h = item_context.enter_rootblock();
             Resolve_Absolute_Expr( item_context, e.value() );
             )
         )
