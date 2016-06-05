@@ -182,6 +182,15 @@ namespace {
             // TODO: Use return type (should be moved to caller)
         }
         
+        const ::HIR::SimplePath& get_lang_path(const char* name) const {
+            if( ::std::strcmp(name, "index") == 0 ) {
+                static ::HIR::SimplePath    lang_index { "", {"ops", "Index"} };
+                return lang_index;
+            }
+            else {
+                throw "";
+            }
+        }
         
         void dump() const {
             DEBUG("TypecheckContext - " << m_ivars.size() << " ivars, " << m_locals.size() << " locals");
@@ -794,6 +803,9 @@ namespace {
             assert( !right.m_data.is_Infer() || right.m_data.as_Infer().index != ~0u );
             const auto& l_t = this->get_type(left);
             const auto& r_t = this->get_type(right);
+            if( l_t == r_t ) {
+                return ;
+            }
             DEBUG("- l_t = " << l_t << ", r_t = " << r_t);
             TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Infer, r_e,
                 TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Infer, l_e,
@@ -934,6 +946,8 @@ namespace {
                                 auto span = (**node_ptr_ptr).span();
                                 *node_ptr_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(*node_ptr_ptr), l_t.clone() ));
                                 (*node_ptr_ptr)->m_res_type = l_t.clone();
+                                
+                                this->mark_change();
                                 return ;
                             }
                             // - If left is a trait object, right can unsize
@@ -946,6 +960,8 @@ namespace {
                                     auto span = (**node_ptr_ptr).span();
                                     *node_ptr_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(*node_ptr_ptr), l_t.clone() ));
                                     (*node_ptr_ptr)->m_res_type = l_t.clone();
+                                    
+                                    this->mark_change();
                                     return ;
                                 )
                                 else TU_IFLET(::HIR::TypeRef::Data, r_e.inner->m_data, Generic, right_arg,
@@ -1089,6 +1105,8 @@ namespace {
                 DEBUG("Set IVar " << slot << " = " << type);
                 root_ivar.type = box$( type.clone() );
             }
+            
+            this->mark_change();
         }
 
         void ivar_unify(unsigned int left_slot, unsigned int right_slot)
@@ -1099,6 +1117,8 @@ namespace {
                 auto& root_ivar = this->get_pointed_ivar(right_slot);
                 root_ivar.alias = left_slot;
                 root_ivar.type.reset();
+                
+                this->mark_change();
             }
         }
     };
@@ -1316,9 +1336,10 @@ namespace {
             switch(node.m_op)
             {
             case ::HIR::ExprNode_UniOp::Op::Ref:
-                //this->apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, node.m_value->m_res_type.clone()));
+                // - Handled above?
                 break;
             case ::HIR::ExprNode_UniOp::Op::RefMut:
+                // - Handled above?
                 break;
             case ::HIR::ExprNode_UniOp::Op::Invert:
                 break;
@@ -1334,6 +1355,10 @@ namespace {
         // - Index: Look for implementation of the Index trait
         void visit(::HIR::ExprNode_Index& node) override
         {
+            this->context.find_trait_impls(this->context.get_lang_path("index"), node.m_val->m_res_type, [&](const auto& args) {
+                DEBUG("TODO: Insert index operator (if index arg matches)");
+                return false;
+                });
             ::HIR::ExprVisitorDef::visit(node);
         }
         // - Deref: Look for impl of Deref
@@ -1344,6 +1369,7 @@ namespace {
         // - Call Path: Locate path and build return
         void visit(::HIR::ExprNode_CallPath& node) override
         {
+            // TODO: Construct method to get a reference to an item along with the params decoded out of the path
             ::HIR::ExprVisitorDef::visit(node);
         }
         // - Call Value: If type is known, locate impl of Fn/FnMut/FnOnce
@@ -1420,6 +1446,7 @@ namespace {
         {
         }
         void visit_node(::HIR::ExprNode& node) override {
+            DEBUG(typeid(node).name() << " : " << node.m_res_type);
             //node.m_res_type = this->context.get_type(node.m_res_type).clone();
             this->check_type_resolved(node.span(), node.m_res_type, node.m_res_type);
         }
