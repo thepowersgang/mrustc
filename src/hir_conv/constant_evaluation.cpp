@@ -540,13 +540,13 @@ namespace {
                 ::HIR::Visitor::visit_type(ty);
             }
         }
-        void visit_constant(::HIR::Constant& item) override
+        void visit_constant(::HIR::PathChain p, ::HIR::Constant& item) override
         {
             visit_type(item.m_type);
             item.m_value_res = evaluate_constant(m_crate, *item.m_value);
             DEBUG("constant: " << item.m_type <<  " = " << item.m_value_res);
         }
-        void visit_static(::HIR::Static& item) override
+        void visit_static(::HIR::PathChain p, ::HIR::Static& item) override
         {
             visit_type(item.m_type);
             item.m_value_res = evaluate_constant(m_crate, *item.m_value);

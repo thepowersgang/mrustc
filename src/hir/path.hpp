@@ -53,6 +53,10 @@ struct PathParams
     
     PathParams();
     PathParams clone() const;
+    PathParams(const PathParams&) = delete;
+    PathParams& operator=(const PathParams&) = delete;
+    PathParams(PathParams&&) = default;
+    PathParams& operator=(PathParams&&) = default;
     
     //bool operator==(const PathParams& x) const;
     //bool operator<(const PathParams& x) const;

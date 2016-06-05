@@ -1386,12 +1386,12 @@ namespace {
             TODO(Span(), "visit_expr");
         }
 
-        void visit_trait(::HIR::Trait& item) override
+        void visit_trait(::HIR::PathChain p, ::HIR::Trait& item) override
         {
             //::HIR::TypeRef tr { "Self", 0 };
             auto _ = this->set_impl_generics(item.m_params);
             //m_self_types.push_back(&tr);
-            ::HIR::Visitor::visit_trait(item);
+            ::HIR::Visitor::visit_trait(p, item);
             //m_self_types.pop_back();
         }
         
@@ -1444,7 +1444,7 @@ namespace {
         // ------
         // Code-containing items
         // ------
-        void visit_function(::HIR::Function& item) override {
+        void visit_function(::HIR::PathChain p, ::HIR::Function& item) override {
             auto _ = this->set_item_generics(item.m_params);
             if( item.m_code )
             {
@@ -1456,7 +1456,7 @@ namespace {
                 Typecheck_Code( mv$(typeck_context), item.m_return, item.m_code );
             }
         }
-        void visit_static(::HIR::Static& item) override {
+        void visit_static(::HIR::PathChain p, ::HIR::Static& item) override {
             //auto _ = this->set_item_generics(item.m_params);
             if( item.m_value )
             {
@@ -1465,7 +1465,7 @@ namespace {
                 Typecheck_Code( mv$(typeck_context), item.m_type, item.m_value );
             }
         }
-        void visit_constant(::HIR::Constant& item) override {
+        void visit_constant(::HIR::PathChain p, ::HIR::Constant& item) override {
             auto _ = this->set_item_generics(item.m_params);
             if( item.m_value )
             {
@@ -1474,7 +1474,7 @@ namespace {
                 Typecheck_Code( mv$(typeck_context), item.m_type, item.m_value );
             }
         }
-        void visit_enum(::HIR::Enum& item) override {
+        void visit_enum(::HIR::PathChain p, ::HIR::Enum& item) override {
             auto _ = this->set_item_generics(item.m_params);
             
             // TODO: Use a different type depding on repr()

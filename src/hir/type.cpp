@@ -112,6 +112,78 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         )
     )
 }
+bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
+{
+    if( m_data.tag() != x.m_data.tag() )
+        return false;
+    
+    TU_MATCH(::HIR::TypeRef::Data, (m_data, x.m_data), (te, xe),
+    (Infer,
+        // TODO: Should comparing inferrence vars be an error?
+        return true;
+        ),
+    (Diverge,
+        return true;
+        ),
+    (Primitive,
+        return te == xe;
+        ),
+    (Path,
+        assert(!"TODO: Compare path types");
+        ),
+    (Generic,
+        return te.name == xe.name && te.binding == xe.binding;
+        ),
+    (TraitObject,
+        assert(!"TODO: Compare trait object types");
+        ),
+    (Array,
+        if( *te.inner != *xe.inner )
+            return false;
+        if( xe.size_val != te.size_val )
+            return false;
+        if( te.size_val == ~0u )
+            assert(!"TOD: Compre array types with non-resolved sizes");
+        return true;
+        ),
+    (Slice,
+        return *te.inner == *xe.inner;
+        ),
+    (Tuple,
+        if( te.size() != xe.size() )
+            return false;
+        for(unsigned int i = 0; i < te.size(); i ++ ) {
+            if( te[i] != xe[i] )
+                return false;
+        }
+        return true;
+        ),
+    (Borrow,
+        if( te.type != xe.type )
+            return false;
+        return *te.inner == *xe.inner;
+        ),
+    (Pointer,
+        if( te.is_mut != xe.is_mut )
+            return false;
+        return *te.inner == *xe.inner;
+        ),
+    (Function,
+        if( te.is_unsafe != xe.is_unsafe )
+            return false;
+        if( te.m_abi != xe.m_abi )
+            return false;
+        if( te.m_arg_types.size() != xe.m_arg_types.size() )
+            return false;
+        for(unsigned int i = 0; i < te.m_arg_types.size(); i ++ ) {
+            if( te.m_arg_types[i] != xe.m_arg_types[i] )
+                return false;
+        }
+        return te.m_rettype == xe.m_rettype;
+        )
+    )
+    throw "";
+}
 
 namespace {
     ::HIR::TypeRef::TypePathBinding clone_binding(const ::HIR::TypeRef::TypePathBinding& x) {

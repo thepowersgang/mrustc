@@ -149,6 +149,9 @@ public:
     TypeRef clone() const;
     
     void fmt(::std::ostream& os) const;
+    
+    bool operator==(const ::HIR::TypeRef& x) const;
+    bool operator!=(const ::HIR::TypeRef& x) const { return !(*this == x); }
 };
 
 extern ::std::ostream& operator<<(::std::ostream& os, const ::HIR::TypeRef& ty);
