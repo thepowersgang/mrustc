@@ -900,6 +900,9 @@ namespace {
                                     (*node_ptr_ptr)->m_res_type = l_t.clone();
                                     return ;
                                 )
+                                else TU_IFLET(::HIR::TypeRef::Data, r_e.inner->m_data, Generic, right_arg,
+                                    TODO(sp, "Search for Unsize bound on generic");
+                                )
                                 else
                                 {
                                     // Apply deref coercions
@@ -1106,6 +1109,12 @@ namespace {
 
             ::HIR::ExprVisitorDef::visit(node);
         }
+        // - Variable: Bind to same ivar
+        void visit(::HIR::ExprNode_Variable& node) override
+        {
+            this->context.del_ivar( node.m_res_type.m_data.as_Infer().index );
+            node.m_res_type = this->context.get_var_type(node.m_slot).clone();
+        }
     };
     
     class ExprVisitor_Run:
@@ -1232,6 +1241,7 @@ namespace {
         // - Variable: Bind to same ivar
         void visit(::HIR::ExprNode_Variable& node) override
         {
+            // TODO: How to apply deref coercions here?
             this->context.apply_equality(node.span(),
                 node.m_res_type, this->context.get_var_type(node.m_slot)
                 );
