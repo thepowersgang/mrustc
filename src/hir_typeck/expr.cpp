@@ -194,6 +194,7 @@ namespace {
     {
     public:
         const ::HIR::Crate& m_crate;
+        ::std::vector< ::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >   m_traits;
     private:
         ::std::vector< Variable>    m_locals;
         ::std::vector< IVar>    m_ivars;
@@ -1069,6 +1070,24 @@ namespace {
                 }
             }
             // 2. Search crate-level impls
+            return find_trait_impls_crate(trait, type,  callback);
+        }
+        bool find_trait_impls_crate(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,  ::std::function<bool(const ::HIR::PathParams&)> callback) const
+        {
+            auto its = m_crate.m_trait_impls.equal_range( trait );
+            if( its.first != its.second )
+            {
+                for( auto it = its.first; it != its.second; ++ it )
+                {
+                    const auto& impl = it->second;
+                    DEBUG("Compare " << type << " and " << impl.m_type);
+                    if( impl.matches_type(type) ) {
+                        if( callback(impl.m_trait_args) ) {
+                            return true;
+                        }
+                    }
+                }
+            }
             return false;
         }
         /// Locate the named method by applying auto-dereferencing.
@@ -1117,25 +1136,44 @@ namespace {
                         )
                     }
                 }
-
                 
                 TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
-                    if( e.name == "Self" ) {
-                        TODO(sp, "Search for methods on 'Self'");
-                    }
-                    else {
-                        TODO(sp, "Search for methods on parameter #" << e.binding << " '" << e.name << "'");
-                    }
+                    // No match, keep trying.
                 )
                 else {
-                    // 1. Search for inherent methods
+                    // 2. Search for inherent methods
                     for(const auto& impl : m_crate.m_type_impls)
                     {
                         if( impl.matches_type(ty) ) {
                             DEBUG("Mactching impl " << impl.m_type);
+                            fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsInherent({
+                                box$(ty.clone()),
+                                method_name,
+                                {}
+                                }) );
+                            return deref_count;
                         }
                     }
-                    // 2. Search for trait methods (using currently in-scope traits)
+                    // 3. Search for trait methods (using currently in-scope traits)
+                    for(const auto& trait_ref : ::reverse(m_traits))
+                    {
+                        auto it = trait_ref.second->m_values.find(method_name);
+                        if( it == trait_ref.second->m_values.end() )
+                            continue ;
+                        if( !it->second.is_Function() )
+                            continue ;
+                        DEBUG("Search for impl of " << *trait_ref.first);
+                        if( find_trait_impls_crate(*trait_ref.first, ty,  [](const auto&) { return true; }) ) {
+                            DEBUG("Found trait impl " << *trait_ref.first << " for " << ty);
+                            fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
+                                box$( ty.clone() ),
+                                trait_ref.first->clone(),
+                                method_name,
+                                {}
+                                }) );
+                            return deref_count;
+                        }
+                    }
                 }
                 
                 // 3. Dereference and try again
@@ -1144,6 +1182,7 @@ namespace {
                     current_ty = &*e.inner;
                 )
                 else {
+                    // TODO: Search for a Deref impl
                     current_ty = nullptr;
                 }
             } while( current_ty );
@@ -1674,68 +1713,81 @@ namespace {
             }
             ::HIR::ExprVisitorDef::visit(node);
         }
-        // - Call Path: Locate path and build return
-        void visit(::HIR::ExprNode_CallPath& node) override
+        
+        void fix_param_count(const Span& sp, const ::HIR::Path& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params)
         {
-            TRACE_FUNCTION_F("CallPath " << node.m_path);
-            // TODO: Construct method to get a reference to an item along with the params decoded out of the pat
-            TU_MATCH(::HIR::Path::Data, (node.m_path.m_data), (e),
-            (Generic,
-                const auto& fcn = this->context.m_crate.get_function_by_path(node.span(), e.m_path);
-                if( node.m_args.size() != fcn.m_args.size() ) {
-                    ERROR(node.span(), E0000, "Incorrect number of arguments to " << node.m_path);
+            if( params.m_types.size() == param_defs.m_types.size() ) {
+                // Nothing to do, all good
+                return ;
+            }
+            
+            if( params.m_types.size() == 0 ) {
+                for(const auto& typ : param_defs.m_types) {
+                    (void)typ;
+                    params.m_types.push_back( this->context.new_ivar_tr() );
                 }
-                
-                // - Ensure that the number of paramters is correct
-                // TODO: Abstract this
-                if( e.m_params.m_types.size() != fcn.m_params.m_types.size() ) {
-                    if( e.m_params.m_types.size() == 0 ) {
-                        for(const auto& typ : fcn.m_params.m_types) {
-                            (void)typ;
-                            e.m_params.m_types.push_back( this->context.new_ivar_tr() );
-                        }
-                    }
-                    else if( e.m_params.m_types.size() > fcn.m_params.m_types.size() ) {
-                        ERROR(node.span(), E0000, "");
+            }
+            else if( params.m_types.size() > param_defs.m_types.size() ) {
+                ERROR(sp, E0000, "Too many type parameters passed to " << path);
+            }
+            else {
+                while( params.m_types.size() < param_defs.m_types.size() ) {
+                    const auto& typ = param_defs.m_types[params.m_types.size()];
+                    if( typ.m_default.m_data.is_Infer() ) {
+                        ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
                     }
                     else {
-                        while( e.m_params.m_types.size() < fcn.m_params.m_types.size() ) {
-                            const auto& typ = fcn.m_params.m_types[e.m_params.m_types.size()];
-                            if( typ.m_default.m_data.is_Infer() ) {
-                                ERROR(node.span(), E0000, "");
-                            }
-                            else {
-                                // TODO: What if this contains a generic param? (is that valid?)
-                                e.m_params.m_types.push_back( typ.m_default.clone() );
-                            }
-                        }
+                        // TODO: What if this contains a generic param? (is that valid?)
+                        params.m_types.push_back( typ.m_default.clone() );
                     }
                 }
+            }
+        }
+        
+        void visit_call(const Span& sp, ::HIR::Path& path, bool is_method, ::std::vector< ::HIR::ExprNodeP>& args, ::HIR::TypeRef& res_type)
+        {
+            unsigned int arg_ofs = (is_method ? 1 : 0);
+            // TODO: Construct method to get a reference to an item along with the params decoded out of the pat
+            TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
+            (Generic,
+                const auto& fcn = this->context.m_crate.get_function_by_path(sp, e.m_path);
+                if( args.size() + (is_method ? 1 : 0) != fcn.m_args.size() ) {
+                    ERROR(sp, E0000, "Incorrect number of arguments to " << path);
+                }
+                // - Ensure that the number of paramters is correct
+                this->fix_param_count(sp, path, fcn.m_params,  e.m_params);
                 
                 // TODO: Avoid needing to monomorphise here
                 // - Have two callbacks to apply_equality that are used to expand `Generic`s (cleared once used)
-                for( unsigned int i = 0; i < fcn.m_args.size(); i ++ )
+                for( unsigned int i = arg_ofs; i < fcn.m_args.size(); i ++ )
                 {
                     const auto& arg_ty = fcn.m_args[i].second;
                     DEBUG("arg_ty = " << arg_ty);
                     ::HIR::TypeRef  mono_type;
-                    const auto& ty = (monomorphise_type_needed(arg_ty) ? (mono_type = monomorphise_type(node.span(), fcn.m_params, e.m_params, arg_ty)) : arg_ty);
-                    this->context.apply_equality(node.span(), ty, node.m_args[i]->m_res_type);
+                    const auto& ty = (monomorphise_type_needed(arg_ty) ? (mono_type = monomorphise_type(sp, fcn.m_params, e.m_params, arg_ty)) : arg_ty);
+                    this->context.apply_equality(sp, ty, args[i-arg_ofs]->m_res_type);
                 }
                 ::HIR::TypeRef  mono_type;
-                const auto& ty = (monomorphise_type_needed(fcn.m_return) ? (mono_type = monomorphise_type(node.span(), fcn.m_params, e.m_params, fcn.m_return)) : fcn.m_return);
-                this->context.apply_equality(node.span(), node.m_res_type, ty);
+                const auto& ty = (monomorphise_type_needed(fcn.m_return) ? (mono_type = monomorphise_type(sp, fcn.m_params, e.m_params, fcn.m_return)) : fcn.m_return);
+                this->context.apply_equality(sp, res_type, ty);
                 ),
             (UfcsKnown,
-                DEBUG("TODO - Locate functions in UFCS known");
+                TODO(sp, "Locate functions in UFCS known - " << path);
                 ),
             (UfcsUnknown,
-                TODO(node.span(), "Hit a UfcsUnknown (" << node.m_path << ") - Is this an error?");
+                TODO(sp, "Hit a UfcsUnknown (" << path << ") - Is this an error?");
                 ),
             (UfcsInherent,
-                DEBUG("TODO - Locate functions in UFCS inherent");
+                TODO(sp, "Locate functions in UFCS inherent - " << path);
                 )
             )
+        }
+        
+        // - Call Path: Locate path and build return
+        void visit(::HIR::ExprNode_CallPath& node) override
+        {
+            TRACE_FUNCTION_F("CallPath " << node.m_path);
+            visit_call(node.span(), node.m_path, false, node.m_args, node.m_res_type);
             ::HIR::ExprVisitorDef::visit(node);
         }
         // - Call Value: If type is known, locate impl of Fn/FnMut/FnOnce
@@ -1751,12 +1803,11 @@ namespace {
             {
                 const auto& ty = this->context.get_type(node.m_val->m_res_type);
                 DEBUG("ty = " << ty);
-                // TODO: Using autoderef, locate this method on the type
+                // Using autoderef, locate this method on the type
                 ::HIR::Path   fcn_path { ::HIR::SimplePath() };
                 unsigned int deref_count = this->context.autoderef_find_method(node.span(), ty, node.m_method,  fcn_path);
-                if( deref_count != ~0u ) {
-                    // TODO: Add derefs (or record somewhere)
-                    // TODO: Replace this node with CallPath
+                if( deref_count != ~0u )
+                {
                     DEBUG("Found method " << fcn_path);
                     node.m_method_path = mv$(fcn_path);
                     // NOTE: Steals the params from the node
@@ -1782,7 +1833,8 @@ namespace {
                 }
             }
             
-            // TODO: Look up method based on node.m_method_path
+            // TODO: Look up method based on node.m_method_path, using shared code with ExprNode_CallPath
+            visit_call(node.span(), node.m_method_path, true, node.m_args, node.m_res_type);
         }
         // - Field: Locate field on type
         void visit(::HIR::ExprNode_Field& node) override
@@ -1952,6 +2004,7 @@ namespace {
         
         ::HIR::GenericParams*   m_impl_generics;
         ::HIR::GenericParams*   m_item_generics;
+        ::std::vector< ::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >   m_traits;
     public:
         OuterVisitor(::HIR::Crate& crate):
             m_crate(crate),
@@ -1984,6 +2037,18 @@ namespace {
         }
     
     public:
+        void visit_module(::HIR::PathChain p, ::HIR::Module& mod) override
+        {
+            DEBUG("Module has " << mod.m_traits.size() << " in-scope traits");
+            for( const auto& trait_path : mod.m_traits ) {
+                DEBUG("Push " << trait_path);
+                m_traits.push_back( ::std::make_pair( &trait_path, &this->m_crate.get_trait_by_path(Span(), trait_path) ) );
+            }
+            ::HIR::Visitor::visit_module(p, mod);
+            for(unsigned int i = 0; i < mod.m_traits.size(); i ++ )
+                m_traits.pop_back();
+        }
+        
         // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
         void visit_expr(::HIR::ExprPtr& exp) {
             TODO(Span(), "visit_expr");
@@ -2022,6 +2087,7 @@ namespace {
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
                 this->visit_type( *e.inner );
                 TypecheckContext    typeck_context { m_crate, m_impl_generics, m_item_generics };
+                typeck_context.m_traits = this->m_traits;
                 DEBUG("Array size " << ty);
                 Typecheck_Code( mv$(typeck_context), ::HIR::TypeRef(::HIR::CoreType::Usize), e.size );
             )
@@ -2037,6 +2103,7 @@ namespace {
             if( item.m_code )
             {
                 TypecheckContext typeck_context { m_crate, m_impl_generics, m_item_generics };
+                typeck_context.m_traits = this->m_traits;
                 for( auto& arg : item.m_args ) {
                     typeck_context.add_binding( Span(), arg.first, arg.second );
                 }
@@ -2049,6 +2116,7 @@ namespace {
             if( item.m_value )
             {
                 TypecheckContext typeck_context { m_crate, m_impl_generics, m_item_generics };
+                typeck_context.m_traits = this->m_traits;
                 DEBUG("Static value " << p);
                 Typecheck_Code( mv$(typeck_context), item.m_type, item.m_value );
             }
@@ -2058,6 +2126,7 @@ namespace {
             if( item.m_value )
             {
                 TypecheckContext typeck_context { m_crate, m_impl_generics, m_item_generics };
+                typeck_context.m_traits = this->m_traits;
                 DEBUG("Const value " << p);
                 Typecheck_Code( mv$(typeck_context), item.m_type, item.m_value );
             }
@@ -2073,6 +2142,7 @@ namespace {
             {
                 TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
                     TypecheckContext typeck_context { m_crate, m_impl_generics, m_item_generics };
+                    typeck_context.m_traits = this->m_traits;
                     DEBUG("Enum value " << p << " - " << var.first);
                     Typecheck_Code( mv$(typeck_context), enum_type, e );
                 )

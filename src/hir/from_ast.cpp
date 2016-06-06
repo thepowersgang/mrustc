@@ -824,6 +824,12 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
     // TODO: Impl blocks
     
     // TODO: Populate trait list
+    for(const auto& item : module.m_type_items)
+    {
+        if( item.second.path.binding().is_Trait() ) {
+            mod.m_traits.push_back( LowerHIR_SimplePath(Span(), item.second.path) ); 
+        }
+    }
     
     return mod;
 }

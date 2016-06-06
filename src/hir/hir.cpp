@@ -32,6 +32,7 @@ namespace HIR {
 namespace {
     bool matches_type_int(const ::HIR::GenericParams& params, const ::HIR::TypeRef& left,  const ::HIR::TypeRef& right)
     {
+        //DEBUG("left = " << left << ", right = " << right);
         assert(! left.m_data.is_Infer() );
         if( right.m_data.is_Infer() ) {
             // TODO: Why is this false? A _ type could match anything
@@ -39,7 +40,7 @@ namespace {
         }
         
         if( left.m_data.is_Generic() ) {
-            // True?
+            // True? (TODO: Check bounds?)
             return true;
         }
         
