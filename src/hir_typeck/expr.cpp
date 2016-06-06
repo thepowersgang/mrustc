@@ -1081,6 +1081,109 @@ namespace {
             }
         }
         
+        
+        ::HIR::TypeRef expand_associated_types(const Span& sp, ::HIR::TypeRef input) const
+        {
+            TU_MATCH(::HIR::TypeRef::Data, (input.m_data), (e),
+            (Infer,
+                ),
+            (Diverge,
+                ),
+            (Primitive,
+                ),
+            (Path,
+                TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
+                (Generic,
+                    ),
+                (UfcsInherent,
+                    TODO(sp, "Path - UfcsInherent - " << e.path);
+                    ),
+                (UfcsKnown,
+                    // HACK - Shortcut to prevent expensive search if the type is a parameter
+                    if( e2.type->m_data.is_Generic() ) {
+                        return input;
+                    }
+                    
+                    // Search for a matching trait impl
+                    const ::HIR::TraitImpl* impl_ptr = nullptr;
+                    bool rv = this->m_crate.find_trait_impls(e2.trait.m_path, *e2.type,
+                        [&](const auto& ty)->const auto& {
+                            if( ty.m_data.is_Infer() )
+                                return this->get_type(ty);
+                            else
+                                return ty;
+                        },
+                        [&](const auto& impl) {
+                            DEBUG("Found impl - " << e2.trait.m_path << impl.m_trait_args << " for " << impl.m_type);
+                            if( impl.m_trait_args.m_types.size() > 0 )
+                            {
+                                TODO(sp, "Check trait type parameters in expand_associated_types");
+                            }
+                            impl_ptr = &impl;
+                            return true;
+                        });
+                    if( !rv )
+                        break;
+                    
+                    // An impl was found:
+                    assert(impl_ptr);
+                    // - Populate the impl's type arguments
+                    ::std::vector< const ::HIR::TypeRef*>   impl_args;
+                    impl_args.resize( impl_ptr->m_params.m_types.size() );
+                    
+                    // 1. Match impl_ptr->m_type with *e2.type
+                    impl_ptr->m_type.match_generics(sp, *e2.type, [&](unsigned int slot, const ::HIR::TypeRef& ty) {
+                        DEBUG("Set " << slot << " = " << ty);
+                        if( slot >= impl_args.size() ) {
+                            BUG(sp, "Impl parameter out of range - " << slot);
+                        }
+                        impl_args.at(slot) = &ty;
+                        });
+                    // 2. Match impl_ptr->m_trait_args with e2.trait.m_params
+                    
+                    // - Monomorphise the output type
+                    auto new_type = monomorphise_type_with(sp, impl_ptr->m_types.at( e2.item ), [&](const auto& ty)->const auto& {
+                        const auto& ge = ty.m_data.as_Generic();
+                        assert(ge.binding < impl_args.size());
+                        return *impl_args[ge.binding];
+                        });
+                    DEBUG("Converted UfcsKnown - " << e.path << " = " << new_type);
+                    return new_type;
+                    ),
+                (UfcsUnknown,
+                    BUG(sp, "Encountered UfcsUnknown");
+                    )
+                )
+                ),
+            (Generic,
+                ),
+            (TraitObject,
+                // Recurse?
+                ),
+            (Array,
+                *e.inner = expand_associated_types(sp, mv$(*e.inner));
+                ),
+            (Slice,
+                *e.inner = expand_associated_types(sp, mv$(*e.inner));
+                ),
+            (Tuple,
+                for(auto& sub : e) {
+                    sub = expand_associated_types(sp, mv$(sub));
+                }
+                ),
+            (Borrow,
+                *e.inner = expand_associated_types(sp, mv$(*e.inner));
+                ),
+            (Pointer,
+                *e.inner = expand_associated_types(sp, mv$(*e.inner));
+                ),
+            (Function,
+                // Recurse?
+                )
+            )
+            return input;
+        }
+        
         /// Searches for a trait impl that matches the provided trait name and type
         bool find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,  ::std::function<bool(const ::HIR::PathParams&)> callback)
         {
@@ -1784,7 +1887,7 @@ namespace {
             
             TRACE_FUNCTION_F("path = " << path);
             unsigned int arg_ofs = (is_method ? 1 : 0);
-            // TODO: Construct method to get a reference to an item along with the params decoded out of the pat
+            // TODO: Construct method to get a reference to an item along with the params decoded out of the path?
             TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
             (Generic,
                 const auto& fcn = this->context.m_crate.get_function_by_path(sp, e.m_path);
@@ -1813,19 +1916,19 @@ namespace {
                 
                 fcn_ptr = &fcn;
                 
-                const auto& path_params = e.params;
+                //const auto& path_params = e.params;
                 monomorph_cb = [&](const auto& gt)->const auto& {
                         const auto& ge = gt.m_data.as_Generic();
                         if( ge.binding == 0xFFFF ) {
                             return *e.type;
                         }
                         // TODO: Don't the function-level params use 256-511?
-                        else if( ge.binding < 256 ) {
-                            return path_params.m_types[ge.binding];
-                        }
-                        else {
-                        }
-                        TODO(sp, "Monomorphise for trait method");
+                        //else if( ge.binding < 256 ) {
+                        //    return path_params.m_types[ge.binding];
+                        //}
+                        //else {
+                        //}
+                        TODO(sp, "Monomorphise for trait method - " << ge.name << " " << ge.binding);
                     };
                 ),
             (UfcsUnknown,
@@ -1843,21 +1946,39 @@ namespace {
                 ERROR(sp, E0000, "Incorrect number of arguments to " << path);
             }
             
+            // TODO: Save this list (as it's static, since ivars are inserted)
+            // - Prevents need to do lookups on every cycle
+            ::std::vector< ::HIR::TypeRef>  arg_types;
+            for(const auto& arg : fcn.m_args) {
+                if( monomorphise_type_needed(arg.second) ) {
+                    arg_types.push_back( this->context.expand_associated_types(sp, monomorphise_type_with(sp, arg.second,  monomorph_cb)) );
+                }
+                else {
+                    arg_types.push_back( arg.second.clone() );
+                }
+            }
+            if( monomorphise_type_needed(fcn.m_return) ) {
+                arg_types.push_back( this->context.expand_associated_types(sp, monomorphise_type_with(sp, fcn.m_return,  monomorph_cb)) );
+            }
+            else {
+                arg_types.push_back( fcn.m_return.clone() );
+            }
+            
             // TODO: Avoid needing to monomorphise here
             // - Have two callbacks to apply_equality that are used to expand `Generic`s (cleared once used)
+            // - Problem: Converting known associated types into the concrete type
+            //  > Fixable when doing monomorphisation here (because the type is getting cloned anyway)
+            //  > Could also be handled in apply_eqality
             for( unsigned int i = arg_ofs; i < fcn.m_args.size(); i ++ )
             {
                 auto& arg_expr_ptr = args[i - arg_ofs];
-                const auto& arg_ty = fcn.m_args[i].second;
+                const auto& arg_ty = arg_types[i];
                 DEBUG("Arg " << i << ": " << arg_ty);
-                ::HIR::TypeRef  mono_type;
-                const auto& ty = (monomorphise_type_needed(arg_ty) ? (mono_type = monomorphise_type_with(sp, arg_ty,  monomorph_cb)) : arg_ty);
-                this->context.apply_equality(sp, ty, arg_expr_ptr->m_res_type,  &arg_expr_ptr);
+                this->context.apply_equality(sp, arg_ty, arg_expr_ptr->m_res_type,  &arg_expr_ptr);
             }
-            DEBUG("RV " << fcn.m_return);
-            ::HIR::TypeRef  mono_type;
-            const auto& ty = (monomorphise_type_needed(fcn.m_return) ? (mono_type = monomorphise_type_with(sp, fcn.m_return,  monomorph_cb)) : fcn.m_return);
-            this->context.apply_equality(sp, res_type, ty);
+            
+            DEBUG("RV " << arg_types.back());
+            this->context.apply_equality(sp, res_type, arg_types.back());
         }
         
         // - Call Path: Locate path and build return

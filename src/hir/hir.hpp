@@ -202,6 +202,10 @@ TAGGED_UNION(ValueItem, Import,
     (StructConstructor, struct { ::HIR::SimplePath ty; })
     );
 
+// --------------------------------------------------------------------
+
+typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
+
 class TypeImpl
 {
 public:
@@ -210,7 +214,10 @@ public:
     
     ::std::map< ::std::string, ::HIR::Function> m_methods;
     
-    bool matches_type(const ::HIR::TypeRef& tr) const;
+    bool matches_type(const ::HIR::TypeRef& tr, t_cb_resolve_type ty_res) const;
+    bool matches_type(const ::HIR::TypeRef& tr) const {
+        return matches_type(tr, [](const auto& x)->const auto&{ return x; });
+    }
 };
 
 class TraitImpl
@@ -224,7 +231,10 @@ public:
     ::std::map< ::std::string, ::HIR::ExprPtr> m_constants;
     ::std::map< ::std::string, ::HIR::TypeRef> m_types;
     
-    bool matches_type(const ::HIR::TypeRef& tr) const;
+    bool matches_type(const ::HIR::TypeRef& tr, t_cb_resolve_type ty_res) const;
+    bool matches_type(const ::HIR::TypeRef& tr) const {
+        return matches_type(tr, [](const auto& x)->const auto&{ return x; });
+    }
 };
 
 class MarkerImpl
@@ -235,7 +245,10 @@ public:
     bool    is_positive;
     ::HIR::TypeRef  m_type;
     
-    bool matches_type(const ::HIR::TypeRef& tr) const;
+    bool matches_type(const ::HIR::TypeRef& tr, t_cb_resolve_type ty_res) const;
+    bool matches_type(const ::HIR::TypeRef& tr) const {
+        return matches_type(tr, [](const auto& x)->const auto&{ return x; });
+    }
 };
 
 class Crate
@@ -261,6 +274,8 @@ public:
     
     const ::HIR::ValueItem& get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Function& get_function_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
+    
+    const bool find_trait_impls(const ::HIR::SimplePath& path, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TraitImpl&)> callback) const;
 };
 
 }   // namespace HIR

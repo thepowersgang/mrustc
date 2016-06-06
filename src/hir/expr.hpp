@@ -299,6 +299,9 @@ struct ExprNode_CallPath:
     ::HIR::Path m_path;
     ::std::vector<ExprNodeP> m_args;
     
+    // - Cache for typeck
+    ::std::vector< ::HIR::TypeRef>  m_arg_types;
+    
     ExprNode_CallPath(Span sp, ::HIR::Path path, ::std::vector< ::HIR::ExprNodeP> args):
         ExprNode(mv$(sp)),
         m_path( mv$(path) ),
@@ -331,6 +334,7 @@ struct ExprNode_CallMethod:
     
     // - Set during typeck to the real path to the method
     ::HIR::Path m_method_path;
+    ::std::vector< ::HIR::TypeRef>  m_arg_types;
 
     ExprNode_CallMethod(Span sp, ::HIR::ExprNodeP val, ::std::string method_name, ::HIR::PathParams params, ::std::vector< ::HIR::ExprNodeP> args):
         ExprNode( mv$(sp) ),

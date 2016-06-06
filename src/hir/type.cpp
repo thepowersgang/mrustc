@@ -184,6 +184,55 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
     )
     throw "";
 }
+void ::HIR::TypeRef::match_generics(const Span& sp, const ::HIR::TypeRef& x, ::std::function<void(unsigned int, const ::HIR::TypeRef&)> callback) const
+{
+    if( m_data.is_Infer() ) {
+        BUG(sp, "");
+    }
+    if( m_data.is_Generic() ) {
+        callback(m_data.as_Generic().binding, x);
+        return ;
+    }
+    if( m_data.tag() != x.m_data.tag() ) {
+        BUG(sp, "");
+    }
+    TU_MATCH(::HIR::TypeRef::Data, (m_data, x.m_data), (te, xe),
+    (Infer, throw "";),
+    (Generic, throw "";),
+    (Primitive,
+        ),
+    (Diverge,
+        ),
+    (Path,
+        TODO(sp, "Path");
+        ),
+    (TraitObject,
+        TODO(sp, "TraitObject");
+        ),
+    (Array,
+        te.inner->match_generics( sp, *xe.inner, callback );
+        ),
+    (Slice,
+        te.inner->match_generics( sp, *xe.inner, callback );
+        ),
+    (Tuple,
+        if( te.size() != xe.size() ) {
+            BUG(sp, "");
+        }
+        for(unsigned int i = 0; i < te.size(); i ++ )
+            te[i].match_generics( sp, xe[i], callback );
+        ),
+    (Pointer,
+        te.inner->match_generics( sp, *xe.inner, callback );
+        ),
+    (Borrow,
+        te.inner->match_generics( sp, *xe.inner, callback );
+        ),
+    (Function,
+        TODO(sp, "Function");
+        )
+    )
+}
 
 namespace {
     ::HIR::TypeRef::TypePathBinding clone_binding(const ::HIR::TypeRef::TypePathBinding& x) {

@@ -6,6 +6,7 @@
 #include <tagged_union.hpp>
 #include <hir/path.hpp>
 #include <hir/expr_ptr.hpp>
+#include <span.hpp>
 
 namespace HIR {
 
@@ -155,6 +156,11 @@ public:
     
     bool operator==(const ::HIR::TypeRef& x) const;
     bool operator!=(const ::HIR::TypeRef& x) const { return !(*this == x); }
+
+    
+    // Match generics in `this` with types from `x`
+    // Raises a bug against `sp` if there is a form mismatch or `this` has an infer
+    void match_generics(const Span& sp, const ::HIR::TypeRef& x, ::std::function<void(unsigned int, const ::HIR::TypeRef&)> callback) const;
 };
 
 extern ::std::ostream& operator<<(::std::ostream& os, const ::HIR::TypeRef& ty);

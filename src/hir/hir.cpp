@@ -30,10 +30,14 @@ namespace HIR {
 }
 
 namespace {
-    bool matches_type_int(const ::HIR::GenericParams& params, const ::HIR::TypeRef& left,  const ::HIR::TypeRef& right)
+    bool matches_type_int(const ::HIR::GenericParams& params, const ::HIR::TypeRef& left,  const ::HIR::TypeRef& right_in, ::HIR::t_cb_resolve_type ty_res)
     {
         //DEBUG("left = " << left << ", right = " << right);
         assert(! left.m_data.is_Infer() );
+        const auto& right = (right_in.m_data.is_Infer() ? ty_res(right_in) : right_in);
+        
+        // TODO: What indicates what out of ty_res?
+        
         if( right.m_data.is_Infer() ) {
             // TODO: Why is this false? A _ type could match anything
             return false;
@@ -76,7 +80,7 @@ namespace {
                     }
                     for( unsigned int i = 0; i < pre.m_params.m_types.size(); i ++ )
                     {
-                        if( ! matches_type_int(params, ple.m_params.m_types[i], pre.m_params.m_types[i]) )
+                        if( ! matches_type_int(params, ple.m_params.m_types[i], pre.m_params.m_types[i], ty_res) )
                             return false;
                     }
                 }
@@ -92,32 +96,32 @@ namespace {
             return false;
             ),
         (Array,
-            if( ! matches_type_int(params, *le.inner, *re.inner) )
+            if( ! matches_type_int(params, *le.inner, *re.inner, ty_res) )
                 return false;
             if( le.size_val != re.size_val )
                 return false;
             return true;
             ),
         (Slice,
-            return matches_type_int(params, *le.inner, *re.inner);
+            return matches_type_int(params, *le.inner, *re.inner, ty_res);
             ),
         (Tuple,
             if( le.size() != re.size() )
                 return false;
             for( unsigned int i = 0; i < le.size(); i ++ )
-                if( !matches_type_int(params, le[i], re[i]) )
+                if( !matches_type_int(params, le[i], re[i], ty_res) )
                     return false;
             return true;
             ),
         (Borrow,
             if( le.type != re.type )
                 return false;
-            return matches_type_int(params, *le.inner, *re.inner);
+            return matches_type_int(params, *le.inner, *re.inner, ty_res);
             ),
         (Pointer,
             if( le.is_mut != re.is_mut )
                 return false;
-            return matches_type_int(params, *le.inner, *re.inner);
+            return matches_type_int(params, *le.inner, *re.inner, ty_res);
             ),
         (Function,
             DEBUG("TODO: Compare " << left << " and " << right);
@@ -128,17 +132,17 @@ namespace {
     }
 }
 
-bool ::HIR::TraitImpl::matches_type(const ::HIR::TypeRef& type) const
+bool ::HIR::TraitImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
-    return matches_type_int(m_params, m_type, type);
+    return matches_type_int(m_params, m_type, type, ty_res);
 }
-bool ::HIR::TypeImpl::matches_type(const ::HIR::TypeRef& type) const
+bool ::HIR::TypeImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
-    return matches_type_int(m_params, m_type, type);
+    return matches_type_int(m_params, m_type, type, ty_res);
 }
-bool ::HIR::MarkerImpl::matches_type(const ::HIR::TypeRef& type) const
+bool ::HIR::MarkerImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
-    return matches_type_int(m_params, m_type, type);
+    return matches_type_int(m_params, m_type, type, ty_res);
 }
 
 
@@ -253,4 +257,19 @@ const ::HIR::Function& ::HIR::Crate::get_function_by_path(const Span& sp, const 
     else {
         BUG(sp, "Enum path " << path << " didn't point to an enum");
     }
+}
+
+const bool ::HIR::Crate::find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TraitImpl&)> callback) const
+{
+    auto its = this->m_trait_impls.equal_range( trait );
+    for( auto it = its.first; it != its.second; ++ it )
+    {
+        const auto& impl = it->second;
+        if( impl.matches_type(type, ty_res) ) {
+            if( callback(impl) ) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
