@@ -273,11 +273,11 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
             if( tok.type() == TOK_RWORD_MUT )
             {
                 GET_CHECK_TOK(tok, lex, TOK_RWORD_SELF);
-                args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), lex.end_span(ps), true, TypeRef("Self"))) );
+                args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), lex.end_span(ps), true, TypeRef("Self", 0xFFFF))) );
             }
             else
             {
-                args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), lex.end_span(ps), false, TypeRef("Self"))) );
+                args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), lex.end_span(ps), false, TypeRef("Self", 0xFFFF))) );
             }
             DEBUG("TODO: UFCS / self lifetimes");
             if( allow_self == false )
@@ -309,7 +309,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
             }
             else {
                 PUTBACK(tok, lex);
-                ty = TypeRef("Self");
+                ty = TypeRef("Self", 0xFFFF);
             }
             args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), ty) );
             GET_TOK(tok, lex);
@@ -327,7 +327,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
         }
         else {
             PUTBACK(tok, lex);
-            ty = TypeRef("Self");
+            ty = TypeRef("Self", 0xFFFF);
         }
         args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), ty) );
         GET_TOK(tok, lex);
@@ -634,8 +634,8 @@ AST::Trait Parse_TraitDef(TokenStream& lex, AST::Module& mod, const AST::MetaIte
             if( GET_TOK(tok, lex) == TOK_COLON )
             {
                 // Bounded associated type
-                TypeRef a_type = TypeRef( Span(), AST::Path(AST::Path::TagUfcs(), TypeRef(TypeRef::TagArg(), "Self"), AST::Path(), {AST::PathNode(name)}) );
-                //TypeRef a_type = TypeRef(TypeRef::TagAssoc(), TypeRef(TypeRef::TagArg(), "Self"), TypeRef(), name);
+                TypeRef a_type = TypeRef( Span(), AST::Path(AST::Path::TagUfcs(), TypeRef("Self", 0xFFFF), AST::Path(), {AST::PathNode(name)}) );
+                //TypeRef a_type = TypeRef(TypeRef::TagAssoc(), TypeRef("Self", 0xFFFF), TypeRef(), name);
                 Parse_TypeBound(lex, params, a_type);
                 GET_TOK(tok, lex);
             }

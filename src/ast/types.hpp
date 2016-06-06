@@ -192,11 +192,11 @@ public:
     {}
 
     struct TagArg {};
-    TypeRef(TagArg, ::std::string name):
-        m_data(TypeData::make_Generic({ name, 0 }))
+    TypeRef(TagArg, ::std::string name, unsigned int binding = ~0u):
+        m_data(TypeData::make_Generic({ name, binding }))
     {}
-    TypeRef(::std::string name):
-        TypeRef(TagArg(), ::std::move(name))
+    TypeRef(::std::string name, unsigned int binding = ~0u):
+        TypeRef(TagArg(), ::std::move(name), binding)
     {}
 
     struct TagPath {};

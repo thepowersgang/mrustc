@@ -581,7 +581,8 @@
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function( mv$(f) ) );
         ),
     (Generic,
-        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Generic({ e.name, 0 }) );
+        assert(e.index < 0x10000);
+        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Generic({ e.name, e.index }) );
         )
     )
     throw "BUGCHECK: Reached end of LowerHIR_Type";
@@ -666,7 +667,7 @@
         mv$(variants)
         };
 }
-::HIR::Trait LowerHIR_Trait(const ::AST::Trait& f)
+::HIR::Trait LowerHIR_Trait(::HIR::SimplePath trait_path, const ::AST::Trait& f)
 {
     ::std::string   lifetime;
     
@@ -684,6 +685,16 @@
         mv$(lifetime),
         mv$(supertraits)
         };
+
+    {
+        auto this_trait = ::HIR::GenericPath( mv$(trait_path) );
+        unsigned int i = 0;
+        for(const auto& arg : rv.m_params.m_types) {
+            this_trait.m_params.m_types.push_back( ::HIR::TypeRef(arg.m_name, i) );
+            i ++;
+        }
+        rv.m_params.m_bounds.push_back( ::HIR::GenericBound::make_TraitBound({ ::HIR::TypeRef("Self",0xFFFF), mv$(this_trait) }) );
+    }
     
     for(const auto& item : f.items())
     {
@@ -778,7 +789,7 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Enum(e) );
             ),
         (Trait,
-            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Trait(e) );
+            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Trait(item_path, e) );
             ),
         (Function,
             _add_mod_val_item(mod, item.name, item.is_pub,  LowerHIR_Function(e));

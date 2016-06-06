@@ -826,7 +826,6 @@ namespace {
         }
         // Adds a rule that two types must be equal
         // - NOTE: The ordering does matter, as the righthand side will get unsizing/deref coercions applied if possible
-        // TODO: Support coercions
         /// \param sp   Span for reporting errors
         /// \param left     Lefthand type (destination for coercions)
         /// \param right    Righthand type (source for coercions)
@@ -929,7 +928,6 @@ namespace {
                         (UfcsUnknown,
                             this->apply_equality(sp, *lpe.type, cb_left, *rpe.type, cb_right, nullptr);
                             // TODO: If the type is fully known, locate a suitable trait item
-                            //BUG(sp, "Encountered UfcsUnknown - TODO?");
                             equality_typeparams(lpe.params, rpe.params);
                             )
                         )
@@ -985,7 +983,6 @@ namespace {
                         if( node_ptr_ptr != nullptr )
                         {
                             // Allow cases where `right`: ::core::marker::Unsize<`left`>
-                            // TODO: HACK: Should use the "unsize" lang item
                             bool succ = this->find_trait_impls(this->m_crate.get_lang_item_path(sp, "unsize"), *r_e.inner, [&](const auto& args) {
                                 DEBUG("- Found unsizing with args " << args);
                                 return args.m_types[0] == *l_e.inner;
@@ -1074,6 +1071,67 @@ namespace {
             // 2. Search crate-level impls
             return false;
         }
+        /// Locate the named method by applying auto-dereferencing.
+        /// \return Number of times deref was applied (or ~0 if _ was hit)
+        unsigned int autoderef_find_method(const Span& sp, const ::HIR::TypeRef& top_ty, const ::std::string method_name,  /* Out -> */::HIR::Path& fcn_path) const
+        {
+            unsigned int deref_count = 0;
+            const auto* current_ty = &top_ty;
+            do {
+                const auto& ty = this->get_type(*current_ty);
+                if( ty.m_data.is_Infer() ) {
+                    return ~0u;
+                }
+                
+                // 1. Search generic bounds for a match
+                const ::HIR::GenericParams* v[2] = { m_item_params, m_impl_params };
+                for(auto p : v)
+                {
+                    if( !p )    continue ;
+                    for(const auto& b : p->m_bounds)
+                    {
+                        TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
+                            DEBUG("Bound " << e.type << " : " << e.trait.m_path);
+                            // TODO: Match using _ replacement
+                            if( e.type == ty ) {
+                                DEBUG("- Matches " << ty);
+                            }
+                        )
+                    }
+                }
+
+                
+                TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
+                    if( e.name == "Self" ) {
+                        TODO(sp, "Search for methods on 'Self'");
+                    }
+                    else {
+                        TODO(sp, "Search for methods on parameter #" << e.binding << " '" << e.name << "'");
+                    }
+                )
+                else {
+                    // 1. Search for inherent methods
+                    for(const auto& impl : m_crate.m_type_impls)
+                    {
+                        if( impl.matches_type(ty) ) {
+                            DEBUG("Mactching impl " << impl.m_type);
+                        }
+                    }
+                    // 2. Search for trait methods (using currently in-scope traits)
+                }
+                
+                // 3. Dereference and try again
+                deref_count += 1;
+                TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Borrow, e,
+                    current_ty = &*e.inner;
+                )
+                else {
+                    current_ty = nullptr;
+                }
+            } while( current_ty );
+            // Dereference failed! This is a hard error (hitting _ is checked above and returns ~0)
+            TODO(sp, "Error when no method could be found, but type is known - (: " << top_ty << ")." << method_name);
+        }
         
     public:
         unsigned int new_ivar()
@@ -1099,7 +1157,7 @@ namespace {
             return rv;
         }
         
-        IVar& get_pointed_ivar(unsigned int slot)
+        IVar& get_pointed_ivar(unsigned int slot) const
         {
             auto index = slot;
             unsigned int count = 0;
@@ -1115,7 +1173,7 @@ namespace {
                 count ++;
             }
             assert( m_ivars.at(index).deleted == false );
-            return m_ivars.at(index);
+            return const_cast<IVar&>(m_ivars.at(index));
         }
         ::HIR::TypeRef& get_type(::HIR::TypeRef& type)
         {
@@ -1127,7 +1185,7 @@ namespace {
                 return type;
             }
         }
-        const ::HIR::TypeRef& get_type(const ::HIR::TypeRef& type)
+        const ::HIR::TypeRef& get_type(const ::HIR::TypeRef& type) const
         {
             TU_IFLET(::HIR::TypeRef::Data, type.m_data, Infer, e,
                 assert(e.index != ~0u);
@@ -1671,16 +1729,18 @@ namespace {
         void visit(::HIR::ExprNode_CallMethod& node) override
         {
             ::HIR::ExprVisitorDef::visit(node);
-            const auto& ty = this->context.get_type(node.m_val->m_res_type);
-            DEBUG("ty = " << ty);
-            // TODO: Using autoderef, locate this method on the type
-            //const ::HIR::Function* fcn;
-            //MaybePtr< ::HIR::TypeRef>  method_type;
-            //unsigned int deref_count = this->autoderef_find_method(ty, node.m_name,  method_type,fcn);
-            //if( deref_count != ~0u ) {
-            //    // TODO: Add derefs (or record somewhere)
-            //    // 
-            //}
+            if( node.m_method_path.m_data.is_Generic() && node.m_method_path.m_data.as_Generic().m_path.m_components.size() == 0 )
+            {
+                const auto& ty = this->context.get_type(node.m_val->m_res_type);
+                DEBUG("ty = " << ty);
+                // TODO: Using autoderef, locate this method on the type
+                ::HIR::Path   fcn_path { ::HIR::SimplePath() };
+                unsigned int deref_count = this->context.autoderef_find_method(node.span(), ty, node.m_method,  fcn_path);
+                if( deref_count != ~0u ) {
+                //    // TODO: Add derefs (or record somewhere)
+                //    // TODO: Replace this node with CallPath
+                }
+            }
         }
         // - Field: Locate field on type
         void visit(::HIR::ExprNode_Field& node) override

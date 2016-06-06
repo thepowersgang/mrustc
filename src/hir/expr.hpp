@@ -328,13 +328,17 @@ struct ExprNode_CallMethod:
     ::std::string   m_method;
     ::HIR::PathParams  m_params;
     ::std::vector< ::HIR::ExprNodeP>    m_args;
+    
+    // - Set during typeck to the real path to the method
+    ::HIR::Path m_method_path;
 
     ExprNode_CallMethod(Span sp, ::HIR::ExprNodeP val, ::std::string method_name, ::HIR::PathParams params, ::std::vector< ::HIR::ExprNodeP> args):
         ExprNode( mv$(sp) ),
         m_val( mv$(val) ),
         m_method( mv$(method_name) ),
         m_params( mv$(params) ),
-        m_args( mv$(args) )
+        m_args( mv$(args) ),
+        m_method_path( ::HIR::SimplePath("",{}) )
     {
     }
     

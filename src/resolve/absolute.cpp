@@ -140,7 +140,9 @@ struct Context
                     return e->clone();
                 }
                 else {
-                    return ::TypeRef("Self");
+                    auto rv = ::TypeRef("Self");
+                    rv.m_data.as_Generic().index = 0xFFFF;
+                    return rv;
                 }
                 )
             )
@@ -358,7 +360,7 @@ struct Context
                     {
                         if( it2->name == name ) {
                             ::AST::Path rv(name);
-                            rv.bind_variable( it2->value.index * (it2->value.level == GenericSlot::Level::Method ? 256 : 0) );
+                            rv.bind_variable( it2->value.index * (it2->value.level == GenericSlot::Level::Method ? 256 : 1) );
                             return rv;
                         }
                     }
@@ -410,7 +412,7 @@ struct Context
                     for( auto it2 = e.types.rbegin(); it2 != e.types.rend(); ++ it2 )
                     {
                         if( it2->name == name ) {
-                            return it2->value.index * (it2->value.level == GenericSlot::Level::Method ? 256 : 0);
+                            return it2->value.index * (it2->value.level == GenericSlot::Level::Method ? 256 : 1);
                         }
                     }
                 }
