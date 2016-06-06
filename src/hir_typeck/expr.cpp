@@ -1880,96 +1880,94 @@ namespace {
             }
         }
         
-        void visit_call(const Span& sp, ::HIR::Path& path, bool is_method, ::std::vector< ::HIR::ExprNodeP>& args, ::HIR::TypeRef& res_type)
+        void visit_call(const Span& sp, ::HIR::Path& path, bool is_method, ::std::vector< ::HIR::ExprNodeP>& args, ::HIR::TypeRef& res_type,   ::std::vector< ::HIR::TypeRef>& arg_types)
         {
-            const ::HIR::Function*  fcn_ptr = nullptr;
-            ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>    monomorph_cb;
-            
             TRACE_FUNCTION_F("path = " << path);
             unsigned int arg_ofs = (is_method ? 1 : 0);
-            // TODO: Construct method to get a reference to an item along with the params decoded out of the path?
-            TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
-            (Generic,
-                const auto& fcn = this->context.m_crate.get_function_by_path(sp, e.m_path);
-                this->fix_param_count(sp, path, fcn.m_params,  e.m_params);
-                fcn_ptr = &fcn;
+            
+            if( arg_types.size() == 0 )
+            {
+                const ::HIR::Function*  fcn_ptr = nullptr;
+                ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>    monomorph_cb;
                 
-                //const auto& params_def = fcn.m_params;
-                const auto& path_params = e.m_params;
-                monomorph_cb = [&](const auto& gt)->const auto& {
-                        const auto& e = gt.m_data.as_Generic();
-                        if( e.name == "Self" )
-                            TODO(sp, "Handle 'Self' when monomorphising");
-                        //if( e.binding >= params_def.m_types.size() ) {
-                        //}
-                        if( e.binding >= path_params.m_types.size() ) {
-                            BUG(sp, "Generic param out of input range - " << e.binding << " '"<<e.name<<"' >= " << path_params.m_types.size());
-                        }
-                        return path_params.m_types[e.binding];
-                    };
-                ),
-            (UfcsKnown,
-                const auto& trait = this->context.m_crate.get_trait_by_path(sp, e.trait.m_path);
-                this->fix_param_count(sp, path, trait.m_params, e.trait.m_params);
-                const auto& fcn = trait.m_values.find(e.item)->second.as_Function();
-                this->fix_param_count(sp, path, fcn.m_params,  e.params);
-                
-                fcn_ptr = &fcn;
-                
-                //const auto& path_params = e.params;
-                monomorph_cb = [&](const auto& gt)->const auto& {
-                        const auto& ge = gt.m_data.as_Generic();
-                        if( ge.binding == 0xFFFF ) {
-                            return *e.type;
-                        }
-                        // TODO: Don't the function-level params use 256-511?
-                        //else if( ge.binding < 256 ) {
-                        //    return path_params.m_types[ge.binding];
-                        //}
-                        //else {
-                        //}
-                        TODO(sp, "Monomorphise for trait method - " << ge.name << " " << ge.binding);
-                    };
-                ),
-            (UfcsUnknown,
-                TODO(sp, "Hit a UfcsUnknown (" << path << ") - Is this an error?");
-                ),
-            (UfcsInherent,
-                TODO(sp, "Locate functions in UFCS inherent - " << path);
+                // TODO: Construct method to get a reference to an item along with the params decoded out of the path?
+                TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
+                (Generic,
+                    const auto& fcn = this->context.m_crate.get_function_by_path(sp, e.m_path);
+                    this->fix_param_count(sp, path, fcn.m_params,  e.m_params);
+                    fcn_ptr = &fcn;
+                    
+                    //const auto& params_def = fcn.m_params;
+                    const auto& path_params = e.m_params;
+                    monomorph_cb = [&](const auto& gt)->const auto& {
+                            const auto& e = gt.m_data.as_Generic();
+                            if( e.name == "Self" )
+                                TODO(sp, "Handle 'Self' when monomorphising");
+                            //if( e.binding >= params_def.m_types.size() ) {
+                            //}
+                            if( e.binding >= path_params.m_types.size() ) {
+                                BUG(sp, "Generic param out of input range - " << e.binding << " '"<<e.name<<"' >= " << path_params.m_types.size());
+                            }
+                            return path_params.m_types[e.binding];
+                        };
+                    ),
+                (UfcsKnown,
+                    const auto& trait = this->context.m_crate.get_trait_by_path(sp, e.trait.m_path);
+                    this->fix_param_count(sp, path, trait.m_params, e.trait.m_params);
+                    const auto& fcn = trait.m_values.find(e.item)->second.as_Function();
+                    this->fix_param_count(sp, path, fcn.m_params,  e.params);
+                    
+                    fcn_ptr = &fcn;
+                    
+                    //const auto& path_params = e.params;
+                    monomorph_cb = [&](const auto& gt)->const auto& {
+                            const auto& ge = gt.m_data.as_Generic();
+                            if( ge.binding == 0xFFFF ) {
+                                return *e.type;
+                            }
+                            // TODO: Don't the function-level params use 256-511?
+                            //else if( ge.binding < 256 ) {
+                            //    return path_params.m_types[ge.binding];
+                            //}
+                            //else {
+                            //}
+                            TODO(sp, "Monomorphise for trait method - " << ge.name << " " << ge.binding);
+                        };
+                    ),
+                (UfcsUnknown,
+                    TODO(sp, "Hit a UfcsUnknown (" << path << ") - Is this an error?");
+                    ),
+                (UfcsInherent,
+                    TODO(sp, "Locate functions in UFCS inherent - " << path);
+                    )
                 )
-            )
 
-            assert( fcn_ptr );
-            const auto& fcn = *fcn_ptr;
-            
-            if( args.size() + (is_method ? 1 : 0) != fcn.m_args.size() ) {
-                ERROR(sp, E0000, "Incorrect number of arguments to " << path);
-            }
-            
-            // TODO: Save this list (as it's static, since ivars are inserted)
-            // - Prevents need to do lookups on every cycle
-            ::std::vector< ::HIR::TypeRef>  arg_types;
-            for(const auto& arg : fcn.m_args) {
-                if( monomorphise_type_needed(arg.second) ) {
-                    arg_types.push_back( this->context.expand_associated_types(sp, monomorphise_type_with(sp, arg.second,  monomorph_cb)) );
+                assert( fcn_ptr );
+                const auto& fcn = *fcn_ptr;
+                
+                if( args.size() + (is_method ? 1 : 0) != fcn.m_args.size() ) {
+                    ERROR(sp, E0000, "Incorrect number of arguments to " << path);
+                }
+                
+                for(const auto& arg : fcn.m_args) {
+                    if( monomorphise_type_needed(arg.second) ) {
+                        arg_types.push_back( this->context.expand_associated_types(sp, monomorphise_type_with(sp, arg.second,  monomorph_cb)) );
+                    }
+                    else {
+                        arg_types.push_back( arg.second.clone() );
+                    }
+                }
+                if( monomorphise_type_needed(fcn.m_return) ) {
+                    arg_types.push_back( this->context.expand_associated_types(sp, monomorphise_type_with(sp, fcn.m_return,  monomorph_cb)) );
                 }
                 else {
-                    arg_types.push_back( arg.second.clone() );
+                    arg_types.push_back( fcn.m_return.clone() );
                 }
             }
-            if( monomorphise_type_needed(fcn.m_return) ) {
-                arg_types.push_back( this->context.expand_associated_types(sp, monomorphise_type_with(sp, fcn.m_return,  monomorph_cb)) );
-            }
-            else {
-                arg_types.push_back( fcn.m_return.clone() );
-            }
+            // TODO: Save the arg_types vector
+            // - Prevents need to do lookups and monomorph on every cycle
             
-            // TODO: Avoid needing to monomorphise here
-            // - Have two callbacks to apply_equality that are used to expand `Generic`s (cleared once used)
-            // - Problem: Converting known associated types into the concrete type
-            //  > Fixable when doing monomorphisation here (because the type is getting cloned anyway)
-            //  > Could also be handled in apply_eqality
-            for( unsigned int i = arg_ofs; i < fcn.m_args.size(); i ++ )
+            for( unsigned int i = arg_ofs; i < arg_types.size() - 1; i ++ )
             {
                 auto& arg_expr_ptr = args[i - arg_ofs];
                 const auto& arg_ty = arg_types[i];
@@ -1985,7 +1983,8 @@ namespace {
         void visit(::HIR::ExprNode_CallPath& node) override
         {
             TRACE_FUNCTION_F("CallPath " << node.m_path);
-            visit_call(node.span(), node.m_path, false, node.m_args, node.m_res_type);
+            // - Pass m_arg_types as a cache to avoid constant lookups
+            visit_call(node.span(), node.m_path, false, node.m_args, node.m_res_type,  node.m_arg_types);
             ::HIR::ExprVisitorDef::visit(node);
         }
         // - Call Value: If type is known, locate impl of Fn/FnMut/FnOnce
@@ -2031,8 +2030,8 @@ namespace {
                 }
             }
             
-            // TODO: Look up method based on node.m_method_path, using shared code with ExprNode_CallPath
-            visit_call(node.span(), node.m_method_path, true, node.m_args, node.m_res_type);
+            // - Pass m_arg_types as a cache to avoid constant lookups
+            visit_call(node.span(), node.m_method_path, true, node.m_args, node.m_res_type,  node.m_arg_types);
         }
         // - Field: Locate field on type
         void visit(::HIR::ExprNode_Field& node) override
