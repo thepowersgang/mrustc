@@ -145,6 +145,9 @@ public:
     static TypeRef new_borrow(BorrowType bt, TypeRef inner) {
         return TypeRef(Data::make_Borrow({bt, box$(mv$(inner))}));
     }
+    static TypeRef new_pointer(bool bt, TypeRef inner) {
+        return TypeRef(Data::make_Pointer({bt, box$(mv$(inner))}));
+    }
     
     TypeRef clone() const;
     

@@ -81,15 +81,18 @@ namespace {
         )
         throw "";
     }
-    //::HIR::Path monomorphise_path(const ::HIR::GenericParams& params_def, const ::HIR::PathParams& params,  const ::HIR::Path& tpl)
-    //{
-    //}
-    ::HIR::TypeRef monomorphise_type(const Span& sp, const ::HIR::GenericParams& params_def, const ::HIR::PathParams& params,  const ::HIR::TypeRef& tpl)
+    typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>   t_cb_generic;
+    ::HIR::TypeRef monomorphise_type_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer=true)
     {
         DEBUG("tpl = " << tpl);
         TU_MATCH(::HIR::TypeRef::Data, (tpl.m_data), (e),
         (Infer,
-            assert(!"ERROR: _ type found in monomorphisation target");
+            if( allow_infer ) {
+                return ::HIR::TypeRef(e);
+            }
+            else {
+               BUG(sp, "_ type found in monomorphisation target");
+            }
             ),
         (Diverge,
             return ::HIR::TypeRef(e);
@@ -101,40 +104,60 @@ namespace {
             TODO(Span(), "Path");
             ),
         (Generic,
-            //if( e.binding >= params_def.m_types.size() ) {
-            //}
-            if( e.binding >= params.m_types.size() ) {
-                BUG(sp, "Generic param out of input range - " << e.binding << " '"<<e.name<<"' >= " << params.m_types.size());
-            }
-            return params.m_types[e.binding].clone();
+            return callback(tpl).clone();
             ),
         (TraitObject,
             TODO(sp, "TraitObject");
             ),
         (Array,
-            TODO(sp, "Array");
+            if( e.size_val == ~0u ) {
+                BUG(Span(), "Attempting to clone array with unknown size - " << tpl);
+            }
+            return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Array({
+                box$( monomorphise_type_with(sp, *e.inner, callback) ),
+                ::HIR::ExprPtr(),
+                e.size_val
+                }) );
             ),
         (Slice,
-            return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Slice({ box$(monomorphise_type(sp, params_def, params, *e.inner)) }) );
+            return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Slice({ box$(monomorphise_type_with(sp, *e.inner, callback)) }) );
             ),
         (Tuple,
             ::std::vector< ::HIR::TypeRef>  types;
             for(const auto& ty : e) {
-                types.push_back( monomorphise_type(sp, params_def, params,  ty) );
+                types.push_back( monomorphise_type_with(sp, ty, callback) );
             }
             return ::HIR::TypeRef( mv$(types) );
             ),
         (Borrow,
-            return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Borrow({ e.type, box$(monomorphise_type(sp, params_def, params,  *e.inner)) }) );
+            return ::HIR::TypeRef::new_borrow(e.type, monomorphise_type_with(sp, *e.inner, callback));
             ),
         (Pointer,
-            return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Pointer({ e.is_mut, box$(monomorphise_type(sp, params_def, params,  *e.inner)) }) );
+            return ::HIR::TypeRef::new_pointer(e.is_mut, monomorphise_type_with(sp, *e.inner, callback));
             ),
         (Function,
             TODO(sp, "Function");
             )
         )
         throw "";
+        
+    }
+    
+    //::HIR::Path monomorphise_path(const ::HIR::GenericParams& params_def, const ::HIR::PathParams& params,  const ::HIR::Path& tpl)
+    //{
+    //}
+    ::HIR::TypeRef monomorphise_type(const Span& sp, const ::HIR::GenericParams& params_def, const ::HIR::PathParams& params,  const ::HIR::TypeRef& tpl)
+    {
+        DEBUG("tpl = " << tpl);
+        return monomorphise_type_with(sp, tpl, [&](const auto& gt)->const auto& {
+            const auto& e = gt.m_data.as_Generic();
+            //if( e.binding >= params_def.m_types.size() ) {
+            //}
+            if( e.binding >= params.m_types.size() ) {
+                BUG(sp, "Generic param out of input range - " << e.binding << " '"<<e.name<<"' >= " << params.m_types.size());
+            }
+            return params.m_types[e.binding];
+            }, false);
     }
     
     struct IVar
@@ -248,6 +271,24 @@ namespace {
                 ),
             (Path,
                 // Iterate all arguments
+                TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
+                (Generic,
+                    this->add_ivars_params(e2.m_params);
+                    ),
+                (UfcsKnown,
+                    this->add_ivars(*e2.type);
+                    this->add_ivars_params(e2.trait.m_params);
+                    this->add_ivars_params(e2.params);
+                    ),
+                (UfcsUnknown,
+                    this->add_ivars(*e2.type);
+                    this->add_ivars_params(e2.params);
+                    ),
+                (UfcsInherent,
+                    this->add_ivars(*e2.type);
+                    this->add_ivars_params(e2.params);
+                    )
+                )
                 ),
             (Generic,
                 ),
@@ -790,8 +831,6 @@ namespace {
         /// \param left     Lefthand type (destination for coercions)
         /// \param right    Righthand type (source for coercions)
         /// \param node_ptr Pointer to ExprNodeP, updated with new nodes for coercions
-        typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>   t_cb_generic;
-        
         void apply_equality(const Span& sp, const ::HIR::TypeRef& left, const ::HIR::TypeRef& right, ::HIR::ExprNodeP* node_ptr_ptr = nullptr)
         {
             apply_equality(sp, left, [](const auto& x)->const auto&{return x;}, right, [](const auto& x)->const auto&{return x;}, node_ptr_ptr);
@@ -823,13 +862,15 @@ namespace {
                 )
                 else {
                     // Righthand side is infer, alias it to the left
-                    this->set_ivar_to(r_e.index, left);
+                    //  TODO: that `true` should be `false` if the callback isn't unity (for bug checking)
+                    this->set_ivar_to(r_e.index, monomorphise_type_with(sp, left, cb_left, true));
                 }
             )
             else {
                 TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Infer, l_e,
                     // Lefthand side is infer, alias it to the right
-                    this->set_ivar_to(l_e.index, right);
+                    //  TODO: that `true` should be `false` if the callback isn't unity (for bug checking)
+                    this->set_ivar_to(l_e.index, monomorphise_type_with(sp, right, cb_right, true));
                 )
                 else {
                     // Neither are infer - both should be of the same form
@@ -1097,7 +1138,7 @@ namespace {
             }
         }
         
-        void set_ivar_to(unsigned int slot, const ::HIR::TypeRef& type)
+        void set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
         {
             auto& root_ivar = this->get_pointed_ivar(slot);
             
@@ -1110,7 +1151,7 @@ namespace {
             )
             else {
                 DEBUG("Set IVar " << slot << " = " << type);
-                root_ivar.type = box$( type.clone() );
+                root_ivar.type = box$( mv$(type) );
             }
             
             this->mark_change();
@@ -1130,6 +1171,10 @@ namespace {
         }
     };
     
+    // Enumerate inferrence variables (most of them) in the expression tree
+    //
+    // - Any type equalities here are mostly optimisations (as this gets run only once)
+    //  - If ivars can be shared down the tree - good.
     class ExprVisitor_Enum:
         public ::HIR::ExprVisitorDef
     {
@@ -1195,6 +1240,20 @@ namespace {
                 }
             }
 
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        void visit(::HIR::ExprNode_If& node) override
+        {
+            node.m_cond->m_res_type = ::HIR::TypeRef( ::HIR::CoreType::Bool );
+            if( node.m_false ) {
+                node.m_true->m_res_type = node.m_res_type.clone();
+                node.m_false->m_res_type = node.m_res_type.clone();
+            }
+            else {
+                this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
+                node.m_true->m_res_type = node.m_res_type.clone();
+            }
+            
             ::HIR::ExprVisitorDef::visit(node);
         }
 
@@ -1284,6 +1343,7 @@ namespace {
         }
     };
     
+    // Continually run over the expression tree until nothing changes
     class ExprVisitor_Run:
         public ::HIR::ExprVisitorDef
     {
@@ -1514,6 +1574,7 @@ namespace {
         // - Cast: Nothing needs to happen
         void visit(::HIR::ExprNode_Cast& node) override
         {
+            // TODO: Check cast validity?
             ::HIR::ExprVisitorDef::visit(node);
         }
         // - Index: Look for implementation of the Index trait
@@ -1590,11 +1651,13 @@ namespace {
                 this->context.apply_equality(node.span(), node.m_res_type, ty);
                 ),
             (UfcsKnown,
+                DEBUG("TODO - Locate functions in UFCS known");
                 ),
             (UfcsUnknown,
                 TODO(node.span(), "Hit a UfcsUnknown (" << node.m_path << ") - Is this an error?");
                 ),
             (UfcsInherent,
+                DEBUG("TODO - Locate functions in UFCS inherent");
                 )
             )
             ::HIR::ExprVisitorDef::visit(node);
@@ -1611,6 +1674,13 @@ namespace {
             const auto& ty = this->context.get_type(node.m_val->m_res_type);
             DEBUG("ty = " << ty);
             // TODO: Using autoderef, locate this method on the type
+            //const ::HIR::Function* fcn;
+            //MaybePtr< ::HIR::TypeRef>  method_type;
+            //unsigned int deref_count = this->autoderef_find_method(ty, node.m_name,  method_type,fcn);
+            //if( deref_count != ~0u ) {
+            //    // TODO: Add derefs (or record somewhere)
+            //    // 
+            //}
         }
         // - Field: Locate field on type
         void visit(::HIR::ExprNode_Field& node) override
@@ -1677,8 +1747,8 @@ namespace {
         }
         void visit_node(::HIR::ExprNode& node) override {
             DEBUG(typeid(node).name() << " : " << node.m_res_type);
-            //node.m_res_type = this->context.get_type(node.m_res_type).clone();
             this->check_type_resolved(node.span(), node.m_res_type, node.m_res_type);
+            DEBUG(typeid(node).name() << " : = " << node.m_res_type);
         }
         
     private:

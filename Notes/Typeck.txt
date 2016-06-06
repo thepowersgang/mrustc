@@ -14,5 +14,20 @@ Type inferrence
 - If only one is concrete, alias the infer to it
 
 
+# Code Elements
+
+## Function/Method references
+
+Needs to be able to point to functions in:
+- Root namespace (with parameters)
+- Trait (with two sets of parameters)
+- Type impl block (with two sets of parameters)
+- NOTE: Don't need to worry about trait impl blocks?
+ - What about handling an associated type return (fully known)
+
+
+Maybe can use separate types for each usecase?
+- 
+
 <!-- vim: ft=markdown
 -->
