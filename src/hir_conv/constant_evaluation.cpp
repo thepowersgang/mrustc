@@ -590,6 +590,15 @@ namespace {
                     node.m_size_val = val.as_Integer();
                     DEBUG("Array literal [?; " << node.m_size_val << "]");
                 }
+                
+                void visit(::HIR::ExprNode_CallPath& node) override {
+                    ::HIR::ExprVisitorDef::visit(node);
+                    m_exp.visit_path(node.m_path, ::HIR::Visitor::PathContext::VALUE);
+                }
+                void visit(::HIR::ExprNode_CallMethod& node) override {
+                    ::HIR::ExprVisitorDef::visit(node);
+                    m_exp.visit_path_params(node.m_params);
+                }
             };
             
             if( expr.get() != nullptr )
