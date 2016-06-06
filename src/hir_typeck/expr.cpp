@@ -164,7 +164,7 @@ namespace {
             return ::HIR::TypeRef::new_borrow(e.type, monomorphise_type_with(sp, *e.inner, callback));
             ),
         (Pointer,
-            return ::HIR::TypeRef::new_pointer(e.is_mut, monomorphise_type_with(sp, *e.inner, callback));
+            return ::HIR::TypeRef::new_pointer(e.type, monomorphise_type_with(sp, *e.inner, callback));
             ),
         (Function,
             TODO(sp, "Function");
@@ -909,6 +909,28 @@ namespace {
                         // TODO: Should diverge check be done elsewhere? what happens if a ! ends up in an ivar?
                         return ;
                     }
+
+                    if( l_t.m_data.is_Pointer() && r_t.m_data.is_Borrow() ) {
+                        const auto& l_e = l_t.m_data.as_Pointer();
+                        const auto& r_e = r_t.m_data.as_Borrow();
+                        if( node_ptr_ptr != nullptr )
+                        {
+                            // 1. Equate inner types
+                            this->apply_equality(sp, *l_e.inner, cb_left, *r_e.inner, cb_right, nullptr);
+                            // 2. If that succeeds, add a coerce
+                            auto span = (**node_ptr_ptr).span();
+                            *node_ptr_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(*node_ptr_ptr), l_t.clone() ));
+                            (*node_ptr_ptr)->m_res_type = l_t.clone();
+                            
+                            this->mark_change();
+                            return ;
+                        }
+                        else
+                        {
+                            ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " (can't coerce)");
+                        }
+                    }
+
                     // - If tags don't match, error
                     if( l_t.m_data.tag() != r_t.m_data.tag() ) {
                         // Type error
@@ -1056,7 +1078,7 @@ namespace {
                         this->apply_equality(sp, *l_e.inner, cb_left, *r_e.inner, cb_right, nullptr);
                         ),
                     (Pointer,
-                        if( l_e.is_mut != r_e.is_mut ) {
+                        if( l_e.type != r_e.type ) {
                             // TODO: This could be allowed if left == false && right == true (reborrowing)
                             ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - Pointer mutability differs");
                         }

@@ -90,11 +90,11 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         os << *e.inner;
         ),
     (Pointer,
-        if( e.is_mut ) {
-            os << "*mut ";
-        }
-        else {
-            os << "*const ";
+        switch(e.type)
+        {
+        case ::HIR::BorrowType::Shared: os << "*const ";  break;
+        case ::HIR::BorrowType::Unique: os << "*mut ";  break;
+        case ::HIR::BorrowType::Owned:  os << "*move "; break;
         }
         os << *e.inner;
         ),
@@ -164,7 +164,7 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
         return *te.inner == *xe.inner;
         ),
     (Pointer,
-        if( te.is_mut != xe.is_mut )
+        if( te.type != xe.type )
             return false;
         return *te.inner == *xe.inner;
         ),
@@ -301,7 +301,7 @@ namespace {
         return ::HIR::TypeRef( Data::make_Borrow({e.type, box$(e.inner->clone())}) );
         ),
     (Pointer,
-        return ::HIR::TypeRef( Data::make_Pointer({e.is_mut, box$(e.inner->clone())}) );
+        return ::HIR::TypeRef( Data::make_Pointer({e.type, box$(e.inner->clone())}) );
         ),
     (Function,
         FunctionType    ft;

@@ -119,7 +119,7 @@ namespace {
             return matches_type_int(params, *le.inner, *re.inner, ty_res);
             ),
         (Pointer,
-            if( le.is_mut != re.is_mut )
+            if( le.type != re.type )
                 return false;
             return matches_type_int(params, *le.inner, *re.inner, ty_res);
             ),

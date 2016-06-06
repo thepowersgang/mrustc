@@ -523,10 +523,11 @@
         ),
     (Borrow,
         auto cl = (e.is_mut ? ::HIR::BorrowType::Unique : ::HIR::BorrowType::Shared);
-        return ::HIR::TypeRef( ::HIR::TypeRef::Data( ::HIR::TypeRef::Data::Data_Borrow { cl, box$(LowerHIR_Type(*e.inner)) } ) );
+        return ::HIR::TypeRef::new_borrow( cl, LowerHIR_Type(*e.inner) );
         ),
     (Pointer,
-        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Pointer({e.is_mut, box$(LowerHIR_Type(*e.inner))}) );
+        auto cl = (e.is_mut ? ::HIR::BorrowType::Unique : ::HIR::BorrowType::Shared);
+        return ::HIR::TypeRef::new_pointer( cl, LowerHIR_Type(*e.inner) );
         ),
     (Array,
         if( e.size ) {
