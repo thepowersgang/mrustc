@@ -82,9 +82,22 @@ namespace {
         throw "";
     }
     typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>   t_cb_generic;
-    ::HIR::TypeRef monomorphise_type_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer=true)
+    ::HIR::TypeRef monomorphise_type_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer=true);
+    
+    ::HIR::PathParams monomorphise_path_params_with(const Span& sp, const ::HIR::PathParams& tpl, t_cb_generic callback, bool allow_infer)
     {
-        DEBUG("tpl = " << tpl);
+        ::HIR::PathParams   rv;
+        for( const auto& ty : tpl.m_types) 
+            rv.m_types.push_back( monomorphise_type_with(sp, ty, callback) );
+        return rv;
+    }
+    ::HIR::GenericPath monomorphise_genericpath_with(const Span& sp, const ::HIR::GenericPath& tpl, t_cb_generic callback, bool allow_infer)
+    {
+        return ::HIR::GenericPath( tpl.m_path, monomorphise_path_params_with(sp, tpl.m_params, callback, allow_infer) );
+    }
+    ::HIR::TypeRef monomorphise_type_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer)
+    {
+        TRACE_FUNCTION_F("tpl = " << tpl);
         TU_MATCH(::HIR::TypeRef::Data, (tpl.m_data), (e),
         (Infer,
             if( allow_infer ) {
@@ -101,7 +114,25 @@ namespace {
             return ::HIR::TypeRef(e);
             ),
         (Path,
-            TODO(Span(), "Path");
+            TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
+            (Generic,
+                return ::HIR::TypeRef( monomorphise_genericpath_with(sp, e2, callback, allow_infer) );
+                ),
+            (UfcsKnown,
+                return ::HIR::TypeRef( ::HIR::Path::Data::make_UfcsKnown({
+                    box$( monomorphise_type_with(sp, *e2.type, callback, allow_infer) ),
+                    monomorphise_genericpath_with(sp, e2.trait, callback, allow_infer),
+                    e2.item,
+                    monomorphise_path_params_with(sp, e2.params, callback, allow_infer)
+                    }) );
+                ),
+            (UfcsUnknown,
+                TODO(sp, "UfcsUnknown");
+                ),
+            (UfcsInherent,
+                TODO(sp, "UfcsInherent");
+                )
+            )
             ),
         (Generic,
             return callback(tpl).clone();
@@ -111,7 +142,7 @@ namespace {
             ),
         (Array,
             if( e.size_val == ~0u ) {
-                BUG(Span(), "Attempting to clone array with unknown size - " << tpl);
+                BUG(sp, "Attempting to clone array with unknown size - " << tpl);
             }
             return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Array({
                 box$( monomorphise_type_with(sp, *e.inner, callback) ),
@@ -143,14 +174,13 @@ namespace {
         
     }
     
-    //::HIR::Path monomorphise_path(const ::HIR::GenericParams& params_def, const ::HIR::PathParams& params,  const ::HIR::Path& tpl)
-    //{
-    //}
     ::HIR::TypeRef monomorphise_type(const Span& sp, const ::HIR::GenericParams& params_def, const ::HIR::PathParams& params,  const ::HIR::TypeRef& tpl)
     {
         DEBUG("tpl = " << tpl);
         return monomorphise_type_with(sp, tpl, [&](const auto& gt)->const auto& {
             const auto& e = gt.m_data.as_Generic();
+            if( e.name == "Self" )
+                TODO(sp, "Handle 'Self' when monomorphising");
             //if( e.binding >= params_def.m_types.size() ) {
             //}
             if( e.binding >= params.m_types.size() ) {
@@ -983,10 +1013,13 @@ namespace {
                         // ------------------
                         if( node_ptr_ptr != nullptr )
                         {
+                            const auto& left_inner_res  = this->get_type(*l_e.inner);
+                            const auto& right_inner_res = this->get_type(*r_e.inner);
+                            
                             // Allow cases where `right`: ::core::marker::Unsize<`left`>
-                            bool succ = this->find_trait_impls(this->m_crate.get_lang_item_path(sp, "unsize"), *r_e.inner, [&](const auto& args) {
+                            bool succ = this->find_trait_impls(this->m_crate.get_lang_item_path(sp, "unsize"), right_inner_res, [&](const auto& args) {
                                 DEBUG("- Found unsizing with args " << args);
-                                return args.m_types[0] == *l_e.inner;
+                                return args.m_types[0] == left_inner_res;
                                 });
                             if( succ ) {
                                 auto span = (**node_ptr_ptr).span();
@@ -998,10 +1031,10 @@ namespace {
                             }
                             // - If left is a trait object, right can unsize
                             // - If left is a slice, right can unsize/deref
-                            if( l_e.inner->m_data.is_Slice() && !r_e.inner->m_data.is_Slice() )
+                            if( left_inner_res.m_data.is_Slice() && !right_inner_res.m_data.is_Slice() )
                             {
-                                const auto& left_slice = l_e.inner->m_data.as_Slice();
-                                TU_IFLET(::HIR::TypeRef::Data, r_e.inner->m_data, Array, right_array,
+                                const auto& left_slice = left_inner_res.m_data.as_Slice();
+                                TU_IFLET(::HIR::TypeRef::Data, right_inner_res.m_data, Array, right_array,
                                     this->apply_equality(sp, *left_slice.inner, cb_left, *right_array.inner, cb_right, nullptr);
                                     auto span = (**node_ptr_ptr).span();
                                     *node_ptr_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(*node_ptr_ptr), l_t.clone() ));
@@ -1010,7 +1043,7 @@ namespace {
                                     this->mark_change();
                                     return ;
                                 )
-                                else TU_IFLET(::HIR::TypeRef::Data, r_e.inner->m_data, Generic, right_arg,
+                                else TU_IFLET(::HIR::TypeRef::Data, right_inner_res.m_data, Generic, right_arg,
                                     TODO(sp, "Search for Unsize bound on generic");
                                 )
                                 else
@@ -1746,33 +1779,54 @@ namespace {
         
         void visit_call(const Span& sp, ::HIR::Path& path, bool is_method, ::std::vector< ::HIR::ExprNodeP>& args, ::HIR::TypeRef& res_type)
         {
+            const ::HIR::Function*  fcn_ptr = nullptr;
+            ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>    monomorph_cb;
+            
+            TRACE_FUNCTION_F("path = " << path);
             unsigned int arg_ofs = (is_method ? 1 : 0);
             // TODO: Construct method to get a reference to an item along with the params decoded out of the pat
             TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
             (Generic,
                 const auto& fcn = this->context.m_crate.get_function_by_path(sp, e.m_path);
-                if( args.size() + (is_method ? 1 : 0) != fcn.m_args.size() ) {
-                    ERROR(sp, E0000, "Incorrect number of arguments to " << path);
-                }
-                // - Ensure that the number of paramters is correct
                 this->fix_param_count(sp, path, fcn.m_params,  e.m_params);
+                fcn_ptr = &fcn;
                 
-                // TODO: Avoid needing to monomorphise here
-                // - Have two callbacks to apply_equality that are used to expand `Generic`s (cleared once used)
-                for( unsigned int i = arg_ofs; i < fcn.m_args.size(); i ++ )
-                {
-                    const auto& arg_ty = fcn.m_args[i].second;
-                    DEBUG("arg_ty = " << arg_ty);
-                    ::HIR::TypeRef  mono_type;
-                    const auto& ty = (monomorphise_type_needed(arg_ty) ? (mono_type = monomorphise_type(sp, fcn.m_params, e.m_params, arg_ty)) : arg_ty);
-                    this->context.apply_equality(sp, ty, args[i-arg_ofs]->m_res_type);
-                }
-                ::HIR::TypeRef  mono_type;
-                const auto& ty = (monomorphise_type_needed(fcn.m_return) ? (mono_type = monomorphise_type(sp, fcn.m_params, e.m_params, fcn.m_return)) : fcn.m_return);
-                this->context.apply_equality(sp, res_type, ty);
+                //const auto& params_def = fcn.m_params;
+                const auto& path_params = e.m_params;
+                monomorph_cb = [&](const auto& gt)->const auto& {
+                        const auto& e = gt.m_data.as_Generic();
+                        if( e.name == "Self" )
+                            TODO(sp, "Handle 'Self' when monomorphising");
+                        //if( e.binding >= params_def.m_types.size() ) {
+                        //}
+                        if( e.binding >= path_params.m_types.size() ) {
+                            BUG(sp, "Generic param out of input range - " << e.binding << " '"<<e.name<<"' >= " << path_params.m_types.size());
+                        }
+                        return path_params.m_types[e.binding];
+                    };
                 ),
             (UfcsKnown,
-                TODO(sp, "Locate functions in UFCS known - " << path);
+                const auto& trait = this->context.m_crate.get_trait_by_path(sp, e.trait.m_path);
+                this->fix_param_count(sp, path, trait.m_params, e.trait.m_params);
+                const auto& fcn = trait.m_values.find(e.item)->second.as_Function();
+                this->fix_param_count(sp, path, fcn.m_params,  e.params);
+                
+                fcn_ptr = &fcn;
+                
+                const auto& path_params = e.params;
+                monomorph_cb = [&](const auto& gt)->const auto& {
+                        const auto& ge = gt.m_data.as_Generic();
+                        if( ge.binding == 0xFFFF ) {
+                            return *e.type;
+                        }
+                        // TODO: Don't the function-level params use 256-511?
+                        else if( ge.binding < 256 ) {
+                            return path_params.m_types[ge.binding];
+                        }
+                        else {
+                        }
+                        TODO(sp, "Monomorphise for trait method");
+                    };
                 ),
             (UfcsUnknown,
                 TODO(sp, "Hit a UfcsUnknown (" << path << ") - Is this an error?");
@@ -1781,6 +1835,29 @@ namespace {
                 TODO(sp, "Locate functions in UFCS inherent - " << path);
                 )
             )
+
+            assert( fcn_ptr );
+            const auto& fcn = *fcn_ptr;
+            
+            if( args.size() + (is_method ? 1 : 0) != fcn.m_args.size() ) {
+                ERROR(sp, E0000, "Incorrect number of arguments to " << path);
+            }
+            
+            // TODO: Avoid needing to monomorphise here
+            // - Have two callbacks to apply_equality that are used to expand `Generic`s (cleared once used)
+            for( unsigned int i = arg_ofs; i < fcn.m_args.size(); i ++ )
+            {
+                auto& arg_expr_ptr = args[i - arg_ofs];
+                const auto& arg_ty = fcn.m_args[i].second;
+                DEBUG("Arg " << i << ": " << arg_ty);
+                ::HIR::TypeRef  mono_type;
+                const auto& ty = (monomorphise_type_needed(arg_ty) ? (mono_type = monomorphise_type_with(sp, arg_ty,  monomorph_cb)) : arg_ty);
+                this->context.apply_equality(sp, ty, arg_expr_ptr->m_res_type,  &arg_expr_ptr);
+            }
+            DEBUG("RV " << fcn.m_return);
+            ::HIR::TypeRef  mono_type;
+            const auto& ty = (monomorphise_type_needed(fcn.m_return) ? (mono_type = monomorphise_type_with(sp, fcn.m_return,  monomorph_cb)) : fcn.m_return);
+            this->context.apply_equality(sp, res_type, ty);
         }
         
         // - Call Path: Locate path and build return
