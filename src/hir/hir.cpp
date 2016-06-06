@@ -139,3 +139,117 @@ bool ::HIR::MarkerImpl::matches_type(const ::HIR::TypeRef& type) const
 {
     return matches_type_int(m_params, m_type, type);
 }
+
+
+
+const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path(const Span& sp, const char* name) const
+{
+    if( ::std::strcmp(name, "index") == 0 ) {
+        static ::HIR::SimplePath    lang_index { "", {"ops", "Index"} };
+        return lang_index;
+    }
+    else if( ::std::strcmp(name, "unsize") == 0 ) {
+        static ::HIR::SimplePath lang_unsize {"", {"marker", "Unsize"} };
+        return lang_unsize;
+    }
+    else {
+        throw "";
+    }
+}
+
+const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const
+{
+    if( path.m_crate_name != "" )
+        TODO(sp, "::HIR::Crate::get_typeitem_by_path in extern crate");
+    
+    const ::HIR::Module* mod = &this->m_root_module;
+    for( unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
+    {
+        const auto& pc = path.m_components[i];
+        auto it = mod->m_mod_items.find( pc );
+        if( it == mod->m_mod_items.end() ) {
+            BUG(sp, "Couldn't find component " << i << " of " << path);
+        }
+        TU_IFLET(::HIR::TypeItem, it->second->ent, Module, e,
+            mod = &e;
+        )
+        else {
+            BUG(sp, "Node " << i << " of path " << path << " wasn't a module");
+        }
+    }
+    auto it = mod->m_mod_items.find( path.m_components.back() );
+    if( it == mod->m_mod_items.end() ) {
+        BUG(sp, "Could not find type name in " << path);
+    }
+    
+    return it->second->ent;
+}
+
+const ::HIR::Trait& ::HIR::Crate::get_trait_by_path(const Span& sp, const ::HIR::SimplePath& path) const
+{
+    const auto& ti = this->get_typeitem_by_path(sp, path);
+    TU_IFLET(::HIR::TypeItem, ti, Trait, e,
+        return e;
+    )
+    else {
+        BUG(sp, "Trait path " << path << " didn't point to a trait");
+    }
+}
+const ::HIR::Struct& ::HIR::Crate::get_struct_by_path(const Span& sp, const ::HIR::SimplePath& path) const
+{
+    const auto& ti = this->get_typeitem_by_path(sp, path);
+    TU_IFLET(::HIR::TypeItem, ti, Struct, e,
+        return e;
+    )
+    else {
+        BUG(sp, "Struct path " << path << " didn't point to a struct");
+    }
+}
+const ::HIR::Enum& ::HIR::Crate::get_enum_by_path(const Span& sp, const ::HIR::SimplePath& path) const
+{
+    const auto& ti = this->get_typeitem_by_path(sp, path);
+    TU_IFLET(::HIR::TypeItem, ti, Enum, e,
+        return e;
+    )
+    else {
+        BUG(sp, "Enum path " << path << " didn't point to an enum");
+    }
+}
+
+const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const
+{
+    if( path.m_crate_name != "" )
+        TODO(sp, "::HIR::Crate::get_valitem_by_path in extern crate");
+    
+    const ::HIR::Module* mod = &this->m_root_module;
+    for( unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
+    {
+        const auto& pc = path.m_components[i];
+        auto it = mod->m_mod_items.find( pc );
+        if( it == mod->m_mod_items.end() ) {
+            BUG(sp, "Couldn't find component " << i << " of " << path);
+        }
+        TU_IFLET(::HIR::TypeItem, it->second->ent, Module, e,
+            mod = &e;
+        )
+        else {
+            BUG(sp, "Node " << i << " of path " << path << " wasn't a module");
+        }
+    }
+    auto it = mod->m_value_items.find( path.m_components.back() );
+    if( it == mod->m_value_items.end() ) {
+        BUG(sp, "Could not find type name in " << path);
+    }
+    
+    return it->second->ent;
+}
+const ::HIR::Function& ::HIR::Crate::get_function_by_path(const Span& sp, const ::HIR::SimplePath& path) const
+{
+    const auto& ti = this->get_valitem_by_path(sp, path);
+    TU_IFLET(::HIR::ValueItem, ti, Function, e,
+        return e;
+    )
+    else {
+        BUG(sp, "Enum path " << path << " didn't point to an enum");
+    }
+}

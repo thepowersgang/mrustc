@@ -251,6 +251,16 @@ public:
     
     /// Macros exported by this crate
     ::std::unordered_map< ::std::string, ::MacroRules >   m_exported_macros;
+    
+    const ::HIR::SimplePath& get_lang_item_path(const Span& sp, const char* name) const;
+    
+    const ::HIR::TypeItem& get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
+    const ::HIR::Trait& get_trait_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
+    const ::HIR::Struct& get_struct_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
+    const ::HIR::Enum& get_enum_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
+    
+    const ::HIR::ValueItem& get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
+    const ::HIR::Function& get_function_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
 };
 
 }   // namespace HIR

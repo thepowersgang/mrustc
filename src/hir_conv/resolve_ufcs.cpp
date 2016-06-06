@@ -334,37 +334,7 @@ namespace {
         
         const ::HIR::Trait& find_trait(const ::HIR::SimplePath& path) const
         {
-            if( path.m_crate_name != "" )
-                TODO(Span(), "find_trait in crate");
-            
-            const ::HIR::Module* mod = &m_crate.m_root_module;
-            for( unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
-            {
-                const auto& pc = path.m_components[i];
-                auto it = mod->m_mod_items.find( pc );
-                if( it == mod->m_mod_items.end() ) {
-                    BUG(Span(), "Couldn't find component " << i << " of " << path);
-                }
-                TU_MATCH_DEF( ::HIR::TypeItem, (it->second->ent), (e2),
-                (
-                    BUG(Span(), "Node " << i << " of path " << path << " wasn't a module");
-                    ),
-                (Module,
-                    mod = &e2;
-                    )
-                )
-            }
-            auto it = mod->m_mod_items.find( path.m_components.back() );
-            if( it == mod->m_mod_items.end() ) {
-                BUG(Span(), "Could not find type name in " << path);
-            }
-            
-            TU_IFLET( ::HIR::TypeItem, it->second->ent, Trait, e,
-                return e;
-            )
-            else {
-                BUG(Span(), "Trait path " << path << " didn't point to a trait");
-            }
+            return m_crate.get_trait_by_path(Span(), path);
         }
     };
 
