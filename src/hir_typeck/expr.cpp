@@ -1093,9 +1093,27 @@ namespace {
                         TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
                             DEBUG("Bound " << e.type << " : " << e.trait.m_path);
                             // TODO: Match using _ replacement
-                            if( e.type == ty ) {
-                                DEBUG("- Matches " << ty);
-                            }
+                            if( e.type != ty )
+                                continue ;
+                            
+                            // - Bound's type matches, check if the bounded trait has the method we're searching for
+                            //  > TODO: Search supertraits too
+                            DEBUG("- Matches " << ty);
+                            assert(e.trait.m_trait_ptr);
+                            auto it = e.trait.m_trait_ptr->m_values.find(method_name);
+                            if( it == e.trait.m_trait_ptr->m_values.end() )
+                                continue ;
+                            if( !it->second.is_Function() )
+                                continue ;
+                            
+                            // Found the method, return the UFCS path for it
+                            fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
+                                box$( ty.clone() ),
+                                e.trait.m_path.clone(),
+                                method_name,
+                                {}
+                                }) );
+                            return deref_count;
                         )
                     }
                 }
@@ -1737,10 +1755,34 @@ namespace {
                 ::HIR::Path   fcn_path { ::HIR::SimplePath() };
                 unsigned int deref_count = this->context.autoderef_find_method(node.span(), ty, node.m_method,  fcn_path);
                 if( deref_count != ~0u ) {
-                //    // TODO: Add derefs (or record somewhere)
-                //    // TODO: Replace this node with CallPath
+                    // TODO: Add derefs (or record somewhere)
+                    // TODO: Replace this node with CallPath
+                    DEBUG("Found method " << fcn_path);
+                    node.m_method_path = mv$(fcn_path);
+                    // NOTE: Steals the params from the node
+                    TU_MATCH(::HIR::Path::Data, (node.m_method_path.m_data), (e),
+                    (Generic,
+                        ),
+                    (UfcsUnknown,
+                        ),
+                    (UfcsKnown,
+                        e.params = mv$(node.m_params);
+                        ),
+                    (UfcsInherent,
+                        e.params = mv$(node.m_params);
+                        )
+                    )
+                    DEBUG("Adding " << deref_count << " dereferences");
+                    while( deref_count > 0 )
+                    {
+                        node.m_val = ::HIR::ExprNodeP( new ::HIR::ExprNode_Deref(node.span(), mv$(node.m_val)) );
+                        this->context.add_ivars( node.m_val->m_res_type );
+                        deref_count -= 1;
+                    }
                 }
             }
+            
+            // TODO: Look up method based on node.m_method_path
         }
         // - Field: Locate field on type
         void visit(::HIR::ExprNode_Field& node) override

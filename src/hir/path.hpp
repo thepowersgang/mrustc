@@ -9,6 +9,8 @@
 
 namespace HIR {
 
+class Trait;
+
 /// Simple path - Absolute with no generic parameters
 struct SimplePath
 {
@@ -88,6 +90,7 @@ class TraitPath
 public:
     GenericPath m_path;
     ::std::vector< ::std::string>   m_hrls;
+    const ::HIR::Trait* m_trait_ptr;
 };
 
 class Path

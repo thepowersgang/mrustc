@@ -5,6 +5,7 @@
 #include <ast/ast.hpp>
 #include <ast/crate.hpp>
 #include "from_ast.hpp"
+#include "visitor.hpp"
 
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::SimplePath path);
 ::HIR::Function LowerHIR_Function(const ::AST::Function& f);
@@ -939,6 +940,27 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
     }
 }
 
+
+class IndexVisitor:
+    public ::HIR::Visitor
+{
+    const ::HIR::Crate& crate;
+public:
+    IndexVisitor(const ::HIR::Crate& crate):
+        crate(crate)
+    {}
+    
+    void visit_params(::HIR::GenericParams& params) override
+    {
+        for( auto& bound : params.m_bounds )
+        {
+            TU_IFLET(::HIR::GenericBound, bound, TraitBound, e,
+                e.trait.m_trait_ptr = &this->crate.get_trait_by_path(Span(), e.trait.m_path.m_path);
+            )
+        }
+    }
+};
+
 /// \brief Converts the AST into HIR format
 ///
 /// - Removes all possibility for unexpanded macros
@@ -963,6 +985,9 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
     rv.m_root_module = LowerHIR_Module( crate.m_root_module, ::HIR::SimplePath("") );
     
     LowerHIR_Module_Impls(crate.m_root_module,  rv);
+    
+    // Set all pointers in the HIR to the correct (now fixed) locations
+    IndexVisitor(rv).visit_crate( rv );
     
     return ::HIR::CratePtr( mv$(rv) );
 }
