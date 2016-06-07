@@ -325,3 +325,142 @@ namespace {
     )
     throw "";
 }
+::HIR::TypeRef::Compare HIR::TypeRef::compare_with_paceholders(const Span& sp, const ::HIR::TypeRef& x, ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> resolve_placeholder) const
+{
+    assert( !this->m_data.is_Infer() );
+    const auto& right = (x.m_data.is_Infer() ? resolve_placeholder(x) : (x.m_data.is_Generic() ? resolve_placeholder(x) : x));
+    
+    // If righthand side is infer, it's a fuzzy match (or not a match)
+    TU_IFLET(::HIR::TypeRef::Data, right.m_data, Infer, e,
+        switch( e.ty_class )
+        {
+        case ::HIR::InferClass::None:
+            return Compare::Fuzzy;
+        case ::HIR::InferClass::Integer:
+            TU_IFLET( ::HIR::TypeRef::Data, this->m_data, Primitive, le,
+                switch(le)
+                {
+                case ::HIR::CoreType::I8:    case ::HIR::CoreType::U8:
+                case ::HIR::CoreType::I16:   case ::HIR::CoreType::U16:
+                case ::HIR::CoreType::I32:   case ::HIR::CoreType::U32:
+                case ::HIR::CoreType::I64:   case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::Isize: case ::HIR::CoreType::Usize:
+                    return Compare::Fuzzy;
+                default:
+                    return Compare::Unequal;
+                }
+            )
+            else {
+                return Compare::Unequal;
+            }
+        case ::HIR::InferClass::Float:
+            TU_IFLET( ::HIR::TypeRef::Data, this->m_data, Primitive, le,
+                switch(le)
+                {
+                case ::HIR::CoreType::F32:
+                case ::HIR::CoreType::F64:
+                    return Compare::Fuzzy;
+                default:
+                    return Compare::Unequal;
+                }
+            )
+            else {
+                return Compare::Unequal;
+            }
+        }
+        throw "";
+    )
+    
+    if( this->m_data.tag() != right.m_data.tag() ) {
+        return Compare::Unequal;
+    }
+    TU_MATCH(::HIR::TypeRef::Data, (this->m_data, right.m_data), (le, re),
+    (Infer, assert(!"infer");),
+    (Diverge,
+        return Compare::Equal;
+        ),
+    (Primitive,
+        return (le == re ? Compare::Equal : Compare::Unequal);
+        ),
+    (Path,
+        if( le.path.m_data.tag() != re.path.m_data.tag() )
+            return Compare::Unequal;
+        TU_MATCH_DEF(::HIR::Path::Data, (le.path.m_data, re.path.m_data), (ple, pre),
+        (
+            TODO(sp, "TypeRef::compare_with_paceholders - non-generic paths");
+            ),
+        (Generic,
+            if( ple.m_path.m_crate_name != pre.m_path.m_crate_name )
+                return Compare::Unequal;
+            if( ple.m_path.m_components.size() != pre.m_path.m_components.size() )
+                return Compare::Unequal;
+            for(unsigned int i = 0; i < ple.m_path.m_components.size(); i ++ )
+            {
+                if( ple.m_path.m_components[i] != pre.m_path.m_components[i] )
+                    return Compare::Unequal;
+            }
+            
+            auto rv = Compare::Equal;
+            if( ple.m_params.m_types.size() > 0 || pre.m_params.m_types.size() > 0 ) {
+                if( ple.m_params.m_types.size() != pre.m_params.m_types.size() ) {
+                    return Compare::Unequal;
+                }
+                for( unsigned int i = 0; i < pre.m_params.m_types.size(); i ++ )
+                {
+                    auto rv2 = ple.m_params.m_types[i].compare_with_paceholders( sp, pre.m_params.m_types[i], resolve_placeholder );
+                    if( rv2 == Compare::Unequal )
+                        return Compare::Unequal;
+                    if( rv2 == Compare::Fuzzy )
+                        rv = Compare::Fuzzy;
+                }
+            }
+            return rv;
+            )
+        )
+        ),
+    (Generic,
+        if( le.binding != re.binding )
+            return Compare::Unequal;
+        return Compare::Equal;
+        ),
+    (TraitObject,
+        TODO(sp, "Compare " << *this << " and " << right);
+        ),
+    (Array,
+        if( le.size_val != re.size_val )
+            return Compare::Unequal;
+        return le.inner->compare_with_paceholders(sp, *re.inner, resolve_placeholder);
+        ),
+    (Slice,
+        return le.inner->compare_with_paceholders(sp, *re.inner, resolve_placeholder);
+        ),
+    (Tuple,
+        if( le.size() != re.size() )
+            return Compare::Unequal;
+        auto rv = Compare::Equal;
+        for( unsigned int i = 0; i < le.size(); i ++ )
+        {
+            auto rv2 = le[i].compare_with_paceholders( sp, re[i], resolve_placeholder );
+            if( rv2 == Compare::Unequal )
+                return Compare::Unequal;
+            if( rv2 == Compare::Fuzzy )
+                rv = Compare::Fuzzy;
+        }
+        return rv;
+        ),
+    (Borrow,
+        if( le.type != re.type )
+            return Compare::Unequal;
+        return le.inner->compare_with_paceholders(sp, *re.inner, resolve_placeholder);
+        ),
+    (Pointer,
+        if( le.type != re.type )
+            return Compare::Unequal;
+        return le.inner->compare_with_paceholders(sp, *re.inner, resolve_placeholder);
+        ),
+    (Function,
+        TODO(sp, "Compare " << *this << " and " << right);
+        )
+    )
+    throw "";
+}

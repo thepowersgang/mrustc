@@ -1356,6 +1356,15 @@ namespace {
         }
         
     public:
+        ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> callback_resolve_infer() {
+            return [&](const auto& ty)->const auto& {
+                    if( ty.m_data.is_Infer() ) 
+                        return this->get_type(ty);
+                    else
+                        return ty;
+                };
+        }
+        
         unsigned int new_ivar()
         {
             m_ivars.push_back( IVar() );
@@ -1924,23 +1933,28 @@ namespace {
                 const ::HIR::TraitImpl* impl_ptr = nullptr;
                 unsigned int count = 0;
                 const auto& ops_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
-                bool found_exact = this->context.m_crate.find_trait_impls(ops_trait, ty_left, [&](const auto& ty)->const auto&{
-                        if( ty.m_data.is_Infer() ) 
-                            return this->context.get_type(ty);
-                        else
-                            return ty;
-                    },
+                bool found_exact = this->context.m_crate.find_trait_impls(ops_trait, ty_left, this->context.callback_resolve_infer(),
                     [&](const auto& impl) {
+                        // TODO: Check how concretely the types matched
                         assert( impl.m_trait_args.m_types.size() == 1 );
                         const auto& arg_type = impl.m_trait_args.m_types[0];
-                        DEBUG("TODO: Handle operator overload '"<<item_name<<"' - " << arg_type << " == " << ty_right);
-                        // TODO: Filter out completly incompatible implementations (e.g. &-ptr with integers)
-                        if( arg_type == ty_right ) {
-                            impl_ptr = &impl;
-                            return true;
+                        // TODO: What if the trait arguments depend on a generic parameter?
+                        if( monomorphise_type_needed(arg_type) )
+                            TODO(node.span(), "Compare trait type when it contains generics");
+                        auto cmp = arg_type.compare_with_paceholders(node.span(), ty_right, this->context.callback_resolve_infer());
+                        if( cmp == ::HIR::TypeRef::Compare::Unequal ) {
+                            return false;
                         }
                         count += 1;
-                        return false;
+                        impl_ptr = &impl;
+                        if( cmp == ::HIR::TypeRef::Compare::Equal ) {
+                            DEBUG("Operator impl exact match - '"<<item_name<<"' - " << arg_type << " == " << ty_right);
+                            return true;
+                        }
+                        else {
+                            DEBUG("Operator fuzzy exact match - '"<<item_name<<"' - " << arg_type << " == " << ty_right);
+                            return false;
+                        }
                     }
                     );
                 // If the above returned success, get output type
@@ -1952,7 +1966,12 @@ namespace {
                     if( has_output )
                     {
                         const auto& type = impl_ptr->m_types.at("Output");
-                        DEBUG("TODO: BinOp output = " << type);
+                        if( monomorphise_type_needed(type) ) {
+                            TODO(node.span(), "BinOp output = " << type);
+                        }
+                        else {
+                            this->context.apply_equality(node.span(), node.m_res_type, type);
+                        }
                     }
                     else
                     {

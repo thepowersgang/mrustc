@@ -169,6 +169,14 @@ public:
     // Match generics in `this` with types from `x`
     // Raises a bug against `sp` if there is a form mismatch or `this` has an infer
     void match_generics(const Span& sp, const ::HIR::TypeRef& x, ::std::function<void(unsigned int, const ::HIR::TypeRef&)> callback) const;
+    
+    enum Compare {
+        Equal,
+        Fuzzy,
+        Unequal,
+    };
+    // Compares this type with another, using `resolve_placeholder` to get replacements for generics/infers in `x`
+    Compare compare_with_paceholders(const Span& sp, const ::HIR::TypeRef& x, ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> resolve_placeholder) const;
 };
 
 extern ::std::ostream& operator<<(::std::ostream& os, const ::HIR::TypeRef& ty);
