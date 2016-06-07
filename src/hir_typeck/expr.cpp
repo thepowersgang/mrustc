@@ -2040,7 +2040,60 @@ namespace {
         // - Cast: Nothing needs to happen
         void visit(::HIR::ExprNode_Cast& node) override
         {
-            // TODO: Check cast validity?
+            const auto& val_ty = this->context.get_type( node.m_value->m_res_type );
+            const auto& target_ty = this->context.get_type( node.m_res_type );
+            TU_MATCH_DEF(::HIR::TypeRef::Data, (target_ty.m_data), (e),
+            (
+                ERROR(node.span(), E0000, "Invalid cast");
+                ),
+            (Primitive,
+                switch(e)
+                {
+                case ::HIR::CoreType::Char:
+                    break;
+                case ::HIR::CoreType::Str:
+                case ::HIR::CoreType::Bool:
+                    ERROR(node.span(), E0000, "Invalid cast");
+                    break;
+                default:
+                    // TODO: Check that the source and destination are integer types.
+                    break;
+                }
+                ),
+            (Borrow,
+                // TODO: Actually a coerce - check it
+                ),
+            (Infer,
+                // - wait
+                ),
+            (Pointer,
+                // Valid source:
+                // *<same> <any>
+                // *<other> <same>
+                // &<same> <same>
+                TU_MATCH_DEF(::HIR::TypeRef::Data, (val_ty.m_data), (e2),
+                (
+                    ),
+                (Infer,
+                    ),
+                (Borrow,
+                    if( e.type != e2.type ) {
+                        // ERROR
+                    }
+                    this->context.apply_equality(node.span(), *e2.inner, *e.inner);
+                    ),
+                (Pointer,
+                    if( e.type != e2.type ) {
+                        this->context.apply_equality(node.span(), *e2.inner, *e.inner);
+                    }
+                    else {
+                        // Nothing
+                    }
+                    )
+                )
+                )
+            )
+            // TODO: Check cast validity and do inferrence
             ::HIR::ExprVisitorDef::visit(node);
         }
         // - Index: Look for implementation of the Index trait

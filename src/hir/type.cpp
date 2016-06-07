@@ -122,6 +122,19 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         )
     )
 }
+
+namespace {
+    bool path_params_equal(const ::HIR::PathParams& t, const ::HIR::PathParams& x)
+    {
+        if( t.m_types.size() != x.m_types.size() )
+            return false;
+        for( unsigned int i = 0; i < t.m_types.size(); i ++ )
+            if( !(t.m_types[i] == x.m_types[i]) )
+                return false;
+        return true;
+    }
+}
+
 bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
 {
     if( m_data.tag() != x.m_data.tag() )
@@ -130,7 +143,7 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
     TU_MATCH(::HIR::TypeRef::Data, (m_data, x.m_data), (te, xe),
     (Infer,
         // TODO: Should comparing inferrence vars be an error?
-        return true;
+        return te.index == xe.index;
         ),
     (Diverge,
         return true;
@@ -139,7 +152,41 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
         return te == xe;
         ),
     (Path,
-        assert(!"TODO: Compare path types");
+        if( te.path.m_data.tag() != xe.path.m_data.tag() ) {
+            return false;
+        }
+        TU_MATCH(::HIR::Path::Data, (te.path.m_data, xe.path.m_data), (tpe, xpe),
+        (Generic,
+            if( tpe.m_path != xpe.m_path )
+                return false;
+            return path_params_equal(tpe.m_params, xpe.m_params);
+            ),
+        (UfcsInherent,
+            if( *tpe.type != *xpe.type )
+                return false;
+            if( tpe.item != xpe.item )
+                return false;
+            return path_params_equal(tpe.params, xpe.params);
+            ),
+        (UfcsKnown,
+            if( *tpe.type != *xpe.type )
+                return false;
+            if( tpe.trait.m_path != xpe.trait.m_path )
+                return false;
+            if( !path_params_equal(tpe.trait.m_params, xpe.trait.m_params) )
+                return false;
+            if( tpe.item != xpe.item )
+                return false;
+            return path_params_equal(tpe.params, xpe.params);
+            ),
+        (UfcsUnknown,
+            if( *tpe.type != *xpe.type )
+                return false;
+            if( tpe.item != xpe.item )
+                return false;
+            return path_params_equal(tpe.params, xpe.params);
+            )
+        )
         ),
     (Generic,
         return te.name == xe.name && te.binding == xe.binding;
