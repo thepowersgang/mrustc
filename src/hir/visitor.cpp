@@ -103,7 +103,12 @@ void ::HIR::Visitor::visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR
     ::HIR::PathChain    p { "#impl" };
     TRACE_FUNCTION_F("trait_path=" << trait_path);
     this->visit_params(impl.m_params);
-    this->visit_path_params(impl.m_trait_args);
+    // - HACK: Create a generic path to visit (so that proper checks are performed)
+    {
+        ::HIR::GenericPath  gp { trait_path, mv$(impl.m_trait_args) };
+        this->visit_generic_path(gp, PathContext::TRAIT);
+        impl.m_trait_args = mv$(gp.m_params);
+    }
     this->visit_type(impl.m_type);
     
     for(auto& ent : impl.m_methods) {

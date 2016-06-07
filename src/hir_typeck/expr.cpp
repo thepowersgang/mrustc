@@ -1243,21 +1243,17 @@ namespace {
         }
         bool find_trait_impls_crate(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,  ::std::function<bool(const ::HIR::PathParams&)> callback) const
         {
-            auto its = m_crate.m_trait_impls.equal_range( trait );
-            if( its.first != its.second )
-            {
-                for( auto it = its.first; it != its.second; ++ it )
-                {
-                    const auto& impl = it->second;
-                    DEBUG("Compare " << type << " and " << impl.m_type);
-                    if( impl.matches_type(type) ) {
-                        if( callback(impl.m_trait_args) ) {
-                            return true;
-                        }
-                    }
+            return this->m_crate.find_trait_impls(trait, type, [&](const auto& ty)->const auto&{
+                    if( ty.m_data.is_Infer() ) 
+                        return this->get_type(ty);
+                    else
+                        return ty;
+                },
+                [&](const auto& impl) {
+                    DEBUG("[find_trait_impls_crate] Found impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type);
+                    return callback(impl.m_trait_args);
                 }
-            }
-            return false;
+                );
         }
         /// Locate the named method by applying auto-dereferencing.
         /// \return Number of times deref was applied (or ~0 if _ was hit)
@@ -1716,6 +1712,20 @@ namespace {
             const auto& ty_left  = this->context.get_type(node.m_left->m_res_type );
             const auto& ty_right = this->context.get_type(node.m_right->m_res_type);
             
+            // Boolean ops can't be overloaded, and require `bool` on both sides
+            if( node.m_op == ::HIR::ExprNode_BinOp::Op::BoolAnd || node.m_op == ::HIR::ExprNode_BinOp::Op::BoolOr )
+            {
+                assert(node.m_res_type.m_data.is_Primitive() && node.m_res_type.m_data.as_Primitive() == ::HIR::CoreType::Bool);
+                this->context.apply_equality( node.span(), node.m_res_type, node.m_left->m_res_type );
+                this->context.apply_equality( node.span(), node.m_res_type, node.m_right->m_res_type );
+                return ;
+            }
+            
+            // TODO: Inferrence rules when untyped integer literals are in play
+            // - `impl Add<Foo> for u32` is valid, and makes `1 + Foo` work
+            //  - But `[][0] + Foo` doesn't
+            //  - Adding `impl Add<Foo> for u64` leads to "`Add<Foo>` is not implemented for `i32`"
+            // - HACK! (kinda?) libcore includes impls of `Add<i32> for i32`, which means that overloads work for inferrence purposes
             if( ty_left.m_data.is_Primitive() && ty_right.m_data.is_Primitive() ) 
             {
                 const auto& prim_left  = ty_left.m_data.as_Primitive();
@@ -1733,12 +1743,8 @@ namespace {
                     }
                     break;
                
-                case ::HIR::ExprNode_BinOp::Op::BoolAnd:
-                case ::HIR::ExprNode_BinOp::Op::BoolOr:
-                    if( prim_left != ::HIR::CoreType::Bool || prim_right != ::HIR::CoreType::Bool ) {
-                        ERROR(node.span(), E0000, "Use of non-boolean in boolean and/or");
-                    }
-                    break;
+                case ::HIR::ExprNode_BinOp::Op::BoolAnd:    BUG(node.span(), "Encountered BoolAnd in primitive op");
+                case ::HIR::ExprNode_BinOp::Op::BoolOr:     BUG(node.span(), "Encountered BoolOr in primitive op");
 
                 case ::HIR::ExprNode_BinOp::Op::Add:
                 case ::HIR::ExprNode_BinOp::Op::Sub:
@@ -1808,7 +1814,76 @@ namespace {
             }
             else
             {
-                // TODO: Search for ops trait impl
+                const char* item_name = nullptr;
+                bool has_output = true;
+                switch(node.m_op)
+                {
+                case ::HIR::ExprNode_BinOp::Op::CmpEqu:  item_name = "eq"; has_output = false; break;
+                case ::HIR::ExprNode_BinOp::Op::CmpNEqu: item_name = "eq"; has_output = false; break;
+                case ::HIR::ExprNode_BinOp::Op::CmpLt:   item_name = "ord"; has_output = false; break;
+                case ::HIR::ExprNode_BinOp::Op::CmpLtE:  item_name = "ord"; has_output = false; break;
+                case ::HIR::ExprNode_BinOp::Op::CmpGt:   item_name = "ord"; has_output = false; break;
+                case ::HIR::ExprNode_BinOp::Op::CmpGtE:  item_name = "ord"; has_output = false; break;
+                case ::HIR::ExprNode_BinOp::Op::BoolAnd:    BUG(node.span(), "Encountered BoolAnd in overload search");
+                case ::HIR::ExprNode_BinOp::Op::BoolOr:     BUG(node.span(), "Encountered BoolOr in overload search");
+
+                case ::HIR::ExprNode_BinOp::Op::Add: item_name = "add"; break;
+                case ::HIR::ExprNode_BinOp::Op::Sub: item_name = "sub"; break;
+                case ::HIR::ExprNode_BinOp::Op::Mul: item_name = "mul"; break;
+                case ::HIR::ExprNode_BinOp::Op::Div: item_name = "div"; break;
+                case ::HIR::ExprNode_BinOp::Op::Mod: item_name = "rem"; break;
+                
+                case ::HIR::ExprNode_BinOp::Op::And: item_name = "bit_and"; break;
+                case ::HIR::ExprNode_BinOp::Op::Or:  item_name = "bit_or";  break;
+                case ::HIR::ExprNode_BinOp::Op::Xor: item_name = "bit_xor"; break;
+                
+                case ::HIR::ExprNode_BinOp::Op::Shr: item_name = "shr"; break;
+                case ::HIR::ExprNode_BinOp::Op::Shl: item_name = "shl"; break;
+                }
+                assert(item_name);
+                
+                // Search for ops trait impl
+                const ::HIR::TraitImpl* impl_ptr = nullptr;
+                unsigned int count = 0;
+                const auto& ops_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
+                bool found_exact = this->context.m_crate.find_trait_impls(ops_trait, ty_left, [&](const auto& ty)->const auto&{
+                        if( ty.m_data.is_Infer() ) 
+                            return this->context.get_type(ty);
+                        else
+                            return ty;
+                    },
+                    [&](const auto& impl) {
+                        assert( impl.m_trait_args.m_types.size() == 1 );
+                        const auto& arg_type = impl.m_trait_args.m_types[0];
+                        DEBUG("TODO: Handle operator overload '"<<item_name<<"' - " << arg_type << " == " << ty_right);
+                        // TODO: Filter out completly incompatible implementations (e.g. &-ptr with integers)
+                        if( arg_type == ty_right ) {
+                            impl_ptr = &impl;
+                            return true;
+                        }
+                        count += 1;
+                        return false;
+                    }
+                    );
+                // If the above returned success, get output type
+                if( !found_exact && count == 1 ) {
+                    assert(impl_ptr);
+                    this->context.apply_equality(node.span(), impl_ptr->m_trait_args.m_types[0], ty_right);
+                }
+                if( impl_ptr ) {
+                    if( has_output )
+                    {
+                        const auto& type = impl_ptr->m_types.at("Output");
+                        DEBUG("TODO: BinOp output = " << type);
+                    }
+                    else
+                    {
+                        this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef(::HIR::CoreType::Bool));
+                    }
+                }
+                else {
+                    // TODO: Determine if this could ever succeed, and error if not
+                }
             }
         }
         // - UniOp: Look for overload or primitive

@@ -1,6 +1,10 @@
 /*
  */
 #pragma once
+#include <string>
+#include <vector>
+#include <iostream>
+#include "type.hpp"
 
 namespace HIR {
 
@@ -40,6 +44,20 @@ struct GenericParams
     ::std::vector< ::std::string>   m_lifetimes;
     
     ::std::vector<GenericBound>    m_bounds;
+    
+    
+    struct PrintArgs {
+        const GenericParams& gp;
+        PrintArgs(const GenericParams& gp): gp(gp) {}
+        friend ::std::ostream& operator<<(::std::ostream& os, const PrintArgs& x);
+    };
+    PrintArgs fmt_args() const { return PrintArgs(*this); }
+    struct PrintBounds {
+        const GenericParams& gp;
+        PrintBounds(const GenericParams& gp): gp(gp) {}
+        friend ::std::ostream& operator<<(::std::ostream& os, const PrintBounds& x);
+    };
+    PrintBounds fmt_bounds() const { return PrintBounds(*this); }
 };
 
 }   // namespace HIR

@@ -154,11 +154,23 @@ const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path(const Span& sp, const 
         return lang_index;
     }
     else if( ::std::strcmp(name, "unsize") == 0 ) {
-        static ::HIR::SimplePath lang_unsize {"", {"marker", "Unsize"} };
+        static ::HIR::SimplePath lang_unsize { "", {"marker", "Unsize"} };
         return lang_unsize;
     }
+    else if( ::std::strcmp(name, "add") == 0 ) {
+        static ::HIR::SimplePath lang_path { "", {"ops", "Add"} };
+        return lang_path;
+    }
+    else if( ::std::strcmp(name, "ord") == 0 ) {
+        static ::HIR::SimplePath lang_path { "", {"cmp", "PartialOrd"} };
+        return lang_path;
+    }
+    else if( ::std::strcmp(name, "eq") == 0 ) {
+        static ::HIR::SimplePath lang_path { "", {"cmp", "PartialEq"} };
+        return lang_path;
+    }
     else {
-        throw "";
+        ERROR(sp, E0000, "Unknown language item '" << name << "' encountered");
     }
 }
 

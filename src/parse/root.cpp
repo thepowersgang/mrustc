@@ -893,7 +893,6 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
         PUTBACK(tok, lex);
         
         impl_type = Parse_Type(lex, true);
-        // TODO: Handle the "impl Any + Send" syntax here
         
         if( GET_TOK(tok, lex) == TOK_RWORD_FOR )
         {

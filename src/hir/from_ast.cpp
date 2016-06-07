@@ -857,10 +857,11 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
         
         if( impl.def().trait().ent.is_valid() )
         {
-            bool is_marker = impl.def().trait().ent.binding().as_Trait().trait_->is_marker();
-            auto trait = LowerHIR_GenericPath(impl.def().trait().sp, impl.def().trait().ent);
-            auto trait_name = mv$(trait.m_path);
-            auto trait_args = mv$(trait.m_params);
+            const auto& trait_def = *impl.def().trait().ent.binding().as_Trait().trait_;
+            bool is_marker = trait_def.is_marker();
+            auto trait_path = LowerHIR_GenericPath(impl.def().trait().sp, impl.def().trait().ent);
+            auto trait_name = mv$(trait_path.m_path);
+            auto trait_args = mv$(trait_path.m_params);
             
             // TODO: Determine if a trait is a marker (i.e. is a OIBIT)
             
