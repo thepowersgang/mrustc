@@ -1621,13 +1621,20 @@ namespace {
         public ::HIR::ExprVisitorDef
     {
         TypecheckContext& context;
+        ::HIR::ExprNodeP    *m_node_ptr_ptr;
     public:
         ExprVisitor_Run(TypecheckContext& context):
-            context(context)
+            context(context),
+            m_node_ptr_ptr(nullptr)
         {
         }
         
         // TODO: Add a new method called for all ExprNodeP, which will save the pointer someho
+        void visit_node_ptr(::std::unique_ptr< ::HIR::ExprNode>& node_ptr) {
+            m_node_ptr_ptr = &node_ptr;
+            ::HIR::ExprVisitorDef::visit_node_ptr(node_ptr);
+            m_node_ptr_ptr = nullptr;
+        }
         
         // - Block: Ignore all return values except the last one (which is yeilded)
         void visit(::HIR::ExprNode_Block& node) override
@@ -1904,7 +1911,11 @@ namespace {
             }
         }
         
-        void visit_call(const Span& sp, ::HIR::Path& path, bool is_method, ::std::vector< ::HIR::ExprNodeP>& args, ::HIR::TypeRef& res_type,   ::std::vector< ::HIR::TypeRef>& arg_types)
+        void visit_call(const Span& sp,
+                ::HIR::Path& path, bool is_method,
+                ::std::vector< ::HIR::ExprNodeP>& args, ::HIR::TypeRef& res_type, ::HIR::ExprNodeP& this_node_ptr,
+                ::std::vector< ::HIR::TypeRef>& arg_types
+                )
         {
             TRACE_FUNCTION_F("path = " << path);
             unsigned int arg_ofs = (is_method ? 1 : 0);
@@ -2000,15 +2011,18 @@ namespace {
             }
             
             DEBUG("RV " << arg_types.back());
-            this->context.apply_equality(sp, res_type, arg_types.back());
+            this->context.apply_equality(sp, res_type, arg_types.back(),  &this_node_ptr);
         }
         
         // - Call Path: Locate path and build return
         void visit(::HIR::ExprNode_CallPath& node) override
         {
+            auto& node_ptr = *m_node_ptr_ptr;
             TRACE_FUNCTION_F("CallPath " << node.m_path);
+            assert(node_ptr.get() == &node);
             // - Pass m_arg_types as a cache to avoid constant lookups
-            visit_call(node.span(), node.m_path, false, node.m_args, node.m_res_type,  node.m_arg_types);
+            visit_call(node.span(), node.m_path, false, node.m_args, node.m_res_type, node_ptr,  node.m_arg_types);
+            
             ::HIR::ExprVisitorDef::visit(node);
         }
         // - Call Value: If type is known, locate impl of Fn/FnMut/FnOnce
@@ -2019,6 +2033,8 @@ namespace {
         // - Call Method: Locate method on type
         void visit(::HIR::ExprNode_CallMethod& node) override
         {
+            auto& node_ptr = *m_node_ptr_ptr;
+            
             ::HIR::ExprVisitorDef::visit(node);
             if( node.m_method_path.m_data.is_Generic() && node.m_method_path.m_data.as_Generic().m_path.m_components.size() == 0 )
             {
@@ -2054,8 +2070,9 @@ namespace {
                 }
             }
             
+            assert(node_ptr.get() == &node);
             // - Pass m_arg_types as a cache to avoid constant lookups
-            visit_call(node.span(), node.m_method_path, true, node.m_args, node.m_res_type,  node.m_arg_types);
+            visit_call(node.span(), node.m_method_path, true, node.m_args, node.m_res_type, node_ptr,  node.m_arg_types);
         }
         // - Field: Locate field on type
         void visit(::HIR::ExprNode_Field& node) override
@@ -2179,22 +2196,20 @@ void Typecheck_Code(TypecheckContext context, const ::HIR::TypeRef& result_type,
 {
     TRACE_FUNCTION;
     
-    // TODO: Perform type propagation "outward" from the root
+    auto root_ptr = expr.into_unique();
     
     //context.apply_equality(expr->span(), result_type, expr->m_res_type);
 
     // 1. Enumerate inferrence variables and assign indexes to them
     {
         ExprVisitor_Enum    visitor { context, result_type };
-        expr->visit( visitor );
+        visitor.visit_node_ptr(root_ptr);
     }
     // - Apply equality between the node result and the expected type
     DEBUG("- Apply RV");
     {
         // Convert ExprPtr into unique_ptr for the execution of this function
-        auto root_ptr = expr.into_unique();
         context.apply_equality(root_ptr->span(), result_type, root_ptr->m_res_type,  &root_ptr);
-        expr = ::HIR::ExprPtr( mv$(root_ptr) );
     }
     
     context.dump();
@@ -2202,12 +2217,12 @@ void Typecheck_Code(TypecheckContext context, const ::HIR::TypeRef& result_type,
     {
         ExprVisitor_Run visitor { context };
         do {
-            expr->visit( visitor );
+            visitor.visit_node_ptr(root_ptr);
         } while( context.take_changed() );
     }
     
     // 3. Check that there's no unresolved types left
-    // TODO: Check for completed type resolution
+    expr = ::HIR::ExprPtr( mv$(root_ptr) );
     context.dump();
     {
         ExprVisitor_Apply   visitor { context };
