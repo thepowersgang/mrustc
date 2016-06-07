@@ -190,14 +190,13 @@ namespace {
             }, false);
     }
     
+    
     struct IVar
     {
-        bool    deleted;
-        unsigned int alias;
-        ::std::unique_ptr< ::HIR::TypeRef> type;
+        unsigned int alias; // If not ~0, this points to another ivar
+        ::std::unique_ptr< ::HIR::TypeRef> type;    // Type (only nullptr if alias!=0)
         
         IVar():
-            deleted(false),
             alias(~0u),
             type(new ::HIR::TypeRef())
         {}
@@ -295,6 +294,7 @@ namespace {
             (Infer,
                 if( e.index == ~0u ) {
                     e.index = this->new_ivar();
+                    this->m_ivars[e.index].type->m_data.as_Infer().ty_class = e.ty_class;
                 }
                 ),
             (Diverge,
@@ -1370,7 +1370,6 @@ namespace {
             }
             else {
                 assert(!"Can't delete an ivar after it's been used");
-                m_ivars[index].deleted = true;
             }
         }
         ::HIR::TypeRef new_ivar_tr() {
@@ -1379,24 +1378,6 @@ namespace {
             return rv;
         }
         
-        IVar& get_pointed_ivar(unsigned int slot) const
-        {
-            auto index = slot;
-            unsigned int count = 0;
-            assert(index < m_ivars.size());
-            while( m_ivars.at(index).is_alias() ) {
-                assert( m_ivars.at(index).deleted == false );
-                index = m_ivars.at(index).alias;
-                
-                if( count >= m_ivars.size() ) {
-                    this->dump();
-                    BUG(Span(), "Loop detected in ivar list when starting at " << slot << ", current is " << index);
-                }
-                count ++;
-            }
-            assert( m_ivars.at(index).deleted == false );
-            return const_cast<IVar&>(m_ivars.at(index));
-        }
         ::HIR::TypeRef& get_type(::HIR::TypeRef& type)
         {
             TU_IFLET(::HIR::TypeRef::Data, type.m_data, Infer, e,
@@ -1418,18 +1399,70 @@ namespace {
             }
         }
         
+        void check_type_class_primitive(const Span& sp, const ::HIR::TypeRef& type, ::HIR::InferClass ic, ::HIR::CoreType ct)
+        {
+            switch(ic)
+            {
+            case ::HIR::InferClass::None:
+                break;
+            case ::HIR::InferClass::Float:
+                switch(ct)
+                {
+                case ::HIR::CoreType::F32:               case ::HIR::CoreType::F64:
+                    break;
+                default:
+                    ERROR(sp, E0000, "Type unificiation of integer literal with non-integer - " << type);
+                }
+                break;
+            case ::HIR::InferClass::Integer:
+                switch(ct)
+                {
+                case ::HIR::CoreType::I8:    case ::HIR::CoreType::U8:
+                case ::HIR::CoreType::I16:   case ::HIR::CoreType::U16:
+                case ::HIR::CoreType::I32:   case ::HIR::CoreType::U32:
+                case ::HIR::CoreType::I64:   case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::Isize: case ::HIR::CoreType::Usize:
+                    break;
+                default:
+                    ERROR(sp, E0000, "Type unificiation of integer literal with non-integer - " << type);
+                }
+                break;
+            }
+        }
+        
         void set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
         {
+            auto sp = Span();
             auto& root_ivar = this->get_pointed_ivar(slot);
+            DEBUG("set_ivar_to(" << slot << " { " << *root_ivar.type << " }, " << type << ")");
             
-            // If the left type wasn't a reference to an ivar, store it in the righthand ivar
+            // If the left type was '_', alias the right to it
             TU_IFLET(::HIR::TypeRef::Data, type.m_data, Infer, l_e,
                 assert( l_e.index != slot );
                 DEBUG("Set IVar " << slot << " = @" << l_e.index);
+                
+                if( l_e.ty_class != ::HIR::InferClass::None ) {
+                    TU_MATCH_DEF(::HIR::TypeRef::Data, (root_ivar.type->m_data), (e),
+                    (
+                        ERROR(sp, E0000, "Type unificiation of literal with invalid type - " << *root_ivar.type);
+                        ),
+                    (Primitive,
+                        check_type_class_primitive(sp, type, l_e.ty_class, e);
+                        ),
+                    (Infer,
+                        // TODO: Check for right having a ty_class
+                        if( e.ty_class != ::HIR::InferClass::None && e.ty_class != l_e.ty_class ) {
+                            ERROR(sp, E0000, "Unifying types with mismatching literal classes");
+                        }
+                        )
+                    )
+                }
+                
                 root_ivar.alias = l_e.index;
                 root_ivar.type.reset();
             )
             else {
+                // Otherwise, store left in right's slot
                 DEBUG("Set IVar " << slot << " = " << type);
                 root_ivar.type = box$( mv$(type) );
             }
@@ -1439,15 +1472,60 @@ namespace {
 
         void ivar_unify(unsigned int left_slot, unsigned int right_slot)
         {
+            auto sp = Span();
             if( left_slot != right_slot )
             {
+                auto& left_ivar = this->get_pointed_ivar(left_slot);
+                
                 // TODO: Assert that setting this won't cause a loop.
                 auto& root_ivar = this->get_pointed_ivar(right_slot);
+                
+                TU_IFLET(::HIR::TypeRef::Data, root_ivar.type->m_data, Infer, re,
+                    if(re.ty_class != ::HIR::InferClass::None) {
+                        TU_MATCH_DEF(::HIR::TypeRef::Data, (left_ivar.type->m_data), (le),
+                        (
+                            ERROR(sp, E0000, "Type unificiation of literal with invalid type - " << *left_ivar.type);
+                            ),
+                        (Infer,
+                            if( le.ty_class != ::HIR::InferClass::None && le.ty_class != re.ty_class )
+                            {
+                                ERROR(sp, E0000, "Unifying types with mismatching literal classes");
+                            }
+                            le.ty_class = re.ty_class;
+                            ),
+                        (Primitive,
+                            check_type_class_primitive(sp, *left_ivar.type, re.ty_class, le);
+                            )
+                        )
+                    }
+                )
+                else {
+                    BUG(sp, "Unifying over a concrete type - " << *root_ivar.type);
+                }
+                
                 root_ivar.alias = left_slot;
                 root_ivar.type.reset();
                 
                 this->mark_change();
             }
+        }
+    
+    private:
+        IVar& get_pointed_ivar(unsigned int slot) const
+        {
+            auto index = slot;
+            unsigned int count = 0;
+            assert(index < m_ivars.size());
+            while( m_ivars.at(index).is_alias() ) {
+                index = m_ivars.at(index).alias;
+                
+                if( count >= m_ivars.size() ) {
+                    this->dump();
+                    BUG(Span(), "Loop detected in ivar list when starting at " << slot << ", current is " << index);
+                }
+                count ++;
+            }
+            return const_cast<IVar&>(m_ivars.at(index));
         }
     };
     

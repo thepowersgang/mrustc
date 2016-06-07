@@ -392,10 +392,16 @@ struct ExprNode_Literal:
             if( e.m_type != ::HIR::CoreType::Str ) {
                 m_res_type = ::HIR::TypeRef::Data::make_Primitive(e.m_type);
             }
+            else {
+                m_res_type.m_data.as_Infer().ty_class = ::HIR::InferClass::Integer;
+            }
             ),
         (Float,
             if( e.m_type != ::HIR::CoreType::Str ) {
                 m_res_type = ::HIR::TypeRef::Data::make_Primitive(e.m_type);
+            }
+            else {
+                m_res_type.m_data.as_Infer().ty_class = ::HIR::InferClass::Float;
             }
             ),
         (Boolean,

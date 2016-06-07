@@ -15,6 +15,13 @@ class Enum;
 
 class TypeRef;
 
+enum class InferClass
+{
+    None,
+    Integer,
+    Float,
+};
+
 enum class CoreType
 {
     Usize, Isize,
@@ -73,6 +80,7 @@ public:
     TAGGED_UNION(Data, Infer,
     (Infer, struct {
         unsigned int index = ~0u;
+        InferClass  ty_class = InferClass::None;
         }),
     (Diverge, struct {}),
     (Primitive, ::HIR::CoreType),

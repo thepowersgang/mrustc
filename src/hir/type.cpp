@@ -42,7 +42,17 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
     TU_MATCH(::HIR::TypeRef::Data, (m_data), (e),
     (Infer,
         os << "_";
-        if( e.index != ~0u )  os << "/*" << e.index << "*/";
+        if( e.index != ~0u || e.ty_class != ::HIR::InferClass::None ) {
+            os << "/*";
+            if(e.index != ~0u)  os << e.index;
+            switch(e.ty_class)
+            {
+            case ::HIR::InferClass::None:   break;
+            case ::HIR::InferClass::Float:  os << ":f"; break;
+            case ::HIR::InferClass::Integer:os << ":i"; break;
+            }
+            os << "*/";
+        }
         ),
     (Diverge,
         os << "!";
