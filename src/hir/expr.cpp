@@ -8,87 +8,86 @@
 
 #define DEF_VISIT(nt, n, code)   void ::HIR::nt::visit(ExprVisitor& nv) { nv.visit_node(*this); nv.visit(*this); } void ::HIR::ExprVisitorDef::visit(::HIR::nt& n) { code }
 
+void ::HIR::ExprVisitor::visit_node_ptr(::std::unique_ptr< ::HIR::ExprNode>& node_ptr) {
+    assert(node_ptr);
+    node_ptr->visit(*this);
+}
 void ::HIR::ExprVisitor::visit_node(::HIR::ExprNode& node) {
 }
 DEF_VISIT(ExprNode_Block, node,
-    for(const auto& subnode : node.m_nodes) {
-        assert(subnode);
-        subnode->visit(*this);
+    for(auto& subnode : node.m_nodes) {
+        visit_node_ptr(subnode);
     }
 )
 DEF_VISIT(ExprNode_Return, node,
-    assert(node.m_value);
-    node.m_value->visit(*this);
+    visit_node_ptr(node.m_value);
 )
 DEF_VISIT(ExprNode_Let, node,
     if( node.m_value ) {
-        node.m_value->visit(*this);
+        visit_node_ptr(node.m_value);
     }
 )
 DEF_VISIT(ExprNode_Loop, node,
-    assert(node.m_code);
-    node.m_code->visit(*this);
+    visit_node_ptr(node.m_code);
 )
 DEF_VISIT(ExprNode_LoopControl, , )
 DEF_VISIT(ExprNode_Match, node,
-    assert(node.m_value);
-    node.m_value->visit(*this);
+    visit_node_ptr(node.m_value);
     for(auto& arm : node.m_arms)
     {
         if( arm.m_cond )
-            arm.m_cond->visit(*this);
-        assert(arm.m_code);
-        arm.m_code->visit(*this);
+            visit_node_ptr(arm.m_cond);
+        visit_node_ptr(arm.m_code);
     }
 )
 DEF_VISIT(ExprNode_If, node,
-    node.m_cond->visit(*this);
-    node.m_true->visit(*this);
+    visit_node_ptr(node.m_cond);
+    visit_node_ptr(node.m_true);
     if( node.m_false )
-        node.m_false->visit(*this);
+        visit_node_ptr(node.m_false);
 )
 
 DEF_VISIT(ExprNode_Assign, node,
-    node.m_slot->visit(*this);
-    node.m_value->visit(*this);
+    visit_node_ptr(node.m_slot);
+    visit_node_ptr(node.m_value);
 )
 DEF_VISIT(ExprNode_BinOp, node,
-    node.m_left->visit(*this);
-    node.m_right->visit(*this);
+    visit_node_ptr(node.m_left);
+    visit_node_ptr(node.m_right);
 )
 DEF_VISIT(ExprNode_UniOp, node,
-    node.m_value->visit(*this);
+    visit_node_ptr(node.m_value);
 )
 DEF_VISIT(ExprNode_Cast, node,
-    node.m_value->visit(*this);
+    visit_node_ptr(node.m_value);
 )
 DEF_VISIT(ExprNode_Unsize, node,
-    node.m_value->visit(*this);
+    visit_node_ptr(node.m_value);
 )
 DEF_VISIT(ExprNode_Index, node,
-    node.m_val->visit(*this);
-    node.m_index->visit(*this);
+    visit_node_ptr(node.m_value);
+    visit_node_ptr(node.m_index);
 )
 DEF_VISIT(ExprNode_Deref, node,
-    node.m_val->visit(*this);
+    visit_node_ptr(node.m_value);
 )
 
 DEF_VISIT(ExprNode_CallPath, node,
     for(auto& arg : node.m_args)
-        arg->visit(*this);
+        visit_node_ptr(arg);
 )
 DEF_VISIT(ExprNode_CallValue, node,
-    node.m_val->visit(*this);
+    visit_node_ptr(node.m_value);
     for(auto& arg : node.m_args)
-        arg->visit(*this);
+        visit_node_ptr(arg);
 )
 DEF_VISIT(ExprNode_CallMethod, node,
-    node.m_val->visit(*this);
+    visit_node_ptr(node.m_value);
     for(auto& arg : node.m_args)
-        arg->visit(*this);
+        visit_node_ptr(arg);
 )
 DEF_VISIT(ExprNode_Field, node,
-    node.m_val->visit(*this);
+    visit_node_ptr(node.m_value);
 )
 
 DEF_VISIT(ExprNode_Literal, , )
@@ -96,25 +95,25 @@ DEF_VISIT(ExprNode_PathValue, , )
 DEF_VISIT(ExprNode_Variable, , )
 DEF_VISIT(ExprNode_StructLiteral, node,
     if( node.m_base_value )
-        node.m_base_value->visit(*this);
+        visit_node_ptr(node.m_base_value);
     for(auto& val : node.m_values)
-        val.second->visit( *this );
+        visit_node_ptr(val.second);
 )
 DEF_VISIT(ExprNode_Tuple, node,
     for(auto& val : node.m_vals)
-        val->visit( *this );
+        visit_node_ptr(val);
 )
 DEF_VISIT(ExprNode_ArrayList, node,
     for(auto& val : node.m_vals)
-        val->visit( *this );
+        visit_node_ptr(val);
 )
 DEF_VISIT(ExprNode_ArraySized, node,
-    node.m_val->visit( *this );
-    node.m_size->visit( *this );
+    visit_node_ptr(node.m_val);
+    visit_node_ptr(node.m_size);
 )
 
 DEF_VISIT(ExprNode_Closure, node,
-    node.m_code->visit( *this );
+    visit_node_ptr(node.m_code);
 )
 
 #undef DEF_VISIT

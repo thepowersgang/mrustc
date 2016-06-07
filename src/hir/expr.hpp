@@ -269,12 +269,12 @@ struct ExprNode_Unsize:
 struct ExprNode_Index:
     public ExprNode
 {
-    ::HIR::ExprNodeP    m_val;
+    ::HIR::ExprNodeP    m_value;
     ::HIR::ExprNodeP    m_index;
     
     ExprNode_Index(Span sp, ::HIR::ExprNodeP val, ::HIR::ExprNodeP index):
         ExprNode(mv$(sp)),
-        m_val( mv$(val) ),
+        m_value( mv$(val) ),
         m_index( mv$(index) )
     {}
     
@@ -283,11 +283,11 @@ struct ExprNode_Index:
 struct ExprNode_Deref:
     public ExprNode
 {
-    ::HIR::ExprNodeP    m_val;
+    ::HIR::ExprNodeP    m_value;
     
     ExprNode_Deref(Span sp, ::HIR::ExprNodeP val):
         ExprNode(mv$(sp)),
-        m_val( mv$(val) )
+        m_value( mv$(val) )
     {}
     
     NODE_METHODS();
@@ -313,12 +313,12 @@ struct ExprNode_CallPath:
 struct ExprNode_CallValue:
     public ExprNode
 {
-    ::HIR::ExprNodeP m_val;
+    ::HIR::ExprNodeP m_value;
     ::std::vector<ExprNodeP> m_args;
     
     ExprNode_CallValue(Span sp, ::HIR::ExprNodeP val, ::std::vector< ::HIR::ExprNodeP> args):
         ExprNode(mv$(sp)),
-        m_val( mv$(val) ),
+        m_value( mv$(val) ),
         m_args( mv$(args) )
     {}
     
@@ -327,7 +327,7 @@ struct ExprNode_CallValue:
 struct ExprNode_CallMethod:
     public ExprNode
 {
-    ::HIR::ExprNodeP    m_val;
+    ::HIR::ExprNodeP    m_value;
     ::std::string   m_method;
     ::HIR::PathParams  m_params;
     ::std::vector< ::HIR::ExprNodeP>    m_args;
@@ -338,10 +338,11 @@ struct ExprNode_CallMethod:
 
     ExprNode_CallMethod(Span sp, ::HIR::ExprNodeP val, ::std::string method_name, ::HIR::PathParams params, ::std::vector< ::HIR::ExprNodeP> args):
         ExprNode( mv$(sp) ),
-        m_val( mv$(val) ),
+        m_value( mv$(val) ),
         m_method( mv$(method_name) ),
         m_params( mv$(params) ),
         m_args( mv$(args) ),
+        
         m_method_path( ::HIR::SimplePath("",{}) )
     {
     }
@@ -351,12 +352,12 @@ struct ExprNode_CallMethod:
 struct ExprNode_Field:
     public ExprNode
 {
-    ::HIR::ExprNodeP    m_val;
+    ::HIR::ExprNodeP    m_value;
     ::std::string   m_field;
     
     ExprNode_Field(Span sp, ::HIR::ExprNodeP val, ::std::string field):
         ExprNode(mv$(sp)),
-        m_val( mv$(val) ),
+        m_value( mv$(val) ),
         m_field( mv$(field) )
     {}
     
@@ -537,6 +538,7 @@ struct ExprNode_Closure:
 class ExprVisitor
 {
 public:
+    virtual void visit_node_ptr(::std::unique_ptr<ExprNode>& node_ptr);
     virtual void visit_node(ExprNode& node);
     #define NV(nt)  virtual void visit(nt& n) = 0;
     

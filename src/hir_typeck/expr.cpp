@@ -1627,6 +1627,8 @@ namespace {
         {
         }
         
+        // TODO: Add a new method called for all ExprNodeP, which will save the pointer someho
+        
         // - Block: Ignore all return values except the last one (which is yeilded)
         void visit(::HIR::ExprNode_Block& node) override
         {
@@ -1853,7 +1855,7 @@ namespace {
         // - Index: Look for implementation of the Index trait
         void visit(::HIR::ExprNode_Index& node) override
         {
-            this->context.find_trait_impls(this->context.m_crate.get_lang_item_path(node.span(), "index"), node.m_val->m_res_type, [&](const auto& args) {
+            this->context.find_trait_impls(this->context.m_crate.get_lang_item_path(node.span(), "index"), node.m_value->m_res_type, [&](const auto& args) {
                 DEBUG("TODO: Insert index operator (if index arg matches)");
                 return false;
                 });
@@ -1862,7 +1864,7 @@ namespace {
         // - Deref: Look for impl of Deref
         void visit(::HIR::ExprNode_Deref& node) override
         {
-            const auto& ty = this->context.get_type( node.m_val->m_res_type );
+            const auto& ty = this->context.get_type( node.m_value->m_res_type );
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Borrow, e,
                 this->context.apply_equality(node.span(), node.m_res_type, *e.inner);
             )
@@ -2020,7 +2022,7 @@ namespace {
             ::HIR::ExprVisitorDef::visit(node);
             if( node.m_method_path.m_data.is_Generic() && node.m_method_path.m_data.as_Generic().m_path.m_components.size() == 0 )
             {
-                const auto& ty = this->context.get_type(node.m_val->m_res_type);
+                const auto& ty = this->context.get_type(node.m_value->m_res_type);
                 DEBUG("ty = " << ty);
                 // Using autoderef, locate this method on the type
                 ::HIR::Path   fcn_path { ::HIR::SimplePath() };
@@ -2045,8 +2047,8 @@ namespace {
                     DEBUG("Adding " << deref_count << " dereferences");
                     while( deref_count > 0 )
                     {
-                        node.m_val = ::HIR::ExprNodeP( new ::HIR::ExprNode_Deref(node.span(), mv$(node.m_val)) );
-                        this->context.add_ivars( node.m_val->m_res_type );
+                        node.m_value = ::HIR::ExprNodeP( new ::HIR::ExprNode_Deref(node.span(), mv$(node.m_value)) );
+                        this->context.add_ivars( node.m_value->m_res_type );
                         deref_count -= 1;
                     }
                 }
