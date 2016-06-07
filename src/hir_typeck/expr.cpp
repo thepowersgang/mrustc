@@ -910,6 +910,17 @@ namespace {
                         // TODO: Should diverge check be done elsewhere? what happens if a ! ends up in an ivar?
                         return ;
                     }
+                    
+                    // Helper function for Path and TraitObject
+                    auto equality_typeparams = [&](const ::HIR::PathParams& l, const ::HIR::PathParams& r) {
+                            if( l.m_types.size() != r.m_types.size() ) {
+                                ERROR(sp, E0000, "Type mismatch in type params `" << l << "` and `" << r << "`");
+                            }
+                            for(unsigned int i = 0; i < l.m_types.size(); i ++)
+                            {
+                                this->apply_equality(sp, l.m_types[i], cb_left, r.m_types[i], cb_right, nullptr);
+                            }
+                        };
 
                     if( l_t.m_data.is_Pointer() && r_t.m_data.is_Borrow() ) {
                         const auto& l_e = l_t.m_data.as_Pointer();
@@ -923,11 +934,12 @@ namespace {
                         // 2. If that succeeds, add a coerce
                         if( node_ptr_ptr != nullptr )
                         {
-                            auto span = (**node_ptr_ptr).span();
+                            auto& node_ptr = *node_ptr_ptr;
+                            auto span = node_ptr->span();
                             // - Override the existing result type (to prevent infinite recursion)
-                            (*node_ptr_ptr)->m_res_type = r_t.clone();
-                            *node_ptr_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(*node_ptr_ptr), l_t.clone() ));
-                            (*node_ptr_ptr)->m_res_type = l_t.clone();
+                            node_ptr->m_res_type = r_t.clone();
+                            node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), l_t.clone() ));
+                            //node_ptr->m_res_type = l_t.clone();   // < Set by _Cast
                             
                             DEBUG("- Borrow->Pointer cast added - " << l_t << " <- " << r_t);
                             this->mark_change();
@@ -958,15 +970,6 @@ namespace {
                         }
                         ),
                     (Path,
-                        auto equality_typeparams = [&](const ::HIR::PathParams& l, const ::HIR::PathParams& r) {
-                                if( l.m_types.size() != r.m_types.size() ) {
-                                    ERROR(sp, E0000, "Type mismatch in type params `" << l << "` and `" << r << "`");
-                                }
-                                for(unsigned int i = 0; i < l.m_types.size(); i ++)
-                                {
-                                    this->apply_equality(sp, l.m_types[i], cb_left, r.m_types[i], cb_right, nullptr);
-                                }
-                            };
                         if( l_e.path.m_data.tag() != r_e.path.m_data.tag() ) {
                             ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
                         }
@@ -1004,7 +1007,7 @@ namespace {
                             ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - trait counts differ");
                         }
                         // NOTE: Lifetime is ignored
-                        // TODO: Is this list sorted for consistency?
+                        // TODO: Is this list sorted in any way? (if it's not sorted, this could fail when source does Send+Any instead of Any+Send)
                         for(unsigned int i = 0; i < l_e.m_traits.size(); i ++ )
                         {
                             auto& l_p = l_e.m_traits[i];
@@ -1012,7 +1015,7 @@ namespace {
                             if( l_p.m_path != r_p.m_path ) {
                                 ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
                             }
-                            // TODO: Equality of params
+                            equality_typeparams(l_p.m_params, r_p.m_params);
                         }
                         ),
                     (Array,
@@ -1043,6 +1046,7 @@ namespace {
                         // ------------------
                         if( node_ptr_ptr != nullptr )
                         {
+                            auto& node_ptr = *node_ptr_ptr;
                             const auto& left_inner_res  = this->get_type(*l_e.inner);
                             const auto& right_inner_res = this->get_type(*r_e.inner);
                             
@@ -1052,9 +1056,9 @@ namespace {
                                 return args.m_types[0] == left_inner_res;
                                 });
                             if( succ ) {
-                                auto span = (**node_ptr_ptr).span();
-                                *node_ptr_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(*node_ptr_ptr), l_t.clone() ));
-                                (*node_ptr_ptr)->m_res_type = l_t.clone();
+                                auto span = node_ptr->span();
+                                node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), l_t.clone() ));
+                                node_ptr->m_res_type = l_t.clone();
                                 
                                 this->mark_change();
                                 return ;
@@ -1066,9 +1070,9 @@ namespace {
                                 const auto& left_slice = left_inner_res.m_data.as_Slice();
                                 TU_IFLET(::HIR::TypeRef::Data, right_inner_res.m_data, Array, right_array,
                                     this->apply_equality(sp, *left_slice.inner, cb_left, *right_array.inner, cb_right, nullptr);
-                                    auto span = (**node_ptr_ptr).span();
-                                    *node_ptr_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(*node_ptr_ptr), l_t.clone() ));
-                                    (*node_ptr_ptr)->m_res_type = l_t.clone();
+                                    auto span = node_ptr->span();
+                                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), l_t.clone() ));
+                                    node_ptr->m_res_type = l_t.clone();
                                     
                                     this->mark_change();
                                     return ;
@@ -1087,7 +1091,6 @@ namespace {
                         ),
                     (Pointer,
                         if( l_e.type != r_e.type ) {
-                            // TODO: This could be allowed if left == false && right == true (reborrowing)
                             ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - Pointer mutability differs");
                         }
                         this->apply_equality(sp, *l_e.inner, cb_left, *r_e.inner, cb_right, nullptr);
@@ -1100,7 +1103,7 @@ namespace {
                         {
                             ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
                         }
-                        // NOTE: No inferrence in fn types?
+                        // NOTE: No inferrence in fn types? Not sure, lazy way is to allow it.
                         this->apply_equality(sp, *l_e.m_rettype, cb_left, *r_e.m_rettype, cb_right, nullptr);
                         for(unsigned int i = 0; i < l_e.m_arg_types.size(); i ++ ) {
                             this->apply_equality(sp, l_e.m_arg_types[i], cb_left, r_e.m_arg_types[i], cb_right, nullptr);
