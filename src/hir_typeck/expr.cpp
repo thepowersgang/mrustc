@@ -1957,7 +1957,7 @@ namespace {
                         }
                     }
                     );
-                // If the above returned success, get output type
+                // If there wasn't an exact match, BUT there was one partial match - assume the partial match is what we want
                 if( !found_exact && count == 1 ) {
                     assert(impl_ptr);
                     this->context.apply_equality(node.span(), impl_ptr->m_trait_args.m_types[0], ty_right);
@@ -1979,7 +1979,8 @@ namespace {
                     }
                 }
                 else {
-                    // TODO: Determine if this could ever succeed, and error if not
+                    // TODO: Determine if this could ever succeed, and error if not.
+                    // - Likely `count` can help, but only if fuzzy matching of the impl type is done
                 }
             }
         }
