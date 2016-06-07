@@ -259,12 +259,24 @@ const ::HIR::Function& ::HIR::Crate::get_function_by_path(const Span& sp, const 
     }
 }
 
-const bool ::HIR::Crate::find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TraitImpl&)> callback) const
+bool ::HIR::Crate::find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TraitImpl&)> callback) const
 {
     auto its = this->m_trait_impls.equal_range( trait );
     for( auto it = its.first; it != its.second; ++ it )
     {
         const auto& impl = it->second;
+        if( impl.matches_type(type, ty_res) ) {
+            if( callback(impl) ) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+bool ::HIR::Crate::find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback) const
+{
+    for( const auto& impl : this->m_type_impls )
+    {
         if( impl.matches_type(type, ty_res) ) {
             if( callback(impl) ) {
                 return true;

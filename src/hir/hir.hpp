@@ -275,7 +275,8 @@ public:
     const ::HIR::ValueItem& get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Function& get_function_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     
-    const bool find_trait_impls(const ::HIR::SimplePath& path, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TraitImpl&)> callback) const;
+    bool find_trait_impls(const ::HIR::SimplePath& path, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TraitImpl&)> callback) const;
+    bool find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback) const;
 };
 
 }   // namespace HIR

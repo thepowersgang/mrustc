@@ -267,6 +267,7 @@ namespace {
             return rv;
         }
         void mark_change() {
+            DEBUG("- CHANGE");
             m_has_changed = true;
         }
         
@@ -913,15 +914,22 @@ namespace {
                     if( l_t.m_data.is_Pointer() && r_t.m_data.is_Borrow() ) {
                         const auto& l_e = l_t.m_data.as_Pointer();
                         const auto& r_e = r_t.m_data.as_Borrow();
+                        if( l_e.type != r_e.type ) {
+                            ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " (pointer type mismatch)");
+                        }
+                        // 1. Equate inner types
+                        this->apply_equality(sp, *l_e.inner, cb_left, *r_e.inner, cb_right, nullptr);
+
+                        // 2. If that succeeds, add a coerce
                         if( node_ptr_ptr != nullptr )
                         {
-                            // 1. Equate inner types
-                            this->apply_equality(sp, *l_e.inner, cb_left, *r_e.inner, cb_right, nullptr);
-                            // 2. If that succeeds, add a coerce
                             auto span = (**node_ptr_ptr).span();
+                            // - Override the existing result type (to prevent infinite recursion)
+                            (*node_ptr_ptr)->m_res_type = r_t.clone();
                             *node_ptr_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(*node_ptr_ptr), l_t.clone() ));
                             (*node_ptr_ptr)->m_res_type = l_t.clone();
                             
+                            DEBUG("- Borrow->Pointer cast added - " << l_t << " <- " << r_t);
                             this->mark_change();
                             return ;
                         }
@@ -1949,7 +1957,7 @@ namespace {
                 (UfcsKnown,
                     const auto& trait = this->context.m_crate.get_trait_by_path(sp, e.trait.m_path);
                     this->fix_param_count(sp, path, trait.m_params, e.trait.m_params);
-                    const auto& fcn = trait.m_values.find(e.item)->second.as_Function();
+                    const auto& fcn = trait.m_values.at(e.item).as_Function();
                     this->fix_param_count(sp, path, fcn.m_params,  e.params);
                     
                     fcn_ptr = &fcn;
@@ -1973,7 +1981,40 @@ namespace {
                     TODO(sp, "Hit a UfcsUnknown (" << path << ") - Is this an error?");
                     ),
                 (UfcsInherent,
-                    TODO(sp, "Locate functions in UFCS inherent - " << path);
+                    const ::HIR::TypeImpl* impl_ptr = nullptr;
+                    this->context.m_crate.find_type_impls(*e.type, [&](const auto& ty)->const auto& {
+                            if( ty.m_data.is_Infer() )
+                                return this->context.get_type(ty);
+                            else
+                                return ty;
+                        },
+                        [&](const auto& impl) {
+                            auto it = impl.m_methods.find(e.item);
+                            if( it == impl.m_methods.end() )
+                                return false;
+                            fcn_ptr = &it->second;
+                            impl_ptr = &impl;
+                            return true;
+                        });
+                    if( !fcn_ptr ) {
+                        ERROR(sp, E0000, "Failed to locate function " << path);
+                    }
+                    assert(impl_ptr);
+                    this->fix_param_count(sp, path, fcn_ptr->m_params,  e.params);
+                    
+                    monomorph_cb = [&](const auto& gt)->const auto& {
+                            const auto& ge = gt.m_data.as_Generic();
+                            if( ge.binding == 0xFFFF ) {
+                                return *e.type;
+                            }
+                            // TODO: Don't the function-level params use 256-511?
+                            //else if( ge.binding < 256 ) {
+                            //    return path_params.m_types[ge.binding];
+                            //}
+                            //else {
+                            //}
+                            TODO(sp, "Monomorphise for type method - " << ge.name << " " << ge.binding);
+                        };
                     )
                 )
 
@@ -2216,8 +2257,11 @@ void Typecheck_Code(TypecheckContext context, const ::HIR::TypeRef& result_type,
     // 2. Iterate through nodes applying rules until nothing changes
     {
         ExprVisitor_Run visitor { context };
+        unsigned int count = 0;
         do {
             visitor.visit_node_ptr(root_ptr);
+            count += 1;
+            assert(count < 1000);
         } while( context.take_changed() );
     }
     
