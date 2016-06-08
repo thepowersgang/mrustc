@@ -307,6 +307,7 @@ struct ExprNode_TupleVariant:
     ExprNode_TupleVariant(Span sp, ::HIR::GenericPath path, bool is_struct, ::std::vector< ::HIR::ExprNodeP> args):
         ExprNode(mv$(sp)),
         m_path( mv$(path) ),
+        m_is_struct( is_struct ),
         m_args( mv$(args) )
     {}
     

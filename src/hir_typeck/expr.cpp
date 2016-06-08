@@ -1306,9 +1306,37 @@ namespace {
                 }
                 );
         }
+        
+        bool trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const
+        {
+            auto it = trait_ptr.m_values.find(name);
+            if( it != trait_ptr.m_values.end() ) {
+                if( it->second.is_Function() ) {
+                    out_path = trait_path.clone();
+                    return true;
+                }
+            }
+            
+            // TODO: Prevent infinite recursion
+            for(const auto& st : trait_ptr.m_parent_traits)
+            {
+                auto& st_ptr = this->m_crate.get_trait_by_path(sp, st.m_path);
+                if( trait_contains_method(sp, st, st_ptr, name, out_path) ) {
+                    out_path.m_params = monomorphise_path_params_with(sp, mv$(out_path.m_params), [&](const auto& gt)->const auto& {
+                        const auto& ge = gt.m_data.as_Generic();
+                        assert(ge.binding < 256);
+                        assert(ge.binding < trait_path.m_params.m_types.size());
+                        return trait_path.m_params.m_types[ge.binding];
+                        }, false);
+                    return true;
+                }
+            }
+            return false;
+        }
+        
         /// Locate the named method by applying auto-dereferencing.
         /// \return Number of times deref was applied (or ~0 if _ was hit)
-        unsigned int autoderef_find_method(const Span& sp, const ::HIR::TypeRef& top_ty, const ::std::string method_name,  /* Out -> */::HIR::Path& fcn_path) const
+        unsigned int autoderef_find_method(const Span& sp, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const
         {
             unsigned int deref_count = 0;
             const auto* current_ty = &top_ty;
@@ -1334,17 +1362,16 @@ namespace {
                             // - Bound's type matches, check if the bounded trait has the method we're searching for
                             //  > TODO: Search supertraits too
                             DEBUG("- Matches " << ty);
+                            ::HIR::GenericPath final_trait_path;
                             assert(e.trait.m_trait_ptr);
-                            auto it = e.trait.m_trait_ptr->m_values.find(method_name);
-                            if( it == e.trait.m_trait_ptr->m_values.end() )
+                            if( !this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, method_name,  final_trait_path) )
                                 continue ;
-                            if( !it->second.is_Function() )
-                                continue ;
+                            DEBUG("- Found trait " << final_trait_path);
                             
                             // Found the method, return the UFCS path for it
                             fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
                                 box$( ty.clone() ),
-                                e.trait.m_path.clone(),
+                                mv$(final_trait_path),
                                 method_name,
                                 {}
                                 }) );
@@ -1373,6 +1400,7 @@ namespace {
                     // 3. Search for trait methods (using currently in-scope traits)
                     for(const auto& trait_ref : ::reverse(m_traits))
                     {
+                        // TODO: Search supertraits too
                         auto it = trait_ref.second->m_values.find(method_name);
                         if( it == trait_ref.second->m_values.end() )
                             continue ;
