@@ -416,6 +416,7 @@ namespace {
 }
 ::HIR::TypeRef::Compare HIR::TypeRef::compare_with_paceholders(const Span& sp, const ::HIR::TypeRef& x, ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> resolve_placeholder) const
 {
+    TRACE_FUNCTION_F(*this << " ?= " << x);
     assert( !this->m_data.is_Infer() );
     const auto& right = (x.m_data.is_Infer() ? resolve_placeholder(x) : (x.m_data.is_Generic() ? resolve_placeholder(x) : x));
     
@@ -459,6 +460,9 @@ namespace {
         }
         throw "";
     )
+    
+    // If righthand is a type parameter, it can only match another type parameter
+    // - See `(Generic,` below
     
     if( this->m_data.tag() != right.m_data.tag() ) {
         return Compare::Unequal;

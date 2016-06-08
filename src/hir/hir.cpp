@@ -32,15 +32,19 @@ namespace HIR {
 namespace {
     bool matches_type_int(const ::HIR::GenericParams& params, const ::HIR::TypeRef& left,  const ::HIR::TypeRef& right_in, ::HIR::t_cb_resolve_type ty_res)
     {
-        //DEBUG("left = " << left << ", right = " << right);
         assert(! left.m_data.is_Infer() );
-        const auto& right = (right_in.m_data.is_Infer() ? ty_res(right_in) : right_in);
+        const auto& right = (right_in.m_data.is_Infer() || right_in.m_data.is_Generic() ? ty_res(right_in) : right_in);
+
+        //DEBUG("left = " << left << ", right = " << right);
         
         // TODO: What indicates what out of ty_res?
         
         if( right.m_data.is_Infer() ) {
             // TODO: Why is this false? A _ type could match anything
             return false;
+        }
+        if( right.m_data.is_Generic() ) {
+            return left.m_data.is_Generic();
         }
         
         if( left.m_data.is_Generic() ) {

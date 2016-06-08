@@ -1001,18 +1001,24 @@ namespace {
                             equality_typeparams(lpe.m_params, rpe.m_params);
                             ),
                         (UfcsInherent,
-                            this->apply_equality(sp, *lpe.type, cb_left, *rpe.type, cb_right, nullptr);
                             equality_typeparams(lpe.params, rpe.params);
+                            if( lpe.item != rpe.item )
+                                ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                            this->apply_equality(sp, *lpe.type, cb_left, *rpe.type, cb_right, nullptr);
                             ),
                         (UfcsKnown,
-                            this->apply_equality(sp, *lpe.type, cb_left, *rpe.type, cb_right, nullptr);
                             equality_typeparams(lpe.trait.m_params, rpe.trait.m_params);
                             equality_typeparams(lpe.params, rpe.params);
+                            if( lpe.item != rpe.item )
+                                ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                            this->apply_equality(sp, *lpe.type, cb_left, *rpe.type, cb_right, nullptr);
                             ),
                         (UfcsUnknown,
-                            this->apply_equality(sp, *lpe.type, cb_left, *rpe.type, cb_right, nullptr);
                             // TODO: If the type is fully known, locate a suitable trait item
                             equality_typeparams(lpe.params, rpe.params);
+                            if( lpe.item != rpe.item )
+                                ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                            this->apply_equality(sp, *lpe.type, cb_left, *rpe.type, cb_right, nullptr);
                             )
                         )
                         ),
@@ -1156,7 +1162,7 @@ namespace {
                 return true;
             }
             else {
-                DEBUG("- Bound " << type << " : " << trait << " failed");
+                DEBUG("- Bound " << type << " ("<<placeholder(type)<<") : " << trait << " failed");
                 return false;
             }
         }
@@ -1226,13 +1232,13 @@ namespace {
                             impl_args.resize( impl.m_params.m_types.size() );
                             // - Match with `Self`
                             auto cb_res = [&](unsigned int slot, const ::HIR::TypeRef& ty) {
-                                    DEBUG("Set " << slot << " = " << ty);
+                                    DEBUG("- Set " << slot << " = " << ty);
                                     if( slot >= impl_args.size() ) {
                                         BUG(sp, "Impl parameter out of range - " << slot);
                                     }
                                     auto& slot_r = impl_args.at(slot);
                                     if( slot_r != nullptr ) {
-                                        DEBUG("- Match " << slot_r << " == " << ty);
+                                        DEBUG("TODO: Match " << slot_r << " == " << ty << " when encountered twice");
                                     }
                                     else {
                                         slot_r = &ty;
@@ -1261,7 +1267,6 @@ namespace {
                                 (TraitBound,
                                     if( !this->check_trait_bound(sp, be.type, be.trait.m_path, expand_placeholder) )
                                     {
-                                        DEBUG("- Bound " << be.type << " : " << be.trait.m_path << " failed");
                                         return false;
                                     }
                                     )
