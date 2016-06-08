@@ -18,6 +18,15 @@ struct GenericSlot
         Method,
     } level;
     unsigned short  index;
+    
+    unsigned int to_binding() const {
+        if(level == Level::Method) {
+            return (unsigned int)index + 256;
+        }
+        else {
+            return (unsigned int)index;
+        }
+    }
 };
 template<typename Val>
 struct Named
@@ -360,7 +369,7 @@ struct Context
                     {
                         if( it2->name == name ) {
                             ::AST::Path rv(name);
-                            rv.bind_variable( it2->value.index * (it2->value.level == GenericSlot::Level::Method ? 256 : 1) );
+                            rv.bind_variable( it2->value.to_binding() );
                             return rv;
                         }
                     }
@@ -412,7 +421,7 @@ struct Context
                     for( auto it2 = e.types.rbegin(); it2 != e.types.rend(); ++ it2 )
                     {
                         if( it2->name == name ) {
-                            return it2->value.index * (it2->value.level == GenericSlot::Level::Method ? 256 : 1);
+                            return it2->value.to_binding();
                         }
                     }
                 }
@@ -823,7 +832,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
 
 void Resolve_Absolute_Type(Context& context,  TypeRef& type)
 {
-    TRACE_FUNCTION_F("type = " << type);
+    TRACE_FUNCTION_FR("type = " << type, "type = " << type);
     const auto& sp = type.span();
     TU_MATCH(TypeData, (type.m_data), (e),
     (None,
