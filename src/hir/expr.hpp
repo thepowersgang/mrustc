@@ -293,6 +293,25 @@ struct ExprNode_Deref:
     NODE_METHODS();
 };
 
+struct ExprNode_TupleVariant:
+    public ExprNode
+{
+    // Path to variant/struct
+    ::HIR::GenericPath m_path;
+    bool    m_is_struct;
+    ::std::vector<ExprNodeP> m_args;
+    
+    // - Cache for typeck
+    ::std::vector< ::HIR::TypeRef>  m_arg_types;
+    
+    ExprNode_TupleVariant(Span sp, ::HIR::GenericPath path, bool is_struct, ::std::vector< ::HIR::ExprNodeP> args):
+        ExprNode(mv$(sp)),
+        m_path( mv$(path) ),
+        m_args( mv$(args) )
+    {}
+    
+    NODE_METHODS();
+};
 struct ExprNode_CallPath:
     public ExprNode
 {
@@ -564,6 +583,7 @@ public:
     NV(ExprNode_Index)
     NV(ExprNode_Deref)
     
+    NV(ExprNode_TupleVariant);
     NV(ExprNode_CallPath);
     NV(ExprNode_CallValue);
     NV(ExprNode_CallMethod);
@@ -604,6 +624,7 @@ public:
     NV(ExprNode_Index)
     NV(ExprNode_Deref)
     
+    NV(ExprNode_TupleVariant);
     NV(ExprNode_CallPath);
     NV(ExprNode_CallValue);
     NV(ExprNode_CallMethod);

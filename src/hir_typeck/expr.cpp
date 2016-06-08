@@ -2199,6 +2199,97 @@ namespace {
                 }
             }
         }
+        void visit(::HIR::ExprNode_TupleVariant& node) override {
+            const Span& sp = node.span();
+            auto& arg_types = node.m_arg_types;
+            if( arg_types.size() == 0 )
+            {
+                auto& path_params = node.m_path.m_params;
+                auto monomorph_cb = [&](const auto& gt)->const auto& {
+                        const auto& e = gt.m_data.as_Generic();
+                        if( e.name == "Self" )
+                            TODO(sp, "Handle 'Self' when monomorphising type");
+                        if( e.binding < 256 ) {
+                            auto idx = e.binding;
+                            if( idx >= path_params.m_types.size() ) {
+                                BUG(sp, "Generic param out of input range - " << idx << " '"<<e.name<<"' >= " << path_params.m_types.size());
+                            }
+                            return path_params.m_types[idx];
+                        }
+                        else if( e.binding < 512 ) {
+                            BUG(sp, "Method-level parameter on struct/enum");
+                        }
+                        else {
+                            BUG(sp, "Generic bounding out of total range");
+                        }
+                    };
+                
+                if( node.m_is_struct )
+                {
+                    const auto& str = this->context.m_crate.get_struct_by_path(sp, node.m_path.m_path);
+                    // TODO: Remove this clone
+                    this->fix_param_count(sp, ::HIR::Path(node.m_path.clone()), str.m_params,  path_params);
+                    const auto& fields = str.m_data.as_Tuple();
+                    arg_types.reserve( fields.size() );
+                    for(const auto& fld : fields)
+                    {
+                        if( monomorphise_type_needed(fld.ent) ) {
+                            arg_types.push_back( this->context.expand_associated_types(sp, monomorphise_type_with(sp, fld.ent,  monomorph_cb)) );
+                        }
+                        else {
+                            arg_types.push_back( fld.ent.clone() );
+                        }
+                    }
+                    
+                    arg_types.push_back( ::HIR::TypeRef(node.m_path.clone()) );
+                }
+                else
+                {
+                    const auto& variant_name = node.m_path.m_path.m_components.back();
+                    auto type_path = node.m_path.m_path;
+                    type_path.m_components.pop_back();
+                    
+                    const auto& enm = this->context.m_crate.get_enum_by_path(sp, type_path);
+                    // TODO: Remove this clone
+                    this->fix_param_count(sp, ::HIR::Path(node.m_path.clone()), enm.m_params,  path_params);
+                    
+                    auto it = ::std::find_if( enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x){ return x.first == variant_name; });
+                    if( it == enm.m_variants.end() ) {
+                        ERROR(sp, E0000, "Unable to find variant '" << variant_name << " of " << type_path);
+                    }
+                    const auto& fields = it->second.as_Tuple();
+                    arg_types.reserve( fields.size() );
+                    for(const auto& fld : fields)
+                    {
+                        if( monomorphise_type_needed(fld) ) {
+                            arg_types.push_back( this->context.expand_associated_types(sp, monomorphise_type_with(sp, fld,  monomorph_cb)) );
+                        }
+                        else {
+                            arg_types.push_back( fld.clone() );
+                        }
+                    }
+                    arg_types.push_back( ::HIR::TypeRef( ::HIR::GenericPath(type_path, path_params.clone()) ) );
+                }
+                
+                if( node.m_args.size() != arg_types.size() - 1 ) {
+                    ERROR(sp, E0000, "Incorrect number of arguments to " << node.m_path);
+                }
+                DEBUG("--- RESOLVED");
+            }
+            
+            for( unsigned int i = 0; i < arg_types.size() - 1; i ++ )
+            {
+                auto& arg_expr_ptr = node.m_args[i];
+                const auto& arg_ty = arg_types[i];
+                DEBUG("Arg " << i << ": " << arg_ty);
+                this->context.apply_equality(sp, arg_ty, arg_expr_ptr->m_res_type,  &arg_expr_ptr);
+            }
+            
+            DEBUG("Rreturn: " << arg_types.back());
+            this->context.apply_equality(sp, node.m_res_type, arg_types.back() /*,  &this_node_ptr*/);
+            
+            ::HIR::ExprVisitorDef::visit(node);
+        }
         
         void visit_call(const Span& sp,
                 ::HIR::Path& path, bool is_method,
@@ -2349,8 +2440,6 @@ namespace {
                     arg_types.push_back( fcn.m_return.clone() );
                 }
             }
-            // TODO: Save the arg_types vector
-            // - Prevents need to do lookups and monomorph on every cycle
             
             for( unsigned int i = arg_ofs; i < arg_types.size() - 1; i ++ )
             {

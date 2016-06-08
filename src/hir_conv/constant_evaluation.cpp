@@ -354,6 +354,9 @@ namespace {
                 badnode(node);
             }
             
+            void visit(::HIR::ExprNode_TupleVariant& node) override {
+                TODO(node.span(), "ExprNode_TupleVariant");
+            }
             void visit(::HIR::ExprNode_CallPath& node) override {
                 auto& fcn = get_function(node.span(), m_crate, node.m_path);
                 // TODO: Set m_const during parse

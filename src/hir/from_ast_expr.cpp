@@ -224,10 +224,26 @@ struct LowerHIR_ExprNode_Visitor:
         )
         else
         {
-            m_rv.reset( new ::HIR::ExprNode_CallPath( v.span(),
-                LowerHIR_Path(Span(v.get_pos()), v.m_path),
-                mv$( args )
-                ) );
+            TU_MATCH_DEF(::AST::PathBinding, (v.m_path.binding()), (e),
+            (
+                m_rv.reset( new ::HIR::ExprNode_CallPath( v.span(),
+                    LowerHIR_Path(Span(v.get_pos()), v.m_path),
+                    mv$( args )
+                    ) );
+                ),
+            (EnumVar,
+                m_rv.reset( new ::HIR::ExprNode_TupleVariant( v.span(),
+                    LowerHIR_GenericPath(v.span(), v.m_path), false,
+                    mv$( args )
+                    ) );
+                ),
+            (Struct,
+                m_rv.reset( new ::HIR::ExprNode_TupleVariant( v.span(),
+                    LowerHIR_GenericPath(v.span(), v.m_path), true,
+                    mv$( args )
+                    ) );
+                )
+            )
         }
     }
     virtual void visit(::AST::ExprNode_CallMethod& v) override {

@@ -72,6 +72,10 @@ DEF_VISIT(ExprNode_Deref, node,
     visit_node_ptr(node.m_value);
 )
 
+DEF_VISIT(ExprNode_TupleVariant, node,
+    for(auto& arg : node.m_args)
+        visit_node_ptr(arg);
+)
 DEF_VISIT(ExprNode_CallPath, node,
     for(auto& arg : node.m_args)
         visit_node_ptr(arg);
