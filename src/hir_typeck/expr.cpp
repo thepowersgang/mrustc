@@ -2214,7 +2214,6 @@ namespace {
                 const ::HIR::Function*  fcn_ptr = nullptr;
                 ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>    monomorph_cb;
                 
-                // TODO: Construct method to get a reference to an item along with the params decoded out of the path?
                 TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
                 (Generic,
                     const auto& fcn = this->context.m_crate.get_function_by_path(sp, e.m_path);
@@ -2227,12 +2226,19 @@ namespace {
                             const auto& e = gt.m_data.as_Generic();
                             if( e.name == "Self" )
                                 TODO(sp, "Handle 'Self' when monomorphising");
-                            //if( e.binding >= params_def.m_types.size() ) {
-                            //}
-                            if( e.binding >= path_params.m_types.size() ) {
-                                BUG(sp, "Generic param out of input range - " << e.binding << " '"<<e.name<<"' >= " << path_params.m_types.size());
+                            if( e.binding < 256 ) {
+                                BUG(sp, "Impl-level parameter on free function (#" << e.binding << " " << e.name << ")");
                             }
-                            return path_params.m_types[e.binding];
+                            else if( e.binding < 512 ) {
+                                auto idx = e.binding - 256;
+                                if( idx >= path_params.m_types.size() ) {
+                                    BUG(sp, "Generic param out of input range - " << idx << " '"<<e.name<<"' >= " << path_params.m_types.size());
+                                }
+                                return path_params.m_types[idx];
+                            }
+                            else {
+                                BUG(sp, "Generic bounding out of total range");
+                            }
                         };
                     ),
                 (UfcsKnown,
@@ -2243,19 +2249,30 @@ namespace {
                     
                     fcn_ptr = &fcn;
                     
-                    //const auto& path_params = e.params;
+                    const auto& trait_params = e.trait.m_params;
+                    const auto& path_params = e.params;
                     monomorph_cb = [&](const auto& gt)->const auto& {
                             const auto& ge = gt.m_data.as_Generic();
                             if( ge.binding == 0xFFFF ) {
                                 return *e.type;
                             }
-                            // TODO: Don't the function-level params use 256-511?
-                            //else if( ge.binding < 256 ) {
-                            //    return path_params.m_types[ge.binding];
-                            //}
-                            //else {
-                            //}
-                            TODO(sp, "Monomorphise for trait method "<<path<<" - Param " << ge.name << " (" << ge.binding << ")");
+                            else if( ge.binding < 256 ) {
+                                auto idx = ge.binding;
+                                if( idx >= trait_params.m_types.size() ) {
+                                    BUG(sp, "Generic param (impl) out of input range - " << idx << " '"<<ge.name<<"' >= " << trait_params.m_types.size());
+                                }
+                                return trait_params.m_types[idx];
+                            }
+                            else if( ge.binding < 512 ) {
+                                auto idx = ge.binding - 256;
+                                if( idx >= path_params.m_types.size() ) {
+                                    BUG(sp, "Generic param out of input range - " << idx << " '"<<ge.name<<"' >= " << path_params.m_types.size());
+                                }
+                                return path_params.m_types[idx];
+                            }
+                            else {
+                                BUG(sp, "Generic bounding out of total range");
+                            }
                         };
                     ),
                 (UfcsUnknown,
@@ -2283,18 +2300,26 @@ namespace {
                     assert(impl_ptr);
                     this->fix_param_count(sp, path, fcn_ptr->m_params,  e.params);
                     
+                    //const auto& impl_params = .m_params;
+                    const auto& fcn_params = e.params;
                     monomorph_cb = [&](const auto& gt)->const auto& {
                             const auto& ge = gt.m_data.as_Generic();
                             if( ge.binding == 0xFFFF ) {
                                 return *e.type;
                             }
-                            // TODO: Don't the function-level params use 256-511?
-                            //else if( ge.binding < 256 ) {
-                            //    return path_params.m_types[ge.binding];
-                            //}
-                            //else {
-                            //}
-                            TODO(sp, "Monomorphise for type method - " << ge.name << " " << ge.binding);
+                            else if( ge.binding < 256 ) {
+                                TODO(sp, "Expand impl-leve generic params in UfcsInherent (path = " << path << ", param = #" << ge.binding << " '" << ge.name << "')");
+                            }
+                            else if( ge.binding < 512 ) {
+                                auto idx = ge.binding - 256;
+                                if( idx >= fcn_params.m_types.size() ) {
+                                    BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << fcn_params.m_types.size());
+                                }
+                                return fcn_params.m_types[idx];
+                            }
+                            else {
+                                BUG(sp, "Generic bounding out of total range");
+                            }
                         };
                     )
                 )

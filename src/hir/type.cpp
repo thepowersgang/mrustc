@@ -341,7 +341,7 @@ namespace {
         (Struct , return ::HIR::TypeRef::TypePathBinding(e); ),
         (Enum   , return ::HIR::TypeRef::TypePathBinding(e); )
         )
-        throw "";
+        assert(!"Fell off end of clone_binding");
     }
 }
 

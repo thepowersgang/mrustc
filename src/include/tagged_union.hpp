@@ -99,11 +99,11 @@
 // "match"-like statement
 // TU_MATCH(Class, m_data, ent, (Variant, CODE), (Variant2, CODE))
 #define TU_MATCH(CLASS, VAR, NAME, ...)   switch( (TU_FIRST VAR).tag()) {/*
-*/    case CLASS::TAGDEAD: throw "ERROR: destructed tagged union used";/*
+*/    case CLASS::TAGDEAD: assert(!"ERROR: destructed tagged union used");/*
 */    TU_MATCH_ARMS(CLASS, VAR, NAME, __VA_ARGS__)/*
 */}
 #define TU_MATCH_DEF(CLASS, VAR, NAME, DEF, ...)   switch( (TU_FIRST VAR).tag()) {/*
-*/    case CLASS::TAGDEAD: throw "ERROR: destructed tagged union used";/*
+*/    case CLASS::TAGDEAD: assert(!"ERROR: destructed tagged union used");/*
 */    TU_MATCH_ARMS(CLASS, VAR, NAME, __VA_ARGS__)/*
 */    default: {TU_EXP DEF;} break;/*
 */}

@@ -1328,7 +1328,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             ),
         (Function,
             DEBUG("Function - " << i.name);
-            item_context.push( e.params(), GenericSlot::Level::Top );
+            item_context.push( e.params(), GenericSlot::Level::Method );
             Resolve_Absolute_Generic(item_context,  e.params());
             
             Resolve_Absolute_Type( item_context, e.rettype() );
