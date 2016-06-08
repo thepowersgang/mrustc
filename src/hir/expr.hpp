@@ -335,6 +335,9 @@ struct ExprNode_CallValue:
 {
     ::HIR::ExprNodeP m_value;
     ::std::vector<ExprNodeP> m_args;
+
+    // - Cache for typeck
+    ::std::vector< ::HIR::TypeRef>  m_arg_types;
     
     ExprNode_CallValue(Span sp, ::HIR::ExprNodeP val, ::std::vector< ::HIR::ExprNodeP> args):
         ExprNode(mv$(sp)),

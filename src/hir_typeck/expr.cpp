@@ -867,15 +867,29 @@ namespace {
             apply_equality(sp, left, [](const auto& x)->const auto&{return x;}, right, [](const auto& x)->const auto&{return x;}, node_ptr_ptr);
         }
         
+        const ::HIR::TypeRef& expand_associated_types_to(const Span& sp, const ::HIR::TypeRef& t, ::HIR::TypeRef& tmp_t) const {
+            TU_IFLET(::HIR::TypeRef::Data, t.m_data, Path, e,
+                if( e.path.m_data.is_Generic() )
+                    return t;
+                else {
+                    tmp_t = this->expand_associated_types(sp, t.clone());
+                    DEBUG("Expanded " << t << " into " << tmp_t);
+                    return tmp_t;
+                }
+            )
+            else {
+                return t;
+            }
+        }
         void apply_equality(const Span& sp, const ::HIR::TypeRef& left, t_cb_generic cb_left, const ::HIR::TypeRef& right, t_cb_generic cb_right, ::HIR::ExprNodeP* node_ptr_ptr)
         {
             TRACE_FUNCTION_F(left << ", " << right);
             assert( ! left.m_data.is_Infer() ||  left.m_data.as_Infer().index != ~0u );
             assert( !right.m_data.is_Infer() || right.m_data.as_Infer().index != ~0u );
             // - Convert left/right types into resolved versions (either root ivar, or generic replacement)
-            const auto& l_t = left.m_data.is_Generic()  ? cb_left (left ) : this->get_type(left );
-            const auto& r_t = right.m_data.is_Generic() ? cb_right(right) : this->get_type(right);
-            if( l_t == r_t ) {
+            const auto& l_t1 = left.m_data.is_Generic()  ? cb_left (left ) : this->get_type(left );
+            const auto& r_t1 = right.m_data.is_Generic() ? cb_right(right) : this->get_type(right);
+            if( l_t1 == r_t1 ) {
                 return ;
             }
             // If generic replacement happened, clear the callback
@@ -885,6 +899,12 @@ namespace {
             if( right.m_data.is_Generic() ) {
                 cb_right = [](const auto& x)->const auto&{return x;};
             }
+            
+            ::HIR::TypeRef  left_tmp;
+            const auto& l_t = this->expand_associated_types_to(sp, l_t1, left_tmp);
+            ::HIR::TypeRef  right_tmp;
+            const auto& r_t = this->expand_associated_types_to(sp, r_t1, right_tmp);
+            
             DEBUG("- l_t = " << l_t << ", r_t = " << r_t);
             TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Infer, r_e,
                 TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Infer, l_e,
@@ -1114,14 +1134,43 @@ namespace {
             }
         }
         
+        bool check_trait_bound(const Span& sp, const ::HIR::TypeRef& type, const ::HIR::GenericPath& trait, ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> placeholder) const
+        {
+            if( this->find_trait_impls_bound(sp, trait.m_path, placeholder(type), [&](const auto& args){
+                    DEBUG("TODO: Check args for " << trait.m_path << args << " against " << trait);
+                    return true;
+                })
+                )
+            {
+                // Satisfied by generic
+                return true;
+            }
+            else if( this->m_crate.find_trait_impls(trait.m_path, type, placeholder, [&](const auto& impl) {
+                    DEBUG("- Bound " << type << " : " << trait << " satisfied by impl" << impl.m_params.fmt_args());
+                    // TODO: Recursively check
+                    return true;
+                })
+                )
+            {
+                // Match!
+                return true;
+            }
+            else {
+                DEBUG("- Bound " << type << " : " << trait << " failed");
+                return false;
+            }
+        }
         
+        ///
+        ///
+        ///
         ::HIR::TypeRef expand_associated_types(const Span& sp, ::HIR::TypeRef input) const
         {
             TRACE_FUNCTION_F(input);
             TU_MATCH(::HIR::TypeRef::Data, (input.m_data), (e),
             (Infer,
-                //auto& ty = this->get_type(input);
-                //return ty.clone();
+                auto& ty = this->get_type(input);
+                return ty.clone();
                 ),
             (Diverge,
                 ),
@@ -1137,11 +1186,7 @@ namespace {
                     TODO(sp, "Path - UfcsInherent - " << e.path);
                     ),
                 (UfcsKnown,
-                    DEBUG("Checking UFCS types for " << e.path);
-                    // HACK - Shortcut to prevent expensive search if the type is a parameter
-                    if( e2.type->m_data.is_Generic() ) {
-                        return input;
-                    }
+                    DEBUG("Locating associated type for " << e.path);
                     
                     *e2.type = expand_associated_types(sp, mv$(*e2.type));
                     
@@ -1156,7 +1201,24 @@ namespace {
                                 return ty;
                         };
                     
-                    bool rv = this->m_crate.find_trait_impls(e2.trait.m_path, *e2.type, cb_get_infer,
+                    // 1. Bounds
+                    bool rv;
+                    rv = this->iterate_bounds([&](const auto& b) {
+                        TU_IFLET(::HIR::GenericBound, b, TypeEquality, be,
+                            DEBUG("Equality - " << be.type << " = " << be.other_type);
+                            if( input == be.type ) {
+                                input = be.other_type.clone();
+                                return true;
+                            }
+                        )
+                        return false;
+                        });
+                    if( rv ) {
+                        return input;
+                    }
+
+                    // 2. Crate-level impls
+                    rv = this->m_crate.find_trait_impls(e2.trait.m_path, *e2.type, cb_get_infer,
                         [&](const auto& impl) {
                             DEBUG("Found impl" << impl.m_params.fmt_args() << " " << e2.trait.m_path << impl.m_trait_args << " for " << impl.m_type);
                             // - Populate the impl's type arguments
@@ -1181,30 +1243,24 @@ namespace {
                             {
                                 impl.m_trait_args.m_types[i].match_generics(sp, e2.trait.m_params.m_types.at(i), cb_get_infer, cb_res);
                             }
+                            auto expand_placeholder = [&](const auto& ty)->const auto& {
+                                    if( ty.m_data.is_Infer() )
+                                        return this->get_type(ty);
+                                    else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
+                                        assert( impl_args.at(e.binding) );
+                                        return *impl_args.at(e.binding);
+                                    )
+                                    else
+                                        return ty;
+                                };
                             for( const auto& bound : impl.m_params.m_bounds )
                             {
                                 TU_MATCH_DEF(::HIR::GenericBound, (bound), (be),
                                 (
                                     ),
                                 (TraitBound,
-                                    bool rv2 = this->m_crate.find_trait_impls(be.trait.m_path.m_path, be.type,
-                                        [&](const auto& ty)->const auto& {
-                                            if( ty.m_data.is_Infer() )
-                                                return this->get_type(ty);
-                                            else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
-                                                assert( impl_args.at(e.binding) );
-                                                return *impl_args.at(e.binding);
-                                            )
-                                            else
-                                                return ty;
-                                        },
-                                        [&](const auto& impl) {
-                                            DEBUG("- Bound " << be.type << " : " << be.trait.m_path << " satisfied by impl" << impl.m_params.fmt_args());
-                                            // TODO: Recursively check
-                                            return true;
-                                        }
-                                        );
-                                    if( !rv2 ) {
+                                    if( !this->check_trait_bound(sp, be.type, be.trait.m_path, expand_placeholder) )
+                                    {
                                         DEBUG("- Bound " << be.type << " : " << be.trait.m_path << " failed");
                                         return false;
                                     }
@@ -1220,20 +1276,22 @@ namespace {
                             impl_ptr = &impl;
                             return true;
                         });
-                    if( !rv )
-                        break;
+                    if( rv )
+                    {
+                        // An impl was found:
+                        assert(impl_ptr);
+                        
+                        // - Monomorphise the output type
+                        auto new_type = monomorphise_type_with(sp, impl_ptr->m_types.at( e2.item ), [&](const auto& ty)->const auto& {
+                            const auto& ge = ty.m_data.as_Generic();
+                            assert(ge.binding < impl_args.size());
+                            return *impl_args[ge.binding];
+                            });
+                        DEBUG("Converted UfcsKnown - " << e.path << " = " << new_type << " using " << e2.item << " = " << impl_ptr->m_types.at( e2.item ));
+                        return new_type;
+                    }
                     
-                    // An impl was found:
-                    assert(impl_ptr);
-                    
-                    // - Monomorphise the output type
-                    auto new_type = monomorphise_type_with(sp, impl_ptr->m_types.at( e2.item ), [&](const auto& ty)->const auto& {
-                        const auto& ge = ty.m_data.as_Generic();
-                        assert(ge.binding < impl_args.size());
-                        return *impl_args[ge.binding];
-                        });
-                    DEBUG("Converted UfcsKnown - " << e.path << " = " << new_type << " using " << e2.item << " = " << impl_ptr->m_types.at( e2.item ));
-                    return new_type;
+                    DEBUG("Couldn't resolve associated type for " << input);
                     ),
                 (UfcsUnknown,
                     BUG(sp, "Encountered UfcsUnknown");
@@ -1269,35 +1327,66 @@ namespace {
             return input;
         }
         
-        /// Searches for a trait impl that matches the provided trait name and type
-        bool find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,  ::std::function<bool(const ::HIR::PathParams&)> callback)
+        bool iterate_bounds( ::std::function<bool(const ::HIR::GenericBound&)> cb) const
         {
-            TRACE_FUNCTION_F("trait = " << trait << ", type = " << type);
-            // 1. Search generic params
             const ::HIR::GenericParams* v[2] = { m_item_params, m_impl_params };
             for(auto p : v)
             {
                 if( !p )    continue ;
                 for(const auto& b : p->m_bounds)
-                {
-                    TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
-                        if( e.type != type )
-                            continue ;
-                        if( e.trait.m_path.m_path == trait ) {
-                            if( callback(e.trait.m_path.m_params) ) {
-                                return true;
-                            }
-                        }
-                        for( const auto& pt : e.trait.m_trait_ptr->m_parent_traits ) {
-                            if( pt.m_path == trait ) {
-                                TODO(Span(), "Fix arguments for a parent trait and call callback - " << pt << " with paramset " << e.trait.m_trait_ptr->m_params.fmt_args());
-                            }
-                        }
-                    )
-                }
+                    if(cb(b))   return true;
             }
+            return false;
+        }
+        
+        /// Searches for a trait impl that matches the provided trait name and type
+        bool find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,  ::std::function<bool(const ::HIR::PathParams&)> callback)
+        {
+            Span    sp = Span();
+            TRACE_FUNCTION_F("trait = " << trait << ", type = " << type);
+            // 1. Search generic params
+            if( find_trait_impls_bound(sp, trait, type, callback) )
+                return true;
             // 2. Search crate-level impls
             return find_trait_impls_crate(trait, type,  callback);
+        }
+        bool find_named_trait_in_trait(const Span& sp, const ::HIR::SimplePath& des, const ::HIR::Trait& trait_ptr, const ::HIR::PathParams& pp,  ::std::function<bool(const ::HIR::PathParams&)> callback) const
+        {
+            assert( pp.m_types.size() == trait_ptr.m_params.m_types.size() );
+            for( const auto& pt : trait_ptr.m_parent_traits )
+            {
+                auto pt_pp = monomorphise_path_params_with(Span(), pt.m_params.clone(), [&](const auto& gt)->const auto& {
+                    const auto& ge = gt.m_data.as_Generic();
+                    if( ge.binding >= pp.m_types.size() )
+                        BUG(sp, "find_named_trait_in_trait - Generic #" << ge.binding << " " << ge.name << " out of range");
+                    return pp.m_types[ge.binding];
+                    }, false);
+                
+                if( pt.m_path == des ) {
+                    //TODO(Span(), "Fix arguments for a parent trait and call callback - " << pt << " with paramset " << trait_ptr.m_params.fmt_args() << " = " << pt_pp);
+                    callback( pt_pp );
+                    return true;
+                }
+            }
+            return false;
+        }
+        bool find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,  ::std::function<bool(const ::HIR::PathParams&)> callback) const
+        {
+            return this->iterate_bounds([&](const auto& b) {
+                TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
+                    if( e.type != type )
+                        return false;
+                    if( e.trait.m_path.m_path == trait ) {
+                        if( callback(e.trait.m_path.m_params) ) {
+                            return true;
+                        }
+                    }
+                    if( this->find_named_trait_in_trait(sp, trait,  *e.trait.m_trait_ptr, e.trait.m_path.m_params,  callback) ) {
+                        return true;
+                    }
+                )
+                return false;
+            });
         }
         bool find_trait_impls_crate(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,  ::std::function<bool(const ::HIR::PathParams&)> callback) const
         {
@@ -1504,7 +1593,8 @@ namespace {
             case ::HIR::InferClass::Float:
                 switch(ct)
                 {
-                case ::HIR::CoreType::F32:               case ::HIR::CoreType::F64:
+                case ::HIR::CoreType::F32:
+                case ::HIR::CoreType::F64:
                     break;
                 default:
                     ERROR(sp, E0000, "Type unificiation of integer literal with non-integer - " << type);
@@ -2508,21 +2598,64 @@ namespace {
             const auto& ty = this->context.get_type(node.m_value->m_res_type);
             DEBUG("(CallValue) ty = " << ty);
             
-            TU_MATCH_DEF(decltype(ty.m_data), (ty.m_data), (e),
-            (
-                // Locate impl of FnOnce
-                this->context.find_trait_impls(this->context.m_crate.get_lang_item_path(node.span(), "fn_once"), ty, [&](const auto& args) {
-                    DEBUG("TODO: Handle FnOnce for type, FnOnce" << args);
-                    return false;
-                    });
-                TODO(node.span(), "CallValue with other type - " << ty);
-                ),
-            (Function,
-                TODO(node.span(), "CallValue with Function - " << ty);
-                ),
-            (Infer,
+            if( node.m_arg_types.size() == 0 )
+            {
+                TU_MATCH_DEF(decltype(ty.m_data), (ty.m_data), (e),
+                (
+                    ::HIR::TypeRef  fcn_args_tup;
+                    ::HIR::TypeRef  fcn_ret;
+                    // Locate impl of FnOnce
+                    const auto& lang_FnOnce = this->context.m_crate.get_lang_item_path(node.span(), "fn_once");
+                    auto was_bounded = this->context.find_trait_impls_bound(node.span(), lang_FnOnce, ty, [&](const auto& args) {
+                            const auto& tup = args.m_types[0];
+                            if( !tup.m_data.is_Tuple() )
+                                ERROR(node.span(), E0000, "FnOnce expects a tuple argument, got " << tup);
+                            fcn_args_tup = tup.clone();
+                            return true;
+                            });
+                    if( was_bounded )
+                    {
+                        // RV must be in a bound
+                        fcn_ret = ::HIR::TypeRef( ::HIR::Path(::HIR::Path::Data::make_UfcsKnown({
+                            box$( ty.clone() ),
+                            ::HIR::GenericPath(lang_FnOnce),
+                            "Output",
+                            {}
+                            })) );
+                        fcn_ret.m_data.as_Path().path.m_data.as_UfcsKnown().trait.m_params.m_types.push_back( fcn_args_tup.clone() );
+                    }
+                    else if( !ty.m_data.is_Generic() )
+                    {
+                        TODO(node.span(), "Search for other implementations of FnOnce for " << ty);
+                    }
+                    else
+                    {
+                        // Didn't find anything. Error?
+                        TODO(node.span(), "Unable to find an implementation of Fn* for " << ty);
+                    }
+                    
+                    node.m_arg_types = mv$( fcn_args_tup.m_data.as_Tuple() );
+                    node.m_arg_types.push_back( mv$(fcn_ret) );
+                    ),
+                (Function,
+                    TODO(node.span(), "CallValue with Function - " << ty);
+                    ),
+                (Infer,
+                    )
                 )
-            )
+            }
+            
+            if( node.m_args.size() + 1 != node.m_arg_types.size() ) {
+                ERROR(node.span(), E0000, "Incorrect number of arguments when calling " << ty);
+            }
+            
+            for( unsigned int i = 0; i < node.m_args.size(); i ++ )
+            {
+                auto& arg_node = node.m_args[i];
+                this->context.apply_equality(node.span(), node.m_arg_types[i], arg_node->m_res_type,  &arg_node);
+            }
+            // TODO: Allow infer
+            this->context.apply_equality(node.span(), node.m_res_type, node.m_arg_types.back());
             
             ::HIR::ExprVisitorDef::visit(node);
         }
@@ -2723,8 +2856,9 @@ void Typecheck_Code(TypecheckContext context, const ::HIR::TypeRef& result_type,
         ExprVisitor_Run visitor { context };
         unsigned int count = 0;
         do {
-            visitor.visit_node_ptr(root_ptr);
             count += 1;
+            DEBUG("==== PASS " << count << " ====");
+            visitor.visit_node_ptr(root_ptr);
             assert(count < 1000);
         } while( context.take_changed() );
     }

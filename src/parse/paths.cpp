@@ -156,9 +156,8 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                 params = ::AST::PathParams {
                     {},
                     ::std::vector<TypeRef> { TypeRef(TypeRef::TagTuple(), lex.end_span(ps), ::std::move(args)) },
-                    { ::std::make_pair( (::std::string)"Output", mv$(ret_type) ) }
+                    { ::std::make_pair( ::std::string("Output"), mv$(ret_type) ) }
                     };
-                // TODO: Use 'ret_type' as an associated type bound
                 
                 GET_TOK(tok, lex);
             }

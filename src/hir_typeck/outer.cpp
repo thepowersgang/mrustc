@@ -190,7 +190,7 @@ namespace {
                     ),
                 (TypeEquality,
                     // TODO: Check that two types are equal in this case
-                    TODO(sp, "TypeEquality - " << e.type << " == " << e.other_type);
+                    DEBUG("TODO: Check equality bound " << e.type << " == " << e.other_type);
                     )
                 )
             }

@@ -10,6 +10,7 @@
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::SimplePath path);
 ::HIR::Function LowerHIR_Function(const ::AST::Function& f);
 ::HIR::SimplePath LowerHIR_SimplePath(const Span& sp, const ::AST::Path& path, bool allow_final_generic = false);
+::HIR::PathParams LowerHIR_PathParams(const Span& sp, const ::AST::PathParams& src_params);
 
 // --------------------------------------------------------------------
 ::HIR::GenericParams LowerHIR_GenericParams(const ::AST::GenericParams& gp)
@@ -46,10 +47,41 @@
                     }));
                 ),
             (IsTrait,
-                rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
-                    LowerHIR_Type(e.type),
-                    ::HIR::TraitPath { LowerHIR_GenericPath(bound.span, e.trait), e.hrls }
-                    }));
+                auto type = LowerHIR_Type(e.type);
+                // Iterate associated types
+                for(const auto& assoc : e.trait.nodes().back().args().m_assoc) {
+                    struct H {
+                        static ::HIR::GenericPath get_trait_path_with_type(const Span& sp, const ::AST::Path& trait_p, const ::std::string& name) {
+                            const auto& tr = *trait_p.binding().as_Trait().trait_;
+                            auto it = ::std::find_if( tr.items().begin(), tr.items().end(), [&](const auto& x){return x.name == name;} );
+                            if( it != tr.items().end() )
+                                return LowerHIR_GenericPath(sp, trait_p);
+                            
+                            for(const auto& st : tr.supertraits())
+                            {
+                                auto rv = H::get_trait_path_with_type(sp, st.ent, name);
+                                if( rv.m_path.m_components.size() ) {
+                                    // TODO: Fix parameters based on self parameters
+                                    // - HACK!
+                                    rv.m_params = LowerHIR_PathParams(sp, trait_p.nodes().back().args());
+                                    return rv;
+                                }
+                            }
+                            
+                            return ::HIR::GenericPath();
+                        }
+                    };
+                    auto left_type = ::HIR::TypeRef( ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
+                            box$( type.clone() ),
+                            H::get_trait_path_with_type(bound.span, e.trait, assoc.first),
+                            assoc.first,
+                            {}
+                            }) ) );
+                    rv.m_bounds.push_back(::HIR::GenericBound::make_TypeEquality({ mv$(left_type), LowerHIR_Type(assoc.second) }));
+                }
+                
+                auto trait_path = LowerHIR_GenericPath(bound.span, e.trait);
+                rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({ mv$(type), ::HIR::TraitPath { mv$(trait_path), e.hrls } }));
                 ),
             (MaybeTrait,
                 if( ! e.type.m_data.is_Generic() )
@@ -396,6 +428,8 @@
     for(const auto& param : src_params.m_types) {
         params.m_types.push_back( LowerHIR_Type(param) );
     }
+    
+    // Leave 'm_assoc' alone?
 
     return params;
 }
