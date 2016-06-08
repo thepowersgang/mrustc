@@ -204,8 +204,6 @@ TAGGED_UNION(ValueItem, Import,
 
 // --------------------------------------------------------------------
 
-typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
-
 class TypeImpl
 {
 public:

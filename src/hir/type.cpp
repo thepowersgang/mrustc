@@ -241,17 +241,38 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
     )
     throw "";
 }
-void ::HIR::TypeRef::match_generics(const Span& sp, const ::HIR::TypeRef& x, ::std::function<void(unsigned int, const ::HIR::TypeRef&)> callback) const
+
+
+typedef ::std::function<void(unsigned int, const ::HIR::TypeRef&)> t_cb_match_generics;
+
+namespace {
+    bool match_generics_pp(const Span& sp, const ::HIR::PathParams& t, const ::HIR::PathParams& x, ::HIR::t_cb_resolve_type resolve_placeholder, t_cb_match_generics callback)
+    {
+        if( t.m_types.size() != x.m_types.size() ) {
+            return false;
+        }
+        
+        for(unsigned int i = 0; i < t.m_types.size(); i ++ )
+        {
+            t.m_types[i].match_generics( sp, x.m_types[i], resolve_placeholder, callback );
+        }
+        
+        return true;
+    }
+}
+
+void ::HIR::TypeRef::match_generics(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, t_cb_match_generics callback) const
 {
     if( m_data.is_Infer() ) {
-        BUG(sp, "");
+        BUG(sp, "Encountered '_' as this - " << *this);
     }
     if( m_data.is_Generic() ) {
-        callback(m_data.as_Generic().binding, x);
+        callback(m_data.as_Generic().binding, x_in);
         return ;
     }
+    const auto& x = (x_in.m_data.is_Infer() || x_in.m_data.is_Generic() ? resolve_placeholder(x_in) : x_in);
     if( m_data.tag() != x.m_data.tag() ) {
-        BUG(sp, "");
+        BUG(sp, "TypeRef::match_generics with mismatched forms - " << *this << " and " << x);
     }
     TU_MATCH(::HIR::TypeRef::Data, (m_data, x.m_data), (te, xe),
     (Infer, throw "";),
@@ -261,29 +282,50 @@ void ::HIR::TypeRef::match_generics(const Span& sp, const ::HIR::TypeRef& x, ::s
     (Diverge,
         ),
     (Path,
-        TODO(sp, "Path");
+        if( te.path.m_data.tag() != xe.path.m_data.tag() ) {
+            BUG(sp, "TypeRef::match_generics with mismatched forms - " << *this << " and " << x);
+        }
+        TU_MATCH(::HIR::Path::Data, (te.path.m_data, xe.path.m_data), (tpe, xpe),
+        (Generic,
+            if( tpe.m_path != xpe.m_path ) {
+                BUG(sp, "TypeRef::match_generics with mismatched forms - " << *this << " and " << x);
+            }
+            if( !match_generics_pp(sp, tpe.m_params, xpe.m_params, resolve_placeholder, callback) ) {
+                BUG(sp, "TypeRef::match_generics with mismatched forms - " << *this << " and " << x);
+            }
+            ),
+        (UfcsKnown,
+            TODO(sp, "Path UfcsKnown - " << *this << " and " << x);
+            ),
+        (UfcsUnknown,
+            TODO(sp, "Path UfcsUnknown - " << *this << " and " << x);
+            ),
+        (UfcsInherent,
+            TODO(sp, "Path UfcsInherent - " << *this << " and " << x);
+            )
+        )
         ),
     (TraitObject,
         TODO(sp, "TraitObject");
         ),
     (Array,
-        te.inner->match_generics( sp, *xe.inner, callback );
+        te.inner->match_generics( sp, *xe.inner, resolve_placeholder, callback );
         ),
     (Slice,
-        te.inner->match_generics( sp, *xe.inner, callback );
+        te.inner->match_generics( sp, *xe.inner, resolve_placeholder, callback );
         ),
     (Tuple,
         if( te.size() != xe.size() ) {
-            BUG(sp, "");
+            BUG(sp, "TypeRef::match_generics with mismatched forms - " << *this << " and " << x);
         }
         for(unsigned int i = 0; i < te.size(); i ++ )
-            te[i].match_generics( sp, xe[i], callback );
+            te[i].match_generics( sp, xe[i], resolve_placeholder, callback );
         ),
     (Pointer,
-        te.inner->match_generics( sp, *xe.inner, callback );
+        te.inner->match_generics( sp, *xe.inner, resolve_placeholder, callback );
         ),
     (Borrow,
-        te.inner->match_generics( sp, *xe.inner, callback );
+        te.inner->match_generics( sp, *xe.inner, resolve_placeholder, callback );
         ),
     (Function,
         TODO(sp, "Function");

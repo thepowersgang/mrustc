@@ -15,6 +15,8 @@ class Enum;
 
 class TypeRef;
 
+typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
+
 enum class InferClass
 {
     None,
@@ -168,7 +170,7 @@ public:
     
     // Match generics in `this` with types from `x`
     // Raises a bug against `sp` if there is a form mismatch or `this` has an infer
-    void match_generics(const Span& sp, const ::HIR::TypeRef& x, ::std::function<void(unsigned int, const ::HIR::TypeRef&)> callback) const;
+    void match_generics(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder, ::std::function<void(unsigned int, const ::HIR::TypeRef&)> callback) const;
     
     enum Compare {
         Equal,
@@ -176,7 +178,7 @@ public:
         Unequal,
     };
     // Compares this type with another, using `resolve_placeholder` to get replacements for generics/infers in `x`
-    Compare compare_with_paceholders(const Span& sp, const ::HIR::TypeRef& x, ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> resolve_placeholder) const;
+    Compare compare_with_paceholders(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder) const;
 };
 
 extern ::std::ostream& operator<<(::std::ostream& os, const ::HIR::TypeRef& ty);

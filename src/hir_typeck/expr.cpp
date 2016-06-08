@@ -1117,8 +1117,11 @@ namespace {
         
         ::HIR::TypeRef expand_associated_types(const Span& sp, ::HIR::TypeRef input) const
         {
+            TRACE_FUNCTION_F(input);
             TU_MATCH(::HIR::TypeRef::Data, (input.m_data), (e),
             (Infer,
+                //auto& ty = this->get_type(input);
+                //return ty.clone();
                 ),
             (Diverge,
                 ),
@@ -1127,27 +1130,89 @@ namespace {
             (Path,
                 TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
                 (Generic,
+                    for(auto& arg : e2.m_params.m_types)
+                        arg = expand_associated_types(sp, mv$(arg));
                     ),
                 (UfcsInherent,
                     TODO(sp, "Path - UfcsInherent - " << e.path);
                     ),
                 (UfcsKnown,
+                    DEBUG("Checking UFCS types for " << e.path);
                     // HACK - Shortcut to prevent expensive search if the type is a parameter
                     if( e2.type->m_data.is_Generic() ) {
                         return input;
                     }
                     
+                    *e2.type = expand_associated_types(sp, mv$(*e2.type));
+                    
                     // Search for a matching trait impl
                     const ::HIR::TraitImpl* impl_ptr = nullptr;
-                    bool rv = this->m_crate.find_trait_impls(e2.trait.m_path, *e2.type,
-                        [&](const auto& ty)->const auto& {
+                    ::std::vector< const ::HIR::TypeRef*>   impl_args;
+                    
+                    auto cb_get_infer = [&](const auto& ty)->const auto& {
                             if( ty.m_data.is_Infer() )
                                 return this->get_type(ty);
                             else
                                 return ty;
-                        },
+                        };
+                    
+                    bool rv = this->m_crate.find_trait_impls(e2.trait.m_path, *e2.type, cb_get_infer,
                         [&](const auto& impl) {
-                            DEBUG("Found impl - " << e2.trait.m_path << impl.m_trait_args << " for " << impl.m_type);
+                            DEBUG("Found impl" << impl.m_params.fmt_args() << " " << e2.trait.m_path << impl.m_trait_args << " for " << impl.m_type);
+                            // - Populate the impl's type arguments
+                            impl_args.clear();
+                            impl_args.resize( impl.m_params.m_types.size() );
+                            // - Match with `Self`
+                            auto cb_res = [&](unsigned int slot, const ::HIR::TypeRef& ty) {
+                                    DEBUG("Set " << slot << " = " << ty);
+                                    if( slot >= impl_args.size() ) {
+                                        BUG(sp, "Impl parameter out of range - " << slot);
+                                    }
+                                    auto& slot_r = impl_args.at(slot);
+                                    if( slot_r != nullptr ) {
+                                        DEBUG("- Match " << slot_r << " == " << ty);
+                                    }
+                                    else {
+                                        slot_r = &ty;
+                                    }
+                                };
+                            impl.m_type.match_generics(sp, *e2.type, cb_get_infer, cb_res);
+                            for( unsigned int i = 0; i < impl.m_trait_args.m_types.size(); i ++ )
+                            {
+                                impl.m_trait_args.m_types[i].match_generics(sp, e2.trait.m_params.m_types.at(i), cb_get_infer, cb_res);
+                            }
+                            for( const auto& bound : impl.m_params.m_bounds )
+                            {
+                                TU_MATCH_DEF(::HIR::GenericBound, (bound), (be),
+                                (
+                                    ),
+                                (TraitBound,
+                                    bool rv2 = this->m_crate.find_trait_impls(be.trait.m_path.m_path, be.type,
+                                        [&](const auto& ty)->const auto& {
+                                            if( ty.m_data.is_Infer() )
+                                                return this->get_type(ty);
+                                            else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
+                                                assert( impl_args.at(e.binding) );
+                                                return *impl_args.at(e.binding);
+                                            )
+                                            else
+                                                return ty;
+                                        },
+                                        [&](const auto& impl) {
+                                            DEBUG("- Bound " << be.type << " : " << be.trait.m_path << " satisfied by impl" << impl.m_params.fmt_args());
+                                            // TODO: Recursively check
+                                            return true;
+                                        }
+                                        );
+                                    if( !rv2 ) {
+                                        DEBUG("- Bound " << be.type << " : " << be.trait.m_path << " failed");
+                                        return false;
+                                    }
+                                    )
+                                )
+                            }
+                            // TODO: Bounds check? (here or elsewhere?)
+                            // - Need to check bounds before picking this impl, because the bound could be preventing false matches
                             if( impl.m_trait_args.m_types.size() > 0 )
                             {
                                 TODO(sp, "Check trait type parameters in expand_associated_types");
@@ -1160,19 +1225,6 @@ namespace {
                     
                     // An impl was found:
                     assert(impl_ptr);
-                    // - Populate the impl's type arguments
-                    ::std::vector< const ::HIR::TypeRef*>   impl_args;
-                    impl_args.resize( impl_ptr->m_params.m_types.size() );
-                    
-                    // 1. Match impl_ptr->m_type with *e2.type
-                    impl_ptr->m_type.match_generics(sp, *e2.type, [&](unsigned int slot, const ::HIR::TypeRef& ty) {
-                        DEBUG("Set " << slot << " = " << ty);
-                        if( slot >= impl_args.size() ) {
-                            BUG(sp, "Impl parameter out of range - " << slot);
-                        }
-                        impl_args.at(slot) = &ty;
-                        });
-                    // 2. Match impl_ptr->m_trait_args with e2.trait.m_params
                     
                     // - Monomorphise the output type
                     auto new_type = monomorphise_type_with(sp, impl_ptr->m_types.at( e2.item ), [&](const auto& ty)->const auto& {
@@ -1180,7 +1232,7 @@ namespace {
                         assert(ge.binding < impl_args.size());
                         return *impl_args[ge.binding];
                         });
-                    DEBUG("Converted UfcsKnown - " << e.path << " = " << new_type);
+                    DEBUG("Converted UfcsKnown - " << e.path << " = " << new_type << " using " << e2.item << " = " << impl_ptr->m_types.at( e2.item ));
                     return new_type;
                     ),
                 (UfcsUnknown,
@@ -1229,7 +1281,6 @@ namespace {
                 for(const auto& b : p->m_bounds)
                 {
                     TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
-                        DEBUG("Bound " << e.type << " : " << e.trait.m_path);
                         if( e.type == type && e.trait.m_path.m_path == trait ) {
                             if( callback(e.trait.m_path.m_params) ) {
                                 return true;
@@ -1352,6 +1403,7 @@ namespace {
                 }
             } while( current_ty );
             // Dereference failed! This is a hard error (hitting _ is checked above and returns ~0)
+            this->dump();
             TODO(sp, "Error when no method could be found, but type is known - (: " << top_ty << ")." << method_name);
         }
         
@@ -2203,7 +2255,7 @@ namespace {
                             //}
                             //else {
                             //}
-                            TODO(sp, "Monomorphise for trait method - " << ge.name << " " << ge.binding);
+                            TODO(sp, "Monomorphise for trait method "<<path<<" - Param " << ge.name << " (" << ge.binding << ")");
                         };
                     ),
                 (UfcsUnknown,
@@ -2279,6 +2331,9 @@ namespace {
                 DEBUG("Arg " << i << ": " << arg_ty);
                 this->context.apply_equality(sp, arg_ty, arg_expr_ptr->m_res_type,  &arg_expr_ptr);
             }
+            
+            // HACK: Expand UFCS again
+            arg_types.back() = this->context.expand_associated_types(sp, mv$(arg_types.back()));
             
             DEBUG("RV " << arg_types.back());
             this->context.apply_equality(sp, res_type, arg_types.back(),  &this_node_ptr);
