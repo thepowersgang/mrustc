@@ -43,7 +43,7 @@ namespace {
         unsigned int    arg_index;
         
         const char* trait_name;
-        // TODO: Support case where this hasn't been edited
+        // TODO: Support case where this hasn't been edited (telling the formatter that it has nothing to apply)
         FmtArgs     args;
     };
 

@@ -2193,7 +2193,7 @@ namespace {
                         ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
                     }
                     else {
-                        // TODO: What if this contains a generic param? (is that valid?)
+                        // TODO: What if this contains a generic param? (is that valid? Self maybe, what about others?)
                         params.m_types.push_back( typ.m_default.clone() );
                     }
                 }
@@ -2216,6 +2216,9 @@ namespace {
                 
                 TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
                 (Generic,
+                    // TODO: This could also point to an enum variant, or to a struct constructor
+                    // - Current code only handles functions.
+
                     const auto& fcn = this->context.m_crate.get_function_by_path(sp, e.m_path);
                     this->fix_param_count(sp, path, fcn.m_params,  e.m_params);
                     fcn_ptr = &fcn;
