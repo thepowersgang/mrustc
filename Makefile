@@ -111,7 +111,7 @@ src/main.cpp:	$(PCHS:%=src/%.gch)
 
 %.hpp.gch: %.hpp
 	@echo [CXX] -o $@
-	$V$(CXX) -std=c++11 -o $@ $< $(CPPFLAGS) -MMD -MP -MF $@.dep
+	$V$(CXX) -std=c++14 -o $@ $< $(CPPFLAGS) -MMD -MP -MF $@.dep
 
 -include $(OBJ:%=%.dep)
 
