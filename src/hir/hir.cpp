@@ -169,6 +169,10 @@ const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path(const Span& sp, const 
         static ::HIR::SimplePath lang_path { "", {"cmp", "PartialEq"} };
         return lang_path;
     }
+    else if( ::std::strcmp(name, "fn_once") == 0 ) {
+        static ::HIR::SimplePath lang_path { "", {"ops", "FnOnce"} };
+        return lang_path;
+    }
     else {
         ERROR(sp, E0000, "Unknown language item '" << name << "' encountered");
     }

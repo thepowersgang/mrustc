@@ -67,10 +67,9 @@ public:
     }
     ~TraceLog() {
         UNINDENT();
-        DEBUG("<< " << m_tag);
         if(debug_enabled()) {
             auto& os = debug_output(g_debug_indent_level, __FUNCTION__);
-            os << "<<" << m_tag;
+            os << " << " << m_tag;
             m_ret(os);
             os << ::std::endl;
         }

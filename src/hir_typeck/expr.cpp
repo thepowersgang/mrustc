@@ -1281,9 +1281,16 @@ namespace {
                 for(const auto& b : p->m_bounds)
                 {
                     TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
-                        if( e.type == type && e.trait.m_path.m_path == trait ) {
+                        if( e.type != type )
+                            continue ;
+                        if( e.trait.m_path.m_path == trait ) {
                             if( callback(e.trait.m_path.m_params) ) {
                                 return true;
+                            }
+                        }
+                        for( const auto& pt : e.trait.m_trait_ptr->m_parent_traits ) {
+                            if( pt.m_path == trait ) {
+                                TODO(Span(), "Fix arguments for a parent trait and call callback - " << pt << " with paramset " << e.trait.m_trait_ptr->m_params.fmt_args());
                             }
                         }
                     )
@@ -2498,6 +2505,25 @@ namespace {
         // - Call Value: If type is known, locate impl of Fn/FnMut/FnOnce
         void visit(::HIR::ExprNode_CallValue& node) override
         {
+            const auto& ty = this->context.get_type(node.m_value->m_res_type);
+            DEBUG("(CallValue) ty = " << ty);
+            
+            TU_MATCH_DEF(decltype(ty.m_data), (ty.m_data), (e),
+            (
+                // Locate impl of FnOnce
+                this->context.find_trait_impls(this->context.m_crate.get_lang_item_path(node.span(), "fn_once"), ty, [&](const auto& args) {
+                    DEBUG("TODO: Handle FnOnce for type, FnOnce" << args);
+                    return false;
+                    });
+                TODO(node.span(), "CallValue with other type - " << ty);
+                ),
+            (Function,
+                TODO(node.span(), "CallValue with Function - " << ty);
+                ),
+            (Infer,
+                )
+            )
+            
             ::HIR::ExprVisitorDef::visit(node);
         }
         // - Call Method: Locate method on type

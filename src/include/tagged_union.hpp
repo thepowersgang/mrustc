@@ -96,6 +96,7 @@
 #define MAXS13(a1,a2,a3,a4,a5,a6,a7, b1,b2,b3,b4,b5,b6)  MAX2(MAXS7(a1,a2,a3,a4,a5,a6,a7), MAXS6(b1,b2,b3,b4,b5,b6))
 #define MAXS14(a1,a2,a3,a4,a5,a6,a7, b1,b2,b3,b4,b5,b6,b7)  MAX2(MAXS7(a1,a2,a3,a4,a5,a6,a7), MAXS7(b1,b2,b3,b4,b5,b6,b7))
 
+// TODO: use `decltype` in place of the `class` argument to TU_MATCH/TU_IFLET
 // "match"-like statement
 // TU_MATCH(Class, m_data, ent, (Variant, CODE), (Variant2, CODE))
 #define TU_MATCH(CLASS, VAR, NAME, ...)   switch( (TU_FIRST VAR).tag()) {/*
