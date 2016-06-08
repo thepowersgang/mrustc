@@ -2544,6 +2544,15 @@ namespace {
         // - Tuple literal: 
         void visit(::HIR::ExprNode_Tuple& node) override
         {
+            assert( node.m_res_type.m_data.is_Tuple() );
+            auto& tup_ents = node.m_res_type.m_data.as_Tuple();
+            assert( tup_ents.size() == node.m_vals.size() );
+            
+            for(unsigned int i = 0; i < tup_ents.size(); i ++)
+            {
+                this->context.apply_equality(node.span(), tup_ents[i], node.m_vals[i]->m_res_type,  &node.m_vals[i]);
+            }
+            
             ::HIR::ExprVisitorDef::visit(node);
         }
         // - Array list
