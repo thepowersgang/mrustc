@@ -1253,8 +1253,15 @@ namespace {
                                     if( ty.m_data.is_Infer() )
                                         return this->get_type(ty);
                                     else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
-                                        assert( impl_args.at(e.binding) );
-                                        return *impl_args.at(e.binding);
+                                        if( e.binding == 0xFFFF ) {
+                                            //TODO(sp, "Look up 'Self' in expand_associated_types::expand_placeholder (" << *e2.type << ")");
+                                            return *e2.type;
+                                        }
+                                        else {
+                                            assert(e.binding < impl_args.size());
+                                            assert( impl_args[e.binding] );
+                                            return *impl_args[e.binding];
+                                        }
                                     )
                                     else
                                         return ty;
@@ -2839,6 +2846,7 @@ void Typecheck_Code(TypecheckContext context, const ::HIR::TypeRef& result_type,
 {
     TRACE_FUNCTION;
     
+    // Convert ExprPtr into unique_ptr for the execution of this function
     auto root_ptr = expr.into_unique();
     
     //context.apply_equality(expr->span(), result_type, expr->m_res_type);
@@ -2850,10 +2858,7 @@ void Typecheck_Code(TypecheckContext context, const ::HIR::TypeRef& result_type,
     }
     // - Apply equality between the node result and the expected type
     DEBUG("- Apply RV");
-    {
-        // Convert ExprPtr into unique_ptr for the execution of this function
-        context.apply_equality(root_ptr->span(), result_type, root_ptr->m_res_type,  &root_ptr);
-    }
+    context.apply_equality(root_ptr->span(), result_type, root_ptr->m_res_type,  &root_ptr);
     
     context.dump();
     // 2. Iterate through nodes applying rules until nothing changes
@@ -2872,6 +2877,7 @@ void Typecheck_Code(TypecheckContext context, const ::HIR::TypeRef& result_type,
     expr = ::HIR::ExprPtr( mv$(root_ptr) );
     context.dump();
     {
+        DEBUG("==== VALIDATE ====");
         ExprVisitor_Apply   visitor { context };
         expr->visit( visitor );
     }
