@@ -1193,6 +1193,7 @@ namespace {
                     ),
                 (UfcsKnown,
                     DEBUG("Locating associated type for " << e.path);
+                    // TODO: Use the marker `e.binding` to tell if it's worth trying
                     
                     *e2.type = expand_associated_types(sp, mv$(*e2.type));
                     
@@ -1222,6 +1223,14 @@ namespace {
                     if( rv ) {
                         return input;
                     }
+
+                    // Use bounds on other associated types too (if `e2.type` was resolved to a fixed associated type)
+                    TU_IFLET(::HIR::TypeRef::Data, e2.type->m_data, Path, e3,
+                        TU_IFLET(::HIR::Path::Data, e3.path.m_data, UfcsKnown, pe,
+                            // TODO: Search for equality bounds on this associated type (e3) that match the entire type (e2)
+                            // - Does simplification of complex associated types
+                        )
+                    )
 
                     // 2. Crate-level impls
                     rv = this->m_crate.find_trait_impls(e2.trait.m_path, *e2.type, cb_get_infer,

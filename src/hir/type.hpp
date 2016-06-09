@@ -73,8 +73,8 @@ public:
     // - Pointer
 
     TAGGED_UNION(TypePathBinding, Unbound,
-    (Unbound, struct {}),   // Not yet bound (state during first part of lowering) - TODO kill
-    (Opaque, struct {}),
+    (Unbound, struct {}),   // Not yet bound, either during lowering OR during resolution (when associated and still being resolved)
+    (Opaque, struct {}),    // Opaque, i.e. An associated type of a generic (or Self in a trait)
     (Struct, const ::HIR::Struct*),
     (Enum, const ::HIR::Enum*)
     );
