@@ -20,7 +20,7 @@ struct GenericSlot
     unsigned short  index;
     
     unsigned int to_binding() const {
-        if(level == Level::Method) {
+        if(level == Level::Method && index != 0xFFFF) {
             return (unsigned int)index + 256;
         }
         else {

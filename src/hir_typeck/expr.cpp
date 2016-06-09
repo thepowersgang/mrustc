@@ -1236,12 +1236,27 @@ namespace {
                             const auto& trait_ptr = this->m_crate.get_trait_by_path(sp, pe.trait.m_path);
                             const auto& assoc_ty = trait_ptr.m_types.at(pe.item);
                             DEBUG("TODO: Search bounds " << assoc_ty.m_params.fmt_bounds());
-                            auto cb_placeholders = [&](const auto& ty)->const auto&{
+                            // Resolve where Self=e2.type, for the associated type check.
+                            auto cb_placeholders_type = [&](const auto& ty)->const auto&{
                                 TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
                                     if( e.binding == 0xFFFF )
                                         return *e2.type;
                                     else
-                                        TODO(sp, "Handle type pareters when expanding associated bound");
+                                        TODO(sp, "Handle type params when expanding associated bound (#" << e.binding << " " << e.name);
+                                )
+                                else {
+                                    return ty;
+                                }
+                                };
+                            // Resolve where Self=pe.type (i.e. for the trait this inner UFCS is on)
+                            auto cb_placeholders_trait = [&](const auto& ty)->const auto&{
+                                TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
+                                    if( e.binding == 0xFFFF )
+                                        return *pe.type;
+                                    else {
+                                        // TODO: Look in pe.trait.m_params
+                                        TODO(sp, "Handle type params when expanding associated bound (#" << e.binding << " " << e.name);
+                                    }
                                 )
                                 else {
                                     return ty;
@@ -1252,9 +1267,11 @@ namespace {
                                 TU_IFLET(::HIR::GenericBound, bound, TypeEquality, be,
                                     // IF: bound's type matches the input, replace with bounded equality
                                     // `<Self::IntoIter as Iterator>::Item = Self::Item`
-                                    if( be.type.compare_with_paceholders(sp, input, cb_placeholders ) ) {
+                                    if( be.type.compare_with_paceholders(sp, input, cb_placeholders_type ) ) {
+                                        DEBUG("Match of " << be.type << " with " << input);
+                                        DEBUG("- Replace `input` with " << be.other_type << ", Self=" << *pe.type);
                                         if( monomorphise_type_needed(be.other_type) ) {
-                                            TODO(sp, "Monomorphise associated type replacment");
+                                            return monomorphise_type_with(sp, be.other_type, cb_placeholders_trait);
                                         }
                                         else {
                                             return be.other_type.clone();
