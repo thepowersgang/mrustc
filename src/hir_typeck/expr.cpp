@@ -1970,6 +1970,7 @@ namespace {
         void visit(::HIR::ExprNode_Assign& node) override
         {
             TRACE_FUNCTION_F("... = ...");
+            // Plain assignment can't be overloaded, requires equal types
             if( node.m_op == ::HIR::ExprNode_Assign::Op::None ) {
                 this->context.apply_equality(node.span(),
                     node.m_slot->m_res_type, node.m_value->m_res_type,
@@ -1977,7 +1978,39 @@ namespace {
                     );
             }
             else {
-                // TODO: Look for overload
+                const auto& ty_left  = this->context.get_type(node.m_slot->m_res_type );
+                const auto& ty_right = this->context.get_type(node.m_value->m_res_type);
+                
+                bool isprim_l = ty_left .m_data.is_Primitive() || (ty_left .m_data.is_Infer() && ty_left .m_data.as_Infer().ty_class != ::HIR::InferClass::None);
+                bool isprim_r = ty_right.m_data.is_Primitive() || (ty_right.m_data.is_Infer() && ty_right.m_data.as_Infer().ty_class != ::HIR::InferClass::None);
+                // SHORTCUT - If both sides are primitives (either confirmed or literals)
+                if( isprim_l && isprim_r ) {
+                    // - The only option is for them both to be the same type (because primitives can't have multiple overloads)
+                    // TODO: Check that this operation is valid to peform. (e.g. not doing f32_val <<= f32_val)
+                    // TODO: Aren't the bitwise shift operators valid with any integer type count?
+                    this->context.apply_equality(node.span(), node.m_slot->m_res_type, node.m_value->m_res_type);
+                }
+                else {
+                    const char *lang_item = nullptr;
+                    switch( node.m_op )
+                    {
+                    case ::HIR::ExprNode_Assign::Op::None:  throw "";
+                    case ::HIR::ExprNode_Assign::Op::Add: lang_item = "add_assign"; break;
+                    case ::HIR::ExprNode_Assign::Op::Sub: lang_item = "sub_assign"; break;
+                    case ::HIR::ExprNode_Assign::Op::Mul: lang_item = "mul_assign"; break;
+                    case ::HIR::ExprNode_Assign::Op::Div: lang_item = "div_assign"; break;
+                    case ::HIR::ExprNode_Assign::Op::Mod: lang_item = "rem_assign"; break;
+                    case ::HIR::ExprNode_Assign::Op::And: lang_item = "bitand_assign"; break;
+                    case ::HIR::ExprNode_Assign::Op::Or : lang_item = "bitor_assign" ; break;
+                    case ::HIR::ExprNode_Assign::Op::Xor: lang_item = "bitxor_assign"; break;
+                    case ::HIR::ExprNode_Assign::Op::Shr: lang_item = "shl_assign"; break;
+                    case ::HIR::ExprNode_Assign::Op::Shl: lang_item = "shr_assign"; break;
+                    }
+                    assert(lang_item);
+                    const auto& trait_path = this->context.m_crate.get_lang_item_path(node.span(), lang_item);
+                    // TODO: Look for implementation of ops trait
+                    TODO(node.span(), "Search for implementation of " << trait_path << "<" << ty_right << "> for " << ty_left);
+                }
             }
             ::HIR::ExprVisitorDef::visit(node);
         }
@@ -1997,7 +2030,7 @@ namespace {
                 return ;
             }
             
-            // TODO: Inferrence rules when untyped integer literals are in play
+            // NOTE: Inferrence rules when untyped integer literals are in play
             // - `impl Add<Foo> for u32` is valid, and makes `1 + Foo` work
             //  - But `[][0] + Foo` doesn't
             //  - Adding `impl Add<Foo> for u64` leads to "`Add<Foo>` is not implemented for `i32`"
