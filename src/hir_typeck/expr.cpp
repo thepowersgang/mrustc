@@ -77,6 +77,9 @@ namespace {
             ),
         (Function,
             TODO(Span(), "Function - " << tpl);
+            ),
+        (Closure,
+            TODO(Span(), "Closure - " << tpl);
             )
         )
         throw "";
@@ -168,6 +171,14 @@ namespace {
             ),
         (Function,
             TODO(sp, "Function");
+            ),
+        (Closure,
+            ::HIR::TypeRef::Data::Data_Closure  oe;
+            oe.node = e.node;
+            oe.m_rettype = box$( monomorphise_type_with(sp, *e.m_rettype, callback) );
+            for(const auto& a : e.m_arg_types)
+                oe.m_arg_types.push_back( monomorphise_type_with(sp, a, callback) );
+            return ::HIR::TypeRef(::HIR::TypeRef::Data::make_Closure( mv$(oe) ));
             )
         )
         throw "";
@@ -346,6 +357,9 @@ namespace {
             (Function,
                 // No ivars allowed
                 // TODO: Check?
+                ),
+            (Closure,
+                // Shouldn't be possible
                 )
             )
         }
@@ -1134,6 +1148,9 @@ namespace {
                         for(unsigned int i = 0; i < l_e.m_arg_types.size(); i ++ ) {
                             this->apply_equality(sp, l_e.m_arg_types[i], cb_left, r_e.m_arg_types[i], cb_right, nullptr);
                         }
+                        ),
+                    (Closure,
+                        TODO(sp, "apply_equality - Closure");
                         )
                     )
                 }
@@ -1395,6 +1412,9 @@ namespace {
                 *e.inner = expand_associated_types(sp, mv$(*e.inner));
                 ),
             (Function,
+                // Recurse?
+                ),
+            (Closure,
                 // Recurse?
                 )
             )
@@ -1943,13 +1963,21 @@ namespace {
         }
         void visit(::HIR::ExprNode_Closure& node) override
         {
+            ::HIR::TypeRef::Data::Data_Closure  ty_data;
+            ty_data.node = &node;
+            
             for(auto& a : node.m_args) {
                 this->context.add_ivars(a.second);
                 this->context.add_binding(node.span(), a.first, a.second);
+                ty_data.m_arg_types.push_back( a.second.clone() );
             }
             this->context.add_ivars(node.m_return);
+            ty_data.m_rettype = box$( node.m_return.clone() );
+            
             node.m_code->m_res_type = node.m_return.clone();
 
+            this->context.apply_equality( node.span(), node.m_res_type, ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Closure(mv$(ty_data)) ) );
+            
             ::HIR::ExprVisitorDef::visit(node);
         }
         // - Variable: Bind to same ivar
@@ -2615,6 +2643,8 @@ namespace {
                     const auto& fcn = trait.m_values.at(e.item).as_Function();
                     this->fix_param_count(sp, path, fcn.m_params,  e.params);
                     
+                    // TODO: Check/apply trait bounds (apply = closure arguments or fixed trait args)
+                    
                     fcn_ptr = &fcn;
                     
                     const auto& trait_params = e.trait.m_params;
@@ -3018,7 +3048,14 @@ namespace {
                 this->check_type_resolved(sp, *e.inner, top_type);
                 ),
             (Function,
-                // TODO:
+                this->check_type_resolved(sp, *e.m_rettype, top_type);
+                for(auto& st : e.m_arg_types)
+                    this->check_type_resolved(sp, st, top_type);
+                ),
+            (Closure,
+                this->check_type_resolved(sp, *e.m_rettype, top_type);
+                for(auto& st : e.m_arg_types)
+                    this->check_type_resolved(sp, st, top_type);
                 )
             )
         }

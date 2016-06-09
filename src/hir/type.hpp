@@ -14,6 +14,7 @@ class Struct;
 class Enum;
 
 class TypeRef;
+class ExprNode_Closure;
 
 enum class InferClass
 {
@@ -113,7 +114,12 @@ public:
         ::HIR::BorrowType   type;
         ::std::unique_ptr<TypeRef>  inner;
         }),
-    (Function, FunctionType)
+    (Function, FunctionType),
+    (Closure, struct {
+        const ::HIR::ExprNode_Closure*  node;
+        ::std::unique_ptr<TypeRef>  m_rettype;
+        ::std::vector<TypeRef>  m_arg_types;
+        })
     );
     
     Data   m_data;

@@ -300,6 +300,12 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
             this->visit_type(t);
         }
         this->visit_type(*e.m_rettype);
+        ),
+    (Closure,
+        for(auto& t : e.m_arg_types) {
+            this->visit_type(t);
+        }
+        this->visit_type(*e.m_rettype);
         )
     )
 }

@@ -119,6 +119,12 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         for(const auto& t : e.m_arg_types)
             os << t << ", ";
         os << ") -> " << *e.m_rettype;
+        ),
+    (Closure,
+        os << "closure["<<e.node<<"](";
+        for(const auto& t : e.m_arg_types)
+            os << t << ", ";
+        os << ") -> " << *e.m_rettype;
         )
     )
 }
@@ -237,6 +243,12 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
                 return false;
         }
         return te.m_rettype == xe.m_rettype;
+        ),
+    (Closure,
+        if( te.node != xe.node )
+            return false;
+        assert( te.m_rettype == xe.m_rettype );
+        return true;
         )
     )
     throw "";
@@ -329,6 +341,9 @@ void ::HIR::TypeRef::match_generics(const Span& sp, const ::HIR::TypeRef& x_in, 
         ),
     (Function,
         TODO(sp, "Function");
+        ),
+    (Closure,
+        TODO(sp, "Closure");
         )
     )
 }
@@ -410,6 +425,14 @@ namespace {
         for(const auto& a : e.m_arg_types)
             ft.m_arg_types.push_back( a.clone() );
         return ::HIR::TypeRef(Data::make_Function( mv$(ft) ));
+        ),
+    (Closure,
+        Data::Data_Closure  oe;
+        oe.node = e.node;
+        oe.m_rettype = box$( e.m_rettype->clone() );
+        for(const auto& a : e.m_arg_types)
+            oe.m_arg_types.push_back( a.clone() );
+        return ::HIR::TypeRef(Data::make_Closure( mv$(oe) ));
         )
     )
     throw "";
@@ -519,6 +542,9 @@ namespace {
         return le.inner->compare_with_paceholders(sp, *re.inner, resolve_placeholder);
         ),
     (Function,
+        TODO(sp, "Compare " << *this << " and " << right);
+        ),
+    (Closure,
         TODO(sp, "Compare " << *this << " and " << right);
         )
     )

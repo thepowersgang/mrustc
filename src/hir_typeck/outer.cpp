@@ -155,6 +155,9 @@ namespace {
                 ),
             (Function,
                 TODO(sp, "update_self_type - Function");
+                ),
+            (Closure,
+                TODO(sp, "update_self_type - Closure");
                 )
             )
         }

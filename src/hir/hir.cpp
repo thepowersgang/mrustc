@@ -130,6 +130,10 @@ namespace {
         (Function,
             DEBUG("TODO: Compare " << left << " and " << right);
             return false;
+            ),
+        (Closure,
+            DEBUG("TODO: Compare " << left << " and " << right);
+            return false;
             )
         )
         return false;
