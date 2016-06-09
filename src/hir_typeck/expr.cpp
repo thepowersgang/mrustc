@@ -1497,9 +1497,26 @@ namespace {
                     // UFCS known - Assuming that it's reached the maximum resolvable level (i.e. a type within is generic), search for trait bounds on the type
                     const auto& trait = this->m_crate.get_trait_by_path(sp, e.trait.m_path);
                     const auto& assoc_ty = trait.m_types.at( e.item );
-                    const auto& ty_bounds = assoc_ty.m_params.m_bounds;
                     // NOTE: The bounds here have 'Self' = the type
-                    DEBUG("TODO: Search bounds assoc type bounds - type " << e.item << assoc_ty.m_params.fmt_bounds());
+                    for(const auto& bound : assoc_ty.m_params.m_bounds )
+                    {
+                        TU_IFLET(::HIR::GenericBound, bound, TraitBound, be,
+                            assert(be.trait.m_trait_ptr);
+                            ::HIR::GenericPath final_trait_path;
+                            if( !this->trait_contains_method(sp, be.trait.m_path, *be.trait.m_trait_ptr, method_name,  final_trait_path) )
+                                continue ;
+                            DEBUG("- Found trait " << final_trait_path);
+                            
+                            // Found the method, return the UFCS path for it
+                            fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
+                                box$( ty.clone() ),
+                                mv$(final_trait_path),
+                                method_name,
+                                {}
+                                }) );
+                            return deref_count;
+                        )
+                    }
                 }
                 else {
                     // 2. Search for inherent methods
