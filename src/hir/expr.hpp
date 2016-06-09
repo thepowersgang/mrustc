@@ -487,6 +487,8 @@ struct ExprNode_StructLiteral:
     ::HIR::ExprNodeP    m_base_value;
     t_values    m_values;
     
+    ::std::vector< ::HIR::TypeRef>  m_value_types;
+    
     ExprNode_StructLiteral(Span sp, ::HIR::GenericPath path, ::HIR::ExprNodeP base_value, t_values values):
         ExprNode( mv$(sp) ),
         m_path( mv$(path) ),
@@ -494,6 +496,7 @@ struct ExprNode_StructLiteral:
         m_values( mv$(values) )
     {
         // TODO: set m_res_type based on path?
+        // - Defer, because it requires binding ivars between m_path and m_res_type
     }
     
     NODE_METHODS();

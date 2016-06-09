@@ -1872,22 +1872,23 @@ namespace {
             node.m_res_type = this->context.get_var_type(node.span(), node.m_slot).clone();
         }
         
-        void visit(::HIR::ExprNode_CallPath& node) override
-        {
-            TU_MATCH(::HIR::Path::Data, (node.m_path.m_data), (e),
+        void visit_generic_path(const Span& sp, ::HIR::GenericPath& gp) {
+            for(auto& ty : gp.m_params.m_types)
+                this->context.add_ivars(ty);
+        }
+        void visit_path(const Span& sp, ::HIR::Path& path) {
+            TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
             (Generic,
-                for(auto& ty : e.m_params.m_types)
-                    this->context.add_ivars(ty);
+                this->visit_generic_path(sp, e);
                 ),
             (UfcsKnown,
                 this->context.add_ivars(*e.type);
-                for(auto& ty : e.trait.m_params.m_types)
-                    this->context.add_ivars(ty);
+                this->visit_generic_path(sp, e.trait);
                 for(auto& ty : e.params.m_types)
                     this->context.add_ivars(ty);
                 ),
             (UfcsUnknown,
-                TODO(node.span(), "Hit a UfcsUnknown (" << node.m_path << ") - Is this an error?");
+                TODO(sp, "Hit a UfcsUnknown (" << path << ") - Is this an error?");
                 ),
             (UfcsInherent,
                 this->context.add_ivars(*e.type);
@@ -1895,6 +1896,21 @@ namespace {
                     this->context.add_ivars(ty);
                 )
             )
+        }
+        void visit(::HIR::ExprNode_PathValue& node) override {
+            this->visit_path(node.span(), node.m_path);
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        void visit(::HIR::ExprNode_CallPath& node) override {
+            this->visit_path(node.span(), node.m_path);
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        void visit(::HIR::ExprNode_StructLiteral& node) override {
+            this->visit_generic_path(node.span(), node.m_path);
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        void visit(::HIR::ExprNode_TupleVariant& node) override {
+            this->visit_generic_path(node.span(), node.m_path);
             ::HIR::ExprVisitorDef::visit(node);
         }
     };
@@ -1912,7 +1928,6 @@ namespace {
         {
         }
         
-        // TODO: Add a new method called for all ExprNodeP, which will save the pointer someho
         void visit_node_ptr(::std::unique_ptr< ::HIR::ExprNode>& node_ptr) {
             m_node_ptr_ptr = &node_ptr;
             ::HIR::ExprVisitorDef::visit_node_ptr(node_ptr);
@@ -2771,6 +2786,50 @@ namespace {
         // - Struct literal: Semi-known types
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
+            const Span& sp = node.span();
+            // TODO: what if this is an enum struct variant constructor?
+            
+            auto& val_types = node.m_value_types;
+            
+            if( val_types.size() == 0 )
+            {
+                const auto& str = this->context.m_crate.get_struct_by_path(node.span(), node.m_path.m_path);
+                this->fix_param_count(node.span(), node.m_path.clone(), str.m_params, node.m_path.m_params);
+                
+                this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef(node.m_path.clone()));
+                
+                if( !str.m_data.is_Named() )
+                    ERROR(sp, E0000, "Struct literal constructor for non-struct-like struct");
+                const auto& flds_def = str.m_data.as_Named();
+                
+                for(auto& field : node.m_values)
+                {
+                    auto fld_def_it = ::std::find_if( flds_def.begin(), flds_def.end(), [&](const auto& x){ return x.first == field.first; } );
+                    if( fld_def_it == flds_def.end() ) {
+                        ERROR(sp, E0000, "Struct " << node.m_path << " doesn't have a field " << field.first);
+                    }
+                    const ::HIR::TypeRef& field_type = fld_def_it->second.ent;
+                    
+                    if( monomorphise_type_needed(field_type) ) {
+                        val_types.push_back( monomorphise_type(sp, str.m_params, node.m_path.m_params,  field_type) );
+                    }
+                    else {
+                        // SAFE: Can't have _ as monomorphise_type_needed checks for that
+                        val_types.push_back( field_type.clone() );
+                    }
+                }
+            }
+            
+            for( unsigned int i = 0; i < node.m_values.size(); i ++ )
+            {
+                auto& field = node.m_values[i];
+                this->context.apply_equality(sp, val_types[i], field.second->m_res_type,  &field.second);
+            }
+            
+            if( node.m_base_value ) {
+                this->context.apply_equality(node.span(), node.m_res_type, node.m_base_value->m_res_type);
+            }
+            
             ::HIR::ExprVisitorDef::visit(node);
         }
         // - Tuple literal: 
