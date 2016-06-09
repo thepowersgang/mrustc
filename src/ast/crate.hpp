@@ -19,7 +19,7 @@ public:
 
     ::AST::MetaItems    m_attrs;
     
-    AST::Path   m_lang_item_PhantomFn;
+    ::std::map< ::std::string, ::AST::Path> m_lang_items;
 public:
     Module  m_root_module;
     ::std::map< ::std::string, ExternCrate> m_extern_crates;

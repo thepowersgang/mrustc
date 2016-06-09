@@ -1028,6 +1028,12 @@ public:
     
     LowerHIR_Module_Impls(crate.m_root_module,  rv);
     
+    auto sp = Span();
+    for( const auto& lang_item_path : crate.m_lang_items )
+    {
+        rv.m_lang_items.insert( ::std::make_pair(lang_item_path.first, LowerHIR_SimplePath(sp, lang_item_path.second)) );
+    }
+    
     // Set all pointers in the HIR to the correct (now fixed) locations
     IndexVisitor(rv).visit_crate( rv );
     

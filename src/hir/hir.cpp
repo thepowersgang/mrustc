@@ -153,33 +153,12 @@ bool ::HIR::MarkerImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_res
 
 const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path(const Span& sp, const char* name) const
 {
-    if( ::std::strcmp(name, "index") == 0 ) {
-        static ::HIR::SimplePath    lang_index { "", {"ops", "Index"} };
-        return lang_index;
+    // TODO: have map stored in crate populated by (or from) the #[lang] attribute handler
+    auto it = this->m_lang_items.find( name );
+    if( it == this->m_lang_items.end() ) {
+        ERROR(sp, E0000, "Undefined language item '" << name << "' required");
     }
-    else if( ::std::strcmp(name, "unsize") == 0 ) {
-        static ::HIR::SimplePath lang_unsize { "", {"marker", "Unsize"} };
-        return lang_unsize;
-    }
-    else if( ::std::strcmp(name, "add") == 0 ) {
-        static ::HIR::SimplePath lang_path { "", {"ops", "Add"} };
-        return lang_path;
-    }
-    else if( ::std::strcmp(name, "ord") == 0 ) {
-        static ::HIR::SimplePath lang_path { "", {"cmp", "PartialOrd"} };
-        return lang_path;
-    }
-    else if( ::std::strcmp(name, "eq") == 0 ) {
-        static ::HIR::SimplePath lang_path { "", {"cmp", "PartialEq"} };
-        return lang_path;
-    }
-    else if( ::std::strcmp(name, "fn_once") == 0 ) {
-        static ::HIR::SimplePath lang_path { "", {"ops", "FnOnce"} };
-        return lang_path;
-    }
-    else {
-        ERROR(sp, E0000, "Unknown language item '" << name << "' encountered");
-    }
+    return it->second;
 }
 
 const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const

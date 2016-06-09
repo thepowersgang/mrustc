@@ -11,17 +11,18 @@
 #include "../ast/crate.hpp"
 
 
-void handle_lang_item(AST::Crate& crate, const AST::Path& path, const ::std::string& name, AST::eItemType type)
+void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, const ::std::string& name, AST::eItemType type)
 {
     if(name == "phantom_fn") {
-        crate.m_lang_item_PhantomFn = AST::Path(path);
-        crate.m_lang_item_PhantomFn.nodes().back().args().m_types = { TypeRef("A"), TypeRef("B") };
+        // - Just save path
     }
     else if( name == "send" ) {
         // Don't care, Send is fully library in mrustc
+        // - Needed for `static`
     }
     else if( name == "sync" ) {
         // Don't care, Sync is fully library in mrustc
+        // - Needed for `static`
     }
     else if( name == "sized" ) {
         DEBUG("Bind 'sized' to " << path);
@@ -90,10 +91,13 @@ void handle_lang_item(AST::Crate& crate, const AST::Path& path, const ::std::str
     else if( name == "str_eq" ) { }
     
     else {
-        throw CompileError::Generic(FMT("Unknown lang item '" << name << "'"));
+        ERROR(sp, E0000, "Unknown language item '" << name << "'");
     }
 
-    
+    auto rv = crate.m_lang_items.insert( ::std::make_pair( name, ::AST::Path(path) ) );
+    if( !rv.second ) {
+        ERROR(sp, E0000, "Duplicate definition of language item '" << name << "'");
+    }
 }
 
 class Decorator_LangItem:
@@ -108,13 +112,13 @@ public:
             TODO(sp, "Unknown item type with #[lang=\""<<attr<<"\"] attached at " << path);
             ),
         (Function,
-            handle_lang_item(crate, path, attr.string(), AST::ITEM_FN);
+            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_FN);
             ),
         (Struct,
-            handle_lang_item(crate, path, attr.string(), AST::ITEM_STRUCT);
+            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_STRUCT);
             ),
         (Trait,
-            handle_lang_item(crate, path, attr.string(), AST::ITEM_TRAIT);
+            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_TRAIT);
             )
         )
     }
@@ -137,6 +141,8 @@ public:
         else {
             ERROR(sp, E0000, "Unknown lang item '" << name << "' on impl");
         }
+        
+        // TODO: Somehow annotate these impls to allow them to provide inherents?
     }
 };
 

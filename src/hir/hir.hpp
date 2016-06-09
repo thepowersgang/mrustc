@@ -263,6 +263,9 @@ public:
     /// Macros exported by this crate
     ::std::unordered_map< ::std::string, ::MacroRules >   m_exported_macros;
     
+    /// Language items avaliable through this crate (includes ones from loaded externs)
+    ::std::unordered_map< ::std::string, ::HIR::SimplePath> m_lang_items;
+    
     const ::HIR::SimplePath& get_lang_item_path(const Span& sp, const char* name) const;
     
     const ::HIR::TypeItem& get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
