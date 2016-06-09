@@ -1,4 +1,5 @@
-
+/*
+ */
 #ifndef _HIR_PATH_HPP_
 #define _HIR_PATH_HPP_
 #pragma once
@@ -6,10 +7,18 @@
 #include <common.hpp>
 #include <tagged_union.hpp>
 #include <hir/type_ptr.hpp>
+#include <span.hpp>
 
 namespace HIR {
 
 class Trait;
+
+typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
+enum Compare {
+    Equal,
+    Fuzzy,
+    Unequal,
+};
 
 /// Simple path - Absolute with no generic parameters
 struct SimplePath
@@ -129,6 +138,7 @@ public:
     Path(SimplePath _);
     
     Path clone() const;
+    Compare compare_with_paceholders(const Span& sp, const Path& x, t_cb_resolve_type resolve_placeholder) const;
     
     friend ::std::ostream& operator<<(::std::ostream& os, const Path& x);
 };

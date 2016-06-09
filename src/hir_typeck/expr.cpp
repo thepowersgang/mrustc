@@ -1183,6 +1183,10 @@ namespace {
             (Primitive,
                 ),
             (Path,
+                // - Only try resolving if the binding isn't known
+                if( !e.binding.is_Unbound() )
+                    return input;
+                
                 TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
                 (Generic,
                     for(auto& arg : e2.m_params.m_types)
@@ -1229,6 +1233,36 @@ namespace {
                         TU_IFLET(::HIR::Path::Data, e3.path.m_data, UfcsKnown, pe,
                             // TODO: Search for equality bounds on this associated type (e3) that match the entire type (e2)
                             // - Does simplification of complex associated types
+                            const auto& trait_ptr = this->m_crate.get_trait_by_path(sp, pe.trait.m_path);
+                            const auto& assoc_ty = trait_ptr.m_types.at(pe.item);
+                            DEBUG("TODO: Search bounds " << assoc_ty.m_params.fmt_bounds());
+                            auto cb_placeholders = [&](const auto& ty)->const auto&{
+                                TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
+                                    if( e.binding == 0xFFFF )
+                                        return *e2.type;
+                                    else
+                                        TODO(sp, "Handle type pareters when expanding associated bound");
+                                )
+                                else {
+                                    return ty;
+                                }
+                                };
+                            for(const auto& bound : assoc_ty.m_params.m_bounds)
+                            {
+                                TU_IFLET(::HIR::GenericBound, bound, TypeEquality, be,
+                                    // IF: bound's type matches the input, replace with bounded equality
+                                    // `<Self::IntoIter as Iterator>::Item = Self::Item`
+                                    if( be.type.compare_with_paceholders(sp, input, cb_placeholders ) ) {
+                                        if( monomorphise_type_needed(be.other_type) ) {
+                                            TODO(sp, "Monomorphise associated type replacment");
+                                        }
+                                        else {
+                                            return be.other_type.clone();
+                                        }
+                                    }
+                                )
+                            }
+                            DEBUG("e2 = " << *e2.type << ", input = " << input);
                         )
                     )
 
@@ -1311,6 +1345,8 @@ namespace {
                         DEBUG("Converted UfcsKnown - " << e.path << " = " << new_type << " using " << e2.item << " = " << impl_ptr->m_types.at( e2.item ));
                         return new_type;
                     }
+                    
+                    // TODO: If there are no ivars in this path, set its binding to Opaque
                     
                     DEBUG("Couldn't resolve associated type for " << input);
                     ),
@@ -2215,12 +2251,12 @@ namespace {
                         if( monomorphise_type_needed(arg_type) )
                             TODO(node.span(), "Compare trait type when it contains generics");
                         auto cmp = arg_type.compare_with_paceholders(node.span(), ty_right, this->context.callback_resolve_infer());
-                        if( cmp == ::HIR::TypeRef::Compare::Unequal ) {
+                        if( cmp == ::HIR::Compare::Unequal ) {
                             return false;
                         }
                         count += 1;
                         impl_ptr = &impl;
-                        if( cmp == ::HIR::TypeRef::Compare::Equal ) {
+                        if( cmp == ::HIR::Compare::Equal ) {
                             DEBUG("Operator impl exact match - '"<<item_name<<"' - " << arg_type << " == " << ty_right);
                             return true;
                         }

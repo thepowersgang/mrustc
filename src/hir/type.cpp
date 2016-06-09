@@ -414,7 +414,7 @@ namespace {
     )
     throw "";
 }
-::HIR::TypeRef::Compare HIR::TypeRef::compare_with_paceholders(const Span& sp, const ::HIR::TypeRef& x, ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> resolve_placeholder) const
+::HIR::Compare HIR::TypeRef::compare_with_paceholders(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder) const
 {
     TRACE_FUNCTION_F(*this << " ?= " << x);
     assert( !this->m_data.is_Infer() );
@@ -476,40 +476,7 @@ namespace {
         return (le == re ? Compare::Equal : Compare::Unequal);
         ),
     (Path,
-        if( le.path.m_data.tag() != re.path.m_data.tag() )
-            return Compare::Unequal;
-        TU_MATCH_DEF(::HIR::Path::Data, (le.path.m_data, re.path.m_data), (ple, pre),
-        (
-            TODO(sp, "TypeRef::compare_with_paceholders - non-generic paths");
-            ),
-        (Generic,
-            if( ple.m_path.m_crate_name != pre.m_path.m_crate_name )
-                return Compare::Unequal;
-            if( ple.m_path.m_components.size() != pre.m_path.m_components.size() )
-                return Compare::Unequal;
-            for(unsigned int i = 0; i < ple.m_path.m_components.size(); i ++ )
-            {
-                if( ple.m_path.m_components[i] != pre.m_path.m_components[i] )
-                    return Compare::Unequal;
-            }
-            
-            auto rv = Compare::Equal;
-            if( ple.m_params.m_types.size() > 0 || pre.m_params.m_types.size() > 0 ) {
-                if( ple.m_params.m_types.size() != pre.m_params.m_types.size() ) {
-                    return Compare::Unequal;
-                }
-                for( unsigned int i = 0; i < pre.m_params.m_types.size(); i ++ )
-                {
-                    auto rv2 = ple.m_params.m_types[i].compare_with_paceholders( sp, pre.m_params.m_types[i], resolve_placeholder );
-                    if( rv2 == Compare::Unequal )
-                        return Compare::Unequal;
-                    if( rv2 == Compare::Fuzzy )
-                        rv = Compare::Fuzzy;
-                }
-            }
-            return rv;
-            )
-        )
+        return le.path.compare_with_paceholders( sp, re.path, resolve_placeholder );
         ),
     (Generic,
         if( le.binding != re.binding )
