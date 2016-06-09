@@ -629,14 +629,13 @@ AST::Trait Parse_TraitDef(TokenStream& lex, AST::Module& mod, const AST::MetaIte
             break; }
         // Associated type
         case TOK_RWORD_TYPE: {
+            auto atype_params = ::AST::GenericParams { };
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             ::std::string name = tok.str();
             if( GET_TOK(tok, lex) == TOK_COLON )
             {
                 // Bounded associated type
-                TypeRef a_type = TypeRef( Span(), AST::Path(AST::Path::TagUfcs(), TypeRef("Self", 0xFFFF), AST::Path(), {AST::PathNode(name)}) );
-                //TypeRef a_type = TypeRef(TypeRef::TagAssoc(), TypeRef("Self", 0xFFFF), TypeRef(), name);
-                Parse_TypeBound(lex, params, a_type);
+                Parse_TypeBound(lex, atype_params, TypeRef("Self", 0xFFFF));
                 GET_TOK(tok, lex);
             }
             if( tok.type() == TOK_RWORD_WHERE ) {
@@ -651,6 +650,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, AST::Module& mod, const AST::MetaIte
             
             CHECK_TOK(tok, TOK_SEMICOLON);
             trait.add_type( ::std::move(name), ::std::move(default_type) );
+            trait.items().back().data.as_Type().params() = mv$(atype_params);
             break; }
 
         // Functions (possibly unsafe)

@@ -75,7 +75,7 @@ struct Context
         auto& data = e.as_Generic();
         
         if( has_self ) {
-            assert( level == GenericSlot::Level::Top );
+            //assert( level == GenericSlot::Level::Top );
             data.types.push_back( Named<GenericSlot> { "Self", GenericSlot { level, 0xFFFF } } );
             m_name_context.push_back( Ent::make_ConcreteSelf(nullptr) );
         }
@@ -91,10 +91,15 @@ struct Context
         
         m_name_context.push_back(mv$(e));
     }
-    void pop(const ::AST::GenericParams& ) {
+    void pop(const ::AST::GenericParams& , bool has_self=false) {
         if( !m_name_context.back().is_Generic() )
             BUG(Span(), "resolve/absolute.cpp - Context::pop(GenericParams) - Mismatched pop");
         m_name_context.pop_back();
+        if(has_self) {
+            if( !m_name_context.back().is_ConcreteSelf() )
+                BUG(Span(), "resolve/absolute.cpp - Context::pop(GenericParams) - Mismatched pop");
+            m_name_context.pop_back();
+        }
     }
     void push(const ::AST::Module& mod) {
         m_name_context.push_back( Ent::make_Module({ &mod }) );
@@ -1194,12 +1199,12 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
             DEBUG("Type - " << i.name);
             assert( e.params().ty_params().size() == 0 );
             assert( e.params().lft_params().size() == 0 );
-            //item_context.push( e.params(), GenericSlot::Level::Method );
+            item_context.push( e.params(), GenericSlot::Level::Method, true );
             Resolve_Absolute_Generic(item_context,  e.params());
             
             Resolve_Absolute_Type( item_context, e.type() );
             
-            //item_context.pop( e.params() );
+            item_context.pop( e.params(), true );
             ),
         (Function,
             DEBUG("Function - " << i.name);
@@ -1295,7 +1300,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             
             Resolve_Absolute_ImplItems(item_context, e.items());
             
-            item_context.pop( e.params() );
+            item_context.pop( e.params(), true );
             ),
         (Type,
             DEBUG("Type - " << i.name);
@@ -1304,7 +1309,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             
             Resolve_Absolute_Type( item_context, e.type() );
             
-            item_context.pop( e.params() );
+            item_context.pop( e.params(), true );
             ),
         (Struct,
             DEBUG("Struct - " << i.name);

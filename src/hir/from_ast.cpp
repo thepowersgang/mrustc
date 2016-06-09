@@ -12,8 +12,10 @@
 ::HIR::SimplePath LowerHIR_SimplePath(const Span& sp, const ::AST::Path& path, bool allow_final_generic = false);
 ::HIR::PathParams LowerHIR_PathParams(const Span& sp, const ::AST::PathParams& src_params);
 
+const ::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
+
 // --------------------------------------------------------------------
-::HIR::GenericParams LowerHIR_GenericParams(const ::AST::GenericParams& gp)
+::HIR::GenericParams LowerHIR_GenericParams(const ::AST::GenericParams& gp, bool* self_is_sized)
 {
     ::HIR::GenericParams    rv;
     
@@ -80,23 +82,41 @@
                     rv.m_bounds.push_back(::HIR::GenericBound::make_TypeEquality({ mv$(left_type), LowerHIR_Type(assoc.second) }));
                 }
                 
+                // TODO: Check for `Sized`
+                
                 auto trait_path = LowerHIR_GenericPath(bound.span, e.trait);
                 rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({ mv$(type), ::HIR::TraitPath { mv$(trait_path), e.hrls } }));
                 ),
             (MaybeTrait,
                 if( ! e.type.m_data.is_Generic() )
                     BUG(bound.span, "MaybeTrait on non-param");
-                const auto& param_name = e.type.m_data.as_Generic().name;
-                unsigned param_idx = ::std::find_if( rv.m_types.begin(), rv.m_types.end(), [&](const auto& x) { return x.m_name == param_name; } ) - rv.m_types.begin();
-                if( param_idx >= rv.m_types.size() ) {
-                    BUG(bound.span, "MaybeTrait on parameter not in parameter list");
+                const auto& ge = e.type.m_data.as_Generic();
+                const auto& param_name = ge.name;
+                unsigned param_idx;
+                if( ge.index == 0xFFFF ) {
+                    if( !self_is_sized ) {
+                        BUG(bound.span, "MaybeTrait on parameter on Self when not allowed");
+                    }
+                    param_idx = 0xFFFF;
+                }
+                else {
+                    param_idx = ::std::find_if( rv.m_types.begin(), rv.m_types.end(), [&](const auto& x) { return x.m_name == param_name; } ) - rv.m_types.begin();
+                    if( param_idx >= rv.m_types.size() ) {
+                        BUG(bound.span, "MaybeTrait on parameter not in parameter list (#" << ge.index << " " << param_name << ")");
+                    }
                 }
                 
                 // Compare with list of known default traits (just Sized atm) and set a marker
-                const auto path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
                 auto trait = LowerHIR_GenericPath(bound.span, e.trait);
                 if( trait.m_path == path_Sized ) {
-                    rv.m_types[param_idx].m_is_sized = false;
+                    if( param_idx == 0xFFFF ) {
+                        assert( self_is_sized );
+                        *self_is_sized = false;
+                    }
+                    else {
+                        assert( param_idx < rv.m_types.size() );
+                        rv.m_types[param_idx].m_is_sized = false;
+                    }
                 }
                 else {
                     ERROR(bound.span, E0000, "MaybeTrait on unknown trait " << trait.m_path);
@@ -627,7 +647,7 @@
 ::HIR::TypeAlias LowerHIR_TypeAlias(const ::AST::TypeAlias& ta)
 {
     return ::HIR::TypeAlias {
-        LowerHIR_GenericParams(ta.params()),
+        LowerHIR_GenericParams(ta.params(), nullptr),
         LowerHIR_Type(ta.type())
         };
 }
@@ -659,7 +679,7 @@
     )
 
     return ::HIR::Struct {
-        LowerHIR_GenericParams(ent.params()),
+        LowerHIR_GenericParams(ent.params(), nullptr),
         // TODO: Get repr from attributes
         ::HIR::Struct::Repr::Rust,
         mv$(data)
@@ -697,7 +717,7 @@
     }
     
     return ::HIR::Enum {
-        LowerHIR_GenericParams(f.params()),
+        LowerHIR_GenericParams(f.params(), nullptr),
         // TODO: Get repr from attributes
         ::HIR::Enum::Repr::Rust,
         mv$(variants)
@@ -716,8 +736,9 @@
             lifetime = "static";
         }
     }
+    bool trait_reqires_sized = false;
     ::HIR::Trait    rv {
-        LowerHIR_GenericParams(f.params()),
+        LowerHIR_GenericParams(f.params(), &trait_reqires_sized),
         mv$(lifetime),
         mv$(supertraits)
         };
@@ -739,9 +760,11 @@
             BUG(item.data.span, "Encountered unexpected item type in trait");
             ),
         (Type,
+            bool is_sized = true;
+            auto gps = LowerHIR_GenericParams(i.params(), &is_sized);
             rv.m_types.insert( ::std::make_pair(item.name, ::HIR::AssociatedType {
-                LowerHIR_GenericParams(i.params()),
-                LowerHIR_Type(i.type()) 
+                mv$(gps),
+                LowerHIR_Type(i.type())
                 }) );
             ),
         (Function,
@@ -776,7 +799,7 @@
     // TODO: ABI and unsafety/constness
     return ::HIR::Function {
         "rust", false, false,
-        LowerHIR_GenericParams(f.params()),
+        LowerHIR_GenericParams(f.params(), nullptr),    // TODO: If this is a method, then it can add the Self: Sized bound
         mv$(args),
         LowerHIR_Type( f.rettype() ),
         LowerHIR_Expr( f.code() )
@@ -886,7 +909,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
     // 
     for( const auto& impl : ast_mod.impls() )
     {
-        auto params = LowerHIR_GenericParams(impl.def().params());
+        auto params = LowerHIR_GenericParams(impl.def().params(), nullptr);
         auto type = LowerHIR_Type(impl.def().type());
         
         if( impl.def().trait().ent.is_valid() )
@@ -967,7 +990,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
     }
     for( const auto& impl : ast_mod.neg_impls() )
     {
-        auto params = LowerHIR_GenericParams(impl.params());
+        auto params = LowerHIR_GenericParams(impl.params(), nullptr);
         auto type = LowerHIR_Type(impl.type());
         auto trait = LowerHIR_GenericPath(impl.trait().sp, impl.trait().ent);
         auto trait_name = mv$(trait.m_path);

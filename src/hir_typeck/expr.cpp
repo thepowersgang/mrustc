@@ -1491,6 +1491,16 @@ namespace {
                 TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
                     // No match, keep trying.
                 )
+                else if( ty.m_data.is_Path() && ty.m_data.as_Path().path.m_data.is_UfcsKnown() )
+                {
+                    const auto& e = ty.m_data.as_Path().path.m_data.as_UfcsKnown();
+                    // UFCS known - Assuming that it's reached the maximum resolvable level (i.e. a type within is generic), search for trait bounds on the type
+                    const auto& trait = this->m_crate.get_trait_by_path(sp, e.trait.m_path);
+                    const auto& assoc_ty = trait.m_types.at( e.item );
+                    const auto& ty_bounds = assoc_ty.m_params.m_bounds;
+                    // NOTE: The bounds here have 'Self' = the type
+                    DEBUG("TODO: Search bounds assoc type bounds - type " << e.item << assoc_ty.m_params.fmt_bounds());
+                }
                 else {
                     // 2. Search for inherent methods
                     for(const auto& impl : m_crate.m_type_impls)
