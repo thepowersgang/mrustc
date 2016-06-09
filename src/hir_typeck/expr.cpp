@@ -2955,6 +2955,8 @@ namespace {
         {
             ::HIR::ExprVisitorDef::visit(node);
             this->context.apply_equality(node.span(), node.m_return, node.m_code->m_res_type,  &node.m_code);
+            
+            // TODO: Detect use as closure (i.e. being bounded by Fn/FnMut/FnOnce)
         }
     };
     
