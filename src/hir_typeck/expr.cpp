@@ -682,14 +682,41 @@ namespace typeck {
                 const ::HIR::TraitImpl* impl_ptr = nullptr;
                 unsigned int count = 0;
                 const auto& ops_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
+                DEBUG("Searching for impl " << ops_trait << "< " << ty_left << "> for " << ty_right);
                 bool found_exact = this->context.m_crate.find_trait_impls(ops_trait, ty_left, this->context.callback_resolve_infer(),
                     [&](const auto& impl) {
                         // TODO: Check how concretely the types matched
                         assert( impl.m_trait_args.m_types.size() == 1 );
                         const auto& arg_type = impl.m_trait_args.m_types[0];
-                        // TODO: What if the trait arguments depend on a generic parameter?
-                        if( monomorphise_type_needed(arg_type) )
-                            TODO(node.span(), "Compare ops trait type when it contains generics - " << arg_type);
+                        
+                        // 1. Match arg_type with ty_right into impl block params
+                        bool    fail = false;
+                        ::std::vector< const ::HIR::TypeRef*> impl_params;
+                        impl_params.resize( impl.m_params.m_types.size() );
+                        auto cb =[&](auto idx, const auto& ty) {
+                            assert( idx < impl_params.size() );
+                            if( impl_params[idx] ) {
+                                if( *impl_params[idx] != ty ) {
+                                    fail = true;
+                                }
+                            }
+                            else {
+                                impl_params[idx] = &ty;
+                            }
+                            };
+                        fail |= !arg_type   .match_test_generics(node.span(), ty_right, this->context.callback_resolve_infer(), cb);
+                        fail |= !impl.m_type.match_test_generics(node.span(), ty_left , this->context.callback_resolve_infer(), cb);
+                        for(const auto& ty : impl_params)
+                            assert( ty );
+                        if( fail ) {
+                            DEBUG("- (fail) impl" << impl.m_params.fmt_args() << " " << ops_trait << "<" << arg_type << "> for " << impl.m_type);
+                            return false;
+                        }
+                        // TODO: handle a generic somehow
+                        if( monomorphise_type_needed(arg_type) ) {
+                            return true;
+                            //TODO(node.span(), "Compare ops trait type when it contains generics - " << arg_type << " == " << ty_right);
+                        }
                         auto cmp = arg_type.compare_with_paceholders(node.span(), ty_right, this->context.callback_resolve_infer());
                         if( cmp == ::HIR::Compare::Unequal ) {
                             return false;
@@ -701,7 +728,7 @@ namespace typeck {
                             return true;
                         }
                         else {
-                            DEBUG("Operator fuzzy exact match - '"<<item_name<<"' - " << arg_type << " == " << ty_right);
+                            DEBUG("Operator impl fuzzy match - '"<<item_name<<"' - " << arg_type << " == " << ty_right);
                             return false;
                         }
                     }

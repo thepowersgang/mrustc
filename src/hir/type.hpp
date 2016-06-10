@@ -12,9 +12,11 @@ namespace HIR {
 
 class Struct;
 class Enum;
+struct ExprNode_Closure;
 
 class TypeRef;
-struct ExprNode_Closure;
+
+typedef ::std::function<void(unsigned int, const ::HIR::TypeRef&)> t_cb_match_generics;
 
 enum class InferClass
 {
@@ -175,6 +177,8 @@ public:
     // Match generics in `this` with types from `x`
     // Raises a bug against `sp` if there is a form mismatch or `this` has an infer
     void match_generics(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder, ::std::function<void(unsigned int, const ::HIR::TypeRef&)> callback) const;
+    
+    bool match_test_generics(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder, ::std::function<void(unsigned int, const ::HIR::TypeRef&)> callback) const;
     
     // Compares this type with another, using `resolve_placeholder` to get replacements for generics/infers in `x`
     Compare compare_with_paceholders(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder) const;
