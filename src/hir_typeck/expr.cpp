@@ -784,6 +784,12 @@ namespace typeck {
                     }
                 )
                 else {
+                    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Infer, e,
+                        if( e.ty_class == ::HIR::InferClass::Integer ) {
+                            this->context.apply_equality(node.span(), node.m_res_type, ty);
+                            break;
+                        }
+                    )
                     // TODO: Search for an implementation of ops::Not
                 }
                 break;
@@ -802,6 +808,12 @@ namespace typeck {
                     }
                 )
                 else {
+                    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Infer, e,
+                        if( e.ty_class == ::HIR::InferClass::Integer || e.ty_class == ::HIR::InferClass::Float ) {
+                            this->context.apply_equality(node.span(), node.m_res_type, ty);
+                            break;
+                        }
+                    )
                     // TODO: Search for an implementation of ops::Neg
                 }
                 break;
@@ -1376,6 +1388,41 @@ namespace typeck {
         // - PathValue: Insert type from path
         void visit(::HIR::ExprNode_PathValue& node) override
         {
+            const auto& sp = node.span();
+            TU_MATCH(::HIR::Path::Data, (node.m_path.m_data), (e),
+            (Generic,
+                switch(node.m_target) {
+                case ::HIR::ExprNode_PathValue::UNKNOWN:
+                    BUG(sp, "Unknown target PathValue encountered with Generic path");
+                case ::HIR::ExprNode_PathValue::FUNCTION: {
+                    //const auto& f = this->context.m_crate.get_fcn_by_path(sp, e.m_path);
+                    } break;
+                case ::HIR::ExprNode_PathValue::STATIC: {
+                    const auto& v = this->context.m_crate.get_static_by_path(sp, e.m_path);
+                    DEBUG("static v.m_type = " << v.m_type);
+                    this->context.apply_equality(sp, node.m_res_type, v.m_type);
+                    } break;
+                case ::HIR::ExprNode_PathValue::CONSTANT: {
+                    const auto& v = this->context.m_crate.get_constant_by_path(sp, e.m_path);
+                    DEBUG("const"<<v.m_params.fmt_args()<<" v.m_type = " << v.m_type);
+                    if( v.m_params.m_types.size() > 0 ) {
+                        TODO(sp, "Support generic constants in typeck");
+                    }
+                    this->context.apply_equality(sp, node.m_res_type, v.m_type);
+                    } break;
+                }
+                DEBUG("TODO: Get type for constant/static - " << e);
+                ),
+            (UfcsUnknown,
+                BUG(sp, "Encountered UfcsUnknown");
+                ),
+            (UfcsKnown,
+                TODO(sp, "Look up associated constants/statics (trait)");
+                ),
+            (UfcsInherent,
+                TODO(sp, "Look up associated constants/statics (inherent)");
+                )
+            )
             ::HIR::ExprVisitorDef::visit(node);
         }
         // - Variable: Bind to same ivar

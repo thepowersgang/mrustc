@@ -418,6 +418,9 @@ namespace {
                     )
                 )
             }
+            void visit(::HIR::ExprNode_UnitVariant& node) override {
+                TODO(node.span(), "Unit varant/struct constructors in constant context");
+            }
             void visit(::HIR::ExprNode_PathValue& node) override {
                 const auto& c = get_constant(node.span(), m_crate, node.m_path);
                 if( c.m_value_res.is_Invalid() ) {

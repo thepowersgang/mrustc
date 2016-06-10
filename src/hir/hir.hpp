@@ -275,6 +275,24 @@ public:
     
     const ::HIR::ValueItem& get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Function& get_function_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
+    const ::HIR::Static& get_static_by_path(const Span& sp, const ::HIR::SimplePath& path) const {
+        const auto& ti = this->get_valitem_by_path(sp, path);
+        TU_IFLET(::HIR::ValueItem, ti, Static, e,
+            return e;
+        )
+        else {
+            BUG(sp, "`static` path " << path << " didn't point to an enum");
+        }
+    }
+    const ::HIR::Constant& get_constant_by_path(const Span& sp, const ::HIR::SimplePath& path) const {
+        const auto& ti = this->get_valitem_by_path(sp, path);
+        TU_IFLET(::HIR::ValueItem, ti, Constant, e,
+            return e;
+        )
+        else {
+            BUG(sp, "`const` path " << path << " didn't point to an enum");
+        }
+    }
     
     bool find_trait_impls(const ::HIR::SimplePath& path, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TraitImpl&)> callback) const;
     bool find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback) const;

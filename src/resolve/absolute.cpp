@@ -534,7 +534,7 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
             for( const auto& item : tr.items() )
             {
                 if( item.name != node.name() ) {
-                    break;
+                    continue;
                 }
                 TU_MATCH_DEF(::AST::Item, (item.data), (e),
                 (
@@ -551,11 +551,15 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
             for( const auto& item : tr.items() )
             {
                 if( item.name != node.name() ) {
-                    break;
+                    continue;
                 }
                 TU_MATCH_DEF(::AST::Item, (item.data), (e),
                 (
                     // TODO: Error
+                    ),
+                (Function,
+                    // Bind as trait method
+                    path.bind_function(e);
                     ),
                 (Static,
                     // Resolve to asociated type

@@ -465,14 +465,37 @@ struct ExprNode_Literal:
     
     NODE_METHODS();
 };
+struct ExprNode_UnitVariant:
+    public ExprNode
+{
+    // Path to variant/struct
+    ::HIR::GenericPath m_path;
+    bool    m_is_struct;
+    
+    ExprNode_UnitVariant(Span sp, ::HIR::GenericPath path, bool is_struct):
+        ExprNode(mv$(sp)),
+        m_path( mv$(path) ),
+        m_is_struct( is_struct )
+    {}
+    
+    NODE_METHODS();
+};
 struct ExprNode_PathValue:
     public ExprNode
 {
+    enum Target {
+        UNKNOWN,
+        FUNCTION,
+        STATIC,
+        CONSTANT,
+    };
     ::HIR::Path m_path;
+    Target  m_target;
     
-    ExprNode_PathValue(Span sp, ::HIR::Path path):
+    ExprNode_PathValue(Span sp, ::HIR::Path path, Target target):
         ExprNode(mv$(sp)),
-        m_path( mv$(path) )
+        m_path( mv$(path) ),
+        m_target( target )
     {}
     
     NODE_METHODS();
@@ -611,6 +634,7 @@ public:
     NV(ExprNode_Field);
 
     NV(ExprNode_Literal);
+    NV(ExprNode_UnitVariant);
     NV(ExprNode_PathValue);
     NV(ExprNode_Variable);
     
@@ -652,6 +676,7 @@ public:
     NV(ExprNode_Field);
 
     NV(ExprNode_Literal);
+    NV(ExprNode_UnitVariant);
     NV(ExprNode_PathValue);
     NV(ExprNode_Variable);
     

@@ -95,6 +95,7 @@ DEF_VISIT(ExprNode_Field, node,
 )
 
 DEF_VISIT(ExprNode_Literal, , )
+DEF_VISIT(ExprNode_UnitVariant, , )
 DEF_VISIT(ExprNode_PathValue, , )
 DEF_VISIT(ExprNode_Variable, , )
 DEF_VISIT(ExprNode_StructLiteral, node,

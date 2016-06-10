@@ -126,7 +126,7 @@ struct LowerHIR_ExprNode_Visitor:
                     m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_RangeTo), nullptr, mv$(values)) );
                 }
                 else {
-                    m_rv.reset( new ::HIR::ExprNode_PathValue(v.span(), mv$(path_RangeFull)) );
+                    m_rv.reset( new ::HIR::ExprNode_UnitVariant(v.span(), mv$(path_RangeFull), true) );
                 }
             }
             break; }
@@ -547,7 +547,28 @@ struct LowerHIR_ExprNode_Visitor:
             m_rv.reset( new ::HIR::ExprNode_Variable( v.span(), e.name, slot ) );
         )
         else {
-            m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path) ) );
+            TU_MATCH_DEF(::AST::PathBinding, (v.m_path.binding()), (e),
+            (
+                m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::UNKNOWN ) );
+                ),
+            (Struct,
+                m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(Span(v.get_pos()), v.m_path), true ) );
+                ),
+            (EnumVar,
+                m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(Span(v.get_pos()), v.m_path), false ) );
+                ),
+            (Function,
+                m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::FUNCTION ) );
+                ),
+            (Static,
+                if( e.static_->s_class() != ::AST::Static::CONST ) {
+                    m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::STATIC ) );
+                }
+                else {
+                    m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::CONSTANT ) );
+                }
+                )
+            )
         }
     }
     

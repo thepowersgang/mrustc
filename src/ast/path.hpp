@@ -61,7 +61,7 @@ TAGGED_UNION_EX(PathBinding, (), Unbound, (
         ::std::string name;
         }),
     (TraitMethod, struct {
-        const Trait* struct_;
+        const Trait* trait_;
         ::std::string name;
         }),
 
