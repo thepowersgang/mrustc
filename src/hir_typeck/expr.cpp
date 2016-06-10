@@ -1490,10 +1490,11 @@ namespace typeck {
             TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
             (Infer,
                 auto new_ty = this->context.get_type(ty).clone();
-                if( new_ty.m_data.is_Infer() ) {
-                    ERROR(sp, E0000, "Failed to infer type " << new_ty << " in "  << top_type);
-                }
+                // - Move over before checking, so that the source type mentions the correct ivar
                 ty = mv$(new_ty);
+                if( ty.m_data.is_Infer() ) {
+                    ERROR(sp, E0000, "Failed to infer type " << ty << " in "  << top_type);
+                }
                 check_type_resolved(sp, ty, top_type);
                 ),
             (Diverge,

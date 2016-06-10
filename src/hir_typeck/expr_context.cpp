@@ -644,7 +644,7 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
     assert( ! left.m_data.is_Infer() ||  left.m_data.as_Infer().index != ~0u );
     assert( !right.m_data.is_Infer() || right.m_data.as_Infer().index != ~0u );
     // - Convert left/right types into resolved versions (either root ivar, or generic replacement)
-    const auto& l_t1 = left.m_data.is_Generic()  ? cb_left (left ) : this->get_type(left );
+    const auto& l_t1 = left .m_data.is_Generic() ? cb_left (left ) : this->get_type(left );
     const auto& r_t1 = right.m_data.is_Generic() ? cb_right(right) : this->get_type(right);
     if( l_t1 == r_t1 ) {
         return ;
@@ -654,6 +654,9 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
     const auto& l_t = this->expand_associated_types_to(sp, l_t1, left_tmp);
     ::HIR::TypeRef  right_tmp;
     const auto& r_t = this->expand_associated_types_to(sp, r_t1, right_tmp);
+    if( l_t == r_t ) {
+        return ;
+    }
     
     DEBUG("- l_t = " << l_t << ", r_t = " << r_t);
     TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Infer, r_e,
@@ -987,7 +990,6 @@ bool typeck::TypecheckContext::find_trait_impls(const ::HIR::SimplePath& trait, 
             ),
         (UfcsKnown,
             DEBUG("Locating associated type for " << e.path);
-            // TODO: Use the marker `e.binding` to tell if it's worth trying
             
             *e2.type = expand_associated_types(sp, mv$(*e2.type));
             
@@ -1150,7 +1152,7 @@ bool typeck::TypecheckContext::find_trait_impls(const ::HIR::SimplePath& trait, 
                     return *impl_args[ge.binding];
                     });
                 DEBUG("Converted UfcsKnown - " << e.path << " = " << new_type << " using " << e2.item << " = " << impl_ptr->m_types.at( e2.item ));
-                return new_type;
+                return expand_associated_types(sp, mv$(new_type));
             }
             
             // TODO: If there are no ivars in this path, set its binding to Opaque
