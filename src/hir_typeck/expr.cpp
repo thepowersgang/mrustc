@@ -689,7 +689,7 @@ namespace typeck {
                         const auto& arg_type = impl.m_trait_args.m_types[0];
                         // TODO: What if the trait arguments depend on a generic parameter?
                         if( monomorphise_type_needed(arg_type) )
-                            TODO(node.span(), "Compare trait type when it contains generics");
+                            TODO(node.span(), "Compare ops trait type when it contains generics - " << arg_type);
                         auto cmp = arg_type.compare_with_paceholders(node.span(), ty_right, this->context.callback_resolve_infer());
                         if( cmp == ::HIR::Compare::Unequal ) {
                             return false;
@@ -1177,64 +1177,48 @@ namespace typeck {
             // - TODO: Make this FAR more generic than it is
             for(const auto& bound : cache.m_fcn_params->m_bounds)
             {
-                TU_IFLET(::HIR::GenericBound, bound, TraitBound, be,
-                    // Find trait impl for `be.type` (applying monomorph_cb)
-                    // - Once found, equate fuzzy-matched ivars
-                    const auto& ty = cache.m_monomorph_cb(be.type);
-                    DEBUG("TODO: Check/apply " << be.type << " {"<<ty<<"} : " << be.trait.m_path);
-                    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Closure, te,
-                        const ::std::vector< ::HIR::TypeRef>*   closure_args;
-                        //const ::std::vector< ::HIR::TypeRef>*   closure_ret;
-                        if( be.trait.m_path.m_path == this->context.m_crate.get_lang_item_path(sp, "fn") ) {
-                            closure_args = &be.trait.m_path.m_params.m_types.at(0).m_data.as_Tuple();
+                TU_MATCH(::HIR::GenericBound, (bound), (be),
+                (Lifetime,
+                    ),
+                (TypeLifetime,
+                    ),
+                (TraitBound,
+                    auto real_type = monomorphise_type_with(sp, be.type, cache.m_monomorph_cb);
+                    const auto& trait_params = be.trait.m_path.m_params;
+                    auto rv = this->context.find_trait_impls(be.trait.m_path.m_path, real_type, [&](const auto& pp) {
+                        if( pp.m_types.size() != trait_params.m_types.size() ) {
+                            BUG(sp, "Parameter mismatch");
                         }
-                        else if( be.trait.m_path.m_path == this->context.m_crate.get_lang_item_path(sp, "fn_mut") ) {
-                            closure_args = &be.trait.m_path.m_params.m_types.at(0).m_data.as_Tuple();
+                        if( pp.m_types.size() > 0 )
+                        {
+                            //TODO(sp, "Check equality of " << pp << " and " << trait_params << "(once monomorphed)");
+                            // HACK! Just assume it's good and match.
+                            // - This could have a false negative (if there's multiple impls of the trait with different params)
+                            // - OR, it could false positive (Possible? Specialisation)
+                            for(unsigned int i = 0; i < pp.m_types.size(); i ++ )
+                                this->context.apply_equality(sp, pp.m_types[i], [](const auto&x)->const auto&{return x;}, trait_params.m_types[i], cache.m_monomorph_cb, nullptr);
                         }
-                        else if( be.trait.m_path.m_path == this->context.m_crate.get_lang_item_path(sp, "fn_once") ) {
-                            closure_args = &be.trait.m_path.m_params.m_types.at(0).m_data.as_Tuple();
-                        }
-                        else {
-                            TODO(sp, "Other trait bounds on closure");
-                        }
-                        
-                        if( te.m_arg_types.size() != closure_args->size() ) {
-                            ERROR(sp, E0000, "Closure argument count mismatch");
-                        }
-                        for(unsigned int i = 0; i < closure_args->size(); i ++) {
-                            DEBUG("Closure Arg: " << i << " : " << monomorphise_type_with(sp, closure_args->at(i), cache.m_monomorph_cb));
-                            this->context.apply_equality(sp, te.m_arg_types[i], [](const auto&x)->const auto&{return x;}, closure_args->at(i), cache.m_monomorph_cb, nullptr);
-                        }
-                    )
-                    else {
+                        return true;
+                        });
+                    if( !rv ) {
+                        // Continue or error? (Need a fuzzy return from the above)
+                        DEBUG("- No impl of " << be.trait.m_path << " for " << real_type);
+                        continue ;
                     }
-                )
-                else TU_IFLET(::HIR::GenericBound, bound, TypeEquality, be,
-                    DEBUG("TODO: Check/apply " << be.type << " = " << be.other_type);
-                    TU_IFLET(::HIR::TypeRef::Data,  be.type.m_data, Path, te,
-                        TU_IFLET(::HIR::Path::Data, te.path.m_data, UfcsKnown, pe,
-                            const auto& ty = cache.m_monomorph_cb(*pe.type);
-                            TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Closure, te2,
-                                if( pe.trait.m_path == this->context.m_crate.get_lang_item_path(sp, "fn") ) {
-                                }
-                                else if( pe.trait.m_path == this->context.m_crate.get_lang_item_path(sp, "fn_mut") ) {
-                                }
-                                else if( pe.trait.m_path == this->context.m_crate.get_lang_item_path(sp, "fn_once") ) {
-                                }
-                                else {
-                                    TODO(sp, "Other trait bounds on closure");
-                                }
-                                this->context.apply_equality(sp, be.other_type, cache.m_monomorph_cb, *te2.m_rettype, [](const auto&x)->const auto&{return x;}, nullptr);
-                            )
-                            else {
-                                DEBUG("- ty !~ Closure (ty = " << ty << ")");
-                            }
-                        )
-                        else {
-                        }
+                    ),
+                (TypeEquality,
+                    #if 0
+                    this->context.apply_equality(sp, be.type, cache.m_monomorph_cb, be.other_type, cache.m_monomorph_cb, nullptr);
+                    #else
+                    // Search for an impl of this trait? Or just do a ufcs expand and force equality
+                    auto real_type_left = this->context.expand_associated_types(sp, monomorphise_type_with(sp, be.type, cache.m_monomorph_cb));
+                    DEBUG("real_type_left = " << real_type_left);
+                    auto real_type_right = this->context.expand_associated_types(sp, monomorphise_type_with(sp, be.other_type, cache.m_monomorph_cb));
+                    DEBUG("real_type_right = " << real_type_right);
+                    
+                    this->context.apply_equality(sp, real_type_left, real_type_right);
+                    #endif
                     )
-                    else {
-                    }
                 )
             }
         }
