@@ -1154,10 +1154,13 @@ bool typeck::TypecheckContext::find_trait_impls(const ::HIR::SimplePath& trait, 
                                     //TODO(sp, "Look up 'Self' in expand_associated_types::expand_placeholder (" << *e2.type << ")");
                                     return *e2.type;
                                 }
-                                else {
+                                else if( e.binding < 256 ) {
                                     assert(e.binding < impl_args.size());
                                     assert( impl_args[e.binding] );
                                     return *impl_args[e.binding];
+                                }
+                                else {
+                                    BUG(sp, "Encountered fn-level params? " << ty);
                                 }
                             )
                             else
@@ -1169,6 +1172,7 @@ bool typeck::TypecheckContext::find_trait_impls(const ::HIR::SimplePath& trait, 
                         (
                             ),
                         (TraitBound,
+                            DEBUG("- Checking bound - " << be.type << " : " << be.trait.m_path);
                             if( !this->check_trait_bound(sp, be.type, be.trait.m_path, expand_placeholder) )
                             {
                                 return false;
@@ -1418,7 +1422,10 @@ unsigned int typeck::TypecheckContext::autoderef_find_method(const Span& sp, con
             for(const auto& impl : m_crate.m_type_impls)
             {
                 if( impl.matches_type(ty) ) {
-                    DEBUG("Mactching impl " << impl.m_type);
+                    auto it = impl.m_methods.find( method_name );
+                    if( it == impl.m_methods.end() )
+                        continue ;
+                    DEBUG("Matching `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` - " << top_ty);
                     fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsInherent({
                         box$(ty.clone()),
                         method_name,

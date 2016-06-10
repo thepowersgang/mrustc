@@ -262,14 +262,7 @@ namespace typeck {
             ::HIR::ExprVisitorDef::visit(node);
             if( node.m_nodes.size() > 0 ) {
                 auto& ln = *node.m_nodes.back();
-                // If the child node didn't set a real return type, force it to be the same as this node's
-                if( ln.m_res_type.m_data.is_Infer() ) {
-                    ln.m_res_type = node.m_res_type.clone();
-                }
-                else {
-                    // If it was set, equate with possiblity of coercion
-                    this->context.apply_equality(ln.span(), node.m_res_type, ln.m_res_type, &node.m_nodes.back());
-                }
+                this->context.apply_equality(ln.span(), node.m_res_type, ln.m_res_type, &node.m_nodes.back());
             }
             else {
                 node.m_res_type = ::HIR::TypeRef::new_unit();
@@ -351,13 +344,7 @@ namespace typeck {
                 types.push_back( sn->m_res_type.clone() );
             auto tup_type = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Tuple(mv$(types)) );
             
-            //if( node.m_res_type.m_data.is_Infer() )
-            //{
-            //    node.m_res_type = mv$(tup_type);
-            //}
-            //else {
-                this->context.apply_equality(node.span(), node.m_res_type, tup_type);
-            //}
+            this->context.apply_equality(node.span(), node.m_res_type, tup_type);
         }
         void visit(::HIR::ExprNode_Closure& node) override
         {
@@ -370,9 +357,16 @@ namespace typeck {
                 ty_data.m_arg_types.push_back( a.second.clone() );
             }
             this->context.add_ivars(node.m_return);
+            
             ty_data.m_rettype = box$( node.m_return.clone() );
             
-            node.m_code->m_res_type = node.m_return.clone();
+            if( node.m_code->m_res_type == ::HIR::TypeRef() ) {
+                node.m_code->m_res_type = node.m_return.clone();
+            }
+            else {
+                this->context.add_ivars( node.m_code->m_res_type );
+                this->context.apply_equality( node.span(), node.m_code->m_res_type, node.m_return );
+            }
 
             this->context.apply_equality( node.span(), node.m_res_type, ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Closure(mv$(ty_data)) ) );
             
@@ -1107,6 +1101,9 @@ namespace typeck {
                                 return ty;
                         },
                         [&](const auto& impl) {
+                            DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+                            for(const auto& v : impl.m_methods)
+                                DEBUG(" > " << v.first);
                             auto it = impl.m_methods.find(e.item);
                             if( it == impl.m_methods.end() )
                                 return false;
@@ -1444,7 +1441,10 @@ namespace typeck {
         void visit(::HIR::ExprNode_Tuple& node) override
         {
             auto& ty = this->context.get_type(node.m_res_type);
-            assert( ty.m_data.is_Tuple() );
+            if( !ty.m_data.is_Tuple() ) {
+                this->context.dump();
+                BUG(node.span(), "Return type of tuple literal wasn't a tuple - " << node.m_res_type << " = " << ty);
+            }
             auto& tup_ents = ty.m_data.as_Tuple();
             assert( tup_ents.size() == node.m_vals.size() );
             

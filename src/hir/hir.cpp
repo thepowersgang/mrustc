@@ -30,10 +30,12 @@ namespace HIR {
 }
 
 namespace {
-    bool matches_type_int(const ::HIR::GenericParams& params, const ::HIR::TypeRef& left,  const ::HIR::TypeRef& right_in, ::HIR::t_cb_resolve_type ty_res)
+    bool matches_type_int(const ::HIR::GenericParams& params, const ::HIR::TypeRef& left,  const ::HIR::TypeRef& right_in, ::HIR::t_cb_resolve_type ty_res, bool expand_generic)
     {
         assert(! left.m_data.is_Infer() );
-        const auto& right = (right_in.m_data.is_Infer() || right_in.m_data.is_Generic() ? ty_res(right_in) : right_in);
+        const auto& right = (right_in.m_data.is_Infer() || right_in.m_data.is_Generic() == expand_generic ? ty_res(right_in) : right_in);
+        if( right_in.m_data.is_Generic() )
+            expand_generic = false;
 
         //DEBUG("left = " << left << ", right = " << right);
         
@@ -85,7 +87,7 @@ namespace {
                     }
                     for( unsigned int i = 0; i < pre.m_params.m_types.size(); i ++ )
                     {
-                        if( ! matches_type_int(params, ple.m_params.m_types[i], pre.m_params.m_types[i], ty_res) )
+                        if( ! matches_type_int(params, ple.m_params.m_types[i], pre.m_params.m_types[i], ty_res, expand_generic) )
                             return false;
                     }
                 }
@@ -101,32 +103,32 @@ namespace {
             return false;
             ),
         (Array,
-            if( ! matches_type_int(params, *le.inner, *re.inner, ty_res) )
+            if( ! matches_type_int(params, *le.inner, *re.inner, ty_res, expand_generic) )
                 return false;
             if( le.size_val != re.size_val )
                 return false;
             return true;
             ),
         (Slice,
-            return matches_type_int(params, *le.inner, *re.inner, ty_res);
+            return matches_type_int(params, *le.inner, *re.inner, ty_res, expand_generic);
             ),
         (Tuple,
             if( le.size() != re.size() )
                 return false;
             for( unsigned int i = 0; i < le.size(); i ++ )
-                if( !matches_type_int(params, le[i], re[i], ty_res) )
+                if( !matches_type_int(params, le[i], re[i], ty_res, expand_generic) )
                     return false;
             return true;
             ),
         (Borrow,
             if( le.type != re.type )
                 return false;
-            return matches_type_int(params, *le.inner, *re.inner, ty_res);
+            return matches_type_int(params, *le.inner, *re.inner, ty_res, expand_generic);
             ),
         (Pointer,
             if( le.type != re.type )
                 return false;
-            return matches_type_int(params, *le.inner, *re.inner, ty_res);
+            return matches_type_int(params, *le.inner, *re.inner, ty_res, expand_generic);
             ),
         (Function,
             DEBUG("TODO: Compare " << left << " and " << right);
@@ -143,15 +145,15 @@ namespace {
 
 bool ::HIR::TraitImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
-    return matches_type_int(m_params, m_type, type, ty_res);
+    return matches_type_int(m_params, m_type, type, ty_res, true);
 }
 bool ::HIR::TypeImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
-    return matches_type_int(m_params, m_type, type, ty_res);
+    return matches_type_int(m_params, m_type, type, ty_res, true);
 }
 bool ::HIR::MarkerImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
-    return matches_type_int(m_params, m_type, type, ty_res);
+    return matches_type_int(m_params, m_type, type, ty_res, true);
 }
 
 
