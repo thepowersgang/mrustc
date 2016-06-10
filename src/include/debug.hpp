@@ -44,39 +44,13 @@ class TraceLog
     const char* m_tag;
     ::std::function<void(::std::ostream&)>  m_ret;
 public:
-    TraceLog(const char* tag, ::std::string info, ::std::function<void(::std::ostream&)> ret):
-        m_tag(tag),
-        m_ret(ret)
-    {
-        DEBUG(" >> " << m_tag << "(" << info << ")");
-        INDENT();
-    }
-    TraceLog(const char* tag, ::std::string info):
-        m_tag(tag),
-        m_ret([](const auto&){})
-    {
-        DEBUG(" >> " << m_tag << "(" << info << ")");
-        INDENT();
-    }
-    TraceLog(const char* tag):
-        m_tag(tag),
-        m_ret([](const auto&){})
-    {
-        DEBUG(" >> " << m_tag);
-        INDENT();
-    }
-    ~TraceLog() {
-        UNINDENT();
-        if(debug_enabled()) {
-            auto& os = debug_output(g_debug_indent_level, "TraceLog");
-            os << " << " << m_tag;
-            m_ret(os);
-            os << ::std::endl;
-        }
-    }
+    TraceLog(const char* tag, ::std::string info, ::std::function<void(::std::ostream&)> ret);
+    TraceLog(const char* tag, ::std::string info);
+    TraceLog(const char* tag);
+    ~TraceLog();
 };
 #define TRACE_FUNCTION  TraceLog _tf_(__func__)
 #define TRACE_FUNCTION_F(ss)    TraceLog _tf_(__func__, FMT(ss))
-#define TRACE_FUNCTION_FR(ss,ss2)    TraceLog _tf_(__func__, FMT(ss), [&](::std::ostream&__os){ __os<<"(" << ss2 <<"}";})
+#define TRACE_FUNCTION_FR(ss,ss2)    TraceLog _tf_(__func__, FMT(ss), [&](::std::ostream&__os){ __os << ss2;})
 
 

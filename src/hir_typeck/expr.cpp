@@ -906,13 +906,6 @@ namespace {
             if( l_t1 == r_t1 ) {
                 return ;
             }
-            // If generic replacement happened, clear the callback
-            if( left.m_data.is_Generic() ) {
-                cb_left = [](const auto& x)->const auto&{return x;};
-            }
-            if( right.m_data.is_Generic() ) {
-                cb_right = [](const auto& x)->const auto&{return x;};
-            }
             
             ::HIR::TypeRef  left_tmp;
             const auto& l_t = this->expand_associated_types_to(sp, l_t1, left_tmp);
@@ -938,6 +931,14 @@ namespace {
                     this->set_ivar_to(l_e.index, monomorphise_type_with(sp, right, cb_right, true));
                 )
                 else {
+                    // If generic replacement happened, clear the callback
+                    if( left.m_data.is_Generic() ) {
+                        cb_left = [](const auto& x)->const auto&{return x;};
+                    }
+                    if( right.m_data.is_Generic() ) {
+                        cb_right = [](const auto& x)->const auto&{return x;};
+                    }
+                    
                     // Neither are infer - both should be of the same form
                     // - If either side is `!`, return early (diverging type, matches anything)
                     if( l_t.m_data.is_Diverge() || r_t.m_data.is_Diverge() ) {
@@ -1451,9 +1452,14 @@ namespace {
             {
                 auto pt_pp = monomorphise_path_params_with(Span(), pt.m_params.clone(), [&](const auto& gt)->const auto& {
                     const auto& ge = gt.m_data.as_Generic();
-                    if( ge.binding >= pp.m_types.size() )
-                        BUG(sp, "find_named_trait_in_trait - Generic #" << ge.binding << " " << ge.name << " out of range");
-                    return pp.m_types[ge.binding];
+                    if( ge.binding == 0xFFFF ) {
+                        return gt;
+                    }
+                    else {
+                        if( ge.binding >= pp.m_types.size() )
+                            BUG(sp, "find_named_trait_in_trait - Generic #" << ge.binding << " " << ge.name << " out of range");
+                        return pp.m_types[ge.binding];
+                    }
                     }, false);
                 
                 if( pt.m_path == des ) {
@@ -1668,16 +1674,6 @@ namespace {
             m_ivars.back().type->m_data.as_Infer().index = m_ivars.size() - 1;
             return m_ivars.size() - 1;
         }
-        void del_ivar(unsigned int index)
-        {
-            DEBUG("Deleting ivar " << index << " of  " << m_ivars.size());
-            if( index == m_ivars.size() - 1 ) {
-                m_ivars.pop_back();
-            }
-            else {
-                assert(!"Can't delete an ivar after it's been used");
-            }
-        }
         ::HIR::TypeRef new_ivar_tr() {
             ::HIR::TypeRef rv;
             rv.m_data.as_Infer().index = this->new_ivar();
@@ -1852,6 +1848,10 @@ namespace {
         {
         }
         
+        void visit_node_ptr(::std::unique_ptr< ::HIR::ExprNode>& node_ptr) {
+            TRACE_FUNCTION_FR(typeid(*node_ptr).name(), node_ptr->m_res_type << " = " << this->context.get_type(node_ptr->m_res_type));
+            ::HIR::ExprVisitorDef::visit_node_ptr(node_ptr);
+        }
         void visit_node(::HIR::ExprNode& node) override {
             this->context.add_ivars(node.m_res_type);
             DEBUG(typeid(node).name() << " : " << node.m_res_type);
@@ -1943,23 +1943,20 @@ namespace {
 
         void visit(::HIR::ExprNode_Tuple& node) override
         {
-            // Only delete and apply if the return type is an ivar
-            // - Can happen with `match (a, b)`
-            TU_IFLET(::HIR::TypeRef::Data, node.m_res_type.m_data, Infer, e,
-                // - Remove the ivar created by the generic visitor
-                this->context.dump();
-                this->context.del_ivar( e.index );
-            )
-
             ::HIR::ExprVisitorDef::visit(node);
 
-            if( node.m_res_type.m_data.is_Infer() )
-            {
-                ::std::vector< ::HIR::TypeRef>  types;
-                for( const auto& sn : node.m_vals )
-                    types.push_back( sn->m_res_type.clone() );
-                node.m_res_type = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Tuple(mv$(types)) );
-            }
+            ::std::vector< ::HIR::TypeRef>  types;
+            for( const auto& sn : node.m_vals )
+                types.push_back( sn->m_res_type.clone() );
+            auto tup_type = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Tuple(mv$(types)) );
+            
+            //if( node.m_res_type.m_data.is_Infer() )
+            //{
+            //    node.m_res_type = mv$(tup_type);
+            //}
+            //else {
+                this->context.apply_equality(node.span(), node.m_res_type, tup_type);
+            //}
         }
         void visit(::HIR::ExprNode_Closure& node) override
         {
@@ -1983,10 +1980,7 @@ namespace {
         // - Variable: Bind to same ivar
         void visit(::HIR::ExprNode_Variable& node) override
         {
-            TU_IFLET(::HIR::TypeRef::Data, node.m_res_type.m_data, Infer, e,
-                this->context.del_ivar( e.index );
-            )
-            node.m_res_type = this->context.get_var_type(node.span(), node.m_slot).clone();
+            this->context.apply_equality(node.span(), node.m_res_type, this->context.get_var_type(node.span(), node.m_slot));
         }
         
         void visit_generic_path(const Span& sp, ::HIR::GenericPath& gp) {
@@ -2596,25 +2590,23 @@ namespace {
         void visit_call(const Span& sp,
                 ::HIR::Path& path, bool is_method,
                 ::std::vector< ::HIR::ExprNodeP>& args, ::HIR::TypeRef& res_type, ::HIR::ExprNodeP& this_node_ptr,
-                ::std::vector< ::HIR::TypeRef>& arg_types
+                ::HIR::ExprCallCache& cache
                 )
         {
             TRACE_FUNCTION_F("path = " << path);
             unsigned int arg_ofs = (is_method ? 1 : 0);
             
-            if( arg_types.size() == 0 )
+            if( cache.m_arg_types.size() == 0 )
             {
                 const ::HIR::Function*  fcn_ptr = nullptr;
                 ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>    monomorph_cb;
                 
                 TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
                 (Generic,
-                    // TODO: This could also point to an enum variant, or to a struct constructor
-                    // - Current code only handles functions.
-
                     const auto& fcn = this->context.m_crate.get_function_by_path(sp, e.m_path);
                     this->fix_param_count(sp, path, fcn.m_params,  e.m_params);
                     fcn_ptr = &fcn;
+                    cache.m_fcn_params = &fcn.m_params;
                     
                     //const auto& params_def = fcn.m_params;
                     const auto& path_params = e.m_params;
@@ -2630,7 +2622,7 @@ namespace {
                                 if( idx >= path_params.m_types.size() ) {
                                     BUG(sp, "Generic param out of input range - " << idx << " '"<<e.name<<"' >= " << path_params.m_types.size());
                                 }
-                                return path_params.m_types[idx];
+                                return this->context.get_type(path_params.m_types[idx]);
                             }
                             else {
                                 BUG(sp, "Generic bounding out of total range");
@@ -2642,6 +2634,8 @@ namespace {
                     this->fix_param_count(sp, path, trait.m_params, e.trait.m_params);
                     const auto& fcn = trait.m_values.at(e.item).as_Function();
                     this->fix_param_count(sp, path, fcn.m_params,  e.params);
+                    cache.m_fcn_params = &fcn.m_params;
+                    cache.m_top_params = &trait.m_params;
                     
                     // TODO: Check/apply trait bounds (apply = closure arguments or fixed trait args)
                     
@@ -2659,14 +2653,14 @@ namespace {
                                 if( idx >= trait_params.m_types.size() ) {
                                     BUG(sp, "Generic param (impl) out of input range - " << idx << " '"<<ge.name<<"' >= " << trait_params.m_types.size());
                                 }
-                                return trait_params.m_types[idx];
+                                return this->context.get_type(trait_params.m_types[idx]);
                             }
                             else if( ge.binding < 512 ) {
                                 auto idx = ge.binding - 256;
                                 if( idx >= path_params.m_types.size() ) {
                                     BUG(sp, "Generic param out of input range - " << idx << " '"<<ge.name<<"' >= " << path_params.m_types.size());
                                 }
-                                return path_params.m_types[idx];
+                                return this->context.get_type(path_params.m_types[idx]);
                             }
                             else {
                                 BUG(sp, "Generic bounding out of total range");
@@ -2697,23 +2691,38 @@ namespace {
                     }
                     assert(impl_ptr);
                     this->fix_param_count(sp, path, fcn_ptr->m_params,  e.params);
+                    cache.m_fcn_params = &fcn_ptr->m_params;
                     
-                    //const auto& impl_params = .m_params;
+                    
+                    auto& impl_params = cache.m_ty_impl_params;
+                    if( impl_ptr->m_params.m_types.size() > 0 ) {
+                        impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
+                        impl_ptr->m_type.match_generics(sp, *e.type, this->context.callback_resolve_infer(), [&](auto idx, const auto& ty) {
+                            assert( idx < impl_params.m_types.size() );
+                            impl_params.m_types[idx] = ty.clone();
+                            });
+                        for(const auto& ty : impl_params.m_types)
+                            assert( !( ty.m_data.is_Infer() && ty.m_data.as_Infer().index == ~0u) );
+                    }
                     const auto& fcn_params = e.params;
                     monomorph_cb = [&](const auto& gt)->const auto& {
                             const auto& ge = gt.m_data.as_Generic();
                             if( ge.binding == 0xFFFF ) {
-                                return *e.type;
+                                return this->context.get_type(*e.type);
                             }
                             else if( ge.binding < 256 ) {
-                                TODO(sp, "Expand impl-leve generic params in UfcsInherent (path = " << path << ", param = #" << ge.binding << " '" << ge.name << "')");
+                                auto idx = ge.binding;
+                                if( idx >= impl_params.m_types.size() ) {
+                                    BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << impl_params.m_types.size());
+                                }
+                                return this->context.get_type(impl_params.m_types[idx]);
                             }
                             else if( ge.binding < 512 ) {
                                 auto idx = ge.binding - 256;
                                 if( idx >= fcn_params.m_types.size() ) {
                                     BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << fcn_params.m_types.size());
                                 }
-                                return fcn_params.m_types[idx];
+                                return this->context.get_type(fcn_params.m_types[idx]);
                             }
                             else {
                                 BUG(sp, "Generic bounding out of total range");
@@ -2731,33 +2740,102 @@ namespace {
                 
                 for(const auto& arg : fcn.m_args) {
                     if( monomorphise_type_needed(arg.second) ) {
-                        arg_types.push_back( this->context.expand_associated_types(sp, monomorphise_type_with(sp, arg.second,  monomorph_cb)) );
+                        cache.m_arg_types.push_back( this->context.expand_associated_types(sp, monomorphise_type_with(sp, arg.second,  monomorph_cb)) );
                     }
                     else {
-                        arg_types.push_back( arg.second.clone() );
+                        cache.m_arg_types.push_back( arg.second.clone() );
                     }
                 }
                 if( monomorphise_type_needed(fcn.m_return) ) {
-                    arg_types.push_back( this->context.expand_associated_types(sp, monomorphise_type_with(sp, fcn.m_return,  monomorph_cb)) );
+                    cache.m_arg_types.push_back( this->context.expand_associated_types(sp, monomorphise_type_with(sp, fcn.m_return,  monomorph_cb)) );
                 }
                 else {
-                    arg_types.push_back( fcn.m_return.clone() );
+                    cache.m_arg_types.push_back( fcn.m_return.clone() );
                 }
+                
+                cache.m_monomorph_cb = mv$(monomorph_cb);
             }
             
-            for( unsigned int i = arg_ofs; i < arg_types.size() - 1; i ++ )
+            for( unsigned int i = arg_ofs; i < cache.m_arg_types.size() - 1; i ++ )
             {
                 auto& arg_expr_ptr = args[i - arg_ofs];
-                const auto& arg_ty = arg_types[i];
+                const auto& arg_ty = cache.m_arg_types[i];
                 DEBUG("Arg " << i << ": " << arg_ty);
                 this->context.apply_equality(sp, arg_ty, arg_expr_ptr->m_res_type,  &arg_expr_ptr);
             }
             
+            // TODO: Remove if not needed
             // HACK: Expand UFCS again
-            arg_types.back() = this->context.expand_associated_types(sp, mv$(arg_types.back()));
+            cache.m_arg_types.back() = this->context.expand_associated_types(sp, mv$(cache.m_arg_types.back()));
             
-            DEBUG("RV " << arg_types.back());
-            this->context.apply_equality(sp, res_type, arg_types.back(),  &this_node_ptr);
+            DEBUG("RV " << cache.m_arg_types.back());
+            this->context.apply_equality(sp, res_type, cache.m_arg_types.back(),  &this_node_ptr);
+            
+            // TODO: Check generic bounds (after links between args and params are known)
+            // - HACK! Below just handles closures and fn traits.
+            // - TODO: Make this FAR more generic than it is
+            for(const auto& bound : cache.m_fcn_params->m_bounds)
+            {
+                TU_IFLET(::HIR::GenericBound, bound, TraitBound, be,
+                    // Find trait impl for `be.type` (applying monomorph_cb)
+                    // - Once found, equate fuzzy-matched ivars
+                    const auto& ty = cache.m_monomorph_cb(be.type);
+                    DEBUG("TODO: Check/apply " << be.type << " {"<<ty<<"} : " << be.trait.m_path);
+                    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Closure, te,
+                        const ::std::vector< ::HIR::TypeRef>*   closure_args;
+                        //const ::std::vector< ::HIR::TypeRef>*   closure_ret;
+                        if( be.trait.m_path.m_path == this->context.m_crate.get_lang_item_path(sp, "fn") ) {
+                            closure_args = &be.trait.m_path.m_params.m_types.at(0).m_data.as_Tuple();
+                        }
+                        else if( be.trait.m_path.m_path == this->context.m_crate.get_lang_item_path(sp, "fn_mut") ) {
+                            closure_args = &be.trait.m_path.m_params.m_types.at(0).m_data.as_Tuple();
+                        }
+                        else if( be.trait.m_path.m_path == this->context.m_crate.get_lang_item_path(sp, "fn_once") ) {
+                            closure_args = &be.trait.m_path.m_params.m_types.at(0).m_data.as_Tuple();
+                        }
+                        else {
+                            TODO(sp, "Other trait bounds on closure");
+                        }
+                        
+                        if( te.m_arg_types.size() != closure_args->size() ) {
+                            ERROR(sp, E0000, "Closure argument count mismatch");
+                        }
+                        for(unsigned int i = 0; i < closure_args->size(); i ++) {
+                            DEBUG("Closure Arg: " << i << " : " << monomorphise_type_with(sp, closure_args->at(i), cache.m_monomorph_cb));
+                            this->context.apply_equality(sp, te.m_arg_types[i], [](const auto&x)->const auto&{return x;}, closure_args->at(i), cache.m_monomorph_cb, nullptr);
+                        }
+                    )
+                    else {
+                    }
+                )
+                else TU_IFLET(::HIR::GenericBound, bound, TypeEquality, be,
+                    DEBUG("TODO: Check/apply " << be.type << " = " << be.other_type);
+                    TU_IFLET(::HIR::TypeRef::Data,  be.type.m_data, Path, te,
+                        TU_IFLET(::HIR::Path::Data, te.path.m_data, UfcsKnown, pe,
+                            const auto& ty = cache.m_monomorph_cb(*pe.type);
+                            TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Closure, te2,
+                                if( pe.trait.m_path == this->context.m_crate.get_lang_item_path(sp, "fn") ) {
+                                }
+                                else if( pe.trait.m_path == this->context.m_crate.get_lang_item_path(sp, "fn_mut") ) {
+                                }
+                                else if( pe.trait.m_path == this->context.m_crate.get_lang_item_path(sp, "fn_once") ) {
+                                }
+                                else {
+                                    TODO(sp, "Other trait bounds on closure");
+                                }
+                                this->context.apply_equality(sp, be.other_type, cache.m_monomorph_cb, *te2.m_rettype, [](const auto&x)->const auto&{return x;}, nullptr);
+                            )
+                            else {
+                                DEBUG("- ty !~ Closure (ty = " << ty << ")");
+                            }
+                        )
+                        else {
+                        }
+                    )
+                    else {
+                    }
+                )
+            }
         }
         
         // - Call Path: Locate path and build return
@@ -2767,7 +2845,7 @@ namespace {
             TRACE_FUNCTION_F("CallPath " << node.m_path);
             assert(node_ptr.get() == &node);
             // - Pass m_arg_types as a cache to avoid constant lookups
-            visit_call(node.span(), node.m_path, false, node.m_args, node.m_res_type, node_ptr,  node.m_arg_types);
+            visit_call(node.span(), node.m_path, false, node.m_args, node.m_res_type, node_ptr,  node.m_cache);
             
             ::HIR::ExprVisitorDef::visit(node);
         }
@@ -2879,8 +2957,7 @@ namespace {
             }
             
             assert(node_ptr.get() == &node);
-            // - Pass m_arg_types as a cache to avoid constant lookups
-            visit_call(node.span(), node.m_method_path, true, node.m_args, node.m_res_type, node_ptr,  node.m_arg_types);
+            visit_call(node.span(), node.m_method_path, true, node.m_args, node.m_res_type, node_ptr,  node.m_cache);
         }
         // - Field: Locate field on type
         void visit(::HIR::ExprNode_Field& node) override
@@ -2954,8 +3031,9 @@ namespace {
         // - Tuple literal: 
         void visit(::HIR::ExprNode_Tuple& node) override
         {
-            assert( node.m_res_type.m_data.is_Tuple() );
-            auto& tup_ents = node.m_res_type.m_data.as_Tuple();
+            auto& ty = this->context.get_type(node.m_res_type);
+            assert( ty.m_data.is_Tuple() );
+            auto& tup_ents = ty.m_data.as_Tuple();
             assert( tup_ents.size() == node.m_vals.size() );
             
             for(unsigned int i = 0; i < tup_ents.size(); i ++)
@@ -2984,9 +3062,9 @@ namespace {
         void visit(::HIR::ExprNode_Closure& node) override
         {
             ::HIR::ExprVisitorDef::visit(node);
-            this->context.apply_equality(node.span(), node.m_return, node.m_code->m_res_type,  &node.m_code);
             
-            // TODO: Detect use as closure (i.e. being bounded by Fn/FnMut/FnOnce)
+            DEBUG("_Closure: " << node.m_return << " = " << node.m_code->m_res_type);
+            this->context.apply_equality(node.span(), node.m_return, node.m_code->m_res_type,  &node.m_code);
         }
     };
     
@@ -3012,9 +3090,10 @@ namespace {
             (Infer,
                 auto new_ty = this->context.get_type(ty).clone();
                 if( new_ty.m_data.is_Infer() ) {
-                    ERROR(sp, E0000, "Failed to infer type " << top_type);
+                    ERROR(sp, E0000, "Failed to infer type " << new_ty << " in "  << top_type);
                 }
                 ty = mv$(new_ty);
+                check_type_resolved(sp, ty, top_type);
                 ),
             (Diverge,
                 // Leaf

@@ -9,6 +9,8 @@
 
 namespace HIR {
 
+class GenericParams;
+
 class ExprVisitor;
 
 class ExprNode
@@ -313,6 +315,18 @@ struct ExprNode_TupleVariant:
     
     NODE_METHODS();
 };
+
+struct ExprCallCache
+{
+    ::std::vector< ::HIR::TypeRef>  m_arg_types;
+    const ::HIR::GenericParams* m_fcn_params;
+    const ::HIR::GenericParams* m_top_params;
+
+    ::HIR::PathParams   m_ty_impl_params;
+    
+    ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>   m_monomorph_cb;
+};
+
 struct ExprNode_CallPath:
     public ExprNode
 {
@@ -320,7 +334,7 @@ struct ExprNode_CallPath:
     ::std::vector<ExprNodeP> m_args;
     
     // - Cache for typeck
-    ::std::vector< ::HIR::TypeRef>  m_arg_types;
+    ExprCallCache   m_cache;
     
     ExprNode_CallPath(Span sp, ::HIR::Path path, ::std::vector< ::HIR::ExprNodeP> args):
         ExprNode(mv$(sp)),
@@ -357,7 +371,7 @@ struct ExprNode_CallMethod:
     
     // - Set during typeck to the real path to the method
     ::HIR::Path m_method_path;
-    ::std::vector< ::HIR::TypeRef>  m_arg_types;
+    ExprCallCache   m_cache;
 
     ExprNode_CallMethod(Span sp, ::HIR::ExprNodeP val, ::std::string method_name, ::HIR::PathParams params, ::std::vector< ::HIR::ExprNodeP> args):
         ExprNode( mv$(sp) ),

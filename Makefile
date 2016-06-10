@@ -29,7 +29,7 @@ OBJDIR = .obj/
 BIN := bin/mrustc$(EXESUF)
 
 OBJ := main.o serialise.o
-OBJ += span.o rc_string.o
+OBJ += span.o rc_string.o debug.o
 OBJ += ast/ast.o
 OBJ +=  ast/types.o ast/crate.o ast/path.o ast/expr.o ast/pattern.o
 OBJ += parse/parseerror.o

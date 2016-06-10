@@ -64,7 +64,16 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         os << e.path;
         ),
     (Generic,
-        os << e.name << "/*#" << e.binding << "*/";
+        os << e.name << "/*";
+        if( e.binding == 0xFFFF )
+            os << "";
+        else if( e.binding < 256 )
+            os << "I:" << e.binding;
+        else if( e.binding < 512 )
+            os << "M:" << (e.binding - 256);
+        else
+            os << e.binding;
+        os << "*/";
         ),
     (TraitObject,
         os << "(";

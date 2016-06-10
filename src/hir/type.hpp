@@ -14,7 +14,7 @@ class Struct;
 class Enum;
 
 class TypeRef;
-class ExprNode_Closure;
+struct ExprNode_Closure;
 
 enum class InferClass
 {
