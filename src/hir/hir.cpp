@@ -41,7 +41,8 @@ namespace {
         
         if( right.m_data.is_Infer() ) {
             // TODO: Why is this false? A _ type could match anything
-            return false;
+            return left.m_data.is_Generic();
+            //return true;
         }
         if( right.m_data.is_Generic() ) {
             return left.m_data.is_Generic();

@@ -1137,10 +1137,14 @@ bool typeck::TypecheckContext::find_trait_impls(const ::HIR::SimplePath& trait, 
                                 slot_r = &ty;
                             }
                         };
-                    impl.m_type.match_generics(sp, *e2.type, cb_get_infer, cb_res);
+                    bool fail = false;
+                    fail |= !impl.m_type.match_test_generics(sp, *e2.type, cb_get_infer, cb_res);
                     for( unsigned int i = 0; i < impl.m_trait_args.m_types.size(); i ++ )
                     {
-                        impl.m_trait_args.m_types[i].match_generics(sp, e2.trait.m_params.m_types.at(i), cb_get_infer, cb_res);
+                        fail |= !impl.m_trait_args.m_types[i].match_test_generics(sp, e2.trait.m_params.m_types.at(i), cb_get_infer, cb_res);
+                    }
+                    if( fail ) {
+                        return false;
                     }
                     auto expand_placeholder = [&](const auto& ty)->const auto& {
                             if( ty.m_data.is_Infer() )
