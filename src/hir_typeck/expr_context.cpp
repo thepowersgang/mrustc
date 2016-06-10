@@ -459,7 +459,6 @@ void typeck::TypecheckContext::apply_pattern(const ::HIR::Pattern& pat, ::HIR::T
 {
     static Span _sp;
     const Span& sp = _sp;
-    // TODO: Should this do an equality on the binding?
 
     auto& ty = this->get_type(type);
     

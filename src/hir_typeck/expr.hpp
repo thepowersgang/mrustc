@@ -7,6 +7,7 @@
 
 namespace typeck {
 
+// TODO/NOTE - This is identical to ::HIR::t_cb_resolve_type
 typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>   t_cb_generic;
 
 extern bool monomorphise_type_needed(const ::HIR::TypeRef& tpl);
@@ -87,10 +88,12 @@ public:
 
     /// Add (and bind) all '_' types in `type`
     void add_ivars(::HIR::TypeRef& type);
+    // (helper) Add ivars to path parameters
     void add_ivars_params(::HIR::PathParams& params);
     
+    // (helper) Add a new local based on the pattern binding
     void add_pattern_binding(const ::HIR::PatternBinding& pb, ::HIR::TypeRef type);
-    
+    // (first pass) Add locals using the pssed pattern
     void add_binding(const Span& sp, ::HIR::Pattern& pat, ::HIR::TypeRef& type);
     
     /// Run inferrence using a pattern
@@ -101,7 +104,9 @@ public:
         apply_equality(sp, left, [](const auto& x)->const auto&{return x;}, right, [](const auto& x)->const auto&{return x;}, node_ptr_ptr);
     }
     
+    /// (helper) Expands a top-level associated type into `tmp_t`, returning either `t` or `tmp_t`
     const ::HIR::TypeRef& expand_associated_types_to(const Span& sp, const ::HIR::TypeRef& t, ::HIR::TypeRef& tmp_t) const;
+    
     /// Equates the two types, checking that they are equal (and binding ivars)
     /// \note !! The ordering DOES matter, as the righthand side will get unsizing/deref coercions applied if possible (using node_ptr_ptr)
     /// \param sp   Span for reporting errors
@@ -110,7 +115,8 @@ public:
     /// \param node_ptr Pointer to ExprNodeP, updated with new nodes for coercions
     void apply_equality(const Span& sp, const ::HIR::TypeRef& left, t_cb_generic cb_left, const ::HIR::TypeRef& right, t_cb_generic cb_right, ::HIR::ExprNodeP* node_ptr_ptr);
     
-    bool check_trait_bound(const Span& sp, const ::HIR::TypeRef& type, const ::HIR::GenericPath& trait, ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> placeholder) const;
+    /// Check if a trait bound applies, using the passed function to expand Generic/Infer types
+    bool check_trait_bound(const Span& sp, const ::HIR::TypeRef& type, const ::HIR::GenericPath& trait, t_cb_generic placeholder) const;
     
     /// Expand any located associated types in the input, operating in-place and returning the result
     ::HIR::TypeRef expand_associated_types(const Span& sp, ::HIR::TypeRef input) const;
