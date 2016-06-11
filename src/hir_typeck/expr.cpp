@@ -1499,6 +1499,22 @@ namespace typeck {
         void visit(::HIR::ExprNode_Field& node) override
         {
             ::HIR::ExprVisitorDef::visit(node);
+            
+            ::HIR::TypeRef  out_type;
+            unsigned int deref_count = this->context.autoderef_find_field(node.span(), node.m_value->m_res_type, node.m_field,  out_type);
+            if( deref_count != ~0u )
+            {
+                assert( out_type != ::HIR::TypeRef() );
+                if( deref_count > 0 )
+                    DEBUG("Adding " << deref_count << " dereferences");
+                while( deref_count > 0 )
+                {
+                    node.m_value = ::HIR::ExprNodeP( new ::HIR::ExprNode_Deref(node.span(), mv$(node.m_value)) );
+                    this->context.add_ivars( node.m_value->m_res_type );
+                    deref_count -= 1;
+                }
+                this->context.apply_equality(node.span(), node.m_res_type, out_type);
+            }
         }
         // - PathValue: Insert type from path
         void visit(::HIR::ExprNode_PathValue& node) override

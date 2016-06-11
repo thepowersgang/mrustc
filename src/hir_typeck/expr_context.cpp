@@ -1605,7 +1605,23 @@ bool typeck::TypecheckContext::find_method(const Span& sp, const ::HIR::TypeRef&
     }
 
     TU_IFLET(::HIR::TypeRef::Data, ty.m_data, TraitObject, e,
-        // TODO: Search methods on object's traits
+        // TODO: This _Should_ be set, but almost needs a pass?
+        //assert( e.m_trait.m_trait_ptr );
+        //const auto& trait = *e.m_trait.m_trait_ptr;
+        const auto& trait = this->m_crate.get_trait_by_path(sp, e.m_trait.m_path.m_path);
+        auto it = trait.m_values.find( method_name );
+        if( it != trait.m_values.end() )
+        {
+            if( it->second.is_Function() ) {
+                fcn_path = ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown({
+                    box$( ty.clone() ),
+                    e.m_trait.m_path.clone(),
+                    method_name,
+                    {}
+                    }) );
+                return true;
+            }
+        }
     )
     
     TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
@@ -1681,6 +1697,121 @@ bool typeck::TypecheckContext::find_method(const Span& sp, const ::HIR::TypeRef&
     return false;
 }
 
+unsigned int typeck::TypecheckContext::autoderef_find_field(const Span& sp, const ::HIR::TypeRef& top_ty, const ::std::string& field_name,  /* Out -> */::HIR::TypeRef& field_type) const
+{
+    unsigned int deref_count = 0;
+    ::HIR::TypeRef  tmp_type;   // Temporary type used for handling Deref
+    const auto* current_ty = &top_ty;
+    TU_IFLET(::HIR::TypeRef::Data, this->get_type(top_ty).m_data, Borrow, e,
+        current_ty = &*e.inner;
+        deref_count += 1;
+    )
+    
+    do {
+        const auto& ty = this->get_type(*current_ty);
+        if( ty.m_data.is_Infer() ) {
+            return ~0u;
+        }
+        
+        if( this->find_field(sp, ty, field_name, field_type) ) {
+            return deref_count;
+        }
+        
+        // 3. Dereference and try again
+        deref_count += 1;
+        TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Borrow, e,
+            DEBUG("Deref " << ty << " into " << *e.inner);
+            current_ty = &*e.inner;
+        )
+        else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
+            DEBUG("Deref " << ty << " into [" << *e.inner << "]");
+            tmp_type = ::HIR::TypeRef::new_slice( e.inner->clone() );
+            current_ty = &tmp_type;
+        )
+        else {
+            // TODO: Search for a Deref impl
+            bool succ = this->find_trait_impls(this->m_crate.get_lang_item_path(sp, "deref"), ty, [&](const auto& args) {
+                return true;
+                });
+            if( succ ) {
+                TODO(sp, "Found a Deref impl for " << ty << ", use the output of it");
+            }
+            else {
+                current_ty = nullptr;
+            }
+        }
+    } while( current_ty );
+    
+    TU_IFLET(::HIR::TypeRef::Data, this->get_type(top_ty).m_data, Borrow, e,
+        const auto& ty = this->get_type(top_ty);
+        
+        if( find_field(sp, ty, field_name, field_type) ) {
+            return 0;
+        }
+    )
+    
+    // Dereference failed! This is a hard error (hitting _ is checked above and returns ~0)
+    this->dump();
+    TODO(sp, "Error when no field could be found, but type is known - (: " << top_ty << ")." << field_name);
+}
+bool typeck::TypecheckContext::find_field(const Span& sp, const ::HIR::TypeRef& ty, const ::std::string& name,  /* Out -> */::HIR::TypeRef& field_ty) const
+{
+    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, e,
+        TU_MATCH(::HIR::TypeRef::TypePathBinding, (e.binding), (be),
+        (Unbound,
+            // Wut?
+            TODO(sp, "Handle TypePathBinding::Unbound - " << ty);
+            ),
+        (Opaque,
+            // Ignore, no fields on an opaque
+            ),
+        (Struct,
+            // Has fields!
+            const auto& str = *be;
+            TU_MATCH(::HIR::Struct::Data, (str.m_data), (se),
+            (Unit,
+                // No fields on a unit struct
+                ),
+            (Tuple,
+                for( unsigned int i = 0; i < se.size(); i ++ )
+                {
+                    // TODO: Privacy
+                    if( FMT(i) == name ) {
+                        field_ty = monomorphise_type_with(sp, se[i].ent, [&](const auto& gt)->const auto&{ TODO(sp, "Monomorphise tuple struct field types"); return gt; });
+                        return true;
+                    }
+                }
+                ),
+            (Named,
+                for( const auto& fld : se )
+                {
+                    // TODO: Privacy
+                    if( fld.first == name ) {
+                        field_ty = monomorphise_type_with(sp, fld.second.ent, [&](const auto& gt)->const auto&{ TODO(sp, "Monomorphise named struct field types"); return gt; });
+                        return true;
+                    }
+                }
+                )
+            )
+            ),
+        (Enum,
+            // No fields on enums either
+            )
+        )
+    )
+    else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Tuple, e,
+        for( unsigned int i = 0; i < e.size(); i ++ )
+        {
+            if( FMT(i) == name ) {
+                field_ty = e[i].clone();
+                return true;
+            }
+        }
+    )
+    else {
+    }
+    return false;
+}
 
 
 // -------------------------------------------------------------------------------------------------------------------
