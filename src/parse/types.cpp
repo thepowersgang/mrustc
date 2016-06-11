@@ -165,21 +165,16 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         PUTBACK(tok, lex);
         
         TypeRef inner = Parse_Type(lex, true);
-        if( GET_TOK(tok, lex) == TOK_PLUS )
+        if( LOOK_AHEAD(lex) == TOK_PAREN_CLOSE )
         {
-            // Lifetime bounded type, NOT a tuple
-            GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
-            ::std::string   lifetime = tok.str();   
+            // Type in parens, NOT a tuple
             GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
-            // TODO: Actually use lifetime bound
-            DEBUG("TODO: Use lifetime bound '" << lifetime << " on type " << inner);
-            return ::std::move(inner);
+            return inner;
         }
         else
         {
             ::std::vector<TypeRef>  types;
-            types.push_back( ::std::move(inner) );
-            PUTBACK(tok, lex);
+            types.push_back( mv$(inner) );
             while( GET_TOK(tok, lex) == TOK_COMMA )
             {
                 if( GET_TOK(tok, lex) == TOK_PAREN_CLOSE )
@@ -189,7 +184,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
                 types.push_back(Parse_Type(lex));
             }
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
-            return TypeRef(TypeRef::TagTuple(), lex.end_span(ps), types); }
+            return TypeRef(TypeRef::TagTuple(), lex.end_span(ps), mv$(types)); }
         }
     default:
         throw ParseError::Unexpected(lex, tok);
