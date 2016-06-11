@@ -353,6 +353,7 @@ namespace typeck {
             ::HIR::ExprVisitorDef::visit(node);
             
             this->context.apply_equality( node.span(), node.m_res_type, ::HIR::TypeRef::new_array(node.m_val->m_res_type.clone(), node.m_size_val) );
+            this->context.apply_equality( node.span(), node.m_size->m_res_type, ::HIR::TypeRef(::HIR::CoreType::Usize) );
         }
         void visit(::HIR::ExprNode_Tuple& node) override
         {
@@ -557,6 +558,7 @@ namespace typeck {
         // - BinOp: Look for overload or primitive
         void visit(::HIR::ExprNode_BinOp& node) override
         {
+            const auto& sp = node.span();
             ::HIR::ExprVisitorDef::visit(node);
             const auto& ty_left  = this->context.get_type(node.m_left->m_res_type );
             const auto& ty_right = this->context.get_type(node.m_right->m_res_type);
@@ -693,15 +695,40 @@ namespace typeck {
                 
                 // Search for ops trait impl
                 const ::HIR::TraitImpl* impl_ptr = nullptr;
+                ::HIR::TypeRef  possible_right_type;
                 unsigned int count = 0;
                 const auto& ops_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
-                DEBUG("Searching for impl " << ops_trait << "< " << ty_left << "> for " << ty_right);
-                bool found_exact = this->context.m_crate.find_trait_impls(ops_trait, ty_left, this->context.callback_resolve_infer(),
+                DEBUG("Searching for impl " << ops_trait << "< " << ty_right << "> for " << ty_left);
+                bool found_bound = this->context.find_trait_impls_bound(sp, ops_trait, ty_left,
+                    [&](const auto& args) {
+                        assert(args.m_types.size() == 1);
+                        const auto& arg_type = args.m_types[0];
+                        // TODO: if arg_type mentions Self?
+                        auto cmp = arg_type.compare_with_paceholders(node.span(), ty_right, this->context.callback_resolve_infer());
+                        if( cmp == ::HIR::Compare::Unequal ) {
+                            DEBUG("- (fail) bounded impl " << ops_trait << "<" << arg_type << ">");
+                            return false;
+                        }
+                        count += 1;
+                        if( cmp == ::HIR::Compare::Equal ) {
+                            return true;
+                        }
+                        else {
+                            if( possible_right_type == ::HIR::TypeRef() ) {
+                                DEBUG("- Set possibility for " << ty_right << " - " << arg_type);
+                                possible_right_type = arg_type.clone();
+                            }
+                        
+                            return false;
+                        }
+                    });
+                // - Only set found_exact if either found_bound returned true, XOR this returns true
+                bool found_exact = found_bound ^ this->context.m_crate.find_trait_impls(ops_trait, ty_left, this->context.callback_resolve_infer(),
                     [&](const auto& impl) {
-                        // TODO: Check how concretely the types matched
                         assert( impl.m_trait_args.m_types.size() == 1 );
                         const auto& arg_type = impl.m_trait_args.m_types[0];
                         
+                        // TODO: Abstract the below code into a method on TypecheckContext
                         // 1. Match arg_type with ty_right into impl block params
                         bool    fail = false;
                         ::std::vector< const ::HIR::TypeRef*> impl_params;
@@ -725,7 +752,8 @@ namespace typeck {
                             DEBUG("- (fail) impl" << impl.m_params.fmt_args() << " " << ops_trait << "<" << arg_type << "> for " << impl.m_type);
                             return false;
                         }
-                        // TODO: handle a generic somehow
+                        
+                        // TODO: handle a generic righthand type by using the above parameters
                         if( monomorphise_type_needed(arg_type) ) {
                             return true;
                             //TODO(node.span(), "Compare ops trait type when it contains generics - " << arg_type << " == " << ty_right);
@@ -742,23 +770,47 @@ namespace typeck {
                         }
                         else {
                             DEBUG("Operator impl fuzzy match - '"<<item_name<<"' - " << arg_type << " == " << ty_right);
+                            if( possible_right_type == ::HIR::TypeRef() ) {
+                                DEBUG("- Set possibility for " << ty_right << " - " << arg_type);
+                                possible_right_type = arg_type.clone();
+                            }
                             return false;
                         }
                     }
                     );
                 // If there wasn't an exact match, BUT there was one partial match - assume the partial match is what we want
                 if( !found_exact && count == 1 ) {
-                    assert(impl_ptr);
-                    this->context.apply_equality(node.span(), impl_ptr->m_trait_args.m_types[0], ty_right);
+                    assert( possible_right_type != ::HIR::TypeRef() );
+                    this->context.apply_equality(node.span(), possible_right_type, ty_right);
                 }
-                if( impl_ptr ) {
+                if( count > 0 ) {
+                    // - If the output type is variable
                     if( has_output )
                     {
-                        const auto& type = impl_ptr->m_types.at("Output");
-                        if( monomorphise_type_needed(type) ) {
-                            TODO(node.span(), "BinOp output = " << type);
+                        // - If an impl block was found
+                        if( impl_ptr )
+                        {
+                            const auto& type = impl_ptr->m_types.at("Output");
+                            if( monomorphise_type_needed(type) ) {
+                                TODO(node.span(), "BinOp output = " << type);
+                            }
+                            else {
+                                this->context.apply_equality(node.span(), node.m_res_type, type);
+                            }
                         }
-                        else {
+                        else
+                        {
+                            const auto& ty_right = this->context.get_type(node.m_right->m_res_type);
+                            
+                            ::HIR::PathParams   tpp;
+                            DEBUG("- ty_right = " << ty_right);
+                            tpp.m_types.push_back( ty_right.clone() );
+                            auto type = ::HIR::TypeRef( ::HIR::Path::Data::make_UfcsKnown({
+                                box$( ty_left.clone() ),
+                                ::HIR::GenericPath( ops_trait, mv$(tpp) ),
+                                "Output",
+                                {}
+                                }) );
                             this->context.apply_equality(node.span(), node.m_res_type, type);
                         }
                     }
@@ -910,8 +962,12 @@ namespace typeck {
         void visit(::HIR::ExprNode_Deref& node) override
         {
             const auto& ty = this->context.get_type( node.m_value->m_res_type );
+            TRACE_FUNCTION_FR("Deref *{" << ty << "}", this->context.get_type(node.m_res_type));
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Borrow, e,
                 this->context.apply_equality(node.span(), node.m_res_type, *e.inner);
+            )
+            else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
+                this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef::new_slice(e.inner->clone()));
             )
             else {
                 // TODO: Search for Deref impl
@@ -1571,10 +1627,12 @@ namespace typeck {
             context(context)
         {
         }
-        void visit_node(::HIR::ExprNode& node) override {
-            DEBUG(typeid(node).name() << " : " << node.m_res_type);
-            this->check_type_resolved(node.span(), node.m_res_type, node.m_res_type);
-            DEBUG(typeid(node).name() << " : = " << node.m_res_type);
+        void visit_node_ptr(::HIR::ExprNodeP& node) override {
+            const char* node_ty = typeid(*node).name();
+            TRACE_FUNCTION_FR(node_ty << " : " << node->m_res_type, node_ty);
+            this->check_type_resolved(node->span(), node->m_res_type, node->m_res_type);
+            DEBUG(node_ty << " : = " << node->m_res_type);
+            ::HIR::ExprVisitorDef::visit_node_ptr(node);
         }
         
     private:
@@ -1660,14 +1718,17 @@ void Typecheck_Code(typeck::TypecheckContext context, const ::HIR::TypeRef& resu
         unsigned int count = 0;
         do {
             count += 1;
+            assert(count < 1000);
             DEBUG("==== PASS " << count << " ====");
             visitor.visit_node_ptr(root_ptr);
-            assert(count < 1000);
+            context.compact_ivars();
         } while( context.take_changed() );
+        DEBUG("==== STOPPED: " << count << " passes ====");
     }
     
     // 3. Check that there's no unresolved types left
     expr = ::HIR::ExprPtr( mv$(root_ptr) );
+    context.compact_ivars();
     context.dump();
     {
         DEBUG("==== VALIDATE ====");

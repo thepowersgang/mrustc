@@ -154,9 +154,7 @@ struct Context
                     return e->clone();
                 }
                 else {
-                    auto rv = ::TypeRef("Self");
-                    rv.m_data.as_Generic().index = 0xFFFF;
-                    return rv;
+                    return ::TypeRef("Self", 0xFFFF);
                 }
                 )
             )

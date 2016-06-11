@@ -23,6 +23,20 @@ void typeck::TypecheckContext::dump() const
         i ++;
     }
 }
+void typeck::TypecheckContext::compact_ivars()
+{
+    TRACE_FUNCTION;
+    unsigned int i = 0;
+    for(auto& v : m_ivars)
+    {
+        if( !v.is_alias() ) {
+            auto nt = this->expand_associated_types(Span(), v.type->clone());
+            DEBUG("- " << i << " " << *v.type << " -> " << nt);
+            *v.type = mv$(nt);
+        }
+        i ++;
+    }
+}
 
 void typeck::TypecheckContext::add_local(unsigned int index, const ::std::string& name, ::HIR::TypeRef type)
 {
@@ -1037,7 +1051,12 @@ bool typeck::TypecheckContext::find_trait_impls(const ::HIR::SimplePath& trait, 
     TU_MATCH(::HIR::TypeRef::Data, (input.m_data), (e),
     (Infer,
         auto& ty = this->get_type(input);
-        return ty.clone();
+        if( ty != input ) {
+            return expand_associated_types(sp, ty.clone());
+        }
+        else {
+            return input;
+        }
         ),
     (Diverge,
         ),
@@ -1297,17 +1316,18 @@ bool typeck::TypecheckContext::find_trait_impls(const ::HIR::SimplePath& trait, 
 // -------------------------------------------------------------------------------------------------------------------
 bool typeck::TypecheckContext::find_named_trait_in_trait(const Span& sp,
         const ::HIR::SimplePath& des, const ::HIR::Trait& trait_ptr,
-        const ::HIR::PathParams& pp,
+        const ::HIR::PathParams& pp, const ::HIR::TypeRef& target_type,
         ::std::function<bool(const ::HIR::PathParams&)> callback
     ) const
 {
+    TRACE_FUNCTION_F(des << pp);
     assert( pp.m_types.size() == trait_ptr.m_params.m_types.size() );
     for( const auto& pt : trait_ptr.m_parent_traits )
     {
         auto pt_pp = monomorphise_path_params_with(Span(), pt.m_params.clone(), [&](const auto& gt)->const auto& {
             const auto& ge = gt.m_data.as_Generic();
             if( ge.binding == 0xFFFF ) {
-                return gt;
+                return target_type;
             }
             else {
                 if( ge.binding >= pp.m_types.size() )
@@ -1335,7 +1355,7 @@ bool typeck::TypecheckContext::find_trait_impls_bound(const Span& sp, const ::HI
                     return true;
                 }
             }
-            if( this->find_named_trait_in_trait(sp, trait,  *e.trait.m_trait_ptr, e.trait.m_path.m_params,  callback) ) {
+            if( this->find_named_trait_in_trait(sp, trait,  *e.trait.m_trait_ptr, e.trait.m_path.m_params, type,  callback) ) {
                 return true;
             }
         )

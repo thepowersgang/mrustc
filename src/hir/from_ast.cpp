@@ -733,20 +733,34 @@ const ::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
 }
 ::HIR::Trait LowerHIR_Trait(::HIR::SimplePath trait_path, const ::AST::Trait& f)
 {
-    ::std::string   lifetime;
+    bool trait_reqires_sized = false;
+    auto params = LowerHIR_GenericParams(f.params(), &trait_reqires_sized);
     
+    ::std::string   lifetime;
     ::std::vector< ::HIR::GenericPath>    supertraits;
     for(const auto& st : f.supertraits()) {
         if( st.ent.is_valid() ) {
             supertraits.push_back( LowerHIR_GenericPath(st.sp, st.ent) );
+            const auto& atype_bounds = st.ent.nodes().back().args().m_assoc;
+            for(const auto& atype : atype_bounds)
+            {
+                params.m_bounds.push_back( ::HIR::GenericBound::make_TypeEquality({
+                    ::HIR::TypeRef(::HIR::Path(::HIR::Path::Data::make_UfcsKnown({
+                        box$( ::HIR::TypeRef("Self",0xFFFF) ),
+                        supertraits.back().clone(),
+                        atype.first,
+                        {}
+                        }))),
+                    LowerHIR_Type(atype.second)
+                    }) );
+            }
         }
         else {
             lifetime = "static";
         }
     }
-    bool trait_reqires_sized = false;
     ::HIR::Trait    rv {
-        LowerHIR_GenericParams(f.params(), &trait_reqires_sized),
+        mv$(params),
         mv$(lifetime),
         mv$(supertraits)
         };

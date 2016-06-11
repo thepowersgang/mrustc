@@ -266,7 +266,7 @@ namespace {
         
         void visit_trait(::HIR::PathChain p, ::HIR::Trait& item) override
         {
-            ::HIR::TypeRef tr { "Self", 0 };
+            ::HIR::TypeRef tr { "Self", 0xFFFF };
             m_self_types.push_back(&tr);
             ::HIR::Visitor::visit_trait(p, item);
             m_self_types.pop_back();

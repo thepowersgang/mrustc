@@ -112,7 +112,7 @@ public:
             AST::GenericParams(),
             ret_type,
             vec$(
-                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self")) ),
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) ),
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "f"), f_type )
                 )
             );

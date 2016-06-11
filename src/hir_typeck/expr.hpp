@@ -80,6 +80,8 @@ public:
         m_has_changed = true;
     }
     
+    void compact_ivars();
+    
     /// Adds a local variable binding (type is mutable so it can be inferred if required)
     void add_local(unsigned int index, const ::std::string& name, ::HIR::TypeRef type);
 
@@ -127,7 +129,11 @@ public:
     /// Searches for a trait impl that matches the provided trait name and type
     bool find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,  ::std::function<bool(const ::HIR::PathParams&)> callback) const;
     /// Locate a named trait in the provied trait (either itself or as a parent trait)
-    bool find_named_trait_in_trait(const Span& sp, const ::HIR::SimplePath& des, const ::HIR::Trait& trait_ptr, const ::HIR::PathParams& pp,  ::std::function<bool(const ::HIR::PathParams&)> callback) const;
+    bool find_named_trait_in_trait(const Span& sp,
+            const ::HIR::SimplePath& des, const ::HIR::Trait& trait_ptr,
+            const ::HIR::PathParams& pp, const ::HIR::TypeRef& self_type,
+            ::std::function<bool(const ::HIR::PathParams&)> callback
+            ) const;
     /// Search for a trait implementation in current bounds
     bool find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,  ::std::function<bool(const ::HIR::PathParams&)> callback) const;
     /// Search for a trait implementation in the crate
