@@ -224,8 +224,7 @@ namespace typeck {
             return ::HIR::TypeRef(::HIR::TypeRef::Data::make_Closure( mv$(oe) ));
             )
         )
-        throw "";
-        
+        assert(!"Fell off end of monomorphise_type_with");
     }
     
     ::HIR::TypeRef monomorphise_type(const Span& sp, const ::HIR::GenericParams& params_def, const ::HIR::PathParams& params,  const ::HIR::TypeRef& tpl)
@@ -601,6 +600,9 @@ namespace typeck {
             ::HIR::ExprVisitorDef::visit(node);
             const auto& ty_left  = this->context.get_type(node.m_left->m_res_type );
             const auto& ty_right = this->context.get_type(node.m_right->m_res_type);
+            const auto& ty_res = this->context.get_type(node.m_res_type);
+            
+            DEBUG("BinOp " << ty_left << " <> " << ty_right << " = " << ty_res);
             
             // Boolean ops can't be overloaded, and require `bool` on both sides
             if( node.m_op == ::HIR::ExprNode_BinOp::Op::BoolAnd || node.m_op == ::HIR::ExprNode_BinOp::Op::BoolOr )
@@ -610,16 +612,43 @@ namespace typeck {
                 this->context.apply_equality( node.span(), node.m_res_type, node.m_right->m_res_type );
                 return ;
             }
+
+            struct H {
+                static bool type_is_num_prim(const ::HIR::TypeRef& ty) {
+                    TU_MATCH_DEF(::HIR::TypeRef::Data, (ty.m_data), (e),
+                    (
+                        return false;
+                        ),
+                    (Primitive,
+                        switch(e)
+                        {
+                        case ::HIR::CoreType::Str:
+                        case ::HIR::CoreType::Char:
+                        case ::HIR::CoreType::Bool:
+                            return false;
+                        default:
+                            return true;
+                        }
+                        ),
+                    (Infer,
+                        switch(e.ty_class)
+                        {
+                        case ::HIR::InferClass::None:
+                            return false;
+                        case ::HIR::InferClass::Integer:
+                        case ::HIR::InferClass::Float:
+                            return true;
+                        }
+                        )
+                    )
+                    return false;
+                }
+            };
             
-            // NOTE: Inferrence rules when untyped integer literals are in play
-            // - `impl Add<Foo> for u32` is valid, and makes `1 + Foo` work
-            //  - But `[][0] + Foo` doesn't
-            //  - Adding `impl Add<Foo> for u64` leads to "`Add<Foo>` is not implemented for `i32`"
-            // - HACK! (kinda?) libcore includes impls of `Add<i32> for i32`, which means that overloads work for inferrence purposes
-            if( ty_left.m_data.is_Primitive() && ty_right.m_data.is_Primitive() ) 
-            {
-                const auto& prim_left  = ty_left.m_data.as_Primitive();
-                const auto& prim_right = ty_right.m_data.as_Primitive();
+            // Result is known to be a primitive, and left is infer
+            if( H::type_is_num_prim(ty_res) && H::type_is_num_prim(ty_left) ) {
+                // If the op is a aritmatic op, and the left is a primtive ivar
+                // - The result must be the same as the input
                 switch(node.m_op)
                 {
                 case ::HIR::ExprNode_BinOp::Op::CmpEqu:
@@ -628,9 +657,32 @@ namespace typeck {
                 case ::HIR::ExprNode_BinOp::Op::CmpLtE:
                 case ::HIR::ExprNode_BinOp::Op::CmpGt:
                 case ::HIR::ExprNode_BinOp::Op::CmpGtE:
-                    if( prim_left != prim_right ) {
-                        ERROR(node.span(), E0000, "Mismatched types in comparison");
-                    }
+                case ::HIR::ExprNode_BinOp::Op::BoolAnd:
+                case ::HIR::ExprNode_BinOp::Op::BoolOr:
+                    break;
+                default:
+                    this->context.apply_equality(node.span(), node.m_res_type, ty_left);
+                    break;
+                }
+            }
+            
+            // NOTE: Inferrence rules when untyped integer literals are in play
+            // - `impl Add<Foo> for u32` is valid, and makes `1 + Foo` work
+            //  - But `[][0] + Foo` doesn't
+            //  - Adding `impl Add<Foo> for u64` leads to "`Add<Foo>` is not implemented for `i32`"
+            // - HACK! (kinda?) libcore includes impls of `Add<i32> for i32`, which means that overloads work for inferrence purposes
+            if( H::type_is_num_prim(ty_left) && H::type_is_num_prim(ty_right) )
+            {
+                switch(node.m_op)
+                {
+                case ::HIR::ExprNode_BinOp::Op::CmpEqu:
+                case ::HIR::ExprNode_BinOp::Op::CmpNEqu:
+                case ::HIR::ExprNode_BinOp::Op::CmpLt:
+                case ::HIR::ExprNode_BinOp::Op::CmpLtE:
+                case ::HIR::ExprNode_BinOp::Op::CmpGt:
+                case ::HIR::ExprNode_BinOp::Op::CmpGtE:
+                    this->context.apply_equality(node.span(), node.m_left->m_res_type, node.m_right->m_res_type);
+                    this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef(::HIR::CoreType::Bool));
                     break;
                
                 case ::HIR::ExprNode_BinOp::Op::BoolAnd:    BUG(node.span(), "Encountered BoolAnd in primitive op");
@@ -640,66 +692,87 @@ namespace typeck {
                 case ::HIR::ExprNode_BinOp::Op::Sub:
                 case ::HIR::ExprNode_BinOp::Op::Mul:
                 case ::HIR::ExprNode_BinOp::Op::Div:
-                case ::HIR::ExprNode_BinOp::Op::Mod:
-                    if( prim_left != prim_right ) {
-                        ERROR(node.span(), E0000, "Mismatched types in arithmatic operation");
-                    }
-                    switch(prim_left)
-                    {
-                    case ::HIR::CoreType::Str:
-                    case ::HIR::CoreType::Char:
-                    case ::HIR::CoreType::Bool:
-                        ERROR(node.span(), E0000, "Invalid use of arithmatic on " << ty_left);
-                        break;
-                    default:
-                        this->context.apply_equality(node.span(), node.m_res_type, ty_left);
-                    }
-                    break;
+                case ::HIR::ExprNode_BinOp::Op::Mod: {
+                    this->context.apply_equality(node.span(), node.m_left->m_res_type, node.m_right->m_res_type);
+                    this->context.apply_equality(node.span(), node.m_res_type, node.m_left->m_res_type);
+                    
+                    const auto& ty = this->context.get_type(node.m_left->m_res_type);
+                    TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Primitive, e,
+                        switch(e)
+                        {
+                        case ::HIR::CoreType::Str:
+                        case ::HIR::CoreType::Char:
+                        case ::HIR::CoreType::Bool:
+                            ERROR(node.span(), E0000, "Invalid use of arithmatic on " << ty);
+                            break;
+                        default:
+                            break;
+                        }
+                    )
+                    } break;
                 case ::HIR::ExprNode_BinOp::Op::And:
                 case ::HIR::ExprNode_BinOp::Op::Or:
-                case ::HIR::ExprNode_BinOp::Op::Xor:
-                    if( prim_left != prim_right ) {
-                        ERROR(node.span(), E0000, "Mismatched types in bitwise operation");
-                    }
-                    switch(prim_left)
-                    {
-                    case ::HIR::CoreType::Str:
-                    case ::HIR::CoreType::Char:
-                    case ::HIR::CoreType::Bool:
-                    case ::HIR::CoreType::F32:
-                    case ::HIR::CoreType::F64:
-                        ERROR(node.span(), E0000, "Invalid use of bitwise operation on " << ty_left);
-                        break;
-                    default:
-                        this->context.apply_equality(node.span(), node.m_res_type, ty_left);
-                    }
-                    break;
+                case ::HIR::ExprNode_BinOp::Op::Xor: {
+                    this->context.apply_equality(node.span(), node.m_left->m_res_type, node.m_right->m_res_type);
+                    this->context.apply_equality(node.span(), node.m_res_type, node.m_left->m_res_type);
+                    const auto& ty = this->context.get_type(node.m_left->m_res_type);
+                    TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Primitive, e,
+                        switch(e)
+                        {
+                        case ::HIR::CoreType::Str:
+                        case ::HIR::CoreType::Char:
+                        case ::HIR::CoreType::Bool:
+                        case ::HIR::CoreType::F32:
+                        case ::HIR::CoreType::F64:
+                            ERROR(node.span(), E0000, "Invalid use of bitwise operation on " << ty);
+                            break;
+                        default:
+                            break;
+                        }
+                    )
+                    } break;
                 case ::HIR::ExprNode_BinOp::Op::Shr:
-                case ::HIR::ExprNode_BinOp::Op::Shl:
-                    switch(prim_left)
-                    {
-                    case ::HIR::CoreType::Str:
-                    case ::HIR::CoreType::Char:
-                    case ::HIR::CoreType::Bool:
-                    case ::HIR::CoreType::F32:
-                    case ::HIR::CoreType::F64:
-                        ERROR(node.span(), E0000, "Invalid type for shift count - " << ty_right);
-                    default:
-                        break;
-                    }
-                    switch(prim_left)
-                    {
-                    case ::HIR::CoreType::Str:
-                    case ::HIR::CoreType::Char:
-                    case ::HIR::CoreType::Bool:
-                    case ::HIR::CoreType::F32:
-                    case ::HIR::CoreType::F64:
-                        ERROR(node.span(), E0000, "Invalid use of shift on " << ty_left);
-                        break;
-                    default:
-                        this->context.apply_equality(node.span(), node.m_res_type, ty_left);
-                    }
-                    break;
+                case ::HIR::ExprNode_BinOp::Op::Shl: {
+                    TU_MATCH_DEF(::HIR::TypeRef::Data, (ty_right.m_data), (e),
+                    (
+                        ),
+                    (Primitive,
+                        switch(e)
+                        {
+                        case ::HIR::CoreType::Str:
+                        case ::HIR::CoreType::Char:
+                        case ::HIR::CoreType::Bool:
+                        case ::HIR::CoreType::F32:
+                        case ::HIR::CoreType::F64:
+                            ERROR(node.span(), E0000, "Invalid type for shift count - " << ty_right);
+                        default:
+                            break;
+                        }
+                        ),
+                    (Infer,
+                        if( e.ty_class != ::HIR::InferClass::Integer ) {
+                            ERROR(node.span(), E0000, "Invalid type for shift count - " << ty_right);
+                        }
+                        )
+                    )
+                    
+                    this->context.apply_equality(node.span(), node.m_res_type, node.m_left->m_res_type);
+                    const auto& ty = this->context.get_type(node.m_left->m_res_type);
+                    TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Primitive, e,
+                        switch(e)
+                        {
+                        case ::HIR::CoreType::Str:
+                        case ::HIR::CoreType::Char:
+                        case ::HIR::CoreType::Bool:
+                        case ::HIR::CoreType::F32:
+                        case ::HIR::CoreType::F64:
+                            ERROR(node.span(), E0000, "Invalid use of bitwise operation on " << ty);
+                            break;
+                        default:
+                            break;
+                        }
+                    )
+                    } break;
                 }
             }
             else
@@ -723,9 +796,9 @@ namespace typeck {
                 case ::HIR::ExprNode_BinOp::Op::Div: item_name = "div"; break;
                 case ::HIR::ExprNode_BinOp::Op::Mod: item_name = "rem"; break;
                 
-                case ::HIR::ExprNode_BinOp::Op::And: item_name = "bit_and"; break;
-                case ::HIR::ExprNode_BinOp::Op::Or:  item_name = "bit_or";  break;
-                case ::HIR::ExprNode_BinOp::Op::Xor: item_name = "bit_xor"; break;
+                case ::HIR::ExprNode_BinOp::Op::And: item_name = "bitand"; break;
+                case ::HIR::ExprNode_BinOp::Op::Or:  item_name = "bitor";  break;
+                case ::HIR::ExprNode_BinOp::Op::Xor: item_name = "bitxor"; break;
                 
                 case ::HIR::ExprNode_BinOp::Op::Shr: item_name = "shr"; break;
                 case ::HIR::ExprNode_BinOp::Op::Shl: item_name = "shl"; break;
@@ -745,7 +818,7 @@ namespace typeck {
                         // TODO: if arg_type mentions Self?
                         auto cmp = arg_type.compare_with_paceholders(node.span(), ty_right, this->context.callback_resolve_infer());
                         if( cmp == ::HIR::Compare::Unequal ) {
-                            DEBUG("- (fail) bounded impl " << ops_trait << "<" << arg_type << ">");
+                            DEBUG("- (fail) bounded impl " << ops_trait << "<" << arg_type << "> (ty_right = " << this->context.get_type(ty_right));
                             return false;
                         }
                         count += 1;
@@ -772,8 +845,9 @@ namespace typeck {
                         bool    fail = false;
                         ::std::vector< const ::HIR::TypeRef*> impl_params;
                         impl_params.resize( impl.m_params.m_types.size() );
-                        auto cb =[&](auto idx, const auto& ty) {
+                        auto cb = [&](auto idx, const auto& ty) {
                             assert( idx < impl_params.size() );
+                            DEBUG(idx << " = " << ty);
                             if( impl_params[idx] ) {
                                 if( *impl_params[idx] != ty ) {
                                     fail = true;
@@ -783,12 +857,12 @@ namespace typeck {
                                 impl_params[idx] = &ty;
                             }
                             };
-                        fail |= !arg_type   .match_test_generics(node.span(), ty_right, this->context.callback_resolve_infer(), cb);
                         fail |= !impl.m_type.match_test_generics(node.span(), ty_left , this->context.callback_resolve_infer(), cb);
+                        fail |= !arg_type   .match_test_generics(node.span(), ty_right, this->context.callback_resolve_infer(), cb);
                         for(const auto& ty : impl_params)
                             assert( ty );
                         if( fail ) {
-                            DEBUG("- (fail) impl" << impl.m_params.fmt_args() << " " << ops_trait << "<" << arg_type << "> for " << impl.m_type);
+                            DEBUG("- (generic fail) impl" << impl.m_params.fmt_args() << " " << ops_trait << "<" << arg_type << "> for " << impl.m_type);
                             return false;
                         }
                         

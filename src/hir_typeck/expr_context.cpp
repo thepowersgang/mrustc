@@ -1401,12 +1401,6 @@ bool typeck::TypecheckContext::find_trait_impls(const ::HIR::SimplePath& trait, 
                             )
                         )
                     }
-                    // TODO: Bounds check? (here or elsewhere?)
-                    // - Need to check bounds before picking this impl, because the bound could be preventing false matches
-                    if( impl.m_trait_args.m_types.size() > 0 )
-                    {
-                        TODO(sp, "Check trait type parameters in expand_associated_types");
-                    }
                     impl_ptr = &impl;
                     return true;
                 });

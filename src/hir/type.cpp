@@ -301,7 +301,9 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         switch(xe.ty_class)
         {
         case ::HIR::InferClass::None:
-            break;
+            // - If right is generic infer, assume it's good
+            //return true;
+            return false;
         case ::HIR::InferClass::Integer:
             TU_IFLET(::HIR::TypeRef::Data, m_data, Primitive, te,
                 switch(te)
@@ -313,6 +315,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                 case ::HIR::CoreType::Isize: case ::HIR::CoreType::Usize:
                     return true;
                 default:
+                    DEBUG("- Fuzz fail");
                     break;
                 }
             )
@@ -325,6 +328,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                 case ::HIR::CoreType::F64:
                     return true;
                 default:
+                    DEBUG("- Fuzz fail");
                     break;
                 }
             )
@@ -332,6 +336,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         }
     )
     if( m_data.tag() != x.m_data.tag() ) {
+        DEBUG("- Tag mismatch " << *this << " and " << x);
         return false;
     }
     TU_MATCH(::HIR::TypeRef::Data, (m_data, x.m_data), (te, xe),
