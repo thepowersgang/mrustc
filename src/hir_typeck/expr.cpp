@@ -204,7 +204,13 @@ namespace typeck {
             return ::HIR::TypeRef::new_pointer(e.type, monomorphise_type_with(sp, *e.inner, callback));
             ),
         (Function,
-            TODO(sp, "Function");
+            ::HIR::FunctionType ft;
+            ft.is_unsafe = e.is_unsafe;
+            ft.m_abi = e.m_abi;
+            ft.m_rettype = box$( e.m_rettype->clone() );
+            for( const auto& arg : e.m_arg_types )
+                ft.m_arg_types.push_back( arg.clone() );
+            return ::HIR::TypeRef( mv$(ft) );
             ),
         (Closure,
             ::HIR::TypeRef::Data::Data_Closure  oe;
@@ -1504,8 +1510,17 @@ namespace typeck {
                 case ::HIR::ExprNode_PathValue::UNKNOWN:
                     BUG(sp, "Unknown target PathValue encountered with Generic path");
                 case ::HIR::ExprNode_PathValue::FUNCTION: {
-                    //const auto& f = this->context.m_crate.get_fcn_by_path(sp, e.m_path);
-                    //TODO(sp, "Function address values");
+                    const auto& f = this->context.m_crate.get_function_by_path(sp, e.m_path);
+                    ::HIR::FunctionType ft {
+                        f.m_unsafe,
+                        f.m_abi,
+                        box$( f.m_return.clone() ),
+                        {}
+                        };
+                    for( const auto& arg : f.m_args )
+                        ft.m_arg_types.push_back( arg.second.clone() );
+                    auto ty = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function(mv$(ft)) );
+                    this->context.apply_equality(sp, node.m_res_type, ty);
                     } break;
                 case ::HIR::ExprNode_PathValue::STATIC: {
                     const auto& v = this->context.m_crate.get_static_by_path(sp, e.m_path);
