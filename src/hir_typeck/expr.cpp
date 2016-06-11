@@ -352,7 +352,7 @@ namespace typeck {
             
             ::HIR::ExprVisitorDef::visit(node);
             
-            this->context.apply_equality( node.span(), node.m_res_type, ::HIR::TypeRef(::HIR::TypeRef::Data::make_Array({ box$(node.m_val->m_res_type.clone()), ::HIR::ExprPtr(), node.m_size_val })) );
+            this->context.apply_equality( node.span(), node.m_res_type, ::HIR::TypeRef::new_array(node.m_val->m_res_type.clone(), node.m_size_val) );
         }
         void visit(::HIR::ExprNode_Tuple& node) override
         {

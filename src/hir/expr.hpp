@@ -556,11 +556,7 @@ struct ExprNode_ArrayList:
     ::std::vector< ::HIR::ExprNodeP>    m_vals;
     
     ExprNode_ArrayList(Span sp, ::std::vector< ::HIR::ExprNodeP> vals):
-        ExprNode( mv$(sp), ::HIR::TypeRef::Data::make_Array({
-            box$( ::HIR::TypeRef() ),
-            ::HIR::ExprPtr(),
-            vals.size()
-            }) ),
+        ExprNode( mv$(sp), ::HIR::TypeRef::new_array( ::HIR::TypeRef(), vals.size() ) ),
         m_vals( mv$(vals) )
     {}
     
