@@ -34,7 +34,27 @@ void typeck::TypecheckContext::compact_ivars()
             DEBUG("- " << i << " " << *v.type << " -> " << nt);
             *v.type = mv$(nt);
         }
+        else {
+            
+            auto index = v.alias;
+            unsigned int count = 0;
+            assert(index < m_ivars.size());
+            while( m_ivars.at(index).is_alias() ) {
+                index = m_ivars.at(index).alias;
+                
+                if( count >= m_ivars.size() ) {
+                    this->dump();
+                    BUG(Span(), "Loop detected in ivar list when starting at " << v.alias << ", current is " << index);
+                }
+                count ++;
+            }
+            v.alias = index;
+        }
         i ++;
+    }
+    
+    for(auto& v : m_locals) {
+        v.type = this->get_type(v.type).clone();
     }
 }
 
@@ -173,17 +193,18 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
         ),
     (Ref,
         if( type.m_data.is_Infer() ) {
-            type.m_data = ::HIR::TypeRef::Data::make_Borrow({ e.type, box$(this->new_ivar_tr()) });
+            this->apply_equality(sp, type, ::HIR::TypeRef::new_borrow( e.type, this->new_ivar_tr() ));
+            type = this->get_type(type).clone();
         }
         // Type must be a &-ptr
         TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
         (
-            // TODO: Type mismatch
+            ERROR(sp, E0000, "Pattern-type mismatch, expected &-ptr, got " << type);
             ),
         (Infer, throw "";),
         (Borrow,
             if( te.type != e.type ) {
-                // TODO: Type mismatch
+                ERROR(sp, E0000, "Pattern-type mismatch, expected &-ptr, got " << type);
             }
             this->add_binding(sp, *e.sub, *te.inner );
             )
@@ -194,16 +215,17 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
             ::std::vector< ::HIR::TypeRef>  sub_types;
             for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
                 sub_types.push_back( this->new_ivar_tr() );
-            type.m_data = ::HIR::TypeRef::Data::make_Tuple( mv$(sub_types) );
+            this->apply_equality(sp, type, ::HIR::TypeRef( mv$(sub_types) ));
+            type = this->get_type(type).clone();
         }
         TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
         (
-            // TODO: Type mismatch
+            ERROR(sp, E0000, "Pattern-type mismatch, expected tuple, got " << type);
             ),
         (Infer, throw ""; ),
         (Tuple,
             if( te.size() != e.sub_patterns.size() ) {
-                // TODO: Type mismatch
+                ERROR(sp, E0000, "Pattern-type mismatch, expected " << e.sub_patterns.size() << "-tuple, got " << type);
             }
             for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
                 this->add_binding(sp, e.sub_patterns[i], te[i] );
@@ -212,12 +234,12 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
         ),
     (Slice,
         if( type.m_data.is_Infer() ) {
-            type.m_data = ::HIR::TypeRef::Data::make_Slice( {box$(this->new_ivar_tr())} );
-            this->mark_change();
+            this->apply_equality(sp, type, ::HIR::TypeRef::new_slice( this->new_ivar_tr() ));
+            type = this->get_type(type).clone();
         }
         TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
         (
-            // TODO: Type mismatch
+            ERROR(sp, E0000, "Pattern-type mismatch, expected slice, got " << type);
             ),
         (Infer, throw""; ),
         (Slice,
@@ -228,12 +250,12 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
         ),
     (SplitSlice,
         if( type.m_data.is_Infer() ) {
-            type.m_data = ::HIR::TypeRef::Data::make_Slice( {box$(this->new_ivar_tr())} );
-            this->mark_change();
+            this->apply_equality(sp, type, ::HIR::TypeRef::new_slice( this->new_ivar_tr() ));
+            type = this->get_type(type).clone();
         }
         TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
         (
-            // TODO: Type mismatch
+            ERROR(sp, E0000, "Pattern-type mismatch, expected slice, got " << type);
             ),
         (Infer, throw ""; ),
         (Slice,
@@ -252,7 +274,8 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
     (StructTuple,
         this->add_ivars_params( e.path.m_params );
         if( type.m_data.is_Infer() ) {
-            type.m_data = ::HIR::TypeRef::Data::make_Path( {e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)} );
+            this->apply_equality( sp, type, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)) );
+            type = this->get_type(type).clone();
         }
         assert(e.binding);
         const auto& str = *e.binding;
@@ -262,7 +285,7 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
         
         TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
         (
-            // TODO: Type mismatch
+            ERROR(sp, E0000, "Pattern-type mismatch, expected struct, got " << type);
             ),
         (Infer, throw ""; ),
         (Path,
@@ -293,7 +316,8 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
     (StructTupleWildcard,
         this->add_ivars_params( e.path.m_params );
         if( type.m_data.is_Infer() ) {
-            type.m_data = ::HIR::TypeRef::Data::make_Path( {e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)} );
+            this->apply_equality( sp, type, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)) );
+            type = this->get_type(type).clone();
         }
         assert(e.binding);
         const auto& str = *e.binding;
@@ -315,7 +339,8 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
     (Struct,
         this->add_ivars_params( e.path.m_params );
         if( type.m_data.is_Infer() ) {
-            type.m_data = ::HIR::TypeRef::Data::make_Path( {e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)} );
+            this->apply_equality( sp, type, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)) );
+            type = this->get_type(type).clone();
         }
         assert(e.binding);
         const auto& str = *e.binding;
@@ -358,7 +383,9 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
         if( type.m_data.is_Infer() ) {
             auto path = e.path.clone();
             path.m_path.m_components.pop_back();
-            type.m_data = ::HIR::TypeRef::Data::make_Path( {mv$(path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)} );
+
+            this->apply_equality( sp, type, ::HIR::TypeRef::new_path(mv$(path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
+            type = this->get_type(type).clone();
         }
         assert(e.binding_ptr);
         const auto& enm = *e.binding_ptr;
@@ -399,7 +426,9 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
         if( type.m_data.is_Infer() ) {
             auto path = e.path.clone();
             path.m_path.m_components.pop_back();
-            type.m_data = ::HIR::TypeRef::Data::make_Path( {mv$(path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)} );
+
+            this->apply_equality( sp, type, ::HIR::TypeRef::new_path(mv$(path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
+            type = this->get_type(type).clone();
         }
         assert(e.binding_ptr);
         const auto& enm = *e.binding_ptr;
@@ -423,7 +452,9 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
         if( type.m_data.is_Infer() ) {
             auto path = e.path.clone();
             path.m_path.m_components.pop_back();
-            type.m_data = ::HIR::TypeRef::Data::make_Path( {mv$(path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)} );
+
+            this->apply_equality( sp, type, ::HIR::TypeRef::new_path(mv$(path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
+            type = this->get_type(type).clone();
         }
         assert(e.binding_ptr);
         const auto& enm = *e.binding_ptr;
@@ -481,15 +512,15 @@ void typeck::TypecheckContext::apply_pattern(const ::HIR::Pattern& pat, ::HIR::T
         // Just leave it, the pattern says nothing about the type
         ),
     (Value,
-        TODO(sp, "Value pattern");
+        //TODO(sp, "Value pattern");
         ),
     (Range,
-        TODO(sp, "Range pattern");
+        //TODO(sp, "Range pattern");
         ),
     // - Pointer destructuring
     (Box,
         // Type must be box-able
-        TODO(sp, "Box patterns");
+        //TODO(sp, "Box patterns");
         ),
     (Ref,
         if( ty.m_data.is_Infer() ) {
@@ -1080,10 +1111,6 @@ bool typeck::TypecheckContext::find_trait_impls(const ::HIR::SimplePath& trait, 
     (Primitive,
         ),
     (Path,
-        // - Only try resolving if the binding isn't known
-        if( !e.binding.is_Unbound() )
-            return input;
-        
         TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
         (Generic,
             for(auto& arg : e2.m_params.m_types)
@@ -1093,6 +1120,10 @@ bool typeck::TypecheckContext::find_trait_impls(const ::HIR::SimplePath& trait, 
             TODO(sp, "Path - UfcsInherent - " << e.path);
             ),
         (UfcsKnown,
+            // - Only try resolving if the binding isn't known
+            if( !e.binding.is_Unbound() )
+                return input;
+            
             DEBUG("Locating associated type for " << e.path);
             
             *e2.type = expand_associated_types(sp, mv$(*e2.type));

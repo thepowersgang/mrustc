@@ -341,8 +341,10 @@ namespace typeck {
                     this->context.add_binding(node.span(), pat, node.m_value->m_res_type);
                 }
             }
+            DEBUG("- match val : " << this->context.get_type(node.m_value->m_res_type));
 
             ::HIR::ExprVisitorDef::visit(node);
+            DEBUG("- match val : " << this->context.get_type(node.m_value->m_res_type));
         }
         void visit(::HIR::ExprNode_If& node) override
         {
@@ -428,6 +430,7 @@ namespace typeck {
         // - Variable: Bind to same ivar
         void visit(::HIR::ExprNode_Variable& node) override
         {
+            TRACE_FUNCTION_F("var #"<<node.m_slot<<" '"<<node.m_name<<"'");
             this->context.apply_equality(node.span(), node.m_res_type, this->context.get_var_type(node.span(), node.m_slot));
         }
         
@@ -530,11 +533,14 @@ namespace typeck {
         // - Match: all branches match
         void visit(::HIR::ExprNode_Match& node) override
         {
-            TRACE_FUNCTION_F("match ...");
+            TRACE_FUNCTION_F("match (...: " << this->context.get_type(node.m_value->m_res_type) << ")");
             
             for(auto& arm : node.m_arms)
             {
                 DEBUG("ARM " << arm.m_patterns);
+                for(auto& pat : arm.m_patterns) {
+                    this->context.apply_pattern(/*node.span(),*/ pat, node.m_value->m_res_type);
+                }
                 // TODO: Span on the arm
                 this->context.apply_equality(node.span(), node.m_res_type, arm.m_code->m_res_type, &arm.m_code);
             }
@@ -1436,17 +1442,20 @@ namespace typeck {
                 )
             }
             
-            if( node.m_args.size() + 1 != node.m_arg_types.size() ) {
-                ERROR(node.span(), E0000, "Incorrect number of arguments when calling " << ty);
-            }
-            
-            for( unsigned int i = 0; i < node.m_args.size(); i ++ )
+            if( node.m_arg_types.size() > 0 )
             {
-                auto& arg_node = node.m_args[i];
-                this->context.apply_equality(node.span(), node.m_arg_types[i], arg_node->m_res_type,  &arg_node);
+                if( node.m_args.size() + 1 != node.m_arg_types.size() ) {
+                    ERROR(node.span(), E0000, "Incorrect number of arguments when calling " << ty);
+                }
+                
+                for( unsigned int i = 0; i < node.m_args.size(); i ++ )
+                {
+                    auto& arg_node = node.m_args[i];
+                    this->context.apply_equality(node.span(), node.m_arg_types[i], arg_node->m_res_type,  &arg_node);
+                }
+                // TODO: Allow infer
+                this->context.apply_equality(node.span(), node.m_res_type, node.m_arg_types.back());
             }
-            // TODO: Allow infer
-            this->context.apply_equality(node.span(), node.m_res_type, node.m_arg_types.back());
             
             ::HIR::ExprVisitorDef::visit(node);
         }
@@ -1574,7 +1583,7 @@ namespace typeck {
         {
             // TODO: How to apply deref coercions here?
             // - Don't need to, instead construct "higher" nodes to avoid it
-            TRACE_FUNCTION_F("var #"<<node.m_slot<<" '"<<node.m_name<<"'");
+            TRACE_FUNCTION_F("var #"<<node.m_slot<<" '"<<node.m_name<<"' = " << this->context.get_type(node.m_res_type));
             this->context.apply_equality(node.span(),
                 node.m_res_type, this->context.get_var_type(node.span(), node.m_slot)
                 );
@@ -1592,7 +1601,8 @@ namespace typeck {
                 const auto& str = this->context.m_crate.get_struct_by_path(node.span(), node.m_path.m_path);
                 this->fix_param_count(node.span(), node.m_path.clone(), str.m_params, node.m_path.m_params);
                 
-                this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef(node.m_path.clone()));
+                auto ty = ::HIR::TypeRef( ::HIR::TypeRef::Data::Data_Path { node.m_path.clone(), ::HIR::TypeRef::TypePathBinding::make_Struct(&str) } );
+                this->context.apply_equality(node.span(), node.m_res_type, ty);
                 
                 if( !str.m_data.is_Named() )
                     ERROR(sp, E0000, "Struct literal constructor for non-struct-like struct");
@@ -1792,7 +1802,6 @@ void Typecheck_Code(typeck::TypecheckContext context, const ::HIR::TypeRef& resu
     
     // 3. Check that there's no unresolved types left
     expr = ::HIR::ExprPtr( mv$(root_ptr) );
-    context.compact_ivars();
     context.dump();
     {
         DEBUG("==== VALIDATE ====");

@@ -183,6 +183,9 @@ public:
     static TypeRef new_array(TypeRef inner, ::HIR::ExprPtr size_expr) {
         return TypeRef(Data::make_Array({box$(mv$(inner)), mv$(size_expr), ~0u}));
     }
+    static TypeRef new_path(::HIR::Path path, TypePathBinding binding) {
+        return TypeRef(Data::make_Path({ mv$(path), mv$(binding) }));
+    }
     
     TypeRef clone() const;
     
