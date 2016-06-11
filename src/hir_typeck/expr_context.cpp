@@ -641,6 +641,9 @@ const ::HIR::TypeRef& typeck::TypecheckContext::expand_associated_types_to(const
     TU_IFLET(::HIR::TypeRef::Data, t.m_data, Path, e,
         if( e.path.m_data.is_Generic() )
             return t;
+        else if( !e.binding.is_Unbound() ) {
+            return t;
+        }
         else {
             tmp_t = this->expand_associated_types(sp, t.clone());
             DEBUG("Expanded " << t << " into " << tmp_t);
@@ -661,6 +664,7 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
     const auto& l_t1 = left .m_data.is_Generic() ? cb_left (left ) : this->get_type(left );
     const auto& r_t1 = right.m_data.is_Generic() ? cb_right(right) : this->get_type(right);
     if( l_t1 == r_t1 ) {
+        DEBUG(l_t1 << " == " << r_t1);
         return ;
     }
     
@@ -669,6 +673,7 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
     ::HIR::TypeRef  right_tmp;
     const auto& r_t = this->expand_associated_types_to(sp, r_t1, right_tmp);
     if( l_t == r_t ) {
+        DEBUG(l_t << " == " << r_t);
         return ;
     }
     
@@ -681,14 +686,14 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
         else {
             // Righthand side is infer, alias it to the left
             //  TODO: that `true` should be `false` if the callback isn't unity (for bug checking)
-            this->set_ivar_to(r_e.index, monomorphise_type_with(sp, left, cb_left, true));
+            this->set_ivar_to(r_e.index, this->expand_associated_types(sp, monomorphise_type_with(sp, left, cb_left, true)));
         }
     )
     else {
         TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Infer, l_e,
             // Lefthand side is infer, alias it to the right
             //  TODO: that `true` should be `false` if the callback isn't unity (for bug checking)
-            this->set_ivar_to(l_e.index, monomorphise_type_with(sp, right, cb_right, true));
+            this->set_ivar_to(l_e.index, this->expand_associated_types(sp, monomorphise_type_with(sp, right, cb_right, true)));
         )
         else {
             // If generic replacement happened, clear the callback
@@ -803,10 +808,16 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                 }
                 ),
             (TraitObject,
-                if( l_e.m_trait.m_path != r_e.m_trait.m_path ) {
+                if( l_e.m_trait.m_path.m_path != r_e.m_trait.m_path.m_path ) {
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
                 }
-                equality_typeparams(l_e.m_trait.m_params, r_e.m_trait.m_params);
+                equality_typeparams(l_e.m_trait.m_path.m_params, r_e.m_trait.m_path.m_params);
+                for(auto it_l = l_e.m_trait.m_type_bounds.begin(), it_r = r_e.m_trait.m_type_bounds.begin(); it_l != l_e.m_trait.m_type_bounds.end(); it_l++, it_r++ ) {
+                    if( it_l->first != it_r->first ) {
+                        ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - associated bounds differ");
+                    }
+                    this->apply_equality(sp, it_l->second, cb_left, it_r->second, cb_right, nullptr);
+                }
                 // TODO: Possibly allow inferrence reducing the set?
                 if( l_e.m_markers.size() != r_e.m_markers.size() ) {
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - trait counts differ");
@@ -886,7 +897,7 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                         }
                         
                         // 1. Search for an implementation of the data trait for this type
-                        bool succ = this->find_trait_impls(e.m_trait.m_path, right_inner_res, [&](const auto& args) {
+                        bool succ = this->find_trait_impls(e.m_trait.m_path.m_path, right_inner_res, [&](const auto& args) {
                             if( args.m_types.size() > 0 )
                                 TODO(sp, "Handle unsizing to traits with params");
                             return true;
@@ -901,6 +912,10 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                             //        TODO(sp, "Handle unsizing to traits with params");
                             //    return true;
                             //    });
+                        }
+                        for(const auto& assoc : e.m_trait.m_type_bounds)
+                        {
+                            TODO(sp, "Check for associated type ("<<assoc.first<<") validity when unsizing to " << left_inner_res << " from " << right_inner_res);
                         }
                         
                         // Valid unsize, insert unsize operation
@@ -969,7 +984,7 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
 // -------------------------------------------------------------------------------------------------------------------
 bool typeck::TypecheckContext::check_trait_bound(const Span& sp, const ::HIR::TypeRef& type, const ::HIR::GenericPath& trait, ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> placeholder) const
 {
-    if( this->find_trait_impls_bound(sp, trait.m_path, placeholder(type), [&](const auto& args){
+    if( this->find_trait_impls_bound(sp, trait.m_path, placeholder(type), [&](const auto& args, const auto& _){
             DEBUG("TODO: Check args for " << trait.m_path << args << " against " << trait);
             return true;
         })
@@ -1036,7 +1051,7 @@ bool typeck::TypecheckContext::find_trait_impls(const ::HIR::SimplePath& trait, 
     )
     
     // 1. Search generic params
-    if( find_trait_impls_bound(sp, trait, type, callback) )
+    if( find_trait_impls_bound(sp, trait, type, [&callback](const auto& pp, const auto& _) { return callback(pp); }) )
         return true;
     // 2. Search crate-level impls
     return find_trait_impls_crate(trait, type,  callback);
@@ -1112,28 +1127,92 @@ bool typeck::TypecheckContext::find_trait_impls(const ::HIR::SimplePath& trait, 
             
             // 1. Bounds
             bool rv;
+            bool assume_opaque = true;
             rv = this->iterate_bounds([&](const auto& b) {
-                TU_IFLET(::HIR::GenericBound, b, TypeEquality, be,
+                TU_MATCH_DEF(::HIR::GenericBound, (b), (be),
+                (
+                    ),
+                (TraitBound,
+                    DEBUG("Trait bound - " << be.type << " : " << be.trait);
+                    // 1. Check if the type matches
+                    //  - TODO: This should be a fuzzier match?
+                    if( be.type != *e2.type )
+                        return false;
+                    // 2. Check if the trait (or any supertrait) includes e2.trait
+                    if( be.trait.m_path == e2.trait ) {
+                        auto it = be.trait.m_type_bounds.find(e2.item);
+                        // 1. Check if the bounds include the desired item
+                        if( it == be.trait.m_type_bounds.end() ) {
+                            // If not, assume it's opaque and return as such
+                            // TODO: What happens if there's two bounds that overlap? 'F: FnMut<()>, F: FnOnce<(), Output=Bar>'
+                            DEBUG("Found impl for " << input << " but no bound on item, assuming opaque");
+                        }
+                        else {
+                            assume_opaque = false;
+                            input = it->second.clone();
+                        }
+                        return true;
+                    }
+                    
+                    bool found_supertrait = this->find_named_trait_in_trait(sp,
+                        e2.trait.m_path,
+                        *be.trait.m_trait_ptr, be.trait.m_path.m_path, be.trait.m_path.m_params, *e2.type,
+                        [&e2,&input,&assume_opaque](const auto& x, const auto& assoc){
+                            auto it = assoc.find(e2.item);
+                            if( it != assoc.end() ) {
+                                assume_opaque = false;
+                                DEBUG("Found associated type " << input << " = " << it->second);
+                                input = it->second.clone();
+                            }
+                            return true;
+                        }
+                        );
+                    if( found_supertrait ) {
+                        auto it = be.trait.m_type_bounds.find(e2.item);
+                        // 1. Check if the bounds include the desired item
+                        if( it == be.trait.m_type_bounds.end() ) {
+                            // If not, assume it's opaque and return as such
+                            // TODO: What happens if there's two bounds that overlap? 'F: FnMut<()>, F: FnOnce<(), Output=Bar>'
+                            if( assume_opaque )
+                                DEBUG("Found impl for " << input << " but no bound on item, assuming opaque");
+                        }
+                        else {
+                            assume_opaque = false;
+                            input = it->second.clone();
+                        }
+                        return true;
+                    }
+                    
+                    // - Didn't match
+                    ),
+                (TypeEquality,
                     DEBUG("Equality - " << be.type << " = " << be.other_type);
                     if( input == be.type ) {
                         input = be.other_type.clone();
                         return true;
                     }
+                    )
                 )
                 return false;
                 });
             if( rv ) {
+                if( assume_opaque ) {
+                    DEBUG("Assuming that " << input << " is an opaque name");
+                    input.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                }
                 return input;
             }
 
+            // If the type of this UfcsKnown is ALSO a UfcsKnown - Check if it's bounded by this trait with equality
             // Use bounds on other associated types too (if `e2.type` was resolved to a fixed associated type)
-            TU_IFLET(::HIR::TypeRef::Data, e2.type->m_data, Path, e3,
-                TU_IFLET(::HIR::Path::Data, e3.path.m_data, UfcsKnown, pe,
+            TU_IFLET(::HIR::TypeRef::Data, e2.type->m_data, Path, te_inner,
+                TU_IFLET(::HIR::Path::Data, te_inner.path.m_data, UfcsKnown, pe_inner,
                     // TODO: Search for equality bounds on this associated type (e3) that match the entire type (e2)
                     // - Does simplification of complex associated types
-                    const auto& trait_ptr = this->m_crate.get_trait_by_path(sp, pe.trait.m_path);
-                    const auto& assoc_ty = trait_ptr.m_types.at(pe.item);
-                    DEBUG("TODO: Search bounds " << assoc_ty.m_params.fmt_bounds());
+                    const auto& trait_ptr = this->m_crate.get_trait_by_path(sp, pe_inner.trait.m_path);
+                    const auto& assoc_ty = trait_ptr.m_types.at(pe_inner.item);
+                    DEBUG("TODO: Search bounds on associated type - " << assoc_ty.m_params.fmt_bounds());
+                    
                     // Resolve where Self=e2.type, for the associated type check.
                     auto cb_placeholders_type = [&](const auto& ty)->const auto&{
                         TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
@@ -1146,13 +1225,13 @@ bool typeck::TypecheckContext::find_trait_impls(const ::HIR::SimplePath& trait, 
                             return ty;
                         }
                         };
-                    // Resolve where Self=pe.type (i.e. for the trait this inner UFCS is on)
+                    // Resolve where Self=pe_inner.type (i.e. for the trait this inner UFCS is on)
                     auto cb_placeholders_trait = [&](const auto& ty)->const auto&{
                         TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
                             if( e.binding == 0xFFFF )
-                                return *pe.type;
+                                return *pe_inner.type;
                             else {
-                                // TODO: Look in pe.trait.m_params
+                                // TODO: Look in pe_inner.trait.m_params
                                 TODO(sp, "Handle type params when expanding associated bound (#" << e.binding << " " << e.name);
                             }
                         )
@@ -1162,12 +1241,30 @@ bool typeck::TypecheckContext::find_trait_impls(const ::HIR::SimplePath& trait, 
                         };
                     for(const auto& bound : assoc_ty.m_params.m_bounds)
                     {
-                        TU_IFLET(::HIR::GenericBound, bound, TypeEquality, be,
+                        TU_MATCH_DEF(::HIR::GenericBound, (bound), (be),
+                        (
+                            ),
+                        (TraitBound,
+                            // If the bound is for Self and the outer trait
+                            // - TODO: Parameters?
+                            if( be.type == ::HIR::TypeRef("Self", 0xFFFF) && be.trait.m_path == e2.trait ) {
+                                auto it = be.trait.m_type_bounds.find( e2.item );
+                                if( it != be.trait.m_type_bounds.end() ) {
+                                    if( monomorphise_type_needed(it->second) ) {
+                                        return monomorphise_type_with(sp, it->second, cb_placeholders_trait);
+                                    }
+                                    else {
+                                        return it->second.clone();
+                                    }
+                                }
+                            }
+                            ),
+                        (TypeEquality,
                             // IF: bound's type matches the input, replace with bounded equality
                             // `<Self::IntoIter as Iterator>::Item = Self::Item`
                             if( be.type.compare_with_paceholders(sp, input, cb_placeholders_type ) ) {
                                 DEBUG("Match of " << be.type << " with " << input);
-                                DEBUG("- Replace `input` with " << be.other_type << ", Self=" << *pe.type);
+                                DEBUG("- Replace `input` with " << be.other_type << ", Self=" << *pe_inner.type);
                                 if( monomorphise_type_needed(be.other_type) ) {
                                     return monomorphise_type_with(sp, be.other_type, cb_placeholders_trait);
                                 }
@@ -1175,6 +1272,7 @@ bool typeck::TypecheckContext::find_trait_impls(const ::HIR::SimplePath& trait, 
                                     return be.other_type.clone();
                                 }
                             }
+                            )
                         )
                     }
                     DEBUG("e2 = " << *e2.type << ", input = " << input);
@@ -1315,16 +1413,19 @@ bool typeck::TypecheckContext::find_trait_impls(const ::HIR::SimplePath& trait, 
 //
 // -------------------------------------------------------------------------------------------------------------------
 bool typeck::TypecheckContext::find_named_trait_in_trait(const Span& sp,
-        const ::HIR::SimplePath& des, const ::HIR::Trait& trait_ptr,
-        const ::HIR::PathParams& pp, const ::HIR::TypeRef& target_type,
-        ::std::function<bool(const ::HIR::PathParams&)> callback
+        const ::HIR::SimplePath& des,
+        const ::HIR::Trait& trait_ptr, const ::HIR::SimplePath& trait_path, const ::HIR::PathParams& pp,
+        const ::HIR::TypeRef& target_type,
+        t_cb_trait_impl callback
     ) const
 {
-    TRACE_FUNCTION_F(des << pp);
-    assert( pp.m_types.size() == trait_ptr.m_params.m_types.size() );
+    TRACE_FUNCTION_F(des << " from " << trait_path << pp);
+    if( pp.m_types.size() != trait_ptr.m_params.m_types.size() ) {
+        BUG(sp, "Incorrect number of parameters for trait");
+    }
     for( const auto& pt : trait_ptr.m_parent_traits )
     {
-        auto pt_pp = monomorphise_path_params_with(Span(), pt.m_params.clone(), [&](const auto& gt)->const auto& {
+        auto pt_mono = monomorphise_traitpath_with(sp, pt, [&](const auto& gt)->const auto& {
             const auto& ge = gt.m_data.as_Generic();
             if( ge.binding == 0xFFFF ) {
                 return target_type;
@@ -1335,27 +1436,27 @@ bool typeck::TypecheckContext::find_named_trait_in_trait(const Span& sp,
                 return pp.m_types[ge.binding];
             }
             }, false);
-        
-        if( pt.m_path == des ) {
-            //TODO(Span(), "Fix arguments for a parent trait and call callback - " << pt << " with paramset " << trait_ptr.m_params.fmt_args() << " = " << pt_pp);
-            callback( pt_pp );
+
+        DEBUG(pt << " => " << pt_mono);
+        if( pt.m_path.m_path == des ) {
+            callback( pt_mono.m_path.m_params, pt_mono.m_type_bounds );
             return true;
         }
     }
     return false;
 }
-bool typeck::TypecheckContext::find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,  ::std::function<bool(const ::HIR::PathParams&)> callback) const
+bool typeck::TypecheckContext::find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const
 {
     return this->iterate_bounds([&](const auto& b) {
         TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
             if( e.type != type )
                 return false;
             if( e.trait.m_path.m_path == trait ) {
-                if( callback(e.trait.m_path.m_params) ) {
+                if( callback(e.trait.m_path.m_params, e.trait.m_type_bounds) ) {
                     return true;
                 }
             }
-            if( this->find_named_trait_in_trait(sp, trait,  *e.trait.m_trait_ptr, e.trait.m_path.m_params, type,  callback) ) {
+            if( this->find_named_trait_in_trait(sp, trait,  *e.trait.m_trait_ptr, e.trait.m_path.m_path, e.trait.m_path.m_params, type,  callback) ) {
                 return true;
             }
         )
@@ -1390,8 +1491,8 @@ bool typeck::TypecheckContext::trait_contains_method(const Span& sp, const ::HIR
     // TODO: Prevent infinite recursion
     for(const auto& st : trait_ptr.m_parent_traits)
     {
-        auto& st_ptr = this->m_crate.get_trait_by_path(sp, st.m_path);
-        if( trait_contains_method(sp, st, st_ptr, name, out_path) ) {
+        auto& st_ptr = this->m_crate.get_trait_by_path(sp, st.m_path.m_path);
+        if( trait_contains_method(sp, st.m_path, st_ptr, name, out_path) ) {
             out_path.m_params = monomorphise_path_params_with(sp, mv$(out_path.m_params), [&](const auto& gt)->const auto& {
                 const auto& ge = gt.m_data.as_Generic();
                 assert(ge.binding < 256);
@@ -1616,6 +1717,9 @@ void typeck::TypecheckContext::set_ivar_to(unsigned int slot, ::HIR::TypeRef typ
         root_ivar.alias = l_e.index;
         root_ivar.type.reset();
     )
+    else if( *root_ivar.type == type ) {
+        return ;
+    }
     else {
         // Otherwise, store left in right's slot
         DEBUG("Set IVar " << slot << " = " << type);

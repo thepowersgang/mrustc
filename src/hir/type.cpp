@@ -250,7 +250,7 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
     (Closure,
         if( te.node != xe.node )
             return false;
-        assert( te.m_rettype == xe.m_rettype );
+        //assert( te.m_rettype == xe.m_rettype );
         return true;
         )
     )

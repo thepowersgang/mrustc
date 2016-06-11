@@ -27,11 +27,11 @@ TAGGED_UNION(GenericBound, Lifetime,
     (TraitBound, struct {
         ::HIR::TypeRef  type;
         ::HIR::TraitPath    trait;
-        }),
-    //(NotTrait, struct {
-    //    ::HIR::TypeRef  type;
-    //    ::HIR::GenricPath    trait;
-    //    }),
+        })/*,
+    (NotTrait, struct {
+        ::HIR::TypeRef  type;
+        ::HIR::GenricPath    trait;
+        })*/,
     (TypeEquality, struct {
         ::HIR::TypeRef  type;
         ::HIR::TypeRef  other_type;

@@ -141,7 +141,7 @@ void ::HIR::Visitor::visit_trait(::HIR::PathChain p, ::HIR::Trait& item)
     TRACE_FUNCTION;
     this->visit_params(item.m_params);
     for(auto& par : item.m_parent_traits) {
-        this->visit_generic_path(par, ::HIR::Visitor::PathContext::TYPE);
+        this->visit_trait_path(par);
     }
     for(auto& i : item.m_types) {
         DEBUG("type " << i.first);
@@ -245,7 +245,7 @@ void ::HIR::Visitor::visit_params(::HIR::GenericParams& params)
             ),
         (TraitBound,
             this->visit_type(e.type);
-            this->visit_generic_path(e.trait.m_path, ::HIR::Visitor::PathContext::TYPE);
+            this->visit_trait_path(e.trait);
             ),
         //(NotTrait, struct {
         //    ::HIR::TypeRef  type;
@@ -273,7 +273,7 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
     (Generic,
         ),
     (TraitObject,
-        this->visit_generic_path(e.m_trait, ::HIR::Visitor::PathContext::TYPE);
+        this->visit_trait_path(e.m_trait);
         for(auto& trait : e.m_markers) {
             this->visit_generic_path(trait, ::HIR::Visitor::PathContext::TYPE);
         }
@@ -382,6 +382,12 @@ void ::HIR::Visitor::visit_pattern_val(::HIR::Pattern::Value& val)
         this->visit_path(e, ::HIR::Visitor::PathContext::VALUE);
         )
     )
+}
+void ::HIR::Visitor::visit_trait_path(::HIR::TraitPath& p)
+{
+    this->visit_generic_path(p.m_path, ::HIR::Visitor::PathContext::TYPE);
+    for(auto& assoc : p.m_type_bounds)
+        this->visit_type(assoc.second);
 }
 void ::HIR::Visitor::visit_path(::HIR::Path& p, ::HIR::Visitor::PathContext pc)
 {

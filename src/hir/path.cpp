@@ -50,6 +50,31 @@ namespace HIR {
         os << x.m_path << x.m_params;
         return os;
     }
+    ::std::ostream& operator<<(::std::ostream& os, const TraitPath& x)
+    {
+        if( x.m_hrls.size() > 0 ) {
+            os << "for<";
+            for(const auto& lft : x.m_hrls)
+                os << "'" << lft << ",";
+            os << "> ";
+        }
+        os << x.m_path.m_path;
+        bool has_args = ( x.m_path.m_params.m_types.size() > 0 || x.m_type_bounds.size() > 0 );
+        
+        if(has_args) {
+            os << "<";
+        }
+        for(const auto& ty : x.m_path.m_params.m_types) {
+            os << ty << ",";
+        }
+        for(const auto& assoc : x.m_type_bounds) {
+            os << assoc.first << "=" << assoc.second << ",";
+        }
+        if(has_args) {
+            os << ">";
+        }
+        return os;
+    }
     ::std::ostream& operator<<(::std::ostream& os, const Path& x)
     {
         TU_MATCH(::HIR::Path::Data, (x.m_data), (e),
@@ -118,6 +143,38 @@ bool ::HIR::GenericPath::operator==(const GenericPath& x) const
     return m_params == x.m_params;
 }
 
+::HIR::TraitPath HIR::TraitPath::clone() const
+{
+    ::HIR::TraitPath    rv {
+        m_path.clone(),
+        m_hrls,
+        {},
+        m_trait_ptr
+        };
+    
+    for( const auto& assoc : m_type_bounds )
+        rv.m_type_bounds.insert(::std::make_pair( assoc.first, assoc.second.clone() ));
+    
+    return rv;
+}
+bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
+{
+    if( m_path != x.m_path )
+        return false;
+    if( m_hrls != x.m_hrls )
+        return false;
+    
+    if( m_type_bounds.size() != x.m_type_bounds.size() )
+        return false;
+    
+    for(auto it_l = m_type_bounds.begin(), it_r = x.m_type_bounds.begin(); it_l != m_type_bounds.end(); it_l++, it_r++ ) {
+        if( it_l->first != it_r->first )
+            return false;
+        if( it_l->second != it_r->second )
+            return false;
+    }
+    return true;
+}
 
 ::HIR::Path::Path(::HIR::GenericPath gp):
     m_data( ::HIR::Path::Data::make_Generic( mv$(gp) ) )

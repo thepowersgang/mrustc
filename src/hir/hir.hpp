@@ -151,14 +151,14 @@ struct Trait
 {
     GenericParams   m_params;
     ::std::string   m_lifetime;
-    ::std::vector< ::HIR::GenericPath >  m_parent_traits;
+    ::std::vector< ::HIR::TraitPath >  m_parent_traits;
     
     bool    m_is_marker;
     
     ::std::unordered_map< ::std::string, AssociatedType >   m_types;
     ::std::unordered_map< ::std::string, TraitValueItem >   m_values;
     
-    Trait( GenericParams gps, ::std::string lifetime, ::std::vector< ::HIR::GenericPath> parents):
+    Trait( GenericParams gps, ::std::string lifetime, ::std::vector< ::HIR::TraitPath> parents):
         m_params( mv$(gps) ),
         m_lifetime( mv$(lifetime) ),
         m_parent_traits( mv$(parents) )

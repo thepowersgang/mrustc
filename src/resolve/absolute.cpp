@@ -900,6 +900,12 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
             }
             assert( ufcs.nodes.size() == 1);
         )
+        
+        TU_IFLET(::AST::PathBinding, e.path.binding(), Trait, be,
+            auto ty = ::TypeRef( type.span(), {}, ::make_vec1(mv$(e.path)) );
+            type = mv$(ty);
+            return ;
+        )
         ),
     (TraitObject,
         //context.push_lifetimes( e.hrls );

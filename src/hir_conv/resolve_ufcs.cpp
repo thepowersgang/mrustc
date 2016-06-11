@@ -196,7 +196,7 @@ namespace {
             // Search supertraits (recursively)
             for( unsigned int i = 0; i < trait.m_parent_traits.size(); i ++ )
             {
-                const auto& par_trait_path = trait.m_parent_traits[i];
+                const auto& par_trait_path = trait.m_parent_traits[i].m_path;
                 //const auto& par_trait_ent = *trait.m_parent_trait_ptrs[i];
                 const auto& par_trait_ent = this->find_trait(par_trait_path.m_path);
                 if( locate_in_trait_and_set(pc, par_trait_path, par_trait_ent,  pd) ) {
@@ -231,7 +231,7 @@ namespace {
             // Search supertraits (recursively)
             for( unsigned int i = 0; i < trait.m_parent_traits.size(); i ++ )
             {
-                const auto& par_trait_path = trait.m_parent_traits[i];
+                const auto& par_trait_path = trait.m_parent_traits[i].m_path;
                 //const auto& par_trait_ent = *trait.m_parent_trait_ptrs[i];
                 const auto& par_trait_ent = this->find_trait(par_trait_path.m_path);
                 // TODO: Modify path parameters based on the current trait's params

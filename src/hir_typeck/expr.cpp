@@ -37,6 +37,14 @@ namespace typeck {
         )
         throw "";
     }
+    bool monomorphise_traitpath_needed(const ::HIR::TraitPath& tpl)
+    {
+        if( monomorphise_pathparams_needed(tpl.m_path.m_params) )    return true;
+        for(const auto& assoc : tpl.m_type_bounds)
+            if( monomorphise_type_needed(assoc.second) )
+                return true;
+        return false;
+    }
     bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
     {
         TU_MATCH(::HIR::TypeRef::Data, (tpl.m_data), (e),
@@ -56,9 +64,11 @@ namespace typeck {
             return true;
             ),
         (TraitObject,
-            if( monomorphise_pathparams_needed(e.m_trait.m_params) )    return true;
+            if( monomorphise_traitpath_needed(e.m_trait) )
+                return true;
             for(const auto& trait : e.m_markers)
-                if( monomorphise_pathparams_needed(trait.m_params) )    return true;
+                if( monomorphise_pathparams_needed(trait.m_params) )
+                    return true;
             return false;
             ),
         (Array,
@@ -100,6 +110,20 @@ namespace typeck {
     ::HIR::GenericPath monomorphise_genericpath_with(const Span& sp, const ::HIR::GenericPath& tpl, t_cb_generic callback, bool allow_infer)
     {
         return ::HIR::GenericPath( tpl.m_path, monomorphise_path_params_with(sp, tpl.m_params, callback, allow_infer) );
+    }
+    ::HIR::TraitPath monomorphise_traitpath_with(const Span& sp, const ::HIR::TraitPath& tpl, t_cb_generic callback, bool allow_infer)
+    {
+        ::HIR::TraitPath    rv {
+            monomorphise_genericpath_with(sp, tpl.m_path, callback, allow_infer),
+            tpl.m_hrls,
+            {},
+            tpl.m_trait_ptr
+            };
+        
+        for(const auto& assoc : tpl.m_type_bounds)
+            rv.m_type_bounds.insert(::std::make_pair( assoc.first, monomorphise_type_with(sp, assoc.second, callback, allow_infer) ));
+        
+        return rv;
     }
     ::HIR::TypeRef monomorphise_type_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer)
     {
@@ -145,7 +169,7 @@ namespace typeck {
             ),
         (TraitObject,
             ::HIR::TypeRef::Data::Data_TraitObject  rv;
-            rv.m_trait = monomorphise_genericpath_with(sp, e.m_trait, callback, allow_infer);
+            rv.m_trait = monomorphise_traitpath_with(sp, e.m_trait, callback, allow_infer);
             for(const auto& trait : e.m_markers)
             {
                 rv.m_markers.push_back( monomorphise_genericpath_with(sp, trait, callback, allow_infer) ); 
@@ -700,7 +724,7 @@ namespace typeck {
                 const auto& ops_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
                 DEBUG("Searching for impl " << ops_trait << "< " << ty_right << "> for " << ty_left);
                 bool found_bound = this->context.find_trait_impls_bound(sp, ops_trait, ty_left,
-                    [&](const auto& args) {
+                    [&](const auto& args, const auto& assoc) {
                         assert(args.m_types.size() == 1);
                         const auto& arg_type = args.m_types[0];
                         // TODO: if arg_type mentions Self?
@@ -1316,6 +1340,11 @@ namespace typeck {
                         DEBUG("- No impl of " << be.trait.m_path << " for " << real_type);
                         continue ;
                     }
+                    for( const auto& assoc : be.trait.m_type_bounds ) {
+                        auto ty = ::HIR::TypeRef( ::HIR::Path(::HIR::Path::Data::Data_UfcsKnown { box$(real_type.clone()), be.trait.m_path.clone(), assoc.first, {} }) );
+                        this->context.apply_equality( sp, ty, [](const auto&x)->const auto&{return x;}, assoc.second, cache.m_monomorph_cb, nullptr );
+                    }
+                    
                     ),
                 (TypeEquality,
                     #if 0
@@ -1359,7 +1388,7 @@ namespace typeck {
                     ::HIR::TypeRef  fcn_ret;
                     // Locate impl of FnOnce
                     const auto& lang_FnOnce = this->context.m_crate.get_lang_item_path(node.span(), "fn_once");
-                    auto was_bounded = this->context.find_trait_impls_bound(node.span(), lang_FnOnce, ty, [&](const auto& args) {
+                    auto was_bounded = this->context.find_trait_impls_bound(node.span(), lang_FnOnce, ty, [&](const auto& args, const auto& assoc) {
                             const auto& tup = args.m_types[0];
                             if( !tup.m_data.is_Tuple() )
                                 ERROR(node.span(), E0000, "FnOnce expects a tuple argument, got " << tup);
@@ -1384,7 +1413,7 @@ namespace typeck {
                     else
                     {
                         // Didn't find anything. Error?
-                        TODO(node.span(), "Unable to find an implementation of Fn* for " << ty);
+                        ERROR(node.span(), E0000, "Unable to find an implementation of Fn* for " << ty);
                     }
                     
                     node.m_arg_types = mv$( fcn_args_tup.m_data.as_Tuple() );
@@ -1476,6 +1505,7 @@ namespace typeck {
                     BUG(sp, "Unknown target PathValue encountered with Generic path");
                 case ::HIR::ExprNode_PathValue::FUNCTION: {
                     //const auto& f = this->context.m_crate.get_fcn_by_path(sp, e.m_path);
+                    //TODO(sp, "Function address values");
                     } break;
                 case ::HIR::ExprNode_PathValue::STATIC: {
                     const auto& v = this->context.m_crate.get_static_by_path(sp, e.m_path);

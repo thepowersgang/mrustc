@@ -100,7 +100,15 @@ class TraitPath
 public:
     GenericPath m_path;
     ::std::vector< ::std::string>   m_hrls;
+    ::std::map< ::std::string, ::HIR::TypeRef>    m_type_bounds;
+    
     const ::HIR::Trait* m_trait_ptr;
+    
+    TraitPath clone() const;
+    bool operator==(const TraitPath& x) const;
+    bool operator!=(const TraitPath& x) const { return !(*this == x); }
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const TraitPath& x);
 };
 
 class Path

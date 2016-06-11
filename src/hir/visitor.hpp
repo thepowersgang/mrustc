@@ -81,6 +81,7 @@ public:
         
         VALUE,
     };
+    virtual void visit_trait_path(::HIR::TraitPath& p);
     virtual void visit_path(::HIR::Path& p, PathContext );
     virtual void visit_path_params(::HIR::PathParams& p);
     virtual void visit_generic_path(::HIR::GenericPath& p, PathContext );
