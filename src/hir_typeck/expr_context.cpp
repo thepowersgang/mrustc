@@ -645,7 +645,9 @@ const ::HIR::TypeRef& typeck::TypecheckContext::expand_associated_types_to(const
             return t;
         }
         else {
-            tmp_t = this->expand_associated_types(sp, t.clone());
+            // HACK! Run twice, to expand deeper.
+            // - Should this recurse itself when it resolves?
+            tmp_t = this->expand_associated_types(sp, this->expand_associated_types(sp, t.clone()));
             DEBUG("Expanded " << t << " into " << tmp_t);
             return tmp_t;
         }

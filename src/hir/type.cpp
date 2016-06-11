@@ -62,6 +62,12 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         ),
     (Path,
         os << e.path;
+        TU_MATCH(::HIR::TypeRef::TypePathBinding, (e.binding), (be),
+        (Unbound, os << "/*U*/";),
+        (Opaque, os << "/*O*/";),
+        (Struct, os << "/*S/";),
+        (Enum, os << "/*E*/";)
+        )
         ),
     (Generic,
         os << e.name << "/*";
@@ -397,17 +403,16 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     return true;
 }
 
-namespace {
-    ::HIR::TypeRef::TypePathBinding clone_binding(const ::HIR::TypeRef::TypePathBinding& x) {
-        TU_MATCH(::HIR::TypeRef::TypePathBinding, (x), (e),
-        (Unbound, return ::HIR::TypeRef::TypePathBinding::make_Unbound({}); ),
-        (Opaque , return ::HIR::TypeRef::TypePathBinding::make_Opaque({}); ),
-        (Struct , return ::HIR::TypeRef::TypePathBinding(e); ),
-        (Enum   , return ::HIR::TypeRef::TypePathBinding(e); )
-        )
-        assert(!"Fell off end of clone_binding");
-    }
+::HIR::TypeRef::TypePathBinding HIR::TypeRef::TypePathBinding::clone() const {
+    TU_MATCH(::HIR::TypeRef::TypePathBinding, (*this), (e),
+    (Unbound, return ::HIR::TypeRef::TypePathBinding::make_Unbound({}); ),
+    (Opaque , return ::HIR::TypeRef::TypePathBinding::make_Opaque({}); ),
+    (Struct , return ::HIR::TypeRef::TypePathBinding(e); ),
+    (Enum   , return ::HIR::TypeRef::TypePathBinding(e); )
+    )
+    assert(!"Fell off end of clone_binding");
 }
+
 
 ::HIR::TypeRef HIR::TypeRef::clone() const
 {
@@ -424,7 +429,7 @@ namespace {
     (Path,
         return ::HIR::TypeRef( Data::make_Path({
             e.path.clone(),
-            clone_binding(e.binding)
+            e.binding.clone()
             }) );
         ),
     (Generic,

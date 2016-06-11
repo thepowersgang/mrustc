@@ -146,7 +146,10 @@ namespace typeck {
         (Path,
             TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
             (Generic,
-                return ::HIR::TypeRef( monomorphise_genericpath_with(sp, e2, callback, allow_infer) );
+                return ::HIR::TypeRef( ::HIR::TypeRef::Data::Data_Path {
+                        monomorphise_genericpath_with(sp, e2, callback, allow_infer),
+                        e.binding.clone()
+                        } );
                 ),
             (UfcsKnown,
                 return ::HIR::TypeRef( ::HIR::Path::Data::make_UfcsKnown({
