@@ -138,18 +138,6 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
     )
 }
 
-namespace {
-    bool path_params_equal(const ::HIR::PathParams& t, const ::HIR::PathParams& x)
-    {
-        if( t.m_types.size() != x.m_types.size() )
-            return false;
-        for( unsigned int i = 0; i < t.m_types.size(); i ++ )
-            if( !(t.m_types[i] == x.m_types[i]) )
-                return false;
-        return true;
-    }
-}
-
 bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
 {
     if( m_data.tag() != x.m_data.tag() )
@@ -172,34 +160,30 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
         }
         TU_MATCH(::HIR::Path::Data, (te.path.m_data, xe.path.m_data), (tpe, xpe),
         (Generic,
-            if( tpe.m_path != xpe.m_path )
-                return false;
-            return path_params_equal(tpe.m_params, xpe.m_params);
+            return tpe == xpe;
             ),
         (UfcsInherent,
             if( *tpe.type != *xpe.type )
                 return false;
             if( tpe.item != xpe.item )
                 return false;
-            return path_params_equal(tpe.params, xpe.params);
+            return tpe.params == xpe.params;
             ),
         (UfcsKnown,
             if( *tpe.type != *xpe.type )
                 return false;
-            if( tpe.trait.m_path != xpe.trait.m_path )
-                return false;
-            if( !path_params_equal(tpe.trait.m_params, xpe.trait.m_params) )
+            if( tpe.trait != xpe.trait )
                 return false;
             if( tpe.item != xpe.item )
                 return false;
-            return path_params_equal(tpe.params, xpe.params);
+            return tpe.params == xpe.params;
             ),
         (UfcsUnknown,
             if( *tpe.type != *xpe.type )
                 return false;
             if( tpe.item != xpe.item )
                 return false;
-            return path_params_equal(tpe.params, xpe.params);
+            return tpe.params == xpe.params;
             )
         )
         ),
@@ -207,7 +191,13 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
         return te.name == xe.name && te.binding == xe.binding;
         ),
     (TraitObject,
-        assert(!"TODO: Compare trait object types");
+        if( te.m_traits.size() != xe.m_traits.size() )
+            return false;
+        for(unsigned int i = 0; i < te.m_traits.size(); i ++ ) {
+            if( te.m_traits[i] != xe.m_traits[i] )
+                return false;
+        }
+        return te.m_lifetime == xe.m_lifetime;
         ),
     (Array,
         if( *te.inner != *xe.inner )

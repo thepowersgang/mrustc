@@ -50,6 +50,10 @@ enum class BorrowType
 struct LifetimeRef
 {
     ::std::string   name;
+    
+    bool operator==(const LifetimeRef& x) const {
+        return name == x.name;
+    }
 };
 
 struct FunctionType

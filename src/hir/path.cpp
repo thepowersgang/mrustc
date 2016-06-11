@@ -85,6 +85,15 @@ namespace HIR {
         rv.m_types.push_back( t.clone() );
     return rv;
 }
+bool ::HIR::PathParams::operator==(const ::HIR::PathParams& x) const
+{
+    if( m_types.size() != x.m_types.size() )
+        return false;
+    for( unsigned int i = 0; i < m_types.size(); i ++ )
+        if( !(m_types[i] == x.m_types[i]) )
+            return false;
+    return true;
+}
 
 ::HIR::GenericPath::GenericPath()
 {
@@ -101,6 +110,12 @@ namespace HIR {
 ::HIR::GenericPath HIR::GenericPath::clone() const
 {
     return GenericPath(m_path.clone(), m_params.clone());
+}
+bool ::HIR::GenericPath::operator==(const GenericPath& x) const
+{
+    if( m_path != x.m_path )
+        return false;
+    return m_params == x.m_params;
 }
 
 

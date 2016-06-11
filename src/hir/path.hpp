@@ -69,7 +69,7 @@ struct PathParams
     PathParams(PathParams&&) = default;
     PathParams& operator=(PathParams&&) = default;
     
-    //bool operator==(const PathParams& x) const;
+    bool operator==(const PathParams& x) const;
     //bool operator<(const PathParams& x) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const PathParams& x);
@@ -88,7 +88,8 @@ public:
     
     GenericPath clone() const;
     
-    //bool operator==(const GenericPath& x) const;
+    bool operator==(const GenericPath& x) const;
+    bool operator!=(const GenericPath& x) const { return !(*this == x); }
     //bool operator<(const GenericPath& x) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const GenericPath& x);

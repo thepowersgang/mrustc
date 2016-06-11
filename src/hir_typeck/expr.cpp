@@ -56,7 +56,9 @@ namespace typeck {
             return true;
             ),
         (TraitObject,
-            TODO(Span(), "TraitObject - " << tpl);
+            for(const auto& trait : e.m_traits)
+                if( monomorphise_pathparams_needed(trait.m_params) )    return false;
+            return true;
             ),
         (Array,
             TODO(Span(), "Array - " << tpl);
@@ -141,7 +143,13 @@ namespace typeck {
             return callback(tpl).clone();
             ),
         (TraitObject,
-            TODO(sp, "TraitObject");
+            ::HIR::TypeRef::Data::Data_TraitObject  rv;
+            for(const auto& trait : e.m_traits)
+            {
+                rv.m_traits.push_back( monomorphise_genericpath_with(sp, trait, callback, allow_infer) ); 
+            }
+            rv.m_lifetime = e.m_lifetime;
+            return ::HIR::TypeRef( mv$(rv) );
             ),
         (Array,
             if( e.size_val == ~0u ) {
