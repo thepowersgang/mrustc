@@ -1435,7 +1435,9 @@ namespace typeck {
                     node.m_arg_types.push_back( mv$(fcn_ret) );
                     ),
                 (Function,
-                    TODO(node.span(), "CallValue with Function - " << ty);
+                    for( const auto& arg : e.m_arg_types )
+                        node.m_arg_types.push_back( arg.clone() );
+                    node.m_arg_types.push_back( e.m_rettype->clone() );
                     ),
                 (Infer,
                     )
