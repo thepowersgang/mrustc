@@ -1370,8 +1370,10 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
     for(auto& impl : mod.impls())
     {
         auto& def = impl.def();
-        if( ! def.type().is_valid() )
+        DEBUG("impl " << def.trait().ent << " for " << def.type());
+        if( !def.type().is_valid() )
         {
+            DEBUG("---- MARKER IMPL for " << def.trait().ent);
             item_context.push(def.params(), GenericSlot::Level::Top);
             Resolve_Absolute_Generic(item_context,  def.params());
             assert( def.trait().ent.is_valid() );

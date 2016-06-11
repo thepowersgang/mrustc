@@ -77,7 +77,9 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         ),
     (TraitObject,
         os << "(";
-        os << e.m_traits;
+        os << e.m_trait;
+        for(const auto& tr : e.m_markers)
+            os << "+" << tr;
         if( e.m_lifetime.name != "" )
             os << "+ '" << e.m_lifetime.name;
         os << ")";
@@ -191,10 +193,12 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
         return te.name == xe.name && te.binding == xe.binding;
         ),
     (TraitObject,
-        if( te.m_traits.size() != xe.m_traits.size() )
+        if( te.m_trait != xe.m_trait )
             return false;
-        for(unsigned int i = 0; i < te.m_traits.size(); i ++ ) {
-            if( te.m_traits[i] != xe.m_traits[i] )
+        if( te.m_markers.size() != xe.m_markers.size() )
+            return false;
+        for(unsigned int i = 0; i < te.m_markers.size(); i ++ ) {
+            if( te.m_markers[i] != xe.m_markers[i] )
                 return false;
         }
         return te.m_lifetime == xe.m_lifetime;
@@ -427,13 +431,12 @@ namespace {
         return ::HIR::TypeRef( Data::make_Generic(e) );
         ),
     (TraitObject,
-        ::std::vector< ::HIR::GenericPath>  traits;
-        for(const auto& trait : e.m_traits)
-            traits.push_back( trait.clone() );
-        return ::HIR::TypeRef( Data::make_TraitObject({
-            mv$(traits),
-            e.m_lifetime
-            }) );
+        Data::Data_TraitObject  rv;
+        rv.m_trait = e.m_trait.clone();
+        for(const auto& trait : e.m_markers)
+            rv.m_markers.push_back( trait.clone() );
+        rv.m_lifetime = e.m_lifetime;
+        return ::HIR::TypeRef( Data::make_TraitObject( mv$(rv) ) );
         ),
     (Array,
         if( e.size_val == ~0u ) {

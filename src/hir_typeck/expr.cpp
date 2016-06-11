@@ -56,9 +56,10 @@ namespace typeck {
             return true;
             ),
         (TraitObject,
-            for(const auto& trait : e.m_traits)
-                if( monomorphise_pathparams_needed(trait.m_params) )    return false;
-            return true;
+            if( monomorphise_pathparams_needed(e.m_trait.m_params) )    return true;
+            for(const auto& trait : e.m_markers)
+                if( monomorphise_pathparams_needed(trait.m_params) )    return true;
+            return false;
             ),
         (Array,
             TODO(Span(), "Array - " << tpl);
@@ -144,9 +145,10 @@ namespace typeck {
             ),
         (TraitObject,
             ::HIR::TypeRef::Data::Data_TraitObject  rv;
-            for(const auto& trait : e.m_traits)
+            rv.m_trait = monomorphise_genericpath_with(sp, e.m_trait, callback, allow_infer);
+            for(const auto& trait : e.m_markers)
             {
-                rv.m_traits.push_back( monomorphise_genericpath_with(sp, trait, callback, allow_infer) ); 
+                rv.m_markers.push_back( monomorphise_genericpath_with(sp, trait, callback, allow_infer) ); 
             }
             rv.m_lifetime = e.m_lifetime;
             return ::HIR::TypeRef( mv$(rv) );

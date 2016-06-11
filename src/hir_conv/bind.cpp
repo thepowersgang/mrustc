@@ -214,9 +214,7 @@ namespace {
                         e.binding = ::HIR::TypeRef::TypePathBinding::make_Enum(&e3);
                         ),
                     (Trait,
-                        ::std::vector< ::HIR::GenericPath>  traits;
-                        traits.push_back( mv$(e2) );
-                        ty.m_data = ::HIR::TypeRef::Data::make_TraitObject({ mv$(traits), {} });
+                        ty.m_data = ::HIR::TypeRef::Data::make_TraitObject({ mv$(e2), {}, {} });
                         )
                     )
                 )

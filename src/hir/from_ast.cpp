@@ -620,7 +620,15 @@ const ::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
         ::HIR::TypeRef::Data::Data_TraitObject  v;
         for(const auto& t : e.traits)
         {
-            v.m_traits.push_back( LowerHIR_GenericPath(ty.span(), t) );
+            if( t.binding().as_Trait().trait_->is_marker() ) {
+                v.m_markers.push_back( LowerHIR_GenericPath(ty.span(), t) );
+            }
+            else {
+                if( v.m_trait.m_path.m_components.size() > 0 ) {
+                    ERROR(ty.span(), E0000, "Multiple data traits in trait object - " << ty);
+                }
+                v.m_trait = LowerHIR_GenericPath(ty.span(), t);
+            }
         }
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_TraitObject( mv$(v) ) );
         ),

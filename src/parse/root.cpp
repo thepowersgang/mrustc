@@ -906,7 +906,7 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
             if( GET_TOK(tok, lex) == TOK_DOUBLE_DOT )
             {
                 // Default impl
-                impl_type = TypeRef();
+                impl_type = TypeRef(TypeRef::TagInvalid(), lex.getPosition());
             }
             else
             {

@@ -273,7 +273,8 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
     (Generic,
         ),
     (TraitObject,
-        for(auto& trait : e.m_traits) {
+        this->visit_generic_path(e.m_trait, ::HIR::Visitor::PathContext::TYPE);
+        for(auto& trait : e.m_markers) {
             this->visit_generic_path(trait, ::HIR::Visitor::PathContext::TYPE);
         }
         ),

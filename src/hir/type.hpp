@@ -100,7 +100,8 @@ public:
         unsigned int    binding;
         }),
     (TraitObject, struct {
-        ::std::vector< ::HIR::GenericPath > m_traits;
+        ::HIR::GenericPath  m_trait;    // TODO: Use TraitPath?
+        ::std::vector< ::HIR::GenericPath > m_markers;
         ::HIR::LifetimeRef  m_lifetime;
         }),
     (Array, struct {

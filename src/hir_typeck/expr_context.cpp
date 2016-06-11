@@ -789,21 +789,25 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                 }
                 ),
             (TraitObject,
-                if( l_e.m_traits.size() != r_e.m_traits.size() ) {
-                    // TODO: Possibly allow inferrence reducing the set?
+                if( l_e.m_trait.m_path != r_e.m_trait.m_path ) {
+                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                }
+                equality_typeparams(l_e.m_trait.m_params, r_e.m_trait.m_params);
+                // TODO: Possibly allow inferrence reducing the set?
+                if( l_e.m_markers.size() != r_e.m_markers.size() ) {
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - trait counts differ");
                 }
-                // NOTE: Lifetime is ignored
                 // TODO: Is this list sorted in any way? (if it's not sorted, this could fail when source does Send+Any instead of Any+Send)
-                for(unsigned int i = 0; i < l_e.m_traits.size(); i ++ )
+                for(unsigned int i = 0; i < l_e.m_markers.size(); i ++ )
                 {
-                    auto& l_p = l_e.m_traits[i];
-                    auto& r_p = r_e.m_traits[i];
+                    auto& l_p = l_e.m_markers[i];
+                    auto& r_p = r_e.m_markers[i];
                     if( l_p.m_path != r_p.m_path ) {
                         ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
                     }
                     equality_typeparams(l_p.m_params, r_p.m_params);
                 }
+                // NOTE: Lifetime is ignored
                 ),
             (Array,
                 this->apply_equality(sp, *l_e.inner, cb_left, *r_e.inner, cb_right, nullptr);
@@ -851,6 +855,17 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                         return ;
                     }
                     // - If left is a trait object, right can unsize
+                    if( left_inner_res.m_data.is_TraitObject() ) {
+                        if( right_inner_res.m_data.is_TraitObject() ) {
+                            // TODO: Can Debug+Send be coerced to Debug?
+                            if( left_inner_res != right_inner_res )
+                                ERROR(sp, E0000, "Can't coerce between trait objects - " << left_inner_res << " and " << right_inner_res);
+                            // - Equal, nothing to do
+                            return ;
+                        }
+                        
+                        TODO(sp, "Unsize into trait object - " << l_t << " <- " << r_t);
+                    }
                     // - If left is a slice, right can unsize/deref
                     if( left_inner_res.m_data.is_Slice() && !right_inner_res.m_data.is_Slice() )
                     {
