@@ -170,6 +170,9 @@ const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path(const Span& sp, const 
 
 const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const
 {
+    if( path.m_components.size() == 0) {
+        BUG(sp, "get_typeitem_by_path received invalid path");
+    }
     if( path.m_crate_name != "" )
         TODO(sp, "::HIR::Crate::get_typeitem_by_path in extern crate");
     
@@ -229,6 +232,9 @@ const ::HIR::Enum& ::HIR::Crate::get_enum_by_path(const Span& sp, const ::HIR::S
 
 const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const
 {
+    if( path.m_components.size() == 0) {
+        BUG(sp, "get_valitem_by_path received invalid path");
+    }
     if( path.m_crate_name != "" )
         TODO(sp, "::HIR::Crate::get_valitem_by_path in extern crate");
     

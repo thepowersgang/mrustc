@@ -170,6 +170,9 @@ public:
     static TypeRef new_pointer(BorrowType bt, TypeRef inner) {
         return TypeRef(Data::make_Pointer({bt, box$(mv$(inner))}));
     }
+    static TypeRef new_slice(TypeRef inner) {
+        return TypeRef(Data::make_Slice({box$(mv$(inner))}));
+    }
     static TypeRef new_array(TypeRef inner, unsigned int size) {
         assert(size != ~0u);
         return TypeRef(Data::make_Array({box$(mv$(inner)), ::HIR::ExprPtr(), size}));

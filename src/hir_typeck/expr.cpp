@@ -1365,7 +1365,7 @@ namespace typeck {
             if( node.m_method_path.m_data.is_Generic() && node.m_method_path.m_data.as_Generic().m_path.m_components.size() == 0 )
             {
                 const auto& ty = this->context.get_type(node.m_value->m_res_type);
-                DEBUG("ty = " << ty);
+                DEBUG("(CallMethod) ty = " << ty);
                 // Using autoderef, locate this method on the type
                 ::HIR::Path   fcn_path { ::HIR::SimplePath() };
                 unsigned int deref_count = this->context.autoderef_find_method(node.span(), ty, node.m_method,  fcn_path);
@@ -1393,6 +1393,11 @@ namespace typeck {
                         this->context.add_ivars( node.m_value->m_res_type );
                         deref_count -= 1;
                     }
+                }
+                else
+                {
+                    // Return early, don't know enough yet
+                    return ;
                 }
             }
             

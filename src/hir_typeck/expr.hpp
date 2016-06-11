@@ -125,7 +125,7 @@ public:
     bool iterate_bounds( ::std::function<bool(const ::HIR::GenericBound&)> cb) const;
     
     /// Searches for a trait impl that matches the provided trait name and type
-    bool find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,  ::std::function<bool(const ::HIR::PathParams&)> callback);
+    bool find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,  ::std::function<bool(const ::HIR::PathParams&)> callback) const;
     /// Locate a named trait in the provied trait (either itself or as a parent trait)
     bool find_named_trait_in_trait(const Span& sp, const ::HIR::SimplePath& des, const ::HIR::Trait& trait_ptr, const ::HIR::PathParams& pp,  ::std::function<bool(const ::HIR::PathParams&)> callback) const;
     /// Search for a trait implementation in current bounds
