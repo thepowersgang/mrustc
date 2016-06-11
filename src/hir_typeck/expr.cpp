@@ -1798,7 +1798,7 @@ void Typecheck_Code(typeck::TypecheckContext context, const ::HIR::TypeRef& resu
             DEBUG("==== PASS " << count << " ====");
             visitor.visit_node_ptr(root_ptr);
             context.compact_ivars();
-        } while( context.take_changed() );
+        } while( context.take_changed() || context.apply_defaults() );
         DEBUG("==== STOPPED: " << count << " passes ====");
     }
     

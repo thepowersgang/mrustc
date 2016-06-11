@@ -57,6 +57,31 @@ void typeck::TypecheckContext::compact_ivars()
         v.type = this->get_type(v.type).clone();
     }
 }
+bool typeck::TypecheckContext::apply_defaults()
+{
+    bool rv = false;
+    for(auto& v : m_ivars)
+    {
+        if( !v.is_alias() ) {
+            TU_IFLET(::HIR::TypeRef::Data, v.type->m_data, Infer, e,
+                switch(e.ty_class)
+                {
+                case ::HIR::InferClass::None:
+                    break;
+                case ::HIR::InferClass::Integer:
+                    rv = true;
+                    *v.type = ::HIR::TypeRef( ::HIR::CoreType::I32 );
+                    break;
+                case ::HIR::InferClass::Float:
+                    rv = true;
+                    *v.type = ::HIR::TypeRef( ::HIR::CoreType::F64 );
+                    break;
+                }
+            )
+        }
+    }
+    return rv;
+}
 
 void typeck::TypecheckContext::add_local(unsigned int index, const ::std::string& name, ::HIR::TypeRef type)
 {

@@ -82,6 +82,8 @@ public:
     }
     
     void compact_ivars();
+    /// Apply defaults (i32 or f64), returns true if a default was applied
+    bool apply_defaults();
     
     /// Adds a local variable binding (type is mutable so it can be inferred if required)
     void add_local(unsigned int index, const ::std::string& name, ::HIR::TypeRef type);
