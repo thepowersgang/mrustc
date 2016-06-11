@@ -139,6 +139,7 @@ public:
     /// Locate the named method by applying auto-dereferencing.
     /// \return Number of times deref was applied (or ~0 if _ was hit)
     unsigned int autoderef_find_method(const Span& sp, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const;
+    bool find_method(const Span& sp, const ::HIR::TypeRef& ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const;
     
 public:
     ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> callback_resolve_infer() {

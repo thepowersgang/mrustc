@@ -1347,114 +1347,19 @@ unsigned int typeck::TypecheckContext::autoderef_find_method(const Span& sp, con
 {
     unsigned int deref_count = 0;
     const auto* current_ty = &top_ty;
+    TU_IFLET(::HIR::TypeRef::Data, this->get_type(top_ty).m_data, Borrow, e,
+        current_ty = &*e.inner;
+        deref_count += 1;
+    )
+    
     do {
         const auto& ty = this->get_type(*current_ty);
         if( ty.m_data.is_Infer() ) {
             return ~0u;
         }
         
-        // 1. Search generic bounds for a match
-        const ::HIR::GenericParams* v[2] = { m_item_params, m_impl_params };
-        for(auto p : v)
-        {
-            if( !p )    continue ;
-            for(const auto& b : p->m_bounds)
-            {
-                TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
-                    DEBUG("Bound " << e.type << " : " << e.trait.m_path);
-                    // TODO: Match using _ replacement
-                    if( e.type != ty )
-                        continue ;
-                    
-                    // - Bound's type matches, check if the bounded trait has the method we're searching for
-                    //  > TODO: Search supertraits too
-                    DEBUG("- Matches " << ty);
-                    ::HIR::GenericPath final_trait_path;
-                    assert(e.trait.m_trait_ptr);
-                    if( !this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, method_name,  final_trait_path) )
-                        continue ;
-                    DEBUG("- Found trait " << final_trait_path);
-                    
-                    // Found the method, return the UFCS path for it
-                    fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
-                        box$( ty.clone() ),
-                        mv$(final_trait_path),
-                        method_name,
-                        {}
-                        }) );
-                    return deref_count;
-                )
-            }
-        }
-        
-        TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
-            // No match, keep trying.
-        )
-        else if( ty.m_data.is_Path() && ty.m_data.as_Path().path.m_data.is_UfcsKnown() )
-        {
-            const auto& e = ty.m_data.as_Path().path.m_data.as_UfcsKnown();
-            // UFCS known - Assuming that it's reached the maximum resolvable level (i.e. a type within is generic), search for trait bounds on the type
-            const auto& trait = this->m_crate.get_trait_by_path(sp, e.trait.m_path);
-            const auto& assoc_ty = trait.m_types.at( e.item );
-            // NOTE: The bounds here have 'Self' = the type
-            for(const auto& bound : assoc_ty.m_params.m_bounds )
-            {
-                TU_IFLET(::HIR::GenericBound, bound, TraitBound, be,
-                    assert(be.trait.m_trait_ptr);
-                    ::HIR::GenericPath final_trait_path;
-                    if( !this->trait_contains_method(sp, be.trait.m_path, *be.trait.m_trait_ptr, method_name,  final_trait_path) )
-                        continue ;
-                    DEBUG("- Found trait " << final_trait_path);
-                    
-                    // Found the method, return the UFCS path for it
-                    fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
-                        box$( ty.clone() ),
-                        mv$(final_trait_path),
-                        method_name,
-                        {}
-                        }) );
-                    return deref_count;
-                )
-            }
-        }
-        else {
-            // 2. Search for inherent methods
-            for(const auto& impl : m_crate.m_type_impls)
-            {
-                if( impl.matches_type(ty) ) {
-                    auto it = impl.m_methods.find( method_name );
-                    if( it == impl.m_methods.end() )
-                        continue ;
-                    DEBUG("Matching `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` - " << top_ty);
-                    fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsInherent({
-                        box$(ty.clone()),
-                        method_name,
-                        {}
-                        }) );
-                    return deref_count;
-                }
-            }
-            // 3. Search for trait methods (using currently in-scope traits)
-            for(const auto& trait_ref : ::reverse(m_traits))
-            {
-                // TODO: Search supertraits too
-                auto it = trait_ref.second->m_values.find(method_name);
-                if( it == trait_ref.second->m_values.end() )
-                    continue ;
-                if( !it->second.is_Function() )
-                    continue ;
-                DEBUG("Search for impl of " << *trait_ref.first);
-                if( find_trait_impls_crate(*trait_ref.first, ty,  [](const auto&) { return true; }) ) {
-                    DEBUG("Found trait impl " << *trait_ref.first << " for " << ty);
-                    fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
-                        box$( ty.clone() ),
-                        trait_ref.first->clone(),
-                        method_name,
-                        {}
-                        }) );
-                    return deref_count;
-                }
-            }
+        if( find_method(sp, ty, method_name, fcn_path) ) {
+            return deref_count;
         }
         
         // 3. Dereference and try again
@@ -1467,11 +1372,132 @@ unsigned int typeck::TypecheckContext::autoderef_find_method(const Span& sp, con
             current_ty = nullptr;
         }
     } while( current_ty );
+    
+    TU_IFLET(::HIR::TypeRef::Data, this->get_type(top_ty).m_data, Borrow, e,
+        const auto& ty = this->get_type(top_ty);
+        
+        if( find_method(sp, ty, method_name, fcn_path) ) {
+            return 0;
+        }
+    )
+    
     // Dereference failed! This is a hard error (hitting _ is checked above and returns ~0)
     this->dump();
     TODO(sp, "Error when no method could be found, but type is known - (: " << top_ty << ")." << method_name);
 }
 
+bool typeck::TypecheckContext::find_method(const Span& sp, const ::HIR::TypeRef& ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const
+{
+    // 1. Search generic bounds for a match
+    const ::HIR::GenericParams* v[2] = { m_item_params, m_impl_params };
+    for(auto p : v)
+    {
+        if( !p )    continue ;
+        for(const auto& b : p->m_bounds)
+        {
+            TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
+                DEBUG("Bound " << e.type << " : " << e.trait.m_path);
+                // TODO: Match using _ replacement
+                if( e.type != ty )
+                    continue ;
+                
+                // - Bound's type matches, check if the bounded trait has the method we're searching for
+                //  > TODO: Search supertraits too
+                DEBUG("- Matches " << ty);
+                ::HIR::GenericPath final_trait_path;
+                assert(e.trait.m_trait_ptr);
+                if( !this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, method_name,  final_trait_path) )
+                    continue ;
+                DEBUG("- Found trait " << final_trait_path);
+                
+                // Found the method, return the UFCS path for it
+                fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
+                    box$( ty.clone() ),
+                    mv$(final_trait_path),
+                    method_name,
+                    {}
+                    }) );
+                return true;
+            )
+        }
+    }
+
+    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, TraitObject, e,
+        // TODO: Search methods on object's traits
+    )
+    
+    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
+        // No match, keep trying.
+    )
+    else if( ty.m_data.is_Path() && ty.m_data.as_Path().path.m_data.is_UfcsKnown() )
+    {
+        const auto& e = ty.m_data.as_Path().path.m_data.as_UfcsKnown();
+        // UFCS known - Assuming that it's reached the maximum resolvable level (i.e. a type within is generic), search for trait bounds on the type
+        const auto& trait = this->m_crate.get_trait_by_path(sp, e.trait.m_path);
+        const auto& assoc_ty = trait.m_types.at( e.item );
+        // NOTE: The bounds here have 'Self' = the type
+        for(const auto& bound : assoc_ty.m_params.m_bounds )
+        {
+            TU_IFLET(::HIR::GenericBound, bound, TraitBound, be,
+                assert(be.trait.m_trait_ptr);
+                ::HIR::GenericPath final_trait_path;
+                if( !this->trait_contains_method(sp, be.trait.m_path, *be.trait.m_trait_ptr, method_name,  final_trait_path) )
+                    continue ;
+                DEBUG("- Found trait " << final_trait_path);
+                
+                // Found the method, return the UFCS path for it
+                fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
+                    box$( ty.clone() ),
+                    mv$(final_trait_path),
+                    method_name,
+                    {}
+                    }) );
+                return true;
+            )
+        }
+    }
+    else {
+        // 2. Search for inherent methods
+        for(const auto& impl : m_crate.m_type_impls)
+        {
+            if( impl.matches_type(ty) ) {
+                auto it = impl.m_methods.find( method_name );
+                if( it == impl.m_methods.end() )
+                    continue ;
+                DEBUG("Matching `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "`"/* << " - " << top_ty*/);
+                fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsInherent({
+                    box$(ty.clone()),
+                    method_name,
+                    {}
+                    }) );
+                return true;
+            }
+        }
+        // 3. Search for trait methods (using currently in-scope traits)
+        for(const auto& trait_ref : ::reverse(m_traits))
+        {
+            // TODO: Search supertraits too
+            auto it = trait_ref.second->m_values.find(method_name);
+            if( it == trait_ref.second->m_values.end() )
+                continue ;
+            if( !it->second.is_Function() )
+                continue ;
+            DEBUG("Search for impl of " << *trait_ref.first);
+            if( find_trait_impls_crate(*trait_ref.first, ty,  [](const auto&) { return true; }) ) {
+                DEBUG("Found trait impl " << *trait_ref.first << " for " << ty);
+                fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
+                    box$( ty.clone() ),
+                    trait_ref.first->clone(),
+                    method_name,
+                    {}
+                    }) );
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
 
 
 
