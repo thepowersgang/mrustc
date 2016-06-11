@@ -856,6 +856,13 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                     }
                     // - If left is a trait object, right can unsize
                     if( left_inner_res.m_data.is_TraitObject() ) {
+                        // If the righthand side is still an ivar
+                        if( right_inner_res.m_data.is_Infer() ) {
+                            // Assume it's valid for now, and return 
+                            return ;
+                        }
+                        
+                        const auto& e = left_inner_res.m_data.as_TraitObject();
                         if( right_inner_res.m_data.is_TraitObject() ) {
                             // TODO: Can Debug+Send be coerced to Debug?
                             if( left_inner_res != right_inner_res )
@@ -864,7 +871,31 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                             return ;
                         }
                         
-                        TODO(sp, "Unsize into trait object - " << l_t << " <- " << r_t);
+                        // 1. Search for an implementation of the data trait for this type
+                        bool succ = this->find_trait_impls(e.m_trait.m_path, right_inner_res, [&](const auto& args) {
+                            if( args.m_types.size() > 0 )
+                                TODO(sp, "Handle unsizing to traits with params");
+                            return true;
+                            });
+                        if(!succ)
+                            ERROR(sp, E0000, "Trait " << e.m_trait << " isn't implemented for " << right_inner_res );
+                        for(const auto& marker : e.m_markers)
+                        {
+                            TODO(sp, "Check for marker trait impls ("<<marker<<") when unsizing to " << left_inner_res << " from " << right_inner_res);
+                            //bool succ = this->find_trait_impls(e.m_trait.m_path, right_inner_res, [&](const auto& args) {
+                            //    if( args.m_types.size() > 0 )
+                            //        TODO(sp, "Handle unsizing to traits with params");
+                            //    return true;
+                            //    });
+                        }
+                        
+                        // Valid unsize, insert unsize operation
+                        auto span = node_ptr->span();
+                        node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), l_t.clone() ));
+                        node_ptr->m_res_type = l_t.clone();
+                        
+                        this->mark_change();
+                        return ;
                     }
                     // - If left is a slice, right can unsize/deref
                     if( left_inner_res.m_data.is_Slice() && !right_inner_res.m_data.is_Slice() )

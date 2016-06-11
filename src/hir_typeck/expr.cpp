@@ -345,6 +345,15 @@ namespace typeck {
             }
         }
 
+        void visit(::HIR::ExprNode_ArraySized& node) override {
+            if(node.m_size_val == ~0u) {
+                BUG(node.span(), "sized array literal didn't have its size evaluated");
+            }
+            
+            ::HIR::ExprVisitorDef::visit(node);
+            
+            this->context.apply_equality( node.span(), node.m_res_type, ::HIR::TypeRef(::HIR::TypeRef::Data::make_Array({ box$(node.m_val->m_res_type.clone()), ::HIR::ExprPtr(), node.m_size_val })) );
+        }
         void visit(::HIR::ExprNode_Tuple& node) override
         {
             ::HIR::ExprVisitorDef::visit(node);
@@ -1025,7 +1034,7 @@ namespace typeck {
                 this->context.apply_equality(sp, arg_ty, arg_expr_ptr->m_res_type,  &arg_expr_ptr);
             }
             
-            DEBUG("Rreturn: " << arg_types.back());
+            DEBUG("_TupleVariant - Return: " << arg_types.back());
             this->context.apply_equality(sp, node.m_res_type, arg_types.back() /*,  &this_node_ptr*/);
             
             ::HIR::ExprVisitorDef::visit(node);
@@ -1515,7 +1524,12 @@ namespace typeck {
         // - Array list
         void visit(::HIR::ExprNode_ArrayList& node) override
         {
-            const auto& val_type = *node.m_res_type.m_data.as_Array().inner;
+            auto& ty = this->context.get_type(node.m_res_type);
+            if( !ty.m_data.is_Array() ) {
+                this->context.dump();
+                BUG(node.span(), "Return type of array literal wasn't an array - " << node.m_res_type << " = " << ty);
+            }
+            const auto& val_type = *ty.m_data.as_Array().inner;
             ::HIR::ExprVisitorDef::visit(node);
             for(auto& sn : node.m_vals)
                 this->context.apply_equality(sn->span(), val_type, sn->m_res_type,  &sn);
@@ -1523,7 +1537,12 @@ namespace typeck {
         // - Array (sized)
         void visit(::HIR::ExprNode_ArraySized& node) override
         {
-            const auto& val_type = *node.m_res_type.m_data.as_Array().inner;
+            auto& ty = this->context.get_type(node.m_res_type);
+            if( !ty.m_data.is_Array() ) {
+                this->context.dump();
+                BUG(node.span(), "Return type of array literal wasn't an array - " << node.m_res_type << " = " << ty);
+            }
+            const auto& val_type = *ty.m_data.as_Array().inner;
             ::HIR::ExprVisitorDef::visit(node);
             this->context.apply_equality(node.span(), val_type, node.m_val->m_res_type,  &node.m_val);
         }
