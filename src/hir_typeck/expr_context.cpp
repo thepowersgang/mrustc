@@ -1007,6 +1007,25 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                 }
                 ),
             (Borrow,
+                // If using `&mut T` where `&const T` is expected - insert a reborrow (&*)
+                if( l_e.type == ::HIR::BorrowType::Shared && r_e.type == ::HIR::BorrowType::Unique && node_ptr_ptr ) {
+                    this->apply_equality(sp, *l_e.inner, cb_left, *r_e.inner, cb_right, nullptr);
+                    
+                    // Add cast down
+                    auto& node_ptr = *node_ptr_ptr;
+                    
+                    auto span = node_ptr->span();
+                    // *<inner>
+                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Deref(mv$(span), mv$(node_ptr)));
+                    node_ptr->m_res_type = l_e.inner->clone();
+                    // &*<inner>
+                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_UniOp(mv$(span), ::HIR::ExprNode_UniOp::Op::Ref, mv$(node_ptr)));
+                    node_ptr->m_res_type = l_t.clone();
+                    
+                    this->mark_change();
+                    return ;
+                }
+                
                 if( l_e.type != r_e.type ) {
                     // TODO: This could be allowed if left == Shared && right == Unique (reborrowing)
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - Borrow classes differ");
