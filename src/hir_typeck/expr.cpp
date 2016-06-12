@@ -72,7 +72,7 @@ namespace typeck {
             return false;
             ),
         (Array,
-            TODO(Span(), "Array - " << tpl);
+            return monomorphise_type_needed(*e.inner);
             ),
         (Slice,
             return monomorphise_type_needed(*e.inner);
@@ -91,10 +91,18 @@ namespace typeck {
             return monomorphise_type_needed(*e.inner);
             ),
         (Function,
-            TODO(Span(), "Function - " << tpl);
+            for(const auto& ty : e.m_arg_types) {
+                if( monomorphise_type_needed(ty) )
+                    return true;
+            }
+            return monomorphise_type_needed(*e.m_rettype);
             ),
         (Closure,
-            TODO(Span(), "Closure - " << tpl);
+            for(const auto& ty : e.m_arg_types) {
+                if( monomorphise_type_needed(ty) )
+                    return true;
+            }
+            return monomorphise_type_needed(*e.m_rettype);
             )
         )
         throw "";
