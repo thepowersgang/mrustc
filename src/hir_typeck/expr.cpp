@@ -641,7 +641,11 @@ namespace typeck {
                     // - The only option is for them both to be the same type (because primitives can't have multiple overloads)
                     // TODO: Check that this operation is valid to peform. (e.g. not doing f32_val <<= f32_val)
                     // TODO: Aren't the bitwise shift operators valid with any integer type count?
-                    this->context.apply_equality(node.span(), node.m_slot->m_res_type, node.m_value->m_res_type);
+                    if( node.m_op == ::HIR::ExprNode_Assign::Op::Shr || node.m_op == ::HIR::ExprNode_Assign::Op::Shl ) {
+                    }
+                    else {
+                        this->context.apply_equality(node.span(), node.m_slot->m_res_type, node.m_value->m_res_type);
+                    }
                 }
                 else {
                     const char *lang_item = nullptr;
@@ -1415,8 +1419,6 @@ namespace typeck {
                         },
                         [&](const auto& impl) {
                             DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-                            for(const auto& v : impl.m_methods)
-                                DEBUG(" > " << v.first);
                             auto it = impl.m_methods.find(e.item);
                             if( it == impl.m_methods.end() )
                                 return false;

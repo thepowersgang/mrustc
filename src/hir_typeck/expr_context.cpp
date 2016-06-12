@@ -1968,7 +1968,6 @@ bool typeck::TypecheckContext::find_method(const Span& sp, const ::HIR::TypeRef&
         {
             if( trait_ref.first == nullptr )
                 break;
-            DEBUG("Search for impl of ?" << *trait_ref.first);
             
             // TODO: Search supertraits too
             auto it = trait_ref.second->m_values.find(method_name);
