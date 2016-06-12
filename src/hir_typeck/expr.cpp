@@ -275,6 +275,43 @@ namespace typeck {
         }
     }
     
+    template<typename T>
+    void fix_param_count_(const Span& sp, TypecheckContext& context, const T& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params)
+    {
+        if( params.m_types.size() == param_defs.m_types.size() ) {
+            // Nothing to do, all good
+            return ;
+        }
+        
+        if( params.m_types.size() == 0 ) {
+            for(const auto& typ : param_defs.m_types) {
+                (void)typ;
+                params.m_types.push_back( context.new_ivar_tr() );
+            }
+        }
+        else if( params.m_types.size() > param_defs.m_types.size() ) {
+            ERROR(sp, E0000, "Too many type parameters passed to " << path);
+        }
+        else {
+            while( params.m_types.size() < param_defs.m_types.size() ) {
+                const auto& typ = param_defs.m_types[params.m_types.size()];
+                if( typ.m_default.m_data.is_Infer() ) {
+                    ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
+                }
+                else {
+                    // TODO: What if this contains a generic param? (is that valid? Self maybe, what about others?)
+                    params.m_types.push_back( typ.m_default.clone() );
+                }
+            }
+        }
+    }
+    void fix_param_count(const Span& sp, TypecheckContext& context, const ::HIR::Path& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params) {
+        fix_param_count_(sp, context, path, param_defs, params);
+    }
+    void fix_param_count(const Span& sp, TypecheckContext& context, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params) {
+        fix_param_count_(sp, context, path, param_defs, params);
+    }
+    
     // Enumerate inferrence variables (most of them) in the expression tree
     //
     // - Any type equalities here are mostly optimisations (as this gets run only once)
@@ -472,6 +509,28 @@ namespace typeck {
         }
         void visit(::HIR::ExprNode_TupleVariant& node) override {
             this->visit_generic_path(node.span(), node.m_path);
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        void visit(::HIR::ExprNode_UnitVariant& node) override {
+            this->visit_generic_path(node.span(), node.m_path);
+            if( node.m_is_struct )
+            {
+                const auto& str = this->context.m_crate.get_struct_by_path(node.span(), node.m_path.m_path);
+                fix_param_count(node.span(), this->context, node.m_path, str.m_params, node.m_path.m_params);
+                auto ty = ::HIR::TypeRef::new_path( node.m_path.clone(), ::HIR::TypeRef::TypePathBinding::make_Struct(&str) );
+                this->context.apply_equality(node.span(), node.m_res_type, ty);
+            }
+            else
+            {
+                auto s_path = node.m_path.m_path;
+                s_path.m_components.pop_back();
+                
+                const auto& enm = this->context.m_crate.get_enum_by_path(node.span(), s_path);
+                fix_param_count(node.span(), this->context, node.m_path, enm.m_params, node.m_path.m_params);
+                
+                auto ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(mv$(s_path), node.m_path.m_params.clone()), ::HIR::TypeRef::TypePathBinding::make_Enum(&enm) );
+                this->context.apply_equality(node.span(), node.m_res_type, ty);
+            }
             ::HIR::ExprVisitorDef::visit(node);
         }
     };
@@ -1110,7 +1169,7 @@ namespace typeck {
                 }
                 
                 // Set output to `< "*current_ty" as Index<"index_ty> >::Output`
-                // TODO: Get the output type from the bound/impl in `find_trait_impls`
+                // TODO: Get the output type from the bound/impl in `find_trait_impls` (reduces load on expand_associated_types)
                 auto tp = ::HIR::GenericPath( path_Index );
                 tp.m_params.m_types.push_back( index_ty.clone() );
                 auto out_type = ::HIR::TypeRef::new_path(
@@ -1143,35 +1202,6 @@ namespace typeck {
             ::HIR::ExprVisitorDef::visit(node);
         }
         
-        void fix_param_count(const Span& sp, const ::HIR::Path& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params)
-        {
-            if( params.m_types.size() == param_defs.m_types.size() ) {
-                // Nothing to do, all good
-                return ;
-            }
-            
-            if( params.m_types.size() == 0 ) {
-                for(const auto& typ : param_defs.m_types) {
-                    (void)typ;
-                    params.m_types.push_back( this->context.new_ivar_tr() );
-                }
-            }
-            else if( params.m_types.size() > param_defs.m_types.size() ) {
-                ERROR(sp, E0000, "Too many type parameters passed to " << path);
-            }
-            else {
-                while( params.m_types.size() < param_defs.m_types.size() ) {
-                    const auto& typ = param_defs.m_types[params.m_types.size()];
-                    if( typ.m_default.m_data.is_Infer() ) {
-                        ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
-                    }
-                    else {
-                        // TODO: What if this contains a generic param? (is that valid? Self maybe, what about others?)
-                        params.m_types.push_back( typ.m_default.clone() );
-                    }
-                }
-            }
-        }
         void visit(::HIR::ExprNode_TupleVariant& node) override {
             const Span& sp = node.span();
             auto& arg_types = node.m_arg_types;
@@ -1200,8 +1230,7 @@ namespace typeck {
                 if( node.m_is_struct )
                 {
                     const auto& str = this->context.m_crate.get_struct_by_path(sp, node.m_path.m_path);
-                    // TODO: Remove this clone
-                    this->fix_param_count(sp, ::HIR::Path(node.m_path.clone()), str.m_params,  path_params);
+                    fix_param_count(sp, this->context, node.m_path, str.m_params,  path_params);
                     const auto& fields = str.m_data.as_Tuple();
                     arg_types.reserve( fields.size() );
                     for(const auto& fld : fields)
@@ -1223,8 +1252,7 @@ namespace typeck {
                     type_path.m_components.pop_back();
                     
                     const auto& enm = this->context.m_crate.get_enum_by_path(sp, type_path);
-                    // TODO: Remove this clone
-                    this->fix_param_count(sp, ::HIR::Path(node.m_path.clone()), enm.m_params,  path_params);
+                    fix_param_count(sp, this->context, node.m_path, enm.m_params,  path_params);
                     
                     auto it = ::std::find_if( enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x){ return x.first == variant_name; });
                     if( it == enm.m_variants.end() ) {
@@ -1281,7 +1309,7 @@ namespace typeck {
                 TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
                 (Generic,
                     const auto& fcn = this->context.m_crate.get_function_by_path(sp, e.m_path);
-                    this->fix_param_count(sp, path, fcn.m_params,  e.m_params);
+                    fix_param_count(sp, this->context, path, fcn.m_params,  e.m_params);
                     fcn_ptr = &fcn;
                     cache.m_fcn_params = &fcn.m_params;
                     
@@ -1308,9 +1336,9 @@ namespace typeck {
                     ),
                 (UfcsKnown,
                     const auto& trait = this->context.m_crate.get_trait_by_path(sp, e.trait.m_path);
-                    this->fix_param_count(sp, path, trait.m_params, e.trait.m_params);
+                    fix_param_count(sp, this->context, path, trait.m_params, e.trait.m_params);
                     const auto& fcn = trait.m_values.at(e.item).as_Function();
-                    this->fix_param_count(sp, path, fcn.m_params,  e.params);
+                    fix_param_count(sp, this->context, path, fcn.m_params,  e.params);
                     cache.m_fcn_params = &fcn.m_params;
                     cache.m_top_params = &trait.m_params;
                     
@@ -1370,7 +1398,7 @@ namespace typeck {
                         ERROR(sp, E0000, "Failed to locate function " << path);
                     }
                     assert(impl_ptr);
-                    this->fix_param_count(sp, path, fcn_ptr->m_params,  e.params);
+                    fix_param_count(sp, this->context, path, fcn_ptr->m_params,  e.params);
                     cache.m_fcn_params = &fcn_ptr->m_params;
                     
                     
@@ -1730,7 +1758,7 @@ namespace typeck {
             if( val_types.size() == 0 )
             {
                 const auto& str = this->context.m_crate.get_struct_by_path(node.span(), node.m_path.m_path);
-                this->fix_param_count(node.span(), node.m_path.clone(), str.m_params, node.m_path.m_params);
+                fix_param_count(node.span(), this->context, node.m_path.clone(), str.m_params, node.m_path.m_params);
                 
                 auto ty = ::HIR::TypeRef( ::HIR::TypeRef::Data::Data_Path { node.m_path.clone(), ::HIR::TypeRef::TypePathBinding::make_Struct(&str) } );
                 this->context.apply_equality(node.span(), node.m_res_type, ty);

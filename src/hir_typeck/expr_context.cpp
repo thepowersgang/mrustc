@@ -1010,6 +1010,21 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                 this->apply_equality(sp, *l_e.inner, cb_left, *r_e.inner, cb_right, nullptr);
                 ),
             (Pointer,
+                // If using `*mut T` where `*const T` is expected - add cast
+                if( l_e.type == ::HIR::BorrowType::Shared && r_e.type == ::HIR::BorrowType::Unique && node_ptr_ptr ) {
+                    this->apply_equality(sp, *l_e.inner, cb_left, *r_e.inner, cb_right, nullptr);
+                    
+                    // Add cast down
+                    auto& node_ptr = *node_ptr_ptr;
+                    
+                    auto span = node_ptr->span();
+                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), l_t.clone() ));
+                    node_ptr->m_res_type = l_t.clone();
+                    
+                    this->mark_change();
+                    return ;
+                }
+                
                 if( l_e.type != r_e.type ) {
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - Pointer mutability differs");
                 }
