@@ -4,6 +4,15 @@
 #include <hir/hir.hpp>
 #include <algorithm>    // std::find_if
 
+void typeck::TypecheckContext::push_traits(const ::std::vector<::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >& list)
+{
+    this->m_traits.insert( this->m_traits.end(), list.begin(), list.end() );
+}
+void typeck::TypecheckContext::pop_traits(const ::std::vector<::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >& list)
+{
+    this->m_traits.erase( this->m_traits.end() - list.size(), this->m_traits.end() );
+}
+
 void typeck::TypecheckContext::dump() const
 {
     DEBUG("TypecheckContext - " << m_ivars.size() << " ivars, " << m_locals.size() << " locals");
@@ -1694,12 +1703,14 @@ bool typeck::TypecheckContext::find_trait_impls_crate(const Span& sp,
                                 if( ty2 == assoc_bound.second ) {
                                     return true;
                                 }
+                                this->dump();
                                 TODO(sp, "Check type bound (fuzz) " << ty2 << " = " << assoc_bound.second);
                             }
                             else {
-                                if( it->second == assoc_bound.second ) {
+                                if( this->get_type(it->second) == assoc_bound.second ) {
                                     return true;
                                 }
+                                this->dump();
                                 TODO(sp, "Check type bound (fuzz) " << it->second << " = " << assoc_bound.second);
                             }
                         }
@@ -1955,6 +1966,10 @@ bool typeck::TypecheckContext::find_method(const Span& sp, const ::HIR::TypeRef&
         // 3. Search for trait methods (using currently in-scope traits)
         for(const auto& trait_ref : ::reverse(m_traits))
         {
+            if( trait_ref.first == nullptr )
+                break;
+            DEBUG("Search for impl of ?" << *trait_ref.first);
+            
             // TODO: Search supertraits too
             auto it = trait_ref.second->m_values.find(method_name);
             if( it == trait_ref.second->m_values.end() )

@@ -42,7 +42,9 @@ struct ExprNode_Block:
 {
     bool    m_is_unsafe;
     ::std::vector< ExprNodeP >  m_nodes;
-    ::std::vector< ::HIR::SimplePath>   m_traits;
+
+    ::HIR::SimplePath   m_local_mod;
+    ::std::vector< ::std::pair<const ::HIR::SimplePath*,const ::HIR::Trait*> >  m_traits;
     
     ExprNode_Block(Span sp):
         ExprNode(mv$(sp)),

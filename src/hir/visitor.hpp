@@ -9,8 +9,9 @@ namespace HIR {
 class PathChain
 {
     const PathChain*    prev;
-    const ::std::string&    name;
 public:
+    const ::std::string&    name;
+
     PathChain(const PathChain& prev, const ::std::string& name):
         prev(&prev),
         name(name)

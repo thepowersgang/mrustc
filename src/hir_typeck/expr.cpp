@@ -339,6 +339,7 @@ namespace typeck {
         }
         void visit(::HIR::ExprNode_Block& node) override
         {
+            this->context.push_traits( node.m_traits );
             ::HIR::ExprVisitorDef::visit(node);
             if( node.m_nodes.size() > 0 ) {
                 auto& ln = *node.m_nodes.back();
@@ -347,6 +348,7 @@ namespace typeck {
             else {
                 node.m_res_type = ::HIR::TypeRef::new_unit();
             }
+            this->context.pop_traits( node.m_traits );
         }
         void visit(::HIR::ExprNode_Return& node) override
         {
@@ -558,6 +560,7 @@ namespace typeck {
         void visit(::HIR::ExprNode_Block& node) override
         {
             TRACE_FUNCTION_F("{ }");
+            this->context.push_traits( node.m_traits );
             if( node.m_nodes.size() ) {
                 auto& lastnode = node.m_nodes.back();
                 this->context.apply_equality(node.span(), node.m_res_type, lastnode->m_res_type,  &lastnode);
@@ -566,6 +569,7 @@ namespace typeck {
                 this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
             }
             ::HIR::ExprVisitorDef::visit(node);
+            this->context.pop_traits( node.m_traits );
         }
         // - Let: Equates inner to outer
         void visit(::HIR::ExprNode_Let& node) override
@@ -2066,18 +2070,30 @@ namespace {
             m_item_generics = &gps;
             return NullOnDrop< ::HIR::GenericParams>(m_item_generics);
         }
+        
+        void push_traits(const ::HIR::Module& mod) {
+            auto sp = Span();
+            DEBUG("Module has " << mod.m_traits.size() << " in-scope traits");
+            // - Push a NULL entry to prevent parent module import lists being searched
+            m_traits.push_back( ::std::make_pair(nullptr, nullptr) );
+            for( const auto& trait_path : mod.m_traits ) {
+                DEBUG("Push " << trait_path);
+                m_traits.push_back( ::std::make_pair( &trait_path, &this->m_crate.get_trait_by_path(sp, trait_path) ) );
+            }
+        }
+        void pop_traits(const ::HIR::Module& mod) {
+            DEBUG("Module has " << mod.m_traits.size() << " in-scope traits");
+            for(unsigned int i = 0; i < mod.m_traits.size(); i ++ )
+                m_traits.pop_back();
+            m_traits.pop_back();
+        }
     
     public:
         void visit_module(::HIR::PathChain p, ::HIR::Module& mod) override
         {
-            DEBUG("Module has " << mod.m_traits.size() << " in-scope traits");
-            for( const auto& trait_path : mod.m_traits ) {
-                DEBUG("Push " << trait_path);
-                m_traits.push_back( ::std::make_pair( &trait_path, &this->m_crate.get_trait_by_path(Span(), trait_path) ) );
-            }
+            push_traits(mod);
             ::HIR::Visitor::visit_module(p, mod);
-            for(unsigned int i = 0; i < mod.m_traits.size(); i ++ )
-                m_traits.pop_back();
+            pop_traits(mod);
         }
         
         // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
@@ -2096,21 +2112,30 @@ namespace {
             TRACE_FUNCTION_F("impl " << impl.m_type);
             auto _ = this->set_impl_generics(impl.m_params);
             
+            const auto& mod = this->m_crate.get_mod_by_path(Span(), impl.m_src_module);
+            push_traits(mod);
             ::HIR::Visitor::visit_type_impl(impl);
+            pop_traits(mod);
         }
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
             auto _ = this->set_impl_generics(impl.m_params);
             
+            const auto& mod = this->m_crate.get_mod_by_path(Span(), impl.m_src_module);
+            push_traits(mod);
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
+            pop_traits(mod);
         }
         void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type << " { }");
             auto _ = this->set_impl_generics(impl.m_params);
             
+            const auto& mod = this->m_crate.get_mod_by_path(Span(), impl.m_src_module);
+            push_traits(mod);
             ::HIR::Visitor::visit_marker_impl(trait_path, impl);
+            pop_traits(mod);
         }
         
         void visit_type(::HIR::TypeRef& ty) override

@@ -211,6 +211,8 @@ public:
     ::HIR::TypeRef  m_type;
     
     ::std::map< ::std::string, ::HIR::Function> m_methods;
+
+    ::HIR::SimplePath   m_src_module;
     
     bool matches_type(const ::HIR::TypeRef& tr, t_cb_resolve_type ty_res) const;
     bool matches_type(const ::HIR::TypeRef& tr) const {
@@ -229,6 +231,8 @@ public:
     ::std::map< ::std::string, ::HIR::ExprPtr> m_constants;
     ::std::map< ::std::string, ::HIR::TypeRef> m_types;
     
+    ::HIR::SimplePath   m_src_module;
+    
     bool matches_type(const ::HIR::TypeRef& tr, t_cb_resolve_type ty_res) const;
     bool matches_type(const ::HIR::TypeRef& tr) const {
         return matches_type(tr, [](const auto& x)->const auto&{ return x; });
@@ -242,6 +246,8 @@ public:
     ::HIR::PathParams   m_trait_args;
     bool    is_positive;
     ::HIR::TypeRef  m_type;
+    
+    ::HIR::SimplePath   m_src_module;
     
     bool matches_type(const ::HIR::TypeRef& tr, t_cb_resolve_type ty_res) const;
     bool matches_type(const ::HIR::TypeRef& tr) const {
@@ -272,6 +278,7 @@ public:
     const ::HIR::Trait& get_trait_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Struct& get_struct_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Enum& get_enum_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
+    const ::HIR::Module& get_mod_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     
     const ::HIR::ValueItem& get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Function& get_function_by_path(const Span& sp, const ::HIR::SimplePath& path) const;

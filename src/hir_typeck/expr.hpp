@@ -83,6 +83,9 @@ public:
         m_has_changed = true;
     }
     
+    void push_traits(const ::std::vector<::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >& list);
+    void pop_traits(const ::std::vector<::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >& list);
+
     void compact_ivars();
     /// Apply defaults (i32 or f64), returns true if a default was applied
     bool apply_defaults();

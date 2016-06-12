@@ -37,6 +37,7 @@ struct LowerHIR_ExprNode_Visitor:
         if( v.m_local_mod )
         {
             // TODO: Populate m_traits from the local module's import list
+            rv->m_local_mod = LowerHIR_SimplePath(v.span(), v.m_local_mod->path());
         }
         
         m_rv.reset( static_cast< ::HIR::ExprNode*>(rv) );

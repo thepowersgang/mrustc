@@ -199,6 +199,16 @@ const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const 
     return it->second->ent;
 }
 
+const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::SimplePath& path) const
+{
+    const auto& ti = this->get_typeitem_by_path(sp, path);
+    TU_IFLET(::HIR::TypeItem, ti, Module, e,
+        return e;
+    )
+    else {
+        BUG(sp, "Module path " << path << " didn't point to a module");
+    }
+}
 const ::HIR::Trait& ::HIR::Crate::get_trait_by_path(const Span& sp, const ::HIR::SimplePath& path) const
 {
     const auto& ti = this->get_typeitem_by_path(sp, path);

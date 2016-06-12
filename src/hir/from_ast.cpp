@@ -7,9 +7,8 @@
 #include "from_ast.hpp"
 #include "visitor.hpp"
 
-::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::SimplePath path);
+::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::SimplePath path, ::std::vector< ::HIR::SimplePath> traits = {});
 ::HIR::Function LowerHIR_Function(const ::AST::Function& f);
-::HIR::SimplePath LowerHIR_SimplePath(const Span& sp, const ::AST::Path& path, bool allow_final_generic = false);
 ::HIR::PathParams LowerHIR_PathParams(const Span& sp, const ::AST::PathParams& src_params, bool allow_assoc);
 ::HIR::TraitPath LowerHIR_TraitPath(const Span& sp, const ::AST::Path& path);
 
@@ -814,12 +813,32 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
     mod.m_value_items.insert( ::std::make_pair( mv$(name), ::make_unique_ptr(::HIR::VisEnt< ::HIR::ValueItem> { is_pub, mv$(ti) }) ) );
 }
 
-::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::SimplePath path)
+::HIR::Module LowerHIR_Module(const ::AST::Module& ast_mod, ::HIR::SimplePath path, ::std::vector< ::HIR::SimplePath> traits)
 {
     TRACE_FUNCTION_F("path = " << path);
     ::HIR::Module   mod { };
+    
+    mod.m_traits = mv$(traits);
+    
+    // Populate trait list
+    for(const auto& item : ast_mod.m_type_items)
+    {
+        if( item.second.path.binding().is_Trait() ) {
+            auto sp = LowerHIR_SimplePath(Span(), item.second.path);
+            if( ::std::find(mod.m_traits.begin(), mod.m_traits.end(), sp) == mod.m_traits.end() )
+                mod.m_traits.push_back( mv$(sp) ); 
+        }
+    }
+    
+    for( unsigned int i = 0; i < ast_mod.anon_mods().size(); i ++ )
+    {
+        auto& submod = *ast_mod.anon_mods()[i];
+        ::std::string name = FMT("#" << i);
+        auto item_path = path + name;
+        _add_mod_ns_item( mod,  mv$(name), false, ::HIR::TypeItem::make_Module( LowerHIR_Module(submod, mv$(item_path), mod.m_traits) ) );
+    }
 
-    for( const auto& item : module.items() )
+    for( const auto& item : ast_mod.items() )
     {
         auto item_path = path + item.name;
         TU_MATCH(::AST::Item, (item.data), (e),
@@ -872,24 +891,6 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
         )
     }
     
-    for( unsigned int i = 0; i < module.anon_mods().size(); i ++ )
-    {
-        auto& submod = *module.anon_mods()[i];
-        ::std::string name = FMT("#" << i);
-        auto item_path = path + name;
-        _add_mod_ns_item( mod,  mv$(name), false, ::HIR::TypeItem::make_Module( LowerHIR_Module(submod, mv$(item_path)) ) );
-    }
-    
-    // TODO: Impl blocks
-    
-    // TODO: Populate trait list
-    for(const auto& item : module.m_type_items)
-    {
-        if( item.second.path.binding().is_Trait() ) {
-            mod.m_traits.push_back( LowerHIR_SimplePath(Span(), item.second.path) ); 
-        }
-    }
-    
     return mod;
 }
 
@@ -921,15 +922,15 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
             auto trait_name = mv$(trait_path.m_path);
             auto trait_args = mv$(trait_path.m_params);
             
-            // TODO: Determine if a trait is a marker (i.e. is a OIBIT)
-            
             if( is_marker )
             {
                 hir_crate.m_marker_impls.insert( ::std::make_pair( mv$(trait_name), ::HIR::MarkerImpl {
                     mv$(params),
                     mv$(trait_args),
                     true,
-                    mv$(type)
+                    mv$(type),
+                    
+                    LowerHIR_SimplePath(Span(), ast_mod.path())
                     } ) );
             }
             else
@@ -961,7 +962,9 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                     
                     mv$(methods),
                     mv$(constants),
-                    mv$(types)
+                    mv$(types),
+                    
+                    LowerHIR_SimplePath(Span(), ast_mod.path())
                     }) );
             }
         }
@@ -985,7 +988,9 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
             hir_crate.m_type_impls.push_back( ::HIR::TypeImpl {
                 mv$(params),
                 mv$(type),
-                mv$( methods )
+                mv$(methods),
+                
+                LowerHIR_SimplePath(Span(), ast_mod.path())
                 } );
         }
     }
@@ -1001,7 +1006,9 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
             mv$(params),
             mv$(trait_args),
             false,
-            mv$(type)
+            mv$(type),
+            
+            LowerHIR_SimplePath(Span(), ast_mod.path())
             } ) );
     }
 }

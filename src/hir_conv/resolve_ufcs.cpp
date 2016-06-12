@@ -117,8 +117,14 @@ namespace {
                 
                 void visit(::HIR::ExprNode_Block& node) override
                 {
-                    for( const auto& trait_path : node.m_traits )
-                        upper_visitor.m_traits.push_back( ::std::make_pair( &trait_path, &upper_visitor.find_trait(trait_path) ) );
+                    if( node.m_traits.size() == 0 && node.m_local_mod.m_components.size() > 0 ) {
+                        const auto& mod = upper_visitor.m_crate.get_mod_by_path(node.span(), node.m_local_mod);
+                        for( const auto& trait_path : mod.m_traits ) {
+                            node.m_traits.push_back( ::std::make_pair( &trait_path, &upper_visitor.m_crate.get_trait_by_path(node.span(), trait_path) ) );
+                        }
+                    }
+                    for( const auto& trait_ref : node.m_traits )
+                        upper_visitor.m_traits.push_back( trait_ref );
                     ::HIR::ExprVisitorDef::visit(node);
                     for(unsigned int i = 0; i < node.m_traits.size(); i ++ )
                         upper_visitor.m_traits.pop_back();
