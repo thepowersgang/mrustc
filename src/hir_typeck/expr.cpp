@@ -1065,11 +1065,66 @@ namespace typeck {
         // - Index: Look for implementation of the Index trait
         void visit(::HIR::ExprNode_Index& node) override
         {
-            this->context.find_trait_impls(this->context.m_crate.get_lang_item_path(node.span(), "index"), node.m_value->m_res_type, [&](const auto& args) {
-                DEBUG("TODO: Insert index operator (if index arg matches)");
-                return false;
-                });
+            TRACE_FUNCTION_FR("_Index","_Index");
             ::HIR::ExprVisitorDef::visit(node);
+            const auto& path_Index = this->context.m_crate.get_lang_item_path(node.span(), "index");
+            
+            const auto& index_ty = this->context.get_type(node.m_index->m_res_type);
+            // NOTE: Indexing triggers autoderef
+            unsigned int deref_count = 0;
+            ::HIR::TypeRef  tmp_type;   // Temporary type used for handling Deref
+            const auto* current_ty = &node.m_value->m_res_type;
+            do {
+                const auto& ty = this->context.get_type(*current_ty);
+                DEBUG("_Index: (: " << ty << ")[: " << index_ty << "]");
+                bool rv = this->context.find_trait_impls(path_Index, ty, [&](const auto& args) {
+                    assert( args.m_types.size() == 1 );
+                    const auto& impl_index = args.m_types[0];
+                    
+                    auto cmp = impl_index.compare_with_paceholders(node.span(), index_ty, this->context.callback_resolve_infer());
+                    if( cmp == ::HIR::Compare::Unequal)
+                        return false;
+                    if( cmp == ::HIR::Compare::Equal ) {
+                        return true;
+                    }
+                    DEBUG("TODO: Handle fuzzy match index operator " << impl_index);
+                    return false;
+                    });
+                if( rv ) {
+                    break;
+                }
+                
+                deref_count += 1;
+                current_ty = this->context.autoderef(node.span(), ty,  tmp_type);
+            } while( current_ty );
+            
+            if( current_ty )
+            {
+                if( deref_count > 0 )
+                    DEBUG("Adding " << deref_count << " dereferences");
+                while( deref_count > 0 )
+                {
+                    node.m_value = ::HIR::ExprNodeP( new ::HIR::ExprNode_Deref(node.span(), mv$(node.m_value)) );
+                    this->context.add_ivars( node.m_value->m_res_type );
+                    deref_count -= 1;
+                }
+                
+                // Set output to `< "*current_ty" as Index<"index_ty> >::Output`
+                // TODO: Get the output type from the bound/impl in `find_trait_impls`
+                auto tp = ::HIR::GenericPath( path_Index );
+                tp.m_params.m_types.push_back( index_ty.clone() );
+                auto out_type = ::HIR::TypeRef::new_path(
+                    ::HIR::Path(::HIR::Path::Data::Data_UfcsKnown {
+                        box$(this->context.get_type(*current_ty).clone()),
+                        mv$(tp),
+                        "Output",
+                        {}
+                    }),
+                    {}
+                    );
+                
+                this->context.apply_equality( node.span(), node.m_res_type, out_type );
+            }
         }
         // - Deref: Look for impl of Deref
         void visit(::HIR::ExprNode_Deref& node) override

@@ -1562,6 +1562,30 @@ bool typeck::TypecheckContext::trait_contains_method(const Span& sp, const ::HIR
 // -------------------------------------------------------------------------------------------------------------------
 //
 // -------------------------------------------------------------------------------------------------------------------
+const ::HIR::TypeRef* typeck::TypecheckContext::autoderef(const Span& sp, const ::HIR::TypeRef& ty,  ::HIR::TypeRef& tmp_type) const
+{
+    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Borrow, e,
+        DEBUG("Deref " << ty << " into " << *e.inner);
+        return &*e.inner;
+    )
+    else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
+        DEBUG("Deref " << ty << " into [" << *e.inner << "]");
+        tmp_type = ::HIR::TypeRef::new_slice( e.inner->clone() );
+        return &tmp_type;
+    )
+    else {
+        // TODO: Search for a Deref impl
+        bool succ = this->find_trait_impls(this->m_crate.get_lang_item_path(sp, "deref"), ty, [&](const auto& args) {
+            return true;
+            });
+        if( succ ) {
+            TODO(sp, "Found a Deref impl for " << ty << ", use the output of it");
+        }
+        else {
+            return nullptr;
+        }
+    }
+}
 unsigned int typeck::TypecheckContext::autoderef_find_method(const Span& sp, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const
 {
     unsigned int deref_count = 0;
@@ -1584,27 +1608,7 @@ unsigned int typeck::TypecheckContext::autoderef_find_method(const Span& sp, con
         
         // 3. Dereference and try again
         deref_count += 1;
-        TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Borrow, e,
-            DEBUG("Deref " << ty << " into " << *e.inner);
-            current_ty = &*e.inner;
-        )
-        else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
-            DEBUG("Deref " << ty << " into [" << *e.inner << "]");
-            tmp_type = ::HIR::TypeRef::new_slice( e.inner->clone() );
-            current_ty = &tmp_type;
-        )
-        else {
-            // TODO: Search for a Deref impl
-            bool succ = this->find_trait_impls(this->m_crate.get_lang_item_path(sp, "deref"), ty, [&](const auto& args) {
-                return true;
-                });
-            if( succ ) {
-                TODO(sp, "Found a Deref impl for " << ty << ", use the output of it");
-            }
-            else {
-                current_ty = nullptr;
-            }
-        }
+        current_ty = this->autoderef(sp, ty,  tmp_type);
     } while( current_ty );
     
     TU_IFLET(::HIR::TypeRef::Data, this->get_type(top_ty).m_data, Borrow, e,
@@ -1771,27 +1775,7 @@ unsigned int typeck::TypecheckContext::autoderef_find_field(const Span& sp, cons
         
         // 3. Dereference and try again
         deref_count += 1;
-        TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Borrow, e,
-            DEBUG("Deref " << ty << " into " << *e.inner);
-            current_ty = &*e.inner;
-        )
-        else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
-            DEBUG("Deref " << ty << " into [" << *e.inner << "]");
-            tmp_type = ::HIR::TypeRef::new_slice( e.inner->clone() );
-            current_ty = &tmp_type;
-        )
-        else {
-            // TODO: Search for a Deref impl
-            bool succ = this->find_trait_impls(this->m_crate.get_lang_item_path(sp, "deref"), ty, [&](const auto& args) {
-                return true;
-                });
-            if( succ ) {
-                TODO(sp, "Found a Deref impl for " << ty << ", use the output of it");
-            }
-            else {
-                current_ty = nullptr;
-            }
-        }
+        current_ty = this->autoderef(sp, ty,  tmp_type);
     } while( current_ty );
     
     TU_IFLET(::HIR::TypeRef::Data, this->get_type(top_ty).m_data, Borrow, e,
