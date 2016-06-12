@@ -495,7 +495,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     )
     throw "";
 }
-::HIR::Compare HIR::TypeRef::compare_with_paceholders(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder) const
+::HIR::Compare HIR::TypeRef::compare_with_placeholders(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder) const
 {
     TRACE_FUNCTION_F(*this << " ?= " << x);
     assert( !this->m_data.is_Infer() );
@@ -557,7 +557,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return (le == re ? Compare::Equal : Compare::Unequal);
         ),
     (Path,
-        return le.path.compare_with_paceholders( sp, re.path, resolve_placeholder );
+        return le.path.compare_with_placeholders( sp, re.path, resolve_placeholder );
         ),
     (Generic,
         if( le.binding != re.binding )
@@ -570,10 +570,10 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     (Array,
         if( le.size_val != re.size_val )
             return Compare::Unequal;
-        return le.inner->compare_with_paceholders(sp, *re.inner, resolve_placeholder);
+        return le.inner->compare_with_placeholders(sp, *re.inner, resolve_placeholder);
         ),
     (Slice,
-        return le.inner->compare_with_paceholders(sp, *re.inner, resolve_placeholder);
+        return le.inner->compare_with_placeholders(sp, *re.inner, resolve_placeholder);
         ),
     (Tuple,
         if( le.size() != re.size() )
@@ -581,7 +581,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         auto rv = Compare::Equal;
         for( unsigned int i = 0; i < le.size(); i ++ )
         {
-            auto rv2 = le[i].compare_with_paceholders( sp, re[i], resolve_placeholder );
+            auto rv2 = le[i].compare_with_placeholders( sp, re[i], resolve_placeholder );
             if( rv2 == Compare::Unequal )
                 return Compare::Unequal;
             if( rv2 == Compare::Fuzzy )
@@ -592,12 +592,12 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     (Borrow,
         if( le.type != re.type )
             return Compare::Unequal;
-        return le.inner->compare_with_paceholders(sp, *re.inner, resolve_placeholder);
+        return le.inner->compare_with_placeholders(sp, *re.inner, resolve_placeholder);
         ),
     (Pointer,
         if( le.type != re.type )
             return Compare::Unequal;
-        return le.inner->compare_with_paceholders(sp, *re.inner, resolve_placeholder);
+        return le.inner->compare_with_placeholders(sp, *re.inner, resolve_placeholder);
         ),
     (Function,
         TODO(sp, "Compare " << *this << " and " << right);

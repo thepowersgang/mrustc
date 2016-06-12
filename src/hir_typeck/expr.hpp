@@ -5,6 +5,8 @@
 #include <hir/hir.hpp>
 #include <hir/visitor.hpp>
 
+#define IDENT_CR  ([](const auto& v)->const auto&{return v;})
+
 namespace typeck {
 
 // TODO/NOTE - This is identical to ::HIR::t_cb_resolve_type
@@ -85,6 +87,9 @@ public:
     /// Apply defaults (i32 or f64), returns true if a default was applied
     bool apply_defaults();
     
+    bool pathparams_contain_ivars(const ::HIR::PathParams& pps) const;
+    bool type_contains_ivars(const ::HIR::TypeRef& ty) const;
+    
     /// Adds a local variable binding (type is mutable so it can be inferred if required)
     void add_local(unsigned int index, const ::std::string& name, ::HIR::TypeRef type);
 
@@ -129,25 +134,26 @@ public:
     /// Iterate over in-scope bounds (function then top)
     bool iterate_bounds( ::std::function<bool(const ::HIR::GenericBound&)> cb) const;
     
-    /// Searches for a trait impl that matches the provided trait name and type
-    bool find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,  ::std::function<bool(const ::HIR::PathParams&)> callback) const;
-    
     typedef ::std::function<bool(const ::HIR::PathParams&, const ::std::map< ::std::string,::HIR::TypeRef>&)> t_cb_trait_impl;
+
+    /// Searches for a trait impl that matches the provided trait name and type
+    bool find_trait_impls(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const;
     
     /// Locate a named trait in the provied trait (either itself or as a parent trait)
     bool find_named_trait_in_trait(const Span& sp,
-            const ::HIR::SimplePath& des,
+            const ::HIR::SimplePath& des, const ::HIR::PathParams& params,
             const ::HIR::Trait& trait_ptr, const ::HIR::SimplePath& trait_path, const ::HIR::PathParams& pp,
             const ::HIR::TypeRef& self_type,
             t_cb_trait_impl callback
             ) const;
     /// Search for a trait implementation in current bounds
-    bool find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const;
+    bool find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const;
     /// Search for a trait implementation in the crate
-    bool find_trait_impls_crate(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,  ::std::function<bool(const ::HIR::PathParams&)> callback) const;
+    bool find_trait_impls_crate(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const;
     
     /// Locates a named method in a trait, and returns the path of the trait that contains it (with fixed parameters)
     bool trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
+    bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
     
     const ::HIR::TypeRef* autoderef(const Span& sp, const ::HIR::TypeRef& ty,  ::HIR::TypeRef& tmp_type) const;
     /// Locate the named method by applying auto-dereferencing.
@@ -159,7 +165,7 @@ public:
     bool find_field(const Span& sp, const ::HIR::TypeRef& ty, const ::std::string& name,  /* Out -> */::HIR::TypeRef& field_type) const;
     
 public:
-    ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> callback_resolve_infer() {
+    ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> callback_resolve_infer() const {
         return [&](const auto& ty)->const auto& {
                 if( ty.m_data.is_Infer() ) 
                     return this->get_type(ty);

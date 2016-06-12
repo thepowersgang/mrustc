@@ -147,7 +147,7 @@ public:
     Path(SimplePath _);
     
     Path clone() const;
-    Compare compare_with_paceholders(const Span& sp, const Path& x, t_cb_resolve_type resolve_placeholder) const;
+    Compare compare_with_placeholders(const Span& sp, const Path& x, t_cb_resolve_type resolve_placeholder) const;
     
     friend ::std::ostream& operator<<(::std::ostream& os, const Path& x);
 };

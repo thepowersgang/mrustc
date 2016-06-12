@@ -648,16 +648,17 @@ namespace typeck {
                     }
                     assert(lang_item);
                     const auto& trait_path = this->context.m_crate.get_lang_item_path(node.span(), lang_item);
+                    ::HIR::PathParams   trait_path_pp;
+                    trait_path_pp.m_types.push_back( ty_right.clone() );
                     
                     
-                    
-                    /*bool rv =*/ this->context.find_trait_impls(trait_path, ty_left, [&](const auto& args) {
+                    /*bool rv =*/ this->context.find_trait_impls(node.span(), trait_path,trait_path_pp, ty_left, [&](const auto& args, const auto& a_types) {
                         assert( args.m_types.size() == 1 );
                         const auto& impl_right = args.m_types[0];
                         
                         TODO(node.span(), "Check " << impl_right << " vs " << ty_right);
                         
-                        //auto cmp = impl_index.compare_with_paceholders(node.span(), index_ty, this->context.callback_resolve_infer());
+                        //auto cmp = impl_index.compare_with_placeholders(node.span(), index_ty, this->context.callback_resolve_infer());
                         //if( cmp == ::HIR::Compare::Unequal)
                         //    return false;
                         //if( cmp == ::HIR::Compare::Equal ) {
@@ -681,7 +682,7 @@ namespace typeck {
             const auto& ty_right = this->context.get_type(node.m_right->m_res_type);
             const auto& ty_res = this->context.get_type(node.m_res_type);
             
-            DEBUG("BinOp " << ty_left << " <> " << ty_right << " = " << ty_res);
+            TRACE_FUNCTION_FR("BinOp " << ty_left << " <> " << ty_right << " = " << ty_res, "BinOp");
             
             // Boolean ops can't be overloaded, and require `bool` on both sides
             if( node.m_op == ::HIR::ExprNode_BinOp::Op::BoolAnd || node.m_op == ::HIR::ExprNode_BinOp::Op::BoolOr )
@@ -856,6 +857,10 @@ namespace typeck {
             }
             else
             {
+                const auto& ty_left  = this->context.get_type(node.m_left->m_res_type );
+                const auto& ty_right = this->context.get_type(node.m_right->m_res_type);
+                //const auto& ty_res = this->context.get_type(node.m_res_type);
+                
                 const char* item_name = nullptr;
                 bool has_output = true;
                 switch(node.m_op)
@@ -889,13 +894,15 @@ namespace typeck {
                 ::HIR::TypeRef  possible_right_type;
                 unsigned int count = 0;
                 const auto& ops_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
+                ::HIR::PathParams   ops_trait_pp;
+                ops_trait_pp.m_types.push_back( ty_right.clone() );
                 DEBUG("Searching for impl " << ops_trait << "< " << ty_right << "> for " << ty_left);
-                bool found_bound = this->context.find_trait_impls_bound(sp, ops_trait, ty_left,
+                bool found_bound = this->context.find_trait_impls_bound(sp, ops_trait, ops_trait_pp,  ty_left,
                     [&](const auto& args, const auto& assoc) {
                         assert(args.m_types.size() == 1);
                         const auto& arg_type = args.m_types[0];
                         // TODO: if arg_type mentions Self?
-                        auto cmp = arg_type.compare_with_paceholders(node.span(), ty_right, this->context.callback_resolve_infer());
+                        auto cmp = arg_type.compare_with_placeholders(node.span(), ty_right, this->context.callback_resolve_infer());
                         if( cmp == ::HIR::Compare::Unequal ) {
                             DEBUG("- (fail) bounded impl " << ops_trait << "<" << arg_type << "> (ty_right = " << this->context.get_type(ty_right));
                             return false;
@@ -919,38 +926,11 @@ namespace typeck {
                         assert( impl.m_trait_args.m_types.size() == 1 );
                         const auto& arg_type = impl.m_trait_args.m_types[0];
                         
-                        // TODO: Abstract the below code into a method on TypecheckContext
-                        // 1. Match arg_type with ty_right into impl block params
-                        bool    fail = false;
-                        ::std::vector< const ::HIR::TypeRef*> impl_params;
-                        impl_params.resize( impl.m_params.m_types.size() );
-                        auto cb = [&](auto idx, const auto& ty) {
-                            assert( idx < impl_params.size() );
-                            DEBUG(idx << " = " << ty);
-                            if( impl_params[idx] ) {
-                                if( *impl_params[idx] != ty ) {
-                                    fail = true;
-                                }
-                            }
-                            else {
-                                impl_params[idx] = &ty;
-                            }
-                            };
-                        fail |= !impl.m_type.match_test_generics(node.span(), ty_left , this->context.callback_resolve_infer(), cb);
-                        fail |= !arg_type   .match_test_generics(node.span(), ty_right, this->context.callback_resolve_infer(), cb);
-                        for(const auto& ty : impl_params)
-                            assert( ty );
-                        if( fail ) {
-                            DEBUG("- (generic fail) impl" << impl.m_params.fmt_args() << " " << ops_trait << "<" << arg_type << "> for " << impl.m_type);
-                            return false;
-                        }
-                        
-                        // TODO: handle a generic righthand type by using the above parameters
                         if( monomorphise_type_needed(arg_type) ) {
                             return true;
                             //TODO(node.span(), "Compare ops trait type when it contains generics - " << arg_type << " == " << ty_right);
                         }
-                        auto cmp = arg_type.compare_with_paceholders(node.span(), ty_right, this->context.callback_resolve_infer());
+                        auto cmp = arg_type.compare_with_placeholders(node.span(), ty_right, this->context.callback_resolve_infer());
                         if( cmp == ::HIR::Compare::Unequal ) {
                             return false;
                         }
@@ -1153,24 +1133,26 @@ namespace typeck {
             ::HIR::TypeRef  tmp_type;   // Temporary type used for handling Deref
             const auto* current_ty = &node.m_value->m_res_type;
             
-            const auto& index_ty = this->context.get_type(node.m_index->m_res_type);
+            ::HIR::PathParams   trait_pp;
+            trait_pp.m_types.push_back( this->context.get_type(node.m_index->m_res_type).clone() );
             do {
                 const auto& ty = this->context.get_type(*current_ty);
-                DEBUG("_Index: (: " << ty << ")[: " << index_ty << "]");
+                DEBUG("_Index: (: " << ty << ")[: " << trait_pp.m_types[0] << "]");
                 
-                ::HIR::TypeRef  possible_type;
+                ::HIR::TypeRef  possible_index_type;
                 unsigned int count = 0;
-                bool rv = this->context.find_trait_impls(path_Index, ty, [&](const auto& args) {
+                bool rv = this->context.find_trait_impls(node.span(), path_Index,trait_pp, ty, [&](const auto& args, const auto& assoc) {
                     assert( args.m_types.size() == 1 );
                     const auto& impl_index = args.m_types[0];
                     
-                    auto cmp = impl_index.compare_with_paceholders(node.span(), index_ty, this->context.callback_resolve_infer());
+                    auto cmp = impl_index.compare_with_placeholders(node.span(), trait_pp.m_types[0], this->context.callback_resolve_infer());
                     if( cmp == ::HIR::Compare::Unequal)
                         return false;
+                    // TODO: use `assoc`
                     if( cmp == ::HIR::Compare::Equal ) {
                         return true;
                     }
-                    possible_type = impl_index.clone();
+                    possible_index_type = impl_index.clone();
                     count += 1;
                     return false;
                     });
@@ -1178,7 +1160,8 @@ namespace typeck {
                     break;
                 }
                 else if( count == 1 ) {
-                    this->context.apply_equality(node.span(), index_ty, possible_type);
+                    assert( possible_index_type != ::HIR::TypeRef() );
+                    this->context.apply_equality(node.span(), node.m_index->m_res_type, possible_index_type);
                     break;
                 }
                 else {
@@ -1526,46 +1509,53 @@ namespace typeck {
                 (TraitBound,
                     auto real_type = monomorphise_type_with(sp, be.type, cache.m_monomorph_cb);
                     auto real_trait = monomorphise_genericpath_with(sp, be.trait.m_path, cache.m_monomorph_cb, false);
-                    DEBUG("Bound " << be.type << " (" << real_type << ") : " << be.trait << " (" << real_trait << ")");
+                    DEBUG("Bound " << be.type << ":  " << be.trait);
+                    DEBUG("= (" << real_type << ": " << real_trait << ")");
                     auto monomorph_bound = [&](const auto& gt)->const auto& {
                         return gt;
-                        // TODO: Should this expand to the impl type?
-                        // - Probably not, as that's `find_trait_impls`'s job
-                        /*
-                        const auto& ge = gt.m_data.as_Generic();
-                        if( ge.binding == 0xFFFF )
-                            return real_type;
-                        else {
-                            TODO(sp, "visit_call::monomorph_bound - Handle generic " << gt);
-                        }
-                        */
                         };
                     const auto& trait_params = be.trait.m_path.m_params;
                     // TODO: Detect marker traits
-                    auto rv = this->context.find_trait_impls(be.trait.m_path.m_path, real_type, [&](const auto& pp) {
+                    const auto& trait_gp = be.trait.m_path;
+                    auto rv = this->context.find_trait_impls(sp, trait_gp.m_path, real_trait.m_params, real_type, [&](const auto& pp, const auto& at) {
                         if( pp.m_types.size() != trait_params.m_types.size() ) {
                             BUG(sp, "Parameter mismatch");
                         }
-                        if( pp.m_types.size() > 0 )
-                        {
-                            DEBUG("Check equality of " << pp << " and " << trait_params << " (once monomorphed)");
-                            // HACK! Just assume it's good and match.
-                            // - This could have a false negative (if there's multiple impls of the trait with different params)
-                            // - OR, it could false positive (Possible? Specialisation)
-                            for(unsigned int i = 0; i < pp.m_types.size(); i ++ ) {
-                                auto l = monomorphise_type_with(sp, pp.m_types[i], monomorph_bound);
-                                auto r = monomorphise_type_with(sp, trait_params.m_types[i], cache.m_monomorph_cb);
-                                DEBUG(i << " " << l << " and " << r);
-                                this->context.apply_equality(sp, pp.m_types[i], monomorph_bound, trait_params.m_types[i], cache.m_monomorph_cb, nullptr);
-                            }
+                        DEBUG("Apply equality of " << pp << " and " << trait_params << " (once monomorphed)");
+                        for(unsigned int i = 0; i < pp.m_types.size(); i ++ ) {
+                            auto& l = pp.m_types[i];
+                            auto r = monomorphise_type_with(sp, trait_params.m_types[i], cache.m_monomorph_cb);
+                            DEBUG(i << " " << l << " and " << r);
+                            //this->context.apply_equality(sp, pp.m_types[i], monomorph_bound, trait_params.m_types[i], cache.m_monomorph_cb, nullptr);
+                            this->context.apply_equality(sp, pp.m_types[i], monomorph_bound, real_trait.m_params.m_types[i], IDENT_CR, nullptr);
                         }
+                        // TODO: Use `at`
+                        // - Check if the associated type bounds are present
+                        #if 0
+                        for( const auto& assoc : be.trait.m_type_bounds ) {
+                            auto it = at.find( assoc.first );
+                            if( it == at.end() )
+                                TODO(sp, "Bounded associated type " << assoc.first << " wasn't in list provided by find_trait_impls");
+                            DEBUG("Equate (impl) " << it->second << " and (bound) " << assoc.second);
+                            //this->context.apply_equality(sp, it->second, IDENT_CR, assoc.second, cache.m_monomorph_cb, nullptr);
+                            auto other_ty = monomorphise_type_with(sp, assoc.second, cache.m_monomorph_cb, true);
+                            this->context.apply_equality(sp, it->second, other_ty);
+                        }
+                        DEBUG("at = " << at);
+                        #endif
                         return true;
                         });
                     if( !rv ) {
-                        // Continue or error? (Need a fuzzy return from the above)
+                        // TODO: Enable this once marker impls are checked correctly
+                        //if( this->context.type_contains_ivars(real_type) ) {
+                        //    ERROR(sp, E0000, "No suitable impl of " << real_trait << " for " << real_type);
+                        //}
                         DEBUG("- No impl of " << be.trait.m_path << " for " << real_type);
                         continue ;
                     }
+                    // TODO: Only do this if associated type was missing in list from impl
+                    // - E.g. FnMut<Output=Bar>
+                    #if 1
                     for( const auto& assoc : be.trait.m_type_bounds ) {
                         auto ty = ::HIR::TypeRef( ::HIR::Path(::HIR::Path::Data::Data_UfcsKnown { box$(real_type.clone()), be.trait.m_path.clone(), assoc.first, {} }) );
                         // TODO: I'd like to avoid this copy, but expand_associated_types doesn't use the monomorph callback
@@ -1574,7 +1564,7 @@ namespace typeck {
                         //this->context.apply_equality( sp, ty, [](const auto&x)->const auto&{return x;}, assoc.csecond, cache.m_monomorph_cb, nullptr );
                         this->context.apply_equality( sp, ty, other_ty );
                     }
-                    
+                    #endif
                     ),
                 (TypeEquality,
                     #if 0
@@ -1618,7 +1608,9 @@ namespace typeck {
                     ::HIR::TypeRef  fcn_ret;
                     // Locate impl of FnOnce
                     const auto& lang_FnOnce = this->context.m_crate.get_lang_item_path(node.span(), "fn_once");
-                    auto was_bounded = this->context.find_trait_impls_bound(node.span(), lang_FnOnce, ty, [&](const auto& args, const auto& assoc) {
+                    ::HIR::PathParams   trait_pp;
+                    trait_pp.m_types.push_back( this->context.new_ivar_tr() );  // TODO: Bind to arguments?
+                    auto was_bounded = this->context.find_trait_impls_bound(node.span(), lang_FnOnce, trait_pp, ty, [&](const auto& args, const auto& assoc) {
                             const auto& tup = args.m_types[0];
                             if( !tup.m_data.is_Tuple() )
                                 ERROR(node.span(), E0000, "FnOnce expects a tuple argument, got " << tup);
@@ -1648,6 +1640,11 @@ namespace typeck {
                     
                     node.m_arg_types = mv$( fcn_args_tup.m_data.as_Tuple() );
                     node.m_arg_types.push_back( mv$(fcn_ret) );
+                    ),
+                (Closure,
+                    for( const auto& arg : e.m_arg_types )
+                        node.m_arg_types.push_back( arg.clone() );
+                    node.m_arg_types.push_back( e.m_rettype->clone() );
                     ),
                 (Function,
                     for( const auto& arg : e.m_arg_types )

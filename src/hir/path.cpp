@@ -217,7 +217,7 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
 }
 
 namespace {
-    ::HIR::Compare compare_with_paceholders(
+    ::HIR::Compare compare_with_placeholders(
             const Span& sp,
             const ::HIR::PathParams& l, const ::HIR::PathParams& r,
             ::HIR::t_cb_resolve_type resolve_placeholder
@@ -232,7 +232,7 @@ namespace {
             }
             for( unsigned int i = 0; i < r.m_types.size(); i ++ )
             {
-                auto rv2 = l.m_types[i].compare_with_paceholders( sp, r.m_types[i], resolve_placeholder );
+                auto rv2 = l.m_types[i].compare_with_placeholders( sp, r.m_types[i], resolve_placeholder );
                 if( rv2 == Compare::Unequal )
                     return Compare::Unequal;
                 if( rv2 == Compare::Fuzzy )
@@ -241,7 +241,7 @@ namespace {
         }
         return rv;
     }
-    ::HIR::Compare compare_with_paceholders(
+    ::HIR::Compare compare_with_placeholders(
             const Span& sp,
             const ::HIR::GenericPath& l, const ::HIR::GenericPath& r,
             ::HIR::t_cb_resolve_type resolve_placeholder
@@ -259,7 +259,7 @@ namespace {
                 return Compare::Unequal;
         }
         
-        return compare_with_paceholders(sp, l.m_params, r.m_params, resolve_placeholder);
+        return compare_with_placeholders(sp, l.m_params, r.m_params, resolve_placeholder);
     }
 }
 
@@ -271,26 +271,26 @@ namespace {
     }\
 } while(0)
 
-::HIR::Compare HIR::Path::compare_with_paceholders(const Span& sp, const Path& x, t_cb_resolve_type resolve_placeholder) const
+::HIR::Compare HIR::Path::compare_with_placeholders(const Span& sp, const Path& x, t_cb_resolve_type resolve_placeholder) const
 {
     if( this->m_data.tag() != x.m_data.tag() )
         return Compare::Unequal;
     TU_MATCH(::HIR::Path::Data, (this->m_data, x.m_data), (ple, pre),
     (Generic,
-        return ::compare_with_paceholders(sp, ple, pre, resolve_placeholder);
+        return ::compare_with_placeholders(sp, ple, pre, resolve_placeholder);
         ),
     (UfcsUnknown,
         if( ple.item != pre.item)
             return Compare::Unequal;
         
-        TODO(sp, "Path::compare_with_paceholders - UfcsUnknown");
+        TODO(sp, "Path::compare_with_placeholders - UfcsUnknown");
         ),
     (UfcsInherent,
         if( ple.item != pre.item)
             return Compare::Unequal;
         ::HIR::Compare  rv = ::HIR::Compare::Equal;
-        CMP(rv, ple.type->compare_with_paceholders(sp, *pre.type, resolve_placeholder));
-        CMP(rv, ::compare_with_paceholders(sp, ple.params, pre.params, resolve_placeholder));
+        CMP(rv, ple.type->compare_with_placeholders(sp, *pre.type, resolve_placeholder));
+        CMP(rv, ::compare_with_placeholders(sp, ple.params, pre.params, resolve_placeholder));
         return rv;
         ),
     (UfcsKnown,
@@ -298,9 +298,9 @@ namespace {
             return Compare::Unequal;
         
         ::HIR::Compare  rv = ::HIR::Compare::Equal;
-        CMP(rv, ple.type->compare_with_paceholders(sp, *pre.type, resolve_placeholder));
-        CMP(rv, ::compare_with_paceholders(sp, ple.trait, pre.trait, resolve_placeholder));
-        CMP(rv, ::compare_with_paceholders(sp, ple.params, pre.params, resolve_placeholder));
+        CMP(rv, ple.type->compare_with_placeholders(sp, *pre.type, resolve_placeholder));
+        CMP(rv, ::compare_with_placeholders(sp, ple.trait, pre.trait, resolve_placeholder));
+        CMP(rv, ::compare_with_placeholders(sp, ple.params, pre.params, resolve_placeholder));
         return rv;
         )
     )

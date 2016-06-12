@@ -202,7 +202,7 @@ public:
     bool match_test_generics(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder, ::std::function<void(unsigned int, const ::HIR::TypeRef&)> callback) const;
     
     // Compares this type with another, using `resolve_placeholder` to get replacements for generics/infers in `x`
-    Compare compare_with_paceholders(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder) const;
+    Compare compare_with_placeholders(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder) const;
 };
 
 extern ::std::ostream& operator<<(::std::ostream& os, const ::HIR::TypeRef& ty);
