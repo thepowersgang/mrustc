@@ -127,32 +127,33 @@ namespace typeck {
     }
     ::HIR::TypeRef monomorphise_type_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer)
     {
-        TRACE_FUNCTION_F("tpl = " << tpl);
+        ::HIR::TypeRef  rv;
+        TRACE_FUNCTION_FR("tpl = " << tpl, rv);
         TU_MATCH(::HIR::TypeRef::Data, (tpl.m_data), (e),
         (Infer,
             if( allow_infer ) {
-                return ::HIR::TypeRef(e);
+                rv = ::HIR::TypeRef(e);
             }
             else {
                BUG(sp, "_ type found in monomorphisation target");
             }
             ),
         (Diverge,
-            return ::HIR::TypeRef(e);
+            rv = ::HIR::TypeRef(e);
             ),
         (Primitive,
-            return ::HIR::TypeRef(e);
+            rv = ::HIR::TypeRef(e);
             ),
         (Path,
             TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
             (Generic,
-                return ::HIR::TypeRef( ::HIR::TypeRef::Data::Data_Path {
+                rv = ::HIR::TypeRef( ::HIR::TypeRef::Data::Data_Path {
                         monomorphise_genericpath_with(sp, e2, callback, allow_infer),
                         e.binding.clone()
                         } );
                 ),
             (UfcsKnown,
-                return ::HIR::TypeRef( ::HIR::Path::Data::make_UfcsKnown({
+                rv = ::HIR::TypeRef( ::HIR::Path::Data::make_UfcsKnown({
                     box$( monomorphise_type_with(sp, *e2.type, callback, allow_infer) ),
                     monomorphise_genericpath_with(sp, e2.trait, callback, allow_infer),
                     e2.item,
@@ -168,43 +169,43 @@ namespace typeck {
             )
             ),
         (Generic,
-            return callback(tpl).clone();
+            rv = callback(tpl).clone();
             ),
         (TraitObject,
-            ::HIR::TypeRef::Data::Data_TraitObject  rv;
-            rv.m_trait = monomorphise_traitpath_with(sp, e.m_trait, callback, allow_infer);
+            ::HIR::TypeRef::Data::Data_TraitObject  to;
+            to.m_trait = monomorphise_traitpath_with(sp, e.m_trait, callback, allow_infer);
             for(const auto& trait : e.m_markers)
             {
-                rv.m_markers.push_back( monomorphise_genericpath_with(sp, trait, callback, allow_infer) ); 
+                to.m_markers.push_back( monomorphise_genericpath_with(sp, trait, callback, allow_infer) ); 
             }
-            rv.m_lifetime = e.m_lifetime;
-            return ::HIR::TypeRef( mv$(rv) );
+            to.m_lifetime = e.m_lifetime;
+            rv = ::HIR::TypeRef( mv$(to) );
             ),
         (Array,
             if( e.size_val == ~0u ) {
                 BUG(sp, "Attempting to clone array with unknown size - " << tpl);
             }
-            return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Array({
+            rv = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Array({
                 box$( monomorphise_type_with(sp, *e.inner, callback) ),
                 ::HIR::ExprPtr(),
                 e.size_val
                 }) );
             ),
         (Slice,
-            return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Slice({ box$(monomorphise_type_with(sp, *e.inner, callback)) }) );
+            rv = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Slice({ box$(monomorphise_type_with(sp, *e.inner, callback)) }) );
             ),
         (Tuple,
             ::std::vector< ::HIR::TypeRef>  types;
             for(const auto& ty : e) {
                 types.push_back( monomorphise_type_with(sp, ty, callback) );
             }
-            return ::HIR::TypeRef( mv$(types) );
+            rv = ::HIR::TypeRef( mv$(types) );
             ),
         (Borrow,
-            return ::HIR::TypeRef::new_borrow(e.type, monomorphise_type_with(sp, *e.inner, callback));
+            rv = ::HIR::TypeRef::new_borrow(e.type, monomorphise_type_with(sp, *e.inner, callback));
             ),
         (Pointer,
-            return ::HIR::TypeRef::new_pointer(e.type, monomorphise_type_with(sp, *e.inner, callback));
+            rv = ::HIR::TypeRef::new_pointer(e.type, monomorphise_type_with(sp, *e.inner, callback));
             ),
         (Function,
             ::HIR::FunctionType ft;
@@ -213,7 +214,7 @@ namespace typeck {
             ft.m_rettype = box$( e.m_rettype->clone() );
             for( const auto& arg : e.m_arg_types )
                 ft.m_arg_types.push_back( arg.clone() );
-            return ::HIR::TypeRef( mv$(ft) );
+            rv = ::HIR::TypeRef( mv$(ft) );
             ),
         (Closure,
             ::HIR::TypeRef::Data::Data_Closure  oe;
@@ -221,10 +222,10 @@ namespace typeck {
             oe.m_rettype = box$( monomorphise_type_with(sp, *e.m_rettype, callback) );
             for(const auto& a : e.m_arg_types)
                 oe.m_arg_types.push_back( monomorphise_type_with(sp, a, callback) );
-            return ::HIR::TypeRef(::HIR::TypeRef::Data::make_Closure( mv$(oe) ));
+            rv = ::HIR::TypeRef(::HIR::TypeRef::Data::make_Closure( mv$(oe) ));
             )
         )
-        assert(!"Fell off end of monomorphise_type_with");
+        return rv;
     }
     
     ::HIR::TypeRef monomorphise_type(const Span& sp, const ::HIR::GenericParams& params_def, const ::HIR::PathParams& params,  const ::HIR::TypeRef& tpl)
@@ -1336,7 +1337,7 @@ namespace typeck {
                     const auto& path_params = e.m_params;
                     monomorph_cb = [&](const auto& gt)->const auto& {
                             const auto& e = gt.m_data.as_Generic();
-                            if( e.name == "Self" )
+                            if( e.name == "Self" || e.binding == 0xFFFF )
                                 TODO(sp, "Handle 'Self' when monomorphising");
                             if( e.binding < 256 ) {
                                 BUG(sp, "Impl-level parameter on free function (#" << e.binding << " " << e.name << ")");
@@ -1511,6 +1512,7 @@ namespace typeck {
                 (TraitBound,
                     auto real_type = monomorphise_type_with(sp, be.type, cache.m_monomorph_cb);
                     const auto& trait_params = be.trait.m_path.m_params;
+                    // TODO: Detect marker traits
                     auto rv = this->context.find_trait_impls(be.trait.m_path.m_path, real_type, [&](const auto& pp) {
                         if( pp.m_types.size() != trait_params.m_types.size() ) {
                             BUG(sp, "Parameter mismatch");
@@ -1533,7 +1535,11 @@ namespace typeck {
                     }
                     for( const auto& assoc : be.trait.m_type_bounds ) {
                         auto ty = ::HIR::TypeRef( ::HIR::Path(::HIR::Path::Data::Data_UfcsKnown { box$(real_type.clone()), be.trait.m_path.clone(), assoc.first, {} }) );
-                        this->context.apply_equality( sp, ty, [](const auto&x)->const auto&{return x;}, assoc.second, cache.m_monomorph_cb, nullptr );
+                        // TODO: I'd like to avoid this copy, but expand_associated_types doesn't use the monomorph callback
+                        auto other_ty = monomorphise_type_with(sp, assoc.second, cache.m_monomorph_cb, true);
+                        DEBUG("Checking associated type bound " << assoc.first << " (" << ty << ") = " << assoc.second << " (" << other_ty << ")");
+                        //this->context.apply_equality( sp, ty, [](const auto&x)->const auto&{return x;}, assoc.csecond, cache.m_monomorph_cb, nullptr );
+                        this->context.apply_equality( sp, ty, other_ty );
                     }
                     
                     ),

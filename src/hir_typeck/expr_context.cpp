@@ -811,6 +811,92 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
 
             // - If tags don't match, error
             if( l_t.m_data.tag() != r_t.m_data.tag() ) {
+                
+                // If either side is UFCS, and still contains unconstrained ivars - don't error
+                struct H {
+                    static bool pathparams_contain_ivars(const TypecheckContext& context, const ::HIR::PathParams& pps) {
+                        for( const auto& ty : pps.m_types ) {
+                            if(H::type_contains_ivars(context, ty))
+                                return true;
+                        }
+                        return false;
+                    }
+                    static bool type_contains_ivars(const TypecheckContext& context, const ::HIR::TypeRef& ty) {
+                        TU_MATCH(::HIR::TypeRef::Data, (context.get_type(ty).m_data), (e),
+                        (Infer, return true; ),
+                        (Primitive, return false; ),
+                        (Diverge, return false; ),
+                        (Generic, return false; ),
+                        (Path,
+                            TU_MATCH(::HIR::Path::Data, (e.path.m_data), (pe),
+                            (Generic,
+                                return H::pathparams_contain_ivars(context, pe.m_params);
+                                ),
+                            (UfcsKnown,
+                                if( H::type_contains_ivars(context, *pe.type) )
+                                    return true;
+                                if( H::pathparams_contain_ivars(context, pe.trait.m_params) )
+                                    return true;
+                                return H::pathparams_contain_ivars(context, pe.params);
+                                ),
+                            (UfcsInherent,
+                                if( H::type_contains_ivars(context, *pe.type) )
+                                    return true;
+                                return H::pathparams_contain_ivars(context, pe.params);
+                                ),
+                            (UfcsUnknown,
+                                BUG(Span(), "UfcsUnknown");
+                                )
+                            )
+                            ),
+                        (Borrow,
+                            return type_contains_ivars(context, *e.inner);
+                            ),
+                        (Pointer,
+                            return type_contains_ivars(context, *e.inner);
+                            ),
+                        (Slice,
+                            return type_contains_ivars(context, *e.inner);
+                            ),
+                        (Array,
+                            return type_contains_ivars(context, *e.inner);
+                            ),
+                        (Closure,
+                            TODO(Span(), "Closure");
+                            ),
+                        (Function,
+                            TODO(Span(), "Closure");
+                            ),
+                        (TraitObject,
+                            for(const auto& marker : e.m_markers)
+                                if( H::pathparams_contain_ivars(context, marker.m_params) )
+                                    return true;
+                            return H::pathparams_contain_ivars(context, e.m_trait.m_path.m_params);
+                            ),
+                        (Tuple,
+                            for(const auto& st : e)
+                                if( type_contains_ivars(context, st) )
+                                    return true;
+                            return false;
+                            )
+                        )
+                        throw "";
+                    }
+                    static bool type_is_free_ufcs(const TypecheckContext& context, const ::HIR::TypeRef& ty) {
+                        TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, e,
+                            if( e.path.m_data.is_Generic() ) {
+                                return false;
+                            }
+                            return type_contains_ivars(context, ty);
+                        )
+                        return false;
+                    }
+                };
+
+                if( H::type_is_free_ufcs(*this, l_t) || H::type_is_free_ufcs(*this, r_t) ) {
+                    return ;
+                }
+                
                 // Type error
                 this->dump();
                 ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
