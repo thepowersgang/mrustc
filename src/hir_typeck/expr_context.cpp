@@ -755,10 +755,10 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
         )
         else {
             // If generic replacement happened, clear the callback
-            if( left.m_data.is_Generic() ) {
+            if( left.m_data.is_Generic() || left.m_data.is_Infer() ) {
                 cb_left = [](const auto& x)->const auto&{return x;};
             }
-            if( right.m_data.is_Generic() ) {
+            if( right.m_data.is_Generic() || right.m_data.is_Infer() ) {
                 cb_right = [](const auto& x)->const auto&{return x;};
             }
             

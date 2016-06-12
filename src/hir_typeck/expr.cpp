@@ -1513,7 +1513,7 @@ namespace typeck {
             DEBUG("RV " << cache.m_arg_types.back());
             this->context.apply_equality(sp, res_type, cache.m_arg_types.back(),  &this_node_ptr);
             
-            // TODO: Check generic bounds (after links between args and params are known)
+            // Check generic bounds (after links between args and params are known)
             // - HACK! Below just handles closures and fn traits.
             // - TODO: Make this FAR more generic than it is
             for(const auto& bound : cache.m_fcn_params->m_bounds)
@@ -1525,6 +1525,21 @@ namespace typeck {
                     ),
                 (TraitBound,
                     auto real_type = monomorphise_type_with(sp, be.type, cache.m_monomorph_cb);
+                    auto real_trait = monomorphise_genericpath_with(sp, be.trait.m_path, cache.m_monomorph_cb, false);
+                    DEBUG("Bound " << be.type << " (" << real_type << ") : " << be.trait << " (" << real_trait << ")");
+                    auto monomorph_bound = [&](const auto& gt)->const auto& {
+                        return gt;
+                        // TODO: Should this expand to the impl type?
+                        // - Probably not, as that's `find_trait_impls`'s job
+                        /*
+                        const auto& ge = gt.m_data.as_Generic();
+                        if( ge.binding == 0xFFFF )
+                            return real_type;
+                        else {
+                            TODO(sp, "visit_call::monomorph_bound - Handle generic " << gt);
+                        }
+                        */
+                        };
                     const auto& trait_params = be.trait.m_path.m_params;
                     // TODO: Detect marker traits
                     auto rv = this->context.find_trait_impls(be.trait.m_path.m_path, real_type, [&](const auto& pp) {
@@ -1533,12 +1548,16 @@ namespace typeck {
                         }
                         if( pp.m_types.size() > 0 )
                         {
-                            //TODO(sp, "Check equality of " << pp << " and " << trait_params << "(once monomorphed)");
+                            DEBUG("Check equality of " << pp << " and " << trait_params << " (once monomorphed)");
                             // HACK! Just assume it's good and match.
                             // - This could have a false negative (if there's multiple impls of the trait with different params)
                             // - OR, it could false positive (Possible? Specialisation)
-                            for(unsigned int i = 0; i < pp.m_types.size(); i ++ )
-                                this->context.apply_equality(sp, pp.m_types[i], [](const auto&x)->const auto&{return x;}, trait_params.m_types[i], cache.m_monomorph_cb, nullptr);
+                            for(unsigned int i = 0; i < pp.m_types.size(); i ++ ) {
+                                auto l = monomorphise_type_with(sp, pp.m_types[i], monomorph_bound);
+                                auto r = monomorphise_type_with(sp, trait_params.m_types[i], cache.m_monomorph_cb);
+                                DEBUG(i << " " << l << " and " << r);
+                                this->context.apply_equality(sp, pp.m_types[i], monomorph_bound, trait_params.m_types[i], cache.m_monomorph_cb, nullptr);
+                            }
                         }
                         return true;
                         });
