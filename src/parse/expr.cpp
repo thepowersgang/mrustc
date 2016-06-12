@@ -205,6 +205,21 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
             return rv;
             }
         
+        case TOK_RWORD_RETURN:
+        case TOK_RWORD_CONTINUE:
+        case TOK_RWORD_BREAK: {
+            PUTBACK(tok, lex);
+            auto ret = Parse_Stmt(lex);
+            if( GET_TOK(tok, lex) != TOK_SEMICOLON ) {
+                CHECK_TOK(tok, TOK_BRACE_CLOSE);
+                PUTBACK(tok, lex);
+            }
+            else {
+                // return/continue/break don't need silencing
+            }
+            return ret;
+            }
+        
         case TOK_MACRO:
             // If a braced macro invocation is the first part of a statement, don't expect a semicolon
             if( LOOK_AHEAD(lex) == TOK_BRACE_OPEN || (lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_BRACE_OPEN) ) {
