@@ -165,6 +165,7 @@ struct Context
 
     void push_block() {
         m_block_level += 1;
+        DEBUG("Push block to " << m_block_level);
     }
     unsigned int push_var(const Span& sp, const ::std::string& name) {
         if( m_var_count == ~0u ) {
@@ -189,20 +190,34 @@ struct Context
         else
         {
             assert( m_block_level > 0 );
-            if( !m_name_context.back().is_VarBlock() ) {
+            if( !m_name_context.back().is_VarBlock() || m_name_context.back().as_VarBlock().level < m_block_level ) {
                 m_name_context.push_back( Ent::make_VarBlock({ m_block_level, {} }) );
             }
-            m_name_context.back().as_VarBlock().variables.push_back( Named<unsigned int> { name, m_var_count } );
+            DEBUG("New var @ " << m_block_level << ": #" << m_var_count << " " << name);
+            auto& vb = m_name_context.back().as_VarBlock();
+            assert(vb.level == m_block_level);
+            vb.variables.push_back( Named<unsigned int> { name, m_var_count } );
             m_var_count += 1;
-            assert( m_var_count >= m_name_context.back().as_VarBlock().variables.size() );
+            assert( m_var_count >= vb.variables.size() );
             return m_var_count - 1;
         }
     }
     void pop_block() {
         assert( m_block_level > 0 );
-        if( m_name_context.back().is_VarBlock() ) {
-            if( m_name_context.back().as_VarBlock().level == m_block_level ) {
-                m_name_context.pop_back();
+        if( m_name_context.back().is_VarBlock() && m_name_context.back().as_VarBlock().level == m_block_level ) {
+            DEBUG("Pop block from " << m_block_level << " with vars:" << FMT_CB(os,
+                for(const auto& v : m_name_context.back().as_VarBlock().variables)
+                    os << " " << v.name << "#" << v.value;
+                ));
+            m_name_context.pop_back();
+        }
+        else {
+            DEBUG("Pop block from " << m_block_level << " - no vars");
+            for(const auto& ent : ::reverse(m_name_context)) {
+                TU_IFLET(Ent, ent, VarBlock, e,
+                    //DEBUG("Block @" << e.level << ": " << e.variables.size() << " vars");
+                    assert( e.level < m_block_level );
+                )
             }
         }
         m_block_level -= 1;
@@ -352,6 +367,7 @@ struct Context
                 }
                 ),
             (VarBlock,
+                assert(e.level <= m_block_level);
                 if( mode != LookupMode::Variable ) {
                     // ignore
                 }
@@ -757,7 +773,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         else {
             // Look up value
             auto p = context.lookup(sp, e.nodes[0].name(), mode);
-            DEBUG("Found path " << p << " for " << path);
+            //DEBUG("Found path " << p << " for " << path);
             if( p.is_absolute() ) {
                 assert( !p.nodes().empty() );
                 p.nodes().back().args() = mv$(e.nodes.back().args());
@@ -1040,7 +1056,7 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
             AST::NodeVisitorDef::visit(node);
         }
         void visit(AST::ExprNode_NamedValue& node) override {
-            DEBUG("ExprNode_NamedValue - " << node.m_path);
+            DEBUG("(" << node.get_pos() << ") ExprNode_NamedValue - " << node.m_path);
             Resolve_Absolute_Path(this->context, Span(node.get_pos()), Context::LookupMode::Variable,  node.m_path);
         }
         void visit(AST::ExprNode_Cast& node) override {
