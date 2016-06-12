@@ -387,8 +387,8 @@ namespace typeck {
         {
             node.m_cond->m_res_type = ::HIR::TypeRef( ::HIR::CoreType::Bool );
             if( node.m_false ) {
-                node.m_true->m_res_type = node.m_res_type.clone();
-                node.m_false->m_res_type = node.m_res_type.clone();
+            //    node.m_true->m_res_type = node.m_res_type.clone();
+            //    node.m_false->m_res_type = node.m_res_type.clone();
             }
             else {
                 this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
@@ -424,7 +424,6 @@ namespace typeck {
             
             ::HIR::ExprVisitorDef::visit(node);
             
-            this->context.apply_equality( node.span(), node.m_res_type, ::HIR::TypeRef::new_array(node.m_val->m_res_type.clone(), node.m_size_val) );
             this->context.apply_equality( node.span(), node.m_size->m_res_type, ::HIR::TypeRef(::HIR::CoreType::Usize) );
         }
         void visit(::HIR::ExprNode_Tuple& node) override
@@ -583,10 +582,12 @@ namespace typeck {
         void visit(::HIR::ExprNode_If& node) override
         {
             TRACE_FUNCTION_F("if ...");
+            
             this->context.apply_equality(node.span(), node.m_res_type, node.m_true->m_res_type,  &node.m_true);
             if( node.m_false ) {
                 this->context.apply_equality(node.span(), node.m_res_type, node.m_false->m_res_type, &node.m_false);
             }
+            
             ::HIR::ExprVisitorDef::visit(node);
         }
         // - Match: all branches match
@@ -1886,11 +1887,10 @@ namespace typeck {
         // - Array (sized)
         void visit(::HIR::ExprNode_ArraySized& node) override
         {
-            auto& ty = this->context.get_type(node.m_res_type);
-            if( !ty.m_data.is_Array() ) {
-                this->context.dump();
-                BUG(node.span(), "Return type of array literal wasn't an array - " << node.m_res_type << " = " << ty);
+            if( !this->context.get_type(node.m_res_type).m_data.is_Array() ) {
+                this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef::new_array(node.m_val->m_res_type.clone(), node.m_size_val) );
             }
+            auto& ty = this->context.get_type(node.m_res_type);
             const auto& val_type = *ty.m_data.as_Array().inner;
             ::HIR::ExprVisitorDef::visit(node);
             this->context.apply_equality(node.span(), val_type, node.m_val->m_res_type,  &node.m_val);
@@ -1993,11 +1993,10 @@ void Typecheck_Code(typeck::TypecheckContext context, const ::HIR::TypeRef& resu
     // 1. Enumerate inferrence variables and assign indexes to them
     {
         typeck::ExprVisitor_Enum    visitor { context, result_type };
+        context.add_ivars( root_ptr->m_res_type );
+        context.apply_equality(root_ptr->span(), result_type, root_ptr->m_res_type,  &root_ptr);
         visitor.visit_node_ptr(root_ptr);
     }
-    // - Apply equality between the node result and the expected type
-    DEBUG("- Apply RV");
-    context.apply_equality(root_ptr->span(), result_type, root_ptr->m_res_type,  &root_ptr);
     
     context.dump();
     // 2. Iterate through nodes applying rules until nothing changes

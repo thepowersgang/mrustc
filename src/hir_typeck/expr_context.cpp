@@ -1850,6 +1850,7 @@ unsigned int typeck::TypecheckContext::autoderef_find_method(const Span& sp, con
 
 bool typeck::TypecheckContext::find_method(const Span& sp, const ::HIR::TypeRef& ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const
 {
+    TRACE_FUNCTION_F("ty=" << ty << ", name=" << method_name);
     // 1. Search generic bounds for a match
     const ::HIR::GenericParams* v[2] = { m_item_params, m_impl_params };
     for(auto p : v)
