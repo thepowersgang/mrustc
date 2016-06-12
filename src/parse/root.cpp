@@ -1040,6 +1040,7 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
     case TOK_RWORD_FN: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         ::std::string name = tok.str();
+        DEBUG("Function " << name);
         // - Self allowed, can't be prototype-form
         auto fcn = Parse_FunctionDefWithCode(lex, abi, item_attrs, true);
         impl.add_function(is_public, ::std::move(name), mv$(fcn));

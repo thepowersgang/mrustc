@@ -105,6 +105,7 @@ SERIALISE_TYPE(ImplDef::, "AST_ImplDef", {
 
 void Impl::add_function(bool is_public, ::std::string name, Function fcn)
 {
+    DEBUG("impl fn " << name);
     m_items.push_back( Named<Item>( mv$(name), Item::make_Function({::std::move(fcn)}), is_public ) );
 }
 void Impl::add_type(bool is_public, ::std::string name, TypeRef type)
@@ -247,6 +248,7 @@ void Module::add_enum(bool is_public, ::std::string name, Enum item, MetaItems a
     this->add_item( is_public, name, Item::make_Enum({mv$(item)}), mv$(attrs) );
 }
 void Module::add_function(bool is_public, ::std::string name, Function item, MetaItems attrs) {
+    DEBUG("mod fn " << name);
     this->add_item( is_public, name, Item::make_Function({mv$(item)}), mv$(attrs) );
 }
 void Module::add_submod(bool is_public, ::std::string name, Module mod, MetaItems attrs) {
@@ -452,6 +454,7 @@ void Trait::add_type(::std::string name, TypeRef type) {
     m_items.push_back( Named<Item>(mv$(name), Item::make_Type({TypeAlias(GenericParams(), mv$(type))}), true) );
 }
 void Trait::add_function(::std::string name, Function fcn) {
+    DEBUG("trait fn " << name);
     m_items.push_back( Named<Item>(mv$(name), Item::make_Function({mv$(fcn)}), true) );
 }
 void Trait::add_static(::std::string name, Static v) {

@@ -22,7 +22,7 @@ static inline ExprNodeP mk_exprnodep(const TokenStream& lex, AST::ExprNode* en){
 #define NEWNODE(type, ...)  mk_exprnodep(lex, new type(__VA_ARGS__))
 
 ExprNodeP Parse_ExprBlockNode(TokenStream& lex);
-ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end);
+ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence);
 ExprNodeP Parse_Stmt(TokenStream& lex);
 ExprNodeP Parse_Expr0(TokenStream& lex);
 ExprNodeP Parse_IfStmt(TokenStream& lex);
@@ -105,8 +105,8 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
             // fall
         default: {
             PUTBACK(tok, lex);
-            bool    expect_end = false;
-            nodes.push_back(Parse_ExprBlockLine(lex, &expect_end));
+            bool    add_silence_if_end = false;
+            nodes.push_back(Parse_ExprBlockLine(lex, &add_silence_if_end));
             if( nodes.back() ) {
                 nodes.back()->set_attrs( mv$(item_attrs) );
             }
@@ -114,14 +114,11 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
                 // TODO: Error if attribute on void expression?
             }
             // Set to TRUE if there was no semicolon after a statement
-            if( expect_end )
+            if( LOOK_AHEAD(lex) == TOK_BRACE_CLOSE && add_silence_if_end )
             {
-                DEBUG("expect_end == true");
-                if( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
-                {
-                    throw ParseError::Unexpected(lex, tok, Token(TOK_BRACE_CLOSE));
-                }
-                PUTBACK(tok, lex);
+                DEBUG("expect_end == false, end of block");
+                nodes.push_back( NEWNODE(AST::ExprNode_Tuple, ::std::vector<ExprNodeP>()) );
+                // NOTE: Would break, but we're in a switch
             }
             break;
             }
@@ -136,7 +133,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
 /// Handles:
 /// - Block-level constructs (with lifetime annotations)
 /// - use/extern/const/let
-ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end)
+ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
 {
     Token tok;
     
@@ -171,7 +168,7 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end)
         switch( tok.type() )
         {
         case TOK_SEMICOLON:
-            return 0;
+            return NEWNODE(AST::ExprNode_Tuple, ::std::vector<AST::ExprNodeP>());
         case TOK_BRACE_OPEN:
             PUTBACK(tok, lex);
             return Parse_ExprBlockNode(lex);
@@ -217,13 +214,16 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *expect_end)
         default: {
             PUTBACK(tok, lex);
             auto ret = Parse_Stmt(lex);
-            if( GET_TOK(tok, lex) != TOK_SEMICOLON )
-            {
+            // If this expression statement wasn't followed by a semicolon, then it's yielding its value out of the block.
+            // - I.e. The block should be ending
+            if( GET_TOK(tok, lex) != TOK_SEMICOLON ) {
+                CHECK_TOK(tok, TOK_BRACE_CLOSE);
                 PUTBACK(tok, lex);
-                *expect_end = true;
             }
-            return ::std::move(ret);
-            break;
+            else {
+                *add_silence = true;
+            }
+            return ret;
             }
         }
     }
@@ -909,31 +909,6 @@ ExprNodeP Parse_ExprVal_Closure(TokenStream& lex, bool is_move)
     auto code = Parse_Expr0(lex);
     
     return NEWNODE( AST::ExprNode_Closure, ::std::move(args), ::std::move(rt), ::std::move(code) );
-}
-
-ExprNodeP Parse_FormatArgs(TokenStream& lex)
-{
-    TRACE_FUNCTION;
-    
-    Token   tok;
-    
-    GET_CHECK_TOK(tok, lex, TOK_STRING);
-    ::std::string fmt = tok.str();
-    
-    ::std::vector<ExprNodeP>    nodes;
-    
-    while( GET_TOK(tok, lex) == TOK_COMMA )
-    {
-        // TODO: Support named
-        auto exp = NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::REF, Parse_Expr1(lex) );
-        
-        // ( &arg as *const _, &<arg as Trait>::fmt as fn(*const (), &mut Formatter) )
-        //nodes.push_back( NEWNODE( AST::ExprNode_Cast, TypeRef
-    }
-    
-    //return NEWNODE( AST::ExprNode_ArrayLiteral, ::std::move(nodes) );
-    DEBUG("TODO: Proper support for format_args!");
-    return NEWNODE( AST::ExprNode_Tuple, ::std::vector<ExprNodeP>() );
 }
 
 ExprNodeP Parse_ExprVal(TokenStream& lex)
