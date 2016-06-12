@@ -608,6 +608,7 @@ namespace typeck {
         void visit(::HIR::ExprNode_Assign& node) override
         {
             TRACE_FUNCTION_F("... = ...");
+            ::HIR::ExprVisitorDef::visit(node);
             // Plain assignment can't be overloaded, requires equal types
             if( node.m_op == ::HIR::ExprNode_Assign::Op::None ) {
                 this->context.apply_equality(node.span(),
@@ -646,11 +647,29 @@ namespace typeck {
                     }
                     assert(lang_item);
                     const auto& trait_path = this->context.m_crate.get_lang_item_path(node.span(), lang_item);
-                    // TODO: Look for implementation of ops trait
+                    
+                    
+                    
+                    /*bool rv =*/ this->context.find_trait_impls(trait_path, ty_left, [&](const auto& args) {
+                        assert( args.m_types.size() == 1 );
+                        const auto& impl_right = args.m_types[0];
+                        
+                        TODO(node.span(), "Check " << impl_right << " vs " << ty_right);
+                        
+                        //auto cmp = impl_index.compare_with_paceholders(node.span(), index_ty, this->context.callback_resolve_infer());
+                        //if( cmp == ::HIR::Compare::Unequal)
+                        //    return false;
+                        //if( cmp == ::HIR::Compare::Equal ) {
+                        //    return true;
+                        //}
+                        //DEBUG("TODO: Handle fuzzy match index operator " << impl_index);
+                        return false;
+                        });
+                    
+                    this->context.dump();
                     TODO(node.span(), "Search for implementation of " << trait_path << "<" << ty_right << "> for " << ty_left);
                 }
             }
-            ::HIR::ExprVisitorDef::visit(node);
         }
         // - BinOp: Look for overload or primitive
         void visit(::HIR::ExprNode_BinOp& node) override

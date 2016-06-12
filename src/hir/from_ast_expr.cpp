@@ -29,6 +29,7 @@ struct LowerHIR_ExprNode_Visitor:
                 rv->m_nodes.push_back( LowerHIR_ExprNode_Inner( *n ) );
             }
             else {
+                assert(&n == &v.m_nodes.back());
                 rv->m_nodes.push_back( ::HIR::ExprNodeP( new ::HIR::ExprNode_Tuple(Span(), {}) ) );
             }
         }
