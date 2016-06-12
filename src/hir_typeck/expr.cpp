@@ -1148,14 +1148,18 @@ namespace typeck {
             ::HIR::ExprVisitorDef::visit(node);
             const auto& path_Index = this->context.m_crate.get_lang_item_path(node.span(), "index");
             
-            const auto& index_ty = this->context.get_type(node.m_index->m_res_type);
             // NOTE: Indexing triggers autoderef
             unsigned int deref_count = 0;
             ::HIR::TypeRef  tmp_type;   // Temporary type used for handling Deref
             const auto* current_ty = &node.m_value->m_res_type;
+            
+            const auto& index_ty = this->context.get_type(node.m_index->m_res_type);
             do {
                 const auto& ty = this->context.get_type(*current_ty);
                 DEBUG("_Index: (: " << ty << ")[: " << index_ty << "]");
+                
+                ::HIR::TypeRef  possible_type;
+                unsigned int count = 0;
                 bool rv = this->context.find_trait_impls(path_Index, ty, [&](const auto& args) {
                     assert( args.m_types.size() == 1 );
                     const auto& impl_index = args.m_types[0];
@@ -1166,12 +1170,21 @@ namespace typeck {
                     if( cmp == ::HIR::Compare::Equal ) {
                         return true;
                     }
-                    DEBUG("TODO: Handle fuzzy match index operator " << impl_index);
+                    possible_type = impl_index.clone();
+                    count += 1;
                     return false;
                     });
                 if( rv ) {
                     break;
                 }
+                else if( count == 1 ) {
+                    this->context.apply_equality(node.span(), index_ty, possible_type);
+                    break;
+                }
+                else {
+                    // Either no matches, or multiple fuzzy matches
+                }
+                
                 
                 deref_count += 1;
                 current_ty = this->context.autoderef(node.span(), ty,  tmp_type);
@@ -1179,6 +1192,7 @@ namespace typeck {
             
             if( current_ty )
             {
+                const auto& index_ty = this->context.get_type(node.m_index->m_res_type);
                 if( deref_count > 0 )
                     DEBUG("Adding " << deref_count << " dereferences");
                 while( deref_count > 0 )
