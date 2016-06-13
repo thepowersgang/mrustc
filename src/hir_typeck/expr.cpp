@@ -1275,6 +1275,9 @@ namespace typeck {
                 if( rv ) {
                     this->context.apply_equality(node.span(), node.m_res_type, res);
                 }
+                else {
+                    // TODO: Error (since this can't be dereferenced)
+                }
             }
             ::HIR::ExprVisitorDef::visit(node);
         }

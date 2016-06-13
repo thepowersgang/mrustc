@@ -193,6 +193,34 @@ namespace {
                 )
             )
         }
+        static void fix_param_count(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params) {
+            if( params.m_types.size() == param_defs.m_types.size() ) {
+                // Nothing to do, all good
+                return ;
+            }
+            
+            if( params.m_types.size() == 0 ) {
+                for(const auto& typ : param_defs.m_types) {
+                    (void)typ;
+                    params.m_types.push_back( ::HIR::TypeRef() );
+                }
+            }
+            else if( params.m_types.size() > param_defs.m_types.size() ) {
+                ERROR(sp, E0000, "Too many type parameters passed to " << path);
+            }
+            else {
+                while( params.m_types.size() < param_defs.m_types.size() ) {
+                    const auto& typ = param_defs.m_types[params.m_types.size()];
+                    if( typ.m_default.m_data.is_Infer() ) {
+                        ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
+                    }
+                    else {
+                        // TODO: What if this contains a generic param? (is that valid? Self maybe, what about others?)
+                        params.m_types.push_back( typ.m_default.clone() );
+                    }
+                }
+            }
+        }
         void visit_type(::HIR::TypeRef& ty) override
         {
             static Span _sp = Span();
@@ -208,9 +236,11 @@ namespace {
                         ERROR(sp, E0000, "Unexpected item type returned for " << e2.m_path << " - " << item.tag_str());
                         ),
                     (Struct,
+                        fix_param_count(sp, e2, e3.m_params,  e2.m_params);
                         e.binding = ::HIR::TypeRef::TypePathBinding::make_Struct(&e3);
                         ),
                     (Enum,
+                        fix_param_count(sp, e2, e3.m_params,  e2.m_params);
                         e.binding = ::HIR::TypeRef::TypePathBinding::make_Enum(&e3);
                         ),
                     (Trait,
