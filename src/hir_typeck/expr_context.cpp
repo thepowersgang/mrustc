@@ -2083,6 +2083,20 @@ bool typeck::TypecheckContext::find_field(const Span& sp, const ::HIR::TypeRef& 
         (Struct,
             // Has fields!
             const auto& str = *be;
+            const auto& params = e.path.m_data.as_Generic().m_params;
+            auto monomorph = [&](const auto& gt)->const auto& {
+                const auto& ge = gt.m_data.as_Generic();
+                if( ge.binding == 0xFFFF )
+                    TODO(sp, "Monomorphise struct field types (Self) - " << gt);
+                else if( ge.binding < 256 ) {
+                    assert(ge.binding < params.m_types.size());
+                    return params.m_types[ge.binding];
+                }
+                else {
+                    BUG(sp, "function-level param encountered in struct field");
+                }
+                return gt;
+                };
             TU_MATCH(::HIR::Struct::Data, (str.m_data), (se),
             (Unit,
                 // No fields on a unit struct
@@ -2092,7 +2106,7 @@ bool typeck::TypecheckContext::find_field(const Span& sp, const ::HIR::TypeRef& 
                 {
                     // TODO: Privacy
                     if( FMT(i) == name ) {
-                        field_ty = monomorphise_type_with(sp, se[i].ent, [&](const auto& gt)->const auto&{ TODO(sp, "Monomorphise tuple struct field types"); return gt; });
+                        field_ty = monomorphise_type_with(sp, se[i].ent, monomorph);
                         return true;
                     }
                 }
@@ -2102,7 +2116,7 @@ bool typeck::TypecheckContext::find_field(const Span& sp, const ::HIR::TypeRef& 
                 {
                     // TODO: Privacy
                     if( fld.first == name ) {
-                        field_ty = monomorphise_type_with(sp, fld.second.ent, [&](const auto& gt)->const auto&{ TODO(sp, "Monomorphise named struct field types"); return gt; });
+                        field_ty = monomorphise_type_with(sp, fld.second.ent, monomorph);
                         return true;
                     }
                 }
