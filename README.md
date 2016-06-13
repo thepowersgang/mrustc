@@ -13,17 +13,19 @@ Current Features
 - Outputs the processed AST as (almost) rust code
  - Almost because it uses special path types to handle: external crates, 'str', and anonymous modules.
 - Converts name-resolved AST into a more compact "HIR"
+- Hackily evaluates constants
+ - Constant evaluation is done by using duck-typing, which is then validated by the Type Check pass
+- Partial type checking and inferrence
 
 Short-Term Plans
 ===
-- Constant evaluation and insertion
- - Will be done by "executing" the HIR expressions
-- Type resolution and checking (quite interlinked)
 - Convert HIR expressions into a MIR similar to rustc's
+- Crate metadata storing and loaded
 
 Medium-Term Goals
 ===
 - Convert MIR or HIR into C
  - Bonus points for making it readable C
  - NOTE: Due to `#[cfg]` attributes being resolved already, the C code won't be portable.
+- Propagate lifetime annotations so that MIR can include a borrow checker
 
