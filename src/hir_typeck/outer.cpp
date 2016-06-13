@@ -228,7 +228,7 @@ namespace {
                 // TODO: Locate impl block and check parameters
                 ),
             (UfcsUnknown,
-                BUG(Span(), "Encountered unknown-trait UFCS path during outer typeck");
+                BUG(Span(), "Encountered unknown-trait UFCS path during outer typeck - " << p);
                 )
             )
         }

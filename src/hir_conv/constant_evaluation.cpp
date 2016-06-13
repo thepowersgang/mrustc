@@ -379,9 +379,12 @@ namespace {
                     }
                 }
                 
-                const_cast<HIR::ExprNode&>(*fcn.m_code).visit( *this );
-                assert( ! m_rv.is_Invalid() );
-                //TODO(node.span(), "exec const fn - " << node.m_path);
+                // Call by running the code directly
+                {
+                    TRACE_FUNCTION_F("Call const fn " << node.m_path);
+                    const_cast<HIR::ExprNode&>(*fcn.m_code).visit( *this );
+                    assert( ! m_rv.is_Invalid() );
+                }
             
                 for(unsigned int i = 0; i < fcn.m_args.size(); i ++ )
                 {

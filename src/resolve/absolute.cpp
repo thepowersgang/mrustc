@@ -363,7 +363,7 @@ struct Context
                 ),
             (ConcreteSelf,
                 if( ( mode == LookupMode::Type || mode == LookupMode::Namespace ) && name == "Self" ) {
-                    return ::AST::Path( ::AST::Path::TagUfcs(), *e, ::std::vector< ::AST::PathNode>() );
+                    return ::AST::Path( ::AST::Path::TagUfcs(), *e, ::AST::Path(), ::std::vector< ::AST::PathNode>() );
                 }
                 ),
             (VarBlock,
@@ -411,7 +411,7 @@ struct Context
         auto ct = coretype_fromstring(name);
         if( ct != CORETYPE_INVAL )
         {
-            return ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span("-",0,0,0,0), ct), ::std::vector< ::AST::PathNode>() );
+            return ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span("-",0,0,0,0), ct), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
         }
         
         return AST::Path();
@@ -521,7 +521,7 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
     }
     if( ufcs.nodes.size() == 0 ) {
         
-        if( mode == Context::LookupMode::Type && ! ufcs.trait ) {
+        if( mode == Context::LookupMode::Type && ufcs.trait && *ufcs.trait == ::AST::Path() ) {
             return ;
         }
         
@@ -909,7 +909,7 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
     (Path,
         Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, e.path);
         TU_IFLET(::AST::Path::Class, e.path.m_class, UFCS, ufcs,
-            if( ufcs.nodes.size() == 0 && ! ufcs.trait ) {
+            if( ufcs.nodes.size() == 0 /*&& ufcs.trait && *ufcs.trait == ::AST::Path()*/ ) {
                 auto ty = mv$(*ufcs.type);
                 type = mv$(ty);
                 return ;
