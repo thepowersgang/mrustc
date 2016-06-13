@@ -895,7 +895,7 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " (can't coerce)");
                 }
             }
-
+            
             // - If tags don't match, error
             if( l_t.m_data.tag() != r_t.m_data.tag() ) {
                 
@@ -915,6 +915,46 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                 if( H::type_is_free_ufcs(*this, l_t) || H::type_is_free_ufcs(*this, r_t) ) {
                     return ;
                 }
+                
+                // Deref coercions 1 (when a & op is destructured and expected value is the deref)
+                if( node_ptr_ptr )
+                {
+                    auto& node_ptr = *node_ptr_ptr;
+                    
+                    // - If right has a deref chain to left, build it
+                    DEBUG("Trying deref coercion " << l_t << " " << r_t);
+                    if( !l_t.m_data.is_Borrow() && ! this->type_contains_ivars(l_t) && ! this->type_contains_ivars(r_t) )
+                    {
+                        DEBUG("Trying deref coercion (2)");
+                        ::HIR::TypeRef  tmp_ty;
+                        const ::HIR::TypeRef*   out_ty = &r_t;
+                        unsigned int count = 0;
+                        while( (out_ty = this->autoderef(sp, *out_ty, tmp_ty)) )
+                        {
+                            count += 1;
+                            
+                            if( l_t != *out_ty ) {
+                                TODO(sp, "Deref coercions " << l_t << " <- " << r_t << " (became " << *out_ty << ")");
+                            }
+                            
+                            while(count --)
+                            {
+                                auto span = node_ptr->span();
+                                node_ptr->m_res_type = this->new_ivar_tr();
+                                node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Deref( mv$(span), mv$(node_ptr) ));
+                            }
+                            node_ptr->m_res_type = l_t.clone();
+                            
+                            this->mark_change();
+                            return ;
+                            //auto cmp = this->compare_types(left_inner_res, *out_ty);
+                            //if( cmp == ::HIR::Compare::Equal ) {
+                            //    
+                            //}
+                        }
+                    }
+                }
+
                 
                 // Type error
                 this->dump();
@@ -1132,7 +1172,6 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                             // Apply deref coercions
                         }
                     }
-                    // - If right has a deref chain to left, build it
                 }
                 this->apply_equality(sp, *l_e.inner, cb_left, *r_e.inner, cb_right, nullptr);
                 ),
