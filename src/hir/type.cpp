@@ -284,7 +284,7 @@ void ::HIR::TypeRef::match_generics(const Span& sp, const ::HIR::TypeRef& x_in, 
     if( match_test_generics(sp, x_in, resolve_placeholder, callback) ) {
     }
     else {
-        BUG(sp, "TypeRef::match_generics with mismatched forms - " << *this << " and " << x_in);
+        BUG(sp, "TypeRef::match_generics with mismatched parameters - " << *this << " and " << x_in);
     }
 }
 bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, t_cb_match_generics callback) const

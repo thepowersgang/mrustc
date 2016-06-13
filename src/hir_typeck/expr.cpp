@@ -1257,8 +1257,24 @@ namespace typeck {
             else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
                 this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef::new_slice(e.inner->clone()));
             )
+            else if( ty.m_data.is_Infer() ) {
+                // Leave it for now
+            }
             else {
                 // TODO: Search for Deref impl
+                ::HIR::TypeRef  res;
+                const auto& op_deref = this->context.m_crate.get_lang_item_path(node.span(), "deref");
+                bool rv = this->context.find_trait_impls(node.span(), op_deref, ::HIR::PathParams{}, ty, [&](const auto& _args, const auto& types) {
+                    if( res != ::HIR::TypeRef() )
+                        TODO(node.span(), "Handle multiple implementations of Deref");
+                    if( types.find("Target") == types.end() )
+                        BUG(node.span(), "Impl of Deref didn't include `Target` associated type (TODO: Is this a bug, what about bounds?)");
+                    res = types.at("Target").clone();
+                    return true;
+                    });
+                if( rv ) {
+                    this->context.apply_equality(node.span(), node.m_res_type, res);
+                }
             }
             ::HIR::ExprVisitorDef::visit(node);
         }
