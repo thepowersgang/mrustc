@@ -906,6 +906,10 @@ namespace typeck {
                 }
                 assert(item_name);
                 
+                //bool found = this->conext.find_trait_impls(sp, ops_trait, ops_trait_pp,  ty_left,[&](const auto& args, const auto& assoc) {
+                //    // TODO: Receive fuzzyness from `find_trait_impls`
+                //    });
+                
                 // Search for ops trait impl
                 const ::HIR::TraitImpl* impl_ptr = nullptr;
                 ::HIR::TypeRef  possible_right_type;
@@ -943,17 +947,40 @@ namespace typeck {
                         assert( impl.m_trait_args.m_types.size() == 1 );
                         const auto& arg_type = impl.m_trait_args.m_types[0];
                         
-                        if( monomorphise_type_needed(arg_type) ) {
-                            return true;
-                            //TODO(node.span(), "Compare ops trait type when it contains generics - " << arg_type << " == " << ty_right);
-                        }
-                        auto cmp = arg_type.compare_with_placeholders(node.span(), ty_right, this->context.callback_resolve_infer());
-                        if( cmp == ::HIR::Compare::Unequal ) {
+                        DEBUG("impl" << impl.m_params.fmt_args() << " " << ops_trait << impl.m_trait_args << " for " << impl.m_type);
+                        
+                        bool    fail = false;
+                        bool    fuzzy = false;
+                        ::std::vector< const ::HIR::TypeRef*> impl_params;
+                        impl_params.resize( impl.m_params.m_types.size() );
+                        auto cb = [&](auto idx, const auto& ty) {
+                            DEBUG("[_BinOp] " << idx << " = " << ty);
+                            assert( idx < impl_params.size() );
+                            if( ! impl_params[idx] ) {
+                                impl_params[idx] = &ty;
+                            }
+                            else {
+                                switch( impl_params[idx]->compare_with_placeholders(node.span(), ty, this->context.callback_resolve_infer()) )
+                                {
+                                case ::HIR::Compare::Unequal:
+                                    fail = true;
+                                    break;
+                                case ::HIR::Compare::Fuzzy:
+                                    fuzzy = true;
+                                    break;
+                                case ::HIR::Compare::Equal:
+                                    break;
+                                }
+                            }
+                            };
+                        fail |= !impl.m_type.match_test_generics(sp, ty_left, this->context.callback_resolve_infer(), cb);
+                        fail |= !arg_type.match_test_generics(sp, ty_right, this->context.callback_resolve_infer(), cb);
+                        if( fail ) {
                             return false;
                         }
                         count += 1;
                         impl_ptr = &impl;
-                        if( cmp == ::HIR::Compare::Equal ) {
+                        if( !fuzzy ) {
                             DEBUG("Operator impl exact match - '"<<item_name<<"' - " << arg_type << " == " << ty_right);
                             return true;
                         }
