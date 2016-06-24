@@ -321,6 +321,8 @@ namespace typeck {
         fix_param_count_(sp, context, path, param_defs, params);
     }
     
+    
+    
     // Enumerate inferrence variables (most of them) in the expression tree
     //
     // - Any type equalities here are mostly optimisations (as this gets run only once)
@@ -647,7 +649,8 @@ namespace typeck {
                         this->context.apply_equality(node.span(), node.m_slot->m_res_type, node.m_value->m_res_type);
                     }
                 }
-                else {
+                // - Only go looking for an impl if the lefthand side is known
+                else if( ! ty_left.m_data.is_Infer() ) {
                     const char *lang_item = nullptr;
                     switch( node.m_op )
                     {
@@ -687,6 +690,8 @@ namespace typeck {
                     
                     this->context.dump();
                     TODO(node.span(), "Search for implementation of " << trait_path << "<" << ty_right << "> for " << ty_left);
+                }
+                else {
                 }
             }
         }
@@ -1371,7 +1376,174 @@ namespace typeck {
             
             ::HIR::ExprVisitorDef::visit(node);
         }
-        
+    
+        /// (HELPER) Populate the cache for nodes that use visit_call
+        void visit_call_populate_cache(const Span& sp, ::HIR::Path& path, ::HIR::ExprCallCache& cache) const
+        {
+            assert(cache.m_arg_types.size() == 0);
+            
+            const ::HIR::Function*  fcn_ptr = nullptr;
+            ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>    monomorph_cb;
+            
+            TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
+            (Generic,
+                const auto& fcn = this->context.m_crate.get_function_by_path(sp, e.m_path);
+                fix_param_count(sp, this->context, path, fcn.m_params,  e.m_params);
+                fcn_ptr = &fcn;
+                cache.m_fcn_params = &fcn.m_params;
+                
+                //const auto& params_def = fcn.m_params;
+                const auto& path_params = e.m_params;
+                monomorph_cb = [&](const auto& gt)->const auto& {
+                        const auto& e = gt.m_data.as_Generic();
+                        if( e.name == "Self" || e.binding == 0xFFFF )
+                            TODO(sp, "Handle 'Self' when monomorphising");
+                        if( e.binding < 256 ) {
+                            BUG(sp, "Impl-level parameter on free function (#" << e.binding << " " << e.name << ")");
+                        }
+                        else if( e.binding < 512 ) {
+                            auto idx = e.binding - 256;
+                            if( idx >= path_params.m_types.size() ) {
+                                BUG(sp, "Generic param out of input range - " << idx << " '"<<e.name<<"' >= " << path_params.m_types.size());
+                            }
+                            return this->context.get_type(path_params.m_types[idx]);
+                        }
+                        else {
+                            BUG(sp, "Generic bounding out of total range");
+                        }
+                    };
+                ),
+            (UfcsKnown,
+                const auto& trait = this->context.m_crate.get_trait_by_path(sp, e.trait.m_path);
+                fix_param_count(sp, this->context, path, trait.m_params, e.trait.m_params);
+                const auto& fcn = trait.m_values.at(e.item).as_Function();
+                fix_param_count(sp, this->context, path, fcn.m_params,  e.params);
+                cache.m_fcn_params = &fcn.m_params;
+                cache.m_top_params = &trait.m_params;
+                
+                // TODO: Check/apply trait bounds (apply = closure arguments or fixed trait args)
+                
+                fcn_ptr = &fcn;
+                
+                const auto& trait_params = e.trait.m_params;
+                const auto& path_params = e.params;
+                monomorph_cb = [&](const auto& gt)->const auto& {
+                        const auto& ge = gt.m_data.as_Generic();
+                        if( ge.binding == 0xFFFF ) {
+                            return *e.type;
+                        }
+                        else if( ge.binding < 256 ) {
+                            auto idx = ge.binding;
+                            if( idx >= trait_params.m_types.size() ) {
+                                BUG(sp, "Generic param (impl) out of input range - " << idx << " '"<<ge.name<<"' >= " << trait_params.m_types.size());
+                            }
+                            return this->context.get_type(trait_params.m_types[idx]);
+                        }
+                        else if( ge.binding < 512 ) {
+                            auto idx = ge.binding - 256;
+                            if( idx >= path_params.m_types.size() ) {
+                                BUG(sp, "Generic param out of input range - " << idx << " '"<<ge.name<<"' >= " << path_params.m_types.size());
+                            }
+                            return this->context.get_type(path_params.m_types[idx]);
+                        }
+                        else {
+                            BUG(sp, "Generic bounding out of total range");
+                        }
+                    };
+                ),
+            (UfcsUnknown,
+                TODO(sp, "Hit a UfcsUnknown (" << path << ") - Is this an error?");
+                ),
+            (UfcsInherent,
+                // - Locate function (and impl block)
+                const ::HIR::TypeImpl* impl_ptr = nullptr;
+                this->context.m_crate.find_type_impls(*e.type, [&](const auto& ty)->const auto& {
+                        if( ty.m_data.is_Infer() )
+                            return this->context.get_type(ty);
+                        else
+                            return ty;
+                    },
+                    [&](const auto& impl) {
+                        DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+                        auto it = impl.m_methods.find(e.item);
+                        if( it == impl.m_methods.end() )
+                            return false;
+                        fcn_ptr = &it->second;
+                        impl_ptr = &impl;
+                        return true;
+                    });
+                if( !fcn_ptr ) {
+                    ERROR(sp, E0000, "Failed to locate function " << path);
+                }
+                assert(impl_ptr);
+                fix_param_count(sp, this->context, path, fcn_ptr->m_params,  e.params);
+                cache.m_fcn_params = &fcn_ptr->m_params;
+                
+                
+                // If the impl block has parameters, figure out what types they map to
+                // - The function params are already mapped (from fix_param_count)
+                auto& impl_params = cache.m_ty_impl_params;
+                if( impl_ptr->m_params.m_types.size() > 0 ) {
+                    impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
+                    impl_ptr->m_type.match_generics(sp, *e.type, this->context.callback_resolve_infer(), [&](auto idx, const auto& ty) {
+                        assert( idx < impl_params.m_types.size() );
+                        impl_params.m_types[idx] = ty.clone();
+                        });
+                    for(const auto& ty : impl_params.m_types)
+                        assert( !( ty.m_data.is_Infer() && ty.m_data.as_Infer().index == ~0u) );
+                }
+                
+                // Create monomorphise callback
+                const auto& fcn_params = e.params;
+                monomorph_cb = [&](const auto& gt)->const auto& {
+                        const auto& ge = gt.m_data.as_Generic();
+                        if( ge.binding == 0xFFFF ) {
+                            return this->context.get_type(*e.type);
+                        }
+                        else if( ge.binding < 256 ) {
+                            auto idx = ge.binding;
+                            if( idx >= impl_params.m_types.size() ) {
+                                BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << impl_params.m_types.size());
+                            }
+                            return this->context.get_type(impl_params.m_types[idx]);
+                        }
+                        else if( ge.binding < 512 ) {
+                            auto idx = ge.binding - 256;
+                            if( idx >= fcn_params.m_types.size() ) {
+                                BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << fcn_params.m_types.size());
+                            }
+                            return this->context.get_type(fcn_params.m_types[idx]);
+                        }
+                        else {
+                            BUG(sp, "Generic bounding out of total range");
+                        }
+                    };
+                )
+            )
+
+            assert( fcn_ptr );
+            const auto& fcn = *fcn_ptr;
+            
+            // --- Monomorphise the argument/return types (into current context)
+            for(const auto& arg : fcn.m_args) {
+                if( monomorphise_type_needed(arg.second) ) {
+                    cache.m_arg_types.push_back( this->context.expand_associated_types(sp, monomorphise_type_with(sp, arg.second,  monomorph_cb)) );
+                }
+                else {
+                    cache.m_arg_types.push_back( arg.second.clone() );
+                }
+            }
+            if( monomorphise_type_needed(fcn.m_return) ) {
+                cache.m_arg_types.push_back( this->context.expand_associated_types(sp, monomorphise_type_with(sp, fcn.m_return,  monomorph_cb)) );
+            }
+            else {
+                cache.m_arg_types.push_back( fcn.m_return.clone() );
+            }
+            
+            cache.m_monomorph_cb = mv$(monomorph_cb);
+        }
+    
+        /// Common handling for function/method calls
         void visit_call(const Span& sp,
                 ::HIR::Path& path, bool is_method,
                 ::std::vector< ::HIR::ExprNodeP>& args, ::HIR::TypeRef& res_type, ::HIR::ExprNodeP& this_node_ptr,
@@ -1381,168 +1553,22 @@ namespace typeck {
             TRACE_FUNCTION_F("path = " << path);
             unsigned int arg_ofs = (is_method ? 1 : 0);
             
+            // If the cache is empty, figure out the function and argument/return types
             if( cache.m_arg_types.size() == 0 )
             {
-                const ::HIR::Function*  fcn_ptr = nullptr;
-                ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>    monomorph_cb;
+                // Fixes any missing parameters in the path, and populates the cache
+                this->visit_call_populate_cache(sp, path, cache);
+                assert( cache.m_arg_types.size() >= 1);
                 
-                TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
-                (Generic,
-                    const auto& fcn = this->context.m_crate.get_function_by_path(sp, e.m_path);
-                    fix_param_count(sp, this->context, path, fcn.m_params,  e.m_params);
-                    fcn_ptr = &fcn;
-                    cache.m_fcn_params = &fcn.m_params;
-                    
-                    //const auto& params_def = fcn.m_params;
-                    const auto& path_params = e.m_params;
-                    monomorph_cb = [&](const auto& gt)->const auto& {
-                            const auto& e = gt.m_data.as_Generic();
-                            if( e.name == "Self" || e.binding == 0xFFFF )
-                                TODO(sp, "Handle 'Self' when monomorphising");
-                            if( e.binding < 256 ) {
-                                BUG(sp, "Impl-level parameter on free function (#" << e.binding << " " << e.name << ")");
-                            }
-                            else if( e.binding < 512 ) {
-                                auto idx = e.binding - 256;
-                                if( idx >= path_params.m_types.size() ) {
-                                    BUG(sp, "Generic param out of input range - " << idx << " '"<<e.name<<"' >= " << path_params.m_types.size());
-                                }
-                                return this->context.get_type(path_params.m_types[idx]);
-                            }
-                            else {
-                                BUG(sp, "Generic bounding out of total range");
-                            }
-                        };
-                    ),
-                (UfcsKnown,
-                    const auto& trait = this->context.m_crate.get_trait_by_path(sp, e.trait.m_path);
-                    fix_param_count(sp, this->context, path, trait.m_params, e.trait.m_params);
-                    const auto& fcn = trait.m_values.at(e.item).as_Function();
-                    fix_param_count(sp, this->context, path, fcn.m_params,  e.params);
-                    cache.m_fcn_params = &fcn.m_params;
-                    cache.m_top_params = &trait.m_params;
-                    
-                    // TODO: Check/apply trait bounds (apply = closure arguments or fixed trait args)
-                    
-                    fcn_ptr = &fcn;
-                    
-                    const auto& trait_params = e.trait.m_params;
-                    const auto& path_params = e.params;
-                    monomorph_cb = [&](const auto& gt)->const auto& {
-                            const auto& ge = gt.m_data.as_Generic();
-                            if( ge.binding == 0xFFFF ) {
-                                return *e.type;
-                            }
-                            else if( ge.binding < 256 ) {
-                                auto idx = ge.binding;
-                                if( idx >= trait_params.m_types.size() ) {
-                                    BUG(sp, "Generic param (impl) out of input range - " << idx << " '"<<ge.name<<"' >= " << trait_params.m_types.size());
-                                }
-                                return this->context.get_type(trait_params.m_types[idx]);
-                            }
-                            else if( ge.binding < 512 ) {
-                                auto idx = ge.binding - 256;
-                                if( idx >= path_params.m_types.size() ) {
-                                    BUG(sp, "Generic param out of input range - " << idx << " '"<<ge.name<<"' >= " << path_params.m_types.size());
-                                }
-                                return this->context.get_type(path_params.m_types[idx]);
-                            }
-                            else {
-                                BUG(sp, "Generic bounding out of total range");
-                            }
-                        };
-                    ),
-                (UfcsUnknown,
-                    TODO(sp, "Hit a UfcsUnknown (" << path << ") - Is this an error?");
-                    ),
-                (UfcsInherent,
-                    const ::HIR::TypeImpl* impl_ptr = nullptr;
-                    this->context.m_crate.find_type_impls(*e.type, [&](const auto& ty)->const auto& {
-                            if( ty.m_data.is_Infer() )
-                                return this->context.get_type(ty);
-                            else
-                                return ty;
-                        },
-                        [&](const auto& impl) {
-                            DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-                            auto it = impl.m_methods.find(e.item);
-                            if( it == impl.m_methods.end() )
-                                return false;
-                            fcn_ptr = &it->second;
-                            impl_ptr = &impl;
-                            return true;
-                        });
-                    if( !fcn_ptr ) {
-                        ERROR(sp, E0000, "Failed to locate function " << path);
-                    }
-                    assert(impl_ptr);
-                    fix_param_count(sp, this->context, path, fcn_ptr->m_params,  e.params);
-                    cache.m_fcn_params = &fcn_ptr->m_params;
-                    
-                    
-                    auto& impl_params = cache.m_ty_impl_params;
-                    if( impl_ptr->m_params.m_types.size() > 0 ) {
-                        impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
-                        impl_ptr->m_type.match_generics(sp, *e.type, this->context.callback_resolve_infer(), [&](auto idx, const auto& ty) {
-                            assert( idx < impl_params.m_types.size() );
-                            impl_params.m_types[idx] = ty.clone();
-                            });
-                        for(const auto& ty : impl_params.m_types)
-                            assert( !( ty.m_data.is_Infer() && ty.m_data.as_Infer().index == ~0u) );
-                    }
-                    const auto& fcn_params = e.params;
-                    monomorph_cb = [&](const auto& gt)->const auto& {
-                            const auto& ge = gt.m_data.as_Generic();
-                            if( ge.binding == 0xFFFF ) {
-                                return this->context.get_type(*e.type);
-                            }
-                            else if( ge.binding < 256 ) {
-                                auto idx = ge.binding;
-                                if( idx >= impl_params.m_types.size() ) {
-                                    BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << impl_params.m_types.size());
-                                }
-                                return this->context.get_type(impl_params.m_types[idx]);
-                            }
-                            else if( ge.binding < 512 ) {
-                                auto idx = ge.binding - 256;
-                                if( idx >= fcn_params.m_types.size() ) {
-                                    BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << fcn_params.m_types.size());
-                                }
-                                return this->context.get_type(fcn_params.m_types[idx]);
-                            }
-                            else {
-                                BUG(sp, "Generic bounding out of total range");
-                            }
-                        };
-                    )
-                )
-
-                assert( fcn_ptr );
-                const auto& fcn = *fcn_ptr;
-                
-                if( args.size() + (is_method ? 1 : 0) != fcn.m_args.size() ) {
+                if( args.size() + (is_method ? 1 : 0) != cache.m_arg_types.size() - 1 ) {
                     ERROR(sp, E0000, "Incorrect number of arguments to " << path);
                 }
-                
-                for(const auto& arg : fcn.m_args) {
-                    if( monomorphise_type_needed(arg.second) ) {
-                        cache.m_arg_types.push_back( this->context.expand_associated_types(sp, monomorphise_type_with(sp, arg.second,  monomorph_cb)) );
-                    }
-                    else {
-                        cache.m_arg_types.push_back( arg.second.clone() );
-                    }
-                }
-                if( monomorphise_type_needed(fcn.m_return) ) {
-                    cache.m_arg_types.push_back( this->context.expand_associated_types(sp, monomorphise_type_with(sp, fcn.m_return,  monomorph_cb)) );
-                }
-                else {
-                    cache.m_arg_types.push_back( fcn.m_return.clone() );
-                }
-                
-                cache.m_monomorph_cb = mv$(monomorph_cb);
             }
             
             // --- Apply equalities from return and arguments ---
+            DEBUG("RV " << cache.m_arg_types.back());
+            this->context.apply_equality(sp, res_type, cache.m_arg_types.back(),  &this_node_ptr);
+            
             for( unsigned int i = arg_ofs; i < cache.m_arg_types.size() - 1; i ++ )
             {
                 auto& arg_expr_ptr = args[i - arg_ofs];
@@ -1550,9 +1576,6 @@ namespace typeck {
                 DEBUG("Arg " << i << ": " << arg_ty);
                 this->context.apply_equality(sp, arg_ty, arg_expr_ptr->m_res_type,  &arg_expr_ptr);
             }
-            
-            DEBUG("RV " << cache.m_arg_types.back());
-            this->context.apply_equality(sp, res_type, cache.m_arg_types.back(),  &this_node_ptr);
             
             // --- Check generic bounds (after links between args and params are known) ---
             // - HACK! Below just handles closures and fn traits.
@@ -1739,7 +1762,9 @@ namespace typeck {
             ::HIR::ExprVisitorDef::visit(node);
             if( node.m_method_path.m_data.is_Generic() && node.m_method_path.m_data.as_Generic().m_path.m_components.size() == 0 )
             {
-                const auto& ty = this->context.get_type(node.m_value->m_res_type);
+                //const auto& ty = this->context.get_type(node.m_value->m_res_type);
+                const auto ty = this->context.expand_associated_types(node.span(), this->context.get_type(node.m_value->m_res_type).clone());
+                
                 DEBUG("(CallMethod) ty = " << ty);
                 // Using autoderef, locate this method on the type
                 ::HIR::Path   fcn_path { ::HIR::SimplePath() };
