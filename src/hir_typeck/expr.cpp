@@ -1154,7 +1154,7 @@ namespace typeck {
                     ),
                 (Borrow,
                     if( e.type != e2.type ) {
-                        // ERROR
+                        // TODO: What is this condition for?
                     }
                     DEBUG("_Cast: Borrow coerce");
                     this->context.apply_equality(node.span(), *e2.inner, *e.inner);

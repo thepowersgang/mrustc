@@ -415,6 +415,7 @@ void typeck::TypecheckContext::add_ivars(::HIR::TypeRef& type)
         if( e.index == ~0u ) {
             e.index = this->new_ivar();
             this->m_ivars[e.index].type->m_data.as_Infer().ty_class = e.ty_class;
+            this->mark_change();
         }
         ),
     (Diverge,
