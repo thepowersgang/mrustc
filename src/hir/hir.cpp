@@ -30,6 +30,8 @@ namespace HIR {
 }
 
 namespace {
+    bool matches_genericpath(const ::HIR::GenericParams& params, const ::HIR::GenericPath& left, const ::HIR::GenericPath& right, ::HIR::t_cb_resolve_type ty_res, bool expand_generic);
+    
     bool matches_type_int(const ::HIR::GenericParams& params, const ::HIR::TypeRef& left,  const ::HIR::TypeRef& right_in, ::HIR::t_cb_resolve_type ty_res, bool expand_generic)
     {
         assert(! left.m_data.is_Infer() );
@@ -70,28 +72,7 @@ namespace {
                 return false;
                 ),
             (Generic,
-                if( ple.m_path.m_crate_name != pre.m_path.m_crate_name )
-                    return false;
-                if( ple.m_path.m_components.size() != pre.m_path.m_components.size() )
-                    return false;
-                for(unsigned int i = 0; i < ple.m_path.m_components.size(); i ++ )
-                {
-                    if( ple.m_path.m_components[i] != pre.m_path.m_components[i] )
-                        return false;
-                }
-                
-                if( ple.m_params.m_types.size() > 0 || pre.m_params.m_types.size() > 0 ) {
-                    if( ple.m_params.m_types.size() != pre.m_params.m_types.size() ) {
-                        return true;
-                        //TODO(Span(), "Match generic paths " << ple << " and " << pre << " - count mismatch");
-                    }
-                    for( unsigned int i = 0; i < pre.m_params.m_types.size(); i ++ )
-                    {
-                        if( ! matches_type_int(params, ple.m_params.m_types[i], pre.m_params.m_types[i], ty_res, expand_generic) )
-                            return false;
-                    }
-                }
-                return true;
+                return matches_genericpath(params, ple, pre, ty_res, expand_generic);
                 )
             )
             ),
@@ -99,8 +80,18 @@ namespace {
             throw "";
             ),
         (TraitObject,
-            DEBUG("TODO: Compare " << left << " and " << right);
-            return false;
+            if( !matches_genericpath(params, le.m_trait.m_path, re.m_trait.m_path, ty_res, expand_generic) )
+                return false;
+            if( le.m_markers.size() != re.m_markers.size() )
+                return false;
+            for(unsigned int i = 0; i < le.m_markers.size(); i ++)
+            {
+                const auto& lm = le.m_markers[i];
+                const auto& rm = re.m_markers[i];
+                if( !matches_genericpath(params, lm, rm, ty_res, expand_generic) )
+                    return false;
+            }
+            return true;
             ),
         (Array,
             if( ! matches_type_int(params, *le.inner, *re.inner, ty_res, expand_generic) )
@@ -140,6 +131,31 @@ namespace {
             )
         )
         return false;
+    }
+    bool matches_genericpath(const ::HIR::GenericParams& params, const ::HIR::GenericPath& left, const ::HIR::GenericPath& right, ::HIR::t_cb_resolve_type ty_res, bool expand_generic)
+    {
+        if( left.m_path.m_crate_name != right.m_path.m_crate_name )
+            return false;
+        if( left.m_path.m_components.size() != right.m_path.m_components.size() )
+            return false;
+        for(unsigned int i = 0; i < left.m_path.m_components.size(); i ++ )
+        {
+            if( left.m_path.m_components[i] != right.m_path.m_components[i] )
+                return false;
+        }
+        
+        if( left.m_params.m_types.size() > 0 || right.m_params.m_types.size() > 0 ) {
+            if( left.m_params.m_types.size() != right.m_params.m_types.size() ) {
+                return true;
+                //TODO(Span(), "Match generic paths " << left << " and " << right << " - count mismatch");
+            }
+            for( unsigned int i = 0; i < right.m_params.m_types.size(); i ++ )
+            {
+                if( ! matches_type_int(params, left.m_params.m_types[i], right.m_params.m_types[i], ty_res, expand_generic) )
+                    return false;
+            }
+        }
+        return true;
     }
 }
 

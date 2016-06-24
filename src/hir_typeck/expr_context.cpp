@@ -4,6 +4,19 @@
 #include <hir/hir.hpp>
 #include <algorithm>    // std::find_if
 
+struct FmtType {
+    const typeck::TypecheckContext& ctxt;
+    const ::HIR::TypeRef& ty;
+    FmtType(const typeck::TypecheckContext& ctxt, const ::HIR::TypeRef& ty):
+        ctxt(ctxt),
+        ty(ty)
+    {}
+    friend ::std::ostream& operator<<(::std::ostream& os, const FmtType& x) {
+        x.ctxt.print_type(os, x.ty);
+        return os;
+    }
+};
+
 void typeck::TypecheckContext::push_traits(const ::std::vector<::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >& list)
 {
     this->m_traits.insert( this->m_traits.end(), list.begin(), list.end() );
@@ -291,6 +304,105 @@ bool typeck::TypecheckContext::types_equal(const ::HIR::TypeRef& rl, const ::HIR
         )
     )
     throw "";
+}
+
+void typeck::TypecheckContext::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) const
+{
+    struct H {
+        static void print_pp(const TypecheckContext& ctxt, ::std::ostream& os, const ::HIR::PathParams& pps) {
+            if( pps.m_types.size() > 0 ) {
+                os << "<";
+                for(const auto& pp_t : pps.m_types) {
+                    ctxt.print_type(os, pp_t);
+                    os << ",";
+                }
+                os << ">";
+            }
+        }
+    };
+    const auto& ty = this->get_type(tr);
+    TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
+    (Infer,
+        os << ty;
+        ),
+    (Primitive,
+        os << ty;
+        ),
+    (Diverge, os << ty; ),
+    (Generic, os << ty; ),
+    (Path,
+        TU_MATCH(::HIR::Path::Data, (e.path.m_data), (pe),
+        (Generic,
+            os << pe.m_path;
+            H::print_pp(*this, os, pe.m_params);
+            ),
+        (UfcsKnown,
+            os << "<";
+            this->print_type(os, *pe.type);
+            os << " as " << pe.trait.m_path;
+            H::print_pp(*this, os, pe.trait.m_params);
+            os << ">::" << pe.item;
+            H::print_pp(*this, os, pe.params);
+            ),
+        (UfcsInherent,
+            os << "<";
+            this->print_type(os, *pe.type);
+            os << ">::" << pe.item;
+            H::print_pp(*this, os, pe.params);
+            ),
+        (UfcsUnknown,
+            BUG(Span(), "UfcsUnknown");
+            )
+        )
+        ),
+    (Borrow,
+        os << "&";
+        this->print_type(os, *e.inner);
+        ),
+    (Pointer,
+        os << "*";
+        this->print_type(os, *e.inner);
+        ),
+    (Slice,
+        os << "[";
+        this->print_type(os, *e.inner);
+        os << "]";
+        ),
+    (Array,
+        os << "[";
+        this->print_type(os, *e.inner);
+        os << "; " << e.size_val << "]";
+        ),
+    (Closure,
+        //for(const auto& arg : e.m_arg_types)
+        //    if( type_contains_ivars(arg) )
+        //        return true;
+        //return type_contains_ivars(*e.m_rettype);
+        ),
+    (Function,
+        //for(const auto& arg : e.m_arg_types)
+        //    if( type_contains_ivars(arg) )
+        //        return true;
+        //return type_contains_ivars(*e.m_rettype);
+        ),
+    (TraitObject,
+        os << "(" << e.m_trait.m_path.m_path;
+        H::print_pp(*this, os, e.m_trait.m_path.m_params);
+        for(const auto& marker : e.m_markers) {
+            os << "+" << marker.m_path;
+            H::print_pp(*this, os, marker.m_params);
+        }
+        os << ")";
+        ),
+    (Tuple,
+        os << "(";
+        for(const auto& st : e) {
+            this->print_type(os, st);
+            os << ",";
+        }
+        os << ")";
+        )
+    )
 }
 
 ///
@@ -2141,7 +2253,7 @@ bool typeck::TypecheckContext::find_method(const Span& sp, const ::HIR::TypeRef&
             DEBUG("Search for impl of " << *trait_ref.first);
             // TODO: Need a "don't care" marker for the PathParams
             if( find_trait_impls_crate(sp, *trait_ref.first, ::HIR::PathParams{}, ty,  [](const auto&,const auto&) { return true; }) ) {
-                DEBUG("Found trait impl " << *trait_ref.first << " for " << ty);
+                DEBUG("Found trait impl " << *trait_ref.first << " (" /*<< FmtType(*this, *trait_ref.first)*/  << ") for " << ty << " ("<<FmtType(*this, ty)<<")");
                 fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
                     box$( ty.clone() ),
                     trait_ref.first->clone(),
