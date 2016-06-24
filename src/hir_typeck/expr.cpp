@@ -1011,6 +1011,7 @@ namespace typeck {
                         // - If an impl block was found
                         if( impl_ptr )
                         {
+                            assert(impl_ptr->m_types.count("Output") != 0);
                             const auto& type = impl_ptr->m_types.at("Output");
                             if( monomorphise_type_needed(type) ) {
                                 TODO(node.span(), "BinOp output = " << type);
@@ -1116,6 +1117,7 @@ namespace typeck {
         {
             const auto& val_ty = this->context.get_type( node.m_value->m_res_type );
             const auto& target_ty = this->context.get_type( node.m_res_type );
+            TRACE_FUNCTION_F("Cast {" << val_ty << "} as " << target_ty);
             TU_MATCH_DEF(::HIR::TypeRef::Data, (target_ty.m_data), (e),
             (
                 ERROR(node.span(), E0000, "Invalid cast");
@@ -1154,11 +1156,13 @@ namespace typeck {
                     if( e.type != e2.type ) {
                         // ERROR
                     }
+                    DEBUG("_Cast: Borrow coerce");
                     this->context.apply_equality(node.span(), *e2.inner, *e.inner);
                     ),
                 (Pointer,
                     if( e.type != e2.type ) {
-                        this->context.apply_equality(node.span(), *e2.inner, *e.inner);
+                        //DEBUG("_Cast: Pointer classes mismatch");
+                        //this->context.apply_equality(node.span(), *e2.inner, *e.inner);
                     }
                     else {
                         // Nothing
@@ -1416,6 +1420,9 @@ namespace typeck {
             (UfcsKnown,
                 const auto& trait = this->context.m_crate.get_trait_by_path(sp, e.trait.m_path);
                 fix_param_count(sp, this->context, path, trait.m_params, e.trait.m_params);
+                if( trait.m_values.count(e.item) == 0 ) {
+                    BUG(sp, "Method '" << e.item << "' of trait " << e.trait.m_path << " doesn't exist");
+                }
                 const auto& fcn = trait.m_values.at(e.item).as_Function();
                 fix_param_count(sp, this->context, path, fcn.m_params,  e.params);
                 cache.m_fcn_params = &fcn.m_params;

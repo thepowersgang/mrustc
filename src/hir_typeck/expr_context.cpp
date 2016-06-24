@@ -1350,8 +1350,36 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                         const auto& e = left_inner_res.m_data.as_TraitObject();
                         if( right_inner_res.m_data.is_TraitObject() ) {
                             // TODO: Can Debug+Send be coerced to Debug?
-                            if( left_inner_res != right_inner_res )
-                                ERROR(sp, E0000, "Can't coerce between trait objects - " << left_inner_res << " and " << right_inner_res);
+                            if( left_inner_res != right_inner_res ) {
+                                const auto& lie = left_inner_res .m_data.as_TraitObject();
+                                const auto& rie = right_inner_res.m_data.as_TraitObject();
+                                // 1. Check/equate the main trait (NOTE: Eventualy this may be a set of data traits)
+                                if( lie.m_trait.m_path.m_path != rie.m_trait.m_path.m_path ) {
+                                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " (trait mismatch)");
+                                }
+                                equality_typeparams(lie.m_trait.m_path.m_params, rie.m_trait.m_path.m_params);
+                                
+                                // 2. Ensure that the LHS's marker traits are a strict subset of the RHS
+                                // NOTE: This assumes sorting - will false fail if ordering differs
+                                unsigned int r_i = 0;
+                                for(unsigned int l_i = 0; l_i < lie.m_markers.size(); l_i ++)
+                                {
+                                    while( r_i < rie.m_markers.size() && rie.m_markers[r_i].m_path != lie.m_markers[l_i].m_path ) {
+                                        r_i += 1;
+                                    }
+                                    if( r_i == rie.m_markers.size() ) {
+                                        ERROR(sp, E0000, "Can't coerce between trait objects - " << left_inner_res << " and " << right_inner_res << " (added marker)");
+                                    }
+                                }
+                                // Coercion is possible and valid.
+                                // HACK: Uses _Unsize as a coerce
+                                auto span = node_ptr->span();
+                                node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), l_t.clone() ));
+                                node_ptr->m_res_type = l_t.clone();
+                                
+                                this->mark_change();
+                                return ;
+                            }
                             // - Equal, nothing to do
                             return ;
                         }
@@ -1420,6 +1448,7 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                     auto& node_ptr = *node_ptr_ptr;
                     
                     auto span = node_ptr->span();
+                    node_ptr->m_res_type = r_t.clone();
                     node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), l_t.clone() ));
                     node_ptr->m_res_type = l_t.clone();
                     

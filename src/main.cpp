@@ -203,11 +203,11 @@ int main(int argc, char *argv[])
         ::std::cerr << "Parser Error: " << e.what() << ::std::endl;
         return 2;
     }
-    catch(const ::std::exception& e)
-    {
-        ::std::cerr << "Misc Error: " << e.what() << ::std::endl;
-        return 2;
-    }
+    //catch(const ::std::exception& e)
+    //{
+    //    ::std::cerr << "Misc Error: " << e.what() << ::std::endl;
+    //    return 2;
+    //}
     //catch(const char* e)
     //{
     //    ::std::cerr << "Internal Compiler Error: " << e << ::std::endl;

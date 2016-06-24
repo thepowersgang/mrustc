@@ -645,7 +645,26 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                 if( !n.args().is_empty() ) {
                     trait_path.nodes().back().args() = mv$(n.args());
                 }
-                auto new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(), mv$(trait_path));
+                // TODO: If the named item can't be found in the trait, fall back to it being a type binding
+                // - What if this item is from a nested trait?
+                ::AST::Path new_path;
+                bool found = false;
+                //switch(mode)
+                //{
+                //case Context::LookupMode::Value: {
+                    assert(i+1 < path_abs.nodes.size());
+                    auto it = ::std::find_if( e.trait_->items().begin(), e.trait_->items().end(), [&](const auto& x){ return x.name == path_abs.nodes[i+1].name(); } );
+                    if( it != e.trait_->items().end() ) {
+                        found = true;
+                    }
+                //    } break;
+                //}
+                if( !found ) {
+                    new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(trait_path)));
+                }
+                else {
+                    new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(), mv$(trait_path));
+                }
                 for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
                     new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
                 
