@@ -92,6 +92,8 @@ public:
     
     bool pathparams_contain_ivars(const ::HIR::PathParams& pps) const;
     bool type_contains_ivars(const ::HIR::TypeRef& ty) const;
+    bool pathparams_equal(const ::HIR::PathParams& pps_l, const ::HIR::PathParams& pps_r) const;
+    bool types_equal(const ::HIR::TypeRef& l, const ::HIR::TypeRef& r) const;
     
     /// Adds a local variable binding (type is mutable so it can be inferred if required)
     void add_local(unsigned int index, const ::std::string& name, ::HIR::TypeRef type);

@@ -1542,6 +1542,7 @@ namespace typeck {
                 cache.m_monomorph_cb = mv$(monomorph_cb);
             }
             
+            // --- Apply equalities from return and arguments ---
             for( unsigned int i = arg_ofs; i < cache.m_arg_types.size() - 1; i ++ )
             {
                 auto& arg_expr_ptr = args[i - arg_ofs];
@@ -1550,14 +1551,10 @@ namespace typeck {
                 this->context.apply_equality(sp, arg_ty, arg_expr_ptr->m_res_type,  &arg_expr_ptr);
             }
             
-            // TODO: Remove if not needed
-            // HACK: Expand UFCS again
-            cache.m_arg_types.back() = this->context.expand_associated_types(sp, mv$(cache.m_arg_types.back()));
-            
             DEBUG("RV " << cache.m_arg_types.back());
             this->context.apply_equality(sp, res_type, cache.m_arg_types.back(),  &this_node_ptr);
             
-            // Check generic bounds (after links between args and params are known)
+            // --- Check generic bounds (after links between args and params are known) ---
             // - HACK! Below just handles closures and fn traits.
             // - TODO: Make this FAR more generic than it is
             for(const auto& bound : cache.m_fcn_params->m_bounds)

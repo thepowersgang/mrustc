@@ -184,7 +184,114 @@ bool typeck::TypecheckContext::type_contains_ivars(const ::HIR::TypeRef& ty) con
     throw "";
 }
 
-
+namespace {
+    bool type_list_equal(const typeck::TypecheckContext& context, const ::std::vector< ::HIR::TypeRef>& l, const ::std::vector< ::HIR::TypeRef>& r)
+    {
+        if( l.size() != r.size() )
+            return false;
+        
+        for( unsigned int i = 0; i < l.size(); i ++ ) {
+            if( !context.types_equal(l[i], r[i]) )
+                return false;
+        }
+        return true;
+    }
+}
+bool typeck::TypecheckContext::pathparams_equal(const ::HIR::PathParams& pps_l, const ::HIR::PathParams& pps_r) const
+{
+    return type_list_equal(*this, pps_l.m_types, pps_r.m_types);
+}
+bool typeck::TypecheckContext::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRef& rr) const
+{
+    const auto& l = this->get_type(rl);
+    const auto& r = this->get_type(rr);
+    if( l.m_data.tag() != r.m_data.tag() )
+        return false;
+    
+    TU_MATCH(::HIR::TypeRef::Data, (l.m_data, r.m_data), (le, re),
+    (Infer, return le.index == re.index; ),
+    (Primitive, return le == re; ),
+    (Diverge, return true; ),
+    (Generic, return le.binding == re.binding; ),
+    (Path,
+        if( le.path.m_data.tag() != re.path.m_data.tag() )
+            return false;
+        TU_MATCH(::HIR::Path::Data, (le.path.m_data, re.path.m_data), (lpe, rpe),
+        (Generic,
+            if( lpe.m_path != rpe.m_path )
+                return false;
+            return pathparams_equal(lpe.m_params, rpe.m_params);
+            ),
+        (UfcsKnown,
+            if( lpe.item != rpe.item )
+                return false;
+            if( types_equal(*lpe.type, *rpe.type) )
+                return false;
+            if( pathparams_equal(lpe.trait.m_params, rpe.trait.m_params) )
+                return false;
+            return pathparams_equal(lpe.params, rpe.params);
+            ),
+        (UfcsInherent,
+            if( lpe.item != rpe.item )
+                return false;
+            if( types_equal(*lpe.type, *rpe.type) )
+                return false;
+            return pathparams_equal(lpe.params, rpe.params);
+            ),
+        (UfcsUnknown,
+            BUG(Span(), "UfcsUnknown");
+            )
+        )
+        ),
+    (Borrow,
+        if( le.type != re.type )
+            return false;
+        return types_equal(*le.inner, *re.inner);
+        ),
+    (Pointer,
+        if( le.type != re.type )
+            return false;
+        return types_equal(*le.inner, *re.inner);
+        ),
+    (Slice,
+        return types_equal(*le.inner, *re.inner);
+        ),
+    (Array,
+        if( le.size_val != re.size_val )
+            return false;
+        return types_equal(*le.inner, *re.inner);
+        ),
+    (Closure,
+        if( !type_list_equal(*this, le.m_arg_types, re.m_arg_types) )
+            return false;
+        return types_equal(*le.m_rettype, *re.m_rettype);
+        ),
+    (Function,
+        if( !type_list_equal(*this, le.m_arg_types, re.m_arg_types) )
+            return false;
+        return types_equal(*le.m_rettype, *re.m_rettype);
+        ),
+    (TraitObject,
+        if( le.m_markers.size() != re.m_markers.size() )
+            return false;
+        for(unsigned int i = 0; i < le.m_markers.size(); i ++) {
+            const auto& lm = le.m_markers[i];
+            const auto& rm = re.m_markers[i];
+            if( lm.m_path != rm.m_path )
+                return false;
+            if( ! pathparams_equal(lm.m_params, rm.m_params) )
+                return false;
+        }
+        if( le.m_trait.m_path.m_path != re.m_trait.m_path.m_path )
+            return false;
+        return pathparams_equal(le.m_trait.m_path.m_params, re.m_trait.m_path.m_params);
+        ),
+    (Tuple,
+        return type_list_equal(*this, le, re);
+        )
+    )
+    throw "";
+}
 
 ///
 /// Add inferrence variables to the provided type (if they're not already set)
@@ -438,7 +545,7 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
         
         TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
         (
-            // TODO: Type mismatch
+            ERROR(sp, E0000, "Type mismatch in struct pattern - " << type << " is not " << e.path);
             ),
         (Infer, throw ""; ),
         (Path,
@@ -462,7 +569,7 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
         
         TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
         (
-            // TODO: Type mismatch
+            ERROR(sp, E0000, "Type mismatch in struct pattern - " << type << " is not " << e.path);
             ),
         (Infer, throw ""; ),
         (Path,
@@ -507,7 +614,7 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
         
         TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
         (
-            // TODO: Type mismatch
+            ERROR(sp, E0000, "Type mismatch in enum pattern - " << type << " is not " << e.path);
             ),
         (Infer, throw ""; ),
         (Path,
@@ -549,7 +656,7 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
         
         TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
         (
-            // TODO: Type mismatch
+            ERROR(sp, E0000, "Type mismatch in enum pattern - " << type << " is not " << e.path);
             ),
         (Infer, throw ""; ),
         (Path,
@@ -576,7 +683,7 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
         
         TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
         (
-            // TODO: Type mismatch
+            ERROR(sp, E0000, "Type mismatch in enum pattern - " << type << " is not " << e.path);
             ),
         (Infer, throw ""; ),
         (Path,
@@ -893,6 +1000,23 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                 else
                 {
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " (can't coerce)");
+                }
+            }
+            
+            DEBUG("CoerceUnsized - " << this->type_contains_ivars(l_t) << this->type_contains_ivars(r_t) << this->types_equal(l_t, r_t));
+            if( !this->type_contains_ivars(l_t) && !this->type_contains_ivars(r_t) && !this->types_equal(l_t, r_t) )
+            {
+                // TODO: If the types are fully known, and not equal. Search for CoerceUnsized
+                ::HIR::PathParams   pp;
+                pp.m_types.push_back( l_t.clone() );
+                bool succ = this->find_trait_impls(sp, this->m_crate.get_lang_item_path(sp, "coerce_unsized"), pp, r_t, [&](const auto& args, const auto& ) {
+                    DEBUG("- Found coerce_unsized from " << l_t << " to " << r_t);
+                    return true;
+                    });
+                if( succ )
+                {
+                    // TODO: 
+                    TODO(sp, "Apply CoerceUnsized - " << l_t << " <- " << r_t);
                 }
             }
             

@@ -83,14 +83,15 @@ UPDATE:
 RUST_TESTS_DIR := $(RUSTCSRC)src/test/
 rust_tests: rust_tests-run-pass rust_tests-run-fail rust_tests-compile-fail
 
-DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%.txt,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
+DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%.o,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
 rust_tests-run-pass: $(call DEF_RUST_TESTS,run-pass)
 rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
 rust_tests-compile-fail: $(call DEF_RUST_TESTS,compile-fail)
 
-output/rust/%.txt: $(RUST_TESTS_DIR)%.rs $(BIN)
+output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(BIN)
 	@mkdir -p $(dir $@)
-	$(BIN) $< -o $@.o --stop-after parse > $@ 2>&1
+	$(BIN) $< -o $@ --stop-after parse > $@.txt 2>&1
+	touch $@
 
 test: output/core.ast $(BIN)
 # output/std.ast output/log.ast output/env_logger.ast output/getopts.ast
