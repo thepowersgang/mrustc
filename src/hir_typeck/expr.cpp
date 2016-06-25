@@ -349,21 +349,39 @@ namespace typeck {
         }
         void visit(::HIR::ExprNode_Block& node) override
         {
-            this->context.push_traits( node.m_traits );
-            ::HIR::ExprVisitorDef::visit(node);
             if( node.m_nodes.size() > 0 ) {
-                auto& ln = *node.m_nodes.back();
-                this->context.apply_equality(ln.span(), node.m_res_type, ln.m_res_type, &node.m_nodes.back());
+                auto unit = ::HIR::TypeRef::new_unit();
+                for(unsigned int i = 0; i < node.m_nodes.size()-1; i++) {
+                    auto& n = node.m_nodes[i];
+                    if( dynamic_cast< ::HIR::ExprNode_Block*>(&*n) ) {
+                        this->context.add_ivars(n->m_res_type);
+                        this->context.apply_equality(n->span(), unit, n->m_res_type, &n);
+                    }
+                }
+                auto& ln = node.m_nodes.back();
+                this->context.add_ivars(ln->m_res_type);
+                this->context.apply_equality(ln->span(), node.m_res_type, ln->m_res_type, &ln);
             }
             else {
                 node.m_res_type = ::HIR::TypeRef::new_unit();
             }
+            
+            this->context.push_traits( node.m_traits );
+            ::HIR::ExprVisitorDef::visit(node);
             this->context.pop_traits( node.m_traits );
         }
         void visit(::HIR::ExprNode_Return& node) override
         {
-            ::HIR::ExprVisitorDef::visit(node);
+            this->context.add_ivars( node.m_value->m_res_type );
             this->context.apply_equality(node.span(), this->ret_type, node.m_value->m_res_type,  &node.m_value);
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        
+        void visit(::HIR::ExprNode_Loop& node) override
+        {
+            this->context.add_ivars( node.m_code->m_res_type );
+            this->context.apply_equality(node.span(), ::HIR::TypeRef::new_unit(), node.m_code->m_res_type,  &node.m_code);
+            ::HIR::ExprVisitorDef::visit(node);
         }
         
         void visit(::HIR::ExprNode_Let& node) override
@@ -389,18 +407,22 @@ namespace typeck {
                 {
                     this->context.add_binding(node.span(), pat, node.m_value->m_res_type);
                 }
+            
+                this->context.add_ivars( arm.m_code->m_res_type );
+                this->context.apply_equality(node.span(), node.m_res_type, arm.m_code->m_res_type,  &arm.m_code);
             }
             DEBUG("- match val : " << this->context.get_type(node.m_value->m_res_type));
-
             ::HIR::ExprVisitorDef::visit(node);
             DEBUG("- match val : " << this->context.get_type(node.m_value->m_res_type));
         }
         void visit(::HIR::ExprNode_If& node) override
         {
             node.m_cond->m_res_type = ::HIR::TypeRef( ::HIR::CoreType::Bool );
+            this->context.add_ivars( node.m_true->m_res_type );
             if( node.m_false ) {
-            //    node.m_true->m_res_type = node.m_res_type.clone();
-            //    node.m_false->m_res_type = node.m_res_type.clone();
+                this->context.add_ivars( node.m_false->m_res_type );
+                this->context.apply_equality(node.span(), node.m_res_type, node.m_true->m_res_type,  &node.m_true);
+                this->context.apply_equality(node.span(), node.m_res_type, node.m_false->m_res_type,  &node.m_false);
             }
             else {
                 this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
@@ -1947,6 +1969,9 @@ namespace typeck {
         {
             auto& ty = this->context.get_type(node.m_res_type);
             if( !ty.m_data.is_Tuple() ) {
+                if( ty.m_data.is_Diverge() ) {
+                    return ;
+                }
                 this->context.dump();
                 BUG(node.span(), "Return type of tuple literal wasn't a tuple - " << node.m_res_type << " = " << ty);
             }
@@ -2082,8 +2107,13 @@ void Typecheck_Code(typeck::TypecheckContext context, const ::HIR::TypeRef& resu
     // 1. Enumerate inferrence variables and assign indexes to them
     {
         typeck::ExprVisitor_Enum    visitor { context, result_type };
-        context.add_ivars( root_ptr->m_res_type );
-        context.apply_equality(root_ptr->span(), result_type, root_ptr->m_res_type,  &root_ptr);
+        if( root_ptr->m_res_type.m_data.is_Infer() ) {
+            root_ptr->m_res_type = result_type.clone();
+        }
+        else {
+            context.add_ivars( root_ptr->m_res_type );
+            context.apply_equality(root_ptr->span(), result_type, root_ptr->m_res_type,  &root_ptr);
+        }
         visitor.visit_node_ptr(root_ptr);
     }
     

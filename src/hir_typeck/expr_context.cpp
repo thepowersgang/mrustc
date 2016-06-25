@@ -1042,6 +1042,14 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
         return ;
     }
     
+    if( /*l_t.m_data.is_Diverge() ||*/ r_t.m_data.is_Diverge() ) {
+        DEBUG("Refusing to unify with !");
+        return ;
+    }
+    if( l_t.m_data.is_Diverge() ) {
+        // TODO: Error if the right type isn't infer
+    }
+    
     DEBUG("- l_t = " << l_t << ", r_t = " << r_t);
     TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Infer, r_e,
         TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Infer, l_e,
