@@ -1972,11 +1972,12 @@ bool typeck::TypecheckContext::find_trait_impls_crate(const Span& sp,
                 }
                 };
             assert( impl.m_trait_args.m_types.size() == params.m_types.size() );
+            // TODO: Use a fuzzy-able generic match
             fail |= !impl.m_type.match_test_generics(sp, type , this->callback_resolve_infer(), cb);
             for(unsigned int i = 0; i < impl.m_trait_args.m_types.size(); i ++)
                 fail |= !impl.m_trait_args.m_types[i].match_test_generics(sp, params.m_types[i], this->callback_resolve_infer(), cb);
             if( fail ) {
-                DEBUG("- Failed to match");
+                DEBUG("- Failed to match parameters - " << impl.m_trait_args << " != " << params);
                 return false;
             }
             for(const auto& ty : impl_params)

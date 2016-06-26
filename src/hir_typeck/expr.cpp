@@ -421,8 +421,9 @@ namespace typeck {
             this->context.add_ivars( node.m_true->m_res_type );
             if( node.m_false ) {
                 this->context.add_ivars( node.m_false->m_res_type );
-                this->context.apply_equality(node.span(), node.m_res_type, node.m_true->m_res_type,  &node.m_true);
-                this->context.apply_equality(node.span(), node.m_res_type, node.m_false->m_res_type,  &node.m_false);
+                // NOTE: Removed to work around type inferrence failure in libcore/slice.rs
+                //this->context.apply_equality(node.span(), node.m_res_type, node.m_true->m_res_type,  &node.m_true);
+                //this->context.apply_equality(node.span(), node.m_res_type, node.m_false->m_res_type,  &node.m_false);
             }
             else {
                 this->context.apply_equality(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
@@ -645,16 +646,19 @@ namespace typeck {
         // - Assign: both sides equal
         void visit(::HIR::ExprNode_Assign& node) override
         {
-            TRACE_FUNCTION_F("... = ...");
-            ::HIR::ExprVisitorDef::visit(node);
+            TRACE_FUNCTION_F("... "<<::HIR::ExprNode_Assign::opname(node.m_op)<<"= ...");
             // Plain assignment can't be overloaded, requires equal types
             if( node.m_op == ::HIR::ExprNode_Assign::Op::None ) {
                 this->context.apply_equality(node.span(),
                     node.m_slot->m_res_type, node.m_value->m_res_type,
                     &node.m_value
                     );
+                
+                ::HIR::ExprVisitorDef::visit(node);
             }
             else {
+                ::HIR::ExprVisitorDef::visit(node);
+                
                 const auto& ty_left  = this->context.get_type(node.m_slot->m_res_type );
                 const auto& ty_right = this->context.get_type(node.m_value->m_res_type);
                 
@@ -694,24 +698,33 @@ namespace typeck {
                     trait_path_pp.m_types.push_back( ty_right.clone() );
                     
                     
-                    /*bool rv =*/ this->context.find_trait_impls(node.span(), trait_path,trait_path_pp, ty_left, [&](const auto& args, const auto& a_types) {
+                    unsigned int count = 0;
+                    bool rv = this->context.find_trait_impls(node.span(), trait_path,trait_path_pp, ty_left, [&](const auto& args, const auto& a_types) {
                         assert( args.m_types.size() == 1 );
                         const auto& impl_right = args.m_types[0];
-                        
+                     
                         TODO(node.span(), "Check " << impl_right << " vs " << ty_right);
                         
-                        //auto cmp = impl_index.compare_with_placeholders(node.span(), index_ty, this->context.callback_resolve_infer());
-                        //if( cmp == ::HIR::Compare::Unequal)
-                        //    return false;
-                        //if( cmp == ::HIR::Compare::Equal ) {
-                        //    return true;
-                        //}
+                        auto cmp = impl_right.compare_with_placeholders(node.span(), ty_right, this->context.callback_resolve_infer());
+                        if( cmp == ::HIR::Compare::Unequal)
+                            return false;
+                        count += 1;   
+                        if( cmp == ::HIR::Compare::Equal ) {
+                            return true;
+                        }
                         //DEBUG("TODO: Handle fuzzy match index operator " << impl_index);
                         return false;
                         });
                     
                     this->context.dump();
                     TODO(node.span(), "Search for implementation of " << trait_path << "<" << ty_right << "> for " << ty_left);
+                    
+                    if( rv ) {
+                    }
+                    else if( count > 0 ) {
+                    }
+                    else {
+                    }
                 }
                 else {
                 }
@@ -726,7 +739,7 @@ namespace typeck {
             const auto& ty_right = this->context.get_type(node.m_right->m_res_type);
             const auto& ty_res = this->context.get_type(node.m_res_type);
             
-            TRACE_FUNCTION_FR("BinOp " << ty_left << " <> " << ty_right << " = " << ty_res, "BinOp");
+            TRACE_FUNCTION_FR("... {"<<ty_left<<"} "<<::HIR::ExprNode_BinOp::opname(node.m_op)<<" ...{"<<ty_right<<"}", "BinOp");
             
             // Boolean ops can't be overloaded, and require `bool` on both sides
             if( node.m_op == ::HIR::ExprNode_BinOp::Op::BoolAnd || node.m_op == ::HIR::ExprNode_BinOp::Op::BoolOr )
@@ -1072,6 +1085,7 @@ namespace typeck {
         // - UniOp: Look for overload or primitive
         void visit(::HIR::ExprNode_UniOp& node) override
         {
+            TRACE_FUNCTION_F(::HIR::ExprNode_UniOp::opname(node.m_op) << "...");
             ::HIR::ExprVisitorDef::visit(node);
             
             const auto& ty = this->context.get_type(node.m_value->m_res_type);
@@ -1193,7 +1207,6 @@ namespace typeck {
                 )
                 )
             )
-            // TODO: Check cast validity and do inferrence
             ::HIR::ExprVisitorDef::visit(node);
         }
         // - Index: Look for implementation of the Index trait

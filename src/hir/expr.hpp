@@ -166,6 +166,25 @@ struct ExprNode_Assign:
         And, Or , Xor,
         Shr, Shl,
     };
+    static const char* opname(Op v) {
+        switch(v)
+        {
+        case Op::None:  return "";
+        case Op::Add: return "+";
+        case Op::Sub: return "-";
+        case Op::Mul: return "*";
+        case Op::Div: return "/";
+        case Op::Mod: return "%";
+        
+        case Op::And: return "&";
+        case Op::Or:  return "|";
+        case Op::Xor: return "^";
+        
+        case Op::Shr: return ">>";
+        case Op::Shl: return "<<";
+        }
+        throw "";
+    }
     
     Op  m_op;
     ExprNodeP   m_slot;
@@ -199,6 +218,34 @@ struct ExprNode_BinOp:
         And, Or , Xor,
         Shr, Shl,
     };
+    static const char* opname(Op v) {
+        switch(v)
+        {
+        case Op::CmpEqu:    return "==";
+        case Op::CmpNEqu:   return "!=";
+        case Op::CmpLt:     return "<";
+        case Op::CmpLtE:    return "<=";
+        case Op::CmpGt:     return ">";
+        case Op::CmpGtE:    return ">=";
+        
+        case Op::BoolAnd:   return "&&";
+        case Op::BoolOr:    return "||";
+        
+        case Op::Add: return "+";
+        case Op::Sub: return "-";
+        case Op::Mul: return "*";
+        case Op::Div: return "/";
+        case Op::Mod: return "%";
+        
+        case Op::And: return "&";
+        case Op::Or:  return "|";
+        case Op::Xor: return "^";
+        
+        case Op::Shr: return ">>";
+        case Op::Shl: return "<<";
+        }
+        return "??";
+    }
 
     Op    m_op;
     ::HIR::ExprNodeP m_left;
@@ -234,6 +281,15 @@ struct ExprNode_UniOp:
         Invert, // '!<expr>'
         Negate, // '-<expr>'
     };
+    static const char* opname(Op v) {
+        switch(v) {
+        case Op::Ref:   return "&";
+        case Op::RefMut:return "&mut";
+        case Op::Invert:return "!";
+        case Op::Negate:return "-";
+        }
+        throw "";
+    }
     
     Op  m_op;
     ::HIR::ExprNodeP    m_value;
