@@ -306,6 +306,7 @@ struct ExprNode_Cast:
     public ExprNode
 {
     ::HIR::ExprNodeP    m_value;
+    // TODO: Re-instate the local type, to allow for coercions?
 
     ExprNode_Cast(Span sp, ::HIR::ExprNodeP value, ::HIR::TypeRef dst_type):
         ExprNode( mv$(sp), mv$(dst_type) ),
