@@ -1394,7 +1394,9 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                         }
                         
                         // 1. Search for an implementation of the data trait for this type
-                        bool succ = this->find_trait_impls(sp, e.m_trait.m_path.m_path, e.m_trait.m_path.m_params,  right_inner_res, [&](const auto& args,const auto& types) {
+                        auto r = this->expand_associated_types(sp, right_inner_res.clone());
+                        //bool succ = this->find_trait_impls(sp, e.m_trait.m_path.m_path, e.m_trait.m_path.m_params,  right_inner_res, [&](const auto& args,const auto& types) {
+                        bool succ = this->find_trait_impls(sp, e.m_trait.m_path.m_path, e.m_trait.m_path.m_params,  r, [&](const auto& args,const auto& types) {
                             if( args.m_types.size() > 0 )
                                 TODO(sp, "Handle unsizing to traits with params");
                             // TODO: Check `types`
@@ -1402,8 +1404,8 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                             });
                         if(!succ) {
                             // XXX: Debugging - Resolves to the correct type in a failing case
-                            auto ty2 = this->expand_associated_types(sp, this->expand_associated_types(sp, right_inner_res.clone()) );
-                            ERROR(sp, E0000, "Trait " << e.m_trait << " isn't implemented for " << right_inner_res << "(" << FmtType(*this, right_inner_res) << " - "<<ty2<<")" );
+                            //auto ty2 = this->expand_associated_types(sp, this->expand_associated_types(sp, right_inner_res.clone()) );
+                            ERROR(sp, E0000, "Trait " << e.m_trait << " isn't implemented for " << FmtType(*this, right_inner_res) << " (converting to TraitObject) - (r="<<r<<")" );
                         }
                         for(const auto& marker : e.m_markers)
                         {
@@ -1773,11 +1775,13 @@ bool typeck::TypecheckContext::find_trait_impls(const Span& sp,
                                 auto it = be.trait.m_type_bounds.find( e2.item );
                                 if( it != be.trait.m_type_bounds.end() ) {
                                     if( monomorphise_type_needed(it->second) ) {
-                                        return monomorphise_type_with(sp, it->second, cb_placeholders_trait);
+                                        input = monomorphise_type_with(sp, it->second, cb_placeholders_trait);
                                     }
                                     else {
-                                        return it->second.clone();
+                                        input = it->second.clone();
                                     }
+                                    input = this->expand_associated_types(sp, mv$(input));
+                                    return input;
                                 }
                             }
                             ),
@@ -1788,11 +1792,13 @@ bool typeck::TypecheckContext::find_trait_impls(const Span& sp,
                                 DEBUG("Match of " << be.type << " with " << input);
                                 DEBUG("- Replace `input` with " << be.other_type << ", Self=" << *pe_inner.type);
                                 if( monomorphise_type_needed(be.other_type) ) {
-                                    return monomorphise_type_with(sp, be.other_type, cb_placeholders_trait);
+                                    input = monomorphise_type_with(sp, be.other_type, cb_placeholders_trait);
                                 }
                                 else {
-                                    return be.other_type.clone();
+                                    input = be.other_type.clone();
                                 }
+                                input = this->expand_associated_types(sp, mv$(input));
+                                return input;
                             }
                             )
                         )
