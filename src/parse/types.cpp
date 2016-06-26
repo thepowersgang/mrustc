@@ -212,6 +212,8 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
     {
         if( GET_TOK(tok, lex) == TOK_STRING ) {
             abi = tok.str();
+            if( abi == "" )
+                ERROR(lex.getPosition(), E0000, "Empty ABI");
             GET_TOK(tok, lex);
         }
         else {

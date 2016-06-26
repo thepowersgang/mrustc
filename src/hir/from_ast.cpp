@@ -633,6 +633,8 @@ const ::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
             box$( LowerHIR_Type(*e.info.m_rettype) ),
             mv$(args)
             };
+        if( f.m_abi == "" )
+            f.m_abi = "rust";
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function( mv$(f) ) );
         ),
     (Generic,

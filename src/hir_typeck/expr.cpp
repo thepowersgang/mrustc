@@ -219,9 +219,9 @@ namespace typeck {
             ::HIR::FunctionType ft;
             ft.is_unsafe = e.is_unsafe;
             ft.m_abi = e.m_abi;
-            ft.m_rettype = box$( e.m_rettype->clone() );
+            ft.m_rettype = box$( monomorphise_type_with(sp, *e.m_rettype, callback) );
             for( const auto& arg : e.m_arg_types )
-                ft.m_arg_types.push_back( arg.clone() );
+                ft.m_arg_types.push_back( monomorphise_type_with(sp, arg, callback) );
             rv = ::HIR::TypeRef( mv$(ft) );
             ),
         (Closure,
