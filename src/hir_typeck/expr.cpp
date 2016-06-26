@@ -1879,7 +1879,8 @@ namespace typeck {
         void visit(::HIR::ExprNode_PathValue& node) override
         {
             const auto& sp = node.span();
-            TU_MATCH(::HIR::Path::Data, (node.m_path.m_data), (e),
+            auto& path = node.m_path;
+            TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
             (Generic,
                 switch(node.m_target) {
                 case ::HIR::ExprNode_PathValue::UNKNOWN:
@@ -1920,7 +1921,79 @@ namespace typeck {
                 TODO(sp, "Look up associated constants/statics (trait)");
                 ),
             (UfcsInherent,
-                TODO(sp, "Look up associated constants/statics (inherent)");
+                // - Locate function (and impl block)
+                const ::HIR::Function* fcn_ptr = nullptr;
+                const ::HIR::TypeImpl* impl_ptr = nullptr;
+                this->context.m_crate.find_type_impls(*e.type, [&](const auto& ty)->const auto& {
+                        if( ty.m_data.is_Infer() )
+                            return this->context.get_type(ty);
+                        else
+                            return ty;
+                    },
+                    [&](const auto& impl) {
+                        DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+                        auto it = impl.m_methods.find(e.item);
+                        if( it == impl.m_methods.end() )
+                            return false;
+                        fcn_ptr = &it->second;
+                        impl_ptr = &impl;
+                        return true;
+                    });
+                if( !fcn_ptr ) {
+                    ERROR(sp, E0000, "Failed to locate function " << path);
+                }
+                assert(impl_ptr);
+                fix_param_count(sp, this->context, path, fcn_ptr->m_params,  e.params);
+                
+                // If the impl block has parameters, figure out what types they map to
+                // - The function params are already mapped (from fix_param_count)
+                ::HIR::PathParams   impl_params;
+                if( impl_ptr->m_params.m_types.size() > 0 ) {
+                    impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
+                    impl_ptr->m_type.match_generics(sp, *e.type, this->context.callback_resolve_infer(), [&](auto idx, const auto& ty) {
+                        assert( idx < impl_params.m_types.size() );
+                        impl_params.m_types[idx] = ty.clone();
+                        });
+                    for(const auto& ty : impl_params.m_types)
+                        assert( !( ty.m_data.is_Infer() && ty.m_data.as_Infer().index == ~0u) );
+                }
+                
+                // Create monomorphise callback
+                const auto& fcn_params = e.params;
+                auto monomorph_cb = [&](const auto& gt)->const auto& {
+                        const auto& ge = gt.m_data.as_Generic();
+                        if( ge.binding == 0xFFFF ) {
+                            return this->context.get_type(*e.type);
+                        }
+                        else if( ge.binding < 256 ) {
+                            auto idx = ge.binding;
+                            if( idx >= impl_params.m_types.size() ) {
+                                BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << impl_params.m_types.size());
+                            }
+                            return this->context.get_type(impl_params.m_types[idx]);
+                        }
+                        else if( ge.binding < 512 ) {
+                            auto idx = ge.binding - 256;
+                            if( idx >= fcn_params.m_types.size() ) {
+                                BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << fcn_params.m_types.size());
+                            }
+                            return this->context.get_type(fcn_params.m_types[idx]);
+                        }
+                        else {
+                            BUG(sp, "Generic bounding out of total range");
+                        }
+                    };
+                
+                ::HIR::FunctionType ft {
+                    fcn_ptr->m_unsafe, fcn_ptr->m_abi,
+                    box$( monomorphise_type_with(sp, fcn_ptr->m_return,  monomorph_cb) ),
+                    {}
+                    };
+                for(const auto& arg : fcn_ptr->m_args)
+                    ft.m_arg_types.push_back( monomorphise_type_with(sp, arg.second,  monomorph_cb) );
+                auto ty = ::HIR::TypeRef(mv$(ft));
+                
+                this->context.apply_equality(node.span(), node.m_res_type, ty);
                 )
             )
             ::HIR::ExprVisitorDef::visit(node);
