@@ -1400,8 +1400,11 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                             // TODO: Check `types`
                             return true;
                             });
-                        if(!succ)
-                            ERROR(sp, E0000, "Trait " << e.m_trait << " isn't implemented for " << right_inner_res );
+                        if(!succ) {
+                            // XXX: Debugging - Resolves to the correct type in a failing case
+                            auto ty2 = this->expand_associated_types(sp, this->expand_associated_types(sp, right_inner_res.clone()) );
+                            ERROR(sp, E0000, "Trait " << e.m_trait << " isn't implemented for " << right_inner_res << "(" << FmtType(*this, right_inner_res) << " - "<<ty2<<")" );
+                        }
                         for(const auto& marker : e.m_markers)
                         {
                             TODO(sp, "Check for marker trait impls ("<<marker<<") when unsizing to " << left_inner_res << " from " << right_inner_res);
@@ -1955,8 +1958,7 @@ bool typeck::TypecheckContext::find_trait_impls_crate(const Span& sp,
         [&](const auto& impl) {
             DEBUG("[find_trait_impls_crate] Found impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type);
             // Compare with `params`
-            // - TODO: Would prefer a fuzzy compare, but match is easiest
-            bool    fail = false;
+            auto    match = ::HIR::Compare::Equal;
             ::std::vector< const ::HIR::TypeRef*> impl_params;
             impl_params.resize( impl.m_params.m_types.size() );
             auto cb = [&](auto idx, const auto& ty) {
@@ -1966,17 +1968,19 @@ bool typeck::TypecheckContext::find_trait_impls_crate(const Span& sp,
                     impl_params[idx] = &ty;
                 }
                 else if( *impl_params[idx] != ty ) {
-                    fail = true;
+                    // Strict equality is OK, as all types should be sane
+                    // - TODO: What if there's an un-expanded associated?
+                    match = ::HIR::Compare::Unequal;
                 }
                 else {
                 }
                 };
             assert( impl.m_trait_args.m_types.size() == params.m_types.size() );
             // TODO: Use a fuzzy-able generic match
-            fail |= !impl.m_type.match_test_generics(sp, type , this->callback_resolve_infer(), cb);
+            match &= impl.m_type.match_test_generics_fuzz(sp, type , this->callback_resolve_infer(), cb);
             for(unsigned int i = 0; i < impl.m_trait_args.m_types.size(); i ++)
-                fail |= !impl.m_trait_args.m_types[i].match_test_generics(sp, params.m_types[i], this->callback_resolve_infer(), cb);
-            if( fail ) {
+                match &= impl.m_trait_args.m_types[i].match_test_generics_fuzz(sp, params.m_types[i], this->callback_resolve_infer(), cb);
+            if( match == ::HIR::Compare::Unequal ) {
                 DEBUG("- Failed to match parameters - " << impl.m_trait_args << " != " << params);
                 return false;
             }
@@ -2048,7 +2052,10 @@ bool typeck::TypecheckContext::find_trait_impls_crate(const Span& sp,
             }
             
             DEBUG("[find_trait_impls_crate] callback(args=" << args_mono << ", assoc={" << types << "})");
-            return callback(args_mono, types);
+            //if( match == ::HIR::Compare::Fuzzy ) {
+            //    TODO(sp, "- Pass on fuzzy match status");
+            //}
+            return callback(args_mono, types/*, (match == ::HIR::Compare::Fuzzy)*/);
         }
         );
 }

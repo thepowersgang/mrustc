@@ -265,18 +265,21 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
 
 
 namespace {
-    bool match_generics_pp(const Span& sp, const ::HIR::PathParams& t, const ::HIR::PathParams& x, ::HIR::t_cb_resolve_type resolve_placeholder, ::HIR::t_cb_match_generics callback)
+    ::HIR::Compare match_generics_pp(const Span& sp, const ::HIR::PathParams& t, const ::HIR::PathParams& x, ::HIR::t_cb_resolve_type resolve_placeholder, ::HIR::t_cb_match_generics callback)
     {
         if( t.m_types.size() != x.m_types.size() ) {
-            return false;
+            return ::HIR::Compare::Unequal;
         }
         
+        auto rv = ::HIR::Compare::Equal;
         for(unsigned int i = 0; i < t.m_types.size(); i ++ )
         {
-            t.m_types[i].match_generics( sp, x.m_types[i], resolve_placeholder, callback );
+            rv &= t.m_types[i].match_test_generics_fuzz( sp, x.m_types[i], resolve_placeholder, callback );
+            if( rv == ::HIR::Compare::Unequal )
+                return rv;
         }
         
-        return true;
+        return rv;
     }
 }
 
@@ -289,12 +292,17 @@ void ::HIR::TypeRef::match_generics(const Span& sp, const ::HIR::TypeRef& x_in, 
 }
 bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, t_cb_match_generics callback) const
 {
+    return this->match_test_generics_fuzz(sp, x_in, resolve_placeholder, callback) == ::HIR::Compare::Equal;
+}
+::HIR::Compare HIR::TypeRef::match_test_generics_fuzz(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, t_cb_match_generics callback) const
+{
     if( m_data.is_Infer() ) {
         BUG(sp, "Encountered '_' as this - " << *this);
     }
     if( m_data.is_Generic() ) {
         callback(m_data.as_Generic().binding, x_in);
-        return true;
+        // - TODO: Allow callback to return a match form
+        return Compare::Equal;
     }
     const auto& x = (x_in.m_data.is_Infer() || x_in.m_data.is_Generic() ? resolve_placeholder(x_in) : x_in);
     TU_IFLET(::HIR::TypeRef::Data, x.m_data, Infer, xe,
@@ -303,7 +311,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         case ::HIR::InferClass::None:
             // - If right is generic infer, assume it's good
             //return true;
-            return false;
+            return Compare::Fuzzy;
         case ::HIR::InferClass::Integer:
             TU_IFLET(::HIR::TypeRef::Data, m_data, Primitive, te,
                 switch(te)
@@ -313,10 +321,11 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                 case ::HIR::CoreType::I32:   case ::HIR::CoreType::U32:
                 case ::HIR::CoreType::I64:   case ::HIR::CoreType::U64:
                 case ::HIR::CoreType::Isize: case ::HIR::CoreType::Usize:
-                    return true;
+                    return Compare::Fuzzy;
+                    //return true;
                 default:
                     DEBUG("- Fuzz fail");
-                    break;
+                    return Compare::Unequal;
                 }
             )
             break;
@@ -326,10 +335,11 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                 {
                 case ::HIR::CoreType::F32:
                 case ::HIR::CoreType::F64:
-                    return true;
+                    return Compare::Fuzzy;
+                    //return true;
                 default:
                     DEBUG("- Fuzz fail");
-                    break;
+                    return Compare::Unequal;
                 }
             )
             break;
@@ -337,29 +347,27 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     )
     if( m_data.tag() != x.m_data.tag() ) {
         DEBUG("- Tag mismatch " << *this << " and " << x);
-        return false;
+        return Compare::Unequal;
     }
     TU_MATCH(::HIR::TypeRef::Data, (m_data, x.m_data), (te, xe),
     (Infer, throw "";),
     (Generic, throw "";),
     (Primitive,
-        return true;
+        return (te == xe ? Compare::Equal : Compare::Unequal);
         ),
     (Diverge,
-        return true;
+        return Compare::Equal;
         ),
     (Path,
         if( te.path.m_data.tag() != xe.path.m_data.tag() ) {
-            return false;
+            return Compare::Unequal;
         }
         TU_MATCH(::HIR::Path::Data, (te.path.m_data, xe.path.m_data), (tpe, xpe),
         (Generic,
             if( tpe.m_path != xpe.m_path ) {
-                return false;
+                return Compare::Unequal;
             }
-            if( !match_generics_pp(sp, tpe.m_params, xpe.m_params, resolve_placeholder, callback) ) {
-                return false;
-            }
+            return match_generics_pp(sp, tpe.m_params, xpe.m_params, resolve_placeholder, callback);
             ),
         (UfcsKnown,
             TODO(sp, "Path UfcsKnown - " << *this << " and " << x);
@@ -376,27 +384,32 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         TODO(sp, "TraitObject");
         ),
     (Array,
-        return te.inner->match_test_generics( sp, *xe.inner, resolve_placeholder, callback );
+        return te.inner->match_test_generics_fuzz( sp, *xe.inner, resolve_placeholder, callback );
         ),
     (Slice,
-        return te.inner->match_test_generics( sp, *xe.inner, resolve_placeholder, callback );
+        return te.inner->match_test_generics_fuzz( sp, *xe.inner, resolve_placeholder, callback );
         ),
     (Tuple,
         if( te.size() != xe.size() ) {
-            return false;
+            return Compare::Unequal;
         }
-        for(unsigned int i = 0; i < te.size(); i ++ )
-            if( !te[i].match_test_generics( sp, xe[i], resolve_placeholder, callback ) ) return false;
+        auto rv = Compare::Equal;
+        for(unsigned int i = 0; i < te.size(); i ++ ) {
+            rv &= te[i].match_test_generics_fuzz( sp, xe[i], resolve_placeholder, callback );
+            if(rv == Compare::Unequal)
+                return Compare::Unequal;
+        }
+        return rv;
         ),
     (Pointer,
         if( te.type != xe.type )
-            return false;
-        return te.inner->match_test_generics( sp, *xe.inner, resolve_placeholder, callback );
+            return Compare::Unequal;
+        return te.inner->match_test_generics_fuzz( sp, *xe.inner, resolve_placeholder, callback );
         ),
     (Borrow,
         if( te.type != xe.type )
-            return false;
-        return te.inner->match_test_generics( sp, *xe.inner, resolve_placeholder, callback );
+            return Compare::Unequal;
+        return te.inner->match_test_generics_fuzz( sp, *xe.inner, resolve_placeholder, callback );
         ),
     (Function,
         TODO(sp, "Function");
@@ -405,7 +418,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         TODO(sp, "Closure");
         )
     )
-    return true;
+    throw "";
 }
 
 ::HIR::TypeRef::TypePathBinding HIR::TypeRef::TypePathBinding::clone() const {

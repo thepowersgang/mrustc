@@ -698,13 +698,13 @@ namespace typeck {
                     trait_path_pp.m_types.push_back( ty_right.clone() );
                     
                     
+                    ::HIR::TypeRef  possible_right_type;
                     unsigned int count = 0;
                     bool rv = this->context.find_trait_impls(node.span(), trait_path,trait_path_pp, ty_left, [&](const auto& args, const auto& a_types) {
                         assert( args.m_types.size() == 1 );
                         const auto& impl_right = args.m_types[0];
                      
-                        TODO(node.span(), "Check " << impl_right << " vs " << ty_right);
-                        
+                        // NOTE: `find_trait_impls` has already done this (and did it better)! Need to get that info off it
                         auto cmp = impl_right.compare_with_placeholders(node.span(), ty_right, this->context.callback_resolve_infer());
                         if( cmp == ::HIR::Compare::Unequal)
                             return false;
@@ -712,18 +712,26 @@ namespace typeck {
                         if( cmp == ::HIR::Compare::Equal ) {
                             return true;
                         }
-                        //DEBUG("TODO: Handle fuzzy match index operator " << impl_index);
+                        
+                        possible_right_type = impl_right.clone();
                         return false;
                         });
                     
-                    this->context.dump();
-                    TODO(node.span(), "Search for implementation of " << trait_path << "<" << ty_right << "> for " << ty_left);
-                    
                     if( rv ) {
+                        // True - Concrete impl located, both types should be fully known
                     }
-                    else if( count > 0 ) {
+                    else if( count > 1 ) {
+                        // Multiple options - Leave as-is
+                    }
+                    else if( count == 1 ) {
+                        // Only possible match, assume it's the correct one.
+                        assert( !possible_right_type.m_data.is_Infer() );
+                        this->context.apply_equality( node.span(), ty_right, possible_right_type );
                     }
                     else {
+                        // TODO: is this an error?
+                        this->context.dump();
+                        TODO(node.span(), "Search for implementation of " << trait_path << "<" << ty_right << "> for " << ty_left);
                     }
                 }
                 else {

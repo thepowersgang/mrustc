@@ -19,6 +19,20 @@ enum Compare {
     Fuzzy,
     Unequal,
 };
+static inline Compare& operator &=(Compare& x, const Compare& y) {
+    if(x == Compare::Unequal) {
+    }
+    else if(y == Compare::Unequal) {
+        x = Compare::Unequal;
+    }
+    else if(y == Compare::Fuzzy) {
+        x = Compare::Fuzzy;
+    }
+    else {
+        // keep as-is
+    }
+    return x;
+}
 
 /// Simple path - Absolute with no generic parameters
 struct SimplePath
