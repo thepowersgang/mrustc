@@ -29,18 +29,9 @@ void typeck::TypecheckContext::pop_traits(const ::std::vector<::std::pair< const
 
 void typeck::TypecheckContext::dump() const
 {
-    DEBUG("TypecheckContext - " << m_ivars.size() << " ivars, " << m_locals.size() << " locals");
+    m_ivars.dump();
+    DEBUG("TypecheckContext - " << m_locals.size() << " locals");
     unsigned int i = 0;
-    for(const auto& v : m_ivars) {
-        if(v.is_alias()) {
-            DEBUG("#" << i << " = " << v.alias);
-        }
-        else {
-            DEBUG("#" << i << " = " << *v.type);
-        }
-        i ++ ;
-    }
-    i = 0;
     for(const auto& v : m_locals) {
         DEBUG("VAR " << i << " '"<<v.name<<"' = " << v.type);
         i ++;
@@ -50,7 +41,7 @@ void typeck::TypecheckContext::compact_ivars()
 {
     TRACE_FUNCTION;
     unsigned int i = 0;
-    for(auto& v : m_ivars)
+    for(auto& v : m_ivars.m_ivars)
     {
         if( !v.is_alias() ) {
             auto nt = this->expand_associated_types(Span(), v.type->clone());
@@ -61,11 +52,11 @@ void typeck::TypecheckContext::compact_ivars()
             
             auto index = v.alias;
             unsigned int count = 0;
-            assert(index < m_ivars.size());
-            while( m_ivars.at(index).is_alias() ) {
-                index = m_ivars.at(index).alias;
+            assert(index < m_ivars.m_ivars.size());
+            while( m_ivars.m_ivars.at(index).is_alias() ) {
+                index = m_ivars.m_ivars.at(index).alias;
                 
-                if( count >= m_ivars.size() ) {
+                if( count >= m_ivars.m_ivars.size() ) {
                     this->dump();
                     BUG(Span(), "Loop detected in ivar list when starting at " << v.alias << ", current is " << index);
                 }
@@ -82,28 +73,7 @@ void typeck::TypecheckContext::compact_ivars()
 }
 bool typeck::TypecheckContext::apply_defaults()
 {
-    bool rv = false;
-    for(auto& v : m_ivars)
-    {
-        if( !v.is_alias() ) {
-            TU_IFLET(::HIR::TypeRef::Data, v.type->m_data, Infer, e,
-                switch(e.ty_class)
-                {
-                case ::HIR::InferClass::None:
-                    break;
-                case ::HIR::InferClass::Integer:
-                    rv = true;
-                    *v.type = ::HIR::TypeRef( ::HIR::CoreType::I32 );
-                    break;
-                case ::HIR::InferClass::Float:
-                    rv = true;
-                    *v.type = ::HIR::TypeRef( ::HIR::CoreType::F64 );
-                    break;
-                }
-            )
-        }
-    }
-    return rv;
+    return m_ivars.apply_defaults();
 }
 
 void typeck::TypecheckContext::add_local(unsigned int index, const ::std::string& name, ::HIR::TypeRef type)
@@ -415,7 +385,7 @@ void typeck::TypecheckContext::add_ivars(::HIR::TypeRef& type)
     (Infer,
         if( e.index == ~0u ) {
             e.index = this->new_ivar();
-            this->m_ivars[e.index].type->m_data.as_Infer().ty_class = e.ty_class;
+            this->get_type(type).m_data.as_Infer().ty_class = e.ty_class;
             this->mark_change();
         }
         ),
@@ -2432,104 +2402,3 @@ bool typeck::TypecheckContext::find_field(const Span& sp, const ::HIR::TypeRef& 
 }
 
 
-// -------------------------------------------------------------------------------------------------------------------
-//
-// -------------------------------------------------------------------------------------------------------------------
-void typeck::TypecheckContext::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
-{
-    auto sp = Span();
-    auto& root_ivar = this->get_pointed_ivar(slot);
-    DEBUG("set_ivar_to(" << slot << " { " << *root_ivar.type << " }, " << type << ")");
-    
-    // If the left type was '_', alias the right to it
-    TU_IFLET(::HIR::TypeRef::Data, type.m_data, Infer, l_e,
-        assert( l_e.index != slot );
-        DEBUG("Set IVar " << slot << " = @" << l_e.index);
-        
-        if( l_e.ty_class != ::HIR::InferClass::None ) {
-            TU_MATCH_DEF(::HIR::TypeRef::Data, (root_ivar.type->m_data), (e),
-            (
-                ERROR(sp, E0000, "Type unificiation of literal with invalid type - " << *root_ivar.type);
-                ),
-            (Primitive,
-                check_type_class_primitive(sp, type, l_e.ty_class, e);
-                ),
-            (Infer,
-                // TODO: Check for right having a ty_class
-                if( e.ty_class != ::HIR::InferClass::None && e.ty_class != l_e.ty_class ) {
-                    ERROR(sp, E0000, "Unifying types with mismatching literal classes");
-                }
-                )
-            )
-        }
-        
-        root_ivar.alias = l_e.index;
-        root_ivar.type.reset();
-    )
-    else if( *root_ivar.type == type ) {
-        return ;
-    }
-    else {
-        // Otherwise, store left in right's slot
-        DEBUG("Set IVar " << slot << " = " << type);
-        root_ivar.type = box$( mv$(type) );
-    }
-    
-    this->mark_change();
-}
-
-void typeck::TypecheckContext::ivar_unify(unsigned int left_slot, unsigned int right_slot)
-{
-    auto sp = Span();
-    if( left_slot != right_slot )
-    {
-        auto& left_ivar = this->get_pointed_ivar(left_slot);
-        
-        // TODO: Assert that setting this won't cause a loop.
-        auto& root_ivar = this->get_pointed_ivar(right_slot);
-        
-        TU_IFLET(::HIR::TypeRef::Data, root_ivar.type->m_data, Infer, re,
-            if(re.ty_class != ::HIR::InferClass::None) {
-                TU_MATCH_DEF(::HIR::TypeRef::Data, (left_ivar.type->m_data), (le),
-                (
-                    ERROR(sp, E0000, "Type unificiation of literal with invalid type - " << *left_ivar.type);
-                    ),
-                (Infer,
-                    if( le.ty_class != ::HIR::InferClass::None && le.ty_class != re.ty_class )
-                    {
-                        ERROR(sp, E0000, "Unifying types with mismatching literal classes");
-                    }
-                    le.ty_class = re.ty_class;
-                    ),
-                (Primitive,
-                    check_type_class_primitive(sp, *left_ivar.type, re.ty_class, le);
-                    )
-                )
-            }
-        )
-        else {
-            BUG(sp, "Unifying over a concrete type - " << *root_ivar.type);
-        }
-        
-        root_ivar.alias = left_slot;
-        root_ivar.type.reset();
-        
-        this->mark_change();
-    }
-}
-typeck::TypecheckContext::IVar& typeck::TypecheckContext::get_pointed_ivar(unsigned int slot) const
-{
-    auto index = slot;
-    unsigned int count = 0;
-    assert(index < m_ivars.size());
-    while( m_ivars.at(index).is_alias() ) {
-        index = m_ivars.at(index).alias;
-        
-        if( count >= m_ivars.size() ) {
-            this->dump();
-            BUG(Span(), "Loop detected in ivar list when starting at " << slot << ", current is " << index);
-        }
-        count ++;
-    }
-    return const_cast<IVar&>(m_ivars.at(index));
-}

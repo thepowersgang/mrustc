@@ -1,5 +1,7 @@
 
 #include "helpers.hpp"
+#include "expr.hpp"
+
 
 bool monomorphise_type_needed(const ::HIR::TypeRef& tpl);
 
@@ -241,4 +243,309 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         }
         return params.m_types[e.binding];
         }, false);
+}
+
+
+
+void HMTypeInferrence::dump() const
+{
+    unsigned int i = 0;
+    for(const auto& v : m_ivars) {
+        if(v.is_alias()) {
+            DEBUG("#" << i << " = " << v.alias);
+        }
+        else {
+            DEBUG("#" << i << " = " << *v.type);
+        }
+        i ++ ;
+    }
+}
+void HMTypeInferrence::compact_ivars()
+{
+    #if 0
+    unsigned int i = 0;
+    for(auto& v : m_ivars)
+    {
+        if( !v.is_alias() ) {
+            auto nt = this->expand_associated_types(Span(), v.type->clone());
+            DEBUG("- " << i << " " << *v.type << " -> " << nt);
+            *v.type = mv$(nt);
+        }
+        else {
+            
+            auto index = v.alias;
+            unsigned int count = 0;
+            assert(index < m_ivars.size());
+            while( m_ivars.at(index).is_alias() ) {
+                index = m_ivars.at(index).alias;
+                
+                if( count >= m_ivars.size() ) {
+                    this->dump();
+                    BUG(Span(), "Loop detected in ivar list when starting at " << v.alias << ", current is " << index);
+                }
+                count ++;
+            }
+            v.alias = index;
+        }
+        i ++;
+    }
+    #endif
+}
+
+bool HMTypeInferrence::apply_defaults()
+{
+    bool rv = false;
+    for(auto& v : m_ivars)
+    {
+        if( !v.is_alias() ) {
+            TU_IFLET(::HIR::TypeRef::Data, v.type->m_data, Infer, e,
+                switch(e.ty_class)
+                {
+                case ::HIR::InferClass::None:
+                    break;
+                case ::HIR::InferClass::Integer:
+                    rv = true;
+                    *v.type = ::HIR::TypeRef( ::HIR::CoreType::I32 );
+                    break;
+                case ::HIR::InferClass::Float:
+                    rv = true;
+                    *v.type = ::HIR::TypeRef( ::HIR::CoreType::F64 );
+                    break;
+                }
+            )
+        }
+    }
+    return rv;
+}   
+
+void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) const
+{
+    struct H {
+        static void print_pp(const HMTypeInferrence& ctxt, ::std::ostream& os, const ::HIR::PathParams& pps) {
+            if( pps.m_types.size() > 0 ) {
+                os << "<";
+                for(const auto& pp_t : pps.m_types) {
+                    ctxt.print_type(os, pp_t);
+                    os << ",";
+                }
+                os << ">";
+            }
+        }
+    };
+    const auto& ty = this->get_type(tr);
+    TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
+    (Infer,
+        os << ty;
+        ),
+    (Primitive,
+        os << ty;
+        ),
+    (Diverge, os << ty; ),
+    (Generic, os << ty; ),
+    (Path,
+        TU_MATCH(::HIR::Path::Data, (e.path.m_data), (pe),
+        (Generic,
+            os << pe.m_path;
+            H::print_pp(*this, os, pe.m_params);
+            ),
+        (UfcsKnown,
+            os << "<";
+            this->print_type(os, *pe.type);
+            os << " as " << pe.trait.m_path;
+            H::print_pp(*this, os, pe.trait.m_params);
+            os << ">::" << pe.item;
+            H::print_pp(*this, os, pe.params);
+            ),
+        (UfcsInherent,
+            os << "<";
+            this->print_type(os, *pe.type);
+            os << ">::" << pe.item;
+            H::print_pp(*this, os, pe.params);
+            ),
+        (UfcsUnknown,
+            BUG(Span(), "UfcsUnknown");
+            )
+        )
+        ),
+    (Borrow,
+        os << "&";
+        this->print_type(os, *e.inner);
+        ),
+    (Pointer,
+        os << "*";
+        this->print_type(os, *e.inner);
+        ),
+    (Slice,
+        os << "[";
+        this->print_type(os, *e.inner);
+        os << "]";
+        ),
+    (Array,
+        os << "[";
+        this->print_type(os, *e.inner);
+        os << "; " << e.size_val << "]";
+        ),
+    (Closure,
+        //for(const auto& arg : e.m_arg_types)
+        //    if( type_contains_ivars(arg) )
+        //        return true;
+        //return type_contains_ivars(*e.m_rettype);
+        ),
+    (Function,
+        //for(const auto& arg : e.m_arg_types)
+        //    if( type_contains_ivars(arg) )
+        //        return true;
+        //return type_contains_ivars(*e.m_rettype);
+        ),
+    (TraitObject,
+        os << "(" << e.m_trait.m_path.m_path;
+        H::print_pp(*this, os, e.m_trait.m_path.m_params);
+        for(const auto& marker : e.m_markers) {
+            os << "+" << marker.m_path;
+            H::print_pp(*this, os, marker.m_params);
+        }
+        os << ")";
+        ),
+    (Tuple,
+        os << "(";
+        for(const auto& st : e) {
+            this->print_type(os, st);
+            os << ",";
+        }
+        os << ")";
+        )
+    )
+}
+unsigned int HMTypeInferrence::new_ivar()
+{
+    m_ivars.push_back( IVar() );
+    m_ivars.back().type->m_data.as_Infer().index = m_ivars.size() - 1;
+    return m_ivars.size() - 1;
+}
+::HIR::TypeRef HMTypeInferrence::new_ivar_tr()
+{
+    ::HIR::TypeRef rv;
+    rv.m_data.as_Infer().index = this->new_ivar();
+    return rv;
+}
+
+::HIR::TypeRef& HMTypeInferrence::get_type(::HIR::TypeRef& type)
+{
+    TU_IFLET(::HIR::TypeRef::Data, type.m_data, Infer, e,
+        assert(e.index != ~0u);
+        return *get_pointed_ivar(e.index).type;
+    )
+    else {
+        return type;
+    }
+}
+
+const ::HIR::TypeRef& HMTypeInferrence::get_type(const ::HIR::TypeRef& type) const
+{
+    TU_IFLET(::HIR::TypeRef::Data, type.m_data, Infer, e,
+        assert(e.index != ~0u);
+        return *get_pointed_ivar(e.index).type;
+    )
+    else {
+        return type;
+    }
+}
+
+void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
+{
+    auto sp = Span();
+    auto& root_ivar = this->get_pointed_ivar(slot);
+    DEBUG("set_ivar_to(" << slot << " { " << *root_ivar.type << " }, " << type << ")");
+    
+    // If the left type was '_', alias the right to it
+    TU_IFLET(::HIR::TypeRef::Data, type.m_data, Infer, l_e,
+        assert( l_e.index != slot );
+        DEBUG("Set IVar " << slot << " = @" << l_e.index);
+        
+        if( l_e.ty_class != ::HIR::InferClass::None ) {
+            TU_MATCH_DEF(::HIR::TypeRef::Data, (root_ivar.type->m_data), (e),
+            (
+                ERROR(sp, E0000, "Type unificiation of literal with invalid type - " << *root_ivar.type);
+                ),
+            (Primitive,
+                typeck::check_type_class_primitive(sp, type, l_e.ty_class, e);
+                ),
+            (Infer,
+                // TODO: Check for right having a ty_class
+                if( e.ty_class != ::HIR::InferClass::None && e.ty_class != l_e.ty_class ) {
+                    ERROR(sp, E0000, "Unifying types with mismatching literal classes");
+                }
+                )
+            )
+        }
+        
+        root_ivar.alias = l_e.index;
+        root_ivar.type.reset();
+    )
+    else if( *root_ivar.type == type ) {
+        return ;
+    }
+    else {
+        // Otherwise, store left in right's slot
+        DEBUG("Set IVar " << slot << " = " << type);
+        root_ivar.type = box$( mv$(type) );
+    }
+    
+    //this->mark_change();
+}
+
+void HMTypeInferrence::ivar_unify(unsigned int left_slot, unsigned int right_slot)
+{
+    auto sp = Span();
+    if( left_slot != right_slot )
+    {
+        auto& left_ivar = this->get_pointed_ivar(left_slot);
+        
+        // TODO: Assert that setting this won't cause a loop.
+        auto& root_ivar = this->get_pointed_ivar(right_slot);
+        
+        TU_IFLET(::HIR::TypeRef::Data, root_ivar.type->m_data, Infer, re,
+            if(re.ty_class != ::HIR::InferClass::None) {
+                TU_MATCH_DEF(::HIR::TypeRef::Data, (left_ivar.type->m_data), (le),
+                (
+                    ERROR(sp, E0000, "Type unificiation of literal with invalid type - " << *left_ivar.type);
+                    ),
+                (Infer,
+                    if( le.ty_class != ::HIR::InferClass::None && le.ty_class != re.ty_class )
+                    {
+                        ERROR(sp, E0000, "Unifying types with mismatching literal classes");
+                    }
+                    le.ty_class = re.ty_class;
+                    ),
+                (Primitive,
+                    typeck::check_type_class_primitive(sp, *left_ivar.type, re.ty_class, le);
+                    )
+                )
+            }
+        )
+        else {
+            BUG(sp, "Unifying over a concrete type - " << *root_ivar.type);
+        }
+        
+        root_ivar.alias = left_slot;
+        root_ivar.type.reset();
+        
+        //this->mark_change();
+    }
+}
+HMTypeInferrence::IVar& HMTypeInferrence::get_pointed_ivar(unsigned int slot) const
+{
+    auto index = slot;
+    unsigned int count = 0;
+    assert(index < m_ivars.size());
+    while( m_ivars.at(index).is_alias() ) {
+        index = m_ivars.at(index).alias;
+        
+        if( count >= m_ivars.size() ) {
+            this->dump();
+            BUG(Span(), "Loop detected in ivar list when starting at " << slot << ", current is " << index);
+        }
+        count ++;
+    }
+    return const_cast<IVar&>(m_ivars.at(index));
 }

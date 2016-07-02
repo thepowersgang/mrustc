@@ -15,17 +15,6 @@ extern void check_type_class_primitive(const Span& sp, const ::HIR::TypeRef& typ
 
 class TypecheckContext
 {
-    struct IVar
-    {
-        unsigned int alias; // If not ~0, this points to another ivar
-        ::std::unique_ptr< ::HIR::TypeRef> type;    // Type (only nullptr if alias!=0)
-        
-        IVar():
-            alias(~0u),
-            type(new ::HIR::TypeRef())
-        {}
-        bool is_alias() const { return alias != ~0u; }
-    };
     struct Variable
     {
         ::std::string   name;
@@ -46,8 +35,7 @@ public:
     ::std::vector< ::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >   m_traits;
 private:
     ::std::vector< Variable>    m_locals;
-    ::std::vector< IVar>    m_ivars;
-    bool    m_has_changed;
+    HMTypeInferrence    m_ivars;
     
     const ::HIR::GenericParams* m_impl_params;
     const ::HIR::GenericParams* m_item_params;
@@ -55,7 +43,6 @@ private:
 public:
     TypecheckContext(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params):
         m_crate(crate),
-        m_has_changed(false),
         m_impl_params( impl_params ),
         m_item_params( item_params )
     {
@@ -64,13 +51,10 @@ public:
     void dump() const;
     
     bool take_changed() {
-        bool rv = m_has_changed;
-        m_has_changed = false;
-        return rv;
+        return m_ivars.take_changed();
     }
     void mark_change() {
-        DEBUG("- CHANGE");
-        m_has_changed = true;
+        m_ivars.mark_change();
     }
     
     void push_traits(const ::std::vector<::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >& list);
@@ -171,43 +155,27 @@ public:
             };
     }
     
-    unsigned int new_ivar()
-    {
-        m_ivars.push_back( IVar() );
-        m_ivars.back().type->m_data.as_Infer().index = m_ivars.size() - 1;
-        return m_ivars.size() - 1;
+    unsigned int new_ivar() {
+        return m_ivars.new_ivar();
     }
     ::HIR::TypeRef new_ivar_tr() {
-        ::HIR::TypeRef rv;
-        rv.m_data.as_Infer().index = this->new_ivar();
-        return rv;
+        return m_ivars.new_ivar_tr();
     }
     
-    ::HIR::TypeRef& get_type(::HIR::TypeRef& type)
-    {
-        TU_IFLET(::HIR::TypeRef::Data, type.m_data, Infer, e,
-            assert(e.index != ~0u);
-            return *get_pointed_ivar(e.index).type;
-        )
-        else {
-            return type;
-        }
+    ::HIR::TypeRef& get_type(::HIR::TypeRef& type) {
+        return m_ivars.get_type(type);
     }
-    const ::HIR::TypeRef& get_type(const ::HIR::TypeRef& type) const
-    {
-        TU_IFLET(::HIR::TypeRef::Data, type.m_data, Infer, e,
-            assert(e.index != ~0u);
-            return *get_pointed_ivar(e.index).type;
-        )
-        else {
-            return type;
-        }
+    const ::HIR::TypeRef& get_type(const ::HIR::TypeRef& type) const {
+        return m_ivars.get_type(type);
     }
 
 private:
-    void set_ivar_to(unsigned int slot, ::HIR::TypeRef type);
-    void ivar_unify(unsigned int left_slot, unsigned int right_slot);
-    IVar& get_pointed_ivar(unsigned int slot) const;
+    void set_ivar_to(unsigned int slot, ::HIR::TypeRef type) {
+        m_ivars.set_ivar_to(slot, mv$(type));
+    }
+    void ivar_unify(unsigned int left_slot, unsigned int right_slot) {
+        m_ivars.ivar_unify(left_slot, right_slot);
+    }
 };
 
 }   // namespace typeck
