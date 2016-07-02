@@ -24,11 +24,15 @@
 
 ## Actions taken
 - Destructuring and re-structurings are applied directly
- - 
-
-```cpp
-
-```
+ - E.g. New tuples/arrays, destructuring patterns, ...
+- Equalities are applied until none are left
+ - NOTE: Dead ivars (ones that have been aliased) should be omitted from listings
+- Apply coercions that are known to not coerce
+ - E.g. `str` cannot coerce to anything
+- Apply coercions that are known
+- Check associated type projections
+ - Apply single-trait rule (If there's only one trait that could apply, use it)
+- Keep going until out or rules or ambiguity is hit
 
 
 <!-- vim: ft=markdown

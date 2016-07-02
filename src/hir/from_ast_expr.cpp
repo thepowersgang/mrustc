@@ -117,15 +117,15 @@ struct LowerHIR_ExprNode_Visitor:
             
             if( v.m_left ) {
                 if( v.m_right ) {
-                    m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_Range), nullptr, mv$(values)) );
+                    m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_Range), true, nullptr, mv$(values)) );
                 }
                 else {
-                    m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_RangeFrom), nullptr, mv$(values)) );
+                    m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_RangeFrom), true, nullptr, mv$(values)) );
                 }
             }
             else {
                 if( v.m_right ) {
-                    m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_RangeTo), nullptr, mv$(values)) );
+                    m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_RangeTo), true, nullptr, mv$(values)) );
                 }
                 else {
                     m_rv.reset( new ::HIR::ExprNode_UnitVariant(v.span(), mv$(path_RangeFull), true) );
@@ -142,13 +142,13 @@ struct LowerHIR_ExprNode_Visitor:
                 ::HIR::ExprNode_StructLiteral::t_values values;
                 values.push_back( ::std::make_pair( ::std::string("start"), LowerHIR_ExprNode_Inner( *v.m_left ) ) );
                 values.push_back( ::std::make_pair( ::std::string("end")  , LowerHIR_ExprNode_Inner( *v.m_right ) ) );
-                m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_RangeInclusive_NonEmpty), nullptr, mv$(values)) );
+                m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_RangeInclusive_NonEmpty), true, nullptr, mv$(values)) );
             }
             else
             {
                 ::HIR::ExprNode_StructLiteral::t_values values;
                 values.push_back( ::std::make_pair( ::std::string("end")  , LowerHIR_ExprNode_Inner( *v.m_right ) ) );
-                m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_RangeToInclusive), nullptr, mv$(values)) );
+                m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_RangeToInclusive), true, nullptr, mv$(values)) );
             }
             break; }
         case ::AST::ExprNode_BinOp::PLACE_IN:
@@ -513,6 +513,7 @@ struct LowerHIR_ExprNode_Visitor:
             values.push_back( ::std::make_pair(val.first, LowerHIR_ExprNode_Inner(*val.second)) );
         m_rv.reset( new ::HIR::ExprNode_StructLiteral( v.span(),
             LowerHIR_GenericPath(v.get_pos(), v.m_path),
+            v.m_path.binding().is_Struct(),
             LowerHIR_ExprNode_Inner_Opt(v.m_base_value.get()),
             mv$(values)
             ) );

@@ -580,14 +580,16 @@ struct ExprNode_StructLiteral:
     typedef ::std::vector< ::std::pair< ::std::string, ExprNodeP > > t_values;
     
     ::HIR::GenericPath  m_path;
+    bool    m_is_struct;
     ::HIR::ExprNodeP    m_base_value;
     t_values    m_values;
     
     ::std::vector< ::HIR::TypeRef>  m_value_types;
     
-    ExprNode_StructLiteral(Span sp, ::HIR::GenericPath path, ::HIR::ExprNodeP base_value, t_values values):
+    ExprNode_StructLiteral(Span sp, ::HIR::GenericPath path, bool is_struct, ::HIR::ExprNodeP base_value, t_values values):
         ExprNode( mv$(sp) ),
         m_path( mv$(path) ),
+        m_is_struct( is_struct ),
         m_base_value( mv$(base_value) ),
         m_values( mv$(values) )
     {
