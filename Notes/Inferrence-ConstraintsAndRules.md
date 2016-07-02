@@ -17,6 +17,7 @@
 
 ## Ideas
 - Weak equalities (e.g. for casts)
+ - Not needed, cast type can give what is needed
 
 ## Entries
 - Type equality rule (with "can coerce" flag)

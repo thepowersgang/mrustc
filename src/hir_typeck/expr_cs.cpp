@@ -79,6 +79,8 @@ struct Context
     void pop_traits(const t_trait_list& list);
 };
 
+//static void fix_param_count(const Span& sp, Context& context, const ::HIR::Path& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params);
+static void fix_param_count(const Span& sp, Context& context, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params);
 
 class ExprVisitor_Enum:
     public ::HIR::ExprVisitor
@@ -128,7 +130,7 @@ public:
     {
         TRACE_FUNCTION_F("loop { ... }");
         
-        // TODO: Node must return ()?
+        this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
         
         node.m_code->visit( *this );
     }
@@ -337,7 +339,9 @@ public:
     {
         TRACE_FUNCTION_F("... as " << node.m_res_type);
         this->context.add_ivars( node.m_value->m_res_type );
-        // Depending on the form of the result type, it can lead to links between the input and output
+        
+        // TODO: Depending on the form of the result type, it can lead to links between the input and output
+        
         node.m_value->visit( *this );
     }
     void visit(::HIR::ExprNode_Unsize& node) override
@@ -366,6 +370,53 @@ public:
 
         node.m_value->visit( *this );
     }
+
+    void add_ivars_generic_path(const Span& sp, ::HIR::GenericPath& gp) {
+        for(auto& ty : gp.m_params.m_types)
+            this->context.add_ivars(ty);
+    }
+    void add_ivars_path(const Span& sp, ::HIR::Path& path) {
+        TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
+        (Generic,
+            this->add_ivars_generic_path(sp, e);
+            ),
+        (UfcsKnown,
+            this->context.add_ivars(*e.type);
+            this->add_ivars_generic_path(sp, e.trait);
+            for(auto& ty : e.params.m_types)
+                this->context.add_ivars(ty);
+            ),
+        (UfcsUnknown,
+            TODO(sp, "Hit a UfcsUnknown (" << path << ") - Is this an error?");
+            ),
+        (UfcsInherent,
+            this->context.add_ivars(*e.type);
+            for(auto& ty : e.params.m_types)
+                this->context.add_ivars(ty);
+            )
+        )
+    }
+    
+    ::HIR::TypeRef get_structenum_ty(const Span& sp, bool is_struct, ::HIR::GenericPath& gp)
+    {
+        if( is_struct )
+        {
+            const auto& str = this->context.m_crate.get_struct_by_path(sp, gp.m_path);
+            fix_param_count(sp, this->context, gp, str.m_params, gp.m_params);
+            
+            return ::HIR::TypeRef::new_path( gp.clone(), ::HIR::TypeRef::TypePathBinding::make_Struct(&str) );
+        }
+        else
+        {
+            auto s_path = gp.m_path;
+            s_path.m_components.pop_back();
+            
+            const auto& enm = this->context.m_crate.get_enum_by_path(sp, s_path);
+            fix_param_count(sp, this->context, gp, enm.m_params, gp.m_params);
+            
+            return ::HIR::TypeRef::new_path( ::HIR::GenericPath(mv$(s_path), gp.m_params.clone()), ::HIR::TypeRef::TypePathBinding::make_Enum(&enm) );
+        }
+    }
     
     void visit(::HIR::ExprNode_TupleVariant& node) override
     {
@@ -374,8 +425,10 @@ public:
             this->context.add_ivars( val->m_res_type );
         }
         
-        // TODO: Result type
-        // TODO: Bind fields with type params
+        // - Create ivars in path, and set result type
+        const auto ty = this->get_structenum_ty(node.span(), node.m_is_struct, node.m_path);
+        this->context.equate_types(node.span(), node.m_res_type, ty);
+        // TODO: Bind fields with type params (coercable)
         
         for( auto& val : node.m_args ) {
             val->visit( *this );
@@ -388,8 +441,10 @@ public:
             this->context.add_ivars( val.second->m_res_type );
         }
         
-        // TODO: Result type
-        // TODO: Bind fields with type params
+        // - Create ivars in path, and set result type
+        const auto ty = this->get_structenum_ty(node.span(), node.m_is_struct, node.m_path);
+        this->context.equate_types(node.span(), node.m_res_type, ty);
+        // TODO: Bind fields with type params (coercable)
         
         for( auto& val : node.m_values ) {
             val.second->visit( *this );
@@ -582,4 +637,42 @@ void Context::pop_traits(const t_trait_list& list) {
 }
 void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, const ::std::vector< ::HIR::TypeRef>& ty_args, const ::HIR::TypeRef& impl_ty, const char *name)
 {
+}
+
+template<typename T>
+void fix_param_count_(const Span& sp, Context& context, const T& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params)
+{
+    if( params.m_types.size() == param_defs.m_types.size() ) {
+        // Nothing to do, all good
+        return ;
+    }
+    
+    if( params.m_types.size() == 0 ) {
+        for(const auto& typ : param_defs.m_types) {
+            (void)typ;
+            params.m_types.push_back( ::HIR::TypeRef() );
+            context.add_ivars( params.m_types.back() );
+        }
+    }
+    else if( params.m_types.size() > param_defs.m_types.size() ) {
+        ERROR(sp, E0000, "Too many type parameters passed to " << path);
+    }
+    else {
+        while( params.m_types.size() < param_defs.m_types.size() ) {
+            const auto& typ = param_defs.m_types[params.m_types.size()];
+            if( typ.m_default.m_data.is_Infer() ) {
+                ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
+            }
+            else {
+                // TODO: What if this contains a generic param? (is that valid? Self maybe, what about others?)
+                params.m_types.push_back( typ.m_default.clone() );
+            }
+        }
+    }
+}
+//void fix_param_count(const Span& sp, Context& context, const ::HIR::Path& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params) {
+//    fix_param_count_(sp, context, path, param_defs, params);
+//}
+void fix_param_count(const Span& sp, Context& context, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params) {
+    fix_param_count_(sp, context, path, param_defs, params);
 }
