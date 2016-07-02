@@ -7,19 +7,9 @@
 
 #define IDENT_CR  ([](const auto& v)->const auto&{return v;})
 
+#include "helpers.hpp"
+
 namespace typeck {
-
-// TODO/NOTE - This is identical to ::HIR::t_cb_resolve_type
-typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>   t_cb_generic;
-
-extern bool monomorphise_type_needed(const ::HIR::TypeRef& tpl);
-extern bool monomorphise_pathparams_needed(const ::HIR::PathParams& tpl);
-extern bool monomorphise_path_needed(const ::HIR::Path& tpl);
-
-extern ::HIR::PathParams monomorphise_path_params_with(const Span& sp, const ::HIR::PathParams& tpl, t_cb_generic callback, bool allow_infer);
-extern ::HIR::TraitPath monomorphise_traitpath_with(const Span& sp, const ::HIR::TraitPath& tpl, t_cb_generic callback, bool allow_infer);
-extern ::HIR::TypeRef monomorphise_type_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer=true);
-extern ::HIR::TypeRef monomorphise_type(const Span& sp, const ::HIR::GenericParams& params_def, const ::HIR::PathParams& params,  const ::HIR::TypeRef& tpl);
 
 extern void check_type_class_primitive(const Span& sp, const ::HIR::TypeRef& type, ::HIR::InferClass ic, ::HIR::CoreType ct);
 

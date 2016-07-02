@@ -50,7 +50,7 @@ OBJ +=  hir/crate_ptr.o hir/type_ptr.o hir/expr_ptr.o
 OBJ +=  hir/type.o hir/path.o hir/expr.o hir/pattern.o
 OBJ +=  hir/visitor.o
 OBJ += hir_conv/expand_type.o hir_conv/constant_evaluation.o hir_conv/resolve_ufcs.o hir_conv/bind.o
-OBJ += hir_typeck/outer.o hir_typeck/expr.o hir_typeck/expr_context.o
+OBJ += hir_typeck/outer.o hir_typeck/expr.o hir_typeck/expr_context.o hir_typeck/helpers.o
 OBJ += hir_typeck/expr_cs.o
 
 PCHS := ast/ast.hpp

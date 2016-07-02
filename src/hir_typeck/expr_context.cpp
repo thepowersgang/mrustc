@@ -3,6 +3,7 @@
 #include "expr.hpp"
 #include <hir/hir.hpp>
 #include <algorithm>    // std::find_if
+#include "helpers.hpp"
 
 struct FmtType {
     const typeck::TypecheckContext& ctxt;
@@ -741,13 +742,13 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
             }
             for( unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
             {
-                if( monomorphise_type_needed(tup_var[i]) ) {
-                    auto var_ty = monomorphise_type(sp, enm.m_params, gp.m_params,  tup_var[i]);
+                if( monomorphise_type_needed(tup_var[i].ent) ) {
+                    auto var_ty = monomorphise_type(sp, enm.m_params, gp.m_params,  tup_var[i].ent);
                     this->add_binding(sp, e.sub_patterns[i], var_ty);
                 }
                 else {
                     // SAFE: Can't have a _ (monomorphise_type_needed checks for that)
-                    this->add_binding(sp, e.sub_patterns[i], const_cast< ::HIR::TypeRef&>(tup_var[i]));
+                    this->add_binding(sp, e.sub_patterns[i], const_cast< ::HIR::TypeRef&>(tup_var[i].ent));
                 }
             }
             )
@@ -812,7 +813,7 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
                 if( f_idx == tup_var.size() ) {
                     ERROR(sp, E0000, "Enum variant " << e.path << " doesn't have a field " << field_pat.first);
                 }
-                const ::HIR::TypeRef& field_type = tup_var[f_idx].second;
+                const ::HIR::TypeRef& field_type = tup_var[f_idx].second.ent;
                 if( monomorphise_type_needed(field_type) ) {
                     auto field_type_mono = monomorphise_type(sp, enm.m_params, gp.m_params,  field_type);
                     this->add_binding(sp, field_pat.second, field_type_mono);

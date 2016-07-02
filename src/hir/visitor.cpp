@@ -197,12 +197,12 @@ void ::HIR::Visitor::visit_enum(::HIR::PathChain p, ::HIR::Enum& item)
             ),
         (Tuple,
             for(auto& ty : v) {
-                this->visit_type(ty);
+                this->visit_type(ty.ent);
             }
             ),
         (Struct,
             for(auto& field : v) {
-                this->visit_type(field.second);
+                this->visit_type(field.second.ent);
             }
             )
         )

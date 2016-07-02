@@ -653,6 +653,14 @@ const ::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
         };
 }
 
+
+namespace {
+    template<typename T>
+    ::HIR::VisEnt<T> new_visent(bool pub, T v) {
+        return ::HIR::VisEnt<T> { pub, mv$(v) };
+    }
+}
+
 ::HIR::Struct LowerHIR_Struct(const ::AST::Struct& ent)
 {
     ::HIR::Struct::Data data;
@@ -674,7 +682,7 @@ const ::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
     (Struct,
         ::HIR::Struct::Data::Data_Named fields;
         for(const auto& field : e.ents)
-            fields.push_back( ::std::make_pair( field.m_name, ::HIR::VisEnt< ::HIR::TypeRef> { field.m_is_public, LowerHIR_Type(field.m_type) } ) );
+            fields.push_back( ::std::make_pair( field.m_name, new_visent(field.m_is_public, LowerHIR_Type(field.m_type)) ) );
         data = ::HIR::Struct::Data::make_Named( mv$(fields) );
         )
     )
@@ -702,16 +710,16 @@ const ::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
                 variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Unit({})) );
             }
             else {
-                ::std::vector< ::HIR::TypeRef>   types;
+                ::HIR::Enum::Variant::Data_Tuple    types;
                 for(const auto& st : e.m_sub_types)
-                    types.push_back( LowerHIR_Type(st) );
+                    types.push_back( new_visent(true, LowerHIR_Type(st)) );
                 variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Tuple(mv$(types))) );
             }
             ),
         (Struct,
-            ::std::vector< ::std::pair< ::std::string, ::HIR::TypeRef> >    ents;
+            ::HIR::Enum::Variant::Data_Struct ents;
             for( const auto& ent : e.m_fields )
-                ents.push_back( ::std::make_pair( ent.m_name, LowerHIR_Type(ent.m_type) ) );
+                ents.push_back( ::std::make_pair( ent.m_name, new_visent(true, LowerHIR_Type(ent.m_type)) ) );
             variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Struct(mv$(ents))) );
             )
         )

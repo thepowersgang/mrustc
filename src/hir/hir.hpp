@@ -95,14 +95,18 @@ struct TypeAlias
     GenericParams   m_params;
     ::HIR::TypeRef  m_type;
 };
+
+typedef ::std::vector< VisEnt<::HIR::TypeRef> > t_tuple_fields;
+typedef ::std::vector< ::std::pair< ::std::string, VisEnt<::HIR::TypeRef> > >   t_struct_fields;
+
 class Enum
 {
 public:
     TAGGED_UNION(Variant, Unit,
         (Unit, struct{}),
         (Value, ::HIR::ExprPtr),
-        (Tuple, ::std::vector<::HIR::TypeRef>),
-        (Struct, ::std::vector< ::std::pair< ::std::string, ::HIR::TypeRef> >)
+        (Tuple, t_tuple_fields),
+        (Struct, t_struct_fields)
         );
     enum class Repr
     {
@@ -127,8 +131,8 @@ public:
     };
     TAGGED_UNION(Data, Unit,
         (Unit, struct {}),
-        (Tuple, ::std::vector< VisEnt<::HIR::TypeRef> >),
-        (Named, ::std::vector< ::std::pair< ::std::string, VisEnt<::HIR::TypeRef> > >)
+        (Tuple, t_tuple_fields),
+        (Named, t_struct_fields)
         );
     
     GenericParams   m_params;

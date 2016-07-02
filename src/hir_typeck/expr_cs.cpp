@@ -11,6 +11,7 @@
 #include <hir/visitor.hpp>
 #include <algorithm>    // std::find_if
 
+#include "helpers.hpp"
 #include "expr.hpp"
 
 // PLAN: Build up a set of conditions that are easier to solve
@@ -428,7 +429,39 @@ public:
         // - Create ivars in path, and set result type
         const auto ty = this->get_structenum_ty(node.span(), node.m_is_struct, node.m_path);
         this->context.equate_types(node.span(), node.m_res_type, ty);
-        // TODO: Bind fields with type params (coercable)
+        
+        const ::HIR::t_tuple_fields* fields_ptr = nullptr;
+        TU_MATCH(::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (e),
+        (Unbound, ),
+        (Opaque, ),
+        (Enum,
+            const auto& var_name = node.m_path.m_path.m_components.back();
+            const auto& enm = *e;
+            auto it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&v)->auto{ return v.first == var_name; });
+            assert(it != enm.m_variants.end());
+            fields_ptr = &it->second.as_Tuple();
+            ),
+        (Struct,
+            fields_ptr = &e->m_data.as_Tuple();
+            )
+        )
+        assert(fields_ptr);
+        const ::HIR::t_tuple_fields& fields = *fields_ptr;
+        if( fields.size() != node.m_args.size() ) {
+            ERROR(node.span(), E0000, "");
+        }
+        
+        // Bind fields with type params (coercable)
+        for( unsigned int i = 0; i < node.m_args.size(); i ++ )
+        {
+            const auto& des_ty_r = fields[i].ent;
+            if( monomorphise_type_needed(des_ty_r) ) {
+                TODO(node.span(), "Monomorphise tuple variant type");
+            }
+            else {
+                this->context.equate_types_coerce(node.span(), des_ty_r,  node.m_args[i]);
+            }
+        }
         
         for( auto& val : node.m_args ) {
             val->visit( *this );
@@ -444,12 +477,54 @@ public:
         // - Create ivars in path, and set result type
         const auto ty = this->get_structenum_ty(node.span(), node.m_is_struct, node.m_path);
         this->context.equate_types(node.span(), node.m_res_type, ty);
-        // TODO: Bind fields with type params (coercable)
+        
+        const ::HIR::t_struct_fields* fields_ptr = nullptr;
+        TU_MATCH(::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (e),
+        (Unbound, ),
+        (Opaque, ),
+        (Enum,
+            const auto& var_name = node.m_path.m_path.m_components.back();
+            const auto& enm = *e;
+            auto it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&v)->auto{ return v.first == var_name; });
+            assert(it != enm.m_variants.end());
+            fields_ptr = &it->second.as_Struct();
+            ),
+        (Struct,
+            fields_ptr = &e->m_data.as_Named();
+            )
+        )
+        assert(fields_ptr);
+        const ::HIR::t_struct_fields& fields = *fields_ptr;
+        
+        // Bind fields with type params (coercable)
+        for( auto& val : node.m_values)
+        {
+            const auto& name = val.first;
+            auto it = ::std::find_if(fields.begin(), fields.end(), [&](const auto& v)->bool{ return v.first == name; });
+            assert(it != fields.end());
+            const auto& des_ty_r = it->second.ent;
+            
+            if( monomorphise_type_needed(des_ty_r) ) {
+                TODO(node.span(), "Monomorphise struct variant type");
+            }
+            else {
+                this->context.equate_types_coerce(node.span(), des_ty_r,  val.second);
+            }
+        }
         
         for( auto& val : node.m_values ) {
             val.second->visit( *this );
         }
     }
+    void visit(::HIR::ExprNode_UnitVariant& node) override
+    {
+        TRACE_FUNCTION_F(node.m_path << " [" << (node.m_is_struct ? "struct" : "enum") << "]");
+        
+        // - Create ivars in path, and set result type
+        const auto ty = this->get_structenum_ty(node.span(), node.m_is_struct, node.m_path);
+        this->context.equate_types(node.span(), node.m_res_type, ty);
+    }
+    
     void visit(::HIR::ExprNode_CallPath& node) override
     {
         TRACE_FUNCTION_F(node.m_path << "(...)");
@@ -487,7 +562,9 @@ public:
             this->context.add_ivars( val->m_res_type );
         }
         
-        // TODO: Locate method and link arguments
+        // Resolution can't be done until lefthand type is know.
+        // > Has to be done during iteraton
+        this->context.add_revisit( node );
         
         node.m_value->visit( *this );
         for( auto& val : node.m_args ) {
@@ -511,7 +588,12 @@ public:
             this->context.add_ivars( val->m_res_type );
         }
         
-        // TODO: Cleanly equate into tuple (can it coerce?)
+        ::std::vector< ::HIR::TypeRef>  tuple_tys;
+        for(const auto& val : node.m_vals ) {
+            // Can these coerce? Assuming not
+            tuple_tys.push_back( val->m_res_type.clone() );
+        }
+        this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef(mv$(tuple_tys)));
         
         for( auto& val : node.m_vals ) {
             val->visit( *this );
@@ -524,7 +606,12 @@ public:
             this->context.add_ivars( val->m_res_type );
         }
         
-        // TODO: Cleanly equate into array (with coercions)
+        // Cleanly equate into array (with coercions)
+        // - Result type already set, just need to extract ivar
+        const auto& inner_ty = *node.m_res_type.m_data.as_Array().inner;
+        for( auto& val : node.m_vals ) {
+            this->context.equate_types_coerce(node.span(), inner_ty,  val);
+        }
         
         for( auto& val : node.m_vals ) {
             val->visit( *this );
@@ -536,7 +623,15 @@ public:
         this->context.add_ivars( node.m_val->m_res_type );
         this->context.add_ivars( node.m_size->m_res_type );
         
-        // TODO: Cleanly equate into array (TODO: with coercions?)
+        // Create result type (can't be known until after const expansion)
+        // - Should it be created in const expansion?
+        auto ty = ::HIR::TypeRef::new_array( ::HIR::TypeRef(), node.m_size_val );
+        this->context.add_ivars(ty);
+        this->context.equate_types(node.span(), node.m_res_type, ty);
+        // Equate with coercions
+        const auto& inner_ty = *ty.m_data.as_Array().inner;
+        this->context.equate_types_coerce(node.span(), inner_ty, node.m_val);
+        this->context.equate_types(node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), node.m_size->m_res_type);
         
         node.m_val->visit( *this );
         node.m_size->visit( *this );
@@ -552,6 +647,7 @@ public:
             DEBUG(" (: " << e.m_type << " = " << e.m_value << ")");
             ),
         (Boolean,
+            DEBUG(" ( " << (e ? "true" : "false") << ")");
             ),
         (String,
             ),
@@ -559,19 +655,134 @@ public:
             )
         )
     }
-    void visit(::HIR::ExprNode_UnitVariant& node) override
-    {
-        TRACE_FUNCTION_F(node.m_path << " [" << (node.m_is_struct ? "struct" : "enum") << "]");
-        
-        // TODO: Infer/bind path
-        // TODO: Result type
-    }
     void visit(::HIR::ExprNode_PathValue& node) override
     {
+        const auto& sp = node.span();
         TRACE_FUNCTION_F(node.m_path);
         
-        // TODO: Infer/bind path
-        // TODO: Bind type
+        this->add_ivars_path(node.span(), node.m_path);
+        
+        TU_MATCH(::HIR::Path::Data, (node.m_path.m_data), (e),
+        (Generic,
+            switch(node.m_target) {
+            case ::HIR::ExprNode_PathValue::UNKNOWN:
+                BUG(sp, "Unknown target PathValue encountered with Generic path");
+            case ::HIR::ExprNode_PathValue::FUNCTION: {
+                const auto& f = this->context.m_crate.get_function_by_path(sp, e.m_path);
+                ::HIR::FunctionType ft {
+                    f.m_unsafe,
+                    f.m_abi,
+                    box$( f.m_return.clone() ),
+                    {}
+                    };
+                for( const auto& arg : f.m_args )
+                    ft.m_arg_types.push_back( arg.second.clone() );
+                auto ty = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function(mv$(ft)) );
+                this->context.equate_types(sp, node.m_res_type, ty);
+                } break;
+            case ::HIR::ExprNode_PathValue::STATIC: {
+                const auto& v = this->context.m_crate.get_static_by_path(sp, e.m_path);
+                DEBUG("static v.m_type = " << v.m_type);
+                this->context.equate_types(sp, node.m_res_type, v.m_type);
+                } break;
+            case ::HIR::ExprNode_PathValue::CONSTANT: {
+                const auto& v = this->context.m_crate.get_constant_by_path(sp, e.m_path);
+                DEBUG("const"<<v.m_params.fmt_args()<<" v.m_type = " << v.m_type);
+                if( v.m_params.m_types.size() > 0 ) {
+                    TODO(sp, "Support generic constants in typeck");
+                }
+                this->context.equate_types(sp, node.m_res_type, v.m_type);
+                } break;
+            }
+            ),
+        (UfcsUnknown,
+            BUG(sp, "Encountered UfcsUnknown");
+            ),
+        (UfcsKnown,
+            TODO(sp, "Look up associated constants/statics (trait)");
+            ),
+        (UfcsInherent,
+            // TODO: If ivars are valid within the type of this UFCS, then resolution has to be deferred until iteration
+            // - If they're not valid, then resolution can be done here.
+            TODO(sp, "Handle associated constants/functions in type - Can the type be infer?");
+            
+            #if 0
+            // - Locate function (and impl block)
+            const ::HIR::Function* fcn_ptr = nullptr;
+            const ::HIR::TypeImpl* impl_ptr = nullptr;
+            this->context.m_crate.find_type_impls(*e.type, [&](const auto& ty)->const auto& {
+                    if( ty.m_data.is_Infer() )
+                        return this->context.get_type(ty);
+                    else
+                        return ty;
+                },
+                [&](const auto& impl) {
+                    DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+                    auto it = impl.m_methods.find(e.item);
+                    if( it == impl.m_methods.end() )
+                        return false;
+                    fcn_ptr = &it->second;
+                    impl_ptr = &impl;
+                    return true;
+                });
+            if( !fcn_ptr ) {
+                ERROR(sp, E0000, "Failed to locate function " << path);
+            }
+            assert(impl_ptr);
+            fix_param_count(sp, this->context, path, fcn_ptr->m_params,  e.params);
+            
+            // If the impl block has parameters, figure out what types they map to
+            // - The function params are already mapped (from fix_param_count)
+            ::HIR::PathParams   impl_params;
+            if( impl_ptr->m_params.m_types.size() > 0 ) {
+                impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
+                impl_ptr->m_type.match_generics(sp, *e.type, this->context.callback_resolve_infer(), [&](auto idx, const auto& ty) {
+                    assert( idx < impl_params.m_types.size() );
+                    impl_params.m_types[idx] = ty.clone();
+                    });
+                for(const auto& ty : impl_params.m_types)
+                    assert( !( ty.m_data.is_Infer() && ty.m_data.as_Infer().index == ~0u) );
+            }
+            
+            // Create monomorphise callback
+            const auto& fcn_params = e.params;
+            auto monomorph_cb = [&](const auto& gt)->const auto& {
+                    const auto& ge = gt.m_data.as_Generic();
+                    if( ge.binding == 0xFFFF ) {
+                        return this->context.get_type(*e.type);
+                    }
+                    else if( ge.binding < 256 ) {
+                        auto idx = ge.binding;
+                        if( idx >= impl_params.m_types.size() ) {
+                            BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << impl_params.m_types.size());
+                        }
+                        return this->context.get_type(impl_params.m_types[idx]);
+                    }
+                    else if( ge.binding < 512 ) {
+                        auto idx = ge.binding - 256;
+                        if( idx >= fcn_params.m_types.size() ) {
+                            BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << fcn_params.m_types.size());
+                        }
+                        return this->context.get_type(fcn_params.m_types[idx]);
+                    }
+                    else {
+                        BUG(sp, "Generic bounding out of total range");
+                    }
+                };
+            
+            ::HIR::FunctionType ft {
+                fcn_ptr->m_unsafe, fcn_ptr->m_abi,
+                box$( monomorphise_type_with(sp, fcn_ptr->m_return,  monomorph_cb) ),
+                {}
+                };
+            for(const auto& arg : fcn_ptr->m_args)
+                ft.m_arg_types.push_back( monomorphise_type_with(sp, arg.second,  monomorph_cb) );
+            auto ty = ::HIR::TypeRef(mv$(ft));
+            
+            this->context.apply_equality(node.span(), node.m_res_type, ty);
+            #endif
+            )
+        )
     }
     void visit(::HIR::ExprNode_Variable& node) override
     {
