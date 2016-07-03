@@ -7,7 +7,7 @@
 #include <algorithm>    // std::find_if
 #include "helpers.hpp"
 
-#include "expr.hpp"
+#include "expr_simple.hpp"
 
 namespace typeck {
 

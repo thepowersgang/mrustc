@@ -12,7 +12,7 @@
 #include <algorithm>    // std::find_if
 
 #include "helpers.hpp"
-#include "expr.hpp"
+//#include "expr.hpp"
 
 // PLAN: Build up a set of conditions that are easier to solve
 struct Context
