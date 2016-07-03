@@ -4,6 +4,7 @@
 
 #include <hir/type.hpp>
 #include <hir/hir.hpp>
+#include <hir/expr.hpp>
 
 // TODO/NOTE - This is identical to ::HIR::t_cb_resolve_type
 typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>   t_cb_generic;
@@ -106,5 +107,69 @@ public:
     bool types_equal(const ::HIR::TypeRef& l, const ::HIR::TypeRef& r) const;
 private:
     IVar& get_pointed_ivar(unsigned int slot) const;
+};
+
+
+// NOTE: impl is in expr_context.cpp
+class TraitResolution
+{
+    const HMTypeInferrence& m_ivars;
+    
+    const ::HIR::Crate& m_crate;
+    const ::HIR::GenericParams* m_impl_params;
+    const ::HIR::GenericParams* m_item_params;
+    
+public:
+    TraitResolution(const HMTypeInferrence& ivars, const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params):
+        m_ivars(ivars),
+        m_crate(crate),
+        m_impl_params( impl_params ),
+        m_item_params( item_params )
+    {
+    }
+    
+    typedef ::std::function<bool(const ::HIR::PathParams&, const ::std::map< ::std::string,::HIR::TypeRef>&)> t_cb_trait_impl;
+    
+    /// Check if a trait bound applies, using the passed function to expand Generic/Infer types
+    bool check_trait_bound(const Span& sp, const ::HIR::TypeRef& type, const ::HIR::GenericPath& trait, t_cb_generic placeholder) const;
+    
+    /// Expand any located associated types in the input, operating in-place and returning the result
+    ::HIR::TypeRef expand_associated_types(const Span& sp, ::HIR::TypeRef input) const;
+    
+    /// Iterate over in-scope bounds (function then top)
+    bool iterate_bounds( ::std::function<bool(const ::HIR::GenericBound&)> cb) const;
+
+    /// Searches for a trait impl that matches the provided trait name and type
+    bool find_trait_impls(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const;
+    
+    /// Locate a named trait in the provied trait (either itself or as a parent trait)
+    bool find_named_trait_in_trait(const Span& sp,
+            const ::HIR::SimplePath& des, const ::HIR::PathParams& params,
+            const ::HIR::Trait& trait_ptr, const ::HIR::SimplePath& trait_path, const ::HIR::PathParams& pp,
+            const ::HIR::TypeRef& self_type,
+            t_cb_trait_impl callback
+            ) const;
+    /// Search for a trait implementation in current bounds
+    bool find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const;
+    /// Search for a trait implementation in the crate
+    bool find_trait_impls_crate(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const;
+    
+    /// Locate the named method by applying auto-dereferencing.
+    /// \return Number of times deref was applied (or ~0 if _ was hit)
+    unsigned int autoderef_find_method(const Span& sp, const HIR::t_trait_list& traits, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const;
+    /// Locate the named field by applying auto-dereferencing.
+    /// \return Number of times deref was applied (or ~0 if _ was hit)
+    unsigned int autoderef_find_field(const Span& sp, const ::HIR::TypeRef& top_ty, const ::std::string& name,  /* Out -> */::HIR::TypeRef& field_type) const;
+    
+    /// Apply an automatic dereference
+    const ::HIR::TypeRef* autoderef(const Span& sp, const ::HIR::TypeRef& ty,  ::HIR::TypeRef& tmp_type) const;
+
+private:
+    bool find_method(const Span& sp, const HIR::t_trait_list& traits, const ::HIR::TypeRef& ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const;
+    bool find_field(const Span& sp, const ::HIR::TypeRef& ty, const ::std::string& name,  /* Out -> */::HIR::TypeRef& field_type) const;
+    
+    /// Locates a named method in a trait, and returns the path of the trait that contains it (with fixed parameters)
+    bool trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
+    bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
 };
 

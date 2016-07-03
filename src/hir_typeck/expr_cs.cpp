@@ -41,11 +41,10 @@ struct Context
     };
     
     const ::HIR::Crate& m_crate;
-    const ::HIR::GenericParams* m_impl_params;
-    const ::HIR::GenericParams* m_item_params;
     
     ::std::vector<Binding>  m_bindings;
     HMTypeInferrence    m_ivars;
+    TraitResolution m_resolve;
     
     ::std::vector<Coercion> link_coerce;
     ::std::vector<Associated> link_assoc;
@@ -54,8 +53,7 @@ struct Context
     
     Context(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params):
         m_crate(crate),
-        m_impl_params( impl_params ),
-        m_item_params( item_params )
+        m_resolve(m_ivars, crate, impl_params, item_params)
     {
     }
     
@@ -66,7 +64,9 @@ struct Context
         return link_coerce.size() > 0 || link_assoc.size() > 0 || to_visit.size() > 0;
     }
     
-    void add_ivars(::HIR::TypeRef& ty);
+    void add_ivars(::HIR::TypeRef& ty) {
+        m_ivars.add_ivars(ty);
+    }
     // - Equate two types, with no possibility of coercion
     //  > Errors if the types are incompatible.
     //  > Forces types if one side is an infer
@@ -88,7 +88,9 @@ struct Context
     const ::HIR::TypeRef& get_type(const ::HIR::TypeRef& ty) const { return m_ivars.get_type(ty); }
     
 private:
-    void add_ivars_params(::HIR::PathParams& params);
+    void add_ivars_params(::HIR::PathParams& params) {
+        m_ivars.add_ivars_params(params);
+    }
 };
 
 static void fix_param_count(const Span& sp, Context& context, const ::HIR::Path& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params);
@@ -1182,73 +1184,6 @@ void Context::dump() const {
     for(const auto& v : to_visit) {
         DEBUG(&v << " " << typeid(*v).name());
     }
-}
-void Context::add_ivars(::HIR::TypeRef& ty) {
-    TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
-    (Infer,
-        if( e.index == ~0u ) {
-            e.index = this->m_ivars.new_ivar();
-            this->m_ivars.get_type(ty).m_data.as_Infer().ty_class = e.ty_class;
-        }
-        ),
-    (Diverge,
-        ),
-    (Primitive,
-        ),
-    (Path,
-        // Iterate all arguments
-        TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
-        (Generic,
-            this->add_ivars_params(e2.m_params);
-            ),
-        (UfcsKnown,
-            this->add_ivars(*e2.type);
-            this->add_ivars_params(e2.trait.m_params);
-            this->add_ivars_params(e2.params);
-            ),
-        (UfcsUnknown,
-            this->add_ivars(*e2.type);
-            this->add_ivars_params(e2.params);
-            ),
-        (UfcsInherent,
-            this->add_ivars(*e2.type);
-            this->add_ivars_params(e2.params);
-            )
-        )
-        ),
-    (Generic,
-        ),
-    (TraitObject,
-        // Iterate all paths
-        ),
-    (Array,
-        add_ivars(*e.inner);
-        ),
-    (Slice,
-        add_ivars(*e.inner);
-        ),
-    (Tuple,
-        for(auto& ty : e)
-            add_ivars(ty);
-        ),
-    (Borrow,
-        add_ivars(*e.inner);
-        ),
-    (Pointer,
-        add_ivars(*e.inner);
-        ),
-    (Function,
-        // No ivars allowed
-        // TODO: Check?
-        ),
-    (Closure,
-        // Shouldn't be possible
-        )
-    )
-}
-void Context::add_ivars_params(::HIR::PathParams& params) {
-    for(auto& arg : params.m_types)
-        add_ivars(arg);
 }
 
 void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR::TypeRef& ri) {
