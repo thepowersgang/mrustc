@@ -28,7 +28,7 @@ struct Context
     struct Coercion
     {
         ::HIR::TypeRef  left_ty;
-        ::HIR::ExprNodeP& right_node_ptr;
+        ::HIR::ExprNodeP* right_node_ptr;
     };
     struct Associated
     {
@@ -1126,7 +1126,22 @@ namespace {
             unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, ty, node.m_method,  fcn_path);
             if( deref_count != ~0u )
             {
-                TODO(node.span(), "ExprNode_CallMethod - Found method " << fcn_path);
+                visit_call_populate_cache(this->context, node.span(), fcn_path, node.m_cache);
+                assert( node.m_cache.m_arg_types.size() >= 1);
+                
+                if( node.m_args.size()+1 != node.m_cache.m_arg_types.size() - 1 ) {
+                    ERROR(node.span(), E0000, "Incorrect number of arguments to " << fcn_path);
+                }
+                
+                // Link arguments
+                for(unsigned int i = 0; i < node.m_args.size(); i ++)
+                {
+                    this->context.equate_types_coerce(node.span(), node.m_cache.m_arg_types[1+i], node.m_args[i]);
+                }
+                this->context.equate_types(node.span(), node.m_res_type,  node.m_cache.m_arg_types.back());
+                
+                node.m_method_path = mv$(fcn_path);
+                this->m_completed = true;
             }
         }
         void visit(::HIR::ExprNode_Field& node) override {
@@ -1175,7 +1190,7 @@ void Context::dump() const {
     m_ivars.dump();
     DEBUG("CS Context - " << link_coerce.size() << " Coercions, " << link_assoc.size() << " associated, " << to_visit.size() << " nodes");
     for(const auto& v : link_coerce) {
-        DEBUG(v.left_ty << " := " << &*v.right_node_ptr << " (" << v.right_node_ptr->m_res_type << ")");
+        DEBUG(v.left_ty << " := " << &**v.right_node_ptr << " (" << (*v.right_node_ptr)->m_res_type << ")");
     }
     for(const auto& v : link_assoc) {
         DEBUG(v.left_ty << " = " << "<" << v.impl_ty << " as " << v.trait << "<" << v.params << ">>::" << v.name);
@@ -1556,7 +1571,7 @@ void Context::equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR
 {
     // - Just record the equality
     this->link_coerce.push_back(Coercion {
-        l.clone(), node_ptr
+        l.clone(), &node_ptr
         });
 }
 void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name)
@@ -1628,9 +1643,123 @@ void fix_param_count(const Span& sp, Context& context, const ::HIR::GenericPath&
     fix_param_count_(sp, context, path, param_defs, params);
 }
 
+namespace {
+    bool check_coerce(Context& context, const Context::Coercion& v) {
+        const ::HIR::ExprNodeP& node_ptr = *v.right_node_ptr;
+        const auto& sp = node_ptr->span();
+        const auto& ty = context.m_ivars.get_type(v.left_ty);
+        const auto& ty_r = context.m_ivars.get_type(node_ptr->m_res_type);
+        // 1. Check target type is a valid coercion
+        // - Otherwise - Force equality
+        TU_MATCH( ::HIR::TypeRef::Data, (ty.m_data), (e),
+        (Infer,
+            // TODO: If the righthand side cannot ever coerce, equate
+            ),
+        (Diverge,
+            return true;
+            ),
+        (Primitive,
+            // TODO: `str` is a coercion target? (but only via &str)
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
+            ),
+        (Path,
+            TODO(Span(), "check_coerce - Coercion to " << ty);
+            ),
+        (Generic,
+            TODO(Span(), "check_coerce - Coercion to " << ty);
+            ),
+        (TraitObject,
+            // TODO: Can bare trait objects coerce?
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
+            ),
+        (Array,
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
+            ),
+        (Slice,
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
+            ),
+        (Tuple,
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
+            ),
+        (Borrow,
+            // TODO: Borrows can have unsizing and deref coercions applied
+            ),
+        (Pointer,
+            // TODO: Pointers coerce from borrows and similar pointers
+            ),
+        (Function,
+            TODO(sp, "check_coerce - Coercion to " << ty);
+            ),
+        (Closure,
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
+            )
+        )
+        
+        TU_MATCH( ::HIR::TypeRef::Data, (ty_r.m_data), (e),
+        (Infer,
+            ),
+        (Diverge,
+            return true;
+            ),
+        (Primitive,
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
+            ),
+        (Path,
+            TODO(Span(), "check_coerce - Coercion from " << ty_r);
+            ),
+        (Generic,
+            TODO(Span(), "check_coerce - Coercion from " << ty_r);
+            ),
+        (TraitObject,
+            // TODO: Can bare trait objects coerce?
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
+            ),
+        (Array,
+            // TODO: Can raw arrays coerce to anything?
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
+            ),
+        (Slice,
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
+            ),
+        (Tuple,
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
+            ),
+        (Borrow,
+            // TODO: Borrows can have unsizing and deref coercions applied
+            ),
+        (Pointer,
+            // TODO: Pointers coerce from borrows and similar pointers
+            ),
+        (Function,
+            TODO(sp, "check_coerce - Coercion from " << ty_r);
+            ),
+        (Closure,
+            TODO(sp, "check_coerce - Coercion from " << ty_r);
+            )
+        )
+        
+        TODO(sp, "Typecheck_Code_CS - Coercion " << context.m_ivars.fmt_type(ty) << " from " << context.m_ivars.fmt_type(node_ptr->m_res_type));
+        return false;
+    }
+}
+
 
 void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR::TypeRef& result_type, ::HIR::ExprPtr& expr)
 {
+    TRACE_FUNCTION;
+    
+    auto root_ptr = expr.into_unique();
     Context context { ms.m_crate, ms.m_impl_generics, ms.m_item_generics };
     
     for( auto& arg : args ) {
@@ -1640,29 +1769,44 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
     // - Build up ruleset from node tree
     {
         ExprVisitor_Enum    visitor(context, ms.m_traits, result_type);
-        context.add_ivars(expr->m_res_type);
-        expr->visit(visitor);
+        context.add_ivars(root_ptr->m_res_type);
+        root_ptr->visit(visitor);
         
-        context.equate_types(expr->span(), result_type, expr->m_res_type);
+        //context.equate_types(expr->span(), result_type, root_ptr->m_res_type);
+        context.equate_types_coerce(expr->span(), result_type, root_ptr);
     }
-    
-    context.dump();
     
     const unsigned int MAX_ITERATIONS = 100;
     unsigned int count = 0;
     while( context.take_changed() && context.has_rules() && count < MAX_ITERATIONS )
     {
+        DEBUG("=== PASS " << count << " ===");
+        context.dump();
+        
         // 1. Check coercions for ones that cannot coerce due to RHS type (e.g. `str` which doesn't coerce to anything)
         // 2. (???) Locate coercions that cannot coerce (due to single option)
+        for(auto it = context.link_coerce.begin(); it != context.link_coerce.end(); ) {
+            if( check_coerce(context, *it) ) {
+                it = context.link_coerce.erase(it);
+            }
+            else {
+                ++ it;
+            }
+        }
         // 3. Check associated type rules
-        //  - Find trait impl
+        for(const auto& v : context.link_assoc) {
+            //  - Find trait impl
+            TODO(Span(), "Typecheck_Code_CS - Associated " << v.left_ty);
+        }
         // 4. Revisit nodes that require revisiting
         for( auto it = context.to_visit.begin(); it != context.to_visit.end(); )
         {
+            ::HIR::ExprNode& node = **it;
             ExprVisitor_Revisit visitor { context };
-            (*it)->visit( visitor );
+            node.visit( visitor );
             //  - If the node is completed, remove it
             if( visitor.node_completed() ) {
+                DEBUG("- Completed " << &node << " - " << typeid(node).name());
                 it = context.to_visit.erase(it);
             }
             else {
@@ -1670,8 +1814,17 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             }
         }
         
-        TODO(Span(), "Typecheck_Code_CS");
         count ++;
+    }
+    
+    // - Validate typeck
+    expr = ::HIR::ExprPtr( mv$(root_ptr) );
+    {
+        DEBUG("==== VALIDATE ====");
+        context.dump();
+        
+        //typeck::ExprVisitor_Apply   visitor { context };
+        //expr->visit( visitor );
     }
 }
 
