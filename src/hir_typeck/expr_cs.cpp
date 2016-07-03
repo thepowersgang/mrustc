@@ -1265,6 +1265,9 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, ::HIR::TypeRef& t
 void Context::equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR::ExprNodeP& node_ptr)
 {
     // - Just record the equality
+    this->link_coerce.push_back(Coercion {
+        l.clone(), node_ptr
+        });
 }
 void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, const ::std::vector< ::HIR::TypeRef>& ty_args, const ::HIR::TypeRef& impl_ty, const char *name)
 {
