@@ -76,7 +76,6 @@ public:
     
     void set_ivar_to(unsigned int slot, ::HIR::TypeRef type);
     void ivar_unify(unsigned int left_slot, unsigned int right_slot);
-
 private:
     IVar& get_pointed_ivar(unsigned int slot) const;
 };
