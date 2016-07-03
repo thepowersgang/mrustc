@@ -1183,6 +1183,81 @@ namespace {
             BUG(node.span(), "Node revisit unexpected - " << typeid(node).name());
         }
     };
+    
+    /// Visitor that applies the inferred types, and checks that all of them are fully resolved
+    class ExprVisitor_Apply:
+        public ::HIR::ExprVisitorDef
+    {
+        HMTypeInferrence& ivars;
+    public:
+        ExprVisitor_Apply(HMTypeInferrence& ivars):
+            ivars(ivars)
+        {
+        }
+        void visit_node_ptr(::HIR::ExprNodeP& node) override {
+            const char* node_ty = typeid(*node).name();
+            TRACE_FUNCTION_FR(node_ty << " : " << node->m_res_type, node_ty);
+            this->check_type_resolved(node->span(), node->m_res_type, node->m_res_type);
+            DEBUG(node_ty << " : = " << node->m_res_type);
+            ::HIR::ExprVisitorDef::visit_node_ptr(node);
+        }
+        
+    private:
+        void check_type_resolved(const Span& sp, ::HIR::TypeRef& ty, const ::HIR::TypeRef& top_type) const {
+            TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
+            (Infer,
+                auto new_ty = this->ivars.get_type(ty).clone();
+                // - Move over before checking, so that the source type mentions the correct ivar
+                ty = mv$(new_ty);
+                if( ty.m_data.is_Infer() ) {
+                    ERROR(sp, E0000, "Failed to infer type " << ty << " in "  << top_type);
+                }
+                check_type_resolved(sp, ty, top_type);
+                ),
+            (Diverge,
+                // Leaf
+                ),
+            (Primitive,
+                // Leaf
+                ),
+            (Path,
+                // TODO:
+                ),
+            (Generic,
+                // Leaf
+                ),
+            (TraitObject,
+                // TODO:
+                ),
+            (Array,
+                this->check_type_resolved(sp, *e.inner, top_type);
+                ),
+            (Slice,
+                this->check_type_resolved(sp, *e.inner, top_type);
+                ),
+            (Tuple,
+                for(auto& st : e)
+                    this->check_type_resolved(sp, st, top_type);
+                ),
+            (Borrow,
+                this->check_type_resolved(sp, *e.inner, top_type);
+                ),
+            (Pointer,
+                this->check_type_resolved(sp, *e.inner, top_type);
+                ),
+            (Function,
+                this->check_type_resolved(sp, *e.m_rettype, top_type);
+                for(auto& st : e.m_arg_types)
+                    this->check_type_resolved(sp, st, top_type);
+                ),
+            (Closure,
+                this->check_type_resolved(sp, *e.m_rettype, top_type);
+                for(auto& st : e.m_arg_types)
+                    this->check_type_resolved(sp, st, top_type);
+                )
+            )
+        }
+    };
 }
 
 
@@ -1823,8 +1898,8 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         DEBUG("==== VALIDATE ====");
         context.dump();
         
-        //typeck::ExprVisitor_Apply   visitor { context };
-        //expr->visit( visitor );
+        ExprVisitor_Apply   visitor { context.m_ivars };
+        expr->visit( visitor );
     }
 }
 
