@@ -491,7 +491,7 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
         root_ivar.type = box$( mv$(type) );
     }
     
-    //this->mark_change();
+    this->mark_change();
 }
 
 void HMTypeInferrence::ivar_unify(unsigned int left_slot, unsigned int right_slot)
@@ -530,7 +530,7 @@ void HMTypeInferrence::ivar_unify(unsigned int left_slot, unsigned int right_slo
         root_ivar.alias = left_slot;
         root_ivar.type.reset();
         
-        //this->mark_change();
+        this->mark_change();
     }
 }
 HMTypeInferrence::IVar& HMTypeInferrence::get_pointed_ivar(unsigned int slot) const
