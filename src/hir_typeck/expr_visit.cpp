@@ -7,8 +7,8 @@
 
 namespace {
     void Typecheck_Code(const typeck::ModuleState& ms, t_args& args, const ::HIR::TypeRef& result_type, ::HIR::ExprPtr& expr) {
-        Typecheck_Code_Simple(ms, args, result_type, expr);
-        //Typecheck_Code_CS(ms, args, result_type, expr);
+        //Typecheck_Code_Simple(ms, args, result_type, expr);
+        Typecheck_Code_CS(ms, args, result_type, expr);
     }
     
     class OuterVisitor:

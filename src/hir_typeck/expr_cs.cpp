@@ -59,6 +59,13 @@ struct Context
     {
     }
     
+    void dump() const;
+    
+    bool take_changed() { return m_ivars.take_changed(); }
+    bool has_rules() const {
+        return link_coerce.size() > 0 || link_assoc.size() > 0 || to_visit.size() > 0;
+    }
+    
     void add_ivars(::HIR::TypeRef& ty);
     // - Equate two types, with no possibility of coercion
     //  > Errors if the types are incompatible.
@@ -1037,6 +1044,19 @@ private:
 };
 
 
+void Context::dump() const {
+    m_ivars.dump();
+    DEBUG("CS Context - " << link_coerce.size() << " Coercions, " << link_assoc.size() << " associated, " << to_visit.size() << " nodes");
+    for(const auto& v : link_coerce) {
+        DEBUG(v.left_ty << " := " << &*v.right_node_ptr << " (" << v.right_node_ptr->m_res_type << ")");
+    }
+    for(const auto& v : link_assoc) {
+        DEBUG(v.left_ty << " = " << "<" << v.impl_ty << " as " << v.trait << "<" << v.params << ">>::" << v.name);
+    }
+    for(const auto& v : to_visit) {
+        DEBUG(&v << " " << typeid(*v).name());
+    }
+}
 void Context::add_ivars(::HIR::TypeRef& ty) {
     TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
     (Infer,
@@ -1107,8 +1127,8 @@ void Context::add_ivars_params(::HIR::PathParams& params) {
 
 void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR::TypeRef& ri) {
     // Instantly apply equality
-    const auto& l_t = this->get_type(li);
-    const auto& r_t = this->get_type(ri);
+    const auto& l_t = this->m_ivars.get_type(li);
+    const auto& r_t = this->m_ivars.get_type(ri);
     
     DEBUG("- l_t = " << l_t << ", r_t = " << r_t);
     TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Infer, r_e,
@@ -1558,10 +1578,16 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
     }
 
     ExprVisitor_Enum    visitor(context, ms.m_traits, result_type);
+    context.add_ivars(expr->m_res_type);
     expr->visit(visitor);
     
     context.equate_types(expr->span(), result_type, expr->m_res_type);
     
-    // TODO: Run
+    context.dump();
+    while( context.take_changed() && context.has_rules() )
+    {
+        // TODO: Run
+        TODO(Span(), "Typecheck_Code_CS");
+    }
 }
 
