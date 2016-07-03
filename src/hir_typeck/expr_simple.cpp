@@ -7,6 +7,7 @@
 #include <algorithm>    // std::find_if
 #include "helpers.hpp"
 
+#include "expr_visit.hpp"
 #include "expr_simple.hpp"
 
 namespace typeck {
@@ -1994,189 +1995,12 @@ void Typecheck_Code(typeck::TypecheckContext context, const ::HIR::TypeRef& resu
         expr->visit( visitor );
     }
 }
-
-
-
-namespace {
-    using typeck::TypecheckContext;
-    
-    class OuterVisitor:
-        public ::HIR::Visitor
-    {
-        ::HIR::Crate& m_crate;
-        
-        ::HIR::GenericParams*   m_impl_generics;
-        ::HIR::GenericParams*   m_item_generics;
-        ::std::vector< ::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >   m_traits;
-    public:
-        OuterVisitor(::HIR::Crate& crate):
-            m_crate(crate),
-            m_impl_generics(nullptr),
-            m_item_generics(nullptr)
-        {
-        }
-        
-    private:
-        template<typename T>
-        class NullOnDrop {
-            T*& ptr;
-        public:
-            NullOnDrop(T*& ptr):
-                ptr(ptr)
-            {}
-            ~NullOnDrop() {
-                ptr = nullptr;
-            }
-        };
-        NullOnDrop< ::HIR::GenericParams> set_impl_generics(::HIR::GenericParams& gps) {
-            assert( !m_impl_generics );
-            m_impl_generics = &gps;
-            return NullOnDrop< ::HIR::GenericParams>(m_impl_generics);
-        }
-        NullOnDrop< ::HIR::GenericParams> set_item_generics(::HIR::GenericParams& gps) {
-            assert( !m_item_generics );
-            m_item_generics = &gps;
-            return NullOnDrop< ::HIR::GenericParams>(m_item_generics);
-        }
-        
-        void push_traits(const ::HIR::Module& mod) {
-            auto sp = Span();
-            DEBUG("Module has " << mod.m_traits.size() << " in-scope traits");
-            // - Push a NULL entry to prevent parent module import lists being searched
-            m_traits.push_back( ::std::make_pair(nullptr, nullptr) );
-            for( const auto& trait_path : mod.m_traits ) {
-                DEBUG("Push " << trait_path);
-                m_traits.push_back( ::std::make_pair( &trait_path, &this->m_crate.get_trait_by_path(sp, trait_path) ) );
-            }
-        }
-        void pop_traits(const ::HIR::Module& mod) {
-            DEBUG("Module has " << mod.m_traits.size() << " in-scope traits");
-            for(unsigned int i = 0; i < mod.m_traits.size(); i ++ )
-                m_traits.pop_back();
-            m_traits.pop_back();
-        }
-    
-    public:
-        void visit_module(::HIR::PathChain p, ::HIR::Module& mod) override
-        {
-            push_traits(mod);
-            ::HIR::Visitor::visit_module(p, mod);
-            pop_traits(mod);
-        }
-        
-        // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
-        void visit_expr(::HIR::ExprPtr& exp) {
-            TODO(Span(), "visit_expr");
-        }
-
-        void visit_trait(::HIR::PathChain p, ::HIR::Trait& item) override
-        {
-            auto _ = this->set_impl_generics(item.m_params);
-            ::HIR::Visitor::visit_trait(p, item);
-        }
-        
-        void visit_type_impl(::HIR::TypeImpl& impl) override
-        {
-            TRACE_FUNCTION_F("impl " << impl.m_type);
-            auto _ = this->set_impl_generics(impl.m_params);
-            
-            const auto& mod = this->m_crate.get_mod_by_path(Span(), impl.m_src_module);
-            push_traits(mod);
-            ::HIR::Visitor::visit_type_impl(impl);
-            pop_traits(mod);
-        }
-        void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
-        {
-            TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
-            auto _ = this->set_impl_generics(impl.m_params);
-            
-            const auto& mod = this->m_crate.get_mod_by_path(Span(), impl.m_src_module);
-            push_traits(mod);
-            ::HIR::Visitor::visit_trait_impl(trait_path, impl);
-            pop_traits(mod);
-        }
-        void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl) override
-        {
-            TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type << " { }");
-            auto _ = this->set_impl_generics(impl.m_params);
-            
-            const auto& mod = this->m_crate.get_mod_by_path(Span(), impl.m_src_module);
-            push_traits(mod);
-            ::HIR::Visitor::visit_marker_impl(trait_path, impl);
-            pop_traits(mod);
-        }
-        
-        void visit_type(::HIR::TypeRef& ty) override
-        {
-            TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
-                this->visit_type( *e.inner );
-                TypecheckContext    typeck_context { m_crate, m_impl_generics, m_item_generics };
-                typeck_context.m_traits = this->m_traits;
-                DEBUG("Array size " << ty);
-                Typecheck_Code( mv$(typeck_context), ::HIR::TypeRef(::HIR::CoreType::Usize), e.size );
-            )
-            else {
-                ::HIR::Visitor::visit_type(ty);
-            }
-        }
-        // ------
-        // Code-containing items
-        // ------
-        void visit_function(::HIR::PathChain p, ::HIR::Function& item) override {
-            auto _ = this->set_item_generics(item.m_params);
-            if( item.m_code )
-            {
-                TypecheckContext typeck_context { m_crate, m_impl_generics, m_item_generics };
-                typeck_context.m_traits = this->m_traits;
-                for( auto& arg : item.m_args ) {
-                    typeck_context.add_binding( Span(), arg.first, arg.second );
-                }
-                DEBUG("Function code " << p);
-                Typecheck_Code( mv$(typeck_context), item.m_return, item.m_code );
-            }
-        }
-        void visit_static(::HIR::PathChain p, ::HIR::Static& item) override {
-            //auto _ = this->set_item_generics(item.m_params);
-            if( item.m_value )
-            {
-                TypecheckContext typeck_context { m_crate, m_impl_generics, m_item_generics };
-                typeck_context.m_traits = this->m_traits;
-                DEBUG("Static value " << p);
-                Typecheck_Code( mv$(typeck_context), item.m_type, item.m_value );
-            }
-        }
-        void visit_constant(::HIR::PathChain p, ::HIR::Constant& item) override {
-            auto _ = this->set_item_generics(item.m_params);
-            if( item.m_value )
-            {
-                TypecheckContext typeck_context { m_crate, m_impl_generics, m_item_generics };
-                typeck_context.m_traits = this->m_traits;
-                DEBUG("Const value " << p);
-                Typecheck_Code( mv$(typeck_context), item.m_type, item.m_value );
-            }
-        }
-        void visit_enum(::HIR::PathChain p, ::HIR::Enum& item) override {
-            auto _ = this->set_item_generics(item.m_params);
-            
-            // TODO: Use a different type depding on repr()
-            auto enum_type = ::HIR::TypeRef(::HIR::CoreType::Usize);
-            
-            // TODO: Check types too?
-            for(auto& var : item.m_variants)
-            {
-                TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-                    TypecheckContext typeck_context { m_crate, m_impl_generics, m_item_generics };
-                    typeck_context.m_traits = this->m_traits;
-                    DEBUG("Enum value " << p << " - " << var.first);
-                    Typecheck_Code( mv$(typeck_context), enum_type, e );
-                )
-            }
-        }
-    };
-}
-
-void Typecheck_Expressions(::HIR::Crate& crate)
+void Typecheck_Code_Simple(const typeck::ModuleState& ms, t_args& args, const ::HIR::TypeRef& result_type, ::HIR::ExprPtr& expr)
 {
-    OuterVisitor    visitor { crate };
-    visitor.visit_crate( crate );
+    typeck::TypecheckContext typeck_context { ms.m_crate, ms.m_impl_generics, ms.m_item_generics };
+    typeck_context.m_traits = ms.m_traits;
+    for( auto& arg : args ) {
+        typeck_context.add_binding( Span(), arg.first, arg.second );
+    }
+    Typecheck_Code( mv$(typeck_context), result_type, expr );
 }
