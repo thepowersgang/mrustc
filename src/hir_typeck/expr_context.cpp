@@ -5,19 +5,6 @@
 #include <algorithm>    // std::find_if
 #include "helpers.hpp"
 
-struct FmtType {
-    const typeck::TypecheckContext& ctxt;
-    const ::HIR::TypeRef& ty;
-    FmtType(const typeck::TypecheckContext& ctxt, const ::HIR::TypeRef& ty):
-        ctxt(ctxt),
-        ty(ty)
-    {}
-    friend ::std::ostream& operator<<(::std::ostream& os, const FmtType& x) {
-        x.ctxt.print_type(os, x.ty);
-        return os;
-    }
-};
-
 void typeck::TypecheckContext::push_traits(const ::std::vector<::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >& list)
 {
     this->m_traits.insert( this->m_traits.end(), list.begin(), list.end() );
@@ -94,268 +81,7 @@ const ::HIR::TypeRef& typeck::TypecheckContext::get_var_type(const Span& sp, uns
 }
 
 
-bool typeck::TypecheckContext::pathparams_contain_ivars(const ::HIR::PathParams& pps) const {
-    for( const auto& ty : pps.m_types ) {
-        if(this->type_contains_ivars(ty))
-            return true;
-    }
-    return false;
-}
-bool typeck::TypecheckContext::type_contains_ivars(const ::HIR::TypeRef& ty) const {
-    TU_MATCH(::HIR::TypeRef::Data, (this->get_type(ty).m_data), (e),
-    (Infer, return true; ),
-    (Primitive, return false; ),
-    (Diverge, return false; ),
-    (Generic, return false; ),
-    (Path,
-        TU_MATCH(::HIR::Path::Data, (e.path.m_data), (pe),
-        (Generic,
-            return pathparams_contain_ivars(pe.m_params);
-            ),
-        (UfcsKnown,
-            if( type_contains_ivars(*pe.type) )
-                return true;
-            if( pathparams_contain_ivars(pe.trait.m_params) )
-                return true;
-            return pathparams_contain_ivars(pe.params);
-            ),
-        (UfcsInherent,
-            if( type_contains_ivars(*pe.type) )
-                return true;
-            return pathparams_contain_ivars(pe.params);
-            ),
-        (UfcsUnknown,
-            BUG(Span(), "UfcsUnknown");
-            )
-        )
-        ),
-    (Borrow,
-        return type_contains_ivars(*e.inner);
-        ),
-    (Pointer,
-        return type_contains_ivars(*e.inner);
-        ),
-    (Slice,
-        return type_contains_ivars(*e.inner);
-        ),
-    (Array,
-        return type_contains_ivars(*e.inner);
-        ),
-    (Closure,
-        for(const auto& arg : e.m_arg_types)
-            if( type_contains_ivars(arg) )
-                return true;
-        return type_contains_ivars(*e.m_rettype);
-        ),
-    (Function,
-        for(const auto& arg : e.m_arg_types)
-            if( type_contains_ivars(arg) )
-                return true;
-        return type_contains_ivars(*e.m_rettype);
-        ),
-    (TraitObject,
-        for(const auto& marker : e.m_markers)
-            if( pathparams_contain_ivars(marker.m_params) )
-                return true;
-        return pathparams_contain_ivars(e.m_trait.m_path.m_params);
-        ),
-    (Tuple,
-        for(const auto& st : e)
-            if( type_contains_ivars(st) )
-                return true;
-        return false;
-        )
-    )
-    throw "";
-}
 
-namespace {
-    bool type_list_equal(const typeck::TypecheckContext& context, const ::std::vector< ::HIR::TypeRef>& l, const ::std::vector< ::HIR::TypeRef>& r)
-    {
-        if( l.size() != r.size() )
-            return false;
-        
-        for( unsigned int i = 0; i < l.size(); i ++ ) {
-            if( !context.types_equal(l[i], r[i]) )
-                return false;
-        }
-        return true;
-    }
-}
-bool typeck::TypecheckContext::pathparams_equal(const ::HIR::PathParams& pps_l, const ::HIR::PathParams& pps_r) const
-{
-    return type_list_equal(*this, pps_l.m_types, pps_r.m_types);
-}
-bool typeck::TypecheckContext::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRef& rr) const
-{
-    const auto& l = this->get_type(rl);
-    const auto& r = this->get_type(rr);
-    if( l.m_data.tag() != r.m_data.tag() )
-        return false;
-    
-    TU_MATCH(::HIR::TypeRef::Data, (l.m_data, r.m_data), (le, re),
-    (Infer, return le.index == re.index; ),
-    (Primitive, return le == re; ),
-    (Diverge, return true; ),
-    (Generic, return le.binding == re.binding; ),
-    (Path,
-        if( le.path.m_data.tag() != re.path.m_data.tag() )
-            return false;
-        TU_MATCH(::HIR::Path::Data, (le.path.m_data, re.path.m_data), (lpe, rpe),
-        (Generic,
-            if( lpe.m_path != rpe.m_path )
-                return false;
-            return pathparams_equal(lpe.m_params, rpe.m_params);
-            ),
-        (UfcsKnown,
-            if( lpe.item != rpe.item )
-                return false;
-            if( types_equal(*lpe.type, *rpe.type) )
-                return false;
-            if( pathparams_equal(lpe.trait.m_params, rpe.trait.m_params) )
-                return false;
-            return pathparams_equal(lpe.params, rpe.params);
-            ),
-        (UfcsInherent,
-            if( lpe.item != rpe.item )
-                return false;
-            if( types_equal(*lpe.type, *rpe.type) )
-                return false;
-            return pathparams_equal(lpe.params, rpe.params);
-            ),
-        (UfcsUnknown,
-            BUG(Span(), "UfcsUnknown");
-            )
-        )
-        ),
-    (Borrow,
-        if( le.type != re.type )
-            return false;
-        return types_equal(*le.inner, *re.inner);
-        ),
-    (Pointer,
-        if( le.type != re.type )
-            return false;
-        return types_equal(*le.inner, *re.inner);
-        ),
-    (Slice,
-        return types_equal(*le.inner, *re.inner);
-        ),
-    (Array,
-        if( le.size_val != re.size_val )
-            return false;
-        return types_equal(*le.inner, *re.inner);
-        ),
-    (Closure,
-        if( !type_list_equal(*this, le.m_arg_types, re.m_arg_types) )
-            return false;
-        return types_equal(*le.m_rettype, *re.m_rettype);
-        ),
-    (Function,
-        if( !type_list_equal(*this, le.m_arg_types, re.m_arg_types) )
-            return false;
-        return types_equal(*le.m_rettype, *re.m_rettype);
-        ),
-    (TraitObject,
-        if( le.m_markers.size() != re.m_markers.size() )
-            return false;
-        for(unsigned int i = 0; i < le.m_markers.size(); i ++) {
-            const auto& lm = le.m_markers[i];
-            const auto& rm = re.m_markers[i];
-            if( lm.m_path != rm.m_path )
-                return false;
-            if( ! pathparams_equal(lm.m_params, rm.m_params) )
-                return false;
-        }
-        if( le.m_trait.m_path.m_path != re.m_trait.m_path.m_path )
-            return false;
-        return pathparams_equal(le.m_trait.m_path.m_params, re.m_trait.m_path.m_params);
-        ),
-    (Tuple,
-        return type_list_equal(*this, le, re);
-        )
-    )
-    throw "";
-}
-
-void typeck::TypecheckContext::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) const
-{
-    m_ivars.print_type(os, tr);
-}
-
-///
-/// Add inferrence variables to the provided type (if they're not already set)
-///
-void typeck::TypecheckContext::add_ivars(::HIR::TypeRef& type)
-{
-    TU_MATCH(::HIR::TypeRef::Data, (type.m_data), (e),
-    (Infer,
-        if( e.index == ~0u ) {
-            e.index = this->new_ivar();
-            this->get_type(type).m_data.as_Infer().ty_class = e.ty_class;
-            this->mark_change();
-        }
-        ),
-    (Diverge,
-        ),
-    (Primitive,
-        ),
-    (Path,
-        // Iterate all arguments
-        TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
-        (Generic,
-            this->add_ivars_params(e2.m_params);
-            ),
-        (UfcsKnown,
-            this->add_ivars(*e2.type);
-            this->add_ivars_params(e2.trait.m_params);
-            this->add_ivars_params(e2.params);
-            ),
-        (UfcsUnknown,
-            this->add_ivars(*e2.type);
-            this->add_ivars_params(e2.params);
-            ),
-        (UfcsInherent,
-            this->add_ivars(*e2.type);
-            this->add_ivars_params(e2.params);
-            )
-        )
-        ),
-    (Generic,
-        ),
-    (TraitObject,
-        // Iterate all paths
-        ),
-    (Array,
-        add_ivars(*e.inner);
-        ),
-    (Slice,
-        add_ivars(*e.inner);
-        ),
-    (Tuple,
-        for(auto& ty : e)
-            add_ivars(ty);
-        ),
-    (Borrow,
-        add_ivars(*e.inner);
-        ),
-    (Pointer,
-        add_ivars(*e.inner);
-        ),
-    (Function,
-        // No ivars allowed
-        // TODO: Check?
-        ),
-    (Closure,
-        // Shouldn't be possible
-        )
-    )
-}
-void typeck::TypecheckContext::add_ivars_params(::HIR::PathParams& params)
-{
-    for(auto& arg : params.m_types)
-        add_ivars(arg);
-}
 
 void typeck::TypecheckContext::add_pattern_binding(const ::HIR::PatternBinding& pb, ::HIR::TypeRef type)
 {
@@ -1002,8 +728,8 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                 }
             }
             
-            DEBUG("CoerceUnsized - " << this->type_contains_ivars(l_t) << this->type_contains_ivars(r_t) << this->types_equal(l_t, r_t));
-            if( !this->type_contains_ivars(l_t) && !this->type_contains_ivars(r_t) && !this->types_equal(l_t, r_t) )
+            DEBUG("CoerceUnsized - " << this->m_ivars.type_contains_ivars(l_t) << this->m_ivars.type_contains_ivars(r_t) << this->m_ivars.types_equal(l_t, r_t));
+            if( !this->m_ivars.type_contains_ivars(l_t) && !this->m_ivars.type_contains_ivars(r_t) && !this->m_ivars.types_equal(l_t, r_t) )
             {
                 // TODO: If the types are fully known, and not equal. Search for CoerceUnsized
                 ::HIR::PathParams   pp;
@@ -1029,7 +755,7 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                             if( e.path.m_data.is_Generic() ) {
                                 return false;
                             }
-                            return context.type_contains_ivars(ty);
+                            return context.m_ivars.type_contains_ivars(ty);
                         )
                         return false;
                     }
@@ -1046,13 +772,13 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                     
                     // - If right has a deref chain to left, build it
                     DEBUG("Trying deref coercion " << l_t << " " << r_t);
-                    if( !l_t.m_data.is_Borrow() && ! this->type_contains_ivars(l_t) && ! this->type_contains_ivars(r_t) )
+                    if( !l_t.m_data.is_Borrow() && ! this->m_ivars.type_contains_ivars(l_t) && ! this->m_ivars.type_contains_ivars(r_t) )
                     {
                         DEBUG("Trying deref coercion (2)");
                         ::HIR::TypeRef  tmp_ty;
                         const ::HIR::TypeRef*   out_ty = &r_t;
                         unsigned int count = 0;
-                        while( (out_ty = this->autoderef(sp, *out_ty, tmp_ty)) )
+                        while( (out_ty = this->m_resolve.autoderef(sp, *out_ty, tmp_ty)) )
                         {
                             count += 1;
                             
@@ -1283,7 +1009,7 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                         if(!succ) {
                             // XXX: Debugging - Resolves to the correct type in a failing case
                             //auto ty2 = this->expand_associated_types(sp, this->expand_associated_types(sp, right_inner_res.clone()) );
-                            ERROR(sp, E0000, "Trait " << e.m_trait << " isn't implemented for " << FmtType(*this, right_inner_res) << " (converting to TraitObject) - (r="<<r<<")" );
+                            ERROR(sp, E0000, "Trait " << e.m_trait << " isn't implemented for " << m_ivars.fmt_type(right_inner_res) << " (converting to TraitObject) - (r="<<r<<")" );
                         }
                         for(const auto& marker : e.m_markers)
                         {
@@ -1375,41 +1101,11 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
     }
 }
 
-// -------------------------------------------------------------------------------------------------------------------
-//
-// -------------------------------------------------------------------------------------------------------------------
-bool typeck::TypecheckContext::check_trait_bound(const Span& sp, const ::HIR::TypeRef& type, const ::HIR::GenericPath& trait, ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> placeholder) const
-{
-    if( this->find_trait_impls_bound(sp, trait.m_path, trait.m_params, placeholder(type), [&](const auto& args, const auto& _){
-            DEBUG("TODO: Check args for " << trait.m_path << args << " against " << trait);
-            return true;
-        })
-        )
-    {
-        // Satisfied by generic
-        return true;
-    }
-    else if( this->m_crate.find_trait_impls(trait.m_path, type, placeholder, [&](const auto& impl) {
-            DEBUG("- Bound " << type << " : " << trait << " satisfied by impl" << impl.m_params.fmt_args());
-            // TODO: Recursively check
-            return true;
-        })
-        )
-    {
-        // Match!
-        return true;
-    }
-    else {
-        DEBUG("- Bound " << type << " ("<<placeholder(type)<<") : " << trait << " failed");
-        return false;
-    }
-}
-
 
 // -------------------------------------------------------------------------------------------------------------------
 //
 // -------------------------------------------------------------------------------------------------------------------
-bool typeck::TypecheckContext::iterate_bounds( ::std::function<bool(const ::HIR::GenericBound&)> cb) const
+bool typeck::TraitResolution::iterate_bounds( ::std::function<bool(const ::HIR::GenericBound&)> cb) const
 {
     const ::HIR::GenericParams* v[2] = { m_item_params, m_impl_params };
     for(auto p : v)
@@ -1420,7 +1116,7 @@ bool typeck::TypecheckContext::iterate_bounds( ::std::function<bool(const ::HIR:
     }
     return false;
 }
-bool typeck::TypecheckContext::find_trait_impls(const Span& sp,
+bool typeck::TraitResolution::find_trait_impls(const Span& sp,
         const ::HIR::SimplePath& trait, const ::HIR::PathParams& params,
         const ::HIR::TypeRef& type,
         t_cb_trait_impl callback
@@ -1471,12 +1167,12 @@ bool typeck::TypecheckContext::find_trait_impls(const Span& sp,
 // -------------------------------------------------------------------------------------------------------------------
 //
 // -------------------------------------------------------------------------------------------------------------------
-::HIR::TypeRef typeck::TypecheckContext::expand_associated_types(const Span& sp, ::HIR::TypeRef input) const
+::HIR::TypeRef typeck::TraitResolution::expand_associated_types(const Span& sp, ::HIR::TypeRef input) const
 {
     TRACE_FUNCTION_F(input);
     TU_MATCH(::HIR::TypeRef::Data, (input.m_data), (e),
     (Infer,
-        auto& ty = this->get_type(input);
+        auto& ty = this->m_ivars.get_type(input);
         if( ty != input ) {
             input = expand_associated_types(sp, ty.clone());
             return input;
@@ -1708,7 +1404,7 @@ bool typeck::TypecheckContext::find_trait_impls(const Span& sp,
             }
             
             // TODO: If there are no ivars in this path, set its binding to Opaque
-            if( !this->type_contains_ivars(input) ) {
+            if( !this->m_ivars.type_contains_ivars(input) ) {
                 e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
             }
             
@@ -1755,7 +1451,7 @@ bool typeck::TypecheckContext::find_trait_impls(const Span& sp,
 // -------------------------------------------------------------------------------------------------------------------
 //
 // -------------------------------------------------------------------------------------------------------------------
-bool typeck::TypecheckContext::find_named_trait_in_trait(const Span& sp,
+bool typeck::TraitResolution::find_named_trait_in_trait(const Span& sp,
         const ::HIR::SimplePath& des, const ::HIR::PathParams& des_params,
         const ::HIR::Trait& trait_ptr, const ::HIR::SimplePath& trait_path, const ::HIR::PathParams& pp,
         const ::HIR::TypeRef& target_type,
@@ -1788,7 +1484,7 @@ bool typeck::TypecheckContext::find_named_trait_in_trait(const Span& sp,
     }
     return false;
 }
-bool typeck::TypecheckContext::find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const
+bool typeck::TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const
 {
     return this->iterate_bounds([&](const auto& b) {
         TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
@@ -1806,7 +1502,7 @@ bool typeck::TypecheckContext::find_trait_impls_bound(const Span& sp, const ::HI
                 bool is_fuzzy = false;
                 // Check against `params`
                 for(unsigned int i = 0; i < params.m_types.size(); i ++) {
-                    auto ord = b_params.m_types[i].compare_with_placeholders(sp, params.m_types[i], this->callback_resolve_infer());
+                    auto ord = b_params.m_types[i].compare_with_placeholders(sp, params.m_types[i], this->m_ivars.callback_resolve_infer());
                     if( ord == ::HIR::Compare::Unequal )
                         return false;
                     if( ord == ::HIR::Compare::Fuzzy )
@@ -1827,7 +1523,7 @@ bool typeck::TypecheckContext::find_trait_impls_bound(const Span& sp, const ::HI
         return false;
     });
 }
-bool typeck::TypecheckContext::find_trait_impls_crate(const Span& sp,
+bool typeck::TraitResolution::find_trait_impls_crate(const Span& sp,
         const ::HIR::SimplePath& trait, const ::HIR::PathParams& params,
         const ::HIR::TypeRef& type,
         t_cb_trait_impl callback
@@ -1835,7 +1531,7 @@ bool typeck::TypecheckContext::find_trait_impls_crate(const Span& sp,
 {
     return this->m_crate.find_trait_impls(trait, type, [&](const auto& ty)->const auto&{
             if( ty.m_data.is_Infer() ) 
-                return this->get_type(ty);
+                return this->m_ivars.get_type(ty);
             else
                 return ty;
         },
@@ -1860,10 +1556,9 @@ bool typeck::TypecheckContext::find_trait_impls_crate(const Span& sp,
                 }
                 };
             assert( impl.m_trait_args.m_types.size() == params.m_types.size() );
-            // TODO: Use a fuzzy-able generic match
-            match &= impl.m_type.match_test_generics_fuzz(sp, type , this->callback_resolve_infer(), cb);
+            match &= impl.m_type.match_test_generics_fuzz(sp, type , this->m_ivars.callback_resolve_infer(), cb);
             for(unsigned int i = 0; i < impl.m_trait_args.m_types.size(); i ++)
-                match &= impl.m_trait_args.m_types[i].match_test_generics_fuzz(sp, params.m_types[i], this->callback_resolve_infer(), cb);
+                match &= impl.m_trait_args.m_types[i].match_test_generics_fuzz(sp, params.m_types[i], this->m_ivars.callback_resolve_infer(), cb);
             if( match == ::HIR::Compare::Unequal ) {
                 DEBUG("- Failed to match parameters - " << impl.m_trait_args << " != " << params);
                 return false;
@@ -1905,14 +1600,14 @@ bool typeck::TypecheckContext::find_trait_impls_crate(const Span& sp,
                                 if( ty2 == assoc_bound.second ) {
                                     return true;
                                 }
-                                this->dump();
+                                this->m_ivars.dump();
                                 TODO(sp, "Check type bound (fuzz) " << ty2 << " = " << assoc_bound.second);
                             }
                             else {
-                                if( this->get_type(it->second) == assoc_bound.second ) {
+                                if( this->m_ivars.get_type(it->second) == assoc_bound.second ) {
                                     return true;
                                 }
-                                this->dump();
+                                this->m_ivars.dump();
                                 TODO(sp, "Check type bound (fuzz) " << it->second << " = " << assoc_bound.second);
                             }
                         }
@@ -1944,7 +1639,7 @@ bool typeck::TypecheckContext::find_trait_impls_crate(const Span& sp,
         );
 }
 
-bool typeck::TypecheckContext::trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const
+bool typeck::TraitResolution::trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const
 {
     auto it = trait_ptr.m_values.find(name);
     if( it != trait_ptr.m_values.end() ) {
@@ -1970,7 +1665,7 @@ bool typeck::TypecheckContext::trait_contains_method(const Span& sp, const ::HIR
     }
     return false;
 }
-bool typeck::TypecheckContext::trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const
+bool typeck::TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const
 {
     auto it = trait_ptr.m_types.find(name);
     if( it != trait_ptr.m_types.end() ) {
@@ -2001,7 +1696,7 @@ bool typeck::TypecheckContext::trait_contains_type(const Span& sp, const ::HIR::
 // -------------------------------------------------------------------------------------------------------------------
 //
 // -------------------------------------------------------------------------------------------------------------------
-const ::HIR::TypeRef* typeck::TypecheckContext::autoderef(const Span& sp, const ::HIR::TypeRef& ty,  ::HIR::TypeRef& tmp_type) const
+const ::HIR::TypeRef* typeck::TraitResolution::autoderef(const Span& sp, const ::HIR::TypeRef& ty,  ::HIR::TypeRef& tmp_type) const
 {
     TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Borrow, e,
         DEBUG("Deref " << ty << " into " << *e.inner);
@@ -2026,23 +1721,23 @@ const ::HIR::TypeRef* typeck::TypecheckContext::autoderef(const Span& sp, const 
         }
     }
 }
-unsigned int typeck::TypecheckContext::autoderef_find_method(const Span& sp, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const
+unsigned int typeck::TraitResolution::autoderef_find_method(const Span& sp, const HIR::t_trait_list& traits, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const
 {
     unsigned int deref_count = 0;
     ::HIR::TypeRef  tmp_type;   // Temporary type used for handling Deref
     const auto* current_ty = &top_ty;
-    TU_IFLET(::HIR::TypeRef::Data, this->get_type(top_ty).m_data, Borrow, e,
+    TU_IFLET(::HIR::TypeRef::Data, this->m_ivars.get_type(top_ty).m_data, Borrow, e,
         current_ty = &*e.inner;
         deref_count += 1;
     )
     
     do {
-        const auto& ty = this->get_type(*current_ty);
+        const auto& ty = this->m_ivars.get_type(*current_ty);
         if( ty.m_data.is_Infer() ) {
             return ~0u;
         }
         
-        if( find_method(sp, ty, method_name, fcn_path) ) {
+        if( this->find_method(sp, traits, ty, method_name, fcn_path) ) {
             return deref_count;
         }
         
@@ -2051,20 +1746,20 @@ unsigned int typeck::TypecheckContext::autoderef_find_method(const Span& sp, con
         current_ty = this->autoderef(sp, ty,  tmp_type);
     } while( current_ty );
     
-    TU_IFLET(::HIR::TypeRef::Data, this->get_type(top_ty).m_data, Borrow, e,
-        const auto& ty = this->get_type(top_ty);
+    TU_IFLET(::HIR::TypeRef::Data, this->m_ivars.get_type(top_ty).m_data, Borrow, e,
+        const auto& ty = this->m_ivars.get_type(top_ty);
         
-        if( find_method(sp, ty, method_name, fcn_path) ) {
+        if( find_method(sp, traits, ty, method_name, fcn_path) ) {
             return 0;
         }
     )
     
     // Dereference failed! This is a hard error (hitting _ is checked above and returns ~0)
-    this->dump();
+    this->m_ivars.dump();
     TODO(sp, "Error when no method could be found, but type is known - (: " << top_ty << ")." << method_name);
 }
 
-bool typeck::TypecheckContext::find_method(const Span& sp, const ::HIR::TypeRef& ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const
+bool typeck::TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& traits, const ::HIR::TypeRef& ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const
 {
     TRACE_FUNCTION_F("ty=" << ty << ", name=" << method_name);
     // 1. Search generic bounds for a match
@@ -2169,7 +1864,7 @@ bool typeck::TypecheckContext::find_method(const Span& sp, const ::HIR::TypeRef&
             }
         }
         // 3. Search for trait methods (using currently in-scope traits)
-        for(const auto& trait_ref : ::reverse(m_traits))
+        for(const auto& trait_ref : ::reverse(traits))
         {
             if( trait_ref.first == nullptr )
                 break;
@@ -2183,7 +1878,7 @@ bool typeck::TypecheckContext::find_method(const Span& sp, const ::HIR::TypeRef&
             DEBUG("Search for impl of " << *trait_ref.first);
             // TODO: Need a "don't care" marker for the PathParams
             if( find_trait_impls_crate(sp, *trait_ref.first, ::HIR::PathParams{}, ty,  [](const auto&,const auto&) { return true; }) ) {
-                DEBUG("Found trait impl " << *trait_ref.first << " (" /*<< FmtType(*this, *trait_ref.first)*/  << ") for " << ty << " ("<<FmtType(*this, ty)<<")");
+                DEBUG("Found trait impl " << *trait_ref.first << " (" /*<< m_ivars.fmt_type(*trait_ref.first)*/  << ") for " << ty << " ("<<m_ivars.fmt_type(ty)<<")");
                 fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
                     box$( ty.clone() ),
                     trait_ref.first->clone(),
@@ -2198,18 +1893,18 @@ bool typeck::TypecheckContext::find_method(const Span& sp, const ::HIR::TypeRef&
     return false;
 }
 
-unsigned int typeck::TypecheckContext::autoderef_find_field(const Span& sp, const ::HIR::TypeRef& top_ty, const ::std::string& field_name,  /* Out -> */::HIR::TypeRef& field_type) const
+unsigned int typeck::TraitResolution::autoderef_find_field(const Span& sp, const ::HIR::TypeRef& top_ty, const ::std::string& field_name,  /* Out -> */::HIR::TypeRef& field_type) const
 {
     unsigned int deref_count = 0;
     ::HIR::TypeRef  tmp_type;   // Temporary type used for handling Deref
     const auto* current_ty = &top_ty;
-    TU_IFLET(::HIR::TypeRef::Data, this->get_type(top_ty).m_data, Borrow, e,
+    TU_IFLET(::HIR::TypeRef::Data, this->m_ivars.get_type(top_ty).m_data, Borrow, e,
         current_ty = &*e.inner;
         deref_count += 1;
     )
     
     do {
-        const auto& ty = this->get_type(*current_ty);
+        const auto& ty = this->m_ivars.get_type(*current_ty);
         if( ty.m_data.is_Infer() ) {
             return ~0u;
         }
@@ -2223,8 +1918,8 @@ unsigned int typeck::TypecheckContext::autoderef_find_field(const Span& sp, cons
         current_ty = this->autoderef(sp, ty,  tmp_type);
     } while( current_ty );
     
-    TU_IFLET(::HIR::TypeRef::Data, this->get_type(top_ty).m_data, Borrow, e,
-        const auto& ty = this->get_type(top_ty);
+    TU_IFLET(::HIR::TypeRef::Data, this->m_ivars.get_type(top_ty).m_data, Borrow, e,
+        const auto& ty = this->m_ivars.get_type(top_ty);
         
         if( find_field(sp, ty, field_name, field_type) ) {
             return 0;
@@ -2232,10 +1927,10 @@ unsigned int typeck::TypecheckContext::autoderef_find_field(const Span& sp, cons
     )
     
     // Dereference failed! This is a hard error (hitting _ is checked above and returns ~0)
-    this->dump();
+    this->m_ivars.dump();
     TODO(sp, "Error when no field could be found, but type is known - (: " << top_ty << ")." << field_name);
 }
-bool typeck::TypecheckContext::find_field(const Span& sp, const ::HIR::TypeRef& ty, const ::std::string& name,  /* Out -> */::HIR::TypeRef& field_ty) const
+bool typeck::TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const ::std::string& name,  /* Out -> */::HIR::TypeRef& field_ty) const
 {
     TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, e,
         TU_MATCH(::HIR::TypeRef::TypePathBinding, (e.binding), (be),

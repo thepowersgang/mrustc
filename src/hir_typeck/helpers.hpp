@@ -1,3 +1,5 @@
+/*
+ */
 #pragma once
 
 #include <hir/type.hpp>
@@ -20,6 +22,19 @@ extern ::HIR::TypeRef monomorphise_type(const Span& sp, const ::HIR::GenericPara
 class HMTypeInferrence
 {
 public:
+    struct FmtType {
+        const HMTypeInferrence& ctxt;
+        const ::HIR::TypeRef& ty;
+        FmtType(const HMTypeInferrence& ctxt, const ::HIR::TypeRef& ty):
+            ctxt(ctxt),
+            ty(ty)
+        {}
+        friend ::std::ostream& operator<<(::std::ostream& os, const FmtType& x) {
+            x.ctxt.print_type(os, x.ty);
+            return os;
+        }
+    };
+
     struct IVar
     {
         unsigned int alias; // If not ~0, this points to another ivar
@@ -51,10 +66,15 @@ public:
     }
     
     void compact_ivars();
-    void dump() const;
     bool apply_defaults();
     
+    void dump() const;
+    
     void print_type(::std::ostream& os, const ::HIR::TypeRef& tr) const;
+    FmtType fmt_type(const ::HIR::TypeRef& tr) const {
+        return FmtType(*this, tr);
+    }
+    
     /// Add (and bind) all '_' types in `type`
     void add_ivars(::HIR::TypeRef& type);
     // (helper) Add ivars to path parameters
@@ -69,13 +89,21 @@ public:
             };
     }
     
+    // Mutation
     unsigned int new_ivar();
     ::HIR::TypeRef new_ivar_tr();
-    ::HIR::TypeRef& get_type(::HIR::TypeRef& type);
-    const ::HIR::TypeRef& get_type(const ::HIR::TypeRef& type) const;
-    
     void set_ivar_to(unsigned int slot, ::HIR::TypeRef type);
     void ivar_unify(unsigned int left_slot, unsigned int right_slot);
+
+    // Lookup
+    ::HIR::TypeRef& get_type(::HIR::TypeRef& type);
+    const ::HIR::TypeRef& get_type(const ::HIR::TypeRef& type) const;
+
+    // Helpers
+    bool pathparams_contain_ivars(const ::HIR::PathParams& pps) const;
+    bool type_contains_ivars(const ::HIR::TypeRef& ty) const;
+    bool pathparams_equal(const ::HIR::PathParams& pps_l, const ::HIR::PathParams& pps_r) const;
+    bool types_equal(const ::HIR::TypeRef& l, const ::HIR::TypeRef& r) const;
 private:
     IVar& get_pointed_ivar(unsigned int slot) const;
 };

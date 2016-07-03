@@ -1115,7 +1115,17 @@ namespace {
             TODO(node.span(), "ExprNode_CallValue - revisit");
         }
         void visit(::HIR::ExprNode_CallMethod& node) override {
-            // TODO:
+            const auto& ty = this->context.get_type(node.m_value->m_res_type);
+            //const auto ty = this->context.expand_associated_types(node.span(), this->context.get_type(node.m_value->m_res_type).clone());
+            DEBUG("(CallMethod) ty = " << ty);
+            // Using autoderef, locate this method on the type
+            #if 0
+            ::HIR::Path   fcn_path { ::HIR::SimplePath() };
+            unsigned int deref_count = this->context.autoderef_find_method(node.span(), ty, node.m_method,  fcn_path);
+            if( deref_count != ~0u )
+            {
+            }
+            #endif
             TODO(node.span(), "ExprNode_CallMethod - revisit");
         }
         void visit(::HIR::ExprNode_Field& node) override {

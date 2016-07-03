@@ -416,6 +416,80 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
         )
     )
 }
+
+void HMTypeInferrence::add_ivars(::HIR::TypeRef& type)
+{
+    TU_MATCH(::HIR::TypeRef::Data, (type.m_data), (e),
+    (Infer,
+        if( e.index == ~0u ) {
+            e.index = this->new_ivar();
+            this->get_type(type).m_data.as_Infer().ty_class = e.ty_class;
+            this->mark_change();
+        }
+        ),
+    (Diverge,
+        ),
+    (Primitive,
+        ),
+    (Path,
+        // Iterate all arguments
+        TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
+        (Generic,
+            this->add_ivars_params(e2.m_params);
+            ),
+        (UfcsKnown,
+            this->add_ivars(*e2.type);
+            this->add_ivars_params(e2.trait.m_params);
+            this->add_ivars_params(e2.params);
+            ),
+        (UfcsUnknown,
+            this->add_ivars(*e2.type);
+            this->add_ivars_params(e2.params);
+            ),
+        (UfcsInherent,
+            this->add_ivars(*e2.type);
+            this->add_ivars_params(e2.params);
+            )
+        )
+        ),
+    (Generic,
+        ),
+    (TraitObject,
+        // Iterate all paths
+        ),
+    (Array,
+        add_ivars(*e.inner);
+        ),
+    (Slice,
+        add_ivars(*e.inner);
+        ),
+    (Tuple,
+        for(auto& ty : e)
+            add_ivars(ty);
+        ),
+    (Borrow,
+        add_ivars(*e.inner);
+        ),
+    (Pointer,
+        add_ivars(*e.inner);
+        ),
+    (Function,
+        // No ivars allowed
+        // TODO: Check?
+        ),
+    (Closure,
+        // Shouldn't be possible
+        )
+    )
+}
+void HMTypeInferrence::add_ivars_params(::HIR::PathParams& params)
+{
+    for(auto& arg : params.m_types)
+        add_ivars(arg);
+}
+
+
+
 unsigned int HMTypeInferrence::new_ivar()
 {
     m_ivars.push_back( IVar() );
@@ -548,4 +622,188 @@ HMTypeInferrence::IVar& HMTypeInferrence::get_pointed_ivar(unsigned int slot) co
         count ++;
     }
     return const_cast<IVar&>(m_ivars.at(index));
+}
+
+bool HMTypeInferrence::pathparams_contain_ivars(const ::HIR::PathParams& pps) const {
+    for( const auto& ty : pps.m_types ) {
+        if(this->type_contains_ivars(ty))
+            return true;
+    }
+    return false;
+}
+bool HMTypeInferrence::type_contains_ivars(const ::HIR::TypeRef& ty) const {
+    TU_MATCH(::HIR::TypeRef::Data, (this->get_type(ty).m_data), (e),
+    (Infer, return true; ),
+    (Primitive, return false; ),
+    (Diverge, return false; ),
+    (Generic, return false; ),
+    (Path,
+        TU_MATCH(::HIR::Path::Data, (e.path.m_data), (pe),
+        (Generic,
+            return pathparams_contain_ivars(pe.m_params);
+            ),
+        (UfcsKnown,
+            if( type_contains_ivars(*pe.type) )
+                return true;
+            if( pathparams_contain_ivars(pe.trait.m_params) )
+                return true;
+            return pathparams_contain_ivars(pe.params);
+            ),
+        (UfcsInherent,
+            if( type_contains_ivars(*pe.type) )
+                return true;
+            return pathparams_contain_ivars(pe.params);
+            ),
+        (UfcsUnknown,
+            BUG(Span(), "UfcsUnknown");
+            )
+        )
+        ),
+    (Borrow,
+        return type_contains_ivars(*e.inner);
+        ),
+    (Pointer,
+        return type_contains_ivars(*e.inner);
+        ),
+    (Slice,
+        return type_contains_ivars(*e.inner);
+        ),
+    (Array,
+        return type_contains_ivars(*e.inner);
+        ),
+    (Closure,
+        for(const auto& arg : e.m_arg_types)
+            if( type_contains_ivars(arg) )
+                return true;
+        return type_contains_ivars(*e.m_rettype);
+        ),
+    (Function,
+        for(const auto& arg : e.m_arg_types)
+            if( type_contains_ivars(arg) )
+                return true;
+        return type_contains_ivars(*e.m_rettype);
+        ),
+    (TraitObject,
+        for(const auto& marker : e.m_markers)
+            if( pathparams_contain_ivars(marker.m_params) )
+                return true;
+        return pathparams_contain_ivars(e.m_trait.m_path.m_params);
+        ),
+    (Tuple,
+        for(const auto& st : e)
+            if( type_contains_ivars(st) )
+                return true;
+        return false;
+        )
+    )
+    throw "";
+}
+
+namespace {
+    bool type_list_equal(const HMTypeInferrence& context, const ::std::vector< ::HIR::TypeRef>& l, const ::std::vector< ::HIR::TypeRef>& r)
+    {
+        if( l.size() != r.size() )
+            return false;
+        
+        for( unsigned int i = 0; i < l.size(); i ++ ) {
+            if( !context.types_equal(l[i], r[i]) )
+                return false;
+        }
+        return true;
+    }
+}
+bool HMTypeInferrence::pathparams_equal(const ::HIR::PathParams& pps_l, const ::HIR::PathParams& pps_r) const
+{
+    return type_list_equal(*this, pps_l.m_types, pps_r.m_types);
+}
+bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRef& rr) const
+{
+    const auto& l = this->get_type(rl);
+    const auto& r = this->get_type(rr);
+    if( l.m_data.tag() != r.m_data.tag() )
+        return false;
+    
+    TU_MATCH(::HIR::TypeRef::Data, (l.m_data, r.m_data), (le, re),
+    (Infer, return le.index == re.index; ),
+    (Primitive, return le == re; ),
+    (Diverge, return true; ),
+    (Generic, return le.binding == re.binding; ),
+    (Path,
+        if( le.path.m_data.tag() != re.path.m_data.tag() )
+            return false;
+        TU_MATCH(::HIR::Path::Data, (le.path.m_data, re.path.m_data), (lpe, rpe),
+        (Generic,
+            if( lpe.m_path != rpe.m_path )
+                return false;
+            return pathparams_equal(lpe.m_params, rpe.m_params);
+            ),
+        (UfcsKnown,
+            if( lpe.item != rpe.item )
+                return false;
+            if( types_equal(*lpe.type, *rpe.type) )
+                return false;
+            if( pathparams_equal(lpe.trait.m_params, rpe.trait.m_params) )
+                return false;
+            return pathparams_equal(lpe.params, rpe.params);
+            ),
+        (UfcsInherent,
+            if( lpe.item != rpe.item )
+                return false;
+            if( types_equal(*lpe.type, *rpe.type) )
+                return false;
+            return pathparams_equal(lpe.params, rpe.params);
+            ),
+        (UfcsUnknown,
+            BUG(Span(), "UfcsUnknown");
+            )
+        )
+        ),
+    (Borrow,
+        if( le.type != re.type )
+            return false;
+        return types_equal(*le.inner, *re.inner);
+        ),
+    (Pointer,
+        if( le.type != re.type )
+            return false;
+        return types_equal(*le.inner, *re.inner);
+        ),
+    (Slice,
+        return types_equal(*le.inner, *re.inner);
+        ),
+    (Array,
+        if( le.size_val != re.size_val )
+            return false;
+        return types_equal(*le.inner, *re.inner);
+        ),
+    (Closure,
+        if( !type_list_equal(*this, le.m_arg_types, re.m_arg_types) )
+            return false;
+        return types_equal(*le.m_rettype, *re.m_rettype);
+        ),
+    (Function,
+        if( !type_list_equal(*this, le.m_arg_types, re.m_arg_types) )
+            return false;
+        return types_equal(*le.m_rettype, *re.m_rettype);
+        ),
+    (TraitObject,
+        if( le.m_markers.size() != re.m_markers.size() )
+            return false;
+        for(unsigned int i = 0; i < le.m_markers.size(); i ++) {
+            const auto& lm = le.m_markers[i];
+            const auto& rm = re.m_markers[i];
+            if( lm.m_path != rm.m_path )
+                return false;
+            if( ! pathparams_equal(lm.m_params, rm.m_params) )
+                return false;
+        }
+        if( le.m_trait.m_path.m_path != re.m_trait.m_path.m_path )
+            return false;
+        return pathparams_equal(le.m_trait.m_path.m_params, re.m_trait.m_path.m_params);
+        ),
+    (Tuple,
+        return type_list_equal(*this, le, re);
+        )
+    )
+    throw "";
 }

@@ -1998,7 +1998,7 @@ void Typecheck_Code(typeck::TypecheckContext context, const ::HIR::TypeRef& resu
 void Typecheck_Code_Simple(const typeck::ModuleState& ms, t_args& args, const ::HIR::TypeRef& result_type, ::HIR::ExprPtr& expr)
 {
     typeck::TypecheckContext typeck_context { ms.m_crate, ms.m_impl_generics, ms.m_item_generics };
-    typeck_context.m_traits = ms.m_traits;
+    typeck_context.init_traits( ms.m_traits );
     for( auto& arg : args ) {
         typeck_context.add_binding( Span(), arg.first, arg.second );
     }
