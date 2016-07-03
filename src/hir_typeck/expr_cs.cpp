@@ -1866,6 +1866,10 @@ namespace {
         // 1. Check that the source type can coerce
         TU_MATCH( ::HIR::TypeRef::Data, (ty_r.m_data), (e),
         (Infer,
+            if( e.ty_class != ::HIR::InferClass::None ) {
+                context.equate_types(sp, ty,  ty_r);
+                return true;
+            }
             ),
         (Diverge,
             return true;
@@ -1916,7 +1920,13 @@ namespace {
         // - Otherwise - Force equality
         TU_MATCH( ::HIR::TypeRef::Data, (ty.m_data), (e),
         (Infer,
+            if( e.ty_class != ::HIR::InferClass::None ) {
+                context.equate_types(sp, ty,  ty_r);
+                return true;
+            }
             // Can't do anything yet?
+            // - Later code can handle "only path" coercions
+            return false;
             ),
         (Diverge,
             return true;
@@ -1928,6 +1938,7 @@ namespace {
             ),
         (Path,
             TODO(Span(), "check_coerce - Coercion to " << ty);
+            // TODO: CoerceUnsized
             ),
         (Generic,
             TODO(Span(), "check_coerce - Coercion to " << ty);
@@ -1950,22 +1961,28 @@ namespace {
             return true;
             ),
         (Borrow,
-            // TODO: Borrows can have unsizing and deref coercions applied
             TU_IFLET(::HIR::TypeRef::Data, ty_r.m_data, Borrow, e_r,
-                
+                // - Both borrows!
+                // TODO: Various coercion types
+                // - Trait/Slice unsizing
+                // - Deref
+                // - Unsize?
             )
             else TU_IFLET(::HIR::TypeRef::Data, ty_r.m_data, Infer, e_r,
                 // Leave for now
             )
             else {
                 // Error - Must be compatible
+                // - Hand off to equate
                 context.equate_types(sp, ty,  ty_r);
             }
             ),
         (Pointer,
             // TODO: Pointers coerce from borrows and similar pointers
+            TODO(sp, "check_coerce - Coercion to " << ty);
             ),
         (Function,
+            // TODO: Could capture-less closures coerce to fn() types?
             TODO(sp, "check_coerce - Coercion to " << ty);
             ),
         (Closure,
