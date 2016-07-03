@@ -62,7 +62,7 @@ struct Context
     // - Equate two types, allowing inferrence
     void equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR::ExprNodeP& node_ptr);
     // - Equate 
-    void equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, const ::std::vector< ::HIR::TypeRef>& ty_args, const ::HIR::TypeRef& impl_ty, const char *name);
+    void equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name);
     
     // - Add a pattern binding (forcing the type to match)
     void add_binding(const Span& sp, ::HIR::Pattern& pat, ::HIR::TypeRef& type);
@@ -72,10 +72,6 @@ struct Context
     
     // - Add a revisit entry
     void add_revisit(::HIR::ExprNode& node);
-
-    typedef ::std::vector<::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >    t_trait_list;
-    void push_traits(const t_trait_list& list);
-    void pop_traits(const t_trait_list& list);
 
     const ::HIR::TypeRef& get_type(const ::HIR::TypeRef& ty) const { return m_ivars.get_type(ty); }
     
@@ -91,6 +87,9 @@ class ExprVisitor_Enum:
 {
     Context& context;
     const ::HIR::TypeRef&   ret_type;
+    
+    // TEMP: List of in-scope traits for buildup
+    ::HIR::t_trait_list m_traits;
 public:
     ExprVisitor_Enum(Context& context, const ::HIR::TypeRef& ret_type):
         context(context),
@@ -101,7 +100,7 @@ public:
     void visit(::HIR::ExprNode_Block& node) override
     {
         TRACE_FUNCTION_F("{ ... }");
-        this->context.push_traits( node.m_traits );
+        this->push_traits( node.m_traits );
         
         for( unsigned int i = 0; i < node.m_nodes.size(); i ++ )
         {
@@ -118,7 +117,7 @@ public:
             snp->visit(*this);
         }
         
-        this->context.pop_traits( node.m_traits );
+        this->pop_traits( node.m_traits );
     }
     void visit(::HIR::ExprNode_Return& node) override
     {
@@ -550,7 +549,8 @@ public:
             this->context.add_ivars( val->m_res_type );
         }
         
-        // TODO: Locate method and link arguments
+        // Nothing can be done until type is known
+        this->context.add_revisit(node);
 
         node.m_value->visit( *this );
         for( auto& val : node.m_args ) {
@@ -565,7 +565,26 @@ public:
             this->context.add_ivars( val->m_res_type );
         }
         
-        // Resolution can't be done until lefthand type is know.
+        // - Search in-scope trait list for traits that provide a method of this name
+        const ::std::string& method_name = node.m_method;
+        ::HIR::t_trait_list    possible_traits;
+        for(const auto& trait_ref : ::reverse(m_traits))
+        {
+            if( trait_ref.first == nullptr )
+                break;
+            
+            // TODO: Search supertraits too
+            auto it = trait_ref.second->m_values.find(method_name);
+            if( it == trait_ref.second->m_values.end() )
+                continue ;
+            if( !it->second.is_Function() )
+                continue ;
+            possible_traits.push_back( trait_ref );
+        }
+        //  > Store the possible set of traits for later
+        node.m_traits = mv$(possible_traits);
+        
+        // Resolution can't be done until lefthand type is known.
         // > Has to be done during iteraton
         this->context.add_revisit( node );
         
@@ -816,6 +835,14 @@ public:
         
         node.m_code->visit( *this );
     }
+    
+private:
+    void push_traits(const ::HIR::t_trait_list& list) {
+        this->m_traits.insert( this->m_traits.end(), list.begin(), list.end() );
+    }
+    void pop_traits(const ::HIR::t_trait_list& list) {
+        this->m_traits.erase( this->m_traits.end() - list.size(), this->m_traits.end() );
+    }
 };
 
 
@@ -825,6 +852,8 @@ void Typecheck_Code_CS(Context context, const ::HIR::TypeRef& result_type, ::HIR
     expr->visit(visitor);
     
     context.equate_types(expr->span(), result_type, expr->m_res_type);
+    
+    // TODO: Run
 }
 
 void Context::add_ivars(::HIR::TypeRef& ty) {
@@ -1269,8 +1298,16 @@ void Context::equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR
         l.clone(), node_ptr
         });
 }
-void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, const ::std::vector< ::HIR::TypeRef>& ty_args, const ::HIR::TypeRef& impl_ty, const char *name)
+void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name)
 {
+    this->link_assoc.push_back(Associated {
+        l.clone(),
+        
+        trait.clone(),
+        mv$(ty_args),
+        impl_ty.clone(),
+        name
+        });
 }
 void Context::add_revisit(::HIR::ExprNode& node) {
     this->to_visit.push_back( &node );
@@ -1289,10 +1326,6 @@ const ::HIR::TypeRef& Context::get_var(const Span& sp, unsigned int idx) const {
     else {
         BUG(sp, "get_var - Binding index out of range");
     }
-}
-void Context::push_traits(const t_trait_list& list) {
-}
-void Context::pop_traits(const t_trait_list& list) {
 }
 
 

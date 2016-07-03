@@ -9,6 +9,8 @@
 
 namespace HIR {
 
+typedef ::std::vector< ::std::pair<const ::HIR::SimplePath*,const ::HIR::Trait*> >  t_trait_list;
+
 class GenericParams;
 
 class ExprVisitor;
@@ -44,7 +46,7 @@ struct ExprNode_Block:
     ::std::vector< ExprNodeP >  m_nodes;
 
     ::HIR::SimplePath   m_local_mod;
-    ::std::vector< ::std::pair<const ::HIR::SimplePath*,const ::HIR::Trait*> >  m_traits;
+    t_trait_list    m_traits;
     
     ExprNode_Block(Span sp):
         ExprNode(mv$(sp)),
@@ -431,6 +433,7 @@ struct ExprNode_CallMethod:
     // - Set during typeck to the real path to the method
     ::HIR::Path m_method_path;
     ExprCallCache   m_cache;
+    t_trait_list    m_traits;
 
     ExprNode_CallMethod(Span sp, ::HIR::ExprNodeP val, ::std::string method_name, ::HIR::PathParams params, ::std::vector< ::HIR::ExprNodeP> args):
         ExprNode( mv$(sp) ),
