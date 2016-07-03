@@ -1297,6 +1297,144 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
             this->m_ivars.set_ivar_to(l_e.index, r_t.clone());
         )
         else {
+            // Helper function for Path and TraitObject
+            auto equality_typeparams = [&](const ::HIR::PathParams& l, const ::HIR::PathParams& r) {
+                    if( l.m_types.size() != r.m_types.size() ) {
+                        ERROR(sp, E0000, "Type mismatch in type params `" << l << "` and `" << r << "`");
+                    }
+                    for(unsigned int i = 0; i < l.m_types.size(); i ++)
+                    {
+                        this->equate_types(sp, l.m_types[i], r.m_types[i]);
+                    }
+                };
+            
+            if( l_t.m_data.tag() != r_t.m_data.tag() ) {
+                ERROR(sp, E0000, "Type mismatch between " << this->m_ivars.fmt_type(l_t) << " and " << this->m_ivars.fmt_type(r_t));
+            }
+            TU_MATCH( ::HIR::TypeRef::Data, (l_t.m_data, r_t.m_data), (l_e, r_e),
+            (Infer,
+                throw "";
+                ),
+            (Diverge,
+                // ignore?
+                ),
+            (Primitive,
+                if( l_e != r_e ) {
+                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                }
+                ),
+            (Path,
+                if( l_e.path.m_data.tag() != r_e.path.m_data.tag() ) {
+                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                }
+                TU_MATCH(::HIR::Path::Data, (l_e.path.m_data, r_e.path.m_data), (lpe, rpe),
+                (Generic,
+                    if( lpe.m_path != rpe.m_path ) {
+                        ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                    }
+                    equality_typeparams(lpe.m_params, rpe.m_params);
+                    ),
+                (UfcsInherent,
+                    equality_typeparams(lpe.params, rpe.params);
+                    if( lpe.item != rpe.item )
+                        ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                    this->equate_types(sp, *lpe.type, *rpe.type);
+                    ),
+                (UfcsKnown,
+                    equality_typeparams(lpe.trait.m_params, rpe.trait.m_params);
+                    equality_typeparams(lpe.params, rpe.params);
+                    if( lpe.item != rpe.item )
+                        ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                    this->equate_types(sp, *lpe.type, *rpe.type);
+                    ),
+                (UfcsUnknown,
+                    // TODO: If the type is fully known, locate a suitable trait item
+                    equality_typeparams(lpe.params, rpe.params);
+                    if( lpe.item != rpe.item )
+                        ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                    this->equate_types(sp, *lpe.type, *rpe.type);
+                    )
+                )
+                ),
+            (Generic,
+                if( l_e.binding != r_e.binding ) {
+                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                }
+                ),
+            (TraitObject,
+                if( l_e.m_trait.m_path.m_path != r_e.m_trait.m_path.m_path ) {
+                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                }
+                equality_typeparams(l_e.m_trait.m_path.m_params, r_e.m_trait.m_path.m_params);
+                for(auto it_l = l_e.m_trait.m_type_bounds.begin(), it_r = r_e.m_trait.m_type_bounds.begin(); it_l != l_e.m_trait.m_type_bounds.end(); it_l++, it_r++ ) {
+                    if( it_l->first != it_r->first ) {
+                        ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - associated bounds differ");
+                    }
+                    this->equate_types(sp, it_l->second, it_r->second);
+                }
+                // TODO: Possibly allow inferrence reducing the set?
+                if( l_e.m_markers.size() != r_e.m_markers.size() ) {
+                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - trait counts differ");
+                }
+                // TODO: Is this list sorted in any way? (if it's not sorted, this could fail when source does Send+Any instead of Any+Send)
+                for(unsigned int i = 0; i < l_e.m_markers.size(); i ++ )
+                {
+                    auto& l_p = l_e.m_markers[i];
+                    auto& r_p = r_e.m_markers[i];
+                    if( l_p.m_path != r_p.m_path ) {
+                        ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                    }
+                    equality_typeparams(l_p.m_params, r_p.m_params);
+                }
+                // NOTE: Lifetime is ignored
+                ),
+            (Array,
+                this->equate_types(sp, *l_e.inner, *r_e.inner);
+                if( l_e.size_val != r_e.size_val ) {
+                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - sizes differ");
+                }
+                ),
+            (Slice,
+                this->equate_types(sp, *l_e.inner, *r_e.inner);
+                ),
+            (Tuple,
+                if( l_e.size() != r_e.size() ) {
+                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - Tuples are of different length");
+                }
+                for(unsigned int i = 0; i < l_e.size(); i ++)
+                {
+                    this->equate_types(sp, l_e[i], r_e[i]);
+                }
+                ),
+            (Borrow,
+                if( l_e.type != r_e.type ) {
+                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - Borrow classes differ");
+                }
+                this->equate_types(sp, *l_e.inner, *r_e.inner);
+                ),
+            (Pointer,
+                if( l_e.type != r_e.type ) {
+                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - Pointer mutability differs");
+                }
+                this->equate_types(sp, *l_e.inner, *r_e.inner);
+                ),
+            (Function,
+                if( l_e.is_unsafe != r_e.is_unsafe
+                    || l_e.m_abi != r_e.m_abi
+                    || l_e.m_arg_types.size() != r_e.m_arg_types.size()
+                    )
+                {
+                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                }
+                this->equate_types(sp, *l_e.m_rettype, *r_e.m_rettype);
+                for(unsigned int i = 0; i < l_e.m_arg_types.size(); i ++ ) {
+                    this->equate_types(sp, l_e.m_arg_types[i], r_e.m_arg_types[i]);
+                }
+                ),
+            (Closure,
+                TODO(sp, "apply_equality - Closure");
+                )
+            )
         }
     }
 }
@@ -1724,58 +1862,8 @@ namespace {
         const auto& sp = node_ptr->span();
         const auto& ty = context.m_ivars.get_type(v.left_ty);
         const auto& ty_r = context.m_ivars.get_type(node_ptr->m_res_type);
-        // 1. Check target type is a valid coercion
-        // - Otherwise - Force equality
-        TU_MATCH( ::HIR::TypeRef::Data, (ty.m_data), (e),
-        (Infer,
-            // TODO: If the righthand side cannot ever coerce, equate
-            ),
-        (Diverge,
-            return true;
-            ),
-        (Primitive,
-            // TODO: `str` is a coercion target? (but only via &str)
-            context.equate_types(sp, ty,  node_ptr->m_res_type);
-            return true;
-            ),
-        (Path,
-            TODO(Span(), "check_coerce - Coercion to " << ty);
-            ),
-        (Generic,
-            TODO(Span(), "check_coerce - Coercion to " << ty);
-            ),
-        (TraitObject,
-            // TODO: Can bare trait objects coerce?
-            context.equate_types(sp, ty,  node_ptr->m_res_type);
-            return true;
-            ),
-        (Array,
-            context.equate_types(sp, ty,  node_ptr->m_res_type);
-            return true;
-            ),
-        (Slice,
-            context.equate_types(sp, ty,  node_ptr->m_res_type);
-            return true;
-            ),
-        (Tuple,
-            context.equate_types(sp, ty,  node_ptr->m_res_type);
-            return true;
-            ),
-        (Borrow,
-            // TODO: Borrows can have unsizing and deref coercions applied
-            ),
-        (Pointer,
-            // TODO: Pointers coerce from borrows and similar pointers
-            ),
-        (Function,
-            TODO(sp, "check_coerce - Coercion to " << ty);
-            ),
-        (Closure,
-            context.equate_types(sp, ty,  node_ptr->m_res_type);
-            return true;
-            )
-        )
         
+        // 1. Check that the source type can coerce
         TU_MATCH( ::HIR::TypeRef::Data, (ty_r.m_data), (e),
         (Infer,
             ),
@@ -1821,6 +1909,68 @@ namespace {
             ),
         (Closure,
             TODO(sp, "check_coerce - Coercion from " << ty_r);
+            )
+        )
+        
+        // 2. Check target type is a valid coercion
+        // - Otherwise - Force equality
+        TU_MATCH( ::HIR::TypeRef::Data, (ty.m_data), (e),
+        (Infer,
+            // Can't do anything yet?
+            ),
+        (Diverge,
+            return true;
+            ),
+        (Primitive,
+            // TODO: `str` is a coercion target? (but only via &str)
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
+            ),
+        (Path,
+            TODO(Span(), "check_coerce - Coercion to " << ty);
+            ),
+        (Generic,
+            TODO(Span(), "check_coerce - Coercion to " << ty);
+            ),
+        (TraitObject,
+            // TODO: Can bare trait objects coerce?
+            context.equate_types(sp, ty,  ty_r);
+            return true;
+            ),
+        (Array,
+            context.equate_types(sp, ty,  ty_r);
+            return true;
+            ),
+        (Slice,
+            context.equate_types(sp, ty,  ty_r);
+            return true;
+            ),
+        (Tuple,
+            context.equate_types(sp, ty,  ty_r);
+            return true;
+            ),
+        (Borrow,
+            // TODO: Borrows can have unsizing and deref coercions applied
+            TU_IFLET(::HIR::TypeRef::Data, ty_r.m_data, Borrow, e_r,
+                
+            )
+            else TU_IFLET(::HIR::TypeRef::Data, ty_r.m_data, Infer, e_r,
+                // Leave for now
+            )
+            else {
+                // Error - Must be compatible
+                context.equate_types(sp, ty,  ty_r);
+            }
+            ),
+        (Pointer,
+            // TODO: Pointers coerce from borrows and similar pointers
+            ),
+        (Function,
+            TODO(sp, "check_coerce - Coercion to " << ty);
+            ),
+        (Closure,
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
             )
         )
         
