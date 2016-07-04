@@ -29,6 +29,11 @@ struct Context
     {
         ::HIR::TypeRef  left_ty;
         ::HIR::ExprNodeP* right_node_ptr;
+        
+        friend ::std::ostream& operator<<(::std::ostream& os, const Coercion& v) {
+            os << v.left_ty << " := " << &**v.right_node_ptr << " (" << (*v.right_node_ptr)->m_res_type << ")";
+            return os;
+        }
     };
     struct Associated
     {
@@ -38,6 +43,11 @@ struct Context
         ::std::vector< ::HIR::TypeRef>  params;
         ::HIR::TypeRef  impl_ty;
         const char* name;   // if "", no type is used (and left is ignored) - Just does trait selection
+        
+        friend ::std::ostream& operator<<(::std::ostream& os, const Associated& v) {
+            os << v.left_ty << " = " << "<" << v.impl_ty << " as " << v.trait << "<" << v.params << ">>::" << v.name;
+            return os;
+        }
     };
     
     const ::HIR::Crate& m_crate;
@@ -267,6 +277,12 @@ namespace {
         
         cache.m_monomorph_cb = mv$(monomorph_cb);
     }
+    
+    // -----------------------------------------------------------------------
+    // Enumeration visitor
+    // 
+    // Iterates the HIR expression tree and extracts type "equations"
+    // -----------------------------------------------------------------------
     class ExprVisitor_Enum:
         public ::HIR::ExprVisitor
     {
@@ -1047,7 +1063,11 @@ namespace {
         }
     };
 
-
+    // -----------------------------------------------------------------------
+    // Revisit Class
+    //
+    // Handles visiting nodes during inferrence passes
+    // -----------------------------------------------------------------------
     class ExprVisitor_Revisit:
         public ::HIR::ExprVisitor
     {
@@ -1184,7 +1204,12 @@ namespace {
         }
     };
     
-    /// Visitor that applies the inferred types, and checks that all of them are fully resolved
+    // -----------------------------------------------------------------------
+    // Post-inferrence visitor
+    //
+    // Saves the inferred types into the HIR expression tree, and ensures that
+    // all types were inferred.
+    // -----------------------------------------------------------------------
     class ExprVisitor_Apply:
         public ::HIR::ExprVisitorDef
     {
@@ -1265,10 +1290,10 @@ void Context::dump() const {
     m_ivars.dump();
     DEBUG("CS Context - " << link_coerce.size() << " Coercions, " << link_assoc.size() << " associated, " << to_visit.size() << " nodes");
     for(const auto& v : link_coerce) {
-        DEBUG(v.left_ty << " := " << &**v.right_node_ptr << " (" << (*v.right_node_ptr)->m_res_type << ")");
+        DEBUG(v);
     }
     for(const auto& v : link_assoc) {
-        DEBUG(v.left_ty << " = " << "<" << v.impl_ty << " as " << v.trait << "<" << v.params << ">>::" << v.name);
+        DEBUG(v);
     }
     for(const auto& v : to_visit) {
         DEBUG(&v << " " << typeid(*v).name());
@@ -1372,7 +1397,6 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
                     }
                     this->equate_types(sp, it_l->second, it_r->second);
                 }
-                // TODO: Possibly allow inferrence reducing the set?
                 if( l_e.m_markers.size() != r_e.m_markers.size() ) {
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - trait counts differ");
                 }
@@ -1994,6 +2018,11 @@ namespace {
         TODO(sp, "Typecheck_Code_CS - Coercion " << context.m_ivars.fmt_type(ty) << " from " << context.m_ivars.fmt_type(node_ptr->m_res_type));
         return false;
     }
+    
+    bool check_associated(Context& context, const Context::Associated& v)
+    {
+        TODO(Span(), "Typecheck_Code_CS - Associated " << v.left_ty);
+    }
 }
 
 
@@ -2026,9 +2055,10 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         context.dump();
         
         // 1. Check coercions for ones that cannot coerce due to RHS type (e.g. `str` which doesn't coerce to anything)
-        // 2. (???) Locate coercions that cannot coerce (due to single option)
+        // 2. (???) Locate coercions that cannot coerce (due to being the only way to know a type)
         for(auto it = context.link_coerce.begin(); it != context.link_coerce.end(); ) {
             if( check_coerce(context, *it) ) {
+                DEBUG("- Consumed coercion " << it->left_ty << " := " << (**it->right_node_ptr).m_res_type);
                 it = context.link_coerce.erase(it);
             }
             else {
@@ -2036,9 +2066,14 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             }
         }
         // 3. Check associated type rules
-        for(const auto& v : context.link_assoc) {
-            //  - Find trait impl
-            TODO(Span(), "Typecheck_Code_CS - Associated " << v.left_ty);
+        for(auto it = context.link_assoc.begin(); it != context.link_assoc.end(); ) {
+            if( check_associated(context, *it) ) {
+                DEBUG("- Consumed associated type rule - " << *it);
+                it = context.link_assoc.erase(it);
+            }
+            else {
+                ++ it;
+            }
         }
         // 4. Revisit nodes that require revisiting
         for( auto it = context.to_visit.begin(); it != context.to_visit.end(); )
