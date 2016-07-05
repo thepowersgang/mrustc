@@ -879,6 +879,37 @@ bool TraitResolution::find_trait_impls(const Span& sp,
 // -------------------------------------------------------------------------------------------------------------------
 //
 // -------------------------------------------------------------------------------------------------------------------
+void TraitResolution::compact_ivars(HMTypeInferrence& m_ivars)
+{
+    //m_ivars.compact_ivars([&](const ::HIR::TypeRef& t)->auto{ return this->expand_associated_types(Span(), t.clone); });
+    unsigned int i = 0;
+    for(auto& v : m_ivars.m_ivars)
+    {
+        if( !v.is_alias() ) {
+            auto nt = this->expand_associated_types(Span(), v.type->clone());
+            DEBUG("- " << i << " " << *v.type << " -> " << nt);
+            *v.type = mv$(nt);
+        }
+        else {
+            
+            auto index = v.alias;
+            unsigned int count = 0;
+            assert(index < m_ivars.m_ivars.size());
+            while( m_ivars.m_ivars.at(index).is_alias() ) {
+                index = m_ivars.m_ivars.at(index).alias;
+                
+                if( count >= m_ivars.m_ivars.size() ) {
+                    this->m_ivars.dump();
+                    BUG(Span(), "Loop detected in ivar list when starting at " << v.alias << ", current is " << index);
+                }
+                count ++;
+            }
+            v.alias = index;
+        }
+        i ++;
+    }
+}
+
 ::HIR::TypeRef TraitResolution::expand_associated_types(const Span& sp, ::HIR::TypeRef input) const
 {
     TRACE_FUNCTION_F(input);

@@ -130,6 +130,8 @@ public:
     
     typedef ::std::function<bool(const ::HIR::PathParams&, const ::std::map< ::std::string,::HIR::TypeRef>&)> t_cb_trait_impl;
     
+    void compact_ivars(HMTypeInferrence& m_ivars);
+    
     /// Check if a trait bound applies, using the passed function to expand Generic/Infer types
     bool check_trait_bound(const Span& sp, const ::HIR::TypeRef& type, const ::HIR::GenericPath& trait, t_cb_generic placeholder) const;
     

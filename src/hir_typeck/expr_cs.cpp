@@ -40,12 +40,12 @@ struct Context
         ::HIR::TypeRef  left_ty;
         
         ::HIR::SimplePath   trait;
-        ::std::vector< ::HIR::TypeRef>  params;
+        ::HIR::PathParams   params;
         ::HIR::TypeRef  impl_ty;
         const char* name;   // if "", no type is used (and left is ignored) - Just does trait selection
         
         friend ::std::ostream& operator<<(::std::ostream& os, const Associated& v) {
-            os << v.left_ty << " = " << "<" << v.impl_ty << " as " << v.trait << "<" << v.params << ">>::" << v.name;
+            os << v.left_ty << " = " << "<" << v.impl_ty << " as " << v.trait << v.params << ">::" << v.name;
             return os;
         }
     };
@@ -402,6 +402,7 @@ namespace {
             
             this->context.add_ivars( node.m_cond->m_res_type );
             this->context.equate_types_coerce(node.m_cond->span(), ::HIR::TypeRef(::HIR::CoreType::Bool), node.m_cond);
+            node.m_cond->visit( *this );
             
             this->context.add_ivars( node.m_true->m_res_type );
             this->context.equate_types_coerce(node.span(), node.m_res_type,  node.m_true);
@@ -545,7 +546,7 @@ namespace {
             case ::HIR::ExprNode_UniOp::Op::Invert:
                 this->context.equate_types_assoc(node.span(), node.m_res_type,  this->context.m_crate.get_lang_item_path(node.span(), "not"), {}, node.m_value->m_res_type.clone(), "Output");
             case ::HIR::ExprNode_UniOp::Op::Negate:
-                this->context.equate_types_assoc(node.span(), node.m_res_type,  this->context.m_crate.get_lang_item_path(node.span(), "minus"), {}, node.m_value->m_res_type.clone(), "Output");
+                this->context.equate_types_assoc(node.span(), node.m_res_type,  this->context.m_crate.get_lang_item_path(node.span(), "neg"), {}, node.m_value->m_res_type.clone(), "Output");
                 break;
             }
             node.m_value->visit( *this );
@@ -1848,11 +1849,13 @@ void Context::equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR
 }
 void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name)
 {
+    ::HIR::PathParams   pp;
+    pp.m_types = mv$(ty_args);
     this->link_assoc.push_back(Associated {
         l.clone(),
         
         trait.clone(),
-        mv$(ty_args),
+        mv$(pp),
         impl_ty.clone(),
         name
         });
@@ -1862,6 +1865,11 @@ void Context::add_revisit(::HIR::ExprNode& node) {
 }
 
 void Context::possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t) {
+    {
+        ::HIR::TypeRef  ty_l;
+        ty_l.m_data.as_Infer().index = ivar_index;
+        assert( m_ivars.get_type(ty_l).m_data.is_Infer() );
+    }
     if( ivar_index >= possible_ivar_vals.size() ) {
         possible_ivar_vals.resize( ivar_index + 1 );
     }
@@ -2195,7 +2203,95 @@ namespace {
     
     bool check_associated(Context& context, const Context::Associated& v)
     {
-        TODO(Span(), "Typecheck_Code_CS - Associated " << v.left_ty);
+        TODO(Span(), "check_associated - " << v);
+        
+        #if 0
+        // Search for ops trait impl
+        const ::HIR::TraitImpl* impl_ptr = nullptr;
+        unsigned int count = 0;
+        DEBUG("Searching for impl " << ops_trait << "< " << ty_right << "> for " << ty_left);
+        bool found_bound = this->context.find_trait_impls_bound(sp, ops_trait, ops_trait_pp,  ty_left,
+            [&](const auto& args, const auto& assoc) {
+                assert(args.m_types.size() == 1);
+                const auto& arg_type = args.m_types[0];
+                // TODO: if arg_type mentions Self?
+                auto cmp = arg_type.compare_with_placeholders(node.span(), ty_right, this->context.callback_resolve_infer());
+                if( cmp == ::HIR::Compare::Unequal ) {
+                    DEBUG("- (fail) bounded impl " << ops_trait << "<" << arg_type << "> (ty_right = " << this->context.get_type(ty_right));
+                    return false;
+                }
+                count += 1;
+                if( cmp == ::HIR::Compare::Equal ) {
+                    return true;
+                }
+                else {
+                    if( possible_right_type == ::HIR::TypeRef() ) {
+                        DEBUG("- Set possibility for " << ty_right << " - " << arg_type);
+                        possible_right_type = arg_type.clone();
+                    }
+                
+                    return false;
+                }
+            });
+        // - Only set found_exact if either found_bound returned true, XOR this returns true
+        bool found_exact = found_bound ^ this->context.m_crate.find_trait_impls(ops_trait, ty_left, this->context.callback_resolve_infer(),
+            [&](const auto& impl) {
+                assert( impl.m_trait_args.m_types.size() == 1 );
+                const auto& arg_type = impl.m_trait_args.m_types[0];
+                
+                DEBUG("impl" << impl.m_params.fmt_args() << " " << ops_trait << impl.m_trait_args << " for " << impl.m_type);
+                
+                bool    fail = false;
+                bool    fuzzy = false;
+                ::std::vector< const ::HIR::TypeRef*> impl_params;
+                impl_params.resize( impl.m_params.m_types.size() );
+                auto cb = [&](auto idx, const auto& ty) {
+                    DEBUG("[_BinOp] " << idx << " = " << ty);
+                    assert( idx < impl_params.size() );
+                    if( ! impl_params[idx] ) {
+                        impl_params[idx] = &ty;
+                    }
+                    else {
+                        switch( impl_params[idx]->compare_with_placeholders(node.span(), ty, this->context.callback_resolve_infer()) )
+                        {
+                        case ::HIR::Compare::Unequal:
+                            fail = true;
+                            break;
+                        case ::HIR::Compare::Fuzzy:
+                            fuzzy = true;
+                            break;
+                        case ::HIR::Compare::Equal:
+                            break;
+                        }
+                    }
+                    };
+                fail |= !impl.m_type.match_test_generics(sp, ty_left, this->context.callback_resolve_infer(), cb);
+                fail |= !arg_type.match_test_generics(sp, ty_right, this->context.callback_resolve_infer(), cb);
+                if( fail ) {
+                    return false;
+                }
+                count += 1;
+                impl_ptr = &impl;
+                if( !fuzzy ) {
+                    DEBUG("Operator impl exact match - '"<<item_name<<"' - " << arg_type << " == " << ty_right);
+                    return true;
+                }
+                else {
+                    DEBUG("Operator impl fuzzy match - '"<<item_name<<"' - " << arg_type << " == " << ty_right);
+                    if( possible_right_type == ::HIR::TypeRef() ) {
+                        DEBUG("- Set possibility for " << ty_right << " - " << arg_type);
+                        possible_right_type = arg_type.clone();
+                    }
+                    return false;
+                }
+            }
+            );
+        // If there wasn't an exact match, BUT there was one partial match - assume the partial match is what we want
+        if( !found_exact && count == 1 ) {
+            assert( possible_right_type != ::HIR::TypeRef() );
+            this->context.apply_equality(node.span(), possible_right_type, ty_right);
+        }
+        #endif
     }
 }
 
@@ -2302,13 +2398,20 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 // One possibility, no need to dedup
             }
             
-            if( ivar_ent.types.size() == 1 ) {
+            ::HIR::TypeRef  ty_l_ivar;
+            ty_l_ivar.m_data.as_Infer().index = i;
+            const auto& ty_l = context.m_ivars.get_type(ty_l_ivar);
+            
+            if( !ty_l.m_data.is_Infer() ) {
+                DEBUG("- IVar " << ty_l << " had possibilities, but was known");
+            }
+            else if( ivar_ent.types.size() == 1 ) {
                 const ::HIR::TypeRef& ty_r = *ivar_ent.types[0];
-                ::HIR::TypeRef  ty_l;
-                ty_l.m_data.as_Infer().index = i;
                 // Only one possibility
                 DEBUG("- IVar " << ty_l << " = " << ty_r);
                 context.equate_types(Span(), ty_l, ty_r);
+            }
+            else {
             }
             
             ivar_ent.types.clear();
@@ -2316,7 +2419,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         }
         
         count ++;
-        context.m_ivars.compact_ivars();
+        context.m_resolve.compact_ivars(context.m_ivars);
     }
     
     // - Validate typeck
