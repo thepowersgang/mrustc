@@ -2030,6 +2030,14 @@ namespace {
             return false;
         )
         
+        TU_IFLET(::HIR::TypeRef::Data, ty_dst.m_data, Infer, l_e,
+            if( l_e.ty_class == ::HIR::InferClass::None ) {
+                context.possible_equate_type(l_e.index, ty_src);
+                return false;
+            }
+            // - Otherwise, it could be a deref?
+        )
+        
         // Deref coercions
         {
             ::HIR::TypeRef  tmp_ty;
@@ -2064,7 +2072,7 @@ namespace {
             }
             // Either ran out of deref, or hit a _
         }
-
+        
         // - If `right`: ::core::marker::Unsize<`left`>
         // - If left can be dereferenced to right
         // - If left is a slice, right can unsize/deref (Defunct?)
