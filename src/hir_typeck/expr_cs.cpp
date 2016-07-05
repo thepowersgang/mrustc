@@ -558,7 +558,7 @@ namespace {
             TRACE_FUNCTION_F("... as " << node.m_res_type);
             this->context.add_ivars( node.m_value->m_res_type );
             
-            // TODO: Depending on the form of the result type, it can lead to links between the input and output
+            this->context.add_revisit(node);
             
             node.m_value->visit( *this );
         }
@@ -1153,7 +1153,66 @@ namespace {
             no_revisit(node);
         }
         void visit(::HIR::ExprNode_Cast& node) override {
-            no_revisit(node);
+            const auto& sp = node.span();
+            const auto& tgt_ty = this->context.get_type(node.m_res_type);
+            const auto& src_ty = this->context.get_type(node.m_value->m_res_type);
+            TU_MATCH( ::HIR::TypeRef::Data, (tgt_ty.m_data), (e),
+            (Infer,
+                // Can't know anything
+                //this->m_completed = true;
+                ),
+            (Diverge,
+                BUG(sp, "");
+                ),
+            (Primitive,
+                // Don't have anything to contribute
+                this->m_completed = true;
+                ),
+            (Path,
+                ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
+                ),
+            (Generic,
+                ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
+                ),
+            (TraitObject,
+                ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
+                ),
+            (Array,
+                ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
+                ),
+            (Slice,
+                ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
+                ),
+            (Tuple,
+                ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
+                ),
+            (Borrow,
+                TODO(sp, "Cast to borrow");
+                ),
+            (Pointer,
+                TU_MATCH_DEF( ::HIR::TypeRef::Data, (src_ty.m_data), (s_e),
+                (
+                    ERROR(sp, E0000, "Invalid cast to pointer");
+                    ),
+                (Infer,
+                    ),
+                (Borrow,
+                    // Check class (must be equal) and type
+                    // TODO: Check class
+                    this->context.equate_types(sp, *e.inner, *s_e.inner);
+                    ),
+                (Pointer,
+                    // Allow with no link?
+                    )
+                )
+                ),
+            (Function,
+                ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
+                ),
+            (Closure,
+                BUG(sp, "");
+                )
+            )
         }
         void visit(::HIR::ExprNode_Unsize& node) override {
             no_revisit(node);
