@@ -50,6 +50,11 @@ struct Context
         }
     };
     
+    struct IVarPossible
+    {
+        ::std::vector<const ::HIR::TypeRef*>    types;
+    };
+    
     const ::HIR::Crate& m_crate;
     
     ::std::vector<Binding>  m_bindings;
@@ -60,6 +65,8 @@ struct Context
     ::std::vector<Associated> link_assoc;
     /// Nodes that need revisiting (e.g. method calls when the receiver isn't known)
     ::std::vector< ::HIR::ExprNode*>    to_visit;
+    
+    ::std::vector< IVarPossible>    possible_ivar_vals;
     
     Context(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params):
         m_crate(crate),
@@ -83,8 +90,11 @@ struct Context
     void equate_types(const Span& sp, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r);
     // - Equate two types, allowing inferrence
     void equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR::ExprNodeP& node_ptr);
-    // - Equate 
+    // - Equate a type to an associated type (if name == "", no equation is done, but trait is searched)
     void equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name);
+
+    // - List `t` as a possible type for `ivar_index`
+    void possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t);
     
     // - Add a pattern binding (forcing the type to match)
     void add_binding(const Span& sp, ::HIR::Pattern& pat, ::HIR::TypeRef& type);
@@ -1851,6 +1861,13 @@ void Context::add_revisit(::HIR::ExprNode& node) {
     this->to_visit.push_back( &node );
 }
 
+void Context::possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t) {
+    if( ivar_index >= possible_ivar_vals.size() ) {
+        possible_ivar_vals.resize( ivar_index + 1 );
+    }
+    possible_ivar_vals[ivar_index].types.push_back( &t );
+}
+
 void Context::add_var(unsigned int index, const ::std::string& name, ::HIR::TypeRef type) {
     if( m_bindings.size() <= index )
         m_bindings.resize(index+1);
@@ -1924,6 +1941,7 @@ namespace {
                 context.equate_types(sp, ty_dst, ty_src);
                 return true;
             }
+            context.possible_equate_type(r_e.index, ty_dst);
             return false;
         )
         
@@ -2036,6 +2054,8 @@ namespace {
             }
             // Can't do anything yet?
             // - Later code can handle "only path" coercions
+
+            context.possible_equate_type(l_e.index,  ty_r);
             return false;
             ),
         (Diverge,
@@ -2105,6 +2125,8 @@ namespace {
                     context.equate_types(sp, ty,  ty_r);
                     BUG(sp, "Type error expected " << ty << " == " << ty_r);
                 }
+                
+                context.possible_equate_type(r_e.index, ty);
                 return false;
             )
             else {
@@ -2148,6 +2170,7 @@ namespace {
                     BUG(sp, "Type error expected " << ty << " == " << ty_r);
                 }
                 // Can't do much for now
+                context.possible_equate_type(r_e.index, ty);
                 return false;
             )
             else {
@@ -2202,11 +2225,13 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
     unsigned int count = 0;
     while( context.take_changed() && context.has_rules() && count < MAX_ITERATIONS )
     {
-        DEBUG("=== PASS " << count << " ===");
+        TRACE_FUNCTION_F("=== PASS " << count << " ===");
         context.dump();
         
         // 1. Check coercions for ones that cannot coerce due to RHS type (e.g. `str` which doesn't coerce to anything)
         // 2. (???) Locate coercions that cannot coerce (due to being the only way to know a type)
+        // - Keep a list in the ivar of what types that ivar could be equated to.
+        DEBUG("--- Coercion checking");
         for(auto it = context.link_coerce.begin(); it != context.link_coerce.end(); ) {
             if( check_coerce(context, *it) ) {
                 DEBUG("- Consumed coercion " << it->left_ty << " := " << (**it->right_node_ptr).m_res_type);
@@ -2217,6 +2242,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             }
         }
         // 3. Check associated type rules
+        DEBUG("--- Associated types");
         for(auto it = context.link_assoc.begin(); it != context.link_assoc.end(); ) {
             if( check_associated(context, *it) ) {
                 DEBUG("- Consumed associated type rule - " << *it);
@@ -2227,6 +2253,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             }
         }
         // 4. Revisit nodes that require revisiting
+        DEBUG("--- Node revisits");
         for( auto it = context.to_visit.begin(); it != context.to_visit.end(); )
         {
             ::HIR::ExprNode& node = **it;
@@ -2242,7 +2269,54 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             }
         }
         
+        // Check the possible equations
+        DEBUG("--- IVar possibilities");
+        unsigned int i = 0;
+        for(auto& ivar_ent : context.possible_ivar_vals)
+        {
+            if( ivar_ent.types.size() == 0 ) {
+                // No idea! (or unused)
+                i ++ ;
+                continue ;
+            }
+            else if( ivar_ent.types.size() > 1 ) {
+                // De-duplicate list (taking into account other ivars)
+                for( auto it = ivar_ent.types.begin(); it != ivar_ent.types.end(); )
+                {
+                    bool found = false;
+                    for( auto it2 = ivar_ent.types.begin(); it2 != it; ++ it2 ) {
+                        if( context.m_ivars.types_equal( **it, **it2 ) ) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if( found ) {
+                        it = ivar_ent.types.erase(it);
+                    }
+                    else {
+                        ++ it;
+                    }
+                }
+            }
+            else {
+                // One possibility, no need to dedup
+            }
+            
+            if( ivar_ent.types.size() == 1 ) {
+                const ::HIR::TypeRef& ty_r = *ivar_ent.types[0];
+                ::HIR::TypeRef  ty_l;
+                ty_l.m_data.as_Infer().index = i;
+                // Only one possibility
+                DEBUG("- IVar " << ty_l << " = " << ty_r);
+                context.equate_types(Span(), ty_l, ty_r);
+            }
+            
+            ivar_ent.types.clear();
+            i ++ ;
+        }
+        
         count ++;
+        context.m_ivars.compact_ivars();
     }
     
     // - Validate typeck

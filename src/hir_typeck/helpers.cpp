@@ -262,12 +262,13 @@ void HMTypeInferrence::dump() const
 }
 void HMTypeInferrence::compact_ivars()
 {
-    #if 0
+    #if 1
     unsigned int i = 0;
     for(auto& v : m_ivars)
     {
         if( !v.is_alias() ) {
-            auto nt = this->expand_associated_types(Span(), v.type->clone());
+            //auto nt = this->expand_associated_types(Span(), v.type->clone());
+            auto nt = v.type->clone();
             DEBUG("- " << i << " " << *v.type << " -> " << nt);
             *v.type = mv$(nt);
         }
