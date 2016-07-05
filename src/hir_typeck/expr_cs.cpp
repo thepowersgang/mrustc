@@ -546,6 +546,7 @@ namespace {
                 break;
             case ::HIR::ExprNode_UniOp::Op::Invert:
                 this->context.equate_types_assoc(node.span(), node.m_res_type,  this->context.m_crate.get_lang_item_path(node.span(), "not"), {}, node.m_value->m_res_type.clone(), "Output");
+                break;
             case ::HIR::ExprNode_UniOp::Op::Negate:
                 this->context.equate_types_assoc(node.span(), node.m_res_type,  this->context.m_crate.get_lang_item_path(node.span(), "neg"), {}, node.m_value->m_res_type.clone(), "Output");
                 break;
@@ -2206,17 +2207,19 @@ namespace {
     bool check_associated(Context& context, const Context::Associated& v)
     {
         const auto& sp = v.span;
+        TRACE_FUNCTION_F(v);
         
         ::HIR::TypeRef  possible_impl_ty;
         ::HIR::PathParams   possible_params;
+        ::HIR::TypeRef  output_type;
         
         // Search for ops trait impl
         unsigned int count = 0;
-        DEBUG("Searching for impl " << v.trait << v.params << " for " << v.impl_ty);
+        DEBUG("Searching for impl " << v.trait << v.params << " for " << context.m_ivars.fmt_type(v.impl_ty));
         bool found = context.m_resolve.find_trait_impls(sp, v.trait, v.params,  v.impl_ty,
             [&](const auto& impl_ty, const auto& args, const auto& assoc) {
-                ::HIR::Compare cmp = impl_ty.compare_with_placeholders(sp, v.impl_ty, context.m_ivars.callback_resolve_infer());
                 assert( args.m_types.size() == v.params.m_types.size() );
+                ::HIR::Compare cmp = impl_ty.compare_with_placeholders(sp, v.impl_ty, context.m_ivars.callback_resolve_infer());
                 for( unsigned int i = 0; i < args.m_types.size(); i ++ )
                 {
                     const auto& impl_ty = args.m_types[i];
@@ -2229,91 +2232,54 @@ namespace {
                 }
                 count += 1;
                 if( cmp == ::HIR::Compare::Equal ) {
+                    if( v.name[0] ) {
+                        output_type = assoc.at(v.name).clone();
+                    }
                     return true;
                 }
                 else {
                     if( possible_impl_ty == ::HIR::TypeRef() ) {
                         possible_impl_ty = impl_ty.clone();
                         possible_params = args.clone();
+                        if( v.name[0] ) {
+                            output_type = assoc.at(v.name).clone();
+                        }
                     }
-                
+                    
                     return false;
                 }
             });
         if( found ) {
             // Fully-known impl
+            if( v.name[0] ) {
+                context.equate_types(sp, v.left_ty, output_type);
+            }
+            return true;
         }
         else if( count == 0 ) {
             // No applicable impl
+            // - TODO: This should really only fire when there isn't an impl. But it currently fires when _
+            DEBUG("No impl of " << v.trait << v.params << " for " << v.impl_ty);
+            return false;
         }
         else if( count == 1 ) {
+            DEBUG("Only one impl " << v.trait << possible_params << " for " << possible_impl_ty << " - ty=" << output_type);
             // Only one possible impl
+            if( v.name[0] ) {
+                context.equate_types(sp, v.left_ty, output_type);
+            }
+            assert( possible_impl_ty != ::HIR::TypeRef() );
+            context.equate_types(sp, v.impl_ty, possible_impl_ty);
+            for( unsigned int i = 0; i < possible_params.m_types.size(); i ++ ) {
+                context.equate_types(sp, v.params.m_types[i], possible_params.m_types[i]);
+            }
+            return true;
         }
         else {
             // Multiple possible impls, don't know yet
+            DEBUG("Multiple impls");
+            return false;
         }
-        
-        TODO(sp, "check_associated - " << v);
-        #if 0
-        // - Only set found_exact if either found_bound returned true, XOR this returns true
-        bool found_exact = found_bound ^ this->context.m_crate.find_trait_impls(ops_trait, ty_left, this->context.callback_resolve_infer(),
-            [&](const auto& impl) {
-                assert( impl.m_trait_args.m_types.size() == 1 );
-                const auto& arg_type = impl.m_trait_args.m_types[0];
-                
-                DEBUG("impl" << impl.m_params.fmt_args() << " " << ops_trait << impl.m_trait_args << " for " << impl.m_type);
-                
-                bool    fail = false;
-                bool    fuzzy = false;
-                ::std::vector< const ::HIR::TypeRef*> impl_params;
-                impl_params.resize( impl.m_params.m_types.size() );
-                auto cb = [&](auto idx, const auto& ty) {
-                    DEBUG("[_BinOp] " << idx << " = " << ty);
-                    assert( idx < impl_params.size() );
-                    if( ! impl_params[idx] ) {
-                        impl_params[idx] = &ty;
-                    }
-                    else {
-                        switch( impl_params[idx]->compare_with_placeholders(node.span(), ty, this->context.callback_resolve_infer()) )
-                        {
-                        case ::HIR::Compare::Unequal:
-                            fail = true;
-                            break;
-                        case ::HIR::Compare::Fuzzy:
-                            fuzzy = true;
-                            break;
-                        case ::HIR::Compare::Equal:
-                            break;
-                        }
-                    }
-                    };
-                fail |= !impl.m_type.match_test_generics(sp, ty_left, this->context.callback_resolve_infer(), cb);
-                fail |= !arg_type.match_test_generics(sp, ty_right, this->context.callback_resolve_infer(), cb);
-                if( fail ) {
-                    return false;
-                }
-                count += 1;
-                impl_ptr = &impl;
-                if( !fuzzy ) {
-                    DEBUG("Operator impl exact match - '"<<item_name<<"' - " << arg_type << " == " << ty_right);
-                    return true;
-                }
-                else {
-                    DEBUG("Operator impl fuzzy match - '"<<item_name<<"' - " << arg_type << " == " << ty_right);
-                    if( possible_right_type == ::HIR::TypeRef() ) {
-                        DEBUG("- Set possibility for " << ty_right << " - " << arg_type);
-                        possible_right_type = arg_type.clone();
-                    }
-                    return false;
-                }
-            }
-            );
-        // If there wasn't an exact match, BUT there was one partial match - assume the partial match is what we want
-        if( !found_exact && count == 1 ) {
-            assert( possible_right_type != ::HIR::TypeRef() );
-            this->context.apply_equality(node.span(), possible_right_type, ty_right);
-        }
-        #endif
     }
 }
 
