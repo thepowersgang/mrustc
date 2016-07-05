@@ -729,10 +729,9 @@ namespace {
             this->context.equate_types(node.span(), node.m_res_type, ty);
         }
 
-    private:
-    public:
         void visit(::HIR::ExprNode_CallPath& node) override
         {
+            this->visit_path(node.span(), node.m_path);
             TRACE_FUNCTION_F(node.m_path << "(...)");
             for( auto& val : node.m_args ) {
                 this->context.add_ivars( val->m_res_type );
@@ -898,6 +897,7 @@ namespace {
         void visit(::HIR::ExprNode_PathValue& node) override
         {
             const auto& sp = node.span();
+            this->visit_path(sp, node.m_path);
             TRACE_FUNCTION_F(node.m_path);
             
             this->add_ivars_path(node.span(), node.m_path);
@@ -1060,6 +1060,31 @@ namespace {
         }
         void pop_traits(const ::HIR::t_trait_list& list) {
             this->m_traits.erase( this->m_traits.end() - list.size(), this->m_traits.end() );
+        }
+        void visit_generic_path(const Span& sp, ::HIR::GenericPath& gp) {
+            for(auto& ty : gp.m_params.m_types)
+                this->context.add_ivars(ty);
+        }
+        void visit_path(const Span& sp, ::HIR::Path& path) {
+            TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
+            (Generic,
+                this->visit_generic_path(sp, e);
+                ),
+            (UfcsKnown,
+                this->context.add_ivars(*e.type);
+                this->visit_generic_path(sp, e.trait);
+                for(auto& ty : e.params.m_types)
+                    this->context.add_ivars(ty);
+                ),
+            (UfcsUnknown,
+                TODO(sp, "Hit a UfcsUnknown (" << path << ") - Is this an error?");
+                ),
+            (UfcsInherent,
+                this->context.add_ivars(*e.type);
+                for(auto& ty : e.params.m_types)
+                    this->context.add_ivars(ty);
+                )
+            )
         }
     };
 
@@ -1881,8 +1906,69 @@ void fix_param_count(const Span& sp, Context& context, const ::HIR::GenericPath&
 }
 
 namespace {
+    bool check_coerce_borrow(Context& context, const ::HIR::TypeRef& inner_l, const ::HIR::TypeRef& inner_r, ::HIR::ExprNodeP& node_ptr)
+    {
+        const auto& sp = node_ptr->span();
+        
+        const auto& ty_dst = context.m_ivars.get_type(inner_l);
+        const auto& ty_src = context.m_ivars.get_type(inner_r);
+        // TODO: Various coercion types
+        // - Trait/Slice unsizing
+        // - Deref
+        // - Unsize?
+
+        // If the source is '_', we can't know yet
+        TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Infer, r_e,
+            // - Except if it's known to be a primitive
+            if( r_e.ty_class != ::HIR::InferClass::None ) {
+                context.equate_types(sp, ty_dst, ty_src);
+                return true;
+            }
+            return false;
+        )
+        
+        // Deref coercions
+        {
+            ::HIR::TypeRef  tmp_ty;
+            const ::HIR::TypeRef*   out_ty = &ty_src;
+            unsigned int count = 0;
+            ::std::vector< ::HIR::TypeRef>  types;
+            while( (out_ty = context.m_resolve.autoderef(sp, *out_ty, tmp_ty)) )
+            {
+                count += 1;
+                
+                if( out_ty->m_data.is_Infer() && out_ty->m_data.as_Infer().ty_class == ::HIR::InferClass::None ) {
+                    // Hit a _, so can't keep going
+                    break;
+                }
+                
+                types.push_back( out_ty->clone() );
+                
+                if( context.m_ivars.types_equal(ty_dst, *out_ty) == false ) {
+                    TODO(sp, "Compare " << context.m_ivars.fmt_type(*out_ty) << " and " << context.m_ivars.fmt_type(ty_dst) << " assuming ivars equal");
+                }
+                
+                while(count --)
+                {
+                    auto span = node_ptr->span();
+                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Deref( mv$(span), mv$(node_ptr) ));
+                    node_ptr->m_res_type = mv$( types.back() );
+                    types.pop_back();
+                }
+                
+                context.m_ivars.mark_change();
+                return true;
+            }
+            // Either ran out of deref, or hit a _
+        }
+
+        // - If `right`: ::core::marker::Unsize<`left`>
+        // - If left can be dereferenced to right
+        // - If left is a slice, right can unsize/deref (Defunct?)
+        return false;
+    }
     bool check_coerce(Context& context, const Context::Coercion& v) {
-        const ::HIR::ExprNodeP& node_ptr = *v.right_node_ptr;
+        ::HIR::ExprNodeP& node_ptr = *v.right_node_ptr;
         const auto& sp = node_ptr->span();
         const auto& ty = context.m_ivars.get_type(v.left_ty);
         const auto& ty_r = context.m_ivars.get_type(node_ptr->m_res_type);
@@ -1942,9 +2028,9 @@ namespace {
         
         // 2. Check target type is a valid coercion
         // - Otherwise - Force equality
-        TU_MATCH( ::HIR::TypeRef::Data, (ty.m_data), (e),
+        TU_MATCH( ::HIR::TypeRef::Data, (ty.m_data), (l_e),
         (Infer,
-            if( e.ty_class != ::HIR::InferClass::None ) {
+            if( l_e.ty_class != ::HIR::InferClass::None ) {
                 context.equate_types(sp, ty,  ty_r);
                 return true;
             }
@@ -1985,14 +2071,34 @@ namespace {
             return true;
             ),
         (Borrow,
-            TU_IFLET(::HIR::TypeRef::Data, ty_r.m_data, Borrow, e_r,
-                // - Both borrows!
-                // TODO: Various coercion types
-                // - Trait/Slice unsizing
-                // - Deref
-                // - Unsize?
+            TU_IFLET(::HIR::TypeRef::Data, ty_r.m_data, Borrow, r_e,
+                // If using `&mut T` where `&const T` is expected - insert a reborrow (&*)
+                if( l_e.type == ::HIR::BorrowType::Shared && r_e.type == ::HIR::BorrowType::Unique ) {
+                    context.equate_types(sp, *l_e.inner, *r_e.inner);
+                    
+                    // Add cast down
+                    auto span = node_ptr->span();
+                    // *<inner>
+                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Deref(mv$(span), mv$(node_ptr)));
+                    node_ptr->m_res_type = l_e.inner->clone();
+                    // &*<inner>
+                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_UniOp(mv$(span), ::HIR::ExprNode_UniOp::Op::Ref, mv$(node_ptr)));
+                    node_ptr->m_res_type = ty.clone();
+                    
+                    context.m_ivars.mark_change();
+                    return true;
+                }
+                // TODO: &move reboorrowing rules?
+                
+                if( l_e.type != r_e.type ) {
+                    // TODO: This could be allowed if left == Shared && right == Unique (reborrowing)
+                    ERROR(sp, E0000, "Type mismatch between " << ty << " and " << ty_r << " - Borrow classes differ");
+                }
+                
+                // - Check for coercions
+                return check_coerce_borrow(context, *l_e.inner, *r_e.inner, node_ptr);
             )
-            else TU_IFLET(::HIR::TypeRef::Data, ty_r.m_data, Infer, e_r,
+            else TU_IFLET(::HIR::TypeRef::Data, ty_r.m_data, Infer, r_e,
                 // Leave for now
             )
             else {
