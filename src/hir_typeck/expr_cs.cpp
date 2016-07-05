@@ -1237,13 +1237,14 @@ namespace {
         }
         void visit(::HIR::ExprNode_CallMethod& node) override {
             const auto& ty = this->context.get_type(node.m_value->m_res_type);
-            //const auto ty = this->context.expand_associated_types(node.span(), this->context.get_type(node.m_value->m_res_type).clone());
-            DEBUG("(CallMethod) ty = " << ty);
+            //const auto ty = this->context.m_resolve.expand_associated_types(node.span(), this->context.get_type(node.m_value->m_res_type).clone());
+            TRACE_FUNCTION_F("(CallMethod) ty = " << this->context.m_ivars.fmt_type(ty));
             // Using autoderef, locate this method on the type
             ::HIR::Path   fcn_path { ::HIR::SimplePath() };
             unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, ty, node.m_method,  fcn_path);
             if( deref_count != ~0u )
             {
+                DEBUG("- deref_count = " << deref_count);
                 visit_call_populate_cache(this->context, node.span(), fcn_path, node.m_cache);
                 assert( node.m_cache.m_arg_types.size() >= 1);
                 

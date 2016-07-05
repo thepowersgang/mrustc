@@ -1499,8 +1499,15 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
     )
     
     // Dereference failed! This is a hard error (hitting _ is checked above and returns ~0)
-    this->m_ivars.dump();
-    TODO(sp, "Error when no method could be found, but type is known - (: " << top_ty << ")." << method_name);
+    if( this->m_ivars.type_contains_ivars(top_ty) )
+    {
+        return ~0u;
+    }
+    else
+    {
+        this->m_ivars.dump();
+        TODO(sp, "Error when no method could be found, but type is known - (: " << top_ty << ")." << method_name);
+    }
 }
 
 bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& traits, const ::HIR::TypeRef& ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const
