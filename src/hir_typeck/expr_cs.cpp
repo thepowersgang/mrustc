@@ -37,6 +37,7 @@ struct Context
     };
     struct Associated
     {
+        Span    span;
         ::HIR::TypeRef  left_ty;
         
         ::HIR::SimplePath   trait;
@@ -1852,6 +1853,7 @@ void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const
     ::HIR::PathParams   pp;
     pp.m_types = mv$(ty_args);
     this->link_assoc.push_back(Associated {
+        sp,
         l.clone(),
         
         trait.clone(),
@@ -2203,21 +2205,26 @@ namespace {
     
     bool check_associated(Context& context, const Context::Associated& v)
     {
-        TODO(Span(), "check_associated - " << v);
+        const auto& sp = v.span;
         
-        #if 0
+        ::HIR::TypeRef  possible_impl_ty;
+        ::HIR::PathParams   possible_params;
+        
         // Search for ops trait impl
-        const ::HIR::TraitImpl* impl_ptr = nullptr;
         unsigned int count = 0;
-        DEBUG("Searching for impl " << ops_trait << "< " << ty_right << "> for " << ty_left);
-        bool found_bound = this->context.find_trait_impls_bound(sp, ops_trait, ops_trait_pp,  ty_left,
-            [&](const auto& args, const auto& assoc) {
-                assert(args.m_types.size() == 1);
-                const auto& arg_type = args.m_types[0];
-                // TODO: if arg_type mentions Self?
-                auto cmp = arg_type.compare_with_placeholders(node.span(), ty_right, this->context.callback_resolve_infer());
+        DEBUG("Searching for impl " << v.trait << v.params << " for " << v.impl_ty);
+        bool found = context.m_resolve.find_trait_impls(sp, v.trait, v.params,  v.impl_ty,
+            [&](const auto& impl_ty, const auto& args, const auto& assoc) {
+                ::HIR::Compare cmp = impl_ty.compare_with_placeholders(sp, v.impl_ty, context.m_ivars.callback_resolve_infer());
+                assert( args.m_types.size() == v.params.m_types.size() );
+                for( unsigned int i = 0; i < args.m_types.size(); i ++ )
+                {
+                    const auto& impl_ty = args.m_types[i];
+                    const auto& rule_ty = v.params.m_types[i];
+                    cmp &= impl_ty.compare_with_placeholders(sp, rule_ty, context.m_ivars.callback_resolve_infer());
+                }
                 if( cmp == ::HIR::Compare::Unequal ) {
-                    DEBUG("- (fail) bounded impl " << ops_trait << "<" << arg_type << "> (ty_right = " << this->context.get_type(ty_right));
+                    DEBUG("- (fail) bounded impl " << v.trait << v.params << " (ty_right = " << context.m_ivars.fmt_type(v.impl_ty));
                     return false;
                 }
                 count += 1;
@@ -2225,14 +2232,29 @@ namespace {
                     return true;
                 }
                 else {
-                    if( possible_right_type == ::HIR::TypeRef() ) {
-                        DEBUG("- Set possibility for " << ty_right << " - " << arg_type);
-                        possible_right_type = arg_type.clone();
+                    if( possible_impl_ty == ::HIR::TypeRef() ) {
+                        possible_impl_ty = impl_ty.clone();
+                        possible_params = args.clone();
                     }
                 
                     return false;
                 }
             });
+        if( found ) {
+            // Fully-known impl
+        }
+        else if( count == 0 ) {
+            // No applicable impl
+        }
+        else if( count == 1 ) {
+            // Only one possible impl
+        }
+        else {
+            // Multiple possible impls, don't know yet
+        }
+        
+        TODO(sp, "check_associated - " << v);
+        #if 0
         // - Only set found_exact if either found_bound returned true, XOR this returns true
         bool found_exact = found_bound ^ this->context.m_crate.find_trait_impls(ops_trait, ty_left, this->context.callback_resolve_infer(),
             [&](const auto& impl) {

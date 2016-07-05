@@ -862,7 +862,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             pp.m_types.push_back( ::HIR::TypeRef(mv$(args)) );
             ::std::map< ::std::string, ::HIR::TypeRef>  types;
             types.insert( ::std::make_pair( "Output", e.m_rettype->clone() ) );
-            return callback( pp, types );
+            return callback( type, pp, types );
         }
         else {
             return false;
@@ -997,7 +997,7 @@ void TraitResolution::compact_ivars(HMTypeInferrence& m_ivars)
                     bool found_supertrait = this->find_named_trait_in_trait(sp,
                         e2.trait.m_path, e2.trait.m_params,
                         *be.trait.m_trait_ptr, be.trait.m_path.m_path, be.trait.m_path.m_params, *e2.type,
-                        [&e2,&input,&assume_opaque](const auto& x, const auto& assoc){
+                        [&e2,&input,&assume_opaque](const auto&, const auto& x, const auto& assoc){
                             auto it = assoc.find(e2.item);
                             if( it != assoc.end() ) {
                                 assume_opaque = false;
@@ -1131,7 +1131,7 @@ void TraitResolution::compact_ivars(HMTypeInferrence& m_ivars)
                 BUG(sp, "Cannot find associated type " << e2.item << " anywhere in trait " << e2.trait);
             //e2.trait = mv$(trait_path);
             
-            rv = this->find_trait_impls_crate(sp, trait_path.m_path, trait_path.m_params, *e2.type, [&](const auto& args, const auto& assoc) {
+            rv = this->find_trait_impls_crate(sp, trait_path.m_path, trait_path.m_params, *e2.type, [&](const auto& , const auto& args, const auto& assoc) {
                 DEBUG("Found impl for " << e2.trait.m_path << args << " with types {" << assoc << "}");
                 auto it = assoc.find( e2.item );
                 if( it == assoc.end() )
@@ -1221,7 +1221,7 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
 
         DEBUG(pt << " => " << pt_mono);
         if( pt.m_path.m_path == des ) {
-            callback( pt_mono.m_path.m_params, pt_mono.m_type_bounds );
+            callback( target_type, pt_mono.m_path.m_params, pt_mono.m_type_bounds );
             return true;
         }
     }
@@ -1255,7 +1255,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                     DEBUG("Fuzzy match");
                 }
                 // Hand off to the closure, and return true if it does
-                if( callback(e.trait.m_path.m_params, e.trait.m_type_bounds) ) {
+                if( callback(e.type, e.trait.m_path.m_params, e.trait.m_type_bounds) ) {
                     return true;
                 }
             }
@@ -1314,6 +1314,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     assert( ge.binding < impl_params.size() );
                     return *impl_params[ge.binding];
                     };
+            auto ty_mono = monomorphise_type_with(sp, impl.m_type, monomorph, false);
             auto args_mono = monomorphise_path_params_with(sp, impl.m_trait_args, monomorph, false);
             
             // TODO: Check bounds
@@ -1332,7 +1333,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                         ab.second = this->expand_associated_types(sp, mv$(ab.second));
                     }
                     DEBUG("- " << real_type << " : " << real_trait);
-                    auto rv = this->find_trait_impls(sp, real_trait.m_path.m_path, real_trait.m_path.m_params, real_type, [&](const auto& a, const auto& t) {
+                    auto rv = this->find_trait_impls(sp, real_trait.m_path.m_path, real_trait.m_path.m_params, real_type, [&](const auto&, const auto& a, const auto& t) {
                         for(const auto& assoc_bound : real_trait.m_type_bounds) {
                             auto it = t.find(assoc_bound.first);
                             if( it == t.end() )
@@ -1377,7 +1378,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             //if( match == ::HIR::Compare::Fuzzy ) {
             //    TODO(sp, "- Pass on fuzzy match status");
             //}
-            return callback(args_mono, types/*, (match == ::HIR::Compare::Fuzzy)*/);
+            return callback(ty_mono, args_mono, types/*, (match == ::HIR::Compare::Fuzzy)*/);
         }
         );
 }
@@ -1451,7 +1452,7 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
         return &tmp_type;
     )
     else {
-        bool succ = this->find_trait_impls(sp, this->m_crate.get_lang_item_path(sp, "deref"), ::HIR::PathParams {}, ty, [&](const auto& args, const auto& types) {
+        bool succ = this->find_trait_impls(sp, this->m_crate.get_lang_item_path(sp, "deref"), ::HIR::PathParams {}, ty, [&](const auto&, const auto& args, const auto& types) {
             assert(args.m_types.size() == 0);
             // TODO: Use `types`
             return true;
@@ -1620,7 +1621,7 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
                 continue ;
             DEBUG("Search for impl of " << *trait_ref.first);
             // TODO: Need a "don't care" marker for the PathParams
-            if( find_trait_impls_crate(sp, *trait_ref.first, ::HIR::PathParams{}, ty,  [](const auto&,const auto&) { return true; }) ) {
+            if( find_trait_impls_crate(sp, *trait_ref.first, ::HIR::PathParams{}, ty,  [](const auto&,const auto&,const auto&) { return true; }) ) {
                 DEBUG("Found trait impl " << *trait_ref.first << " (" /*<< m_ivars.fmt_type(*trait_ref.first)*/  << ") for " << ty << " ("<<m_ivars.fmt_type(ty)<<")");
                 fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
                     box$( ty.clone() ),

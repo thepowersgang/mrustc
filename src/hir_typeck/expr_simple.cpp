@@ -719,7 +719,6 @@ namespace typeck {
                 //    });
                 
                 // Search for ops trait impl
-                const ::HIR::TraitImpl* impl_ptr = nullptr;
                 ::HIR::TypeRef  possible_right_type;
                 unsigned int count = 0;
                 const auto& ops_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
@@ -750,6 +749,7 @@ namespace typeck {
                         }
                     });
                 // - Only set found_exact if either found_bound returned true, XOR this returns true
+                const ::HIR::TraitImpl* impl_ptr = nullptr;
                 bool found_exact = found_bound ^ this->context.m_crate.find_trait_impls(ops_trait, ty_left, this->context.callback_resolve_infer(),
                     [&](const auto& impl) {
                         assert( impl.m_trait_args.m_types.size() == 1 );

@@ -128,8 +128,6 @@ public:
     {
     }
     
-    typedef ::std::function<bool(const ::HIR::PathParams&, const ::std::map< ::std::string,::HIR::TypeRef>&)> t_cb_trait_impl;
-    
     void compact_ivars(HMTypeInferrence& m_ivars);
     
     /// Check if a trait bound applies, using the passed function to expand Generic/Infer types
@@ -141,6 +139,8 @@ public:
     /// Iterate over in-scope bounds (function then top)
     bool iterate_bounds( ::std::function<bool(const ::HIR::GenericBound&)> cb) const;
 
+    typedef ::std::function<bool(const ::HIR::TypeRef&, const ::HIR::PathParams&, const ::std::map< ::std::string,::HIR::TypeRef>&)> t_cb_trait_impl;
+    
     /// Searches for a trait impl that matches the provided trait name and type
     bool find_trait_impls(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const;
     
