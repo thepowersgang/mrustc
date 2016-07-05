@@ -348,6 +348,7 @@ namespace {
             
             this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
             
+            this->context.add_ivars(node.m_code->m_res_type);
             node.m_code->visit( *this );
         }
         void visit(::HIR::ExprNode_LoopControl& node) override
@@ -1589,7 +1590,19 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, ::HIR::TypeRef& t
         // Just leave it, the pattern says nothing
         ),
     (Value,
-        TODO(sp, "Value pattern");
+        TU_MATCH(::HIR::Pattern::Value, (e.val), (v),
+        (Integer,
+            if( v.type != ::HIR::CoreType::Str ) {
+                this->equate_types(sp, type, ::HIR::TypeRef(v.type));
+            }
+            ),
+        (String,
+            this->equate_types(sp, type, ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef(::HIR::CoreType::Str) ));
+            ),
+        (Named,
+            // TODO: Get type of the value and equate it
+            )
+        )
         ),
     (Range,
         TODO(sp, "Range pattern");
@@ -1903,6 +1916,7 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, ::HIR::TypeRef& t
 }
 void Context::equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR::ExprNodeP& node_ptr)
 {
+    this->m_ivars.get_type(l);
     // - Just record the equality
     this->link_coerce.push_back(Coercion {
         l.clone(), &node_ptr

@@ -46,7 +46,7 @@ struct Pattern
 {
     TAGGED_UNION(Value, String,
         (Integer, struct {
-            enum ::HIR::CoreType type;
+            enum ::HIR::CoreType type;  // Str == _
             uint64_t value; // Signed numbers are encoded as 2's complement
             }),
         (String, ::std::string),
