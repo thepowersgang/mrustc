@@ -2100,16 +2100,61 @@ namespace {
             )
             else TU_IFLET(::HIR::TypeRef::Data, ty_r.m_data, Infer, r_e,
                 // Leave for now
+                if( r_e.ty_class != ::HIR::InferClass::None ) {
+                    // ERROR: Must be compatible
+                    context.equate_types(sp, ty,  ty_r);
+                    BUG(sp, "Type error expected " << ty << " == " << ty_r);
+                }
+                return false;
             )
             else {
                 // Error - Must be compatible
                 // - Hand off to equate
                 context.equate_types(sp, ty,  ty_r);
+                BUG(sp, "Type error expected " << ty << " == " << ty_r);
             }
             ),
         (Pointer,
             // TODO: Pointers coerce from borrows and similar pointers
-            TODO(sp, "check_coerce - Coercion to " << ty);
+            TU_IFLET(::HIR::TypeRef::Data, ty_r.m_data, Borrow, r_e,
+                context.equate_types(sp, *l_e.inner, *r_e.inner);
+                return true;
+            )
+            else TU_IFLET(::HIR::TypeRef::Data, ty_r.m_data, Pointer, r_e,
+                // If using `*mut T` where `*const T` is expected - add cast
+                if( l_e.type == ::HIR::BorrowType::Shared && r_e.type == ::HIR::BorrowType::Unique ) {
+                    context.equate_types(sp, *l_e.inner, *r_e.inner);
+                    
+                    // Add cast down
+                    auto span = node_ptr->span();
+                    node_ptr->m_res_type = ty_r.clone();
+                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), ty.clone() ));
+                    node_ptr->m_res_type = ty.clone();
+                    
+                    context.m_ivars.mark_change();
+                    return true;
+                }
+                
+                if( l_e.type != r_e.type ) {
+                    ERROR(sp, E0000, "Type mismatch between " << ty << " and " << ty_r << " - Pointer mutability differs");
+                }
+                context.equate_types(sp, *l_e.inner, *r_e.inner);
+                return true;
+            )
+            else TU_IFLET(::HIR::TypeRef::Data, ty_r.m_data, Infer, r_e,
+                if( r_e.ty_class != ::HIR::InferClass::None ) {
+                    // ERROR: Must be compatible
+                    context.equate_types(sp, ty,  ty_r);
+                    BUG(sp, "Type error expected " << ty << " == " << ty_r);
+                }
+                // Can't do much for now
+                return false;
+            )
+            else {
+                // Error: Must be compatible
+                context.equate_types(sp, ty,  ty_r);
+                BUG(sp, "Type error expected " << ty << " == " << ty_r);
+            }
             ),
         (Function,
             // TODO: Could capture-less closures coerce to fn() types?
