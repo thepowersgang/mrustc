@@ -2084,6 +2084,8 @@ namespace {
         const auto& ty = context.m_ivars.get_type(v.left_ty);
         const auto& ty_r = context.m_ivars.get_type(node_ptr->m_res_type);
         
+        // TODO: CoerceUnsized trait
+        
         // 1. Check that the source type can coerce
         TU_MATCH( ::HIR::TypeRef::Data, (ty_r.m_data), (e),
         (Infer,
@@ -2100,10 +2102,14 @@ namespace {
             return true;
             ),
         (Path,
-            TODO(Span(), "check_coerce - Coercion from " << ty_r);
+            //TODO(Span(), "check_coerce - Coercion from " << ty_r);
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
             ),
         (Generic,
-            TODO(Span(), "check_coerce - Coercion from " << ty_r);
+            //TODO(Span(), "check_coerce - Coercion from " << ty_r);
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
             ),
         (TraitObject,
             // TODO: Can bare trait objects coerce?
