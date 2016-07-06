@@ -313,7 +313,7 @@ namespace {
         
         void visit(::HIR::ExprNode_Block& node) override
         {
-            TRACE_FUNCTION_F("{ ... }");
+            TRACE_FUNCTION_F(&node << " { ... }");
             this->push_traits( node.m_traits );
             
             for( unsigned int i = 0; i < node.m_nodes.size(); i ++ )
@@ -335,7 +335,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Return& node) override
         {
-            TRACE_FUNCTION_F("return ...");
+            TRACE_FUNCTION_F(&node << " return ...");
             this->context.add_ivars( node.m_value->m_res_type );
 
             this->context.equate_types_coerce(node.span(), this->ret_type, node.m_value);
@@ -345,7 +345,7 @@ namespace {
         
         void visit(::HIR::ExprNode_Loop& node) override
         {
-            TRACE_FUNCTION_F("loop { ... }");
+            TRACE_FUNCTION_F(&node << " loop { ... }");
             
             this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
             
@@ -354,13 +354,13 @@ namespace {
         }
         void visit(::HIR::ExprNode_LoopControl& node) override
         {
-            TRACE_FUNCTION_F((node.m_continue ? "continue" : "break") << " '" << node.m_label);
+            TRACE_FUNCTION_F(&node << " " << (node.m_continue ? "continue" : "break") << " '" << node.m_label);
             // Nothing
         }
         
         void visit(::HIR::ExprNode_Let& node) override
         {
-            TRACE_FUNCTION_F("let " << node.m_pattern << ": " << node.m_type);
+            TRACE_FUNCTION_F(&node << " let " << node.m_pattern << ": " << node.m_type);
             
             this->context.add_ivars( node.m_type );
             this->context.add_binding(node.span(), node.m_pattern, node.m_type);
@@ -372,7 +372,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Match& node) override
         {
-            TRACE_FUNCTION_F("match ...");
+            TRACE_FUNCTION_F(&node << " match ...");
             
             this->context.add_ivars(node.m_value->m_res_type);
             
@@ -401,7 +401,7 @@ namespace {
         
         void visit(::HIR::ExprNode_If& node) override
         {
-            TRACE_FUNCTION_F("if ...");
+            TRACE_FUNCTION_F(&node << " if ...");
             
             this->context.add_ivars( node.m_cond->m_res_type );
             this->context.equate_types_coerce(node.m_cond->span(), ::HIR::TypeRef(::HIR::CoreType::Bool), node.m_cond);
@@ -424,7 +424,7 @@ namespace {
         
         void visit(::HIR::ExprNode_Assign& node) override
         {
-            TRACE_FUNCTION_F("... = ...");
+            TRACE_FUNCTION_F(&node << "... = ...");
             this->context.add_ivars( node.m_slot ->m_res_type );
             this->context.add_ivars( node.m_value->m_res_type );
             
@@ -461,7 +461,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_BinOp& node) override
         {
-            TRACE_FUNCTION_F("... "<<::HIR::ExprNode_BinOp::opname(node.m_op)<<" ...");
+            TRACE_FUNCTION_F(&node << "... "<<::HIR::ExprNode_BinOp::opname(node.m_op)<<" ...");
             this->context.add_ivars( node.m_left ->m_res_type );
             this->context.add_ivars( node.m_right->m_res_type );
             
@@ -535,7 +535,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_UniOp& node) override
         {
-            TRACE_FUNCTION_F(::HIR::ExprNode_UniOp::opname(node.m_op) << "...");
+            TRACE_FUNCTION_F(&node << " " << ::HIR::ExprNode_UniOp::opname(node.m_op) << "...");
             this->context.add_ivars( node.m_value->m_res_type );
             switch(node.m_op)
             {
@@ -557,7 +557,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Cast& node) override
         {
-            TRACE_FUNCTION_F("... as " << node.m_res_type);
+            TRACE_FUNCTION_F(&node << " ... as " << node.m_res_type);
             this->context.add_ivars( node.m_value->m_res_type );
             
             this->context.add_revisit(node);
@@ -570,7 +570,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Index& node) override
         {
-            TRACE_FUNCTION_F("... [ ... ]");
+            TRACE_FUNCTION_F(&node << " ... [ ... ]");
             this->context.add_ivars( node.m_value->m_res_type );
             this->context.add_ivars( node.m_index->m_res_type );
             
@@ -582,7 +582,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Deref& node) override
         {
-            TRACE_FUNCTION_F("*...");
+            TRACE_FUNCTION_F(&node << " *...");
             this->context.add_ivars( node.m_value->m_res_type );
             
             const auto& op_trait = this->context.m_crate.get_lang_item_path(node.span(), "deref");
@@ -641,7 +641,7 @@ namespace {
         void visit(::HIR::ExprNode_TupleVariant& node) override
         {
             const auto& sp = node.span();
-            TRACE_FUNCTION_F(node.m_path << "(...) [" << (node.m_is_struct ? "struct" : "enum") << "]");
+            TRACE_FUNCTION_F(&node << " " << node.m_path << "(...) [" << (node.m_is_struct ? "struct" : "enum") << "]");
             for( auto& val : node.m_args ) {
                 this->context.add_ivars( val->m_res_type );
             }
@@ -708,7 +708,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
-            TRACE_FUNCTION_F(node.m_path << "{...} [" << (node.m_is_struct ? "struct" : "enum") << "]");
+            TRACE_FUNCTION_F(&node << " " << node.m_path << "{...} [" << (node.m_is_struct ? "struct" : "enum") << "]");
             for( auto& val : node.m_values ) {
                 this->context.add_ivars( val.second->m_res_type );
             }
@@ -781,7 +781,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_UnitVariant& node) override
         {
-            TRACE_FUNCTION_F(node.m_path << " [" << (node.m_is_struct ? "struct" : "enum") << "]");
+            TRACE_FUNCTION_F(&node << " " << node.m_path << " [" << (node.m_is_struct ? "struct" : "enum") << "]");
             
             // - Create ivars in path, and set result type
             const auto ty = this->get_structenum_ty(node.span(), node.m_is_struct, node.m_path);
@@ -791,7 +791,7 @@ namespace {
         void visit(::HIR::ExprNode_CallPath& node) override
         {
             this->visit_path(node.span(), node.m_path);
-            TRACE_FUNCTION_F(node.m_path << "(...)");
+            TRACE_FUNCTION_F(&node << " " << node.m_path << "(...)");
             for( auto& val : node.m_args ) {
                 this->context.add_ivars( val->m_res_type );
             }
@@ -819,7 +819,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_CallValue& node) override
         {
-            TRACE_FUNCTION_F("...(...)");
+            TRACE_FUNCTION_F(&node << " ...(...)");
             this->context.add_ivars( node.m_value->m_res_type );
             for( auto& val : node.m_args ) {
                 this->context.add_ivars( val->m_res_type );
@@ -835,7 +835,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_CallMethod& node) override
         {
-            TRACE_FUNCTION_F("(...)."<<node.m_method<<"(...)");
+            TRACE_FUNCTION_F(&node << " (...)."<<node.m_method<<"(...)");
             this->context.add_ivars( node.m_value->m_res_type );
             for( auto& val : node.m_args ) {
                 this->context.add_ivars( val->m_res_type );
@@ -871,7 +871,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Field& node) override
         {
-            TRACE_FUNCTION_F("(...)."<<node.m_field);
+            TRACE_FUNCTION_F(&node << " (...)."<<node.m_field);
             this->context.add_ivars( node.m_value->m_res_type );
             
             this->context.add_revisit( node );
@@ -881,7 +881,7 @@ namespace {
         
         void visit(::HIR::ExprNode_Tuple& node) override
         {
-            TRACE_FUNCTION_F("(...,)");
+            TRACE_FUNCTION_F(&node << " (...,)");
             for( auto& val : node.m_vals ) {
                 this->context.add_ivars( val->m_res_type );
             }
@@ -899,7 +899,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_ArrayList& node) override
         {
-            TRACE_FUNCTION_F("[...,]");
+            TRACE_FUNCTION_F(&node << " [...,]");
             for( auto& val : node.m_vals ) {
                 this->context.add_ivars( val->m_res_type );
             }
@@ -917,7 +917,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_ArraySized& node) override
         {
-            TRACE_FUNCTION_F("[...; "<<node.m_size_val<<"]");
+            TRACE_FUNCTION_F(&node << " [...; "<<node.m_size_val<<"]");
             this->context.add_ivars( node.m_val->m_res_type );
             this->context.add_ivars( node.m_size->m_res_type );
             
@@ -957,7 +957,7 @@ namespace {
         {
             const auto& sp = node.span();
             this->visit_path(sp, node.m_path);
-            TRACE_FUNCTION_F(node.m_path);
+            TRACE_FUNCTION_F(&node << " " << node.m_path);
             
             this->add_ivars_path(node.span(), node.m_path);
             
@@ -1085,14 +1085,14 @@ namespace {
         }
         void visit(::HIR::ExprNode_Variable& node) override
         {
-            TRACE_FUNCTION_F(node.m_name << "{" << node.m_slot << "}");
+            TRACE_FUNCTION_F(&node << " " << node.m_name << "{" << node.m_slot << "}");
             
             this->context.equate_types(node.span(), node.m_res_type,  this->context.get_var(node.span(), node.m_slot));
         }
         
         void visit(::HIR::ExprNode_Closure& node) override
         {
-            TRACE_FUNCTION_F("|...| ...");
+            TRACE_FUNCTION_F(&node << " |...| ...");
             for(auto& arg : node.m_args) {
                 this->context.add_ivars( arg.second );
                 this->context.add_binding( node.span(), arg.first, arg.second );
@@ -1278,7 +1278,83 @@ namespace {
         }
         void visit(::HIR::ExprNode_CallValue& node) override {
             // TODO:
-            TODO(node.span(), "ExprNode_CallValue - revisit");
+            const auto& ty = this->context.get_type(node.m_value->m_res_type);
+            DEBUG("(CallValue) ty = " << ty);
+            
+            TU_MATCH_DEF(decltype(ty.m_data), (ty.m_data), (e),
+            (
+                // Search for FnOnce impl
+                const auto& lang_FnOnce = this->context.m_crate.get_lang_item_path(node.span(), "fn_once");
+                
+                ::HIR::TypeRef  fcn_args_tup;
+                ::HIR::TypeRef  fcn_ret;
+                
+                // Create a param set with a single tuple (of all argument types)
+                ::HIR::PathParams   trait_pp;
+                {
+                    ::std::vector< ::HIR::TypeRef>  arg_types;
+                    for(const auto& arg : node.m_args) {
+                        arg_types.push_back( this->context.get_type(arg->m_res_type).clone() );
+                    }
+                    trait_pp.m_types.push_back( ::HIR::TypeRef( mv$(arg_types) ) );
+                }
+                auto was_bounded = this->context.m_resolve.find_trait_impls_bound(node.span(), lang_FnOnce, trait_pp, ty, [&](const auto& , const auto& args, const auto& assoc) {
+                        const auto& tup = args.m_types[0];
+                        if( !tup.m_data.is_Tuple() )
+                            ERROR(node.span(), E0000, "FnOnce expects a tuple argument, got " << tup);
+                        fcn_args_tup = tup.clone();
+                        return true;
+                        });
+                if( was_bounded )
+                {
+                    // RV must be in a bound
+                    fcn_ret = ::HIR::TypeRef( ::HIR::Path(::HIR::Path::Data::make_UfcsKnown({
+                        box$( ty.clone() ),
+                        ::HIR::GenericPath(lang_FnOnce),
+                        "Output",
+                        {}
+                        })) );
+                    fcn_ret.m_data.as_Path().path.m_data.as_UfcsKnown().trait.m_params.m_types.push_back( fcn_args_tup.clone() );
+                }
+                else if( !ty.m_data.is_Generic() )
+                {
+                    TODO(node.span(), "Search for other implementations of FnOnce for " << ty);
+                }
+                else
+                {
+                    // Didn't find anything. Error?
+                    ERROR(node.span(), E0000, "Unable to find an implementation of Fn* for " << ty);
+                }
+                
+                node.m_arg_types = mv$( fcn_args_tup.m_data.as_Tuple() );
+                node.m_arg_types.push_back( mv$(fcn_ret) );
+                ),
+            (Closure,
+                for( const auto& arg : e.m_arg_types )
+                    node.m_arg_types.push_back( arg.clone() );
+                node.m_arg_types.push_back( e.m_rettype->clone() );
+                ),
+            (Function,
+                for( const auto& arg : e.m_arg_types )
+                    node.m_arg_types.push_back( arg.clone() );
+                node.m_arg_types.push_back( e.m_rettype->clone() );
+                ),
+            (Borrow,
+                // TODO: Autoderef?
+                return ;
+                ),
+            (Infer,
+                // No idea yet
+                return ;
+                )
+            )
+            assert( node.m_arg_types.size() == node.m_args.size() + 1 );
+            for(unsigned int i = 0; i < node.m_args.size(); i ++)
+            {
+                this->context.equate_types_coerce(node.span(), node.m_arg_types[i], node.m_args[i]);
+            }
+            this->context.equate_types(node.span(), node.m_res_type, node.m_arg_types.back());
+            this->m_completed = true;
         }
         void visit(::HIR::ExprNode_CallMethod& node) override {
             const auto& ty = this->context.get_type(node.m_value->m_res_type);
@@ -1298,6 +1374,8 @@ namespace {
                 }
                 
                 // Link arguments
+                // 1+ because it's a method call (#0 is Self)
+                DEBUG("node.m_cache.m_arg_types = " << node.m_cache.m_arg_types);
                 for(unsigned int i = 0; i < node.m_args.size(); i ++)
                 {
                     this->context.equate_types_coerce(node.span(), node.m_cache.m_arg_types[1+i], node.m_args[i]);
@@ -1991,6 +2069,7 @@ void Context::add_revisit(::HIR::ExprNode& node) {
 }
 
 void Context::possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t) {
+    DEBUG(ivar_index << " ?= " << t << " " << this->m_ivars.get_type(t));
     {
         ::HIR::TypeRef  ty_l;
         ty_l.m_data.as_Infer().index = ivar_index;
@@ -2177,6 +2256,7 @@ namespace {
         const auto& sp = node_ptr->span();
         const auto& ty = context.m_ivars.get_type(v.left_ty);
         const auto& ty_r = context.m_ivars.get_type(node_ptr->m_res_type);
+        TRACE_FUNCTION_F(v << " - " << ty << " := " << ty_r);
         
         // TODO: CoerceUnsized trait
         
