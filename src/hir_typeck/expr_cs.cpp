@@ -1560,6 +1560,15 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
                     }
                 };
             
+            // If either side is !, return early
+            // TODO: Should ! end up in an ivar?
+            TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Diverge, l_e,
+                return ;
+            )
+            TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Diverge, r_e,
+                return ;
+            )
+            
             if( l_t.m_data.tag() != r_t.m_data.tag() ) {
                 ERROR(sp, E0000, "Type mismatch between " << this->m_ivars.fmt_type(l_t) << " and " << this->m_ivars.fmt_type(r_t));
             }
