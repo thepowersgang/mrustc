@@ -2327,7 +2327,11 @@ namespace {
             TODO(sp, "check_coerce - Coercion from " << ty_r);
             ),
         (Closure,
-            TODO(sp, "check_coerce - Coercion from " << ty_r);
+            // TODO: Can closures coerce to anything?
+            // - (eventually maybe fn() if they don't capture, but that's not rustc yet)
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
+            //TODO(sp, "check_coerce - Coercion from " << ty_r << " to " << ty);
             )
         )
         
