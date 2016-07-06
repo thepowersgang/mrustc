@@ -1735,7 +1735,14 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
                 }
                 ),
             (Closure,
-                TODO(sp, "apply_equality - Closure");
+                if( l_e.m_arg_types.size() != r_e.m_arg_types.size() ) {
+                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                }
+                this->equate_types(sp, *l_e.m_rettype, *r_e.m_rettype);
+                for( unsigned int i = 0; i < l_e.m_arg_types.size(); i ++ )
+                {
+                    this->equate_types(sp, l_e.m_arg_types[i], r_e.m_arg_types[i]);
+                }
                 )
             )
         }
@@ -2588,6 +2595,9 @@ namespace {
             // No applicable impl
             // - TODO: This should really only fire when there isn't an impl. But it currently fires when _
             DEBUG("No impl of " << v.trait << v.params << " for " << v.impl_ty);
+            //if( !context.m_ivars.type_contains_ivars(v.impl_ty) ) {
+            //    ERROR(sp, E0000, "Failed to find an impl of " << v.trait << v.params << " for " << context.m_ivars.fmt_type(v.impl_ty));
+            //}
             return false;
         }
         else if( count == 1 ) {

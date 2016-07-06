@@ -653,10 +653,32 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return le.inner->compare_with_placeholders(sp, *re.inner, resolve_placeholder);
         ),
     (Function,
-        TODO(sp, "Compare " << *this << " and " << right);
+        if( le.m_abi != re.m_abi || le.is_unsafe != re.is_unsafe )
+            return Compare::Unequal;
+        if( le.m_arg_types.size() != re.m_arg_types.size() )
+            return Compare::Unequal;
+        auto rv = Compare::Equal;
+        for( unsigned int i = 0; i < le.m_arg_types.size(); i ++ )
+        {
+            rv &= le.m_arg_types[i].compare_with_placeholders( sp, re.m_arg_types[i], resolve_placeholder );
+            if( rv == Compare::Unequal )
+                return Compare::Unequal;
+        }
+        rv &= le.m_rettype->compare_with_placeholders( sp, *re.m_rettype, resolve_placeholder );
+        return rv;
         ),
     (Closure,
-        TODO(sp, "Compare " << *this << " and " << right);
+        if( le.m_arg_types.size() != re.m_arg_types.size() )
+            return Compare::Unequal;
+        auto rv = Compare::Equal;
+        for( unsigned int i = 0; i < le.m_arg_types.size(); i ++ )
+        {
+            rv &= le.m_arg_types[i].compare_with_placeholders( sp, re.m_arg_types[i], resolve_placeholder );
+            if( rv == Compare::Unequal )
+                return Compare::Unequal;
+        }
+        rv &= le.m_rettype->compare_with_placeholders( sp, *re.m_rettype, resolve_placeholder );
+        return rv;
         )
     )
     throw "";
