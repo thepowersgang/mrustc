@@ -910,6 +910,81 @@ void TraitResolution::compact_ivars(HMTypeInferrence& m_ivars)
     }
 }
 
+bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
+{
+    //TRACE_FUNCTION_F(input);
+    TU_MATCH(::HIR::TypeRef::Data, (input.m_data), (e),
+    (Infer,
+        auto& ty = this->m_ivars.get_type(input);
+        if( ty != input ) {
+            return this->has_associated_type(ty);
+        }
+        return false;
+        ),
+    (Diverge,
+        return false;
+        ),
+    (Primitive,
+        return false;
+        ),
+    (Path,
+        TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
+        (Generic,
+            bool rv = false;
+            for(const auto& arg : e2.m_params.m_types)
+                rv |= has_associated_type(arg);
+            return rv;
+            ),
+        (UfcsInherent,
+            TODO(Span(), "Path - UfcsInherent - " << e.path);
+            ),
+        (UfcsKnown,
+            // - Only try resolving if the binding isn't known
+            if( !e.binding.is_Unbound() )
+                return false;
+            return true;
+            ),
+        (UfcsUnknown,
+            BUG(Span(), "Encountered UfcsUnknown");
+            )
+        )
+        ),
+    (Generic,
+        return false;
+        ),
+    (TraitObject,
+        // Recurse?
+        ),
+    (Array,
+        return has_associated_type(*e.inner);
+        ),
+    (Slice,
+        return has_associated_type(*e.inner);
+        ),
+    (Tuple,
+        bool rv = false;
+        for(const auto& sub : e) {
+            rv |= has_associated_type(sub);
+        }
+        return rv;
+        ),
+    (Borrow,
+        return has_associated_type(*e.inner);
+        ),
+    (Pointer,
+        return has_associated_type(*e.inner);
+        ),
+    (Function,
+        // Recurse?
+        return false;
+        ),
+    (Closure,
+        // Recurse?
+        return false;
+        )
+    )
+    BUG(Span(), "Fell off the end of has_associated_type - input=" << input);
+}
 ::HIR::TypeRef TraitResolution::expand_associated_types(const Span& sp, ::HIR::TypeRef input) const
 {
     TRACE_FUNCTION_F(input);

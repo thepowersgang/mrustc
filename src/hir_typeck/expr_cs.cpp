@@ -53,6 +53,7 @@ struct Context
     
     struct IVarPossible
     {
+        // TODO: If an ivar is eliminated (i.e. has its type dropped) while its pointer is here - things will break
         ::std::vector<const ::HIR::TypeRef*>    types;
     };
     
@@ -1445,8 +1446,12 @@ void Context::dump() const {
 
 void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR::TypeRef& ri) {
     // Instantly apply equality
-    const auto& l_t = this->m_ivars.get_type(li);
-    const auto& r_t = this->m_ivars.get_type(ri);
+
+    // TODO: Check if the type contains a replacable associated type
+    ::HIR::TypeRef  l_tmp;
+    ::HIR::TypeRef  r_tmp;
+    const auto& l_t = this->m_resolve.expand_associated_types(sp, this->m_ivars.get_type(li), l_tmp);
+    const auto& r_t = this->m_resolve.expand_associated_types(sp, this->m_ivars.get_type(ri), r_tmp);
     
     DEBUG("- l_t = " << l_t << ", r_t = " << r_t);
     TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Infer, r_e,

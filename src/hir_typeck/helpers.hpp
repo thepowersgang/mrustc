@@ -133,8 +133,17 @@ public:
     /// Check if a trait bound applies, using the passed function to expand Generic/Infer types
     bool check_trait_bound(const Span& sp, const ::HIR::TypeRef& type, const ::HIR::GenericPath& trait, t_cb_generic placeholder) const;
     
+    bool has_associated_type(const ::HIR::TypeRef& ty) const;
     /// Expand any located associated types in the input, operating in-place and returning the result
     ::HIR::TypeRef expand_associated_types(const Span& sp, ::HIR::TypeRef input) const;
+    const ::HIR::TypeRef& expand_associated_types(const Span& sp, const ::HIR::TypeRef& input, ::HIR::TypeRef& tmp) const {
+        if( this->has_associated_type(input) ) {
+            return (tmp = this->expand_associated_types(sp, input.clone()));
+        }
+        else {
+            return input;
+        }
+    }
     
     /// Iterate over in-scope bounds (function then top)
     bool iterate_bounds( ::std::function<bool(const ::HIR::GenericBound&)> cb) const;
