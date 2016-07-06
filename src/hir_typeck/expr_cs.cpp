@@ -349,8 +349,11 @@ namespace {
             TRACE_FUNCTION_F(&node << " loop { ... }");
             
             this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
+            // TODO: This is more correct, but could cause variables to be falsely marked as !
+            //this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
             
             this->context.add_ivars(node.m_code->m_res_type);
+            this->context.equate_types(node.span(), node.m_code->m_res_type, ::HIR::TypeRef::new_unit());
             node.m_code->visit( *this );
         }
         void visit(::HIR::ExprNode_LoopControl& node) override
