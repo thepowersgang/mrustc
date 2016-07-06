@@ -511,8 +511,48 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
 ::HIR::Compare HIR::TypeRef::compare_with_placeholders(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder) const
 {
     TRACE_FUNCTION_F(*this << " ?= " << x);
-    assert( !this->m_data.is_Infer() );
     const auto& right = (x.m_data.is_Infer() ? resolve_placeholder(x) : (x.m_data.is_Generic() ? resolve_placeholder(x) : x));
+    
+    // If left is infer
+    TU_IFLET(::HIR::TypeRef::Data, this->m_data, Infer, e,
+        switch(e.ty_class)
+        {
+        case ::HIR::InferClass::None:
+            return Compare::Fuzzy;
+        case ::HIR::InferClass::Integer:
+            TU_IFLET( ::HIR::TypeRef::Data, right.m_data, Primitive, le,
+                switch(le)
+                {
+                case ::HIR::CoreType::I8:    case ::HIR::CoreType::U8:
+                case ::HIR::CoreType::I16:   case ::HIR::CoreType::U16:
+                case ::HIR::CoreType::I32:   case ::HIR::CoreType::U32:
+                case ::HIR::CoreType::I64:   case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::Isize: case ::HIR::CoreType::Usize:
+                    return Compare::Fuzzy;
+                default:
+                    return Compare::Unequal;
+                }
+            )
+            else {
+                return Compare::Unequal;
+            }
+        case ::HIR::InferClass::Float:
+            TU_IFLET( ::HIR::TypeRef::Data, right.m_data, Primitive, le,
+                switch(le)
+                {
+                case ::HIR::CoreType::F32:
+                case ::HIR::CoreType::F64:
+                    return Compare::Fuzzy;
+                default:
+                    return Compare::Unequal;
+                }
+            )
+            else {
+                return Compare::Unequal;
+            }
+        }
+        throw "";
+    )
     
     // If righthand side is infer, it's a fuzzy match (or not a match)
     TU_IFLET(::HIR::TypeRef::Data, right.m_data, Infer, e,

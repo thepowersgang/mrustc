@@ -734,6 +734,25 @@ namespace {
             assert(fields_ptr);
             const ::HIR::t_struct_fields& fields = *fields_ptr;
             
+            const auto& ty_params = node.m_path.m_params.m_types;
+            auto monomorph_cb = [&](const auto& gt)->const auto& {
+                const auto& ge = gt.m_data.as_Generic();
+                if( ge.binding == 0xFFFF ) {
+                    return ty;
+                }
+                else if( ge.binding < 256 ) {
+                    if( ge.binding >= ty_params.size() ) {
+                        BUG(node.span(), "Type parameter index out of range (#" << ge.binding << " " << ge.name << ")");
+                    }
+                    return ty_params[ge.binding];
+                }
+                else {
+                    BUG(node.span(), "Method-level parameter on struct (#" << ge.binding << " " << ge.name << ")");
+                }
+                };
+            
+            node.m_value_types.resize( fields.size() );
+            
             // Bind fields with type params (coercable)
             for( auto& val : node.m_values)
             {
@@ -741,9 +760,14 @@ namespace {
                 auto it = ::std::find_if(fields.begin(), fields.end(), [&](const auto& v)->bool{ return v.first == name; });
                 assert(it != fields.end());
                 const auto& des_ty_r = it->second.ent;
+                auto& des_ty_cache = node.m_value_types[it - fields.begin()];
                 
                 if( monomorphise_type_needed(des_ty_r) ) {
-                    TODO(node.span(), "Monomorphise struct variant type");
+                    if( des_ty_cache == ::HIR::TypeRef() ) {
+                        des_ty_cache = monomorphise_type_with(node.span(), des_ty_r, monomorph_cb);
+                    }
+                    // TODO: Is it an error when it's already populated?
+                    this->context.equate_types_coerce(node.span(), des_ty_cache,  val.second);
                 }
                 else {
                     this->context.equate_types_coerce(node.span(), des_ty_r,  val.second);
