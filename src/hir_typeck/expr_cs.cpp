@@ -54,7 +54,8 @@ struct Context
     struct IVarPossible
     {
         // TODO: If an ivar is eliminated (i.e. has its type dropped) while its pointer is here - things will break
-        ::std::vector<const ::HIR::TypeRef*>    types;
+        //::std::vector<const ::HIR::TypeRef*>    types;
+        ::std::vector<::HIR::TypeRef>    types;
     };
     
     const ::HIR::Crate& m_crate;
@@ -2078,7 +2079,8 @@ void Context::possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef
     if( ivar_index >= possible_ivar_vals.size() ) {
         possible_ivar_vals.resize( ivar_index + 1 );
     }
-    possible_ivar_vals[ivar_index].types.push_back( &t );
+    //possible_ivar_vals[ivar_index].types.push_back( &t );
+    possible_ivar_vals[ivar_index].types.push_back( t.clone() );
 }
 
 void Context::add_var(unsigned int index, const ::std::string& name, ::HIR::TypeRef type) {
@@ -2635,7 +2637,8 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 {
                     bool found = false;
                     for( auto it2 = ivar_ent.types.begin(); it2 != it; ++ it2 ) {
-                        if( context.m_ivars.types_equal( **it, **it2 ) ) {
+                        //if( context.m_ivars.types_equal( **it, **it2 ) ) {
+                        if( context.m_ivars.types_equal( *it, *it2 ) ) {
                             found = true;
                             break;
                         }
@@ -2660,7 +2663,8 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 DEBUG("- IVar " << ty_l << " had possibilities, but was known");
             }
             else if( ivar_ent.types.size() == 1 ) {
-                const ::HIR::TypeRef& ty_r = *ivar_ent.types[0];
+                //const ::HIR::TypeRef& ty_r = ivar_ent.types[0];
+                const ::HIR::TypeRef& ty_r = ivar_ent.types[0];
                 // Only one possibility
                 DEBUG("- IVar " << ty_l << " = " << ty_r);
                 context.equate_types(Span(), ty_l, ty_r);
