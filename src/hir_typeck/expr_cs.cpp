@@ -639,6 +639,7 @@ namespace {
         
         void visit(::HIR::ExprNode_TupleVariant& node) override
         {
+            const auto& sp = node.span();
             TRACE_FUNCTION_F(node.m_path << "(...) [" << (node.m_is_struct ? "struct" : "enum") << "]");
             for( auto& val : node.m_args ) {
                 this->context.add_ivars( val->m_res_type );
@@ -669,12 +670,31 @@ namespace {
                 ERROR(node.span(), E0000, "");
             }
             
+            const auto& ty_params = node.m_path.m_params.m_types;
+            auto monomorph_cb = [&](const auto& gt)->const auto& {
+                const auto& ge = gt.m_data.as_Generic();
+                if( ge.binding == 0xFFFF ) {
+                    return ty;
+                }
+                else if( ge.binding < 256 ) {
+                    if( ge.binding >= ty_params.size() ) {
+                        BUG(sp, "Type parameter index out of range (#" << ge.binding << " " << ge.name << ")");
+                    }
+                    return ty_params[ge.binding];
+                }
+                else {
+                    BUG(sp, "Method-level parameter on struct (#" << ge.binding << " " << ge.name << ")");
+                }
+                };
+            
             // Bind fields with type params (coercable)
+            node.m_arg_types.resize( node.m_args.size() );
             for( unsigned int i = 0; i < node.m_args.size(); i ++ )
             {
                 const auto& des_ty_r = fields[i].ent;
                 if( monomorphise_type_needed(des_ty_r) ) {
-                    TODO(node.span(), "Monomorphise tuple variant type");
+                    node.m_arg_types[i] = monomorphise_type_with(sp, des_ty_r, monomorph_cb);
+                    this->context.equate_types_coerce(node.span(), node.m_arg_types[i],  node.m_args[i]);
                 }
                 else {
                     this->context.equate_types_coerce(node.span(), des_ty_r,  node.m_args[i]);
