@@ -886,9 +886,13 @@ void TraitResolution::compact_ivars(HMTypeInferrence& m_ivars)
     for(auto& v : m_ivars.m_ivars)
     {
         if( !v.is_alias() ) {
-            auto nt = this->expand_associated_types(Span(), v.type->clone());
-            DEBUG("- " << i << " " << *v.type << " -> " << nt);
-            *v.type = mv$(nt);
+            // Don't expand unless it is needed
+            if( this->has_associated_type(*v.type) ) {
+                // TODO: cloning is expensive, BUT printing below is nice
+                auto nt = this->expand_associated_types(Span(), v.type->clone());
+                DEBUG("- " << i << " " << *v.type << " -> " << nt);
+                *v.type = mv$(nt);
+            }
         }
         else {
             
