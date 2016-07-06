@@ -2312,6 +2312,10 @@ namespace {
         const auto& ty_r = context.m_ivars.get_type(node_ptr->m_res_type);
         TRACE_FUNCTION_F(v << " - " << ty << " := " << ty_r);
         
+        if( context.m_ivars.types_equal(ty, ty_r) ) {
+            return true;
+        }
+        
         // TODO: CoerceUnsized trait
         
         // 1. Check that the source type can coerce
