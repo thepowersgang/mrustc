@@ -289,6 +289,30 @@ namespace {
         }
         
         cache.m_monomorph_cb = mv$(monomorph_cb);
+        
+        // TODO: Bounds (encoded as associated)
+        for(const auto& bound : cache.m_fcn_params->m_bounds)
+        {
+            TU_MATCH(::HIR::GenericBound, (bound), (be),
+            (Lifetime,
+                ),
+            (TypeLifetime,
+                ),
+            (TraitBound,
+                auto real_type = monomorphise_type_with(sp, be.type, cache.m_monomorph_cb);
+                auto real_trait = monomorphise_genericpath_with(sp, be.trait.m_path, cache.m_monomorph_cb, false);
+                DEBUG("Bound " << be.type << ":  " << be.trait);
+                DEBUG("= (" << real_type << ": " << real_trait << ")");
+                const auto& trait_params = be.trait.m_path.m_params;
+                context.equate_types_assoc(sp, ::HIR::TypeRef(), be.trait.m_path.m_path, mv$(trait_params.clone().m_types), real_type, "");
+                ),
+            (TypeEquality,
+                auto real_type_left = context.m_resolve.expand_associated_types(sp, monomorphise_type_with(sp, be.type, cache.m_monomorph_cb));
+                auto real_type_right = context.m_resolve.expand_associated_types(sp, monomorphise_type_with(sp, be.other_type, cache.m_monomorph_cb));
+                context.equate_types(sp, real_type_left, real_type_right);
+                )
+            )
+        }
     }
     
     // -----------------------------------------------------------------------
@@ -1371,6 +1395,22 @@ namespace {
             {
                 DEBUG("- deref_count = " << deref_count);
                 visit_call_populate_cache(this->context, node.span(), fcn_path, node.m_cache);
+                
+                node.m_method_path = mv$(fcn_path);
+                // NOTE: Steals the params from the node
+                TU_MATCH(::HIR::Path::Data, (node.m_method_path.m_data), (e),
+                (Generic,
+                    ),
+                (UfcsUnknown,
+                    ),
+                (UfcsKnown,
+                    e.params = mv$(node.m_params);
+                    ),
+                (UfcsInherent,
+                    e.params = mv$(node.m_params);
+                    )
+                )
+                
                 assert( node.m_cache.m_arg_types.size() >= 1);
                 
                 if( node.m_args.size()+1 != node.m_cache.m_arg_types.size() - 1 ) {
