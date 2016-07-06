@@ -830,10 +830,11 @@ bool TraitResolution::iterate_bounds( ::std::function<bool(const ::HIR::GenericB
 }
 bool TraitResolution::find_trait_impls(const Span& sp,
         const ::HIR::SimplePath& trait, const ::HIR::PathParams& params,
-        const ::HIR::TypeRef& type,
+        const ::HIR::TypeRef& ty,
         t_cb_trait_impl callback
         ) const
 {
+    const auto& type = this->m_ivars.get_type(ty);
     TRACE_FUNCTION_F("trait = " << trait << ", type = " << type);
     
     // Closures are magical. They're unnamable and all trait impls come from within the compiler
