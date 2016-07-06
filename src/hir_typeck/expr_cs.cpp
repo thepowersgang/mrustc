@@ -2038,6 +2038,30 @@ namespace {
             // - Otherwise, it could be a deref?
         )
         
+        // Fast hack for slices
+        #if 0
+        if( left_inner_res.m_data.is_Slice() && !right_inner_res.m_data.is_Slice() )
+        {
+            const auto& left_slice = left_inner_res.m_data.as_Slice();
+            TU_IFLET(::HIR::TypeRef::Data, right_inner_res.m_data, Array, right_array,
+                this->apply_equality(sp, *left_slice.inner, cb_left, *right_array.inner, cb_right, nullptr);
+                auto span = node_ptr->span();
+                node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), l_t.clone() ));
+                node_ptr->m_res_type = l_t.clone();
+                
+                this->mark_change();
+                return ;
+            )
+            else TU_IFLET(::HIR::TypeRef::Data, right_inner_res.m_data, Generic, right_arg,
+                TODO(sp, "Search for Unsize bound on generic");
+            )
+            else
+            {
+                // Apply deref coercions
+            }
+        }
+        #endif
+        
         // Deref coercions
         {
             ::HIR::TypeRef  tmp_ty;
@@ -2056,7 +2080,23 @@ namespace {
                 types.push_back( out_ty->clone() );
                 
                 if( context.m_ivars.types_equal(ty_dst, *out_ty) == false ) {
-                    TODO(sp, "Compare " << context.m_ivars.fmt_type(*out_ty) << " and " << context.m_ivars.fmt_type(ty_dst) << " assuming ivars equal");
+                    // Check equivalence
+                    if( ty_dst.m_data.tag() == out_ty->m_data.tag() ) {
+                        TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_dst.m_data, out_ty->m_data), (d_e, s_e),
+                        (
+                            DEBUG("");
+                            continue ;
+                            ),
+                        (Slice,
+                            // Equate!
+                            context.equate_types(sp, ty_dst, *out_ty);
+                            // - Fall through
+                            )
+                        )
+                    }
+                    else {
+                        continue ;
+                    }
                 }
                 
                 while(count --)
@@ -2166,11 +2206,15 @@ namespace {
             return true;
             ),
         (Path,
-            TODO(Span(), "check_coerce - Coercion to " << ty);
+            //TODO(Span(), "check_coerce - Coercion to " << ty);
             // TODO: CoerceUnsized
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
             ),
         (Generic,
-            TODO(Span(), "check_coerce - Coercion to " << ty);
+            //TODO(Span(), "check_coerce - Coercion to " << ty);
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
             ),
         (TraitObject,
             // TODO: Can bare trait objects coerce?
