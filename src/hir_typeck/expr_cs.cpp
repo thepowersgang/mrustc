@@ -2068,6 +2068,11 @@ namespace {
         // - Deref
         // - Unsize?
 
+        // If the types are already equal, no operation is required
+        if( context.m_ivars.types_equal(ty_dst, ty_src) ) {
+            return true;
+        }
+        
         // If the source is '_', we can't know yet
         TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Infer, r_e,
             // - Except if it's known to be a primitive
