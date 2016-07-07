@@ -44,7 +44,28 @@ namespace {
         // TODO: What indicates what out of ty_res?
         
         if( right.m_data.is_Infer() ) {
-            // TODO: Why is this false? A _ type could match anything
+            //DEBUG("left = " << left << ", right = " << right);
+            switch(right.m_data.as_Infer().ty_class)
+            {
+            case ::HIR::InferClass::None:
+                return left.m_data.is_Generic();
+            case ::HIR::InferClass::Integer:
+                TU_IFLET(::HIR::TypeRef::Data, left.m_data, Primitive, le,
+                    return is_integer(le);
+                )
+                else {
+                    return left.m_data.is_Generic();
+                }
+                break;
+            case ::HIR::InferClass::Float:
+                TU_IFLET(::HIR::TypeRef::Data, left.m_data, Primitive, le,
+                    return is_float(le);
+                )
+                else {
+                    return left.m_data.is_Generic();
+                }
+                break;
+            }
             return left.m_data.is_Generic();
             //return true;
         }
@@ -162,6 +183,8 @@ namespace {
 bool ::HIR::TraitImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
     return matches_type_int(m_params, m_type, type, ty_res, true);
+    // TODO: Using this would be nice, but may be better to handle impl params better
+    //return m_type.compare_with_placeholders(Span(), type, ty_res) != ::HIR::Compare::Unequal;
 }
 bool ::HIR::TypeImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {

@@ -511,10 +511,12 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
 ::HIR::Compare HIR::TypeRef::compare_with_placeholders(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder) const
 {
     TRACE_FUNCTION_F(*this << " ?= " << x);
+    const auto& left = (m_data.is_Infer() || m_data.is_Generic() ? resolve_placeholder(*this) : *this);
+    //const auto& left = *this;
     const auto& right = (x.m_data.is_Infer() ? resolve_placeholder(x) : (x.m_data.is_Generic() ? resolve_placeholder(x) : x));
     
     // If left is infer
-    TU_IFLET(::HIR::TypeRef::Data, this->m_data, Infer, e,
+    TU_IFLET(::HIR::TypeRef::Data, left.m_data, Infer, e,
         switch(e.ty_class)
         {
         case ::HIR::InferClass::None:
@@ -561,7 +563,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         case ::HIR::InferClass::None:
             return Compare::Fuzzy;
         case ::HIR::InferClass::Integer:
-            TU_IFLET( ::HIR::TypeRef::Data, this->m_data, Primitive, le,
+            TU_IFLET( ::HIR::TypeRef::Data, left.m_data, Primitive, le,
                 switch(le)
                 {
                 case ::HIR::CoreType::I8:    case ::HIR::CoreType::U8:
@@ -578,7 +580,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                 return Compare::Unequal;
             }
         case ::HIR::InferClass::Float:
-            TU_IFLET( ::HIR::TypeRef::Data, this->m_data, Primitive, le,
+            TU_IFLET( ::HIR::TypeRef::Data, left.m_data, Primitive, le,
                 switch(le)
                 {
                 case ::HIR::CoreType::F32:
@@ -598,10 +600,10 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     // If righthand is a type parameter, it can only match another type parameter
     // - See `(Generic,` below
     
-    if( this->m_data.tag() != right.m_data.tag() ) {
+    if( left.m_data.tag() != right.m_data.tag() ) {
         return Compare::Unequal;
     }
-    TU_MATCH(::HIR::TypeRef::Data, (this->m_data, right.m_data), (le, re),
+    TU_MATCH(::HIR::TypeRef::Data, (left.m_data, right.m_data), (le, re),
     (Infer, assert(!"infer");),
     (Diverge,
         return Compare::Equal;

@@ -1460,12 +1460,16 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 DEBUG("- Failed to match parameters - " << impl.m_trait_args << " != " << params);
                 return false;
             }
-            for(const auto& ty : impl_params)
-                assert( ty );
+            for(unsigned int i = 0; i < impl_params.size(); i ++ ) {
+                if( !impl_params[i] ) {
+                    BUG(sp, "Param " << i << " for impl " /*<< impl*/ << " wasn't constrained");
+                }
+            }
             
             auto monomorph = [&](const auto& gt)->const auto& {
                     const auto& ge = gt.m_data.as_Generic();
                     assert( ge.binding < impl_params.size() );
+                    assert(impl_params[ge.binding]);
                     return *impl_params[ge.binding];
                     };
             auto ty_mono = monomorphise_type_with(sp, impl.m_type, monomorph, false);

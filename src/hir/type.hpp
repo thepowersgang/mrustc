@@ -39,6 +39,29 @@ enum class CoreType
     Char, Str,
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const CoreType& ct);
+static inline bool is_integer(const CoreType& v) {
+    switch(v)
+    {
+    case CoreType::Usize: case CoreType::Isize:
+    case CoreType::U8 : case CoreType::I8:
+    case CoreType::U16: case CoreType::I16:
+    case CoreType::U32: case CoreType::I32:
+    case CoreType::U64: case CoreType::I64:
+        return true;
+    default:
+        return false;
+    }
+}
+static inline bool is_float(const CoreType& v) {
+    switch(v)
+    {
+    case CoreType::F32:
+    case CoreType::F64:
+        return true;
+    default:
+        return false;
+    }
+}
 
 enum class BorrowType
 {

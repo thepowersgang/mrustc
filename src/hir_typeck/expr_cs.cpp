@@ -2598,10 +2598,19 @@ namespace {
                     DEBUG("- (fail) bounded impl " << v.trait << v.params << " (ty_right = " << context.m_ivars.fmt_type(v.impl_ty));
                     return false;
                 }
+                if( v.name != "" &&  assoc.count(v.name) == 0 )
+                    BUG(sp, "Getting associated type '" << v.name << "' which isn't in list");
+                const auto& out_ty = (v.name == "" ? v.left_ty : assoc.at(v.name));
                 
+                // - If we're looking for an associated type, allow it to eliminate impossible impls
+                //  > This makes `let v: usize = !0;` work without special cases
                 if( v.name != "" ) {
-                    if( assoc.count(v.name) == 0 )
-                        BUG(sp, "Getting associated type '" << v.name << "' which isn't in list");
+                    auto cmp2 = v.left_ty.compare_with_placeholders(sp, out_ty, context.m_ivars.callback_resolve_infer());
+                    if( cmp2 == ::HIR::Compare::Unequal ) {
+                        DEBUG("- (fail) known result can't match (" << context.m_ivars.fmt_type(v.left_ty) << " and " << context.m_ivars.fmt_type(out_ty) << ")");
+                        return false;
+                    }
+                    // if solid or fuzzy, leave as-is
                     output_type = assoc.at(v.name).clone();
                 }
                 count += 1;
