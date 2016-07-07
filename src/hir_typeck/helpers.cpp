@@ -1311,6 +1311,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
 {
     return this->iterate_bounds([&](const auto& b) {
         TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
+            DEBUG("- " << e.type << " : " << e.trait);
             // TODO: Allow fuzzy equality?
             if( e.type != type )
                 return false;
@@ -1365,12 +1366,12 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             ::std::vector< const ::HIR::TypeRef*> impl_params;
             impl_params.resize( impl.m_params.m_types.size() );
             auto cb = [&](auto idx, const auto& ty) {
-                DEBUG("[find_trait_impls_crate] " << idx << " = " << ty);
+                DEBUG("[find_trait_impls_crate] Param " << idx << " = " << ty);
                 assert( idx < impl_params.size() );
                 if( ! impl_params[idx] ) {
                     impl_params[idx] = &ty;
                 }
-                else if( *impl_params[idx] != ty ) {
+                else if( ! this->m_ivars.types_equal(*impl_params[idx], ty) ) {
                     // Strict equality is OK, as all types should be sane
                     // - TODO: What if there's an un-expanded associated?
                     match = ::HIR::Compare::Unequal;

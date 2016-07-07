@@ -335,7 +335,7 @@ template<typename T>
 static void derive_item(const Span& sp, AST::Module& mod, const AST::MetaItem& attr, const AST::Path& path, const T& item)
 {
     if( !attr.has_sub_items() ) {
-        //throw CompileError::Generic("#[derive()] requires a list of known traits to derive");
+        //ERROR(sp, E0000, "#[derive()] requires a list of known traits to derive");
         return ;
     }
     

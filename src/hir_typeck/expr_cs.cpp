@@ -303,7 +303,7 @@ namespace {
                 auto real_trait = monomorphise_genericpath_with(sp, be.trait.m_path, cache.m_monomorph_cb, false);
                 DEBUG("Bound " << be.type << ":  " << be.trait);
                 DEBUG("= (" << real_type << ": " << real_trait << ")");
-                const auto& trait_params = be.trait.m_path.m_params;
+                const auto& trait_params = real_trait.m_params;
                 context.equate_types_assoc(sp, ::HIR::TypeRef(), be.trait.m_path.m_path, mv$(trait_params.clone().m_types), real_type, "");
                 ),
             (TypeEquality,
@@ -2595,13 +2595,13 @@ namespace {
             // No applicable impl
             // - TODO: This should really only fire when there isn't an impl. But it currently fires when _
             DEBUG("No impl of " << v.trait << v.params << " for " << v.impl_ty);
-            //if( !context.m_ivars.type_contains_ivars(v.impl_ty) ) {
-            //    ERROR(sp, E0000, "Failed to find an impl of " << v.trait << v.params << " for " << context.m_ivars.fmt_type(v.impl_ty));
-            //}
+            if( !context.m_ivars.type_contains_ivars(v.impl_ty) ) {
+                ERROR(sp, E0000, "Failed to find an impl of " << v.trait << v.params << " for " << context.m_ivars.fmt_type(v.impl_ty));
+            }
             return false;
         }
         else if( count == 1 ) {
-            DEBUG("Only one impl " << v.trait << possible_params << " for " << possible_impl_ty << " - ty=" << output_type);
+            DEBUG("Only one impl " << v.trait << possible_params << " for " << possible_impl_ty << " - params=" << possible_params << ", ty=" << possible_impl_ty << ", out=" << output_type);
             // Only one possible impl
             if( v.name[0] ) {
                 context.equate_types(sp, v.left_ty, output_type);
