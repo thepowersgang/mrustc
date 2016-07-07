@@ -909,6 +909,28 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     const auto& type = this->m_ivars.get_type(ty);
     TRACE_FUNCTION_F("trait = " << trait << ", type = " << type);
     
+    if( trait == this->m_crate.get_lang_item_path(sp, "sized") ) {
+        TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (e),
+        (
+            // Any unknown - it's sized
+            ),
+        (Primitive,
+            if( e == ::HIR::CoreType::Str )
+                return false;
+            ),
+        (Slice,
+            return false;
+            ),
+        (Path,
+            // ... TODO (Search the innards or bounds)
+            ),
+        (TraitObject,
+            return false;
+            )
+        )
+        return callback( type, ::HIR::PathParams(), {} );
+    }
+       
     // Closures are magical. They're unnamable and all trait impls come from within the compiler
     TU_IFLET(::HIR::TypeRef::Data, type.m_data, Closure, e,
         const auto trait_fn = this->m_crate.get_lang_item_path(sp, "fn");
