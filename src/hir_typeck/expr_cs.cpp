@@ -43,7 +43,7 @@ struct Context
         ::HIR::SimplePath   trait;
         ::HIR::PathParams   params;
         ::HIR::TypeRef  impl_ty;
-        const char* name;   // if "", no type is used (and left is ignored) - Just does trait selection
+        ::std::string   name;   // if "", no type is used (and left is ignored) - Just does trait selection
         
         friend ::std::ostream& operator<<(::std::ostream& os, const Associated& v) {
             os << v.left_ty << " = " << "<" << v.impl_ty << " as " << v.trait << v.params << ">::" << v.name;
@@ -304,7 +304,14 @@ namespace {
                 DEBUG("Bound " << be.type << ":  " << be.trait);
                 DEBUG("= (" << real_type << ": " << real_trait << ")");
                 const auto& trait_params = real_trait.m_params;
-                context.equate_types_assoc(sp, ::HIR::TypeRef(), be.trait.m_path.m_path, mv$(trait_params.clone().m_types), real_type, "");
+                
+                const auto& trait_path = be.trait.m_path.m_path;
+                context.equate_types_assoc(sp, ::HIR::TypeRef(), trait_path, mv$(trait_params.clone().m_types), real_type, "");
+                
+                for( const auto& assoc : be.trait.m_type_bounds ) {
+                    auto other_ty = monomorphise_type_with(sp, assoc.second, cache.m_monomorph_cb, true);
+                    context.equate_types_assoc(sp, other_ty,  trait_path, mv$(trait_params.clone().m_types), real_type, assoc.first.c_str());
+                }
                 ),
             (TypeEquality,
                 auto real_type_left = context.m_resolve.expand_associated_types(sp, monomorphise_type_with(sp, be.type, cache.m_monomorph_cb));
@@ -1612,6 +1619,32 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
                 return ;
             )
             
+            // - If the destructuring would fail
+            if( l_t.compare_with_placeholders(sp, r_t, this->m_ivars.callback_resolve_infer()) == ::HIR::Compare::Unequal )
+            {
+                // BUT! It was due to an unknown associated type
+                TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Path, r_e,
+                    TU_IFLET(::HIR::Path::Data, r_e.path.m_data, UfcsKnown, rpe,
+                        if( r_e.binding.is_Unbound() ) {
+                            // TODO: Try this operation again later?
+                            this->equate_types_assoc(sp, l_t,  rpe.trait.m_path, rpe.trait.m_params.clone().m_types, *rpe.type,  rpe.item.c_str());
+                            return ;
+                            //TODO(sp, "Defer structural equality of unknown associated type");
+                        }
+                    )
+                )
+                TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Path, l_e,
+                    TU_IFLET(::HIR::Path::Data, l_e.path.m_data, UfcsKnown, lpe,
+                        if( l_e.binding.is_Unbound() ) {
+                            // TODO: Try this operation again later?
+                            this->equate_types_assoc(sp, r_t,  lpe.trait.m_path, lpe.trait.m_params.clone().m_types, *lpe.type,  lpe.item.c_str());
+                            return ;
+                            //TODO(sp, "Defer structural equality of unknown associated type");
+                        }
+                    )
+                )
+            }
+            
             if( l_t.m_data.tag() != r_t.m_data.tag() ) {
                 ERROR(sp, E0000, "Type mismatch between " << this->m_ivars.fmt_type(l_t) << " and " << this->m_ivars.fmt_type(r_t));
             }
@@ -2565,20 +2598,20 @@ namespace {
                     DEBUG("- (fail) bounded impl " << v.trait << v.params << " (ty_right = " << context.m_ivars.fmt_type(v.impl_ty));
                     return false;
                 }
+                
+                if( v.name != "" ) {
+                    if( assoc.count(v.name) == 0 )
+                        BUG(sp, "Getting associated type '" << v.name << "' which isn't in list");
+                    output_type = assoc.at(v.name).clone();
+                }
                 count += 1;
                 if( cmp == ::HIR::Compare::Equal ) {
-                    if( v.name[0] ) {
-                        output_type = assoc.at(v.name).clone();
-                    }
                     return true;
                 }
                 else {
                     if( possible_impl_ty == ::HIR::TypeRef() ) {
                         possible_impl_ty = impl_ty.clone();
                         possible_params = args.clone();
-                        if( v.name[0] ) {
-                            output_type = assoc.at(v.name).clone();
-                        }
                     }
                     
                     return false;
@@ -2586,7 +2619,7 @@ namespace {
             });
         if( found ) {
             // Fully-known impl
-            if( v.name[0] ) {
+            if( v.name != "" ) {
                 context.equate_types(sp, v.left_ty, output_type);
             }
             return true;
@@ -2603,7 +2636,7 @@ namespace {
         else if( count == 1 ) {
             DEBUG("Only one impl " << v.trait << possible_params << " for " << possible_impl_ty << " - params=" << possible_params << ", ty=" << possible_impl_ty << ", out=" << output_type);
             // Only one possible impl
-            if( v.name[0] ) {
+            if( v.name != "" ) {
                 context.equate_types(sp, v.left_ty, output_type);
             }
             assert( possible_impl_ty != ::HIR::TypeRef() );
@@ -2665,13 +2698,18 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         }
         // 3. Check associated type rules
         DEBUG("--- Associated types");
-        for(auto it = context.link_assoc.begin(); it != context.link_assoc.end(); ) {
-            if( check_associated(context, *it) ) {
-                DEBUG("- Consumed associated type rule - " << *it);
-                it = context.link_assoc.erase(it);
+        //for(auto it = context.link_assoc.begin(); it != context.link_assoc.end(); ) {
+        //    const auto& rule = *it;
+        for(unsigned int i = 0; i < context.link_assoc.size();  ) {
+            const auto& rule = context.link_assoc[i];
+            if( check_associated(context, rule) ) {
+                DEBUG("- Consumed associated type rule - " << rule);
+                context.link_assoc.erase( context.link_assoc.begin() + i );
+                //it = context.link_assoc.erase(it);
             }
             else {
-                ++ it;
+                //++ it;
+                i ++;
             }
         }
         // 4. Revisit nodes that require revisiting
@@ -2751,13 +2789,13 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
     }
     
     // - Validate typeck
-    expr = ::HIR::ExprPtr( mv$(root_ptr) );
     {
         DEBUG("==== VALIDATE ====");
         context.dump();
         
         ExprVisitor_Apply   visitor { context.m_ivars };
-        expr->visit( visitor );
+        root_ptr->visit( visitor );
     }
+    expr = ::HIR::ExprPtr( mv$(root_ptr) );
 }
 

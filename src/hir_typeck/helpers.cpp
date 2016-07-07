@@ -269,6 +269,7 @@ void HMTypeInferrence::compact_ivars()
         if( !v.is_alias() ) {
             //auto nt = this->expand_associated_types(Span(), v.type->clone());
             auto nt = v.type->clone();
+            
             DEBUG("- " << i << " " << *v.type << " -> " << nt);
             *v.type = mv$(nt);
         }
@@ -416,6 +417,77 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
         os << ")";
         )
     )
+}
+
+void HMTypeInferrence::expand_ivars(::HIR::TypeRef& type)
+{
+    TU_MATCH(::HIR::TypeRef::Data, (type.m_data), (e),
+    (Infer,
+        const auto& t = this->get_type(type);
+        if( &t != &type ) {
+            type = t.clone();
+        }
+        ),
+    (Diverge,
+        ),
+    (Primitive,
+        ),
+    (Path,
+        // Iterate all arguments
+        TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
+        (Generic,
+            this->expand_ivars_params(e2.m_params);
+            ),
+        (UfcsKnown,
+            this->expand_ivars(*e2.type);
+            this->expand_ivars_params(e2.trait.m_params);
+            this->expand_ivars_params(e2.params);
+            ),
+        (UfcsUnknown,
+            this->expand_ivars(*e2.type);
+            this->expand_ivars_params(e2.params);
+            ),
+        (UfcsInherent,
+            this->expand_ivars(*e2.type);
+            this->expand_ivars_params(e2.params);
+            )
+        )
+        ),
+    (Generic,
+        ),
+    (TraitObject,
+        // TODO: Iterate all paths
+        ),
+    (Array,
+        this->expand_ivars(*e.inner);
+        ),
+    (Slice,
+        this->expand_ivars(*e.inner);
+        ),
+    (Tuple,
+        for(auto& ty : e)
+            this->expand_ivars(ty);
+        ),
+    (Borrow,
+        this->expand_ivars(*e.inner);
+        ),
+    (Pointer,
+        this->expand_ivars(*e.inner);
+        ),
+    (Function,
+        // No ivars allowed?
+        ),
+    (Closure,
+        this->expand_ivars(*e.m_rettype);
+        for(auto& ty : e.m_arg_types)
+            this->expand_ivars(ty);
+        )
+    )
+}
+void HMTypeInferrence::expand_ivars_params(::HIR::PathParams& params)
+{
+    for(auto& arg : params.m_types)
+        expand_ivars(arg);
 }
 
 void HMTypeInferrence::add_ivars(::HIR::TypeRef& type)
@@ -887,6 +959,7 @@ void TraitResolution::compact_ivars(HMTypeInferrence& m_ivars)
     for(auto& v : m_ivars.m_ivars)
     {
         if( !v.is_alias() ) {
+            m_ivars.expand_ivars( *v.type );
             // Don't expand unless it is needed
             if( this->has_associated_type(*v.type) ) {
                 // TODO: cloning is expensive, BUT printing below is nice

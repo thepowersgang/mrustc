@@ -99,6 +99,9 @@ public:
     // Lookup
     ::HIR::TypeRef& get_type(::HIR::TypeRef& type);
     const ::HIR::TypeRef& get_type(const ::HIR::TypeRef& type) const;
+    
+    void expand_ivars(::HIR::TypeRef& type);
+    void expand_ivars_params(::HIR::PathParams& params);
 
     // Helpers
     bool pathparams_contain_ivars(const ::HIR::PathParams& pps) const;
@@ -110,7 +113,6 @@ private:
 };
 
 
-// NOTE: impl is in expr_context.cpp
 class TraitResolution
 {
     const HMTypeInferrence& m_ivars;
