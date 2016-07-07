@@ -515,6 +515,11 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     //const auto& left = *this;
     const auto& right = (x.m_data.is_Infer() ? resolve_placeholder(x) : (x.m_data.is_Generic() ? resolve_placeholder(x) : x));
     
+    // If the two types are the same ivar, return equal
+    if( left.m_data.is_Infer() && left == right ) {
+        return Compare::Equal;
+    }
+    
     // If left is infer
     TU_IFLET(::HIR::TypeRef::Data, left.m_data, Infer, e,
         switch(e.ty_class)
