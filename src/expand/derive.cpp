@@ -239,9 +239,25 @@ public:
                 }
                 else
                 {
-                    ::std::vector< AST::Pattern>    pats_a;
-                    ::std::vector< AST::Pattern>    pats_b;
+                    ::std::vector<AST::Pattern>    pats_a;
+                    ::std::vector<AST::Pattern>    pats_b;
                     ::std::vector<AST::ExprNodeP>   nodes;
+                    
+                    for( unsigned int idx = 0; idx < e.m_sub_types.size(); idx ++ )
+                    {
+                        auto name_a = FMT("a" << idx);
+                        auto name_b = FMT("b" << idx);
+                        pats_a.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_a) );
+                        pats_b.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_b) );
+                        nodes.push_back(NEWNODE(AST::ExprNode_If,
+                            NEWNODE(AST::ExprNode_BinOp, AST::ExprNode_BinOp::CMPNEQU,
+                                NEWNODE(AST::ExprNode_NamedValue, AST::Path(name_a)),
+                                NEWNODE(AST::ExprNode_NamedValue, AST::Path(name_b))
+                                ),
+                            NEWNODE(AST::ExprNode_Flow, AST::ExprNode_Flow::RETURN, "", NEWNODE(AST::ExprNode_Bool, false)),
+                            nullptr
+                            ));
+                    }
                     
                     nodes.push_back( NEWNODE(AST::ExprNode_Bool, true) );
                     pat_a = AST::Pattern(AST::Pattern::TagEnumVariant(), base_path + v.m_name, mv$(pats_a));
@@ -253,6 +269,22 @@ public:
                 ::std::vector< ::std::pair<std::string, AST::Pattern> > pats_a;
                 ::std::vector< ::std::pair<std::string, AST::Pattern> > pats_b;
                 ::std::vector<AST::ExprNodeP>   nodes;
+                
+                for( const auto& fld : e.m_fields )
+                {
+                    auto name_a = FMT("a" << fld.m_name);
+                    auto name_b = FMT("b" << fld.m_name);
+                    pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_a)) );
+                    pats_b.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_b)) );
+                    nodes.push_back(NEWNODE(AST::ExprNode_If,
+                        NEWNODE(AST::ExprNode_BinOp, AST::ExprNode_BinOp::CMPNEQU,
+                            NEWNODE(AST::ExprNode_NamedValue, AST::Path(name_a)),
+                            NEWNODE(AST::ExprNode_NamedValue, AST::Path(name_b))
+                            ),
+                        NEWNODE(AST::ExprNode_Flow, AST::ExprNode_Flow::RETURN, "", NEWNODE(AST::ExprNode_Bool, false)),
+                        nullptr
+                        ));
+                }
                 
                 nodes.push_back( NEWNODE(AST::ExprNode_Bool, true) );
                 pat_a = AST::Pattern(AST::Pattern::TagStruct(), base_path + v.m_name, mv$(pats_a), true);
