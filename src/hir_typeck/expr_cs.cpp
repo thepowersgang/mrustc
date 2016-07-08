@@ -1373,7 +1373,6 @@ namespace {
                     deref_res_types.pop_back();
                     node.m_value = ::HIR::ExprNodeP( new ::HIR::ExprNode_Deref(node.span(), mv$(node.m_value)) );
                     node.m_value->m_res_type = mv$(ty);
-                    this->context.add_ivars( node.m_value->m_res_type );
                     deref_count -= 1;
                 }
                 
@@ -1512,13 +1511,55 @@ namespace {
                 }
                 this->context.equate_types(node.span(), node.m_res_type,  node.m_cache.m_arg_types.back());
                 
+                // TODO: Apply derefs!
+                
                 node.m_method_path = mv$(fcn_path);
                 this->m_completed = true;
             }
         }
         void visit(::HIR::ExprNode_Field& node) override {
-            // TODO:
-            TODO(node.span(), "ExprNode_Field - revisit");
+            const auto& field_name = node.m_field;
+            TRACE_FUNCTION_F("(Field) name=" << field_name << ", ty = " << this->context.m_ivars.fmt_type(node.m_value->m_res_type));
+            ::HIR::TypeRef  out_type;
+
+            // Using autoderef, locate this field
+            unsigned int deref_count = 0;
+            ::HIR::TypeRef  tmp_type;   // Temporary type used for handling Deref
+            const auto* current_ty = &node.m_value->m_res_type;
+            ::std::vector< ::HIR::TypeRef>  deref_res_types;
+            
+            do {
+                const auto& ty = *current_ty;
+                if( ty.m_data.is_Infer() ) {
+                    current_ty = nullptr;
+                    break;
+                }
+                if( this->context.m_resolve.find_field(node.span(), ty, field_name, out_type) ) {
+                    this->context.equate_types(node.span(), node.m_res_type, out_type);
+                    break;
+                }
+                
+                deref_count += 1;
+                current_ty = this->context.m_resolve.autoderef(node.span(), ty,  tmp_type);
+                if( current_ty )
+                    deref_res_types.push_back( current_ty->clone() );
+            } while(current_ty);
+            
+            if( current_ty )
+            {
+                if( deref_count > 0 )
+                    DEBUG("Adding " << deref_count << " dereferences");
+                assert( deref_count == deref_res_types.size() );
+                while( !deref_res_types.empty() )
+                {
+                    auto ty = mv$(deref_res_types.back());
+                    deref_res_types.pop_back();
+                    node.m_value = ::HIR::ExprNodeP( new ::HIR::ExprNode_Deref(node.span(), mv$(node.m_value)) );
+                    node.m_value->m_res_type = mv$(ty);
+                }
+                
+                m_completed = true;
+            }
         }
 
         void visit(::HIR::ExprNode_Literal& node) override {
