@@ -2927,17 +2927,12 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         
 
         // Finally. If nothing changed, apply ivar defaults
-        if( !context.take_changed() )
+        if( !context.m_ivars.peek_changed() )
         {
             DEBUG("- Applying defaults");
             if( context.m_ivars.apply_defaults() ) {
                 context.m_ivars.mark_change();
             }
-        }
-        else
-        {
-            // - Mark it back
-            context.m_ivars.mark_change();
         }
         
         count ++;

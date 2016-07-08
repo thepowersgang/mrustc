@@ -56,6 +56,9 @@ public:
         m_has_changed(false)
     {}
     
+    bool peek_changed() const {
+        return m_has_changed;
+    }
     bool take_changed() {
         bool rv = m_has_changed;
         m_has_changed = false;
