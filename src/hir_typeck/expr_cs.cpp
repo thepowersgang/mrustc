@@ -595,6 +595,7 @@ namespace {
             TRACE_FUNCTION_F(&node << " ... as " << node.m_res_type);
             this->context.add_ivars( node.m_value->m_res_type );
             
+            // TODO: Only revisit if the cast type requires inferring.
             this->context.add_revisit(node);
             
             node.m_value->visit( *this );
@@ -609,8 +610,7 @@ namespace {
             this->context.add_ivars( node.m_value->m_res_type );
             this->context.add_ivars( node.m_index->m_res_type );
             
-            const auto& op_trait = this->context.m_crate.get_lang_item_path(node.span(), "index");
-            this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, ::make_vec1(node.m_index->m_res_type.clone()), node.m_value->m_res_type.clone(), "Output");
+            this->context.add_revisit(node);
             
             node.m_value->visit( *this );
             node.m_index->visit( *this );
@@ -1299,7 +1299,86 @@ namespace {
             no_revisit(node);
         }
         void visit(::HIR::ExprNode_Index& node) override {
-            no_revisit(node);
+            const auto& lang_Index = this->context.m_crate.get_lang_item_path(node.span(), "index");
+            const auto& val_ty = this->context.get_type(node.m_value->m_res_type);
+            const auto& idx_ty = this->context.get_type(node.m_index->m_res_type);
+            DEBUG("(Index) val=" << val_ty << ", idx=" << idx_ty << "");
+            
+            
+            // NOTE: Indexing triggers autoderef
+            unsigned int deref_count = 0;
+            ::HIR::TypeRef  tmp_type;   // Temporary type used for handling Deref
+            const auto* current_ty = &node.m_value->m_res_type;
+            ::std::vector< ::HIR::TypeRef>  deref_res_types;
+            
+            // TODO: (CHECK) rustc doesn't use the index value type when finding the indexable item, mrustc does.
+            ::HIR::PathParams   trait_pp;
+            trait_pp.m_types.push_back( idx_ty.clone() );
+            do {
+                const auto& ty = this->context.get_type(*current_ty);
+                DEBUG("(Index): (: " << ty << ")[: " << trait_pp.m_types[0] << "]");
+                
+                ::HIR::TypeRef  possible_index_type;
+                ::HIR::TypeRef  possible_res_type;
+                unsigned int count = 0;
+                bool rv = this->context.m_resolve.find_trait_impls(node.span(), lang_Index, trait_pp, ty, [&](const auto& ty, const auto& args, const auto& assoc) {
+                    assert( args.m_types.size() == 1 );
+                    const auto& impl_index = args.m_types[0];
+                    
+                    auto cmp = impl_index.compare_with_placeholders(node.span(), trait_pp.m_types[0], this->context.m_ivars.callback_resolve_infer());
+                    if( cmp == ::HIR::Compare::Unequal) {
+                        return false;
+                    }
+                    possible_res_type = assoc.at("Output").clone();
+                    count += 1;
+                    if( cmp == ::HIR::Compare::Equal ) {
+                        return true;
+                    }
+                    possible_index_type = impl_index.clone();
+                    return false;
+                    });
+                if( rv ) {
+                    this->context.equate_types(node.span(), node.m_res_type,  possible_res_type);
+                    break;
+                }
+                else if( count == 1 ) {
+                    assert( possible_index_type != ::HIR::TypeRef() );
+                    this->context.equate_types(node.span(), node.m_index->m_res_type, possible_index_type);
+                    this->context.equate_types(node.span(), node.m_res_type,  possible_res_type);
+                    break;
+                }
+                else if( count > 1 ) {
+                    // Multiple fuzzy matches, don't keep dereferencing until we know.
+                    current_ty = nullptr;
+                    break;
+                }
+                else {
+                    // Either no matches, or multiple fuzzy matches
+                }
+                
+                deref_count += 1;
+                current_ty = this->context.m_resolve.autoderef(node.span(), ty,  tmp_type);
+                if( current_ty )
+                    deref_res_types.push_back( current_ty->clone() );
+            } while( current_ty );
+            
+            if( current_ty )
+            {
+                if( deref_count > 0 )
+                    DEBUG("Adding " << deref_count << " dereferences");
+                assert( deref_count == deref_res_types.size() );
+                while( !deref_res_types.empty() )
+                {
+                    auto ty = mv$(deref_res_types.back());
+                    deref_res_types.pop_back();
+                    node.m_value = ::HIR::ExprNodeP( new ::HIR::ExprNode_Deref(node.span(), mv$(node.m_value)) );
+                    node.m_value->m_res_type = mv$(ty);
+                    this->context.add_ivars( node.m_value->m_res_type );
+                    deref_count -= 1;
+                }
+                
+                m_completed = true;
+            }
         }
         void visit(::HIR::ExprNode_Deref& node) override {
             no_revisit(node);
