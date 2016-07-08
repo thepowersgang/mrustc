@@ -1529,10 +1529,10 @@ namespace {
             ::std::vector< ::HIR::TypeRef>  deref_res_types;
             
             do {
-                const auto& ty = *current_ty;
+                const auto& ty = this->context.m_ivars.get_type(*current_ty);
                 if( ty.m_data.is_Infer() ) {
-                    current_ty = nullptr;
-                    break;
+                    DEBUG("Hit ivar, returning early");
+                    return ;
                 }
                 if( this->context.m_resolve.find_field(node.span(), ty, field_name, out_type) ) {
                     this->context.equate_types(node.span(), node.m_res_type, out_type);
@@ -1545,21 +1545,23 @@ namespace {
                     deref_res_types.push_back( current_ty->clone() );
             } while(current_ty);
             
-            if( current_ty )
+            if( !current_ty )
             {
-                if( deref_count > 0 )
-                    DEBUG("Adding " << deref_count << " dereferences");
-                assert( deref_count == deref_res_types.size() );
-                while( !deref_res_types.empty() )
-                {
-                    auto ty = mv$(deref_res_types.back());
-                    deref_res_types.pop_back();
-                    node.m_value = ::HIR::ExprNodeP( new ::HIR::ExprNode_Deref(node.span(), mv$(node.m_value)) );
-                    node.m_value->m_res_type = mv$(ty);
-                }
-                
-                m_completed = true;
+                ERROR(node.span(), E0000, "Couldn't find the field " << field_name << " in " << this->context.m_ivars.fmt_type(node.m_value->m_res_type));
             }
+            
+            if( deref_count > 0 )
+                DEBUG("Adding " << deref_count << " dereferences");
+            assert( deref_count == deref_res_types.size() );
+            while( !deref_res_types.empty() )
+            {
+                auto ty = mv$(deref_res_types.back());
+                deref_res_types.pop_back();
+                node.m_value = ::HIR::ExprNodeP( new ::HIR::ExprNode_Deref(node.span(), mv$(node.m_value)) );
+                node.m_value->m_res_type = mv$(ty);
+            }
+            
+            m_completed = true;
         }
 
         void visit(::HIR::ExprNode_Literal& node) override {
@@ -1680,8 +1682,14 @@ namespace {
 
 
 void Context::dump() const {
+    DEBUG("--- Variables");
+    for(unsigned int i = 0; i < m_bindings.size(); i ++)
+    {
+        DEBUG(i << " " << m_bindings[i].name << ": " << this->m_ivars.fmt_type(m_bindings[i].ty));
+    }
+    DEBUG("--- Ivars");
     m_ivars.dump();
-    DEBUG("CS Context - " << link_coerce.size() << " Coercions, " << link_assoc.size() << " associated, " << to_visit.size() << " nodes");
+    DEBUG("--- CS Context - " << link_coerce.size() << " Coercions, " << link_assoc.size() << " associated, " << to_visit.size() << " nodes");
     for(const auto& v : link_coerce) {
         DEBUG(v);
     }
@@ -1691,6 +1699,7 @@ void Context::dump() const {
     for(const auto& v : to_visit) {
         DEBUG(&v << " " << typeid(*v).name());
     }
+    DEBUG("---");
 }
 
 void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR::TypeRef& ri) {
