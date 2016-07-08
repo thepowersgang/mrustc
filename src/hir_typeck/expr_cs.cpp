@@ -2795,6 +2795,7 @@ namespace {
 }
 
 
+
 void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR::TypeRef& result_type, ::HIR::ExprPtr& expr)
 {
     TRACE_FUNCTION;
@@ -2922,6 +2923,21 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             
             ivar_ent.types.clear();
             i ++ ;
+        }
+        
+
+        // Finally. If nothing changed, apply ivar defaults
+        if( !context.take_changed() )
+        {
+            DEBUG("- Applying defaults");
+            if( context.m_ivars.apply_defaults() ) {
+                context.m_ivars.mark_change();
+            }
+        }
+        else
+        {
+            // - Mark it back
+            context.m_ivars.mark_change();
         }
         
         count ++;
