@@ -388,16 +388,26 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
         os << "; " << e.size_val << "]";
         ),
     (Closure,
-        //for(const auto& arg : e.m_arg_types)
-        //    if( type_contains_ivars(arg) )
-        //        return true;
-        //return type_contains_ivars(*e.m_rettype);
+        os << "{" << e.node << "}(";
+        for(const auto& arg : e.m_arg_types) {
+            this->print_type(os, arg);
+            os << ",";
+        }
+        os << ")->";
+        this->print_type(os, *e.m_rettype);
         ),
     (Function,
-        //for(const auto& arg : e.m_arg_types)
-        //    if( type_contains_ivars(arg) )
-        //        return true;
-        //return type_contains_ivars(*e.m_rettype);
+        if(e.is_unsafe)
+            os << "unsafe ";
+        if(e.m_abi != "")
+            os << "extern \"" << e.m_abi << "\" ";
+        os << "fn(";
+        for(const auto& arg : e.m_arg_types) {
+            this->print_type(os, arg);
+            os << ",";
+        }
+        os << ")->";
+        this->print_type(os, *e.m_rettype);
         ),
     (TraitObject,
         os << "(" << e.m_trait.m_path.m_path;
@@ -1012,6 +1022,15 @@ void TraitResolution::compact_ivars(HMTypeInferrence& m_ivars)
 
 bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
 {
+    struct H {
+        static bool check_pathparams(const TraitResolution& r, const ::HIR::PathParams& pp) {
+            for(const auto& arg : pp.m_types) {
+                if( r.has_associated_type(arg) )
+                    return true;
+            }
+            return false;
+        }
+    };
     //TRACE_FUNCTION_F(input);
     TU_MATCH(::HIR::TypeRef::Data, (input.m_data), (e),
     (Infer,
@@ -1030,10 +1049,7 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
     (Path,
         TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
         (Generic,
-            bool rv = false;
-            for(const auto& arg : e2.m_params.m_types)
-                rv |= has_associated_type(arg);
-            return rv;
+            return H::check_pathparams(*this, e2.m_params);
             ),
         (UfcsInherent,
             TODO(Span(), "Path - UfcsInherent - " << e.path);
@@ -1054,6 +1070,13 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
         ),
     (TraitObject,
         // Recurse?
+        if( H::check_pathparams(*this, e.m_trait.m_path.m_params) )
+            return true;
+        for(const auto& m : e.m_markers) {
+            if( H::check_pathparams(*this, m.m_params) )
+                return true;
+        }
+        return false;
         ),
     (Array,
         return has_associated_type(*e.inner);

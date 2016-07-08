@@ -2481,13 +2481,15 @@ namespace {
             return true;
             ),
         (Borrow,
-            // TODO: Borrows can have unsizing and deref coercions applied
+            // Borrows can have unsizing and deref coercions applied
             ),
         (Pointer,
-            // TODO: Pointers coerce from borrows and similar pointers
+            // Pointers coerce from borrows and similar pointers
             ),
         (Function,
-            TODO(sp, "check_coerce - Coercion from " << ty_r);
+            // NOTE: Functions don't coerce (TODO: They could lose the origin marker?)
+            context.equate_types(sp, ty,  node_ptr->m_res_type);
+            return true;
             ),
         (Closure,
             // TODO: Can closures coerce to anything?
