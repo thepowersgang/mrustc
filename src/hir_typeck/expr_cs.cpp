@@ -627,8 +627,7 @@ namespace {
             TRACE_FUNCTION_F(&node << " *...");
             this->context.add_ivars( node.m_value->m_res_type );
             
-            const auto& op_trait = this->context.m_crate.get_lang_item_path(node.span(), "deref");
-            this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, {}, node.m_value->m_res_type.clone(), "Target");
+            this->context.add_revisit(node);
 
             node.m_value->visit( *this );
         }
@@ -1387,7 +1386,27 @@ namespace {
             }
         }
         void visit(::HIR::ExprNode_Deref& node) override {
-            no_revisit(node);
+            const auto& ty = this->context.get_type(node.m_value->m_res_type);
+            
+            TU_MATCH_DEF(::HIR::TypeRef::Data, (ty.m_data), (e),
+            (
+                const auto& op_trait = this->context.m_crate.get_lang_item_path(node.span(), "deref");
+                this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, {}, node.m_value->m_res_type.clone(), "Target");
+                ),
+            (Infer,
+                // Keep trying
+                return ;
+                ),
+            (Borrow,
+                // - Not really needed, but this is cheaper.
+                this->context.equate_types(node.span(), node.m_res_type, *e.inner);
+                ),
+            (Pointer,
+                // TODO: Figure out if this node is in an unsafe block.
+                this->context.equate_types(node.span(), node.m_res_type, *e.inner);
+                )
+            )
+            this->m_completed = true;
         }
         
         void visit(::HIR::ExprNode_TupleVariant& node) override {
