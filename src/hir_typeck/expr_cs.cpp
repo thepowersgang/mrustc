@@ -58,7 +58,8 @@ struct Context
     {
         // TODO: If an ivar is eliminated (i.e. has its type dropped) while its pointer is here - things will break
         //::std::vector<const ::HIR::TypeRef*>    types;
-        ::std::vector<::HIR::TypeRef>    types;
+        ::std::vector<::HIR::TypeRef>    types_to;
+        ::std::vector<::HIR::TypeRef>    types_from;
     };
     
     const ::HIR::Crate& m_crate;
@@ -100,7 +101,9 @@ struct Context
     void equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name, bool is_binop=false);
 
     // - List `t` as a possible type for `ivar_index`
-    void possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t);
+    void possible_equate_type_to(unsigned int ivar_index, const ::HIR::TypeRef& t);
+    void possible_equate_type_from(unsigned int ivar_index, const ::HIR::TypeRef& t);
+    void possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t, bool is_to);
     
     // - Add a pattern binding (forcing the type to match)
     void add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type);
@@ -2319,18 +2322,27 @@ void Context::add_revisit(::HIR::ExprNode& node) {
     this->to_visit.push_back( &node );
 }
 
-void Context::possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t) {
+void Context::possible_equate_type_to(unsigned int ivar_index, const ::HIR::TypeRef& t) {
+    possible_equate_type(ivar_index, t, true);
+}
+void Context::possible_equate_type_from(unsigned int ivar_index, const ::HIR::TypeRef& t) {
+    possible_equate_type(ivar_index, t, false);
+}
+void Context::possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t, bool is_to) {
     DEBUG(ivar_index << " ?= " << t << " " << this->m_ivars.get_type(t));
     {
         ::HIR::TypeRef  ty_l;
         ty_l.m_data.as_Infer().index = ivar_index;
         assert( m_ivars.get_type(ty_l).m_data.is_Infer() );
     }
+    
     if( ivar_index >= possible_ivar_vals.size() ) {
         possible_ivar_vals.resize( ivar_index + 1 );
     }
-    //possible_ivar_vals[ivar_index].types.push_back( &t );
-    possible_ivar_vals[ivar_index].types.push_back( t.clone() );
+    auto& ent = possible_ivar_vals[ivar_index];
+    auto& list = (is_to ? ent.types_to : ent.types_from);
+    //list.push_back( &t );
+    list.push_back( t.clone() );
 }
 
 void Context::add_var(unsigned int index, const ::std::string& name, ::HIR::TypeRef type) {
@@ -2411,13 +2423,13 @@ namespace {
                 context.equate_types(sp, ty_dst, ty_src);
                 return true;
             }
-            context.possible_equate_type(r_e.index, ty_dst);
+            context.possible_equate_type_to(r_e.index, ty_dst);
             return false;
         )
         
         TU_IFLET(::HIR::TypeRef::Data, ty_dst.m_data, Infer, l_e,
             if( l_e.ty_class == ::HIR::InferClass::None ) {
-                context.possible_equate_type(l_e.index, ty_src);
+                context.possible_equate_type_from(l_e.index, ty_src);
                 return false;
             }
             // - Otherwise, it could be a deref?
@@ -2592,7 +2604,7 @@ namespace {
             // Can't do anything yet?
             // - Later code can handle "only path" coercions
 
-            context.possible_equate_type(l_e.index,  ty_r);
+            context.possible_equate_type_from(l_e.index,  ty_r);
             return false;
             ),
         (Diverge,
@@ -2668,7 +2680,7 @@ namespace {
                     BUG(sp, "Type error expected " << ty << " == " << ty_r);
                 }
                 
-                context.possible_equate_type(r_e.index, ty);
+                context.possible_equate_type_to(r_e.index, ty);
                 return false;
             )
             else {
@@ -2712,7 +2724,7 @@ namespace {
                     BUG(sp, "Type error expected " << ty << " == " << ty_r);
                 }
                 // Can't do much for now
-                context.possible_equate_type(r_e.index, ty);
+                context.possible_equate_type_to(r_e.index, ty);
                 return false;
             )
             else {
@@ -2857,35 +2869,41 @@ namespace {
     
     void check_ivar_poss(Context& context, unsigned int i, Context::IVarPossible& ivar_ent)
     {
-        if( ivar_ent.types.size() == 0 ) {
+        if( ivar_ent.types_to.size() == 0 && ivar_ent.types_from.size() == 0 ) {
             // No idea! (or unused)
             return ;
         }
         
-        TRACE_FUNCTION_F(i);
-        
-        if( ivar_ent.types.size() > 1 ) {
+        struct H {
             // De-duplicate list (taking into account other ivars)
-            for( auto it = ivar_ent.types.begin(); it != ivar_ent.types.end(); )
-            {
-                bool found = false;
-                for( auto it2 = ivar_ent.types.begin(); it2 != it; ++ it2 ) {
-                    //if( context.m_ivars.types_equal( **it, **it2 ) ) {
-                    if( context.m_ivars.types_equal( *it, *it2 ) ) {
-                        found = true;
-                        break;
+            static void dedup_type_list(const Context& context, ::std::vector< ::HIR::TypeRef>& list) {
+                for( auto it = list.begin(); it != list.end(); )
+                {
+                    bool found = false;
+                    for( auto it2 = list.begin(); it2 != it; ++ it2 ) {
+                        //if( context.m_ivars.types_equal( **it, **it2 ) ) {
+                        if( context.m_ivars.types_equal( *it, *it2 ) ) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if( found ) {
+                        it = list.erase(it);
+                    }
+                    else {
+                        ++ it;
                     }
                 }
-                if( found ) {
-                    it = ivar_ent.types.erase(it);
-                }
-                else {
-                    ++ it;
-                }
             }
+        };
+        
+        TRACE_FUNCTION_F(i);
+        
+        if( ivar_ent.types_to.size() > 1 ) {
+            H::dedup_type_list(context, ivar_ent.types_to);
         }
-        else {
-            // One possibility, no need to dedup
+        if( ivar_ent.types_from.size() > 1 ) {
+            H::dedup_type_list(context, ivar_ent.types_from);
         }
         
         ::HIR::TypeRef  ty_l_ivar;
@@ -2895,17 +2913,26 @@ namespace {
         if( !ty_l.m_data.is_Infer() ) {
             DEBUG("- IVar " << ty_l << " had possibilities, but was known");
         }
-        else if( ivar_ent.types.size() == 1 ) {
-            //const ::HIR::TypeRef& ty_r = ivar_ent.types[0];
-            const ::HIR::TypeRef& ty_r = ivar_ent.types[0];
+        // Prefer cases where this type is being created from a known type
+        else if( ivar_ent.types_from.size() == 1 ) {
+            //const ::HIR::TypeRef& ty_r = *ivar_ent.types_from[0];
+            const ::HIR::TypeRef& ty_r = ivar_ent.types_from[0];
             // Only one possibility
-            DEBUG("- IVar " << ty_l << " = " << ty_r);
+            DEBUG("- IVar " << ty_l << " = " << ty_r << " (from)");
+            context.equate_types(Span(), ty_l, ty_r);
+        }
+        else if( ivar_ent.types_to.size() == 1 ) {
+            //const ::HIR::TypeRef& ty_r = *ivar_ent.types_to[0];
+            const ::HIR::TypeRef& ty_r = ivar_ent.types_to[0];
+            // Only one possibility
+            DEBUG("- IVar " << ty_l << " = " << ty_r << " (to)");
             context.equate_types(Span(), ty_l, ty_r);
         }
         else {
         }
         
-        ivar_ent.types.clear();
+        ivar_ent.types_to.clear();
+        ivar_ent.types_from.clear();
     }
 }
 

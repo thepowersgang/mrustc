@@ -33,6 +33,7 @@ namespace HIR {
         case CoreType::Char:    return os << "char";
         case CoreType::Str:     return os << "str";
         }
+        assert(!"Bad CoreType value");
         return os;
     }
 }
@@ -65,7 +66,7 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         TU_MATCH(::HIR::TypeRef::TypePathBinding, (e.binding), (be),
         (Unbound, os << "/*U*/";),
         (Opaque, os << "/*O*/";),
-        (Struct, os << "/*S/";),
+        (Struct, os << "/*S*/";),
         (Enum, os << "/*E*/";)
         )
         ),
