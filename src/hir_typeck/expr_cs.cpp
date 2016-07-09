@@ -45,6 +45,9 @@ struct Context
         ::HIR::TypeRef  impl_ty;
         ::std::string   name;   // if "", no type is used (and left is ignored) - Just does trait selection
         
+        // HACK: binops are special - the result when both types are primitives is ALWAYS the lefthand side
+        bool    is_binop;
+        
         friend ::std::ostream& operator<<(::std::ostream& os, const Associated& v) {
             os << v.left_ty << " = " << "<" << v.impl_ty << " as " << v.trait << v.params << ">::" << v.name;
             return os;
@@ -84,7 +87,7 @@ struct Context
         return link_coerce.size() > 0 || link_assoc.size() > 0 || to_visit.size() > 0;
     }
     
-    void add_ivars(::HIR::TypeRef& ty) {
+    inline void add_ivars(::HIR::TypeRef& ty) {
         m_ivars.add_ivars(ty);
     }
     // - Equate two types, with no possibility of coercion
@@ -94,7 +97,7 @@ struct Context
     // - Equate two types, allowing inferrence
     void equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR::ExprNodeP& node_ptr);
     // - Equate a type to an associated type (if name == "", no equation is done, but trait is searched)
-    void equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name);
+    void equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name, bool is_binop=false);
 
     // - List `t` as a possible type for `ivar_index`
     void possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t);
@@ -562,7 +565,8 @@ namespace {
                 assert(item_name);
                 const auto& op_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
                 
-                this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, ::make_vec1(node.m_right->m_res_type.clone()), node.m_left->m_res_type.clone(), "Output");
+                // NOTE: `true` marks the association as coming from a binary operation, which changes integer handling
+                this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, ::make_vec1(node.m_right->m_res_type.clone()), node.m_left->m_res_type.clone(), "Output", true);
                 break; }
             }
             node.m_left ->visit( *this );
@@ -2272,7 +2276,7 @@ void Context::equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR
         l.clone(), &node_ptr
         });
 }
-void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name)
+void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name, bool is_binop)
 {
     ::HIR::PathParams   pp;
     pp.m_types = mv$(ty_args);
@@ -2283,7 +2287,8 @@ void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const
         trait.clone(),
         mv$(pp),
         impl_ty.clone(),
-        name
+        name,
+        is_binop
         });
 }
 void Context::add_revisit(::HIR::ExprNode& node) {
@@ -2711,6 +2716,36 @@ namespace {
         ::HIR::TypeRef  possible_impl_ty;
         ::HIR::PathParams   possible_params;
         ::HIR::TypeRef  output_type;
+        
+        struct H {
+            static bool type_is_num(const ::HIR::TypeRef& t) {
+                TU_MATCH_DEF(::HIR::TypeRef::Data, (t.m_data), (e),
+                ( return false; ),
+                (Primitive,
+                    switch(e)
+                    {
+                    case ::HIR::CoreType::Str:
+                    case ::HIR::CoreType::Char:
+                        return false;
+                    default:
+                        return true;
+                    }
+                    ),
+                (Infer,
+                    return e.ty_class != ::HIR::InferClass::None;
+                    )
+                )
+            }
+        };
+        if( v.is_binop ) {
+            const auto& left = context.get_type(v.impl_ty); // yes, impl = LHS of binop
+            const auto& right = context.get_type(v.params.m_types.at(0));
+            const auto& res = context.get_type(v.left_ty);
+            if( H::type_is_num(left) && H::type_is_num(right) ) {
+                DEBUG("- Magic inferrence link for binops on numerics");
+                context.equate_types(sp, left, res);
+            }
+        }
         
         // Search for ops trait impl
         unsigned int count = 0;
