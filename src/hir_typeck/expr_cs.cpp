@@ -403,10 +403,13 @@ namespace {
             this->context.add_ivars( node.m_type );
             this->context.add_binding(node.span(), node.m_pattern, node.m_type);
             
-            this->context.add_ivars( node.m_value->m_res_type );
-            this->context.equate_types_coerce( node.span(), node.m_type, node.m_value );
-            
-            node.m_value->visit( *this );
+            if( node.m_value )
+            {
+                this->context.add_ivars( node.m_value->m_res_type );
+                this->context.equate_types_coerce( node.span(), node.m_type, node.m_value );
+                
+                node.m_value->visit( *this );
+            }
         }
         void visit(::HIR::ExprNode_Match& node) override
         {
@@ -1938,28 +1941,36 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, ::HIR::TypeRef& t
         //return ;
     }
     
+    
+    struct H {
+        static void handle_value(Context& context, const Span& sp, const ::HIR::TypeRef& type, const ::HIR::Pattern::Value& val) {
+            TU_MATCH(::HIR::Pattern::Value, (val), (v),
+            (Integer,
+                if( v.type != ::HIR::CoreType::Str ) {
+                    context.equate_types(sp, type, ::HIR::TypeRef(v.type));
+                }
+                ),
+            (String,
+                context.equate_types(sp, type, ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef(::HIR::CoreType::Str) ));
+                ),
+            (Named,
+                // TODO: Get type of the value and equate it
+                )
+            )
+        }
+    };
+    
     // 
     TU_MATCH(::HIR::Pattern::Data, (pat.m_data), (e),
     (Any,
         // Just leave it, the pattern says nothing
         ),
     (Value,
-        TU_MATCH(::HIR::Pattern::Value, (e.val), (v),
-        (Integer,
-            if( v.type != ::HIR::CoreType::Str ) {
-                this->equate_types(sp, type, ::HIR::TypeRef(v.type));
-            }
-            ),
-        (String,
-            this->equate_types(sp, type, ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef(::HIR::CoreType::Str) ));
-            ),
-        (Named,
-            // TODO: Get type of the value and equate it
-            )
-        )
+        H::handle_value(*this, sp, type, e.val);
         ),
     (Range,
-        TODO(sp, "Range pattern");
+        H::handle_value(*this, sp, type, e.start);
+        H::handle_value(*this, sp, type, e.end);
         ),
     (Box,
         TODO(sp, "Box pattern");
