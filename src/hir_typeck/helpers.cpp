@@ -645,6 +645,27 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
     else {
         // Otherwise, store left in right's slot
         DEBUG("Set IVar " << slot << " = " << type);
+        TU_IFLET(::HIR::TypeRef::Data, root_ivar.type->m_data, Infer, e,
+            switch(e.ty_class)
+            {
+            case ::HIR::InferClass::None:
+                break;
+            case ::HIR::InferClass::Integer:
+            case ::HIR::InferClass::Float:
+                // `type` can't be an ivar, so it has to be a primitive (or an associated?)
+                TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (l_e),
+                (
+                    ),
+                (Primitive,
+                    typeck::check_type_class_primitive(sp, type, e.ty_class, l_e);
+                    )
+                )
+                break;
+            }
+        )
+        else {
+            BUG(sp, "Overwriting ivar " << slot << " (" << *root_ivar.type << ") with " << type);
+        }
         root_ivar.type = box$( mv$(type) );
     }
     

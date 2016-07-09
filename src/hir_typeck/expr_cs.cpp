@@ -2532,9 +2532,11 @@ namespace {
             return true;
             ),
         (Path,
-            //TODO(Span(), "check_coerce - Coercion from " << ty_r);
-            context.equate_types(sp, ty,  node_ptr->m_res_type);
-            return true;
+            if( ! e.binding.is_Unbound() ) {
+                //TODO(Span(), "check_coerce - Coercion from " << ty_r);
+                context.equate_types(sp, ty,  node_ptr->m_res_type);
+                return true;
+            }
             ),
         (Generic,
             //TODO(Span(), "check_coerce - Coercion from " << ty_r);
@@ -2602,10 +2604,11 @@ namespace {
             return true;
             ),
         (Path,
-            //TODO(Span(), "check_coerce - Coercion to " << ty);
-            // TODO: CoerceUnsized
-            context.equate_types(sp, ty,  node_ptr->m_res_type);
-            return true;
+            if( ! l_e.binding.is_Unbound() ) {
+                // TODO: CoerceUnsized
+                context.equate_types(sp, ty,  node_ptr->m_res_type);
+                return true;
+            }
             ),
         (Generic,
             //TODO(Span(), "check_coerce - Coercion to " << ty);
@@ -2851,6 +2854,59 @@ namespace {
             return false;
         }
     }
+    
+    void check_ivar_poss(Context& context, unsigned int i, Context::IVarPossible& ivar_ent)
+    {
+        if( ivar_ent.types.size() == 0 ) {
+            // No idea! (or unused)
+            return ;
+        }
+        
+        TRACE_FUNCTION_F(i);
+        
+        if( ivar_ent.types.size() > 1 ) {
+            // De-duplicate list (taking into account other ivars)
+            for( auto it = ivar_ent.types.begin(); it != ivar_ent.types.end(); )
+            {
+                bool found = false;
+                for( auto it2 = ivar_ent.types.begin(); it2 != it; ++ it2 ) {
+                    //if( context.m_ivars.types_equal( **it, **it2 ) ) {
+                    if( context.m_ivars.types_equal( *it, *it2 ) ) {
+                        found = true;
+                        break;
+                    }
+                }
+                if( found ) {
+                    it = ivar_ent.types.erase(it);
+                }
+                else {
+                    ++ it;
+                }
+            }
+        }
+        else {
+            // One possibility, no need to dedup
+        }
+        
+        ::HIR::TypeRef  ty_l_ivar;
+        ty_l_ivar.m_data.as_Infer().index = i;
+        const auto& ty_l = context.m_ivars.get_type(ty_l_ivar);
+        
+        if( !ty_l.m_data.is_Infer() ) {
+            DEBUG("- IVar " << ty_l << " had possibilities, but was known");
+        }
+        else if( ivar_ent.types.size() == 1 ) {
+            //const ::HIR::TypeRef& ty_r = ivar_ent.types[0];
+            const ::HIR::TypeRef& ty_r = ivar_ent.types[0];
+            // Only one possibility
+            DEBUG("- IVar " << ty_l << " = " << ty_r);
+            context.equate_types(Span(), ty_l, ty_r);
+        }
+        else {
+        }
+        
+        ivar_ent.types.clear();
+    }
 }
 
 
@@ -2934,53 +2990,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         unsigned int i = 0;
         for(auto& ivar_ent : context.possible_ivar_vals)
         {
-            if( ivar_ent.types.size() == 0 ) {
-                // No idea! (or unused)
-                i ++ ;
-                continue ;
-            }
-            else if( ivar_ent.types.size() > 1 ) {
-                // De-duplicate list (taking into account other ivars)
-                for( auto it = ivar_ent.types.begin(); it != ivar_ent.types.end(); )
-                {
-                    bool found = false;
-                    for( auto it2 = ivar_ent.types.begin(); it2 != it; ++ it2 ) {
-                        //if( context.m_ivars.types_equal( **it, **it2 ) ) {
-                        if( context.m_ivars.types_equal( *it, *it2 ) ) {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if( found ) {
-                        it = ivar_ent.types.erase(it);
-                    }
-                    else {
-                        ++ it;
-                    }
-                }
-            }
-            else {
-                // One possibility, no need to dedup
-            }
-            
-            ::HIR::TypeRef  ty_l_ivar;
-            ty_l_ivar.m_data.as_Infer().index = i;
-            const auto& ty_l = context.m_ivars.get_type(ty_l_ivar);
-            
-            if( !ty_l.m_data.is_Infer() ) {
-                DEBUG("- IVar " << ty_l << " had possibilities, but was known");
-            }
-            else if( ivar_ent.types.size() == 1 ) {
-                //const ::HIR::TypeRef& ty_r = ivar_ent.types[0];
-                const ::HIR::TypeRef& ty_r = ivar_ent.types[0];
-                // Only one possibility
-                DEBUG("- IVar " << ty_l << " = " << ty_r);
-                context.equate_types(Span(), ty_l, ty_r);
-            }
-            else {
-            }
-            
-            ivar_ent.types.clear();
+            check_ivar_poss(context, i, ivar_ent);
             i ++ ;
         }
         
