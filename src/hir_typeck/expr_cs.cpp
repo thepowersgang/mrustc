@@ -1770,7 +1770,7 @@ void Context::dump() const {
         DEBUG(v);
     }
     for(const auto& v : to_visit) {
-        DEBUG(&v << " " << typeid(*v).name());
+        DEBUG(&*v << " " << typeid(*v).name());
     }
     DEBUG("---");
 }
