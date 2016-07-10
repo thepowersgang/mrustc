@@ -360,11 +360,21 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
         )
         ),
     (Borrow,
-        os << "&";
+        switch(e.type)
+        {
+        case ::HIR::BorrowType::Shared: os << "&";  break;
+        case ::HIR::BorrowType::Unique: os << "&mut ";  break;
+        case ::HIR::BorrowType::Owned:  os << "&move "; break;
+        }
         this->print_type(os, *e.inner);
         ),
     (Pointer,
-        os << "*";
+        switch(e.type)
+        {
+        case ::HIR::BorrowType::Shared: os << "*const ";  break;
+        case ::HIR::BorrowType::Unique: os << "*mut ";  break;
+        case ::HIR::BorrowType::Owned:  os << "*move "; break;
+        }
         this->print_type(os, *e.inner);
         ),
     (Slice,
