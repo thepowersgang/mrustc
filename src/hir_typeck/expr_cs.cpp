@@ -3005,13 +3005,14 @@ namespace {
         
         struct H {
             // De-duplicate list (taking into account other ivars)
+            // - TODO: Use the direction and do a fuzzy equality based on coercion possibility
             static void dedup_type_list(const Context& context, ::std::vector< ::HIR::TypeRef>& list) {
                 for( auto it = list.begin(); it != list.end(); )
                 {
                     bool found = false;
                     for( auto it2 = list.begin(); it2 != it; ++ it2 ) {
                         //if( context.m_ivars.types_equal( **it, **it2 ) ) {
-                        if( context.m_ivars.types_equal( *it, *it2 ) ) {
+                        if( H::equal_to(context, *it, *it2) ) {
                             found = true;
                             break;
                         }
@@ -3024,12 +3025,54 @@ namespace {
                     }
                 }
             }
+            
+            // Types are equal from the view of being coercion targets
+            static bool equal_to(const Context& context, const ::HIR::TypeRef& ia, const ::HIR::TypeRef& ib) {
+                const auto& a = context.m_ivars.get_type(ia);
+                const auto& b = context.m_ivars.get_type(ib);
+                if( a.m_data.tag() != b.m_data.tag() )
+                    return false;
+                TU_MATCH_DEF(::HIR::TypeRef::Data, (a.m_data, b.m_data), (e_a, e_b),
+                (
+                    return context.m_ivars.types_equal(a, b);
+                    ),
+                (Borrow,
+                    if( e_a.type != e_b.type )
+                        return false;
+                    const auto& ia = context.m_ivars.get_type(*e_a.inner);
+                    const auto& ib = context.m_ivars.get_type(*e_b.inner);
+                    if( ia.m_data.tag() != ib.m_data.tag() )
+                        return false;
+                    TU_MATCH_DEF(::HIR::TypeRef::Data, (ia.m_data, ib.m_data), (e_ia, e_ib),
+                    (
+                        return context.m_ivars.types_equal(ia, ib);
+                        ),
+                    (Infer,
+                        return false;
+                        ),
+                    (Slice,
+                        const auto& ia2 = context.m_ivars.get_type(*e_ia.inner);
+                        const auto& ib2 = context.m_ivars.get_type(*e_ib.inner);
+                        if(ia2.m_data.is_Infer() || ib2.m_data.is_Infer())
+                            return true;
+                        return context.m_ivars.types_equal(ia2, ib2);
+                        )
+                    )
+                    )
+                )
+                // 
+                return context.m_ivars.types_equal(a, b);
+            }
+            // Types are equal from the view of being coercion sources
+            static bool equal_from(const Context& context, const ::HIR::TypeRef& a, const ::HIR::TypeRef& b) {
+                return context.m_ivars.types_equal(a, b);
+            }
         };
         
         TRACE_FUNCTION_F(i);
         
         // TODO: Some cases lead to two possibilities that compare different (due to inferrence) but are actually the same.
-        // - The above dedup should probably be aware of the way the types are used.
+        // - The above dedup should probably be aware of the way the types are used (for coercions).
         
         if( ivar_ent.types_to.size() > 1 ) {
             H::dedup_type_list(context, ivar_ent.types_to);
