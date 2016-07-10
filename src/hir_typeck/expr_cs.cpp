@@ -1593,6 +1593,9 @@ namespace {
         void visit(::HIR::ExprNode_Field& node) override {
             const auto& field_name = node.m_field;
             TRACE_FUNCTION_F("(Field) name=" << field_name << ", ty = " << this->context.m_ivars.fmt_type(node.m_value->m_res_type));
+
+            this->context.equate_types_shadow(node.span(), node.m_res_type);
+
             ::HIR::TypeRef  out_type;
 
             // Using autoderef, locate this field
