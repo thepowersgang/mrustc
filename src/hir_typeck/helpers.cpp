@@ -1672,12 +1672,15 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 if( ! impl_params[idx] ) {
                     impl_params[idx] = &ty;
                 }
-                else if( ! this->m_ivars.types_equal(*impl_params[idx], ty) ) {
-                    // Strict equality is OK, as all types should be sane
-                    // - TODO: What if there's an un-expanded associated?
-                    match = ::HIR::Compare::Unequal;
+                else if( this->m_ivars.types_equal(*impl_params[idx], ty) ) {
+                    // Fall
+                }
+                else if( ty.m_data.is_Infer() ) {
+                    // Fall
+                    match = ::HIR::Compare::Fuzzy;
                 }
                 else {
+                    match = ::HIR::Compare::Unequal;
                 }
                 };
             assert( impl.m_trait_args.m_types.size() == params.m_types.size() );
@@ -1685,7 +1688,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             for(unsigned int i = 0; i < impl.m_trait_args.m_types.size(); i ++)
                 match &= impl.m_trait_args.m_types[i].match_test_generics_fuzz(sp, params.m_types[i], this->m_ivars.callback_resolve_infer(), cb);
             if( match == ::HIR::Compare::Unequal ) {
-                DEBUG("- Failed to match parameters - " << impl.m_trait_args << " != " << params);
+                DEBUG("- Failed to match parameters - " << impl.m_trait_args << "+" << impl.m_type << " != " << params << "+" << type);
                 return false;
             }
             for(unsigned int i = 0; i < impl_params.size(); i ++ ) {
