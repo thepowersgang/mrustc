@@ -2991,7 +2991,16 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         //for(auto it = context.link_assoc.begin(); it != context.link_assoc.end(); ) {
         //    const auto& rule = *it;
         for(unsigned int i = 0; i < context.link_assoc.size();  ) {
-            const auto& rule = context.link_assoc[i];
+            auto& rule = context.link_assoc[i];
+        
+            for( auto& ty : rule.params.m_types ) {
+                ty = context.m_resolve.expand_associated_types(rule.span, mv$(ty));
+            }
+            if( rule.name != "" ) {
+                rule.left_ty = context.m_resolve.expand_associated_types(rule.span, mv$(rule.left_ty));
+            }
+            rule.impl_ty = context.m_resolve.expand_associated_types(rule.span, mv$(rule.impl_ty));
+        
             if( check_associated(context, rule) ) {
                 DEBUG("- Consumed associated type rule - " << rule);
                 context.link_assoc.erase( context.link_assoc.begin() + i );
