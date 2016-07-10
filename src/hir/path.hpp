@@ -114,6 +114,7 @@ class TraitPath
 public:
     GenericPath m_path;
     ::std::vector< ::std::string>   m_hrls;
+    // TODO: Each bound should list its origin trait
     ::std::map< ::std::string, ::HIR::TypeRef>    m_type_bounds;
     
     const ::HIR::Trait* m_trait_ptr;
