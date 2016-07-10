@@ -2972,7 +2972,19 @@ namespace {
             // No idea! (or unused)
             return ;
         }
+        
+        ::HIR::TypeRef  ty_l_ivar;
+        ty_l_ivar.m_data.as_Infer().index = i;
+        const auto& ty_l = context.m_ivars.get_type(ty_l_ivar);
+        
+        if( !ty_l.m_data.is_Infer() ) {
+            DEBUG("- IVar " << ty_l << " had possibilities, but was known");
+            ivar_ent = Context::IVarPossible();
+            return ;
+        }
+        
         if( ivar_ent.force_no == true ) {
+            DEBUG("- IVar " << ty_l << " is forced unknown");
             ivar_ent = Context::IVarPossible();
             return ;
         }
@@ -3009,15 +3021,8 @@ namespace {
             H::dedup_type_list(context, ivar_ent.types_from);
         }
         
-        ::HIR::TypeRef  ty_l_ivar;
-        ty_l_ivar.m_data.as_Infer().index = i;
-        const auto& ty_l = context.m_ivars.get_type(ty_l_ivar);
-        
-        if( !ty_l.m_data.is_Infer() ) {
-            DEBUG("- IVar " << ty_l << " had possibilities, but was known");
-        }
         // Prefer cases where this type is being created from a known type
-        else if( ivar_ent.types_from.size() == 1 ) {
+        if( ivar_ent.types_from.size() == 1 ) {
             //const ::HIR::TypeRef& ty_r = *ivar_ent.types_from[0];
             const ::HIR::TypeRef& ty_r = ivar_ent.types_from[0];
             // Only one possibility
@@ -3032,6 +3037,7 @@ namespace {
             context.equate_types(Span(), ty_l, ty_r);
         }
         else {
+            DEBUG("- IVar " << ty_l << " not concretely known");
         }
         
         ivar_ent.force_no = false;
