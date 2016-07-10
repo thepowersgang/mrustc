@@ -1870,11 +1870,11 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
     else {
         bool succ = this->find_trait_impls(sp, this->m_crate.get_lang_item_path(sp, "deref"), ::HIR::PathParams {}, ty, [&](const auto&, const auto& args, const auto& types) {
             assert(args.m_types.size() == 0);
-            // TODO: Use `types`
+            tmp_type = types.at("Target").clone();
             return true;
             });
         if( succ ) {
-            TODO(sp, "Found a Deref impl for " << ty << ", use the output of it");
+            return &tmp_type;
         }
         else {
             return nullptr;
