@@ -960,6 +960,40 @@ bool TraitResolution::find_trait_impls(const Span& sp,
         )
         return callback( type, ::HIR::PathParams(), {} );
     }
+    
+    if( trait == this->m_crate.get_lang_item_path(sp, "copy") ) {
+        struct H {
+            static bool is_copy(const Span& sp, const TraitResolution& self, const ::HIR::TypeRef& ty) {
+                const auto& type = self.m_ivars.get_type(ty);
+                TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (e),
+                (
+                    // TODO: Search for impls?
+                    TODO(sp, "Search for Copy impl on " << type);
+                    ),
+                (Primitive,
+                    if( e == ::HIR::CoreType::Str )
+                        return false;
+                    return true;
+                    ),
+                (Borrow,
+                    return e.type == ::HIR::BorrowType::Shared;
+                    ),
+                (Pointer,
+                    return true;
+                    ),
+                (Array,
+                    return is_copy(sp, self, *e.inner);
+                    )
+                )
+            }
+        };
+        if( H::is_copy(sp, *this, type) ) {
+            return callback( type, ::HIR::PathParams(), {} );
+        }
+        else {
+            return false;
+        }
+    }
 
     const auto& trait_fn = this->m_crate.get_lang_item_path(sp, "fn");
     const auto& trait_fn_mut = this->m_crate.get_lang_item_path(sp, "fn_mut");
