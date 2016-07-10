@@ -1065,7 +1065,7 @@ namespace {
             (UfcsInherent,
                 // TODO: If ivars are valid within the type of this UFCS, then resolution has to be deferred until iteration
                 // - If they're not valid, then resolution can be done here.
-                TODO(sp, "Handle associated constants/functions in type - Can the type be infer?");
+                ASSERT_BUG(sp, !this->context.m_ivars.type_contains_ivars(*e.type), "Found ivar in UfcsInherent");
                 
                 #if 0
                 // - Locate function (and impl block)
@@ -1142,6 +1142,7 @@ namespace {
                 
                 this->context.equate_types(node.span(), node.m_res_type, ty);
                 #endif
+                TODO(sp, "Handle associated constants/functions in type - Can the type be infer?");
                 )
             )
         }
@@ -2954,8 +2955,11 @@ namespace {
             // No applicable impl
             // - TODO: This should really only fire when there isn't an impl. But it currently fires when _
             DEBUG("No impl of " << v.trait << context.m_ivars.fmt(v.params) << " for " << context.m_ivars.fmt_type(v.impl_ty));
-            if( !context.m_ivars.type_contains_ivars(v.impl_ty) ) {
-                ERROR(sp, E0000, "Failed to find an impl of " << v.trait << v.params << " for " << context.m_ivars.fmt_type(v.impl_ty));
+            bool is_known = !context.m_ivars.type_contains_ivars(v.impl_ty);
+            for(const auto& t : v.params.m_types)
+                is_known &= !context.m_ivars.type_contains_ivars(t);
+            if( is_known ) {
+                ERROR(sp, E0000, "Failed to find an impl of " << v.trait << context.m_ivars.fmt(v.params) << " for " << context.m_ivars.fmt_type(v.impl_ty));
             }
             return false;
         }
