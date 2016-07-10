@@ -1693,7 +1693,8 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             auto ty_mono = monomorphise_type_with(sp, impl.m_type, monomorph, false);
             auto args_mono = monomorphise_path_params_with(sp, impl.m_trait_args, monomorph, false);
             
-            // TODO: Check bounds
+            // Check bounds for this impl
+            // - If a bound fails, then this can't be a valid impl
             for(const auto& bound : impl.m_params.m_bounds)
             {
                 TU_MATCH(::HIR::GenericBound, (bound), (be),
@@ -1711,30 +1712,39 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     DEBUG("- " << real_type << " : " << real_trait);
                     auto rv = this->find_trait_impls(sp, real_trait.m_path.m_path, real_trait.m_path.m_params, real_type, [&](const auto&, const auto& a, const auto& t) {
                         for(const auto& assoc_bound : real_trait.m_type_bounds) {
+                            ::HIR::TypeRef  tmp;
+                            const ::HIR::TypeRef*   ty_p;
+                            
                             auto it = t.find(assoc_bound.first);
                             if( it == t.end() )
                             {
-                                auto ty = ::HIR::TypeRef(::HIR::Path(::HIR::Path::Data::Data_UfcsKnown { box$(real_type.clone()), real_trait.m_path.clone(), assoc_bound.first, {} }));
-                                auto ty2 = this->expand_associated_types(sp, mv$(ty));
-                                
-                                if( ty2 == assoc_bound.second ) {
-                                    return true;
-                                }
-                                this->m_ivars.dump();
-                                TODO(sp, "Check type bound (fuzz) " << ty2 << " = " << assoc_bound.second);
+                                // This bound isn't from this particular trait, go the slow way of using expand_associated_types
+                                tmp = this->expand_associated_types(sp, ::HIR::TypeRef(
+                                    ::HIR::Path(::HIR::Path::Data::Data_UfcsKnown { box$(real_type.clone()), real_trait.m_path.clone(), assoc_bound.first, {} }))
+                                    );
+                                ty_p = &tmp;
                             }
                             else {
-                                if( this->m_ivars.get_type(it->second) == assoc_bound.second ) {
-                                    return true;
-                                }
-                                this->m_ivars.dump();
-                                TODO(sp, "Check type bound (fuzz) " << it->second << " = " << assoc_bound.second);
+                                ty_p = &this->m_ivars.get_type(it->second);
+                            }
+                            const auto& ty = *ty_p;
+                            auto cmp = ty.compare_with_placeholders(sp, assoc_bound.second, this->m_ivars.callback_resolve_infer());
+                            switch(cmp)
+                            {
+                            case ::HIR::Compare::Equal:
+                                continue;
+                            case ::HIR::Compare::Unequal:
+                                return false;
+                            case ::HIR::Compare::Fuzzy:
+                                // TODO: When a fuzzy match is encountered on a conditional bound, returning `false` can lead to an false negative (and a compile error)
+                                // BUT, returning `true` could lead to it being selected. (Is this a problem, should a later validation pass check?)
+                                DEBUG("[find_trait_impls_crate] Fuzzy match between " << ty << " and " << assoc_bound.second);
+                                continue ;
                             }
                         }
                         return true;
                         });
                     if( !rv ) {
-                        // false = keep going
                         return false;
                     }
                     ),
