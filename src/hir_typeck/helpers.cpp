@@ -983,6 +983,8 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             
             // NOTE: This is a conditional "true", we know nothing about the move/mut-ness of this closure yet
             // - Could we?
+            
+            
             ::HIR::PathParams   pp;
             pp.m_types.push_back( ::HIR::TypeRef(mv$(args)) );
             ::std::map< ::std::string, ::HIR::TypeRef>  types;
@@ -1518,7 +1520,27 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                         return true;
                     }
                 }
-                if( this->find_named_trait_in_trait(sp, trait,params,  *e.trait.m_trait_ptr, e.trait.m_path.m_path, e.trait.m_path.m_params, type,  callback) ) {
+                // HACK: The wrapping closure takes associated types from this bound and applies them to the returned set
+                // - XXX: This is actually wrong (false-positive) in many cases. FIXME
+                bool rv = this->find_named_trait_in_trait(sp,
+                    trait,params,
+                    *e.trait.m_trait_ptr, e.trait.m_path.m_path,e.trait.m_path.m_params,
+                    type,
+                    [&](const auto& ty, const auto& params, const auto& assoc) {
+                        // TODO: Avoid duplicating this map every time
+                        ::std::map< ::std::string,::HIR::TypeRef>   assoc2;
+                        for(const auto& i : assoc) {
+                            assoc2.insert( ::std::make_pair(i.first, i.second.clone())  );
+                        }
+                        for(const auto& i : e.trait.m_type_bounds) {
+                            // TODO: Only include from above when needed
+                            //if( des_trait_ref.m_types.count(i.first) ) {
+                                assoc2.insert( ::std::make_pair(i.first, i.second.clone())  );
+                            //}
+                        }
+                        return callback(ty, params, assoc2);
+                    });
+                if( rv ) {
                     return true;
                 }
             }
@@ -1558,7 +1580,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                             }
                             else {
                                 if( ge.binding >= assoc_info->trait.m_params.m_types.size() )
-                                    BUG(sp, "find_named_trait_in_trait - Generic #" << ge.binding << " " << ge.name << " out of range");
+                                    BUG(sp, "find_trait_impls_bound - Generic #" << ge.binding << " " << ge.name << " out of range");
                                 return assoc_info->trait.m_params.m_types[ge.binding];
                             }
                             }, false);

@@ -321,8 +321,12 @@ namespace {
                 
                 // TODO: Either - Don't include the above impl bound, or change the below trait to the one that has that type
                 for( const auto& assoc : be.trait.m_type_bounds ) {
+                    ::HIR::GenericPath  type_trait_path;
+                    context.m_resolve.trait_contains_type(sp, real_trait, *be.trait.m_trait_ptr, assoc.first,  type_trait_path);
+                    
                     auto other_ty = monomorphise_type_with(sp, assoc.second, cache.m_monomorph_cb, true);
-                    context.equate_types_assoc(sp, other_ty,  trait_path, mv$(trait_params.clone().m_types), real_type, assoc.first.c_str());
+                    
+                    context.equate_types_assoc(sp, other_ty,  type_trait_path.m_path, mv$(type_trait_path.m_params.m_types), real_type, assoc.first.c_str());
                 }
                 ),
             (TypeEquality,
