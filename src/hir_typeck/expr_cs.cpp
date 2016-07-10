@@ -1067,7 +1067,7 @@ namespace {
                 // - If they're not valid, then resolution can be done here.
                 ASSERT_BUG(sp, !this->context.m_ivars.type_contains_ivars(*e.type), "Found ivar in UfcsInherent");
                 
-                #if 0
+                #if 1
                 // - Locate function (and impl block)
                 const ::HIR::Function* fcn_ptr = nullptr;
                 const ::HIR::TypeImpl* impl_ptr = nullptr;
@@ -1087,17 +1087,17 @@ namespace {
                         return true;
                     });
                 if( !fcn_ptr ) {
-                    ERROR(sp, E0000, "Failed to locate function " << path);
+                    ERROR(sp, E0000, "Failed to locate function " << node.m_path);
                 }
                 assert(impl_ptr);
-                fix_param_count(sp, this->context, path, fcn_ptr->m_params,  e.params);
+                fix_param_count(sp, this->context, node.m_path, fcn_ptr->m_params,  e.params);
                 
                 // If the impl block has parameters, figure out what types they map to
                 // - The function params are already mapped (from fix_param_count)
                 ::HIR::PathParams   impl_params;
                 if( impl_ptr->m_params.m_types.size() > 0 ) {
                     impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
-                    impl_ptr->m_type.match_generics(sp, *e.type, this->context.callback_resolve_infer(), [&](auto idx, const auto& ty) {
+                    impl_ptr->m_type.match_generics(sp, *e.type, this->context.m_ivars.callback_resolve_infer(), [&](auto idx, const auto& ty) {
                         assert( idx < impl_params.m_types.size() );
                         impl_params.m_types[idx] = ty.clone();
                         });
@@ -1142,7 +1142,6 @@ namespace {
                 
                 this->context.equate_types(node.span(), node.m_res_type, ty);
                 #endif
-                TODO(sp, "Handle associated constants/functions in type - Can the type be infer?");
                 )
             )
         }
@@ -2826,7 +2825,8 @@ namespace {
             ),
         (Function,
             // TODO: Could capture-less closures coerce to fn() types?
-            TODO(sp, "check_coerce - Coercion to " << ty);
+            context.equate_types(sp, ty, ty_r);
+            return true;
             ),
         (Closure,
             context.equate_types(sp, ty,  node_ptr->m_res_type);
