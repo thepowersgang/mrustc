@@ -1028,6 +1028,7 @@ class IndexVisitor:
     public ::HIR::Visitor
 {
     const ::HIR::Crate& crate;
+    Span    null_span;
 public:
     IndexVisitor(const ::HIR::Crate& crate):
         crate(crate)
@@ -1038,7 +1039,7 @@ public:
         for( auto& bound : params.m_bounds )
         {
             TU_IFLET(::HIR::GenericBound, bound, TraitBound, e,
-                e.trait.m_trait_ptr = &this->crate.get_trait_by_path(Span(), e.trait.m_path.m_path);
+                e.trait.m_trait_ptr = &this->crate.get_trait_by_path(null_span, e.trait.m_path.m_path);
             )
         }
     }
