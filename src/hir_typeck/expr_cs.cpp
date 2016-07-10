@@ -1297,12 +1297,31 @@ namespace {
                 (
                     ERROR(sp, E0000, "Invalid cast to pointer");
                     ),
+                (Primitive,
+                    if( s_e != ::HIR::CoreType::Usize ) {
+                        ERROR(sp, E0000, "Invalid cast to pointer from " << src_ty);
+                    }
+                    // TODO: Can't be to a fat pointer though.
+                    this->m_completed = true;
+                    ),
                 (Infer,
+                    switch( s_e.ty_class )
+                    {
+                    case ::HIR::InferClass::Float:
+                        ERROR(sp, E0000, "Invalid cast to pointer from floating point literal");
+                    case ::HIR::InferClass::Integer:
+                        this->context.equate_types(sp, src_ty, ::HIR::TypeRef(::HIR::CoreType::Usize));
+                        this->m_completed = true;
+                        break;
+                    case ::HIR::InferClass::None:
+                        break;
+                    }
                     ),
                 (Borrow,
                     // Check class (must be equal) and type
                     // TODO: Check class
                     this->context.equate_types(sp, *e.inner, *s_e.inner);
+                    this->m_completed = true;
                     ),
                 (Pointer,
                     // Allow with no link?
