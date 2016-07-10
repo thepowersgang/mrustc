@@ -45,8 +45,8 @@ struct Context
         ::HIR::TypeRef  impl_ty;
         ::std::string   name;   // if "", no type is used (and left is ignored) - Just does trait selection
         
-        // HACK: binops are special - the result when both types are primitives is ALWAYS the lefthand side
-        bool    is_binop;
+        // HACK: operators are special - the result when both types are primitives is ALWAYS the lefthand side
+        bool    is_operator;
         
         friend ::std::ostream& operator<<(::std::ostream& os, const Associated& v) {
             if( v.name == "" ) {
@@ -103,7 +103,7 @@ struct Context
     // - Equate two types, allowing inferrence
     void equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR::ExprNodeP& node_ptr);
     // - Equate a type to an associated type (if name == "", no equation is done, but trait is searched)
-    void equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name, bool is_binop=false);
+    void equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name, bool is_op=false);
 
     // - List `t` as a possible type for `ivar_index`
     void possible_equate_type_to(unsigned int ivar_index, const ::HIR::TypeRef& t);
@@ -599,10 +599,10 @@ namespace {
                 this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, node.m_value->m_res_type.clone()));
                 break;
             case ::HIR::ExprNode_UniOp::Op::Invert:
-                this->context.equate_types_assoc(node.span(), node.m_res_type,  this->context.m_crate.get_lang_item_path(node.span(), "not"), {}, node.m_value->m_res_type.clone(), "Output");
+                this->context.equate_types_assoc(node.span(), node.m_res_type,  this->context.m_crate.get_lang_item_path(node.span(), "not"), {}, node.m_value->m_res_type.clone(), "Output", true);
                 break;
             case ::HIR::ExprNode_UniOp::Op::Negate:
-                this->context.equate_types_assoc(node.span(), node.m_res_type,  this->context.m_crate.get_lang_item_path(node.span(), "neg"), {}, node.m_value->m_res_type.clone(), "Output");
+                this->context.equate_types_assoc(node.span(), node.m_res_type,  this->context.m_crate.get_lang_item_path(node.span(), "neg"), {}, node.m_value->m_res_type.clone(), "Output", true);
                 break;
             }
             node.m_value->visit( *this );
@@ -2308,7 +2308,7 @@ void Context::equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR
         });
     DEBUG("equate_types_coerce(" << this->link_coerce.back() << ")");
 }
-void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name, bool is_binop)
+void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name, bool is_op)
 {
     ::HIR::PathParams   pp;
     pp.m_types = mv$(ty_args);
@@ -2320,7 +2320,7 @@ void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const
         mv$(pp),
         impl_ty.clone(),
         name,
-        is_binop
+        is_op
         });
     DEBUG("equate_types_assoc(" << this->link_assoc.back() << ")");
 }
@@ -2782,13 +2782,33 @@ namespace {
                 )
             }
         };
-        if( v.is_binop ) {
-            const auto& left = context.get_type(v.impl_ty); // yes, impl = LHS of binop
-            const auto& right = context.get_type(v.params.m_types.at(0));
-            const auto& res = context.get_type(v.left_ty);
-            if( H::type_is_num(left) && H::type_is_num(right) ) {
-                DEBUG("- Magic inferrence link for binops on numerics");
-                context.equate_types(sp, left, res);
+        
+        // MAGIC! Have special handling for operator overloads
+        if( v.is_operator ) {
+            if( v.params.m_types.size() == 0 )
+            {
+                // Uni ops = If the value is a primitive, the output is the same type
+                const auto& ty = context.get_type(v.impl_ty);
+                const auto& res = context.get_type(v.left_ty);
+                if( H::type_is_num(ty) ) {
+                    DEBUG("- Magic inferrence link for uniops on numerics");
+                    context.equate_types(sp, res, ty);
+                }
+            }
+            else if( v.params.m_types.size() == 1 )
+            {
+                // Binary operations - If both types are primitives, the output is the lefthand side
+                const auto& left = context.get_type(v.impl_ty); // yes, impl = LHS of binop
+                const auto& right = context.get_type(v.params.m_types.at(0));
+                const auto& res = context.get_type(v.left_ty);
+                if( H::type_is_num(left) && H::type_is_num(right) ) {
+                    DEBUG("- Magic inferrence link for binops on numerics");
+                    context.equate_types(sp, res, left);
+                }
+            }
+            else
+            {
+                BUG(sp, "");
             }
         }
         
@@ -2809,8 +2829,8 @@ namespace {
                     DEBUG("- (fail) bounded impl " << v.trait << v.params << " (ty_right = " << context.m_ivars.fmt_type(v.impl_ty));
                     return false;
                 }
-                if( v.name != "" &&  assoc.count(v.name) == 0 )
-                    BUG(sp, "Getting associated type '" << v.name << "' which isn't in list");
+                if( v.name != "" && assoc.count(v.name) == 0 )
+                    BUG(sp, "Getting associated type '" << v.name << "' which isn't in " << v.trait);
                 const auto& out_ty = (v.name == "" ? v.left_ty : assoc.at(v.name));
                 
                 // - If we're looking for an associated type, allow it to eliminate impossible impls
@@ -2833,6 +2853,8 @@ namespace {
                         possible_impl_ty = impl_ty.clone();
                         possible_params = args.clone();
                     }
+                    
+                    DEBUG("- (possible) " << v.trait << args << " for " << impl_ty);
                     
                     return false;
                 }
