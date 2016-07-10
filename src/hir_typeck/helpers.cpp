@@ -1801,8 +1801,11 @@ bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::Generic
     auto it = trait_ptr.m_values.find(name);
     if( it != trait_ptr.m_values.end() ) {
         if( it->second.is_Function() ) {
-            out_path = trait_path.clone();
-            return true;
+            const auto& v = it->second.as_Function();
+            if( v.m_args.size() > 0 && v.m_args[0].first.m_binding.m_name == "self" ) {
+                out_path = trait_path.clone();
+                return true;
+            }
         }
     }
     
@@ -1969,13 +1972,16 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
         if( it != trait.m_values.end() )
         {
             if( it->second.is_Function() ) {
-                fcn_path = ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown({
-                    box$( ty.clone() ),
-                    e.m_trait.m_path.clone(),
-                    method_name,
-                    {}
-                    }) );
-                return true;
+                const auto& v = it->second.as_Function();
+                if( v.m_args.size() > 0 && v.m_args[0].first.m_binding.m_name == "self" ) {
+                    fcn_path = ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown({
+                        box$( ty.clone() ),
+                        e.m_trait.m_path.clone(),
+                        method_name,
+                        {}
+                        }) );
+                    return true;
+                }
             }
         }
     )
@@ -2018,13 +2024,15 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
                 auto it = impl.m_methods.find( method_name );
                 if( it == impl.m_methods.end() )
                     continue ;
-                DEBUG("Matching `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "`"/* << " - " << top_ty*/);
-                fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsInherent({
-                    box$(ty.clone()),
-                    method_name,
-                    {}
-                    }) );
-                return true;
+                if( it->second.m_args.size() > 0 && it->second.m_args[0].first.m_binding.m_name == "self" ) {
+                    DEBUG("Matching `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "`"/* << " - " << top_ty*/);
+                    fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsInherent({
+                        box$(ty.clone()),
+                        method_name,
+                        {}
+                        }) );
+                    return true;
+                }
             }
         }
         // 3. Search for trait methods (using currently in-scope traits)
@@ -2033,23 +2041,31 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
             if( trait_ref.first == nullptr )
                 break;
             
+            //::HIR::GenericPath final_trait_path;
+            //if( !this->trait_contains_method(sp, *trait_ref.first, *trait_ref.second, method_name,  final_trait_path) )
+            //    continue ;
+            //DEBUG("- Found trait " << final_trait_path);
+            
             // TODO: Search supertraits too
             auto it = trait_ref.second->m_values.find(method_name);
             if( it == trait_ref.second->m_values.end() )
                 continue ;
             if( !it->second.is_Function() )
                 continue ;
-            DEBUG("Search for impl of " << *trait_ref.first);
-            // TODO: Need a "don't care" marker for the PathParams
-            if( find_trait_impls_crate(sp, *trait_ref.first, ::HIR::PathParams{}, ty,  [](const auto&,const auto&,const auto&) { return true; }) ) {
-                DEBUG("Found trait impl " << *trait_ref.first << " (" /*<< m_ivars.fmt_type(*trait_ref.first)*/  << ") for " << ty << " ("<<m_ivars.fmt_type(ty)<<")");
-                fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
-                    box$( ty.clone() ),
-                    trait_ref.first->clone(),
-                    method_name,
-                    {}
-                    }) );
-                return true;
+            const auto& v = it->second.as_Function();
+            if( v.m_args.size() > 0 && v.m_args[0].first.m_binding.m_name == "self" ) {
+                DEBUG("Search for impl of " << *trait_ref.first);
+                // TODO: Need a "don't care" marker for the PathParams
+                if( find_trait_impls_crate(sp, *trait_ref.first, ::HIR::PathParams{}, ty,  [](const auto&,const auto&,const auto&) { return true; }) ) {
+                    DEBUG("Found trait impl " << *trait_ref.first << " (" /*<< m_ivars.fmt_type(*trait_ref.first)*/  << ") for " << ty << " ("<<m_ivars.fmt_type(ty)<<")");
+                    fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
+                        box$( ty.clone() ),
+                        trait_ref.first->clone(),
+                        method_name,
+                        {}
+                        }) );
+                    return true;
+                }
             }
         }
     }

@@ -1538,7 +1538,7 @@ namespace {
         void visit(::HIR::ExprNode_CallMethod& node) override {
             const auto& ty = this->context.get_type(node.m_value->m_res_type);
             //const auto ty = this->context.m_resolve.expand_associated_types(node.span(), this->context.get_type(node.m_value->m_res_type).clone());
-            TRACE_FUNCTION_F("(CallMethod) ty = " << this->context.m_ivars.fmt_type(ty));
+            TRACE_FUNCTION_F("(CallMethod) {" << this->context.m_ivars.fmt_type(ty) << "}." << node.m_method);
             
             // Make sure that no mentioned types are inferred until this method is known
             this->context.equate_types_shadow(node.span(), node.m_res_type);
@@ -1551,7 +1551,7 @@ namespace {
             unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, ty, node.m_method,  fcn_path);
             if( deref_count != ~0u )
             {
-                DEBUG("- deref_count = " << deref_count);
+                DEBUG("- deref_count = " << deref_count << ", fcn_path = " << fcn_path);
                 visit_call_populate_cache(this->context, node.span(), fcn_path, node.m_cache);
                 
                 node.m_method_path = mv$(fcn_path);
