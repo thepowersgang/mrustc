@@ -2330,6 +2330,7 @@ void Context::equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR
         l.clone(), &node_ptr
         });
     DEBUG("equate_types_coerce(" << this->link_coerce.back() << ")");
+    this->m_ivars.mark_change();
 }
 void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name, bool is_op)
 {
@@ -2346,6 +2347,7 @@ void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const
         is_op
         });
     DEBUG("equate_types_assoc(" << this->link_assoc.back() << ")");
+    this->m_ivars.mark_change();
 }
 void Context::add_revisit(::HIR::ExprNode& node) {
     this->to_visit.push_back( &node );
@@ -3093,7 +3095,6 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         }
         
         count ++;
-        context.m_ivars.dump();
         context.m_resolve.compact_ivars(context.m_ivars);
     }
     

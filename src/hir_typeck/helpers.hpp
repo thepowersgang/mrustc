@@ -78,8 +78,10 @@ public:
         return rv;
     }
     void mark_change() {
-        DEBUG("- CHANGE");
-        m_has_changed = true;
+        if( !m_has_changed ) {
+            DEBUG("- CHANGE");
+            m_has_changed = true;
+        }
     }
     
     void compact_ivars();

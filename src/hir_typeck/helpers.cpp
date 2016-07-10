@@ -307,10 +307,12 @@ bool HMTypeInferrence::apply_defaults()
                     break;
                 case ::HIR::InferClass::Integer:
                     rv = true;
+                    DEBUG("- " << *v.type << " -> i32");
                     *v.type = ::HIR::TypeRef( ::HIR::CoreType::I32 );
                     break;
                 case ::HIR::InferClass::Float:
                     rv = true;
+                    DEBUG("- " << *v.type << " -> f64");
                     *v.type = ::HIR::TypeRef( ::HIR::CoreType::F64 );
                     break;
                 }
