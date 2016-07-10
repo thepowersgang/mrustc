@@ -117,7 +117,7 @@ namespace {
             auto _ = this->m_ms.set_item_generics(item.m_params);
             
             // TODO: Use a different type depding on repr()
-            auto enum_type = ::HIR::TypeRef(::HIR::CoreType::Usize);
+            auto enum_type = ::HIR::TypeRef(::HIR::CoreType::Isize);
             
             // TODO: Check types too?
             for(auto& var : item.m_variants)
