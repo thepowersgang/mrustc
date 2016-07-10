@@ -49,7 +49,12 @@ struct Context
         bool    is_binop;
         
         friend ::std::ostream& operator<<(::std::ostream& os, const Associated& v) {
-            os << v.left_ty << " = " << "<" << v.impl_ty << " as " << v.trait << v.params << ">::" << v.name;
+            if( v.name == "" ) {
+                os << "req ty " << v.impl_ty << " impl " << v.trait << v.params;
+            }
+            else {
+                os << v.left_ty << " = " << "<" << v.impl_ty << " as " << v.trait << v.params << ">::" << v.name;
+            }
             return os;
         }
     };
@@ -314,6 +319,7 @@ namespace {
                 const auto& trait_path = be.trait.m_path.m_path;
                 context.equate_types_assoc(sp, ::HIR::TypeRef(), trait_path, mv$(trait_params.clone().m_types), real_type, "");
                 
+                // TODO: Either - Don't include the above impl bound, or change the below trait to the one that has that type
                 for( const auto& assoc : be.trait.m_type_bounds ) {
                     auto other_ty = monomorphise_type_with(sp, assoc.second, cache.m_monomorph_cb, true);
                     context.equate_types_assoc(sp, other_ty,  trait_path, mv$(trait_params.clone().m_types), real_type, assoc.first.c_str());
@@ -2841,14 +2847,15 @@ namespace {
         else if( count == 0 ) {
             // No applicable impl
             // - TODO: This should really only fire when there isn't an impl. But it currently fires when _
-            DEBUG("No impl of " << v.trait << v.params << " for " << v.impl_ty);
+            DEBUG("No impl of " << v.trait << context.m_ivars.fmt(v.params) << " for " << context.m_ivars.fmt_type(v.impl_ty));
             if( !context.m_ivars.type_contains_ivars(v.impl_ty) ) {
                 ERROR(sp, E0000, "Failed to find an impl of " << v.trait << v.params << " for " << context.m_ivars.fmt_type(v.impl_ty));
             }
             return false;
         }
         else if( count == 1 ) {
-            DEBUG("Only one impl " << v.trait << possible_params << " for " << possible_impl_ty << " - params=" << possible_params << ", ty=" << possible_impl_ty << ", out=" << output_type);
+            DEBUG("Only one impl " << v.trait << context.m_ivars.fmt(possible_params) << " for " << context.m_ivars.fmt_type(possible_impl_ty)
+                << " - params=" << possible_params << ", ty=" << possible_impl_ty << ", out=" << output_type);
             // Only one possible impl
             if( v.name != "" ) {
                 context.equate_types(sp, v.left_ty, output_type);

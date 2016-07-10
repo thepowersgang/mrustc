@@ -322,18 +322,6 @@ bool HMTypeInferrence::apply_defaults()
 
 void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) const
 {
-    struct H {
-        static void print_pp(const HMTypeInferrence& ctxt, ::std::ostream& os, const ::HIR::PathParams& pps) {
-            if( pps.m_types.size() > 0 ) {
-                os << "<";
-                for(const auto& pp_t : pps.m_types) {
-                    ctxt.print_type(os, pp_t);
-                    os << ",";
-                }
-                os << ">";
-            }
-        }
-    };
     const auto& ty = this->get_type(tr);
     TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
     (Infer,
@@ -348,21 +336,21 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
         TU_MATCH(::HIR::Path::Data, (e.path.m_data), (pe),
         (Generic,
             os << pe.m_path;
-            H::print_pp(*this, os, pe.m_params);
+            this->print_pathparams(os, pe.m_params);
             ),
         (UfcsKnown,
             os << "<";
             this->print_type(os, *pe.type);
             os << " as " << pe.trait.m_path;
-            H::print_pp(*this, os, pe.trait.m_params);
+            this->print_pathparams(os, pe.trait.m_params);
             os << ">::" << pe.item;
-            H::print_pp(*this, os, pe.params);
+            this->print_pathparams(os, pe.params);
             ),
         (UfcsInherent,
             os << "<";
             this->print_type(os, *pe.type);
             os << ">::" << pe.item;
-            H::print_pp(*this, os, pe.params);
+            this->print_pathparams(os, pe.params);
             ),
         (UfcsUnknown,
             BUG(Span(), "UfcsUnknown");
@@ -411,10 +399,10 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
         ),
     (TraitObject,
         os << "(" << e.m_trait.m_path.m_path;
-        H::print_pp(*this, os, e.m_trait.m_path.m_params);
+        this->print_pathparams(os, e.m_trait.m_path.m_params);
         for(const auto& marker : e.m_markers) {
             os << "+" << marker.m_path;
-            H::print_pp(*this, os, marker.m_params);
+            this->print_pathparams(os, marker.m_params);
         }
         os << ")";
         ),
@@ -427,6 +415,17 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
         os << ")";
         )
     )
+}
+void HMTypeInferrence::print_pathparams(::std::ostream& os, const ::HIR::PathParams& pps) const
+{
+    if( pps.m_types.size() > 0 ) {
+        os << "<";
+        for(const auto& pp_t : pps.m_types) {
+            this->print_type(os, pp_t);
+            os << ",";
+        }
+        os << ">";
+    }
 }
 
 void HMTypeInferrence::expand_ivars(::HIR::TypeRef& type)

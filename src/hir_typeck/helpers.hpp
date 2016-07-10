@@ -35,7 +35,20 @@ public:
             return os;
         }
     };
+    struct FmtPP {
+        const HMTypeInferrence& ctxt;
+        const ::HIR::PathParams& pps;
+        FmtPP(const HMTypeInferrence& ctxt, const ::HIR::PathParams& pps):
+            ctxt(ctxt),
+            pps(pps)
+        {}
+        friend ::std::ostream& operator<<(::std::ostream& os, const FmtPP& x) {
+            x.ctxt.print_pathparams(os, x.pps);
+            return os;
+        }
+    };
 
+public: // ?? - Needed once, anymore?
     struct IVar
     {
         unsigned int alias; // If not ~0, this points to another ivar
@@ -75,8 +88,13 @@ public:
     void dump() const;
     
     void print_type(::std::ostream& os, const ::HIR::TypeRef& tr) const;
+    void print_pathparams(::std::ostream& os, const ::HIR::PathParams& pps) const;
+    
     FmtType fmt_type(const ::HIR::TypeRef& tr) const {
         return FmtType(*this, tr);
+    }
+    FmtPP fmt(const ::HIR::PathParams& v) const {
+        return FmtPP(*this, v);
     }
     
     /// Add (and bind) all '_' types in `type`
