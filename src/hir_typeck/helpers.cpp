@@ -252,10 +252,24 @@ void HMTypeInferrence::dump() const
     unsigned int i = 0;
     for(const auto& v : m_ivars) {
         if(v.is_alias()) {
-            DEBUG("#" << i << " = " << v.alias);
+            //DEBUG("#" << i << " = " << v.alias);
         }
         else {
-            DEBUG("#" << i << " = " << *v.type);
+            DEBUG("#" << i << " = " << *v.type << FMT_CB(os,
+                bool open = false;
+                unsigned int i2 = 0;
+                for(const auto& v2 : m_ivars) {
+                    if( v2.is_alias() && v2.alias == i ) {
+                        if( !open )
+                            os << " { ";
+                        open = true;
+                        os << "#" << i2 << " ";
+                    }
+                    i2 ++;
+                }
+                if(open)
+                    os << "}";
+                ));
         }
         i ++ ;
     }

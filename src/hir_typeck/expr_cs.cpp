@@ -3028,6 +3028,9 @@ namespace {
         
         TRACE_FUNCTION_F(i);
         
+        // TODO: Some cases lead to two possibilities that compare different (due to inferrence) but are actually the same.
+        // - The above dedup should probably be aware of the way the types are used.
+        
         if( ivar_ent.types_to.size() > 1 ) {
             H::dedup_type_list(context, ivar_ent.types_to);
         }
@@ -3051,7 +3054,7 @@ namespace {
             context.equate_types(Span(), ty_l, ty_r);
         }
         else {
-            DEBUG("- IVar " << ty_l << " not concretely known");
+            DEBUG("- IVar " << ty_l << " not concretely known {" << ivar_ent.types_from << "} and {" << ivar_ent.types_to << "}" );
         }
         
         ivar_ent.force_no = false;
