@@ -61,6 +61,7 @@ struct Context
     
     struct IVarPossible
     {
+        bool force_no = false;
         // TODO: If an ivar is eliminated (i.e. has its type dropped) while its pointer is here - things will break
         //::std::vector<const ::HIR::TypeRef*>    types;
         ::std::vector<::HIR::TypeRef>    types_to;
@@ -102,12 +103,16 @@ struct Context
     void equate_types(const Span& sp, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r);
     // - Equate two types, allowing inferrence
     void equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR::ExprNodeP& node_ptr);
+    // - Mark a type as having an unknown coercion (for this round)
+    void equate_types_shadow(const Span& sp, const ::HIR::TypeRef& l);
     // - Equate a type to an associated type (if name == "", no equation is done, but trait is searched)
     void equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name, bool is_op=false);
 
     // - List `t` as a possible type for `ivar_index`
     void possible_equate_type_to(unsigned int ivar_index, const ::HIR::TypeRef& t);
     void possible_equate_type_from(unsigned int ivar_index, const ::HIR::TypeRef& t);
+    // Mark an ivar as having an unknown possibility
+    void possible_equate_type_disable(unsigned int ivar_index);
     void possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t, bool is_to);
     
     // - Add a pattern binding (forcing the type to match)
@@ -1534,6 +1539,13 @@ namespace {
             const auto& ty = this->context.get_type(node.m_value->m_res_type);
             //const auto ty = this->context.m_resolve.expand_associated_types(node.span(), this->context.get_type(node.m_value->m_res_type).clone());
             TRACE_FUNCTION_F("(CallMethod) ty = " << this->context.m_ivars.fmt_type(ty));
+            
+            // Make sure that no mentioned types are inferred until this method is known
+            this->context.equate_types_shadow(node.span(), node.m_res_type);
+            for( const auto& arg_node : node.m_args ) {
+                this->context.equate_types_shadow(node.span(), arg_node->m_res_type);
+            }
+            
             // Using autoderef, locate this method on the type
             ::HIR::Path   fcn_path { ::HIR::SimplePath() };
             unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, ty, node.m_method,  fcn_path);
@@ -2332,6 +2344,25 @@ void Context::equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR
     DEBUG("equate_types_coerce(" << this->link_coerce.back() << ")");
     this->m_ivars.mark_change();
 }
+void Context::equate_types_shadow(const Span& sp, const ::HIR::TypeRef& l)
+{
+    TU_MATCH_DEF(::HIR::TypeRef::Data, (this->get_type(l).m_data), (e),
+    (
+        ),
+    (Borrow,
+        TU_MATCH_DEF(::HIR::TypeRef::Data, (this->get_type(*e.inner).m_data), (e2),
+        (
+            ),
+        (Infer,
+            this->possible_equate_type_disable(e2.index);
+            )
+        )
+        ),
+    (Infer,
+        this->possible_equate_type_disable(e.index);
+        )
+    )
+}
 void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name, bool is_op)
 {
     ::HIR::PathParams   pp;
@@ -2374,6 +2405,20 @@ void Context::possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef
     auto& list = (is_to ? ent.types_to : ent.types_from);
     //list.push_back( &t );
     list.push_back( t.clone() );
+}
+void Context::possible_equate_type_disable(unsigned int ivar_index) {
+    DEBUG(ivar_index << " ?= ??");
+    {
+        ::HIR::TypeRef  ty_l;
+        ty_l.m_data.as_Infer().index = ivar_index;
+        assert( m_ivars.get_type(ty_l).m_data.is_Infer() );
+    }
+    
+    if( ivar_index >= possible_ivar_vals.size() ) {
+        possible_ivar_vals.resize( ivar_index + 1 );
+    }
+    auto& ent = possible_ivar_vals[ivar_index];
+    ent.force_no = true;
 }
 
 void Context::add_var(unsigned int index, const ::std::string& name, ::HIR::TypeRef type) {
@@ -2927,6 +2972,10 @@ namespace {
             // No idea! (or unused)
             return ;
         }
+        if( ivar_ent.force_no == true ) {
+            ivar_ent = Context::IVarPossible();
+            return ;
+        }
         
         struct H {
             // De-duplicate list (taking into account other ivars)
@@ -2985,6 +3034,7 @@ namespace {
         else {
         }
         
+        ivar_ent.force_no = false;
         ivar_ent.types_to.clear();
         ivar_ent.types_from.clear();
     }
