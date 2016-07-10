@@ -2513,9 +2513,9 @@ namespace {
         
         // Fast hack for slices
         #if 0
-        if( left_inner_res.m_data.is_Slice() && !right_inner_res.m_data.is_Slice() )
+        if( ty_src.m_data.is_Slice() && !ty_src.m_data.is_Slice() )
         {
-            const auto& left_slice = left_inner_res.m_data.as_Slice();
+            const auto& left_slice = ty_dst.m_data.as_Slice();
             TU_IFLET(::HIR::TypeRef::Data, right_inner_res.m_data, Array, right_array,
                 this->apply_equality(sp, *left_slice.inner, cb_left, *right_array.inner, cb_right, nullptr);
                 auto span = node_ptr->span();
@@ -2589,6 +2589,20 @@ namespace {
         // - If `right`: ::core::marker::Unsize<`left`>
         // - If left can be dereferenced to right
         // - If left is a slice, right can unsize/deref (Defunct?)
+        TU_MATCH_DEF(::HIR::TypeRef::Data, (ty_src.m_data), (e),
+        (
+            ),
+        (Slice,
+            // NOTE: These can't even coerce to a TraitObject because of pointer size problems
+            context.equate_types(sp, ty_dst, ty_src);
+            return true;
+        //    ),
+        //(TraitObject,
+        //    // TODO: Could a trait object coerce and lose a trait?
+        //    context.equate_types(sp, ty_dst, ty_src);
+        //    return true;
+            )
+        )
         return false;
     }
     bool check_coerce(Context& context, const Context::Coercion& v) {
