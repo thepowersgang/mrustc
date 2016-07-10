@@ -1476,40 +1476,106 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
 }
 bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const
 {
+    struct H {
+        static ::HIR::Compare compare_pp(const Span& sp, const TraitResolution& self, const ::HIR::PathParams& left, const ::HIR::PathParams& right) {
+            ASSERT_BUG( sp, left.m_types.size() == right.m_types.size(), "Parameter count mismatch" );
+            ::HIR::Compare  ord = ::HIR::Compare::Equal;
+            for(unsigned int i = 0; i < left.m_types.size(); i ++) {
+                ord &= left.m_types[i].compare_with_placeholders(sp, right.m_types[i], self.m_ivars.callback_resolve_infer());
+                if( ord == ::HIR::Compare::Unequal )
+                    return ord;
+            }
+            return ord;
+        } 
+    };
+    const ::HIR::Path::Data::Data_UfcsKnown* assoc_info = nullptr;
+    TU_IFLET(::HIR::TypeRef::Data, type.m_data, Path, e,
+        TU_IFLET(::HIR::Path::Data, e.path.m_data, UfcsKnown, pe,
+            assoc_info = &pe;
+        )
+    )
+    
+    // TODO: A bound can imply something via its associated types. How deep can this go?
+    // E.g. `T: IntoIterator<Item=&u8>` implies `<T as IntoIterator>::IntoIter : Iterator<Item=&u8>`
     return this->iterate_bounds([&](const auto& b) {
         TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
-            DEBUG("- " << e.type << " : " << e.trait);
+            const auto& b_params = e.trait.m_path.m_params;
+            DEBUG("(bound) - " << e.type << " : " << e.trait);
             // TODO: Allow fuzzy equality?
-            if( e.type != type )
-                return false;
-            
-            if( e.trait.m_path.m_path == trait ) {
-                const auto& b_params = e.trait.m_path.m_params;
-                if( params.m_types.size() != b_params.m_types.size() ) {
-                    // Bug?
-                    BUG(sp, "Paremter count mismatch");
-                }
-                DEBUG("Checking " << params << " vs " << b_params);
-                bool is_fuzzy = false;
-                // Check against `params`
-                for(unsigned int i = 0; i < params.m_types.size(); i ++) {
-                    auto ord = b_params.m_types[i].compare_with_placeholders(sp, params.m_types[i], this->m_ivars.callback_resolve_infer());
+            if( e.type == type )
+            {
+                if( e.trait.m_path.m_path == trait ) {
+                    // Check against `params`
+                    DEBUG("Checking " << params << " vs " << b_params);
+                    auto ord = H::compare_pp(sp, *this, b_params, params);
                     if( ord == ::HIR::Compare::Unequal )
                         return false;
-                    if( ord == ::HIR::Compare::Fuzzy )
-                        is_fuzzy = true;
+                    if( ord == ::HIR::Compare::Fuzzy ) {
+                        DEBUG("Fuzzy match");
+                    }
+                    // Hand off to the closure, and return true if it does
+                    if( callback(e.type, e.trait.m_path.m_params, e.trait.m_type_bounds) ) {
+                        return true;
+                    }
                 }
-                if( is_fuzzy ) {
-                    DEBUG("Fuzzy match");
-                }
-                // Hand off to the closure, and return true if it does
-                if( callback(e.type, e.trait.m_path.m_params, e.trait.m_type_bounds) ) {
+                if( this->find_named_trait_in_trait(sp, trait,params,  *e.trait.m_trait_ptr, e.trait.m_path.m_path, e.trait.m_path.m_params, type,  callback) ) {
                     return true;
                 }
             }
-            if( this->find_named_trait_in_trait(sp, trait,params,  *e.trait.m_trait_ptr, e.trait.m_path.m_path, e.trait.m_path.m_params, type,  callback) ) {
-                return true;
+            
+            // If the input type is an associated type controlled by this trait bound, check for added bounds.
+            // TODO: This just checks a single layer, but it's feasable that there could be multiple layers
+            if( assoc_info && e.trait.m_path.m_path == assoc_info->trait.m_path && e.type == *assoc_info->type ) {
+                // Check the trait params
+                auto ord = H::compare_pp(sp, *this, b_params, assoc_info->trait.m_params);
+                if( ord == ::HIR::Compare::Fuzzy ) {
+                    TODO(sp, "Handle fuzzy matches searching for associated type bounds");
+                }
+                
+                const auto& trait_ref = *e.trait.m_trait_ptr;
+                const auto& at = trait_ref.m_types.at(assoc_info->item);
+                for(const auto& bound : at.m_params.m_bounds) {
+                    if( ! bound.is_TraitBound() )
+                        continue ;
+                    const auto& be = bound.as_TraitBound();
+                    if( be.type != ::HIR::TypeRef("Self", 0xFFFF) ) {
+                        TODO(sp, "Handle associated type bounds on !Self");
+                        continue ;
+                    }
+                    if( be.trait.m_path.m_path == trait ) {
+                        DEBUG("- Found an associated type impl");
+                        auto ord = H::compare_pp(sp, *this, b_params, params);
+                        if( ord == ::HIR::Compare::Unequal )
+                            return false;
+                        if( ord == ::HIR::Compare::Fuzzy ) {
+                            DEBUG("Fuzzy match");
+                        }
+                        
+                        auto tp_mono = monomorphise_traitpath_with(sp, be.trait, [&](const auto& gt)->const auto& {
+                            const auto& ge = gt.m_data.as_Generic();
+                            if( ge.binding == 0xFFFF ) {
+                                return *assoc_info->type;
+                            }
+                            else {
+                                if( ge.binding >= assoc_info->trait.m_params.m_types.size() )
+                                    BUG(sp, "find_named_trait_in_trait - Generic #" << ge.binding << " " << ge.name << " out of range");
+                                return assoc_info->trait.m_params.m_types[ge.binding];
+                            }
+                            }, false);
+                        // - Expand associated types
+                        for(auto& ty : tp_mono.m_type_bounds) {
+                            ty.second = this->expand_associated_types(sp, mv$(ty.second));
+                        }
+                        DEBUG("- tp_mono = " << tp_mono);
+                        // TODO: Instead of using `type` here, build the real type
+                        if( callback(type, tp_mono.m_path.m_params, tp_mono.m_type_bounds) ) {
+                            return true;
+                        }
+                    }
+                }
             }
+            
+            return false;
         )
         return false;
     });
