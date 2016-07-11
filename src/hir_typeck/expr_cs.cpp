@@ -719,9 +719,11 @@ namespace {
                 const auto& enm = *e;
                 auto it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&v)->auto{ return v.first == var_name; });
                 assert(it != enm.m_variants.end());
+                ASSERT_BUG(sp, it->second.is_Tuple(), "Pointed variant of TupleVariant (" << node.m_path << ") isn't a Tuple");
                 fields_ptr = &it->second.as_Tuple();
                 ),
             (Struct,
+                ASSERT_BUG(sp, e->m_data.is_Tuple(), "Pointed struct in TupleVariant (" << node.m_path << ") isn't a Tuple");
                 fields_ptr = &e->m_data.as_Tuple();
                 )
             )
