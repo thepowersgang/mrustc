@@ -209,6 +209,9 @@ public:
     static TypeRef new_path(::HIR::Path path, TypePathBinding binding) {
         return TypeRef(Data::make_Path({ mv$(path), mv$(binding) }));
     }
+    static TypeRef new_closure(::HIR::ExprNode_Closure* node_ptr, ::std::vector< ::HIR::TypeRef> args, ::HIR::TypeRef rv) {
+        return TypeRef(Data::make_Closure({ node_ptr, box$(mv$(rv)), mv$(args) }));
+    }
     
     TypeRef clone() const;
     

@@ -31,7 +31,7 @@ struct Context
         ::HIR::ExprNodeP* right_node_ptr;
         
         friend ::std::ostream& operator<<(::std::ostream& os, const Coercion& v) {
-            os << v.left_ty << " := " << &**v.right_node_ptr << " (" << (*v.right_node_ptr)->m_res_type << ")";
+            os << v.left_ty << " := " << v.right_node_ptr << " " << &**v.right_node_ptr << " (" << (*v.right_node_ptr)->m_res_type << ")";
             return os;
         }
     };
@@ -774,10 +774,16 @@ namespace {
             for( auto& val : node.m_values ) {
                 this->context.add_ivars( val.second->m_res_type );
             }
+            if( node.m_base_value ) {
+                this->context.add_ivars( node.m_base_value->m_res_type );
+            }
             
             // - Create ivars in path, and set result type
             const auto ty = this->get_structenum_ty(node.span(), node.m_is_struct, node.m_path);
             this->context.equate_types(node.span(), node.m_res_type, ty);
+            if( node.m_base_value ) {
+                this->context.equate_types(node.span(), node.m_base_value->m_res_type, ty);
+            }
             
             const ::HIR::t_struct_fields* fields_ptr = nullptr;
             TU_MATCH(::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (e),
@@ -839,6 +845,9 @@ namespace {
             
             for( auto& val : node.m_values ) {
                 val.second->visit( *this );
+            }
+            if( node.m_base_value ) {
+                node.m_base_value->visit( *this );
             }
         }
         void visit(::HIR::ExprNode_UnitVariant& node) override
@@ -1165,12 +1174,11 @@ namespace {
             this->context.add_ivars( node.m_code->m_res_type );
             
             // Closure result type
-            ::HIR::TypeRef::Data::Data_Closure  ty_data;
+            ::std::vector< ::HIR::TypeRef>  arg_types;
             for(auto& arg : node.m_args) {
-                ty_data.m_arg_types.push_back( arg.second.clone() );
+                arg_types.push_back( arg.second.clone() );
             }
-            ty_data.m_rettype = box$( node.m_return.clone() );
-            this->context.equate_types( node.span(), node.m_res_type, ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Closure(mv$(ty_data)) ) );
+            this->context.equate_types( node.span(), node.m_res_type, ::HIR::TypeRef::new_closure(&node, mv$(arg_types), node.m_return.clone()) );
 
             this->context.equate_types_coerce( node.span(), node.m_return, node.m_code );
             
@@ -1412,15 +1420,15 @@ namespace {
             
             if( current_ty )
             {
-                if( deref_count > 0 )
-                    DEBUG("Adding " << deref_count << " dereferences");
                 assert( deref_count == deref_res_types.size() );
                 while( !deref_res_types.empty() )
                 {
                     auto ty = mv$(deref_res_types.back());
                     deref_res_types.pop_back();
+                    DEBUG("- Deref -> " << ty);
                     node.m_value = ::HIR::ExprNodeP( new ::HIR::ExprNode_Deref(node.span(), mv$(node.m_value)) );
                     node.m_value->m_res_type = mv$(ty);
+                    context.m_ivars.get_type(node.m_value->m_res_type);
                     deref_count -= 1;
                 }
                 
@@ -1628,15 +1636,14 @@ namespace {
                 ERROR(node.span(), E0000, "Couldn't find the field " << field_name << " in " << this->context.m_ivars.fmt_type(node.m_value->m_res_type));
             }
             
-            if( deref_count > 0 )
-                DEBUG("Adding " << deref_count << " dereferences");
             assert( deref_count == deref_res_types.size() );
-            while( !deref_res_types.empty() )
+            for(unsigned int i = 0; i < deref_res_types.size(); i ++ )
             {
-                auto ty = mv$(deref_res_types.back());
-                deref_res_types.pop_back();
+                auto ty = mv$(deref_res_types[i]);
                 node.m_value = ::HIR::ExprNodeP( new ::HIR::ExprNode_Deref(node.span(), mv$(node.m_value)) );
+                DEBUG("- Deref " << &*node.m_value << " -> " << ty);
                 node.m_value->m_res_type = mv$(ty);
+                context.m_ivars.get_type(node.m_value->m_res_type);
             }
             
             m_completed = true;
@@ -1694,7 +1701,7 @@ namespace {
         }
         void visit_node_ptr(::HIR::ExprNodeP& node) override {
             const char* node_ty = typeid(*node).name();
-            TRACE_FUNCTION_FR(node_ty << " : " << node->m_res_type, node_ty);
+            TRACE_FUNCTION_FR(&node << " " << &*node << " " << node_ty << " : " << node->m_res_type, node_ty);
             this->check_type_resolved(node->span(), node->m_res_type, node->m_res_type);
             DEBUG(node_ty << " : = " << node->m_res_type);
             ::HIR::ExprVisitorDef::visit_node_ptr(node);
@@ -2577,12 +2584,42 @@ namespace {
                     }
                 }
                 
-                while(count --)
-                {
+                // Since this function operates on destructured &-ptrs, the dereferences have to be added behind a borrow
+                ::HIR::ExprNodeP*   node_ptr_ptr = nullptr;
+                // - If the pointed node is a borrow operation, add the dereferences within its value
+                if( auto* p = dynamic_cast< ::HIR::ExprNode_UniOp*>(&*node_ptr) ) {
+                    if( p->m_op == ::HIR::ExprNode_UniOp::Op::Ref || p->m_op == ::HIR::ExprNode_UniOp::Op::RefMut ) {
+                        node_ptr_ptr = &p->m_value;
+                    }
+                }
+                // - Otherwise, create a new borrow operation and add the dereferences
+                if( !node_ptr_ptr ) {
                     auto span = node_ptr->span();
-                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Deref( mv$(span), mv$(node_ptr) ));
-                    node_ptr->m_res_type = mv$( types.back() );
-                    types.pop_back();
+                    node_ptr_ptr = &node_ptr;
+                    ::HIR::ExprNode_UniOp::Op   op = ::HIR::ExprNode_UniOp::Op::Ref;
+                    auto borrow_type = context.m_ivars.get_type(node_ptr->m_res_type).m_data.as_Borrow().type;
+                    switch(borrow_type)
+                    {
+                    case ::HIR::BorrowType::Shared: op = ::HIR::ExprNode_UniOp::Op::Ref;    break;
+                    case ::HIR::BorrowType::Unique: op = ::HIR::ExprNode_UniOp::Op::RefMut; break;
+                    case ::HIR::BorrowType::Owned:  TODO(sp, "Move borrow autoderef");
+                    }
+                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_UniOp( mv$(span), op, mv$(node_ptr) ));
+                    node_ptr->m_res_type = ::HIR::TypeRef::new_borrow(borrow_type, types.back().clone());
+                }
+                
+                {
+                    auto& node_ptr = *node_ptr_ptr;
+                    assert( count == types.size() );
+                    for(unsigned int i = 0; i < types.size(); i ++ )
+                    {
+                        auto span = node_ptr->span();
+                        auto ty = mv$(types[i]);
+                        node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Deref( mv$(span), mv$(node_ptr) ));
+                        DEBUG("- Deref " << &*node_ptr << " -> " << ty);
+                        node_ptr->m_res_type = mv$(ty);
+                        context.m_ivars.get_type(node_ptr->m_res_type);
+                    }
                 }
                 
                 context.m_ivars.mark_change();
@@ -2640,7 +2677,7 @@ namespace {
             ),
         (Path,
             if( ! e.binding.is_Unbound() ) {
-                //TODO(Span(), "check_coerce - Coercion from " << ty_r);
+                // TODO: Apply the CoerceUnsized trait here
                 context.equate_types(sp, ty,  node_ptr->m_res_type);
                 return true;
             }
@@ -2706,14 +2743,13 @@ namespace {
             return true;
             ),
         (Primitive,
-            // TODO: `str` is a coercion target? (but only via &str)
             context.equate_types(sp, ty,  node_ptr->m_res_type);
             return true;
             ),
         (Path,
             if( ! l_e.binding.is_Unbound() ) {
                 // TODO: CoerceUnsized
-                context.equate_types(sp, ty,  node_ptr->m_res_type);
+                context.equate_types(sp, ty, ty_r);
                 return true;
             }
             ),
@@ -2748,11 +2784,14 @@ namespace {
                     // Add cast down
                     auto span = node_ptr->span();
                     // *<inner>
+                    DEBUG("- Deref -> " << *l_e.inner);
                     node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Deref(mv$(span), mv$(node_ptr)));
                     node_ptr->m_res_type = l_e.inner->clone();
+                    context.m_ivars.get_type(node_ptr->m_res_type);
                     // &*<inner>
                     node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_UniOp(mv$(span), ::HIR::ExprNode_UniOp::Op::Ref, mv$(node_ptr)));
                     node_ptr->m_res_type = ty.clone();
+                    context.m_ivars.get_type(node_ptr->m_res_type);
                     
                     context.m_ivars.mark_change();
                     return true;
@@ -2839,7 +2878,8 @@ namespace {
             )
         )
         
-        TODO(sp, "Typecheck_Code_CS - Coercion " << context.m_ivars.fmt_type(ty) << " from " << context.m_ivars.fmt_type(node_ptr->m_res_type));
+        //TODO(sp, "Typecheck_Code_CS - Coercion " << context.m_ivars.fmt_type(ty) << " from " << context.m_ivars.fmt_type(node_ptr->m_res_type));
+        DEBUG("TODO - Coercion " << context.m_ivars.fmt_type(ty) << " from " << context.m_ivars.fmt_type(node_ptr->m_res_type));
         return false;
     }
     
