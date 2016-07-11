@@ -374,7 +374,7 @@ public:
         (Tuple,
             for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
             {
-                nodes.push_back( this->assert_is_eq(assert_method_path, this->field(FMT("idx"))) );
+                nodes.push_back( this->assert_is_eq(assert_method_path, this->field(FMT(idx))) );
             }
             )
         )
@@ -439,11 +439,7 @@ public:
             )
             
             ::std::vector< AST::Pattern>    pats;
-            {
-                ::std::vector< AST::Pattern>    tuple_pats;
-                tuple_pats.push_back( AST::Pattern(AST::Pattern::TagReference(), mv$(pat_a)) );
-                pats.push_back( AST::Pattern(AST::Pattern::TagTuple(), mv$(tuple_pats)) );
-            }
+            pats.push_back( AST::Pattern(AST::Pattern::TagReference(), mv$(pat_a)) );
             
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),
@@ -453,7 +449,7 @@ public:
         }
 
         return this->make_ret(sp, p, type, NEWNODE(AST::ExprNode_Match,
-            NEWNODE(AST::ExprNode_Deref, NEWNODE(AST::ExprNode_NamedValue, AST::Path("self"))),
+            NEWNODE(AST::ExprNode_NamedValue, AST::Path("self")),
             mv$(arms)
             ));
     }
