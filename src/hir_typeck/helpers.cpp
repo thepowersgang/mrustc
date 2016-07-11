@@ -1707,7 +1707,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             }
             for(unsigned int i = 0; i < impl_params.size(); i ++ ) {
                 if( !impl_params[i] ) {
-                    BUG(sp, "Param " << i << " for impl " /*<< impl*/ << " wasn't constrained");
+                    BUG(sp, "Param " << i << " for impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << " wasn't constrained");
                 }
             }
             
