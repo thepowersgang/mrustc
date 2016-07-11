@@ -610,6 +610,39 @@ public:
     }
 } g_derive_clone;
 
+class Deriver_Copy:
+    public Deriver
+{
+    AST::Path get_trait_path() const {
+        return AST::Path("", { AST::PathNode("marker", {}), AST::PathNode("Copy", {}) });
+    }
+    
+    AST::Impl make_ret(Span sp, const AST::GenericParams& p, const TypeRef& type, AST::ExprNodeP node) const
+    {
+        const AST::Path    trait_path = this->get_trait_path();
+        
+        AST::GenericParams  params = p;
+        for(const auto& typ : params.ty_params())
+        {
+            params.bounds().push_back( ::AST::GenericBound::make_IsTrait({ TypeRef(typ.name()), {}, trait_path }) );
+        }
+        
+        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
+        return mv$(rv);
+    }
+    
+public:
+    AST::Impl handle_item(Span sp, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
+    {
+        return this->make_ret(sp, p, type, nullptr);
+    }
+    
+    AST::Impl handle_item(Span sp, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
+    {
+        return this->make_ret(sp, p, type, nullptr);
+    }
+} g_derive_copy;
+
 // --------------------------------------------------------------------
 // Select and dispatch the correct derive() handler
 // --------------------------------------------------------------------
@@ -623,6 +656,8 @@ static const Deriver* find_impl(const ::std::string& trait_name)
         return &g_derive_eq;
     else if( trait_name == "Clone" )
         return &g_derive_clone;
+    else if( trait_name == "Copy" )
+        return &g_derive_copy;
     else
         return nullptr;
 }
