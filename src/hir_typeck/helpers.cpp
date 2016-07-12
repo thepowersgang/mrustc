@@ -1756,6 +1756,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 };
             auto monomorph = [&](const auto& gt)->const auto& {
                     const auto& ge = gt.m_data.as_Generic();
+                    ASSERT_BUG(sp, ge.binding >> 8 != 2, "");
                     assert( ge.binding < impl_params.size() );
                     if( !impl_params[ge.binding] ) {
                         //BUG(sp, "Param " << ge.binding << " for `impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << "` wasn't constrained");
@@ -1836,6 +1837,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             {
                 types.insert( ::std::make_pair(aty.first,  this->expand_associated_types(sp, monomorphise_type_with(sp, aty.second, monomorph))) );
             }
+            // TODO: Ensure that there are no-longer any magic params
             
             DEBUG("[find_trait_impls_crate] callback(args=" << args_mono << ", assoc={" << types << "})");
             //if( match == ::HIR::Compare::Fuzzy ) {
