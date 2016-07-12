@@ -162,10 +162,10 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
                 }) );
             ),
         (UfcsUnknown,
-            TODO(sp, "UfcsUnknown");
+            TODO(sp, "UfcsUnknown - " << tpl);
             ),
         (UfcsInherent,
-            TODO(sp, "UfcsInherent");
+            TODO(sp, "UfcsInherent - " << tpl);
             )
         )
         ),
