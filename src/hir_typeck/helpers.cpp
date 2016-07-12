@@ -1721,37 +1721,44 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 if( !impl_params[i] ) {
                     if( placeholders.size() == 0 )
                         placeholders.resize(impl_params.size());
-                    placeholders[i] = ::HIR::TypeRef("impl_?", i);
+                    placeholders[i] = ::HIR::TypeRef("impl_?", 2*256 + i);
                 }
             }
-            #if 0
-            auto cb_infer = [&](const auto& ty) {
+            auto cb_infer = [&](const auto& ty)->const auto& {
                 if( ty.m_data.is_Infer() ) 
                     return this->m_ivars.get_type(ty);
-                else if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding >> 8 == 2 )   // Generic group 2 = Placeholders
+                else if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding >> 8 == 2 ) { // Generic group 2 = Placeholders
                     unsigned int i = ty.m_data.as_Generic().binding % 256;
                     TODO(sp, "Obtain placeholder " << i);
+                }
                 else
                     return ty;
                 };
             auto cb_match = [&](unsigned int idx, const auto& ty) {
+                if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding == idx )
+                    return ::HIR::Compare::Equal;
                 if( idx >> 8 == 2 ) {
                     auto i = idx % 256;
-                    TODO(sp, "Compare/bind placeholder " << i);
+                    ASSERT_BUG(sp, !impl_params[i], "Placeholder to populated type returned");
+                    auto& ph = placeholders[i];
+                    if( ph.m_data.is_Generic() && ph.m_data.as_Generic().binding == idx ) {
+                        DEBUG("Bind placeholder " << i << " to " << ty);
+                        ph = ty.clone();
+                        return ::HIR::Compare::Equal;
+                    }
+                    else {
+                        TODO(sp, "Compare placeholder " << i << " " << ph << " == " << ty);
+                    }
                 }
                 else {
-                    if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding == idx )
-                        return ::HIR::Compare::Equal;
-                    else
-                        return ::HIR::Compare::Unequal;
+                    return ::HIR::Compare::Unequal;
                 }
                 };
-            #endif
             auto monomorph = [&](const auto& gt)->const auto& {
                     const auto& ge = gt.m_data.as_Generic();
                     assert( ge.binding < impl_params.size() );
                     if( !impl_params[ge.binding] ) {
-                        BUG(sp, "Param " << ge.binding << " for `impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << "` wasn't constrained");
+                        //BUG(sp, "Param " << ge.binding << " for `impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << "` wasn't constrained");
                         return placeholders[ge.binding];
                     }
                     return *impl_params[ge.binding];
@@ -1796,8 +1803,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                             }
                             const auto& ty = *ty_p;
                             DEBUG(" - Compare " << ty << " and " << assoc_bound.second << ", matching generics");
-                            auto cmp = assoc_bound.second .compare_with_placeholders(sp, ty, this->m_ivars.callback_resolve_infer());
-                            //auto cmp = assoc_bound.second .match_test_generics_fuzz(sp, ty, cb_infer, cb_match);
+                            auto cmp = assoc_bound.second .match_test_generics_fuzz(sp, ty, cb_infer, cb_match);
                             switch(cmp)
                             {
                             case ::HIR::Compare::Equal:

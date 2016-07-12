@@ -297,12 +297,10 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
 }
 ::HIR::Compare HIR::TypeRef::match_test_generics_fuzz(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, t_cb_match_generics callback) const
 {
-    if( m_data.is_Infer() ) {
-        BUG(sp, "Encountered '_' as this - " << *this);
-    }
     if( m_data.is_Generic() ) {
         return callback(m_data.as_Generic().binding, x_in);
     }
+    const auto& v = (this->m_data.is_Infer() ? resolve_placeholder(*this) : *this);
     const auto& x = (x_in.m_data.is_Infer() || x_in.m_data.is_Generic() ? resolve_placeholder(x_in) : x_in);
     TU_IFLET(::HIR::TypeRef::Data, x.m_data, Infer, xe,
         switch(xe.ty_class)
@@ -312,7 +310,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             //return true;
             return Compare::Fuzzy;
         case ::HIR::InferClass::Integer:
-            TU_IFLET(::HIR::TypeRef::Data, m_data, Primitive, te,
+            TU_IFLET(::HIR::TypeRef::Data, v.m_data, Primitive, te,
                 switch(te)
                 {
                 case ::HIR::CoreType::I8:    case ::HIR::CoreType::U8:
@@ -329,7 +327,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             )
             break;
         case ::HIR::InferClass::Float:
-            TU_IFLET(::HIR::TypeRef::Data, m_data, Primitive, te,
+            TU_IFLET(::HIR::TypeRef::Data, v.m_data, Primitive, te,
                 switch(te)
                 {
                 case ::HIR::CoreType::F32:
@@ -344,11 +342,11 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             break;
         }
     )
-    if( m_data.tag() != x.m_data.tag() ) {
-        DEBUG("- Tag mismatch " << *this << " and " << x);
+    if( v.m_data.tag() != x.m_data.tag() ) {
+        DEBUG("- Tag mismatch " << v << " and " << x);
         return Compare::Unequal;
     }
-    TU_MATCH(::HIR::TypeRef::Data, (m_data, x.m_data), (te, xe),
+    TU_MATCH(::HIR::TypeRef::Data, (v.m_data, x.m_data), (te, xe),
     (Infer, throw "";),
     (Generic, throw "";),
     (Primitive,
