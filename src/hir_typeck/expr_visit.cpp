@@ -78,7 +78,9 @@ namespace {
                 this->visit_type( *e.inner );
                 DEBUG("Array size " << ty);
                 t_args  tmp;
-                Typecheck_Code( m_ms, tmp, ::HIR::TypeRef(::HIR::CoreType::Usize), e.size );
+                if( e.size ) {
+                    Typecheck_Code( m_ms, tmp, ::HIR::TypeRef(::HIR::CoreType::Usize), e.size );
+                }
             )
             else {
                 ::HIR::Visitor::visit_type(ty);
