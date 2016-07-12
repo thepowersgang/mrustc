@@ -226,6 +226,8 @@ public:
     void match_generics(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder, ::std::function<void(unsigned int, const ::HIR::TypeRef&)> callback) const;
     
     bool match_test_generics(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder, ::std::function<void(unsigned int, const ::HIR::TypeRef&)> callback) const;
+    
+    // Compares this type with another, calling the first callback to resolve placeholders in the other type, and the second callback for generics in this type
     ::HIR::Compare match_test_generics_fuzz(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, t_cb_match_generics callback) const;
     
     // Compares this type with another, using `resolve_placeholder` to get replacements for generics/infers in `x`

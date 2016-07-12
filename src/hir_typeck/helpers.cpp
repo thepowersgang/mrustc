@@ -1455,12 +1455,17 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
                 return input;
             }
             
-            // TODO: If there are no ivars in this path, set its binding to Opaque
+            // If there are no ivars in this path, set its binding to Opaque
             if( !this->m_ivars.type_contains_ivars(input) ) {
+                // TODO: If the type is a generic or an opaque associated, we can't know.
+                // - If the trait contains any of the above, it's unknowable
+                // - Otherwise, it's an error
                 e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                DEBUG("Couldn't resolve associated type for " << input << " (and won't ever be able to)");
             }
-            
-            DEBUG("Couldn't resolve associated type for " << input);
+            else {
+                DEBUG("Couldn't resolve associated type for " << input << " (will try again later)");
+            }
             ),
         (UfcsUnknown,
             BUG(sp, "Encountered UfcsUnknown");
@@ -1705,16 +1710,48 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 DEBUG("- Failed to match parameters - " << impl.m_trait_args << "+" << impl.m_type << " != " << params << "+" << type);
                 return false;
             }
+            
+            // TODO: Some impl blocks have type params used as part of type bounds.
+            // - A rough idea is to have monomorph return a third class of generic for params that are not yet bound.
+            //  - compare_with_placeholders gets called on both ivars and generics, so that can be used to replace it once known.
+            ::std::vector< ::HIR::TypeRef>  placeholders;
             for(unsigned int i = 0; i < impl_params.size(); i ++ ) {
                 if( !impl_params[i] ) {
-                    BUG(sp, "Param " << i << " for impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << " wasn't constrained");
+                    if( placeholders.size() == 0 )
+                        placeholders.resize(impl_params.size());
+                    placeholders[i] = ::HIR::TypeRef("impl_?", i);
                 }
             }
-            
+            #if 0
+            auto cb_infer = [&](const auto& ty) {
+                if( ty.m_data.is_Infer() ) 
+                    return this->m_ivars.get_type(ty);
+                else if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding >> 8 == 2 )   // Generic group 2 = Placeholders
+                    unsigned int i = ty.m_data.as_Generic().binding % 256;
+                    TODO(sp, "Obtain placeholder " << i);
+                else
+                    return ty;
+                };
+            auto cb_match = [&](unsigned int idx, const auto& ty) {
+                if( idx >> 8 == 2 ) {
+                    auto i = idx % 256;
+                    TODO(sp, "Compare/bind placeholder " << i);
+                }
+                else {
+                    if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding == idx )
+                        return ::HIR::Compare::Equal;
+                    else
+                        return ::HIR::Compare::Unequal;
+                }
+                };
+            #endif
             auto monomorph = [&](const auto& gt)->const auto& {
                     const auto& ge = gt.m_data.as_Generic();
                     assert( ge.binding < impl_params.size() );
-                    assert(impl_params[ge.binding]);
+                    if( !impl_params[ge.binding] ) {
+                        BUG(sp, "Param " << ge.binding << " for `impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << "` wasn't constrained");
+                        return placeholders[ge.binding];
+                    }
                     return *impl_params[ge.binding];
                     };
             auto ty_mono = monomorphise_type_with(sp, impl.m_type, monomorph, false);
@@ -1733,11 +1770,12 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     DEBUG("Check bound " << be.type << " : " << be.trait);
                     auto real_type = monomorphise_type_with(sp, be.type, monomorph, false);
                     auto real_trait = monomorphise_traitpath_with(sp, be.trait, monomorph, false);
+                    const auto& real_trait_path = real_trait.m_path;
                     for(auto& ab : real_trait.m_type_bounds) {
                         ab.second = this->expand_associated_types(sp, mv$(ab.second));
                     }
-                    DEBUG("- " << real_type << " : " << real_trait);
-                    auto rv = this->find_trait_impls(sp, real_trait.m_path.m_path, real_trait.m_path.m_params, real_type, [&](const auto&, const auto& a, const auto& t) {
+                    DEBUG("- " << real_type << " : " << real_trait_path);
+                    auto rv = this->find_trait_impls(sp, real_trait_path.m_path, real_trait_path.m_params, real_type, [&](const auto&, const auto& a, const auto& t) {
                         for(const auto& assoc_bound : real_trait.m_type_bounds) {
                             ::HIR::TypeRef  tmp;
                             const ::HIR::TypeRef*   ty_p;
@@ -1747,7 +1785,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                             {
                                 // This bound isn't from this particular trait, go the slow way of using expand_associated_types
                                 tmp = this->expand_associated_types(sp, ::HIR::TypeRef(
-                                    ::HIR::Path(::HIR::Path::Data::Data_UfcsKnown { box$(real_type.clone()), real_trait.m_path.clone(), assoc_bound.first, {} }))
+                                    ::HIR::Path(::HIR::Path::Data::Data_UfcsKnown { box$(real_type.clone()), real_trait_path.clone(), assoc_bound.first, {} }))
                                     );
                                 ty_p = &tmp;
                             }
@@ -1755,23 +1793,27 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                                 ty_p = &this->m_ivars.get_type(it->second);
                             }
                             const auto& ty = *ty_p;
-                            auto cmp = ty.compare_with_placeholders(sp, assoc_bound.second, this->m_ivars.callback_resolve_infer());
+                            DEBUG(" - Compare " << ty << " and " << assoc_bound.second << ", matching generics");
+                            auto cmp = assoc_bound.second .compare_with_placeholders(sp, ty, this->m_ivars.callback_resolve_infer());
+                            //auto cmp = assoc_bound.second .match_test_generics_fuzz(sp, ty, cb_infer, cb_match);
                             switch(cmp)
                             {
                             case ::HIR::Compare::Equal:
                                 continue;
                             case ::HIR::Compare::Unequal:
+                                DEBUG("Assoc failure - " << ty << " != " << assoc_bound.second);
                                 return false;
                             case ::HIR::Compare::Fuzzy:
                                 // TODO: When a fuzzy match is encountered on a conditional bound, returning `false` can lead to an false negative (and a compile error)
                                 // BUT, returning `true` could lead to it being selected. (Is this a problem, should a later validation pass check?)
-                                DEBUG("[find_trait_impls_crate] Fuzzy match between " << ty << " and " << assoc_bound.second);
+                                DEBUG("[find_trait_impls_crate] Fuzzy match assoc bound between " << ty << " and " << assoc_bound.second);
                                 continue ;
                             }
                         }
                         return true;
                         });
                     if( !rv ) {
+                        DEBUG("- Bound " << real_type << " : " << real_trait_path << " failed");
                         return false;
                     }
                     ),
