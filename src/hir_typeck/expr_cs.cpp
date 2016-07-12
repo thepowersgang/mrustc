@@ -252,6 +252,7 @@ namespace {
                 impl_ptr->m_type.match_generics(sp, *e.type, context.m_ivars.callback_resolve_infer(), [&](auto idx, const auto& ty) {
                     assert( idx < impl_params.m_types.size() );
                     impl_params.m_types[idx] = ty.clone();
+                    return ::HIR::Compare::Equal;
                     });
                 for(const auto& ty : impl_params.m_types)
                     assert( !( ty.m_data.is_Infer() && ty.m_data.as_Infer().index == ~0u) );
@@ -1111,6 +1112,7 @@ namespace {
                     impl_ptr->m_type.match_generics(sp, *e.type, this->context.m_ivars.callback_resolve_infer(), [&](auto idx, const auto& ty) {
                         assert( idx < impl_params.m_types.size() );
                         impl_params.m_types[idx] = ty.clone();
+                        return ::HIR::Compare::Equal;
                         });
                     for(const auto& ty : impl_params.m_types)
                         assert( !( ty.m_data.is_Infer() && ty.m_data.as_Infer().index == ~0u) );

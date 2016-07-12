@@ -766,19 +766,21 @@ namespace typeck {
                             assert( idx < impl_params.size() );
                             if( ! impl_params[idx] ) {
                                 impl_params[idx] = &ty;
+                                return ::HIR::Compare::Equal;
                             }
                             else {
                                 switch( impl_params[idx]->compare_with_placeholders(node.span(), ty, this->context.callback_resolve_infer()) )
                                 {
                                 case ::HIR::Compare::Unequal:
                                     fail = true;
-                                    break;
+                                    return ::HIR::Compare::Unequal;
                                 case ::HIR::Compare::Fuzzy:
                                     fuzzy = true;
-                                    break;
+                                    return ::HIR::Compare::Fuzzy;
                                 case ::HIR::Compare::Equal:
-                                    break;
+                                    return ::HIR::Compare::Equal;
                                 }
+                                return ::HIR::Compare::Equal;
                             }
                             };
                         fail |= !impl.m_type.match_test_generics(sp, ty_left, this->context.callback_resolve_infer(), cb);
@@ -1298,6 +1300,7 @@ namespace typeck {
                     impl_ptr->m_type.match_generics(sp, *e.type, this->context.callback_resolve_infer(), [&](auto idx, const auto& ty) {
                         assert( idx < impl_params.m_types.size() );
                         impl_params.m_types[idx] = ty.clone();
+                        return ::HIR::Compare::Equal;
                         });
                     for(const auto& ty : impl_params.m_types)
                         assert( !( ty.m_data.is_Infer() && ty.m_data.as_Infer().index == ~0u) );
@@ -1713,6 +1716,7 @@ namespace typeck {
                     impl_ptr->m_type.match_generics(sp, *e.type, this->context.callback_resolve_infer(), [&](auto idx, const auto& ty) {
                         assert( idx < impl_params.m_types.size() );
                         impl_params.m_types[idx] = ty.clone();
+                        return ::HIR::Compare::Equal;
                         });
                     for(const auto& ty : impl_params.m_types)
                         assert( !( ty.m_data.is_Infer() && ty.m_data.as_Infer().index == ~0u) );

@@ -1690,16 +1690,18 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 assert( idx < impl_params.size() );
                 if( ! impl_params[idx] ) {
                     impl_params[idx] = &ty;
+                    return ::HIR::Compare::Equal;
                 }
                 else if( this->m_ivars.types_equal(*impl_params[idx], ty) ) {
                     // Fall
+                    return ::HIR::Compare::Equal;
                 }
                 else if( ty.m_data.is_Infer() ) {
                     // Fall
-                    match = ::HIR::Compare::Fuzzy;
+                    return (match = ::HIR::Compare::Fuzzy);
                 }
                 else {
-                    match = ::HIR::Compare::Unequal;
+                    return (match = ::HIR::Compare::Unequal);
                 }
                 };
             assert( impl.m_trait_args.m_types.size() == params.m_types.size() );

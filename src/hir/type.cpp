@@ -301,9 +301,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         BUG(sp, "Encountered '_' as this - " << *this);
     }
     if( m_data.is_Generic() ) {
-        callback(m_data.as_Generic().binding, x_in);
-        // - TODO: Allow callback to return a match form
-        return Compare::Equal;
+        return callback(m_data.as_Generic().binding, x_in);
     }
     const auto& x = (x_in.m_data.is_Infer() || x_in.m_data.is_Generic() ? resolve_placeholder(x_in) : x_in);
     TU_IFLET(::HIR::TypeRef::Data, x.m_data, Infer, xe,

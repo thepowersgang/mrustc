@@ -16,7 +16,7 @@ struct ExprNode_Closure;
 
 class TypeRef;
 
-typedef ::std::function<void(unsigned int, const ::HIR::TypeRef&)> t_cb_match_generics;
+typedef ::std::function< ::HIR::Compare(unsigned int, const ::HIR::TypeRef&) > t_cb_match_generics;
 
 enum class InferClass
 {
@@ -223,9 +223,9 @@ public:
     
     // Match generics in `this` with types from `x`
     // Raises a bug against `sp` if there is a form mismatch or `this` has an infer
-    void match_generics(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder, ::std::function<void(unsigned int, const ::HIR::TypeRef&)> callback) const;
+    void match_generics(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder, t_cb_match_generics) const;
     
-    bool match_test_generics(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder, ::std::function<void(unsigned int, const ::HIR::TypeRef&)> callback) const;
+    bool match_test_generics(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder, t_cb_match_generics) const;
     
     // Compares this type with another, calling the first callback to resolve placeholders in the other type, and the second callback for generics in this type
     ::HIR::Compare match_test_generics_fuzz(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, t_cb_match_generics callback) const;
