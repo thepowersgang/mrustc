@@ -1312,7 +1312,15 @@ namespace {
             (Pointer,
                 TU_MATCH_DEF( ::HIR::TypeRef::Data, (src_ty.m_data), (s_e),
                 (
-                    ERROR(sp, E0000, "Invalid cast to pointer");
+                    ERROR(sp, E0000, "Invalid cast to pointer from " << src_ty);
+                    ),
+                (Function,
+                    if( e.type == ::HIR::BorrowType::Shared && *e.inner == ::HIR::TypeRef::new_unit() ) {
+                        this->m_completed = true;
+                    }
+                    else {
+                        ERROR(sp, E0000, "Invalid cast to pointer from " << src_ty);
+                    }
                     ),
                 (Primitive,
                     if( s_e != ::HIR::CoreType::Usize ) {
