@@ -1673,6 +1673,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         t_cb_trait_impl callback
         ) const
 {
+    // TODO: Parameter defaults - apply here or in the caller?
     return this->m_crate.find_trait_impls(trait, type, [&](const auto& ty)->const auto&{
             if( ty.m_data.is_Infer() ) 
                 return this->m_ivars.get_type(ty);
@@ -1704,10 +1705,14 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     return (match = ::HIR::Compare::Unequal);
                 }
                 };
-            assert( impl.m_trait_args.m_types.size() == params.m_types.size() );
             match &= impl.m_type.match_test_generics_fuzz(sp, type , this->m_ivars.callback_resolve_infer(), cb);
-            for(unsigned int i = 0; i < impl.m_trait_args.m_types.size(); i ++)
-                match &= impl.m_trait_args.m_types[i].match_test_generics_fuzz(sp, params.m_types[i], this->m_ivars.callback_resolve_infer(), cb);
+            // TODO: This is wrong (will false-positive), but works around an API deficiency (no "is there an impl for this trait with any param set")
+            if( params.m_types.size() > 0 )
+            {
+                ASSERT_BUG(sp, impl.m_trait_args.m_types.size() == params.m_types.size(), "Param count mismatch between `" << impl.m_trait_args << "` and `" << params << "` for " << trait );
+                for(unsigned int i = 0; i < impl.m_trait_args.m_types.size(); i ++)
+                    match &= impl.m_trait_args.m_types[i].match_test_generics_fuzz(sp, params.m_types[i], this->m_ivars.callback_resolve_infer(), cb);
+            }
             if( match == ::HIR::Compare::Unequal ) {
                 DEBUG("- Failed to match parameters - " << impl.m_trait_args << "+" << impl.m_type << " != " << params << "+" << type);
                 return false;
@@ -2107,6 +2112,13 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
             const auto& v = it->second.as_Function();
             if( v.m_args.size() > 0 && v.m_args[0].first.m_binding.m_name == "self" ) {
                 DEBUG("Search for impl of " << *trait_ref.first);
+                
+                //::HIR::PathParams   params;
+                //for(const auto& t : trait_ref.second->m_params.m_types) {
+                //    (void)t;
+                //    params.m_types.push_back( m_ivars.new_ivar_tr() );
+                //}
+                
                 // TODO: Need a "don't care" marker for the PathParams
                 if( find_trait_impls_crate(sp, *trait_ref.first, ::HIR::PathParams{}, ty,  [](const auto&,const auto&,const auto&) { return true; }) ) {
                     DEBUG("Found trait impl " << *trait_ref.first << " (" /*<< m_ivars.fmt_type(*trait_ref.first)*/  << ") for " << ty << " ("<<m_ivars.fmt_type(ty)<<")");
