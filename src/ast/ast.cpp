@@ -573,7 +573,7 @@ SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
     return os;
 }
 
-
+#if 0
 #define SERIALISE_TU_ARM(CLASS, NAME, TAG, ...)    case CLASS::TAG_##TAG: { *this = CLASS::make_##TAG({}); auto& NAME = this->as_##TAG(); (void)&NAME; __VA_ARGS__ } break;
 #define SERIALISE_TU_ARMS(CLASS, NAME, ...)    TU_GMA(__VA_ARGS__)(SERIALISE_TU_ARM, (CLASS, NAME), __VA_ARGS__)
 #define SERIALISE_TU(PATH, TAG, NAME, ...) \
@@ -584,6 +584,7 @@ SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
     }, {\
         PATH::Tag tag; s % tag; switch(tag) { case PATH::TAGDEAD: throw ""; SERIALISE_TU_ARMS(PATH, NAME, __VA_ARGS__) } \
     })
+#endif
 
 SERIALISE_TU(GenericBound, "GenericBound", ent,
     (Lifetime,

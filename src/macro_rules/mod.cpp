@@ -181,20 +181,33 @@ SERIALISE_TYPE_S(MacroPatEnt, {
     return os;
 }
 
-SERIALISE_TYPE_S(MacroRuleEnt, {
-    s.item(name);
-    s.item(tok);
-    s.item(subpats);
-});
+SERIALISE_TU(MacroExpansionEnt, "MacroExpansionEnt", e,
+(Token,
+    s.item(e);
+    ),
+(NamedValue,
+    s.item(e);
+    ),
+(Loop,
+    s.item(e.entries);
+    s.item(e.joiner);
+    //s.item(e.variables);
+    )
+);
 
-::std::ostream& operator<<(::std::ostream& os, const MacroRuleEnt& x)
+::std::ostream& operator<<(::std::ostream& os, const MacroExpansionEnt& x)
 {
-    if(x.name.size())
-        os << "$"<<x.name;
-    else if( x.subpats.size() )
-        os << "expand w/ " << x.tok << " [" << x.subpats << "]";
-    else
-        os << "=" << x.tok;
+    TU_MATCH( MacroExpansionEnt, (x), (e),
+    (Token,
+        os << "=" << e;
+        ),
+    (NamedValue,
+        os << "$" << e;
+        ),
+    (Loop,
+        os << "${" << *e.variables.begin() << "}(" << e.entries << ") " << e.joiner;
+        )
+    )
     return os;
 }
 

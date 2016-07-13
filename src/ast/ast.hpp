@@ -644,6 +644,7 @@ public:
     
 
     ::std::vector<MacroInvocation>& macro_invs() { return m_macro_invocations; }
+          NamedList<MacroRulesPtr>&    macros()        { return m_macros; }
     const NamedList<MacroRulesPtr>&    macros()  const { return m_macros; }
     const ::std::vector<NamedNS<const MacroRules*> >  macro_imports_res() const { return m_macro_import_res; }
 

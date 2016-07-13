@@ -8,42 +8,33 @@
 #include <memory>
 #include <cstring>
 #include "macro_rules_ptr.hpp"
+#include <set>
 
 class MacroExpander;
 
-class MacroRuleEnt:
-    public Serialisable
-{
-    friend class MacroExpander;
+TAGGED_UNION_EX(MacroExpansionEnt, (: public Serialisable), Token, (
+    // TODO: have a "raw" stream instead of just tokens
+    (Token, Token),
+    (NamedValue, unsigned int),
+    (Loop, struct {
+        /// Contained entries
+        ::std::vector< MacroExpansionEnt>   entries;
+        /// Token used to join iterations
+        Token   joiner;
+        /// List of variables within this loop that control its iteration count
+        ::std::set< unsigned int>    variables;
+        })
+    ),
+    (),
+    (),
+    (
+    public:
+        SERIALISABLE_PROTOTYPES();
+    )
+    );
+extern ::std::ostream& operator<<(::std::ostream& os, const MacroExpansionEnt& x);
 
-    Token   tok;
-    ::std::string   name;
-    ::std::vector<MacroRuleEnt> subpats;
-public:
-    MacroRuleEnt():
-        tok(TOK_NULL),
-        name("")
-    {
-    }
-    MacroRuleEnt(Token tok):
-        tok( mv$(tok) ),
-        name("")
-    {
-    }
-    MacroRuleEnt(::std::string name):
-        name( mv$(name) )
-    {
-    }
-    MacroRuleEnt(Token tok, ::std::vector<MacroRuleEnt> subpats):
-        tok( mv$(tok) ),
-        subpats( mv$(subpats) )
-    {
-    }
-
-    friend ::std::ostream& operator<<(::std::ostream& os, const MacroRuleEnt& x);
-
-    SERIALISABLE_PROTOTYPES();
-};
+/// Matching pattern entry
 struct MacroPatEnt:
     public Serialisable
 {
@@ -100,11 +91,15 @@ struct MacroPatEnt:
     SERIALISABLE_PROTOTYPES();
 };
 
+/// Fragment of a match pattern
 struct MacroRulesPatFrag:
     public Serialisable
 {
+    /// Pattern entries within this fragment
     ::std::vector<MacroPatEnt>  m_pats_ents;
+    /// Index of the arm that matches if the input ends after this fragment (~0 for nothing)
     unsigned int    m_pattern_end;
+    /// List of fragments that follow this fragment
     ::std::vector< MacroRulesPatFrag >  m_next_frags;
     
     MacroRulesPatFrag():
@@ -114,18 +109,25 @@ struct MacroRulesPatFrag:
     SERIALISABLE_PROTOTYPES();
 };
 
-/// An arm within a macro_rules! blcok
+/// An expansion arm within a macro_rules! blcok
 struct MacroRulesArm:
     public Serialisable
 {
+    /// Names for the parameters
     ::std::vector< ::std::string>   m_param_names;
-    ::std::vector<MacroRuleEnt> m_contents;
+    
+    /// Rule contents
+    ::std::vector<MacroExpansionEnt> m_contents;
     
     MacroRulesArm()
     {}
-    MacroRulesArm(::std::vector<MacroRuleEnt> contents):
+    MacroRulesArm(::std::vector<MacroExpansionEnt> contents):
         m_contents( mv$(contents) )
     {}
+    MacroRulesArm(const MacroRulesArm&) = delete;
+    MacroRulesArm& operator=(const MacroRulesArm&) = delete;
+    MacroRulesArm(MacroRulesArm&&) = default;
+    MacroRulesArm& operator=(MacroRulesArm&&) = default;
     
     SERIALISABLE_PROTOTYPES();
 };
@@ -136,13 +138,16 @@ class MacroRules:
 {
 public:
     bool m_exported;
+    /// Parsing patterns
     MacroRulesPatFrag  m_pattern;
+    /// Expansion rules
     ::std::vector<MacroRulesArm>  m_rules;
     
     MacroRules()
     {
     }
     virtual ~MacroRules();
+    MacroRules(MacroRules&&) = default;
     
     SERIALISABLE_PROTOTYPES();
 };

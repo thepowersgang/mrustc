@@ -44,6 +44,7 @@ public:
     InterpolatedFragment(Type , ::AST::ExprNode*);
     
     TokenTree& as_tt() { assert(m_type == TT); return *reinterpret_cast<TokenTree*>(m_ptr); }
+    const TokenTree& as_tt() const { assert(m_type == TT); return *reinterpret_cast<TokenTree*>(m_ptr); }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const InterpolatedFragment& x);
 };

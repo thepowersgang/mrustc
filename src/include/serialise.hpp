@@ -22,6 +22,26 @@ class Deserialiser;
     void method_prefix deserialise(::Deserialiser& s) { des_body } 
 #define SERIALISE_TYPE_A(method_prefix, tag_str, body)  SERIALISE_TYPE(method_prefix, tag_str, body, body)
 #define SERIALISE_TYPE_S(class_, body)  SERIALISE_TYPE(class_::, #class_, body, body)
+#define SERIALISE_TU(class_, tag_str, val_name, ...)  SERIALISE_TYPE(class_::, tag_str,\
+    {\
+        s << class_::tag_to_str(this->tag());\
+        TU_MATCH(class_, (*this), (val_name), __VA_ARGS__);\
+    },/*
+*/  {\
+        ::std::string   STU_tag_str;\
+        s.item(STU_tag_str);\
+        auto tag = class_::tag_from_str(STU_tag_str);\
+        switch(tag) { \
+        case class_::TAGDEAD:   break;\
+        SERIALISE_TU_MATCH_ARMS(class_, val_name, __VA_ARGS__)\
+        }\
+    })
+#define SERIALISE_TU_MATCH_ARM(CLASS, VAL_NAME, TAG, ...)  case CLASS::TAG_##TAG: {/*
+*/    *this = CLASS::make_##TAG({});/*
+*/    auto& VAL_NAME = this->as_##TAG(); /*
+*/    __VA_ARGS__/*
+*/} break;
+#define SERIALISE_TU_MATCH_ARMS(CLASS, NAME, ...)    TU_GMA(__VA_ARGS__)(SERIALISE_TU_MATCH_ARM, (CLASS, NAME), __VA_ARGS__)
 
 class DeserialiseFailure:
     public ::std::runtime_error

@@ -1055,14 +1055,16 @@ public:
     auto& macros = rv.m_exported_macros;
     
     // - Extract macros from root module
-    for( const auto& mac : crate.m_root_module.macros() ) {
+    for( /*const*/ auto& mac : crate.m_root_module.macros() ) {
         //if( mac.data.export ) {
-        macros.insert( ::std::make_pair( mac.name, mv$(*mac.data) ) );
+        MacroRulesPtr& mrp = mac.data;
+        MacroRules  mac_data = mv$(*mrp);
+        macros.insert( ::std::make_pair( mac.name, mv$(mac_data) ) );
         //}
     }
-    for( const auto& mac : crate.m_root_module.macro_imports_res() ) {
+    for( auto& mac : crate.m_root_module.macro_imports_res() ) {
         //if( mac.data->export ) {
-        macros.insert( ::std::make_pair( mac.name, *mac.data ) );
+        macros.insert( ::std::make_pair( mac.name, mv$(*const_cast<MacroRules*>(mac.data)) ) );
         //}
     }
     

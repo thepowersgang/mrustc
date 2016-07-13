@@ -71,6 +71,35 @@ InterpolatedFragment::InterpolatedFragment(TypeRef v):
 
 ::std::ostream& operator<<(::std::ostream& os, InterpolatedFragment const& x)
 {
+    switch(x.m_type)
+    {
+    case InterpolatedFragment::TT:
+        os << "tt[" << x.as_tt() << "]";
+        break;
+    case InterpolatedFragment::PAT:
+        os << "pat[" << *reinterpret_cast<AST::Pattern*>(x.m_ptr) << "]";
+        break;
+    case InterpolatedFragment::PATH:
+        os << "path[" << *reinterpret_cast<AST::Path*>(x.m_ptr) << "]";
+        break;
+    case InterpolatedFragment::TYPE:
+        os << "type[" << *reinterpret_cast<TypeRef*>(x.m_ptr) << "]";
+        break;
+
+    case InterpolatedFragment::EXPR:
+        os << "expr[" << *reinterpret_cast<AST::ExprNode*>(x.m_ptr) << "]";
+        break;
+    case InterpolatedFragment::STMT:
+        os << "stmt[" << *reinterpret_cast<AST::ExprNode*>(x.m_ptr) << "]";
+        break;
+    case InterpolatedFragment::BLOCK:
+        os << "block[" << *reinterpret_cast<AST::ExprNode*>(x.m_ptr) << "]";
+        break;
+
+    case InterpolatedFragment::META:
+        os << "meta[" << *reinterpret_cast<AST::MetaItem*>(x.m_ptr) << "]";
+        break;
+    }
     return os;
 }
 

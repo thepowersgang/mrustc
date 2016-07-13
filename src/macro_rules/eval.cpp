@@ -14,29 +14,50 @@ extern AST::ExprNodeP Parse_Stmt(TokenStream& lex);
 
 class ParameterMappings
 {
-    // MultiMap (layer, name) -> TokenTree
-    // - Multiple values are only allowed for layer>0
-    typedef ::std::pair<unsigned, unsigned> t_mapping_block;
-    struct Mapping
-    {
-        t_mapping_block block;
-        ::std::vector<InterpolatedFragment>    entries;
-        friend ::std::ostream& operator<<(::std::ostream& os, const Mapping& x) {
-            os << "(" << x.block.first << ", " << x.block.second << "): [" << x.entries << "])";
+    TAGGED_UNION_EX(CaptureLayer, (), Vals, (
+        (Vals, ::std::vector<InterpolatedFragment>),
+        (Nested, ::std::vector<CaptureLayer>)
+    ),
+    (),
+    (),
+    (
+    public:
+        CaptureLayer& next_layer_or_self(unsigned int idx) {
+            TU_IFLET(CaptureLayer, (*this), Nested, e,
+                return e.at(idx);
+            )
+            else {
+                return *this;
+            }
+        }
+        friend ::std::ostream& operator<<(::std::ostream& os, const CaptureLayer& x) {
+            TU_MATCH(CaptureLayer, (x), (e),
+            (Vals,
+                os << "[" << e << "]";
+                ),
+            (Nested,
+                os << "{" << e << "}";
+                )
+            )
             return os;
         }
+    )
+    );
+    
+    /// Represents the value 
+    struct CapturedVar
+    {
+        CaptureLayer    top_layer;
+        
+        friend ::std::ostream& operator<<(::std::ostream& os, const CapturedVar& x) {
+            os << "CapturedVar { top_layer: " << x.top_layer << " }";
+            return os;
+        }
+        
     };
     
-    struct less_cstr {
-        bool operator()(const char *a, const char *b) const { return ::std::strcmp(a,b) < 0; }
-    };
-    
-    
-    ::std::vector<Mapping>  m_mappings;
+    ::std::vector<CapturedVar>  m_mappings;
     unsigned m_layer_count;
-    
-    //::std::map<const char*, Mapping*, less_cstr>    m_map;
-    ::std::map<::std::string, Mapping*>    m_map;
 public:
     ParameterMappings():
         m_layer_count(0)
@@ -44,94 +65,77 @@ public:
     }
     ParameterMappings(ParameterMappings&&) = default;
     
-    const ::std::vector<Mapping>& mappings() const { return m_mappings; }
+    const ::std::vector<CapturedVar>& mappings() const { return m_mappings; }
     
     void dump() const {
         DEBUG("m_mappings = {" << m_mappings << "}");
-        DEBUG("m_map = {" << m_map << "}");
     }
     
     size_t layer_count() const {
         return m_layer_count+1;
     }
     
-    void insert(unsigned int layer, unsigned int name_index, InterpolatedFragment data) {
-        if(layer > m_layer_count)
-            m_layer_count = layer;
-        
+    void insert(unsigned int name_index, const ::std::vector<unsigned int>& iterations, InterpolatedFragment data) {
         if( name_index >= m_mappings.size() ) {
             m_mappings.resize( name_index + 1 );
         }
-        auto& mapping = m_mappings[name_index];
-        
-        if( mapping.entries.size() == 0 ) {
-            mapping.block.first = layer;
+        auto* layer = &m_mappings[name_index].top_layer;
+        for(const auto iter : iterations)
+        {
+            if( layer->is_Vals() ) {
+                assert( layer->as_Vals().size() == 0 );
+                *layer = CaptureLayer::make_Nested({});
+            }
+            auto& e = layer->as_Nested();
+            if( e.size() < iter ) {
+                // ERROR
+                DEBUG("Iteratoun count jumped from " << e.size() << " to " << iter);
+                assert(!"Iteration count jump");
+            }
+            else if(e.size() == iter) {
+                e.push_back( CaptureLayer::make_Vals({}) );
+            }
+            else {
+                layer = &e[iter];
+            }
         }
-        else if( mapping.block.first != layer) {
-            throw ParseError::Generic(FMT("matching argument #'"<<name_index<<"' at multiple layers"));
-        }
-        else {
-        }
-        mapping.entries.push_back( mv$(data) );
+        layer->as_Vals().push_back( mv$(data) );
     }
     
-    void reindex(const ::std::vector< ::std::string>& new_names) {
-        m_map.clear();
+    InterpolatedFragment* get(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
+    {
+        auto& e = m_mappings.at(name_idx);
+        auto* layer = &e.top_layer;
         
-        if( new_names.size() < m_mappings.size() ) {
-            BUG(Span(), "Macro parameter name mismatch - len["<<new_names<<"] != len["<<m_mappings<<"]");
+        if( iterations.size() == 0 ) {
+            TU_IFLET(CaptureLayer, (*layer), Vals, e,
+                return &e[0];
+            )
         }
-        for( unsigned int i = 0; i < m_mappings.size(); i ++ )
+        
+        for(const auto iter : iterations)
         {
-            m_map.insert( ::std::make_pair(new_names[i].c_str(), &m_mappings[i]) );
+            TU_MATCH(CaptureLayer, (*layer), (e),
+            (Vals,
+                return &e[iter];
+                ),
+            (Nested,
+                layer = &e[iter];
+                )
+            )
         }
-    }    
 
-    InterpolatedFragment* get(unsigned int layer, unsigned int iteration, const char *name, unsigned int idx)
-    {
-        const auto it = m_map.find( name );
-        if( it == m_map.end() ) {
-            DEBUG("m_map = " << m_map);
-            return nullptr;
-        }
-        auto& e = *it->second;
-        if( e.block.first < layer ) {
-            DEBUG(name<<" higher layer (" << e.block.first << ")");
-            return nullptr;
-        }
-        else if( e.block.first > layer ) {
-            throw ParseError::Generic( FMT("'" << name << "' is still repeating at this layer") );
-        }
-        else if( idx >= e.entries.size() ) {
-            DEBUG("Not enough mappings for name " << name << " at layer " << layer << " PI " << iteration);
-            return nullptr;
-        }
-        else {
-            DEBUG(name << " #" << idx << ": " << e.entries[idx]);
-            return &e.entries[idx];
-        }
+        ERROR(Span(), E0000, "Variable #" << name_idx << " is still repeating at this level (" << iterations.size() << ")");
     }
-    unsigned int count(unsigned int layer, unsigned int iteration, const char *name) const
+    unsigned int count_in(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
     {
-        const auto it = m_map.find( name );
-        if( it == m_map.end() ) {
-            DEBUG("("<<layer<<","<<iteration<<",'"<<name<<"') not found - m_map={" << m_map << "}");
-            return 0;
+        auto& e = m_mappings.at(name_idx);
+        auto* layer = &e.top_layer;
+        for(const auto iter : iterations)
+        {
+            layer = &layer->next_layer_or_self(iter);
         }
-        const auto& e = *it->second;
-        
-        if( e.block.first < layer ) {
-            DEBUG(name<<" higher layer (" << e.block.first << ")");
-            return UINT_MAX;
-        }
-        else if( e.block.first > layer ) {
-            //throw ParseError::Generic( FMT("'" << name << "' is still repeating at this layer") );
-            // ignore mismatch
-            return UINT_MAX;
-        }
-        else {
-            return e.entries.size();
-        }
+        return layer->is_Vals() ? layer->as_Vals().size() : 0;
     }
 };
 
@@ -144,7 +148,7 @@ private:
     const RcString  m_macro_filename;
 
     const ::std::string m_crate_name;
-    const ::std::vector<MacroRuleEnt>&  m_root_contents;
+    const ::std::vector<MacroExpansionEnt>&  m_root_contents;
     ParameterMappings m_mappings;
     
 
@@ -155,10 +159,10 @@ private:
     };
     /// Layer states : Index and Iteration
     ::std::vector< t_offset >   m_offsets;
-    ::std::vector< size_t > m_layer_iters;
+    ::std::vector< unsigned int>    m_iterations;
     
     /// Cached pointer to the current layer
-    const ::std::vector<MacroRuleEnt>*  m_cur_ents;  // For faster lookup.
+    const ::std::vector<MacroExpansionEnt>*  m_cur_ents;  // For faster lookup.
 
     Token   m_next_token;   // used for inserting a single token into the stream
     ::std::unique_ptr<TTStream>  m_ttstream;
@@ -166,7 +170,7 @@ private:
 public:
     MacroExpander(const MacroExpander& x) = delete;
     
-    MacroExpander(const ::std::string& macro_name, const ::std::vector<MacroRuleEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
+    MacroExpander(const ::std::string& macro_name, const ::std::vector<MacroExpansionEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
         m_macro_filename( FMT("Macro:" << macro_name) ),
         m_crate_name( mv$(crate_name) ),
         m_root_contents(contents),
@@ -180,10 +184,9 @@ public:
     virtual Position getPosition() const override;
     virtual Token realGetToken() override;
 private:
-    const MacroRuleEnt& getCurLayerEnt() const;
-    const ::std::vector<MacroRuleEnt>* getCurLayer() const;
+    const MacroExpansionEnt& getCurLayerEnt() const;
+    const ::std::vector<MacroExpansionEnt>* getCurLayer() const;
     void prep_counts();
-    unsigned int count_repeats(const ::std::vector<MacroRuleEnt>& ents, unsigned layer, unsigned iter);
 };
 
 void Macro_InitDefaults()
@@ -228,9 +231,9 @@ bool Macro_TryPattern(TTStream& lex, const MacroPatEnt& pat)
     throw ParseError::Todo(lex, FMT("Macro_TryPattern : " << pat));
 }
 
-bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int layer, ParameterMappings& bound_tts)
+bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, ::std::vector<unsigned int>& iterations, ParameterMappings& bound_tts)
 {
-    TRACE_FUNCTION_F("layer = " << layer);
+    TRACE_FUNCTION_F("iterations = " << iterations);
     Token   tok;
     
     switch(pat.type)
@@ -244,6 +247,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
         {
         unsigned int match_count = 0;
         DEBUG("Loop");
+        iterations.push_back(0);
         for(;;)
         {
             if( ! Macro_TryPattern(lex, pat.subpats[0]) )
@@ -251,9 +255,10 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
                 DEBUG("break");
                 break;
             }
+            iterations.back() += 1;
             for( unsigned int i = 0; i < pat.subpats.size(); i ++ )
             {
-                if( !Macro_HandlePattern(lex, pat.subpats[i], layer+1, bound_tts) ) {
+                if( !Macro_HandlePattern(lex, pat.subpats[i], iterations, bound_tts) ) {
                     DEBUG("Ent " << i << " failed");
                     return false;
                 }
@@ -269,6 +274,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
                 }
             }
         }
+        iterations.pop_back();
         DEBUG("Done (" << match_count << " matches)");
         break; }
     
@@ -278,32 +284,32 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
             throw ParseError::Unexpected(lex, TOK_EOF);
         else
             PUTBACK(tok, lex);
-        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( Parse_TT(lex, false) ) );
+        bound_tts.insert( pat.name_index, iterations, InterpolatedFragment( Parse_TT(lex, false) ) );
         break;
     case MacroPatEnt::PAT_PAT:
-        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( Parse_Pattern(lex, true) ) );
+        bound_tts.insert( pat.name_index, iterations, InterpolatedFragment( Parse_Pattern(lex, true) ) );
         break;
     case MacroPatEnt::PAT_TYPE:
-        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( Parse_Type(lex) ) );
+        bound_tts.insert( pat.name_index, iterations, InterpolatedFragment( Parse_Type(lex) ) );
         break;
     case MacroPatEnt::PAT_EXPR:
-        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( InterpolatedFragment::EXPR, Parse_Expr0(lex).release() ) );
+        bound_tts.insert( pat.name_index, iterations, InterpolatedFragment( InterpolatedFragment::EXPR, Parse_Expr0(lex).release() ) );
         break;
     case MacroPatEnt::PAT_STMT:
-        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( InterpolatedFragment::STMT, Parse_Stmt(lex).release() ) );
+        bound_tts.insert( pat.name_index, iterations, InterpolatedFragment( InterpolatedFragment::STMT, Parse_Stmt(lex).release() ) );
         break;
     case MacroPatEnt::PAT_PATH:
-        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( Parse_Path(lex, PATH_GENERIC_TYPE) ) );    // non-expr mode
+        bound_tts.insert( pat.name_index, iterations, InterpolatedFragment( Parse_Path(lex, PATH_GENERIC_TYPE) ) );    // non-expr mode
         break;
     case MacroPatEnt::PAT_BLOCK:
-        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( InterpolatedFragment::BLOCK, Parse_ExprBlockNode(lex).release() ) );
+        bound_tts.insert( pat.name_index, iterations, InterpolatedFragment( InterpolatedFragment::BLOCK, Parse_ExprBlockNode(lex).release() ) );
         break;
     case MacroPatEnt::PAT_META:
-        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( Parse_MetaItem(lex) ) );
+        bound_tts.insert( pat.name_index, iterations, InterpolatedFragment( Parse_MetaItem(lex) ) );
         break;
     case MacroPatEnt::PAT_IDENT:
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        bound_tts.insert( layer, pat.name_index, InterpolatedFragment( TokenTree(tok) ) );
+        bound_tts.insert( pat.name_index, iterations, InterpolatedFragment( TokenTree(tok) ) );
         break;
     
     //default:
@@ -330,7 +336,8 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
         {
             const auto& pat = cur_frag->m_pats_ents[cur_frag_ofs];
             DEBUG("- try " << pat);
-            if( !Macro_HandlePattern(lex, pat, 0, bound_tts) )
+            ::std::vector<unsigned int> iterations;
+            if( !Macro_HandlePattern(lex, pat, iterations, bound_tts) )
                 throw ParseError::Generic(lex, "Macro pattern failed");
             // Keep going
             cur_frag_ofs ++;
@@ -377,15 +384,14 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, unsigned int lay
     
     const auto& rule = rules.m_rules[rule_index];
     
-    DEBUG( rule.m_contents.size() << " rule contents bound to " << bound_tts.mappings().size() << " values - " << name );
-    bound_tts.reindex( rule.m_param_names );
+    DEBUG( rule.m_contents.size() << " rule contents with " << bound_tts.mappings().size() << " bound values - " << name );
     for( unsigned int i = 0; i < bound_tts.mappings().size(); i ++ )
     {
         DEBUG(" - " << rule.m_param_names[i] << " = [" << bound_tts.mappings()[i] << "]");
     }
     bound_tts.dump();
     
-    DEBUG("TODO: Obtain crate name correctly");
+    DEBUG("TODO: Obtain crate name correctly, using \"\" for now");
     TokenStream* ret_ptr = new MacroExpander(name, rule.m_contents, mv$(bound_tts), "");
     // HACK! Disable nested macro expansion
     //ret_ptr->parse_state().no_expand_macros = true;
@@ -431,96 +437,80 @@ Token MacroExpander::realGetToken()
         {
             // - If not, just handle the next entry
             const auto& ent = ents[idx];
-            // Check type of entry
-            // - XXX: Hack for $crate special name
-            if( ent.name == "*crate" )
-            {
-                DEBUG("Crate name hack");
-                if( m_crate_name != "" )
-                {
-                    m_next_token = Token(TOK_STRING, m_crate_name);
-                    return Token(TOK_DOUBLE_COLON);
-                }
-            }
-            // - Expand to a parameter
-            else if( ent.name != "" )
-            {
-                DEBUG("lookup '" << ent.name << "'");
-                InterpolatedFragment* frag;
-                unsigned int search_layer = layer;
-                do {
-                    unsigned int parent_iter = (search_layer > 0 ? m_layer_iters.at(search_layer-1) : 0);
-                    const size_t iter_idx = m_offsets.at(search_layer).loop_index;
-                    frag = m_mappings.get(search_layer, parent_iter, ent.name.c_str(), iter_idx);
-                } while( !frag && search_layer-- > 0 );
-                if( !frag )
-                {
-                    throw ParseError::Generic(*this, FMT("Cannot find '" << ent.name << "' for " << layer));
-                }
-                else
-                {
-                    if( frag->m_type == InterpolatedFragment::TT )
+            TU_MATCH( MacroExpansionEnt, (ent), (e),
+            (Token,
+                return e;
+                ),
+            (NamedValue,
+                if( e >> 30 ) {
+                    switch( e & 0x3FFFFFFF )
                     {
-                        m_ttstream.reset( new TTStream( frag->as_tt() ) );
-                        return m_ttstream->getToken();
+                    // - XXX: Hack for $crate special name
+                    case 0:
+                        DEBUG("Crate name hack");
+                        if( m_crate_name != "" )
+                        {
+                            m_next_token = Token(TOK_STRING, m_crate_name);
+                            return Token(TOK_DOUBLE_COLON);
+                        }
+                        break;
+                    default:
+                        BUG(Span(), "Unknown macro metavar");
+                    }
+                }
+                else {
+                    auto* frag = m_mappings.get(m_iterations, e);
+                    if( !frag )
+                    {
+                        throw ParseError::Generic(*this, FMT("Cannot find '" << e << "' for " << m_iterations));
                     }
                     else
                     {
-                        return Token( *frag );
+                        if( frag->m_type == InterpolatedFragment::TT )
+                        {
+                            m_ttstream.reset( new TTStream( frag->as_tt() ) );
+                            return m_ttstream->getToken();
+                        }
+                        else
+                        {
+                            return Token( *frag );
+                        }
                     }
                 }
-            }
-            // - Descend into a repetition
-            else if( ent.subpats.size() != 0 )
-            {
-                DEBUG("desc: layer = " << layer << ", m_layer_iters = " << m_layer_iters);
-                unsigned int layer_iter = m_layer_iters.at(layer);
-                unsigned int num_repeats = this->count_repeats(ent.subpats, layer+1, layer_iter);
-                if(num_repeats == UINT_MAX)
-                    num_repeats = 0;
-                // New layer
-                DEBUG("- NL = " << layer+1 << ", count = " << num_repeats );
-                if( num_repeats > 0 )
-                {
-                    // - Push an offset
-                    m_offsets.push_back( {0, 0, num_repeats} );
-                    // - Save the current layer
-                    m_cur_ents = getCurLayer();
-                    // - Restart loop for new layer
+                ),
+            (Loop,
+                // 1. Get number of times this will repeat (based on the next iteration count)
+                unsigned int num_repeats = 0;
+                for(const auto idx : e.variables) {
+                    unsigned int this_repeats = m_mappings.count_in(m_iterations, idx);
+                    if( this_repeats > num_repeats )
+                        num_repeats = this_repeats;
                 }
-                else
-                {
-                    // Layer empty
-                    DEBUG("Layer " << layer+1 << " is empty");
-                }
-                // VVV fall through and continue loop
-            }
-            // - Emit a raw token
-            else
-            {
-                return ent.tok;
-            }
+                m_offsets.push_back( {0, 0, num_repeats} );
+                m_iterations.push_back( 0 );
+                m_cur_ents = getCurLayer();
+                )
+            )
             // Fall through for loop
         }
         else if( layer > 0 )
         {
             // - Otherwise, restart/end loop and fall through
-            DEBUG("layer = " << layer << ", m_layer_iters = " << m_layer_iters);
+            DEBUG("layer = " << layer << ", m_iterations = " << m_iterations);
             auto& cur_ofs = m_offsets.back();
             DEBUG("Layer #" << layer << " Cur: " << cur_ofs.loop_index << ", Max: " << cur_ofs.max_index);
             if( cur_ofs.loop_index + 1 < cur_ofs.max_index )
             {
-                m_layer_iters.at(layer) ++;
+                m_iterations.back() ++;
                 
                 DEBUG("Restart layer");
                 cur_ofs.read_pos = 0;
                 cur_ofs.loop_index ++;
                 
                 auto& loop_layer = getCurLayerEnt();
-                assert(loop_layer.subpats.size());
-                if( loop_layer.tok.type() != TOK_NULL ) {
-                    DEBUG("- Separator token = " << loop_layer.tok);
-                    return loop_layer.tok;
+                if( loop_layer.as_Loop().joiner.type() != TOK_NULL ) {
+                    DEBUG("- Separator token = " << loop_layer.as_Loop().joiner);
+                    return loop_layer.as_Loop().joiner;
                 }
                 // Fall through and restart layer
             }
@@ -529,6 +519,7 @@ Token MacroExpander::realGetToken()
                 DEBUG("Terminate layer");
                 // Terminate loop, fall through to lower layers
                 m_offsets.pop_back();
+                m_iterations.pop_back();
                 // - Special case: End of macro, avoid issues
                 if( m_offsets.size() == 0 )
                     break;
@@ -550,88 +541,32 @@ Token MacroExpander::realGetToken()
 /// Count the number of names at each layer
 void MacroExpander::prep_counts()
 {
-    m_layer_iters.resize(m_mappings.layer_count(), 0);
 }
-const MacroRuleEnt& MacroExpander::getCurLayerEnt() const
+const MacroExpansionEnt& MacroExpander::getCurLayerEnt() const
 {
     assert( m_offsets.size() > 1 );
     
-    const ::std::vector<MacroRuleEnt>* ents = &m_root_contents;
+    const auto* ents = &m_root_contents;
     for( unsigned int i = 0; i < m_offsets.size()-2; i ++ )
     {
         unsigned int ofs = m_offsets[i].read_pos;
         assert( ofs > 0 && ofs <= ents->size() );
-        ents = &(*ents)[ofs-1].subpats;
+        ents = &(*ents)[ofs-1].as_Loop().entries;
     }
     return (*ents)[m_offsets[m_offsets.size()-2].read_pos-1];
     
 }
-const ::std::vector<MacroRuleEnt>* MacroExpander::getCurLayer() const
+const ::std::vector<MacroExpansionEnt>* MacroExpander::getCurLayer() const
 {
     assert( m_offsets.size() > 0 );
-    const ::std::vector<MacroRuleEnt>* ents = &m_root_contents;
+    const auto* ents = &m_root_contents;
     for( unsigned int i = 0; i < m_offsets.size()-1; i ++ )
     {
         unsigned int ofs = m_offsets[i].read_pos;
         //DEBUG(i << " ofs=" << ofs << " / " << ents->size());
         assert( ofs > 0 && ofs <= ents->size() );
-        ents = &(*ents)[ofs-1].subpats;
+        ents = &(*ents)[ofs-1].as_Loop().entries;
         //DEBUG("ents = " << ents);
     }
     return ents;
 }
-unsigned int MacroExpander::count_repeats(const ::std::vector<MacroRuleEnt>& ents, unsigned layer, unsigned iter)
-{
-    bool    valid = false;
-    unsigned int count = 0;
-    for(const auto& ent : ents)
-    {
-        if( ent.name != "" )
-        {
-            if( ent.name[0] == '*' ) {
-                // Ignore meta-vars, they don't repeat
-            }
-            else {
-                auto c = m_mappings.count(layer, iter, ent.name.c_str());
-                DEBUG(c << " mappings for " << ent.name << " at (" << layer << ", " << iter << ")");
-                if( c == UINT_MAX ) {
-                    // Ignore
-                }
-                else if(!valid || count == c) {
-                    count = c;
-                    valid = true;
-                }
-                else {
-                    // Mismatch!
-                    throw ParseError::Generic("count_repeats - iteration count mismatch");
-                }
-            }
-        }
-        else if( ent.subpats.size() > 0 )
-        {
-            auto c = this->count_repeats(ent.subpats, layer, iter);
-            if( c == UINT_MAX ) {
-            }
-            else if(!valid || count == c) {
-                count = c;
-                valid = true;
-            }
-            else {
-                // Mismatch!
-                throw ParseError::Generic("count_repeats - iteration count mismatch (subpat)");
-            }
-        }
-        else
-        {
-            // Don't care
-        }
-    }
-    
-    if(valid) {
-        return count;
-    }
-    else {
-        return UINT_MAX;
-    }
-}
-

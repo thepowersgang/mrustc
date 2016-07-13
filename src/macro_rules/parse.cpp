@@ -13,7 +13,7 @@ class MacroRule
 {
 public:
     ::std::vector<MacroPatEnt>  m_pattern;
-    ::std::vector<MacroRuleEnt> m_contents;
+    ::std::vector<MacroExpansionEnt> m_contents;
 };
 
 ::std::vector<MacroPatEnt> Parse_MacroRules_Pat(TokenStream& lex, bool allow_sub, enum eTokenType open, enum eTokenType close,  ::std::vector< ::std::string>& names)
@@ -120,12 +120,18 @@ public:
     return ret;
 }
 
-::std::vector<MacroRuleEnt> Parse_MacroRules_Cont(TokenStream& lex, bool allow_sub, enum eTokenType open, enum eTokenType close)
+/// Parse the contents (replacement) of a macro_rules! arm
+::std::vector<MacroExpansionEnt> Parse_MacroRules_Cont(
+    TokenStream& lex,
+    bool allow_sub, enum eTokenType open, enum eTokenType close,
+    const ::std::vector< ::std::string>& var_names,
+    ::std::set<unsigned int>* var_set_ptr=nullptr
+    )
 {
     TRACE_FUNCTION;
     
     Token tok;
-    ::std::vector<MacroRuleEnt> ret;
+    ::std::vector<MacroExpansionEnt> ret;
     
      int    depth = 0;
     while( GET_TOK(tok, lex) != close || depth > 0 )
@@ -133,7 +139,8 @@ public:
         if( tok.type() == TOK_EOF ) {
             throw ParseError::Unexpected(lex, tok);
         }
-        if( tok.type() == TOK_NULL )    continue ;
+        if( tok.type() == TOK_NULL )
+            continue ;
         
         if( tok.type() == open )
         {
@@ -144,20 +151,29 @@ public:
         {
             DEBUG("depth--");
             if(depth == 0)
-                throw ParseError::Generic(FMT("Unmatched " << Token(close) << " in macro content"));
+                ERROR(lex.getPosition(), E0000, "Unmatched " << Token(close) << " in macro content");
             depth --;
         }
         
+        // `$` - Macro metavars
         if( tok.type() == TOK_DOLLAR )
         {
             GET_TOK(tok, lex);
             
+            // `$(`
             if( tok.type() == TOK_PAREN_OPEN )
             {   
                 if( !allow_sub )
                     throw ParseError::Unexpected(lex, tok);
                 
-                auto content = Parse_MacroRules_Cont(lex, true, TOK_PAREN_OPEN, TOK_PAREN_CLOSE);
+                ::std::set<unsigned int> var_set;
+                auto content = Parse_MacroRules_Cont(lex, true, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, var_names, &var_set);
+                // ^^ The above will eat the PAREN_CLOSE
+                
+                if( var_set_ptr ) {
+                    for(const auto& v : var_set)
+                        var_set_ptr->insert( v );
+                }
                 
                 GET_TOK(tok, lex);
                 enum eTokenType joiner = TOK_NULL;
@@ -170,11 +186,9 @@ public:
                 switch(tok.type())
                 {
                 case TOK_STAR:
-                    ret.push_back( MacroRuleEnt(joiner, ::std::move(content)) );
-                    break;
                 case TOK_PLUS:
-                    // TODO: Ensure that the plusses match
-                    ret.push_back( MacroRuleEnt(joiner, ::std::move(content)) );
+                    // TODO: Ensure that +/* match up
+                    ret.push_back( MacroExpansionEnt({mv$(content), joiner, mv$(var_set)}) );
                     break;
                 default:
                     throw ParseError::Unexpected(lex, tok);
@@ -183,11 +197,18 @@ public:
             }
             else if( tok.type() == TOK_IDENT )
             {
-                ret.push_back( MacroRuleEnt(tok.str()) );
+                // Look up the named parameter in the list of param names for this arm
+                unsigned int idx = ::std::find(var_names.begin(), var_names.end(), tok.str()) - var_names.begin();
+                if( idx == var_names.size() )
+                    ERROR(lex.getPosition(), E0000, "Macro variable $" << tok.str() << " not found");
+                if( var_set_ptr ) {
+                    var_set_ptr->insert( idx );
+                }
+                ret.push_back( MacroExpansionEnt(idx) );
             }
             else if( tok.type() == TOK_RWORD_CRATE )
             {
-                ret.push_back( MacroRuleEnt("*crate") );
+                ret.push_back( MacroExpansionEnt( (1<<30) | 0 ) );
             }
             else
             {
@@ -196,7 +217,7 @@ public:
         }
         else
         {
-            ret.push_back( MacroRuleEnt(tok) );
+            ret.push_back( MacroExpansionEnt( mv$(tok) ) );
         }
     }
     
@@ -233,7 +254,7 @@ MacroRule Parse_MacroRules_Var(TokenStream& lex)
     default:
         throw ParseError::Unexpected(lex, tok);
     }
-    rule.m_contents = Parse_MacroRules_Cont(lex, true, tok.type(), close);
+    rule.m_contents = Parse_MacroRules_Cont(lex, true, tok.type(), close, names);
 
     DEBUG("Rule - ["<<rule.m_pattern<<"] => "<<rule.m_contents<<"");
     
@@ -432,8 +453,8 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
     // Re-parse the patterns into a unified form
     for(unsigned int rule_idx = 0; rule_idx < rules.size(); rule_idx ++)
     {
-        const auto& rule = rules[rule_idx];
-        MacroRulesArm   arm( mv$(rule.m_contents) );
+        auto& rule = rules[rule_idx];
+        MacroRulesArm   arm = MacroRulesArm( mv$(rule.m_contents) );
         
         enumerate_names(rule.m_pattern,  arm.m_param_names);
         

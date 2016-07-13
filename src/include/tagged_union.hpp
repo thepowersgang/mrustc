@@ -99,6 +99,7 @@
 // TODO: use `decltype` in place of the `class` argument to TU_MATCH/TU_IFLET
 // "match"-like statement
 // TU_MATCH(Class, m_data, ent, (Variant, CODE), (Variant2, CODE))
+#define TU_MATCHA(VARS, NAMES, ...) TU_MATCH( decltype( ::std::remove_reference(TU_FIRST VARS) ), VARS, NAMES, __VA_ARGS__ )
 #define TU_MATCH(CLASS, VAR, NAME, ...)   switch( (TU_FIRST VAR).tag()) {/*
 */    case CLASS::TAGDEAD: assert(!"ERROR: destructed tagged union used");/*
 */    TU_MATCH_ARMS(CLASS, VAR, NAME, __VA_ARGS__)/*
