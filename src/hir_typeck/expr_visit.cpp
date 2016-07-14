@@ -58,7 +58,9 @@ namespace {
             
             const auto& mod = this->m_ms.m_crate.get_mod_by_path(Span(), impl.m_src_module);
             m_ms.push_traits(mod);
+            m_ms.m_traits.push_back( ::std::make_pair( &trait_path, &this->m_ms.m_crate.get_trait_by_path(Span(), trait_path) ) );
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
+            m_ms.m_traits.pop_back( );
             m_ms.pop_traits(mod);
         }
         void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl) override
