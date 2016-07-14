@@ -1538,6 +1538,11 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
             callback( target_type, pt_mono.m_path.m_params, pt_mono.m_type_bounds );
             return true;
         }
+        
+        const auto& tr = m_crate.get_trait_by_path(sp, pt.m_path.m_path);
+        if( find_named_trait_in_trait(sp, des, des_params,  tr, pt.m_path.m_path, pt_mono.m_path.m_params,  target_type, callback) ) {
+            return true;
+        }
     }
     return false;
 }
