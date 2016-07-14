@@ -445,6 +445,27 @@ SERIALISE_TYPE(Token::, "Token", {
         if( tok.m_data.is_Integer() )
             os << ":" << tok.intval();
         break;
+    case TOK_INTERPOLATED_TYPE:
+        os << ":" << *reinterpret_cast<TypeRef*>(tok.m_data.as_Fragment());
+        break;
+    case TOK_INTERPOLATED_PATTERN:
+        os << ":" << *reinterpret_cast<AST::Pattern*>(tok.m_data.as_Fragment());
+        break;
+    case TOK_INTERPOLATED_PATH:
+        os << ":" << *reinterpret_cast<AST::Path*>(tok.m_data.as_Fragment());
+        break;
+    case TOK_INTERPOLATED_EXPR:
+        os << ":" << *reinterpret_cast<AST::ExprNode*>(tok.m_data.as_Fragment());
+        break;
+    case TOK_INTERPOLATED_STMT:
+        os << ":" << *reinterpret_cast<AST::ExprNode*>(tok.m_data.as_Fragment());
+        break;
+    case TOK_INTERPOLATED_BLOCK:
+        os << ":" << *reinterpret_cast<AST::ExprNode*>(tok.m_data.as_Fragment());
+        break;
+    case TOK_INTERPOLATED_META:
+        os << ":" << *reinterpret_cast<AST::MetaItem*>(tok.m_data.as_Fragment());
+        break;
     default:
         break;
     }

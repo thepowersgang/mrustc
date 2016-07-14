@@ -25,8 +25,8 @@ int g_debug_indent_level = 0;
 
 bool debug_enabled()
 {
-    return true;
-    //return g_cur_phase != "Parse";
+    //return true;
+    return g_cur_phase != "Parse";
     //return g_cur_phase != "Parse" && g_cur_phase != "Expand";
     //return g_cur_phase != "Parse" && g_cur_phase != "Expand" && g_cur_phase != "Resolve";
 }
@@ -198,11 +198,12 @@ int main(int argc, char *argv[])
         // Convert structures to C structures / tagged enums
         //Convert_Render(flat_crate, stdout);
     }
-    catch(const CompileError::Base& e)
-    {
-        ::std::cerr << "Parser Error: " << e.what() << ::std::endl;
-        return 2;
-    }
+    catch(unsigned int) {}
+    //catch(const CompileError::Base& e)
+    //{
+    //    ::std::cerr << "Parser Error: " << e.what() << ::std::endl;
+    //    return 2;
+    //}
     //catch(const ::std::exception& e)
     //{
     //    ::std::cerr << "Misc Error: " << e.what() << ::std::endl;

@@ -80,38 +80,54 @@ public:
             m_mappings.resize( name_index + 1 );
         }
         auto* layer = &m_mappings[name_index].top_layer;
-        for(const auto iter : iterations)
+        if( iterations.size() > 0 )
         {
-            if( layer->is_Vals() ) {
-                assert( layer->as_Vals().size() == 0 );
-                *layer = CaptureLayer::make_Nested({});
-            }
-            auto& e = layer->as_Nested();
-            if( e.size() < iter ) {
-                // ERROR
-                DEBUG("Iteratoun count jumped from " << e.size() << " to " << iter);
-                assert(!"Iteration count jump");
-            }
-            else if(e.size() == iter) {
-                e.push_back( CaptureLayer::make_Vals({}) );
-            }
-            else {
+            for(unsigned int i = 0; i < iterations.size()-1; i ++ )
+            {
+                auto iter = iterations[i];
+                
+                if( layer->is_Vals() ) {
+                    assert( layer->as_Vals().size() == 0 );
+                    *layer = CaptureLayer::make_Nested({});
+                }
+                auto& e = layer->as_Nested();
+                while( e.size() < iter ) {
+                    DEBUG("- Skipped iteration " << e.size());
+                    e.push_back( CaptureLayer::make_Nested({}) );
+                }
+                
+                if(e.size() == iter) {
+                    e.push_back( CaptureLayer::make_Vals({}) );
+                }
+                else {
+                    if( e.size() > iter ) {
+                        DEBUG("ERROR: Iterations ran backwards?");
+                    }
+                }
                 layer = &e[iter];
             }
+            assert(layer->as_Vals().size() == iterations.back());
+            layer->as_Vals().push_back( mv$(data) );
         }
-        layer->as_Vals().push_back( mv$(data) );
+        else {
+            assert(layer->as_Vals().size() == 0);
+            layer->as_Vals().push_back( mv$(data) );
+        }
     }
     
     InterpolatedFragment* get(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
     {
+        DEBUG("(iterations=[" << iterations << "], name_idx=" << name_idx << ")");
         auto& e = m_mappings.at(name_idx);
+        //DEBUG("- e = " << e);
         auto* layer = &e.top_layer;
         
-        if( iterations.size() == 0 ) {
-            TU_IFLET(CaptureLayer, (*layer), Vals, e,
+        // - If the top layer is a 1-sized set of values, unconditionally return
+        TU_IFLET(CaptureLayer, (*layer), Vals, e,
+            if( e.size() == 1 ) {
                 return &e[0];
-            )
-        }
+            }
+        )
         
         for(const auto iter : iterations)
         {
@@ -129,6 +145,10 @@ public:
     }
     unsigned int count_in(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
     {
+        DEBUG("(iterations=[" << iterations << "], name_idx=" << name_idx << ")");
+        if( name_idx >= m_mappings.size() ) {
+            return 0;
+        }
         auto& e = m_mappings.at(name_idx);
         auto* layer = &e.top_layer;
         for(const auto iter : iterations)
@@ -255,7 +275,6 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, ::std::vector<un
                 DEBUG("break");
                 break;
             }
-            iterations.back() += 1;
             for( unsigned int i = 0; i < pat.subpats.size(); i ++ )
             {
                 if( !Macro_HandlePattern(lex, pat.subpats[i], iterations, bound_tts) ) {
@@ -264,6 +283,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, ::std::vector<un
                 }
             }
             match_count += 1;
+            iterations.back() += 1;
             DEBUG("succ");
             if( pat.tok.type() != TOK_NULL )
             {
@@ -466,6 +486,7 @@ Token MacroExpander::realGetToken()
                     }
                     else
                     {
+                        DEBUG("Insert replacement #" << e << " = " << *frag);
                         if( frag->m_type == InterpolatedFragment::TT )
                         {
                             m_ttstream.reset( new TTStream( frag->as_tt() ) );
@@ -486,9 +507,12 @@ Token MacroExpander::realGetToken()
                     if( this_repeats > num_repeats )
                         num_repeats = this_repeats;
                 }
-                m_offsets.push_back( {0, 0, num_repeats} );
-                m_iterations.push_back( 0 );
-                m_cur_ents = getCurLayer();
+                if( num_repeats > 0 )
+                {
+                    m_offsets.push_back( {0, 0, num_repeats} );
+                    m_iterations.push_back( 0 );
+                    m_cur_ents = getCurLayer();
+                }
                 )
             )
             // Fall through for loop
