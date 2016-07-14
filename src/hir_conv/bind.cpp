@@ -6,6 +6,8 @@
 #include <hir/expr.hpp>
 #include <algorithm>    // std::find_if
 
+#include <hir_typeck/static.hpp>
+
 namespace {
 
     
@@ -109,6 +111,7 @@ namespace {
         fix_type_params(sp, enm.m_params,  path.m_params);
         return ::std::make_pair( &enm, idx );
     }
+    
     
     class Visitor:
         public ::HIR::Visitor
@@ -229,28 +232,51 @@ namespace {
             ::HIR::Visitor::visit_type(ty);
             
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, e,
-                TU_IFLET( ::HIR::Path::Data, e.path.m_data, Generic, e2,
-                    const auto& item = *reinterpret_cast< const ::HIR::TypeItem*>( get_type_pointer(sp, m_crate, e2.m_path, Target::TypeItem) );
+                TU_MATCH( ::HIR::Path::Data, (e.path.m_data), (pe),
+                (Generic,
+                    const auto& item = *reinterpret_cast< const ::HIR::TypeItem*>( get_type_pointer(sp, m_crate, pe.m_path, Target::TypeItem) );
                     TU_MATCH_DEF( ::HIR::TypeItem, (item), (e3),
                     (
-                        ERROR(sp, E0000, "Unexpected item type returned for " << e2.m_path << " - " << item.tag_str());
+                        ERROR(sp, E0000, "Unexpected item type returned for " << pe.m_path << " - " << item.tag_str());
                         ),
                     (Struct,
-                        fix_param_count(sp, e2, e3.m_params,  e2.m_params);
+                        fix_param_count(sp, pe, e3.m_params,  pe.m_params);
                         e.binding = ::HIR::TypeRef::TypePathBinding::make_Struct(&e3);
                         ),
                     (Enum,
-                        fix_param_count(sp, e2, e3.m_params,  e2.m_params);
+                        fix_param_count(sp, pe, e3.m_params,  pe.m_params);
                         e.binding = ::HIR::TypeRef::TypePathBinding::make_Enum(&e3);
                         ),
                     (Trait,
-                        ty.m_data = ::HIR::TypeRef::Data::make_TraitObject({ mv$(e2), {}, {} });
+                        ty.m_data = ::HIR::TypeRef::Data::make_TraitObject({ mv$(pe), {}, {} });
                         )
                     )
+                    ),
+                (UfcsUnknown,
+                    TODO(sp, "Should UfcsKnown be encountered here?");
+                    ),
+                (UfcsInherent,
+                    ),
+                (UfcsKnown,
+                    if( pe.type->m_data.is_Path() && pe.type->m_data.as_Path().binding.is_Opaque() ) {
+                        // - Opaque type, opaque result
+                        e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                    }
+                    else if( pe.type->m_data.is_Generic() ) {
+                        // - Generic type, opaque resut. (TODO: Sometimes these are known - via generic bounds)
+                        e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                    }
+                    else {
+                        //bool found = find_impl(sp, m_crate, pe.trait.m_path, pe.trait.m_params, *pe.type, [&](const auto& impl_params, const auto& impl) {
+                        //    DEBUG("TODO");
+                        //    return false;
+                        //    });
+                        //if( found ) {
+                        //}
+                        //TODO(sp, "Resolve known UfcsKnown - " << ty);
+                    }
+                    )
                 )
-                else {
-                    e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
-                }
             )
         }
         

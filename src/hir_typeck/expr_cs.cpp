@@ -3185,6 +3185,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         root_ptr->visit(visitor);
         
         //context.equate_types(expr->span(), result_type, root_ptr->m_res_type);
+        DEBUG("Return type = " << result_type);
         context.equate_types_coerce(expr->span(), result_type, root_ptr);
     }
     

@@ -367,13 +367,29 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             return match_generics_pp(sp, tpe.m_params, xpe.m_params, resolve_placeholder, callback);
             ),
         (UfcsKnown,
+            auto cmp = tpe.type->match_test_generics_fuzz( sp, *xpe.type, resolve_placeholder, callback );
+            if( tpe.trait.m_path != xpe.trait.m_path )
+                return Compare::Unequal;
+            cmp &= match_generics_pp(sp, tpe.trait.m_params, xpe.trait.m_params, resolve_placeholder, callback);
+            if( tpe.item != xpe.item )
+                return Compare::Unequal;
+            cmp &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, callback);
+            return cmp;
             TODO(sp, "Path UfcsKnown - " << *this << " and " << x);
             ),
         (UfcsUnknown,
-            TODO(sp, "Path UfcsUnknown - " << *this << " and " << x);
+            auto cmp = tpe.type->match_test_generics_fuzz( sp, *xpe.type, resolve_placeholder, callback );
+            if( tpe.item != xpe.item )
+                return Compare::Unequal;
+            cmp &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, callback);
+            return cmp;
             ),
         (UfcsInherent,
-            TODO(sp, "Path UfcsInherent - " << *this << " and " << x);
+            auto cmp = tpe.type->match_test_generics_fuzz( sp, *xpe.type, resolve_placeholder, callback );
+            if( tpe.item != xpe.item )
+                return Compare::Unequal;
+            cmp &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, callback);
+            return cmp;
             )
         )
         ),
