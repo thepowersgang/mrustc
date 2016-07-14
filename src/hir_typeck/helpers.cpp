@@ -1693,16 +1693,8 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     impl_params[idx] = &ty;
                     return ::HIR::Compare::Equal;
                 }
-                else if( this->m_ivars.types_equal(*impl_params[idx], ty) ) {
-                    // Fall
-                    return ::HIR::Compare::Equal;
-                }
-                else if( ty.m_data.is_Infer() ) {
-                    // Fall
-                    return (match = ::HIR::Compare::Fuzzy);
-                }
                 else {
-                    return (match = ::HIR::Compare::Unequal);
+                    return impl_params[idx]->compare_with_placeholders(sp, ty, this->m_ivars.callback_resolve_infer());
                 }
                 };
             match &= impl.m_type.match_test_generics_fuzz(sp, type , this->m_ivars.callback_resolve_infer(), cb);
