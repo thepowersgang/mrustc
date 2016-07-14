@@ -153,9 +153,24 @@ public:
         auto* layer = &e.top_layer;
         for(const auto iter : iterations)
         {
-            layer = &layer->next_layer_or_self(iter);
+            TU_MATCH(CaptureLayer, (*layer), (e),
+            (Vals,
+                return 0;
+                ),
+            (Nested,
+                layer = &e[iter];
+                )
+            )
         }
-        return layer->is_Vals() ? layer->as_Vals().size() : 0;
+        TU_MATCH(CaptureLayer, (*layer), (e),
+        (Vals,
+            return e.size();
+            ),
+        (Nested,
+            return e.size();
+            )
+        )
+        return 0;
     }
 };
 
@@ -409,7 +424,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, ::std::vector<un
     {
         DEBUG(" - " << rule.m_param_names[i] << " = [" << bound_tts.mappings()[i] << "]");
     }
-    bound_tts.dump();
+    //bound_tts.dump();
     
     DEBUG("TODO: Obtain crate name correctly, using \"\" for now");
     TokenStream* ret_ptr = new MacroExpander(name, rule.m_contents, mv$(bound_tts), "");
@@ -507,6 +522,7 @@ Token MacroExpander::realGetToken()
                     if( this_repeats > num_repeats )
                         num_repeats = this_repeats;
                 }
+                DEBUG("Looping " << num_repeats << " times");
                 if( num_repeats > 0 )
                 {
                     m_offsets.push_back( {0, 0, num_repeats} );
