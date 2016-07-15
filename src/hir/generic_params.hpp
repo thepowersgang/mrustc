@@ -37,6 +37,7 @@ TAGGED_UNION(GenericBound, Lifetime,
         ::HIR::TypeRef  other_type;
         })
     );
+extern ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x);
 
 struct GenericParams
 {

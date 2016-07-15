@@ -256,6 +256,8 @@ namespace {
             
             check_parameters(Span(), params, args);
             DEBUG("p = " << p);
+            
+            ::HIR::Visitor::visit_generic_path(p, pc);
         }
         void visit_path(::HIR::Path& p, ::HIR::Visitor::PathContext pc) override
         {

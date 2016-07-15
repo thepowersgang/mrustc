@@ -3,6 +3,25 @@
 #include "generic_params.hpp"
 
 namespace HIR {
+    ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x)
+    {
+        TU_MATCH(::HIR::GenericBound, (x), (e),
+        (Lifetime,
+            os << "'" << e.test << ": '" << e.valid_for;
+            ),
+        (TypeLifetime,
+            os << e.type << ": '" << e.valid_for;
+            ),
+        (TraitBound,
+            os << e.type << ": " << e.trait.m_path;
+            ),
+        (TypeEquality,
+            os << e.type << " = " << e.other_type;
+            )
+        )
+        return os;
+    }
+    
     ::std::ostream& operator<<(::std::ostream& os, const ::HIR::GenericParams::PrintArgs& x)
     {
         if( x.gp.m_lifetimes.size() > 0 || x.gp.m_types.size() > 0 )
@@ -33,20 +52,7 @@ namespace HIR {
             {
                 if(comma_needed)
                     os << ", ";
-                TU_MATCH(::HIR::GenericBound, (b), (e),
-                (Lifetime,
-                    os << "'" << e.test << ": '" << e.valid_for;
-                    ),
-                (TypeLifetime,
-                    os << e.type << ": '" << e.valid_for;
-                    ),
-                (TraitBound,
-                    os << e.type << ": " << e.trait.m_path;
-                    ),
-                (TypeEquality,
-                    os << e.type << " = " << e.other_type;
-                    )
-                )
+                os << b;
                 comma_needed = true;
             }
         }

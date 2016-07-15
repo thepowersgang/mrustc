@@ -230,25 +230,22 @@ namespace {
         }
         
         bool locate_in_trait_impl_and_set(::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd) {
+            static Span sp;
+            
             auto& e = pd.as_UfcsUnknown();
             if( this->locate_item_in_trait(pc, trait,  pd) ) {
                 const auto& type = *e.type;
                 
-                auto trait_impl_it = this->m_crate.m_trait_impls.equal_range( trait_path.m_path );
-                if( trait_impl_it.first == trait_impl_it.second ) {
-                    // Since this trait isn't implemented, none of the supertraits matter
-                    return false;
-                }
-                for( auto it = trait_impl_it.first; it != trait_impl_it.second; ++ it )
-                {
-                    const auto& impl = it->second;
-                    DEBUG("impl" << impl.m_params.fmt_args() << " " << trait_path.m_path << impl.m_trait_args << " for " << impl.m_type);
-                    if( impl.matches_type(type) )
-                    {
-                        pd = get_ufcs_known(mv$(e), make_generic_path(trait_path.m_path, trait), trait);
-                        return true;
+                return this->m_crate.find_trait_impls(trait_path.m_path, type, [](const auto& x)->const auto&{return x;}, [&](const auto& impl) {
+                    DEBUG("FOUND impl" << impl.m_params.fmt_args() << " " << trait_path.m_path << impl.m_trait_args << " for " << impl.m_type);
+                    // TODO: Check bounds
+                    for(const auto& bound : impl.m_params.m_bounds) {
+                        DEBUG("- TODO: Bound " << bound);
+                        return false;
                     }
-                }
+                    pd = get_ufcs_known(mv$(e), make_generic_path(trait_path.m_path, trait), trait);
+                    return true;
+                    });
             }
             else {
                 DEBUG("- Item " << e.item << " not in trait " << trait_path.m_path);
@@ -275,7 +272,7 @@ namespace {
             
             DEBUG("p = " << p);
             TU_IFLET(::HIR::Path::Data, p.m_data, UfcsUnknown, e,
-                DEBUG("UfcsUnknown - p=" << p);
+                TRACE_FUNCTION_F("UfcsUnknown - p=" << p);
                 
                 this->visit_type( *e.type );
                 this->visit_path_params( e.params );
@@ -348,7 +345,7 @@ namespace {
                                 continue ;
                             break;
                         }
-                        DEBUG("- Looking for impl of " << *trait_info.first << " for " << *e.type);
+                        DEBUG("- Trying trait " << *trait_info.first);
                         
                         auto trait_path = ::HIR::GenericPath( *trait_info.first );
                         for(unsigned int i = 0; i < trait.m_params.m_types.size(); i ++ ) {

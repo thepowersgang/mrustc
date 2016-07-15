@@ -3216,6 +3216,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         for(unsigned int i = 0; i < context.link_assoc.size();  ) {
             auto& rule = context.link_assoc[i];
         
+            DEBUG("- " << rule);
             for( auto& ty : rule.params.m_types ) {
                 ty = context.m_resolve.expand_associated_types(rule.span, mv$(ty));
             }
