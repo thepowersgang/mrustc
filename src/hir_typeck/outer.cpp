@@ -3,6 +3,7 @@
  */
 #include <hir/hir.hpp>
 #include <hir/visitor.hpp>
+#include <hir_typeck/static.hpp>
 
 namespace {
     
@@ -97,15 +98,13 @@ namespace {
         public ::HIR::Visitor
     {
         ::HIR::Crate& crate;
-        
-        ::HIR::GenericParams*   m_impl_generics;
-        //::HIR::GenericParams*   m_item_generics;
+        StaticTraitResolve  m_resolve;
+    
         ::std::vector< ::HIR::TypeRef* >    m_self_types;
     public:
         Visitor(::HIR::Crate& crate):
             crate(crate),
-            m_impl_generics(nullptr)/*,
-            m_item_generics(nullptr)*/
+            m_resolve(crate)
         {
         }
         
@@ -200,6 +199,55 @@ namespace {
         }
         
     public:
+        void visit_type(::HIR::TypeRef& ty) override
+        {
+            static Span _sp;
+            const Span& sp = _sp;
+            ::HIR::Visitor::visit_type(ty);
+            
+            TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, e,
+                TU_MATCH( ::HIR::Path::Data, (e.path.m_data), (pe),
+                (Generic,
+                    ),
+                (UfcsUnknown,
+                    TODO(sp, "Should UfcsKnown be encountered here?");
+                    ),
+                (UfcsInherent,
+                    TODO(sp, "Locate impl block for UFCS Inherent");
+                    ),
+                (UfcsKnown,
+                    if( pe.type->m_data.is_Path() && pe.type->m_data.as_Path().binding.is_Opaque() ) {
+                        // - Opaque type, opaque result
+                        e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                    }
+                    else if( pe.type->m_data.is_Generic() ) {
+                        // - Generic type, opaque resut. (TODO: Sometimes these are known - via generic bounds)
+                        e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                    }
+                    else {
+                        ::HIR::TypeRef  new_ty;
+                        bool found = m_resolve.find_impl(sp, pe.trait.m_path, pe.trait.m_params, *pe.type, [&](const auto& impl) {
+                            DEBUG("TODO - Extract associated type '"<<pe.item<<"' from " << impl);
+                            new_ty = impl.get_type(pe.item.c_str());
+                            if( new_ty == ::HIR::TypeRef() ) {
+                                ERROR(sp, E0000, "Associated type '"<<pe.item<<"' could not be found in " << pe.trait);
+                            }
+                            return true;
+                            });
+                        if( found ) {
+                            assert( new_ty != ::HIR::TypeRef() );
+                            DEBUG("Replaced " << ty << " with " << new_ty);
+                            ty = mv$(new_ty);
+                        }
+                        else {
+                            ERROR(sp, E0000, "Couldn't find an impl of " << pe.trait << " for " << *pe.type);
+                        }
+                    }
+                    )
+                )
+            )
+        }
+        
         void visit_generic_path(::HIR::GenericPath& p, PathContext pc) override
         {
             TRACE_FUNCTION_F("p = " << p);
@@ -266,50 +314,50 @@ namespace {
         
         void visit_trait(::HIR::PathChain p, ::HIR::Trait& item) override
         {
+            auto _ = m_resolve.set_item_generics(item.m_params);
             ::HIR::TypeRef tr { "Self", 0xFFFF };
             m_self_types.push_back(&tr);
             ::HIR::Visitor::visit_trait(p, item);
             m_self_types.pop_back();
         }
+        void visit_struct(::HIR::PathChain p, ::HIR::Struct& item) override
+        {
+            auto _ = m_resolve.set_item_generics(item.m_params);
+            ::HIR::Visitor::visit_struct(p, item);
+        }
         
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << impl.m_type);
-            assert(m_impl_generics == nullptr);
-            m_impl_generics = &impl.m_params;
+            auto _ = m_resolve.set_impl_generics(impl.m_params);
             m_self_types.push_back( &impl.m_type );
             
             ::HIR::Visitor::visit_type_impl(impl);
             // Check that the type is valid
             
             m_self_types.pop_back();
-            m_impl_generics = nullptr;
         }
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
-            assert(m_impl_generics == nullptr);
-            m_impl_generics = &impl.m_params;
+            auto _ = m_resolve.set_impl_generics(impl.m_params);
             m_self_types.push_back( &impl.m_type );
             
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
             // Check that the type+trait is valid
             
             m_self_types.pop_back();
-            m_impl_generics = nullptr;
         }
         void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl)
         {
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type << " { }");
-            assert(m_impl_generics == nullptr);
-            m_impl_generics = &impl.m_params;
+            auto _ = m_resolve.set_impl_generics(impl.m_params);
             m_self_types.push_back( &impl.m_type );
             
             ::HIR::Visitor::visit_marker_impl(trait_path, impl);
             // Check that the type+trait is valid
             
             m_self_types.pop_back();
-            m_impl_generics = nullptr;
         }
     };
 }

@@ -802,6 +802,7 @@ namespace {
 }
 ::HIR::Function LowerHIR_Function(const ::AST::Function& f)
 {
+    DEBUG("");
     ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef > >    args;
     for(const auto& arg : f.args())
         args.push_back( ::std::make_pair( LowerHIR_Pattern(arg.first), LowerHIR_Type(arg.second) ) );
