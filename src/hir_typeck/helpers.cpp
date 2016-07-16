@@ -1782,10 +1782,13 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     DEBUG("Check bound " << be.type << " : " << be.trait);
                     auto real_type = monomorphise_type_with(sp, be.type, monomorph, false);
                     auto real_trait = monomorphise_traitpath_with(sp, be.trait, monomorph, false);
-                    const auto& real_trait_path = real_trait.m_path;
+                    for(auto& p : real_trait.m_path.m_params.m_types) {
+                        p = this->expand_associated_types(sp, mv$(p));
+                    }
                     for(auto& ab : real_trait.m_type_bounds) {
                         ab.second = this->expand_associated_types(sp, mv$(ab.second));
                     }
+                    const auto& real_trait_path = real_trait.m_path;
                     DEBUG("- " << real_type << " : " << real_trait_path);
                     auto rv = this->find_trait_impls(sp, real_trait_path.m_path, real_trait_path.m_params, real_type, [&](const auto&, const auto& a, const auto& t) {
                         for(const auto& assoc_bound : real_trait.m_type_bounds) {
@@ -1976,7 +1979,7 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
     else
     {
         this->m_ivars.dump();
-        TODO(sp, "Error when no method could be found, but type is known - (: " << top_ty << ")." << method_name);
+        ERROR(sp, E0000, "Could not find method `" << method_name << "` on type `" << top_ty << "`");
     }
 }
 
