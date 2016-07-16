@@ -1072,7 +1072,63 @@ namespace {
                 BUG(sp, "Encountered UfcsUnknown");
                 ),
             (UfcsKnown,
-                TODO(sp, "Look up associated constants/statics (trait)");
+                // 1. Add trait bound to be checked.
+                this->context.equate_types_assoc(sp, ::HIR::TypeRef(),  e.trait.m_path, mv$(e.trait.m_params.clone().m_types), e.type->clone(), "");
+                // 2. Locate this item in the trait
+                // - If it's an associated `const`, will have to revisit
+                const auto& trait = this->context.m_crate.get_trait_by_path(sp, e.trait.m_path);
+                auto it = trait.m_values.find( e.item );
+                if( it == trait.m_values.end() || it->second.is_None() ) {
+                    ERROR(sp, E0000, "`" << e.item << "` is not a value member of trait " << e.trait.m_path);
+                }
+                TU_MATCH( ::HIR::TraitValueItem, (it->second), (ie),
+                (None, throw ""; ),
+                (Constant,
+                    TODO(sp, "Monomorpise associated constant type - " << ie.m_type);
+                    ),
+                (Static,
+                    TODO(sp, "Monomorpise associated static type - " << ie.m_type);
+                    ),
+                (Function,
+                    fix_param_count(sp, this->context, node.m_path, ie.m_params,  e.params);
+                    
+                    const auto& fcn_params = e.params;
+                    const auto& trait_params = e.trait.m_params;
+                    auto monomorph_cb = [&](const auto& gt)->const auto& {
+                            const auto& ge = gt.m_data.as_Generic();
+                            if( ge.binding == 0xFFFF ) {
+                                return this->context.get_type(*e.type);
+                            }
+                            else if( ge.binding < 256 ) {
+                                auto idx = ge.binding;
+                                if( idx >= trait_params.m_types.size() ) {
+                                    BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << trait_params.m_types.size());
+                                }
+                                return this->context.get_type(trait_params.m_types[idx]);
+                            }
+                            else if( ge.binding < 512 ) {
+                                auto idx = ge.binding - 256;
+                                if( idx >= fcn_params.m_types.size() ) {
+                                    BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << fcn_params.m_types.size());
+                                }
+                                return this->context.get_type(fcn_params.m_types[idx]);
+                            }
+                            else {
+                                BUG(sp, "Generic bounding out of total range");
+                            }
+                        };
+                    ::HIR::FunctionType ft {
+                        ie.m_unsafe, ie.m_abi,
+                        box$( monomorphise_type_with(sp, ie.m_return,  monomorph_cb) ),
+                        {}
+                        };
+                    for(const auto& arg : ie.m_args)
+                        ft.m_arg_types.push_back( monomorphise_type_with(sp, arg.second,  monomorph_cb) );
+                    auto ty = ::HIR::TypeRef(mv$(ft));
+                    
+                    this->context.equate_types(node.span(), node.m_res_type, ty);
+                    )
+                )
                 ),
             (UfcsInherent,
                 // TODO: If ivars are valid within the type of this UFCS, then resolution has to be deferred until iteration
