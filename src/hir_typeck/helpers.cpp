@@ -1586,6 +1586,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                         DEBUG("Fuzzy match");
                     }
                     // Hand off to the closure, and return true if it does
+                    // TODO: The type bounds are only the types that are specified.
                     if( callback(e.type, e.trait.m_path.m_params, e.trait.m_type_bounds) ) {
                         return true;
                     }

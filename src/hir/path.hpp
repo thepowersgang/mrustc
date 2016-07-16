@@ -161,6 +161,8 @@ public:
     Path(GenericPath _);
     Path(SimplePath _);
     
+    Path(TypeRef ty, GenericPath trait, ::std::string item, PathParams item_params=PathParams());
+    
     Path clone() const;
     Compare compare_with_placeholders(const Span& sp, const Path& x, t_cb_resolve_type resolve_placeholder) const;
     

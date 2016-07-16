@@ -1855,8 +1855,9 @@ void Context::dump() const {
 
 void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR::TypeRef& ri) {
     // Instantly apply equality
+    TRACE_FUNCTION_F(li << " == " << ri);
 
-    // TODO: Check if the type contains a replacable associated type
+    // Check if the type contains a replacable associated type
     ::HIR::TypeRef  l_tmp;
     ::HIR::TypeRef  r_tmp;
     const auto& l_t = this->m_resolve.expand_associated_types(sp, this->m_ivars.get_type(li), l_tmp);
@@ -1900,30 +1901,26 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
             )
             
             // - If the destructuring would fail
-            if( l_t.compare_with_placeholders(sp, r_t, this->m_ivars.callback_resolve_infer()) == ::HIR::Compare::Unequal )
-            {
+            //if( l_t.compare_with_placeholders(sp, r_t, this->m_ivars.callback_resolve_infer()) == ::HIR::Compare::Unequal )
+            //{
                 // BUT! It was due to an unknown associated type
                 TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Path, r_e,
                     TU_IFLET(::HIR::Path::Data, r_e.path.m_data, UfcsKnown, rpe,
                         if( r_e.binding.is_Unbound() ) {
-                            // TODO: Try this operation again later?
                             this->equate_types_assoc(sp, l_t,  rpe.trait.m_path, rpe.trait.m_params.clone().m_types, *rpe.type,  rpe.item.c_str());
                             return ;
-                            //TODO(sp, "Defer structural equality of unknown associated type");
                         }
                     )
                 )
                 TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Path, l_e,
                     TU_IFLET(::HIR::Path::Data, l_e.path.m_data, UfcsKnown, lpe,
                         if( l_e.binding.is_Unbound() ) {
-                            // TODO: Try this operation again later?
                             this->equate_types_assoc(sp, r_t,  lpe.trait.m_path, lpe.trait.m_params.clone().m_types, *lpe.type,  lpe.item.c_str());
                             return ;
-                            //TODO(sp, "Defer structural equality of unknown associated type");
                         }
                     )
                 )
-            }
+            //}
             
             if( l_t.m_data.tag() != r_t.m_data.tag() ) {
                 ERROR(sp, E0000, "Type mismatch between " << this->m_ivars.fmt_type(l_t) << " and " << this->m_ivars.fmt_type(r_t));
@@ -1958,10 +1955,10 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
                     this->equate_types(sp, *lpe.type, *rpe.type);
                     ),
                 (UfcsKnown,
+                    if( lpe.trait.m_path != rpe.trait.m_path || lpe.item != rpe.item )
+                        ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
                     equality_typeparams(lpe.trait.m_params, rpe.trait.m_params);
                     equality_typeparams(lpe.params, rpe.params);
-                    if( lpe.item != rpe.item )
-                        ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
                     this->equate_types(sp, *lpe.type, *rpe.type);
                     ),
                 (UfcsUnknown,
@@ -2455,7 +2452,7 @@ void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const
         name,
         is_op
         });
-    DEBUG("equate_types_assoc(" << this->link_assoc.back() << ")");
+    DEBUG("(" << this->link_assoc.back() << ")");
     this->m_ivars.mark_change();
 }
 void Context::add_revisit(::HIR::ExprNode& node) {
@@ -3025,9 +3022,13 @@ namespace {
                     DEBUG("- (fail) bounded impl " << v.trait << v.params << " (ty_right = " << context.m_ivars.fmt_type(v.impl_ty));
                     return false;
                 }
-                if( v.name != "" && assoc.count(v.name) == 0 )
-                    BUG(sp, "Getting associated type '" << v.name << "' which isn't in " << v.trait);
-                const auto& out_ty = (v.name == "" ? v.left_ty : assoc.at(v.name));
+                ::HIR::TypeRef  out_ty_o;
+                if( v.name != "" && assoc.count(v.name) == 0 ) {
+                    auto ty1 = ::HIR::TypeRef( ::HIR::Path(::HIR::Path( v.impl_ty.clone(), ::HIR::GenericPath(v.trait, v.params.clone()), v.name, ::HIR::PathParams() )) );
+                    out_ty_o = context.m_resolve.expand_associated_types(sp, mv$(ty1));
+                    //BUG(sp, "Getting associated type '" << v.name << "' which isn't in " << v.trait << " (" << ty << ")");
+                }
+                const auto& out_ty = (v.name == "" ? v.left_ty : (out_ty_o == ::HIR::TypeRef() ? assoc.at(v.name) : out_ty_o));
                 
                 // - If we're looking for an associated type, allow it to eliminate impossible impls
                 //  > This makes `let v: usize = !0;` work without special cases
@@ -3038,7 +3039,7 @@ namespace {
                         return false;
                     }
                     // if solid or fuzzy, leave as-is
-                    output_type = assoc.at(v.name).clone();
+                    output_type = out_ty.clone();
                 }
                 count += 1;
                 if( cmp == ::HIR::Compare::Equal ) {
