@@ -79,7 +79,7 @@ public:
         friend ::std::ostream& operator<<(::std::ostream& os, const ImplRef& x) {
             TU_MATCH(Data, (x.m_data), (e),
             (TraitImpl,
-                os << "impl" << e.impl->m_params.fmt_args() << " SomeTrait" << e.impl->m_trait_args << " for " << e.impl->m_type << " where " << e.impl->m_params.fmt_bounds();
+                os << "impl" << e.impl->m_params.fmt_args() << " SomeTrait" << e.impl->m_trait_args << " for " << e.impl->m_type << e.impl->m_params.fmt_bounds();
                 ),
             (Bounded,
                 os << "bound";
@@ -98,6 +98,15 @@ public:
         const ::HIR::SimplePath& trait_path, const ::HIR::PathParams& trait_params,
         const ::HIR::TypeRef& type,
         t_cb_find_impl found_cb
+        ) const
+    {
+        return this->find_impl(sp, trait_path, &trait_params, type, found_cb);
+    }
+    bool find_impl(
+        const Span& sp,
+        const ::HIR::SimplePath& trait_path, const ::HIR::PathParams* trait_params,
+        const ::HIR::TypeRef& type,
+        t_cb_find_impl found_cb
         ) const;
 
     void expand_associated_types(const Span& sp, ::HIR::TypeRef& input) const;
@@ -111,7 +120,7 @@ public:
             const ::HIR::SimplePath& des, const ::HIR::PathParams& params,
             const ::HIR::Trait& trait_ptr, const ::HIR::SimplePath& trait_path, const ::HIR::PathParams& pp,
             const ::HIR::TypeRef& self_type,
-            ::std::function<void(::std::map< ::std::string, ::HIR::TypeRef>)> callback
+            ::std::function<void(const ::HIR::PathParams&, ::std::map< ::std::string, ::HIR::TypeRef>)> callback
             ) const;
     /// 
     bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;

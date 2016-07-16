@@ -99,16 +99,42 @@ namespace {
     {
         ::HIR::Crate& crate;
         StaticTraitResolve  m_resolve;
+        
+        const ::HIR::Trait* m_current_trait;
+        const ::HIR::PathChain* m_current_trait_path;
     
         ::std::vector< ::HIR::TypeRef* >    m_self_types;
+        
+        typedef ::std::vector< ::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >   t_trait_imports;
+        t_trait_imports m_traits;
     public:
         Visitor(::HIR::Crate& crate):
             crate(crate),
-            m_resolve(crate)
+            m_resolve(crate),
+            m_current_trait(nullptr)
         {
         }
         
     private:
+        struct ModTraitsGuard {
+            Visitor* v;
+            t_trait_imports old_imports;
+            
+            ~ModTraitsGuard() {
+                this->v->m_traits = mv$(this->old_imports);
+            }
+        };
+        ModTraitsGuard push_mod_traits(const ::HIR::Module& mod) {
+            static Span sp;
+            DEBUG("");
+            auto rv = ModTraitsGuard {  this, mv$(this->m_traits)  };
+            for( const auto& trait_path : mod.m_traits ) {
+                DEBUG("- " << trait_path);
+                m_traits.push_back( ::std::make_pair( &trait_path, &this->crate.get_trait_by_path(sp, trait_path) ) );
+            }
+            return rv;
+        }
+        
         void update_self_type(const Span& sp, ::HIR::TypeRef& ty)
         {
             TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
@@ -259,6 +285,209 @@ namespace {
             
             ::HIR::Visitor::visit_generic_path(p, pc);
         }
+        
+    private:
+        bool locate_trait_item_in_bounds(const Span& sp, ::HIR::Visitor::PathContext pc,  const ::HIR::TypeRef& tr, const ::HIR::GenericParams& params,  ::HIR::Path::Data& pd) {
+            //const auto& name = pd.as_UfcsUnknown().item;
+            for(const auto& b : params.m_bounds)
+            {
+                TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
+                    DEBUG("- " << e.type << " : " << e.trait.m_path);
+                    if( e.type == tr ) {
+                        DEBUG(" - Match");
+                        if( locate_in_trait_and_set(sp, pc, e.trait.m_path, this->crate.get_trait_by_path(sp, e.trait.m_path.m_path),  pd) ) {
+                            return true;
+                        }
+                    }
+                );
+                // - 
+            }
+            return false;
+        }
+        static ::HIR::Path::Data get_ufcs_known(::HIR::Path::Data::Data_UfcsUnknown e,  ::HIR::GenericPath trait_path, const ::HIR::Trait& trait)
+        {
+            return ::HIR::Path::Data::make_UfcsKnown({ mv$(e.type), mv$(trait_path), mv$(e.item), mv$(e.params)} );
+        }
+        static bool locate_item_in_trait(::HIR::Visitor::PathContext pc, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd)
+        {
+            const auto& e = pd.as_UfcsUnknown();
+            
+            switch(pc)
+            {
+            case ::HIR::Visitor::PathContext::VALUE:
+                if( trait.m_values.find( e.item ) != trait.m_values.end() ) {
+                    return true;
+                }
+                break;
+            case ::HIR::Visitor::PathContext::TRAIT:
+                break;
+            case ::HIR::Visitor::PathContext::TYPE:
+                if( trait.m_types.find( e.item ) != trait.m_types.end() ) {
+                    return true;
+                }
+                break;
+            }
+            return false;
+        }
+        bool locate_in_trait_and_set(const Span& sp, ::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd) {
+            if( locate_item_in_trait(pc, trait,  pd) ) {
+                pd = get_ufcs_known(mv$(pd.as_UfcsUnknown()), make_generic_path(trait_path.m_path, trait), trait);
+                return true;
+            }
+            // Search supertraits (recursively)
+            for( unsigned int i = 0; i < trait.m_parent_traits.size(); i ++ )
+            {
+                const auto& par_trait_path = trait.m_parent_traits[i].m_path;
+                //const auto& par_trait_ent = *trait.m_parent_trait_ptrs[i];
+                const auto& par_trait_ent = this->crate.get_trait_by_path(sp, par_trait_path.m_path);
+                if( locate_in_trait_and_set(sp, pc, par_trait_path, par_trait_ent,  pd) ) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        bool locate_in_trait_impl_and_set(::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd) {
+            static Span sp;
+            
+            auto& e = pd.as_UfcsUnknown();
+            //if( this->m_resolve.trait_contains_type(sp, trait_path, trait, e.item,  out_path) )
+            if( this->locate_item_in_trait(pc, trait,  pd) ) {
+                const auto& type = *e.type;
+                
+                return this->crate.find_trait_impls(trait_path.m_path, type, [](const auto& x)->const auto&{return x;}, [&](const auto& impl) {
+                    DEBUG("FOUND impl" << impl.m_params.fmt_args() << " " << trait_path.m_path << impl.m_trait_args << " for " << impl.m_type);
+                    // TODO: Check bounds
+                    for(const auto& bound : impl.m_params.m_bounds) {
+                        DEBUG("- TODO: Bound " << bound);
+                        return false;
+                    }
+                    pd = get_ufcs_known(mv$(e), make_generic_path(trait_path.m_path, trait), trait);
+                    return true;
+                    });
+            }
+            else {
+                DEBUG("- Item " << e.item << " not in trait " << trait_path.m_path);
+            }
+            
+            
+            // Search supertraits (recursively)
+            for( unsigned int i = 0; i < trait.m_parent_traits.size(); i ++ )
+            {
+                const auto& par_trait_path = trait.m_parent_traits[i].m_path;
+                //const auto& par_trait_ent = *trait.m_parent_trait_ptrs[i];
+                const auto& par_trait_ent = this->crate.get_trait_by_path(sp, par_trait_path.m_path);
+                // TODO: Modify path parameters based on the current trait's params
+                if( locate_in_trait_impl_and_set(pc, par_trait_path, par_trait_ent,  pd) ) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        static ::HIR::GenericPath make_generic_path(::HIR::SimplePath sp, const ::HIR::Trait& trait)
+        {
+            auto trait_path_g = ::HIR::GenericPath( mv$(sp) );
+            for(unsigned int i = 0; i < trait.m_params.m_types.size(); i ++ ) {
+                trait_path_g.m_params.m_types.push_back( ::HIR::TypeRef(trait.m_params.m_types[i].m_name, i) );
+            }
+            return trait_path_g;
+        }
+        void visit_path_UfcsUnknown(const Span& sp, ::HIR::Path& p, ::HIR::Visitor::PathContext pc)
+        {
+            TRACE_FUNCTION_F("UfcsUnknown - p=" << p);
+            auto& e = p.m_data.as_UfcsUnknown();
+            
+            this->visit_type( *e.type );
+            this->visit_path_params( e.params );
+            
+            // Search for matching impls in current generic blocks
+            if( m_resolve.m_item_generics != nullptr && locate_trait_item_in_bounds(sp, pc, *e.type, *m_resolve.m_item_generics,  p.m_data) ) {
+                return ;
+            }
+            if( m_resolve.m_impl_generics != nullptr && locate_trait_item_in_bounds(sp, pc, *e.type, *m_resolve.m_impl_generics,  p.m_data) ) {
+                return ;
+            }
+            
+            TU_IFLET(::HIR::TypeRef::Data, e.type->m_data, Generic, te,
+                // If processing a trait, and the type is 'Self', search for the type/method on the trait
+                // - TODO: This could be encoded by a `Self: Trait` bound in the generics, but that may have knock-on issues?
+                if( te.name == "Self" && m_current_trait ) {
+                    auto trait_path = ::HIR::GenericPath( m_current_trait_path->to_path() );
+                    for(unsigned int i = 0; i < m_current_trait->m_params.m_types.size(); i ++ ) {
+                        trait_path.m_params.m_types.push_back( ::HIR::TypeRef(m_current_trait->m_params.m_types[i].m_name, i) );
+                    }
+                    if( this->locate_in_trait_and_set(sp, pc, trait_path, *m_current_trait,  p.m_data) ) {
+                        // Success!
+                        return ;
+                    }
+                }
+                ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << *e.type);
+                return ;
+            )
+            else {
+                // 1. Search for applicable inherent methods (COMES FIRST!)
+                for( const auto& impl : this->crate.m_type_impls )
+                {
+                    if( !impl.matches_type(*e.type) ) {
+                        continue ;
+                    }
+                    DEBUG("- matched inherent impl " << *e.type);
+                    // Search for item in this block
+                    switch( pc )
+                    {
+                    case ::HIR::Visitor::PathContext::VALUE:
+                        if( impl.m_methods.find(e.item) == impl.m_methods.end() ) {
+                            continue ;
+                        }
+                        // Found it, just keep going (don't care about details here)
+                        break;
+                    case ::HIR::Visitor::PathContext::TRAIT:
+                    case ::HIR::Visitor::PathContext::TYPE:
+                        continue ;
+                    }
+                    
+                    auto new_data = ::HIR::Path::Data::make_UfcsInherent({ mv$(e.type), mv$(e.item), mv$(e.params)} );
+                    p.m_data = mv$(new_data);
+                    DEBUG("- Resolved, replace with " << p);
+                    return ;
+                }
+                // 2. Search all impls of in-scope traits for this method on this type
+                for( const auto& trait_info : m_traits )
+                {
+                    const auto& trait = *trait_info.second;
+                    
+                    switch(pc)
+                    {
+                    case ::HIR::Visitor::PathContext::VALUE:
+                        if( trait.m_values.find(e.item) == trait.m_values.end() )
+                            continue ;
+                        break;
+                    case ::HIR::Visitor::PathContext::TRAIT:
+                    case ::HIR::Visitor::PathContext::TYPE:
+                        if( trait.m_types.find(e.item) == trait.m_types.end() )
+                            continue ;
+                        break;
+                    }
+                    DEBUG("- Trying trait " << *trait_info.first);
+                    
+                    auto trait_path = ::HIR::GenericPath( *trait_info.first );
+                    for(unsigned int i = 0; i < trait.m_params.m_types.size(); i ++ ) {
+                        trait_path.m_params.m_types.push_back( ::HIR::TypeRef() );
+                    }
+                    
+                    // TODO: Search supertraits
+                    // TODO: Should impls be searched first, or item names?
+                    // - Item names add complexity, but impls are slower
+                    if( this->locate_in_trait_impl_and_set(pc, mv$(trait_path), trait,  p.m_data) ) {
+                        return ;
+                    }
+                }
+            }
+            
+            // Couldn't find it
+            ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << *e.type << " (in " << p << ")");
+        }
+    
+    public:
         void visit_path(::HIR::Path& p, ::HIR::Visitor::PathContext pc) override
         {
             assert(pc == ::HIR::Visitor::PathContext::TYPE);
@@ -314,13 +543,24 @@ namespace {
             }
         }
         
+        void visit_module(::HIR::PathChain p, ::HIR::Module& mod) override
+        {
+            auto _ = this->push_mod_traits( mod );
+            ::HIR::Visitor::visit_module(p, mod);
+        }
+        
         void visit_trait(::HIR::PathChain p, ::HIR::Trait& item) override
         {
+            m_current_trait = &item;
+            m_current_trait_path = &p;
+            
             auto _ = m_resolve.set_item_generics(item.m_params);
             ::HIR::TypeRef tr { "Self", 0xFFFF };
             m_self_types.push_back(&tr);
             ::HIR::Visitor::visit_trait(p, item);
             m_self_types.pop_back();
+            
+            m_current_trait = nullptr;
         }
         void visit_struct(::HIR::PathChain p, ::HIR::Struct& item) override
         {

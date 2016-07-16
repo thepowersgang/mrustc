@@ -9,12 +9,12 @@
 
 bool StaticTraitResolve::find_impl(
     const Span& sp,
-    const ::HIR::SimplePath& trait_path, const ::HIR::PathParams& trait_params,
+    const ::HIR::SimplePath& trait_path, const ::HIR::PathParams* trait_params,
     const ::HIR::TypeRef& type,
     t_cb_find_impl found_cb
     ) const
 {
-    TRACE_FUNCTION_F(trait_path << trait_params << " for " << type);
+    TRACE_FUNCTION_F(trait_path << FMT_CB(os, if(trait_params) { os << *trait_params; } else { os << "<?>"; }) << " for " << type);
     auto cb_ident = [](const auto&ty)->const auto&{return ty;};
     
     struct H {
@@ -47,32 +47,36 @@ bool StaticTraitResolve::find_impl(
             {
                 if( e.trait.m_path.m_path == trait_path ) {
                     // Check against `params`
-                    DEBUG("Checking " << trait_params << " vs " << b_params);
-                    if( !H::compare_pp(sp, trait_params, b_params) )
-                        return false;
+                    if( trait_params ) {
+                        DEBUG("Checking " << *trait_params << " vs " << b_params);
+                        if( !H::compare_pp(sp, *trait_params, b_params) )
+                            return false;
+                    }
                     // Hand off to the closure, and return true if it does
                     if( found_cb(ImplRef(e.type, e.trait.m_path.m_params, e.trait.m_type_bounds)) ) {
                         return true;
                     }
                 }
+                #if 1
                 // HACK: The wrapping closure takes associated types from this bound and applies them to the returned set
                 // - XXX: This is actually wrong (false-positive) in many cases. FIXME
                 bool rv = this->find_named_trait_in_trait(sp,
-                    trait_path,trait_params,
+                    trait_path,b_params,
                     *e.trait.m_trait_ptr, e.trait.m_path.m_path,e.trait.m_path.m_params,
                     type,
-                    [&](auto assoc) {
+                    [&](const auto& params, auto assoc) {
                         for(const auto& i : e.trait.m_type_bounds) {
                             // TODO: Only include from above when needed
                             //if( des_trait_ref.m_types.count(i.first) ) {
                                 assoc.insert( ::std::make_pair(i.first, i.second.clone())  );
                             //}
                         }
-                        return found_cb( ImplRef(type, trait_params, assoc) );
+                        return found_cb( ImplRef(type, params, assoc) );
                     });
                 if( rv ) {
                     return true;
                 }
+                #endif
             }
             
             // If the input type is an associated type controlled by this trait bound, check for added bounds.
@@ -89,7 +93,7 @@ bool StaticTraitResolve::find_impl(
                         TODO(sp, "Handle associated type bounds on !Self");
                         continue ;
                     }
-                    if( be.trait.m_path.m_path == trait_path && H::compare_pp(sp, be.trait.m_path.m_params, trait_params) ) {
+                    if( be.trait.m_path.m_path == trait_path && (!trait_params || H::compare_pp(sp, be.trait.m_path.m_params, *trait_params)) ) {
                         DEBUG("- Found an associated type impl");
                         
                         auto tp_mono = monomorphise_traitpath_with(sp, be.trait, [&assoc_info,&sp](const auto& gt)->const auto& {
@@ -141,12 +145,15 @@ bool StaticTraitResolve::find_impl(
             }
             };
         auto match = impl.m_type.match_test_generics_fuzz(sp, type, cb_ident, cb);
-        assert( trait_params.m_types.size() == impl.m_trait_args.m_types.size() );
-        for( unsigned int i = 0; i < impl.m_trait_args.m_types.size(); i ++ )
+        if( trait_params )
         {
-            const auto& l = impl.m_trait_args.m_types[i];
-            const auto& r = trait_params.m_types[i];
-            match &= l.match_test_generics_fuzz(sp, r, cb_ident, cb);
+            assert( trait_params->m_types.size() == impl.m_trait_args.m_types.size() );
+            for( unsigned int i = 0; i < impl.m_trait_args.m_types.size(); i ++ )
+            {
+                const auto& l = impl.m_trait_args.m_types[i];
+                const auto& r = trait_params->m_types[i];
+                match &= l.match_test_generics_fuzz(sp, r, cb_ident, cb);
+            }
         }
         if( match != ::HIR::Compare::Equal )
             return false;
@@ -200,7 +207,7 @@ bool StaticTraitResolve::find_impl(
                 auto b_tp_mono = monomorphise_traitpath_with(sp, e.trait, cb_monomorph, false);
                 DEBUG("- b_ty_mono = " << b_ty_mono << ", b_tp_mono = " << b_tp_mono);
                 if( !this->find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [](const auto&){return true;}) ) {
-                    DEBUG("> Fail");
+                    DEBUG("> Fail - " << b_ty_mono << ": " << b_tp_mono);
                     return false;
                 }
                 )
@@ -297,7 +304,7 @@ void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef&
                     bool found_supertrait = this->find_named_trait_in_trait(sp,
                         e2.trait.m_path, e2.trait.m_params,
                         *be.trait.m_trait_ptr, be.trait.m_path.m_path, be.trait.m_path.m_params, *e2.type,
-                        [&e2,&input,&assume_opaque](auto assoc){
+                        [&e2,&input,&assume_opaque](const auto& params, auto assoc){
                             auto it = assoc.find(e2.item);
                             if( it != assoc.end() ) {
                                 assume_opaque = false;
@@ -514,7 +521,7 @@ bool StaticTraitResolve::find_named_trait_in_trait(const Span& sp,
         const ::HIR::SimplePath& des, const ::HIR::PathParams& des_params,
         const ::HIR::Trait& trait_ptr, const ::HIR::SimplePath& trait_path, const ::HIR::PathParams& pp,
         const ::HIR::TypeRef& target_type,
-        ::std::function<void(::std::map< ::std::string, ::HIR::TypeRef>)> callback
+        ::std::function<void(const ::HIR::PathParams&, ::std::map< ::std::string, ::HIR::TypeRef>)> callback
     ) const
 {
     TRACE_FUNCTION_F(des << " from " << trait_path << pp);
@@ -537,12 +544,12 @@ bool StaticTraitResolve::find_named_trait_in_trait(const Span& sp,
 
         DEBUG(pt << " => " << pt_mono);
         if( pt.m_path.m_path == des ) {
-            callback( mv$(pt_mono.m_type_bounds) );
+            callback( pt_mono.m_path.m_params, mv$(pt_mono.m_type_bounds) );
             return true;
         }
         
         const auto& tr = m_crate.get_trait_by_path(sp, pt.m_path.m_path);
-        if( find_named_trait_in_trait(sp, des, des_params,  tr, pt.m_path.m_path, pt_mono.m_path.m_params,  target_type, [](const auto&){}) ) {
+        if( find_named_trait_in_trait(sp, des, des_params,  tr, pt.m_path.m_path, pt_mono.m_path.m_params,  target_type, callback) ) {
             return true;
         }
     }

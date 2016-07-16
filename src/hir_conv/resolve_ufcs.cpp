@@ -7,6 +7,7 @@
 #include <hir/hir.hpp>
 #include <hir/expr.hpp>
 #include <hir/visitor.hpp>
+#include <hir_typeck/static.hpp>
 
 namespace {
     class Visitor:
@@ -17,16 +18,14 @@ namespace {
         typedef ::std::vector< ::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >   t_trait_imports;
         t_trait_imports m_traits;
         
-        const ::HIR::GenericParams* m_impl_params;
-        const ::HIR::GenericParams* m_item_params;
+        StaticTraitResolve  m_resolve;
         const ::HIR::Trait* m_current_trait;
         const ::HIR::PathChain* m_current_trait_path;
         
     public:
         Visitor(const ::HIR::Crate& crate):
             m_crate(crate),
-            m_impl_params(nullptr),
-            m_item_params(nullptr),
+            m_resolve(crate),
             m_current_trait(nullptr)
         {}
         
@@ -39,9 +38,12 @@ namespace {
             }
         };
         ModTraitsGuard push_mod_traits(const ::HIR::Module& mod) {
+            DEBUG("");
             auto rv = ModTraitsGuard {  this, mv$(this->m_traits)  };
-            for( const auto& trait_path : mod.m_traits )
+            for( const auto& trait_path : mod.m_traits ) {
+                DEBUG("- " << trait_path);
                 m_traits.push_back( ::std::make_pair( &trait_path, &this->find_trait(trait_path) ) );
+            }
             return rv;
         }
         void visit_module(::HIR::PathChain p, ::HIR::Module& mod) override
@@ -50,40 +52,35 @@ namespace {
             ::HIR::Visitor::visit_module(p, mod);
         }
 
-        void visit_struct(::HIR::PathChain p, ::HIR::Struct& fcn) override {
-            m_item_params = &fcn.m_params;
-            ::HIR::Visitor::visit_struct(p, fcn);
-            m_item_params = nullptr;
+        void visit_struct(::HIR::PathChain p, ::HIR::Struct& item) override {
+            auto _ = m_resolve.set_item_generics(item.m_params);
+            ::HIR::Visitor::visit_struct(p, item);
         }
-        void visit_enum(::HIR::PathChain p, ::HIR::Enum& fcn) override {
-            m_item_params = &fcn.m_params;
-            ::HIR::Visitor::visit_enum(p, fcn);
-            m_item_params = nullptr;
+        void visit_enum(::HIR::PathChain p, ::HIR::Enum& item) override {
+            auto _ = m_resolve.set_item_generics(item.m_params);
+            ::HIR::Visitor::visit_enum(p, item);
         }
-        void visit_function(::HIR::PathChain p, ::HIR::Function& fcn) override {
-            m_item_params = &fcn.m_params;
-            ::HIR::Visitor::visit_function(p, fcn);
-            m_item_params = nullptr;
+        void visit_function(::HIR::PathChain p, ::HIR::Function& item) override {
+            auto _ = m_resolve.set_item_generics(item.m_params);
+            ::HIR::Visitor::visit_function(p, item);
         }
         void visit_trait(::HIR::PathChain p, ::HIR::Trait& trait) override {
             m_current_trait = &trait;
             m_current_trait_path = &p;
-            m_impl_params = &trait.m_params;
+            //auto _ = m_resolve.set_item_generics(trait.m_params);
+            auto _ = m_resolve.set_impl_generics(trait.m_params);
             ::HIR::Visitor::visit_trait(p, trait);
-            m_impl_params = nullptr;
             m_current_trait = nullptr;
         }
         void visit_type_impl(::HIR::TypeImpl& impl) override {
-            auto _ = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
-            m_impl_params = &impl.m_params;
+            auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
+            auto _g = m_resolve.set_impl_generics(impl.m_params);
             ::HIR::Visitor::visit_type_impl(impl);
-            m_impl_params = nullptr;
         }
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) {
-            auto _ = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
-            m_impl_params = &impl.m_params;
+            auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
+            auto _g = m_resolve.set_impl_generics(impl.m_params);
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
-            m_impl_params = nullptr;
         }
 
         void visit_expr(::HIR::ExprPtr& expr) override
@@ -236,13 +233,8 @@ namespace {
             if( this->locate_item_in_trait(pc, trait,  pd) ) {
                 const auto& type = *e.type;
                 
-                return this->m_crate.find_trait_impls(trait_path.m_path, type, [](const auto& x)->const auto&{return x;}, [&](const auto& impl) {
-                    DEBUG("FOUND impl" << impl.m_params.fmt_args() << " " << trait_path.m_path << impl.m_trait_args << " for " << impl.m_type);
-                    // TODO: Check bounds
-                    for(const auto& bound : impl.m_params.m_bounds) {
-                        DEBUG("- TODO: Bound " << bound);
-                        return false;
-                    }
+                return this->m_resolve.find_impl(sp,  trait_path.m_path, nullptr, type, [&](const auto& impl){
+                    DEBUG("FOUND impl from " << impl);
                     pd = get_ufcs_known(mv$(e), make_generic_path(trait_path.m_path, trait), trait);
                     return true;
                     });
@@ -278,10 +270,10 @@ namespace {
                 this->visit_path_params( e.params );
                 
                 // Search for matching impls in current generic blocks
-                if( m_item_params != nullptr && locate_trait_item_in_bounds(pc, *e.type, *m_item_params,  p.m_data) ) {
+                if( m_resolve.m_item_generics != nullptr && locate_trait_item_in_bounds(pc, *e.type, *m_resolve.m_item_generics,  p.m_data) ) {
                     return ;
                 }
-                if( m_impl_params != nullptr && locate_trait_item_in_bounds(pc, *e.type, *m_impl_params,  p.m_data) ) {
+                if( m_resolve.m_impl_generics != nullptr && locate_trait_item_in_bounds(pc, *e.type, *m_resolve.m_impl_generics,  p.m_data) ) {
                     return ;
                 }
                 
