@@ -1825,6 +1825,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     DEBUG("Check bound " << be.type << " : " << be.trait);
                     auto real_type = monomorphise_type_with(sp, be.type, monomorph, false);
                     auto real_trait = monomorphise_traitpath_with(sp, be.trait, monomorph, false);
+                    real_type = this->expand_associated_types(sp, mv$(real_type));
                     for(auto& p : real_trait.m_path.m_params.m_types) {
                         p = this->expand_associated_types(sp, mv$(p));
                     }
