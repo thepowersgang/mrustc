@@ -2880,6 +2880,8 @@ namespace {
                 context.possible_equate_type_to(r_e.index, ty);
                 return false;
             )
+            // TODO: If the type is a UfcsKnown but contains ivars (i.e. would be destructured into an associated type rule)
+            //   don't equate, and instead return false.
             else {
                 // Error: Must be compatible, hand over to the equate code.
                 // - If this returns early, it's because of a UFCS destructure
@@ -2888,7 +2890,7 @@ namespace {
             }
             ),
         (Pointer,
-            // TODO: Pointers coerce from borrows and similar pointers
+            // Pointers coerce from borrows and similar pointers
             TU_IFLET(::HIR::TypeRef::Data, ty_r.m_data, Borrow, r_e,
                 context.equate_types(sp, *l_e.inner, *r_e.inner);
                 return true;
