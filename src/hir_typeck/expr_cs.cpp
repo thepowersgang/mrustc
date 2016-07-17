@@ -291,15 +291,17 @@ namespace {
         
         // --- Monomorphise the argument/return types (into current context)
         for(const auto& arg : fcn.m_args) {
+            DEBUG("Arg " << arg.first << ": " << arg.second);
             if( monomorphise_type_needed(arg.second) ) {
-                cache.m_arg_types.push_back( /*this->context.expand_associated_types(sp, */monomorphise_type_with(sp, arg.second,  monomorph_cb)/*)*/ );
+                cache.m_arg_types.push_back( /*this->context.expand_associated_types(sp, */monomorphise_type_with(sp, arg.second,  monomorph_cb, false)/*)*/ );
             }
             else {
                 cache.m_arg_types.push_back( arg.second.clone() );
             }
         }
+        DEBUG("Ret " << fcn.m_return);
         if( monomorphise_type_needed(fcn.m_return) ) {
-            cache.m_arg_types.push_back( /*this->context.expand_associated_types(sp, */monomorphise_type_with(sp, fcn.m_return,  monomorph_cb)/*)*/ );
+            cache.m_arg_types.push_back( /*this->context.expand_associated_types(sp, */monomorphise_type_with(sp, fcn.m_return,  monomorph_cb, false)/*)*/ );
         }
         else {
             cache.m_arg_types.push_back( fcn.m_return.clone() );

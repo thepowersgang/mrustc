@@ -105,7 +105,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
 {
     ::HIR::PathParams   rv;
     for( const auto& ty : tpl.m_types) 
-        rv.m_types.push_back( monomorphise_type_with(sp, ty, callback) );
+        rv.m_types.push_back( monomorphise_type_with(sp, ty, callback, allow_infer) );
     return rv;
 }
 ::HIR::GenericPath monomorphise_genericpath_with(const Span& sp, const ::HIR::GenericPath& tpl, t_cb_generic callback, bool allow_infer)
