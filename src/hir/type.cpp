@@ -263,6 +263,94 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
     )
     throw "";
 }
+Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
+{
+    Ordering    rv;
+    
+    ORD( static_cast<unsigned int>(m_data.tag()), static_cast<unsigned int>(x.m_data.tag()) );
+    
+    TU_MATCH(::HIR::TypeRef::Data, (m_data, x.m_data), (te, xe),
+    (Infer,
+        // TODO: Should comparing inferrence vars be an error?
+        return ::ord( te.index, xe.index );
+        ),
+    (Diverge,
+        return OrdEqual;
+        ),
+    (Primitive,
+        return ::ord( static_cast<unsigned>(te), static_cast<unsigned>(xe) );
+        ),
+    (Path,
+        ORD( (unsigned)te.path.m_data.tag(), (unsigned)xe.path.m_data.tag() );
+        TU_MATCH(::HIR::Path::Data, (te.path.m_data, xe.path.m_data), (tpe, xpe),
+        (Generic,
+            return ::ord(tpe, xpe);
+            ),
+        (UfcsInherent,
+            ORD(*tpe.type, *xpe.type);
+            ORD(tpe.item, xpe.item);
+            return ::ord(tpe.params, xpe.params);
+            ),
+        (UfcsKnown,
+            ORD(*tpe.type, *xpe.type);
+            ORD(tpe.trait, xpe.trait);
+            ORD(tpe.item, xpe.item);
+            return ::ord(tpe.params, xpe.params);
+            ),
+        (UfcsUnknown,
+            ORD(*tpe.type, *xpe.type);
+            ORD(tpe.item, xpe.item);
+            return ::ord(tpe.params, xpe.params);
+            )
+        )
+        ),
+    (Generic,
+        ORD(te.name, xe.name);
+        if( (rv = ::ord(te.binding, xe.binding)) != OrdEqual )
+            return rv;
+        return OrdEqual;
+        ),
+    (TraitObject,
+        ORD(te.m_trait, xe.m_trait);
+        ORD(te.m_markers, xe.m_markers);
+        return OrdEqual;
+        //return ::ord(te.m_lifetime, xe.m_lifetime);
+        ),
+    (Array,
+        ORD(*te.inner, *xe.inner);
+        ORD(te.size_val, xe.size_val);
+        if( te.size_val == ~0u )
+            assert(!"TOD: Compre array types with non-resolved sizes");
+        return OrdEqual;
+        ),
+    (Slice,
+        return ::ord(*te.inner, *xe.inner);
+        ),
+    (Tuple,
+        return ::ord(te, xe);
+        ),
+    (Borrow,
+        ORD( static_cast<unsigned>(te.type), static_cast<unsigned>(xe.type) );
+        return ::ord(*te.inner, *xe.inner);
+        ),
+    (Pointer,
+        ORD( static_cast<unsigned>(te.type), static_cast<unsigned>(xe.type) );
+        return ::ord(*te.inner, *xe.inner);
+        ),
+    (Function,
+        ORD(te.is_unsafe, xe.is_unsafe);
+        ORD(te.m_abi, xe.m_abi);
+        ORD(te.m_arg_types, xe.m_arg_types);
+        return ::ord(*te.m_rettype, *xe.m_rettype);
+        ),
+    (Closure,
+        ORD( (::std::uintptr_t)te.node, xe.node);
+        //assert( te.m_rettype == xe.m_rettype );
+        return OrdEqual;
+        )
+    )
+    throw "";
+}
 
 
 namespace {

@@ -59,6 +59,15 @@ static inline Ordering ord(unsigned l, unsigned r)
     else
         return OrdLess;
 }
+static inline Ordering ord(::std::uintptr_t l, ::std::uintptr_t r)
+{
+    if(l == r)
+        return OrdEqual;
+    else if( l > r )
+        return OrdGreater;
+    else
+        return OrdLess;
+}
 static inline Ordering ord(const ::std::string& l, const ::std::string& r)
 {
     if(l == r)
@@ -97,9 +106,25 @@ Ordering ord(const ::std::vector<T>& l, const ::std::vector<T>& r)
         
         i ++;
     }
-        
+    
     return OrdEqual;
 }
+template<typename T, typename U>
+Ordering ord(const ::std::map<T,U>& l, const ::std::map<T,U>& r)
+{
+    auto r_it = r.begin();
+    for(const auto& le : l)
+    {
+        if( r_it == r.end() )
+            return OrdGreater;
+        auto rv = ::ord( le, *r_it );
+        if( rv != OrdEqual )
+            return rv;
+        ++ r_it;
+    }
+    return OrdEqual;
+}
+#define ORD(a,b)    do { Ordering ORD_rv = ::ord(a,b); if( ORD_rv != ::OrdEqual )   return ORD_rv; } while(0)
 
 
 template <typename T>

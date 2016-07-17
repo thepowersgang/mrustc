@@ -68,6 +68,12 @@ struct SimplePath
         if( m_components < x.m_components ) return true;
         return false;
     }
+    Ordering ord(const SimplePath& x) const {
+        auto rv = ::ord(m_crate_name, x.m_crate_name);
+        if(rv != OrdEqual)  return rv;
+        rv = ::ord(m_components, x.m_components);
+        return rv;
+    }
     friend ::std::ostream& operator<<(::std::ostream& os, const SimplePath& x);
 };
 
@@ -84,7 +90,10 @@ struct PathParams
     PathParams& operator=(PathParams&&) = default;
     
     bool operator==(const PathParams& x) const;
-    //bool operator<(const PathParams& x) const;
+    bool operator<(const PathParams& x) const { return ord(x) == OrdLess; }
+    Ordering ord(const PathParams& x) const {
+        return ::ord(m_types, x.m_types);
+    }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const PathParams& x);
 };
@@ -104,7 +113,13 @@ public:
     
     bool operator==(const GenericPath& x) const;
     bool operator!=(const GenericPath& x) const { return !(*this == x); }
-    //bool operator<(const GenericPath& x) const;
+    bool operator<(const GenericPath& x) const { return ord(x) == OrdLess; }
+    
+    Ordering ord(const GenericPath& x) const {
+        auto rv = ::ord(m_path, x.m_path);
+        if(rv != OrdEqual)  return rv;
+        return ::ord(m_params, x.m_params);
+    }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const GenericPath& x);
 };
@@ -122,6 +137,12 @@ public:
     TraitPath clone() const;
     bool operator==(const TraitPath& x) const;
     bool operator!=(const TraitPath& x) const { return !(*this == x); }
+    
+    Ordering ord(const TraitPath& x) const {
+        ORD(m_path, x.m_path);
+        ORD(m_hrls, x.m_hrls);
+        return ::ord(m_type_bounds, x.m_type_bounds);
+    }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const TraitPath& x);
 };

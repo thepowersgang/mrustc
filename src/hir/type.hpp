@@ -219,6 +219,8 @@ public:
     
     bool operator==(const ::HIR::TypeRef& x) const;
     bool operator!=(const ::HIR::TypeRef& x) const { return !(*this == x); }
+    bool operator<(const ::HIR::TypeRef& x) const { return ord(x) == OrdLess; }
+    Ordering ord(const ::HIR::TypeRef& x) const;
 
     
     // Match generics in `this` with types from `x`

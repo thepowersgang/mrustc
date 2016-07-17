@@ -144,6 +144,8 @@ class TraitResolution
     const ::HIR::GenericParams* m_impl_params;
     const ::HIR::GenericParams* m_item_params;
     
+    ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
+    
 public:
     TraitResolution(const HMTypeInferrence& ivars, const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params):
         m_ivars(ivars),
@@ -151,7 +153,10 @@ public:
         m_impl_params( impl_params ),
         m_item_params( item_params )
     {
+        prep_indexes();
     }
+    
+    void prep_indexes();
     
     void compact_ivars(HMTypeInferrence& m_ivars);
     

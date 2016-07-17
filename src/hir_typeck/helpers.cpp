@@ -940,6 +940,28 @@ bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRe
 // -------------------------------------------------------------------------------------------------------------------
 //
 // -------------------------------------------------------------------------------------------------------------------
+void TraitResolution::prep_indexes()
+{
+    this->iterate_bounds([&](const auto& b) {
+        TU_MATCH_DEF(::HIR::GenericBound, (b), (be),
+        (
+            ),
+        (TraitBound,
+            for( const auto& tb : be.trait.m_type_bounds ) {
+                DEBUG("Equality (TB) - <" << be.type << " as " << be.trait.m_path << ">::" << tb.first << " = " << tb.second);
+                auto ty_l = ::HIR::TypeRef( ::HIR::Path( be.type.clone(), be.trait.m_path.clone(), tb.first ) );
+                this->m_type_equalities.insert( ::std::make_pair( mv$(ty_l), tb.second.clone() ) );
+            }
+            ),
+        (TypeEquality,
+            DEBUG("Equality - " << be.type << " = " << be.other_type);
+            // TODO: Sort the two types by "complexity"
+            this->m_type_equalities.insert( ::std::make_pair( be.type.clone(), be.other_type.clone() ) );
+            )
+        )
+        return false;
+        });
+}
 
 
 // -------------------------------------------------------------------------------------------------------------------
@@ -1095,6 +1117,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
 // -------------------------------------------------------------------------------------------------------------------
 //
 // -------------------------------------------------------------------------------------------------------------------
+
 void TraitResolution::compact_ivars(HMTypeInferrence& m_ivars)
 {
     //m_ivars.compact_ivars([&](const ::HIR::TypeRef& t)->auto{ return this->expand_associated_types(Span(), t.clone); });
@@ -1250,6 +1273,7 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
             // - Only try resolving if the binding isn't known
             if( !e.binding.is_Unbound() )
                 return input;
+            // TODO: If opaque, still search a list of known equalities
             
             DEBUG("Locating associated type for " << e.path);
             
@@ -1337,6 +1361,7 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
                 (TypeEquality,
                     DEBUG("Equality - " << be.type << " = " << be.other_type);
                     if( input == be.type ) {
+                        assume_opaque = false;
                         input = be.other_type.clone();
                         return true;
                     }
@@ -1348,6 +1373,10 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
                 if( assume_opaque ) {
                     DEBUG("Assuming that " << input << " is an opaque name");
                     input.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                    
+                    DEBUG("- " << m_type_equalities.size() << " replacements");
+                    for( const auto& v : m_type_equalities )
+                        DEBUG(" > " << v.first << " = " << v.second);
                 }
                 input = this->expand_associated_types(sp, mv$(input));
                 return input;
