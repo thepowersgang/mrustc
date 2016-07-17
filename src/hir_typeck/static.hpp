@@ -79,7 +79,7 @@ public:
         friend ::std::ostream& operator<<(::std::ostream& os, const ImplRef& x) {
             TU_MATCH(Data, (x.m_data), (e),
             (TraitImpl,
-                os << "impl" << e.impl->m_params.fmt_args() << " SomeTrait" << e.impl->m_trait_args << " for " << e.impl->m_type << e.impl->m_params.fmt_bounds();
+                os << "impl" << e.impl->m_params.fmt_args() << " ?" << e.impl->m_trait_args << " for " << e.impl->m_type << e.impl->m_params.fmt_bounds();
                 ),
             (Bounded,
                 os << "bound";

@@ -122,7 +122,7 @@ bool StaticTraitResolve::find_impl(
     
     // Search the crate for impls
     ret = m_crate.find_trait_impls(trait_path, type, cb_ident, [&](const auto& impl) {
-        DEBUG("- impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " where " << impl.m_params.fmt_bounds());
+        DEBUG("[find_impl] - impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << impl.m_params.fmt_bounds());
         
         ::std::vector< const ::HIR::TypeRef*> impl_params;
         impl_params.resize( impl.m_params.m_types.size() );
@@ -148,8 +148,11 @@ bool StaticTraitResolve::find_impl(
                 match &= l.match_test_generics_fuzz(sp, r, cb_ident, cb);
             }
         }
-        if( match != ::HIR::Compare::Equal )
+        if( match != ::HIR::Compare::Equal ) {
+            DEBUG("[find_impl]  > Type mismatch");
+            // TODO: Support fuzzy matches for some edge cases
             return false;
+        }
         
         ::std::vector< ::HIR::TypeRef>  placeholders;
         for(unsigned int i = 0; i < impl_params.size(); i ++ ) {
@@ -199,6 +202,10 @@ bool StaticTraitResolve::find_impl(
                 auto b_ty_mono = monomorphise_type_with(sp, e.type, cb_monomorph);
                 auto b_tp_mono = monomorphise_traitpath_with(sp, e.trait, cb_monomorph, false);
                 DEBUG("- b_ty_mono = " << b_ty_mono << ", b_tp_mono = " << b_tp_mono);
+                // HACK: If the type is '_', assume the bound passes
+                if( b_ty_mono.m_data.is_Infer() ) {
+                    continue ;
+                }
                 if( !this->find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [](const auto&){return true;}) ) {
                     DEBUG("> Fail - " << b_ty_mono << ": " << b_tp_mono);
                     return false;

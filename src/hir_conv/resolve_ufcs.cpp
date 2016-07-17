@@ -202,7 +202,8 @@ namespace {
         {
             auto trait_path_g = ::HIR::GenericPath( mv$(sp) );
             for(unsigned int i = 0; i < trait.m_params.m_types.size(); i ++ ) {
-                trait_path_g.m_params.m_types.push_back( ::HIR::TypeRef(trait.m_params.m_types[i].m_name, i) );
+                //trait_path_g.m_params.m_types.push_back( ::HIR::TypeRef(trait.m_params.m_types[i].m_name, i) );
+                trait_path_g.m_params.m_types.push_back( ::HIR::TypeRef() );
             }
             return trait_path_g;
         }
@@ -234,8 +235,8 @@ namespace {
                 const auto& type = *e.type;
                 
                 return this->m_resolve.find_impl(sp,  trait_path.m_path, nullptr, type, [&](const auto& impl){
-                    DEBUG("FOUND impl from " << impl);
                     pd = get_ufcs_known(mv$(e), make_generic_path(trait_path.m_path, trait), trait);
+                    DEBUG("FOUND impl from " << impl);
                     return true;
                     });
             }
@@ -290,7 +291,7 @@ namespace {
                             return ;
                         }
                     }
-                    ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << *e.type);
+                    ERROR(sp, E0000, "Failed to find bound with '" << e.item << "' for " << *e.type);
                     return ;
                 )
                 else {
