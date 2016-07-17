@@ -591,6 +591,14 @@ AST::Trait Parse_TraitDef(TokenStream& lex, AST::Module& mod, const AST::MetaIte
         }
         SET_ATTRS(lex, item_attrs);
         
+        bool is_specialisable = false;
+        if( tok.type() == TOK_IDENT && tok.str() == "default" ) {
+            is_specialisable = true;
+            GET_TOK(tok, lex);
+        }
+        // TODO: Mark specialisation
+        (void)is_specialisable;
+        
         ::std::string   abi = "rust";
         switch(tok.type())
         {
@@ -982,6 +990,14 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         is_public = true;
         GET_TOK(tok, lex);
     }
+    
+    bool is_specialisable = false;
+    if( tok.type() == TOK_IDENT && tok.str() == "default" ) {
+        is_specialisable = true;
+        GET_TOK(tok, lex);
+    }
+    // TODO: Mark specialisation
+    (void)is_specialisable;
     
     if(tok.type() == TOK_RWORD_UNSAFE) {
         item_attrs.push_back( AST::MetaItem("#UNSAFE") );
