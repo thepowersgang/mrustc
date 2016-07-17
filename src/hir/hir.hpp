@@ -142,7 +142,9 @@ public:
 
 struct AssociatedType
 {
-    GenericParams   m_params;   // For bounds, and maybe HKT?
+    bool    is_sized;
+    ::std::string   m_lifetime_bound;
+    ::std::vector< ::HIR::TraitPath>    m_trait_bounds;
     ::HIR::TypeRef  m_default;
 };
 TAGGED_UNION(TraitValueItem, None,

@@ -942,7 +942,15 @@ bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRe
 // -------------------------------------------------------------------------------------------------------------------
 void TraitResolution::prep_indexes()
 {
-    static Span sp;
+    static Span sp_AAA;
+    const Span& sp = sp_AAA;
+    
+    auto add_equality = [&](::HIR::TypeRef long_ty, ::HIR::TypeRef short_ty){
+        DEBUG("[prep_indexes] ADD " << long_ty << " => " << short_ty);
+        // TODO: Sort the two types by "complexity" (most of the time long >= short)
+        this->m_type_equalities.insert(::std::make_pair( mv$(long_ty), mv$(short_ty) ));
+        };
+    
     this->iterate_bounds([&](const auto& b) {
         TU_MATCH_DEF(::HIR::GenericBound, (b), (be),
         (
@@ -952,38 +960,52 @@ void TraitResolution::prep_indexes()
             for( const auto& tb : be.trait.m_type_bounds ) {
                 DEBUG("[prep_indexes] Equality (TB) - <" << be.type << " as " << be.trait.m_path << ">::" << tb.first << " = " << tb.second);
                 auto ty_l = ::HIR::TypeRef( ::HIR::Path( be.type.clone(), be.trait.m_path.clone(), tb.first ) );
-                this->m_type_equalities.insert( ::std::make_pair( mv$(ty_l), tb.second.clone() ) );
+                ty_l.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                
+                add_equality( mv$(ty_l), tb.second.clone() );
             }
+            
+            const auto& trait_params = be.trait.m_path.m_params;
+            auto cb_mono = [&](const auto& ty)->const auto& {
+                const auto& ge = ty.m_data.as_Generic();
+                if( ge.binding == 0xFFFF ) {
+                    return be.type;
+                }
+                else if( ge.binding < 256 ) {
+                    unsigned idx = ge.binding % 256;
+                    ASSERT_BUG(sp, idx < trait_params.m_types.size(), "Generic binding out of range in trait " << be.trait);
+                    return trait_params.m_types[idx];
+                }
+                else {
+                    BUG(sp, "Unknown generic binding " << ty);
+                }
+                };
             
             const auto& trait = m_crate.get_trait_by_path(sp, be.trait.m_path.m_path);
             for(const auto& a_ty : trait.m_types)
             {
-                //auto ty_a = ::HIR::TypeRef( ::HIR::Path( be.type.clone(), be.trait.m_path.clone(), ty_a.first ) );
-                for( const auto& a_ty_b : a_ty.second.m_params.m_bounds ) {
-                    TU_MATCH_DEF(::HIR::GenericBound, (a_ty_b), (a_ty_be),
-                    (
-                        ),
-                    (TraitBound,
-                        DEBUG("[prep_indexes] (Assoc) `" << a_ty_be.type << " : " << a_ty_be.trait);
-                        for( const auto& tb : a_ty_be.trait.m_type_bounds ) {
-                            DEBUG("[prep_indexes] Equality (ATB) - <" << a_ty_be.type << " as " << a_ty_be.trait.m_path << ">::" << tb.first << " = " << tb.second);
-                            //auto ty_l = ::HIR::TypeRef( ::HIR::Path( a_ty_be.type.clone(), a_ty_be.trait.m_path.clone(), tb.first ) );
-                            //ty_l = monomorphise_type_with(sp, mv$(ty_l), [&](const auto& ty) {
-                            //    const auto& ge = ty.m_data.as_Generic();
-                            //    assert(ge.binding == 0xFFFF);
-                            //    return ty_a;
-                            //    });
-                            //this->m_type_equalities.insert( ::std::make_pair( mv$(ty_l), tb.second.clone() ) );
+                ::HIR::TypeRef ty_a;
+                for( const auto& a_ty_b : a_ty.second.m_trait_bounds ) {
+                    DEBUG("[prep_indexes] (Assoc) " << a_ty_b);
+                    auto trait_mono = monomorphise_traitpath_with(sp, a_ty_b, cb_mono, false);
+                    for( auto& tb : trait_mono.m_type_bounds ) {
+                        if( ty_a == ::HIR::TypeRef() ) {
+                            ty_a = ::HIR::TypeRef( ::HIR::Path( be.type.clone(), be.trait.m_path.clone(), a_ty.first ) );
+                            ty_a.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
                         }
-                        )
-                    )
+                        DEBUG("[prep_indexes] Equality (ATB) - <" << ty_a << " as " << a_ty_b.m_path << ">::" << tb.first << " = " << tb.second);
+                        
+                        auto ty_l = ::HIR::TypeRef( ::HIR::Path( ty_a.clone(), trait_mono.m_path.clone(), tb.first ) );
+                        ty_l.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                        
+                        add_equality( mv$(ty_l), mv$(tb.second) );
+                    }
                 }
             }
             ),
         (TypeEquality,
             DEBUG("Equality - " << be.type << " = " << be.other_type);
-            // TODO: Sort the two types by "complexity"
-            this->m_type_equalities.insert( ::std::make_pair( be.type.clone(), be.other_type.clone() ) );
+            add_equality( be.type.clone(), be.other_type.clone() );
             )
         )
         return false;
@@ -1404,6 +1426,11 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
                     DEBUG("- " << m_type_equalities.size() << " replacements");
                     for( const auto& v : m_type_equalities )
                         DEBUG(" > " << v.first << " = " << v.second);
+                    
+                    auto a = m_type_equalities.find(input);
+                    if( a != m_type_equalities.end() ) {
+                        input = a->second.clone();
+                    }
                 }
                 input = this->expand_associated_types(sp, mv$(input));
                 return input;
@@ -1417,20 +1444,8 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
                     // - Does simplification of complex associated types
                     const auto& trait_ptr = this->m_crate.get_trait_by_path(sp, pe_inner.trait.m_path);
                     const auto& assoc_ty = trait_ptr.m_types.at(pe_inner.item);
-                    DEBUG("TODO: Search bounds on associated type - " << assoc_ty.m_params.fmt_bounds());
+                    DEBUG("TODO: Search bounds on associated type - " << assoc_ty.m_trait_bounds);
                     
-                    // Resolve where Self=e2.type, for the associated type check.
-                    auto cb_placeholders_type = [&](const auto& ty)->const auto&{
-                        TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
-                            if( e.binding == 0xFFFF )
-                                return *e2.type;
-                            else
-                                TODO(sp, "Handle type params when expanding associated bound (#" << e.binding << " " << e.name);
-                        )
-                        else {
-                            return ty;
-                        }
-                        };
                     // Resolve where Self=pe_inner.type (i.e. for the trait this inner UFCS is on)
                     auto cb_placeholders_trait = [&](const auto& ty)->const auto&{
                         TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
@@ -1445,45 +1460,23 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
                             return ty;
                         }
                         };
-                    for(const auto& bound : assoc_ty.m_params.m_bounds)
+                    for(const auto& bound : assoc_ty.m_trait_bounds)
                     {
-                        TU_MATCH_DEF(::HIR::GenericBound, (bound), (be),
-                        (
-                            ),
-                        (TraitBound,
-                            // If the bound is for Self and the outer trait
-                            // - TODO: Parameters?
-                            if( be.type == ::HIR::TypeRef("Self", 0xFFFF) && be.trait.m_path == e2.trait ) {
-                                auto it = be.trait.m_type_bounds.find( e2.item );
-                                if( it != be.trait.m_type_bounds.end() ) {
-                                    if( monomorphise_type_needed(it->second) ) {
-                                        input = monomorphise_type_with(sp, it->second, cb_placeholders_trait);
-                                    }
-                                    else {
-                                        input = it->second.clone();
-                                    }
-                                    input = this->expand_associated_types(sp, mv$(input));
-                                    return input;
-                                }
-                            }
-                            ),
-                        (TypeEquality,
-                            // IF: bound's type matches the input, replace with bounded equality
-                            // `<Self::IntoIter as Iterator>::Item = Self::Item`
-                            if( be.type.compare_with_placeholders(sp, input, cb_placeholders_type ) ) {
-                                DEBUG("Match of " << be.type << " with " << input);
-                                DEBUG("- Replace `input` with " << be.other_type << ", Self=" << *pe_inner.type);
-                                if( monomorphise_type_needed(be.other_type) ) {
-                                    input = monomorphise_type_with(sp, be.other_type, cb_placeholders_trait);
+                        // If the bound is for Self and the outer trait
+                        // - TODO: Parameters?
+                        if( bound.m_path == e2.trait ) {
+                            auto it = bound.m_type_bounds.find( e2.item );
+                            if( it != bound.m_type_bounds.end() ) {
+                                if( monomorphise_type_needed(it->second) ) {
+                                    input = monomorphise_type_with(sp, it->second, cb_placeholders_trait);
                                 }
                                 else {
-                                    input = be.other_type.clone();
+                                    input = it->second.clone();
                                 }
                                 input = this->expand_associated_types(sp, mv$(input));
                                 return input;
                             }
-                            )
-                        )
+                        }
                     }
                     DEBUG("e2 = " << *e2.type << ", input = " << input);
                 )
@@ -1683,15 +1676,8 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                 
                 const auto& trait_ref = *e.trait.m_trait_ptr;
                 const auto& at = trait_ref.m_types.at(assoc_info->item);
-                for(const auto& bound : at.m_params.m_bounds) {
-                    if( ! bound.is_TraitBound() )
-                        continue ;
-                    const auto& be = bound.as_TraitBound();
-                    if( be.type != ::HIR::TypeRef("Self", 0xFFFF) ) {
-                        TODO(sp, "Handle associated type bounds on !Self");
-                        continue ;
-                    }
-                    if( be.trait.m_path.m_path == trait ) {
+                for(const auto& bound : at.m_trait_bounds) {
+                    if( bound.m_path.m_path == trait ) {
                         DEBUG("- Found an associated type impl");
                         auto ord = H::compare_pp(sp, *this, b_params, params);
                         if( ord == ::HIR::Compare::Unequal )
@@ -1700,7 +1686,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                             DEBUG("Fuzzy match");
                         }
                         
-                        auto tp_mono = monomorphise_traitpath_with(sp, be.trait, [&](const auto& gt)->const auto& {
+                        auto tp_mono = monomorphise_traitpath_with(sp, bound, [&](const auto& gt)->const auto& {
                             const auto& ge = gt.m_data.as_Generic();
                             if( ge.binding == 0xFFFF ) {
                                 return *assoc_info->type;
@@ -2110,24 +2096,22 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
         const auto& trait = this->m_crate.get_trait_by_path(sp, e.trait.m_path);
         const auto& assoc_ty = trait.m_types.at( e.item );
         // NOTE: The bounds here have 'Self' = the type
-        for(const auto& bound : assoc_ty.m_params.m_bounds )
+        for(const auto& bound : assoc_ty.m_trait_bounds )
         {
-            TU_IFLET(::HIR::GenericBound, bound, TraitBound, be,
-                assert(be.trait.m_trait_ptr);
-                ::HIR::GenericPath final_trait_path;
-                if( !this->trait_contains_method(sp, be.trait.m_path, *be.trait.m_trait_ptr, method_name,  final_trait_path) )
-                    continue ;
-                DEBUG("- Found trait " << final_trait_path);
-                
-                // Found the method, return the UFCS path for it
-                fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
-                    box$( ty.clone() ),
-                    mv$(final_trait_path),
-                    method_name,
-                    {}
-                    }) );
-                return true;
-            )
+            ASSERT_BUG(sp, bound.m_trait_ptr, "Pointer to trait " << bound.m_path << " not set in " << e.trait.m_path);
+            ::HIR::GenericPath final_trait_path;
+            if( !this->trait_contains_method(sp, bound.m_path, *bound.m_trait_ptr, method_name,  final_trait_path) )
+                continue ;
+            DEBUG("- Found trait " << final_trait_path);
+            
+            // Found the method, return the UFCS path for it
+            fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
+                box$( ty.clone() ),
+                mv$(final_trait_path),
+                method_name,
+                {}
+                }) );
+            return true;
         }
     }
     else {

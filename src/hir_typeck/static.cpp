@@ -85,18 +85,11 @@ bool StaticTraitResolve::find_impl(
                 
                 const auto& trait_ref = *e.trait.m_trait_ptr;
                 const auto& at = trait_ref.m_types.at(assoc_info->item);
-                for(const auto& bound : at.m_params.m_bounds) {
-                    if( ! bound.is_TraitBound() )
-                        continue ;
-                    const auto& be = bound.as_TraitBound();
-                    if( be.type != ::HIR::TypeRef("Self", 0xFFFF) ) {
-                        TODO(sp, "Handle associated type bounds on !Self");
-                        continue ;
-                    }
-                    if( be.trait.m_path.m_path == trait_path && (!trait_params || H::compare_pp(sp, be.trait.m_path.m_params, *trait_params)) ) {
+                for(const auto& bound : at.m_trait_bounds) {
+                    if( bound.m_path.m_path == trait_path && (!trait_params || H::compare_pp(sp, bound.m_path.m_params, *trait_params)) ) {
                         DEBUG("- Found an associated type impl");
                         
-                        auto tp_mono = monomorphise_traitpath_with(sp, be.trait, [&assoc_info,&sp](const auto& gt)->const auto& {
+                        auto tp_mono = monomorphise_traitpath_with(sp, bound, [&assoc_info,&sp](const auto& gt)->const auto& {
                             const auto& ge = gt.m_data.as_Generic();
                             if( ge.binding == 0xFFFF ) {
                                 return *assoc_info->type;
@@ -359,20 +352,7 @@ void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef&
                     // - Does simplification of complex associated types
                     const auto& trait_ptr = this->m_crate.get_trait_by_path(sp, pe_inner.trait.m_path);
                     const auto& assoc_ty = trait_ptr.m_types.at(pe_inner.item);
-                    DEBUG("TODO: Search bounds on associated type - " << assoc_ty.m_params.fmt_bounds());
                     
-                    // Resolve where Self=e2.type, for the associated type check.
-                    auto cb_placeholders_type = [&](const auto& ty)->const auto&{
-                        TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
-                            if( e.binding == 0xFFFF )
-                                return *e2.type;
-                            else
-                                TODO(sp, "Handle type params when expanding associated bound (#" << e.binding << " " << e.name);
-                        )
-                        else {
-                            return ty;
-                        }
-                        };
                     // Resolve where Self=pe_inner.type (i.e. for the trait this inner UFCS is on)
                     auto cb_placeholders_trait = [&](const auto& ty)->const auto&{
                         TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
@@ -387,44 +367,23 @@ void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef&
                             return ty;
                         }
                         };
-                    for(const auto& bound : assoc_ty.m_params.m_bounds)
+                    for(const auto& bound : assoc_ty.m_trait_bounds)
                     {
-                        TU_MATCH_DEF(::HIR::GenericBound, (bound), (be),
-                        (
-                            ),
-                        (TraitBound,
-                            // If the bound is for Self and the outer trait
-                            // - TODO: Parameters?
-                            if( be.type == ::HIR::TypeRef("Self", 0xFFFF) && be.trait.m_path == e2.trait ) {
-                                auto it = be.trait.m_type_bounds.find( e2.item );
-                                if( it != be.trait.m_type_bounds.end() ) {
-                                    if( monomorphise_type_needed(it->second) ) {
-                                        input = monomorphise_type_with(sp, it->second, cb_placeholders_trait);
-                                    }
-                                    else {
-                                        input = it->second.clone();
-                                    }
-                                    this->expand_associated_types(sp, input);
-                                    return ;
-                                }
-                            }
-                            ),
-                        (TypeEquality,
-                            // IF: bound's type matches the input, replace with bounded equality
-                            // `<Self::IntoIter as Iterator>::Item = Self::Item`
-                            if( be.type.compare_with_placeholders(sp, input, cb_placeholders_type ) ) {
-                                DEBUG("Match of " << be.type << " with " << input);
-                                DEBUG("- Replace `input` with " << be.other_type << ", Self=" << *pe_inner.type);
-                                if( monomorphise_type_needed(be.other_type) ) {
-                                    input = monomorphise_type_with(sp, be.other_type, cb_placeholders_trait);
+                        // If the bound is for Self and the outer trait
+                        // - TODO: Parameters?
+                        if( bound.m_path == e2.trait ) {
+                            auto it = bound.m_type_bounds.find( e2.item );
+                            if( it != bound.m_type_bounds.end() ) {
+                                if( monomorphise_type_needed(it->second) ) {
+                                    input = monomorphise_type_with(sp, it->second, cb_placeholders_trait);
                                 }
                                 else {
-                                    input = be.other_type.clone();
+                                    input = it->second.clone();
                                 }
                                 this->expand_associated_types(sp, input);
+                                return ;
                             }
-                            )
-                        )
+                        }
                     }
                     DEBUG("e2 = " << *e2.type << ", input = " << input);
                 )

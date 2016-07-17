@@ -771,9 +771,32 @@ namespace {
             ),
         (Type,
             bool is_sized = true;
+            ::std::vector< ::HIR::TraitPath>    trait_bounds;
+            ::std::string   lifetime_bound;
             auto gps = LowerHIR_GenericParams(i.params(), &is_sized);
+            for(auto& b : gps.m_bounds)
+            {
+                TU_MATCH(::HIR::GenericBound, (b), (be),
+                (TypeLifetime,
+                    ASSERT_BUG(item.data.span, be.type == ::HIR::TypeRef("Self", 0xFFFF), "Invalid lifetime bound on associated type");
+                    lifetime_bound = mv$(be.valid_for);
+                    ),
+                (TraitBound,
+                    ASSERT_BUG(item.data.span, be.type == ::HIR::TypeRef("Self", 0xFFFF), "Invalid trait bound on associated type");
+                    trait_bounds.push_back( mv$(be.trait) );
+                    ),
+                (Lifetime,
+                    BUG(item.data.span, "Unexpected lifetime-lifetime bound on associated type");
+                    ),
+                (TypeEquality,
+                    BUG(item.data.span, "Unexpected type equality bound on associated type");
+                    )
+                )
+            }
             rv.m_types.insert( ::std::make_pair(item.name, ::HIR::AssociatedType {
-                mv$(gps),
+                is_sized,
+                mv$(lifetime_bound),
+                mv$(trait_bounds),
                 LowerHIR_Type(i.type())
                 }) );
             ),

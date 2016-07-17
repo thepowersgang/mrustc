@@ -145,7 +145,8 @@ void ::HIR::Visitor::visit_trait(::HIR::PathChain p, ::HIR::Trait& item)
     }
     for(auto& i : item.m_types) {
         DEBUG("type " << i.first);
-        this->visit_params(i.second.m_params);
+        for(auto& bound : i.second.m_trait_bounds)
+            this->visit_trait_path(bound);
         this->visit_type(i.second.m_default);
     }
     for(auto& i : item.m_values) {

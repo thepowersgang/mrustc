@@ -123,6 +123,14 @@ namespace {
             m_crate(crate)
         {}
         
+        void visit_trait_path(::HIR::TraitPath& p) override
+        {
+            static Span sp;
+            p.m_trait_ptr = &m_crate.get_trait_by_path(sp, p.m_path.m_path);
+            
+            ::HIR::Visitor::visit_trait_path(p);
+        }
+        
         void visit_pattern(::HIR::Pattern& pat) override
         {
             static Span _sp = Span();
