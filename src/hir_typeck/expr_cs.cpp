@@ -1424,7 +1424,7 @@ namespace {
             const auto& lang_Index = this->context.m_crate.get_lang_item_path(node.span(), "index");
             const auto& val_ty = this->context.get_type(node.m_value->m_res_type);
             const auto& idx_ty = this->context.get_type(node.m_index->m_res_type);
-            DEBUG("(Index) val=" << val_ty << ", idx=" << idx_ty << "");
+            TRACE_FUNCTION_F("Index: val=" << val_ty << ", idx=" << idx_ty << "");
             
             
             // NOTE: Indexing triggers autoderef
@@ -1503,6 +1503,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Deref& node) override {
             const auto& ty = this->context.get_type(node.m_value->m_res_type);
+            TRACE_FUNCTION_F("Deref: ty=" << ty);
             
             TU_MATCH_DEF(::HIR::TypeRef::Data, (ty.m_data), (e),
             (
@@ -1534,7 +1535,7 @@ namespace {
         void visit(::HIR::ExprNode_CallValue& node) override {
             // TODO:
             const auto& ty = this->context.get_type(node.m_value->m_res_type);
-            DEBUG("(CallValue) ty = " << ty);
+            TRACE_FUNCTION_F("CallValue: ty=" << ty);
             
             TU_MATCH_DEF(decltype(ty.m_data), (ty.m_data), (e),
             (
