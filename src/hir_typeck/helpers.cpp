@@ -942,15 +942,42 @@ bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRe
 // -------------------------------------------------------------------------------------------------------------------
 void TraitResolution::prep_indexes()
 {
+    static Span sp;
     this->iterate_bounds([&](const auto& b) {
         TU_MATCH_DEF(::HIR::GenericBound, (b), (be),
         (
             ),
         (TraitBound,
+            DEBUG("[prep_indexes] `" << be.type << " : " << be.trait);
             for( const auto& tb : be.trait.m_type_bounds ) {
-                DEBUG("Equality (TB) - <" << be.type << " as " << be.trait.m_path << ">::" << tb.first << " = " << tb.second);
+                DEBUG("[prep_indexes] Equality (TB) - <" << be.type << " as " << be.trait.m_path << ">::" << tb.first << " = " << tb.second);
                 auto ty_l = ::HIR::TypeRef( ::HIR::Path( be.type.clone(), be.trait.m_path.clone(), tb.first ) );
                 this->m_type_equalities.insert( ::std::make_pair( mv$(ty_l), tb.second.clone() ) );
+            }
+            
+            const auto& trait = m_crate.get_trait_by_path(sp, be.trait.m_path.m_path);
+            for(const auto& a_ty : trait.m_types)
+            {
+                //auto ty_a = ::HIR::TypeRef( ::HIR::Path( be.type.clone(), be.trait.m_path.clone(), ty_a.first ) );
+                for( const auto& a_ty_b : a_ty.second.m_params.m_bounds ) {
+                    TU_MATCH_DEF(::HIR::GenericBound, (a_ty_b), (a_ty_be),
+                    (
+                        ),
+                    (TraitBound,
+                        DEBUG("[prep_indexes] (Assoc) `" << a_ty_be.type << " : " << a_ty_be.trait);
+                        for( const auto& tb : a_ty_be.trait.m_type_bounds ) {
+                            DEBUG("[prep_indexes] Equality (ATB) - <" << a_ty_be.type << " as " << a_ty_be.trait.m_path << ">::" << tb.first << " = " << tb.second);
+                            //auto ty_l = ::HIR::TypeRef( ::HIR::Path( a_ty_be.type.clone(), a_ty_be.trait.m_path.clone(), tb.first ) );
+                            //ty_l = monomorphise_type_with(sp, mv$(ty_l), [&](const auto& ty) {
+                            //    const auto& ge = ty.m_data.as_Generic();
+                            //    assert(ge.binding == 0xFFFF);
+                            //    return ty_a;
+                            //    });
+                            //this->m_type_equalities.insert( ::std::make_pair( mv$(ty_l), tb.second.clone() ) );
+                        }
+                        )
+                    )
+                }
             }
             ),
         (TypeEquality,
