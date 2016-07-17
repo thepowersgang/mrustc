@@ -3337,7 +3337,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
     
     // - Validate typeck
     {
-        DEBUG("==== VALIDATE ====");
+        DEBUG("==== VALIDATE ==== (" << count << " rounds)");
         context.dump();
         
         ExprVisitor_Apply   visitor { context.m_ivars };
