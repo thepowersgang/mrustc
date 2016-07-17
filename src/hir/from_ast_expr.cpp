@@ -142,7 +142,7 @@ struct LowerHIR_ExprNode_Visitor:
                 ::HIR::ExprNode_StructLiteral::t_values values;
                 values.push_back( ::std::make_pair( ::std::string("start"), LowerHIR_ExprNode_Inner( *v.m_left ) ) );
                 values.push_back( ::std::make_pair( ::std::string("end")  , LowerHIR_ExprNode_Inner( *v.m_right ) ) );
-                m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_RangeInclusive_NonEmpty), true, nullptr, mv$(values)) );
+                m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_RangeInclusive_NonEmpty), false, nullptr, mv$(values)) );
             }
             else
             {
