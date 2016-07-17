@@ -2881,10 +2881,10 @@ namespace {
                 return false;
             )
             else {
-                // Error - Must be compatible
-                // - Hand off to equate
+                // Error: Must be compatible, hand over to the equate code.
+                // - If this returns early, it's because of a UFCS destructure
                 context.equate_types(sp, ty,  ty_r);
-                BUG(sp, "Type error expected " << ty << " == " << ty_r);
+                //BUG(sp, "Type error expected " << ty << " == " << ty_r);
             }
             ),
         (Pointer,
@@ -2925,9 +2925,10 @@ namespace {
                 return false;
             )
             else {
-                // Error: Must be compatible
+                // Error: Must be compatible, hand over to the equate code.
+                // - If this returns early, it's because of a UFCS destructure
                 context.equate_types(sp, ty,  ty_r);
-                BUG(sp, "Type error expected " << ty << " == " << ty_r);
+                //BUG(sp, "Type error expected " << ty << " == " << ty_r);
             }
             ),
         (Function,
