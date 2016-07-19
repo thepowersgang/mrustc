@@ -834,6 +834,7 @@ namespace {
                 const auto& des_ty_r = it->second.ent;
                 auto& des_ty_cache = node.m_value_types[it - fields.begin()];
                 
+                DEBUG(name << " : " << des_ty_r);
                 if( monomorphise_type_needed(des_ty_r) ) {
                     if( des_ty_cache == ::HIR::TypeRef() ) {
                         des_ty_cache = monomorphise_type_with(node.span(), des_ty_r, monomorph_cb);

@@ -351,6 +351,74 @@ Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
     )
     throw "";
 }
+bool ::HIR::TypeRef::contains_generics() const
+{
+    struct H {
+        static bool vec_contains_generics(const ::std::vector<TypeRef>& v) {
+            for( const auto& t : v )
+                if( t.contains_generics() )
+                    return true;
+            return false;
+        }
+    };
+    TU_MATCH(::HIR::TypeRef::Data, (m_data), (te),
+    (Infer,
+        return false;
+        ),
+    (Diverge,
+        return false;
+        ),
+    (Primitive,
+        return false;
+        ),
+    (Path,
+        TU_MATCH(::HIR::Path::Data, (te.path.m_data), (tpe),
+        (Generic,
+            return H::vec_contains_generics( tpe.m_params.m_types );
+            ),
+        (UfcsInherent,
+            if( tpe.type->contains_generics() )
+                return true;
+            TODO(Span(), "UfcsInherent");
+            ),
+        (UfcsKnown,
+            TODO(Span(), "UfcsKnown");
+            ),
+        (UfcsUnknown,
+            TODO(Span(), "UfcsUnknown");
+            )
+        )
+        ),
+    (Generic,
+        return true;
+        ),
+    (TraitObject,
+        TODO(Span(), "TraitObject");
+        ),
+    (Array,
+        return te.inner->contains_generics();
+        ),
+    (Slice,
+        return te.inner->contains_generics();
+        ),
+    (Tuple,
+        return H::vec_contains_generics(te);
+        ),
+    (Borrow,
+        return te.inner->contains_generics();
+        ),
+    (Pointer,
+        return te.inner->contains_generics();
+        ),
+    (Function,
+        return H::vec_contains_generics(te.m_arg_types) || te.m_rettype->contains_generics();
+        ),
+    (Closure,
+        return H::vec_contains_generics(te.m_arg_types) || te.m_rettype->contains_generics();
+        )
+    )
+    throw "";
+}
 
 
 namespace {

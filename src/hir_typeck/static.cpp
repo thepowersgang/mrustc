@@ -53,7 +53,7 @@ bool StaticTraitResolve::find_impl(
                             return false;
                     }
                     // Hand off to the closure, and return true if it does
-                    if( found_cb(ImplRef(e.type, e.trait.m_path.m_params, e.trait.m_type_bounds)) ) {
+                    if( found_cb(ImplRef(&e.type, &e.trait.m_path.m_params, &e.trait.m_type_bounds)) ) {
                         return true;
                     }
                 }
@@ -71,7 +71,7 @@ bool StaticTraitResolve::find_impl(
                                 assoc.insert( ::std::make_pair(i.first, i.second.clone())  );
                             //}
                         }
-                        return found_cb( ImplRef(type, params, assoc) );
+                        return found_cb( ImplRef(type.clone(), params.clone(), mv$(assoc)) );
                     });
                 if( rv ) {
                     return true;
@@ -106,7 +106,7 @@ bool StaticTraitResolve::find_impl(
                         }
                         DEBUG("- tp_mono = " << tp_mono);
                         // TODO: Instead of using `type` here, build the real type
-                        if( found_cb( ImplRef(type, tp_mono.m_path.m_params, tp_mono.m_type_bounds) ) ) {
+                        if( found_cb( ImplRef(type.clone(), mv$(tp_mono.m_path.m_params), mv$(tp_mono.m_type_bounds)) ) ) {
                             return true;
                         }
                     }
@@ -547,6 +547,44 @@ bool StaticTraitResolve::trait_contains_type(const Span& sp, const ::HIR::Generi
     return false;
 }
 
+bool StaticTraitResolve::ImplRef::more_specific_than(const ImplRef& other) const
+{
+    TU_MATCH(Data, (this->m_data), (e),
+    (TraitImpl,
+        if( e.impl == nullptr ) {
+            return false;
+        }
+        TODO(Span(), "more_specific_than - TraitImpl (" << *this << " '>' " << other << ")");
+        ),
+    (BoundedPtr,
+        return true;
+        ),
+    (Bounded,
+        return true;
+        )
+    )
+    throw "";
+}
+bool StaticTraitResolve::ImplRef::type_is_specializable(const char* name) const
+{
+    TU_MATCH(Data, (this->m_data), (e),
+    (TraitImpl,
+        if( e.impl == nullptr ) {
+            // No impl yet? This type is specialisable.
+            return true;
+        }
+        //TODO(Span(), "type_is_specializable - Impl = " << *this << ", Type = " << name);
+        return true;
+        ),
+    (BoundedPtr,
+        return false;
+        ),
+    (Bounded,
+        return false;
+        )
+    )
+    throw "";
+}
 ::HIR::TypeRef StaticTraitResolve::ImplRef::get_type(const char* name) const
 {
     static Span  sp;
@@ -569,6 +607,9 @@ bool StaticTraitResolve::trait_contains_type(const Span& sp, const ::HIR::Generi
         else {
             return it->second.clone();
         }
+        ),
+    (BoundedPtr,
+        TODO(Span(), *this);
         ),
     (Bounded,
         TODO(Span(), *this);

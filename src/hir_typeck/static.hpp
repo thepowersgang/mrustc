@@ -57,29 +57,55 @@ public:
             ::std::vector<const ::HIR::TypeRef*>   params;
             const ::HIR::TraitImpl* impl;
             }),
+        (BoundedPtr, struct {
+            const ::HIR::TypeRef*    type;
+            const ::HIR::PathParams* trait_args;
+            const ::std::map< ::std::string, ::HIR::TypeRef>*    assoc;
+            }),
         (Bounded, struct {
-            const ::HIR::TypeRef*   type;
-            const ::HIR::PathParams*    trait_args;
-            const ::std::map< ::std::string, ::HIR::TypeRef>*   assoc;
+            ::HIR::TypeRef    type;
+            ::HIR::PathParams trait_args;
+            ::std::map< ::std::string, ::HIR::TypeRef>    assoc;
             })
         );
         
         Data    m_data;
         
+        ImplRef():
+            m_data(Data::make_TraitImpl({ {}, nullptr }))
+        {}
         ImplRef(::std::vector<const ::HIR::TypeRef*> params, const ::HIR::TraitImpl& impl):
             m_data(Data::make_TraitImpl({ mv$(params), &impl }))
     
         {}
-        ImplRef(const ::HIR::TypeRef& type, const ::HIR::PathParams& args, const ::std::map< ::std::string, ::HIR::TypeRef>& assoc):
-            m_data(Data::make_Bounded({ &type, &args, &assoc }))
+        ImplRef(const ::HIR::TypeRef* type, const ::HIR::PathParams* args, const ::std::map< ::std::string, ::HIR::TypeRef>* assoc):
+            m_data(Data::make_BoundedPtr({ type, mv$(args), mv$(assoc) }))
+        {}
+        ImplRef(::HIR::TypeRef type, ::HIR::PathParams args, ::std::map< ::std::string, ::HIR::TypeRef> assoc):
+            m_data(Data::make_Bounded({ mv$(type), mv$(args), mv$(assoc) }))
         {}
         
+        bool is_valid() const {
+            return !(m_data.is_TraitImpl() && m_data.as_TraitImpl().impl == nullptr);
+        }
+        
+        bool more_specific_than(const ImplRef& other) const;
+        
+        bool type_is_specializable(const char* name) const;
         ::HIR::TypeRef get_type(const char* name) const;
         
         friend ::std::ostream& operator<<(::std::ostream& os, const ImplRef& x) {
             TU_MATCH(Data, (x.m_data), (e),
             (TraitImpl,
-                os << "impl" << e.impl->m_params.fmt_args() << " ?" << e.impl->m_trait_args << " for " << e.impl->m_type << e.impl->m_params.fmt_bounds();
+                if( e.impl == nullptr ) {
+                    os << "none";
+                }
+                else {
+                    os << "impl" << e.impl->m_params.fmt_args() << " ?" << e.impl->m_trait_args << " for " << e.impl->m_type << e.impl->m_params.fmt_bounds();
+                }
+                ),
+            (BoundedPtr,
+                os << "bound";
                 ),
             (Bounded,
                 os << "bound";
@@ -91,7 +117,7 @@ public:
     
     /// \brief Lookups
     /// \{
-    typedef ::std::function<bool(const ImplRef&)> t_cb_find_impl;
+    typedef ::std::function<bool(ImplRef)> t_cb_find_impl;
     
     bool find_impl(
         const Span& sp,

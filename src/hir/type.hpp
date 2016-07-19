@@ -222,6 +222,7 @@ public:
     bool operator<(const ::HIR::TypeRef& x) const { return ord(x) == OrdLess; }
     Ordering ord(const ::HIR::TypeRef& x) const;
 
+    bool contains_generics() const;
     
     // Match generics in `this` with types from `x`
     // Raises a bug against `sp` if there is a form mismatch or `this` has an infer

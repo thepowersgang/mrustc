@@ -251,19 +251,30 @@ namespace {
                         e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
                     }
                     else {
-                        ::HIR::TypeRef  new_ty;
-                        bool found = m_resolve.find_impl(sp, pe.trait.m_path, pe.trait.m_params, *pe.type, [&](const auto& impl) {
-                            DEBUG("TODO - Extract associated type '"<<pe.item<<"' from " << impl);
-                            new_ty = impl.get_type(pe.item.c_str());
-                            if( new_ty == ::HIR::TypeRef() ) {
-                                ERROR(sp, E0000, "Associated type '"<<pe.item<<"' could not be found in " << pe.trait);
-                            }
-                            return true;
+                        StaticTraitResolve::ImplRef best_impl;
+                        m_resolve.find_impl(sp, pe.trait.m_path, pe.trait.m_params, *pe.type, [&](auto impl) {
+                            DEBUG("[visit_type] Found " << impl);
+                            if( best_impl.more_specific_than(impl) )
+                                return false;
+                            best_impl = mv$(impl);
+                            if( ! best_impl.type_is_specializable(pe.item.c_str()) )
+                                return true;
+                            return false;
                             });
-                        if( found ) {
-                            assert( new_ty != ::HIR::TypeRef() );
-                            DEBUG("Replaced " << ty << " with " << new_ty);
-                            ty = mv$(new_ty);
+                        if( best_impl.is_valid() ) {
+                            // If the type is still specialisable, and there's geerics in the type.
+                            if( best_impl.type_is_specializable(pe.item.c_str()) && pe.type->contains_generics() ) {
+                                // Mark it as opaque (because monomorphisation could change things)
+                                e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                            }
+                            else {
+                                auto new_ty = best_impl.get_type(pe.item.c_str());
+                                if( new_ty == ::HIR::TypeRef() ) {
+                                    ERROR(sp, E0000, "Associated type '"<<pe.item<<"' could not be found in " << pe.trait);
+                                }
+                                DEBUG("Replaced " << ty << " with " << new_ty);
+                                ty = mv$(new_ty);
+                            }
                         }
                         else {
                             ERROR(sp, E0000, "Couldn't find an impl of " << pe.trait << " for " << *pe.type);
