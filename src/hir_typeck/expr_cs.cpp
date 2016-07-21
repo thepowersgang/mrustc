@@ -1446,20 +1446,13 @@ namespace {
                 ::HIR::TypeRef  possible_index_type;
                 ::HIR::TypeRef  possible_res_type;
                 unsigned int count = 0;
-                bool rv = this->context.m_resolve.find_trait_impls(node.span(), lang_Index, trait_pp, ty, [&](const auto& ty, const auto& args, const auto& assoc) {
-                    assert( args.m_types.size() == 1 );
-                    const auto& impl_index = args.m_types[0];
-                    
-                    auto cmp = impl_index.compare_with_placeholders(node.span(), trait_pp.m_types[0], this->context.m_ivars.callback_resolve_infer());
-                    if( cmp == ::HIR::Compare::Unequal) {
-                        return false;
-                    }
-                    possible_res_type = assoc.at("Output").clone();
+                bool rv = this->context.m_resolve.find_trait_impls(node.span(), lang_Index, trait_pp, ty, [&](auto impl, auto cmp) {
+                    possible_res_type = impl.get_type("Output");
                     count += 1;
                     if( cmp == ::HIR::Compare::Equal ) {
                         return true;
                     }
-                    possible_index_type = impl_index.clone();
+                    possible_index_type = impl.get_trait_ty_param(0);
                     return false;
                     });
                 if( rv ) {
@@ -1557,11 +1550,11 @@ namespace {
                     }
                     trait_pp.m_types.push_back( ::HIR::TypeRef( mv$(arg_types) ) );
                 }
-                auto was_bounded = this->context.m_resolve.find_trait_impls_bound(node.span(), lang_FnOnce, trait_pp, ty, [&](const auto& , const auto& args, const auto& assoc) {
-                        const auto& tup = args.m_types[0];
+                auto was_bounded = this->context.m_resolve.find_trait_impls_bound(node.span(), lang_FnOnce, trait_pp, ty, [&](auto impl, auto cmp) {
+                        auto tup = impl.get_trait_ty_param(0);
                         if( !tup.m_data.is_Tuple() )
                             ERROR(node.span(), E0000, "FnOnce expects a tuple argument, got " << tup);
-                        fcn_args_tup = tup.clone();
+                        fcn_args_tup = mv$(tup);
                         return true;
                         });
                 if( was_bounded )
@@ -3016,26 +3009,14 @@ namespace {
         unsigned int count = 0;
         DEBUG("Searching for impl " << v.trait << v.params << " for " << context.m_ivars.fmt_type(v.impl_ty));
         bool found = context.m_resolve.find_trait_impls(sp, v.trait, v.params,  v.impl_ty,
-            [&](const auto& impl_ty, const auto& args, const auto& assoc) {
-                assert( args.m_types.size() == v.params.m_types.size() );
-                ::HIR::Compare cmp = impl_ty.compare_with_placeholders(sp, v.impl_ty, context.m_ivars.callback_resolve_infer());
-                for( unsigned int i = 0; i < args.m_types.size(); i ++ )
-                {
-                    const auto& impl_ty = args.m_types[i];
-                    const auto& rule_ty = v.params.m_types[i];
-                    cmp &= impl_ty.compare_with_placeholders(sp, rule_ty, context.m_ivars.callback_resolve_infer());
-                }
-                if( cmp == ::HIR::Compare::Unequal ) {
-                    DEBUG("- (fail) bounded impl " << v.trait << v.params << " (ty_right = " << context.m_ivars.fmt_type(v.impl_ty));
-                    return false;
-                }
-                ::HIR::TypeRef  out_ty_o;
-                if( v.name != "" && assoc.count(v.name) == 0 ) {
+            [&](auto impl, auto cmp) {
+                ::HIR::TypeRef  out_ty_o = impl.get_type(v.name.c_str());
+                if( v.name != "" && out_ty_o == ::HIR::TypeRef() ) {
                     auto ty1 = ::HIR::TypeRef( ::HIR::Path(::HIR::Path( v.impl_ty.clone(), ::HIR::GenericPath(v.trait, v.params.clone()), v.name, ::HIR::PathParams() )) );
                     out_ty_o = context.m_resolve.expand_associated_types(sp, mv$(ty1));
                     //BUG(sp, "Getting associated type '" << v.name << "' which isn't in " << v.trait << " (" << ty << ")");
                 }
-                const auto& out_ty = (v.name == "" ? v.left_ty : (out_ty_o == ::HIR::TypeRef() ? assoc.at(v.name) : out_ty_o));
+                const auto& out_ty = (v.name == "" ? v.left_ty : out_ty_o);
                 
                 // - If we're looking for an associated type, allow it to eliminate impossible impls
                 //  > This makes `let v: usize = !0;` work without special cases
@@ -3054,11 +3035,11 @@ namespace {
                 }
                 else {
                     if( possible_impl_ty == ::HIR::TypeRef() ) {
-                        possible_impl_ty = impl_ty.clone();
-                        possible_params = args.clone();
+                        possible_impl_ty = impl.get_impl_type();
+                        possible_params = impl.get_trait_params();
                     }
                     
-                    DEBUG("- (possible) " << v.trait << args << " for " << impl_ty);
+                    DEBUG("- (possible) " << impl);
                     
                     return false;
                 }
@@ -3265,6 +3246,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         // - Keep a list in the ivar of what types that ivar could be equated to.
         DEBUG("--- Coercion checking");
         for(auto it = context.link_coerce.begin(); it != context.link_coerce.end(); ) {
+            it->left_ty = context.m_resolve.expand_associated_types( (*it->right_node_ptr)->span(), mv$(it->left_ty) );
             if( check_coerce(context, *it) ) {
                 DEBUG("- Consumed coercion " << it->left_ty << " := " << (**it->right_node_ptr).m_res_type);
                 it = context.link_coerce.erase(it);

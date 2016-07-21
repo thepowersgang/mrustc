@@ -1030,9 +1030,12 @@ bool TraitResolution::iterate_bounds( ::std::function<bool(const ::HIR::GenericB
 bool TraitResolution::find_trait_impls(const Span& sp,
         const ::HIR::SimplePath& trait, const ::HIR::PathParams& params,
         const ::HIR::TypeRef& ty,
-        t_cb_trait_impl callback
+        t_cb_trait_impl_r callback
         ) const
 {
+    static ::HIR::PathParams    null_params;
+    static ::std::map< ::std::string, ::HIR::TypeRef>    null_assoc;
+
     const auto& type = this->m_ivars.get_type(ty);
     TRACE_FUNCTION_F("trait = " << trait << ", type = " << type);
     
@@ -1055,7 +1058,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             return false;
             )
         )
-        return callback( type, ::HIR::PathParams(), {} );
+        return callback( ImplRef(&type, &null_params, &null_assoc), ::HIR::Compare::Equal );
     }
     
     if( trait == this->m_crate.get_lang_item_path(sp, "copy") ) {
@@ -1085,7 +1088,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             }
         };
         if( H::is_copy(sp, *this, type) ) {
-            return callback( type, ::HIR::PathParams(), {} );
+            return callback( ImplRef(&type, &null_params, &null_assoc), ::HIR::Compare::Equal );
         }
         else {
             return false;
@@ -1120,7 +1123,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             pp.m_types.push_back( ::HIR::TypeRef(mv$(args)) );
             ::std::map< ::std::string, ::HIR::TypeRef>  types;
             types.insert( ::std::make_pair( "Output", e.m_rettype->clone() ) );
-            return callback( type, pp, types );
+            return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), ::HIR::Compare::Equal );
         }
         else {
             return false;
@@ -1151,7 +1154,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             pp.m_types.push_back( ::HIR::TypeRef(mv$(args)) );
             ::std::map< ::std::string, ::HIR::TypeRef>  types;
             types.insert( ::std::make_pair( "Output", e.m_rettype->clone() ) );
-            return callback( type, pp, types );
+            return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), ::HIR::Compare::Equal );
         }
         // Continue
     )
@@ -1347,6 +1350,8 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
                 }
             )
             
+            //this->find_impl()
+            
             // 1. Bounds
             bool rv;
             bool assume_opaque = true;
@@ -1489,14 +1494,14 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
                 BUG(sp, "Cannot find associated type " << pe.item << " anywhere in trait " << pe.trait);
             //pe.trait = mv$(trait_path);
             
-            rv = this->find_trait_impls_crate(sp, trait_path.m_path, trait_path.m_params, *pe.type, [&](const auto& , const auto& args, const auto& assoc) {
-                DEBUG("Found impl for " << pe.trait.m_path << args << " with types {" << assoc << "}");
-                auto it = assoc.find( pe.item );
-                if( it == assoc.end() )
+            rv = this->find_trait_impls_crate(sp, trait_path.m_path, trait_path.m_params, *pe.type, [&](auto impl, auto qual) {
+                DEBUG("Found " << impl);
+                auto ty = impl.get_type( pe.item.c_str() );
+                if( ty == ::HIR::TypeRef() )
                     ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in " << pe.trait);
                 
-                DEBUG("Converted UfcsKnown - " << e.path << " = " << it->second);
-                input = it->second.clone();
+                DEBUG("Converted UfcsKnown - " << e.path << " = " << ty);
+                input = mv$(ty);
                 return true;
                 });
             if( rv ) {
@@ -1595,7 +1600,7 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
     }
     return false;
 }
-bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const
+bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const
 {
     struct H {
         static ::HIR::Compare compare_pp(const Span& sp, const TraitResolution& self, const ::HIR::PathParams& left, const ::HIR::PathParams& right) {
@@ -1636,7 +1641,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                     }
                     // Hand off to the closure, and return true if it does
                     // TODO: The type bounds are only the types that are specified.
-                    if( callback(e.type, e.trait.m_path.m_params, e.trait.m_type_bounds) ) {
+                    if( callback( ImplRef(&e.type, &e.trait.m_path.m_params, &e.trait.m_type_bounds), ord) ) {
                         return true;
                     }
                 }
@@ -1658,7 +1663,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                                 assoc2.insert( ::std::make_pair(i.first, i.second.clone())  );
                             //}
                         }
-                        return callback(ty, params, assoc2);
+                        return callback( ImplRef(ty.clone(), params.clone(), mv$(assoc2)), ::HIR::Compare::Equal );
                     });
                 if( rv ) {
                     return true;
@@ -1703,7 +1708,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                         }
                         DEBUG("- tp_mono = " << tp_mono);
                         // TODO: Instead of using `type` here, build the real type
-                        if( callback(type, tp_mono.m_path.m_params, tp_mono.m_type_bounds) ) {
+                        if( callback( ImplRef(type.clone(), mv$(tp_mono.m_path.m_params), mv$(tp_mono.m_type_bounds)), ord ) ) {
                             return true;
                         }
                     }
@@ -1718,7 +1723,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
 bool TraitResolution::find_trait_impls_crate(const Span& sp,
         const ::HIR::SimplePath& trait, const ::HIR::PathParams& params,
         const ::HIR::TypeRef& type,
-        t_cb_trait_impl callback
+        t_cb_trait_impl_r callback
         ) const
 {
     // TODO: Parameter defaults - apply here or in the caller?
@@ -1834,14 +1839,13 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     }
                     const auto& real_trait_path = real_trait.m_path;
                     DEBUG("- " << real_type << " : " << real_trait_path);
-                    auto rv = this->find_trait_impls(sp, real_trait_path.m_path, real_trait_path.m_params, real_type, [&](const auto&, const auto& a, const auto& t) {
+                    auto rv = this->find_trait_impls(sp, real_trait_path.m_path, real_trait_path.m_params, real_type, [&](auto impl, auto impl_cmp) {
                         for(const auto& assoc_bound : real_trait.m_type_bounds) {
                             ::HIR::TypeRef  tmp;
                             const ::HIR::TypeRef*   ty_p;
                             
-                            auto it = t.find(assoc_bound.first);
-                            if( it == t.end() )
-                            {
+                            tmp = impl.get_type(assoc_bound.first.c_str());
+                            if( tmp == ::HIR::TypeRef() ) {
                                 // This bound isn't from this particular trait, go the slow way of using expand_associated_types
                                 tmp = this->expand_associated_types(sp, ::HIR::TypeRef(
                                     ::HIR::Path(::HIR::Path::Data::Data_UfcsKnown { box$(real_type.clone()), real_trait_path.clone(), assoc_bound.first, {} }))
@@ -1849,7 +1853,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                                 ty_p = &tmp;
                             }
                             else {
-                                ty_p = &this->m_ivars.get_type(it->second);
+                                ty_p = &tmp;
                             }
                             const auto& ty = *ty_p;
                             DEBUG(" - Compare " << ty << " and " << assoc_bound.second << ", matching generics");
@@ -1892,7 +1896,8 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             //if( match == ::HIR::Compare::Fuzzy ) {
             //    TODO(sp, "- Pass on fuzzy match status");
             //}
-            return callback(ty_mono, args_mono, types/*, (match == ::HIR::Compare::Fuzzy)*/);
+            return callback(ImplRef(mv$(impl_params), impl), match);
+            //return callback(ty_mono, args_mono, types/*, (match == ::HIR::Compare::Fuzzy)*/);
         }
         );
 }
@@ -1969,9 +1974,8 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
         return &tmp_type;
     )
     else {
-        bool succ = this->find_trait_impls(sp, this->m_crate.get_lang_item_path(sp, "deref"), ::HIR::PathParams {}, ty, [&](const auto&, const auto& args, const auto& types) {
-            assert(args.m_types.size() == 0);
-            tmp_type = types.at("Target").clone();
+        bool succ = this->find_trait_impls(sp, this->m_crate.get_lang_item_path(sp, "deref"), ::HIR::PathParams {}, ty, [&](auto impls, auto match) {
+            tmp_type = impls.get_type("Target");
             return true;
             });
         if( succ ) {
@@ -2162,7 +2166,7 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
                 //}
                 
                 // TODO: Need a "don't care" marker for the PathParams
-                if( find_trait_impls_crate(sp, *trait_ref.first, ::HIR::PathParams{}, ty,  [](const auto&,const auto&,const auto&) { return true; }) ) {
+                if( find_trait_impls_crate(sp, *trait_ref.first, ::HIR::PathParams{}, ty,  [](auto , auto ) { return true; }) ) {
                     DEBUG("Found trait impl " << *trait_ref.first << " (" /*<< m_ivars.fmt_type(*trait_ref.first)*/  << ") for " << ty << " ("<<m_ivars.fmt_type(ty)<<")");
                     fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
                         box$( ty.clone() ),

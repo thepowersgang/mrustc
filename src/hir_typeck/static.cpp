@@ -547,7 +547,7 @@ bool StaticTraitResolve::trait_contains_type(const Span& sp, const ::HIR::Generi
     return false;
 }
 
-bool StaticTraitResolve::ImplRef::more_specific_than(const ImplRef& other) const
+bool ImplRef::more_specific_than(const ImplRef& other) const
 {
     TU_MATCH(Data, (this->m_data), (e),
     (TraitImpl,
@@ -565,7 +565,7 @@ bool StaticTraitResolve::ImplRef::more_specific_than(const ImplRef& other) const
     )
     throw "";
 }
-bool StaticTraitResolve::ImplRef::type_is_specializable(const char* name) const
+bool ImplRef::type_is_specializable(const char* name) const
 {
     TU_MATCH(Data, (this->m_data), (e),
     (TraitImpl,
@@ -585,8 +585,83 @@ bool StaticTraitResolve::ImplRef::type_is_specializable(const char* name) const
     )
     throw "";
 }
-::HIR::TypeRef StaticTraitResolve::ImplRef::get_type(const char* name) const
+::HIR::TypeRef ImplRef::get_impl_type() const
 {
+    Span    sp;
+    TU_MATCH(Data, (this->m_data), (e),
+    (TraitImpl,
+        if( e.impl == nullptr ) {
+            BUG(Span(), "nullptr");
+        }
+        return monomorphise_type_with(sp, e.impl->m_type, [&e](const auto& t)->const auto& {
+            const auto& ge = t.m_data.as_Generic();
+            return *e.params.at(ge.binding);
+            });
+        ),
+    (BoundedPtr,
+        return e.type->clone();
+        ),
+    (Bounded,
+        return e.type.clone();
+        )
+    )
+    throw "";
+}
+::HIR::PathParams ImplRef::get_trait_params() const
+{
+    Span    sp;
+    TU_MATCH(Data, (this->m_data), (e),
+    (TraitImpl,
+        if( e.impl == nullptr ) {
+            BUG(Span(), "nullptr");
+        }
+        return monomorphise_path_params_with(sp, e.impl->m_trait_args, [&e](const auto& t)->const auto& {
+            const auto& ge = t.m_data.as_Generic();
+            return *e.params.at(ge.binding);
+            }, true);
+        ),
+    (BoundedPtr,
+        return e.trait_args->clone();
+        ),
+    (Bounded,
+        return e.trait_args.clone();
+        )
+    )
+    throw "";
+}
+::HIR::TypeRef ImplRef::get_trait_ty_param(unsigned int idx) const
+{
+    Span    sp;
+    TU_MATCH(Data, (this->m_data), (e),
+    (TraitImpl,
+        if( e.impl == nullptr ) {
+            BUG(Span(), "nullptr");
+        }
+        if( idx >= e.impl->m_trait_args.m_types.size() )
+            return ::HIR::TypeRef();
+        return monomorphise_type_with(sp, e.impl->m_trait_args.m_types[idx], [&e](const auto& t)->const auto& {
+            const auto& ge = t.m_data.as_Generic();
+            return *e.params.at(ge.binding);
+            }, true);
+        ),
+    (BoundedPtr,
+        if( idx >= e.trait_args->m_types.size() )
+            return ::HIR::TypeRef();
+        return e.trait_args->m_types.at(idx).clone();
+        ),
+    (Bounded,
+        if( idx >= e.trait_args.m_types.size() )
+            return ::HIR::TypeRef();
+        return e.trait_args.m_types.at(idx).clone();
+        )
+    )
+    throw "";
+    TODO(Span(), "");
+}
+::HIR::TypeRef ImplRef::get_type(const char* name) const
+{
+    if( !name[0] )
+        return ::HIR::TypeRef();
     static Span  sp;
     TU_MATCH(Data, (this->m_data), (e),
     (TraitImpl,
@@ -609,11 +684,35 @@ bool StaticTraitResolve::ImplRef::type_is_specializable(const char* name) const
         }
         ),
     (BoundedPtr,
-        TODO(Span(), *this);
+        TODO(Span(), name << " - " << *this);
         ),
     (Bounded,
-        TODO(Span(), *this);
+        auto it = e.assoc.find(name);
+        if(it == e.assoc.end())
+            return ::HIR::TypeRef();
+        return it->second.clone();
         )
     )
     return ::HIR::TypeRef();
+}
+
+::std::ostream& operator<<(::std::ostream& os, const ImplRef& x)
+{
+    TU_MATCH(ImplRef::Data, (x.m_data), (e),
+    (TraitImpl,
+        if( e.impl == nullptr ) {
+            os << "none";
+        }
+        else {
+            os << "impl" << e.impl->m_params.fmt_args() << " ?" << e.impl->m_trait_args << " for " << e.impl->m_type << e.impl->m_params.fmt_bounds();
+        }
+        ),
+    (BoundedPtr,
+        os << "bound (ptr) " << *e.type << " : ?" << *e.trait_args << " + {" << *e.assoc << "}";
+        ),
+    (Bounded,
+        os << "bound " << e.type << " : ?" << e.trait_args << " + {"<<e.assoc<<"}";
+        )
+    )
+    return os;
 }

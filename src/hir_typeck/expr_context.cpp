@@ -915,9 +915,10 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                     // Allow cases where `right`: ::core::marker::Unsize<`left`>
                     ::HIR::PathParams   pp;
                     pp.m_types.push_back( left_inner_res.clone() );
-                    bool succ = this->find_trait_impls(sp, this->m_crate.get_lang_item_path(sp, "unsize"), pp, right_inner_res, [&](const auto& args, const auto& ) {
-                        DEBUG("- Found unsizing with args " << args);
-                        return args.m_types[0] == left_inner_res;
+                    bool succ = this->find_trait_impls(sp, this->m_crate.get_lang_item_path(sp, "unsize"), pp, right_inner_res, [&](auto impl, auto match) {
+                        DEBUG("- Found unsizing " << impl);
+                        //return args.m_types[0] == left_inner_res;
+                        return match == ::HIR::Compare::Equal;//args.m_types[0] == left_inner_res;
                         });
                     if( succ ) {
                         auto span = node_ptr->span();
@@ -975,11 +976,8 @@ void typeck::TypecheckContext::apply_equality(const Span& sp, const ::HIR::TypeR
                         // 1. Search for an implementation of the data trait for this type
                         auto r = this->expand_associated_types(sp, right_inner_res.clone());
                         //bool succ = this->find_trait_impls(sp, e.m_trait.m_path.m_path, e.m_trait.m_path.m_params,  right_inner_res, [&](const auto& args,const auto& types) {
-                        bool succ = this->find_trait_impls(sp, e.m_trait.m_path.m_path, e.m_trait.m_path.m_params,  r, [&](const auto& args,const auto& types) {
-                            if( args.m_types.size() > 0 )
-                                TODO(sp, "Handle unsizing to traits with params");
-                            // TODO: Check `types`
-                            return true;
+                        bool succ = this->find_trait_impls(sp, e.m_trait.m_path.m_path, e.m_trait.m_path.m_params,  r, [&](auto impl, auto match) {
+                            return match == ::HIR::Compare::Equal;
                             });
                         if(!succ) {
                             // XXX: Debugging - Resolves to the correct type in a failing case

@@ -122,19 +122,20 @@ public:
     }
     
     typedef ::std::function<bool(const ::HIR::PathParams&, const ::std::map< ::std::string,::HIR::TypeRef>&)> t_cb_trait_impl;
+    typedef TraitResolution::t_cb_trait_impl_r  t_cb_trait_impl_r;
 
     /// Searches for a trait impl that matches the provided trait name and type
-    bool find_trait_impls(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const {
-        return m_resolve.find_trait_impls(sp, trait, params, type,  [&](const auto& _, const auto& a, const auto& b){ return callback(a,b); });
+    bool find_trait_impls(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const {
+        return m_resolve.find_trait_impls(sp, trait, params, type,  [&](auto a, auto b){ return callback( mv$(a), b ); });
     }
     
     /// Search for a trait implementation in current bounds
-    bool find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const {
-        return m_resolve.find_trait_impls_bound(sp, trait, params, type, [&](const auto& _, const auto& a, const auto& b){ return callback(a,b); });
+    bool find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const {
+        return m_resolve.find_trait_impls_bound(sp, trait, params, type, callback);
     }
     /// Search for a trait implementation in the crate
-    bool find_trait_impls_crate(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const {
-        return m_resolve.find_trait_impls_crate(sp, trait, params, type, [&](const auto& _, const auto& a, const auto& b){ return callback(a,b); });
+    bool find_trait_impls_crate(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  TraitResolution::t_cb_trait_impl_r callback) const {
+        return m_resolve.find_trait_impls_crate(sp, trait, params, type, [&](auto r, auto m){ return callback( mv$(r), m ); });
     }
     
     /// Locate the named method by applying auto-dereferencing.

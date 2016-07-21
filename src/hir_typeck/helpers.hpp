@@ -5,6 +5,7 @@
 #include <hir/type.hpp>
 #include <hir/hir.hpp>
 #include <hir/expr.hpp>
+#include "impl_ref.hpp"
 
 // TODO/NOTE - This is identical to ::HIR::t_cb_resolve_type
 typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>   t_cb_generic;
@@ -179,9 +180,10 @@ public:
     bool iterate_bounds( ::std::function<bool(const ::HIR::GenericBound&)> cb) const;
 
     typedef ::std::function<bool(const ::HIR::TypeRef&, const ::HIR::PathParams&, const ::std::map< ::std::string,::HIR::TypeRef>&)> t_cb_trait_impl;
+    typedef ::std::function<bool(ImplRef, ::HIR::Compare)> t_cb_trait_impl_r;
     
     /// Searches for a trait impl that matches the provided trait name and type
-    bool find_trait_impls(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const;
+    bool find_trait_impls(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const;
     
     /// Locate a named trait in the provied trait (either itself or as a parent trait)
     bool find_named_trait_in_trait(const Span& sp,
@@ -191,9 +193,9 @@ public:
             t_cb_trait_impl callback
             ) const;
     /// Search for a trait implementation in current bounds
-    bool find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const;
+    bool find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const;
     /// Search for a trait implementation in the crate
-    bool find_trait_impls_crate(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl callback) const;
+    bool find_trait_impls_crate(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const;
     
     /// Locate the named method by applying auto-dereferencing.
     /// \return Number of times deref was applied (or ~0 if _ was hit)

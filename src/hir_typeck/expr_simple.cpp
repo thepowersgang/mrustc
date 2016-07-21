@@ -460,9 +460,9 @@ namespace typeck {
                     
                     ::HIR::TypeRef  possible_right_type;
                     unsigned int count = 0;
-                    bool rv = this->context.find_trait_impls(node.span(), trait_path,trait_path_pp, ty_left, [&](const auto& args, const auto& a_types) {
-                        assert( args.m_types.size() == 1 );
-                        const auto& impl_right = args.m_types[0];
+                    bool rv = this->context.find_trait_impls(node.span(), trait_path,trait_path_pp, ty_left, [&](auto impl, auto ) {
+                        auto impl_right = impl.get_trait_ty_param(0);
+                        assert(impl_right != ::HIR::TypeRef());
                      
                         // NOTE: `find_trait_impls` has already done this (and did it better)! Need to get that info off it
                         auto cmp = impl_right.compare_with_placeholders(node.span(), ty_right, this->context.callback_resolve_infer());
@@ -473,7 +473,7 @@ namespace typeck {
                             return true;
                         }
                         
-                        possible_right_type = impl_right.clone();
+                        possible_right_type = mv$(impl_right);
                         return false;
                         });
                     
@@ -726,9 +726,10 @@ namespace typeck {
                 ops_trait_pp.m_types.push_back( ty_right.clone() );
                 DEBUG("Searching for impl " << ops_trait << "< " << ty_right << "> for " << ty_left);
                 bool found_bound = this->context.find_trait_impls_bound(sp, ops_trait, ops_trait_pp,  ty_left,
-                    [&](const auto& args, const auto& assoc) {
-                        assert(args.m_types.size() == 1);
-                        const auto& arg_type = args.m_types[0];
+                    [&](auto impl, auto impl_cmp) {
+                        auto arg_type = impl.get_trait_ty_param(0);
+                        assert(arg_type != ::HIR::TypeRef());
+
                         // TODO: if arg_type mentions Self?
                         auto cmp = arg_type.compare_with_placeholders(node.span(), ty_right, this->context.callback_resolve_infer());
                         if( cmp == ::HIR::Compare::Unequal ) {
@@ -999,9 +1000,9 @@ namespace typeck {
                 
                 ::HIR::TypeRef  possible_index_type;
                 unsigned int count = 0;
-                bool rv = this->context.find_trait_impls(node.span(), path_Index,trait_pp, ty, [&](const auto& args, const auto& assoc) {
-                    assert( args.m_types.size() == 1 );
-                    const auto& impl_index = args.m_types[0];
+                bool rv = this->context.find_trait_impls(node.span(), path_Index,trait_pp, ty, [&](auto impl, auto ) {
+                    auto impl_index = impl.get_trait_ty_param(0);
+                    assert(impl_index != ::HIR::TypeRef());
                     
                     auto cmp = impl_index.compare_with_placeholders(node.span(), trait_pp.m_types[0], this->context.callback_resolve_infer());
                     if( cmp == ::HIR::Compare::Unequal)
@@ -1078,12 +1079,12 @@ namespace typeck {
                 // TODO: Search for Deref impl
                 ::HIR::TypeRef  res;
                 const auto& op_deref = this->context.m_crate.get_lang_item_path(node.span(), "deref");
-                bool rv = this->context.find_trait_impls(node.span(), op_deref, ::HIR::PathParams{}, ty, [&](const auto& _args, const auto& types) {
+                bool rv = this->context.find_trait_impls(node.span(), op_deref, ::HIR::PathParams{}, ty, [&](auto impl, auto ) {
                     if( res != ::HIR::TypeRef() )
                         TODO(node.span(), "Handle multiple implementations of Deref");
-                    if( types.find("Target") == types.end() )
+                    res = impl.get_type("Target");
+                    if( res == ::HIR::TypeRef() )
                         BUG(node.span(), "Impl of Deref didn't include `Target` associated type (TODO: Is this a bug, what about bounds?)");
-                    res = types.at("Target").clone();
                     return true;
                     });
                 if( rv ) {
@@ -1405,13 +1406,15 @@ namespace typeck {
                     auto real_trait = monomorphise_genericpath_with(sp, be.trait.m_path, cache.m_monomorph_cb, false);
                     DEBUG("Bound " << be.type << ":  " << be.trait);
                     DEBUG("= (" << real_type << ": " << real_trait << ")");
-                    auto monomorph_bound = [&](const auto& gt)->const auto& {
-                        return gt;
-                        };
+                    //auto monomorph_bound = [&](const auto& gt)->const auto& {
+                    //    return gt;
+                    //    };
                     const auto& trait_params = be.trait.m_path.m_params;
                     // TODO: Detect marker traits
                     const auto& trait_gp = be.trait.m_path;
-                    auto rv = this->context.find_trait_impls(sp, trait_gp.m_path, real_trait.m_params, real_type, [&](const auto& pp, const auto& at) {
+                    auto rv = this->context.find_trait_impls(sp, trait_gp.m_path, real_trait.m_params, real_type, [&](auto impl, auto ) {
+                        TODO(sp, impl << " cmp with " << trait_params);
+                        #if 0
                         if( pp.m_types.size() != trait_params.m_types.size() ) {
                             BUG(sp, "Parameter mismatch");
                         }
@@ -1423,6 +1426,7 @@ namespace typeck {
                             //this->context.apply_equality(sp, pp.m_types[i], monomorph_bound, trait_params.m_types[i], cache.m_monomorph_cb, nullptr);
                             this->context.apply_equality(sp, pp.m_types[i], monomorph_bound, real_trait.m_params.m_types[i], IDENT_CR, nullptr);
                         }
+                        #endif
                         // TODO: Use `at`
                         // - Check if the associated type bounds are present
                         #if 0
@@ -1504,11 +1508,11 @@ namespace typeck {
                     const auto& lang_FnOnce = this->context.m_crate.get_lang_item_path(node.span(), "fn_once");
                     ::HIR::PathParams   trait_pp;
                     trait_pp.m_types.push_back( this->context.new_ivar_tr() );  // TODO: Bind to arguments?
-                    auto was_bounded = this->context.find_trait_impls_bound(node.span(), lang_FnOnce, trait_pp, ty, [&](const auto& args, const auto& assoc) {
-                            const auto& tup = args.m_types[0];
+                    auto was_bounded = this->context.find_trait_impls_bound(node.span(), lang_FnOnce, trait_pp, ty, [&](auto impl, auto ) {
+                            auto tup = impl.get_trait_ty_param(0);
                             if( !tup.m_data.is_Tuple() )
                                 ERROR(node.span(), E0000, "FnOnce expects a tuple argument, got " << tup);
-                            fcn_args_tup = tup.clone();
+                            fcn_args_tup = mv$(tup);
                             return true;
                             });
                     if( was_bounded )

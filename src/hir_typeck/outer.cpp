@@ -251,7 +251,7 @@ namespace {
                         e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
                     }
                     else {
-                        StaticTraitResolve::ImplRef best_impl;
+                        ImplRef best_impl;
                         m_resolve.find_impl(sp, pe.trait.m_path, pe.trait.m_params, *pe.type, [&](auto impl) {
                             DEBUG("[visit_type] Found " << impl);
                             if( best_impl.more_specific_than(impl) )
