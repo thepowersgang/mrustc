@@ -684,7 +684,10 @@ bool ImplRef::type_is_specializable(const char* name) const
         }
         ),
     (BoundedPtr,
-        TODO(Span(), name << " - " << *this);
+        auto it = e.assoc->find(name);
+        if(it == e.assoc->end())
+            return ::HIR::TypeRef();
+        return it->second.clone();
         ),
     (Bounded,
         auto it = e.assoc.find(name);

@@ -1098,21 +1098,28 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     const auto& trait_fn = this->m_crate.get_lang_item_path(sp, "fn");
     const auto& trait_fn_mut = this->m_crate.get_lang_item_path(sp, "fn_mut");
     const auto& trait_fn_once = this->m_crate.get_lang_item_path(sp, "fn_once");
-       
+    
     // Closures are magical. They're unnamable and all trait impls come from within the compiler
     TU_IFLET(::HIR::TypeRef::Data, type.m_data, Closure, e,
+        DEBUG("Closure, "<< trait <<"  " << trait_fn << " " << trait_fn_mut << " " << trait_fn_once);
         if( trait == trait_fn || trait == trait_fn_mut || trait == trait_fn_once  ) {
             if( params.m_types.size() != 1 )
                 BUG(sp, "Fn* traits require a single tuple argument");
-            TU_MATCH_DEF( ::HIR::TypeRef::Data, (params.m_types[0].m_data), (te),
-            (
-                ),
-            (Tuple,
-                )
-            )
+            if( !params.m_types[0].m_data.is_Tuple() )
+                BUG(sp, "Fn* traits require a single tuple argument");
+            
+            const auto& args_des = params.m_types[0].m_data.as_Tuple();
+            if( args_des.size() != e.m_arg_types.size() ) {
+                return false;
+            }
+            
+            auto cmp = ::HIR::Compare::Equal;
             ::std::vector< ::HIR::TypeRef>  args;
-            for(const auto& at : e.m_arg_types) {
+            for(unsigned int i = 0; i < e.m_arg_types.size(); i ++)
+            {
+                const auto& at = e.m_arg_types[i];
                 args.push_back( at.clone() );
+                cmp &= at.compare_with_placeholders(sp, args_des[i], this->m_ivars.callback_resolve_infer());
             }
             
             // NOTE: This is a conditional "true", we know nothing about the move/mut-ness of this closure yet
@@ -1123,7 +1130,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             pp.m_types.push_back( ::HIR::TypeRef(mv$(args)) );
             ::std::map< ::std::string, ::HIR::TypeRef>  types;
             types.insert( ::std::make_pair( "Output", e.m_rettype->clone() ) );
-            return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), ::HIR::Compare::Equal );
+            return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), cmp );
         }
         else {
             return false;
@@ -1494,6 +1501,7 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
                 BUG(sp, "Cannot find associated type " << pe.item << " anywhere in trait " << pe.trait);
             //pe.trait = mv$(trait_path);
             
+            DEBUG("Searching for impl");
             rv = this->find_trait_impls_crate(sp, trait_path.m_path, trait_path.m_params, *pe.type, [&](auto impl, auto qual) {
                 DEBUG("Found " << impl);
                 auto ty = impl.get_type( pe.item.c_str() );
@@ -1853,7 +1861,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                                 ty_p = &tmp;
                             }
                             else {
-                                ty_p = &tmp;
+                                ty_p = &this->m_ivars.get_type(tmp);
                             }
                             const auto& ty = *ty_p;
                             DEBUG(" - Compare " << ty << " and " << assoc_bound.second << ", matching generics");

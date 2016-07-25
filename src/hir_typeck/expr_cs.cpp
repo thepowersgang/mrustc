@@ -3010,10 +3010,15 @@ namespace {
         DEBUG("Searching for impl " << v.trait << v.params << " for " << context.m_ivars.fmt_type(v.impl_ty));
         bool found = context.m_resolve.find_trait_impls(sp, v.trait, v.params,  v.impl_ty,
             [&](auto impl, auto cmp) {
-                ::HIR::TypeRef  out_ty_o = impl.get_type(v.name.c_str());
-                if( v.name != "" && out_ty_o == ::HIR::TypeRef() ) {
-                    auto ty1 = ::HIR::TypeRef( ::HIR::Path(::HIR::Path( v.impl_ty.clone(), ::HIR::GenericPath(v.trait, v.params.clone()), v.name, ::HIR::PathParams() )) );
-                    out_ty_o = context.m_resolve.expand_associated_types(sp, mv$(ty1));
+                DEBUG("Found " << impl);
+                ::HIR::TypeRef  out_ty_o;
+                if( v.name != "" ) {
+                    out_ty_o = impl.get_type(v.name.c_str());
+                    if( out_ty_o == ::HIR::TypeRef() )
+                    {
+                        auto ty1 = ::HIR::TypeRef( ::HIR::Path(::HIR::Path( v.impl_ty.clone(), ::HIR::GenericPath(v.trait, v.params.clone()), v.name, ::HIR::PathParams() )) );
+                        out_ty_o = context.m_resolve.expand_associated_types(sp, mv$(ty1));
+                    }
                     //BUG(sp, "Getting associated type '" << v.name << "' which isn't in " << v.trait << " (" << ty << ")");
                 }
                 const auto& out_ty = (v.name == "" ? v.left_ty : out_ty_o);
