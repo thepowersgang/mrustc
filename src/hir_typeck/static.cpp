@@ -707,7 +707,25 @@ bool ImplRef::type_is_specializable(const char* name) const
             os << "none";
         }
         else {
-            os << "impl" << e.impl->m_params.fmt_args() << " ?" << e.impl->m_trait_args << " for " << e.impl->m_type << e.impl->m_params.fmt_bounds();
+            os << "impl";
+            if( e.impl->m_params.m_types.size() )
+            {
+                os << "<";
+                for( unsigned int i = 0; i < e.impl->m_params.m_types.size(); i ++ )
+                {
+                    const auto& ty_d = e.impl->m_params.m_types[i];
+                    os << ty_d.m_name << " = ";
+                    if( e.params[i] ) {
+                        os << *e.params[i];
+                    }
+                    else {
+                        os << "?";
+                    }
+                    os << ",";
+                }
+                os << ">";
+            }
+            os << " ?" << e.impl->m_trait_args << " for " << e.impl->m_type << e.impl->m_params.fmt_bounds();
         }
         ),
     (BoundedPtr,

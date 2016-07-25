@@ -3010,22 +3010,20 @@ namespace {
         DEBUG("Searching for impl " << v.trait << v.params << " for " << context.m_ivars.fmt_type(v.impl_ty));
         bool found = context.m_resolve.find_trait_impls(sp, v.trait, v.params,  v.impl_ty,
             [&](auto impl, auto cmp) {
-                DEBUG("Found " << impl);
-                ::HIR::TypeRef  out_ty_o;
+                DEBUG("[check_associated] Found " << impl);
                 if( v.name != "" ) {
-                    out_ty_o = impl.get_type(v.name.c_str());
+                    auto out_ty_o = impl.get_type(v.name.c_str());
                     if( out_ty_o == ::HIR::TypeRef() )
                     {
-                        auto ty1 = ::HIR::TypeRef( ::HIR::Path(::HIR::Path( v.impl_ty.clone(), ::HIR::GenericPath(v.trait, v.params.clone()), v.name, ::HIR::PathParams() )) );
-                        out_ty_o = context.m_resolve.expand_associated_types(sp, mv$(ty1));
+                        out_ty_o = ::HIR::TypeRef( ::HIR::Path(::HIR::Path( v.impl_ty.clone(), ::HIR::GenericPath(v.trait, v.params.clone()), v.name, ::HIR::PathParams() )) );
                     }
+                    out_ty_o = context.m_resolve.expand_associated_types(sp, mv$(out_ty_o));
                     //BUG(sp, "Getting associated type '" << v.name << "' which isn't in " << v.trait << " (" << ty << ")");
-                }
-                const auto& out_ty = (v.name == "" ? v.left_ty : out_ty_o);
+                    
+                    const auto& out_ty = out_ty_o;
                 
-                // - If we're looking for an associated type, allow it to eliminate impossible impls
-                //  > This makes `let v: usize = !0;` work without special cases
-                if( v.name != "" ) {
+                    // - If we're looking for an associated type, allow it to eliminate impossible impls
+                    //  > This makes `let v: usize = !0;` work without special cases
                     auto cmp2 = v.left_ty.compare_with_placeholders(sp, out_ty, context.m_ivars.callback_resolve_infer());
                     if( cmp2 == ::HIR::Compare::Unequal ) {
                         DEBUG("- (fail) known result can't match (" << context.m_ivars.fmt_type(v.left_ty) << " and " << context.m_ivars.fmt_type(out_ty) << ")");
