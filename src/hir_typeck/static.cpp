@@ -554,7 +554,20 @@ bool ImplRef::more_specific_than(const ImplRef& other) const
         if( e.impl == nullptr ) {
             return false;
         }
-        TODO(Span(), "more_specific_than - TraitImpl (" << *this << " '>' " << other << ")");
+        TU_MATCH(Data, (other.m_data), (oe),
+        (TraitImpl,
+            if( oe.impl == nullptr ) {
+                return true;
+            }
+            TODO(Span(), "more_specific_than - TraitImpl ( `" << *this << "` '>' `" << other << "`)");
+            ),
+        (BoundedPtr,
+            return false;
+            ),
+        (Bounded,
+            return false;
+            )
+        )
         ),
     (BoundedPtr,
         return true;
