@@ -244,6 +244,7 @@ namespace {
                 (UfcsKnown,
                     if( pe.type->m_data.is_Path() && pe.type->m_data.as_Path().binding.is_Opaque() ) {
                         // - Opaque type, opaque result
+                        DEBUG("Inner type opaque, assuming " << ty << " also opaque");
                         e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
                     }
                     else if( pe.type->m_data.is_Generic() ) {
@@ -265,6 +266,7 @@ namespace {
                             // If the type is still specialisable, and there's geerics in the type.
                             if( best_impl.type_is_specializable(pe.item.c_str()) && pe.type->contains_generics() ) {
                                 // Mark it as opaque (because monomorphisation could change things)
+                                DEBUG("Still-specialisable impl for " << ty << " also opaque");
                                 e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
                             }
                             else {

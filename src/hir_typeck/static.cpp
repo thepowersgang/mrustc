@@ -344,8 +344,8 @@ void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef&
                 });
             if( rv ) {
                 if( assume_opaque ) {
-                    DEBUG("Assuming that " << input << " is an opaque name");
                     input.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                    DEBUG("Assuming that " << input << " is an opaque name");
                 }
                 this->expand_associated_types(sp, input);
                 return;
@@ -424,7 +424,7 @@ void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef&
                 // - If the trait contains any of the above, it's unknowable
                 // - Otherwise, it's an error
                 e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
-                DEBUG("Couldn't resolve associated type for " << input << " (and won't ever be able to)");
+                DEBUG("Couldn't resolve associated type for " << input << " (and won't ever be able to, assuming opaque)");
             //}
             //else {
             //    DEBUG("Couldn't resolve associated type for " << input << " (will try again later)");

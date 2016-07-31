@@ -1583,6 +1583,7 @@ void TraitResolution::expand_associated_types__UfcsKnown(const Span& sp, ::HIR::
         // TODO: If the type is a generic or an opaque associated, we can't know.
         // - If the trait contains any of the above, it's unknowable
         // - Otherwise, it's an error
+        DEBUG("Assuming that " << input << " is an opaque name");
         e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
         DEBUG("Couldn't resolve associated type for " << input << " (and won't ever be able to)");
     }
