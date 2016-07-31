@@ -356,6 +356,7 @@ namespace {
     {
         Context& context;
         const ::HIR::TypeRef&   ret_type;
+        ::std::vector< const ::HIR::TypeRef*>   closure_ret_types;
         
         // TEMP: List of in-scope traits for buildup
         ::HIR::t_trait_list m_traits;
@@ -394,7 +395,12 @@ namespace {
             TRACE_FUNCTION_F(&node << " return ...");
             this->context.add_ivars( node.m_value->m_res_type );
 
-            this->context.equate_types_coerce(node.span(), this->ret_type, node.m_value);
+            if( this->closure_ret_types.size() > 0 ) {
+                this->context.equate_types_coerce(node.span(), *this->closure_ret_types.back(), node.m_value);
+            }
+            else {
+                this->context.equate_types_coerce(node.span(), this->ret_type, node.m_value);
+            }
             
             node.m_value->visit( *this );
         }
@@ -1243,7 +1249,9 @@ namespace {
 
             this->context.equate_types_coerce( node.span(), node.m_return, node.m_code );
             
+            this->closure_ret_types.push_back( &node.m_return );
             node.m_code->visit( *this );
+            this->closure_ret_types.pop_back( );
         }
         
     private:
