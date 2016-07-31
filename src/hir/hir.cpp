@@ -195,6 +195,152 @@ bool ::HIR::MarkerImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_res
     return matches_type_int(m_params, m_type, type, ty_res, true);
 }
 
+namespace {
+    ::Ordering typelist_ord_specific(const Span& sp, const ::std::vector<::HIR::TypeRef>& left, const ::std::vector<::HIR::TypeRef>& right);
+    
+    ::Ordering type_ord_specific(const Span& sp, const ::HIR::TypeRef& left, const ::HIR::TypeRef& right)
+    {
+        // TODO: What happens if you get `impl<T> Foo<T> for T` vs `impl<T,U> Foo<U> for T`
+        
+        // A generic can't be more specific than any other type we can see
+        // - It's equally as specific as another Generic, so still false
+        if( left.m_data.is_Generic() ) {
+            return right.m_data.is_Generic() ? ::OrdEqual : ::OrdLess;
+        }
+        // - A generic is always less specific than anything but itself (handled above)
+        if( right.m_data.is_Generic() ) {
+            return ::OrdGreater;
+        }
+        
+        TU_MATCH(::HIR::TypeRef::Data, (left.m_data), (le),
+        (Generic,
+            throw "";
+            ),
+        (Infer,
+            BUG(sp, "Hit infer");
+            ),
+        (Diverge,
+            BUG(sp, "Hit diverge");
+            ),
+        (Closure,
+            BUG(sp, "Hit closure");
+            ),
+        (Primitive,
+            TU_IFLET(::HIR::TypeRef::Data, right.m_data, Primitive, re,
+                if( le != re )
+                    BUG(sp, "Mismatched types - " << left << " and " << right);
+                return ::OrdEqual;
+            )
+            else {
+                BUG(sp, "Mismatched types - " << left << " and " << right);
+            }
+            ),
+        (Path,
+            TODO(sp, "Path - " << le.path);
+            ),
+        (TraitObject,
+            TODO(sp, "TraitObject - " << left);
+            ),
+        (Function,
+            TU_IFLET(::HIR::TypeRef::Data, right.m_data, Function, re,
+                TODO(sp, "Function");
+                //return typelist_ord_specific(sp, le.arg_types, re.arg_types);
+            )
+            else {
+                BUG(sp, "Mismatched types - " << left << " and " << right);
+            }
+            ),
+        (Tuple,
+            TU_IFLET(::HIR::TypeRef::Data, right.m_data, Tuple, re,
+                return typelist_ord_specific(sp, le, re);
+            )
+            else {
+                BUG(sp, "Mismatched types - " << left << " and " << right);
+            }
+            ),
+        (Slice,
+            TU_IFLET(::HIR::TypeRef::Data, right.m_data, Slice, re,
+                return type_ord_specific(sp, *le.inner, *re.inner);
+            )
+            else {
+                BUG(sp, "Mismatched types - " << left << " and " << right);
+            }
+            ),
+        (Array,
+            TU_IFLET(::HIR::TypeRef::Data, right.m_data, Array, re,
+                if( le.size_val != re.size_val )
+                    BUG(sp, "Mismatched types - " << left << " and " << right);
+                return type_ord_specific(sp, *le.inner, *re.inner);
+            )
+            else {
+                BUG(sp, "Mismatched types - " << left << " and " << right);
+            }
+            ),
+        (Pointer,
+            TU_IFLET(::HIR::TypeRef::Data, right.m_data, Pointer, re,
+                if( le.type != re.type )
+                    BUG(sp, "Mismatched types - " << left << " and " << right);
+                return type_ord_specific(sp, *le.inner, *re.inner);
+            )
+            else {
+                BUG(sp, "Mismatched types - " << left << " and " << right);
+            }
+            ),
+        (Borrow,
+            TU_IFLET(::HIR::TypeRef::Data, right.m_data, Borrow, re,
+                if( le.type != re.type )
+                    BUG(sp, "Mismatched types - " << left << " and " << right);
+                return type_ord_specific(sp, *le.inner, *re.inner);
+            )
+            else {
+                BUG(sp, "Mismatched types - " << left << " and " << right);
+            }
+            )
+        )
+        throw "Fell off end of type_ord_specific";
+    }
+    
+    ::Ordering typelist_ord_specific(const Span& sp, const ::std::vector<::HIR::TypeRef>& le, const ::std::vector<::HIR::TypeRef>& re)
+    {
+        auto rv = ::OrdEqual;
+        for(unsigned int i = 0; i < le.size(); i ++) {
+            auto a = type_ord_specific(sp, le[i], re[i]);
+            if( a != ::OrdEqual ) {
+                if( rv != ::OrdEqual && a != rv )
+                    BUG(sp, "Inconsistent ordering between type lists");
+                rv = a;
+            }
+        }
+        return rv;
+    }
+}
+
+bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
+{
+    static const Span   _sp;
+    const Span& sp = _sp;
+    
+    // >> https://github.com/rust-lang/rfcs/blob/master/text/1210-impl-specialization.md#defining-the-precedence-rules
+    // 1. If this->m_type is less specific than other.m_type: return false
+    if( type_ord_specific(sp, this->m_type, other.m_type) == ::OrdLess ) {
+        return false;
+    }
+    // 2. If any in te.impl->m_params is less specific than oe.impl->m_params: return false
+    if( typelist_ord_specific(sp, this->m_trait_args.m_types, other.m_trait_args.m_types) == ::OrdLess ) {
+        return false;
+    }
+    
+    //assert(m_params.m_types.size() == other.m_params.m_types.size());
+    
+    if( other.m_params.m_bounds.size() == 0 ) {
+        return m_params.m_bounds.size() > 0;
+    }
+    // 3. Compare bound set, if there is a rule in oe that is missing from te; return false
+    // 3a. Compare for rules in te that are missing from oe
+
+    TODO(Span(), "TraitImpl - " << m_params.fmt_bounds() << " VERSUS " << other.m_params.fmt_bounds());// ( `" << *this << "` '>' `" << other << "`)");
+}
+
 
 
 const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path(const Span& sp, const char* name) const

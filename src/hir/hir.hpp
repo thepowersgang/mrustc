@@ -243,6 +243,8 @@ public:
     bool matches_type(const ::HIR::TypeRef& tr) const {
         return matches_type(tr, [](const auto& x)->const auto&{ return x; });
     }
+    
+    bool more_specific_than(const TraitImpl& x) const;
 };
 
 class MarkerImpl

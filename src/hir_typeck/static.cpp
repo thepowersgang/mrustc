@@ -549,9 +549,9 @@ bool StaticTraitResolve::trait_contains_type(const Span& sp, const ::HIR::Generi
 
 bool ImplRef::more_specific_than(const ImplRef& other) const
 {
-    TU_MATCH(Data, (this->m_data), (e),
+    TU_MATCH(Data, (this->m_data), (te),
     (TraitImpl,
-        if( e.impl == nullptr ) {
+        if( te.impl == nullptr ) {
             return false;
         }
         TU_MATCH(Data, (other.m_data), (oe),
@@ -559,7 +559,7 @@ bool ImplRef::more_specific_than(const ImplRef& other) const
             if( oe.impl == nullptr ) {
                 return true;
             }
-            TODO(Span(), "more_specific_than - TraitImpl ( `" << *this << "` '>' `" << other << "`)");
+            return te.impl->more_specific_than( *oe.impl );
             ),
         (BoundedPtr,
             return false;
