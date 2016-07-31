@@ -1375,11 +1375,10 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
 
 void TraitResolution::expand_associated_types__UfcsKnown(const Span& sp, ::HIR::TypeRef& input) const
 {
+    TRACE_FUNCTION_FR("input=" << input, input);
     auto& e = input.m_data.as_Path();
     auto& pe = e.path.m_data.as_UfcsKnown();
     // TODO: If opaque, still search a list of known equalities
-    
-    DEBUG("Locating associated type for " << e.path);
     
     *pe.type = expand_associated_types(sp, mv$(*pe.type));
     
