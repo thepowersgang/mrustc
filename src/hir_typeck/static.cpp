@@ -674,8 +674,15 @@ bool ImplRef::type_is_specializable(const char* name) const
                 const auto& ge = gt.m_data.as_Generic();
                 assert(ge.binding < 256);
                 assert(ge.binding < e.params.size());
-                assert(e.params[ge.binding]);
-                return *e.params[ge.binding];
+                if( e.params[ge.binding] ) {
+                    return *e.params[ge.binding];
+                }
+                else if( e.params_ph.size() && e.params_ph[ge.binding] != ::HIR::TypeRef() ) {
+                    return e.params_ph[ge.binding];
+                }
+                else {
+                    BUG(Span(), "Param #" << ge.binding << " " << ge.name << " isn't constrained for " << *this);
+                }
                 };
             return monomorphise_type_with(sp, it->second, cb_monomorph);
         }

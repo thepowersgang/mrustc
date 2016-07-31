@@ -167,6 +167,7 @@ public:
     bool has_associated_type(const ::HIR::TypeRef& ty) const;
     /// Expand any located associated types in the input, operating in-place and returning the result
     ::HIR::TypeRef expand_associated_types(const Span& sp, ::HIR::TypeRef input) const;
+    void expand_associated_types__UfcsKnown(const Span& sp, ::HIR::TypeRef& input) const;
     const ::HIR::TypeRef& expand_associated_types(const Span& sp, const ::HIR::TypeRef& input, ::HIR::TypeRef& tmp) const {
         if( this->has_associated_type(input) ) {
             return (tmp = this->expand_associated_types(sp, input.clone()));

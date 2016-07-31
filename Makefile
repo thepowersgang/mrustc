@@ -17,7 +17,7 @@ SHELL = bash
 ifeq ($(DBGTPL),)
   
 else ifeq ($(DBGTPL),gdb)
-  DBG := echo -e "r\nbt 10\nq" | gdb --args
+  DBG := echo -e "r\nbt 12\nq" | gdb --args
 else ifeq ($(DBGTPL),valgrind)
   DBG := valgrind --leak-check=full --num-callers=35
 else
