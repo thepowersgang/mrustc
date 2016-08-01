@@ -433,7 +433,14 @@ namespace {
             if( node.m_value )
             {
                 this->context.add_ivars( node.m_value->m_res_type );
-                this->context.equate_types_coerce( node.span(), node.m_type, node.m_value );
+                // If the type was omitted or was just `_`, equate
+                if( node.m_type.m_data.is_Infer() ) {
+                    this->context.equate_types( node.span(), node.m_type, node.m_value->m_res_type );
+                }
+                // otherwise coercions apply
+                else {
+                    this->context.equate_types_coerce( node.span(), node.m_type, node.m_value );
+                }
                 
                 node.m_value->visit( *this );
             }
