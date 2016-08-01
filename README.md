@@ -11,7 +11,7 @@ Current Features
 - Attribute and macro expansion
 - Resolves all paths to absolute forms
 - Outputs the processed AST as (almost) rust code
- - Almost because it uses special path types to handle: external crates, 'str', and anonymous modules.
+ - Almost because it uses special path types to handle external crates and anonymous modules.
 - Converts name-resolved AST into a more compact "HIR"
 - Hackily evaluates constants
  - Constant evaluation is done by using duck-typing, which is then validated by the Type Check pass
@@ -19,8 +19,9 @@ Current Features
 
 Short-Term Plans
 ===
+- Completed type checking, including a validation pass
 - Convert HIR expressions into a MIR similar to rustc's
-- Crate metadata storing and loaded
+- Storing of HIR/MIR for `extern crate` handling
 
 Medium-Term Goals
 ===
