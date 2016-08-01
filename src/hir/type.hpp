@@ -21,6 +21,7 @@ typedef ::std::function< ::HIR::Compare(unsigned int, const ::HIR::TypeRef&) > t
 enum class InferClass
 {
     None,
+    Diverge,
     Integer,
     Float,
 };

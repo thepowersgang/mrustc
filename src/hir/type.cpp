@@ -49,6 +49,7 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
             switch(e.ty_class)
             {
             case ::HIR::InferClass::None:   break;
+            case ::HIR::InferClass::Diverge:os << ":!"; break;
             case ::HIR::InferClass::Float:  os << ":f"; break;
             case ::HIR::InferClass::Integer:os << ":i"; break;
             }
@@ -462,6 +463,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         switch(xe.ty_class)
         {
         case ::HIR::InferClass::None:
+        case ::HIR::InferClass::Diverge:
             // - If right is generic infer, assume it's good
             //return true;
             return Compare::Fuzzy;
@@ -694,6 +696,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         switch(e.ty_class)
         {
         case ::HIR::InferClass::None:
+        case ::HIR::InferClass::Diverge:
             return Compare::Fuzzy;
         case ::HIR::InferClass::Integer:
             TU_IFLET( ::HIR::TypeRef::Data, right.m_data, Primitive, le,
@@ -735,6 +738,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         switch( e.ty_class )
         {
         case ::HIR::InferClass::None:
+        case ::HIR::InferClass::Diverge:
             return Compare::Fuzzy;
         case ::HIR::InferClass::Integer:
             TU_IFLET( ::HIR::TypeRef::Data, left.m_data, Primitive, le,

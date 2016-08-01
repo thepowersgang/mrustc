@@ -319,6 +319,11 @@ bool HMTypeInferrence::apply_defaults()
                 {
                 case ::HIR::InferClass::None:
                     break;
+                case ::HIR::InferClass::Diverge:
+                    rv = true;
+                    DEBUG("- " << *v.type << " -> !");
+                    *v.type = ::HIR::TypeRef(::HIR::TypeRef::Data::make_Diverge({}));
+                    break;
                 case ::HIR::InferClass::Integer:
                     rv = true;
                     DEBUG("- " << *v.type << " -> i32");
@@ -674,6 +679,7 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
             switch(e.ty_class)
             {
             case ::HIR::InferClass::None:
+            case ::HIR::InferClass::Diverge:
                 break;
             case ::HIR::InferClass::Integer:
             case ::HIR::InferClass::Float:
@@ -688,9 +694,21 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
                 break;
             }
         )
+        #if 0
+        else TU_IFLET(::HIR::TypeRef::Data, root_ivar.type->m_data, Diverge, e,
+            // Overwriting ! with anything is valid (it's like a magic ivar)
+        )
+        #endif
         else {
             BUG(sp, "Overwriting ivar " << slot << " (" << *root_ivar.type << ") with " << type);
         }
+        
+        #if 1
+        TU_IFLET(::HIR::TypeRef::Data, type.m_data, Diverge, e,
+            root_ivar.type->m_data.as_Infer().ty_class = ::HIR::InferClass::Diverge;
+        )
+        else
+        #endif
         root_ivar.type = box$( mv$(type) );
     }
     
@@ -1545,33 +1563,62 @@ void TraitResolution::expand_associated_types__UfcsKnown(const Span& sp, ::HIR::
     //pe.trait = mv$(trait_path);
     
     DEBUG("Searching for impl");
+    bool    can_fuzz = true;
+    unsigned int    count = 0;
     ImplRef best_impl;
     rv = this->find_trait_impls_crate(sp, trait_path.m_path, trait_path.m_params, *pe.type, [&](auto impl, auto qual) {
-        DEBUG("Found " << impl);
-        if( impl.type_is_specializable(pe.item.c_str()) ) {
-            if( impl.more_specific_than( best_impl ) ) {
-                best_impl = mv$(impl);
+        DEBUG("[expand_associated_types__UfcsKnown] Found " << impl << " qual=" << qual);
+        // If it's a fuzzy match, keep going (but count if a concrete hasn't been found)
+        if( qual == ::HIR::Compare::Fuzzy ) {
+            if( can_fuzz )
+            {
+                count += 1;
+                if( count == 1 ) {
+                    best_impl = mv$(impl);
+                }
             }
             return false;
         }
         else {
-            auto ty = impl.get_type( pe.item.c_str() );
+            // If a fuzzy match could have been seen, ensure that best_impl is unsed
+            if( can_fuzz ) {
+                best_impl = ImplRef();
+                can_fuzz = false;
+            }
+            
+            // If the type is specialisable
+            if( impl.type_is_specializable(pe.item.c_str()) ) {
+                // Check if this is more specific
+                if( impl.more_specific_than( best_impl ) ) {
+                    best_impl = mv$(impl);
+                }
+                return false;
+            }
+            else {
+                auto ty = impl.get_type( pe.item.c_str() );
+                if( ty == ::HIR::TypeRef() )
+                    ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in " << pe.trait);
+                
+                // TODO: What if there's multiple impls?
+                DEBUG("Converted UfcsKnown - " << e.path << " = " << ty);
+                input = mv$(ty);
+                return true;
+            }
+        }
+        });
+    if( !rv && best_impl.is_valid() ) {
+        if( can_fuzz && count > 1 ) {
+            // Fuzzy match with multiple choices - can't know yet
+        }
+        else {
+            auto ty = best_impl.get_type( pe.item.c_str() );
             if( ty == ::HIR::TypeRef() )
                 ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in " << pe.trait);
             
             DEBUG("Converted UfcsKnown - " << e.path << " = " << ty);
             input = mv$(ty);
-            return true;
+            rv = true;
         }
-        });
-    if( !rv && best_impl.is_valid() ) {
-        auto ty = best_impl.get_type( pe.item.c_str() );
-        if( ty == ::HIR::TypeRef() )
-            ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in " << pe.trait);
-        
-        DEBUG("Converted UfcsKnown - " << e.path << " = " << ty);
-        input = mv$(ty);
-        rv = true;
     }
     if( rv ) {
         input = this->expand_associated_types(sp, mv$(input));

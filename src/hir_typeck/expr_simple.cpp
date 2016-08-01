@@ -17,6 +17,7 @@ namespace typeck {
         switch(ic)
         {
         case ::HIR::InferClass::None:
+        case ::HIR::InferClass::Diverge:
             break;
         case ::HIR::InferClass::Float:
             switch(ct)
@@ -539,6 +540,7 @@ namespace typeck {
                         switch(e.ty_class)
                         {
                         case ::HIR::InferClass::None:
+                        case ::HIR::InferClass::Diverge:
                             return false;
                         case ::HIR::InferClass::Integer:
                         case ::HIR::InferClass::Float:

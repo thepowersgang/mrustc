@@ -48,6 +48,7 @@ namespace {
             switch(right.m_data.as_Infer().ty_class)
             {
             case ::HIR::InferClass::None:
+            case ::HIR::InferClass::Diverge:
                 return left.m_data.is_Generic();
             case ::HIR::InferClass::Integer:
                 TU_IFLET(::HIR::TypeRef::Data, left.m_data, Primitive, le,

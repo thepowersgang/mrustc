@@ -358,6 +358,8 @@ namespace {
         const ::HIR::TypeRef&   ret_type;
         ::std::vector< const ::HIR::TypeRef*>   closure_ret_types;
         
+        ::std::vector<bool> inner_coerce_enabled_stack;
+        
         // TEMP: List of in-scope traits for buildup
         ::HIR::t_trait_list m_traits;
     public:
@@ -371,42 +373,47 @@ namespace {
         void visit(::HIR::ExprNode_Block& node) override
         {
             TRACE_FUNCTION_F(&node << " { ... }");
-            this->push_traits( node.m_traits );
             
-            for( unsigned int i = 0; i < node.m_nodes.size(); i ++ )
+            if( node.m_nodes.size() > 0 )
             {
-                auto& snp = node.m_nodes[i];
-                this->context.add_ivars( snp->m_res_type );
-                if( i == node.m_nodes.size()-1 ) {
-                    this->context.equate_types(snp->span(), node.m_res_type, snp->m_res_type);
-                }
-                else {
+                this->push_traits( node.m_traits );
+                
+                this->push_inner_coerce(false);
+                for( unsigned int i = 0; i < node.m_nodes.size()-1; i ++ )
+                {
+                    auto& snp = node.m_nodes[i];
+                    this->context.add_ivars( snp->m_res_type );
                     // TODO: Ignore? or force to ()? - Depends on inner
                     // - Blocks (and block-likes) are forced to ()
                     //  - What if they were '({});'? Then they're left dangling
+                    snp->visit(*this);
                 }
-                snp->visit(*this);
-            }
+                this->pop_inner_coerce();
             
-            this->pop_traits( node.m_traits );
+                auto& snp = node.m_nodes.back();
+                this->context.add_ivars( snp->m_res_type );
+                this->context.equate_types(snp->span(), node.m_res_type, snp->m_res_type);
+                snp->visit(*this);
+                
+                this->pop_traits( node.m_traits );
+            }
         }
         void visit(::HIR::ExprNode_Return& node) override
         {
             TRACE_FUNCTION_F(&node << " return ...");
             this->context.add_ivars( node.m_value->m_res_type );
 
-            if( this->closure_ret_types.size() > 0 ) {
-                this->context.equate_types_coerce(node.span(), *this->closure_ret_types.back(), node.m_value);
-            }
-            else {
-                this->context.equate_types_coerce(node.span(), this->ret_type, node.m_value);
-            }
+            const auto& ret_ty = ( this->closure_ret_types.size() > 0 ? *this->closure_ret_types.back() : this->ret_type );
+            this->context.equate_types_coerce(node.span(), ret_ty, node.m_value);
             
+            this->push_inner_coerce( true );
             node.m_value->visit( *this );
+            this->pop_inner_coerce();
         }
         
         void visit(::HIR::ExprNode_Loop& node) override
         {
+            auto _ = this->push_inner_coerce_scoped(false);
             TRACE_FUNCTION_F(&node << " loop { ... }");
             
             this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
@@ -436,13 +443,16 @@ namespace {
                 // If the type was omitted or was just `_`, equate
                 if( node.m_type.m_data.is_Infer() ) {
                     this->context.equate_types( node.span(), node.m_type, node.m_value->m_res_type );
+                    this->push_inner_coerce(false);
                 }
                 // otherwise coercions apply
                 else {
                     this->context.equate_types_coerce( node.span(), node.m_type, node.m_value );
+                    this->push_inner_coerce(true);
                 }
                 
                 node.m_value->visit( *this );
+                this->pop_inner_coerce();
             }
         }
         void visit(::HIR::ExprNode_Match& node) override
@@ -450,9 +460,13 @@ namespace {
             TRACE_FUNCTION_F(&node << " match ...");
             
             const auto& val_type = node.m_value->m_res_type;
-            this->context.add_ivars(node.m_value->m_res_type);
-            // TODO: If a coercion point is placed here, it will allow `match &string { "..." ... }`
-            node.m_value->visit( *this );
+
+            {
+                auto _ = this->push_inner_coerce_scoped(false);
+                this->context.add_ivars(node.m_value->m_res_type);
+                // TODO: If a coercion point is placed here, it will allow `match &string { "..." ... }`
+                node.m_value->visit( *this );
+            }
             
             for(auto& arm : node.m_arms)
             {
@@ -464,13 +478,14 @@ namespace {
                 
                 if( arm.m_cond )
                 {
+                    auto _ = this->push_inner_coerce_scoped(false);
                     this->context.add_ivars( arm.m_cond->m_res_type );
-                    this->context.equate_types_coerce(arm.m_cond->span(), ::HIR::TypeRef(::HIR::CoreType::Bool), arm.m_cond);
+                    this->context.equate_types(arm.m_cond->span(), ::HIR::TypeRef(::HIR::CoreType::Bool), arm.m_cond->m_res_type);
                     arm.m_cond->visit( *this );
                 }
                 
                 this->context.add_ivars( arm.m_code->m_res_type );
-                this->context.equate_types_coerce(node.span(), node.m_res_type, arm.m_code);
+                this->equate_types_inner_coerce(node.span(), node.m_res_type, arm.m_code);
                 arm.m_code->visit( *this );
             }
         }
@@ -480,18 +495,20 @@ namespace {
             TRACE_FUNCTION_F(&node << " if ...");
             
             this->context.add_ivars( node.m_cond->m_res_type );
-            this->context.equate_types_coerce(node.m_cond->span(), ::HIR::TypeRef(::HIR::CoreType::Bool), node.m_cond);
-            node.m_cond->visit( *this );
+            
+            {
+                auto _ = this->push_inner_coerce_scoped(false);
+                this->context.equate_types(node.m_cond->span(), ::HIR::TypeRef(::HIR::CoreType::Bool), node.m_cond->m_res_type);
+                node.m_cond->visit( *this );
+            }
             
             this->context.add_ivars( node.m_true->m_res_type );
-            this->context.equate_types_coerce(node.span(), node.m_res_type,  node.m_true);
-            //this->context.equate_types(node.span(), node.m_res_type,  node.m_true->m_res_type);
+            this->equate_types_inner_coerce(node.span(), node.m_res_type, node.m_true);
             node.m_true->visit( *this );
             
             if( node.m_false ) {
                 this->context.add_ivars( node.m_false->m_res_type );
-                this->context.equate_types_coerce(node.span(), node.m_res_type,  node.m_false);
-                //this->context.equate_types(node.span(), node.m_res_type,  node.m_false->m_res_type);
+                this->equate_types_inner_coerce(node.span(), node.m_res_type, node.m_false);
                 node.m_false->visit( *this );
             }
             else {
@@ -502,6 +519,8 @@ namespace {
         
         void visit(::HIR::ExprNode_Assign& node) override
         {
+            auto _ = this->push_inner_coerce_scoped(false);
+            
             TRACE_FUNCTION_F(&node << "... = ...");
             this->context.add_ivars( node.m_slot ->m_res_type );
             this->context.add_ivars( node.m_value->m_res_type );
@@ -535,10 +554,14 @@ namespace {
             }
             
             node.m_slot->visit( *this );
+            
+            auto _2 = this->push_inner_coerce_scoped( node.m_op == ::HIR::ExprNode_Assign::Op::None );
             node.m_value->visit( *this );
         }
         void visit(::HIR::ExprNode_BinOp& node) override
         {
+            auto _ = this->push_inner_coerce_scoped(false);
+            
             TRACE_FUNCTION_F(&node << "... "<<::HIR::ExprNode_BinOp::opname(node.m_op)<<" ...");
             this->context.add_ivars( node.m_left ->m_res_type );
             this->context.add_ivars( node.m_right->m_res_type );
@@ -614,6 +637,8 @@ namespace {
         }
         void visit(::HIR::ExprNode_UniOp& node) override
         {
+            auto _ = this->push_inner_coerce_scoped(false);
+            
             TRACE_FUNCTION_F(&node << " " << ::HIR::ExprNode_UniOp::opname(node.m_op) << "...");
             this->context.add_ivars( node.m_value->m_res_type );
             switch(node.m_op)
@@ -636,6 +661,8 @@ namespace {
         }
         void visit(::HIR::ExprNode_Cast& node) override
         {
+            auto _ = this->push_inner_coerce_scoped(false);
+            
             TRACE_FUNCTION_F(&node << " ... as " << node.m_res_type);
             this->context.add_ivars( node.m_value->m_res_type );
             
@@ -650,6 +677,8 @@ namespace {
         }
         void visit(::HIR::ExprNode_Index& node) override
         {
+            auto _ = this->push_inner_coerce_scoped(false);
+            
             TRACE_FUNCTION_F(&node << " ... [ ... ]");
             this->context.add_ivars( node.m_value->m_res_type );
             this->context.add_ivars( node.m_index->m_res_type );
@@ -661,6 +690,8 @@ namespace {
         }
         void visit(::HIR::ExprNode_Deref& node) override
         {
+            auto _ = this->push_inner_coerce_scoped(false);
+            
             TRACE_FUNCTION_F(&node << " *...");
             this->context.add_ivars( node.m_value->m_res_type );
             
@@ -773,15 +804,16 @@ namespace {
             for( unsigned int i = 0; i < node.m_args.size(); i ++ )
             {
                 const auto& des_ty_r = fields[i].ent;
+                const auto* des_ty = &des_ty_r;
                 if( monomorphise_type_needed(des_ty_r) ) {
                     node.m_arg_types[i] = monomorphise_type_with(sp, des_ty_r, monomorph_cb);
-                    this->context.equate_types_coerce(node.span(), node.m_arg_types[i],  node.m_args[i]);
+                    des_ty = &node.m_arg_types[i];
                 }
-                else {
-                    this->context.equate_types_coerce(node.span(), des_ty_r,  node.m_args[i]);
-                }
+                
+                this->context.equate_types_coerce(node.span(), *des_ty,  node.m_args[i]);
             }
             
+            auto _ = this->push_inner_coerce_scoped(true);
             for( auto& val : node.m_args ) {
                 val->visit( *this );
             }
@@ -848,24 +880,27 @@ namespace {
                 assert(it != fields.end());
                 const auto& des_ty_r = it->second.ent;
                 auto& des_ty_cache = node.m_value_types[it - fields.begin()];
+                const auto* des_ty = &des_ty_r;
                 
                 DEBUG(name << " : " << des_ty_r);
                 if( monomorphise_type_needed(des_ty_r) ) {
                     if( des_ty_cache == ::HIR::TypeRef() ) {
                         des_ty_cache = monomorphise_type_with(node.span(), des_ty_r, monomorph_cb);
                     }
-                    // TODO: Is it an error when it's already populated?
-                    this->context.equate_types_coerce(node.span(), des_ty_cache,  val.second);
+                    else {
+                        // TODO: Is it an error when it's already populated?
+                    }
+                    des_ty = &des_ty_cache;
                 }
-                else {
-                    this->context.equate_types_coerce(node.span(), des_ty_r,  val.second);
-                }
+                this->equate_types_inner_coerce(node.span(), *des_ty,  val.second);
             }
             
+            auto _ = this->push_inner_coerce_scoped(true);
             for( auto& val : node.m_values ) {
                 val.second->visit( *this );
             }
             if( node.m_base_value ) {
+                auto _ = this->push_inner_coerce_scoped(false);
                 node.m_base_value->visit( *this );
             }
         }
@@ -903,6 +938,7 @@ namespace {
             }
             this->context.equate_types(node.span(), node.m_res_type,  node.m_cache.m_arg_types.back());
 
+            auto _ = this->push_inner_coerce_scoped(true);
             for( auto& val : node.m_args ) {
                 val->visit( *this );
             }
@@ -918,7 +954,11 @@ namespace {
             // Nothing can be done until type is known
             this->context.add_revisit(node);
 
-            node.m_value->visit( *this );
+            {
+                auto _ = this->push_inner_coerce_scoped(false);
+                node.m_value->visit( *this );
+            }
+            auto _ = this->push_inner_coerce_scoped(true);
             for( auto& val : node.m_args ) {
                 val->visit( *this );
             }
@@ -954,13 +994,18 @@ namespace {
             // > Has to be done during iteraton
             this->context.add_revisit( node );
             
-            node.m_value->visit( *this );
+            {
+                auto _ = this->push_inner_coerce_scoped(false);
+                node.m_value->visit( *this );
+            }
+            auto _ = this->push_inner_coerce_scoped(true);
             for( auto& val : node.m_args ) {
                 val->visit( *this );
             }
         }
         void visit(::HIR::ExprNode_Field& node) override
         {
+            auto _ = this->push_inner_coerce_scoped(false);
             TRACE_FUNCTION_F(&node << " (...)."<<node.m_field);
             this->context.add_ivars( node.m_value->m_res_type );
             
@@ -976,6 +1021,8 @@ namespace {
                 this->context.add_ivars( val->m_res_type );
             }
             
+            if( can_coerce_inner_result() ) {
+            }
             ::std::vector< ::HIR::TypeRef>  tuple_tys;
             for(const auto& val : node.m_vals ) {
                 // Can these coerce? Assuming not
@@ -998,7 +1045,7 @@ namespace {
             // - Result type already set, just need to extract ivar
             const auto& inner_ty = *node.m_res_type.m_data.as_Array().inner;
             for( auto& val : node.m_vals ) {
-                this->context.equate_types_coerce(node.span(), inner_ty,  val);
+                this->equate_types_inner_coerce(node.span(), inner_ty,  val);
             }
             
             for( auto& val : node.m_vals ) {
@@ -1018,7 +1065,7 @@ namespace {
             this->context.equate_types(node.span(), node.m_res_type, ty);
             // Equate with coercions
             const auto& inner_ty = *ty.m_data.as_Array().inner;
-            this->context.equate_types_coerce(node.span(), inner_ty, node.m_val);
+            this->equate_types_inner_coerce(node.span(), inner_ty, node.m_val);
             this->context.equate_types(node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), node.m_size->m_res_type);
             
             node.m_val->visit( *this );
@@ -1258,6 +1305,7 @@ namespace {
 
             this->context.equate_types_coerce( node.span(), node.m_return, node.m_code );
             
+            auto _ = this->push_inner_coerce_scoped(true);
             this->closure_ret_types.push_back( &node.m_return );
             node.m_code->visit( *this );
             this->closure_ret_types.pop_back( );
@@ -1294,6 +1342,40 @@ namespace {
                     this->context.add_ivars(ty);
                 )
             )
+        }
+        
+        class InnerCoerceGuard {
+            ExprVisitor_Enum& t;
+        public:
+            InnerCoerceGuard(ExprVisitor_Enum& t): t(t) {}
+            ~InnerCoerceGuard() { t.inner_coerce_enabled_stack.pop_back(); }
+        };
+        InnerCoerceGuard push_inner_coerce_scoped(bool val) {
+            this->inner_coerce_enabled_stack.push_back(val);
+            return InnerCoerceGuard(*this);
+        }
+        void push_inner_coerce(bool val) {
+            this->inner_coerce_enabled_stack.push_back(val);
+        }
+        void pop_inner_coerce() {
+            assert( this->inner_coerce_enabled_stack.size() );
+            this->inner_coerce_enabled_stack.pop_back();
+        }
+        bool can_coerce_inner_result() const {
+            if( this->inner_coerce_enabled_stack.size() == 0 ) {
+                return true;
+            }
+            else {
+                return this->inner_coerce_enabled_stack.back();
+            }
+        }
+        void equate_types_inner_coerce(const Span& sp, const ::HIR::TypeRef& target, ::HIR::ExprNodeP& node) {
+            if( can_coerce_inner_result() ) {
+                this->context.equate_types_coerce(sp, target,  node);
+            }
+            else {
+                this->context.equate_types(sp, target,  node->m_res_type);
+            }
         }
     };
 
@@ -1415,6 +1497,7 @@ namespace {
                         this->m_completed = true;
                         break;
                     case ::HIR::InferClass::None:
+                    case ::HIR::InferClass::Diverge:
                         break;
                     }
                     ),
@@ -1664,6 +1747,7 @@ namespace {
                 if( node.m_args.size()+1 != node.m_cache.m_arg_types.size() - 1 ) {
                     ERROR(node.span(), E0000, "Incorrect number of arguments to " << fcn_path);
                 }
+                DEBUG("- fcn_path=" << node.m_method_path);
                 
                 // Link arguments
                 // 1+ because it's a method call (#0 is Self)
@@ -1891,6 +1975,12 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
     const auto& l_t = this->m_resolve.expand_associated_types(sp, this->m_ivars.get_type(li), l_tmp);
     const auto& r_t = this->m_resolve.expand_associated_types(sp, this->m_ivars.get_type(ri), r_tmp);
     
+    #if 0
+    if( l_t.m_data.is_Diverge() || r_t.m_data.is_Diverge() ) {
+        return ;
+    }
+    #endif
+    
     DEBUG("- l_t = " << l_t << ", r_t = " << r_t);
     TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Infer, r_e,
         TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Infer, l_e,
@@ -1921,12 +2011,29 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
             
             // If either side is !, return early
             // TODO: Should ! end up in an ivar?
-            TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Diverge, l_e,
+            #if 1
+            if( l_t.m_data.is_Diverge() && r_t.m_data.is_Diverge() ) {
                 return ;
-            )
-            TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Diverge, r_e,
+            }
+            else if( l_t.m_data.is_Diverge() ) {
+                TU_IFLET(::HIR::TypeRef::Data, li.m_data, Infer, l_e,
+                    this->m_ivars.set_ivar_to(l_e.index, r_t.clone());
+                )
                 return ;
-            )
+            }
+            else if( r_t.m_data.is_Diverge() ) {
+                TU_IFLET(::HIR::TypeRef::Data, ri.m_data, Infer, r_e,
+                    this->m_ivars.set_ivar_to(r_e.index, l_t.clone());
+                )
+                return ;
+            }
+            else {
+            }
+            #else
+            if( l_t.m_data.is_Diverge() || r_t.m_data.is_Diverge() ) {
+                return ;
+            }
+            #endif
             
             // - If the destructuring would fail
             //if( l_t.compare_with_placeholders(sp, r_t, this->m_ivars.callback_resolve_infer()) == ::HIR::Compare::Unequal )
@@ -3289,7 +3396,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
     
     const unsigned int MAX_ITERATIONS = 100;
     unsigned int count = 0;
-    while( context.take_changed() && context.has_rules() && count < MAX_ITERATIONS )
+    while( context.take_changed() /*&& context.has_rules()*/ && count < MAX_ITERATIONS )
     {
         TRACE_FUNCTION_F("=== PASS " << count << " ===");
         context.dump();
