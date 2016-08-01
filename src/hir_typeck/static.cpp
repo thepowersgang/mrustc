@@ -587,7 +587,12 @@ bool ImplRef::type_is_specializable(const char* name) const
             return true;
         }
         //TODO(Span(), "type_is_specializable - Impl = " << *this << ", Type = " << name);
-        return true;
+        auto it = e.impl->m_types.find(name);
+        if( it == e.impl->m_types.end() ) {
+            TODO(Span(), "Handle missing type in " << *this << ", name = " << name);
+            return false;
+        }
+        return it->second.is_specialisable;
         ),
     (BoundedPtr,
         return false;
