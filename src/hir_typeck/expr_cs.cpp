@@ -1773,12 +1773,26 @@ namespace {
         void visit_node_ptr(::HIR::ExprNodeP& node) override {
             const char* node_ty = typeid(*node).name();
             TRACE_FUNCTION_FR(&node << " " << &*node << " " << node_ty << " : " << node->m_res_type, node_ty);
-            this->check_type_resolved(node->span(), node->m_res_type, node->m_res_type);
+            this->check_type_resolved_top(node->span(), node->m_res_type);
             DEBUG(node_ty << " : = " << node->m_res_type);
             ::HIR::ExprVisitorDef::visit_node_ptr(node);
         }
         
+        void visit(::HIR::ExprNode_Let& node) override {
+            this->check_type_resolved_top(node.span(), node.m_type);
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        void visit(::HIR::ExprNode_Closure& node) override {
+            for(auto& arg : node.m_args)
+                this->check_type_resolved_top(node.span(), arg.second);
+            this->check_type_resolved_top(node.span(), node.m_return);
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        
     private:
+        void check_type_resolved_top(const Span& sp, ::HIR::TypeRef& ty) const {
+            check_type_resolved(sp, ty, ty);
+        }
         void check_type_resolved(const Span& sp, ::HIR::TypeRef& ty, const ::HIR::TypeRef& top_type) const {
             TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
             (Infer,
