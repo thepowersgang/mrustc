@@ -1670,7 +1670,13 @@ namespace {
                 }
                 else if( !ty.m_data.is_Generic() )
                 {
-                    TODO(node.span(), "Search for other implementations of FnOnce for " << ty);
+                    bool found = this->context.m_resolve.find_trait_impls_crate(node.span(), lang_FnOnce, trait_pp, ty, [&](auto impl, auto cmp) {
+                        TODO(node.span(), "Use impl of FnOnce - " << impl);
+                        return false;
+                        });
+                    if( found ) {
+                    }
+                    TODO(node.span(), "Search crate for implementations of FnOnce for " << ty);
                 }
                 else
                 {
