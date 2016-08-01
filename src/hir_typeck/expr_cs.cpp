@@ -53,7 +53,7 @@ struct Context
                 os << "req ty " << v.impl_ty << " impl " << v.trait << v.params;
             }
             else {
-                os << v.left_ty << " = " << "<" << v.impl_ty << " as " << v.trait << v.params << ">::" << v.name;
+                os << v.left_ty << " = " << "< `" << v.impl_ty << "` as `" << v.trait << v.params << "` >::" << v.name;
             }
             return os;
         }
@@ -3013,7 +3013,21 @@ namespace {
             }
         }
         
-        // Search for ops trait impl
+        // HACK: If the LHS is an opqaue UfcsKnown for the same trait and item, equate the inner types
+        TU_IFLET(::HIR::TypeRef::Data, v.left_ty.m_data, Path, e,
+            if( e.binding.is_Opaque() )
+            {
+                TU_IFLET(::HIR::Path::Data, e.path.m_data, UfcsKnown, pe,
+                    if( pe.trait.m_path == v.trait && pe.item == v.name )
+                    {
+                        context.equate_types(sp, *pe.type, v.impl_ty);
+                        return true;
+                    }
+                )
+            }
+        )
+        
+        // Locate applicable trait impl
         unsigned int count = 0;
         DEBUG("Searching for impl " << v.trait << v.params << " for " << context.m_ivars.fmt_type(v.impl_ty));
         bool found = context.m_resolve.find_trait_impls(sp, v.trait, v.params,  v.impl_ty,
