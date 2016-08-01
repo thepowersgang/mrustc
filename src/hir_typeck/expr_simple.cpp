@@ -1654,6 +1654,8 @@ namespace typeck {
                 switch(node.m_target) {
                 case ::HIR::ExprNode_PathValue::UNKNOWN:
                     BUG(sp, "Unknown target PathValue encountered with Generic path");
+                case ::HIR::ExprNode_PathValue::STRUCT_CONSTR:
+                    TODO(sp, "STRUCT_CONSTR");
                 case ::HIR::ExprNode_PathValue::FUNCTION: {
                     const auto& f = this->context.m_crate.get_function_by_path(sp, e.m_path);
                     ::HIR::FunctionType ft {

@@ -555,7 +555,16 @@ struct LowerHIR_ExprNode_Visitor:
                 m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::UNKNOWN ) );
                 ),
             (Struct,
-                m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(Span(v.get_pos()), v.m_path), true ) );
+                // TODO: Check the form and emit a PathValue if not a unit
+                if( e.struct_->m_data.is_Struct() ) {
+                    // ERROR.
+                }
+                else if( e.struct_->m_data.as_Tuple().ents.size() > 0 ) {
+                    m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::STRUCT_CONSTR ) );
+                }
+                else {
+                    m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(Span(v.get_pos()), v.m_path), true ) );
+                }
                 ),
             (EnumVar,
                 m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(Span(v.get_pos()), v.m_path), false ) );

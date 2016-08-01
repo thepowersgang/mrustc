@@ -908,6 +908,8 @@ namespace {
         {
             TRACE_FUNCTION_F(&node << " " << node.m_path << " [" << (node.m_is_struct ? "struct" : "enum") << "]");
             
+            // TODO: Check?
+            
             // - Create ivars in path, and set result type
             const auto ty = this->get_structenum_ty(node.span(), node.m_is_struct, node.m_path);
             this->context.equate_types(node.span(), node.m_res_type, ty);
@@ -1107,14 +1109,38 @@ namespace {
                     BUG(sp, "Unknown target PathValue encountered with Generic path");
                 case ::HIR::ExprNode_PathValue::FUNCTION: {
                     const auto& f = this->context.m_crate.get_function_by_path(sp, e.m_path);
+                    fix_param_count(sp, this->context, e, f.m_params, e.m_params);
+                    
                     ::HIR::FunctionType ft {
                         f.m_unsafe,
                         f.m_abi,
-                        box$( f.m_return.clone() ),
+                        box$( monomorphise_type(sp, f.m_params, e.m_params, f.m_return) ),
                         {}
                         };
                     for( const auto& arg : f.m_args )
-                        ft.m_arg_types.push_back( arg.second.clone() );
+                    {
+                        ft.m_arg_types.push_back( monomorphise_type(sp, f.m_params, e.m_params, arg.second) );
+                    }
+                    
+                    auto ty = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function(mv$(ft)) );
+                    this->context.equate_types(sp, node.m_res_type, ty);
+                    } break;
+                case ::HIR::ExprNode_PathValue::STRUCT_CONSTR: {
+                    const auto& s = this->context.m_crate.get_struct_by_path(sp, e.m_path);
+                    const auto& se = s.m_data.as_Tuple();
+                    fix_param_count(sp, this->context, e, s.m_params, e.m_params);
+                    
+                    ::HIR::FunctionType ft {
+                        false,
+                        "rust",
+                        box$( ::HIR::TypeRef( node.m_path.clone(), ::HIR::TypeRef::TypePathBinding::make_Struct(&s) ) ),
+                        {}
+                        };
+                    for( const auto& arg : se )
+                    {
+                        ft.m_arg_types.push_back( monomorphise_type(sp, s.m_params, e.m_params, arg.ent) );
+                    }
+                    
                     auto ty = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function(mv$(ft)) );
                     this->context.equate_types(sp, node.m_res_type, ty);
                     } break;

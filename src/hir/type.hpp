@@ -181,8 +181,8 @@ public:
     TypeRef(::HIR::CoreType ct):
         m_data( Data::make_Primitive(mv$(ct)) )
     {}
-    TypeRef(::HIR::Path p):
-        m_data( Data::make_Path( {mv$(p), TypePathBinding()} ) )
+    TypeRef(::HIR::Path p, TypePathBinding pb=TypePathBinding()):
+        m_data( Data::make_Path( {mv$(p), mv$(pb)} ) )
     {}
 
     static TypeRef new_unit() {

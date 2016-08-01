@@ -548,6 +548,7 @@ struct ExprNode_PathValue:
     enum Target {
         UNKNOWN,
         FUNCTION,
+        STRUCT_CONSTR,
         STATIC,
         CONSTANT,
     };

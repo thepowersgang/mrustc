@@ -232,6 +232,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
 ::HIR::TypeRef monomorphise_type(const Span& sp, const ::HIR::GenericParams& params_def, const ::HIR::PathParams& params,  const ::HIR::TypeRef& tpl)
 {
     DEBUG("tpl = " << tpl);
+    ASSERT_BUG(sp, params.m_types.size() == params_def.m_types.size(), "Parameter count mismatch - exp " << params_def.m_types.size() << ", got " << params.m_types.size());
     return monomorphise_type_with(sp, tpl, [&](const auto& gt)->const auto& {
         const auto& e = gt.m_data.as_Generic();
         if( e.name == "Self" )
