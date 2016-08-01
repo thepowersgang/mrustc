@@ -66,7 +66,7 @@ class Deriver_Debug:
         fcn.set_code( NEWNODE(AST::ExprNode_Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), p, make_spanned(sp, debug_trait), type ) );
-        rv.add_function(false, "fmt", mv$(fcn));
+        rv.add_function(false, false, "fmt", mv$(fcn));
         return mv$(rv);
     }
     
@@ -169,7 +169,7 @@ class Deriver_PartialEq:
         }
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
-        rv.add_function(false, "eq", mv$(fcn));
+        rv.add_function(false, false, "eq", mv$(fcn));
         return mv$(rv);
     }
 public:
@@ -345,7 +345,7 @@ class Deriver_Eq:
         }
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
-        rv.add_function(false, "assert_receiver_is_total_eq", mv$(fcn));
+        rv.add_function(false, false, "assert_receiver_is_total_eq", mv$(fcn));
         return mv$(rv);
     }
     AST::ExprNodeP assert_is_eq(const AST::Path& method_path, AST::ExprNodeP val) const {
@@ -485,7 +485,7 @@ class Deriver_Clone:
         }
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
-        rv.add_function(false, "clone", mv$(fcn));
+        rv.add_function(false, false, "clone", mv$(fcn));
         return mv$(rv);
     }
     AST::ExprNodeP clone_val(AST::ExprNodeP val) const {

@@ -103,18 +103,18 @@ SERIALISE_TYPE(ImplDef::, "AST_ImplDef", {
     s.item(m_type);
 })
 
-void Impl::add_function(bool is_public, ::std::string name, Function fcn)
+void Impl::add_function(bool is_public, bool is_specialisable, ::std::string name, Function fcn)
 {
     DEBUG("impl fn " << name);
-    m_items.push_back( Named<Item>( mv$(name), Item::make_Function({::std::move(fcn)}), is_public ) );
+    m_items.push_back( ImplItem { is_public, is_specialisable, mv$(name), box$( Item::make_Function(mv$(fcn)) ) } );
 }
-void Impl::add_type(bool is_public, ::std::string name, TypeRef type)
+void Impl::add_type(bool is_public, bool is_specialisable, ::std::string name, TypeRef type)
 {
-    m_items.push_back( Named<Item>( mv$(name), Item::make_Type({TypeAlias(GenericParams(), mv$(type))}), is_public ) );
+    m_items.push_back( ImplItem { is_public, is_specialisable, mv$(name), box$( Item::make_Type(TypeAlias(GenericParams(), mv$(type))) ) } );
 }
-void Impl::add_static(bool is_public, ::std::string name, Static v)
+void Impl::add_static(bool is_public, bool is_specialisable, ::std::string name, Static v)
 {
-    m_items.push_back( Named<Item>( mv$(name), Item::make_Static({mv$(v)}), is_public ) );
+    m_items.push_back( ImplItem { is_public, is_specialisable, mv$(name), box$( Item::make_Static(mv$(v)) ) } );
 }
 
 bool Impl::has_named_item(const ::std::string& name) const
@@ -128,42 +128,14 @@ bool Impl::has_named_item(const ::std::string& name) const
     return false;
 }
 
-Impl& Impl::get_concrete(const ::std::vector<TypeRef>& param_types)
-{
-    if( param_types.size() > 0 )
-    { 
-        for( auto& i : m_concrete_impls )
-        {
-            if( i.first == param_types )
-            {
-                return i.second;
-            }
-        }
-        
-        m_concrete_impls.push_back( make_pair(param_types, this->make_concrete(param_types)) );
-        return m_concrete_impls.back().second;
-    }
-    else
-    {
-        return *this;
-    }
-}
-
-Impl Impl::make_concrete(const ::std::vector<TypeRef>& types) const
-{
-    throw ParseError::Todo("Impl::make_concrete");
-}
-
 ::std::ostream& operator<<(::std::ostream& os, const Impl& impl)
 {
     return os << impl.m_def;
 }
 SERIALISE_TYPE(Impl::, "AST_Impl", {
     s << m_def;
-    s << m_items;
 },{
     s.item(m_def);
-    s.item(m_items);
 })
 
 ::rust::option<char> ImplRef::find_named_item(const ::std::string& name) const

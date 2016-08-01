@@ -975,9 +975,9 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                 
                 for(const auto& item : impl.items())
                 {
-                    TU_MATCH_DEF(::AST::Item, (item.data), (e),
+                    TU_MATCH_DEF(::AST::Item, (*item.data), (e),
                     (
-                        ERROR(item.data.span, E0000, "Unexpected item type in trait impl");
+                        ERROR(item.data->span, E0000, "Unexpected item type in trait impl");
                         ),
                     // TODO: Associated constants
                     (Type,
@@ -1009,9 +1009,9 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
             
             for(const auto& item : impl.items())
             {
-                TU_MATCH_DEF(::AST::Item, (item.data), (e),
+                TU_MATCH_DEF(::AST::Item, (*item.data), (e),
                 (
-                    ERROR(item.data.span, E0000, "Unexpected item type in inherent impl");
+                    ERROR(item.data->span, E0000, "Unexpected item type in inherent impl");
                     ),
                 (Function,
                     methods.insert( ::std::make_pair(item.name,  LowerHIR_Function(e)) );

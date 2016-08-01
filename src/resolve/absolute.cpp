@@ -1280,6 +1280,60 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
     }
 }
 
+void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Impl::ImplItem >& items)
+{
+    TRACE_FUNCTION_F("");
+    for(auto& i : items)
+    {
+        TU_MATCH(AST::Item, (*i.data), (e),
+        (None, ),
+        (Module, BUG(i.data->span, "Resolve_Absolute_ImplItems - Module");),
+        (Crate , BUG(i.data->span, "Resolve_Absolute_ImplItems - Crate");),
+        (Enum  , BUG(i.data->span, "Resolve_Absolute_ImplItems - Enum");),
+        (Trait , BUG(i.data->span, "Resolve_Absolute_ImplItems - Trait");),
+        (Struct, BUG(i.data->span, "Resolve_Absolute_ImplItems - Struct");),
+        (Type,
+            DEBUG("Type - " << i.name);
+            assert( e.params().ty_params().size() == 0 );
+            assert( e.params().lft_params().size() == 0 );
+            item_context.push( e.params(), GenericSlot::Level::Method, true );
+            Resolve_Absolute_Generic(item_context,  e.params());
+            
+            Resolve_Absolute_Type( item_context, e.type() );
+            
+            item_context.pop( e.params(), true );
+            ),
+        (Function,
+            DEBUG("Function - " << i.name);
+            item_context.push( e.params(), GenericSlot::Level::Method );
+            Resolve_Absolute_Generic(item_context,  e.params());
+            
+            Resolve_Absolute_Type( item_context, e.rettype() );
+            for(auto& arg : e.args())
+                Resolve_Absolute_Type( item_context, arg.second );
+            
+            {
+                auto _h = item_context.enter_rootblock();
+                item_context.push_block();
+                for(auto& arg : e.args()) {
+                    Resolve_Absolute_Pattern( item_context, false, arg.first );
+                }
+                
+                Resolve_Absolute_Expr( item_context, e.code() );
+                
+                item_context.pop_block();
+            }
+            
+            item_context.pop( e.params() );
+            ),
+        (Static,
+            DEBUG("Static - " << i.name);
+            TODO(i.data->span, "Resolve_Absolute_ImplItems - Static");
+            )
+        )
+    }
+}
+
 void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod) {
     Resolve_Absolute_Mod( Context { crate, mod }, mod );
 }

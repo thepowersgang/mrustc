@@ -682,7 +682,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         inc_indent();
         for( const auto& it : i.items() )
         {
-            TU_MATCH_DEF(AST::Item, (it.data), (e),
+            TU_MATCH_DEF(AST::Item, (*it.data), (e),
             (
                 throw ::std::runtime_error("Unexpected item type in impl block");
                 ),

@@ -407,15 +407,24 @@ public:
 class Impl:
     public Serialisable
 {
+public:
+    struct ImplItem {
+        bool    is_pub; // Ignored for trait impls
+        bool    is_specialisable;
+        ::std::string   name;
+        
+        ::std::unique_ptr<Item> data;
+    };
+
+private:
     ImplDef m_def;
     Span    m_span;
     
-    NamedList<Item>   m_items;
+    ::std::vector< ImplItem >   m_items;
     //NamedList<TypeRef>   m_types;
     //NamedList<Function>  m_functions;
     //NamedList<Static>    m_statics;
     
-    ::std::vector< ::std::pair< ::std::vector<TypeRef>, Impl > > m_concrete_impls;
 public:
     ::std::vector<MacroInvocation>    m_macro_invocations;
     
@@ -426,30 +435,24 @@ public:
     {}
     Impl& operator=(Impl&&) = default;
 
-    void add_function(bool is_public, ::std::string name, Function fcn);
-    void add_type(bool is_public, ::std::string name, TypeRef type);
-    void add_static(bool is_public, ::std::string name, Static v);
+    void add_function(bool is_public, bool is_specialisable, ::std::string name, Function fcn);
+    void add_type(bool is_public, bool is_specialisable, ::std::string name, TypeRef type);
+    void add_static(bool is_public, bool is_specialisable, ::std::string name, Static v);
     void add_macro_invocation( MacroInvocation inv ) {
         m_macro_invocations.push_back( mv$(inv) );
     }
     
     const ImplDef& def() const { return m_def; }
-    const NamedList<Item>& items() const { return m_items; }
-
-    ImplDef& def() { return m_def; }
-    NamedList<Item>& items() { return m_items; }
+          ImplDef& def()       { return m_def; }
+    const ::std::vector<ImplItem>& items() const { return m_items; }
+          ::std::vector<ImplItem>& items()       { return m_items; }
     
     bool has_named_item(const ::std::string& name) const;
 
-    /// Obtain a concrete implementation based on the provided types (caches)
-    Impl& get_concrete(const ::std::vector<TypeRef>& param_types);
-    
     friend ::std::ostream& operator<<(::std::ostream& os, const Impl& impl);
     SERIALISABLE_PROTOTYPES();
     
 private:
-    /// Actually create a concrete impl
-    Impl make_concrete(const ::std::vector<TypeRef>& types) const;
 };
 
 struct UseStmt:

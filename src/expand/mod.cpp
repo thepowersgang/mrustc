@@ -768,16 +768,16 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
         DEBUG("> Items");
         for( auto& i : impl.items() )
         {
-            DEBUG("  - " << i.name << " :: " << i.data.attrs);
+            DEBUG("  - " << i.name << " :: " << i.data->attrs);
             
             // TODO: Make a path from the impl definition? Requires having the impl def resolved to be correct
             // - Does it? the namespace is essentially the same. There may be issues with wherever the path is used though
             //::AST::Path path = modpath + i.name;
             
-            auto attrs = mv$(i.data.attrs);
-            Expand_Attrs(attrs, stage_pre(is_early),  crate, AST::Path(), mod, i.data);
+            auto attrs = mv$(i.data->attrs);
+            Expand_Attrs(attrs, stage_pre(is_early),  crate, AST::Path(), mod, *i.data);
             
-            TU_MATCH_DEF(AST::Item, (i.data), (e),
+            TU_MATCH_DEF(AST::Item, (*i.data), (e),
             (
                 throw ::std::runtime_error("BUG: Unknown item type in impl block");
                 ),
@@ -798,9 +798,9 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
                 )
             )
             
-            Expand_Attrs(attrs, stage_post(is_early),  crate, AST::Path(), mod, i.data);
-            if( i.data.attrs.m_items.size() == 0 )
-                i.data.attrs = mv$(attrs);
+            Expand_Attrs(attrs, stage_post(is_early),  crate, AST::Path(), mod, *i.data);
+            if( i.data->attrs.m_items.size() == 0 )
+                i.data->attrs = mv$(attrs);
         }
 
         Expand_Attrs(impl.def().attrs(), stage_post(is_early),  crate, mod, impl.def());

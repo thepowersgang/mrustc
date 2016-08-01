@@ -162,7 +162,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     {
         for(auto& i : im.items())
         {
-            TU_MATCH_DEF( AST::Item, (i.data), (e),
+            TU_MATCH_DEF( AST::Item, (*i.data), (e),
             (
                 ),
             (Function,

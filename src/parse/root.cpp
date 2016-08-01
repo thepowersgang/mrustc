@@ -996,8 +996,6 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         is_specialisable = true;
         GET_TOK(tok, lex);
     }
-    // TODO: Mark specialisation
-    (void)is_specialisable;
     
     if(tok.type() == TOK_RWORD_UNSAFE) {
         item_attrs.push_back( AST::MetaItem("#UNSAFE") );
@@ -1011,7 +1009,7 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         ::std::string name = tok.str();
         GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-        impl.add_type(is_public, name, Parse_Type(lex));
+        impl.add_type(is_public, is_specialisable, name, Parse_Type(lex));
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
         break; }
     case TOK_RWORD_CONST:
@@ -1028,7 +1026,7 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
             
             auto i = ::AST::Static(AST::Static::CONST, mv$(ty), mv$(val));
             // TODO: Attributes on associated constants
-            impl.add_static( is_public, mv$(name),  mv$(i) /*, mv$(item_attrs)*/ );
+            impl.add_static( is_public, is_specialisable, mv$(name),  mv$(i) /*, mv$(item_attrs)*/ );
             break ;
         }
         else if( tok.type() == TOK_RWORD_UNSAFE )
@@ -1059,29 +1057,15 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         DEBUG("Function " << name);
         // - Self allowed, can't be prototype-form
         auto fcn = Parse_FunctionDefWithCode(lex, abi, item_attrs, true);
-        impl.add_function(is_public, ::std::move(name), mv$(fcn));
+        impl.add_function(is_public, is_specialisable, mv$(name), mv$(fcn));
         break; }
-    
-    case TOK_IDENT:
-        if( tok.str() == "default" ) {
-            // TODO: Mark `default` functions as default (i.e. specialisable)
-            GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            ::std::string name = tok.str();
-            // - Self allowed, can't be prototype-form
-            auto fcn = Parse_FunctionDefWithCode(lex, abi, item_attrs, true);
-            impl.add_function(is_public, ::std::move(name), mv$(fcn));
-        }
-        else {
-            throw ParseError::Unexpected(lex, tok);
-        }
-        break;
 
     default:
         throw ParseError::Unexpected(lex, tok);
     }
     
-    impl.items().back().data.span = lex.end_span(ps);
+    impl.items().back().data->span = lex.end_span(ps);
+    impl.items().back().data->attrs = mv$(item_attrs);    // Empty for functions
 }
 
 void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi, ::AST::MetaItems block_attrs)
