@@ -485,11 +485,13 @@ namespace {
             
             this->context.add_ivars( node.m_true->m_res_type );
             this->context.equate_types_coerce(node.span(), node.m_res_type,  node.m_true);
+            //this->context.equate_types(node.span(), node.m_res_type,  node.m_true->m_res_type);
             node.m_true->visit( *this );
             
             if( node.m_false ) {
                 this->context.add_ivars( node.m_false->m_res_type );
                 this->context.equate_types_coerce(node.span(), node.m_res_type,  node.m_false);
+                //this->context.equate_types(node.span(), node.m_res_type,  node.m_false->m_res_type);
                 node.m_false->visit( *this );
             }
             else {
@@ -2798,7 +2800,12 @@ namespace {
             // Borrows can have unsizing and deref coercions applied
             ),
         (Pointer,
-            // Pointers coerce from borrows and similar pointers
+            // Pointers coerce to similar pointers of higher restriction
+            if( e.type == ::HIR::BorrowType::Shared ) {
+                // *const is the bottom of the tree, it doesn't coerce to anything
+                context.equate_types(sp, ty,  node_ptr->m_res_type);
+                return true;
+            }
             ),
         (Function,
             // NOTE: Functions don't coerce (TODO: They could lose the origin marker?)
