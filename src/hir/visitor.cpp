@@ -8,7 +8,7 @@
 
 void ::HIR::Visitor::visit_crate(::HIR::Crate& crate)
 {
-    this->visit_module(::HIR::PathChain(""), crate.m_root_module );
+    this->visit_module(::HIR::ItemPath(), crate.m_root_module );
     
     for( auto& ty_impl : crate.m_type_impls )
     {
@@ -24,7 +24,7 @@ void ::HIR::Visitor::visit_crate(::HIR::Crate& crate)
     }
 }
 
-void ::HIR::Visitor::visit_module(::HIR::PathChain p, ::HIR::Module& mod)
+void ::HIR::Visitor::visit_module(::HIR::ItemPath p, ::HIR::Module& mod)
 {
     TRACE_FUNCTION;
     for( auto& named : mod.m_mod_items )
@@ -88,7 +88,7 @@ void ::HIR::Visitor::visit_module(::HIR::PathChain p, ::HIR::Module& mod)
 
 void ::HIR::Visitor::visit_type_impl(::HIR::TypeImpl& impl)
 {
-    ::HIR::PathChain    p { "#impl" };
+    ::HIR::ItemPath    p { impl.m_type };
     TRACE_FUNCTION_F("impl.m_type=" << impl.m_type);
     this->visit_params(impl.m_params);
     this->visit_type(impl.m_type);
@@ -100,7 +100,7 @@ void ::HIR::Visitor::visit_type_impl(::HIR::TypeImpl& impl)
 }
 void ::HIR::Visitor::visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl)
 {
-    ::HIR::PathChain    p { "#impl" };
+    ::HIR::ItemPath    p( impl.m_type, trait_path );
     TRACE_FUNCTION_F("trait_path=" << trait_path);
     this->visit_params(impl.m_params);
     // - HACK: Create a generic path to visit (so that proper checks are performed)
@@ -131,14 +131,17 @@ void ::HIR::Visitor::visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HI
     this->visit_type(impl.m_type);
 }
 
-void ::HIR::Visitor::visit_type_alias(::HIR::PathChain p, ::HIR::TypeAlias& item)
+void ::HIR::Visitor::visit_type_alias(::HIR::ItemPath p, ::HIR::TypeAlias& item)
 {
     this->visit_params(item.m_params);
     this->visit_type(item.m_type);
 }
-void ::HIR::Visitor::visit_trait(::HIR::PathChain p, ::HIR::Trait& item)
+void ::HIR::Visitor::visit_trait(::HIR::ItemPath p, ::HIR::Trait& item)
 {
+    ::HIR::SimplePath trait_sp = p.get_simple_path();
+    ItemPath    trait_ip(trait_sp);
     TRACE_FUNCTION;
+    
     this->visit_params(item.m_params);
     for(auto& par : item.m_parent_traits) {
         this->visit_trait_path(par);
@@ -150,24 +153,25 @@ void ::HIR::Visitor::visit_trait(::HIR::PathChain p, ::HIR::Trait& item)
         this->visit_type(i.second.m_default);
     }
     for(auto& i : item.m_values) {
+        auto item_path = ::HIR::ItemPath(trait_ip, i.first.c_str());
         TU_MATCH(::HIR::TraitValueItem, (i.second), (e),
         (None, ),
         (Constant,
             DEBUG("constant " << i.first);
-            this->visit_constant(p + i.first, e);
+            this->visit_constant(item_path, e);
             ),
         (Static,
             DEBUG("static " << i.first);
-            this->visit_static(p + i.first, e);
+            this->visit_static(item_path, e);
             ),
         (Function,
             DEBUG("method " << i.first);
-            this->visit_function(p + i.first, e);
+            this->visit_function(item_path, e);
             )
         )
     }
 }
-void ::HIR::Visitor::visit_struct(::HIR::PathChain p, ::HIR::Struct& item)
+void ::HIR::Visitor::visit_struct(::HIR::ItemPath p, ::HIR::Struct& item)
 {
     this->visit_params(item.m_params);
     TU_MATCH(::HIR::Struct::Data, (item.m_data), (e),
@@ -185,7 +189,7 @@ void ::HIR::Visitor::visit_struct(::HIR::PathChain p, ::HIR::Struct& item)
         )
     )
 }
-void ::HIR::Visitor::visit_enum(::HIR::PathChain p, ::HIR::Enum& item)
+void ::HIR::Visitor::visit_enum(::HIR::ItemPath p, ::HIR::Enum& item)
 {
     this->visit_params(item.m_params);
     for(auto& var : item.m_variants)
@@ -209,7 +213,7 @@ void ::HIR::Visitor::visit_enum(::HIR::PathChain p, ::HIR::Enum& item)
         )
     }
 }
-void ::HIR::Visitor::visit_function(::HIR::PathChain p, ::HIR::Function& item)
+void ::HIR::Visitor::visit_function(::HIR::ItemPath p, ::HIR::Function& item)
 {
     this->visit_params(item.m_params);
     for(auto& arg : item.m_args)
@@ -220,12 +224,12 @@ void ::HIR::Visitor::visit_function(::HIR::PathChain p, ::HIR::Function& item)
     this->visit_type(item.m_return);
     this->visit_expr(item.m_code);
 }
-void ::HIR::Visitor::visit_static(::HIR::PathChain p, ::HIR::Static& item)
+void ::HIR::Visitor::visit_static(::HIR::ItemPath p, ::HIR::Static& item)
 {
     this->visit_type(item.m_type);
     this->visit_expr(item.m_value);
 }
-void ::HIR::Visitor::visit_constant(::HIR::PathChain p, ::HIR::Constant& item)
+void ::HIR::Visitor::visit_constant(::HIR::ItemPath p, ::HIR::Constant& item)
 {
     this->visit_params(item.m_params);
     this->visit_type(item.m_type);

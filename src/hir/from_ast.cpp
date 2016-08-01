@@ -7,8 +7,8 @@
 #include "from_ast.hpp"
 #include "visitor.hpp"
 
-::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::SimplePath path, ::std::vector< ::HIR::SimplePath> traits = {});
-::HIR::Function LowerHIR_Function(const ::AST::Function& f);
+::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::ItemPath path, ::std::vector< ::HIR::SimplePath> traits = {});
+::HIR::Function LowerHIR_Function(::HIR::ItemPath path, const ::AST::Function& f);
 ::HIR::PathParams LowerHIR_PathParams(const Span& sp, const ::AST::PathParams& src_params, bool allow_assoc);
 ::HIR::TraitPath LowerHIR_TraitPath(const Span& sp, const ::AST::Path& path);
 
@@ -661,8 +661,9 @@ namespace {
     }
 }
 
-::HIR::Struct LowerHIR_Struct(const ::AST::Struct& ent)
+::HIR::Struct LowerHIR_Struct(::HIR::ItemPath path, const ::AST::Struct& ent)
 {
+    TRACE_FUNCTION_F(path);
     ::HIR::Struct::Data data;
     
     TU_MATCH(::AST::StructData, (ent.m_data), (e),
@@ -695,7 +696,7 @@ namespace {
         };
 }
 
-::HIR::Enum LowerHIR_Enum(const ::AST::Enum& f)
+::HIR::Enum LowerHIR_Enum(::HIR::ItemPath path, const ::AST::Enum& f)
 {
     ::std::vector< ::std::pair< ::std::string, ::HIR::Enum::Variant> >  variants;
     
@@ -734,6 +735,7 @@ namespace {
 }
 ::HIR::Trait LowerHIR_Trait(::HIR::SimplePath trait_path, const ::AST::Trait& f)
 {
+    TRACE_FUNCTION_F(trait_path);
     bool trait_reqires_sized = false;
     auto params = LowerHIR_GenericParams(f.params(), &trait_reqires_sized);
     
@@ -754,7 +756,7 @@ namespace {
         };
 
     {
-        auto this_trait = ::HIR::GenericPath( mv$(trait_path) );
+        auto this_trait = ::HIR::GenericPath( trait_path );
         unsigned int i = 0;
         for(const auto& arg : rv.m_params.m_types) {
             this_trait.m_params.m_types.push_back( ::HIR::TypeRef(arg.m_name, i) );
@@ -765,6 +767,9 @@ namespace {
     
     for(const auto& item : f.items())
     {
+        auto trait_ip = ::HIR::ItemPath(trait_path);
+        auto item_path = ::HIR::ItemPath( trait_ip, item.name.c_str() );
+        
         TU_MATCH_DEF(::AST::Item, (item.data), (i),
         (
             BUG(item.data.span, "Encountered unexpected item type in trait");
@@ -801,7 +806,7 @@ namespace {
                 }) );
             ),
         (Function,
-            rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Function( LowerHIR_Function(i) )) );
+            rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Function( LowerHIR_Function(item_path, i) )) );
             ),
         (Static,
             if( i.s_class() == ::AST::Static::CONST )
@@ -823,9 +828,9 @@ namespace {
     
     return rv;
 }
-::HIR::Function LowerHIR_Function(const ::AST::Function& f)
+::HIR::Function LowerHIR_Function(::HIR::ItemPath p, const ::AST::Function& f)
 {
-    DEBUG("");
+    DEBUG(p);
     ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef > >    args;
     for(const auto& arg : f.args())
         args.push_back( ::std::make_pair( LowerHIR_Pattern(arg.first), LowerHIR_Type(arg.second) ) );
@@ -847,7 +852,7 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
     mod.m_value_items.insert( ::std::make_pair( mv$(name), ::make_unique_ptr(::HIR::VisEnt< ::HIR::ValueItem> { is_pub, mv$(ti) }) ) );
 }
 
-::HIR::Module LowerHIR_Module(const ::AST::Module& ast_mod, ::HIR::SimplePath path, ::std::vector< ::HIR::SimplePath> traits)
+::HIR::Module LowerHIR_Module(const ::AST::Module& ast_mod, ::HIR::ItemPath path, ::std::vector< ::HIR::SimplePath> traits)
 {
     TRACE_FUNCTION_F("path = " << path);
     ::HIR::Module   mod { };
@@ -868,13 +873,13 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
     {
         auto& submod = *ast_mod.anon_mods()[i];
         ::std::string name = FMT("#" << i);
-        auto item_path = path + name;
-        _add_mod_ns_item( mod,  mv$(name), false, ::HIR::TypeItem::make_Module( LowerHIR_Module(submod, mv$(item_path), mod.m_traits) ) );
+        auto item_path = ::HIR::ItemPath(path, name.c_str());
+        _add_mod_ns_item( mod,  mv$(name), false, ::HIR::TypeItem::make_Module( LowerHIR_Module(submod, item_path, mod.m_traits) ) );
     }
 
     for( const auto& item : ast_mod.items() )
     {
-        auto item_path = path + item.name;
+        auto item_path = ::HIR::ItemPath(path, item.name.c_str());
         TU_MATCH(::AST::Item, (item.data), (e),
         (None,
             ),
@@ -892,20 +897,20 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             /// Add value reference
             TU_IFLET( ::AST::StructData, e.m_data, Struct, e2,
                 if( e2.ents.size() == 0 )
-                    _add_mod_val_item( mod,  item.name, item.is_pub, ::HIR::ValueItem::make_StructConstant({mv$(item_path)}) );
+                    _add_mod_val_item( mod,  item.name, item.is_pub, ::HIR::ValueItem::make_StructConstant({item_path.get_simple_path()}) );
                 else
-                    _add_mod_val_item( mod,  item.name, item.is_pub, ::HIR::ValueItem::make_StructConstructor({mv$(item_path)}) );
+                    _add_mod_val_item( mod,  item.name, item.is_pub, ::HIR::ValueItem::make_StructConstructor({item_path.get_simple_path()}) );
             )
-            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Struct(e) );
+            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Struct(item_path, e) );
             ),
         (Enum,
-            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Enum(e) );
+            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Enum(item_path, e) );
             ),
         (Trait,
-            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Trait(item_path, e) );
+            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Trait(item_path.get_simple_path(), e) );
             ),
         (Function,
-            _add_mod_val_item(mod, item.name, item.is_pub,  LowerHIR_Function(e));
+            _add_mod_val_item(mod, item.name, item.is_pub,  LowerHIR_Function(item_path, e));
             ),
         (Static,
             if( e.s_class() == ::AST::Static::CONST )
@@ -969,12 +974,15 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
             }
             else
             {
+                ::HIR::ItemPath    path(type, trait_name);
+                
                 ::std::map< ::std::string, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> > methods;
                 ::std::map< ::std::string, ::HIR::TraitImpl::ImplEnt< ::HIR::ExprPtr> > constants;
                 ::std::map< ::std::string, ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> > types;
                 
                 for(const auto& item : impl.items())
                 {
+                    ::HIR::ItemPath    item_path(path, item.name.c_str());
                     TU_MATCH_DEF(::AST::Item, (*item.data), (e),
                     (
                         ERROR(item.data->span, E0000, "Unexpected item type in trait impl");
@@ -984,7 +992,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                         types.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> { item.is_specialisable, LowerHIR_Type(e.type()) }) );
                         ),
                     (Function,
-                        methods.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { item.is_specialisable, LowerHIR_Function(e) }) );
+                        methods.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { item.is_specialisable, LowerHIR_Function(item_path, e) }) );
                         )
                     )
                 }
@@ -1005,16 +1013,18 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
         else
         {
             // Inherent impls
+            ::HIR::ItemPath    path(type);
             ::std::map< ::std::string, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> > methods;
             
             for(const auto& item : impl.items())
             {
+                ::HIR::ItemPath    item_path(path, item.name.c_str());
                 TU_MATCH_DEF(::AST::Item, (*item.data), (e),
                 (
                     ERROR(item.data->span, E0000, "Unexpected item type in inherent impl");
                     ),
                 (Function,
-                    methods.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> { item.is_pub, item.is_specialisable, LowerHIR_Function(e) } ) );
+                    methods.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> { item.is_pub, item.is_specialisable, LowerHIR_Function(item_path, e) } ) );
                     )
                 )
             }
@@ -1092,7 +1102,7 @@ public:
         //}
     }
     
-    rv.m_root_module = LowerHIR_Module( crate.m_root_module, ::HIR::SimplePath("") );
+    rv.m_root_module = LowerHIR_Module( crate.m_root_module, ::HIR::ItemPath() );
     
     LowerHIR_Module_Impls(crate.m_root_module,  rv);
     

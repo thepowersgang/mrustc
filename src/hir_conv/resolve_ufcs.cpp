@@ -20,7 +20,7 @@ namespace {
         
         StaticTraitResolve  m_resolve;
         const ::HIR::Trait* m_current_trait;
-        const ::HIR::PathChain* m_current_trait_path;
+        const ::HIR::ItemPath* m_current_trait_path;
         
     public:
         Visitor(const ::HIR::Crate& crate):
@@ -46,25 +46,25 @@ namespace {
             }
             return rv;
         }
-        void visit_module(::HIR::PathChain p, ::HIR::Module& mod) override
+        void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
         {
             auto _ = this->push_mod_traits( mod );
             ::HIR::Visitor::visit_module(p, mod);
         }
 
-        void visit_struct(::HIR::PathChain p, ::HIR::Struct& item) override {
+        void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override {
             auto _ = m_resolve.set_item_generics(item.m_params);
             ::HIR::Visitor::visit_struct(p, item);
         }
-        void visit_enum(::HIR::PathChain p, ::HIR::Enum& item) override {
+        void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
             auto _ = m_resolve.set_item_generics(item.m_params);
             ::HIR::Visitor::visit_enum(p, item);
         }
-        void visit_function(::HIR::PathChain p, ::HIR::Function& item) override {
+        void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override {
             auto _ = m_resolve.set_item_generics(item.m_params);
             ::HIR::Visitor::visit_function(p, item);
         }
-        void visit_trait(::HIR::PathChain p, ::HIR::Trait& trait) override {
+        void visit_trait(::HIR::ItemPath p, ::HIR::Trait& trait) override {
             m_current_trait = &trait;
             m_current_trait_path = &p;
             //auto _ = m_resolve.set_item_generics(trait.m_params);
@@ -283,7 +283,7 @@ namespace {
                     // If processing a trait, and the type is 'Self', search for the type/method on the trait
                     // - TODO: This could be encoded by a `Self: Trait` bound in the generics, but that may have knock-on issues?
                     if( te.name == "Self" && m_current_trait ) {
-                        auto trait_path = ::HIR::GenericPath( m_current_trait_path->to_path() );
+                        auto trait_path = ::HIR::GenericPath( m_current_trait_path->get_simple_path() );
                         for(unsigned int i = 0; i < m_current_trait->m_params.m_types.size(); i ++ ) {
                             trait_path.m_params.m_types.push_back( ::HIR::TypeRef(m_current_trait->m_params.m_types[i].m_name, i) );
                         }

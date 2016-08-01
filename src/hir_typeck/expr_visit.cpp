@@ -23,7 +23,7 @@ namespace {
         
     
     public:
-        void visit_module(::HIR::PathChain p, ::HIR::Module& mod) override
+        void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
         {
             m_ms.push_traits(mod);
             ::HIR::Visitor::visit_module(p, mod);
@@ -35,7 +35,7 @@ namespace {
             TODO(Span(), "visit_expr");
         }
 
-        void visit_trait(::HIR::PathChain p, ::HIR::Trait& item) override
+        void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
         {
             auto _ = this->m_ms.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_trait(p, item);
@@ -91,15 +91,19 @@ namespace {
         // ------
         // Code-containing items
         // ------
-        void visit_function(::HIR::PathChain p, ::HIR::Function& item) override {
+        void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override {
             auto _ = this->m_ms.set_item_generics(item.m_params);
             if( item.m_code )
             {
                 DEBUG("Function code " << p);
                 Typecheck_Code( m_ms, item.m_args, item.m_return, item.m_code );
             }
+            else
+            {
+                DEBUG("Function code " << p << " (none)");
+            }
         }
-        void visit_static(::HIR::PathChain p, ::HIR::Static& item) override {
+        void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override {
             //auto _ = this->m_ms.set_item_generics(item.m_params);
             if( item.m_value )
             {
@@ -108,7 +112,7 @@ namespace {
                 Typecheck_Code(m_ms, tmp, item.m_type, item.m_value);
             }
         }
-        void visit_constant(::HIR::PathChain p, ::HIR::Constant& item) override {
+        void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override {
             auto _ = this->m_ms.set_item_generics(item.m_params);
             if( item.m_value )
             {
@@ -117,7 +121,7 @@ namespace {
                 Typecheck_Code(m_ms, tmp, item.m_type, item.m_value);
             }
         }
-        void visit_enum(::HIR::PathChain p, ::HIR::Enum& item) override {
+        void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
             auto _ = this->m_ms.set_item_generics(item.m_params);
             
             // TODO: Use a different type depding on repr()

@@ -326,4 +326,74 @@ public:
     bool find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback) const;
 };
 
+class ItemPath
+{
+    const ItemPath* parent;
+    const ::HIR::TypeRef* ty;
+    const ::HIR::SimplePath* trait;
+    const char* name;
+    
+public:
+    ItemPath(): parent(nullptr), ty(nullptr), trait(nullptr), name(nullptr) {}
+    ItemPath(const ItemPath& p, const char* n):
+        parent(&p),
+        ty(nullptr), trait(nullptr),
+        name(n)
+    {}
+    ItemPath(const ::HIR::TypeRef& type):
+        parent(nullptr),
+        ty(&type),
+        trait(nullptr),
+        name(nullptr)
+    {}
+    ItemPath(const ::HIR::TypeRef& type, const ::HIR::SimplePath& path):
+        parent(nullptr),
+        ty(&type),
+        trait(&path),
+        name(nullptr)
+    {}
+    ItemPath(const ::HIR::SimplePath& path):
+        parent(nullptr),
+        ty(nullptr),
+        trait(&path),
+        name(nullptr)
+    {}
+    
+    ::HIR::SimplePath get_simple_path() const {
+        if( parent ) {
+            assert(name);
+            return parent->get_simple_path() + name;
+        }
+        else {
+            assert(!name);
+            return ::HIR::SimplePath();
+        }
+    }
+    
+    ItemPath operator+(const ::std::string& name) const {
+        return ItemPath(*this, name.c_str());
+    }
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const ItemPath& x) {
+        if( x.parent ) {
+            os << *x.parent;
+        }
+        if( x.name ) {
+            os << "::" << x.name;
+        }
+        else if( x.ty ) {
+            os << "<" << *x.ty;
+            if( x.trait )
+                os << " as " << *x.trait;
+            os << ">";
+        }
+        else if( x.trait ) {
+            os << "<* as " << *x.trait << ">";
+        }
+        else {
+        }
+        return os;
+    }
+};
+
 }   // namespace HIR
