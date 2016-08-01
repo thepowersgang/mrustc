@@ -818,7 +818,7 @@ namespace typeck {
                         if( impl_ptr )
                         {
                             assert(impl_ptr->m_types.count("Output") != 0);
-                            const auto& type = impl_ptr->m_types.at("Output");
+                            const ::HIR::TypeRef& type = impl_ptr->m_types.at("Output").data;
                             if( monomorphise_type_needed(type) ) {
                                 TODO(node.span(), "BinOp output = " << type);
                             }
@@ -1281,7 +1281,7 @@ namespace typeck {
                         auto it = impl.m_methods.find(e.item);
                         if( it == impl.m_methods.end() )
                             return false;
-                        fcn_ptr = &it->second;
+                        fcn_ptr = &it->second.data;
                         impl_ptr = &impl;
                         return true;
                     });
@@ -1702,7 +1702,7 @@ namespace typeck {
                         auto it = impl.m_methods.find(e.item);
                         if( it == impl.m_methods.end() )
                             return false;
-                        fcn_ptr = &it->second;
+                        fcn_ptr = &it->second.data;
                         impl_ptr = &impl;
                         return true;
                     });

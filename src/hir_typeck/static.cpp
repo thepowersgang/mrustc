@@ -682,7 +682,8 @@ bool ImplRef::type_is_specializable(const char* name) const
         auto it = e.impl->m_types.find(name);
         if( it == e.impl->m_types.end() )
             return ::HIR::TypeRef();
-        if( monomorphise_type_needed(it->second) ) {
+        const ::HIR::TypeRef& tpl_ty = it->second.data;
+        if( monomorphise_type_needed(tpl_ty) ) {
             auto cb_monomorph = [&](const auto& gt)->const auto& {
                 const auto& ge = gt.m_data.as_Generic();
                 assert(ge.binding < 256);
@@ -697,10 +698,10 @@ bool ImplRef::type_is_specializable(const char* name) const
                     BUG(Span(), "Param #" << ge.binding << " " << ge.name << " isn't constrained for " << *this);
                 }
                 };
-            return monomorphise_type_with(sp, it->second, cb_monomorph);
+            return monomorphise_type_with(sp, tpl_ty, cb_monomorph);
         }
         else {
-            return it->second.clone();
+            return tpl_ty.clone();
         }
         ),
     (BoundedPtr,

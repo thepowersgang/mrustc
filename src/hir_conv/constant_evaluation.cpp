@@ -127,7 +127,7 @@ namespace {
                     auto fit = impl.m_methods.find(e.item);
                     if( fit == impl.m_methods.end() )
                         continue ;
-                    return &fit->second;
+                    return &fit->second.data;
                     } break;
                 case EntType::Struct:
                     break;
@@ -364,7 +364,7 @@ namespace {
                 //    ERROR(node.span(), E0000, "Calling non-const function in const context - " << node.m_path);
                 //}
                 if( fcn.m_args.size() != node.m_args.size() ) {
-                    ERROR(node.span(), E0000, "Incorrect argument count for " << node.m_path);
+                    ERROR(node.span(), E0000, "Incorrect argument count for " << node.m_path << " - expected " << fcn.m_args.size() << ", got " << node.m_args.size());
                 }
                 for(unsigned int i = 0; i < fcn.m_args.size(); i ++ )
                 {

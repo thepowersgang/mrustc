@@ -232,7 +232,7 @@ namespace {
                     auto it = impl.m_methods.find(e.item);
                     if( it == impl.m_methods.end() )
                         return false;
-                    fcn_ptr = &it->second;
+                    fcn_ptr = &it->second.data;
                     impl_ptr = &impl;
                     return true;
                 });
@@ -1159,7 +1159,7 @@ namespace {
                         auto it = impl.m_methods.find(e.item);
                         if( it == impl.m_methods.end() )
                             return false;
-                        fcn_ptr = &it->second;
+                        fcn_ptr = &it->second.data;
                         impl_ptr = &impl;
                         return true;
                     });

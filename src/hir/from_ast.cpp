@@ -969,9 +969,9 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
             }
             else
             {
-                ::std::map< ::std::string, ::HIR::Function> methods;
-                ::std::map< ::std::string, ::HIR::ExprPtr> constants;
-                ::std::map< ::std::string, ::HIR::TypeRef> types;
+                ::std::map< ::std::string, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> > methods;
+                ::std::map< ::std::string, ::HIR::TraitImpl::ImplEnt< ::HIR::ExprPtr> > constants;
+                ::std::map< ::std::string, ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> > types;
                 
                 for(const auto& item : impl.items())
                 {
@@ -981,10 +981,10 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                         ),
                     // TODO: Associated constants
                     (Type,
-                        types.insert( ::std::make_pair(item.name,  LowerHIR_Type(e.type())) );
+                        types.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> { item.is_specialisable, LowerHIR_Type(e.type()) }) );
                         ),
                     (Function,
-                        methods.insert( ::std::make_pair(item.name,  LowerHIR_Function(e)) );
+                        methods.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { item.is_specialisable, LowerHIR_Function(e) }) );
                         )
                     )
                 }
@@ -1005,7 +1005,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
         else
         {
             // Inherent impls
-            ::std::map< ::std::string, ::HIR::Function> methods;
+            ::std::map< ::std::string, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> > methods;
             
             for(const auto& item : impl.items())
             {
@@ -1014,7 +1014,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                     ERROR(item.data->span, E0000, "Unexpected item type in inherent impl");
                     ),
                 (Function,
-                    methods.insert( ::std::make_pair(item.name,  LowerHIR_Function(e)) );
+                    methods.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> { item.is_pub, item.is_specialisable, LowerHIR_Function(e) } ) );
                     )
                 )
             }

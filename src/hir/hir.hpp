@@ -213,10 +213,17 @@ TAGGED_UNION(ValueItem, Import,
 class TypeImpl
 {
 public:
+    template<typename T>
+    struct VisImplEnt {
+        bool is_pub;
+        bool is_specialisable;
+        T   data;
+    };
+
     ::HIR::GenericParams    m_params;
     ::HIR::TypeRef  m_type;
     
-    ::std::map< ::std::string, ::HIR::Function> m_methods;
+    ::std::map< ::std::string, VisImplEnt< ::HIR::Function> > m_methods;
 
     ::HIR::SimplePath   m_src_module;
     
@@ -229,13 +236,19 @@ public:
 class TraitImpl
 {
 public:
+    template<typename T>
+    struct ImplEnt {
+        bool is_specialisable;
+        T   data;
+    };
+
     ::HIR::GenericParams    m_params;
     ::HIR::PathParams   m_trait_args;
     ::HIR::TypeRef  m_type;
     
-    ::std::map< ::std::string, ::HIR::Function> m_methods;
-    ::std::map< ::std::string, ::HIR::ExprPtr> m_constants;
-    ::std::map< ::std::string, ::HIR::TypeRef> m_types;
+    ::std::map< ::std::string, ImplEnt< ::HIR::Function> > m_methods;
+    ::std::map< ::std::string, ImplEnt< ::HIR::ExprPtr> > m_constants;
+    ::std::map< ::std::string, ImplEnt< ::HIR::TypeRef> > m_types;
     
     ::HIR::SimplePath   m_src_module;
     

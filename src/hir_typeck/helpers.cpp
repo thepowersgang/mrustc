@@ -1922,7 +1922,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             ::std::map< ::std::string, ::HIR::TypeRef>  types;
             for( const auto& aty : impl.m_types )
             {
-                types.insert( ::std::make_pair(aty.first,  this->expand_associated_types(sp, monomorphise_type_with(sp, aty.second, monomorph))) );
+                types.insert( ::std::make_pair(aty.first,  this->expand_associated_types(sp, monomorphise_type_with(sp, aty.second.data, monomorph))) );
             }
             // TODO: Ensure that there are no-longer any magic params
             
@@ -2161,7 +2161,8 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
                 auto it = impl.m_methods.find( method_name );
                 if( it == impl.m_methods.end() )
                     continue ;
-                if( it->second.m_args.size() > 0 && it->second.m_args[0].first.m_binding.m_name == "self" ) {
+                const ::HIR::Function&  fcn = it->second.data;
+                if( fcn.m_args.size() > 0 && fcn.m_args[0].first.m_binding.m_name == "self" ) {
                     DEBUG("Matching `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "`"/* << " - " << top_ty*/);
                     fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsInherent({
                         box$(ty.clone()),
