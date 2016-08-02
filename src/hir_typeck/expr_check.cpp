@@ -394,7 +394,7 @@ namespace {
             }
             check_types_equal(node.span(), node.m_res_type, node.m_arg_types.back());
             
-            // Don't bother checking the trait, if the cache is populated it was found
+            // Don't bother checking for a FnOnce impl, if the cache is populated it was found
             
             node.m_value->visit( *this );
             for( auto& val : node.m_args ) {
@@ -404,9 +404,11 @@ namespace {
         void visit(::HIR::ExprNode_CallMethod& node) override
         {
             ASSERT_BUG(node.span(), node.m_cache.m_arg_types.size() > 0, "CallMethod cache not populated");
+            ASSERT_BUG(node.span(), node.m_cache.m_arg_types.size() == 1 + node.m_args.size() + 1, "CallMethod cache mis-sized");
+            check_types_equal(node.m_cache.m_arg_types[0], node.m_value);
             for(unsigned int i = 0; i < node.m_args.size(); i ++)
             {
-                check_types_equal(node.span(), node.m_cache.m_arg_types[i], node.m_args[i]->m_res_type);
+                check_types_equal(node.m_cache.m_arg_types[1+i], node.m_args[i]);
             }
             check_types_equal(node.span(), node.m_res_type, node.m_cache.m_arg_types.back());
             

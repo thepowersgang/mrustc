@@ -1914,6 +1914,22 @@ namespace {
             ::HIR::ExprVisitorDef::visit(node);
         }
         
+        void visit(::HIR::ExprNode_CallPath& node) override {
+            for(auto& ty : node.m_cache.m_arg_types)
+                this->check_type_resolved_top(node.span(), ty);
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        void visit(::HIR::ExprNode_CallMethod& node) override {
+            for(auto& ty : node.m_cache.m_arg_types)
+                this->check_type_resolved_top(node.span(), ty);
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        void visit(::HIR::ExprNode_CallValue& node) override {
+            for(auto& ty : node.m_arg_types)
+                this->check_type_resolved_top(node.span(), ty);
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        
     private:
         void check_type_resolved_top(const Span& sp, ::HIR::TypeRef& ty) const {
             check_type_resolved(sp, ty, ty);
@@ -3519,7 +3535,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         context.dump();
         
         ExprVisitor_Apply   visitor { context.m_ivars };
-        root_ptr->visit( visitor );
+        visitor.visit_node_ptr( root_ptr );
     }
     expr = ::HIR::ExprPtr( mv$(root_ptr) );
 }
