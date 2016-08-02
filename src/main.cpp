@@ -178,6 +178,9 @@ int main(int argc, char *argv[])
         CompilePhaseV("Typecheck Expressions", [&]() {
             Typecheck_Expressions(*hir_crate);
             });
+        CompilePhaseV("Typecheck Expressions (validate)", [&]() {
+            Typecheck_Expressions_Validate(*hir_crate);
+            });
 
         if( params.last_stage == ProgramParams::STAGE_TYPECK ) {
             return 0;

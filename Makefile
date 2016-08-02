@@ -53,6 +53,7 @@ OBJ += hir_conv/expand_type.o hir_conv/constant_evaluation.o hir_conv/resolve_uf
 OBJ += hir_typeck/outer.o hir_typeck/expr_context.o hir_typeck/helpers.o hir_typeck/static.o
 OBJ += hir_typeck/expr_visit.o
 OBJ += hir_typeck/expr_simple.o hir_typeck/expr_cs.o
+OBJ += hir_typeck/expr_check.o
 
 PCHS := ast/ast.hpp
 

@@ -3,6 +3,10 @@
 #pragma once
 #include <memory>
 
+namespace MIR {
+class Function;
+}
+
 namespace HIR {
 
 class ExprNode;
