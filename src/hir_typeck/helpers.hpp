@@ -159,6 +159,8 @@ public:
     
     void prep_indexes();
     
+    ::HIR::Compare compare_pp(const Span& sp, const ::HIR::PathParams& left, const ::HIR::PathParams& right) const;
+    
     void compact_ivars(HMTypeInferrence& m_ivars);
     
     /// Check if a trait bound applies, using the passed function to expand Generic/Infer types

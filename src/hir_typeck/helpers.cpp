@@ -2,7 +2,6 @@
 #include "helpers.hpp"
 #include "expr_simple.hpp"
 
-
 bool monomorphise_type_needed(const ::HIR::TypeRef& tpl);
 
 bool monomorphise_pathparams_needed(const ::HIR::PathParams& tpl)
@@ -1032,6 +1031,18 @@ void TraitResolution::prep_indexes()
 }
 
 
+::HIR::Compare TraitResolution::compare_pp(const Span& sp, const ::HIR::PathParams& left, const ::HIR::PathParams& right) const
+{
+    ASSERT_BUG( sp, left.m_types.size() == right.m_types.size(), "Parameter count mismatch" );
+    ::HIR::Compare  ord = ::HIR::Compare::Equal;
+    for(unsigned int i = 0; i < left.m_types.size(); i ++) {
+        ord &= left.m_types[i].compare_with_placeholders(sp, right.m_types[i], this->m_ivars.callback_resolve_infer());
+        if( ord == ::HIR::Compare::Unequal )
+            return ord;
+    }
+    return ord;
+}
+
 // -------------------------------------------------------------------------------------------------------------------
 //
 // -------------------------------------------------------------------------------------------------------------------
@@ -1183,6 +1194,28 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), ::HIR::Compare::Equal );
         }
         // Continue
+    )
+    
+    // Trait objects automatically implement their own traits
+    // - IF object safe (TODO)
+    TU_IFLET(::HIR::TypeRef::Data, type.m_data, TraitObject, e,
+        if( trait == e.m_trait.m_path.m_path ) {
+            auto cmp = compare_pp(sp, e.m_trait.m_path.m_params, params);
+            if( cmp != ::HIR::Compare::Unequal ) {
+                return callback( ImplRef(&type, &e.m_trait.m_path.m_params, &e.m_trait.m_type_bounds), cmp );
+            }
+        }
+        // Markers too
+        for( const auto& mt : e.m_markers )
+        {
+            if( trait == mt.m_path ) {
+                auto cmp = compare_pp(sp, mt.m_params, params);
+                if( cmp != ::HIR::Compare::Unequal ) {
+                    static ::std::map< ::std::string, ::HIR::TypeRef>  types;
+                    return callback( ImplRef(&type, &mt.m_params, &types), cmp );
+                }
+            }
+        }
     )
     
     // 1. Search generic params
@@ -1684,18 +1717,6 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
 }
 bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const
 {
-    struct H {
-        static ::HIR::Compare compare_pp(const Span& sp, const TraitResolution& self, const ::HIR::PathParams& left, const ::HIR::PathParams& right) {
-            ASSERT_BUG( sp, left.m_types.size() == right.m_types.size(), "Parameter count mismatch" );
-            ::HIR::Compare  ord = ::HIR::Compare::Equal;
-            for(unsigned int i = 0; i < left.m_types.size(); i ++) {
-                ord &= left.m_types[i].compare_with_placeholders(sp, right.m_types[i], self.m_ivars.callback_resolve_infer());
-                if( ord == ::HIR::Compare::Unequal )
-                    return ord;
-            }
-            return ord;
-        } 
-    };
     const ::HIR::Path::Data::Data_UfcsKnown* assoc_info = nullptr;
     TU_IFLET(::HIR::TypeRef::Data, type.m_data, Path, e,
         TU_IFLET(::HIR::Path::Data, e.path.m_data, UfcsKnown, pe,
@@ -1715,7 +1736,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                 if( e.trait.m_path.m_path == trait ) {
                     // Check against `params`
                     DEBUG("Checking " << params << " vs " << b_params);
-                    auto ord = H::compare_pp(sp, *this, b_params, params);
+                    auto ord = this->compare_pp(sp, b_params, params);
                     if( ord == ::HIR::Compare::Unequal )
                         return false;
                     if( ord == ::HIR::Compare::Fuzzy ) {
@@ -1756,7 +1777,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
             // TODO: This just checks a single layer, but it's feasable that there could be multiple layers
             if( assoc_info && e.trait.m_path.m_path == assoc_info->trait.m_path && e.type == *assoc_info->type ) {
                 // Check the trait params
-                auto ord = H::compare_pp(sp, *this, b_params, assoc_info->trait.m_params);
+                auto ord = this->compare_pp(sp, b_params, assoc_info->trait.m_params);
                 if( ord == ::HIR::Compare::Fuzzy ) {
                     TODO(sp, "Handle fuzzy matches searching for associated type bounds");
                 }
@@ -1766,7 +1787,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                 for(const auto& bound : at.m_trait_bounds) {
                     if( bound.m_path.m_path == trait ) {
                         DEBUG("- Found an associated type impl");
-                        auto ord = H::compare_pp(sp, *this, b_params, params);
+                        auto ord = this->compare_pp(sp, b_params, params);
                         if( ord == ::HIR::Compare::Unequal )
                             return false;
                         if( ord == ::HIR::Compare::Fuzzy ) {
