@@ -1464,6 +1464,7 @@ namespace {
             (Infer,
                 // Can't know anything
                 //this->m_completed = true;
+                DEBUG("- Target type is still _");
                 ),
             (Diverge,
                 BUG(sp, "");
@@ -1535,6 +1536,7 @@ namespace {
                     ),
                 (Pointer,
                     // Allow with no link?
+                    this->m_completed = true;
                     )
                 )
                 ),
@@ -1743,7 +1745,7 @@ namespace {
         void visit(::HIR::ExprNode_CallMethod& node) override {
             const auto& ty = this->context.get_type(node.m_value->m_res_type);
             //const auto ty = this->context.m_resolve.expand_associated_types(node.span(), this->context.get_type(node.m_value->m_res_type).clone());
-            TRACE_FUNCTION_F("(CallMethod) {" << this->context.m_ivars.fmt_type(ty) << "}." << node.m_method);
+            TRACE_FUNCTION_F("(CallMethod) {" << this->context.m_ivars.fmt_type(ty) << "}." << node.m_method << node.m_params);
             
             // Make sure that no mentioned types are inferred until this method is known
             this->context.equate_types_shadow(node.span(), node.m_res_type);
@@ -1757,7 +1759,6 @@ namespace {
             if( deref_count != ~0u )
             {
                 DEBUG("- deref_count = " << deref_count << ", fcn_path = " << fcn_path);
-                visit_call_populate_cache(this->context, node.span(), fcn_path, node.m_cache);
                 
                 node.m_method_path = mv$(fcn_path);
                 // NOTE: Steals the params from the node
@@ -1768,11 +1769,15 @@ namespace {
                     ),
                 (UfcsKnown,
                     e.params = mv$(node.m_params);
+                    //fix_param_count(sp, this->context, node.m_method_path, fcn.m_params, e.params);
                     ),
                 (UfcsInherent,
                     e.params = mv$(node.m_params);
+                    //fix_param_count(sp, this->context, node.m_method_path, fcn.m_params, e.params);
                     )
                 )
+                visit_call_populate_cache(this->context, node.span(), node.m_method_path, node.m_cache);
+                DEBUG("> m_method_path = " << node.m_method_path);
                 
                 assert( node.m_cache.m_arg_types.size() >= 1);
                 
@@ -2758,12 +2763,14 @@ namespace {
                 return true;
             }
             context.possible_equate_type_to(r_e.index, ty_dst);
+            DEBUG("- Infer, add possibility");
             return false;
         )
         
         TU_IFLET(::HIR::TypeRef::Data, ty_dst.m_data, Infer, l_e,
             if( l_e.ty_class == ::HIR::InferClass::None ) {
                 context.possible_equate_type_from(l_e.index, ty_src);
+                DEBUG("- Infer, add possibility");
                 return false;
             }
             // - Otherwise, it could be a deref?
@@ -2877,6 +2884,28 @@ namespace {
         // - If `right`: ::core::marker::Unsize<`left`>
         // - If left can be dereferenced to right
         // - If left is a slice, right can unsize/deref (Defunct?)
+        TU_MATCH_DEF(::HIR::TypeRef::Data, (ty_dst.m_data), (e),
+        (
+            ),
+        (TraitObject,
+            const auto& trait = e.m_trait.m_path;
+            // Check for trait impl
+            bool found = context.m_resolve.find_trait_impls(sp, trait.m_path, trait.m_params, ty_src, [&](auto impl, auto cmp) {
+                DEBUG("TraitObject coerce from - cmp="<<cmp<<", " << impl);
+                return cmp == ::HIR::Compare::Equal;
+                });
+            if( found ) {
+                // TODO: Add CoerceUnsized
+                context.m_ivars.mark_change();
+                return true;
+            }
+            if( !ty_src.m_data.is_Infer() ) {
+                // TODO: Error
+            }
+            return false;
+            )
+        )
+        
         TU_MATCH_DEF(::HIR::TypeRef::Data, (ty_src.m_data), (e),
         (
             ),
@@ -2891,6 +2920,7 @@ namespace {
         //    return true;
             )
         )
+        DEBUG("TODO - Borrow Coercion " << context.m_ivars.fmt_type(ty_dst) << " from " << context.m_ivars.fmt_type(ty_src));
         return false;
     }
     bool check_coerce(Context& context, const Context::Coercion& v) {
@@ -2988,6 +3018,7 @@ namespace {
             // - Later code can handle "only path" coercions
 
             context.possible_equate_type_from(l_e.index,  ty_r);
+            DEBUG("- Infer, add possibility");
             return false;
             ),
         (Diverge,
@@ -3066,6 +3097,7 @@ namespace {
                 }
                 
                 context.possible_equate_type_to(r_e.index, ty);
+                DEBUG("- Infer, add possibility");
                 return false;
             )
             // TODO: If the type is a UfcsKnown but contains ivars (i.e. would be destructured into an associated type rule)
@@ -3112,6 +3144,7 @@ namespace {
                 }
                 // Can't do much for now
                 context.possible_equate_type_to(r_e.index, ty);
+                DEBUG("- Infer, add possibility");
                 return false;
             )
             else {
@@ -3527,6 +3560,12 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         
         count ++;
         context.m_resolve.compact_ivars(context.m_ivars);
+    }
+    
+    if( context.has_rules() )
+    {
+        context.dump();
+        BUG(root_ptr->span(), "Spare rules left after typecheck stabilised");
     }
     
     // - Validate typeck

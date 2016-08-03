@@ -888,16 +888,16 @@ bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRe
         (UfcsKnown,
             if( lpe.item != rpe.item )
                 return false;
-            if( types_equal(*lpe.type, *rpe.type) )
+            if( ! types_equal(*lpe.type, *rpe.type) )
                 return false;
-            if( pathparams_equal(lpe.trait.m_params, rpe.trait.m_params) )
+            if( ! pathparams_equal(lpe.trait.m_params, rpe.trait.m_params) )
                 return false;
             return pathparams_equal(lpe.params, rpe.params);
             ),
         (UfcsInherent,
             if( lpe.item != rpe.item )
                 return false;
-            if( types_equal(*lpe.type, *rpe.type) )
+            if( ! types_equal(*lpe.type, *rpe.type) )
                 return false;
             return pathparams_equal(lpe.params, rpe.params);
             ),
