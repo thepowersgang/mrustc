@@ -29,7 +29,7 @@ struct Deriver
     virtual AST::Impl handle_item(Span sp, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const = 0;
     
     
-    AST::GenericParams get_params_with_bounds(const AST::GenericParams& p, const AST::Path& trait_path) const
+    AST::GenericParams get_params_with_bounds(const AST::GenericParams& p, const AST::Path& trait_path, ::std::vector<TypeRef> additional_bounded_types) const
     {
         AST::GenericParams  params = p;
         
@@ -48,29 +48,40 @@ struct Deriver
         
         // For each field type
         // - Locate used generic parameters in the type (and sub-types that directly use said parameter)
+        for(auto& ty : additional_bounded_types)
+        {
+            params.add_bound( ::AST::GenericBound::make_IsTrait({
+                mv$(ty), {}, trait_path
+                }) );
+        }
         
         return params;
     }
     
-    void add_field_bounds(AST::GenericParams& params, const AST::Path& trait_path, const AST::Struct& str) const
+    
+    ::std::vector<TypeRef> get_field_bounds(const AST::Struct& str) const
     {
+        ::std::vector<TypeRef>  ret;
         TU_MATCH(AST::StructData, (str.m_data), (e),
         (Struct,
             for( const auto& fld : e.ents )
             {
-                add_field_bound_from_ty(params, trait_path, fld.m_type);
+                add_field_bound_from_ty(str.params(), ret, fld.m_type);
             }
             ),
         (Tuple,
             for(const auto& ent : e.ents)
             {
-                add_field_bound_from_ty(params, trait_path, ent.m_type);
+                add_field_bound_from_ty(str.params(), ret, ent.m_type);
             }
             )
         )
+        return ret;
     }
-    void add_field_bounds(AST::GenericParams& params, const AST::Path& trait_path, const AST::Enum& enm) const
+    ::std::vector<TypeRef> get_field_bounds(const AST::Enum& enm) const
     {
+        ::std::vector<TypeRef>  ret;
+
         for(const auto& v : enm.variants())
         {
             TU_MATCH(::AST::EnumVariantData, (v.m_data), (e),
@@ -79,28 +90,31 @@ struct Deriver
             (Tuple,
                 for(const auto& ty : e.m_sub_types)
                 {
-                    add_field_bound_from_ty(params, trait_path, ty);
+                    add_field_bound_from_ty(enm.params(), ret, ty);
                 }
                 ),
             (Struct,
                 for( const auto& fld : e.m_fields )
                 {
-                    add_field_bound_from_ty(params, trait_path, fld.m_type);
+                    add_field_bound_from_ty(enm.params(), ret, fld.m_type);
                 }
                 )
             )
         }
+        
+        return ret;
     }
-    void add_field_bound_from_ty(AST::GenericParams& params, const AST::Path& trait_path, const TypeRef& ty) const
+    
+    void add_field_bound_from_ty(const AST::GenericParams& params, ::std::vector<TypeRef>& out_list, const TypeRef& ty) const
     {
         struct H {
-            static void visit_nodes(const Deriver& self, AST::GenericParams& params, const AST::Path& trait_path, const ::std::vector<AST::PathNode>& nodes) {
+            static void visit_nodes(const Deriver& self, const AST::GenericParams& params, ::std::vector<TypeRef>& out_list, const ::std::vector<AST::PathNode>& nodes) {
                 for(const auto& node : nodes) {
                     for(const auto& ty : node.args().m_types) {
-                        self.add_field_bound_from_ty(params, trait_path, ty);
+                        self.add_field_bound_from_ty(params, out_list, ty);
                     }
                     for(const auto& aty : node.args().m_assoc) {
-                        self.add_field_bound_from_ty(params, trait_path, aty.second);
+                        self.add_field_bound_from_ty(params, out_list, aty.second);
                     }
                 }
             }
@@ -125,17 +139,17 @@ struct Deriver
             ),
         (Tuple,
             for(const auto& sty : e.inner_types) {
-                add_field_bound_from_ty(params, trait_path, sty);
+                add_field_bound_from_ty(params, out_list, sty);
             }
             ),
         (Borrow,
-            add_field_bound_from_ty(params, trait_path, *e.inner);
+            add_field_bound_from_ty(params, out_list, *e.inner);
             ),
         (Pointer,
-            add_field_bound_from_ty(params, trait_path, *e.inner);
+            add_field_bound_from_ty(params, out_list, *e.inner);
             ),
         (Array,
-            add_field_bound_from_ty(params, trait_path, *e.inner);
+            add_field_bound_from_ty(params, out_list, *e.inner);
             ),
         (Generic,
             // Although this is what we're looking for, it's already handled.
@@ -153,10 +167,11 @@ struct Deriver
                 {
                     if( pe.nodes.front().name() == typ.name() )
                     {
-                        // TODO: What shoul happen now? Likely add a bound based on this type.
+                        add_field_bound(out_list, ty);
+                        break ;
                     }
                 }
-                H::visit_nodes(*this, params, trait_path, pe.nodes);
+                H::visit_nodes(*this, params, out_list, pe.nodes);
                 ),
             (Self,
                 ),
@@ -173,18 +188,16 @@ struct Deriver
             )
         )
     }
-    void add_field_bound(AST::GenericParams& params, const AST::Path& trait_path, const TypeRef& ty) const
+    void add_field_bound(::std::vector<TypeRef>& out_list, const TypeRef& type) const
     {
-        for( const auto& bound : params.bounds() )
+        for( const auto& ty : out_list )
         {
-            TU_IFLET(AST::GenericBound, (bound), IsTrait, (e),
-                if( e.type == ty && e.trait == trait_path ) {
-                    return ;
-                }
-            )
+            if( ty == type ) {
+                return ;
+            }
         }
 
-        // TODO: Add trait bound
+        out_list.push_back(type);
     }
 };
 
@@ -205,7 +218,7 @@ class Deriver_Debug:
     //    throw CompileError::Todo("derive(Debug) - _try");
     //}
     
-    AST::Impl make_ret(Span sp, const AST::GenericParams& p, const TypeRef& type, AST::ExprNodeP node) const
+    AST::Impl make_ret(Span sp, const AST::GenericParams& p, const TypeRef& type, ::std::vector<TypeRef> types_to_bound, AST::ExprNodeP node) const
     {
         const AST::Path    debug_trait = AST::Path("", { AST::PathNode("fmt", {}), AST::PathNode("Debug", {}) });
         const TypeRef  ret_type(sp, AST::Path("", {AST::PathNode("fmt",{}), AST::PathNode("Result",{})}) );
@@ -225,7 +238,7 @@ class Deriver_Debug:
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         
-        AST::GenericParams  params = get_params_with_bounds(p, debug_trait);
+        AST::GenericParams  params = get_params_with_bounds(p, debug_trait, mv$(types_to_bound));
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, debug_trait), type ) );
         rv.add_function(false, false, "fmt", mv$(fcn));
@@ -289,7 +302,7 @@ public:
             )
         )
         
-        return this->make_ret(sp, p, type, mv$(node));
+        return this->make_ret(sp, p, type, this->get_field_bounds(str), mv$(node));
     }
     AST::Impl handle_item(Span sp, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
     {
@@ -303,7 +316,7 @@ public:
             mv$(arms)
             );
         
-        return this->make_ret(sp, p, type, mv$(node));
+        return this->make_ret(sp, p, type, this->get_field_bounds(enm), mv$(node));
     }
 } g_derive_debug;
 
@@ -324,7 +337,7 @@ class Deriver_PartialEq:
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         
-        AST::GenericParams  params = get_params_with_bounds(p, trait_path);
+        AST::GenericParams  params = get_params_with_bounds(p, trait_path, {});
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         rv.add_function(false, false, "eq", mv$(fcn));
@@ -496,7 +509,7 @@ class Deriver_Eq:
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         
-        AST::GenericParams  params = get_params_with_bounds(p, trait_path);
+        AST::GenericParams  params = get_params_with_bounds(p, trait_path, {});
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         rv.add_function(false, false, "assert_receiver_is_total_eq", mv$(fcn));
@@ -632,7 +645,7 @@ class Deriver_Clone:
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         
-        AST::GenericParams  params = get_params_with_bounds(p, trait_path);
+        AST::GenericParams  params = get_params_with_bounds(p, trait_path, {});
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         rv.add_function(false, false, "clone", mv$(fcn));
