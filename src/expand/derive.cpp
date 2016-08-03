@@ -162,13 +162,16 @@ struct Deriver
             (Local,
                 ),
             (Relative,
-                // Check if the first node of a relative is a generic param.
-                for(const auto& typ : params.ty_params())
+                if( pe.nodes.size() > 1 )
                 {
-                    if( pe.nodes.front().name() == typ.name() )
+                    // Check if the first node of a relative is a generic param.
+                    for(const auto& typ : params.ty_params())
                     {
-                        add_field_bound(out_list, ty);
-                        break ;
+                        if( pe.nodes.front().name() == typ.name() )
+                        {
+                            add_field_bound(out_list, ty);
+                            break ;
+                        }
                     }
                 }
                 H::visit_nodes(*this, params, out_list, pe.nodes);
