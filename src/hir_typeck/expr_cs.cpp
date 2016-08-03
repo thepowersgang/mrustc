@@ -2741,6 +2741,8 @@ void fix_param_count(const Span& sp, Context& context, const ::HIR::GenericPath&
 namespace {
     void add_coerce_borrow(Context& context, ::HIR::ExprNodeP& node_ptr, const ::HIR::TypeRef& des_borrow_inner, ::std::function<void(::HIR::ExprNodeP& n)> cb)
     {
+        const auto& sp = node_ptr->span();
+        
         // Since this function operates on destructured &-ptrs, the dereferences have to be added behind a borrow
         ::HIR::ExprNodeP*   node_ptr_ptr = nullptr;
         // - If the pointed node is a borrow operation, add the dereferences within its value
@@ -2866,32 +2868,8 @@ namespace {
                     }
                 }
                 
-                // Since this function operates on destructured &-ptrs, the dereferences have to be added behind a borrow
-                ::HIR::ExprNodeP*   node_ptr_ptr = nullptr;
-                // - If the pointed node is a borrow operation, add the dereferences within its value
-                if( auto* p = dynamic_cast< ::HIR::ExprNode_UniOp*>(&*node_ptr) ) {
-                    if( p->m_op == ::HIR::ExprNode_UniOp::Op::Ref || p->m_op == ::HIR::ExprNode_UniOp::Op::RefMut ) {
-                        node_ptr_ptr = &p->m_value;
-                    }
-                }
-                // - Otherwise, create a new borrow operation and add the dereferences
-                if( !node_ptr_ptr ) {
-                    auto span = node_ptr->span();
-                    node_ptr_ptr = &node_ptr;
-                    ::HIR::ExprNode_UniOp::Op   op = ::HIR::ExprNode_UniOp::Op::Ref;
-                    auto borrow_type = context.m_ivars.get_type(node_ptr->m_res_type).m_data.as_Borrow().type;
-                    switch(borrow_type)
-                    {
-                    case ::HIR::BorrowType::Shared: op = ::HIR::ExprNode_UniOp::Op::Ref;    break;
-                    case ::HIR::BorrowType::Unique: op = ::HIR::ExprNode_UniOp::Op::RefMut; break;
-                    case ::HIR::BorrowType::Owned:  TODO(sp, "Move borrow autoderef");
-                    }
-                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_UniOp( mv$(span), op, mv$(node_ptr) ));
-                    node_ptr->m_res_type = ::HIR::TypeRef::new_borrow(borrow_type, types.back().clone());
-                }
-                
-                {
-                    auto& node_ptr = *node_ptr_ptr;
+                add_coerce_borrow(context, node_ptr, types.back(), [&](auto& node_ptr) {
+                    // node_ptr = node that yeilds ty_src
                     assert( count == types.size() );
                     for(unsigned int i = 0; i < types.size(); i ++ )
                     {
@@ -2902,7 +2880,7 @@ namespace {
                         node_ptr->m_res_type = mv$(ty);
                         context.m_ivars.get_type(node_ptr->m_res_type);
                     }
-                }
+                    });
                 
                 context.m_ivars.mark_change();
                 return true;
@@ -2910,7 +2888,6 @@ namespace {
             // Either ran out of deref, or hit a _
         }
         
-        // - If `right`: ::core::marker::Unsize<`left`>
         // - If left can be dereferenced to right
         // - If left is a slice, right can unsize/deref (Defunct?)
         TU_MATCH_DEF(::HIR::TypeRef::Data, (ty_dst.m_data), (e),
@@ -2974,14 +2951,23 @@ namespace {
         )
         
         // Search for Unsize
+        // - If `right`: ::core::marker::Unsize<`left`>
         {
-            const auto& lang_Unsize = context.m_resolve.m_crate.get_lang_item_path(sp, "unsize");
+            const auto& lang_Unsize = context.m_crate.get_lang_item_path(sp, "unsize");
             ::HIR::PathParams   pp;
             pp.m_types.push_back( ty_dst.clone() );
             bool found = context.m_resolve.find_trait_impls(sp, lang_Unsize, pp, ty_src, [&](auto impl, auto cmp) {
+                // TODO: Allow fuzzy match if only match
                 return cmp == ::HIR::Compare::Equal;
                 });
             if( found ) {
+                add_coerce_borrow(context, node_ptr, ty_dst, [&](auto& node_ptr) {
+                        auto span = node_ptr->span();
+                        auto ty = mv$(ty_dst.clone());
+                        node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), ty.clone() ));
+                        DEBUG("- Unsize " << &*node_ptr << " -> " << ty);
+                        node_ptr->m_res_type = mv$(ty);
+                    });
                 context.m_ivars.mark_change();
                 return true;
             }
