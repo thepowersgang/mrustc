@@ -26,6 +26,23 @@ struct Deriver
 {
     virtual AST::Impl handle_item(Span sp, const AST::GenericParams& params, const TypeRef& type, const AST::Struct& str) const = 0;
     virtual AST::Impl handle_item(Span sp, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const = 0;
+    
+    
+    AST::GenericParams get_params_with_bounds(const AST::GenericParams& p, const AST::Path& trait_path) const
+    {
+        AST::GenericParams  params = p;
+        
+        unsigned int i = 0;
+        for(const auto& arg : params.ty_params())
+        {
+            params.add_bound( ::AST::GenericBound::make_IsTrait({
+                TypeRef(arg.name(), i), {}, trait_path
+                }) );
+            i ++;
+        }
+        
+        return params;
+    }
 };
 
 /// 'Debug' derive handler
@@ -65,7 +82,9 @@ class Deriver_Debug:
             );
         fcn.set_code( NEWNODE(AST::ExprNode_Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         
-        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), p, make_spanned(sp, debug_trait), type ) );
+        AST::GenericParams  params = get_params_with_bounds(p, debug_trait);
+        
+        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, debug_trait), type ) );
         rv.add_function(false, false, "fmt", mv$(fcn));
         return mv$(rv);
     }
@@ -162,11 +181,7 @@ class Deriver_PartialEq:
             );
         fcn.set_code( NEWNODE(AST::ExprNode_Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         
-        AST::GenericParams  params = p;
-        for(const auto& typ : params.ty_params())
-        {
-            params.bounds().push_back( ::AST::GenericBound::make_IsTrait({ TypeRef(typ.name()), {}, trait_path }) );
-        }
+        AST::GenericParams  params = get_params_with_bounds(p, trait_path);
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         rv.add_function(false, false, "eq", mv$(fcn));
@@ -338,11 +353,7 @@ class Deriver_Eq:
             );
         fcn.set_code( NEWNODE(AST::ExprNode_Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         
-        AST::GenericParams  params = p;
-        for(const auto& typ : params.ty_params())
-        {
-            params.bounds().push_back( ::AST::GenericBound::make_IsTrait({ TypeRef(typ.name()), {}, trait_path }) );
-        }
+        AST::GenericParams  params = get_params_with_bounds(p, trait_path);
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         rv.add_function(false, false, "assert_receiver_is_total_eq", mv$(fcn));
@@ -478,11 +489,7 @@ class Deriver_Clone:
             );
         fcn.set_code( NEWNODE(AST::ExprNode_Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         
-        AST::GenericParams  params = p;
-        for(const auto& typ : params.ty_params())
-        {
-            params.bounds().push_back( ::AST::GenericBound::make_IsTrait({ TypeRef(typ.name()), {}, trait_path }) );
-        }
+        AST::GenericParams  params = get_params_with_bounds(p, trait_path);
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         rv.add_function(false, false, "clone", mv$(fcn));
