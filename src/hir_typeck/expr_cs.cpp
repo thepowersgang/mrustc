@@ -2788,6 +2788,23 @@ namespace {
             return true;
         }
         
+        if( ty_src.m_data.is_Infer() && ty_dst.m_data.is_Infer() ) {
+            const auto& r_e = ty_src.m_data.as_Infer();
+            const auto& l_e = ty_dst.m_data.as_Infer();
+            if( r_e.ty_class != ::HIR::InferClass::None ) {
+                context.equate_types(sp, ty_dst, ty_src);
+                return true;
+            }
+            if( l_e.ty_class != ::HIR::InferClass::None ) {
+                context.equate_types(sp, ty_dst, ty_src);
+                return true;
+            }
+            context.possible_equate_type_to(r_e.index, ty_dst);
+            context.possible_equate_type_from(l_e.index, ty_src);
+            DEBUG("- Infer, add possibility");
+            return false;
+        }
+        
         // If the source is '_', we can't know yet
         TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Infer, r_e,
             // - Except if it's known to be a primitive
@@ -3495,6 +3512,11 @@ namespace {
         }
         else {
             DEBUG("- IVar " << ty_l << " not concretely known {" << ivar_ent.types_from << "} and {" << ivar_ent.types_to << "}" );
+        }
+        
+        // TODO: Handle `let tmp = mem::replace(&mut self.mut_slice, &mut [])`
+        if( ivar_ent.types_to.size() == 0 ) {
+            // If all are of the same form, equate this ivar to that class (with a new ivar as the target)
         }
         
         ivar_ent.force_no = false;
