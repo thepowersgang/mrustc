@@ -2768,6 +2768,8 @@ namespace {
         }
         
         cb(*node_ptr_ptr);
+        
+        context.m_ivars.mark_change();
     }
     
     bool check_coerce_borrow(Context& context, const ::HIR::TypeRef& inner_l, const ::HIR::TypeRef& inner_r, ::HIR::ExprNodeP& node_ptr)
@@ -2882,7 +2884,6 @@ namespace {
                     }
                     });
                 
-                context.m_ivars.mark_change();
                 return true;
             }
             // Either ran out of deref, or hit a _
@@ -2924,13 +2925,12 @@ namespace {
             }
             
             // Add CoerceUnsized
-            //{
-            //    auto span = node_ptr->span();
-            //    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Deref( mv$(span), mv$(node_ptr) ));
-            //    DEBUG("- Deref " << &*node_ptr << " -> " << dst_type);
-            //    node_ptr->m_res_type = mv$(ty);
-            //}
-            context.m_ivars.mark_change();
+            add_coerce_borrow(context, node_ptr, ty_dst, [&](auto& node_ptr) {
+                auto span = node_ptr->span();
+                node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), ty_dst.clone() ));
+                DEBUG("- Deref " << &*node_ptr << " -> " << ty_dst);
+                node_ptr->m_res_type = ty_dst.clone();
+                });
             return true;
             )
         )
@@ -2968,7 +2968,6 @@ namespace {
                         DEBUG("- Unsize " << &*node_ptr << " -> " << ty);
                         node_ptr->m_res_type = mv$(ty);
                     });
-                context.m_ivars.mark_change();
                 return true;
             }
         }
