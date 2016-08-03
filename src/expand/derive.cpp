@@ -25,7 +25,7 @@ static inline AST::ExprNodeP mk_exprnodep(AST::ExprNode* en){ return AST::ExprNo
 /// Interface for derive handlers
 struct Deriver
 {
-    virtual AST::Impl handle_item(Span sp, const AST::GenericParams& params, const TypeRef& type, const AST::Struct& str) const = 0;
+    virtual AST::Impl handle_item(Span sp, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const = 0;
     virtual AST::Impl handle_item(Span sp, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const = 0;
     
     
@@ -50,6 +50,141 @@ struct Deriver
         // - Locate used generic parameters in the type (and sub-types that directly use said parameter)
         
         return params;
+    }
+    
+    void add_field_bounds(AST::GenericParams& params, const AST::Path& trait_path, const AST::Struct& str) const
+    {
+        TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Struct,
+            for( const auto& fld : e.ents )
+            {
+                add_field_bound_from_ty(params, trait_path, fld.m_type);
+            }
+            ),
+        (Tuple,
+            for(const auto& ent : e.ents)
+            {
+                add_field_bound_from_ty(params, trait_path, ent.m_type);
+            }
+            )
+        )
+    }
+    void add_field_bounds(AST::GenericParams& params, const AST::Path& trait_path, const AST::Enum& enm) const
+    {
+        for(const auto& v : enm.variants())
+        {
+            TU_MATCH(::AST::EnumVariantData, (v.m_data), (e),
+            (Value,
+                ),
+            (Tuple,
+                for(const auto& ty : e.m_sub_types)
+                {
+                    add_field_bound_from_ty(params, trait_path, ty);
+                }
+                ),
+            (Struct,
+                for( const auto& fld : e.m_fields )
+                {
+                    add_field_bound_from_ty(params, trait_path, fld.m_type);
+                }
+                )
+            )
+        }
+    }
+    void add_field_bound_from_ty(AST::GenericParams& params, const AST::Path& trait_path, const TypeRef& ty) const
+    {
+        struct H {
+            static void visit_nodes(const Deriver& self, AST::GenericParams& params, const AST::Path& trait_path, const ::std::vector<AST::PathNode>& nodes) {
+                for(const auto& node : nodes) {
+                    for(const auto& ty : node.args().m_types) {
+                        self.add_field_bound_from_ty(params, trait_path, ty);
+                    }
+                    for(const auto& aty : node.args().m_assoc) {
+                        self.add_field_bound_from_ty(params, trait_path, aty.second);
+                    }
+                }
+            }
+        };
+        // TODO: Locate type that is directly related to the type param.
+        TU_MATCH(TypeData, (ty.m_data), (e),
+        (None,
+            // Wat?
+            ),
+        (Any,
+            // Nope.
+            ),
+        (Unit,
+            ),
+        (Macro,
+            // not allowed
+            ),
+        (Primitive,
+            ),
+        (Function,
+            // TODO? Well... function types don't tend to depend on the trait?
+            ),
+        (Tuple,
+            for(const auto& sty : e.inner_types) {
+                add_field_bound_from_ty(params, trait_path, sty);
+            }
+            ),
+        (Borrow,
+            add_field_bound_from_ty(params, trait_path, *e.inner);
+            ),
+        (Pointer,
+            add_field_bound_from_ty(params, trait_path, *e.inner);
+            ),
+        (Array,
+            add_field_bound_from_ty(params, trait_path, *e.inner);
+            ),
+        (Generic,
+            // Although this is what we're looking for, it's already handled.
+            ),
+        (Path,
+            TU_MATCH(AST::Path::Class, (e.path.m_class), (pe),
+            (Invalid,
+                // wut.
+                ),
+            (Local,
+                ),
+            (Relative,
+                // Check if the first node of a relative is a generic param.
+                for(const auto& typ : params.ty_params())
+                {
+                    if( pe.nodes.front().name() == typ.name() )
+                    {
+                        // TODO: What shoul happen now? Likely add a bound based on this type.
+                    }
+                }
+                H::visit_nodes(*this, params, trait_path, pe.nodes);
+                ),
+            (Self,
+                ),
+            (Super,
+                ),
+            (Absolute,
+                ),
+            (UFCS,
+                )
+            )
+            ),
+        (TraitObject,
+            // TODO: Should this be recursed?
+            )
+        )
+    }
+    void add_field_bound(AST::GenericParams& params, const AST::Path& trait_path, const TypeRef& ty) const
+    {
+        for( const auto& bound : params.bounds() )
+        {
+            TU_IFLET(AST::GenericBound, (bound), IsTrait, (e),
+                if( e.type == ty && e.trait == trait_path ) {
+                    return ;
+                }
+            )
+        }
+
+        // TODO: Add trait bound
     }
 };
 
