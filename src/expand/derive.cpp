@@ -19,7 +19,8 @@ static inline ::std::vector<T> vec$(T v1, T v2) {
 }
 
 static inline AST::ExprNodeP mk_exprnodep(AST::ExprNode* en){ return AST::ExprNodeP(en); }
-#define NEWNODE(type, ...)  mk_exprnodep(new type(__VA_ARGS__))
+//#define NEWNODE(type, ...)  mk_exprnodep(new type(__VA_ARGS__))
+#define NEWNODE(type, ...)  mk_exprnodep(new AST::ExprNode_##type(__VA_ARGS__))
 
 /// Interface for derive handlers
 struct Deriver
@@ -32,6 +33,10 @@ struct Deriver
     {
         AST::GenericParams  params = p;
         
+        // TODO: Get bounds based on generic (or similar) types used within the type.
+        // - How would this code (that runs before resolve) know what's a generic and what's a local type?
+        // - Searches within the type for a Path that starts with that param.
+        
         unsigned int i = 0;
         for(const auto& arg : params.ty_params())
         {
@@ -40,6 +45,9 @@ struct Deriver
                 }) );
             i ++;
         }
+        
+        // For each field type
+        // - Locate used generic parameters in the type (and sub-types that directly use said parameter)
         
         return params;
     }
@@ -51,10 +59,10 @@ class Deriver_Debug:
 {
     //static AST::ExprNodeP _print_l(::std::string val)
     //{
-    //    return NEWNODE(AST::ExprNode_CallMethod,
-    //            NEWNODE(AST::ExprNode_NamedValue, AST::Path("f")),
+    //    return NEWNODE(CallMethod,
+    //            NEWNODE(NamedValue, AST::Path("f")),
     //            AST::PathNode("write_str",{}),
-    //            { NEWNODE(AST::ExprNode_String, mv$(val)) }
+    //            { NEWNODE(String, mv$(val)) }
     //            );
     //}
     //static AST::ExprNodeP _try(AST::ExprNodeP expr)
@@ -80,7 +88,7 @@ class Deriver_Debug:
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "f"), f_type )
                 )
             );
-        fcn.set_code( NEWNODE(AST::ExprNode_Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
+        fcn.set_code( NEWNODE(Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         
         AST::GenericParams  params = get_params_with_bounds(p, debug_trait);
         
@@ -100,49 +108,49 @@ public:
         AST::ExprNodeP  node;
         TU_MATCH(AST::StructData, (str.m_data), (e),
         (Struct,
-            node = NEWNODE(AST::ExprNode_NamedValue, AST::Path("f"));
-            node = NEWNODE(AST::ExprNode_CallMethod,
+            node = NEWNODE(NamedValue, AST::Path("f"));
+            node = NEWNODE(CallMethod,
                 mv$(node), AST::PathNode("debug_struct",{}),
-                vec$( NEWNODE(AST::ExprNode_String, name) )
+                vec$( NEWNODE(String, name) )
                 );
             for( const auto& fld : e.ents )
             {
-                node = NEWNODE(AST::ExprNode_CallMethod,
+                node = NEWNODE(CallMethod,
                     mv$(node), AST::PathNode("field",{}),
                     vec$(
-                        NEWNODE(AST::ExprNode_String, fld.m_name),
-                        NEWNODE(AST::ExprNode_UniOp, AST::ExprNode_UniOp::REF,
-                            NEWNODE(AST::ExprNode_Field,
-                                NEWNODE(AST::ExprNode_NamedValue, AST::Path("self")),
+                        NEWNODE(String, fld.m_name),
+                        NEWNODE(UniOp, AST::ExprNode_UniOp::REF,
+                            NEWNODE(Field,
+                                NEWNODE(NamedValue, AST::Path("self")),
                                 fld.m_name
                                 )
                             )
                     )
                     );
             }
-            node = NEWNODE(AST::ExprNode_CallMethod, mv$(node), AST::PathNode("finish",{}), {});
+            node = NEWNODE(CallMethod, mv$(node), AST::PathNode("finish",{}), {});
             ),
         (Tuple,
-            node = NEWNODE(AST::ExprNode_NamedValue, AST::Path("f"));
-            node = NEWNODE(AST::ExprNode_CallMethod,
+            node = NEWNODE(NamedValue, AST::Path("f"));
+            node = NEWNODE(CallMethod,
                 mv$(node), AST::PathNode("debug_tuple",{}),
-                vec$( NEWNODE(AST::ExprNode_String, name) )
+                vec$( NEWNODE(String, name) )
                 );
             for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
             {
-                node = NEWNODE(AST::ExprNode_CallMethod,
+                node = NEWNODE(CallMethod,
                     mv$(node), AST::PathNode("field",{}),
                     vec$(
-                        NEWNODE(AST::ExprNode_UniOp, AST::ExprNode_UniOp::REF,
-                            NEWNODE(AST::ExprNode_Field,
-                                NEWNODE(AST::ExprNode_NamedValue, AST::Path("self")),
+                        NEWNODE(UniOp, AST::ExprNode_UniOp::REF,
+                            NEWNODE(Field,
+                                NEWNODE(NamedValue, AST::Path("self")),
                                 FMT(idx)
                                 )
                             )
                         )
                     );
             }
-            node = NEWNODE(AST::ExprNode_CallMethod, mv$(node), AST::PathNode("finish",{}), {});
+            node = NEWNODE(CallMethod, mv$(node), AST::PathNode("finish",{}), {});
             )
         )
         
@@ -155,8 +163,8 @@ public:
         //{
             // TODO: Debug for enums
         //}
-        AST::ExprNodeP  node = NEWNODE(AST::ExprNode_Match,
-            NEWNODE(AST::ExprNode_NamedValue, AST::Path("self")),
+        AST::ExprNodeP  node = NEWNODE(Match,
+            NEWNODE(NamedValue, AST::Path("self")),
             mv$(arms)
             );
         
@@ -179,7 +187,7 @@ class Deriver_PartialEq:
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "v"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) )
                 )
             );
-        fcn.set_code( NEWNODE(AST::ExprNode_Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
+        fcn.set_code( NEWNODE(Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         
         AST::GenericParams  params = get_params_with_bounds(p, trait_path);
         
@@ -196,12 +204,12 @@ public:
         (Struct,
             for( const auto& fld : e.ents )
             {
-                nodes.push_back(NEWNODE(AST::ExprNode_If,
-                    NEWNODE(AST::ExprNode_BinOp, AST::ExprNode_BinOp::CMPNEQU,
-                        NEWNODE(AST::ExprNode_Field, NEWNODE(AST::ExprNode_NamedValue, AST::Path("self")), fld.m_name),
-                        NEWNODE(AST::ExprNode_Field, NEWNODE(AST::ExprNode_NamedValue, AST::Path("v")), fld.m_name)
+                nodes.push_back(NEWNODE(If,
+                    NEWNODE(BinOp, AST::ExprNode_BinOp::CMPNEQU,
+                        NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), fld.m_name),
+                        NEWNODE(Field, NEWNODE(NamedValue, AST::Path("v")), fld.m_name)
                         ),
-                    NEWNODE(AST::ExprNode_Flow, AST::ExprNode_Flow::RETURN, "", NEWNODE(AST::ExprNode_Bool, false)),
+                    NEWNODE(Flow, AST::ExprNode_Flow::RETURN, "", NEWNODE(Bool, false)),
                     nullptr
                     ));
             }
@@ -210,20 +218,20 @@ public:
             for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
             {
                 auto fld_name = FMT(idx);
-                nodes.push_back(NEWNODE(AST::ExprNode_If,
-                    NEWNODE(AST::ExprNode_BinOp, AST::ExprNode_BinOp::CMPNEQU,
-                        NEWNODE(AST::ExprNode_Field, NEWNODE(AST::ExprNode_NamedValue, AST::Path("self")), fld_name),
-                        NEWNODE(AST::ExprNode_Field, NEWNODE(AST::ExprNode_NamedValue, AST::Path("v")), fld_name)
+                nodes.push_back(NEWNODE(If,
+                    NEWNODE(BinOp, AST::ExprNode_BinOp::CMPNEQU,
+                        NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), fld_name),
+                        NEWNODE(Field, NEWNODE(NamedValue, AST::Path("v")), fld_name)
                         ),
-                    NEWNODE(AST::ExprNode_Flow, AST::ExprNode_Flow::RETURN, "", NEWNODE(AST::ExprNode_Bool, false)),
+                    NEWNODE(Flow, AST::ExprNode_Flow::RETURN, "", NEWNODE(Bool, false)),
                     nullptr
                     ));
             }
             )
         )
-        nodes.push_back( NEWNODE(AST::ExprNode_Bool, true) );
+        nodes.push_back( NEWNODE(Bool, true) );
         
-        return this->make_ret(sp, p, type, NEWNODE(AST::ExprNode_Block, mv$(nodes), nullptr));
+        return this->make_ret(sp, p, type, NEWNODE(Block, mv$(nodes), nullptr));
     }
     
     AST::Impl handle_item(Span sp, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
@@ -241,14 +249,14 @@ public:
             
             TU_MATCH(::AST::EnumVariantData, (v.m_data), (e),
             (Value,
-                code = NEWNODE(AST::ExprNode_Bool, true);
+                code = NEWNODE(Bool, true);
                 pat_a = AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(base_path + v.m_name));
                 pat_b = AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(base_path + v.m_name));
                 ),
             (Tuple,
                 if( e.m_sub_types.size() == 0 )
                 {
-                    code = NEWNODE(AST::ExprNode_Bool, true);
+                    code = NEWNODE(Bool, true);
                     pat_a = AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(base_path + v.m_name));
                     pat_b = AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(base_path + v.m_name));
                 }
@@ -264,20 +272,20 @@ public:
                         auto name_b = FMT("b" << idx);
                         pats_a.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_a) );
                         pats_b.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_b) );
-                        nodes.push_back(NEWNODE(AST::ExprNode_If,
-                            NEWNODE(AST::ExprNode_BinOp, AST::ExprNode_BinOp::CMPNEQU,
-                                NEWNODE(AST::ExprNode_NamedValue, AST::Path(name_a)),
-                                NEWNODE(AST::ExprNode_NamedValue, AST::Path(name_b))
+                        nodes.push_back(NEWNODE(If,
+                            NEWNODE(BinOp, AST::ExprNode_BinOp::CMPNEQU,
+                                NEWNODE(NamedValue, AST::Path(name_a)),
+                                NEWNODE(NamedValue, AST::Path(name_b))
                                 ),
-                            NEWNODE(AST::ExprNode_Flow, AST::ExprNode_Flow::RETURN, "", NEWNODE(AST::ExprNode_Bool, false)),
+                            NEWNODE(Flow, AST::ExprNode_Flow::RETURN, "", NEWNODE(Bool, false)),
                             nullptr
                             ));
                     }
                     
-                    nodes.push_back( NEWNODE(AST::ExprNode_Bool, true) );
+                    nodes.push_back( NEWNODE(Bool, true) );
                     pat_a = AST::Pattern(AST::Pattern::TagEnumVariant(), base_path + v.m_name, mv$(pats_a));
                     pat_b = AST::Pattern(AST::Pattern::TagEnumVariant(), base_path + v.m_name, mv$(pats_b));
-                    code = NEWNODE(AST::ExprNode_Block, mv$(nodes), nullptr);
+                    code = NEWNODE(Block, mv$(nodes), nullptr);
                 }
                 ),
             (Struct,
@@ -291,20 +299,20 @@ public:
                     auto name_b = FMT("b" << fld.m_name);
                     pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_a)) );
                     pats_b.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_b)) );
-                    nodes.push_back(NEWNODE(AST::ExprNode_If,
-                        NEWNODE(AST::ExprNode_BinOp, AST::ExprNode_BinOp::CMPNEQU,
-                            NEWNODE(AST::ExprNode_NamedValue, AST::Path(name_a)),
-                            NEWNODE(AST::ExprNode_NamedValue, AST::Path(name_b))
+                    nodes.push_back(NEWNODE(If,
+                        NEWNODE(BinOp, AST::ExprNode_BinOp::CMPNEQU,
+                            NEWNODE(NamedValue, AST::Path(name_a)),
+                            NEWNODE(NamedValue, AST::Path(name_b))
                             ),
-                        NEWNODE(AST::ExprNode_Flow, AST::ExprNode_Flow::RETURN, "", NEWNODE(AST::ExprNode_Bool, false)),
+                        NEWNODE(Flow, AST::ExprNode_Flow::RETURN, "", NEWNODE(Bool, false)),
                         nullptr
                         ));
                 }
                 
-                nodes.push_back( NEWNODE(AST::ExprNode_Bool, true) );
+                nodes.push_back( NEWNODE(Bool, true) );
                 pat_a = AST::Pattern(AST::Pattern::TagStruct(), base_path + v.m_name, mv$(pats_a), true);
                 pat_b = AST::Pattern(AST::Pattern::TagStruct(), base_path + v.m_name, mv$(pats_b), true);
-                code = NEWNODE(AST::ExprNode_Block, mv$(nodes), nullptr);
+                code = NEWNODE(Block, mv$(nodes), nullptr);
                 )
             )
             
@@ -324,10 +332,10 @@ public:
         }
 
         ::std::vector<AST::ExprNodeP>   vals;
-        vals.push_back( NEWNODE(AST::ExprNode_NamedValue, AST::Path("self")) );
-        vals.push_back( NEWNODE(AST::ExprNode_NamedValue, AST::Path("v")) );
-        return this->make_ret(sp, p, type, NEWNODE(AST::ExprNode_Match,
-            NEWNODE(AST::ExprNode_Tuple, mv$(vals)),
+        vals.push_back( NEWNODE(NamedValue, AST::Path("self")) );
+        vals.push_back( NEWNODE(NamedValue, AST::Path("v")) );
+        return this->make_ret(sp, p, type, NEWNODE(Match,
+            NEWNODE(Tuple, mv$(vals)),
             mv$(arms)
             ));
     }
@@ -351,7 +359,7 @@ class Deriver_Eq:
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) )
                 )
             );
-        fcn.set_code( NEWNODE(AST::ExprNode_Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
+        fcn.set_code( NEWNODE(Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         
         AST::GenericParams  params = get_params_with_bounds(p, trait_path);
         
@@ -360,13 +368,13 @@ class Deriver_Eq:
         return mv$(rv);
     }
     AST::ExprNodeP assert_is_eq(const AST::Path& method_path, AST::ExprNodeP val) const {
-        return NEWNODE(AST::ExprNode_CallPath,
+        return NEWNODE(CallPath,
             AST::Path(method_path),
-            vec$( NEWNODE(AST::ExprNode_UniOp, AST::ExprNode_UniOp::REF, mv$(val) ) )
+            vec$( NEWNODE(UniOp, AST::ExprNode_UniOp::REF, mv$(val) ) )
             );
     }
     AST::ExprNodeP field(const ::std::string& name) const {
-        return NEWNODE(AST::ExprNode_Field, NEWNODE(AST::ExprNode_NamedValue, AST::Path("self")), name);
+        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), name);
     }
     
 public:
@@ -390,7 +398,7 @@ public:
             )
         )
         
-        return this->make_ret(sp, p, type, NEWNODE(AST::ExprNode_Block, mv$(nodes), nullptr));
+        return this->make_ret(sp, p, type, NEWNODE(Block, mv$(nodes), nullptr));
     }
     
     AST::Impl handle_item(Span sp, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
@@ -408,13 +416,13 @@ public:
             
             TU_MATCH(::AST::EnumVariantData, (v.m_data), (e),
             (Value,
-                code = NEWNODE(AST::ExprNode_Block, {}, nullptr);
+                code = NEWNODE(Block, {}, nullptr);
                 pat_a = AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(base_path + v.m_name));
                 ),
             (Tuple,
                 if( e.m_sub_types.size() == 0 )
                 {
-                    code = NEWNODE(AST::ExprNode_Block, {}, nullptr);
+                    code = NEWNODE(Block, {}, nullptr);
                     pat_a = AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(base_path + v.m_name));
                 }
                 else
@@ -426,11 +434,11 @@ public:
                     {
                         auto name_a = FMT("a" << idx);
                         pats_a.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_a) );
-                        nodes.push_back( this->assert_is_eq(assert_method_path, NEWNODE(AST::ExprNode_NamedValue, AST::Path(name_a))) );
+                        nodes.push_back( this->assert_is_eq(assert_method_path, NEWNODE(NamedValue, AST::Path(name_a))) );
                     }
                     
                     pat_a = AST::Pattern(AST::Pattern::TagEnumVariant(), base_path + v.m_name, mv$(pats_a));
-                    code = NEWNODE(AST::ExprNode_Block, mv$(nodes), nullptr);
+                    code = NEWNODE(Block, mv$(nodes), nullptr);
                 }
                 ),
             (Struct,
@@ -441,11 +449,11 @@ public:
                 {
                     auto name_a = FMT("a" << fld.m_name);
                     pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_a)) );
-                    nodes.push_back( this->assert_is_eq(assert_method_path, NEWNODE(AST::ExprNode_NamedValue, AST::Path(name_a))) );
+                    nodes.push_back( this->assert_is_eq(assert_method_path, NEWNODE(NamedValue, AST::Path(name_a))) );
                 }
                 
                 pat_a = AST::Pattern(AST::Pattern::TagStruct(), base_path + v.m_name, mv$(pats_a), true);
-                code = NEWNODE(AST::ExprNode_Block, mv$(nodes), nullptr);
+                code = NEWNODE(Block, mv$(nodes), nullptr);
                 )
             )
             
@@ -459,8 +467,8 @@ public:
                 ));
         }
 
-        return this->make_ret(sp, p, type, NEWNODE(AST::ExprNode_Match,
-            NEWNODE(AST::ExprNode_NamedValue, AST::Path("self")),
+        return this->make_ret(sp, p, type, NEWNODE(Match,
+            NEWNODE(NamedValue, AST::Path("self")),
             mv$(arms)
             ));
     }
@@ -487,7 +495,7 @@ class Deriver_Clone:
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) )
                 )
             );
-        fcn.set_code( NEWNODE(AST::ExprNode_Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
+        fcn.set_code( NEWNODE(Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         
         AST::GenericParams  params = get_params_with_bounds(p, trait_path);
         
@@ -496,13 +504,13 @@ class Deriver_Clone:
         return mv$(rv);
     }
     AST::ExprNodeP clone_val(AST::ExprNodeP val) const {
-        return NEWNODE(AST::ExprNode_CallPath,
+        return NEWNODE(CallPath,
             this->get_method_path(),
-            vec$( NEWNODE(AST::ExprNode_UniOp, AST::ExprNode_UniOp::REF, mv$(val) ) )
+            vec$( NEWNODE(UniOp, AST::ExprNode_UniOp::REF, mv$(val) ) )
             );
     }
     AST::ExprNodeP field(const ::std::string& name) const {
-        return NEWNODE(AST::ExprNode_Field, NEWNODE(AST::ExprNode_NamedValue, AST::Path("self")), name);
+        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), name);
     }
     
 public:
@@ -518,12 +526,12 @@ public:
             {
                 vals.push_back( ::std::make_pair(fld.m_name, this->clone_val(this->field(fld.m_name)) ) );
             }
-            nodes.push_back( NEWNODE(AST::ExprNode_StructLiteral, ty_path, nullptr, mv$(vals)) );
+            nodes.push_back( NEWNODE(StructLiteral, ty_path, nullptr, mv$(vals)) );
             ),
         (Tuple,
             if( e.ents.size() == 0 )
             {
-                nodes.push_back( NEWNODE(AST::ExprNode_NamedValue, AST::Path(ty_path)) );
+                nodes.push_back( NEWNODE(NamedValue, AST::Path(ty_path)) );
             }
             else
             {
@@ -532,12 +540,12 @@ public:
                 {
                     vals.push_back( this->clone_val(this->field(FMT(idx))) );
                 }
-                nodes.push_back( NEWNODE(AST::ExprNode_CallPath, AST::Path(ty_path), mv$(vals)) );
+                nodes.push_back( NEWNODE(CallPath, AST::Path(ty_path), mv$(vals)) );
             }
             )
         )
         
-        return this->make_ret(sp, p, type, NEWNODE(AST::ExprNode_Block, mv$(nodes), nullptr));
+        return this->make_ret(sp, p, type, NEWNODE(Block, mv$(nodes), nullptr));
     }
     
     AST::Impl handle_item(Span sp, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
@@ -555,13 +563,13 @@ public:
             
             TU_MATCH(::AST::EnumVariantData, (v.m_data), (e),
             (Value,
-                code = NEWNODE(AST::ExprNode_NamedValue, base_path + v.m_name);
+                code = NEWNODE(NamedValue, base_path + v.m_name);
                 pat_a = AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(base_path + v.m_name));
                 ),
             (Tuple,
                 if( e.m_sub_types.size() == 0 )
                 {
-                    code = NEWNODE(AST::ExprNode_NamedValue, base_path + v.m_name);
+                    code = NEWNODE(NamedValue, base_path + v.m_name);
                     pat_a = AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(base_path + v.m_name));
                 }
                 else
@@ -573,11 +581,11 @@ public:
                     {
                         auto name_a = FMT("a" << idx);
                         pats_a.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_a) );
-                        nodes.push_back( this->clone_val(NEWNODE(AST::ExprNode_NamedValue, AST::Path(name_a))) );
+                        nodes.push_back( this->clone_val(NEWNODE(NamedValue, AST::Path(name_a))) );
                     }
                     
                     pat_a = AST::Pattern(AST::Pattern::TagEnumVariant(), base_path + v.m_name, mv$(pats_a));
-                    code = NEWNODE(AST::ExprNode_CallPath, base_path + v.m_name, mv$(nodes));
+                    code = NEWNODE(CallPath, base_path + v.m_name, mv$(nodes));
                 }
                 ),
             (Struct,
@@ -588,11 +596,11 @@ public:
                 {
                     auto name_a = FMT("a" << fld.m_name);
                     pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_a)) );
-                    vals.push_back( ::std::make_pair( fld.m_name, this->clone_val(NEWNODE(AST::ExprNode_NamedValue, AST::Path(name_a))) ) );
+                    vals.push_back( ::std::make_pair( fld.m_name, this->clone_val(NEWNODE(NamedValue, AST::Path(name_a))) ) );
                 }
                 
                 pat_a = AST::Pattern(AST::Pattern::TagStruct(), base_path + v.m_name, mv$(pats_a), true);
-                code = NEWNODE(AST::ExprNode_StructLiteral, base_path + v.m_name, nullptr, mv$(vals));
+                code = NEWNODE(StructLiteral, base_path + v.m_name, nullptr, mv$(vals));
                 )
             )
             
@@ -606,8 +614,8 @@ public:
                 ));
         }
 
-        return this->make_ret(sp, p, type, NEWNODE(AST::ExprNode_Match,
-            NEWNODE(AST::ExprNode_NamedValue, AST::Path("self")),
+        return this->make_ret(sp, p, type, NEWNODE(Match,
+            NEWNODE(NamedValue, AST::Path("self")),
             mv$(arms)
             ));
     }
