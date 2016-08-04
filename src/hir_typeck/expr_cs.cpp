@@ -2778,16 +2778,16 @@ namespace {
         
         const auto& ty_dst = context.m_ivars.get_type(inner_l);
         const auto& ty_src = context.m_ivars.get_type(inner_r);
-        // TODO: Various coercion types
-        // - Trait/Slice unsizing
-        // - Deref
-        // - Unsize?
 
         // If the types are already equal, no operation is required
         if( context.m_ivars.types_equal(ty_dst, ty_src) ) {
             return true;
         }
         
+        
+
+        // If either side (or both) are ivars, then coercion can't be known yet - but they could be equal
+        // TODO: Fix and deduplicate the following code for InferClass::Diverge
         if( ty_src.m_data.is_Infer() && ty_dst.m_data.is_Infer() ) {
             const auto& r_e = ty_src.m_data.as_Infer();
             const auto& l_e = ty_dst.m_data.as_Infer();
@@ -2823,10 +2823,10 @@ namespace {
                 DEBUG("- Infer, add possibility");
                 return false;
             }
-            // - Otherwise, it could be a deref?
+            // - Otherwise, it could be a deref to the same ivar? (TODO)
         )
         
-        // Fast hack for slices
+        // Fast hack for slices (avoids going via the Deref impl search)
         #if 0
         if( ty_src.m_data.is_Slice() && !ty_src.m_data.is_Slice() )
         {
@@ -2851,6 +2851,7 @@ namespace {
         #endif
         
         // Deref coercions
+        // - If right can be dereferenced to left
         {
             ::HIR::TypeRef  tmp_ty;
             const ::HIR::TypeRef*   out_ty = &ty_src;
@@ -2906,8 +2907,7 @@ namespace {
             // Either ran out of deref, or hit a _
         }
         
-        // - If left can be dereferenced to right
-        // - If left is a slice, right can unsize/deref (Defunct?)
+        // Desination coercions (Trait objects)
         TU_MATCH_DEF(::HIR::TypeRef::Data, (ty_dst.m_data), (e),
         (
             ),
@@ -3396,6 +3396,9 @@ namespace {
     
     void check_ivar_poss(Context& context, unsigned int i, Context::IVarPossible& ivar_ent)
     {
+        static Span _span;
+        const auto& sp = _span;
+        
         if( ivar_ent.types_to.size() == 0 && ivar_ent.types_from.size() == 0 ) {
             // No idea! (or unused)
             return ;
@@ -3481,6 +3484,76 @@ namespace {
             static bool equal_from(const Context& context, const ::HIR::TypeRef& a, const ::HIR::TypeRef& b) {
                 return context.m_ivars.types_equal(a, b);
             }
+            
+            static bool can_coerce_to(const Context& context, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src) {
+                if( dst.m_data.is_Infer() )
+                    return false;
+                if( src.m_data.is_Infer() )
+                    return false;
+                
+                if( dst.m_data.is_Borrow() && src.m_data.is_Borrow() ) {
+                    const auto& d_e = dst.m_data.as_Borrow();
+                    const auto& s_e = src.m_data.as_Borrow();
+                    
+                    // Higher = more specific (e.g. Unique > Shared)
+                    if( s_e.type < d_e.type ) {
+                        return false;
+                    }
+                    else if( s_e.type == d_e.type ) {
+                        // Check relationship
+                        // - 1. Deref chain.
+                        // - 2. Trait object?
+                    }
+                    else {
+                        return context.m_ivars.types_equal(*s_e.inner, *d_e.inner);
+                    }
+                }
+                return false;
+            }
+            
+            static const ::HIR::TypeRef* find_lowest_type(const Context& context, const ::std::vector< ::HIR::TypeRef>& list)
+            {
+                // 1. Locate types that cannot coerce to anything
+                // - &TraitObject and &[T] are the main pair
+                for(const auto& ty : list) {
+                    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Borrow, e,
+                        TU_MATCH_DEF(::HIR::TypeRef::Data, (e.inner->m_data), (e2),
+                        (
+                            ),
+                        (Slice,
+                            return &ty;
+                            ),
+                        (TraitObject,
+                            return &ty;
+                            )
+                        )
+                    )
+                }
+                
+                // 2. Search the list for a type that is a valid coercion target for all other types in the list
+                // - NOTE: Ivars return `false` nomatter what order
+                const auto* cur_type = &list[0];
+                for(const auto& ty : list) {
+                    // If ty can be coerced to the current type
+                    if( H::can_coerce_to(context, *cur_type, ty) ) {
+                        // - Keep current type
+                    }
+                    else if( H::can_coerce_to(context, ty, *cur_type) ) {
+                        cur_type = &ty;
+                    }
+                    else {
+                        // Error? Give up.
+                        cur_type = nullptr;
+                        break;
+                    }
+                }
+                if( cur_type ) {
+                    // TODO: Replace
+                    //return cur_type;
+                }
+                
+                return nullptr;
+            }
         };
         
         TRACE_FUNCTION_F(i);
@@ -3501,22 +3574,37 @@ namespace {
             const ::HIR::TypeRef& ty_r = ivar_ent.types_from[0];
             // Only one possibility
             DEBUG("- IVar " << ty_l << " = " << ty_r << " (from)");
-            context.equate_types(Span(), ty_l, ty_r);
+            context.equate_types(sp, ty_l, ty_r);
         }
         else if( ivar_ent.types_to.size() == 1 ) {
             //const ::HIR::TypeRef& ty_r = *ivar_ent.types_to[0];
             const ::HIR::TypeRef& ty_r = ivar_ent.types_to[0];
             // Only one possibility
             DEBUG("- IVar " << ty_l << " = " << ty_r << " (to)");
-            context.equate_types(Span(), ty_l, ty_r);
+            context.equate_types(sp, ty_l, ty_r);
         }
         else {
             DEBUG("- IVar " << ty_l << " not concretely known {" << ivar_ent.types_from << "} and {" << ivar_ent.types_to << "}" );
-        }
-        
-        // TODO: Handle `let tmp = mem::replace(&mut self.mut_slice, &mut [])`
-        if( ivar_ent.types_to.size() == 0 ) {
-            // If all are of the same form, equate this ivar to that class (with a new ivar as the target)
+            
+            // If one side is completely unknown, pick the most liberal of the other side
+            if( ivar_ent.types_to.size() == 0 && ivar_ent.types_from.size() > 0 )
+            {
+                // Search for the lowest-level source type (e.g. &[T])
+                const auto* lowest_type = H::find_lowest_type(context, ivar_ent.types_from);
+                if( lowest_type )
+                {
+                    const ::HIR::TypeRef& ty_r = *lowest_type;
+                    DEBUG("- IVar " << ty_l << " = " << ty_r << " (from, lowest)");
+                    context.equate_types(sp, ty_l, ty_r);
+                }
+            }
+            else if( ivar_ent.types_to.size() > 0 && ivar_ent.types_from.size() == 0 )
+            {
+                // TODO: Get highest-level target type
+            }
+            else
+            {
+            }
         }
         
         ivar_ent.force_no = false;
