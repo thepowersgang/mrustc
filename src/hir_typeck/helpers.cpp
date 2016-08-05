@@ -1172,6 +1172,12 @@ bool TraitResolution::find_trait_impls(const Span& sp,
         if( trait == trait_fn || trait == trait_fn_mut || trait == trait_fn_once  ) {
             if( params.m_types.size() != 1 )
                 BUG(sp, "Fn* traits require a single tuple argument");
+            if( !params.m_types[0].m_data.is_Tuple() )
+                BUG(sp, "Fn* traits require a single tuple argument");
+            const auto& args_des = params.m_types[0].m_data.as_Tuple();
+            if( args_des.size() != e.m_arg_types.size() ) {
+                return false;
+            }
             
             // NOTE: unsafe or non-rust ABI functions aren't valid
             if( e.m_abi != "rust" || e.is_unsafe ) {
@@ -1180,18 +1186,20 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             }
             DEBUG("- Magic impl of Fn* for " << type);
             
+            auto cmp = ::HIR::Compare::Equal;
             ::std::vector< ::HIR::TypeRef>  args;
-            for(const auto& at : e.m_arg_types) {
+            for(unsigned int i = 0; i < e.m_arg_types.size(); i ++)
+            {
+                const auto& at = e.m_arg_types[i];
                 args.push_back( at.clone() );
+                cmp &= at.compare_with_placeholders(sp, args_des[i], this->m_ivars.callback_resolve_infer());
             }
             
-            // NOTE: This is a conditional "true", we know nothing about the move/mut-ness of this closure yet
-            // - Could we?
             ::HIR::PathParams   pp;
             pp.m_types.push_back( ::HIR::TypeRef(mv$(args)) );
             ::std::map< ::std::string, ::HIR::TypeRef>  types;
             types.insert( ::std::make_pair( "Output", e.m_rettype->clone() ) );
-            return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), ::HIR::Compare::Equal );
+            return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), cmp );
         }
         // Continue
     )
