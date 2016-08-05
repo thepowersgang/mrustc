@@ -3226,7 +3226,18 @@ namespace {
         (Pointer,
             // Pointers coerce from borrows and similar pointers
             TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Borrow, r_e,
+                if( r_e.type != l_e.type ) {
+                    ERROR(sp, E0000, "Type mismatch between " << ty_dst << " and " << ty_src << " - Mutability differs");
+                }
                 context.equate_types(sp, *l_e.inner, *r_e.inner);
+                
+                // Add downcast
+                auto span = node_ptr->span();
+                node_ptr->m_res_type = ty_src.clone();
+                node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), ty_dst.clone() ));
+                node_ptr->m_res_type = ty_dst.clone();
+                
+                context.m_ivars.mark_change();
                 return true;
             )
             else TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Pointer, r_e,
