@@ -1894,10 +1894,12 @@ namespace {
     class ExprVisitor_Apply:
         public ::HIR::ExprVisitorDef
     {
-        HMTypeInferrence& ivars;
+        const Context& context;
+        const HMTypeInferrence& ivars;
     public:
-        ExprVisitor_Apply(HMTypeInferrence& ivars):
-            ivars(ivars)
+        ExprVisitor_Apply(const Context& context):
+            context(context),
+            ivars(context.m_ivars)
         {
         }
         void visit_node_ptr(::HIR::ExprNodeP& node) override {
@@ -1938,6 +1940,11 @@ namespace {
     private:
         void check_type_resolved_top(const Span& sp, ::HIR::TypeRef& ty) const {
             check_type_resolved(sp, ty, ty);
+            ty = this->context.m_resolve.expand_associated_types(sp, mv$(ty));
+        }
+        void check_type_resolved_pp(const Span& sp, ::HIR::PathParams& pp, const ::HIR::TypeRef& top_type) const {
+            for(auto& ty : pp.m_types)
+                check_type_resolved(sp, ty, top_type);
         }
         void check_type_resolved(const Span& sp, ::HIR::TypeRef& ty, const ::HIR::TypeRef& top_type) const {
             TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
@@ -1957,12 +1964,32 @@ namespace {
                 // Leaf
                 ),
             (Path,
-                // TODO:
+                TU_MATCH(::HIR::Path::Data, (e.path.m_data), (pe),
+                (Generic,
+                    check_type_resolved_pp(sp, pe.m_params, top_type);
+                    ),
+                (UfcsInherent,
+                    check_type_resolved(sp, *pe.type, top_type);
+                    check_type_resolved_pp(sp, pe.params, top_type);
+                    ),
+                (UfcsKnown,
+                    check_type_resolved(sp, *pe.type, top_type);
+                    check_type_resolved_pp(sp, pe.trait.m_params, top_type);
+                    check_type_resolved_pp(sp, pe.params, top_type);
+                    ),
+                (UfcsUnknown,
+                    ERROR(sp, E0000, "UfcsUnknown " << ty << " left in " << top_type);
+                    )
+                )
                 ),
             (Generic,
-                // Leaf
+                // Leaf - no ivars
                 ),
             (TraitObject,
+                check_type_resolved_pp(sp, e.m_trait.m_path.m_params, top_type);
+                for(auto& marker : e.m_markers) {
+                    check_type_resolved_pp(sp, marker.m_params, top_type);
+                }
                 // TODO:
                 ),
             (Array,
@@ -3771,7 +3798,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         DEBUG("==== VALIDATE ==== (" << count << " rounds)");
         context.dump();
         
-        ExprVisitor_Apply   visitor { context.m_ivars };
+        ExprVisitor_Apply   visitor { context };
         visitor.visit_node_ptr( root_ptr );
     }
     expr = ::HIR::ExprPtr( mv$(root_ptr) );
