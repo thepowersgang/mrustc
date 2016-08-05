@@ -1797,7 +1797,6 @@ namespace {
                 
                 // TODO: Apply derefs!
                 
-                node.m_method_path = mv$(fcn_path);
                 this->m_completed = true;
             }
         }
@@ -1924,11 +1923,13 @@ namespace {
         void visit(::HIR::ExprNode_CallPath& node) override {
             for(auto& ty : node.m_cache.m_arg_types)
                 this->check_type_resolved_top(node.span(), ty);
+            this->check_type_resolved_path(node.span(), node.m_path);
             ::HIR::ExprVisitorDef::visit(node);
         }
         void visit(::HIR::ExprNode_CallMethod& node) override {
             for(auto& ty : node.m_cache.m_arg_types)
                 this->check_type_resolved_top(node.span(), ty);
+            this->check_type_resolved_path(node.span(), node.m_method_path);
             ::HIR::ExprVisitorDef::visit(node);
         }
         void visit(::HIR::ExprNode_CallValue& node) override {
@@ -1937,6 +1938,14 @@ namespace {
             ::HIR::ExprVisitorDef::visit(node);
         }
         
+        void visit(::HIR::ExprNode_PathValue& node) override {
+            this->check_type_resolved_path(node.span(), node.m_path);
+        }
+        void visit(::HIR::ExprNode_StructLiteral& node) override {
+            this->check_type_resolved_pp(node.span(), node.m_path.m_params, ::HIR::TypeRef());
+            
+            ::HIR::ExprVisitorDef::visit(node);
+        }
     private:
         void check_type_resolved_top(const Span& sp, ::HIR::TypeRef& ty) const {
             check_type_resolved(sp, ty, ty);
@@ -1945,6 +1954,30 @@ namespace {
         void check_type_resolved_pp(const Span& sp, ::HIR::PathParams& pp, const ::HIR::TypeRef& top_type) const {
             for(auto& ty : pp.m_types)
                 check_type_resolved(sp, ty, top_type);
+        }
+        void check_type_resolved_path(const Span& sp, ::HIR::Path& path) const {
+            //auto tmp = ::HIR::TypeRef(path.clone());
+            auto tmp = ::HIR::TypeRef();
+            check_type_resolved_path(sp, path, tmp);
+        }
+        void check_type_resolved_path(const Span& sp, ::HIR::Path& path, const ::HIR::TypeRef& top_type) const {
+            TU_MATCH(::HIR::Path::Data, (path.m_data), (pe),
+            (Generic,
+                check_type_resolved_pp(sp, pe.m_params, top_type);
+                ),
+            (UfcsInherent,
+                check_type_resolved(sp, *pe.type, top_type);
+                check_type_resolved_pp(sp, pe.params, top_type);
+                ),
+            (UfcsKnown,
+                check_type_resolved(sp, *pe.type, top_type);
+                check_type_resolved_pp(sp, pe.trait.m_params, top_type);
+                check_type_resolved_pp(sp, pe.params, top_type);
+                ),
+            (UfcsUnknown,
+                ERROR(sp, E0000, "UfcsUnknown " << path << " left in " << top_type);
+                )
+            )
         }
         void check_type_resolved(const Span& sp, ::HIR::TypeRef& ty, const ::HIR::TypeRef& top_type) const {
             TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
@@ -1964,23 +1997,7 @@ namespace {
                 // Leaf
                 ),
             (Path,
-                TU_MATCH(::HIR::Path::Data, (e.path.m_data), (pe),
-                (Generic,
-                    check_type_resolved_pp(sp, pe.m_params, top_type);
-                    ),
-                (UfcsInherent,
-                    check_type_resolved(sp, *pe.type, top_type);
-                    check_type_resolved_pp(sp, pe.params, top_type);
-                    ),
-                (UfcsKnown,
-                    check_type_resolved(sp, *pe.type, top_type);
-                    check_type_resolved_pp(sp, pe.trait.m_params, top_type);
-                    check_type_resolved_pp(sp, pe.params, top_type);
-                    ),
-                (UfcsUnknown,
-                    ERROR(sp, E0000, "UfcsUnknown " << ty << " left in " << top_type);
-                    )
-                )
+                check_type_resolved_path(sp, e.path, top_type);
                 ),
             (Generic,
                 // Leaf - no ivars
@@ -1990,7 +2007,6 @@ namespace {
                 for(auto& marker : e.m_markers) {
                     check_type_resolved_pp(sp, marker.m_params, top_type);
                 }
-                // TODO:
                 ),
             (Array,
                 this->check_type_resolved(sp, *e.inner, top_type);
