@@ -2767,6 +2767,10 @@ namespace {
             node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_UniOp( mv$(span), op, mv$(node_ptr) ));
             node_ptr->m_res_type = ::HIR::TypeRef::new_borrow(borrow_type, des_borrow_inner.clone());
         }
+        else {
+            auto borrow_type = context.m_ivars.get_type(node_ptr->m_res_type).m_data.as_Borrow().type;
+            node_ptr->m_res_type = ::HIR::TypeRef::new_borrow(borrow_type, des_borrow_inner.clone());
+        }
         
         cb(*node_ptr_ptr);
         
@@ -2947,7 +2951,7 @@ namespace {
             add_coerce_borrow(context, node_ptr, ty_dst, [&](auto& node_ptr) {
                 auto span = node_ptr->span();
                 node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), ty_dst.clone() ));
-                DEBUG("- Deref " << &*node_ptr << " -> " << ty_dst);
+                DEBUG("- Unsize " << &*node_ptr << " -> " << ty_dst);
                 node_ptr->m_res_type = ty_dst.clone();
                 });
             return true;
