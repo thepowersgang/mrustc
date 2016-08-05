@@ -1943,6 +1943,21 @@ namespace {
         }
         void visit(::HIR::ExprNode_StructLiteral& node) override {
             this->check_type_resolved_pp(node.span(), node.m_path.m_params, ::HIR::TypeRef());
+            for(auto& ty : node.m_value_types) {
+                if( ty != ::HIR::TypeRef() ) {
+                    this->check_type_resolved_top(node.span(), ty);
+                }
+            }
+            
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        void visit(::HIR::ExprNode_TupleVariant& node) override {
+            this->check_type_resolved_pp(node.span(), node.m_path.m_params, ::HIR::TypeRef());
+            for(auto& ty : node.m_arg_types) {
+                if( ty != ::HIR::TypeRef() ) {
+                    this->check_type_resolved_top(node.span(), ty);
+                }
+            }
             
             ::HIR::ExprVisitorDef::visit(node);
         }
