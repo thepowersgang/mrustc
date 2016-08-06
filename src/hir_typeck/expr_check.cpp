@@ -37,6 +37,7 @@ namespace {
         
         void visit(::HIR::ExprNode_Block& node) override
         {
+            TRACE_FUNCTION_F(&node << " { ... }");
             for(auto& n : node.m_nodes)
             {
                 n->visit(*this);
@@ -48,6 +49,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Return& node) override
         {
+            TRACE_FUNCTION_F(&node << " return ...");
             // TODO: Check against return type
             const auto& ret_ty = ( this->closure_ret_types.size() > 0 ? *this->closure_ret_types.back() : this->ret_type );
             check_types_equal(ret_ty, node.m_value);
@@ -55,13 +57,16 @@ namespace {
         }
         void visit(::HIR::ExprNode_Loop& node) override
         {
+            TRACE_FUNCTION_F(&node << " loop { ... }");
             node.m_code->visit(*this);
         }
         void visit(::HIR::ExprNode_LoopControl& node) override
         {
+            //TRACE_FUNCTION_F(&node << " " << (node.m_continue ? "continue" : "break") << " '" << node.m_label);
         }
         void visit(::HIR::ExprNode_Let& node) override
         {
+            TRACE_FUNCTION_F(&node << " let " << node.m_pattern << ": " << node.m_type);
             if(node.m_value)
             {
                 check_types_equal(node.span(), node.m_type, node.m_value->m_res_type);
@@ -70,6 +75,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Match& node) override
         {
+            TRACE_FUNCTION_F(&node << " match ...");
             node.m_value->visit(*this);
             for(auto& arm : node.m_arms)
             {
@@ -79,6 +85,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_If& node) override
         {
+            TRACE_FUNCTION_F(&node << " if ... { ... } else { ... }");
             node.m_cond->visit( *this );
             check_types_equal(node.span(), node.m_res_type, node.m_true->m_res_type);
             if( node.m_false )
@@ -88,6 +95,8 @@ namespace {
         }
         void visit(::HIR::ExprNode_Assign& node) override
         {
+            TRACE_FUNCTION_F(&node << "... ?= ...");
+            
             if( node.m_op == ::HIR::ExprNode_Assign::Op::None ) {
                 check_types_equal(node.span(), node.m_slot->m_res_type, node.m_value->m_res_type);
             }
@@ -120,6 +129,8 @@ namespace {
         }
         void visit(::HIR::ExprNode_BinOp& node) override
         {
+            TRACE_FUNCTION_F(&node << "... "<<::HIR::ExprNode_BinOp::opname(node.m_op)<<" ...");
+            
             switch(node.m_op)
             {
             case ::HIR::ExprNode_BinOp::Op::CmpEqu:
@@ -190,6 +201,7 @@ namespace {
         
         void visit(::HIR::ExprNode_UniOp& node) override
         {
+            TRACE_FUNCTION_F(&node << " " << ::HIR::ExprNode_UniOp::opname(node.m_op) << "...");
             switch(node.m_op)
             {
             case ::HIR::ExprNode_UniOp::Op::Ref:
@@ -209,6 +221,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Index& node) override
         {
+            TRACE_FUNCTION_F(&node << " ... [ ... ]");
             check_associated_type(node.span(),
                 node.m_res_type,
                 this->get_lang_item_path(node.span(), "index"), ::make_vec1(node.m_index->m_res_type.clone()), node.m_value->m_res_type, "Target"
@@ -220,12 +233,14 @@ namespace {
         
         void visit(::HIR::ExprNode_Cast& node) override
         {
+            TRACE_FUNCTION_F(&node << " ... as " << node.m_res_type);
             // TODO: Check castability
             
             node.m_value->visit( *this );
         }
         void visit(::HIR::ExprNode_Unsize& node) override
         {
+            TRACE_FUNCTION_F(&node << " ... : " << node.m_res_type);
             const Span& sp = node.span();
             
             // TODO: Check unsizability
@@ -243,6 +258,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Deref& node) override
         {
+            TRACE_FUNCTION_F(&node << " *...");
             check_associated_type(node.span(),
                 node.m_res_type,
                 this->get_lang_item_path(node.span(), "deref"), {}, node.m_value->m_res_type, "Target"
@@ -252,6 +268,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_TupleVariant& node) override
         {
+            TRACE_FUNCTION_F(&node << " " << node.m_path << "(...,) [" << (node.m_is_struct ? "struct" : "enum") << "]");
             const auto& sp = node.span();
             
             // - Create ivars in path, and set result type
@@ -298,6 +315,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
+            TRACE_FUNCTION_F(&node << " " << node.m_path << "{...} [" << (node.m_is_struct ? "struct" : "enum") << "]");
             const auto& sp = node.span();
             if( node.m_base_value) {
                 check_types_equal( node.m_base_value->span(), node.m_res_type, node.m_base_value->m_res_type );
@@ -352,6 +370,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_UnitVariant& node) override
         {
+            TRACE_FUNCTION_F(&node << " " << node.m_path << " [" << (node.m_is_struct ? "struct" : "enum") << "]");
             const auto& sp = node.span();
             const auto& ty = node.m_res_type;
             ASSERT_BUG(sp, ty.m_data.is_Path(), "Result type of _StructLiteral isn't Path");
@@ -374,6 +393,7 @@ namespace {
 
         void visit(::HIR::ExprNode_CallPath& node) override
         {
+            TRACE_FUNCTION_F(&node << " " << node.m_path << "(..., )");
             // Link arguments
             for(unsigned int i = 0; i < node.m_args.size(); i ++)
             {
@@ -387,6 +407,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_CallValue& node) override
         {
+            TRACE_FUNCTION_F(&node << " (...)(..., )");
             ASSERT_BUG(node.span(), node.m_arg_types.size() > 0, "CallValue cache not populated");
             for(unsigned int i = 0; i < node.m_args.size(); i ++)
             {
@@ -403,6 +424,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_CallMethod& node) override
         {
+            TRACE_FUNCTION_F(&node << " (...)." << node.m_method << "(...,) - " << node.m_method_path);
             ASSERT_BUG(node.span(), node.m_cache.m_arg_types.size() > 0, "CallMethod cache not populated");
             ASSERT_BUG(node.span(), node.m_cache.m_arg_types.size() == 1 + node.m_args.size() + 1, "CallMethod cache mis-sized");
             check_types_equal(node.m_cache.m_arg_types[0], node.m_value);
@@ -420,6 +442,7 @@ namespace {
         
         void visit(::HIR::ExprNode_Field& node) override
         {
+            TRACE_FUNCTION_F(&node << " (...)." << node.m_field);
             const auto& sp = node.span();
             const auto& str_ty = node.m_value->m_res_type;
             
@@ -457,6 +480,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_ArrayList& node) override
         {
+            TRACE_FUNCTION_F(&node << " [...,]");
             // Cleanly equate into array (with coercions)
             const auto& inner_ty = *node.m_res_type.m_data.as_Array().inner;
             for( auto& val : node.m_vals ) {
@@ -469,6 +493,8 @@ namespace {
         }
         void visit(::HIR::ExprNode_ArraySized& node) override
         {
+            TRACE_FUNCTION_F(&node << " [...; "<<node.m_size_val<<"]");
+            
             //check_types_equal(node.m_size->span(), ::HIR::TypeRef(::HIR::Primitive::Usize), node.m_size->m_res_type);
             const auto& inner_ty = *node.m_res_type.m_data.as_Array().inner;
             check_types_equal(node.m_val->span(), inner_ty, node.m_val->m_res_type);
@@ -483,6 +509,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_PathValue& node) override
         {
+            TRACE_FUNCTION_F(&node << " " << node.m_path);
             const auto& sp = node.span();
             
             TU_MATCH(::HIR::Path::Data, (node.m_path.m_data), (e),
@@ -539,6 +566,7 @@ namespace {
         
         void visit(::HIR::ExprNode_Closure& node) override
         {
+            TRACE_FUNCTION_F(&node << " |...| ...");
             check_types_equal(node.m_code->span(), node.m_return, node.m_code->m_res_type);
             
             this->closure_ret_types.push_back( &node.m_return );
