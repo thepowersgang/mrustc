@@ -1795,7 +1795,50 @@ namespace {
                 }
                 this->context.equate_types(node.span(), node.m_res_type,  node.m_cache.m_arg_types.back());
                 
-                // TODO: Apply derefs!
+                // Add derefs
+                if( deref_count > 0 )
+                {
+                    DEBUG("- Inserting " << deref_count << " dereferences");
+                    // Get dereferencing!
+                    auto& node_ptr = node.m_value;
+                    ::HIR::TypeRef  tmp_ty;
+                    const ::HIR::TypeRef*   cur_ty = &node_ptr->m_res_type;
+                    while( deref_count-- )
+                    {
+                        auto span = node_ptr->span();
+                        node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Deref( mv$(span), mv$(node_ptr) ));
+                        cur_ty = this->context.m_resolve.autoderef(span, *cur_ty, tmp_ty);
+                        assert(cur_ty);
+                        auto ty = cur_ty->clone();
+                        DEBUG("- Deref " << &*node_ptr << " -> " << ty);
+                        node_ptr->m_res_type = mv$(ty);
+                    }
+                }
+                
+                // Autoref
+                {
+                    // TODO: Get the unmangled receiver type
+                    const auto& receiver_type = node.m_cache.m_arg_types.front();
+                    // This only happens when the method is being called on a value
+                    // TODO: How to tell the receiver type correctly once Self is expanded? (not a problem for trait methods... but this is monomorphised)
+                    TU_IFLET(::HIR::TypeRef::Data, (receiver_type.m_data), Borrow, (e),
+                        auto& node_ptr = node.m_value;
+                        // - Add correct borrow operation
+                        auto span = node_ptr->span();
+                        auto ty = ::HIR::TypeRef::new_borrow(e.type, node_ptr->m_res_type.clone());
+                        auto op = (
+                            e.type == ::HIR::BorrowType::Shared ? ::HIR::ExprNode_UniOp::Op::Ref :
+                            /*e.type == ::HIR::BorrowType::Unique ? */::HIR::ExprNode_UniOp::Op::RefMut/* :
+                            0*/
+                            );
+                        node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_UniOp( mv$(span), op, mv$(node_ptr) ));
+                        DEBUG("- Ref " << &*node_ptr << " -> " << ty);
+                        node_ptr->m_res_type = mv$(ty);
+                    )
+                    else {
+                        // Nothing needs adding
+                    }
+                }
                 
                 node.m_method_path = mv$(fcn_path);
                 this->m_completed = true;

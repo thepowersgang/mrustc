@@ -2073,8 +2073,9 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
 // -------------------------------------------------------------------------------------------------------------------
 //
 // -------------------------------------------------------------------------------------------------------------------
-const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::TypeRef& ty,  ::HIR::TypeRef& tmp_type) const
+const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::TypeRef& ty_in,  ::HIR::TypeRef& tmp_type) const
 {
+    const auto& ty = this->m_ivars.get_type(ty_in);
     TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Borrow, e,
         DEBUG("Deref " << ty << " into " << *e.inner);
         return &*e.inner;
