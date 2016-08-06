@@ -2857,8 +2857,8 @@ namespace {
         }
         // - Otherwise, create a new borrow operation and add the dereferences
         if( !node_ptr_ptr ) {
+            DEBUG("- Coercion node isn't a borrow, adding one");
             auto span = node_ptr->span();
-            node_ptr_ptr = &node_ptr;
             ::HIR::ExprNode_UniOp::Op   op = ::HIR::ExprNode_UniOp::Op::Ref;
             auto borrow_type = context.m_ivars.get_type(node_ptr->m_res_type).m_data.as_Borrow().type;
             switch(borrow_type)
@@ -2869,6 +2869,9 @@ namespace {
             }
             node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_UniOp( mv$(span), op, mv$(node_ptr) ));
             node_ptr->m_res_type = ::HIR::TypeRef::new_borrow(borrow_type, des_borrow_inner.clone());
+            
+            // - Set node pointer reference to point into the new borrow op
+            node_ptr_ptr = &dynamic_cast< ::HIR::ExprNode_UniOp&>(*node_ptr).m_value;
         }
         else {
             auto borrow_type = context.m_ivars.get_type(node_ptr->m_res_type).m_data.as_Borrow().type;
