@@ -1840,7 +1840,6 @@ namespace {
                     }
                 }
                 
-                node.m_method_path = mv$(fcn_path);
                 this->m_completed = true;
             }
         }
@@ -1937,10 +1936,12 @@ namespace {
     class ExprVisitor_Apply:
         public ::HIR::ExprVisitorDef
     {
-        HMTypeInferrence& ivars;
+        const Context& context;
+        const HMTypeInferrence& ivars;
     public:
-        ExprVisitor_Apply(HMTypeInferrence& ivars):
-            ivars(ivars)
+        ExprVisitor_Apply(const Context& context):
+            context(context),
+            ivars(context.m_ivars)
         {
         }
         void visit_node_ptr(::HIR::ExprNodeP& node) override {
@@ -1965,11 +1966,13 @@ namespace {
         void visit(::HIR::ExprNode_CallPath& node) override {
             for(auto& ty : node.m_cache.m_arg_types)
                 this->check_type_resolved_top(node.span(), ty);
+            this->check_type_resolved_path(node.span(), node.m_path);
             ::HIR::ExprVisitorDef::visit(node);
         }
         void visit(::HIR::ExprNode_CallMethod& node) override {
             for(auto& ty : node.m_cache.m_arg_types)
                 this->check_type_resolved_top(node.span(), ty);
+            this->check_type_resolved_path(node.span(), node.m_method_path);
             ::HIR::ExprVisitorDef::visit(node);
         }
         void visit(::HIR::ExprNode_CallValue& node) override {
@@ -1978,9 +1981,61 @@ namespace {
             ::HIR::ExprVisitorDef::visit(node);
         }
         
+        void visit(::HIR::ExprNode_PathValue& node) override {
+            this->check_type_resolved_path(node.span(), node.m_path);
+        }
+        void visit(::HIR::ExprNode_StructLiteral& node) override {
+            this->check_type_resolved_pp(node.span(), node.m_path.m_params, ::HIR::TypeRef());
+            for(auto& ty : node.m_value_types) {
+                if( ty != ::HIR::TypeRef() ) {
+                    this->check_type_resolved_top(node.span(), ty);
+                }
+            }
+            
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        void visit(::HIR::ExprNode_TupleVariant& node) override {
+            this->check_type_resolved_pp(node.span(), node.m_path.m_params, ::HIR::TypeRef());
+            for(auto& ty : node.m_arg_types) {
+                if( ty != ::HIR::TypeRef() ) {
+                    this->check_type_resolved_top(node.span(), ty);
+                }
+            }
+            
+            ::HIR::ExprVisitorDef::visit(node);
+        }
     private:
         void check_type_resolved_top(const Span& sp, ::HIR::TypeRef& ty) const {
             check_type_resolved(sp, ty, ty);
+            ty = this->context.m_resolve.expand_associated_types(sp, mv$(ty));
+        }
+        void check_type_resolved_pp(const Span& sp, ::HIR::PathParams& pp, const ::HIR::TypeRef& top_type) const {
+            for(auto& ty : pp.m_types)
+                check_type_resolved(sp, ty, top_type);
+        }
+        void check_type_resolved_path(const Span& sp, ::HIR::Path& path) const {
+            //auto tmp = ::HIR::TypeRef(path.clone());
+            auto tmp = ::HIR::TypeRef();
+            check_type_resolved_path(sp, path, tmp);
+        }
+        void check_type_resolved_path(const Span& sp, ::HIR::Path& path, const ::HIR::TypeRef& top_type) const {
+            TU_MATCH(::HIR::Path::Data, (path.m_data), (pe),
+            (Generic,
+                check_type_resolved_pp(sp, pe.m_params, top_type);
+                ),
+            (UfcsInherent,
+                check_type_resolved(sp, *pe.type, top_type);
+                check_type_resolved_pp(sp, pe.params, top_type);
+                ),
+            (UfcsKnown,
+                check_type_resolved(sp, *pe.type, top_type);
+                check_type_resolved_pp(sp, pe.trait.m_params, top_type);
+                check_type_resolved_pp(sp, pe.params, top_type);
+                ),
+            (UfcsUnknown,
+                ERROR(sp, E0000, "UfcsUnknown " << path << " left in " << top_type);
+                )
+            )
         }
         void check_type_resolved(const Span& sp, ::HIR::TypeRef& ty, const ::HIR::TypeRef& top_type) const {
             TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
@@ -2000,13 +2055,16 @@ namespace {
                 // Leaf
                 ),
             (Path,
-                // TODO:
+                check_type_resolved_path(sp, e.path, top_type);
                 ),
             (Generic,
-                // Leaf
+                // Leaf - no ivars
                 ),
             (TraitObject,
-                // TODO:
+                check_type_resolved_pp(sp, e.m_trait.m_path.m_params, top_type);
+                for(auto& marker : e.m_markers) {
+                    check_type_resolved_pp(sp, marker.m_params, top_type);
+                }
                 ),
             (Array,
                 this->check_type_resolved(sp, *e.inner, top_type);
@@ -3242,8 +3300,11 @@ namespace {
         (Pointer,
             // Pointers coerce from borrows and similar pointers
             TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Borrow, r_e,
+                if( r_e.type != l_e.type ) {
+                    ERROR(sp, E0000, "Type mismatch between " << ty_dst << " and " << ty_src << " - Mutability differs");
+                }
                 context.equate_types(sp, *l_e.inner, *r_e.inner);
-                // Add cast
+                // Add downcast
                 auto span = node_ptr->span();
                 node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), ty_dst.clone() ));
                 node_ptr->m_res_type = ty_dst.clone();
@@ -3820,7 +3881,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         DEBUG("==== VALIDATE ==== (" << count << " rounds)");
         context.dump();
         
-        ExprVisitor_Apply   visitor { context.m_ivars };
+        ExprVisitor_Apply   visitor { context };
         visitor.visit_node_ptr( root_ptr );
     }
     expr = ::HIR::ExprPtr( mv$(root_ptr) );

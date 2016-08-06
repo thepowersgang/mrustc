@@ -545,8 +545,15 @@ namespace {
         }
         void check_types_equal(const Span& sp, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r) const
         {
-            if( l != r ) {
+            if( l.m_data.is_Diverge() || r.m_data.is_Diverge() ) {
+                // Diverge, matches everything.
+                // TODO: Is this always true?
+            }
+            else if( l != r ) {
                 ERROR(sp, E0000, "Type mismatch - " << l << " != " << r);
+            }
+            else {
+                // All good
             }
         }
         void check_associated_type(const Span& sp,
