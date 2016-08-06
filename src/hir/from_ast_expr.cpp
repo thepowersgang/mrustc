@@ -191,8 +191,7 @@ struct LowerHIR_ExprNode_Visitor:
             TODO(v.get_pos(), "Desugar box");
             break;
         case ::AST::ExprNode_UniOp::QMARK:
-            TODO(v.get_pos(), "Desugar question mark operator");
-            // NOTE: This operator doesn't use language items, ergo it's a basic desugar and is done in expand
+            BUG(v.get_pos(), "Encounterd question mark operator (should have been expanded in AST)");
             break;
         
         case ::AST::ExprNode_UniOp::REF:    op = ::HIR::ExprNode_UniOp::Op::Ref   ; if(0)

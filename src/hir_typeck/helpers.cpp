@@ -1363,7 +1363,7 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
 }
 ::HIR::TypeRef TraitResolution::expand_associated_types(const Span& sp, ::HIR::TypeRef input) const
 {
-    TRACE_FUNCTION_F(input);
+    //TRACE_FUNCTION_F(input);
     TU_MATCH(::HIR::TypeRef::Data, (input.m_data), (e),
     (Infer,
         auto& ty = this->m_ivars.get_type(input);
