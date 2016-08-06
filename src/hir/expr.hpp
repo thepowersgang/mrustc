@@ -653,6 +653,16 @@ struct ExprNode_Closure:
     ::HIR::TypeRef  m_return;
     ::HIR::ExprNodeP    m_code;
     
+    enum class Class {
+        Unknown,
+        Shared,
+        Mut,
+        Once,
+    } m_class = Class::Unknown;
+    bool    m_is_move = false;
+    
+    ::std::vector<unsigned int> m_var_captures;
+    
     ExprNode_Closure(Span sp, args_t args, ::HIR::TypeRef rv, ::HIR::ExprNodeP code):
         ExprNode(mv$(sp)),
         m_args( ::std::move(args) ),
