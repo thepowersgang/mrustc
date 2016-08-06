@@ -3243,6 +3243,12 @@ namespace {
             // Pointers coerce from borrows and similar pointers
             TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Borrow, r_e,
                 context.equate_types(sp, *l_e.inner, *r_e.inner);
+                // Add cast
+                auto span = node_ptr->span();
+                node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), ty_dst.clone() ));
+                node_ptr->m_res_type = ty_dst.clone();
+                
+                context.m_ivars.mark_change();
                 return true;
             )
             else TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Pointer, r_e,
