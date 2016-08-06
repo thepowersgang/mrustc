@@ -140,6 +140,7 @@ namespace {
     /// (HELPER) Populate the cache for nodes that use visit_call
     void visit_call_populate_cache(Context& context, const Span& sp, ::HIR::Path& path, ::HIR::ExprCallCache& cache)
     {
+        TRACE_FUNCTION_FR(path, path);
         assert(cache.m_arg_types.size() == 0);
         
         const ::HIR::Function*  fcn_ptr = nullptr;
@@ -184,7 +185,8 @@ namespace {
             cache.m_fcn_params = &fcn.m_params;
             cache.m_top_params = &trait.m_params;
             
-            // TODO: Check/apply trait bounds (apply = closure arguments or fixed trait args)
+            // Add a bound requiring the Self type impl the trait
+            context.equate_types_assoc(sp, ::HIR::TypeRef(), e.trait.m_path, mv$(e.trait.m_params.clone().m_types), *e.type, "");
             
             fcn_ptr = &fcn;
             
@@ -2014,8 +2016,8 @@ namespace {
                 check_type_resolved(sp, ty, top_type);
         }
         void check_type_resolved_path(const Span& sp, ::HIR::Path& path) const {
-            //auto tmp = ::HIR::TypeRef(path.clone());
-            auto tmp = ::HIR::TypeRef();
+            auto tmp = ::HIR::TypeRef(path.clone());
+            //auto tmp = ::HIR::TypeRef();
             check_type_resolved_path(sp, path, tmp);
         }
         void check_type_resolved_path(const Span& sp, ::HIR::Path& path, const ::HIR::TypeRef& top_type) const {
