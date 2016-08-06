@@ -12,6 +12,9 @@ typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>   t_cb_gen
 
 extern bool monomorphise_type_needed(const ::HIR::TypeRef& tpl);
 extern bool monomorphise_pathparams_needed(const ::HIR::PathParams& tpl);
+static inline bool monomorphise_genericpath_needed(const ::HIR::GenericPath& tpl) {
+    return monomorphise_pathparams_needed(tpl.m_params);
+}
 extern bool monomorphise_path_needed(const ::HIR::Path& tpl);
 extern bool monomorphise_traitpath_needed(const ::HIR::TraitPath& tpl);
 extern bool monomorphise_type_needed(const ::HIR::TypeRef& tpl);

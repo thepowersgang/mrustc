@@ -156,8 +156,7 @@ namespace {
         }
 
         bool locate_trait_item_in_bounds(::HIR::Visitor::PathContext pc,  const ::HIR::TypeRef& tr, const ::HIR::GenericParams& params,  ::HIR::Path::Data& pd) {
-            const auto& name = pd.as_UfcsUnknown().item;
-            DEBUG("TODO: Search for trait impl for " << tr << " with " << name << " in params");
+            //const auto& name = pd.as_UfcsUnknown().item;
             for(const auto& b : params.m_bounds)
             {
                 TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
@@ -211,6 +210,9 @@ namespace {
         // Locate the item in `pd` and set `pd` to UfcsResolved if found
         // TODO: This code may end up generating paths without the type information they should contain
         bool locate_in_trait_and_set(::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd) {
+            // TODO: Get the span from caller
+            static Span _sp;
+            const auto& sp = _sp;
             if( locate_item_in_trait(pc, trait,  pd) ) {
                 pd = get_ufcs_known(mv$(pd.as_UfcsUnknown()), trait_path.clone() /*make_generic_path(trait_path.m_path, trait)*/, trait);
                 return true;
@@ -218,7 +220,31 @@ namespace {
             // Search supertraits (recursively)
             for( unsigned int i = 0; i < trait.m_parent_traits.size(); i ++ )
             {
-                const auto& par_trait_path = trait.m_parent_traits[i].m_path;
+                const auto& par_trait_path_tpl = trait.m_parent_traits[i].m_path;
+                const auto* par_trait_path_ptr = &par_trait_path_tpl;
+                ::HIR::GenericPath  par_trait_path_tmp;
+                // HACK: Compares the param sets to avoid needing to monomorphise in some cases (e.g. Fn*
+                if( monomorphise_genericpath_needed(par_trait_path_tpl) && par_trait_path_tpl.m_params != trait_path.m_params ) {
+                    auto monomorph_cb = [&](const auto& ty)->const auto& {
+                        const auto& ge = ty.m_data.as_Generic();
+                        if( ge.binding == 0xFFFF ) {
+                            TODO(sp, "Self when monomorphising trait args");
+                        }
+                        else if( ge.binding < 256 ) {
+                            assert(ge.binding < trait_path.m_params.m_types.size());
+                            return trait_path.m_params.m_types[ge.binding];
+                        }
+                        else {
+                            ERROR(sp, E0000, "Unexpected generic binding " << ty);
+                        }
+                        };
+                    par_trait_path_tmp = ::HIR::GenericPath(
+                        par_trait_path_tpl.m_path,
+                        monomorphise_path_params_with(sp, par_trait_path_tpl.m_params, monomorph_cb, false /*no infer*/)
+                        );
+                    par_trait_path_ptr = &par_trait_path_tmp;
+                }
+                const auto& par_trait_path = *par_trait_path_ptr;
                 //const auto& par_trait_ent = *trait.m_parent_trait_ptrs[i];
                 const auto& par_trait_ent = this->find_trait(par_trait_path.m_path);
                 if( locate_in_trait_and_set(pc, par_trait_path, par_trait_ent,  pd) ) {
@@ -273,9 +299,11 @@ namespace {
                 
                 // Search for matching impls in current generic blocks
                 if( m_resolve.m_item_generics != nullptr && locate_trait_item_in_bounds(pc, *e.type, *m_resolve.m_item_generics,  p.m_data) ) {
+                    DEBUG("Found in item params, p = " << p);
                     return ;
                 }
                 if( m_resolve.m_impl_generics != nullptr && locate_trait_item_in_bounds(pc, *e.type, *m_resolve.m_impl_generics,  p.m_data) ) {
+                    DEBUG("Found in impl params, p = " << p);
                     return ;
                 }
                 
@@ -289,6 +317,7 @@ namespace {
                         }
                         if( locate_in_trait_and_set(pc, trait_path, *m_current_trait,  p.m_data) ) {
                             // Success!
+                            DEBUG("Found in Self, p = " << p);
                             return ;
                         }
                     }

@@ -90,6 +90,7 @@ struct PathParams
     PathParams& operator=(PathParams&&) = default;
     
     bool operator==(const PathParams& x) const;
+    bool operator!=(const PathParams& x) const { return !(*this == x); }
     bool operator<(const PathParams& x) const { return ord(x) == OrdLess; }
     Ordering ord(const PathParams& x) const {
         return ::ord(m_types, x.m_types);
