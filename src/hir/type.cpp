@@ -253,7 +253,7 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
             if( te.m_arg_types[i] != xe.m_arg_types[i] )
                 return false;
         }
-        return te.m_rettype == xe.m_rettype;
+        return *te.m_rettype == *xe.m_rettype;
         ),
     (Closure,
         if( te.node != xe.node )
