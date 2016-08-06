@@ -1154,6 +1154,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             
             // NOTE: This is a conditional "true", we know nothing about the move/mut-ness of this closure yet
             // - Could we?
+            // - Not until after the first stage of typeck
             
             
             ::HIR::PathParams   pp;
