@@ -50,7 +50,7 @@ namespace {
         void visit(::HIR::ExprNode_Return& node) override
         {
             TRACE_FUNCTION_F(&node << " return ...");
-            // TODO: Check against return type
+            // Check against return type
             const auto& ret_ty = ( this->closure_ret_types.size() > 0 ? *this->closure_ret_types.back() : this->ret_type );
             check_types_equal(ret_ty, node.m_value);
             node.m_value->visit(*this);
@@ -234,7 +234,32 @@ namespace {
         void visit(::HIR::ExprNode_Cast& node) override
         {
             TRACE_FUNCTION_F(&node << " ... as " << node.m_res_type);
-            // TODO: Check castability
+            const Span& sp = node.span();
+            
+            const auto& src_ty = node.m_value->m_res_type;
+            const auto& dst_ty = node.m_res_type;
+            // Check castability
+            TU_MATCH_DEF(::HIR::TypeRef::Data, (dst_ty.m_data), (de),
+            (
+                ERROR(sp, E0000, "Invalid cast to " << dst_ty);
+                ),
+            (Pointer,
+                TU_MATCH_DEF(::HIR::TypeRef::Data, (src_ty.m_data), (se),
+                (
+                    ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
+                    ),
+                (Pointer,
+                    // TODO: Sized check - can't cast to a fat pointer from a thin one
+                    ),
+                (Borrow,
+                    this->check_types_equal(sp, *de.inner, *se.inner);
+                    )
+                )
+                ),
+            (Primitive,
+                // TODO: Check cast to primitive
+                )
+            )
             
             node.m_value->visit( *this );
         }
@@ -243,14 +268,18 @@ namespace {
             TRACE_FUNCTION_F(&node << " ... : " << node.m_res_type);
             const Span& sp = node.span();
             
-            // TODO: Check unsizability
-            TU_MATCH_DEF(::HIR::TypeRef::Data, (node.m_res_type.m_data), (e),
+            const auto& src_ty = node.m_value->m_res_type;
+            const auto& dst_ty = node.m_res_type;
+            // Check unsizability (including trait impls)
+            // NOTE: Unsize applies inside borrows
+            TU_MATCH_DEF(::HIR::TypeRef::Data, (dst_ty.m_data), (e),
             (
-                ERROR(sp, E0000, "Invalid unsizing operation");
+                ERROR(sp, E0000, "Invalid unsizing operation to " << dst_ty << " from " << src_ty);
                 ),
             (TraitObject,
                 ),
             (Slice,
+                // TODO: Does unsize ever apply to arrays?
                 )
             )
             
@@ -622,7 +651,7 @@ namespace {
         
         // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
         void visit_expr(::HIR::ExprPtr& exp) {
-            TODO(Span(), "visit_expr");
+            BUG(Span(), "visit_expr hit in OuterVisitor");
         }
         
         void visit_type(::HIR::TypeRef& ty) override
