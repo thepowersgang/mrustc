@@ -251,6 +251,16 @@ namespace {
                 (Pointer,
                     // TODO: Sized check - can't cast to a fat pointer from a thin one
                     ),
+                (Primitive,
+                    if( se != ::HIR::CoreType::Usize ) {
+                        ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
+                    }
+                    ),
+                (Function,
+                    if( de.type != ::HIR::BorrowType::Shared || *de.inner != ::HIR::TypeRef::new_unit() ) {
+                        ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
+                    }
+                    ),
                 (Borrow,
                     this->check_types_equal(sp, *de.inner, *se.inner);
                     )
