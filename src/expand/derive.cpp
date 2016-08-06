@@ -326,7 +326,7 @@ public:
 class Deriver_PartialEq:
     public Deriver
 {
-    AST::Impl make_ret(Span sp, const AST::GenericParams& p, const TypeRef& type, AST::ExprNodeP node) const
+    AST::Impl make_ret(Span sp, const AST::GenericParams& p, const TypeRef& type, ::std::vector<TypeRef> types_to_bound, AST::ExprNodeP node) const
     {
         const AST::Path    trait_path("", { AST::PathNode("cmp", {}), AST::PathNode("PartialEq", {}) });
         
@@ -340,7 +340,7 @@ class Deriver_PartialEq:
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         
-        AST::GenericParams  params = get_params_with_bounds(p, trait_path, {});
+        AST::GenericParams  params = get_params_with_bounds(p, trait_path, mv$(types_to_bound));
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         rv.add_function(false, false, "eq", mv$(fcn));
@@ -382,7 +382,7 @@ public:
         )
         nodes.push_back( NEWNODE(Bool, true) );
         
-        return this->make_ret(sp, p, type, NEWNODE(Block, mv$(nodes), nullptr));
+        return this->make_ret(sp, p, type, this->get_field_bounds(str), NEWNODE(Block, mv$(nodes), nullptr));
     }
     
     AST::Impl handle_item(Span sp, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
@@ -485,7 +485,7 @@ public:
         ::std::vector<AST::ExprNodeP>   vals;
         vals.push_back( NEWNODE(NamedValue, AST::Path("self")) );
         vals.push_back( NEWNODE(NamedValue, AST::Path("v")) );
-        return this->make_ret(sp, p, type, NEWNODE(Match,
+        return this->make_ret(sp, p, type, this->get_field_bounds(enm), NEWNODE(Match,
             NEWNODE(Tuple, mv$(vals)),
             mv$(arms)
             ));
@@ -499,7 +499,7 @@ class Deriver_Eq:
         return AST::Path("", { AST::PathNode("cmp", {}), AST::PathNode("Eq", {}) });
     }
     
-    AST::Impl make_ret(Span sp, const AST::GenericParams& p, const TypeRef& type, AST::ExprNodeP node) const
+    AST::Impl make_ret(Span sp, const AST::GenericParams& p, const TypeRef& type, ::std::vector<TypeRef> types_to_bound, AST::ExprNodeP node) const
     {
         const AST::Path    trait_path = this->get_trait_path();
         
@@ -512,7 +512,7 @@ class Deriver_Eq:
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         
-        AST::GenericParams  params = get_params_with_bounds(p, trait_path, {});
+        AST::GenericParams  params = get_params_with_bounds(p, trait_path, mv$(types_to_bound));
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         rv.add_function(false, false, "assert_receiver_is_total_eq", mv$(fcn));
@@ -549,7 +549,7 @@ public:
             )
         )
         
-        return this->make_ret(sp, p, type, NEWNODE(Block, mv$(nodes), nullptr));
+        return this->make_ret(sp, p, type, this->get_field_bounds(str), NEWNODE(Block, mv$(nodes), nullptr));
     }
     
     AST::Impl handle_item(Span sp, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
@@ -618,7 +618,7 @@ public:
                 ));
         }
 
-        return this->make_ret(sp, p, type, NEWNODE(Match,
+        return this->make_ret(sp, p, type, this->get_field_bounds(enm), NEWNODE(Match,
             NEWNODE(NamedValue, AST::Path("self")),
             mv$(arms)
             ));
@@ -635,7 +635,7 @@ class Deriver_Clone:
         return get_trait_path() + "clone";
     }
     
-    AST::Impl make_ret(Span sp, const AST::GenericParams& p, const TypeRef& type, AST::ExprNodeP node) const
+    AST::Impl make_ret(Span sp, const AST::GenericParams& p, const TypeRef& type, ::std::vector<TypeRef> types_to_bound, AST::ExprNodeP node) const
     {
         const AST::Path    trait_path = this->get_trait_path();
         
@@ -648,7 +648,7 @@ class Deriver_Clone:
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
         
-        AST::GenericParams  params = get_params_with_bounds(p, trait_path, {});
+        AST::GenericParams  params = get_params_with_bounds(p, trait_path, mv$(types_to_bound));
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         rv.add_function(false, false, "clone", mv$(fcn));
@@ -696,7 +696,7 @@ public:
             )
         )
         
-        return this->make_ret(sp, p, type, NEWNODE(Block, mv$(nodes), nullptr));
+        return this->make_ret(sp, p, type, this->get_field_bounds(str), NEWNODE(Block, mv$(nodes), nullptr));
     }
     
     AST::Impl handle_item(Span sp, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
@@ -765,7 +765,7 @@ public:
                 ));
         }
 
-        return this->make_ret(sp, p, type, NEWNODE(Match,
+        return this->make_ret(sp, p, type, this->get_field_bounds(enm), NEWNODE(Match,
             NEWNODE(NamedValue, AST::Path("self")),
             mv$(arms)
             ));
@@ -779,15 +779,11 @@ class Deriver_Copy:
         return AST::Path("", { AST::PathNode("marker", {}), AST::PathNode("Copy", {}) });
     }
     
-    AST::Impl make_ret(Span sp, const AST::GenericParams& p, const TypeRef& type, AST::ExprNodeP node) const
+    AST::Impl make_ret(Span sp, const AST::GenericParams& p, const TypeRef& type, ::std::vector<TypeRef> types_to_bound, AST::ExprNodeP node) const
     {
         const AST::Path    trait_path = this->get_trait_path();
         
-        AST::GenericParams  params = p;
-        for(const auto& typ : params.ty_params())
-        {
-            params.bounds().push_back( ::AST::GenericBound::make_IsTrait({ TypeRef(typ.name()), {}, trait_path }) );
-        }
+        AST::GenericParams params = get_params_with_bounds(p, trait_path, mv$(types_to_bound));
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         return mv$(rv);
@@ -796,12 +792,12 @@ class Deriver_Copy:
 public:
     AST::Impl handle_item(Span sp, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
-        return this->make_ret(sp, p, type, nullptr);
+        return this->make_ret(sp, p, type, this->get_field_bounds(str), nullptr);
     }
     
     AST::Impl handle_item(Span sp, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
     {
-        return this->make_ret(sp, p, type, nullptr);
+        return this->make_ret(sp, p, type, this->get_field_bounds(enm), nullptr);
     }
 } g_derive_copy;
 
