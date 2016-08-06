@@ -421,14 +421,22 @@ namespace {
         void visit(::HIR::ExprNode_Field& node) override
         {
             const auto& sp = node.span();
-            
             const auto& str_ty = node.m_value->m_res_type;
-            ASSERT_BUG(sp, str_ty.m_data.is_Path(), "Value type of _Field isn't Path");
-            const auto& ty_e = str_ty.m_data.as_Path();
-            ASSERT_BUG(sp, ty_e.binding.is_Struct(), "Value type of _Field isn't a Struct");
-            //const auto& str = *ty_e.binding.as_Struct();
             
-            // TODO: Triple-check result, but that probably isn't needed
+            bool is_index = ( '0' <= node.m_field[0] && node.m_field[0] <= '9' );
+            if( str_ty.m_data.is_Tuple() )
+            {
+                ASSERT_BUG(sp, is_index, "Non-index _Field on tuple");
+            }
+            else
+            {
+                ASSERT_BUG(sp, str_ty.m_data.is_Path(), "Value type of _Field isn't Path - " << str_ty);
+                const auto& ty_e = str_ty.m_data.as_Path();
+                ASSERT_BUG(sp, ty_e.binding.is_Struct(), "Value type of _Field isn't a Struct - " << str_ty);
+                //const auto& str = *ty_e.binding.as_Struct();
+                
+                // TODO: Triple-check result, but that probably isn't needed
+            }
             
             node.m_value->visit( *this );
         }
