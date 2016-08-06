@@ -1745,8 +1745,9 @@ namespace {
             this->m_completed = true;
         }
         void visit(::HIR::ExprNode_CallMethod& node) override {
+            const auto& sp = node.span();
+            
             const auto& ty = this->context.get_type(node.m_value->m_res_type);
-            //const auto ty = this->context.m_resolve.expand_associated_types(node.span(), this->context.get_type(node.m_value->m_res_type).clone());
             TRACE_FUNCTION_F("(CallMethod) {" << this->context.m_ivars.fmt_type(ty) << "}." << node.m_method << node.m_params);
             
             // Make sure that no mentioned types are inferred until this method is known
@@ -1819,26 +1820,64 @@ namespace {
                 
                 // Autoref
                 {
-                    // TODO: Get the unmangled receiver type
+                    // TODO: Get the receiver type without Self having been expanded.
+                    // - Or some other indication of how Self is being taken
                     const auto& receiver_type = node.m_cache.m_arg_types.front();
-                    // This only happens when the method is being called on a value
-                    // TODO: How to tell the receiver type correctly once Self is expanded? (not a problem for trait methods... but this is monomorphised)
-                    TU_IFLET(::HIR::TypeRef::Data, (receiver_type.m_data), Borrow, (e),
-                        auto& node_ptr = node.m_value;
+                    enum class Receiver {
+                        Unknown,
+                        Value,
+                        Shared,
+                        Unique,
+                        Owned,
+                        //Box,
+                    }   receiver_class = Receiver::Unknown;
+                    if( this->context.m_ivars.types_equal(receiver_type, node.m_value->m_res_type) ) {
+                        receiver_class = Receiver::Value;
+                    }
+                    else TU_IFLET(::HIR::TypeRef::Data, receiver_type.m_data, Borrow, e,
+                        if( this->context.m_ivars.types_equal(*e.inner, node.m_value->m_res_type) ) {
+                            switch(e.type)
+                            {
+                            case ::HIR::BorrowType::Shared: receiver_class = Receiver::Shared;  break;
+                            case ::HIR::BorrowType::Unique: receiver_class = Receiver::Unique;  break;
+                            case ::HIR::BorrowType::Owned : receiver_class = Receiver::Owned ;  break;
+                            }
+                        }
+                        else {
+                            receiver_class = Receiver::Unknown;
+                        }
+                    )
+                    else {
+                        receiver_class = Receiver::Unknown;
+                    }
+                    
+                    auto& node_ptr = node.m_value;
+                    auto span = node_ptr->span();
+                    switch(receiver_class)
+                    {
+                    case Receiver::Unknown:
+                        BUG(sp, "Unknown receiver type - " << receiver_type << ", Self = " << node.m_value->m_res_type);
+                    case Receiver::Value:
+                        // by value - nothing needs to be added
+                        break;
+                    case Receiver::Shared:
+                    case Receiver::Unique:
+                    case Receiver::Owned: {
+                        ::HIR::BorrowType   bt;
+                        ::HIR::ExprNode_UniOp::Op   op;
+                        switch(receiver_class)
+                        {
+                        case Receiver::Shared:  op = ::HIR::ExprNode_UniOp::Op::Ref;    bt = ::HIR::BorrowType::Shared; break;
+                        case Receiver::Unique:  op = ::HIR::ExprNode_UniOp::Op::RefMut; bt = ::HIR::BorrowType::Unique; break;
+                        case Receiver::Owned:   TODO(sp, "Construct &move uni-op");
+                        default:    throw "";
+                        }
                         // - Add correct borrow operation
-                        auto span = node_ptr->span();
-                        auto ty = ::HIR::TypeRef::new_borrow(e.type, node_ptr->m_res_type.clone());
-                        auto op = (
-                            e.type == ::HIR::BorrowType::Shared ? ::HIR::ExprNode_UniOp::Op::Ref :
-                            /*e.type == ::HIR::BorrowType::Unique ? */::HIR::ExprNode_UniOp::Op::RefMut/* :
-                            0*/
-                            );
+                        auto ty = ::HIR::TypeRef::new_borrow(bt, node_ptr->m_res_type.clone());
                         node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_UniOp( mv$(span), op, mv$(node_ptr) ));
                         DEBUG("- Ref " << &*node_ptr << " -> " << ty);
                         node_ptr->m_res_type = mv$(ty);
-                    )
-                    else {
-                        // Nothing needs adding
+                        } break;
                     }
                 }
                 
