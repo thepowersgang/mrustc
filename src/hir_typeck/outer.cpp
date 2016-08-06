@@ -242,6 +242,7 @@ namespace {
                     TODO(sp, "Locate impl block for UFCS Inherent");
                     ),
                 (UfcsKnown,
+                    DEBUG("UfcsKnown - " << ty);
                     if( pe.type->m_data.is_Path() && pe.type->m_data.as_Path().binding.is_Opaque() ) {
                         // - Opaque type, opaque result
                         DEBUG("Inner type opaque, assuming " << ty << " also opaque");
@@ -276,6 +277,7 @@ namespace {
                                 }
                                 DEBUG("Replaced " << ty << " with " << new_ty);
                                 ty = mv$(new_ty);
+                                visit_type(ty); // Recurse on this
                             }
                         }
                         else {
