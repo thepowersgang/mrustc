@@ -46,6 +46,9 @@ struct GenericParams
     
     ::std::vector<GenericBound>    m_bounds;
     
+    //GenericParams() {}
+    
+    GenericParams clone() const;
     
     struct PrintArgs {
         const GenericParams& gp;

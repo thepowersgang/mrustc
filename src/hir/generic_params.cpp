@@ -59,3 +59,52 @@ namespace HIR {
         return os;
     }
 }
+
+::HIR::GenericParams HIR::GenericParams::clone() const
+{
+    ::HIR::GenericParams    rv;
+    rv.m_types.resize(m_types.size());
+    for(const auto& type : m_types)
+    {
+        rv.m_types.push_back(::HIR::TypeParamDef {
+            type.m_name,
+            type.m_default.clone(),
+            type.m_is_sized
+            });
+    }
+    rv.m_lifetimes = m_lifetimes;
+    rv.m_bounds.resize(m_bounds.size());
+    for(const auto& bound : m_bounds)
+    {
+        TU_MATCH(::HIR::GenericBound, (bound), (e),
+        (Lifetime,
+            rv.m_bounds.push_back(::HIR::GenericBound::make_Lifetime(e));
+            ),
+        (TypeLifetime,
+            rv.m_bounds.push_back(::HIR::GenericBound::make_TypeLifetime({
+                e.type.clone(),
+                e.valid_for
+                }));
+            ),
+        (TraitBound,
+            rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
+                e.type.clone(),
+                e.trait.clone()
+                }));
+            )/*,
+        (NotTrait,
+            rv.m_bounds.push_back(::HIR::GenericBound::make_NotTrait({
+                e.type.clone(),
+                e.trait.clone()
+                }));
+            )*/,
+        (TypeEquality,
+            rv.m_bounds.push_back(::HIR::GenericBound::make_TypeEquality({
+                e.type.clone(),
+                e.other_type.clone()
+                }));
+            )
+        )
+    }
+    return rv;
+}
