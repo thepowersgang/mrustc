@@ -14,6 +14,65 @@
 
 namespace {
     
+    typedef ::std::vector< ::std::pair< ::HIR::ExprNode_Closure::Class, ::HIR::TraitImpl> > out_impls_t;
+    
+    template<typename K, typename V>
+    ::std::map<K,V> make_map1(K k1, V v1) {
+        ::std::map<K,V> rv;
+        rv.insert( ::std::make_pair(mv$(k1), mv$(v1)) );
+        return rv;
+    }
+    template<typename T>
+    ::std::vector<T> make_vec2(T v1, T v2) {
+        ::std::vector<T>    rv;
+        rv.reserve(2);
+        rv.push_back( mv$(v1) );
+        rv.push_back( mv$(v2) );
+        return rv;
+    }
+    
+    class ExprVisitor_Mutate:
+        public ::HIR::ExprVisitorDef
+    {
+        const ::std::vector<unsigned int>&  m_local_vars;
+        const ::std::vector<unsigned int>&  m_captures;
+        
+        ::HIR::ExprNodeP    m_replacement;
+    public:
+        ExprVisitor_Mutate(const ::std::vector<unsigned int>& local_vars, const ::std::vector<unsigned int>& captures):
+            m_local_vars(local_vars),
+            m_captures(captures)
+        {
+        }
+        void visit_node_ptr(::HIR::ExprNodeP& node) override {
+            node->visit(*this);
+            if( m_replacement ) {
+                node = mv$(m_replacement);
+            }
+        }
+        void visit(::HIR::ExprNode_Variable& node) override
+        {
+            // 1. Is it a closure-local?
+            auto binding_it = ::std::find(m_local_vars.begin(), m_local_vars.end(), node.m_slot);
+            if( binding_it != m_local_vars.end() ) {
+                node.m_slot = binding_it - m_local_vars.begin();
+                return ;
+            }
+            
+            // 2. Is it a capture?
+            binding_it = ::std::find(m_captures.begin(), m_captures.end(), node.m_slot);
+            if( binding_it != m_captures.end() ) {
+                m_replacement = ::HIR::ExprNodeP( new ::HIR::ExprNode_Field(node.span(),
+                    ::HIR::ExprNodeP( new ::HIR::ExprNode_Variable(node.span(), "self", 0) ),
+                    FMT(binding_it - m_captures.begin())
+                    ));
+                return ;
+            }
+            
+            BUG(node.span(), "");
+        }
+    };
+    
     class ExprVisitor_Extract:
         public ::HIR::ExprVisitorDef
     {
@@ -35,15 +94,20 @@ namespace {
         };
 
         const StaticTraitResolve& m_resolve;
-        const ::std::vector< ::HIR::TypeRef>&   m_variable_types;
+        ::std::vector< ::HIR::TypeRef>& m_variable_types;
+        
+        // Outputs
+        out_impls_t&    m_out_impls;
+        
         /// Stack showing how a variable is being used
         ::std::vector<Usage>    m_usage;
         /// Stack of active closures
         ::std::vector<ClosureScope> m_closure_stack;
     public:
-        ExprVisitor_Extract(const StaticTraitResolve& resolve, const ::std::vector< ::HIR::TypeRef>& var_types):
+        ExprVisitor_Extract(const StaticTraitResolve& resolve, ::std::vector< ::HIR::TypeRef>& var_types, out_impls_t& out_impls):
             m_resolve(resolve),
-            m_variable_types(var_types)
+            m_variable_types(var_types),
+            m_out_impls( out_impls )
         {
         }
         
@@ -56,19 +120,76 @@ namespace {
         {
             m_closure_stack.push_back( ClosureScope(node) );
             
+            ::std::vector< ::HIR::Pattern>  args_pat_inner;
+            ::std::vector< ::HIR::TypeRef>  args_ty_inner;
             for(const auto& arg : node.m_args) {
+                args_pat_inner.push_back( arg.first.clone() );
+                args_ty_inner.push_back( arg.second.clone() );
                 add_closure_def_from_pattern(node.span(), arg.first);
             }
+            ::HIR::TypeRef  args_ty { mv$(args_ty_inner) };
+            ::HIR::Pattern  args_pat { {}, ::HIR::Pattern::Data::make_Tuple({ mv$(args_pat_inner) }) };
             
             ::HIR::ExprVisitorDef::visit(node);
             
+            auto ent = mv$( m_closure_stack.back() );
             m_closure_stack.pop_back();
             
             // Extract and mutate code into a trait impl on the closure type
 
             // 1. Iterate over the nodes and rewrite variable accesses to either renumbered locals, or field accesses
+            ExprVisitor_Mutate    ev { ent.local_vars, ent.node.m_var_captures };
+            ev.visit_node_ptr( node.m_code );
             // 2. Construct closure type (saving path/index in the node)
+            // Includes:
+            // - Generics based on the current scope (compacted)
+            ::HIR::GenericParams    params;
+            // - Types of captured variables
+            ::std::vector< ::HIR::TypeRef>  capture_types;
+            for(const auto binding_idx : node.m_var_captures) {
+                capture_types.push_back( mv$(m_variable_types.at(binding_idx)) );
+            }
+            // - Code
+            //m_type_output_list.push_back( ::HIR::ClosureType { mv$(params), mv$(capture_types) } );
             // 3. Create trait impls
+            ::HIR::TypeRef  closure_type = node.m_res_type.clone();
+            ::HIR::PathParams   trait_params;
+            switch(node.m_class)
+            {
+            case ::HIR::ExprNode_Closure::Class::Unknown:
+                node.m_class = ::HIR::ExprNode_Closure::Class::NoCapture;
+            case ::HIR::ExprNode_Closure::Class::NoCapture:
+            case ::HIR::ExprNode_Closure::Class::Shared:
+                TODO(node.span(), "Generate Fn, FnMut, and FnOnce impls");
+                break;
+            case ::HIR::ExprNode_Closure::Class::Mut:
+                TODO(node.span(), "Generate FnMut and FnOnce impls");
+                break;
+            case ::HIR::ExprNode_Closure::Class::Once:
+                ::HIR::TraitImpl trait_impl {
+                    mv$(params), mv$(trait_params), mv$(closure_type),
+                    make_map1(
+                        ::std::string("call_once"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
+                            "rust", false, false,
+                            {},
+                            make_vec2(
+                                ::std::make_pair(::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} }, ::HIR::TypeRef("Self", 0xFFFF)),
+                                ::std::make_pair(mv$(args_pat), mv$(args_ty))
+                                ),
+                            node.m_return.clone(),
+                            mv$(node.m_code)
+                            } }
+                        ),
+                    {},
+                    make_map1(
+                        ::std::string("Output"), ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> { false, node.m_return.clone() }
+                        ),
+                    ::HIR::SimplePath()
+                    };
+                m_out_impls.push_back(::std::make_pair( ::HIR::ExprNode_Closure::Class::Once, mv$(trait_impl) ));
+                break;
+            }
+            //m_impls.push_back(
             TODO(node.span(), "Transform closure code into closure type - " << node.m_res_type);
         }
         
@@ -180,7 +301,39 @@ namespace {
         
         void visit(::HIR::ExprNode_CallValue& node) override
         {
-            TODO(node.span(), "Determine how value in CallValue is used");
+            if( !m_closure_stack.empty() )
+            {
+                TODO(node.span(), "Determine how value in CallValue is used");
+                
+                if( node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Unknown )
+                {
+                    if( node.m_res_type.m_data.is_Closure() )
+                    {
+                        TODO(node.span(), "Determine how value in CallValue is used on a closure");
+                    }
+                    else
+                    {
+                    }
+                }
+                else
+                {
+                    // If the trait is known, then the &/&mut has been added
+                }
+                
+                m_usage.push_back(Usage::Move);
+                node.m_value->visit(*this);
+                for(auto& arg : node.m_args)
+                    arg->visit(*this);
+                m_usage.pop_back();
+            }
+            else if( node.m_res_type.m_data.is_Closure() )
+            {
+                TODO(node.span(), "Determine how value in CallValue is used on a closure");
+            }
+            else
+            {
+                ::HIR::ExprVisitorDef::visit(node);
+            }
         }
         void visit(::HIR::ExprNode_CallMethod& node) override
         {
@@ -349,6 +502,7 @@ namespace {
         public ::HIR::Visitor
     {
         StaticTraitResolve  m_resolve;
+        out_impls_t m_new_trait_impls;
     public:
         OuterVisitor(const ::HIR::Crate& crate):
             m_resolve(crate)
@@ -371,7 +525,7 @@ namespace {
                 DEBUG("Array size " << ty);
                 if( e.size ) {
                     ::std::vector< ::HIR::TypeRef>  tmp;
-                    ExprVisitor_Extract    ev(m_resolve, tmp);
+                    ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
                     ev.visit_root( *e.size );
                 }
             )
@@ -389,7 +543,7 @@ namespace {
                 DEBUG("Function code " << p);
                 ::std::vector< ::HIR::TypeRef>  tmp;
                 //ExprVisitor_Extract    ev(item.m_code.binding_types);
-                ExprVisitor_Extract    ev(m_resolve, tmp);
+                ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
                 ev.visit_root( *item.m_code );
             }
             else
@@ -401,7 +555,7 @@ namespace {
             if( item.m_value )
             {
                 ::std::vector< ::HIR::TypeRef>  tmp;
-                ExprVisitor_Extract    ev(m_resolve, tmp);
+                ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
                 ev.visit_root(*item.m_value);
             }
         }
@@ -409,7 +563,7 @@ namespace {
             if( item.m_value )
             {
                 ::std::vector< ::HIR::TypeRef>  tmp;
-                ExprVisitor_Extract    ev(m_resolve, tmp);
+                ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
                 ev.visit_root(*item.m_value);
             }
         }
@@ -424,7 +578,7 @@ namespace {
                     DEBUG("Enum value " << p << " - " << var.first);
                     
                     ::std::vector< ::HIR::TypeRef>  tmp;
-                    ExprVisitor_Extract    ev(m_resolve, tmp);
+                    ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
                     ev.visit_root(*e);
                 )
             }
