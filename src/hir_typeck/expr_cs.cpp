@@ -3964,5 +3964,8 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         visitor.visit_node_ptr( root_ptr );
     }
     expr = ::HIR::ExprPtr( mv$(root_ptr) );
+    expr.m_bindings.reserve( context.m_bindings.size() );
+    for(auto& binding : context.m_bindings)
+        expr.m_bindings.push_back( mv$(binding.ty) );
 }
 

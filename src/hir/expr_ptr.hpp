@@ -2,6 +2,7 @@
  */
 #pragma once
 #include <memory>
+#include <vector>
 
 namespace MIR {
 class Function;
@@ -9,11 +10,15 @@ class Function;
 
 namespace HIR {
 
+class TypeRef;
 class ExprNode;
 
 class ExprPtr
 {
     ::HIR::ExprNode* node;
+    
+public:
+    ::std::vector< ::HIR::TypeRef>  m_bindings;
     
 public:
     ExprPtr();

@@ -445,6 +445,7 @@ namespace {
             if( !m_closure_stack.empty() )
             {
                 // If attempting to use a Copy type by value, it can just be a Borrow of the inner type
+                assert(m_usage.size() > 0);
                 if( m_usage.back() == Usage::Move && type_is_copy(node.m_res_type) ) {
                     m_usage.push_back(Usage::Borrow);
                     node.m_value->visit( *this );
@@ -702,9 +703,8 @@ namespace {
             if( item.m_code )
             {
                 DEBUG("Function code " << p);
-                ::std::vector< ::HIR::TypeRef>  tmp;
                 //ExprVisitor_Extract    ev(item.m_code.binding_types);
-                ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls, m_new_types);
+                ExprVisitor_Extract    ev(m_resolve, item.m_code.m_bindings, m_new_trait_impls, m_new_types);
                 ev.visit_root( *item.m_code );
             }
             else
