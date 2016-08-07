@@ -17,6 +17,7 @@
 #include "resolve/main_bindings.hpp"
 #include "hir_conv/main_bindings.hpp"
 #include "hir_typeck/main_bindings.hpp"
+#include "hir_expand/main_bindings.hpp"
 
 #include "expand/cfg.hpp"
 
@@ -178,6 +179,9 @@ int main(int argc, char *argv[])
         // Check the rest of the expressions (including function bodies)
         CompilePhaseV("Typecheck Expressions", [&]() {
             Typecheck_Expressions(*hir_crate);
+            });
+        CompilePhaseV("Expand HIR Closures", [&]() {
+            HIR_Expand_Closures(*hir_crate);
             });
         CompilePhaseV("Typecheck Expressions (validate)", [&]() {
             Typecheck_Expressions_Validate(*hir_crate);
