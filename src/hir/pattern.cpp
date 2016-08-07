@@ -114,5 +114,130 @@ namespace HIR {
         )
         return os;
     }
+}   // namespace HIR
+
+
+namespace {
+    ::std::vector< ::HIR::Pattern> clone_pat_vec(const ::std::vector< ::HIR::Pattern>& pats) {
+        ::std::vector< ::HIR::Pattern>  rv;
+        rv.reserve( pats.size() );
+        for(const auto& pat : pats)
+            rv.push_back( pat.clone() );
+        return rv;
+    }
+    ::std::vector< ::std::pair< ::std::string, ::HIR::Pattern> > clone_pat_fields(const ::std::vector< ::std::pair< ::std::string, ::HIR::Pattern> >& pats) {
+        ::std::vector< ::std::pair< ::std::string, ::HIR::Pattern> >    rv;
+        rv.reserve( pats.size() );
+        for(const auto& field : pats)
+            rv.push_back( ::std::make_pair(field.first, field.second.clone()) );
+        return rv;
+    }
+    
+    ::HIR::Pattern::Value clone_patval(const ::HIR::Pattern::Value& val) {
+        TU_MATCH(::HIR::Pattern::Value, (val), (e),
+        (Integer,
+            return ::HIR::Pattern::Value::make_Integer(e);
+            ),
+        (String,
+            return ::HIR::Pattern::Value::make_String(e);
+            ),
+        (Named,
+            return ::HIR::Pattern::Value::make_Named(e.clone());
+            )
+        )
+        throw "";
+    }
+}   // namespace
+
+::HIR::Pattern HIR::Pattern::clone() const
+{
+    TU_MATCH(::HIR::Pattern::Data, (m_data), (e),
+    (Any,
+        return Pattern(m_binding, Data::make_Any({}));
+        ),
+    (Box,
+        return Pattern(m_binding, Data::make_Box({
+            box$( e.sub->clone() )
+            }));
+        ),
+    (Ref,
+        return Pattern(m_binding, Data::make_Ref({
+            e.type, box$(e.sub->clone())
+            }));
+        ),
+    (Tuple,
+        return Pattern(m_binding, Data::make_Tuple({
+            clone_pat_vec(e.sub_patterns)
+            }));
+        ),
+    (StructTuple,
+        return Pattern(m_binding, Data::make_StructTuple({
+            e.path.clone(),
+            e.binding,
+            clone_pat_vec(e.sub_patterns)
+            }));
+        ),
+    (StructTupleWildcard,
+        return Pattern(m_binding, Data::make_StructTupleWildcard({
+            e.path.clone(),
+            e.binding
+            }));
+        ),
+    (Struct,
+        return Pattern(m_binding, Data::make_Struct({
+            e.path.clone(),
+            e.binding,
+            clone_pat_fields(e.sub_patterns),
+            e.is_exhaustive
+            }));
+        ),
+    
+    (Value,
+        return Pattern(m_binding, Data::make_Value({
+            clone_patval(e.val)
+            }));
+        ),
+    (Range,
+        return Pattern(m_binding, Data::make_Range({
+            clone_patval(e.start),
+            clone_patval(e.end)
+            }));
+        ),
+    
+    (EnumTuple,
+        return Pattern(m_binding, Data::make_EnumTupleWildcard({
+            e.path.clone()
+            }));
+        ),
+    (EnumTupleWildcard,
+        return Pattern(m_binding, Data::make_EnumTupleWildcard({
+            e.path.clone()
+            }));
+        ),
+    (EnumStruct,
+        return Pattern(m_binding, Data::make_EnumStruct({
+            e.path.clone(),
+            e.binding_ptr,
+            e.binding_idx,
+            clone_pat_fields(e.sub_patterns),
+            e.is_exhaustive
+            }));
+        ),
+    (Slice,
+        return Pattern(m_binding, Data::make_Slice({
+            clone_pat_vec(e.sub_patterns)
+            }));
+        ),
+    (SplitSlice,
+        return Pattern(m_binding, Data::make_SplitSlice({
+            clone_pat_vec(e.leading),
+            e.extra_bind,
+            clone_pat_vec(e.trailing)
+            }));
+        )
+    )
+    
+    throw "";
 }
+
 

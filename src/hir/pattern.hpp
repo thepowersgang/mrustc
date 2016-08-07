@@ -110,6 +110,18 @@ struct Pattern
     PatternBinding  m_binding;
     Data    m_data;
     
+    Pattern() {}
+    Pattern(PatternBinding pb, Data d):
+        m_binding( mv$(pb) ),
+        m_data( mv$(d) )
+    {}
+    Pattern(const Pattern&) = delete;
+    Pattern(Pattern&&) = default;
+    Pattern& operator=(const Pattern&) = delete;
+    Pattern& operator=(Pattern&&) = default;
+    
+    Pattern clone() const;
+    
     friend ::std::ostream& operator<<(::std::ostream& os, const Pattern& x);
 };
 
