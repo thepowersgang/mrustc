@@ -414,6 +414,17 @@ struct ExprNode_CallValue:
     // - Cache for typeck
     ::std::vector< ::HIR::TypeRef>  m_arg_types;
     
+    // Indicates what trait should/is being used for this call
+    // - Determined by typeck using the present trait bound (also adds borrows etc)
+    // - If the called value is a closure, this stays a Unknown until closure expansion
+    enum class TraitUsed {
+        Unknown,
+        Fn,
+        FnMut,
+        FnOnce,
+    };
+    TraitUsed   m_trait_used = TraitUsed::Unknown;
+    
     ExprNode_CallValue(Span sp, ::HIR::ExprNodeP val, ::std::vector< ::HIR::ExprNodeP> args):
         ExprNode(mv$(sp)),
         m_value( mv$(val) ),
