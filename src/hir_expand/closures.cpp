@@ -11,10 +11,15 @@
 #include <algorithm>
 #include "main_bindings.hpp"
 
+namespace {
+    inline HIR::ExprNodeP mk_exprnodep(HIR::ExprNode* en){ return HIR::ExprNodeP(en); }
+}
+#define NEWNODE(type, ...)  mk_exprnodep(new HIR::ExprNode_##type(__VA_ARGS__))
 
 namespace {
     
     typedef ::std::vector< ::std::pair< ::HIR::ExprNode_Closure::Class, ::HIR::TraitImpl> > out_impls_t;
+    typedef ::std::vector< ::std::pair< ::std::string, ::HIR::Struct> > out_types_t;
     
     template<typename K, typename V>
     ::std::map<K,V> make_map1(K k1, V v1) {
@@ -98,16 +103,18 @@ namespace {
         
         // Outputs
         out_impls_t&    m_out_impls;
+        out_types_t&    m_out_types;
         
         /// Stack showing how a variable is being used
         ::std::vector<Usage>    m_usage;
         /// Stack of active closures
         ::std::vector<ClosureScope> m_closure_stack;
     public:
-        ExprVisitor_Extract(const StaticTraitResolve& resolve, ::std::vector< ::HIR::TypeRef>& var_types, out_impls_t& out_impls):
+        ExprVisitor_Extract(const StaticTraitResolve& resolve, ::std::vector< ::HIR::TypeRef>& var_types, out_impls_t& out_impls, out_types_t& out_types):
             m_resolve(resolve),
             m_variable_types(var_types),
-            m_out_impls( out_impls )
+            m_out_impls( out_impls ),
+            m_out_types( out_types )
         {
         }
         
@@ -118,6 +125,8 @@ namespace {
         
         void visit(::HIR::ExprNode_Closure& node) override
         {
+            const auto& sp = node.span();
+            
             m_closure_stack.push_back( ClosureScope(node) );
             
             ::std::vector< ::HIR::Pattern>  args_pat_inner;
@@ -145,12 +154,114 @@ namespace {
             // - Generics based on the current scope (compacted)
             ::HIR::GenericParams    params;
             // - Types of captured variables
-            ::std::vector< ::HIR::TypeRef>  capture_types;
+            ::std::vector< ::HIR::VisEnt< ::HIR::TypeRef> > capture_types;
             for(const auto binding_idx : node.m_var_captures) {
-                capture_types.push_back( mv$(m_variable_types.at(binding_idx)) );
+                capture_types.push_back( ::HIR::VisEnt< ::HIR::TypeRef> { false, mv$(m_variable_types.at(binding_idx)) } );
             }
-            // - Code
-            //m_type_output_list.push_back( ::HIR::ClosureType { mv$(params), mv$(capture_types) } );
+            m_out_types.push_back( ::std::make_pair(
+                FMT("closure_" << &node),
+                ::HIR::Struct {
+                    params.clone(),
+                    ::HIR::Struct::Repr::Rust,
+                    ::HIR::Struct::Data::make_Tuple(mv$(capture_types))
+                    }
+                ));
+            
+            struct H {
+                static ::HIR::TraitImpl make_fnonce(
+                        ::HIR::GenericParams params,
+                        ::HIR::PathParams trait_params,
+                        ::HIR::TypeRef closure_type,
+                        ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> args_argent,
+                        ::HIR::TypeRef ret_ty,
+                        ::HIR::ExprNodeP code
+                    )
+                {
+                    return ::HIR::TraitImpl {
+                        mv$(params), mv$(trait_params), mv$(closure_type),
+                        make_map1(
+                            ::std::string("call_once"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
+                                "rust", false, false,
+                                {},
+                                make_vec2(
+                                    ::std::make_pair(::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} }, ::HIR::TypeRef("Self", 0xFFFF)),
+                                    mv$( args_argent )
+                                    ),
+                                ret_ty.clone(),
+                                mv$(code)
+                                } }
+                            ),
+                        {},
+                        make_map1(
+                            ::std::string("Output"), ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> { false, mv$(ret_ty) }
+                            ),
+                        ::HIR::SimplePath()
+                        };
+                }
+                static ::HIR::TraitImpl make_fnmut(
+                        ::HIR::GenericParams params,
+                        ::HIR::PathParams trait_params,
+                        ::HIR::TypeRef closure_type,
+                        ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> args_argent,
+                        ::HIR::TypeRef ret_ty,
+                        ::HIR::ExprNodeP code
+                    )
+                {
+                    return ::HIR::TraitImpl {
+                        mv$(params), mv$(trait_params), mv$(closure_type),
+                        make_map1(
+                            ::std::string("call_mut"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
+                                "rust", false, false,
+                                {},
+                                make_vec2(
+                                    ::std::make_pair(
+                                        ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} },
+                                        ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Unique, ::HIR::TypeRef("Self", 0xFFFF) )
+                                        ),
+                                    mv$( args_argent )
+                                    ),
+                                ret_ty.clone(),
+                                mv$(code)
+                                } }
+                            ),
+                        {},
+                        {},
+                        ::HIR::SimplePath()
+                        };
+                }
+                static ::HIR::TraitImpl make_fn(
+                        ::HIR::GenericParams params,
+                        ::HIR::PathParams trait_params,
+                        ::HIR::TypeRef closure_type,
+                        ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> args_argent,
+                        ::HIR::TypeRef ret_ty,
+                        ::HIR::ExprNodeP code
+                    )
+                {
+                    return ::HIR::TraitImpl {
+                        mv$(params), mv$(trait_params), mv$(closure_type),
+                        make_map1(
+                            ::std::string("call"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
+                                "rust", false, false,
+                                {},
+                                make_vec2(
+                                    ::std::make_pair(
+                                        ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} },
+                                        ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef("Self", 0xFFFF) )
+                                        ),
+                                    mv$(args_argent)
+                                    ),
+                                ret_ty.clone(),
+                                mv$(code)
+                                } }
+                            ),
+                        {},
+                        {},
+                        ::HIR::SimplePath()
+                        };
+                }
+            };
+            
             // 3. Create trait impls
             ::HIR::TypeRef  closure_type = node.m_res_type.clone();
             ::HIR::PathParams   trait_params;
@@ -159,38 +270,88 @@ namespace {
             case ::HIR::ExprNode_Closure::Class::Unknown:
                 node.m_class = ::HIR::ExprNode_Closure::Class::NoCapture;
             case ::HIR::ExprNode_Closure::Class::NoCapture:
-            case ::HIR::ExprNode_Closure::Class::Shared:
-                TODO(node.span(), "Generate Fn, FnMut, and FnOnce impls");
-                break;
-            case ::HIR::ExprNode_Closure::Class::Mut:
-                TODO(node.span(), "Generate FnMut and FnOnce impls");
-                break;
+            case ::HIR::ExprNode_Closure::Class::Shared: {
+                const auto& lang_Fn = m_resolve.m_crate.get_lang_item_path(node.span(), "fn");
+                
+                // - FnOnce
+                {
+                    auto dispatch_node = NEWNODE(CallPath, sp,
+                        ::HIR::Path(closure_type.clone(), lang_Fn, "call"),
+                        make_vec2(
+                            NEWNODE(UniOp, sp, ::HIR::ExprNode_UniOp::Op::Ref, NEWNODE(Variable, sp, "self", 0)),
+                            NEWNODE(Variable, sp, "arg", 1)
+                            )
+                        );
+                    auto args_arg = ::std::make_pair(
+                        ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "args", 1}, {} },
+                        args_ty.clone()
+                        );
+                    m_out_impls.push_back(::std::make_pair(
+                        ::HIR::ExprNode_Closure::Class::Once,
+                        H::make_fnonce( params.clone(), trait_params.clone(), closure_type.clone(), mv$(args_arg), node.m_return.clone(), mv$(dispatch_node) )
+                        ));
+                }
+                // - FnMut
+                {
+                    auto dispatch_node = NEWNODE(CallPath, sp,
+                        ::HIR::Path(closure_type.clone(), lang_Fn, "call"),
+                        make_vec2(
+                            NEWNODE(UniOp, sp, ::HIR::ExprNode_UniOp::Op::Ref, NEWNODE(Deref, sp, NEWNODE(Variable, sp, "self", 0))),
+                            NEWNODE(Variable, sp, "arg", 1)
+                            )
+                        );
+                    auto args_arg = ::std::make_pair(
+                        ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "args", 1}, {} },
+                        args_ty.clone()
+                        );
+                    m_out_impls.push_back(::std::make_pair(
+                        ::HIR::ExprNode_Closure::Class::Mut,
+                        H::make_fnmut( params.clone(), trait_params.clone(), closure_type.clone(), mv$(args_arg), node.m_return.clone(), mv$(dispatch_node) )
+                        ));
+                }
+                
+                // - Fn
+                m_out_impls.push_back(::std::make_pair(
+                    ::HIR::ExprNode_Closure::Class::Shared,
+                    H::make_fn( mv$(params), mv$(trait_params), mv$(closure_type), ::std::make_pair(mv$(args_pat), mv$(args_ty)), node.m_return.clone(), mv$(node.m_code) )
+                    ));
+                } break;
+            case ::HIR::ExprNode_Closure::Class::Mut: {
+                const auto& lang_FnMut = m_resolve.m_crate.get_lang_item_path(node.span(), "fn_mut");
+                
+                // - FnOnce
+                {
+                    auto dispatch_node = NEWNODE(CallPath, sp,
+                        ::HIR::Path(closure_type.clone(), lang_FnMut, "call"),
+                        make_vec2(
+                            NEWNODE(UniOp, sp, ::HIR::ExprNode_UniOp::Op::RefMut, NEWNODE(Variable, sp, "self", 0)),
+                            NEWNODE(Variable, sp, "arg", 1)
+                            )
+                        );
+                    auto args_arg = ::std::make_pair(
+                        ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "args", 1}, {} },
+                        args_ty.clone()
+                        );
+                    m_out_impls.push_back(::std::make_pair(
+                        ::HIR::ExprNode_Closure::Class::Once,
+                        H::make_fnonce( params.clone(), trait_params.clone(), closure_type.clone(), mv$(args_arg), node.m_return.clone(), mv$(dispatch_node) )
+                        ));
+                }
+                
+                // - FnMut (code)
+                m_out_impls.push_back(::std::make_pair(
+                    ::HIR::ExprNode_Closure::Class::Mut,
+                    H::make_fn( mv$(params), mv$(trait_params), mv$(closure_type), ::std::make_pair(mv$(args_pat), mv$(args_ty)), node.m_return.clone(), mv$(node.m_code) )
+                    ));
+                } break;
             case ::HIR::ExprNode_Closure::Class::Once:
-                ::HIR::TraitImpl trait_impl {
-                    mv$(params), mv$(trait_params), mv$(closure_type),
-                    make_map1(
-                        ::std::string("call_once"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
-                            "rust", false, false,
-                            {},
-                            make_vec2(
-                                ::std::make_pair(::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} }, ::HIR::TypeRef("Self", 0xFFFF)),
-                                ::std::make_pair(mv$(args_pat), mv$(args_ty))
-                                ),
-                            node.m_return.clone(),
-                            mv$(node.m_code)
-                            } }
-                        ),
-                    {},
-                    make_map1(
-                        ::std::string("Output"), ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> { false, node.m_return.clone() }
-                        ),
-                    ::HIR::SimplePath()
-                    };
-                m_out_impls.push_back(::std::make_pair( ::HIR::ExprNode_Closure::Class::Once, mv$(trait_impl) ));
+                // - FnOnce (code)
+                m_out_impls.push_back(::std::make_pair(
+                    ::HIR::ExprNode_Closure::Class::Once,
+                    H::make_fnonce( mv$(params), mv$(trait_params), mv$(closure_type), ::std::make_pair(mv$(args_pat), mv$(args_ty)), node.m_return.clone(), mv$(node.m_code) )
+                    ));
                 break;
             }
-            //m_impls.push_back(
-            TODO(node.span(), "Transform closure code into closure type - " << node.m_res_type);
         }
         
         void visit(::HIR::ExprNode_Let& node) override
@@ -303,8 +464,6 @@ namespace {
         {
             if( !m_closure_stack.empty() )
             {
-                TODO(node.span(), "Determine how value in CallValue is used");
-                
                 if( node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Unknown )
                 {
                     if( node.m_res_type.m_data.is_Closure() )
@@ -503,6 +662,7 @@ namespace {
     {
         StaticTraitResolve  m_resolve;
         out_impls_t m_new_trait_impls;
+        out_types_t m_new_types;
     public:
         OuterVisitor(const ::HIR::Crate& crate):
             m_resolve(crate)
@@ -524,15 +684,16 @@ namespace {
                 this->visit_type( *e.inner );
                 DEBUG("Array size " << ty);
                 if( e.size ) {
-                    ::std::vector< ::HIR::TypeRef>  tmp;
-                    ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
-                    ev.visit_root( *e.size );
+                    //::std::vector< ::HIR::TypeRef>  tmp;
+                    //ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
+                    //ev.visit_root( *e.size );
                 }
             )
             else {
                 ::HIR::Visitor::visit_type(ty);
             }
         }
+
         // ------
         // Code-containing items
         // ------
@@ -543,7 +704,7 @@ namespace {
                 DEBUG("Function code " << p);
                 ::std::vector< ::HIR::TypeRef>  tmp;
                 //ExprVisitor_Extract    ev(item.m_code.binding_types);
-                ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
+                ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls, m_new_types);
                 ev.visit_root( *item.m_code );
             }
             else
@@ -554,17 +715,17 @@ namespace {
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override {
             if( item.m_value )
             {
-                ::std::vector< ::HIR::TypeRef>  tmp;
-                ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
-                ev.visit_root(*item.m_value);
+                //::std::vector< ::HIR::TypeRef>  tmp;
+                //ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
+                //ev.visit_root(*item.m_value);
             }
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override {
             if( item.m_value )
             {
-                ::std::vector< ::HIR::TypeRef>  tmp;
-                ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
-                ev.visit_root(*item.m_value);
+                //::std::vector< ::HIR::TypeRef>  tmp;
+                //ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
+                //ev.visit_root(*item.m_value);
             }
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
@@ -575,11 +736,11 @@ namespace {
             for(auto& var : item.m_variants)
             {
                 TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-                    DEBUG("Enum value " << p << " - " << var.first);
-                    
-                    ::std::vector< ::HIR::TypeRef>  tmp;
-                    ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
-                    ev.visit_root(*e);
+                    //DEBUG("Enum value " << p << " - " << var.first);
+                    //
+                    //::std::vector< ::HIR::TypeRef>  tmp;
+                    //ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
+                    //ev.visit_root(*e);
                 )
             }
         }
