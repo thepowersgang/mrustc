@@ -9,6 +9,7 @@
 #include <hir/expr.hpp>
 #include <hir_typeck/static.hpp>
 #include <algorithm>
+#include "main_bindings.hpp"
 
 
 namespace {
@@ -68,6 +69,7 @@ namespace {
             // 1. Iterate over the nodes and rewrite variable accesses to either renumbered locals, or field accesses
             // 2. Construct closure type (saving path/index in the node)
             // 3. Create trait impls
+            TODO(node.span(), "Transform closure code into closure type - " << node.m_res_type);
         }
         
         void visit(::HIR::ExprNode_Let& node) override
@@ -120,6 +122,88 @@ namespace {
                 
                 node.m_value->visit(*this);
                 
+                m_usage.pop_back();
+            }
+            else
+            {
+                ::HIR::ExprVisitorDef::visit(node);
+            }
+        }
+        void visit(::HIR::ExprNode_BinOp& node) override
+        {
+            if( !m_closure_stack.empty() )
+            {
+                switch(node.m_op)
+                {
+                case ::HIR::ExprNode_BinOp::Op::CmpEqu:
+                case ::HIR::ExprNode_BinOp::Op::CmpNEqu:
+                case ::HIR::ExprNode_BinOp::Op::CmpLt:
+                case ::HIR::ExprNode_BinOp::Op::CmpLtE:
+                case ::HIR::ExprNode_BinOp::Op::CmpGt:
+                case ::HIR::ExprNode_BinOp::Op::CmpGtE:
+                    m_usage.push_back( Usage::Borrow );
+                    break;
+                default:
+                    m_usage.push_back( Usage::Move );
+                    break;
+                }
+                
+                node.m_left ->visit(*this);
+                node.m_right->visit(*this);
+                
+                m_usage.pop_back();
+            }
+            else
+            {
+                ::HIR::ExprVisitorDef::visit(node);
+            }
+        }
+        void visit(::HIR::ExprNode_Field& node) override
+        {
+            if( !m_closure_stack.empty() )
+            {
+                // If attempting to use a Copy type by value, it can just be a Borrow of the inner type
+                if( m_usage.back() == Usage::Move && type_is_copy(node.m_res_type) ) {
+                    m_usage.push_back(Usage::Borrow);
+                    node.m_value->visit( *this );
+                    m_usage.pop_back();
+                }
+                else {
+                    node.m_value->visit( *this );
+                }
+            }
+            else
+            {
+                ::HIR::ExprVisitorDef::visit(node);
+            }
+        }
+        
+        void visit(::HIR::ExprNode_CallValue& node) override
+        {
+            TODO(node.span(), "Determine how value in CallValue is used");
+        }
+        void visit(::HIR::ExprNode_CallMethod& node) override
+        {
+            if( !m_closure_stack.empty() )
+            {
+                m_usage.push_back(Usage::Move);
+                node.m_value->visit(*this);
+                for(auto& arg : node.m_args)
+                    arg->visit(*this);
+                m_usage.pop_back();
+            }
+            else
+            {
+                ::HIR::ExprVisitorDef::visit(node);
+            }
+        }
+        void visit(::HIR::ExprNode_CallPath& node) override
+        {
+            if( !m_closure_stack.empty() )
+            {
+                m_usage.push_back(Usage::Move);
+                for(auto& arg : node.m_args)
+                    arg->visit(*this);
                 m_usage.pop_back();
             }
             else
@@ -287,7 +371,7 @@ namespace {
                 DEBUG("Array size " << ty);
                 if( e.size ) {
                     ::std::vector< ::HIR::TypeRef>  tmp;
-                    ExprVisitor_Extract    ev({});
+                    ExprVisitor_Extract    ev(m_resolve, tmp);
                     ev.visit_root( *e.size );
                 }
             )
@@ -303,8 +387,9 @@ namespace {
             if( item.m_code )
             {
                 DEBUG("Function code " << p);
+                ::std::vector< ::HIR::TypeRef>  tmp;
                 //ExprVisitor_Extract    ev(item.m_code.binding_types);
-                ExprVisitor_Extract    ev({});
+                ExprVisitor_Extract    ev(m_resolve, tmp);
                 ev.visit_root( *item.m_code );
             }
             else
@@ -316,7 +401,7 @@ namespace {
             if( item.m_value )
             {
                 ::std::vector< ::HIR::TypeRef>  tmp;
-                ExprVisitor_Extract    ev(tmp);
+                ExprVisitor_Extract    ev(m_resolve, tmp);
                 ev.visit_root(*item.m_value);
             }
         }
@@ -324,7 +409,7 @@ namespace {
             if( item.m_value )
             {
                 ::std::vector< ::HIR::TypeRef>  tmp;
-                ExprVisitor_Extract    ev({});
+                ExprVisitor_Extract    ev(m_resolve, tmp);
                 ev.visit_root(*item.m_value);
             }
         }
@@ -339,7 +424,7 @@ namespace {
                     DEBUG("Enum value " << p << " - " << var.first);
                     
                     ::std::vector< ::HIR::TypeRef>  tmp;
-                    ExprVisitor_Extract    ev(tmp);
+                    ExprVisitor_Extract    ev(m_resolve, tmp);
                     ev.visit_root(*e);
                 )
             }
