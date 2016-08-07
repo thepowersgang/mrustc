@@ -54,6 +54,7 @@ OBJ += hir_typeck/outer.o hir_typeck/expr_context.o hir_typeck/helpers.o hir_typ
 OBJ += hir_typeck/expr_visit.o
 OBJ += hir_typeck/expr_simple.o hir_typeck/expr_cs.o
 OBJ += hir_typeck/expr_check.o
+OBJ += hir_expand/closures.o
 
 PCHS := ast/ast.hpp
 

@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir_typeck/expr_check.cpp
+ * - Expression type checking
  */
 #include <hir/visitor.hpp>
 #include <hir/expr.hpp>
