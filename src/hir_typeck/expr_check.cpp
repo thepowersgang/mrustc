@@ -611,11 +611,14 @@ namespace {
         void visit(::HIR::ExprNode_Closure& node) override
         {
             TRACE_FUNCTION_F(&node << " |...| ...");
-            check_types_equal(node.m_code->span(), node.m_return, node.m_code->m_res_type);
             
-            this->closure_ret_types.push_back( &node.m_return );
-            node.m_code->visit( *this );
-            this->closure_ret_types.pop_back( );
+            if( node.m_code )
+            {
+                check_types_equal(node.m_code->span(), node.m_return, node.m_code->m_res_type);
+                this->closure_ret_types.push_back( &node.m_return );
+                node.m_code->visit( *this );
+                this->closure_ret_types.pop_back( );
+            }
         }
         
     private:
