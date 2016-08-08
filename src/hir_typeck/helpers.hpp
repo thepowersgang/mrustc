@@ -160,6 +160,15 @@ public:
         prep_indexes();
     }
     
+    const ::HIR::GenericParams& impl_params() const {
+        static ::HIR::GenericParams empty;
+        return m_impl_params ? *m_impl_params : empty;
+    }
+    const ::HIR::GenericParams& item_params() const {
+        static ::HIR::GenericParams empty;
+        return m_item_params ? *m_item_params : empty;
+    }
+    
     void prep_indexes();
     
     ::HIR::Compare compare_pp(const Span& sp, const ::HIR::PathParams& left, const ::HIR::PathParams& right) const;

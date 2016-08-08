@@ -439,6 +439,8 @@ namespace {
         {
             TRACE_FUNCTION_F(&node << " " << node.m_path << "(..., )");
             // Link arguments
+            // - NOTE: The last entry in m_arg_types is the return type
+            ASSERT_BUG(node.span(), node.m_cache.m_arg_types.size() == node.m_args.size() + 1, "Cache and aruments disagree - " << node.m_cache.m_arg_types << " vs " << node.m_args.size());
             for(unsigned int i = 0; i < node.m_args.size(); i ++)
             {
                 check_types_equal(node.span(), node.m_cache.m_arg_types[i], node.m_args[i]->m_res_type);
@@ -494,6 +496,10 @@ namespace {
             if( str_ty.m_data.is_Tuple() )
             {
                 ASSERT_BUG(sp, is_index, "Non-index _Field on tuple");
+            }
+            else if( str_ty.m_data.is_Closure() )
+            {
+                ASSERT_BUG(sp, is_index, "Non-index _Field on closure");
             }
             else
             {
@@ -734,6 +740,26 @@ namespace {
                     ev.visit_root(*e);
                 )
             }
+        }
+        
+        void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
+        {
+            auto _ = this->m_resolve.set_impl_generics(item.m_params);
+            ::HIR::Visitor::visit_trait(p, item);
+        }
+        void visit_type_impl(::HIR::TypeImpl& impl) override
+        {
+            TRACE_FUNCTION_F("impl " << impl.m_type);
+            auto _ = this->m_resolve.set_impl_generics(impl.m_params);
+            
+            ::HIR::Visitor::visit_type_impl(impl);
+        }
+        void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
+        {
+            TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
+            auto _ = this->m_resolve.set_impl_generics(impl.m_params);
+            
+            ::HIR::Visitor::visit_trait_impl(trait_path, impl);
         }
     };
 }

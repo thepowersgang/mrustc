@@ -25,6 +25,15 @@ public:
         m_item_generics(nullptr)
     {}
     
+    const ::HIR::GenericParams& impl_generics() const {
+        static ::HIR::GenericParams empty;
+        return m_impl_generics ? *m_impl_generics : empty;
+    }
+    const ::HIR::GenericParams& item_generics() const {
+        static ::HIR::GenericParams empty;
+        return m_item_generics ? *m_item_generics : empty;
+    }
+    
     /// \brief State manipulation
     /// \{
     template<typename T>
