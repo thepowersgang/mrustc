@@ -55,6 +55,7 @@ OBJ += hir_typeck/expr_visit.o
 OBJ += hir_typeck/expr_simple.o hir_typeck/expr_cs.o
 OBJ += hir_typeck/expr_check.o
 OBJ += hir_expand/closures.o hir_expand/ufcs_everything.o
+OBJ += mir/mir_ptr.o mir/from_hir.o
 
 PCHS := ast/ast.hpp
 
