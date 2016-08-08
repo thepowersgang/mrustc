@@ -6,6 +6,7 @@
  * - Compiler Entrypoint
  */
 #include <iostream>
+#include <iomanip>
 #include <string>
 #include "parse/lex.hpp"
 #include "parse/parseerror.hpp"
@@ -66,7 +67,7 @@ Rv CompilePhase(const char *name, Fcn f) {
     auto rv = f();
     auto end = clock();
     g_cur_phase = "";
-    ::std::cout << name << ": DONE (" << static_cast<double>(end - start) / static_cast<double>(CLOCKS_PER_SEC) << " s)" << ::std::endl;
+    ::std::cout << name << ": DONE (" << ::std::fixed << ::std::setprecision(2) << static_cast<double>(end - start) / static_cast<double>(CLOCKS_PER_SEC) << " s)" << ::std::endl;
     return rv;
 }
 template <typename Fcn>
