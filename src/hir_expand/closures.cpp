@@ -50,10 +50,18 @@ namespace {
         {
         }
         void visit_node_ptr(::HIR::ExprNodeP& node) override {
+            const char* node_ty = typeid(*node).name();
+            TRACE_FUNCTION_FR(&*node << " " << node_ty << " : " << node->m_res_type, node_ty);
+            assert( node );
             node->visit(*this);
             if( m_replacement ) {
                 node = mv$(m_replacement);
             }
+        }
+        void visit(::HIR::ExprNode_Closure& node) override
+        {
+            // Do nothing, inner closures should just be value references now
+            assert( ! node.m_code );
         }
         void visit(::HIR::ExprNode_Variable& node) override
         {
@@ -67,14 +75,14 @@ namespace {
             // 2. Is it a capture?
             binding_it = ::std::find(m_captures.begin(), m_captures.end(), node.m_slot);
             if( binding_it != m_captures.end() ) {
-                m_replacement = ::HIR::ExprNodeP( new ::HIR::ExprNode_Field(node.span(),
-                    ::HIR::ExprNodeP( new ::HIR::ExprNode_Variable(node.span(), "self", 0) ),
+                m_replacement = NEWNODE(Field, node.span(),
+                    NEWNODE(Variable, node.span(), "self", 0),
                     FMT(binding_it - m_captures.begin())
-                    ));
+                    );
                 return ;
             }
             
-            BUG(node.span(), "");
+            BUG(node.span(), "Encountered non-captured and unknown-origin variable - " << node.m_name << " #" << node.m_slot);
         }
     };
     
@@ -156,7 +164,7 @@ namespace {
             // - Types of captured variables
             ::std::vector< ::HIR::VisEnt< ::HIR::TypeRef> > capture_types;
             for(const auto binding_idx : node.m_var_captures) {
-                capture_types.push_back( ::HIR::VisEnt< ::HIR::TypeRef> { false, mv$(m_variable_types.at(binding_idx)) } );
+                capture_types.push_back( ::HIR::VisEnt< ::HIR::TypeRef> { false, m_variable_types.at(binding_idx).clone() } );
             }
             m_out_types.push_back( ::std::make_pair(
                 FMT("closure_" << &node),
@@ -445,8 +453,7 @@ namespace {
             if( !m_closure_stack.empty() )
             {
                 // If attempting to use a Copy type by value, it can just be a Borrow of the inner type
-                assert(m_usage.size() > 0);
-                if( m_usage.back() == Usage::Move && type_is_copy(node.m_res_type) ) {
+                if( (m_usage.size() == 0 || m_usage.back() == Usage::Move) && type_is_copy(node.m_res_type) ) {
                     m_usage.push_back(Usage::Borrow);
                     node.m_value->visit( *this );
                     m_usage.pop_back();
@@ -619,14 +626,15 @@ namespace {
         }
         void mark_used_variable(unsigned int slot)
         {
-            for(const auto& closure_rec : m_closure_stack)
-            {
-                const auto& closure_defs = closure_rec.local_vars;
+            //for(const auto& closure_rec : m_closure_stack)
+            //{
+            //    const auto& closure_defs = closure_rec.local_vars;
+                const auto& closure_defs = m_closure_stack.back().local_vars;
                 if( ::std::binary_search(closure_defs.begin(), closure_defs.end(), slot) ) {
                     // Ignore, this is local to the current closure
                     return ;
                 }
-            }
+            //}
 
             assert(m_closure_stack.size() > 0 );
             auto& closure_rec = m_closure_stack.back();
@@ -636,9 +644,10 @@ namespace {
             if( it == closure.m_var_captures.end() || *it != slot ) {
                 closure.m_var_captures.insert( it, slot );
             }
+            DEBUG("Captured " << slot << " - " << m_variable_types.at(slot));
             
             // Use the m_usage variable
-            switch( m_usage.back() )
+            switch( m_usage.size() > 0 ? m_usage.back() : Usage::Move )
             {
             case Usage::Borrow:
                 closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Shared);
