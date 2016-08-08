@@ -180,9 +180,11 @@ int main(int argc, char *argv[])
         CompilePhaseV("Typecheck Expressions", [&]() {
             Typecheck_Expressions(*hir_crate);
             });
+        // - Now that all types are known, closures can be desugared
         CompilePhaseV("Expand HIR Closures", [&]() {
             HIR_Expand_Closures(*hir_crate);
             });
+        // - Ensure that typeck worked (including Fn trait call insertion etc)
         CompilePhaseV("Typecheck Expressions (validate)", [&]() {
             Typecheck_Expressions_Validate(*hir_crate);
             });
@@ -192,10 +194,6 @@ int main(int argc, char *argv[])
         }
         
         // Expand closures into items
-        // - Now that all types are known, closures can be desugared
-        CompilePhaseV("Lower Closures", [&]() {
-            //ConvertHIR_Closures(hir_crate);
-            });
         // Lower expressions into MIR
         CompilePhaseV("Lower MIR", [&]() {
             //ConvertHIR_MIR(hir_crate);
