@@ -40,6 +40,7 @@ public:
     ::std::unique_ptr< ::HIR::ExprNode> into_unique();
     operator bool () const { return node != nullptr; }
     ::HIR::ExprNode* get() const { return node; }
+    void reset(::HIR::ExprNode* p);
     
           ::HIR::ExprNode& operator*()       { return *node; }
     const ::HIR::ExprNode& operator*() const { return *node; }

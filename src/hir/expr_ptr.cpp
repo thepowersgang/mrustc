@@ -21,3 +21,8 @@
     this->node = nullptr;
     return rv;
 }
+void ::HIR::ExprPtr::reset(::HIR::ExprNode* p)
+{
+    delete node;
+    node = p;
+}
