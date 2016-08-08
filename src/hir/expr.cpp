@@ -118,7 +118,10 @@ DEF_VISIT(ExprNode_ArraySized, node,
 )
 
 DEF_VISIT(ExprNode_Closure, node,
-    visit_node_ptr(node.m_code);
+    if(node.m_code)
+    {
+        visit_node_ptr(node.m_code);
+    }
 )
 
 #undef DEF_VISIT

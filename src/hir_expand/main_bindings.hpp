@@ -7,3 +7,4 @@ namespace HIR {
 };
 
 extern void HIR_Expand_Closures(::HIR::Crate& crate);
+extern void HIR_Expand_UfcsEverything(::HIR::Crate& crate);
