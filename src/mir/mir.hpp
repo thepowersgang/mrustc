@@ -147,7 +147,7 @@ TAGGED_UNION(Statement, Assign,
         RValue  src;
         }),
     (Drop, struct {
-        eDropKind   kind;
+        eDropKind   kind;   // NOTE: For the `box` primitive
         LValue  slot;
         })
     );
