@@ -122,7 +122,6 @@ namespace {
             }
             
             auto self_arg_type = node.m_value->m_res_type.clone();
-            //auto ret_type = node.m_res_type.clone();
             // Construct argument list for the output
             ::std::vector< ::HIR::ExprNodeP>    args;
             args.reserve( 1 + node.m_args.size() );
@@ -139,7 +138,6 @@ namespace {
             arg_types.push_back( mv$(self_arg_type) );
             for(auto& ty : node.m_arg_types)
                 arg_types.push_back( mv$(ty) );
-            //arg_types.push_back( mv$(ret_type) );
         }
         void visit(::HIR::ExprNode_CallMethod& node) override
         {
