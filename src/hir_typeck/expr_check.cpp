@@ -668,11 +668,6 @@ namespace {
             m_resolve(crate)
         {}
         
-        void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
-        {
-            ::HIR::Visitor::visit_module(p, mod);
-        }
-        
         // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
         void visit_expr(::HIR::ExprPtr& exp) {
             BUG(Span(), "visit_expr hit in OuterVisitor");
