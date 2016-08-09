@@ -39,8 +39,12 @@ namespace {
         
     public:
         ExprVisitor_Conv(::MIR::Function& output):
-            m_output(output)
-        {}
+            m_output(output),
+            m_block_active(false),
+            m_result_valid(false)
+        {
+            this->set_cur_block( this->new_bb_unlinked() );
+        }
         
         ::MIR::LValue new_temporary(const ::HIR::TypeRef& ty)
         {
@@ -81,7 +85,7 @@ namespace {
         }
         void set_result(const Span& sp, ::MIR::RValue val) {
             if(m_result_valid) {
-                BUG(Span(), "Pushing a result over an existing result");
+                BUG(sp, "Pushing a result over an existing result");
             }
             m_result = mv$(val);
             m_result_valid = true;
@@ -131,6 +135,12 @@ namespace {
         
         void destructure_from(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval)
         {
+            if( pat.m_binding.is_valid() ) {
+                ASSERT_BUG(sp, pat.m_data.is_Any(), "Destructure patterns can't bind and match");
+                
+                this->push_stmt_assign( ::MIR::LValue::make_Variable(pat.m_binding.m_slot), mv$(lval) );
+                return ;
+            }
             // TODO: Destructure
             TODO(sp, "Destructure using " << pat);
         }
@@ -138,6 +148,7 @@ namespace {
         // -- ExprVisitor
         void visit(::HIR::ExprNode_Block& node) override
         {
+            TRACE_FUNCTION_F("_Block");
             // NOTE: This doesn't create a BB, as BBs are not needed for scoping
             if( node.m_nodes.size() > 0 )
             {
@@ -169,6 +180,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Return& node) override
         {
+            TRACE_FUNCTION_F("_Return");
             this->visit_node_ptr(node.m_value);
             
             this->push_stmt_assign( ::MIR::LValue::make_Return({}),  this->get_result(node.span()) );
@@ -176,6 +188,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Let& node) override
         {
+            TRACE_FUNCTION_F("_Let");
             if( node.m_value )
             {
                 this->visit_node_ptr(node.m_value);
@@ -185,6 +198,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Loop& node) override
         {
+            TRACE_FUNCTION_F("_Loop");
             auto loop_block = this->new_bb_linked();
             auto loop_next = this->new_bb_unlinked();
             
@@ -197,6 +211,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_LoopControl& node) override
         {
+            TRACE_FUNCTION_F("_LoopControl");
             if( m_loop_stack.size() == 0 ) {
                 BUG(node.span(), "Loop control outside of a loop");
             }
@@ -220,6 +235,7 @@ namespace {
         
         void visit(::HIR::ExprNode_Match& node) override
         {
+            TRACE_FUNCTION_F("_Match");
             this->visit_node_ptr(node.m_value);
             //auto match_val = this->get_result();
             
@@ -368,6 +384,8 @@ namespace {
         
         void visit(::HIR::ExprNode_If& node) override
         {
+            TRACE_FUNCTION_F("_If");
+            
             this->visit_node_ptr(node.m_cond);
             auto decision_val = this->lvalue_or_temp(node.m_cond->m_res_type, this->get_result(node.m_cond->span()) );
             
@@ -401,6 +419,7 @@ namespace {
         
         void visit(::HIR::ExprNode_Assign& node) override
         {
+            TRACE_FUNCTION_F("_Assign");
             const auto& sp = node.span();
             
             this->visit_node_ptr(node.m_value);
@@ -422,6 +441,7 @@ namespace {
         
         void visit(::HIR::ExprNode_BinOp& node) override
         {
+            TRACE_FUNCTION_F("_BinOp");
             this->visit_node_ptr(node.m_left);
             auto left = this->lvalue_or_temp( node.m_left->m_res_type, this->get_result(node.m_left->span()) );
             
@@ -474,6 +494,7 @@ namespace {
         
         void visit(::HIR::ExprNode_UniOp& node) override
         {
+            TRACE_FUNCTION_F("_UniOp");
             this->visit_node_ptr(node.m_value);
             auto val = this->lvalue_or_temp( node.m_value->m_res_type, this->get_result(node.m_value->span()) );
             
@@ -497,16 +518,19 @@ namespace {
         }
         void visit(::HIR::ExprNode_Cast& node) override
         {
+            TRACE_FUNCTION_F("_Cast");
             this->visit_node_ptr(node.m_value);
-            TODO(node.span(), "MIR _Cast");
+            TODO(node.span(), "MIR _Cast " << node.m_value->m_res_type << " to " << node.m_res_type);
         }
         void visit(::HIR::ExprNode_Unsize& node) override
         {
+            TRACE_FUNCTION_F("_Unsize");
             this->visit_node_ptr(node.m_value);
-            TODO(node.span(), "MIR _Unsize");
+            TODO(node.span(), "MIR _Unsize to " << node.m_res_type);
         }
         void visit(::HIR::ExprNode_Index& node) override
         {
+            TRACE_FUNCTION_F("_Index");
             this->visit_node_ptr(node.m_index);
             auto index = this->lvalue_or_temp( node.m_index->m_res_type, this->get_result(node.m_index->span()) );
             
@@ -549,6 +573,7 @@ namespace {
         
         void visit(::HIR::ExprNode_Deref& node) override
         {
+            TRACE_FUNCTION_F("_Deref");
             this->visit_node_ptr(node.m_value);
             auto val = this->lvalue_or_temp( node.m_value->m_res_type, this->get_result(node.m_value->span()) );
             
@@ -557,6 +582,7 @@ namespace {
         
         void visit(::HIR::ExprNode_TupleVariant& node) override
         {
+            TRACE_FUNCTION_F("_TupleVariant");
             ::std::vector< ::MIR::LValue>   values;
             values.reserve( node.m_args.size() );
             for(auto& arg : node.m_args)
@@ -573,6 +599,7 @@ namespace {
         
         void visit(::HIR::ExprNode_CallPath& node) override
         {
+            TRACE_FUNCTION_F("_CallPath " << node.m_path);
             ::std::vector< ::MIR::LValue>   values;
             values.reserve( node.m_args.size() );
             for(auto& arg : node.m_args)
@@ -608,10 +635,11 @@ namespace {
         }
         void visit(::HIR::ExprNode_CallMethod& node) override
         {
-            BUG(node.span(), "Leftover _CallValue");
+            BUG(node.span(), "Leftover _CallMethod");
         }
         void visit(::HIR::ExprNode_Field& node) override
         {
+            TRACE_FUNCTION_F("_Field");
             this->visit_node_ptr(node.m_value);
             auto val = this->get_result_lvalue(node.m_value->span());
             
@@ -628,10 +656,12 @@ namespace {
         }
         void visit(::HIR::ExprNode_Literal& node) override
         {
+            TRACE_FUNCTION_F("_Literal");
             TODO(node.span(), "Primitive literals");
         }
         void visit(::HIR::ExprNode_UnitVariant& node) override
         {
+            TRACE_FUNCTION_F("_UnitVariant");
             this->set_result( node.span(), ::MIR::RValue::make_Struct({
                 node.m_path.clone(),
                 {}
@@ -639,15 +669,18 @@ namespace {
         }
         void visit(::HIR::ExprNode_PathValue& node) override
         {
+            TRACE_FUNCTION_F("_PathValue");
             this->set_result( node.span(), ::MIR::LValue::make_Static(node.m_path.clone()) );
         }
         void visit(::HIR::ExprNode_Variable& node) override
         {
+            TRACE_FUNCTION_F("_Variable");
             this->set_result( node.span(), ::MIR::LValue::make_Variable(node.m_slot) );
         }
         
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
+            TRACE_FUNCTION_F("_StructLiteral");
             ::MIR::LValue   base_val;
             if( node.m_base_value )
             {
@@ -710,6 +743,7 @@ namespace {
         
         void visit(::HIR::ExprNode_Tuple& node) override
         {
+            TRACE_FUNCTION_F("_Tuple");
             ::std::vector< ::MIR::LValue>   values;
             values.reserve( node.m_vals.size() );
             for(auto& arg : node.m_vals)
@@ -725,6 +759,7 @@ namespace {
         
         void visit(::HIR::ExprNode_ArrayList& node) override
         {
+            TRACE_FUNCTION_F("_ArrayList");
             ::std::vector< ::MIR::LValue>   values;
             values.reserve( node.m_vals.size() );
             for(auto& arg : node.m_vals)
@@ -740,6 +775,7 @@ namespace {
         
         void visit(::HIR::ExprNode_ArraySized& node) override
         {
+            TRACE_FUNCTION_F("_ArraySized");
             this->visit_node_ptr( node.m_val );
             auto value = this->lvalue_or_temp( node.m_val->m_res_type, this->get_result(node.m_val->span()) );
             
@@ -751,6 +787,7 @@ namespace {
         
         void visit(::HIR::ExprNode_Closure& node) override
         {
+            TRACE_FUNCTION_F("_Closure");
             TODO(node.span(), "_Closure");
         }
     };
