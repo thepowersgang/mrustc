@@ -17,7 +17,7 @@ typedef unsigned int    RegionId;
 typedef unsigned int    BasicBlockId;
 
 // "LVALUE" - Assignable values
-TAGGED_UNION(LValue, Variable,
+TAGGED_UNION_EX(LValue, (), Variable, (
     // User-named variable
     (Variable, unsigned int),
     // Temporary with no user-defined name
@@ -36,13 +36,22 @@ TAGGED_UNION(LValue, Variable,
         ::std::unique_ptr<LValue>   val;
         unsigned int    field_index;
         }),
+    // Dereference a value
     (Deref, struct {
         ::std::unique_ptr<LValue>   val;
+        }),
+    // Index an array or slice (typeof(val) == [T; n] or [T])
+    (Index, struct {
+        ::std::unique_ptr<LValue>   val;
+        ::std::unique_ptr<LValue>   idx;
         }),
     (Downcast, struct {
         ::std::unique_ptr<LValue>   val;
         unsigned int    variant_index;
         })
+    ), (),(), (
+        LValue clone() const;
+    )
     );
 
 enum class eBinOp
@@ -52,6 +61,13 @@ enum class eBinOp
     MUL, MUL_OV,
     DIV, DIV_OV,
     MOD, MOD_OV,
+    
+    BIT_OR,
+    BIT_AND,
+    BIT_XOR,
+    
+    BIT_SHR,
+    BIT_SHL,
     
     EQ, NE,
     GT, GE,
