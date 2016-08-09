@@ -19,6 +19,7 @@
 #include "hir_conv/main_bindings.hpp"
 #include "hir_typeck/main_bindings.hpp"
 #include "hir_expand/main_bindings.hpp"
+#include "mir/main_bindings.hpp"
 
 #include "expand/cfg.hpp"
 
@@ -201,7 +202,7 @@ int main(int argc, char *argv[])
         // Expand closures into items
         // Lower expressions into MIR
         CompilePhaseV("Lower MIR", [&]() {
-            //ConvertHIR_MIR(hir_crate);
+            HIR_GenerateMIR(*hir_crate);
             });
         
         // Flatten modules into "mangled" set

@@ -1,12 +1,15 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/expr_ptr.hpp
+ * - HIR Expression
  */
 #pragma once
 #include <memory>
 #include <vector>
 
-namespace MIR {
-class Function;
-}
+#include <mir/mir_ptr.hpp>
 
 namespace HIR {
 
@@ -19,6 +22,7 @@ class ExprPtr
     
 public:
     ::std::vector< ::HIR::TypeRef>  m_bindings;
+    ::MIR::FunctionPointer  m_mir;
     
 public:
     ExprPtr();

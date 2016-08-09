@@ -2,15 +2,17 @@
  * MRustC - Rust Compiler
  * - By John Hodge (Mutabah/thePowersGang)
  *
- * mir/from_hir.hpp
+ * mir/from_hir.cpp
  * - Construction of MIR from the HIR expression tree
  */
 #include <type_traits>  // for TU_MATCHA
+#include <algorithm>
 #include "mir.hpp"
 #include "mir_ptr.hpp"
 #include <hir/expr.hpp>
 #include <hir/hir.hpp>
-#include <algorithm>
+#include <hir/visitor.hpp>
+#include "main_bindings.hpp"
 
 namespace {
     class ExprVisitor_Conv:
@@ -773,5 +775,82 @@ namespace {
     root_node.visit( ev );
     
     return ::MIR::FunctionPointer(new ::MIR::Function(mv$(fcn)));
+}
+
+namespace {
+    class OuterVisitor:
+        public ::HIR::Visitor
+    {
+    public:
+        OuterVisitor(const ::HIR::Crate& crate)
+        {}
+        
+        // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
+        void visit_expr(::HIR::ExprPtr& exp) {
+            BUG(Span(), "visit_expr hit in OuterVisitor");
+        }
+        
+        void visit_type(::HIR::TypeRef& ty) override
+        {
+            TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
+                this->visit_type( *e.inner );
+                DEBUG("Array size " << ty);
+                if( e.size ) {
+                    auto fcn = LowerMIR(e.size, {});
+                    e.size.m_mir = mv$(fcn);
+                }
+            )
+            else {
+                ::HIR::Visitor::visit_type(ty);
+            }
+        }
+
+        // ------
+        // Code-containing items
+        // ------
+        void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override {
+            if( item.m_code )
+            {
+                DEBUG("Function code " << p);
+                item.m_code.m_mir = LowerMIR(item.m_code, item.m_args);
+            }
+            else
+            {
+                DEBUG("Function code " << p << " (none)");
+            }
+        }
+        void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override {
+            if( item.m_value )
+            {
+                DEBUG("`static` value " << p);
+                item.m_value.m_mir = LowerMIR(item.m_value, {});
+            }
+        }
+        void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override {
+            if( item.m_value )
+            {
+                DEBUG("`const` value " << p);
+                item.m_value.m_mir = LowerMIR(item.m_value, {});
+            }
+        }
+        void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
+            //auto enum_type = ::HIR::TypeRef(::HIR::CoreType::Isize);
+            for(auto& var : item.m_variants)
+            {
+                TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
+                    //DEBUG("Enum value " << p << " - " << var.first);
+                    //::std::vector< ::HIR::TypeRef>  tmp;
+                    //ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
+                    //ev.visit_root(*e);
+                )
+            }
+        }
+    };
+}
+
+void HIR_GenerateMIR(::HIR::Crate& crate)
+{
+    OuterVisitor    ov(crate);
+    ov.visit_crate( crate );
 }
 
