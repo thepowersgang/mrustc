@@ -33,6 +33,8 @@ bool debug_enabled()
     //return g_cur_phase != "Parse" && g_cur_phase != "Expand";
     //return g_cur_phase != "Parse" && g_cur_phase != "Expand" && g_cur_phase != "Resolve";
     return g_cur_phase != "Parse" && g_cur_phase != "Expand" && g_cur_phase != "Resolve" && g_cur_phase != "Typecheck Expressions";
+    //return false;
+    //return g_cur_phase == "Lower MIR";
 }
 ::std::ostream& debug_output(int indent, const char* function)
 {

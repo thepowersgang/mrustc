@@ -204,7 +204,7 @@ class _name TU_EXP _inherit { \
     Tag m_tag; \
     union DataUnion { TU_UNION_FIELDS _variants DataUnion() {} ~DataUnion() {} } m_data;/*
 */ public:\
-    _name(): m_tag(TAG_##_def) { m_data._def = TU_DATANAME(_def)(); }/*
+    _name(): m_tag(TAG_##_def) { new (&m_data._def) TU_DATANAME(_def)(); }/*
 */  _name(const _name&) = delete;/*
 */  _name(_name&& x) noexcept: m_tag(x.m_tag) TU_EXP _extra_move { switch(m_tag) { case TAGDEAD: break; TU_MOVE_CASES _variants } x.m_tag = TAGDEAD; }/*
 */  _name& operator =(_name&& x) { switch(m_tag) { case TAGDEAD: break; TU_DEST_CASES _variants } m_tag = x.m_tag; TU_EXP _extra_assign switch(m_tag) { case TAGDEAD: break; TU_MOVE_CASES _variants }; return *this; }/*
