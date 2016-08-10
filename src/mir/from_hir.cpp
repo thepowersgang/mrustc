@@ -634,7 +634,6 @@ namespace {
                     );
                     
                     bool is_specialisation;
-                    ::MIR::LValue   value;
                     Values  m_branches;
                     Branch  m_default;
                     
@@ -724,6 +723,46 @@ namespace {
                             )
                         )
                     }
+                    
+                    void dump(int level=0) const
+                    {
+                        TU_MATCHA( (m_branches), (e),
+                        (Unset,
+                            DEBUG( (RepeatLitStr{" ",level}) << "- X");
+                            ),
+                        (Variant,
+                            for(const auto& branch : e) {
+                                TU_MATCHA( (branch.second), (be),
+                                (Unset,
+                                    DEBUG( (RepeatLitStr{" ",level}) << "- " << branch.first << " = ?" );
+                                    ),
+                                (Terminal,
+                                    DEBUG( (RepeatLitStr{" ",level}) << "- " << branch.first << " = GOTO " << be);
+                                    ),
+                                (Subtree,
+                                    DEBUG( (RepeatLitStr{" ",level}) << "- " << branch.first << " = { " );
+                                    be->dump(level+1);
+                                    DEBUG( (RepeatLitStr{" ",level}) << " }");
+                                    )
+                                )
+                            }
+                            )
+                        )
+                        
+                        TU_MATCHA( (m_default), (be),
+                        (Unset,
+                            DEBUG( (RepeatLitStr{" ",level}) << "- * = ?" );
+                            ),
+                        (Terminal,
+                            DEBUG( (RepeatLitStr{" ",level}) << "- * = GOTO " << be);
+                            ),
+                        (Subtree,
+                            DEBUG( (RepeatLitStr{" ",level}) << "- * = { " );
+                            be->dump(level+1);
+                            DEBUG( (RepeatLitStr{" ",level}) << " }");
+                            )
+                        )
+                    }
                 };
                 
                 // - Build tree by running each arm's pattern across it
@@ -732,6 +771,7 @@ namespace {
                 {
                     root_node.populate_tree_from_rule( node.m_arms[arm_rule.first].m_code->span(), arm_rule.first, arm_rule.second.m_rules.data(), arm_rule.second.m_rules.size() );
                 }
+                root_node.dump();
                 
                 // - Convert the above decision tree into MIR
                 struct DecisionTreeGen
@@ -758,6 +798,8 @@ namespace {
                         ::std::function<void(const DecisionTreeNode&)> and_then
                         )
                     {
+                        TRACE_FUNCTION_F("ty=" << ty << ", ty_ofs=" << ty_ofs);
+                        
                         TU_MATCHA( (ty.m_data), (e),
                         (Infer,   BUG(sp, "Ivar for in match type"); ),
                         (Diverge, BUG(sp, "Diverge in match type");  ),
@@ -783,11 +825,13 @@ namespace {
                                 BUG(sp, "Encounterd unbound path - " << e.path);
                                 ),
                             (Opaque,
+                                and_then(node);
                                 ),
                             (Struct,
                                 TODO(sp, "Match over struct - " << e.path);
                                 ),
                             (Enum,
+                                const auto& enum_path = e.path.m_data.as_Generic();
                                 const auto& branches = node.m_branches.as_Variant();
                                 const auto& variants = pbe->m_variants;
                                 bool has_any = ! node.m_default.is_Unset();
@@ -830,7 +874,9 @@ namespace {
                                 {
                                     auto bb = variant_blocks[branch.first];
                                     const auto& var = variants[branch.first];
+                                    
                                     m_builder.set_cur_block(bb);
+                                    
                                     TU_MATCHA( (var.second), (e),
                                     (Unit,
                                         assert( branch.second.is_Terminal() );
@@ -841,7 +887,16 @@ namespace {
                                         m_builder.end_block( ::MIR::Terminator::make_Goto( this->get_block_for_rule( branch.second.as_Terminal() ) ) );
                                         ),
                                     (Tuple,
-                                        TODO(sp, "Enum pattern - tuple");
+                                        assert( branch.second.is_Subtree() );
+                                        const auto& subnode = *branch.second.as_Subtree();
+                                        // Make a fake tuple
+                                        ::std::vector< ::HIR::TypeRef>  ents;
+                                        for( const auto& fld : e )
+                                        {
+                                            ents.push_back( monomorphise_type(sp,  pbe->m_params, enum_path.m_params,  fld.ent) );
+                                        }
+                                        ::HIR::TypeRef  fake_ty { mv$(ents) };
+                                        populate_tree_vals(sp, subnode, fake_ty, 0, ::MIR::LValue::make_Downcast({ box$(val.clone()), branch.first }), and_then);
                                         ),
                                     (Struct,
                                         TODO(sp, "Enum pattern - struct");
@@ -852,6 +907,7 @@ namespace {
                             )
                             ),
                         (Generic,
+                            and_then(node);
                             ),
                         (TraitObject,
                             ERROR(sp, E0000, "Attempting to match over a trait object");
