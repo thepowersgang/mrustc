@@ -258,12 +258,57 @@ namespace {
                 // Build up a sorted vector of MIR pattern rules
                 TAGGED_UNION(PatternRule, Any,
                 (Any, struct {}),
-                (Variant, unsigned int),
-                (Value, ::MIR::Constant),
-                (Optional, ::std::vector< PatternRule>)
+                (Variant, struct { unsigned int idx; ::std::vector<PatternRule> sub_rules; }),
+                (Value, ::MIR::Constant)
                 );
                 struct PatternRuleset {
                     ::std::vector<PatternRule>  m_rules;
+                    
+                    static ::Ordering rule_is_before(const PatternRule& l, const PatternRule& r)
+                    {
+                        if( l.tag() != r.tag() ) {
+                            // Any comes last, don't care about rest
+                            if( l.tag() < r.tag() )
+                                return ::OrdGreater;
+                            else
+                                return ::OrdLess;
+                        }
+                        
+                        TU_MATCHA( (l,r), (le,re),
+                        (Any,
+                            return ::OrdEqual;
+                            ),
+                        (Variant,
+                            if( le.idx != re.idx )
+                                return ::ord(le.idx, re.idx);
+                            assert( le.sub_rules.size() == re.sub_rules.size() );
+                            for(unsigned int i = 0; i < le.sub_rules.size(); i ++)
+                            {
+                                auto cmp = rule_is_before(le.sub_rules[i], re.sub_rules[i]);
+                                if( cmp != ::OrdEqual )
+                                    return cmp;
+                            }
+                            return ::OrdEqual;
+                            ),
+                        (Value,
+                            TODO(Span(), "Order PatternRule::Value");
+                            )
+                        )
+                        throw "";
+                    }
+                    bool is_before(const PatternRuleset& other) const
+                    {
+                        assert( m_rules.size() == other.m_rules.size() );
+                        for(unsigned int i = 0; i < m_rules.size(); i ++)
+                        {
+                            const auto& l = m_rules[i];
+                            const auto& r = other.m_rules[i];
+                            auto cmp = rule_is_before(l, r);
+                            if( cmp != ::OrdEqual )
+                                return cmp == ::OrdLess;
+                        }
+                        return false;
+                    }
                 };
                 struct PatternRulesetBuilder {
                     ::std::vector<PatternRule>  m_rules;
@@ -347,14 +392,11 @@ namespace {
                                 ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
                                 (Any,
                                     m_rules.push_back( PatternRule::make_Any({}) );
-                                    m_rules.push_back( PatternRule::make_Optional({}) );
                                     ),
-                                (Value,
-                                    ASSERT_BUG(sp, pe.val.is_Named(), "Value pattern for enum isn't _Named");
-                                    TODO(sp, "Enum Value");
+                                (EnumValue,
+                                    m_rules.push_back( PatternRule::make_Variant( {pe.binding_idx, {} } ) );
                                     ),
                                 (EnumTuple,
-                                    m_rules.push_back( PatternRule::make_Variant(pe.binding_idx) );
                                     const auto& fields_def = pe.binding_ptr->m_variants[pe.binding_idx].second.as_Tuple();
                                     PatternRulesetBuilder   sub_builder;
                                     for( unsigned int i = 0; i < pe.sub_patterns.size(); i ++ )
@@ -363,17 +405,15 @@ namespace {
                                         auto subty = monomorphise_type(sp,  pe.binding_ptr->m_params, e.path.m_data.as_Generic().m_params,  fields_def[i].ent);
                                         sub_builder.append_from( sp, subpat, subty );
                                     }
-                                    m_rules.push_back( PatternRule::make_Optional( mv$(sub_builder.m_rules) ) );
+                                    m_rules.push_back( PatternRule::make_Variant({ pe.binding_idx, mv$(sub_builder.m_rules) }) );
                                     ),
                                 (EnumTupleWildcard,
-                                    m_rules.push_back( PatternRule::make_Variant(pe.binding_idx) );
-                                    m_rules.push_back( PatternRule::make_Optional({}) );
+                                    m_rules.push_back( PatternRule::make_Variant({ pe.binding_idx, {} }) );
                                     ),
                                 (EnumStruct,
-                                    m_rules.push_back( PatternRule::make_Variant(pe.binding_idx) );
                                     PatternRulesetBuilder   sub_builder;
                                     TODO(sp, "Convert EnumStruct patterns");
-                                    m_rules.push_back( PatternRule::make_Optional( mv$(sub_builder.m_rules) ) );
+                                    m_rules.push_back( PatternRule::make_Variant({ pe.binding_idx, mv$(sub_builder.m_rules) }) );
                                     )
                                 )
                                 )
@@ -426,14 +466,14 @@ namespace {
                 };
                 
                 // Map of arm index to ruleset
-                ::std::vector< ::std::pair< unsigned int, PatternRuleset > >   m_arm_rules;
+                ::std::vector< ::std::pair< unsigned int, PatternRuleset > >   arm_rules;
                 for(const auto& arm : node.m_arms) {
                     auto idx = m_arm_rules.size();
                     for( const auto& pat : arm.m_patterns )
                     {
                         auto builder = PatternRulesetBuilder {};
                         builder.append_from(node.span(), pat, node.m_value->m_res_type);
-                        m_arm_rules.push_back( ::std::make_pair(idx, builder.into_ruleset()) );
+                        arm_rules.push_back( ::std::make_pair(idx, builder.into_ruleset()) );
                     }
                     
                     if( arm.m_cond ) {
@@ -442,11 +482,42 @@ namespace {
                     }
                 }
                 
-                // TODO: Sort ruleset such that wildcards go last (if there's no conditionals)
+                // Sort ruleset such that wildcards go last (if there's no conditionals)
+                // NOTE: Conditionals will break this, as you can have `x if x.is_foo() => {}, Enum::Foo ...`
+                ::std::sort( arm_rules.begin(), arm_rules.end(), [](const auto& l, const auto& r){ return l.second.is_before( r.second ); });
+                
+                // Generate arm code
+                // - End the current block with a jump to the descision code (TODO: Can this be avoided while still being defensive?)
+                auto descision_block = this->new_bb_unlinked();
+                this->end_block( ::MIR::Terminator::Goto(descision_block) );
+                
+                // - Create a result and next block
+                auto result_val = this->new_temporary(node.m_res_type);
+                auto next_block = this->new_bb_unlinked();
+                
+                // - Generate code for arms.
+                ::std::vector< ::MIR::BasicBlockId> arm_blocks;
+                arm_blocks.reserve( arm_rules.size() );
+                for(unsigned int i = 0; i < arm_rules.size(); i ++)
+                {
+                    const auto& arm = node.m_arms[i];
+                    arm_blocks.push_back( this->new_bb_unlinked() );
+                    this->set_cur_block(arm_blocks.back());
+                    
+                    this->visit_node_ptr(arm.m_code);
+                    
+                    this->push_stmt_assign( result_val.clone(), this->get_result(arm.m_code->span()) );
+                    // TODO: Drop unused bindings introduced by this arm.
+                    this->end_block( ::MIR::Terminator::Goto(next_block) );
+                }
 
-                // TODO: Generate decision tree based on ruleset
+                // Generate decision code based on ruleset and type
+                this->set_cur_block(descision_block);
                 
                 TODO(node.span(), "Convert match into MIR using ruleset");
+                
+                this->set_cur_block(next_block);
+                this->set_result( mv$(result_val) );
             }
         } // ExprNode_Match
         
@@ -478,7 +549,7 @@ namespace {
             }
             else
             {
-                // TODO: Assign `()` to the result
+                // Assign `()` to the result
                 this->push_stmt_assign( result_val.clone(), ::MIR::RValue::make_Tuple({}) );
                 this->end_block( ::MIR::Terminator::make_Goto(next_block) );
             }
