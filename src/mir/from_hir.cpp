@@ -207,7 +207,11 @@ namespace {
                 ),
             (EnumTuple,
                 ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected");
-                TODO(sp, "Destructure using " << pat);
+                auto lval_var = ::MIR::LValue::make_Downcast({ box$(mv$(lval)), e.binding_idx });
+                for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
+                {
+                    destructure_from(sp, e.sub_patterns[i], ::MIR::LValue::make_Field({ box$( lval_var.clone() ), i}));
+                }
                 ),
             (EnumTupleWildcard,
                 ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected");
@@ -609,6 +613,8 @@ namespace {
                     
                     // Assign bindings (drop registration happens in previous loop) - Allow refutable patterns
                     this->destructure_from( arm.m_code->span(), pat, match_val.clone(), 1 );
+                    
+                    m_builder.end_block( ::MIR::Terminator::make_Goto( arm_blocks[rule.first] ) );
                 }
                 
                 // ## Create descision tree in-memory based off the ruleset
@@ -720,6 +726,14 @@ namespace {
                     }
                 };
                 
+                // - Build tree by running each arm's pattern across it
+                DecisionTreeNode    root_node;
+                for( const auto& arm_rule : arm_rules )
+                {
+                    root_node.populate_tree_from_rule( node.m_arms[arm_rule.first].m_code->span(), arm_rule.first, arm_rule.second.m_rules.data(), arm_rule.second.m_rules.size() );
+                }
+                
+                // - Convert the above decision tree into MIR
                 struct DecisionTreeGen
                 {
                     MirBuilder& m_builder;
@@ -868,15 +882,9 @@ namespace {
                     }
                 };
                 
-                // - Build tree by running each arm's pattern across it
-                DecisionTreeNode    root_node;
-                for( const auto& arm_rule : arm_rules )
-                {
-                    root_node.populate_tree_from_rule( node.m_arms[arm_rule.first].m_code->span(), arm_rule.first, arm_rule.second.m_rules.data(), arm_rule.second.m_rules.size() );
-                }
-                
-                // TODO: Convert the above decision tree into MIR
-                TODO(node.span(), "Turn decision tree into MIR");
+                DecisionTreeGen gen { m_builder, rule_blocks };
+                m_builder.set_cur_block( descision_block );
+                gen.populate_tree_vals( node.span(), root_node, node.m_value->m_res_type, mv$(match_val) );
                 
                 m_builder.set_cur_block(next_block);
                 m_builder.set_result( node.span(), mv$(result_val) );
