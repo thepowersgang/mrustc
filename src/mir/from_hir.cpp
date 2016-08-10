@@ -93,12 +93,12 @@ namespace {
         
         void push_stmt_assign(::MIR::LValue dst, ::MIR::RValue val)
         {
-            assert(m_block_active);
+            ASSERT_BUG(Span(), m_block_active, "Pushing statement with no active block");
             m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Assign({ mv$(dst), mv$(val) }) );
         }
         void push_stmt_drop(::MIR::LValue val)
         {
-            assert(m_block_active);
+            ASSERT_BUG(Span(), m_block_active, "Pushing statement with no active block");
             m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::DEEP, mv$(val) }) );
         }
         
@@ -155,9 +155,10 @@ namespace {
                 m_block_stack.push_back( {} );
                 for(unsigned int i = 0; i < node.m_nodes.size()-1; i ++)
                 {
-                    const Span& sp = node.m_nodes[i]->span();
-                    this->visit_node_ptr(node.m_nodes[i]);
-                    this->push_stmt_drop( this->get_result_lvalue(sp) );
+                    auto& subnode = node.m_nodes[i];
+                    const Span& sp = subnode->span();
+                    this->visit_node_ptr(subnode);
+                    this->push_stmt_drop( this->lvalue_or_temp(subnode->m_res_type, this->get_result(sp)) );
                 }
                 
                 this->visit_node_ptr(node.m_nodes.back());
@@ -195,6 +196,7 @@ namespace {
                 
                 this->destructure_from(node.span(), node.m_pattern, this->lvalue_or_temp(node.m_type, this->get_result(node.span()) ));
             }
+            this->set_result(node.span(), ::MIR::RValue::make_Tuple({}));
         }
         void visit(::HIR::ExprNode_Loop& node) override
         {
@@ -520,7 +522,23 @@ namespace {
         {
             TRACE_FUNCTION_F("_Cast");
             this->visit_node_ptr(node.m_value);
-            TODO(node.span(), "MIR _Cast " << node.m_value->m_res_type << " to " << node.m_res_type);
+            auto val = this->lvalue_or_temp( node.m_value->m_res_type, this->get_result(node.m_value->span()) );
+            
+            #if 0
+            TU_MATCH_DEF( ::HIR::TypeRef::Data, (node.m_res_type->m_data), (de),
+            (
+                ),
+            (Primitive,
+                switch(de)
+                {
+                
+                }
+                )
+            )
+            #endif
+            auto res = this->new_temporary(node.m_res_type);
+            this->push_stmt_assign(res.clone(), ::MIR::RValue::make_Cast({ mv$(val), node.m_res_type.clone() }));
+            this->set_result( node.span(), mv$(res) );
         }
         void visit(::HIR::ExprNode_Unsize& node) override
         {
@@ -609,8 +627,18 @@ namespace {
             }
             
             // TODO: Obtain function type for this function
-            auto fcn_val = this->new_temporary( ::HIR::TypeRef(::HIR::FunctionType {
-                } ) );
+            auto fcn_ty_data = ::HIR::FunctionType {
+                false,
+                "",
+                box$( node.m_cache.m_arg_types.back().clone() ),
+                {}
+                };
+            for(unsigned int i = 0; i < node.m_cache.m_arg_types.size() - 1; i ++)
+            {
+                fcn_ty_data.m_arg_types.push_back( node.m_cache.m_arg_types[i].clone() );
+            }
+            auto fcn_val = this->new_temporary( ::HIR::TypeRef(mv$(fcn_ty_data)) );
+            this->push_stmt_assign( fcn_val.clone(), ::MIR::RValue::make_Constant( ::MIR::Constant(node.m_path.clone()) ) );
             
             auto panic_block = this->new_bb_unlinked();
             auto next_block = this->new_bb_unlinked();
@@ -657,7 +685,42 @@ namespace {
         void visit(::HIR::ExprNode_Literal& node) override
         {
             TRACE_FUNCTION_F("_Literal");
-            TODO(node.span(), "Primitive literals");
+            TU_MATCHA( (node.m_data), (e),
+            (Integer,
+                switch(node.m_res_type.m_data.as_Primitive())
+                {
+                case ::HIR::CoreType::U8:
+                case ::HIR::CoreType::U16:
+                case ::HIR::CoreType::U32:
+                case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::Usize:
+                    this->set_result(node.span(), ::MIR::RValue( ::MIR::Constant(e.m_value) ));
+                    break;
+                case ::HIR::CoreType::I8:
+                case ::HIR::CoreType::I16:
+                case ::HIR::CoreType::I32:
+                case ::HIR::CoreType::I64:
+                case ::HIR::CoreType::Isize:
+                    this->set_result(node.span(), ::MIR::RValue( ::MIR::Constant( static_cast<int64_t>(e.m_value) ) ));
+                    break;
+                default:
+                    BUG(node.span(), "Integer literal with unexpected type - " << node.m_res_type);
+                }
+                ),
+            (Float,
+                this->set_result(node.span(), ::MIR::RValue::make_Constant( ::MIR::Constant(e.m_value) ));
+                ),
+            (Boolean,
+                this->set_result(node.span(), ::MIR::RValue::make_Constant( ::MIR::Constant(e) ));
+                ),
+            (String,
+                this->set_result(node.span(), ::MIR::RValue::make_Constant( ::MIR::Constant(e) ));
+                ),
+            (ByteString,
+                auto v = mv$( *reinterpret_cast< ::std::vector<uint8_t>*>( &e) );
+                this->set_result(node.span(), ::MIR::RValue::make_Constant( ::MIR::Constant(mv$(v)) ));
+                )
+            )
         }
         void visit(::HIR::ExprNode_UnitVariant& node) override
         {
