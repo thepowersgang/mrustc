@@ -76,6 +76,9 @@ namespace HIR {
             os << e.start << " ... " << e.end;
             ),
         
+        (EnumValue,
+            os << e.path;
+            ),
         (EnumTuple,
             os << e.path;
             os << "(";
@@ -84,7 +87,7 @@ namespace HIR {
             os << ")";
             ),
         (EnumTupleWildcard,
-            os << e.path;
+            os << e.path << "(..)";
             ),
         (EnumStruct,
             os << e.path;
@@ -204,14 +207,17 @@ namespace {
             }));
         ),
     
+    (EnumValue,
+        return Pattern(m_binding, Data::make_EnumValue({ e.path.clone(), e.binding_ptr, e.binding_idx }));
+        ),
     (EnumTuple,
         return Pattern(m_binding, Data::make_EnumTupleWildcard({
-            e.path.clone()
+            e.path.clone(), e.binding_ptr, e.binding_idx
             }));
         ),
     (EnumTupleWildcard,
         return Pattern(m_binding, Data::make_EnumTupleWildcard({
-            e.path.clone()
+            e.path.clone(), e.binding_ptr, e.binding_idx
             }));
         ),
     (EnumStruct,

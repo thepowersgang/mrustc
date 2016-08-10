@@ -289,6 +289,10 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
             )
         )
         ),
+    (EnumValue,
+        this->add_ivars_params( e.path.m_params );
+        TODO(sp, "EnumValue");
+        ),
     (EnumTuple,
         this->add_ivars_params( e.path.m_params );
         if( type.m_data.is_Infer() ) {
@@ -539,6 +543,8 @@ void typeck::TypecheckContext::apply_pattern(const ::HIR::Pattern& pat, ::HIR::T
             // TODO: Does anything need to happen here? This can only introduce equalities?
             )
         )
+        ),
+    (EnumValue,
         ),
     (EnumTuple,
         if( ty.m_data.is_Infer() ) {

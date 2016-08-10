@@ -34,6 +34,7 @@
 #define _DISP12(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3,c4)   _DISP4(n, a1,a2,a3,a4) _DISP4(n, b1,b2,b3,b4) _DISP4(n, c1,c2,c3,c4)
 #define _DISP13(n, a1,a2,a3,a4,a5, b1,b2,b3,b4, c1,c2,c3,c4)   _DISP5(n, a1,a2,a3,a4,a5) _DISP4(n, b1,b2,b3,b4) _DISP4(n, c1,c2,c3,c4)
 #define _DISP14(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4)   _DISP5(n, a1,a2,a3,a4,a5) _DISP5(n, b1,b2,b3,b4,b5) _DISP4(n, c1,c2,c3,c4)
+#define _DISP15(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4,c5)   _DISP5(n, a1,a2,a3,a4,a5) _DISP5(n, b1,b2,b3,b4,b5) _DISP5(n, c1,c2,c3,c4,c5)
 
 #define _DISPO0(n)   
 #define _DISPO1(n, _1)   n(_1)
@@ -50,6 +51,7 @@
 #define _DISPO12(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3,c4)   _DISPO4(n, a1,a2,a3,a4) _DISPO4(n, b1,b2,b3,b4) _DISPO4(n, c1,c2,c3,c4)
 #define _DISPO13(n, a1,a2,a3,a4,a5, b1,b2,b3,b4, c1,c2,c3,c4)   _DISPO5(n, a1,a2,a3,a4,a5) _DISPO4(n, b1,b2,b3,b4) _DISPO4(n, c1,c2,c3,c4)
 #define _DISPO14(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4)   _DISPO5(n, a1,a2,a3,a4,a5) _DISPO5(n, b1,b2,b3,b4,b5) _DISPO4(n, c1,c2,c3,c4)
+#define _DISPO15(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4,c5)   _DISPO5(n, a1,a2,a3,a4,a5) _DISPO5(n, b1,b2,b3,b4,b5) _DISPO5(n, c1,c2,c3,c4,c5)
 
 #define TU_DISPA(n, a)   n a
 #define TU_DISPA1(n, a, _1)   TU_DISPA(n, (TU_EXP a, TU_EXP _1))
@@ -70,6 +72,8 @@
 #define TU_DISPA12(n, a, a1,a2,a3, b1,b2,b3, c1,c2,c3, d1,d2,d3) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA3(n,a, b1,b2,b3) TU_DISPA3(n,a, c1,c2,c3) TU_DISPA3(n,a, d1,d2,d3)
 #define TU_DISPA13(n, a, a1,a2,a3,a4, b1,b2,b3, c1,c2,c3, d1,d2,d3) TU_DISPA4(n,a, a1,a2,a3,a4) TU_DISPA3(n,a, b1,b2,b3) TU_DISPA3(n,a, c1,c2,c3) TU_DISPA3(n,a, d1,d2,d3)
 #define TU_DISPA14(n, a, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3, d1,d2,d3) TU_DISPA4(n,a, a1,a2,a3,a4) TU_DISPA4(n,a, b1,b2,b3,b4) TU_DISPA3(n,a, c1,c2,c3) TU_DISPA3(n,a, d1,d2,d3)
+#define TU_DISPA15(n, a, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3,c4, d1,d2,d3) TU_DISPA4(n,a, a1,a2,a3,a4) TU_DISPA4(n,a, b1,b2,b3,b4) TU_DISPA4(n,a, c1,c2,c3,c4) TU_DISPA3(n,a, d1,d2,d3)
+#define TU_DISPA16(n, a, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3,c4, d1,d2,d3,d4) TU_DISPA4(n,a, a1,a2,a3,a4) TU_DISPA4(n,a, b1,b2,b3,b4) TU_DISPA4(n,a, c1,c2,c3,c4) TU_DISPA4(n,a, d1,d2,d3,d4)
 
 // Macro to obtain a numbered macro for argument counts
 // - Raw variant
@@ -95,6 +99,8 @@
 #define MAXS12(a, b, c, d, e, f, g, h, i, j, k, l)  MAX2(MAXS6(a, b, c, d, e, f), MAXS6(g, h, i, j, k, l))
 #define MAXS13(a1,a2,a3,a4,a5,a6,a7, b1,b2,b3,b4,b5,b6)  MAX2(MAXS7(a1,a2,a3,a4,a5,a6,a7), MAXS6(b1,b2,b3,b4,b5,b6))
 #define MAXS14(a1,a2,a3,a4,a5,a6,a7, b1,b2,b3,b4,b5,b6,b7)  MAX2(MAXS7(a1,a2,a3,a4,a5,a6,a7), MAXS7(b1,b2,b3,b4,b5,b6,b7))
+#define MAXS15(a1,a2,a3,a4,a5,a6,a7,a8, b1,b2,b3,b4,b5,b6,b7)  MAX2(MAXS8(a1,a2,a3,a4,a5,a6,a7,a8), MAXS7(b1,b2,b3,b4,b5,b6,b7))
+#define MAXS16(a1,a2,a3,a4,a5,a6,a7,a8, b1,b2,b3,b4,b5,b6,b7,b8)  MAX2(MAXS8(a1,a2,a3,a4,a5,a6,a7,a8), MAXS8(b1,b2,b3,b4,b5,b6,b7,b8))
 
 // TODO: use `decltype` in place of the `class` argument to TU_MATCH/TU_IFLET
 // "match"-like statement

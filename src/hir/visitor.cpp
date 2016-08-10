@@ -351,6 +351,9 @@ void ::HIR::Visitor::visit_pattern(::HIR::Pattern& pat)
         this->visit_pattern_val(e.start);
         this->visit_pattern_val(e.end);
         ),
+    (EnumValue,
+        this->visit_generic_path(e.path, ::HIR::Visitor::PathContext::TYPE);
+        ),
     (EnumTupleWildcard,
         this->visit_generic_path(e.path, ::HIR::Visitor::PathContext::TYPE);
         ),

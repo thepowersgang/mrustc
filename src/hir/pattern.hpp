@@ -79,6 +79,11 @@ struct Pattern
         // Refutable
         (Value,     struct { Value val; } ),
         (Range,     struct { Value start; Value end; } ),
+        (EnumValue, struct {
+            GenericPath path;
+            const Enum* binding_ptr;
+            unsigned binding_idx;
+            } ),
         (EnumTuple, struct {
             GenericPath path;
             const Enum* binding_ptr;

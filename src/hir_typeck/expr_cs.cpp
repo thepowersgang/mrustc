@@ -2696,6 +2696,35 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             )
         )
         ),
+    (EnumValue,
+        this->add_ivars_params( e.path.m_params );
+        if( type.m_data.is_Infer() ) {
+            auto path = e.path.clone();
+            path.m_path.m_components.pop_back();
+            //::std::cout << "HHHH ExprCS: path=" << path << ", pat=" << pat << ::std::endl;
+
+            this->equate_types( sp, type, ::HIR::TypeRef::new_path(mv$(path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
+        }
+        const auto& ty = this->get_type(type);
+        const auto& type = ty;
+
+        assert(e.binding_ptr);
+        const auto& enm = *e.binding_ptr;
+        const auto& var = enm.m_variants[e.binding_idx].second;
+        assert(var.is_Value() || var.is_Unit());
+        
+        TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
+        (
+            ERROR(sp, E0000, "Type mismatch in enum pattern - " << type << " is not " << e.path);
+            ),
+        (Infer, throw ""; ),
+        (Path,
+            if( ! te.binding.is_Enum() || te.binding.as_Enum() != &enm ) {
+                ERROR(sp, E0000, "Type mismatch in enum pattern - " << type << " is not " << e.path);
+            }
+            )
+        )
+        ),
     (EnumTupleWildcard,
         this->add_ivars_params( e.path.m_params );
         if( type.m_data.is_Infer() ) {

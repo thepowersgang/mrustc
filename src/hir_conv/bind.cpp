@@ -141,6 +141,78 @@ namespace {
             TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (e),
             (
                 ),
+            (Value,
+                TU_IFLET( ::HIR::Pattern::Value, e.val, Named, ve,
+                    TU_IFLET( ::HIR::Path::Data, ve.m_data, Generic, pe,
+                        const ::HIR::Enum* enm = nullptr;
+                        const ::HIR::Module*  mod = &m_crate.m_root_module;
+                        const auto& path = pe.m_path;
+                        for(unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
+                        {
+                            const auto& pc = path.m_components[i];
+                            auto it = mod->m_mod_items.find( pc );
+                            if( it == mod->m_mod_items.end() ) {
+                                BUG(sp, "Couldn't find component " << i << " of " << path);
+                            }
+                            
+                            if( i == path.m_components.size() - 2 ) {
+                                // Here it's allowed to be either a module, or an enum.
+                                TU_IFLET( ::HIR::TypeItem, it->second->ent, Module, e2,
+                                    mod = &e2;
+                                )
+                                else TU_IFLET( ::HIR::TypeItem, it->second->ent, Enum, e2,
+                                    enm = &e2;
+                                )
+                                else {
+                                    BUG(sp, "Node " << i << " of path " << ve << " wasn't a module or enum");
+                                }
+                            }
+                            else {
+                                TU_IFLET( ::HIR::TypeItem, it->second->ent, Module, e2,
+                                    mod = &e2;
+                                )
+                                else {
+                                    BUG(sp, "Node " << i << " of path " << ve << " wasn't a module");
+                                }
+                            }
+                        }
+                        const auto& pc = path.m_components.back();
+                        if( enm ) {
+                            // Enum variant
+                            auto it = ::std::find_if( enm->m_variants.begin(), enm->m_variants.end(), [&](const auto&v){ return v.first == pc; });
+                            if( it == enm->m_variants.end() ) {
+                                BUG(sp, "'" << pc << "' isn't a variant in path " << path);
+                            }
+                            unsigned int index = it - enm->m_variants.begin();
+                            auto path = mv$(pe);
+                            fix_type_params(sp, enm->m_params,  path.m_params);
+                            //::std::cout << "HHHH: path=" << path << ::std::endl;
+                            pat.m_data = ::HIR::Pattern::Data::make_EnumValue({
+                                mv$(path),
+                                enm,
+                                index
+                                });
+                        }
+                        else {
+                            auto it = mod->m_value_items.find( pc );
+                            if( it == mod->m_value_items.end() ) {
+                                BUG(sp, "Couldn't find final component of " << path);
+                            }
+                            // Unit-like struct match or a constant
+                            // TODO: Store binding
+                            TU_MATCH_DEF( ::HIR::ValueItem, (it->second->ent), (e2),
+                            (
+                                ),
+                            (StructConstant,
+                                )
+                            )
+                        }
+                    )
+                    else {
+                        // UFCS/Opaque, leave for now.
+                    }
+                )
+                ),
             (StructTuple,
                 const auto& str = get_struct_ptr(sp, m_crate, e.path);
                 TU_IFLET(::HIR::Struct::Data, str.m_data, Tuple, _,

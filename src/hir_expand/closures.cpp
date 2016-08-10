@@ -668,6 +668,8 @@ namespace {
                     add_closure_def_from_pattern(sp, field_pat.second);
                 }
                 ),
+            (EnumValue,
+                ),
             (EnumTuple,
                 for(const auto& field : e.sub_patterns) {
                     add_closure_def_from_pattern(sp, field);
