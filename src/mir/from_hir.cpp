@@ -12,6 +12,7 @@
 #include <hir/expr.hpp>
 #include <hir/hir.hpp>
 #include <hir/visitor.hpp>
+#include <hir_typeck/helpers.hpp>   // monomorphise_type
 #include "main_bindings.hpp"
 
 namespace {
@@ -239,15 +240,17 @@ namespace {
         {
             TRACE_FUNCTION_F("_Match");
             this->visit_node_ptr(node.m_value);
-            //auto match_val = this->get_result();
+            auto match_val = this->lvalue_or_temp(node.m_value->m_res_type, this->get_result(node.m_value->span()));
             
             if( node.m_arms.size() == 0 ) {
                 // Nothing
                 TODO(node.span(), "Handle zero-arm match");
             }
-            else if( node.m_arms.size() == 1 ) {
+            else if( node.m_arms.size() == 1 && node.m_arms[0].m_patterns.size() == 1 && ! node.m_arms[0].m_cond ) {
                 // - Shortcut: Single-arm match
-                TODO(node.span(), "Convert single-arm match");
+                // TODO: Drop scope
+                this->destructure_from(node.span(), node.m_arms[0].m_patterns[0], mv$(match_val));
+                this->visit_node_ptr(node.m_arms[0].m_code);
             }
             else {
                 // TODO: Convert patterns into sequence of switches and comparisons.
@@ -255,8 +258,9 @@ namespace {
                 // Build up a sorted vector of MIR pattern rules
                 TAGGED_UNION(PatternRule, Any,
                 (Any, struct {}),
-                (EnumVariant, unsigned int),
-                (Value, ::MIR::Constant)
+                (Variant, unsigned int),
+                (Value, ::MIR::Constant),
+                (Optional, ::std::vector< PatternRule>)
                 );
                 struct PatternRuleset {
                     ::std::vector<PatternRule>  m_rules;
@@ -322,12 +326,67 @@ namespace {
                             )
                             ),
                         (Path,
-                            // TODO: This is either a destructure or an enum
-                            TODO(sp, "Match over path");
+                            // This is either a struct destructure or an enum
+                            TU_MATCHA( (e.binding), (pbe),
+                            (Unbound,
+                                BUG(sp, "Encounterd unbound path - " << e.path);
+                                ),
+                            (Opaque,
+                                TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+                                ( throw ""; ),
+                                (Any,
+                                    m_rules.push_back( PatternRule::make_Any({}) );
+                                    )
+                                )
+                                ),
+                            (Struct,
+                                TODO(sp, "Match over struct - " << e.path);
+                                ),
+                            (Enum,
+                                TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+                                ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
+                                (Any,
+                                    m_rules.push_back( PatternRule::make_Any({}) );
+                                    m_rules.push_back( PatternRule::make_Optional({}) );
+                                    ),
+                                (Value,
+                                    ASSERT_BUG(sp, pe.val.is_Named(), "Value pattern for enum isn't _Named");
+                                    TODO(sp, "Enum Value");
+                                    ),
+                                (EnumTuple,
+                                    m_rules.push_back( PatternRule::make_Variant(pe.binding_idx) );
+                                    const auto& fields_def = pe.binding_ptr->m_variants[pe.binding_idx].second.as_Tuple();
+                                    PatternRulesetBuilder   sub_builder;
+                                    for( unsigned int i = 0; i < pe.sub_patterns.size(); i ++ )
+                                    {
+                                        const auto& subpat = pe.sub_patterns[i];
+                                        auto subty = monomorphise_type(sp,  pe.binding_ptr->m_params, e.path.m_data.as_Generic().m_params,  fields_def[i].ent);
+                                        sub_builder.append_from( sp, subpat, subty );
+                                    }
+                                    m_rules.push_back( PatternRule::make_Optional( mv$(sub_builder.m_rules) ) );
+                                    ),
+                                (EnumTupleWildcard,
+                                    m_rules.push_back( PatternRule::make_Variant(pe.binding_idx) );
+                                    m_rules.push_back( PatternRule::make_Optional({}) );
+                                    ),
+                                (EnumStruct,
+                                    m_rules.push_back( PatternRule::make_Variant(pe.binding_idx) );
+                                    PatternRulesetBuilder   sub_builder;
+                                    TODO(sp, "Convert EnumStruct patterns");
+                                    m_rules.push_back( PatternRule::make_Optional( mv$(sub_builder.m_rules) ) );
+                                    )
+                                )
+                                )
+                            )
                             ),
                         (Generic,
-                            // TODO: Is this possible? - Single arm has already been handled
-                            ERROR(sp, E0000, "Attempting to match over a generic");
+                            // Generics don't destructure, so the only valid pattern is `_`
+                            TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+                            ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
+                            (Any,
+                                m_rules.push_back( PatternRule::make_Any({}) );
+                                )
+                            )
                             ),
                         (TraitObject,
                             ERROR(sp, E0000, "Attempting to match over a trait object");
@@ -340,8 +399,15 @@ namespace {
                             BUG(sp, "Hit match over `[T]` - must be `&[T]`");
                             ),
                         (Borrow,
-                            // TODO: Sub-match
-                            TODO(sp, "Match over borrow");
+                            TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+                            ( throw ""; ),
+                            (Any,
+                                this->append_from( sp, pat, *e.inner );
+                                ),
+                            (Ref,
+                                this->append_from( sp, *pe.sub, *e.inner );
+                                )
+                            )
                             ),
                         (Pointer,
                             ERROR(sp, E0000, "Attempting to match over a pointer");
@@ -400,7 +466,7 @@ namespace {
             
             this->set_cur_block(true_branch);
             this->visit_node_ptr(node.m_true);
-            this->push_stmt_assign( ::MIR::LValue::make_Temporary({result_val.as_Temporary().idx}), this->get_result(node.m_true->span()) );
+            this->push_stmt_assign( result_val.clone(), this->get_result(node.m_true->span()) );
             this->end_block( ::MIR::Terminator::make_Goto(next_block) );
             
             this->set_cur_block(false_branch);
