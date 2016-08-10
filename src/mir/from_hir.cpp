@@ -400,22 +400,24 @@ namespace {
             
             this->set_cur_block(true_branch);
             this->visit_node_ptr(node.m_true);
-            this->end_block( ::MIR::Terminator::make_Goto(next_block) );
             this->push_stmt_assign( ::MIR::LValue::make_Temporary({result_val.as_Temporary().idx}), this->get_result(node.m_true->span()) );
+            this->end_block( ::MIR::Terminator::make_Goto(next_block) );
             
             this->set_cur_block(false_branch);
             if( node.m_false )
             {
                 this->visit_node_ptr(node.m_false);
+                this->push_stmt_assign( result_val.clone(), this->get_result(node.m_false->span()) );
                 this->end_block( ::MIR::Terminator::make_Goto(next_block) );
-                this->push_stmt_assign( ::MIR::LValue::make_Temporary({result_val.as_Temporary().idx}), this->get_result(node.m_false->span()) );
             }
             else
             {
                 // TODO: Assign `()` to the result
+                this->push_stmt_assign( result_val.clone(), ::MIR::RValue::make_Tuple({}) );
+                this->end_block( ::MIR::Terminator::make_Goto(next_block) );
             }
-            
             this->set_cur_block(next_block);
+            
             this->set_result( node.span(), mv$(result_val) );
         }
         
@@ -732,12 +734,12 @@ namespace {
         }
         void visit(::HIR::ExprNode_PathValue& node) override
         {
-            TRACE_FUNCTION_F("_PathValue");
+            TRACE_FUNCTION_F("_PathValue - " << node.m_path);
             this->set_result( node.span(), ::MIR::LValue::make_Static(node.m_path.clone()) );
         }
         void visit(::HIR::ExprNode_Variable& node) override
         {
-            TRACE_FUNCTION_F("_Variable");
+            TRACE_FUNCTION_F("_Variable - " << node.m_name << " #" << node.m_slot);
             this->set_result( node.span(), ::MIR::LValue::make_Variable(node.m_slot) );
         }
         
