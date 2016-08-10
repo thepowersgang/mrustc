@@ -516,9 +516,8 @@ namespace {
                 // - Generate code for arms.
                 ::std::vector< ::MIR::BasicBlockId> arm_blocks;
                 arm_blocks.reserve( arm_rules.size() );
-                for(unsigned int i = 0; i < arm_rules.size(); i ++)
+                for(auto& arm : node.m_arms)
                 {
-                    auto& arm = node.m_arms[i];
                     // TODO: Register introduced bindings to be dropped on return/diverge
                     arm_blocks.push_back( m_builder.new_bb_unlinked() );
                     m_builder.set_cur_block(arm_blocks.back());
@@ -532,6 +531,20 @@ namespace {
                         m_builder.push_stmt_assign( result_val.clone(), m_builder.get_result(arm.m_code->span()) );
                         m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
                     }
+                }
+                
+                ::std::vector< ::MIR::BasicBlockId> rule_blocks;
+                for(const auto& rule : arm_rules)
+                {
+                    rule_blocks.push_back( m_builder.new_bb_unlinked() );
+                    m_builder.set_cur_block(arm_blocks.back());
+                    
+                    const auto& arm = node.m_arms[ rule.first ];
+                    ASSERT_BUG(node.span(), arm.m_patterns.size() == 1, "TODO: Handle multiple patterns on one arm");
+                    const auto& pat = arm.m_patterns[0 /*rule.first.second*/];
+                    
+                    // Assign bindings (drop registration happens in previous loop)
+                    this->destructure_from( arm.m_code->span(), pat, match_val.clone() );
                 }
                 
                 // ## Create descision tree in-memory based off the ruleset
@@ -641,27 +654,48 @@ namespace {
                             )
                         )
                     }
+                };
+                
+                struct DecisionTreeGen
+                {
+                    MirBuilder& m_builder;
+                    const ::std::vector< ::MIR::BasicBlockId>&  m_rule_blocks;
                     
-                    /*
-                    void populate_tree_vals(const ::HIR::TypeRef& ty, unsigned int ty_ofs, const ::MIR::LValue& val)
+                    DecisionTreeGen(MirBuilder& builder, const ::std::vector< ::MIR::BasicBlockId >& rule_blocks):
+                        m_builder( builder ),
+                        m_rule_blocks( rule_blocks )
+                    {}
+                    
+                    ::MIR::BasicBlockId get_block_for_rule(unsigned int rule_index) {
+                        return m_rule_blocks.at( rule_index );
+                    }
+                    
+                    void populate_tree_vals(const Span& sp, const DecisionTreeNode& node, const ::HIR::TypeRef& ty, const ::MIR::LValue& val) {
+                        populate_tree_vals(sp, node, ty, 0, val, [](const auto&){});
+                    }
+                    void populate_tree_vals(
+                        const Span& sp,
+                        const DecisionTreeNode& node,
+                        const ::HIR::TypeRef& ty, unsigned int ty_ofs, const ::MIR::LValue& val,
+                        ::std::function<void(const DecisionTreeNode&)> and_then
+                        )
                     {
                         TU_MATCHA( (ty.m_data), (e),
-                        (
                         (Infer,   BUG(sp, "Ivar for in match type"); ),
                         (Diverge, BUG(sp, "Diverge in match type");  ),
                         (Primitive,
                             TODO(sp, "Primitive");
                             ),
                         (Tuple,
-                            if( ty_ofs == 0 && e.size() == 0 ) {
+                            // Tuple - Recurse on each sub-type (increasing the index)
+                            if( ty_ofs == e.size() ) {
+                                and_then(node);
                             }
                             else {
-                                assert(ty_ofs < e.size());
-                                populate_tree_from_rule( e[ty_ofs], 0, ::MIR::LValue::make_Field({ box$(val.clone()), FMT(ty_ofs)}), arm_index, first_rule, rule_count );
-                            }
-                            // Tuple - Recurse on each sub-type (increasing the index)
-                            for(unsigned int i = 0; i < e.size(); i ++) {
-                                idx += this->create_match_tree(sp, view, idx, e[i]);
+                                populate_tree_vals( sp, node,
+                                    e[ty_ofs], 0, ::MIR::LValue::make_Field({ box$(val.clone()), ty_ofs}),
+                                    [&](auto& n){ this->populate_tree_vals(sp, node, ty, ty_ofs+1, val, and_then); }
+                                    );
                             }
                             ),
                         (Path,
@@ -671,71 +705,75 @@ namespace {
                                 BUG(sp, "Encounterd unbound path - " << e.path);
                                 ),
                             (Opaque,
-                                // TODO: Why did this push a pattern? There's no chance of fail.
-                                return 1;
                                 ),
                             (Struct,
                                 TODO(sp, "Match over struct - " << e.path);
                                 ),
                             (Enum,
+                                const auto& branches = node.m_branches.as_Variant();
+                                const auto& variants = pbe->m_variants;
+                                bool has_any = ! node.m_default.is_Unset();
+                                
                                 auto variant_count = pbe->m_variants.size();
-                                auto first_any = variant_count;
-                                for( unsigned int i = 0; i < view.rule_count(); i ++ ) {
-                                    if( view.get(i, idx).is_Any() ) {
-                                        first_any = i;
-                                        break;
-                                    }
+                                if( branches.size() < variant_count && ! has_any ) {
+                                    ERROR(sp, E0000, "Non-exhaustive match");
                                 }
-                                auto any_block = (first_any < variant_count ? m_builder.new_bb_unlinked() : 0);
+                                if( branches.size() == variant_count && has_any ) {
+                                    ERROR(sp, E0000, "Unreachable _ arm");
+                                }
+                                
+                                auto any_block = (has_any ? m_builder.new_bb_unlinked() : 0);
                                 
                                 // Emit a switch over the variant
-                                ::std::vector< ::MIR::BasicBlockId> variants;
-                                variants.reserve( pbe->m_variants.size() );
-                                for( unsigned int i = 0; i < view.rule_count(); i ++ ) {
-                                    const auto& pat = view.get(i, idx);
-                                    if( pat.is_Any() ) {
-                                        break ;
-                                    }
-                                    else TU_IFLET( PatternRule, pat, Variant, e ) {
-                                        if( variants.size() == e.idx + 1 ) {
-                                            // Repeated index, will be unified later?
-                                        }
-                                        else {
-                                            if( variants.size() != e.idx ) {
-                                                assert( variants.size() < e.idx );
-                                                if( ! has_any ) {
-                                                    ERROR(sp, E0000, "Non-exhaustive match, variant " << pbe->m_variants[variants.size()].first << " missing");
-                                                }
-                                                variants.resize( e.idx, any_block );
-                                            }
-                                            variants.push_back( m_builder.new_bb_unlinked() );
-                                        }
-                                    }
-                                    else {
-                                        BUG(sp, "Encountered unexpected pattern rule in enum, arm " << i);
-                                    }
-                                }
-                                if( variants.size() != variant_count )
+                                ::std::vector< ::MIR::BasicBlockId> variant_blocks;
+                                variant_blocks.reserve( variant_count );
+                                for( const auto& branch : branches )
                                 {
-                                    if( ! has_any ) {
-                                        ERROR(sp, E0000, "Non-exhaustive match, variant " << pbe->m_variants[variants.size()].first << " missing");
+                                    if( variant_blocks.size() != branch.first ) {
+                                        assert( variant_blocks.size() < branch.first );
+                                        assert( has_any );
+                                        variant_blocks.resize( branch.first, any_block );
                                     }
-                                    variants.resize( e.idx, any_block );
+                                    variant_blocks.push_back( m_builder.new_bb_unlinked() );
+                                }
+                                if( variant_blocks.size() != variant_count )
+                                {
+                                    assert( variant_blocks.size() < variant_count );
+                                    assert( has_any );
+                                    variant_blocks.resize( variant_count, any_block );
                                 }
                                 
                                 m_builder.end_block( ::MIR::Terminator::make_Switch({
-                                    view.get_lvalue(idx), mv$(variants)
+                                    val.clone(), variant_blocks // NOTE: Copies the list, so it can be used lower down
                                     }) );
                                 
-                                
-                                // Enums consume one rule
-                                return 1;
+                                // Emit sub-patterns, looping over variants
+                                for( const auto& branch : branches )
+                                {
+                                    auto bb = variant_blocks[branch.first];
+                                    const auto& var = variants[branch.first];
+                                    m_builder.set_cur_block(bb);
+                                    TU_MATCHA( (var.second), (e),
+                                    (Unit,
+                                        assert( branch.second.is_Terminal() );
+                                        m_builder.end_block( ::MIR::Terminator::make_Goto( this->get_block_for_rule( branch.second.as_Terminal() ) ) );
+                                        ),
+                                    (Value,
+                                        assert( branch.second.is_Terminal() );
+                                        m_builder.end_block( ::MIR::Terminator::make_Goto( this->get_block_for_rule( branch.second.as_Terminal() ) ) );
+                                        ),
+                                    (Tuple,
+                                        TODO(sp, "Enum pattern - tuple");
+                                        ),
+                                    (Struct,
+                                        TODO(sp, "Enum pattern - struct");
+                                        )
+                                    )
+                                }
                                 )
                             )
                             ),
                         (Generic,
-                            // TODO: Why did this push a pattern? There's no chance of fail.
-                            return 1;
                             ),
                         (TraitObject,
                             ERROR(sp, E0000, "Attempting to match over a trait object");
@@ -748,15 +786,10 @@ namespace {
                             BUG(sp, "Hit match over `[T]` - must be `&[T]`");
                             ),
                         (Borrow,
-                            TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
-                            ( throw ""; ),
-                            (Any,
-                                this->append_from( sp, pat, *e.inner );
-                                ),
-                            (Ref,
-                                this->append_from( sp, *pe.sub, *e.inner );
-                                )
-                            )
+                            populate_tree_vals( sp, node,
+                                *e.inner, 0, ::MIR::LValue::make_Deref({ box$(val.clone()) }),
+                                and_then
+                                );
                             ),
                         (Pointer,
                             ERROR(sp, E0000, "Attempting to match over a pointer");
@@ -769,7 +802,6 @@ namespace {
                             )
                         )
                     }
-                    */
                 };
                 
                 // - Build tree by running each arm's pattern across it
