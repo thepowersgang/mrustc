@@ -544,21 +544,28 @@ namespace {
                     auto& subnode = node.m_nodes[i];
                     const Span& sp = subnode->span();
                     this->visit_node_ptr(subnode);
-                    m_builder.push_stmt_drop( m_builder.lvalue_or_temp(subnode->m_res_type, m_builder.get_result(sp)) );
+                    if( m_builder.block_active() || m_builder.has_result() )
+                    {
+                        m_builder.push_stmt_drop( m_builder.lvalue_or_temp(subnode->m_res_type, m_builder.get_result(sp)) );
+                    }
                 }
                 
                 this->visit_node_ptr(node.m_nodes.back());
-                auto ret = m_builder.get_result(node.m_nodes.back()->span());
+                //auto ret = m_builder.get_result(node.m_nodes.back()->span());
                 
                 auto bd = mv$( m_block_stack.back() );
                 m_block_stack.pop_back();
                 
                 // Drop all bindings introduced during this block.
-                for( auto& var_idx : bd.bindings ) {
-                    m_builder.push_stmt_drop( ::MIR::LValue::make_Variable(var_idx) );
+                // TODO: This should be done in a more generic manner, allowing for drops on panic/return
+                if( m_builder.block_active() )
+                {
+                    for( auto& var_idx : bd.bindings ) {
+                        m_builder.push_stmt_drop( ::MIR::LValue::make_Variable(var_idx) );
+                    }
                 }
                 
-                m_builder.set_result(node.span(), mv$(ret));
+                //m_builder.set_result(node.span(), mv$(ret));
             }
             else
             {
@@ -1118,8 +1125,11 @@ namespace {
             
             m_builder.set_cur_block(true_branch);
             this->visit_node_ptr(node.m_true);
-            m_builder.push_stmt_assign( result_val.clone(), m_builder.get_result(node.m_true->span()) );
-            m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
+            if( m_builder.block_active() )
+            {
+                m_builder.push_stmt_assign( result_val.clone(), m_builder.get_result(node.m_true->span()) );
+                m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
+            }
             
             m_builder.set_cur_block(false_branch);
             if( node.m_false )
