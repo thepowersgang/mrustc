@@ -151,16 +151,80 @@ namespace {
         }
         
         
-        void destructure_from(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval)
+        void destructure_from(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, int allow_refutable=0) // 1 : yes, 2 : disallow binding
         {
             if( pat.m_binding.is_valid() ) {
-                ASSERT_BUG(sp, pat.m_data.is_Any(), "Destructure patterns can't bind and match");
-                
-                m_builder.push_stmt_assign( ::MIR::LValue::make_Variable(pat.m_binding.m_slot), mv$(lval) );
-                return ;
+                if( allow_refutable == 2 ) {
+                    BUG(sp, "Binding when not expected");
+                }
+                else if( allow_refutable == 0 ) {
+                    ASSERT_BUG(sp, pat.m_data.is_Any(), "Destructure patterns can't bind and match");
+                    
+                    m_builder.push_stmt_assign( ::MIR::LValue::make_Variable(pat.m_binding.m_slot), mv$(lval) );
+                    return;
+                }
+                else {
+                    // Refutable and binding allowed
+                    m_builder.push_stmt_assign( ::MIR::LValue::make_Variable(pat.m_binding.m_slot), lval.clone() );
+                }
             }
-            // TODO: Destructure
-            TODO(sp, "Destructure using " << pat);
+            
+            TU_MATCHA( (pat.m_data), (e),
+            (Any,
+                ),
+            (Box,
+                TODO(sp, "Destructure using " << pat);
+                ),
+            (Ref,
+                destructure_from(sp, *e.sub, ::MIR::LValue::make_Deref({ box$( mv$(lval) ) }));
+                ),
+            (Tuple,
+                for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
+                {
+                    destructure_from(sp, e.sub_patterns[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), i}));
+                }
+                ),
+            (StructTuple,
+                for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
+                {
+                    destructure_from(sp, e.sub_patterns[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), i}));
+                }
+                ),
+            (StructTupleWildcard,
+                ),
+            (Struct,
+                TODO(sp, "Destructure using " << pat);
+                ),
+            // Refutable
+            (Value,
+                ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected");
+                ),
+            (Range,
+                ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected");
+                ),
+            (EnumValue,
+                ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected");
+                ),
+            (EnumTuple,
+                ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected");
+                TODO(sp, "Destructure using " << pat);
+                ),
+            (EnumTupleWildcard,
+                ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected");
+                ),
+            (EnumStruct,
+                ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected");
+                TODO(sp, "Destructure using " << pat);
+                ),
+            (Slice,
+                ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected");
+                TODO(sp, "Destructure using " << pat);
+                ),
+            (SplitSlice,
+                ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected");
+                TODO(sp, "Destructure using " << pat);
+                )
+            )
         }
         
         // -- ExprVisitor
@@ -543,8 +607,8 @@ namespace {
                     ASSERT_BUG(node.span(), arm.m_patterns.size() == 1, "TODO: Handle multiple patterns on one arm");
                     const auto& pat = arm.m_patterns[0 /*rule.first.second*/];
                     
-                    // Assign bindings (drop registration happens in previous loop)
-                    this->destructure_from( arm.m_code->span(), pat, match_val.clone() );
+                    // Assign bindings (drop registration happens in previous loop) - Allow refutable patterns
+                    this->destructure_from( arm.m_code->span(), pat, match_val.clone(), 1 );
                 }
                 
                 // ## Create descision tree in-memory based off the ruleset
