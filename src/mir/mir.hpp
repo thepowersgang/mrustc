@@ -175,8 +175,9 @@ struct BasicBlock
 };
 
 
-struct Function
+class Function
 {
+public:
     ::std::vector< ::HIR::TypeRef>  named_variables;
     ::std::vector< ::HIR::TypeRef>  temporaries;
     

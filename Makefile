@@ -10,6 +10,7 @@ CXXFLAGS := -g -Wall -std=c++14 -Werror
 CXXFLAGS += -O2
 CPPFLAGS := -I src/include/ -I src/
 
+CXXFLAGS += -Wno-pessimizing-move
 #CXXFLAGS += -Wno-unused-private-field
 
 SHELL = bash

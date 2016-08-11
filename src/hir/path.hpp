@@ -11,7 +11,7 @@
 
 namespace HIR {
 
-class Trait;
+struct Trait;
 
 typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
 enum Compare {

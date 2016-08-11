@@ -328,7 +328,7 @@ namespace {
                         e.binding = ::HIR::TypeRef::TypePathBinding::make_Enum(&e3);
                         ),
                     (Trait,
-                        ty.m_data = ::HIR::TypeRef::Data::make_TraitObject({ mv$(pe), {}, {} });
+                        ty.m_data = ::HIR::TypeRef::Data::make_TraitObject({ ::HIR::TraitPath { mv$(pe), {}, {} }, {}, {} });
                         )
                     )
                     ),

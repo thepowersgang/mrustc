@@ -30,7 +30,8 @@ namespace {
         {
         }
         void visit_node_ptr(::HIR::ExprPtr& root) {
-            const char* node_ty = typeid(*root).name();
+            const auto& node_ref = *root;
+            const char* node_ty = typeid(node_ref).name();
             TRACE_FUNCTION_FR(&*root << " " << node_ty << " : " << root->m_res_type, node_ty);
             root->visit(*this);
             if( m_replacement ) {
@@ -39,7 +40,8 @@ namespace {
         }
         
         void visit_node_ptr(::HIR::ExprNodeP& node) override {
-            const char* node_ty = typeid(*node).name();
+            const auto& node_ref = *node;
+            const char* node_ty = typeid(node_ref).name();
             TRACE_FUNCTION_FR(&*node << " " << node_ty << " : " << node->m_res_type, node_ty);
             assert( node );
             node->visit(*this);
@@ -170,7 +172,7 @@ namespace {
         }
         
         // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
-        void visit_expr(::HIR::ExprPtr& exp) {
+        void visit_expr(::HIR::ExprPtr& exp) override {
             BUG(Span(), "visit_expr hit in OuterVisitor");
         }
         

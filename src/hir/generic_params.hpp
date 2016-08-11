@@ -39,8 +39,9 @@ TAGGED_UNION(GenericBound, Lifetime,
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x);
 
-struct GenericParams
+class GenericParams
 {
+public:
     ::std::vector<TypeParamDef>   m_types;
     ::std::vector< ::std::string>   m_lifetimes;
     

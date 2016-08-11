@@ -228,40 +228,39 @@ namespace {
                 }
                 auto& be = m_branches.as_Variant();
                 auto it = ::std::find_if( be.begin(), be.end(), [&](const auto& x){ return x.first >= e.idx; });
-                // Not found? Insert a new branch
+                // If this variant isn't yet processed, add a new subtree for it
                 if( it == be.end() || it->first != e.idx ) {
                     it = be.insert(it, ::std::make_pair(e.idx, Branch( box$(DecisionTreeNode()) )));
-                    auto& subtree = *it->second.as_Subtree();
-                    
-                    if( e.sub_rules.size() > 0 && rule_count > 1 )
-                    {
-                        subtree.populate_tree_from_rule(sp, e.sub_rules.data(), e.sub_rules.size(), [&](auto& branch){
-                            ASSERT_BUG(sp, branch.is_Unset(), "Duplicate terminator");
-                            branch.as_Subtree()->populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-                            });
-                    }
-                    else if( e.sub_rules.size() > 0)
-                    {
-                        subtree.populate_tree_from_rule(sp, e.sub_rules.data(), e.sub_rules.size(), and_then);
-                    }
-                    else if( rule_count > 1 )
-                    {
-                        subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-                    }
-                    else
-                    {
-                        and_then(it->second);
-                    }
+                    assert( it->second.is_Subtree() );
                 }
                 else {
-                    assert( !it->second.is_Unset() );
-                    TU_IFLET(Branch, it->second, Subtree, subtree_ptr,
-                        assert(subtree_ptr);
-                        subtree_ptr->populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-                    )
-                    else {
+                    if( it->second.is_Terminal() ) {
                         BUG(sp, "Duplicate terminal rule - " << it->second.as_Terminal());
                     }
+                    assert( !it->second.is_Unset() );
+                    assert( it->second.is_Subtree() );
+                }
+                auto& subtree = *it->second.as_Subtree();
+                
+                if( e.sub_rules.size() > 0 && rule_count > 1 )
+                {
+                    subtree.populate_tree_from_rule(sp, e.sub_rules.data(), e.sub_rules.size(), [&](auto& branch){
+                        ASSERT_BUG(sp, branch.is_Unset(), "Duplicate terminator");
+                        branch = Branch( box$(DecisionTreeNode()) );
+                        branch.as_Subtree()->populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+                        });
+                }
+                else if( e.sub_rules.size() > 0)
+                {
+                    subtree.populate_tree_from_rule(sp, e.sub_rules.data(), e.sub_rules.size(), and_then);
+                }
+                else if( rule_count > 1 )
+                {
+                    subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+                }
+                else
+                {
+                    and_then(it->second);
                 }
                 }),
             (Value,
@@ -551,7 +550,6 @@ namespace {
                 }
                 
                 this->visit_node_ptr(node.m_nodes.back());
-                //auto ret = m_builder.get_result(node.m_nodes.back()->span());
                 
                 auto bd = mv$( m_block_stack.back() );
                 m_block_stack.pop_back();
@@ -565,11 +563,11 @@ namespace {
                     }
                 }
                 
-                //m_builder.set_result(node.span(), mv$(ret));
+                // Result maintained from last node
             }
             else
             {
-                TODO(node.span(), "Lower empty blocks");
+                m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
             }
         }
         void visit(::HIR::ExprNode_Return& node) override
@@ -989,6 +987,7 @@ namespace {
                                 ),
                             (Enum,
                                 const auto& enum_path = e.path.m_data.as_Generic();
+                                ASSERT_BUG(sp, node.m_branches.is_Variant(), "Tree for enum isn't a Variant - node="<<node);
                                 const auto& branches = node.m_branches.as_Variant();
                                 const auto& variants = pbe->m_variants;
                                 auto variant_count = pbe->m_variants.size();
@@ -1162,13 +1161,65 @@ namespace {
             
             if( node.m_op != ::HIR::ExprNode_Assign::Op::None )
             {
-                // TODO: What about += on primitives?
-                ASSERT_BUG(sp, node.m_op == ::HIR::ExprNode_Assign::Op::None, "Operator overload assignments should already be eliminated");
+                ASSERT_BUG(sp, node.m_slot->m_res_type == node.m_value->m_res_type, "Types must match for op-assign");
+                
+                TU_IFLET(::HIR::TypeRef::Data, node.m_slot->m_res_type.m_data, Primitive, e,
+                    switch(e)
+                    {
+                    case ::HIR::CoreType::Char:
+                    case ::HIR::CoreType::Str:
+                    case ::HIR::CoreType::Bool:
+                        BUG(sp, "Unsupported type for op-assign - " << node.m_slot->m_res_type);
+                        break;
+                    default:
+                        // Good.
+                        break;
+                    }
+                )
+                else {
+                    BUG(sp, "Unsupported type for op-assign - " << node.m_slot->m_res_type);
+                }
+                
+                auto val_lv = m_builder.lvalue_or_temp( node.m_value->m_res_type, mv$(val) );
+                
+                ::MIR::RValue res;
+                #define _(v)    ::HIR::ExprNode_Assign::Op::v
+                ::MIR::eBinOp   op;
+                switch(node.m_op)
+                {
+                case _(None):  throw "";
+                case _(Add): op = ::MIR::eBinOp::ADD; if(0)
+                case _(Sub): op = ::MIR::eBinOp::SUB; if(0)
+                case _(Mul): op = ::MIR::eBinOp::MUL; if(0)
+                case _(Div): op = ::MIR::eBinOp::DIV; if(0)
+                    ;
+                    // TODO: Overflow check
+                    res = ::MIR::RValue::make_BinOp({ dst.clone(), op, mv$(val_lv) });
+                    break;
+                case _(Mod):
+                    res = ::MIR::RValue::make_BinOp({ dst.clone(), ::MIR::eBinOp::MOD, mv$(val_lv) });
+                    break;
+                case _(Xor): op = ::MIR::eBinOp::BIT_XOR; if(0)
+                case _(Or ): op = ::MIR::eBinOp::BIT_OR ; if(0)
+                case _(And): op = ::MIR::eBinOp::BIT_AND; if(0)
+                    ;
+                    res = ::MIR::RValue::make_BinOp({ dst.clone(), op, mv$(val_lv) });
+                    break;
+                case _(Shl): op = ::MIR::eBinOp::BIT_SHL; if(0)
+                case _(Shr): op = ::MIR::eBinOp::BIT_SHR; if(0)
+                    ;
+                    // TODO: Overflow check
+                    res = ::MIR::RValue::make_BinOp({ dst.clone(), op, mv$(val_lv) });
+                    break;
+                }
+                
+                m_builder.push_stmt_assign(mv$(dst), mv$(res));
             }
             else
             {
                 m_builder.push_stmt_assign(mv$(dst), mv$(val));
             }
+            m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
         }
         
         void visit(::HIR::ExprNode_BinOp& node) override
@@ -1616,7 +1667,7 @@ namespace {
         {}
         
         // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
-        void visit_expr(::HIR::ExprPtr& exp) {
+        void visit_expr(::HIR::ExprPtr& exp) override {
             BUG(Span(), "visit_expr hit in OuterVisitor");
         }
         

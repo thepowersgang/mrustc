@@ -2020,12 +2020,13 @@ namespace {
             ivars(context.m_ivars)
         {
         }
-        void visit_node_ptr(::HIR::ExprNodeP& node) override {
-            const char* node_ty = typeid(*node).name();
-            TRACE_FUNCTION_FR(&node << " " << &*node << " " << node_ty << " : " << node->m_res_type, node_ty);
-            this->check_type_resolved_top(node->span(), node->m_res_type);
-            DEBUG(node_ty << " : = " << node->m_res_type);
-            ::HIR::ExprVisitorDef::visit_node_ptr(node);
+        void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override {
+            auto& node = *node_ptr;
+            const char* node_ty = typeid(node).name();
+            TRACE_FUNCTION_FR(&node << " " << &node << " " << node_ty << " : " << node.m_res_type, node_ty);
+            this->check_type_resolved_top(node.span(), node.m_res_type);
+            DEBUG(node_ty << " : = " << node.m_res_type);
+            ::HIR::ExprVisitorDef::visit_node_ptr(node_ptr);
         }
         
         void visit(::HIR::ExprNode_Let& node) override {

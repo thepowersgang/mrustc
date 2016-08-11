@@ -100,8 +100,9 @@ namespace typeck {
         {
         }
         
-        void visit_node_ptr(::std::unique_ptr< ::HIR::ExprNode>& node_ptr) {
-            TRACE_FUNCTION_FR(typeid(*node_ptr).name(), node_ptr->m_res_type << " = " << this->context.get_type(node_ptr->m_res_type));
+        void visit_node_ptr(::std::unique_ptr< ::HIR::ExprNode>& node_ptr) override {
+            const auto& node = *node_ptr;
+            TRACE_FUNCTION_FR(typeid(node).name(), node.m_res_type << " = " << this->context.get_type(node.m_res_type));
             ::HIR::ExprVisitorDef::visit_node_ptr(node_ptr);
         }
         void visit_node(::HIR::ExprNode& node) override {
@@ -344,7 +345,7 @@ namespace typeck {
         {
         }
         
-        void visit_node_ptr(::std::unique_ptr< ::HIR::ExprNode>& node_ptr) {
+        void visit_node_ptr(::std::unique_ptr< ::HIR::ExprNode>& node_ptr) override {
             m_node_ptr_ptr = &node_ptr;
             ::HIR::ExprVisitorDef::visit_node_ptr(node_ptr);
             m_node_ptr_ptr = nullptr;
@@ -1895,12 +1896,13 @@ namespace typeck {
             context(context)
         {
         }
-        void visit_node_ptr(::HIR::ExprNodeP& node) override {
-            const char* node_ty = typeid(*node).name();
-            TRACE_FUNCTION_FR(node_ty << " : " << node->m_res_type, node_ty);
-            this->check_type_resolved(node->span(), node->m_res_type, node->m_res_type);
-            DEBUG(node_ty << " : = " << node->m_res_type);
-            ::HIR::ExprVisitorDef::visit_node_ptr(node);
+        void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override {
+            auto& node = *node_ptr;
+            const char* node_ty = typeid(node).name();
+            TRACE_FUNCTION_FR(node_ty << " : " << node.m_res_type, node_ty);
+            this->check_type_resolved(node.span(), node.m_res_type, node.m_res_type);
+            DEBUG(node_ty << " : = " << node.m_res_type);
+            ::HIR::ExprVisitorDef::visit_node_ptr(node_ptr);
         }
         
     private:

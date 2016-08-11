@@ -762,7 +762,7 @@ namespace {
             this_trait.m_params.m_types.push_back( ::HIR::TypeRef(arg.m_name, i) );
             i ++;
         }
-        rv.m_params.m_bounds.push_back( ::HIR::GenericBound::make_TraitBound({ ::HIR::TypeRef("Self",0xFFFF), mv$(this_trait) }) );
+        rv.m_params.m_bounds.push_back( ::HIR::GenericBound::make_TraitBound({ ::HIR::TypeRef("Self",0xFFFF), { mv$(this_trait) } }) );
     }
     
     for(const auto& item : f.items())

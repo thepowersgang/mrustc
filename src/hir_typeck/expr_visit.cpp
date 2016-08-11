@@ -31,7 +31,7 @@ namespace {
         }
         
         // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
-        void visit_expr(::HIR::ExprPtr& exp) {
+        void visit_expr(::HIR::ExprPtr& exp) override {
             TODO(Span(), "visit_expr");
         }
 

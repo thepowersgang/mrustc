@@ -534,11 +534,11 @@ namespace {
             m_crate(crate)
         {}
         
-        void visit_type(::HIR::TypeRef& ty)
+        void visit_type(::HIR::TypeRef& ty) override
         {
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
                 ::HIR::Visitor::visit_type(*e.inner);
-                assert(&*e.size != nullptr);
+                assert(e.size.get() != nullptr);
                 auto val = evaluate_constant(m_crate, *e.size);
                 if( !val.is_Integer() )
                     ERROR(e.size->span(), E0000, "Array size isn't an integer");

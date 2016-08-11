@@ -22,14 +22,14 @@ namespace {
         public ::HIR::ExprVisitor
     {
         const StaticTraitResolve&  m_resolve;
-        const t_args&   m_args;
+        //const t_args&   m_args;
         const ::HIR::TypeRef&   ret_type;
         ::std::vector< const ::HIR::TypeRef*>   closure_ret_types;
         
     public:
         ExprVisitor_Validate(const StaticTraitResolve& res, const t_args& args, const ::HIR::TypeRef& ret_type):
             m_resolve(res),
-            m_args(args),
+            //m_args(args),
             ret_type(ret_type)
         {
         }
@@ -669,7 +669,7 @@ namespace {
         {}
         
         // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
-        void visit_expr(::HIR::ExprPtr& exp) {
+        void visit_expr(::HIR::ExprPtr& exp) override {
             BUG(Span(), "visit_expr hit in OuterVisitor");
         }
         

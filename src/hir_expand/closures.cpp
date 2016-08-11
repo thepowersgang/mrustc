@@ -60,13 +60,15 @@ namespace {
             m_captures(captures)
         {
         }
-        void visit_node_ptr(::HIR::ExprNodeP& node) override {
-            const char* node_ty = typeid(*node).name();
-            TRACE_FUNCTION_FR(&*node << " " << node_ty << " : " << node->m_res_type, node_ty);
-            assert( node );
-            node->visit(*this);
+        void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override {
+            assert( node_ptr );
+            auto& node = *node_ptr;
+            const char* node_ty = typeid(node).name();
+            TRACE_FUNCTION_FR(&node << " " << node_ty << " : " << node.m_res_type, node_ty);
+            node.visit(*this);
+            
             if( m_replacement ) {
-                node = mv$(m_replacement);
+                node_ptr = mv$(m_replacement);
             }
         }
         void visit(::HIR::ExprNode_Closure& node) override
@@ -771,7 +773,7 @@ namespace {
         }
         
         // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
-        void visit_expr(::HIR::ExprPtr& exp) {
+        void visit_expr(::HIR::ExprPtr& exp) override {
             BUG(Span(), "visit_expr hit in OuterVisitor");
         }
         

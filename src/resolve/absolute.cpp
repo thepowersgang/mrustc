@@ -111,7 +111,7 @@ struct Context
     }
     
     class RootBlockScope {
-        friend class Context;
+        friend struct Context;
         Context& ctxt;
         unsigned int old_varcount;
         RootBlockScope(Context& ctxt, unsigned int val):
