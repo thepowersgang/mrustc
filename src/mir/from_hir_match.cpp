@@ -9,7 +9,8 @@
 #include <hir_typeck/helpers.hpp>   // monomorphise_type
 #include <algorithm>
 
-/// Pattern rule
+void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val );
+
 TAGGED_UNION(PatternRule, Any,
     // _ pattern
     (Any, struct {}),
@@ -20,7 +21,6 @@ TAGGED_UNION(PatternRule, Any,
     // General value
     (Value, ::MIR::Constant)
     );
-
 /// Constructed set of rules from a pattern
 struct PatternRuleset
 {
@@ -30,6 +30,11 @@ struct PatternRuleset
     
     bool is_before(const PatternRuleset& other) const;
 };
+
+typedef ::std::vector< ::std::pair< ::std::pair<unsigned int,unsigned int>, PatternRuleset > >  t_arm_rules;
+
+void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules );
+void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules );
 /// Helper to construct rules from a passed pattern
 struct PatternRulesetBuilder
 {
@@ -40,6 +45,60 @@ struct PatternRulesetBuilder
         return PatternRuleset { mv$(this->m_rules) };
     }
 };
+
+// --------------------------------------------------------------------
+// CODE
+// --------------------------------------------------------------------
+
+// Handles lowering non-trivial matches to MIR
+// - Non-trivial means that there's more than one pattern
+void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val )
+{
+    bool fall_back_on_simple = false;
+    
+    // 1. Build up a sorted vector of MIR pattern rules
+    // Map of arm index to ruleset
+    t_arm_rules arm_rules;
+    for(unsigned int arm_idx = 0; arm_idx < node.m_arms.size(); arm_idx ++)
+    {
+        const auto& arm = node.m_arms[arm_idx];
+        unsigned int pat_idx = 0;
+        for( const auto& pat : arm.m_patterns )
+        {
+            auto builder = PatternRulesetBuilder {};
+            builder.append_from(node.span(), pat, node.m_value->m_res_type);
+            arm_rules.push_back( ::std::make_pair( ::std::make_pair(arm_idx, pat_idx), builder.into_ruleset()) );
+            pat_idx += 1;
+        }
+        
+        if( arm.m_cond ) {
+            // TODO: What to do with contidionals?
+            // > Could fall back on a sequential comparison model.
+            // > OR split the match on each conditional.
+            fall_back_on_simple = true;
+        }
+    }
+    // TODO: Detect if a rule is ordering-dependent. In this case we currently have to fall back on the simple match code
+
+    if( fall_back_on_simple ) {
+        MIR_LowerHIR_Match_Simple( builder, conv, node, mv$(match_val), mv$(arm_rules) );
+    }
+    else {
+        MIR_LowerHIR_Match_DecisionTree( builder, conv, node, mv$(match_val), mv$(arm_rules) );
+    }
+}
+
+// --------------------------------------------------------------------
+// Dumb and Simple
+// --------------------------------------------------------------------
+void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules )
+{
+    TODO(node.span(), "Dumb and simple sequential comparison");
+}
+
+// --------------------------------------------------------------------
+// Decision Tree
+// --------------------------------------------------------------------
 
 // ## Create descision tree in-memory based off the ruleset
 // > Tree contains an lvalue and a set of possibilities (PatternRule) connected to another tree or to a branch index
@@ -114,36 +173,8 @@ struct DecisionTreeGen
         );
 };
 
-// --------------------------------------------------------------------
-// CODE
-// --------------------------------------------------------------------
-
-// Handles lowering non-trivial matches to MIR
-// - Non-trivial means that there's more than one pattern
-void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val )
+void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules )
 {
-    // 1. Build up a sorted vector of MIR pattern rules
-    
-    // Map of arm index to ruleset
-    ::std::vector< ::std::pair< ::std::pair<unsigned int,unsigned int>, PatternRuleset > >   arm_rules;
-    for(unsigned int arm_idx = 0; arm_idx < node.m_arms.size(); arm_idx ++)
-    {
-        const auto& arm = node.m_arms[arm_idx];
-        unsigned int pat_idx = 0;
-        for( const auto& pat : arm.m_patterns )
-        {
-            auto builder = PatternRulesetBuilder {};
-            builder.append_from(node.span(), pat, node.m_value->m_res_type);
-            arm_rules.push_back( ::std::make_pair( ::std::make_pair(arm_idx, pat_idx), builder.into_ruleset()) );
-            pat_idx += 1;
-        }
-        
-        if( arm.m_cond ) {
-            // - TODO: What to do with contidionals?
-            TODO(node.span(), "Handle conditional match arms (ordering matters)");
-        }
-    }
-    // TODO: Detect if a rule is ordering-dependent.
     // XXX XXX XXX: The current codegen (below) will generate incorrect code if ordering matters.
     // ```
     // match ("foo", "bar")
@@ -153,10 +184,15 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     // _ => {},
     // }
     // ```
+    // TODO: Sort the columns in `arm_rules` to ensure that the most specific rule is parsed first.
+    // - Ordering within a pattern doesn't matter, only the order of arms matters.
+    // - This sort could be designed such that the above case would match correctly?
+    
     
     // Generate arm code
     DEBUG("- Generating arm code");
-    // - End the current block with a jump to the descision code (TODO: Can this goto be avoided while still being defensive?)
+    // - End the current block with a jump to the descision code
+    //  > TODO: Can this goto be avoided while still being defensive? (Avoiding incomplete blocks)
     auto descision_block = builder.new_bb_unlinked();
     builder.end_block( ::MIR::Terminator::make_Goto(descision_block) );
     
