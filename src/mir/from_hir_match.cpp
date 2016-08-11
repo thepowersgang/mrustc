@@ -350,7 +350,58 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             )
             ),
         (Struct,
-            TODO(sp, "Match over struct - " << e.path);
+            //auto monomorph_cb = [&](const auto& ty)->const auto& {
+            //    const auto& ge = ty.m_data.as_Generic();
+            //    if( ge.
+            //    };
+            auto monomorph = [&](const auto& ty) { return monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty); };
+            const auto& str_data = pbe->m_data;
+            TU_MATCHA( (str_data), (sd),
+            (Unit,
+                TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+                ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
+                (Any,
+                    // Nothing.
+                    ),
+                (Value,
+                    TODO(sp, "Match over struct - Unit + Value");
+                    )
+                )
+                ),
+            (Tuple,
+                TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+                ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
+                (Any,
+                    TODO(sp, "Match over struct - Tuple + Any");
+                    ),
+                (StructTuple,
+                    TODO(sp, "Match over struct - Tuple + StructTuple");
+                    ),
+                (StructTupleWildcard,
+                    TODO(sp, "Match over struct - Tuple + StructTupleWildcard");
+                    )
+                )
+                ),
+            (Named,
+                // TODO: Avoid needing to clone everything.
+                ::std::vector< ::HIR::TypeRef>  types;
+                types.reserve( sd.size() );
+                for( const auto& fld : sd ) {
+                    types.push_back( monomorph(fld.second.ent) );
+                }
+                
+                TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+                ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
+                (Any,
+                    for(const auto& sty : types)
+                        this->append_from(sp, pat, sty);
+                    ),
+                (Struct,
+                    TODO(sp, "Match over struct - Named + Struct");
+                    )
+                )
+                )
+            )
             ),
         (Enum,
             TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
@@ -394,14 +445,22 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         )
         ),
     (TraitObject,
-        ERROR(sp, E0000, "Attempting to match over a trait object");
+        if( pat.m_data.is_Any() ) {
+        }
+        else {
+            ERROR(sp, E0000, "Attempting to match over a trait object");
+        }
         ),
     (Array,
         // TODO: Slice patterns, sequential comparison/sub-match
         TODO(sp, "Match over array");
         ),
     (Slice,
-        BUG(sp, "Hit match over `[T]` - must be `&[T]`");
+        if( pat.m_data.is_Any() ) {
+        }
+        else {
+            BUG(sp, "Hit match over `[T]` - must be `&[T]`");
+        }
         ),
     (Borrow,
         TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
@@ -415,13 +474,25 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         )
         ),
     (Pointer,
-        ERROR(sp, E0000, "Attempting to match over a pointer");
+        if( pat.m_data.is_Any() ) {
+        }
+        else {
+            ERROR(sp, E0000, "Attempting to match over a pointer");
+        }
         ),
     (Function,
-        ERROR(sp, E0000, "Attempting to match over a functon pointer");
+        if( pat.m_data.is_Any() ) {
+        }
+        else {
+            ERROR(sp, E0000, "Attempting to match over a functon pointer");
+        }
         ),
     (Closure,
-        ERROR(sp, E0000, "Attempting to match over a closure");
+        if( pat.m_data.is_Any() ) {
+        }
+        else {
+            ERROR(sp, E0000, "Attempting to match over a closure");
+        }
         )
     )
 }
