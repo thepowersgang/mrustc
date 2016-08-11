@@ -3043,22 +3043,24 @@ namespace {
         )
         
         // Fast hack for slices (avoids going via the Deref impl search)
-        #if 0
+        #if 1
         if( ty_src.m_data.is_Slice() && !ty_src.m_data.is_Slice() )
         {
-            const auto& left_slice = ty_dst.m_data.as_Slice();
-            TU_IFLET(::HIR::TypeRef::Data, right_inner_res.m_data, Array, right_array,
-                this->apply_equality(sp, *left_slice.inner, cb_left, *right_array.inner, cb_right, nullptr);
-                auto span = node_ptr->span();
-                node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), l_t.clone() ));
-                node_ptr->m_res_type = l_t.clone();
+            const auto& dst_slice = ty_dst.m_data.as_Slice();
+            TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Array, src_array,
+                context.equate_types(sp, *dst_slice.inner, *src_array.inner);
                 
-                this->mark_change();
-                return ;
+                auto span = node_ptr->span();
+                auto ty_dst_ref = ::HIR::TypeRef::new_borrow(bt, ty_dst.clone() );
+                node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), mv$(ty_dst_ref) ));
+                //node_ptr->m_res_type = l_t.clone();
+                
+                context.m_ivars.mark_change();
+                return true;
             )
-            else TU_IFLET(::HIR::TypeRef::Data, right_inner_res.m_data, Generic, right_arg,
-                TODO(sp, "Search for Unsize bound on generic");
-            )
+            //else TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Generic, src_arg,
+            //    TODO(sp, "Search for Unsize bound on generic");
+            //)
             else
             {
                 // Apply deref coercions
@@ -3163,6 +3165,7 @@ namespace {
                 auto ty_dst_ref = ::HIR::TypeRef::new_borrow(bt, ty_dst.clone() );
                 node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), mv$(ty_dst_ref) ));
                 DEBUG("- Unsize " << &*node_ptr << " -> " << ty_dst);
+                context.m_ivars.mark_change();
             }
             return true;
             )
@@ -3198,6 +3201,7 @@ namespace {
                 auto ty_dst_ref = ::HIR::TypeRef::new_borrow(bt, ty_dst.clone() );
                 node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), mv$(ty_dst_ref) ));
                 DEBUG("- Unsize " << &*node_ptr << " -> " << ty_dst);
+                context.m_ivars.mark_change();
                 return true;
             }
         }
