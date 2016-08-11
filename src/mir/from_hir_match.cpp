@@ -158,8 +158,7 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
             builder.set_cur_block( next_pattern_bb );
         }
     }
-    
-    builder.set_cur_block( arm_cmp_blocks.back() );
+    // - Kill the final pattern block (which is dead code)
     builder.end_block( ::MIR::Terminator::make_Diverge({}) );
     
     builder.set_cur_block( next_block );
@@ -205,7 +204,43 @@ void MIR_LowerHIR_Match_Simple__GeneratePattern( MirBuilder& builder, const Span
         TODO(sp, "EnumValue");
         ),
     (EnumTuple,
-        TODO(sp, "EnumTuple");
+        // Switch (or if) on the variant, then recurse
+        auto next_bb = builder.new_bb_unlinked();
+        auto var_count = pe.binding_ptr->m_variants.size();
+        auto var_idx = pe.binding_idx;
+        ::std::vector< ::MIR::BasicBlockId> arms(var_count, fail_bb);
+        arms[var_idx] = next_bb;
+        builder.end_block( ::MIR::Terminator::make_Switch({ match_val.clone(), mv$(arms) }) );
+        
+        builder.set_cur_block(next_bb);
+        TU_MATCHA( (pe.binding_ptr->m_variants[var_idx].second), (var),
+        (Unit,
+            BUG(sp, "EnumTuple pattern with Unit enum variant");
+            ),
+        (Value,
+            BUG(sp, "EnumTuple pattern with Value enum variant");
+            ),
+        (Tuple,
+            auto lval_var = ::MIR::LValue::make_Downcast({ box$(match_val.clone()), var_idx });
+            assert( pe.sub_patterns.size() == var.size() );
+            for(unsigned int i = 0; i < var.size(); i ++)
+            {
+                auto lval = ::MIR::LValue::make_Field({ box$(lval_var.clone()), i });
+                const auto& ty = var[i].ent;
+                const auto& pat = pe.sub_patterns[i];
+                if( monomorphise_type_needed(ty) ) {
+                    auto ty_mono = monomorphise_type(sp, pe.binding_ptr->m_params, pe.path.m_params, ty);
+                    MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp, pat, ty_mono, mv$(lval), fail_bb);
+                }
+                else {
+                    MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp, pat, ty, mv$(lval), fail_bb);
+                }
+            }
+            ),
+        (Struct,
+            BUG(sp, "EnumTuple pattern with Named enum variant");
+            )
+        )
         ),
     (EnumTupleWildcard,
         TODO(sp, "EnumTupleWildcard");
@@ -220,7 +255,6 @@ void MIR_LowerHIR_Match_Simple__GeneratePattern( MirBuilder& builder, const Span
         TODO(sp, "SplitSlice");
         )
     )
-    TODO(sp, "Convert match on pattern " << pat << " into MIR");
 }
 
 // --------------------------------------------------------------------
