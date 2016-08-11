@@ -864,15 +864,17 @@ namespace {
                 };
                 
                 // Map of arm index to ruleset
-                ::std::vector< ::std::pair< unsigned int, PatternRuleset > >   arm_rules;
-                for(unsigned int idx = 0; idx < node.m_arms.size(); idx ++)
+                ::std::vector< ::std::pair< ::std::pair<unsigned int,unsigned int>, PatternRuleset > >   arm_rules;
+                for(unsigned int arm_idx = 0; arm_idx < node.m_arms.size(); arm_idx ++)
                 {
-                    const auto& arm = node.m_arms[idx];
+                    const auto& arm = node.m_arms[arm_idx];
+                    unsigned int pat_idx = 0;
                     for( const auto& pat : arm.m_patterns )
                     {
                         auto builder = PatternRulesetBuilder {};
                         builder.append_from(node.span(), pat, node.m_value->m_res_type);
-                        arm_rules.push_back( ::std::make_pair(idx, builder.into_ruleset()) );
+                        arm_rules.push_back( ::std::make_pair( ::std::make_pair(arm_idx, pat_idx), builder.into_ruleset()) );
+                        pat_idx += 1;
                     }
                     
                     if( arm.m_cond ) {
@@ -928,14 +930,13 @@ namespace {
                     rule_blocks.push_back( m_builder.new_bb_unlinked() );
                     m_builder.set_cur_block(arm_blocks.back());
                     
-                    const auto& arm = node.m_arms[ rule.first ];
-                    ASSERT_BUG(node.span(), arm.m_patterns.size() == 1, "TODO: Handle multiple patterns on one arm");
-                    const auto& pat = arm.m_patterns[0 /*rule.first.second*/];
+                    const auto& arm = node.m_arms[ rule.first.first ];
+                    const auto& pat = arm.m_patterns[rule.first.second];
                     
                     // Assign bindings (drop registration happens in previous loop) - Allow refutable patterns
                     this->destructure_from( arm.m_code->span(), pat, match_val.clone(), 1 );
                     
-                    m_builder.end_block( ::MIR::Terminator::make_Goto( arm_blocks[rule.first] ) );
+                    m_builder.end_block( ::MIR::Terminator::make_Goto( arm_blocks[rule.first.first] ) );
                 }
                 
                 
@@ -944,7 +945,8 @@ namespace {
                 DecisionTreeNode    root_node;
                 for( const auto& arm_rule : arm_rules )
                 {
-                    root_node.populate_tree_from_rule( node.m_arms[arm_rule.first].m_code->span(), arm_rule.first, arm_rule.second.m_rules.data(), arm_rule.second.m_rules.size() );
+                    auto arm_idx = arm_rule.first.first;
+                    root_node.populate_tree_from_rule( node.m_arms[arm_idx].m_code->span(), arm_idx, arm_rule.second.m_rules.data(), arm_rule.second.m_rules.size() );
                 }
                 DEBUG("root_node = " << root_node);
                 root_node.simplify();
@@ -1294,10 +1296,10 @@ namespace {
                 break;
             
             case ::HIR::ExprNode_BinOp::Op::BoolAnd:
-                TODO(node.span(), "&&");
+                TODO(node.span(), "BinOp &&");
                 break;
             case ::HIR::ExprNode_BinOp::Op::BoolOr:
-                TODO(node.span(), "||");
+                TODO(node.span(), "BinOp ||");
                 break;
             
             case ::HIR::ExprNode_BinOp::Op::Add:    op = ::MIR::eBinOp::ADD; if(0)
