@@ -91,9 +91,136 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 // --------------------------------------------------------------------
 // Dumb and Simple
 // --------------------------------------------------------------------
+void MIR_LowerHIR_Match_Simple__GeneratePattern( MirBuilder& builder, const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty, const ::MIR::LValue& match_val,  ::MIR::BasicBlockId fail_tgt);
+
 void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules )
 {
-    TODO(node.span(), "Dumb and simple sequential comparison");
+    auto result_val = builder.new_temporary( node.m_res_type );
+    auto next_block = builder.new_bb_unlinked();
+    
+    ::std::vector< ::MIR::BasicBlockId> arm_cmp_blocks;
+    arm_cmp_blocks.push_back( builder.new_bb_unlinked() );
+    builder.end_block( ::MIR::Terminator::make_Goto( arm_cmp_blocks.back() ) );
+    
+    // 1. Generate code with conditions
+    ::std::vector< ::MIR::BasicBlockId> arm_code_blocks;
+    for( /*const*/ auto& arm : node.m_arms )
+    {
+        //auto cur_arm_block = arm_cmp_blocks.back();
+        arm_cmp_blocks.push_back( builder.new_bb_unlinked() );
+        auto next_arm_block = arm_cmp_blocks.back();
+        
+        // TODO: Register introduced bindings to be dropped on return/diverge within this scope
+        
+        arm_code_blocks.push_back( builder.new_bb_unlinked() );
+        builder.set_cur_block( arm_code_blocks.back() );
+        
+        if(arm.m_cond) {
+            auto code_block = builder.new_bb_unlinked();
+            
+            conv.visit_node_ptr( arm.m_cond );
+            auto cnd_lval = builder.lvalue_or_temp( ::HIR::TypeRef(::HIR::CoreType::Bool), builder.get_result(arm.m_cond->span()) );
+            
+            builder.end_block( ::MIR::Terminator::make_If({ mv$(cnd_lval), code_block, next_arm_block }) );
+            builder.set_cur_block( code_block );
+        }
+        
+        conv.visit_node_ptr( arm.m_code );
+        
+        if( !builder.block_active() && !builder.has_result() ) {
+            // Nothing need be done, as the block diverged.
+        }
+        else {
+            builder.push_stmt_assign( result_val.clone(), builder.get_result(arm.m_code->span()) );
+            builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
+        }
+    }
+    
+    // 2. Generate pattern matches
+    builder.set_cur_block( arm_cmp_blocks[0] );
+    for( unsigned int arm_idx = 0; arm_idx < node.m_arms.size(); arm_idx ++ )
+    {
+        const auto& arm = node.m_arms[arm_idx];
+        auto code_bb = arm_code_blocks[arm_idx];
+        
+        for( unsigned int i = 0; i < arm.m_patterns.size(); i ++ )
+        {
+            const auto& pat = arm.m_patterns[i];
+            auto next_pattern_bb = (i+1 < arm.m_patterns.size() ? builder.new_bb_unlinked() : arm_cmp_blocks[1+arm_idx]);
+            
+            // 1. Check
+            MIR_LowerHIR_Match_Simple__GeneratePattern(builder, arm.m_code->span(), pat, node.m_value->m_res_type, match_val, next_pattern_bb);
+            // 2. Destructure
+            conv.destructure_from( arm.m_code->span(), pat, match_val.clone(), true );
+            // - Go to code
+            builder.end_block( ::MIR::Terminator::make_Goto(code_bb) );
+            
+            builder.set_cur_block( next_pattern_bb );
+        }
+    }
+    
+    builder.set_cur_block( arm_cmp_blocks.back() );
+    builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+    
+    builder.set_cur_block( next_block );
+    builder.set_result( node.span(), mv$(result_val) );
+}
+void MIR_LowerHIR_Match_Simple__GeneratePattern( MirBuilder& builder, const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty, const ::MIR::LValue& match_val,  ::MIR::BasicBlockId fail_bb)
+{
+    TU_MATCHA( (pat.m_data), (pe),
+    (Any,
+        ),
+    (Box,
+        TODO(sp, "box patterns");
+        ),
+    (Ref,
+        auto lval = ::MIR::LValue::make_Deref({ box$(match_val.clone()) });
+        MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp, *pe.sub, *ty.m_data.as_Borrow().inner, mv$(lval), fail_bb);
+        ),
+    (Tuple,
+        const auto& te = ty.m_data.as_Tuple();
+        assert( te.size() == pe.sub_patterns.size() );
+        for(unsigned int idx = 0; idx < pe.sub_patterns.size(); idx ++ )
+        {
+            auto lval = ::MIR::LValue::make_Field({ box$(match_val.clone()), idx });
+            MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp, pe.sub_patterns[idx], te[idx], mv$(lval), fail_bb);
+        }
+        ),
+    (StructTuple,
+        TODO(sp, "StructTuple");
+        ),
+    (StructTupleWildcard,
+        TODO(sp, "StructTupleWildcard");
+        ),
+    (Struct,
+        TODO(sp, "Struct");
+        ),
+    (Value,
+        TODO(sp, "Value");
+        ),
+    (Range,
+        TODO(sp, "Range");
+        ),
+    (EnumValue,
+        TODO(sp, "EnumValue");
+        ),
+    (EnumTuple,
+        TODO(sp, "EnumTuple");
+        ),
+    (EnumTupleWildcard,
+        TODO(sp, "EnumTupleWildcard");
+        ),
+    (EnumStruct,
+        TODO(sp, "EnumStruct");
+        ),
+    (Slice,
+        TODO(sp, "Slice");
+        ),
+    (SplitSlice,
+        TODO(sp, "SplitSlice");
+        )
+    )
+    TODO(sp, "Convert match on pattern " << pat << " into MIR");
 }
 
 // --------------------------------------------------------------------
