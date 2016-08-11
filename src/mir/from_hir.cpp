@@ -1295,12 +1295,40 @@ namespace {
                 m_builder.push_stmt_assign(res.as_Temporary(), ::MIR::RValue::make_BinOp({ mv$(left), op, mv$(right) }));
                 break;
             
-            case ::HIR::ExprNode_BinOp::Op::BoolAnd:
-                TODO(node.span(), "BinOp &&");
-                break;
-            case ::HIR::ExprNode_BinOp::Op::BoolOr:
-                TODO(node.span(), "BinOp ||");
-                break;
+            case ::HIR::ExprNode_BinOp::Op::BoolAnd: {
+                auto bb_next = m_builder.new_bb_unlinked();
+                auto bb_true = m_builder.new_bb_unlinked();
+                auto bb_false = m_builder.new_bb_unlinked();
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(left), bb_true, bb_false }) );
+                // If left is false, assign result false and return
+                m_builder.set_cur_block( bb_false );
+                m_builder.push_stmt_assign(res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool(false) ));
+                m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
+                
+                // If left is true, assign result to right
+                m_builder.set_cur_block( bb_true );
+                m_builder.push_stmt_assign(res.clone(), mv$(right));    // TODO: Right doens't need to be an LValue here.
+                m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
+                
+                m_builder.set_cur_block( bb_next );
+                } break;
+            case ::HIR::ExprNode_BinOp::Op::BoolOr: {
+                auto bb_next = m_builder.new_bb_unlinked();
+                auto bb_true = m_builder.new_bb_unlinked();
+                auto bb_false = m_builder.new_bb_unlinked();
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(left), bb_true, bb_false }) );
+                // If left is true, assign result true and return
+                m_builder.set_cur_block( bb_true );
+                m_builder.push_stmt_assign(res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool(true) ));
+                m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
+                
+                // If left is false, assign result to right
+                m_builder.set_cur_block( bb_false );
+                m_builder.push_stmt_assign(res.clone(), mv$(right));    // TODO: Right doens't need to be an LValue here.
+                m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
+                
+                m_builder.set_cur_block( bb_next );
+                } break;
             
             case ::HIR::ExprNode_BinOp::Op::Add:    op = ::MIR::eBinOp::ADD; if(0)
             case ::HIR::ExprNode_BinOp::Op::Sub:    op = ::MIR::eBinOp::SUB; if(0)
@@ -1522,6 +1550,9 @@ namespace {
                 case ::HIR::CoreType::I64:
                 case ::HIR::CoreType::Isize:
                     m_builder.set_result(node.span(), ::MIR::RValue( ::MIR::Constant( static_cast<int64_t>(e.m_value) ) ));
+                    break;
+                case ::HIR::CoreType::Char:
+                    m_builder.set_result(node.span(), ::MIR::RValue( ::MIR::Constant( static_cast<uint64_t>(e.m_value) ) ));
                     break;
                 default:
                     BUG(node.span(), "Integer literal with unexpected type - " << node.m_res_type);
