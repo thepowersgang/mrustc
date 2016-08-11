@@ -118,6 +118,10 @@ TAGGED_UNION(RValue, Use,
     (DstMeta, struct {
         LValue  val;
         }),
+    (MakeDst, struct {
+        LValue  ptr_val;
+        LValue  meta_val;
+        }),
     (Tuple, struct {
         ::std::vector<LValue>   vals;
         }),

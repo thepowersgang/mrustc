@@ -1392,7 +1392,35 @@ namespace {
         {
             TRACE_FUNCTION_F("_Unsize");
             this->visit_node_ptr(node.m_value);
-            TODO(node.span(), "MIR _Unsize to " << node.m_res_type);
+            auto ptr_lval = m_builder.lvalue_or_temp( node.m_value->m_res_type, m_builder.get_result(node.span()) );
+            
+            if( !node.m_res_type.m_data.is_Borrow() ) {
+                BUG(node.span(), "MIR _Unsize with invalid type, requires output to be &-ptr, got " << node.m_res_type);
+            }
+            if( !node.m_value->m_res_type.m_data.is_Borrow() ) {
+                BUG(node.span(), "MIR _Unsize with invalid type, requires input to be &-ptr, got " << node.m_value->m_res_type);
+            }
+            const auto& ty_out = *node.m_res_type.m_data.as_Borrow().inner;
+            const auto& ty_in = *node.m_value->m_res_type.m_data.as_Borrow().inner;
+            
+            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_out.m_data), (e),
+            (
+                TODO(node.span(), "MIR _Unsize to " << ty_out);
+                ),
+            (TraitObject,
+                // TODO: Obtain the vtable if the destination is a trait object
+                // vtable exists as an unnamable associated type
+
+                ::HIR::Path vtable { ty_in.clone(), e.m_trait.m_path.clone(), "#vtable" };
+                ::HIR::TypeRef  vtable_type { {} };
+                auto vtable_lval = m_builder.lvalue_or_temp(
+                    ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(vtable_type)),
+                    ::MIR::RValue( ::MIR::Constant::make_ItemAddr(mv$(vtable)) )
+                    );
+                
+                m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(vtable_lval) }) );
+                )
+            )
         }
         void visit(::HIR::ExprNode_Index& node) override
         {
