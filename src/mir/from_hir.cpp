@@ -269,6 +269,20 @@ namespace {
             )
         }
         
+        friend ::std::ostream& operator<<(::std::ostream& os, const Branch& x) {
+            TU_MATCHA( (x), (be),
+            (Unset,
+                os << "!";
+                ),
+            (Terminal,
+                os << "ARM " << be;
+                ),
+            (Subtree,
+                os << *be;
+                )
+            )
+            return os;
+        }
         friend ::std::ostream& operator<<(::std::ostream& os, const DecisionTreeNode& x) {
             os << "DTN { ";
             TU_MATCHA( (x.m_branches), (e),
@@ -277,32 +291,12 @@ namespace {
                 ),
             (Variant,
                 for(const auto& branch : e) {
-                    TU_MATCHA( (branch.second), (be),
-                    (Unset,
-                        os << branch.first << " = !, ";
-                        ),
-                    (Terminal,
-                        os << branch.first << " = ARM " << be << ", ";
-                        ),
-                    (Subtree,
-                        os << branch.first << " = " << *be << ", ";
-                        )
-                    )
+                    os << branch.first << " = " << branch.second << ", ";
                 }
                 )
             )
             
-            TU_MATCHA( (x.m_default), (be),
-            (Unset,
-                os << "* = !";
-                ),
-            (Terminal,
-                os << "* = ARM " << be;
-                ),
-            (Subtree,
-                os << "* = " << *be;
-                )
-            )
+            os << "* = " << x.m_default;
             os << " }";
             return os;
         }
@@ -365,7 +359,8 @@ namespace {
             TU_IFLET(Branch, b, Subtree, be,
                 be->simplify();
                 if( be->m_branches.is_Unset() ) {
-                    b = mv$( be->m_default );
+                    auto v = mv$( be->m_default );
+                    b = mv$(v);
                 }
             )
         }
@@ -953,7 +948,7 @@ namespace {
                         ::std::function<void(const DecisionTreeNode&)> and_then
                         )
                     {
-                        TRACE_FUNCTION_F("ty=" << ty << ", ty_ofs=" << ty_ofs);
+                        TRACE_FUNCTION_F("ty=" << ty << ", ty_ofs=" << ty_ofs << ", node=" << node);
                         
                         TU_MATCHA( (ty.m_data), (e),
                         (Infer,   BUG(sp, "Ivar for in match type"); ),
@@ -1031,6 +1026,7 @@ namespace {
                                 {
                                     auto bb = variant_blocks[branch.first];
                                     const auto& var = variants[branch.first];
+                                    DEBUG(branch.first << " " << var.first << " = " << branch);
                                     
                                     m_builder.set_cur_block(bb);
                                     if( branch.second.is_Terminal() ) {
@@ -1063,6 +1059,19 @@ namespace {
                                         )
                                     }
                                 }
+                                
+                                DEBUG("_");
+                                TU_MATCHA( (node.m_default), (be),
+                                (Unset, ),
+                                (Terminal,
+                                    m_builder.set_cur_block(any_block);
+                                    m_builder.end_block( ::MIR::Terminator::make_Goto( this->get_block_for_rule( be ) ) );
+                                    ),
+                                (Subtree,
+                                    m_builder.set_cur_block(any_block);
+                                    and_then( *be );
+                                    )
+                                )
                                 )
                             )
                             ),
