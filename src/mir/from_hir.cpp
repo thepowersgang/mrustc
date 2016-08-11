@@ -437,6 +437,7 @@ namespace {
         public ::HIR::ExprVisitor
     {
         MirBuilder  m_builder;
+        const ::std::vector< ::HIR::TypeRef>&  m_variable_types;
         
         struct LoopDesc {
             ::std::string   label;
@@ -450,8 +451,9 @@ namespace {
         ::std::vector<BlockDesc>    m_block_stack;
         
     public:
-        ExprVisitor_Conv(::MIR::Function& output):
-            m_builder(output)
+        ExprVisitor_Conv(::MIR::Function& output, const ::std::vector< ::HIR::TypeRef>& var_types):
+            m_builder(output),
+            m_variable_types(var_types)
         {
         }
         
@@ -1666,8 +1668,29 @@ namespace {
         
         void visit(::HIR::ExprNode_Closure& node) override
         {
-            TRACE_FUNCTION_F("_Closure");
-            TODO(node.span(), "_Closure");
+            TRACE_FUNCTION_F("_Closure - " << node.m_obj_path);
+            
+            // Emit construction of the closure.
+            ::std::vector< ::MIR::LValue>   vals;
+            for( const auto cap_idx : node.m_var_captures )
+            {
+                if( node.m_is_move ) {
+                    vals.push_back( ::MIR::LValue::make_Variable(cap_idx) );
+                }
+                else {
+                    auto borrow_ty = ::HIR::BorrowType::Shared;
+                    auto lval = m_builder.lvalue_or_temp(
+                        ::HIR::TypeRef::new_borrow(borrow_ty, m_variable_types.at(cap_idx).clone()),
+                        ::MIR::RValue::make_Borrow({ 0, borrow_ty, ::MIR::LValue::make_Variable(cap_idx) })
+                        );
+                    vals.push_back( mv$(lval) );
+                }
+            }
+            
+            m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
+                node.m_obj_path.clone(),
+                mv$(vals)
+                }) );
         }
     };
 }
@@ -1677,7 +1700,7 @@ namespace {
 {
     ::MIR::Function fcn;
     
-    ExprVisitor_Conv    ev { fcn };
+    ExprVisitor_Conv    ev { fcn, ptr.m_bindings };
     
     // 1. Apply destructuring to arguments
     unsigned int i = 0;

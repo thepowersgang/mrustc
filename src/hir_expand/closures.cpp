@@ -215,6 +215,7 @@ namespace {
         };
 
         const StaticTraitResolve& m_resolve;
+        const ::HIR::SimplePath&  m_module_path;
         ::std::vector< ::HIR::TypeRef>& m_variable_types;
         
         // Outputs
@@ -226,8 +227,9 @@ namespace {
         /// Stack of active closures
         ::std::vector<ClosureScope> m_closure_stack;
     public:
-        ExprVisitor_Extract(const StaticTraitResolve& resolve, ::std::vector< ::HIR::TypeRef>& var_types, out_impls_t& out_impls, out_types_t& out_types):
+        ExprVisitor_Extract(const StaticTraitResolve& resolve, const ::HIR::SimplePath& mod_path, ::std::vector< ::HIR::TypeRef>& var_types, out_impls_t& out_impls, out_types_t& out_types):
             m_resolve(resolve),
+            m_module_path(mod_path),
             m_variable_types(var_types),
             m_out_impls( out_impls ),
             m_out_types( out_types )
@@ -264,13 +266,17 @@ namespace {
             // Includes:
             // - Generics based on the current scope (compacted)
             ::HIR::GenericParams    params;
+            ::HIR::PathParams   constructor_path_params;
+            constructor_path_params.m_types.push_back( ::HIR::TypeRef("Self", 0xFFFF) );
             params.m_types.push_back( ::HIR::TypeParamDef { "Super", {}, false } );  // TODO: Maybe Self is sized?
             unsigned ofs_impl = params.m_types.size();
             for(const auto& ty_def : m_resolve.impl_generics().m_types) {
+                constructor_path_params.m_types.push_back( ::HIR::TypeRef( ty_def.m_name, 0*256 + params.m_types.size() - ofs_impl ) );
                 params.m_types.push_back( ::HIR::TypeParamDef { ty_def.m_name, {}, ty_def.m_is_sized } );
             }
             unsigned ofs_item = params.m_types.size();
             for(const auto& ty_def : m_resolve.item_generics().m_types) {
+                constructor_path_params.m_types.push_back( ::HIR::TypeRef( ty_def.m_name, 1*256 + params.m_types.size() - ofs_item ) );
                 params.m_types.push_back( ::HIR::TypeParamDef { ty_def.m_name, {}, ty_def.m_is_sized } );
             }
             
@@ -312,6 +318,8 @@ namespace {
                     ::HIR::Struct::Data::make_Tuple(mv$(capture_types))
                     }
                 ));
+            
+            node.m_obj_path = ::HIR::GenericPath( m_module_path + m_out_types.back().first, mv$(constructor_path_params) );
             
             // - Args
             ::std::vector< ::HIR::Pattern>  args_pat_inner;
@@ -735,9 +743,11 @@ namespace {
         StaticTraitResolve  m_resolve;
         out_impls_t m_new_trait_impls;
         out_types_t m_new_types;
+        const ::HIR::SimplePath*  m_cur_mod_path;
     public:
         OuterVisitor(const ::HIR::Crate& crate):
-            m_resolve(crate)
+            m_resolve(crate),
+            m_cur_mod_path( nullptr )
         {}
         
         void visit_crate(::HIR::Crate& crate) override
@@ -759,7 +769,11 @@ namespace {
         
         void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
         {
+            auto saved = m_cur_mod_path;
+            auto path = p.get_simple_path();
+            m_cur_mod_path = &path;
             ::HIR::Visitor::visit_module(p, mod);
+            m_cur_mod_path = saved;
             
             // - Insert newly created closure types
             auto new_types = mv$(m_new_types);
@@ -800,9 +814,9 @@ namespace {
             auto _ = this->m_resolve.set_item_generics(item.m_params);
             if( item.m_code )
             {
+                assert( m_cur_mod_path );
                 DEBUG("Function code " << p);
-                //ExprVisitor_Extract    ev(item.m_code.binding_types);
-                ExprVisitor_Extract    ev(m_resolve, item.m_code.m_bindings, m_new_trait_impls, m_new_types);
+                ExprVisitor_Extract    ev(m_resolve, *m_cur_mod_path, item.m_code.m_bindings, m_new_trait_impls, m_new_types);
                 ev.visit_root( *item.m_code );
             }
             else
@@ -814,7 +828,7 @@ namespace {
             if( item.m_value )
             {
                 //::std::vector< ::HIR::TypeRef>  tmp;
-                //ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
+                //ExprVisitor_Extract    ev(m_resolve, *m_cur_mod_path, tmp, m_new_trait_impls);
                 //ev.visit_root(*item.m_value);
             }
         }
@@ -846,10 +860,13 @@ namespace {
             auto _ = this->m_resolve.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_trait(p, item);
         }
+        
+        
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << impl.m_type);
             auto _ = this->m_resolve.set_impl_generics(impl.m_params);
+            m_cur_mod_path = &impl.m_src_module;
             
             ::HIR::Visitor::visit_type_impl(impl);
         }
@@ -857,6 +874,7 @@ namespace {
         {
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
             auto _ = this->m_resolve.set_impl_generics(impl.m_params);
+            m_cur_mod_path = &impl.m_src_module;
             
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
         }
