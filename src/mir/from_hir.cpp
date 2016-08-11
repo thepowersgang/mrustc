@@ -383,16 +383,30 @@ namespace {
             )
             TU_IFLET(Branch, m_default, Subtree, be,
                 be->propagate_default();
+                
+                if( be->m_default.is_Unset() ) {
+                    // TODO: Propagate default from value branches
+                    TU_MATCHA( (m_branches), (e),
+                    (Unset,
+                        ),
+                    (Variant,
+                        for(auto& branch : e) {
+                            be->unify_from(branch.second);
+                        }
+                        )
+                    )
+                }
             )
         }
         void unify_from(const Branch& b)
         {
-            assert( m_default.is_Unset() );
             TU_MATCHA( (b), (be),
             (Unset,
                 ),
             (Terminal,
-                m_default = Branch(be);
+                if( m_default.is_Unset() ) {
+                    m_default = Branch(be);
+                }
                 ),
             (Subtree,
                 assert( be->m_branches.tag() == m_branches.tag() );
@@ -411,7 +425,9 @@ namespace {
                     }
                     )
                 )
-                m_default = clone(be->m_default);
+                if( m_default.is_Unset() ) {
+                    m_default = clone(be->m_default);
+                }
                 )
             )
         }
@@ -862,6 +878,16 @@ namespace {
                         TODO(node.span(), "Handle conditional match arms (ordering matters)");
                     }
                 }
+                // TODO: Detect if a rule is ordering-dependent.
+                // XXX XXX XXX: The current codegen (below) will generate incorrect code if ordering matters.
+                // ```
+                // match ("foo", "bar")
+                // {
+                // (_, "bar") => {},    // Expected
+                // ("foo", _) => {},    // Actual
+                // _ => {},
+                // }
+                // ```
                 
                 // Generate arm code
                 DEBUG("- Generating arm code");
