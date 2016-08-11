@@ -2987,7 +2987,7 @@ namespace {
         context.m_ivars.mark_change();
     }
     
-    bool check_coerce_borrow(Context& context, const ::HIR::TypeRef& inner_l, const ::HIR::TypeRef& inner_r, ::HIR::ExprNodeP& node_ptr)
+    bool check_coerce_borrow(Context& context, ::HIR::BorrowType bt, const ::HIR::TypeRef& inner_l, const ::HIR::TypeRef& inner_r, ::HIR::ExprNodeP& node_ptr)
     {
         const auto& sp = node_ptr->span();
         
@@ -3157,13 +3157,13 @@ namespace {
                 }
             }
             
-            // Add CoerceUnsized
-            add_coerce_borrow(context, node_ptr, ty_dst, [&](auto& node_ptr) {
+            // Add _Unsize operator to the &-ptr
+            {
                 auto span = node_ptr->span();
-                node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), ty_dst.clone() ));
+                auto ty_dst_ref = ::HIR::TypeRef::new_borrow(bt, ty_dst.clone() );
+                node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), mv$(ty_dst_ref) ));
                 DEBUG("- Unsize " << &*node_ptr << " -> " << ty_dst);
-                node_ptr->m_res_type = ty_dst.clone();
-                });
+            }
             return true;
             )
         )
@@ -3194,13 +3194,10 @@ namespace {
                 return cmp == ::HIR::Compare::Equal;
                 });
             if( found ) {
-                add_coerce_borrow(context, node_ptr, ty_dst, [&](auto& node_ptr) {
-                        auto span = node_ptr->span();
-                        auto ty = mv$(ty_dst.clone());
-                        node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), ty.clone() ));
-                        DEBUG("- Unsize " << &*node_ptr << " -> " << ty);
-                        node_ptr->m_res_type = mv$(ty);
-                    });
+                auto span = node_ptr->span();
+                auto ty_dst_ref = ::HIR::TypeRef::new_borrow(bt, ty_dst.clone() );
+                node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), mv$(ty_dst_ref) ));
+                DEBUG("- Unsize " << &*node_ptr << " -> " << ty_dst);
                 return true;
             }
         }
@@ -3383,7 +3380,7 @@ namespace {
                 }
                 
                 // - Check for coercions
-                return check_coerce_borrow(context, *l_e.inner, *r_e.inner, node_ptr);
+                return check_coerce_borrow(context, l_e.type, *l_e.inner, *r_e.inner, node_ptr);
             )
             else TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Infer, r_e,
                 // Leave for now
