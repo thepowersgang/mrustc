@@ -11,8 +11,13 @@
 
 /// Pattern rule
 TAGGED_UNION(PatternRule, Any,
+    // _ pattern
     (Any, struct {}),
+    // Enum variant
     (Variant, struct { unsigned int idx; ::std::vector<PatternRule> sub_rules; }),
+    // Boolean (different to Constant because of how restricted it is)
+    (Bool, bool),
+    // General value
     (Value, ::MIR::Constant)
     );
 
@@ -48,7 +53,8 @@ struct DecisionTreeNode
     
     TAGGED_UNION( Values, Unset,
         (Unset, struct {}),
-        (Variant, ::std::vector< ::std::pair<unsigned int, Branch> >)/*,
+        (Variant, ::std::vector< ::std::pair<unsigned int, Branch> >),
+        (Bool, struct { Branch false_branch, true_branch; })/*,
         (Unsigned, struct { branchset_t<uint64_t[2]>    branches; }),
         (String, struct { branchset_t< ::std::string>   branches; })*/
         );
@@ -244,6 +250,9 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         }
         return ::OrdEqual;
         ),
+    (Bool,
+        return ::ord( le, re );
+        ),
     (Value,
         TODO(Span(), "Order PatternRule::Value");
         )
@@ -299,7 +308,8 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 TODO(sp, "Match value signed");
                 break;
             case ::HIR::CoreType::Bool:
-                TODO(sp, "Match value bool");
+                // TODO: Support values from `const` too
+                m_rules.push_back( PatternRule::make_Bool( pe.val.as_Integer().value != 0 ) );
                 break;
             case ::HIR::CoreType::Char:
                 TODO(sp, "Match value char");
@@ -431,6 +441,9 @@ DecisionTreeNode::Branch DecisionTreeNode::clone(const DecisionTreeNode::Branch&
 DecisionTreeNode::Values DecisionTreeNode::clone(const DecisionTreeNode::Values& x) {
     TU_MATCHA( (x), (e),
     (Unset, return Values(e); ),
+    (Bool,
+        return Values::make_Bool({ clone(e.false_branch),  clone(e.true_branch) });
+        ),
     (Variant,
         Values::Data_Variant rv;
         rv.reserve(e.size());
@@ -483,6 +496,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
             BUG(sp, "Mismatched rules");
         }
         auto& be = m_branches.as_Variant();
+        
         auto it = ::std::find_if( be.begin(), be.end(), [&](const auto& x){ return x.first >= e.idx; });
         // If this variant isn't yet processed, add a new subtree for it
         if( it == be.end() || it->first != e.idx ) {
@@ -519,6 +533,35 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
             and_then(it->second);
         }
         }),
+    (Bool,
+        if( m_branches.is_Unset() ) {
+            m_branches = Values::make_Bool({});
+        }
+        else if( !m_branches.is_Bool() ) {
+            BUG(sp, "Mismatched rules");
+        }
+        auto& be = m_branches.as_Bool();
+        
+        auto& branch = (e ? be.true_branch : be.false_branch);
+        if( branch.is_Unset() ) {
+            branch = Branch( box$( DecisionTreeNode() ) );
+        }
+        else if( branch.is_Terminal() ) {
+            BUG(sp, "Duplicate terminal rule - " << branch.as_Terminal());
+        }
+        else {
+            // Good.
+        }
+        if( rule_count > 1 )
+        {
+            auto& subtree = *branch.as_Subtree();
+            subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+        }
+        else
+        {
+            and_then(branch);
+        }
+        ),
     (Value,
         TODO(sp, "Value patterns");
         )
@@ -543,6 +586,10 @@ void DecisionTreeNode::simplify()
     TU_MATCHA( (m_branches), (e),
     (Unset,
         ),
+    (Bool,
+        H::simplify_branch(e.false_branch);
+        H::simplify_branch(e.true_branch);
+        ),
     (Variant,
         for(auto& branch : e) {
             H::simplify_branch(branch.second);
@@ -555,17 +602,27 @@ void DecisionTreeNode::simplify()
 
 void DecisionTreeNode::propagate_default()
 {
+    struct H {
+        static void handle_branch(Branch& b, const Branch& def) {
+            TU_IFLET(Branch, b, Subtree, be,
+                be->propagate_default();
+                if( be->m_default.is_Unset() ) {
+                    be->unify_from(def);
+                }
+            )
+        }
+    };
+    
     TU_MATCHA( (m_branches), (e),
     (Unset,
         ),
+    (Bool,
+        H::handle_branch(e.false_branch, m_default);
+        H::handle_branch(e.true_branch, m_default);
+        ),
     (Variant,
         for(auto& branch : e) {
-            TU_IFLET(Branch, branch.second, Subtree, be,
-                be->propagate_default();
-                if( be->m_default.is_Unset() ) {
-                    be->unify_from(m_default);
-                }
-            )
+            H::handle_branch(branch.second, m_default);
         }
         )
     )
@@ -573,9 +630,13 @@ void DecisionTreeNode::propagate_default()
         be->propagate_default();
         
         if( be->m_default.is_Unset() ) {
-            // TODO: Propagate default from value branches
+            // Propagate default from value branches
             TU_MATCHA( (m_branches), (e),
             (Unset,
+                ),
+            (Bool,
+                be->unify_from(e.false_branch);
+                be->unify_from(e.true_branch);
                 ),
             (Variant,
                 for(auto& branch : e) {
@@ -600,6 +661,14 @@ void DecisionTreeNode::unify_from(const Branch& b)
         assert( be->m_branches.tag() == m_branches.tag() );
         TU_MATCHA( (be->m_branches, m_branches), (src, dst),
         (Unset,
+            ),
+        (Bool,
+            if( dst.false_branch.is_Unset() ) {
+                dst.false_branch = clone(src.false_branch);
+            }
+            if( dst.true_branch.is_Unset() ) {
+                dst.true_branch = clone(src.false_branch);
+            }
             ),
         (Variant,
             // Insert items not already present
@@ -640,6 +709,9 @@ void DecisionTreeNode::unify_from(const Branch& b)
     (Unset,
         os << "!, ";
         ),
+    (Bool,
+        os << "false = " << e.false_branch << ", true = " << e.true_branch << ", ";
+        ),
     (Variant,
         for(const auto& branch : e) {
             os << branch.first << " = " << branch.second << ", ";
@@ -663,13 +735,63 @@ void DecisionTreeGen::populate_tree_vals(
     ::std::function<void(const DecisionTreeNode&)> and_then
     )
 {
+    struct H {
+        static void generate_branch(DecisionTreeGen& self, const DecisionTreeNode::Branch& branch, ::MIR::BasicBlockId bb, ::std::function<void(const DecisionTreeNode&)> cb) {
+            self.m_builder.set_cur_block(bb);
+            if( branch.is_Terminal() ) {
+                self.m_builder.end_block( ::MIR::Terminator::make_Goto( self.get_block_for_rule( branch.as_Terminal() ) ) );
+            }
+            else {
+                assert( branch.is_Subtree() );
+                const auto& subnode = *branch.as_Subtree();
+                
+                cb(subnode);
+            }
+        }
+    };
+    
     TRACE_FUNCTION_F("ty=" << ty << ", ty_ofs=" << ty_ofs << ", node=" << node);
     
     TU_MATCHA( (ty.m_data), (e),
     (Infer,   BUG(sp, "Ivar for in match type"); ),
     (Diverge, BUG(sp, "Diverge in match type");  ),
     (Primitive,
-        TODO(sp, "Primitive");
+        switch(e)
+        {
+        case ::HIR::CoreType::Bool: {
+            ASSERT_BUG(sp, node.m_branches.is_Bool(), "Tree for bool isn't a _Bool - node="<<node);
+            const auto& branches = node.m_branches.as_Bool();
+            
+            if( node.m_default.is_Unset() )
+            {
+                if( branches.false_branch.is_Unset() || branches.true_branch.is_Unset() ) {
+                    // Non-exhaustive match - ERROR
+                }
+            }
+            else
+            {
+                if( branches.false_branch.is_Unset() && branches.true_branch.is_Unset() ) {
+                    // Unreachable default (NOTE: Not an error here)
+                }
+            }
+            
+            // Emit an if based on the route taken
+            auto bb_false = m_builder.new_bb_unlinked();
+            auto bb_true  = m_builder.new_bb_unlinked();
+            m_builder.end_block( ::MIR::Terminator::make_If({ val.clone(), bb_true, bb_false }) );
+            
+            // Recurse into sub-patterns
+            const auto& branch_false = ( !branches.false_branch.is_Unset() ? branches.false_branch : node.m_default );
+            const auto& branch_true  = ( !branches. true_branch.is_Unset() ? branches. true_branch : node.m_default );
+            
+            H::generate_branch(*this, branch_true , bb_true , and_then);
+            H::generate_branch(*this, branch_false, bb_false, and_then);
+            
+            } break;
+        default:
+            TODO(sp, "Primitive - " << ty);
+            break;
+        }
         ),
     (Tuple,
         // Tuple - Recurse on each sub-type (increasing the index)
@@ -742,15 +864,7 @@ void DecisionTreeGen::populate_tree_vals(
                 auto bb = variant_blocks[branch.first];
                 const auto& var = variants[branch.first];
                 DEBUG(branch.first << " " << var.first << " = " << branch);
-                
-                m_builder.set_cur_block(bb);
-                if( branch.second.is_Terminal() ) {
-                    m_builder.end_block( ::MIR::Terminator::make_Goto( this->get_block_for_rule( branch.second.as_Terminal() ) ) );
-                }
-                else {
-                    assert( branch.second.is_Subtree() );
-                    const auto& subnode = *branch.second.as_Subtree();
-                    
+                H::generate_branch(*this, branch.second, bb, [&](auto& subnode) {
                     TU_MATCHA( (var.second), (e),
                     (Unit,
                         and_then( subnode );
@@ -766,13 +880,13 @@ void DecisionTreeGen::populate_tree_vals(
                             ents.push_back( monomorphise_type(sp,  pbe->m_params, enum_path.m_params,  fld.ent) );
                         }
                         ::HIR::TypeRef  fake_ty { mv$(ents) };
-                        populate_tree_vals(sp, subnode, fake_ty, 0, ::MIR::LValue::make_Downcast({ box$(val.clone()), branch.first }), and_then);
+                        this->populate_tree_vals(sp, subnode, fake_ty, 0, ::MIR::LValue::make_Downcast({ box$(val.clone()), branch.first }), and_then);
                         ),
                     (Struct,
                         TODO(sp, "Enum pattern - struct");
                         )
                     )
-                }
+                    });
             }
             
             DEBUG("_");
