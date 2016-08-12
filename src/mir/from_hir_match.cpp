@@ -346,7 +346,17 @@ struct DecisionTreeGen
     
     void generate_branches_Unsigned(
         const Span& sp,
+        const DecisionTreeNode::Branch& default_branch,
         const DecisionTreeNode::Values::Data_Unsigned& branches,
+        const ::HIR::TypeRef& ty,/* unsigned int _ty_ofs,*/
+        const ::MIR::LValue& val,
+        ::std::function<void(const DecisionTreeNode&)> and_then
+        );
+    
+    void generate_branches_Enum(
+        const Span& sp,
+        const DecisionTreeNode::Branch& default_branch,
+        const DecisionTreeNode::Values::Data_Variant& branches,
         const ::HIR::TypeRef& ty,/* unsigned int _ty_ofs,*/
         const ::MIR::LValue& val,
         ::std::function<void(const DecisionTreeNode&)> and_then
@@ -1196,6 +1206,7 @@ void DecisionTreeGen::populate_tree_vals(
         {
         case ::HIR::CoreType::Bool: {
             ASSERT_BUG(sp, node.m_branches.is_Bool(), "Tree for bool isn't a _Bool - node="<<node);
+            //this->generate_branches_Bool(sp, node.m_branches.as_Bool(), ty, val, mv$(and_then));
             const auto& branches = node.m_branches.as_Bool();
             
             if( node.m_default.is_Unset() )
@@ -1230,7 +1241,7 @@ void DecisionTreeGen::populate_tree_vals(
         case ::HIR::CoreType::U64:
         case ::HIR::CoreType::Usize:
             ASSERT_BUG(sp, node.m_branches.is_Unsigned(), "Tree for unsigned isn't a _Unsigned - node="<<node);
-            this->generate_branches_Unsigned(sp, node.m_branches.as_Unsigned(), ty, val, mv$(and_then));
+            this->generate_branches_Unsigned(sp, node.m_default, node.m_branches.as_Unsigned(), ty, val, mv$(and_then));
             break;
         default:
             TODO(sp, "Primitive - " << ty);
@@ -1262,89 +1273,9 @@ void DecisionTreeGen::populate_tree_vals(
             TODO(sp, "Match over struct - " << e.path);
             ),
         (Enum,
-            const auto& enum_path = e.path.m_data.as_Generic();
             ASSERT_BUG(sp, node.m_branches.is_Variant(), "Tree for enum isn't a Variant - node="<<node);
-            const auto& branches = node.m_branches.as_Variant();
-            const auto& variants = pbe->m_variants;
-            auto variant_count = pbe->m_variants.size();
-            bool has_any = ! node.m_default.is_Unset();
-            
-            if( branches.size() < variant_count && ! has_any ) {
-                ERROR(sp, E0000, "Non-exhaustive match");
-            }
-            // DISABLED: Some complex matches don't directly use some defaults
-            //if( branches.size() == variant_count && has_any ) {
-            //    ERROR(sp, E0000, "Unreachable _ arm - " << branches.size() << " variants in " << enum_path);
-            //}
-            
-            auto any_block = (has_any ? m_builder.new_bb_unlinked() : 0);
-            
-            // Emit a switch over the variant
-            ::std::vector< ::MIR::BasicBlockId> variant_blocks;
-            variant_blocks.reserve( variant_count );
-            for( const auto& branch : branches )
-            {
-                if( variant_blocks.size() != branch.first ) {
-                    assert( variant_blocks.size() < branch.first );
-                    assert( has_any );
-                    variant_blocks.resize( branch.first, any_block );
-                }
-                variant_blocks.push_back( m_builder.new_bb_unlinked() );
-            }
-            if( variant_blocks.size() != variant_count )
-            {
-                assert( variant_blocks.size() < variant_count );
-                assert( has_any );
-                variant_blocks.resize( variant_count, any_block );
-            }
-            
-            m_builder.end_block( ::MIR::Terminator::make_Switch({
-                val.clone(), variant_blocks // NOTE: Copies the list, so it can be used lower down
-                }) );
-            
-            // Emit sub-patterns, looping over variants
-            for( const auto& branch : branches )
-            {
-                auto bb = variant_blocks[branch.first];
-                const auto& var = variants[branch.first];
-                DEBUG(branch.first << " " << var.first << " = " << branch);
-                this->generate_branch(branch.second, bb, [&](auto& subnode) {
-                    TU_MATCHA( (var.second), (e),
-                    (Unit,
-                        and_then( subnode );
-                        ),
-                    (Value,
-                        and_then( subnode );
-                        ),
-                    (Tuple,
-                        // Make a fake tuple
-                        ::std::vector< ::HIR::TypeRef>  ents;
-                        for( const auto& fld : e )
-                        {
-                            ents.push_back( monomorphise_type(sp,  pbe->m_params, enum_path.m_params,  fld.ent) );
-                        }
-                        ::HIR::TypeRef  fake_ty { mv$(ents) };
-                        this->populate_tree_vals(sp, subnode, fake_ty, 0, ::MIR::LValue::make_Downcast({ box$(val.clone()), branch.first }), and_then);
-                        ),
-                    (Struct,
-                        TODO(sp, "Enum pattern - struct");
-                        )
-                    )
-                    });
-            }
-            
-            DEBUG("_");
-            TU_MATCHA( (node.m_default), (be),
-            (Unset, ),
-            (Terminal,
-                m_builder.set_cur_block(any_block);
-                m_builder.end_block( ::MIR::Terminator::make_Goto( this->get_block_for_rule( be ) ) );
-                ),
-            (Subtree,
-                m_builder.set_cur_block(any_block);
-                and_then( *be );
-                )
-            )
+            assert(pbe);
+            this->generate_branches_Enum(sp, node.m_default, node.m_branches.as_Variant(), ty, val, mv$(and_then));
             )
         )
         ),
@@ -1396,6 +1327,7 @@ void DecisionTreeGen::generate_branch(const DecisionTreeNode::Branch& branch, ::
 
 void DecisionTreeGen::generate_branches_Unsigned(
     const Span& sp,
+    const DecisionTreeNode::Branch& default_branch,
     const DecisionTreeNode::Values::Data_Unsigned& branches,
     const ::HIR::TypeRef& ty,/* unsigned int _ty_ofs,*/
     const ::MIR::LValue& val,
@@ -1408,7 +1340,7 @@ void DecisionTreeGen::generate_branches_Unsigned(
     
     for( const auto& branch : branches )
     {
-        auto next_block = m_builder.new_bb_unlinked();
+        auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
         
         auto val_start = m_builder.lvalue_or_temp(ty, ::MIR::Constant(branch.first.start));
         auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(ty, ::MIR::Constant(branch.first.end)));
@@ -1429,4 +1361,110 @@ void DecisionTreeGen::generate_branches_Unsigned(
         
         m_builder.set_cur_block( next_block );
     }
+    assert( m_builder.block_active() );
+    
+    // TODO: default_branch
+    TU_MATCHA( (default_branch), (be),
+    (Unset,
+        m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+        ),
+    (Terminal,
+        m_builder.end_block( ::MIR::Terminator::make_Goto( this->get_block_for_rule( be ) ) );
+        ),
+    (Subtree,
+        and_then( *be );
+        )
+    )
+}
+void DecisionTreeGen::generate_branches_Enum(
+    const Span& sp,
+    const DecisionTreeNode::Branch& default_branch,
+    const DecisionTreeNode::Values::Data_Variant& branches,
+    const ::HIR::TypeRef& ty,/* unsigned int _ty_ofs,*/
+    const ::MIR::LValue& val,
+    ::std::function<void(const DecisionTreeNode&)> and_then
+    )
+{
+    const auto& enum_ref = *ty.m_data.as_Path().binding.as_Enum();
+    const auto& enum_path = ty.m_data.as_Path().path.m_data.as_Generic();
+    const auto& variants = enum_ref.m_variants;
+    auto variant_count = variants.size();
+    bool has_any = ! default_branch.is_Unset();
+    
+    if( branches.size() < variant_count && ! has_any ) {
+        ERROR(sp, E0000, "Non-exhaustive match");
+    }
+    // DISABLED: Some complex matches don't directly use some defaults
+    //if( branches.size() == variant_count && has_any ) {
+    //    ERROR(sp, E0000, "Unreachable _ arm - " << branches.size() << " variants in " << enum_path);
+    //}
+    
+    auto any_block = (has_any ? m_builder.new_bb_unlinked() : 0);
+    
+    // Emit a switch over the variant
+    ::std::vector< ::MIR::BasicBlockId> variant_blocks;
+    variant_blocks.reserve( variant_count );
+    for( const auto& branch : branches )
+    {
+        if( variant_blocks.size() != branch.first ) {
+            assert( variant_blocks.size() < branch.first );
+            assert( has_any );
+            variant_blocks.resize( branch.first, any_block );
+        }
+        variant_blocks.push_back( m_builder.new_bb_unlinked() );
+    }
+    if( variant_blocks.size() != variant_count )
+    {
+        assert( variant_blocks.size() < variant_count );
+        assert( has_any );
+        variant_blocks.resize( variant_count, any_block );
+    }
+    
+    m_builder.end_block( ::MIR::Terminator::make_Switch({
+        val.clone(), variant_blocks // NOTE: Copies the list, so it can be used lower down
+        }) );
+    
+    // Emit sub-patterns, looping over variants
+    for( const auto& branch : branches )
+    {
+        auto bb = variant_blocks[branch.first];
+        const auto& var = variants[branch.first];
+        DEBUG(branch.first << " " << var.first << " = " << branch);
+        this->generate_branch(branch.second, bb, [&](auto& subnode) {
+            TU_MATCHA( (var.second), (e),
+            (Unit,
+                and_then( subnode );
+                ),
+            (Value,
+                and_then( subnode );
+                ),
+            (Tuple,
+                // Make a fake tuple
+                ::std::vector< ::HIR::TypeRef>  ents;
+                for( const auto& fld : e )
+                {
+                    ents.push_back( monomorphise_type(sp,  enum_ref.m_params, enum_path.m_params,  fld.ent) );
+                }
+                ::HIR::TypeRef  fake_ty { mv$(ents) };
+                this->populate_tree_vals(sp, subnode, fake_ty, 0, ::MIR::LValue::make_Downcast({ box$(val.clone()), branch.first }), and_then);
+                ),
+            (Struct,
+                TODO(sp, "Enum pattern - struct");
+                )
+            )
+            });
+    }
+    
+    DEBUG("_");
+    TU_MATCHA( (default_branch), (be),
+    (Unset, ),
+    (Terminal,
+        m_builder.set_cur_block(any_block);
+        m_builder.end_block( ::MIR::Terminator::make_Goto( this->get_block_for_rule( be ) ) );
+        ),
+    (Subtree,
+        m_builder.set_cur_block(any_block);
+        and_then( *be );
+        )
+    )
 }
