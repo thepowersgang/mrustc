@@ -618,6 +618,24 @@ bool PatternRuleset::is_before(const PatternRuleset& other) const
 
 void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty)
 {
+    struct H {
+        static uint64_t get_pattern_value_int(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::Pattern::Value& val) {
+            TU_MATCH_DEF( ::HIR::Pattern::Value, (val), (e),
+            (
+                BUG(sp, "Invalid Value type in " << pat);
+                ),
+            (Integer,
+                return e.value;
+                ),
+            (Named,
+                assert(e.binding);
+                return e.binding->m_value_res.as_Integer();
+                )
+            )
+            throw "";
+        }
+    };
+    
     TU_MATCHA( (ty.m_data), (e),
     (Infer,   BUG(sp, "Ivar for in match type"); ),
     (Diverge, BUG(sp, "Diverge in match type");  ),
@@ -639,9 +657,8 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::U32:
             case ::HIR::CoreType::U64:
             case ::HIR::CoreType::Usize: {
-                ASSERT_BUG(sp, pe.start.is_Integer() && pe.end.is_Integer(), "Invalid Range type in " << pat);
-                uint64_t start = pe.start.as_Integer().value;
-                uint64_t end = pe.end.as_Integer().value;
+                uint64_t start = H::get_pattern_value_int(sp, pat, pe.start);
+                uint64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
                 m_rules.push_back( PatternRule::make_ValueRange( {::MIR::Constant(start), ::MIR::Constant(end)} ) );
                 } break;
             case ::HIR::CoreType::I8:
@@ -649,9 +666,8 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::I32:
             case ::HIR::CoreType::I64:
             case ::HIR::CoreType::Isize: {
-                ASSERT_BUG(sp, pe.start.is_Integer() && pe.end.is_Integer(), "Invalid Range type in " << pat);
-                int64_t start = pe.start.as_Integer().value;
-                int64_t end = pe.end.as_Integer().value;
+                int64_t start = H::get_pattern_value_int(sp, pat, pe.start);
+                int64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
                 m_rules.push_back( PatternRule::make_ValueRange( {::MIR::Constant(start), ::MIR::Constant(end)} ) );
                 } break;
             case ::HIR::CoreType::Bool:
@@ -679,8 +695,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::U32:
             case ::HIR::CoreType::U64:
             case ::HIR::CoreType::Usize: {
-                ASSERT_BUG(sp, pe.val.is_Integer(), "Invalid Value type in " << pat);
-                uint64_t val = pe.val.as_Integer().value;
+                uint64_t val = H::get_pattern_value_int(sp, pat, pe.val);
                 m_rules.push_back( PatternRule::make_Value( ::MIR::Constant(val) ) );
                 } break;
             case ::HIR::CoreType::I8:
@@ -688,8 +703,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::I32:
             case ::HIR::CoreType::I64:
             case ::HIR::CoreType::Isize: {
-                ASSERT_BUG(sp, pe.val.is_Integer(), "Invalid Value type in " << pat);
-                int64_t val = pe.val.as_Integer().value;
+                int64_t val = H::get_pattern_value_int(sp, pat, pe.val);
                 m_rules.push_back( PatternRule::make_Value( ::MIR::Constant(val) ) );
                 } break;
             case ::HIR::CoreType::Bool:
