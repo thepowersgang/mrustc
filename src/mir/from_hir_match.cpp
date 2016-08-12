@@ -623,7 +623,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
     (Diverge, BUG(sp, "Diverge in match type");  ),
     (Primitive,
         TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
-        ( throw ""; ),
+        ( BUG(sp, "Matching primitive with invalid pattern - " << pat); ),
         (Any,
             m_rules.push_back( PatternRule::make_Any({}) );
             ),
@@ -668,7 +668,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         ),
     (Tuple,
         TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
-        ( throw ""; ),
+        ( BUG(sp, "Matching tuple with invalid pattern - " << pat); ),
         (Any,
             for(const auto& sty : e)
                 this->append_from(sp, pat, sty);
@@ -688,7 +688,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             ),
         (Opaque,
             TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
-            ( throw ""; ),
+            ( BUG(sp, "Matching opaque type with invalid pattern - " << pat); ),
             (Any,
                 m_rules.push_back( PatternRule::make_Any({}) );
                 )
@@ -809,7 +809,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         ),
     (Borrow,
         TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
-        ( throw ""; ),
+        ( BUG(sp, "Matching borrow invalid pattern - " << pat); ),
         (Any,
             this->append_from( sp, pat, *e.inner );
             ),
