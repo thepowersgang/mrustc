@@ -25,26 +25,32 @@ TAGGED_UNION(PatternRule, Any,
 /// Constructed set of rules from a pattern
 struct PatternRuleset
 {
+    unsigned int arm_idx;
+    unsigned int pat_idx;
+
     ::std::vector<PatternRule>  m_rules;
     
     static ::Ordering rule_is_before(const PatternRule& l, const PatternRule& r);
     
     bool is_before(const PatternRuleset& other) const;
 };
+/// Generated code for an arm
+struct ArmCode {
+    ::MIR::BasicBlockId   code;
+    bool has_condition;
+    ::MIR::BasicBlockId   cond_code; // NOTE: Incomplete, requires terminating If
+    ::MIR::LValue   cond_lval;
+};
 
-typedef ::std::vector< ::std::pair< ::std::pair<unsigned int,unsigned int>, PatternRuleset > >  t_arm_rules;
+typedef ::std::vector<PatternRuleset>  t_arm_rules;
 
-void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules );
-void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules );
+void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arm_code, ::MIR::BasicBlockId first_cmp_block);
+void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arm_code , ::MIR::BasicBlockId first_cmp_block);
 /// Helper to construct rules from a passed pattern
 struct PatternRulesetBuilder
 {
     ::std::vector<PatternRule>  m_rules;
     void append_from(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty);
-    
-    PatternRuleset into_ruleset() {
-        return PatternRuleset { mv$(this->m_rules) };
-    }
 };
 
 // --------------------------------------------------------------------
@@ -57,77 +63,38 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 {
     bool fall_back_on_simple = false;
     
-    // 1. Build up a sorted vector of MIR pattern rules
-    // Map of arm index to ruleset
-    t_arm_rules arm_rules;
-    for(unsigned int arm_idx = 0; arm_idx < node.m_arms.size(); arm_idx ++)
-    {
-        const auto& arm = node.m_arms[arm_idx];
-        unsigned int pat_idx = 0;
-        for( const auto& pat : arm.m_patterns )
-        {
-            auto builder = PatternRulesetBuilder {};
-            builder.append_from(node.span(), pat, node.m_value->m_res_type);
-            arm_rules.push_back( ::std::make_pair( ::std::make_pair(arm_idx, pat_idx), builder.into_ruleset()) );
-            pat_idx += 1;
-        }
-        
-        if( arm.m_cond ) {
-            // TODO: What to do with contidionals?
-            // > Could fall back on a sequential comparison model.
-            // > OR split the match on each conditional.
-            fall_back_on_simple = true;
-        }
-    }
-    // TODO: Detect if a rule is ordering-dependent. In this case we currently have to fall back on the simple match code
-
-    if( fall_back_on_simple ) {
-        MIR_LowerHIR_Match_Simple( builder, conv, node, mv$(match_val), mv$(arm_rules) );
-    }
-    else {
-        MIR_LowerHIR_Match_DecisionTree( builder, conv, node, mv$(match_val), mv$(arm_rules) );
-    }
-}
-
-// --------------------------------------------------------------------
-// Dumb and Simple
-// --------------------------------------------------------------------
-void MIR_LowerHIR_Match_Simple__GeneratePattern( MirBuilder& builder, const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty, const ::MIR::LValue& match_val,  ::MIR::BasicBlockId fail_tgt);
-
-void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules )
-{
     auto result_val = builder.new_temporary( node.m_res_type );
     auto next_block = builder.new_bb_unlinked();
     
-    ::std::vector< ::MIR::BasicBlockId> arm_cmp_blocks;
-    arm_cmp_blocks.push_back( builder.new_bb_unlinked() );
-    builder.end_block( ::MIR::Terminator::make_Goto( arm_cmp_blocks.back() ) );
-    
-    // 1. Generate code with conditions
-    ::std::vector< ::MIR::BasicBlockId> arm_code_blocks;
-    for( /*const*/ auto& arm : node.m_arms )
+    // 1. Stop the current block so we can generate code
+    //  > TODO: Can this goto be avoided while still being defensive? (Avoiding incomplete blocks)
+    auto first_cmp_block = builder.new_bb_unlinked();
+    builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
+
+    // Map of arm index to ruleset
+    ::std::vector< ArmCode> arm_code;
+    t_arm_rules arm_rules;
+    for(unsigned int arm_idx = 0; arm_idx < node.m_arms.size(); arm_idx ++)
     {
-        //auto cur_arm_block = arm_cmp_blocks.back();
-        arm_cmp_blocks.push_back( builder.new_bb_unlinked() );
-        auto next_arm_block = arm_cmp_blocks.back();
+        ArmCode ac;
         
-        // TODO: Register introduced bindings to be dropped on return/diverge within this scope
-        
-        arm_code_blocks.push_back( builder.new_bb_unlinked() );
-        builder.set_cur_block( arm_code_blocks.back() );
-        
-        if(arm.m_cond) {
-            auto code_block = builder.new_bb_unlinked();
-            
-            conv.visit_node_ptr( arm.m_cond );
-            auto cnd_lval = builder.lvalue_or_temp( ::HIR::TypeRef(::HIR::CoreType::Bool), builder.get_result(arm.m_cond->span()) );
-            
-            builder.end_block( ::MIR::Terminator::make_If({ mv$(cnd_lval), code_block, next_arm_block }) );
-            builder.set_cur_block( code_block );
+        /*const*/ auto& arm = node.m_arms[arm_idx];
+        unsigned int pat_idx = 0;
+        for( const auto& pat : arm.m_patterns )
+        {
+            auto pat_builder = PatternRulesetBuilder {};
+            pat_builder.append_from(node.span(), pat, node.m_value->m_res_type);
+            arm_rules.push_back( PatternRuleset { arm_idx, pat_idx, mv$(pat_builder.m_rules) } );
+            pat_idx += 1;
         }
         
+        // TODO: Register introduced bindings to be dropped on return/diverge within this scope
+        //auto drop_scope = builder.new_drop_scope( arm.m_patterns[0] );
+
+        // Code
+        ac.code = builder.new_bb_unlinked();
+        builder.set_cur_block( ac.code );
         conv.visit_node_ptr( arm.m_code );
-        
         if( !builder.block_active() && !builder.has_result() ) {
             // Nothing need be done, as the block diverged.
         }
@@ -135,35 +102,99 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
             builder.push_stmt_assign( result_val.clone(), builder.get_result(arm.m_code->span()) );
             builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
         }
+        
+        // Condition
+        if(arm.m_cond)
+        {
+            ac.has_condition = true;
+            ac.cond_code = builder.new_bb_unlinked();
+            builder.set_cur_block( ac.cond_code );
+            
+            conv.visit_node_ptr( arm.m_cond );
+            ac.cond_lval = builder.lvalue_or_temp( ::HIR::TypeRef(::HIR::CoreType::Bool), builder.get_result(arm.m_cond->span()) );
+            builder.pause_cur_block();
+            // NOTE: Paused so that later code (which knows what the false branch will be) can end it correctly
+            
+            // TODO: What to do with contidionals?
+            // > Could fall back on a sequential comparison model.
+            // > OR split the match on each conditional.
+            fall_back_on_simple = true;
+        }
+        else
+        {
+            ac.has_condition = false;
+        }
+
+        arm_code.push_back( mv$(ac) );
     }
     
-    // 2. Generate pattern matches
-    builder.set_cur_block( arm_cmp_blocks[0] );
+    // TODO: Sort columns of `arm_rules` to maximise effectiveness
+    
+    // TODO: Detect if a rule is ordering-dependent. In this case we currently have to fall back on the simple match code
+    // - A way would be to search for `_` rules with non _ rules following. Would false-positive in some cases, but shouldn't false negative
+
+    if( fall_back_on_simple ) {
+        MIR_LowerHIR_Match_Simple( builder, conv, node, mv$(match_val), mv$(arm_rules), mv$(arm_code), first_cmp_block );
+    }
+    else {
+        MIR_LowerHIR_Match_DecisionTree( builder, conv, node, mv$(match_val), mv$(arm_rules), mv$(arm_code), first_cmp_block );
+    }
+    
+    builder.set_cur_block( next_block );
+    builder.set_result( node.span(), mv$(result_val) );
+}
+
+// --------------------------------------------------------------------
+// Dumb and Simple
+// --------------------------------------------------------------------
+void MIR_LowerHIR_Match_Simple__GeneratePattern( MirBuilder& builder, const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty, const ::MIR::LValue& match_val,  ::MIR::BasicBlockId fail_tgt);
+
+void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arms_code, ::MIR::BasicBlockId first_cmp_block )
+{
+    // 1. Generate pattern matches
+    builder.set_cur_block( first_cmp_block );
     for( unsigned int arm_idx = 0; arm_idx < node.m_arms.size(); arm_idx ++ )
     {
         const auto& arm = node.m_arms[arm_idx];
-        auto code_bb = arm_code_blocks[arm_idx];
+        auto& arm_code = arms_code[arm_idx];
+        
+        auto next_arm_bb = builder.new_bb_unlinked();
         
         for( unsigned int i = 0; i < arm.m_patterns.size(); i ++ )
         {
             const auto& pat = arm.m_patterns[i];
-            auto next_pattern_bb = (i+1 < arm.m_patterns.size() ? builder.new_bb_unlinked() : arm_cmp_blocks[1+arm_idx]);
+            bool is_last_pat = (i+1 == arm.m_patterns.size());
+            auto next_pattern_bb = (!is_last_pat ? builder.new_bb_unlinked() : next_arm_bb);
             
             // 1. Check
             MIR_LowerHIR_Match_Simple__GeneratePattern(builder, arm.m_code->span(), pat, node.m_value->m_res_type, match_val, next_pattern_bb);
             // 2. Destructure
             conv.destructure_from( arm.m_code->span(), pat, match_val.clone(), true );
-            // - Go to code
-            builder.end_block( ::MIR::Terminator::make_Goto(code_bb) );
             
-            builder.set_cur_block( next_pattern_bb );
+            // - Go to code/condition check
+            if( arm_code.has_condition )
+            {
+                builder.end_block( ::MIR::Terminator::make_Goto(arm_code.cond_code) );
+            }
+            else
+            {
+                builder.end_block( ::MIR::Terminator::make_Goto(arm_code.code) );
+            }
+            
+            if( !is_last_pat )
+            {
+                builder.set_cur_block( next_pattern_bb );
+            }
         }
+        if( arm_code.has_condition )
+        {
+            builder.set_cur_block( arm_code.cond_code );
+            builder.end_block( ::MIR::Terminator::make_If({ mv$(arm_code.cond_lval), arm_code.code, next_arm_bb }) );
+        }
+        builder.set_cur_block( next_arm_bb );
     }
     // - Kill the final pattern block (which is dead code)
     builder.end_block( ::MIR::Terminator::make_Diverge({}) );
-    
-    builder.set_cur_block( next_block );
-    builder.set_result( node.span(), mv$(result_val) );
 }
 void MIR_LowerHIR_Match_Simple__GeneratePattern( MirBuilder& builder, const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty, const ::MIR::LValue& match_val,  ::MIR::BasicBlockId fail_bb)
 {
@@ -363,7 +394,7 @@ struct DecisionTreeGen
         );
 };
 
-void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules )
+void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arms_code, ::MIR::BasicBlockId first_cmp_block )
 {
     // XXX XXX XXX: The current codegen (below) will generate incorrect code if ordering matters.
     // ```
@@ -379,51 +410,21 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
     // - This sort could be designed such that the above case would match correctly?
     
     
-    // Generate arm code
-    DEBUG("- Generating arm code");
-    // - End the current block with a jump to the descision code
-    //  > TODO: Can this goto be avoided while still being defensive? (Avoiding incomplete blocks)
-    auto descision_block = builder.new_bb_unlinked();
-    builder.end_block( ::MIR::Terminator::make_Goto(descision_block) );
-    
-    // - Create a result and next block
-    auto result_val = builder.new_temporary(node.m_res_type);
-    auto next_block = builder.new_bb_unlinked();
-    
-    // - Generate code for arms.
-    ::std::vector< ::MIR::BasicBlockId> arm_blocks;
-    arm_blocks.reserve( arm_rules.size() );
-    for(auto& arm : node.m_arms)
-    {
-        // TODO: Register introduced bindings to be dropped on return/diverge
-        arm_blocks.push_back( builder.new_bb_unlinked() );
-        builder.set_cur_block(arm_blocks.back());
-        
-        conv.visit_node_ptr(arm.m_code);
-        
-        if( !builder.block_active() && !builder.has_result() ) {
-            // Nothing need be done, as the block diverged.
-        }
-        else {
-            builder.push_stmt_assign( result_val.clone(), builder.get_result(arm.m_code->span()) );
-            builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
-        }
-    }
-    
     DEBUG("- Generating rule bindings");
     ::std::vector< ::MIR::BasicBlockId> rule_blocks;
     for(const auto& rule : arm_rules)
     {
         rule_blocks.push_back( builder.new_bb_unlinked() );
-        builder.set_cur_block(arm_blocks.back());
+        builder.set_cur_block(rule_blocks.back());
         
-        const auto& arm = node.m_arms[ rule.first.first ];
-        const auto& pat = arm.m_patterns[rule.first.second];
+        const auto& arm = node.m_arms[ rule.arm_idx ];
+        const auto& pat = arm.m_patterns[rule.pat_idx];
         
         // Assign bindings (drop registration happens in previous loop) - Allow refutable patterns
-        conv.destructure_from( arm.m_code->span(), pat, match_val.clone(), 1 );
+        conv.destructure_from( arm.m_code->span(), pat, match_val.clone(), true );
         
-        builder.end_block( ::MIR::Terminator::make_Goto( arm_blocks[rule.first.first] ) );
+        ASSERT_BUG(node.span(), ! arms_code[rule.arm_idx].has_condition, "Decision tree doesn't (yet) support conditionals");
+        builder.end_block( ::MIR::Terminator::make_Goto( arms_code[rule.arm_idx].code ) );
     }
     
     
@@ -432,8 +433,8 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
     DecisionTreeNode    root_node;
     for( const auto& arm_rule : arm_rules )
     {
-        auto arm_idx = arm_rule.first.first;
-        root_node.populate_tree_from_rule( node.m_arms[arm_idx].m_code->span(), arm_idx, arm_rule.second.m_rules.data(), arm_rule.second.m_rules.size() );
+        auto arm_idx = arm_rule.arm_idx;
+        root_node.populate_tree_from_rule( node.m_arms[arm_idx].m_code->span(), arm_idx, arm_rule.m_rules.data(), arm_rule.m_rules.size() );
     }
     DEBUG("root_node = " << root_node);
     root_node.simplify();
@@ -443,11 +444,8 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
     // - Convert the above decision tree into MIR
     DEBUG("- Emitting decision tree");
     DecisionTreeGen gen { builder, rule_blocks };
-    builder.set_cur_block( descision_block );
+    builder.set_cur_block( first_cmp_block );
     gen.populate_tree_vals( node.span(), root_node, node.m_value->m_res_type, mv$(match_val) );
-    
-    builder.set_cur_block(next_block);
-    builder.set_result( node.span(), mv$(result_val) );
 }
 
 ::Ordering PatternRuleset::rule_is_before(const PatternRule& l, const PatternRule& r)

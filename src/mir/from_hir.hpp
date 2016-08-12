@@ -45,8 +45,10 @@ public:
     bool block_active() const {
         return m_block_active;
     }
-    void end_block(::MIR::Terminator term);
+    
     void set_cur_block(unsigned int new_block);
+    void pause_cur_block();
+    void end_block(::MIR::Terminator term);
     
     ::MIR::BasicBlockId new_bb_linked();
     ::MIR::BasicBlockId new_bb_unlinked();

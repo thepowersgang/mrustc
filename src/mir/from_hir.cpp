@@ -1015,6 +1015,14 @@ void MirBuilder::push_stmt_drop(::MIR::LValue val)
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::DEEP, mv$(val) }) );
 }
 
+void MirBuilder::set_cur_block(unsigned int new_block)
+{
+    if( m_block_active ) {
+        BUG(Span(), "Updating block when previous is active");
+    }
+    m_current_block = new_block;
+    m_block_active = true;
+}
 void MirBuilder::end_block(::MIR::Terminator term)
 {
     if( !m_block_active ) {
@@ -1024,13 +1032,13 @@ void MirBuilder::end_block(::MIR::Terminator term)
     m_block_active = false;
     m_current_block = 0;
 }
-void MirBuilder::set_cur_block(unsigned int new_block)
+void MirBuilder::pause_cur_block()
 {
-    if( m_block_active ) {
-        BUG(Span(), "Updating block when previous is active");
+    if( !m_block_active ) {
+        BUG(Span(), "Pausing block when none active");
     }
-    m_current_block = new_block;
-    m_block_active = true;
+    m_block_active = false;
+    m_current_block = 0;
 }
 ::MIR::BasicBlockId MirBuilder::new_bb_linked()
 {
