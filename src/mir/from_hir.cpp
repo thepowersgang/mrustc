@@ -276,8 +276,11 @@ namespace {
             if( node.m_false )
             {
                 this->visit_node_ptr(node.m_false);
-                m_builder.push_stmt_assign( result_val.clone(), m_builder.get_result(node.m_false->span()) );
-                m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
+                if( m_builder.block_active() )
+                {
+                    m_builder.push_stmt_assign( result_val.clone(), m_builder.get_result(node.m_false->span()) );
+                    m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
+                }
             }
             else
             {
