@@ -134,7 +134,7 @@ namespace {
         
         void visit_pattern_Value(const Span& sp, ::HIR::Pattern& pat, ::HIR::Pattern::Value& val)
         {
-            bool allow_enum = pat.m_data.is_Value();
+            bool is_single_value = pat.m_data.is_Value();
             
             TU_IFLET( ::HIR::Pattern::Value, val, Named, ve,
                 TU_IFLET( ::HIR::Path::Data, ve.path.m_data, Generic, pe,
@@ -172,7 +172,7 @@ namespace {
                     }
                     const auto& pc = path.m_components.back();
                     if( enm ) {
-                        if( !allow_enum ) {
+                        if( !is_single_value ) {
                             ERROR(sp, E0000, "Enum variant in range pattern - " << pat);
                         }
                         
@@ -184,7 +184,6 @@ namespace {
                         unsigned int index = it - enm->m_variants.begin();
                         auto path = mv$(pe);
                         fix_type_params(sp, enm->m_params,  path.m_params);
-                        //::std::cout << "HHHH: path=" << path << ::std::endl;
                         pat.m_data = ::HIR::Pattern::Data::make_EnumValue({
                             mv$(path),
                             enm,
@@ -202,10 +201,21 @@ namespace {
                             ERROR(sp, E0000, "Value pattern pointing to unexpected type")
                             ),
                         (Constant,
-                            // TODO: Store reference to this item for later use
+                            // Store reference to this item for later use
+                            ve.binding = &e2;
                             ),
                         (StructConstant,
-                            // TODO: Convert into a dedicated pattern type
+                            const auto& str = mod->m_mod_items.find(pc)->second->ent.as_Struct();
+                            // Convert into a dedicated pattern type
+                            if( !is_single_value ) {
+                                ERROR(sp, E0000, "Struct in range pattern - " << pat);
+                            }
+                            auto path = mv$(pe);
+                            fix_type_params(sp, str.m_params,  path.m_params);
+                            pat.m_data = ::HIR::Pattern::Data::make_StructValue({
+                                mv$(path),
+                                &str
+                                });
                             )
                         )
                     }
