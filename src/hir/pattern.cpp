@@ -12,7 +12,7 @@ namespace HIR {
             os << "\"" << e << "\"";
             ),
         (Named,
-            os << e;
+            os << e.path;
             )
         )
         return os;
@@ -51,6 +51,9 @@ namespace HIR {
                 os << s << ", ";
             os << ")";
             ),
+        (StructValue,
+            os << e.path;
+            ),
         (StructTuple,
             os << e.path;
             os << "(";
@@ -59,7 +62,7 @@ namespace HIR {
             os << ")";
             ),
         (StructTupleWildcard,
-            os << e.path;
+            os << e.path << "(..)";
             ),
         (Struct,
             os << e.path;
@@ -145,7 +148,7 @@ namespace {
             return ::HIR::Pattern::Value::make_String(e);
             ),
         (Named,
-            return ::HIR::Pattern::Value::make_Named(e.clone());
+            return ::HIR::Pattern::Value::make_Named({ e.path.clone(), e.binding });
             )
         )
         throw "";
@@ -171,6 +174,11 @@ namespace {
     (Tuple,
         return Pattern(m_binding, Data::make_Tuple({
             clone_pat_vec(e.sub_patterns)
+            }));
+        ),
+    (StructValue,
+        return Pattern(m_binding, Data::make_StructValue({
+            e.path.clone(), e.binding
             }));
         ),
     (StructTuple,

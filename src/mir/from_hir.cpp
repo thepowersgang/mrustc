@@ -86,6 +86,8 @@ namespace {
                     destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), i}), allow_refutable);
                 }
                 ),
+            (StructValue,
+                ),
             (StructTuple,
                 for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
                 {

@@ -301,7 +301,7 @@ const ::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
                     return ::HIR::Pattern::Value::make_String(e);
                     ),
                 (Named,
-                    return ::HIR::Pattern::Value::make_Named( LowerHIR_Path(sp, e) );
+                    return ::HIR::Pattern::Value::make_Named( {LowerHIR_Path(sp, e), nullptr} );
                     )
                 )
                 throw "BUGCHECK: Reached end of LowerHIR_Pattern::H::lowerhir_pattern_value";

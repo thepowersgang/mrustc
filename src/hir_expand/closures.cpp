@@ -666,6 +666,8 @@ namespace {
                 ),
             
             // - Enums/Structs
+            (StructValue,
+                ),
             (StructTuple,
                 for(const auto& field : e.sub_patterns) {
                     add_closure_def_from_pattern(sp, field);

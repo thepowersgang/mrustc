@@ -131,6 +131,92 @@ namespace {
             ::HIR::Visitor::visit_trait_path(p);
         }
         
+        
+        void visit_pattern_Value(const Span& sp, ::HIR::Pattern& pat, ::HIR::Pattern::Value& val)
+        {
+            bool allow_enum = pat.m_data.is_Value();
+            
+            TU_IFLET( ::HIR::Pattern::Value, val, Named, ve,
+                TU_IFLET( ::HIR::Path::Data, ve.path.m_data, Generic, pe,
+                    const ::HIR::Enum* enm = nullptr;
+                    const ::HIR::Module*  mod = &m_crate.m_root_module;
+                    const auto& path = pe.m_path;
+                    for(unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
+                    {
+                        const auto& pc = path.m_components[i];
+                        auto it = mod->m_mod_items.find( pc );
+                        if( it == mod->m_mod_items.end() ) {
+                            BUG(sp, "Couldn't find component " << i << " of " << path);
+                        }
+                        
+                        if( i == path.m_components.size() - 2 ) {
+                            // Here it's allowed to be either a module, or an enum.
+                            TU_IFLET( ::HIR::TypeItem, it->second->ent, Module, e2,
+                                mod = &e2;
+                            )
+                            else TU_IFLET( ::HIR::TypeItem, it->second->ent, Enum, e2,
+                                enm = &e2;
+                            )
+                            else {
+                                BUG(sp, "Node " << i << " of path " << ve.path << " wasn't a module or enum");
+                            }
+                        }
+                        else {
+                            TU_IFLET( ::HIR::TypeItem, it->second->ent, Module, e2,
+                                mod = &e2;
+                            )
+                            else {
+                                BUG(sp, "Node " << i << " of path " << ve.path << " wasn't a module");
+                            }
+                        }
+                    }
+                    const auto& pc = path.m_components.back();
+                    if( enm ) {
+                        if( !allow_enum ) {
+                            ERROR(sp, E0000, "Enum variant in range pattern - " << pat);
+                        }
+                        
+                        // Enum variant
+                        auto it = ::std::find_if( enm->m_variants.begin(), enm->m_variants.end(), [&](const auto&v){ return v.first == pc; });
+                        if( it == enm->m_variants.end() ) {
+                            BUG(sp, "'" << pc << "' isn't a variant in path " << path);
+                        }
+                        unsigned int index = it - enm->m_variants.begin();
+                        auto path = mv$(pe);
+                        fix_type_params(sp, enm->m_params,  path.m_params);
+                        //::std::cout << "HHHH: path=" << path << ::std::endl;
+                        pat.m_data = ::HIR::Pattern::Data::make_EnumValue({
+                            mv$(path),
+                            enm,
+                            index
+                            });
+                    }
+                    else {
+                        auto it = mod->m_value_items.find( pc );
+                        if( it == mod->m_value_items.end() ) {
+                            BUG(sp, "Couldn't find final component of " << path);
+                        }
+                        // Unit-like struct match or a constant
+                        TU_MATCH_DEF( ::HIR::ValueItem, (it->second->ent), (e2),
+                        (
+                            ERROR(sp, E0000, "Value pattern pointing to unexpected type")
+                            ),
+                        (Constant,
+                            // TODO: Store reference to this item for later use
+                            ),
+                        (StructConstant,
+                            // TODO: Convert into a dedicated pattern type
+                            )
+                        )
+                    }
+                )
+                else {
+                    // UFCS/Opaque, leave for now.
+                }
+            )
+        }
+        
+        
         void visit_pattern(::HIR::Pattern& pat) override
         {
             static Span _sp = Span();
@@ -142,76 +228,11 @@ namespace {
             (
                 ),
             (Value,
-                TU_IFLET( ::HIR::Pattern::Value, e.val, Named, ve,
-                    TU_IFLET( ::HIR::Path::Data, ve.m_data, Generic, pe,
-                        const ::HIR::Enum* enm = nullptr;
-                        const ::HIR::Module*  mod = &m_crate.m_root_module;
-                        const auto& path = pe.m_path;
-                        for(unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
-                        {
-                            const auto& pc = path.m_components[i];
-                            auto it = mod->m_mod_items.find( pc );
-                            if( it == mod->m_mod_items.end() ) {
-                                BUG(sp, "Couldn't find component " << i << " of " << path);
-                            }
-                            
-                            if( i == path.m_components.size() - 2 ) {
-                                // Here it's allowed to be either a module, or an enum.
-                                TU_IFLET( ::HIR::TypeItem, it->second->ent, Module, e2,
-                                    mod = &e2;
-                                )
-                                else TU_IFLET( ::HIR::TypeItem, it->second->ent, Enum, e2,
-                                    enm = &e2;
-                                )
-                                else {
-                                    BUG(sp, "Node " << i << " of path " << ve << " wasn't a module or enum");
-                                }
-                            }
-                            else {
-                                TU_IFLET( ::HIR::TypeItem, it->second->ent, Module, e2,
-                                    mod = &e2;
-                                )
-                                else {
-                                    BUG(sp, "Node " << i << " of path " << ve << " wasn't a module");
-                                }
-                            }
-                        }
-                        const auto& pc = path.m_components.back();
-                        if( enm ) {
-                            // Enum variant
-                            auto it = ::std::find_if( enm->m_variants.begin(), enm->m_variants.end(), [&](const auto&v){ return v.first == pc; });
-                            if( it == enm->m_variants.end() ) {
-                                BUG(sp, "'" << pc << "' isn't a variant in path " << path);
-                            }
-                            unsigned int index = it - enm->m_variants.begin();
-                            auto path = mv$(pe);
-                            fix_type_params(sp, enm->m_params,  path.m_params);
-                            //::std::cout << "HHHH: path=" << path << ::std::endl;
-                            pat.m_data = ::HIR::Pattern::Data::make_EnumValue({
-                                mv$(path),
-                                enm,
-                                index
-                                });
-                        }
-                        else {
-                            auto it = mod->m_value_items.find( pc );
-                            if( it == mod->m_value_items.end() ) {
-                                BUG(sp, "Couldn't find final component of " << path);
-                            }
-                            // Unit-like struct match or a constant
-                            // TODO: Store binding
-                            TU_MATCH_DEF( ::HIR::ValueItem, (it->second->ent), (e2),
-                            (
-                                ),
-                            (StructConstant,
-                                )
-                            )
-                        }
-                    )
-                    else {
-                        // UFCS/Opaque, leave for now.
-                    }
-                )
+                this->visit_pattern_Value(sp, pat, e.val);
+                ),
+            (Range,
+                this->visit_pattern_Value(sp, pat, e.start);
+                this->visit_pattern_Value(sp, pat, e.end);
                 ),
             (StructTuple,
                 const auto& str = get_struct_ptr(sp, m_crate, e.path);

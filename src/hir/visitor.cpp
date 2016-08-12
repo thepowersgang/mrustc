@@ -330,6 +330,9 @@ void ::HIR::Visitor::visit_pattern(::HIR::Pattern& pat)
         for(auto& sp : e.sub_patterns)
             this->visit_pattern(sp);
         ),
+    (StructValue,
+        this->visit_generic_path(e.path, ::HIR::Visitor::PathContext::TYPE);
+        ),
     (StructTupleWildcard,
         this->visit_generic_path(e.path, ::HIR::Visitor::PathContext::TYPE);
         ),
@@ -387,7 +390,7 @@ void ::HIR::Visitor::visit_pattern_val(::HIR::Pattern::Value& val)
     (String,
         ),
     (Named,
-        this->visit_path(e, ::HIR::Visitor::PathContext::VALUE);
+        this->visit_path(e.path, ::HIR::Visitor::PathContext::VALUE);
         )
     )
 }

@@ -2548,6 +2548,12 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         ),
     
     // - Enums/Structs
+    (StructValue,
+        this->add_ivars_params( e.path.m_params );
+        const auto& str = *e.binding;
+        assert( str.m_data.is_Unit() );
+        this->equate_types( sp, type, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)) );
+        ),
     (StructTuple,
         this->add_ivars_params( e.path.m_params );
         const auto& str = *e.binding;

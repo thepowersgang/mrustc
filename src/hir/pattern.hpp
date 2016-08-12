@@ -12,6 +12,7 @@ namespace HIR {
 
 class Struct;
 class Enum;
+class Constant;
 
 struct PatternBinding
 {
@@ -50,7 +51,10 @@ struct Pattern
             uint64_t value; // Signed numbers are encoded as 2's complement
             }),
         (String, ::std::string),
-        (Named, Path)
+        (Named, struct {
+            Path    path;
+            const ::HIR::Constant*  binding;
+            })
         );
     friend ::std::ostream& operator<<(::std::ostream& os, const Pattern::Value& x);
 
@@ -60,6 +64,10 @@ struct Pattern
         (Box,       struct { ::std::unique_ptr<Pattern> sub; }),
         (Ref,       struct { ::HIR::BorrowType type; ::std::unique_ptr<Pattern> sub; } ),
         (Tuple,     struct { ::std::vector<Pattern> sub_patterns; } ),
+        (StructValue, struct {
+            GenericPath path;
+            const Struct*   binding;
+            }),
         (StructTuple, struct {
             // NOTE: Type paths in patterns _can_ have parameters
             GenericPath path;

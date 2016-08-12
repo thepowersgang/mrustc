@@ -182,6 +182,9 @@ void typeck::TypecheckContext::add_binding(const Span& sp, ::HIR::Pattern& pat, 
         ),
     
     // - Enums/Structs
+    (StructValue,
+        throw "TODO";
+        ),
     (StructTuple,
         this->add_ivars_params( e.path.m_params );
         if( type.m_data.is_Infer() ) {
@@ -509,6 +512,9 @@ void typeck::TypecheckContext::apply_pattern(const ::HIR::Pattern& pat, ::HIR::T
         ),
     
     // - Enums/Structs
+    (StructValue,
+        throw "TODO";
+        ),
     (StructTuple,
         if( ty.m_data.is_Infer() ) {
             ty.m_data = ::HIR::TypeRef::Data::make_Path( {e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)} );
