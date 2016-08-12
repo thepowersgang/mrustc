@@ -70,7 +70,7 @@ clean:
 	$(RM) -r $(BIN) $(OBJ)
 
 
-PIPECMD ?= 2>&1 | tee $@_dbg.txt | tail -n 40 ; test $${PIPESTATUS[0]} -eq 0
+PIPECMD ?= 2>&1 | tee $@_dbg.txt | tail -n 45 ; test $${PIPESTATUS[0]} -eq 0
 
 output/%.ast: samples/%.rs $(BIN) 
 	@mkdir -p output/
