@@ -130,7 +130,14 @@ namespace {
                 ),
             (EnumStruct,
                 ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
-                TODO(sp, "Destructure using " << pat);
+                const auto& enm = *e.binding_ptr;
+                const auto& fields = enm.m_variants[e.binding_idx].second.as_Struct();
+                auto lval_var = ::MIR::LValue::make_Downcast({ box$(mv$(lval)), e.binding_idx });
+                for(const auto& fld_pat : e.sub_patterns)
+                {
+                    unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto&x){ return x.first == fld_pat.first; } ) - fields.begin();
+                    destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::make_Field({ box$( lval_var.clone() ), idx}), allow_refutable);
+                }
                 ),
             (Slice,
                 ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
