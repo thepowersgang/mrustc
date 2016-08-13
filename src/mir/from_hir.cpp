@@ -303,6 +303,99 @@ namespace {
             m_builder.set_result( node.span(), mv$(result_val) );
         }
         
+        void generate_checked_binop(const Span& sp, ::MIR::LValue res_slot, ::MIR::eBinOp op, ::MIR::LValue val_l, const ::HIR::TypeRef& ty_l, ::MIR::LValue val_r, const ::HIR::TypeRef& ty_r)
+        {
+            switch(op)
+            {
+            case ::MIR::eBinOp::EQ: case ::MIR::eBinOp::NE:
+            case ::MIR::eBinOp::LT: case ::MIR::eBinOp::LE:
+            case ::MIR::eBinOp::GT: case ::MIR::eBinOp::GE:
+                ASSERT_BUG(sp, ty_l == ty_r, "Types in comparison operators must be equal - " << ty_l << " != " << ty_r);
+                // Defensive assert that the type is a valid MIR comparison
+                TU_MATCH_DEF(::HIR::TypeRef::Data, (ty_l.m_data), (e),
+                (
+                    BUG(sp, "Invalid type in comparison - " << ty_l);
+                    ),
+                (Pointer,
+                    // Valid
+                    ),
+                // TODO: Should straight comparisons on &str be supported here?
+                (Primitive,
+                    if( e == ::HIR::CoreType::Str ) {
+                        BUG(sp, "Invalid type in comparison - " << ty_l);
+                    }
+                    )
+                )
+                m_builder.push_stmt_assign(mv$(res_slot), ::MIR::RValue::make_BinOp({ mv$(val_l), op, mv$(val_r) }));
+                break;
+            // Bitwise masking operations: Require equal integer types or bool
+            case ::MIR::eBinOp::BIT_XOR:
+            case ::MIR::eBinOp::BIT_OR :
+            case ::MIR::eBinOp::BIT_AND:
+                ASSERT_BUG(sp, ty_l == ty_r, "Types in bitwise operators must be equal - " << ty_l << " != " << ty_r);
+                ASSERT_BUG(sp, ty_l.m_data.is_Primitive(), "Only primitives allowed in bitwise operators");
+                switch(ty_l.m_data.as_Primitive())
+                {
+                case ::HIR::CoreType::Str:
+                case ::HIR::CoreType::Char:
+                case ::HIR::CoreType::F32:
+                case ::HIR::CoreType::F64:
+                    BUG(sp, "Invalid type for bitwise operator - " << ty_l);
+                default:
+                    break;
+                }
+                m_builder.push_stmt_assign(mv$(res_slot), ::MIR::RValue::make_BinOp({ mv$(val_l), op, mv$(val_r) }));
+                break;
+            case ::MIR::eBinOp::ADD:    case ::MIR::eBinOp::ADD_OV:
+            case ::MIR::eBinOp::SUB:    case ::MIR::eBinOp::SUB_OV:
+            case ::MIR::eBinOp::MUL:    case ::MIR::eBinOp::MUL_OV:
+            case ::MIR::eBinOp::DIV:    case ::MIR::eBinOp::DIV_OV:
+            case ::MIR::eBinOp::MOD:
+                ASSERT_BUG(sp, ty_l == ty_r, "Types in arithmatic operators must be equal - " << ty_l << " != " << ty_r);
+                ASSERT_BUG(sp, ty_l.m_data.is_Primitive(), "Only primitives allowed in arithmatic operators");
+                switch(ty_l.m_data.as_Primitive())
+                {
+                case ::HIR::CoreType::Str:
+                case ::HIR::CoreType::Char:
+                case ::HIR::CoreType::Bool:
+                    BUG(sp, "Invalid type for arithmatic operator - " << ty_l);
+                default:
+                    break;
+                }
+                // TODO: Overflow checks (none for eBinOp::MOD)
+                m_builder.push_stmt_assign(mv$(res_slot), ::MIR::RValue::make_BinOp({ mv$(val_l), op, mv$(val_r) }));
+                break;
+            case ::MIR::eBinOp::BIT_SHL:
+            case ::MIR::eBinOp::BIT_SHR:
+                ;
+                ASSERT_BUG(sp, ty_l.m_data.is_Primitive(), "Only primitives allowed in arithmatic operators");
+                ASSERT_BUG(sp, ty_r.m_data.is_Primitive(), "Only primitives allowed in arithmatic operators");
+                switch(ty_l.m_data.as_Primitive())
+                {
+                case ::HIR::CoreType::Str:
+                case ::HIR::CoreType::Char:
+                case ::HIR::CoreType::F32:
+                case ::HIR::CoreType::F64:
+                    BUG(sp, "Invalid type for shift op-assignment - " << ty_l);
+                default:
+                    break;
+                }
+                switch(ty_r.m_data.as_Primitive())
+                {
+                case ::HIR::CoreType::Str:
+                case ::HIR::CoreType::Char:
+                case ::HIR::CoreType::F32:
+                case ::HIR::CoreType::F64:
+                    BUG(sp, "Invalid type for shift op-assignment - " << ty_r);
+                default:
+                    break;
+                }
+                // TODO: Overflow check
+                m_builder.push_stmt_assign(mv$(res_slot), ::MIR::RValue::make_BinOp({ mv$(val_l), op, mv$(val_r) }));
+                break;
+            }
+        }
+        
         void visit(::HIR::ExprNode_Assign& node) override
         {
             TRACE_FUNCTION_F("_Assign");
@@ -319,12 +412,11 @@ namespace {
             
             if( node.m_op != ::HIR::ExprNode_Assign::Op::None )
             {
+                auto dst_clone = dst.clone();
                 auto val_lv = m_builder.lvalue_or_temp( ty_val, mv$(val) );
                 
                 ASSERT_BUG(sp, ty_slot.m_data.is_Primitive(), "Assignment operator overloads are only valid on primitives - ty_slot="<<ty_slot);
-                auto ty_slot_p = ty_slot.m_data.as_Primitive();
                 ASSERT_BUG(sp, ty_val.m_data.is_Primitive(), "Assignment operator overloads are only valid on primitives - ty_val="<<ty_val);
-                auto ty_val_p = ty_val.m_data.as_Primitive();
                 
                 ::MIR::RValue res;
                 #define _(v)    ::HIR::ExprNode_Assign::Op::v
@@ -336,77 +428,20 @@ namespace {
                 case _(Sub): op = ::MIR::eBinOp::SUB; if(0)
                 case _(Mul): op = ::MIR::eBinOp::MUL; if(0)
                 case _(Div): op = ::MIR::eBinOp::DIV; if(0)
+                case _(Mod): op = ::MIR::eBinOp::MOD; if(0)
                     ;
-                    ASSERT_BUG(sp, ty_slot == ty_val, "Types must match for assignment - " << ty_slot << " != " << ty_val);
-                    switch(ty_slot_p)
-                    {
-                    case ::HIR::CoreType::Str:
-                    case ::HIR::CoreType::Char:
-                    case ::HIR::CoreType::Bool:
-                        BUG(sp, "Invalid type for numeric op-assignment - " << ty_slot);
-                    default:
-                        break;
-                    }
-                    // TODO: Overflow check
-                    res = ::MIR::RValue::make_BinOp({ dst.clone(), op, mv$(val_lv) });
-                    break;
-                case _(Mod):
-                    ASSERT_BUG(sp, ty_slot == ty_val, "Types must match for assignment - " << ty_slot << " != " << ty_val);
-                    switch(ty_slot_p)
-                    {
-                    case ::HIR::CoreType::Str:
-                    case ::HIR::CoreType::Char:
-                    case ::HIR::CoreType::Bool:
-                        BUG(sp, "Invalid type for numeric op-assignment - " << ty_slot);
-                    default:
-                        break;
-                    }
-                    // NOTE: No overflow check needed for %=
-                    res = ::MIR::RValue::make_BinOp({ dst.clone(), ::MIR::eBinOp::MOD, mv$(val_lv) });
+                    this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_lv), ty_val);
                     break;
                 case _(Xor): op = ::MIR::eBinOp::BIT_XOR; if(0)
                 case _(Or ): op = ::MIR::eBinOp::BIT_OR ; if(0)
                 case _(And): op = ::MIR::eBinOp::BIT_AND; if(0)
                     ;
-                    ASSERT_BUG(sp, ty_slot == ty_val, "Types must match for bitwise op-assignment - " << ty_slot << " != " << ty_val);
-                    switch(ty_slot_p)
-                    {
-                    case ::HIR::CoreType::Str:
-                    case ::HIR::CoreType::Char:
-                    case ::HIR::CoreType::F32:
-                    case ::HIR::CoreType::F64:
-                        BUG(sp, "Invalid type for bitwise op-assignment - " << ty_slot);
-                    default:
-                        break;
-                    }
-                    res = ::MIR::RValue::make_BinOp({ dst.clone(), op, mv$(val_lv) });
+                    this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_lv), ty_val);
                     break;
                 case _(Shl): op = ::MIR::eBinOp::BIT_SHL; if(0)
                 case _(Shr): op = ::MIR::eBinOp::BIT_SHR; if(0)
                     ;
-                    switch(ty_slot_p)
-                    {
-                    case ::HIR::CoreType::Str:
-                    case ::HIR::CoreType::Char:
-                    case ::HIR::CoreType::F32:
-                    case ::HIR::CoreType::F64:
-                        BUG(sp, "Invalid type for shift op-assignment - " << ty_slot);
-                    default:
-                        break;
-                    }
-                    switch(ty_val_p)
-                    {
-                    case ::HIR::CoreType::Str:
-                    case ::HIR::CoreType::Char:
-                    case ::HIR::CoreType::F32:
-                    case ::HIR::CoreType::F64:
-                        BUG(sp, "Invalid type for shift op-assignment - " << ty_val);
-                    default:
-                        break;
-                    }
-                    // TODO: Assert that both types are integer types (allowed to be non-equal)
-                    // TODO: Overflow check
-                    res = ::MIR::RValue::make_BinOp({ dst.clone(), op, mv$(val_lv) });
+                    this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_lv), ty_val);
                     break;
                 }
                 #undef _
@@ -423,12 +458,16 @@ namespace {
         
         void visit(::HIR::ExprNode_BinOp& node) override
         {
+            const auto& sp = node.span();
             TRACE_FUNCTION_F("_BinOp");
-            this->visit_node_ptr(node.m_left);
-            auto left = m_builder.lvalue_or_temp( node.m_left->m_res_type, m_builder.get_result(node.m_left->span()) );
             
+            const auto& ty_l = node.m_left->m_res_type;
+            this->visit_node_ptr(node.m_left);
+            auto left = m_builder.lvalue_or_temp( ty_l, m_builder.get_result(node.m_left->span()) );
+            
+            const auto& ty_r = node.m_right->m_res_type;
             this->visit_node_ptr(node.m_right);
-            auto right = m_builder.lvalue_or_temp( node.m_right->m_res_type, m_builder.get_result(node.m_right->span()) );
+            auto right = m_builder.lvalue_or_temp( ty_r, m_builder.get_result(node.m_right->span()) );
             
             auto res = m_builder.new_temporary(node.m_res_type);
             ::MIR::eBinOp   op;
@@ -440,19 +479,26 @@ namespace {
             case ::HIR::ExprNode_BinOp::Op::CmpLtE: op = ::MIR::eBinOp::LE; if(0)
             case ::HIR::ExprNode_BinOp::Op::CmpGt:  op = ::MIR::eBinOp::GT; if(0)
             case ::HIR::ExprNode_BinOp::Op::CmpGtE: op = ::MIR::eBinOp::GE;
-                m_builder.push_stmt_assign(res.as_Temporary(), ::MIR::RValue::make_BinOp({ mv$(left), op, mv$(right) }));
+                this->generate_checked_binop(sp, res.clone(), op, mv$(left), ty_l, mv$(right), ty_r);
                 break;
             
             case ::HIR::ExprNode_BinOp::Op::Xor: op = ::MIR::eBinOp::BIT_XOR; if(0)
             case ::HIR::ExprNode_BinOp::Op::Or : op = ::MIR::eBinOp::BIT_OR ; if(0)
             case ::HIR::ExprNode_BinOp::Op::And: op = ::MIR::eBinOp::BIT_AND;
-                m_builder.push_stmt_assign(res.as_Temporary(), ::MIR::RValue::make_BinOp({ mv$(left), op, mv$(right) }));
+                this->generate_checked_binop(sp, res.clone(), op, mv$(left), ty_l, mv$(right), ty_r);
                 break;
             
             case ::HIR::ExprNode_BinOp::Op::Shr: op = ::MIR::eBinOp::BIT_SHR; if(0)
             case ::HIR::ExprNode_BinOp::Op::Shl: op = ::MIR::eBinOp::BIT_SHL;
-                // TODO: Overflow checks
-                m_builder.push_stmt_assign(res.as_Temporary(), ::MIR::RValue::make_BinOp({ mv$(left), op, mv$(right) }));
+                this->generate_checked_binop(sp, res.clone(), op, mv$(left), ty_l, mv$(right), ty_r);
+                break;
+            
+            case ::HIR::ExprNode_BinOp::Op::Add:    op = ::MIR::eBinOp::ADD; if(0)
+            case ::HIR::ExprNode_BinOp::Op::Sub:    op = ::MIR::eBinOp::SUB; if(0)
+            case ::HIR::ExprNode_BinOp::Op::Mul:    op = ::MIR::eBinOp::MUL; if(0)
+            case ::HIR::ExprNode_BinOp::Op::Div:    op = ::MIR::eBinOp::DIV; if(0)
+            case ::HIR::ExprNode_BinOp::Op::Mod:    op = ::MIR::eBinOp::MOD;
+                this->generate_checked_binop(sp, res.clone(), op, mv$(left), ty_l, mv$(right), ty_r);
                 break;
             
             case ::HIR::ExprNode_BinOp::Op::BoolAnd: {
@@ -489,15 +535,6 @@ namespace {
                 
                 m_builder.set_cur_block( bb_next );
                 } break;
-            
-            case ::HIR::ExprNode_BinOp::Op::Add:    op = ::MIR::eBinOp::ADD; if(0)
-            case ::HIR::ExprNode_BinOp::Op::Sub:    op = ::MIR::eBinOp::SUB; if(0)
-            case ::HIR::ExprNode_BinOp::Op::Mul:    op = ::MIR::eBinOp::MUL; if(0)
-            case ::HIR::ExprNode_BinOp::Op::Div:    op = ::MIR::eBinOp::DIV; if(0)
-            case ::HIR::ExprNode_BinOp::Op::Mod:    op = ::MIR::eBinOp::MOD;
-                // TODO: Overflow checks
-                m_builder.push_stmt_assign(res.as_Temporary(), ::MIR::RValue::make_BinOp({ mv$(left), op, mv$(right) }));
-                break;
             }
             m_builder.set_result( node.span(), mv$(res) );
         }

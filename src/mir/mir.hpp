@@ -60,7 +60,7 @@ enum class eBinOp
     SUB, SUB_OV,
     MUL, MUL_OV,
     DIV, DIV_OV,
-    MOD, MOD_OV,
+    MOD,// MOD_OV,
     
     BIT_OR,
     BIT_AND,
