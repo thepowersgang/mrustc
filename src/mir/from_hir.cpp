@@ -314,17 +314,19 @@ namespace {
             this->visit_node_ptr(node.m_slot);
             auto dst = m_builder.get_result_lvalue(sp);
             
+            const auto& ty_slot = node.m_slot->m_res_type;
+            const auto& ty_val  = node.m_value->m_res_type;
+            ASSERT_BUG(sp, ty_slot == ty_val, "Types must match for assignment - " << ty_slot << " != " << ty_val);
+            
             if( node.m_op != ::HIR::ExprNode_Assign::Op::None )
             {
-                ASSERT_BUG(sp, node.m_slot->m_res_type == node.m_value->m_res_type, "Types must match for op-assign");
-                
-                TU_IFLET(::HIR::TypeRef::Data, node.m_slot->m_res_type.m_data, Primitive, e,
+                TU_IFLET(::HIR::TypeRef::Data, ty_slot.m_data, Primitive, e,
                     switch(e)
                     {
                     case ::HIR::CoreType::Char:
                     case ::HIR::CoreType::Str:
                     case ::HIR::CoreType::Bool:
-                        BUG(sp, "Unsupported type for op-assign - " << node.m_slot->m_res_type);
+                        BUG(sp, "Unsupported type for op-assign - " << ty_slot);
                         break;
                     default:
                         // Good.
@@ -332,10 +334,10 @@ namespace {
                     }
                 )
                 else {
-                    BUG(sp, "Unsupported type for op-assign - " << node.m_slot->m_res_type);
+                    BUG(sp, "Unsupported type for op-assign - " << ty_slot);
                 }
                 
-                auto val_lv = m_builder.lvalue_or_temp( node.m_value->m_res_type, mv$(val) );
+                auto val_lv = m_builder.lvalue_or_temp( ty_val, mv$(val) );
                 
                 ::MIR::RValue res;
                 #define _(v)    ::HIR::ExprNode_Assign::Op::v
