@@ -1,6 +1,12 @@
-
+/*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir_typeck/helpers.cpp
+ * - Typecheck helpers
+ */
 #include "helpers.hpp"
-#include "expr_simple.hpp"
+//#include "expr_simple.hpp"
 
 bool monomorphise_type_needed(const ::HIR::TypeRef& tpl);
 
@@ -245,6 +251,38 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         }, false);
 }
 
+void check_type_class_primitive(const Span& sp, const ::HIR::TypeRef& type, ::HIR::InferClass ic, ::HIR::CoreType ct)
+{
+    switch(ic)
+    {
+    case ::HIR::InferClass::None:
+    case ::HIR::InferClass::Diverge:
+        break;
+    case ::HIR::InferClass::Float:
+        switch(ct)
+        {
+        case ::HIR::CoreType::F32:
+        case ::HIR::CoreType::F64:
+            break;
+        default:
+            ERROR(sp, E0000, "Type unificiation of integer literal with non-integer - " << type);
+        }
+        break;
+    case ::HIR::InferClass::Integer:
+        switch(ct)
+        {
+        case ::HIR::CoreType::I8:    case ::HIR::CoreType::U8:
+        case ::HIR::CoreType::I16:   case ::HIR::CoreType::U16:
+        case ::HIR::CoreType::I32:   case ::HIR::CoreType::U32:
+        case ::HIR::CoreType::I64:   case ::HIR::CoreType::U64:
+        case ::HIR::CoreType::Isize: case ::HIR::CoreType::Usize:
+            break;
+        default:
+            ERROR(sp, E0000, "Type unificiation of integer literal with non-integer - " << type);
+        }
+        break;
+    }
+}
 
 
 void HMTypeInferrence::dump() const
@@ -655,7 +693,7 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
                 ERROR(sp, E0000, "Type unificiation of literal with invalid type - " << *root_ivar.type);
                 ),
             (Primitive,
-                typeck::check_type_class_primitive(sp, type, l_e.ty_class, e);
+                check_type_class_primitive(sp, type, l_e.ty_class, e);
                 ),
             (Infer,
                 // TODO: Check for right having a ty_class
@@ -688,7 +726,7 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
                 (
                     ),
                 (Primitive,
-                    typeck::check_type_class_primitive(sp, type, e.ty_class, l_e);
+                    check_type_class_primitive(sp, type, e.ty_class, l_e);
                     )
                 )
                 break;
@@ -739,7 +777,7 @@ void HMTypeInferrence::ivar_unify(unsigned int left_slot, unsigned int right_slo
                     le.ty_class = re.ty_class;
                     ),
                 (Primitive,
-                    typeck::check_type_class_primitive(sp, *left_ivar.type, re.ty_class, le);
+                    check_type_class_primitive(sp, *left_ivar.type, re.ty_class, le);
                     )
                 )
             }
