@@ -1097,7 +1097,55 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
         )
         ),
     (ValueRange,
-        TODO(sp, "ValueRange patterns");
+        ASSERT_BUG(sp, e.first.tag() == e.last.tag(), "");
+        TU_MATCHA( (e.first, e.last), (ve_start, ve_end),
+        (Int,
+            TODO(sp, "ValueRange patterns - Int");
+            ),
+        (Uint,
+            if( m_branches.is_Unset() ) {
+                m_branches = Values::make_Unsigned({});
+            }
+            else if( !m_branches.is_Unsigned() ) {
+                BUG(sp, "Mismatched rules");
+            }
+            auto& be = m_branches.as_Unsigned();
+            auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.start <= ve_end; });
+            if( it == be.end() || it->first.end < ve_start ) {
+                it = be.insert( it, ::std::make_pair( Range<uint64_t> { ve_start,ve_end }, Branch( box$(DecisionTreeNode()) ) ) );
+            }
+            else {
+                // Collide or overlap!
+                TODO(sp, "ValueRange patterns - Uint - Overlapping");
+            }
+            auto& branch = it->second;
+            if( rule_count > 1 )
+            {
+                assert( branch.as_Subtree() );
+                auto& subtree = *branch.as_Subtree();
+                subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+            }
+            else
+            {
+                and_then(branch);
+            }
+            ),
+        (Float,
+            TODO(sp, "Value patterns - Float");
+            ),
+        (Bool,
+            throw "";
+            ),
+        (Bytes,
+            TODO(sp, "Value patterns - Bytes");
+            ),
+        (StaticString,
+            TODO(sp, "Value patterns - StaticString");
+            ),
+        (ItemAddr,
+            throw "";
+            )
+        )
         )
     )
 }
