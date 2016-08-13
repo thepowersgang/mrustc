@@ -7,6 +7,36 @@
  */
 #include <mir/mir.hpp>
 
+namespace MIR {
+    ::std::ostream& operator<<(::std::ostream& os, const Constant& v) {
+        TU_MATCHA( (v), (e),
+        (Int,
+            os << (e < 0 ? "-" : "+");
+            os << (e < 0 ? -e : e);
+            ),
+        (Uint,
+            os << e;
+            ),
+        (Float,
+            os << e;
+            ),
+        (Bool,
+            os << (e ? "true" : "false");
+            ),
+        (Bytes,
+            os << "[" << e << "]";
+            ),
+        (StaticString,
+            os << "\"" << e << "\"";
+            ),
+        (ItemAddr,
+            os << "&" << e;
+            )
+        )
+        return os;
+    }
+}
+
 ::MIR::LValue MIR::LValue::clone() const
 {
     TU_MATCHA( (*this), (e),

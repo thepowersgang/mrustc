@@ -22,6 +22,7 @@ TAGGED_UNION(PatternRule, Any,
     (Value, ::MIR::Constant),
     (ValueRange, struct { ::MIR::Constant first, last; })
     );
+::std::ostream& operator<<(::std::ostream& os, const PatternRule& x);
 /// Constructed set of rules from a pattern
 struct PatternRuleset
 {
@@ -85,6 +86,9 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             auto pat_builder = PatternRulesetBuilder {};
             pat_builder.append_from(node.span(), pat, node.m_value->m_res_type);
             arm_rules.push_back( PatternRuleset { arm_idx, pat_idx, mv$(pat_builder.m_rules) } );
+            
+            DEBUG("(" << arm_idx << "," << pat_idx << ") [" << arm_rules.back().m_rules << "]");
+            
             pat_idx += 1;
         }
         
@@ -662,6 +666,31 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
     DecisionTreeGen gen { builder, rule_blocks };
     builder.set_cur_block( first_cmp_block );
     gen.populate_tree_vals( node.span(), root_node, node.m_value->m_res_type, mv$(match_val) );
+}
+
+::std::ostream& operator<<(::std::ostream& os, const PatternRule& x)
+{
+    TU_MATCHA( (x), (e),
+    (Any,
+        os << "_";
+        ),
+    // Enum variant
+    (Variant,
+        os << e.idx << " [" << e.sub_rules << "]";
+        ),
+    // Boolean (different to Constant because of how restricted it is)
+    (Bool,
+        os << (e ? "true" : "false");
+        ),
+    // General value
+    (Value,
+        os << e;
+        ),
+    (ValueRange,
+        os << e.first << " ... " << e.last;
+        )
+    )
+    return os;
 }
 
 ::Ordering PatternRuleset::rule_is_before(const PatternRule& l, const PatternRule& r)
@@ -1284,7 +1313,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
                 BUG(sp, "Mismatched rules");
             }
             auto& be = m_branches.as_Unsigned();
-            // Find the first entry that sorts before this range
+            // Find the first entry that sorts after this range
             auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first >= ve_start || v.first.contains(ve_end); });
             // If the end of the list was reached, OR the located entry sorts after the end of this range
             if( it == be.end() || it->first >= ve_end ) {
@@ -1295,7 +1324,45 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
             }
             else {
                 // Collide or overlap!
-                TODO(sp, "ValueRange patterns - Uint - Overlapping - " << it->first.start << "..." << it->first.end << " and " << ve_start << "..." << ve_end);
+                // - Overlap should split around the collision and merge into it (if this is less-specific).
+                ASSERT_BUG(sp, ve_start < ve_end, "Range pattern with one value");
+                ASSERT_BUG(sp, it->first.start == it->first.end, "Attempting to override a range pattern with another range");
+                
+                // TODO: This breaks miserably if the new range overlaps with two other ranges
+                
+                // Insert half of ve before, and the other half after? OR Create a sub-pattern specializing.
+                if( ve_start == it->first.start ) {
+                    // Add single range after
+                    it ++;
+                    it = be.insert(it, ::std::make_pair( Range<uint64_t> { ve_start + 1, ve_end }, Branch( box$(DecisionTreeNode()) ) ) );
+                }
+                else if( ve_end == it->first.start ) {
+                    // Add single range before
+                    it = be.insert(it, ::std::make_pair( Range<uint64_t> { ve_start, ve_end - 1 }, Branch( box$(DecisionTreeNode()) ) ) );
+                }
+                else {
+                    // Add two ranges
+                    auto end1 = it->first.start - 1;
+                    auto start2 = it->first.end + 1;
+                    it = be.insert(it, ::std::make_pair( Range<uint64_t> { ve_start, end1 }, Branch( box$(DecisionTreeNode()) ) ) );
+                    auto& branch_1 = it->second;
+                    it ++;
+                    it ++;   // Skip the original entry
+                    it = be.insert(it, ::std::make_pair( Range<uint64_t> { start2, ve_end }, Branch( box$(DecisionTreeNode()) ) ) );
+                    auto& branch_2 = it->second;
+                    
+                    if( rule_count > 1 )
+                    {
+                        branch_1.as_Subtree()->populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+                        branch_2.as_Subtree()->populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+                    }
+                    else
+                    {
+                        and_then(branch_1);
+                        and_then(branch_2);
+                    }
+                    return ;
+                }
             }
             auto& branch = it->second;
             if( rule_count > 1 )
@@ -1907,7 +1974,7 @@ void DecisionTreeGen::generate_branches_Enum(
     bool has_any = ! default_branch.is_Unset();
     
     if( branches.size() < variant_count && ! has_any ) {
-        ERROR(sp, E0000, "Non-exhaustive match");
+        ERROR(sp, E0000, "Non-exhaustive match over " << ty << " - " << branches.size() << " out of " << variant_count << " present");
     }
     // DISABLED: Some complex matches don't directly use some defaults
     //if( branches.size() == variant_count && has_any ) {

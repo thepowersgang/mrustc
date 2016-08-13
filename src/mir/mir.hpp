@@ -89,6 +89,7 @@ TAGGED_UNION(Constant, Int,
     (StaticString, ::std::string),
     (ItemAddr, ::HIR::Path)
     );
+extern ::std::ostream& operator<<(::std::ostream& os, const Constant& v);
 
 TAGGED_UNION(RValue, Use,
     (Use, LValue),
