@@ -481,6 +481,15 @@ public:
                 mv$(code)
                 ));
         }
+        
+        // Default arm
+        {
+            arms.push_back(AST::ExprNode_Match_Arm(
+                ::make_vec1( AST::Pattern() ),
+                nullptr,
+                NEWNODE(Block, {}, nullptr)
+                ));
+        }
 
         ::std::vector<AST::ExprNodeP>   vals;
         vals.push_back( NEWNODE(NamedValue, AST::Path("self")) );
