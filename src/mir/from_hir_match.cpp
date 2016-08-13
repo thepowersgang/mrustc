@@ -485,18 +485,22 @@ struct DecisionTreeNode
         T   start;
         T   end;
         
+        // `x` starts after this range ends
         bool operator<(const Range<T>& x) const {
             return (end < x.start);
         }
+        // `x` falls above the end of this range
         bool operator<(const T& x) const {
             return (end < x);
         }
         
+        // `x` ends before this starts, or overlaps
         bool operator>=(const Range<T>& x) const {
             return start > x.end || ovelaps(x);
         }
+        // `x` is before or within this range
         bool operator>=(const T& x) const {
-            return (start >= x);
+            return start > x || contains(x);
         }
         
         bool operator>(const Range<T>& x) const {
@@ -506,6 +510,9 @@ struct DecisionTreeNode
             return (start > x);
         }
         
+        bool contains(const T& x) const {
+            return (start <= x && x <= end);
+        }
         bool overlaps(const Range<T>& x) const {
             return (x.start <= start && start <= x.end) || (x.start <= end && end <= x.end);
         }
@@ -1277,8 +1284,10 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
                 BUG(sp, "Mismatched rules");
             }
             auto& be = m_branches.as_Unsigned();
-            auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.start >= ve_end; });
-            if( it == be.end() || it->first.end < ve_start ) {
+            // Find the first entry that sorts before this range
+            auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first >= ve_start || v.first.contains(ve_end); });
+            // If the end of the list was reached, OR the located entry sorts after the end of this range
+            if( it == be.end() || it->first >= ve_end ) {
                 it = be.insert( it, ::std::make_pair( Range<uint64_t> { ve_start,ve_end }, Branch( box$(DecisionTreeNode()) ) ) );
             }
             else if( it->first.start == ve_start && it->first.end == ve_end ) {
