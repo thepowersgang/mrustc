@@ -309,11 +309,87 @@ public:
     }
     AST::Impl handle_item(Span sp, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
     {
+        AST::Path base_path = type.m_data.as_Path().path;
+        base_path.nodes().back() = base_path.nodes().back().name();
+        
         ::std::vector< AST::ExprNode_Match_Arm> arms;
-        //for(const auto& v : enm.variants())
-        //{
-            // TODO: Debug for enums
-        //}
+        for(const auto& v : enm.variants())
+        {
+            AST::ExprNodeP  code;
+            AST::Pattern    pat_a;
+            
+            TU_MATCH(::AST::EnumVariantData, (v.m_data), (e),
+            (Value,
+                code = NEWNODE(CallMethod,
+                    NEWNODE(NamedValue, AST::Path("f")),
+                    AST::PathNode("write_str",{}),
+                    vec$( NEWNODE(String, v.m_name) )
+                    );
+                pat_a = AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(base_path + v.m_name));
+                ),
+            (Tuple,
+                if( e.m_sub_types.size() == 0 )
+                {
+                    code = NEWNODE(CallMethod,
+                        NEWNODE(NamedValue, AST::Path("f")),
+                        AST::PathNode("write_str",{}),
+                        vec$( NEWNODE(String, v.m_name + "()") )
+                        );
+                    pat_a = AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(base_path + v.m_name));
+                }
+                else
+                {
+                    // TODO: Complete this.
+                    ::std::vector<AST::Pattern>    pats_a;
+                    //::std::vector<AST::ExprNodeP>   nodes;
+                    
+                    for( unsigned int idx = 0; idx < e.m_sub_types.size(); idx ++ )
+                    {
+                        auto name_a = FMT("a" << idx);
+                        pats_a.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_a) );
+                        //nodes.push_back( this->assert_is_eq(assert_method_path, NEWNODE(NamedValue, AST::Path(name_a))) );
+                    }
+                    
+                    //code = NEWNODE(Block, mv$(nodes), nullptr);
+                    code = NEWNODE(CallMethod,
+                        NEWNODE(NamedValue, AST::Path("f")),
+                        AST::PathNode("write_str",{}),
+                        vec$( NEWNODE(String, v.m_name + "(...)") )
+                        );
+                    
+                    pat_a = AST::Pattern(AST::Pattern::TagEnumVariant(), base_path + v.m_name, mv$(pats_a));
+                }
+                ),
+            (Struct,
+                ::std::vector< ::std::pair<std::string, AST::Pattern> > pats_a;
+                //::std::vector<AST::ExprNodeP>   nodes;
+                
+                for( const auto& fld : e.m_fields )
+                {
+                    auto name_a = FMT("a" << fld.m_name);
+                    pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_a)) );
+                    //nodes.push_back( this->assert_is_eq(assert_method_path, NEWNODE(NamedValue, AST::Path(name_a))) );
+                }
+                
+                //code = NEWNODE(Block, mv$(nodes), nullptr);
+                code = NEWNODE(CallMethod,
+                    NEWNODE(NamedValue, AST::Path("f")),
+                    AST::PathNode("write_str",{}),
+                    vec$( NEWNODE(String, v.m_name + "{...}") )
+                    );
+                pat_a = AST::Pattern(AST::Pattern::TagStruct(), base_path + v.m_name, mv$(pats_a), true);
+                )
+            )
+            
+            ::std::vector< AST::Pattern>    pats;
+            pats.push_back( AST::Pattern(AST::Pattern::TagReference(), mv$(pat_a)) );
+            
+            arms.push_back(AST::ExprNode_Match_Arm(
+                mv$(pats),
+                nullptr,
+                mv$(code)
+                ));
+        }
         AST::ExprNodeP  node = NEWNODE(Match,
             NEWNODE(NamedValue, AST::Path("self")),
             mv$(arms)
