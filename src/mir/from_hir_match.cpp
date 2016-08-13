@@ -253,6 +253,28 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     )
                 )
                 break;
+            case ::HIR::CoreType::I8:
+            case ::HIR::CoreType::I16:
+            case ::HIR::CoreType::I32:
+            case ::HIR::CoreType::I64:
+            case ::HIR::CoreType::Isize:
+                TU_MATCH_DEF( PatternRule, (rule), (re),
+                (
+                    BUG(sp, "PatternRule for integer is not Value or ValueRange");
+                    ),
+                (Value,
+                    auto succ_bb = builder.new_bb_unlinked();
+                    
+                    auto test_lval = builder.lvalue_or_temp(te, ::MIR::Constant(re.as_Int()));
+                    auto cmp_lval = builder.lvalue_or_temp(::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
+                    builder.set_cur_block(succ_bb);
+                    ),
+                (ValueRange,
+                    TODO(sp, "Simple match over primitive - " << ty << " - ValueRange");
+                    )
+                )
+                break;
             default:
                 TODO(sp, "Primitive - " << ty);
                 break;
