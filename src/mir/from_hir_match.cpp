@@ -890,6 +890,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             )
             ),
         (Enum,
+            auto monomorph = [&](const auto& ty) { return monomorphise_type(sp,  pbe->m_params, e.path.m_data.as_Generic().m_params,  ty); };
             TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
             ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
             (Any,
@@ -899,12 +900,14 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 m_rules.push_back( PatternRule::make_Variant( {pe.binding_idx, {} } ) );
                 ),
             (EnumTuple,
-                const auto& fields_def = pe.binding_ptr->m_variants[pe.binding_idx].second.as_Tuple();
+                const auto& var_def = pe.binding_ptr->m_variants.at(pe.binding_idx);
+                
+                const auto& fields_def = var_def.second.as_Tuple();
                 PatternRulesetBuilder   sub_builder;
                 for( unsigned int i = 0; i < pe.sub_patterns.size(); i ++ )
                 {
                     const auto& subpat = pe.sub_patterns[i];
-                    auto subty = monomorphise_type(sp,  pe.binding_ptr->m_params, e.path.m_data.as_Generic().m_params,  fields_def[i].ent);
+                    auto subty = monomorph(fields_def[i].ent);
                     sub_builder.append_from( sp, subpat, subty );
                 }
                 m_rules.push_back( PatternRule::make_Variant({ pe.binding_idx, mv$(sub_builder.m_rules) }) );
@@ -913,8 +916,32 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 m_rules.push_back( PatternRule::make_Variant({ pe.binding_idx, {} }) );
                 ),
             (EnumStruct,
+                const auto& var_def = pe.binding_ptr->m_variants.at(pe.binding_idx);
+                const auto& fields_def = var_def.second.as_Struct();
+                // 1. Create a vector of pattern indexes for each field in the variant.
+                ::std::vector<unsigned int> tmp;
+                tmp.resize( fields_def.size(), ~0u );
+                for( unsigned int i = 0; i < pe.sub_patterns.size(); i ++ )
+                {
+                    const auto& fld_pat = pe.sub_patterns[i];
+                    unsigned idx = ::std::find_if( fields_def.begin(), fields_def.end(), [&](const auto& x){ return x.first == fld_pat.first; } ) - fields_def.begin();
+                    assert(idx < tmp.size());
+                    assert(tmp[idx] == ~0u);
+                    tmp[idx] = i;
+                }
+                // 2. Iterate this list and recurse on the patterns
                 PatternRulesetBuilder   sub_builder;
-                TODO(sp, "Convert EnumStruct patterns");
+                for( unsigned int i = 0; i < tmp.size(); i ++ )
+                {
+                    auto subty = monomorph(fields_def[i].second.ent);
+                    if( tmp[i] == ~0u ) {
+                        sub_builder.append_from( sp, ::HIR::Pattern(), subty );
+                    }
+                    else {
+                        const auto& subpat = pe.sub_patterns[ tmp[i] ].second;
+                        sub_builder.append_from( sp, subpat, subty );
+                    }
+                }
                 m_rules.push_back( PatternRule::make_Variant({ pe.binding_idx, mv$(sub_builder.m_rules) }) );
                 )
             )
