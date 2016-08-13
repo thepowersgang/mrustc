@@ -87,6 +87,7 @@ namespace {
                 }
                 ),
             (StructValue,
+                // Nothing.
                 ),
             (StructTuple,
                 for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
@@ -95,9 +96,16 @@ namespace {
                 }
                 ),
             (StructTupleWildcard,
+                // Nothing.
                 ),
             (Struct,
-                TODO(sp, "Destructure using " << pat);
+                const auto& str = *e.binding;
+                const auto& fields = str.m_data.as_Named();
+                for(const auto& fld_pat : e.sub_patterns)
+                {
+                    unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto&x){ return x.first == fld_pat.first; } ) - fields.begin();
+                    destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::make_Field({ box$( lval.clone() ), idx}), allow_refutable);
+                }
                 ),
             // Refutable
             (Value,
