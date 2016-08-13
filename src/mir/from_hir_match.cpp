@@ -1826,15 +1826,18 @@ void DecisionTreeGen::generate_tree_code(
             and_then(node);
         }
         // - If the node is for this type, recurse
-        else if( node.m_field_path[depth] == ty_ofs ) {
-            generate_tree_code( sp, node,
-                e[ty_ofs], 0, base_val, depth+1, base_depth,
-                [&](auto& n){ this->generate_tree_code(sp, n, ty, ty_ofs+1, base_val, depth, base_depth, and_then); }
-                );
-        }
-        // - Otherwise, go to the next node
         else {
-            this->generate_tree_code(sp, node, ty, ty_ofs+1, base_val, depth, base_depth, and_then);
+            assert( depth < node.m_field_path.size() );
+            if( node.m_field_path[depth] == ty_ofs ) {
+                generate_tree_code( sp, node,
+                    e[ty_ofs], 0, base_val, depth+1, base_depth,
+                    [&](auto& n){ this->generate_tree_code(sp, n, ty, ty_ofs+1, base_val, depth, base_depth, and_then); }
+                    );
+            }
+            // - Otherwise, go to the next node
+            else {
+                this->generate_tree_code(sp, node, ty, ty_ofs+1, base_val, depth, base_depth, and_then);
+            }
         }
         ),
     (Path,
@@ -1856,34 +1859,40 @@ void DecisionTreeGen::generate_tree_code(
                 if( ty_ofs == fields.size() ) {
                     and_then(node);
                 }
-                else if( node.m_field_path[depth] == ty_ofs ) {
-                    const auto& fld = fields[ty_ofs];
-                    ::HIR::TypeRef  tmp;
-                    const auto& fld_ty = (monomorphise_type_needed(fld.ent) ? tmp = monomorph(fld.ent) : fld.ent);
-                    generate_tree_code( sp, node,
-                        fld_ty, 0, base_val, depth+1, base_depth,
-                        [&](auto& n){ this->generate_tree_code(sp, n, ty, ty_ofs+1, base_val, depth, base_depth, and_then); }
-                        );
-                }
                 else {
-                    this->generate_tree_code(sp, node, ty, ty_ofs+1, base_val, depth, base_depth, and_then);
+                    assert( depth < node.m_field_path.size() );
+                    if( node.m_field_path[depth] == ty_ofs ) {
+                        const auto& fld = fields[ty_ofs];
+                        ::HIR::TypeRef  tmp;
+                        const auto& fld_ty = (monomorphise_type_needed(fld.ent) ? tmp = monomorph(fld.ent) : fld.ent);
+                        generate_tree_code( sp, node,
+                            fld_ty, 0, base_val, depth+1, base_depth,
+                            [&](auto& n){ this->generate_tree_code(sp, n, ty, ty_ofs+1, base_val, depth, base_depth, and_then); }
+                            );
+                    }
+                    else {
+                        this->generate_tree_code(sp, node, ty, ty_ofs+1, base_val, depth, base_depth, and_then);
+                    }
                 }
                 ),
             (Named,
                 if( ty_ofs == fields.size() ) {
                     and_then(node);
                 }
-                else if( node.m_field_path[depth] == ty_ofs ) {
-                    const auto& fld = fields[ty_ofs].second;
-                    ::HIR::TypeRef  tmp;
-                    const auto& fld_ty = (monomorphise_type_needed(fld.ent) ? tmp = monomorph(fld.ent) : fld.ent);
-                    generate_tree_code( sp, node,
-                        fld_ty, 0, base_val, depth+1, base_depth,
-                        [&](auto& n){ this->generate_tree_code(sp, n, ty, ty_ofs+1, base_val, depth, base_depth, and_then); }
-                        );
-                }
                 else {
-                    this->generate_tree_code(sp, node, ty, ty_ofs+1, base_val, depth, base_depth, and_then);
+                    assert( depth < node.m_field_path.size() );
+                    if( node.m_field_path[depth] == ty_ofs ) {
+                        const auto& fld = fields[ty_ofs].second;
+                        ::HIR::TypeRef  tmp;
+                        const auto& fld_ty = (monomorphise_type_needed(fld.ent) ? tmp = monomorph(fld.ent) : fld.ent);
+                        generate_tree_code( sp, node,
+                            fld_ty, 0, base_val, depth+1, base_depth,
+                            [&](auto& n){ this->generate_tree_code(sp, n, ty, ty_ofs+1, base_val, depth, base_depth, and_then); }
+                            );
+                    }
+                    else {
+                        this->generate_tree_code(sp, node, ty, ty_ofs+1, base_val, depth, base_depth, and_then);
+                    }
                 }
                 )
             )
@@ -2141,7 +2150,7 @@ void DecisionTreeGen::generate_branches_Enum(
                 and_then( subnode );
                 ),
             (Tuple,
-                if( depth+1 < subnode.m_field_path.size() )
+                if( depth < subnode.m_field_path.size() )
                 {
                     // Make a fake tuple
                     ::std::vector< ::HIR::TypeRef>  ents;
@@ -2150,20 +2159,28 @@ void DecisionTreeGen::generate_branches_Enum(
                         ents.push_back( monomorphise_type(sp,  enum_ref.m_params, enum_path.m_params,  fld.ent) );
                     }
                     ::HIR::TypeRef  fake_ty { mv$(ents) };
-                    this->generate_tree_code(sp, subnode, fake_ty, 0, ::MIR::LValue::make_Downcast({ box$(val.clone()), branch.first }), depth+1, depth+1, and_then);
+                    // NOTE: Depth is increased by the tuple code
+                    this->generate_tree_code(sp, subnode, fake_ty, 0, ::MIR::LValue::make_Downcast({ box$(val.clone()), branch.first }), depth, depth, and_then);
                 }
                 else {
                     and_then( subnode );
                 }
                 ),
             (Struct,
-                ::std::vector< ::HIR::TypeRef>  ents;
-                for( const auto& fld : e )
+                if( depth < subnode.m_field_path.size() )
                 {
-                    ents.push_back( monomorphise_type(sp,  enum_ref.m_params, enum_path.m_params,  fld.second.ent) );
+                    ::std::vector< ::HIR::TypeRef>  ents;
+                    for( const auto& fld : e )
+                    {
+                        ents.push_back( monomorphise_type(sp,  enum_ref.m_params, enum_path.m_params,  fld.second.ent) );
+                    }
+                    ::HIR::TypeRef  fake_ty { mv$(ents) };
+                    // NOTE: Depth is increased by the tuple code
+                    this->generate_tree_code(sp, subnode, fake_ty, 0, ::MIR::LValue::make_Downcast({ box$(val.clone()), branch.first }), depth, depth, and_then);
                 }
-                ::HIR::TypeRef  fake_ty { mv$(ents) };
-                this->generate_tree_code(sp, subnode, fake_ty, 0, ::MIR::LValue::make_Downcast({ box$(val.clone()), branch.first }), depth+1, depth+1, and_then);
+                else {
+                    and_then( subnode );
+                }
                 )
             )
             });
