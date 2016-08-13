@@ -429,8 +429,8 @@ struct DecisionTreeNode
         (Bool, struct { Branch false_branch, true_branch; }),
         (Variant, ::std::vector< ::std::pair<unsigned int, Branch> >),
         (Unsigned, ::std::vector< ::std::pair< Range<uint64_t>, Branch> >),
-        (Signed, ::std::vector< ::std::pair< Range<int64_t>, Branch> >)
-        //(String, struct { branchset_t< ::std::string>   branches; })
+        (Signed, ::std::vector< ::std::pair< Range<int64_t>, Branch> >),
+        (String, ::std::vector< ::std::pair< ::std::string, Branch> >)
         );
     
     bool is_specialisation;
@@ -869,6 +869,15 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             ),
         (Ref,
             this->append_from( sp, *pe.sub, *e.inner );
+            ),
+        (Value,
+            if( pe.val.is_String() ) {
+                const auto& s = pe.val.as_String();
+                m_rules.push_back( PatternRule::make_Value(s) );
+            }
+            else {
+                BUG(sp, "Matching borrow invalid pattern - " << pat);
+            }
             )
         )
         ),
@@ -930,6 +939,13 @@ DecisionTreeNode::Values DecisionTreeNode::clone(const DecisionTreeNode::Values&
         ),
     (Signed,
         Values::Data_Signed rv;
+        rv.reserve(e.size());
+        for(const auto& v : e)
+            rv.push_back( ::std::make_pair(v.first, clone(v.second)) );
+        return Values( mv$(rv) );
+        ),
+    (String,
+        Values::Data_String rv;
         rv.reserve(e.size());
         for(const auto& v : e)
             rv.push_back( ::std::make_pair(v.first, clone(v.second)) );
@@ -1059,13 +1075,16 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
                 BUG(sp, "Mismatched rules");
             }
             auto& be = m_branches.as_Unsigned();
-            auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.start <= ve; });
-            if( it == be.end() || it->first.end < ve ) {
+            auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.end >= ve; });
+            if( it == be.end() || it->first.start > ve ) {
                 it = be.insert( it, ::std::make_pair( Range<uint64_t> { ve,ve }, Branch( box$(DecisionTreeNode()) ) ) );
+            }
+            else if( it->first.start == ve && it->first.end == ve ) {
+                // Equal, continue and add sub-pat
             }
             else {
                 // Collide or overlap!
-                TODO(sp, "Value patterns - Uint - Overlapping");
+                TODO(sp, "Value patterns - Uint - Overlapping - " << it->first.start << " <= " << ve << " <= " << it->first.end);
             }
             auto& branch = it->second;
             if( rule_count > 1 )
@@ -1089,7 +1108,29 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
             TODO(sp, "Value patterns - Bytes");
             ),
         (StaticString,
-            TODO(sp, "Value patterns - StaticString");
+            if( m_branches.is_Unset() ) {
+                m_branches = Values::make_String({});
+            }
+            else if( !m_branches.is_String() ) {
+                BUG(sp, "Mismatched rules");
+            }
+            auto& be = m_branches.as_String();
+            
+            auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first >= ve; });
+            if( it == be.end() || it->first != ve ) {
+                it = be.insert( it, ::std::make_pair(ve, Branch( box$(DecisionTreeNode()) ) ) );
+            }
+            auto& branch = it->second;
+            if( rule_count > 1 )
+            {
+                assert( branch.as_Subtree() );
+                auto& subtree = *branch.as_Subtree();
+                subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+            }
+            else
+            {
+                and_then(branch);
+            }
             ),
         (ItemAddr,
             throw "";
@@ -1110,9 +1151,12 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
                 BUG(sp, "Mismatched rules");
             }
             auto& be = m_branches.as_Unsigned();
-            auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.start <= ve_end; });
+            auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.start >= ve_end; });
             if( it == be.end() || it->first.end < ve_start ) {
                 it = be.insert( it, ::std::make_pair( Range<uint64_t> { ve_start,ve_end }, Branch( box$(DecisionTreeNode()) ) ) );
+            }
+            else if( it->first.start == ve_start && it->first.end == ve_end ) {
+                // Equal, add sub-pattern
             }
             else {
                 // Collide or overlap!
@@ -1131,16 +1175,16 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
             }
             ),
         (Float,
-            TODO(sp, "Value patterns - Float");
+            TODO(sp, "ValueRange patterns - Float");
             ),
         (Bool,
             throw "";
             ),
         (Bytes,
-            TODO(sp, "Value patterns - Bytes");
+            TODO(sp, "ValueRange patterns - Bytes");
             ),
         (StaticString,
-            TODO(sp, "Value patterns - StaticString");
+            ERROR(sp, E0000, "Use of string in value range patter");
             ),
         (ItemAddr,
             throw "";
@@ -1186,6 +1230,11 @@ void DecisionTreeNode::simplify()
         for(auto& branch : e) {
             H::simplify_branch(branch.second);
         }
+        ),
+    (String,
+        for(auto& branch : e) {
+            H::simplify_branch(branch.second);
+        }
         )
     )
     
@@ -1226,6 +1275,11 @@ void DecisionTreeNode::propagate_default()
         for(auto& branch : e) {
             H::handle_branch(branch.second, m_default);
         }
+        ),
+    (String,
+        for(auto& branch : e) {
+            H::handle_branch(branch.second, m_default);
+        }
         )
     )
     TU_IFLET(Branch, m_default, Subtree, be,
@@ -1251,6 +1305,11 @@ void DecisionTreeNode::propagate_default()
                 }
                 ),
             (Signed,
+                for(auto& branch : e) {
+                    be->unify_from(branch.second);
+                }
+                ),
+            (String,
                 for(auto& branch : e) {
                     be->unify_from(branch.second);
                 }
@@ -1328,6 +1387,18 @@ void DecisionTreeNode::unify_from(const Branch& b)
                     // NOTE: Overlapping doesn't get handled here
                 }
             }
+            ),
+        (String,
+            for(const auto& srcv : src)
+            {
+                auto it = ::std::find_if( dst.begin(), dst.end(), [&](const auto& x){ return x.first >= srcv.first; });
+                // Not found? Insert a new branch
+                if( it == dst.end() ) {
+                    it = dst.insert(it, ::std::make_pair( srcv.first, clone(srcv.second) ));
+                }
+                else {
+                }
+            }
             )
         )
         if( m_default.is_Unset() ) {
@@ -1387,6 +1458,11 @@ void DecisionTreeNode::unify_from(const Branch& b)
                 os << range.start << "..." << range.end;
             }
             os << " = " << branch.second << ", ";
+        }
+        ),
+    (String,
+        for(const auto& branch : e) {
+            os << "\"" << branch.first << "\"" << " = " << branch.second << ", ";
         }
         )
     )
@@ -1507,10 +1583,18 @@ void DecisionTreeGen::populate_tree_vals(
         BUG(sp, "Hit match over `[T]` - must be `&[T]`");
         ),
     (Borrow,
-        populate_tree_vals( sp, node,
-            *e.inner, 0, ::MIR::LValue::make_Deref({ box$(val.clone()) }),
-            and_then
-            );
+        if( *e.inner == ::HIR::TypeRef(::HIR::CoreType::Str) ) {
+            TODO(sp, "Match over &str");
+        }
+        else if( e.inner->m_data.is_Slice() ) {
+            TODO(sp, "Match over &[T]");
+        }
+        else {
+            populate_tree_vals( sp, node,
+                *e.inner, 0, ::MIR::LValue::make_Deref({ box$(val.clone()) }),
+                and_then
+                );
+        }
         ),
     (Pointer,
         ERROR(sp, E0000, "Attempting to match over a pointer");
