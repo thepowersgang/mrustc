@@ -395,6 +395,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     }
                     ),
                 (Struct,
+                    TODO(sp, "Enum Struct");
                     )
                 )
                 // NOTE: All enum variant patterns take one slot
@@ -574,9 +575,10 @@ struct DecisionTreeNode
     /// HELPER: Unfies the rules from the provided branch with this node
     void unify_from(const Branch& b);
     
-    ::MIR::LValue get_field(const ::MIR::LValue& base) const {
+    ::MIR::LValue get_field(const ::MIR::LValue& base, unsigned int base_depth) const {
         ::MIR::LValue   cur = base.clone();
-        for(const auto idx : m_field_path) {
+        for(unsigned int i = base_depth; i < m_field_path.size(); i ++ ) {
+            const auto idx = m_field_path[i];
             if( idx == FIELD_DEREF ) {
                 cur = ::MIR::LValue::make_Deref({ box$(cur) });
             }
@@ -606,13 +608,13 @@ struct DecisionTreeGen
     }
     
     void generate_tree_code(const Span& sp, const DecisionTreeNode& node, const ::HIR::TypeRef& ty, const ::MIR::LValue& val) {
-        generate_tree_code(sp, node, ty, 0, val, 0, [](const auto& n){ DEBUG("final node = " << n); });
+        generate_tree_code(sp, node, ty, 0, val, 0,0, [](const auto& n){ DEBUG("final node = " << n); });
     }
     void generate_tree_code(
         const Span& sp,
         const DecisionTreeNode& node,
         const ::HIR::TypeRef& ty, unsigned int ty_ofs,
-        const ::MIR::LValue& val, unsigned int depth,
+        const ::MIR::LValue& base_val, unsigned int depth, unsigned int base_depth,
         ::std::function<void(const DecisionTreeNode&)> and_then
         );
     
@@ -640,7 +642,7 @@ struct DecisionTreeGen
         const DecisionTreeNode::Branch& default_branch,
         const DecisionTreeNode::Values::Data_Variant& branches,
         const ::HIR::TypeRef& ty,/* unsigned int _ty_ofs,*/
-        const ::MIR::LValue& val,
+        const ::MIR::LValue& val, unsigned int depth,
         ::std::function<void(const DecisionTreeNode&)> and_then
         );
 };
@@ -697,7 +699,7 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
     DecisionTreeGen gen { builder, rule_blocks };
     builder.set_cur_block( first_cmp_block );
     gen.generate_tree_code( node.span(), root_node, node.m_value->m_res_type, mv$(match_val) );
-    assert( !builder.block_active() );
+    ASSERT_BUG(node.span(), !builder.block_active(), "Decision tree didn't terminate the final block");
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const PatternRule& x)
@@ -998,6 +1000,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 
                 const auto& fields_def = var_def.second.as_Tuple();
                 PatternRulesetBuilder   sub_builder;
+                sub_builder.m_field_path = m_field_path;
                 sub_builder.m_field_path.push_back(0);
                 for( unsigned int i = 0; i < pe.sub_patterns.size(); i ++ )
                 {
@@ -1031,6 +1034,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 }
                 // 2. Iterate this list and recurse on the patterns
                 PatternRulesetBuilder   sub_builder;
+                sub_builder.m_field_path = m_field_path;
                 sub_builder.m_field_path.push_back(0);
                 for( unsigned int i = 0; i < tmp.size(); i ++ )
                 {
@@ -1751,11 +1755,13 @@ void DecisionTreeGen::generate_tree_code(
     const Span& sp,
     const DecisionTreeNode& node,
     const ::HIR::TypeRef& ty, unsigned int ty_ofs,
-    const ::MIR::LValue& base_val, unsigned int depth,
+    const ::MIR::LValue& base_val, unsigned int depth, unsigned int base_depth,
     ::std::function<void(const DecisionTreeNode&)> and_then
     )
 {
-    TRACE_FUNCTION_F("ty=" << ty << ", ty_ofs=" << ty_ofs << ", node=" << node);
+    TRACE_FUNCTION_F("ty=" << ty << ", ty_ofs=" << ty_ofs << ", depth="<<depth<<", node=" << node);
+    
+    assert( depth <= node.m_field_path.size() );
     
     TU_MATCHA( (ty.m_data), (e),
     (Infer,   BUG(sp, "Ivar for in match type"); ),
@@ -1784,7 +1790,7 @@ void DecisionTreeGen::generate_tree_code(
             // Emit an if based on the route taken
             auto bb_false = m_builder.new_bb_unlinked();
             auto bb_true  = m_builder.new_bb_unlinked();
-            m_builder.end_block( ::MIR::Terminator::make_If({ node.get_field(base_val), bb_true, bb_false }) );
+            m_builder.end_block( ::MIR::Terminator::make_If({ node.get_field(base_val, base_depth), bb_true, bb_false }) );
             
             // Recurse into sub-patterns
             const auto& branch_false = ( !branches.false_branch.is_Unset() ? branches.false_branch : node.m_default );
@@ -1802,11 +1808,11 @@ void DecisionTreeGen::generate_tree_code(
         case ::HIR::CoreType::U64:
         case ::HIR::CoreType::Usize:
             ASSERT_BUG(sp, node.m_branches.is_Unsigned(), "Tree for unsigned isn't a _Unsigned - node="<<node);
-            this->generate_branches_Unsigned(sp, node.m_default, node.m_branches.as_Unsigned(), ty, node.get_field(base_val), mv$(and_then));
+            this->generate_branches_Unsigned(sp, node.m_default, node.m_branches.as_Unsigned(), ty, node.get_field(base_val, base_depth), mv$(and_then));
             break;
         case ::HIR::CoreType::Char:
             ASSERT_BUG(sp, node.m_branches.is_Unsigned(), "Tree for char isn't a _Unsigned - node="<<node);
-            this->generate_branches_Char(sp, node.m_default, node.m_branches.as_Unsigned(), ty, node.get_field(base_val), mv$(and_then));
+            this->generate_branches_Char(sp, node.m_default, node.m_branches.as_Unsigned(), ty, node.get_field(base_val, base_depth), mv$(and_then));
             break;
         default:
             TODO(sp, "Primitive - " << ty);
@@ -1822,13 +1828,13 @@ void DecisionTreeGen::generate_tree_code(
         // - If the node is for this type, recurse
         else if( node.m_field_path[depth] == ty_ofs ) {
             generate_tree_code( sp, node,
-                e[ty_ofs], 0, base_val, depth+1,
-                [&](auto& n){ this->generate_tree_code(sp, n, ty, ty_ofs+1, base_val, depth, and_then); }
+                e[ty_ofs], 0, base_val, depth+1, base_depth,
+                [&](auto& n){ this->generate_tree_code(sp, n, ty, ty_ofs+1, base_val, depth, base_depth, and_then); }
                 );
         }
         // - Otherwise, go to the next node
         else {
-            this->generate_tree_code(sp, node, ty, ty_ofs+1, base_val, depth, and_then);
+            this->generate_tree_code(sp, node, ty, ty_ofs+1, base_val, depth, base_depth, and_then);
         }
         ),
     (Path,
@@ -1855,12 +1861,12 @@ void DecisionTreeGen::generate_tree_code(
                     ::HIR::TypeRef  tmp;
                     const auto& fld_ty = (monomorphise_type_needed(fld.ent) ? tmp = monomorph(fld.ent) : fld.ent);
                     generate_tree_code( sp, node,
-                        fld_ty, 0, base_val, depth+1,
-                        [&](auto& n){ this->generate_tree_code(sp, n, ty, ty_ofs+1, base_val, depth, and_then); }
+                        fld_ty, 0, base_val, depth+1, base_depth,
+                        [&](auto& n){ this->generate_tree_code(sp, n, ty, ty_ofs+1, base_val, depth, base_depth, and_then); }
                         );
                 }
                 else {
-                    this->generate_tree_code(sp, node, ty, ty_ofs+1, base_val, depth, and_then);
+                    this->generate_tree_code(sp, node, ty, ty_ofs+1, base_val, depth, base_depth, and_then);
                 }
                 ),
             (Named,
@@ -1872,12 +1878,12 @@ void DecisionTreeGen::generate_tree_code(
                     ::HIR::TypeRef  tmp;
                     const auto& fld_ty = (monomorphise_type_needed(fld.ent) ? tmp = monomorph(fld.ent) : fld.ent);
                     generate_tree_code( sp, node,
-                        fld_ty, 0, base_val, depth+1,
-                        [&](auto& n){ this->generate_tree_code(sp, n, ty, ty_ofs+1, base_val, depth, and_then); }
+                        fld_ty, 0, base_val, depth+1, base_depth,
+                        [&](auto& n){ this->generate_tree_code(sp, n, ty, ty_ofs+1, base_val, depth, base_depth, and_then); }
                         );
                 }
                 else {
-                    this->generate_tree_code(sp, node, ty, ty_ofs+1, base_val, depth, and_then);
+                    this->generate_tree_code(sp, node, ty, ty_ofs+1, base_val, depth, base_depth, and_then);
                 }
                 )
             )
@@ -1885,7 +1891,7 @@ void DecisionTreeGen::generate_tree_code(
         (Enum,
             ASSERT_BUG(sp, node.m_branches.is_Variant(), "Tree for enum isn't a Variant - node="<<node);
             assert(pbe);
-            this->generate_branches_Enum(sp, node.m_default, node.m_branches.as_Variant(), ty, node.get_field(base_val), mv$(and_then));
+            this->generate_branches_Enum(sp, node.m_default, node.m_branches.as_Variant(), ty, node.get_field(base_val, base_depth), depth, mv$(and_then));
             )
         )
         ),
@@ -1920,7 +1926,7 @@ void DecisionTreeGen::generate_tree_code(
             assert( !branches.empty() );
             for(const auto& branch : branches)
             {
-                auto have_val = node.get_field(base_val);
+                auto have_val = node.get_field(base_val, base_depth);
                 
                 auto next_bb = (&branch == &branches.back() ? default_bb : m_builder.new_bb_unlinked());
                 
@@ -1948,7 +1954,7 @@ void DecisionTreeGen::generate_tree_code(
         else {
             // TODO: Should this check if the index is -1? The assertion doesn't fire in general use, so looks good.
             ASSERT_BUG( sp,  node.m_field_path[depth] == FIELD_DEREF, "& not matching on deref " << depth << " node=" <<node );
-            generate_tree_code( sp, node, *e.inner, 0, base_val, depth+1,  and_then );
+            generate_tree_code( sp, node, *e.inner, 0, base_val, depth+1, base_depth,  and_then );
         }
         ),
     (Pointer,
@@ -2076,7 +2082,7 @@ void DecisionTreeGen::generate_branches_Enum(
     const DecisionTreeNode::Branch& default_branch,
     const DecisionTreeNode::Values::Data_Variant& branches,
     const ::HIR::TypeRef& ty,/* unsigned int _ty_ofs,*/
-    const ::MIR::LValue& val,
+    const ::MIR::LValue& val, unsigned int depth,
     ::std::function<void(const DecisionTreeNode&)> and_then
     )
 {
@@ -2135,17 +2141,29 @@ void DecisionTreeGen::generate_branches_Enum(
                 and_then( subnode );
                 ),
             (Tuple,
-                // Make a fake tuple
+                if( depth+1 < subnode.m_field_path.size() )
+                {
+                    // Make a fake tuple
+                    ::std::vector< ::HIR::TypeRef>  ents;
+                    for( const auto& fld : e )
+                    {
+                        ents.push_back( monomorphise_type(sp,  enum_ref.m_params, enum_path.m_params,  fld.ent) );
+                    }
+                    ::HIR::TypeRef  fake_ty { mv$(ents) };
+                    this->generate_tree_code(sp, subnode, fake_ty, 0, ::MIR::LValue::make_Downcast({ box$(val.clone()), branch.first }), depth+1, depth+1, and_then);
+                }
+                else {
+                    and_then( subnode );
+                }
+                ),
+            (Struct,
                 ::std::vector< ::HIR::TypeRef>  ents;
                 for( const auto& fld : e )
                 {
-                    ents.push_back( monomorphise_type(sp,  enum_ref.m_params, enum_path.m_params,  fld.ent) );
+                    ents.push_back( monomorphise_type(sp,  enum_ref.m_params, enum_path.m_params,  fld.second.ent) );
                 }
                 ::HIR::TypeRef  fake_ty { mv$(ents) };
-                this->generate_tree_code(sp, subnode, fake_ty, 0, ::MIR::LValue::make_Downcast({ box$(val.clone()), branch.first }), 0, and_then);
-                ),
-            (Struct,
-                TODO(sp, "Enum pattern - struct");
+                this->generate_tree_code(sp, subnode, fake_ty, 0, ::MIR::LValue::make_Downcast({ box$(val.clone()), branch.first }), depth+1, depth+1, and_then);
                 )
             )
             });
