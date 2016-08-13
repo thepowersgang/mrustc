@@ -584,6 +584,14 @@ struct DecisionTreeGen
         const ::MIR::LValue& val,
         ::std::function<void(const DecisionTreeNode&)> and_then
         );
+    void generate_branches_Char(
+        const Span& sp,
+        const DecisionTreeNode::Branch& default_branch,
+        const DecisionTreeNode::Values::Data_Unsigned& branches,
+        const ::HIR::TypeRef& ty,/* unsigned int _ty_ofs,*/
+        const ::MIR::LValue& val,
+        ::std::function<void(const DecisionTreeNode&)> and_then
+        );
     
     void generate_branches_Enum(
         const Span& sp,
@@ -760,9 +768,11 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::Bool:
                 BUG(sp, "Can't range match on Bool");
                 break;
-            case ::HIR::CoreType::Char:
-                TODO(sp, "Match value char");
-                break;
+            case ::HIR::CoreType::Char: {
+                uint64_t start = H::get_pattern_value_int(sp, pat, pe.start);
+                uint64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
+                m_rules.push_back( PatternRule::make_ValueRange( {::MIR::Constant(start), ::MIR::Constant(end)} ) );
+                } break;
             case ::HIR::CoreType::Str:
                 BUG(sp, "Hit match over `str` - must be `&str`");
                 break;
@@ -797,9 +807,11 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 // TODO: Support values from `const` too
                 m_rules.push_back( PatternRule::make_Bool( pe.val.as_Integer().value != 0 ) );
                 break;
-            case ::HIR::CoreType::Char:
-                TODO(sp, "Match value char");
-                break;
+            case ::HIR::CoreType::Char: {
+                // Char is just another name for 'u32'... but with a restricted range
+                uint64_t val = H::get_pattern_value_int(sp, pat, pe.val);
+                m_rules.push_back( PatternRule::make_Value( ::MIR::Constant(val) ) );
+                } break;
             case ::HIR::CoreType::Str:
                 BUG(sp, "Hit match over `str` - must be `&str`");
                 break;
@@ -1274,7 +1286,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
             }
             else {
                 // Collide or overlap!
-                TODO(sp, "ValueRange patterns - Uint - Overlapping");
+                TODO(sp, "ValueRange patterns - Uint - Overlapping - " << it->first.start << "..." << it->first.end << " and " << ve_start << "..." << ve_end);
             }
             auto& branch = it->second;
             if( rule_count > 1 )
@@ -1649,6 +1661,10 @@ void DecisionTreeGen::populate_tree_vals(
             ASSERT_BUG(sp, node.m_branches.is_Unsigned(), "Tree for unsigned isn't a _Unsigned - node="<<node);
             this->generate_branches_Unsigned(sp, node.m_default, node.m_branches.as_Unsigned(), ty, val, mv$(and_then));
             break;
+        case ::HIR::CoreType::Char:
+            ASSERT_BUG(sp, node.m_branches.is_Unsigned(), "Tree for char isn't a _Unsigned - node="<<node);
+            this->generate_branches_Char(sp, node.m_default, node.m_branches.as_Unsigned(), ty, val, mv$(and_then));
+            break;
         default:
             TODO(sp, "Primitive - " << ty);
             break;
@@ -1811,18 +1827,60 @@ void DecisionTreeGen::generate_branches_Unsigned(
     }
     assert( m_builder.block_active() );
     
-    // TODO: default_branch
-    TU_MATCHA( (default_branch), (be),
-    (Unset,
+    if( default_branch.is_Unset() ) {
+        // TODO: Emit error if non-exhaustive
         m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
-        ),
-    (Terminal,
-        m_builder.end_block( ::MIR::Terminator::make_Goto( this->get_block_for_rule( be ) ) );
-        ),
-    (Subtree,
-        and_then( *be );
-        )
+    }
+    else {
+        this->generate_branch(default_branch, and_then);
+    }
+}
+void DecisionTreeGen::generate_branches_Char(
+    const Span& sp,
+    const DecisionTreeNode::Branch& default_branch,
+    const DecisionTreeNode::Values::Data_Unsigned& branches,
+    const ::HIR::TypeRef& ty,/* unsigned int _ty_ofs,*/
+    const ::MIR::LValue& val,
+    ::std::function<void(const DecisionTreeNode&)> and_then
     )
+{
+    auto default_block = m_builder.new_bb_unlinked();
+    
+    // TODO: Convert into an integer switch w/ offset instead of chained comparisons
+    
+    for( const auto& branch : branches )
+    {
+        auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
+        
+        auto val_start = m_builder.lvalue_or_temp(ty, ::MIR::Constant(branch.first.start));
+        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(ty, ::MIR::Constant(branch.first.end)));
+        
+        auto cmp_gt_block = m_builder.new_bb_unlinked();
+        auto val_cmp_lt = m_builder.lvalue_or_temp( ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
+            val.clone(), ::MIR::eBinOp::LT, mv$(val_start)
+            }) );
+        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_lt), default_block, cmp_gt_block }) );
+        m_builder.set_cur_block( cmp_gt_block );
+        auto success_block = m_builder.new_bb_unlinked();
+        auto val_cmp_gt = m_builder.lvalue_or_temp( ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
+            val.clone(), ::MIR::eBinOp::GT, mv$(val_end)
+            }) );
+        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_gt), next_block, success_block }) );
+        
+        m_builder.set_cur_block( success_block );
+        this->generate_branch(branch.second, and_then);
+        
+        m_builder.set_cur_block( next_block );
+    }
+    assert( m_builder.block_active() );
+    
+    if( default_branch.is_Unset() ) {
+        // TODO: Error if not exhaustive.
+        m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+    }
+    else {
+        this->generate_branch(default_branch, and_then);
+    }
 }
 void DecisionTreeGen::generate_branches_Enum(
     const Span& sp,
