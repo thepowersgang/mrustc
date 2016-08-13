@@ -422,6 +422,31 @@ struct DecisionTreeNode
     {
         T   start;
         T   end;
+        
+        bool operator<(const Range<T>& x) const {
+            return (end < x.start);
+        }
+        bool operator<(const T& x) const {
+            return (end < x);
+        }
+        
+        bool operator>=(const Range<T>& x) const {
+            return start > x.end || ovelaps(x);
+        }
+        bool operator>=(const T& x) const {
+            return (start >= x);
+        }
+        
+        bool operator>(const Range<T>& x) const {
+            return (start > x.end);
+        }
+        bool operator>(const T& x) const {
+            return (start > x);
+        }
+        
+        bool overlaps(const Range<T>& x) const {
+            return (x.start <= start && start <= x.end) || (x.start <= end && end <= x.end);
+        }
     };
     
     TAGGED_UNION( Values, Unset,
