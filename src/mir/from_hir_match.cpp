@@ -215,12 +215,52 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
         ),
     (Primitive,
         if( !rule.is_Any() ) {
-            TODO(sp, "Simple match over primitive");
+            switch(te)
+            {
+            case ::HIR::CoreType::Bool: {
+                ASSERT_BUG(sp, rule.is_Bool(), "PatternRule for bool isn't _Bool");
+                bool test_val = rule.as_Bool();
+                
+                auto succ_bb = builder.new_bb_unlinked();
+                
+                if( test_val ) {
+                    builder.end_block( ::MIR::Terminator::make_If({ match_val.clone(), succ_bb, fail_bb }) );
+                }
+                else {
+                    builder.end_block( ::MIR::Terminator::make_If({ match_val.clone(), fail_bb, succ_bb }) );
+                }
+                builder.set_cur_block(succ_bb);
+                } break;
+            case ::HIR::CoreType::U8:
+            case ::HIR::CoreType::U16:
+            case ::HIR::CoreType::U32:
+            case ::HIR::CoreType::U64:
+            case ::HIR::CoreType::Usize:
+                TU_MATCH_DEF( PatternRule, (rule), (re),
+                (
+                    BUG(sp, "PatternRule for integer is not Value or ValueRange");
+                    ),
+                (Value,
+                    auto succ_bb = builder.new_bb_unlinked();
+                    
+                    auto test_lval = builder.lvalue_or_temp(te, ::MIR::Constant(re.as_Uint()));
+                    auto cmp_lval = builder.lvalue_or_temp(::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
+                    builder.set_cur_block(succ_bb);
+                    ),
+                (ValueRange,
+                    TODO(sp, "Simple match over primitive - " << ty << " - ValueRange");
+                    )
+                )
+                break;
+            default:
+                TODO(sp, "Primitive - " << ty);
+                break;
+            }
         }
         return 1;
         ),
     (Path,
-        // TODO
         TU_MATCHA( (te.binding), (pbe),
         (Unbound,
             BUG(sp, "Encounterd unbound path - " << te.path);
@@ -512,7 +552,7 @@ struct DecisionTreeGen
         ::std::function<void(const DecisionTreeNode&)> and_then
         );
     
-    void generate_branch(const DecisionTreeNode::Branch& branch, ::MIR::BasicBlockId bb, ::std::function<void(const DecisionTreeNode&)> cb);
+    void generate_branch(const DecisionTreeNode::Branch& branch, ::std::function<void(const DecisionTreeNode&)> cb);
     
     void generate_branches_Unsigned(
         const Span& sp,
@@ -1546,8 +1586,10 @@ void DecisionTreeGen::populate_tree_vals(
             const auto& branch_false = ( !branches.false_branch.is_Unset() ? branches.false_branch : node.m_default );
             const auto& branch_true  = ( !branches. true_branch.is_Unset() ? branches. true_branch : node.m_default );
             
-            this->generate_branch(branch_true , bb_true , and_then);
-            this->generate_branch(branch_false, bb_false, and_then);
+            m_builder.set_cur_block(bb_true );
+            this->generate_branch(branch_true , and_then);
+            m_builder.set_cur_block(bb_false);
+            this->generate_branch(branch_false, and_then);
             
             } break;
         case ::HIR::CoreType::U8:
@@ -1609,7 +1651,41 @@ void DecisionTreeGen::populate_tree_vals(
         ),
     (Borrow,
         if( *e.inner == ::HIR::TypeRef(::HIR::CoreType::Str) ) {
-            TODO(sp, "Match over &str");
+            // TODO: Chained comparisons with ordering.
+            // - Would this just emit a eBinOp? That implies deep codegen support for strings.
+            // - rustc emits calls to PartialEq::eq for this and for slices. mrustc could use PartialOrd and fall back to PartialEq if unavaliable?
+            //  > Requires crate access here! - A memcmp call is probably better, probably via a binop
+            
+            // NOTE: The below implementation gets the final codegen to call memcmp on the strings by emitting eBinOp::{LT,GT}
+
+            ASSERT_BUG(sp, node.m_branches.is_String(), "Tree for &str isn't a _String - node="<<node);
+            const auto& branches = node.m_branches.as_String();
+            
+            auto default_bb = m_builder.new_bb_unlinked();
+            
+            // 
+            assert( !branches.empty() );
+            for(const auto& branch : branches)
+            {
+                auto next_bb = (&branch == &branches.back() ? default_bb : m_builder.new_bb_unlinked());
+                
+                auto test_val = m_builder.lvalue_or_temp( ::HIR::TypeRef(::HIR::CoreType::Str), ::MIR::Constant(branch.first) );
+                auto cmp_gt_bb = m_builder.new_bb_unlinked();
+                
+                auto lt_val = m_builder.lvalue_or_temp( ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::LT, test_val.clone() }) );
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(lt_val), default_bb, cmp_gt_bb }) );
+                m_builder.set_cur_block(cmp_gt_bb);
+                
+                auto eq_bb = m_builder.new_bb_unlinked();
+                auto gt_val = m_builder.lvalue_or_temp( ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::GT, test_val.clone() }) );
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(gt_val), next_bb, eq_bb }) );
+                m_builder.set_cur_block(eq_bb);
+                
+                this->generate_branch(branch.second, and_then);
+                
+                m_builder.set_cur_block(next_bb);
+            }
+            this->generate_branch(node.m_default, and_then);
         }
         else if( e.inner->m_data.is_Slice() ) {
             TODO(sp, "Match over &[T]");
@@ -1633,9 +1709,8 @@ void DecisionTreeGen::populate_tree_vals(
     )
 }
 
-void DecisionTreeGen::generate_branch(const DecisionTreeNode::Branch& branch, ::MIR::BasicBlockId bb, ::std::function<void(const DecisionTreeNode&)> cb)
+void DecisionTreeGen::generate_branch(const DecisionTreeNode::Branch& branch, ::std::function<void(const DecisionTreeNode&)> cb)
 {
-    this->m_builder.set_cur_block(bb);
     assert( !branch.is_Unset() );
     if( branch.is_Terminal() ) {
         this->m_builder.end_block( ::MIR::Terminator::make_Goto( this->get_block_for_rule( branch.as_Terminal() ) ) );
@@ -1680,7 +1755,8 @@ void DecisionTreeGen::generate_branches_Unsigned(
             }) );
         m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_gt), next_block, success_block }) );
         
-        this->generate_branch(branch.second, success_block, and_then);
+        m_builder.set_cur_block( success_block );
+        this->generate_branch(branch.second, and_then);
         
         m_builder.set_cur_block( next_block );
     }
@@ -1753,7 +1829,8 @@ void DecisionTreeGen::generate_branches_Enum(
         auto bb = variant_blocks[branch.first];
         const auto& var = variants[branch.first];
         DEBUG(branch.first << " " << var.first << " = " << branch);
-        this->generate_branch(branch.second, bb, [&](auto& subnode) {
+        m_builder.set_cur_block( bb );
+        this->generate_branch(branch.second, [&](auto& subnode) {
             TU_MATCHA( (var.second), (e),
             (Unit,
                 and_then( subnode );
