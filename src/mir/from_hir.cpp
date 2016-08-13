@@ -219,7 +219,19 @@ namespace {
             this->visit_node_ptr(node.m_code);
             m_loop_stack.pop_back();
             
-            m_builder.end_block( ::MIR::Terminator::make_Goto(loop_block) );
+            // If there's a stray result, drop i
+            if( m_builder.has_result() ) {
+                assert( m_builder.block_active() );
+                //::MIR::RValue res = m_builder.get_result(node.span());
+                //if( res.is_Use() ) {
+                //    m_builder.push_stmt_drop( mv$(res.as_Use()) );
+                //}
+            }
+            // Terminate block with a jump back to the start
+            if( m_builder.block_active() )
+            {
+                m_builder.end_block( ::MIR::Terminator::make_Goto(loop_block) );
+            }
             m_builder.set_cur_block(loop_next);
         }
         void visit(::HIR::ExprNode_LoopControl& node) override
