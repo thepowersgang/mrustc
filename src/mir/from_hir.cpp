@@ -561,8 +561,10 @@ namespace {
         void visit(::HIR::ExprNode_UniOp& node) override
         {
             TRACE_FUNCTION_F("_UniOp");
+            
+            const auto& ty_val = node.m_value->m_res_type;
             this->visit_node_ptr(node.m_value);
-            auto val = m_builder.lvalue_or_temp( node.m_value->m_res_type, m_builder.get_result(node.m_value->span()) );
+            auto val = m_builder.lvalue_or_temp( ty_val, m_builder.get_result(node.m_value->span()) );
             
             auto res = m_builder.new_temporary(node.m_res_type);
             switch(node.m_op)
@@ -574,9 +576,47 @@ namespace {
                 m_builder.push_stmt_assign(res.as_Temporary(), ::MIR::RValue::make_Borrow({ 0, ::HIR::BorrowType::Unique, mv$(val) }));
                 break;
             case ::HIR::ExprNode_UniOp::Op::Invert:
+                if( ty_val.m_data.is_Primitive() ) {
+                    switch( ty_val.m_data.as_Primitive() )
+                    {
+                    case ::HIR::CoreType::Str:
+                    case ::HIR::CoreType::Char:
+                    case ::HIR::CoreType::F32:
+                    case ::HIR::CoreType::F64:
+                        BUG(node.span(), "`!` operator on invalid type - " << ty_val);
+                        break;
+                    default:
+                        break;
+                    }
+                }
+                else {
+                    BUG(node.span(), "`!` operator on invalid type - " << ty_val);
+                }
                 m_builder.push_stmt_assign(res.as_Temporary(), ::MIR::RValue::make_UniOp({ mv$(val), ::MIR::eUniOp::INV }));
                 break;
             case ::HIR::ExprNode_UniOp::Op::Negate:
+                if( ty_val.m_data.is_Primitive() ) {
+                    switch( ty_val.m_data.as_Primitive() )
+                    {
+                    case ::HIR::CoreType::Str:
+                    case ::HIR::CoreType::Char:
+                    case ::HIR::CoreType::Bool:
+                        BUG(node.span(), "`-` operator on invalid type - " << ty_val);
+                        break;
+                    case ::HIR::CoreType::U8:
+                    case ::HIR::CoreType::U16:
+                    case ::HIR::CoreType::U32:
+                    case ::HIR::CoreType::U64:
+                    case ::HIR::CoreType::Usize:
+                        BUG(node.span(), "`-` operator on unsigned integer - " << ty_val);
+                        break;
+                    default:
+                        break;
+                    }
+                }
+                else {
+                    BUG(node.span(), "`!` operator on invalid type - " << ty_val);
+                }
                 m_builder.push_stmt_assign(res.as_Temporary(), ::MIR::RValue::make_UniOp({ mv$(val), ::MIR::eUniOp::NEG }));
                 break;
             }
@@ -665,27 +705,30 @@ namespace {
         void visit(::HIR::ExprNode_Index& node) override
         {
             TRACE_FUNCTION_F("_Index");
+            
+            // NOTE: Calculate the index first (so if it borrows from the source, it's over by the time that's needed)
             this->visit_node_ptr(node.m_index);
             auto index = m_builder.lvalue_or_temp( node.m_index->m_res_type, m_builder.get_result(node.m_index->span()) );
             
             this->visit_node_ptr(node.m_value);
             auto value = m_builder.lvalue_or_temp( node.m_value->m_res_type, m_builder.get_result(node.m_value->span()) );
+           
+            ::MIR::RValue   limit_val;
+            TU_MATCH_DEF(::HIR::TypeRef::Data, (node.m_value->m_res_type.m_data), (e),
+            (
+                BUG(node.span(), "Indexing unsupported type " << node.m_value->m_res_type);
+                ),
+            (Array,
+                limit_val = ::MIR::Constant( e.size_val );
+                ),
+            (Slice,
+                limit_val = ::MIR::RValue::make_DstMeta({ value.clone() });
+                )
+            )
             
+            // Range checking (DISABLED)
             if( false )
             {
-                ::MIR::RValue   limit_val;
-                TU_MATCH_DEF(::HIR::TypeRef::Data, (node.m_value->m_res_type.m_data), (e),
-                (
-                    BUG(node.span(), "Indexing unsupported type " << node.m_value->m_res_type);
-                    ),
-                (Array,
-                    limit_val = ::MIR::Constant( e.size_val );
-                    ),
-                (Slice,
-                    limit_val = ::MIR::RValue::make_DstMeta({ value.clone() });
-                    )
-                )
-                
                 auto limit_lval = m_builder.lvalue_or_temp(node.m_index->m_res_type, mv$(limit_val));
                 
                 auto cmp_res = m_builder.new_temporary( ::HIR::CoreType::Bool );
@@ -707,9 +750,24 @@ namespace {
         
         void visit(::HIR::ExprNode_Deref& node) override
         {
+            const Span& sp = node.span();
             TRACE_FUNCTION_F("_Deref");
+            
+            const auto& ty_val = node.m_value->m_res_type;
             this->visit_node_ptr(node.m_value);
-            auto val = m_builder.lvalue_or_temp( node.m_value->m_res_type, m_builder.get_result(node.m_value->span()) );
+            auto val = m_builder.lvalue_or_temp( ty_val, m_builder.get_result(node.m_value->span()) );
+            
+            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_val.m_data), (te),
+            (
+                BUG(sp, "Deref on unsupported type - " << ty_val);
+                ),
+            //(Array,
+            //    ),
+            (Pointer,
+                ),
+            (Borrow,
+                )
+            )
             
             m_builder.set_result( node.span(), ::MIR::LValue::make_Deref({ box$(val) }) );
         }
