@@ -25,14 +25,16 @@
 
 int g_debug_indent_level = 0;
 ::std::string g_cur_phase;
+//::std::set< ::std::string>    g_debug_disable_map;
 
 bool debug_enabled()
 {
     //return true;
     //return g_cur_phase != "Parse";
     //return g_cur_phase != "Parse" && g_cur_phase != "Expand";
-    return g_cur_phase != "Parse" && g_cur_phase != "Expand" && g_cur_phase != "Resolve";
-    //return g_cur_phase != "Parse" && g_cur_phase != "Expand" && g_cur_phase != "Resolve" && g_cur_phase != "Typecheck Expressions";
+    //return g_cur_phase != "Parse" && g_cur_phase != "Expand" && g_cur_phase != "Resolve";
+    //return g_cur_phase != "Parse" && g_cur_phase != "Expand" && g_cur_phase != "Resolve" && g_cur_phase != "Resolve UFCS paths";
+    return g_cur_phase != "Parse" && g_cur_phase != "Expand" && g_cur_phase != "Resolve" && g_cur_phase != "Resolve UFCS paths" && g_cur_phase != "Typecheck Expressions";
     //return false;
     //return g_cur_phase == "Lower MIR";
 }
