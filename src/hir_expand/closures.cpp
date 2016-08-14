@@ -241,8 +241,6 @@ namespace {
         out_impls_t&    m_out_impls;
         out_types_t&    m_out_types;
         
-        /// Stack showing how a variable is being used
-        ::std::vector<Usage>    m_usage;
         /// Stack of active closures
         ::std::vector<ClosureScope> m_closure_stack;
     public:
@@ -477,7 +475,7 @@ namespace {
         {
             if( !m_closure_stack.empty() )
             {
-                mark_used_variable(node.m_slot);
+                mark_used_variable(node.m_slot, node.m_usage);
             }
             ::HIR::ExprVisitorDef::visit(node);
         }
@@ -487,12 +485,8 @@ namespace {
             // If closure is set, set a flag on the LHS saying it's being mutated, and one on the RHS saying it's being moved.
             if( !m_closure_stack.empty() )
             {
-                m_usage.push_back(Usage::Mutate);
                 node.m_slot->visit(*this);
-                m_usage.pop_back();
-                m_usage.push_back(Usage::Move);
                 node.m_value->visit(*this);
-                m_usage.pop_back();
             }
             else
             {
@@ -503,18 +497,7 @@ namespace {
         {
             if( !m_closure_stack.empty() )
             {
-                switch(node.m_op)
-                {
-                case ::HIR::ExprNode_UniOp::Op::Ref:    m_usage.push_back( Usage::Borrow ); break;
-                case ::HIR::ExprNode_UniOp::Op::RefMut: m_usage.push_back( Usage::Mutate ); break;
-                default:
-                    m_usage.push_back( Usage::Move );
-                    break;
-                }
-                
                 node.m_value->visit(*this);
-                
-                m_usage.pop_back();
             }
             else
             {
@@ -525,25 +508,8 @@ namespace {
         {
             if( !m_closure_stack.empty() )
             {
-                switch(node.m_op)
-                {
-                case ::HIR::ExprNode_BinOp::Op::CmpEqu:
-                case ::HIR::ExprNode_BinOp::Op::CmpNEqu:
-                case ::HIR::ExprNode_BinOp::Op::CmpLt:
-                case ::HIR::ExprNode_BinOp::Op::CmpLtE:
-                case ::HIR::ExprNode_BinOp::Op::CmpGt:
-                case ::HIR::ExprNode_BinOp::Op::CmpGtE:
-                    m_usage.push_back( Usage::Borrow );
-                    break;
-                default:
-                    m_usage.push_back( Usage::Move );
-                    break;
-                }
-                
                 node.m_left ->visit(*this);
                 node.m_right->visit(*this);
-                
-                m_usage.pop_back();
             }
             else
             {
@@ -554,15 +520,7 @@ namespace {
         {
             if( !m_closure_stack.empty() )
             {
-                // If attempting to use a Copy type by value, it can just be a Borrow of the inner type
-                if( (m_usage.size() == 0 || m_usage.back() == Usage::Move) && type_is_copy(node.m_res_type) ) {
-                    m_usage.push_back(Usage::Borrow);
-                    node.m_value->visit( *this );
-                    m_usage.pop_back();
-                }
-                else {
-                    node.m_value->visit( *this );
-                }
+                node.m_value->visit( *this );
             }
             else
             {
@@ -589,11 +547,9 @@ namespace {
                     // If the trait is known, then the &/&mut has been added
                 }
                 
-                m_usage.push_back(Usage::Move);
                 node.m_value->visit(*this);
                 for(auto& arg : node.m_args)
                     arg->visit(*this);
-                m_usage.pop_back();
             }
             else if( node.m_res_type.m_data.is_Closure() )
             {
@@ -608,11 +564,9 @@ namespace {
         {
             if( !m_closure_stack.empty() )
             {
-                m_usage.push_back(Usage::Move);
                 node.m_value->visit(*this);
                 for(auto& arg : node.m_args)
                     arg->visit(*this);
-                m_usage.pop_back();
             }
             else
             {
@@ -623,10 +577,8 @@ namespace {
         {
             if( !m_closure_stack.empty() )
             {
-                m_usage.push_back(Usage::Move);
                 for(auto& arg : node.m_args)
                     arg->visit(*this);
-                m_usage.pop_back();
             }
             else
             {
@@ -720,7 +672,7 @@ namespace {
                 )
             )
         }
-        void mark_used_variable(unsigned int slot)
+        void mark_used_variable(unsigned int slot, ::HIR::ValueUsage usage)
         {
             //for(const auto& closure_rec : m_closure_stack)
             //{
@@ -742,16 +694,17 @@ namespace {
             }
             DEBUG("Captured " << slot << " - " << m_variable_types.at(slot));
             
-            // Use the m_usage variable
-            switch( m_usage.size() > 0 ? m_usage.back() : Usage::Move )
+            switch( usage )
             {
-            case Usage::Borrow:
+            case ::HIR::ValueUsage::Unknown:
+                BUG(Span(), "Unknown usage of variable " << slot);
+            case ::HIR::ValueUsage::Borrow:
                 closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Shared);
                 break;
-            case Usage::Mutate:
+            case ::HIR::ValueUsage::Mutate:
                 closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Mut);
                 break;
-            case Usage::Move:
+            case ::HIR::ValueUsage::Move:
                 if( type_is_copy( m_variable_types.at(slot) ) ) {
                     closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Shared);
                 }
