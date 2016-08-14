@@ -438,6 +438,86 @@ namespace {
             arg_types.push_back( ty_r.clone() );
             arg_types.push_back( m_replacement->m_res_type.clone() );
         }
+        
+        void visit(::HIR::ExprNode_UniOp& node) override
+        {
+            const auto& sp = node.span();
+            ::HIR::ExprVisitorDef::visit(node);
+            
+            const auto& ty_val = node.m_value->m_res_type;
+            
+            const char* langitem = nullptr;
+            const char* method = nullptr;
+            switch(node.m_op)
+            {
+            case ::HIR::ExprNode_UniOp::Op::Ref:
+            case ::HIR::ExprNode_UniOp::Op::RefMut:
+                // & and &mut are always valid
+                return;
+            case ::HIR::ExprNode_UniOp::Op::Invert:
+                // Check if the operation is valid in the MIR.
+                if( ty_val.m_data.is_Primitive() ) {
+                    switch( ty_val.m_data.as_Primitive() )
+                    {
+                    case ::HIR::CoreType::Str:
+                    case ::HIR::CoreType::Char:
+                    case ::HIR::CoreType::F32:
+                    case ::HIR::CoreType::F64:
+                        break;
+                    default:
+                        return;
+                    }
+                }
+                else {
+                    // Not valid, replace with call
+                }
+                langitem = method = "not";
+                break;
+            case ::HIR::ExprNode_UniOp::Op::Negate:
+                if( ty_val.m_data.is_Primitive() ) {
+                    switch( ty_val.m_data.as_Primitive() )
+                    {
+                    case ::HIR::CoreType::Str:
+                    case ::HIR::CoreType::Char:
+                    case ::HIR::CoreType::Bool:
+                        break;
+                    case ::HIR::CoreType::U8:
+                    case ::HIR::CoreType::U16:
+                    case ::HIR::CoreType::U32:
+                    case ::HIR::CoreType::U64:
+                    case ::HIR::CoreType::Usize:
+                        ERROR(node.span(), E0000, "`-` operator on unsigned integer - " << ty_val);
+                        break;
+                    default:
+                        // Valid, keep.
+                        return;
+                    }
+                }
+                else {
+                    // Replace with call
+                }
+                langitem = method = "neg";
+                break;
+            }
+            assert(langitem);
+            assert(method);
+            
+            // Needs replacement, continue
+            ::HIR::GenericPath  trait { m_crate.get_lang_item_path(node.span(), langitem), {} };
+            
+            ::std::vector< ::HIR::ExprNodeP>    args;
+            args.push_back( mv$(node.m_value) );
+            
+            m_replacement = NEWNODE(mv$(node.m_res_type), CallPath, sp,
+                ::HIR::Path(ty_val.clone(), mv$(trait), method),
+                mv$(args)
+                );
+            
+            // Populate the cache for later passes
+            auto& arg_types = dynamic_cast< ::HIR::ExprNode_CallPath&>(*m_replacement).m_cache.m_arg_types;
+            arg_types.push_back( ty_val.clone() );
+            arg_types.push_back( m_replacement->m_res_type.clone() );
+        }
     };
     class OuterVisitor:
         public ::HIR::Visitor
