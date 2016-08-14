@@ -707,22 +707,35 @@ namespace {
             TRACE_FUNCTION_F("_Index");
             
             // NOTE: Calculate the index first (so if it borrows from the source, it's over by the time that's needed)
+            const auto& ty_idx = node.m_index->m_res_type;
             this->visit_node_ptr(node.m_index);
-            auto index = m_builder.lvalue_or_temp( node.m_index->m_res_type, m_builder.get_result(node.m_index->span()) );
+            auto index = m_builder.lvalue_or_temp( ty_idx, m_builder.get_result(node.m_index->span()) );
             
+            const auto& ty_val = node.m_value->m_res_type;
             this->visit_node_ptr(node.m_value);
-            auto value = m_builder.lvalue_or_temp( node.m_value->m_res_type, m_builder.get_result(node.m_value->span()) );
+            auto value = m_builder.lvalue_or_temp( ty_val, m_builder.get_result(node.m_value->span()) );
            
             ::MIR::RValue   limit_val;
-            TU_MATCH_DEF(::HIR::TypeRef::Data, (node.m_value->m_res_type.m_data), (e),
+            TU_MATCH_DEF(::HIR::TypeRef::Data, (ty_val.m_data), (e),
             (
-                BUG(node.span(), "Indexing unsupported type " << node.m_value->m_res_type);
+                BUG(node.span(), "Indexing unsupported type " << ty_val);
                 ),
             (Array,
                 limit_val = ::MIR::Constant( e.size_val );
                 ),
             (Slice,
                 limit_val = ::MIR::RValue::make_DstMeta({ value.clone() });
+                )
+            )
+            
+            TU_MATCH_DEF(::HIR::TypeRef::Data, (ty_idx.m_data), (e),
+            (
+                BUG(node.span(), "Indexing using unsupported index type " << ty_idx);
+                ),
+            (Primitive,
+                if( e != ::HIR::CoreType::Usize ) {
+                    BUG(node.span(), "Indexing using unsupported index type " << ty_idx);
+                }
                 )
             )
             
