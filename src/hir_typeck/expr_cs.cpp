@@ -2985,6 +2985,7 @@ namespace {
     void add_coerce_borrow(Context& context, ::HIR::ExprNodeP& node_ptr, const ::HIR::TypeRef& des_borrow_inner, ::std::function<void(::HIR::ExprNodeP& n)> cb)
     {
         const auto& sp = node_ptr->span();
+        const auto& src_type = context.m_ivars.get_type(node_ptr->m_res_type);
         
         // Since this function operates on destructured &-ptrs, the dereferences have to be added behind a borrow
         ::HIR::ExprNodeP*   node_ptr_ptr = nullptr;
@@ -2994,26 +2995,33 @@ namespace {
                 node_ptr_ptr = &p->m_value;
             }
         }
-        // - Otherwise, create a new borrow operation and add the dereferences
+        // - Otherwise, create a new borrow operation behind which the dereferences ahppen
         if( !node_ptr_ptr ) {
             DEBUG("- Coercion node isn't a borrow, adding one");
             auto span = node_ptr->span();
+            const auto& src_inner_ty = *src_type.m_data.as_Borrow().inner;
+            auto borrow_type = src_type.m_data.as_Borrow().type;
+            
             ::HIR::ExprNode_UniOp::Op   op = ::HIR::ExprNode_UniOp::Op::Ref;
-            auto borrow_type = context.m_ivars.get_type(node_ptr->m_res_type).m_data.as_Borrow().type;
             switch(borrow_type)
             {
             case ::HIR::BorrowType::Shared: op = ::HIR::ExprNode_UniOp::Op::Ref;    break;
             case ::HIR::BorrowType::Unique: op = ::HIR::ExprNode_UniOp::Op::RefMut; break;
             case ::HIR::BorrowType::Owned:  TODO(sp, "Move borrow autoderef");
             }
-            node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_UniOp( mv$(span), op, mv$(node_ptr) ));
-            node_ptr->m_res_type = ::HIR::TypeRef::new_borrow(borrow_type, des_borrow_inner.clone());
+            auto inner_ty_ref = ::HIR::TypeRef::new_borrow(borrow_type, des_borrow_inner.clone());
+            
+            // 1. Dereference (resulting in the dereferenced input type)
+            node_ptr = NEWNODE(src_inner_ty.clone(), span, _Deref,  mv$(node_ptr));
+            // 2. Borrow (resulting in the referenced output type)
+            node_ptr = NEWNODE(mv$(inner_ty_ref), span, _UniOp,  op, mv$(node_ptr));
             
             // - Set node pointer reference to point into the new borrow op
             node_ptr_ptr = &dynamic_cast< ::HIR::ExprNode_UniOp&>(*node_ptr).m_value;
         }
         else {
             auto borrow_type = context.m_ivars.get_type(node_ptr->m_res_type).m_data.as_Borrow().type;
+            // Set the result of the borrow operation to the output type
             node_ptr->m_res_type = ::HIR::TypeRef::new_borrow(borrow_type, des_borrow_inner.clone());
         }
         
@@ -3934,9 +3942,10 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         // - Keep a list in the ivar of what types that ivar could be equated to.
         DEBUG("--- Coercion checking");
         for(auto it = context.link_coerce.begin(); it != context.link_coerce.end(); ) {
+            const auto& src_ty = (**it->right_node_ptr).m_res_type;
             it->left_ty = context.m_resolve.expand_associated_types( (*it->right_node_ptr)->span(), mv$(it->left_ty) );
             if( check_coerce(context, *it) ) {
-                DEBUG("- Consumed coercion " << it->left_ty << " := " << (**it->right_node_ptr).m_res_type);
+                DEBUG("- Consumed coercion " << it->left_ty << " := " << src_ty);
                 it = context.link_coerce.erase(it);
             }
             else {
