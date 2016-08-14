@@ -563,7 +563,27 @@ struct DecisionTreeNode
     DecisionTreeNode clone() const;
     
     void populate_tree_from_rule(const Span& sp, unsigned int arm_index, const PatternRule* first_rule, unsigned int rule_count) {
-        populate_tree_from_rule(sp, first_rule, rule_count, [arm_index](auto& branch){ branch = Branch::make_Terminal(arm_index); });
+        populate_tree_from_rule(sp, first_rule, rule_count, [sp,arm_index](auto& branch){
+            TU_MATCHA( (branch), (e),
+            (Unset,
+                // Good
+                ),
+            (Subtree,
+                if( e->m_branches.is_Unset() && e->m_default.is_Unset() ) {
+                    // Good.
+                }
+                else {
+                    BUG(sp, "Duplicate terminal - branch="<<branch);
+                }
+                ),
+            (Terminal,
+                //if( e == arm_index )    // Wut? How would this happen? Exact duplicate pattern
+                //    return ;
+                BUG(sp, "Duplicate terminal - Existing goes to arm " << e << ", new goes to arm " << e );
+                )
+            )
+            branch = Branch::make_Terminal(arm_index);
+            });
     }
     // `and_then` - Closure called after processing the final rule
     void populate_tree_from_rule(const Span& sp, const PatternRule* first_rule, unsigned int rule_count, ::std::function<void(Branch&)> and_then);
@@ -687,6 +707,7 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
     for( const auto& arm_rule : arm_rules )
     {
         auto arm_idx = arm_rule.arm_idx;
+        DEBUG("(" << arm_idx << ", " << arm_rule.pat_idx << "): " << arm_rule.m_rules);
         root_node.populate_tree_from_rule( node.m_arms[arm_idx].m_code->span(), arm_idx, arm_rule.m_rules.data(), arm_rule.m_rules.size() );
     }
     DEBUG("root_node = " << root_node);
@@ -1208,9 +1229,12 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
             }
         }
         else TU_IFLET( Branch, m_default, Subtree, be,
-            assert( be );
-            assert(rule_count > 1);
-            be->populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+            if( rule_count == 1 ) {
+                and_then( m_default );
+            }
+            else {
+                be->populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+            }
         )
         else {
             // NOTE: All lists processed as part of the same tree should be the same length
@@ -1244,8 +1268,16 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
         if( e.sub_rules.size() > 0 && rule_count > 1 )
         {
             subtree.populate_tree_from_rule(sp, e.sub_rules.data(), e.sub_rules.size(), [&](auto& branch){
-                ASSERT_BUG(sp, branch.is_Unset(), "Duplicate terminator");
-                branch = new_branch_subtree(rule.field_path);
+                TU_MATCH_DEF(Branch, (branch), (be),
+                (
+                    BUG(sp, "Duplicate terminator");
+                    ),
+                (Unset,
+                    branch = new_branch_subtree(rule.field_path);
+                    ),
+                (Subtree,
+                    )
+                )
                 branch.as_Subtree()->populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
                 });
         }
