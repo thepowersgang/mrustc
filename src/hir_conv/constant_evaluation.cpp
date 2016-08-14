@@ -191,6 +191,7 @@ namespace {
             }
             
             void visit(::HIR::ExprNode_Block& node) override {
+                TRACE_FUNCTION_F("_Block");
                 for(const auto& e : node.m_nodes)
                     e->visit(*this);
             }
@@ -217,6 +218,7 @@ namespace {
                 badnode(node);
             }
             void visit(::HIR::ExprNode_BinOp& node) override {
+                TRACE_FUNCTION_F("_BinOp");
                 node.m_left->visit(*this);
                 auto left = mv$(m_rv);
                 node.m_right->visit(*this);
@@ -314,6 +316,7 @@ namespace {
                 }
             }
             void visit(::HIR::ExprNode_UniOp& node) override {
+                TRACE_FUNCTION_FR("_UniOp", m_rv);
                 node.m_value->visit(*this);
                 auto val = mv$(m_rv);
                 
@@ -326,23 +329,27 @@ namespace {
                 case ::HIR::ExprNode_UniOp::Op::Invert:
                     TU_MATCH_DEF(::HIR::Literal, (val), (e),
                     ( throw ""; ),
-                    (Integer,   m_rv = ::HIR::Literal(~e); ),
+                    (Integer,   m_rv = ::HIR::Literal::make_Integer(~e); ),
                     (Float,     ERROR(node.span(), E0000, "not operator on float in constant"); )
                     )
+                    break;
                 case ::HIR::ExprNode_UniOp::Op::Negate:
                     TU_MATCH_DEF(::HIR::Literal, (val), (e),
                     ( throw ""; ),
                     (Integer,   m_rv = ::HIR::Literal(-e); ),
                     (Float,     m_rv = ::HIR::Literal(-e); )
                     )
+                    break;
                 }
             }
             void visit(::HIR::ExprNode_Cast& node) override {
+                TRACE_FUNCTION_F("_Cast");
                 node.m_value->visit(*this);
                 //auto val = mv$(m_rv);
                 //DEBUG("ExprNode_Cast - val = " << val << " as " << node.m_type);
             }
             void visit(::HIR::ExprNode_Unsize& node) override {
+                TRACE_FUNCTION_F("_Unsize");
                 node.m_value->visit(*this);
                 //auto val = mv$(m_rv);
                 //DEBUG("ExprNode_Unsize - val = " << val << " as " << node.m_type);
@@ -358,6 +365,7 @@ namespace {
                 TODO(node.span(), "ExprNode_TupleVariant");
             }
             void visit(::HIR::ExprNode_CallPath& node) override {
+                TRACE_FUNCTION_FR("_CallPath - " << node.m_path, m_rv);
                 auto& fcn = get_function(node.span(), m_crate, node.m_path);
                 // TODO: Set m_const during parse
                 //if( ! fcn.m_const ) {
@@ -403,6 +411,7 @@ namespace {
             }
 
             void visit(::HIR::ExprNode_Literal& node) override {
+                TRACE_FUNCTION_FR("_Literal", m_rv);
                 TU_MATCH(::HIR::ExprNode_Literal::Data, (node.m_data), (e),
                 (Integer,
                     m_rv = ::HIR::Literal(e.m_value);
@@ -425,6 +434,7 @@ namespace {
                 TODO(node.span(), "Unit varant/struct constructors in constant context");
             }
             void visit(::HIR::ExprNode_PathValue& node) override {
+                TRACE_FUNCTION_FR("_PathValue - " << node.m_path, m_rv);
                 const auto& c = get_constant(node.span(), m_crate, node.m_path);
                 if( c.m_value_res.is_Invalid() ) {
                     const_cast<HIR::ExprNode&>(*c.m_value).visit(*this);
@@ -434,6 +444,7 @@ namespace {
                 }
             }
             void visit(::HIR::ExprNode_Variable& node) override {
+                TRACE_FUNCTION_FR("_Variable - " << node.m_name, m_rv);
                 for(auto it = m_values.rbegin(); it != m_values.rend(); ++it)
                 {
                     if( it->first == node.m_name) {
@@ -455,6 +466,7 @@ namespace {
             }
             
             void visit(::HIR::ExprNode_StructLiteral& node) override {
+                TRACE_FUNCTION_FR("_StructLiteral - " << node.m_path, m_rv);
                 const auto& str = get_struct(node.span(), m_crate, node.m_path.m_path);
                 const auto& fields = str.m_data.as_Named();
                 
