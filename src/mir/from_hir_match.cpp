@@ -1551,6 +1551,7 @@ void DecisionTreeNode::propagate_default()
                 if( be->m_default.is_Unset() ) {
                     be->unify_from(def);
                 }
+                be->propagate_default();
             )
         }
     };
@@ -1793,7 +1794,14 @@ void DecisionTreeGen::generate_tree_code(
 {
     TRACE_FUNCTION_F("ty=" << ty << ", ty_ofs=" << ty_ofs << ", depth="<<depth<<", node=" << node);
     
+    #if 1
+    if( depth > node.m_field_path.size() ) {
+        and_then(node);
+        return ;
+    }
+    #else
     assert( depth <= node.m_field_path.size() );
+    #endif
     
     TU_MATCHA( (ty.m_data), (e),
     (Infer,   BUG(sp, "Ivar for in match type"); ),
