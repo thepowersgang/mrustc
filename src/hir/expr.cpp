@@ -58,6 +58,9 @@ DEF_VISIT(ExprNode_BinOp, node,
 DEF_VISIT(ExprNode_UniOp, node,
     visit_node_ptr(node.m_value);
 )
+DEF_VISIT(ExprNode_Borrow, node,
+    visit_node_ptr(node.m_value);
+)
 DEF_VISIT(ExprNode_Cast, node,
     visit_node_ptr(node.m_value);
 )

@@ -194,8 +194,13 @@ struct LowerHIR_ExprNode_Visitor:
             BUG(v.get_pos(), "Encounterd question mark operator (should have been expanded in AST)");
             break;
         
-        case ::AST::ExprNode_UniOp::REF:    op = ::HIR::ExprNode_UniOp::Op::Ref   ; if(0)
-        case ::AST::ExprNode_UniOp::REFMUT: op = ::HIR::ExprNode_UniOp::Op::RefMut; if(0)
+        case ::AST::ExprNode_UniOp::REF:
+            m_rv.reset(new ::HIR::ExprNode_Borrow(v.span(), ::HIR::BorrowType::Shared, LowerHIR_ExprNode_Inner( *v.m_value ) ));
+            break;
+        case ::AST::ExprNode_UniOp::REFMUT:
+            m_rv.reset(new ::HIR::ExprNode_Borrow(v.span(), ::HIR::BorrowType::Unique, LowerHIR_ExprNode_Inner( *v.m_value ) ));
+            break;
+        
         case ::AST::ExprNode_UniOp::INVERT: op = ::HIR::ExprNode_UniOp::Op::Invert; if(0)
         case ::AST::ExprNode_UniOp::NEGATE: op = ::HIR::ExprNode_UniOp::Op::Negate;
             m_rv.reset( new ::HIR::ExprNode_UniOp( v.span(),

@@ -301,15 +301,11 @@ struct ExprNode_UniOp:
     public ExprNode
 {
     enum class Op {
-        Ref,    // '& <expr>'
-        RefMut, // '&mut <expr>'
         Invert, // '!<expr>'
         Negate, // '-<expr>'
     };
     static const char* opname(Op v) {
         switch(v) {
-        case Op::Ref:   return "&";
-        case Op::RefMut:return "&mut";
         case Op::Invert:return "!";
         case Op::Negate:return "-";
         }
@@ -322,6 +318,20 @@ struct ExprNode_UniOp:
     ExprNode_UniOp(Span sp, Op op, ::HIR::ExprNodeP value):
         ExprNode( mv$(sp) ),
         m_op(op),
+        m_value( mv$(value) )
+    {}
+    
+    NODE_METHODS();
+};
+struct ExprNode_Borrow:
+    public ExprNode
+{
+    ::HIR::BorrowType   m_type;
+    ::HIR::ExprNodeP    m_value;
+
+    ExprNode_Borrow(Span sp, ::HIR::BorrowType bt, ::HIR::ExprNodeP value):
+        ExprNode( mv$(sp) ),
+        m_type(bt),
         m_value( mv$(value) )
     {}
     
@@ -731,6 +741,7 @@ public:
     NV(ExprNode_Assign)
     NV(ExprNode_BinOp)
     NV(ExprNode_UniOp)
+    NV(ExprNode_Borrow)
     NV(ExprNode_Cast)   // Conversion
     NV(ExprNode_Unsize) // Coercion
     NV(ExprNode_Index)
@@ -773,6 +784,7 @@ public:
     NV(ExprNode_Assign)
     NV(ExprNode_BinOp)
     NV(ExprNode_UniOp)
+    NV(ExprNode_Borrow)
     NV(ExprNode_Cast)
     NV(ExprNode_Unsize)
     NV(ExprNode_Index)

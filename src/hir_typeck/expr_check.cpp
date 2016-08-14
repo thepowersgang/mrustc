@@ -209,12 +209,6 @@ namespace {
             TRACE_FUNCTION_F(&node << " " << ::HIR::ExprNode_UniOp::opname(node.m_op) << "...");
             switch(node.m_op)
             {
-            case ::HIR::ExprNode_UniOp::Op::Ref:
-                check_types_equal(node.span(), node.m_res_type, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, node.m_value->m_res_type.clone()));
-                break;
-            case ::HIR::ExprNode_UniOp::Op::RefMut:
-                check_types_equal(node.span(), node.m_res_type, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, node.m_value->m_res_type.clone()));
-                break;
             case ::HIR::ExprNode_UniOp::Op::Invert:
                 check_associated_type(node.span(), node.m_res_type,  this->get_lang_item_path(node.span(), "not"), {}, node.m_value->m_res_type, "Output");
                 break;
@@ -222,6 +216,12 @@ namespace {
                 check_associated_type(node.span(), node.m_res_type,  this->get_lang_item_path(node.span(), "neg"), {}, node.m_value->m_res_type, "Output");
                 break;
             }
+            node.m_value->visit( *this );
+        }
+        void visit(::HIR::ExprNode_Borrow& node) override
+        {
+            TRACE_FUNCTION_F(&node << " &_ ...");
+            check_types_equal(node.span(), node.m_res_type, ::HIR::TypeRef::new_borrow(node.m_type, node.m_value->m_res_type.clone()));
             node.m_value->visit( *this );
         }
         void visit(::HIR::ExprNode_Index& node) override

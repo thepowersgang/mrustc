@@ -322,10 +322,6 @@ namespace {
                 
                 switch(node.m_op)
                 {
-                case ::HIR::ExprNode_UniOp::Op::Ref:
-                case ::HIR::ExprNode_UniOp::Op::RefMut:
-                    TODO(node.span(), "&/&mut in constant");
-                    break;
                 case ::HIR::ExprNode_UniOp::Op::Invert:
                     TU_MATCH_DEF(::HIR::Literal, (val), (e),
                     ( throw ""; ),
@@ -341,6 +337,9 @@ namespace {
                     )
                     break;
                 }
+            }
+            void visit(::HIR::ExprNode_Borrow& node) override {
+                TODO(node.span(), "&/&mut in constant");
             }
             void visit(::HIR::ExprNode_Cast& node) override {
                 TRACE_FUNCTION_F("_Cast");

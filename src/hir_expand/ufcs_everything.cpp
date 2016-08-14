@@ -301,9 +301,7 @@ namespace {
             
             auto slot_type_refmut = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, ty_slot.clone());
             ::std::vector< ::HIR::ExprNodeP>    args;
-            args.push_back( NEWNODE( slot_type_refmut.clone(), UniOp, sp,
-                ::HIR::ExprNode_UniOp::Op::RefMut, mv$(node.m_slot)
-                ) );
+            args.push_back(NEWNODE( slot_type_refmut.clone(), Borrow, sp,  ::HIR::BorrowType::Unique, mv$(node.m_slot) ));
             args.push_back( mv$(node.m_value) );
             m_replacement = NEWNODE(mv$(node.m_res_type), CallPath, sp,
                 ::HIR::Path(ty_slot.clone(), mv$(trait), opname),
@@ -363,12 +361,8 @@ namespace {
                 auto ty_r_ref = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ty_r.clone() );
                 
                 ::std::vector< ::HIR::ExprNodeP>    args;
-                args.push_back( NEWNODE(ty_l_ref.clone(), UniOp, node.m_left->span(),
-                    ::HIR::ExprNode_UniOp::Op::Ref, mv$(node.m_left)
-                    ) );
-                args.push_back( NEWNODE(ty_r_ref.clone(), UniOp, node.m_right->span(),
-                    ::HIR::ExprNode_UniOp::Op::Ref, mv$(node.m_right)
-                    ) );
+                args.push_back(NEWNODE(ty_l_ref.clone(), Borrow, node.m_left ->span(),  ::HIR::BorrowType::Shared, mv$(node.m_left ) ));
+                args.push_back(NEWNODE(ty_r_ref.clone(), Borrow, node.m_right->span(),  ::HIR::BorrowType::Shared, mv$(node.m_right) ));
                 
                 m_replacement = NEWNODE(mv$(node.m_res_type), CallPath, sp,
                     ::HIR::Path(ty_l.clone(), mv$(trait), method),
@@ -450,10 +444,6 @@ namespace {
             const char* method = nullptr;
             switch(node.m_op)
             {
-            case ::HIR::ExprNode_UniOp::Op::Ref:
-            case ::HIR::ExprNode_UniOp::Op::RefMut:
-                // & and &mut are always valid
-                return;
             case ::HIR::ExprNode_UniOp::Op::Invert:
                 // Check if the operation is valid in the MIR.
                 if( ty_val.m_data.is_Primitive() ) {
@@ -552,7 +542,6 @@ namespace {
             const char* langitem = nullptr;
             const char* method = nullptr;
             ::HIR::BorrowType   bt;
-            ::HIR::ExprNode_UniOp::Op   op;
             switch( node.m_value->m_usage )
             {
             case ::HIR::ValueUsage::Unknown:
@@ -560,12 +549,10 @@ namespace {
                 break;
             case ::HIR::ValueUsage::Borrow:
                 bt = ::HIR::BorrowType::Shared;
-                op = ::HIR::ExprNode_UniOp::Op::Ref;
                 langitem = method = "index";
                 break;
             case ::HIR::ValueUsage::Mutate:
                 bt = ::HIR::BorrowType::Unique;
-                op = ::HIR::ExprNode_UniOp::Op::RefMut;
                 langitem = method = "index_mut";
                 break;
             case ::HIR::ValueUsage::Move:
@@ -582,7 +569,7 @@ namespace {
             ::HIR::GenericPath  trait { m_crate.get_lang_item_path(node.span(), langitem), mv$(pp) };
             
             ::std::vector< ::HIR::ExprNodeP>    args;
-            args.push_back( NEWNODE( ::HIR::TypeRef::new_borrow(bt, ty_val.clone()), UniOp, sp, op, mv$(node.m_value) ) );
+            args.push_back( NEWNODE( ::HIR::TypeRef::new_borrow(bt, ty_val.clone()), Borrow, sp, bt, mv$(node.m_value) ) );
             args.push_back( mv$(node.m_index) );
             
             m_replacement = NEWNODE( ::HIR::TypeRef::new_borrow(bt, node.m_res_type.clone()), CallPath, sp,

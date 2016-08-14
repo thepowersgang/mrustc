@@ -149,17 +149,24 @@ namespace {
         }
         void visit(::HIR::ExprNode_UniOp& node) override
         {
-            switch(node.m_op)
+            m_usage.push_back( ::HIR::ValueUsage::Move );
+            
+            this->visit_node_ptr(node.m_value);
+            
+            m_usage.pop_back();
+        }
+        void visit(::HIR::ExprNode_Borrow& node) override
+        {
+            switch(node.m_type)
             {
-            case ::HIR::ExprNode_UniOp::Op::Invert:
-            case ::HIR::ExprNode_UniOp::Op::Negate:
-                m_usage.push_back( ::HIR::ValueUsage::Move );
-                break;
-            case ::HIR::ExprNode_UniOp::Op::Ref:
+            case ::HIR::BorrowType::Shared:
                 m_usage.push_back( ::HIR::ValueUsage::Borrow );
                 break;
-            case ::HIR::ExprNode_UniOp::Op::RefMut:
+            case ::HIR::BorrowType::Unique:
                 m_usage.push_back( ::HIR::ValueUsage::Mutate );
+                break;
+            case ::HIR::BorrowType::Owned:
+                m_usage.push_back( ::HIR::ValueUsage::Move );
                 break;
             }
             

@@ -382,7 +382,7 @@ namespace {
                     auto dispatch_node = NEWNODE(ret_type.clone(), CallPath, sp,
                         ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_Fn, trait_params.clone()), "call"),
                         make_vec2(
-                            NEWNODE(method_self_ty.clone(), UniOp, sp, ::HIR::ExprNode_UniOp::Op::Ref, NEWNODE(closure_type.clone(), Variable, sp, "self", 0)),
+                            NEWNODE(method_self_ty.clone(), Borrow, sp, ::HIR::BorrowType::Shared, NEWNODE(closure_type.clone(), Variable, sp, "self", 0)),
                             NEWNODE(args_ty.clone(), Variable, sp, "arg", 1)
                             )
                         );
@@ -401,7 +401,7 @@ namespace {
                     auto dispatch_node = NEWNODE(ret_type.clone(), CallPath, sp,
                         ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_Fn, trait_params.clone()), "call"),
                         make_vec2(
-                            NEWNODE(method_self_ty.clone(), UniOp, sp, ::HIR::ExprNode_UniOp::Op::Ref, NEWNODE(closure_type.clone(), Deref, sp, NEWNODE(::HIR::TypeRef(), Variable, sp, "self", 0))),
+                            NEWNODE(method_self_ty.clone(), Borrow, sp, ::HIR::BorrowType::Shared, NEWNODE(closure_type.clone(), Deref, sp, NEWNODE(::HIR::TypeRef(), Variable, sp, "self", 0))),
                             NEWNODE(args_ty.clone(), Variable, sp, "arg", 1)
                             )
                         );
@@ -431,7 +431,7 @@ namespace {
                     auto dispatch_node = NEWNODE(ret_type.clone(), CallPath, sp,
                         ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_FnMut, trait_params.clone()), "call"),
                         make_vec2(
-                            NEWNODE(method_self_ty.clone(), UniOp, sp, ::HIR::ExprNode_UniOp::Op::RefMut, NEWNODE(closure_type.clone(), Variable, sp, "self", 0)),
+                            NEWNODE(method_self_ty.clone(), Borrow, sp, ::HIR::BorrowType::Unique, NEWNODE(closure_type.clone(), Variable, sp, "self", 0)),
                             NEWNODE(args_ty.clone(), Variable, sp, "arg", 1)
                             )
                         );

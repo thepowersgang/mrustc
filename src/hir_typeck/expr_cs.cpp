@@ -653,13 +653,6 @@ namespace {
             this->context.add_ivars( node.m_value->m_res_type );
             switch(node.m_op)
             {
-            case ::HIR::ExprNode_UniOp::Op::Ref:
-                // TODO: Can Ref/RefMut trigger coercions?
-                this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, node.m_value->m_res_type.clone()));
-                break;
-            case ::HIR::ExprNode_UniOp::Op::RefMut:
-                this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, node.m_value->m_res_type.clone()));
-                break;
             case ::HIR::ExprNode_UniOp::Op::Invert:
                 this->context.equate_types_assoc(node.span(), node.m_res_type,  this->context.m_crate.get_lang_item_path(node.span(), "not"), {}, node.m_value->m_res_type.clone(), "Output", true);
                 break;
@@ -667,6 +660,16 @@ namespace {
                 this->context.equate_types_assoc(node.span(), node.m_res_type,  this->context.m_crate.get_lang_item_path(node.span(), "neg"), {}, node.m_value->m_res_type.clone(), "Output", true);
                 break;
             }
+            node.m_value->visit( *this );
+        }
+        void visit(::HIR::ExprNode_Borrow& node) override
+        {
+            TRACE_FUNCTION_F(&node << " &_ ...");
+            this->context.add_ivars( node.m_value->m_res_type );
+            
+            // TODO: Can Ref/RefMut trigger coercions?
+            this->context.equate_types( node.span(), node.m_res_type,  ::HIR::TypeRef::new_borrow(node.m_type, node.m_value->m_res_type.clone()) );
+            
             node.m_value->visit( *this );
         }
         void visit(::HIR::ExprNode_Cast& node) override
@@ -1466,6 +1469,9 @@ namespace {
         void visit(::HIR::ExprNode_UniOp& node) override {
             no_revisit(node);
         }
+        void visit(::HIR::ExprNode_Borrow& node) override {
+            no_revisit(node);
+        }
         void visit(::HIR::ExprNode_Cast& node) override {
             const auto& sp = node.span();
             const auto& tgt_ty = this->context.get_type(node.m_res_type);
@@ -1735,7 +1741,7 @@ namespace {
                     node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
                     
                     auto borrow_ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ty.clone() );
-                    node.m_value = ::HIR::ExprNodeP(new ::HIR::ExprNode_UniOp(sp, ::HIR::ExprNode_UniOp::Op::Ref, mv$(node.m_value)));
+                    node.m_value = ::HIR::ExprNodeP(new ::HIR::ExprNode_Borrow(sp, ::HIR::BorrowType::Shared, mv$(node.m_value)));
                     node.m_value->m_res_type = mv$(borrow_ty);
                 }
                 else if( this->context.m_resolve.find_trait_impls(node.span(), lang_FnMut, trait_pp, ty, [&](auto , auto cmp) {
@@ -1746,7 +1752,7 @@ namespace {
                     node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnMut;
                     
                     auto borrow_ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Unique, ty.clone() );
-                    node.m_value = ::HIR::ExprNodeP(new ::HIR::ExprNode_UniOp(sp, ::HIR::ExprNode_UniOp::Op::RefMut, mv$(node.m_value)));
+                    node.m_value = ::HIR::ExprNodeP(new ::HIR::ExprNode_Borrow(sp, ::HIR::BorrowType::Unique, mv$(node.m_value)));
                     node.m_value->m_res_type = mv$(borrow_ty);
                 }
                 else
@@ -1906,18 +1912,17 @@ namespace {
                     case Receiver::Unique:
                     case Receiver::Owned: {
                         ::HIR::BorrowType   bt;
-                        ::HIR::ExprNode_UniOp::Op   op;
                         switch(receiver_class)
                         {
-                        case Receiver::Shared:  op = ::HIR::ExprNode_UniOp::Op::Ref;    bt = ::HIR::BorrowType::Shared; break;
-                        case Receiver::Unique:  op = ::HIR::ExprNode_UniOp::Op::RefMut; bt = ::HIR::BorrowType::Unique; break;
+                        case Receiver::Shared:  bt = ::HIR::BorrowType::Shared; break;
+                        case Receiver::Unique:  bt = ::HIR::BorrowType::Unique; break;
                         case Receiver::Owned:   TODO(sp, "Construct &move uni-op");
                         default:    throw "";
                         }
                         // - Add correct borrow operation
                         auto ty = ::HIR::TypeRef::new_borrow(bt, node_ptr->m_res_type.clone());
                         DEBUG("- Ref " << &*node_ptr << " -> " << ty);
-                        node_ptr = NEWNODE(mv$(ty), span, _UniOp,  op, mv$(node_ptr) );
+                        node_ptr = NEWNODE(mv$(ty), span, _Borrow,  bt, mv$(node_ptr) );
                         } break;
                     }
                 }
@@ -2984,16 +2989,13 @@ void fix_param_count(const Span& sp, Context& context, const ::HIR::GenericPath&
 namespace {
     void add_coerce_borrow(Context& context, ::HIR::ExprNodeP& node_ptr, const ::HIR::TypeRef& des_borrow_inner, ::std::function<void(::HIR::ExprNodeP& n)> cb)
     {
-        const auto& sp = node_ptr->span();
         const auto& src_type = context.m_ivars.get_type(node_ptr->m_res_type);
         
         // Since this function operates on destructured &-ptrs, the dereferences have to be added behind a borrow
         ::HIR::ExprNodeP*   node_ptr_ptr = nullptr;
         // - If the pointed node is a borrow operation, add the dereferences within its value
-        if( auto* p = dynamic_cast< ::HIR::ExprNode_UniOp*>(&*node_ptr) ) {
-            if( p->m_op == ::HIR::ExprNode_UniOp::Op::Ref || p->m_op == ::HIR::ExprNode_UniOp::Op::RefMut ) {
-                node_ptr_ptr = &p->m_value;
-            }
+        if( auto* p = dynamic_cast< ::HIR::ExprNode_Borrow*>(&*node_ptr) ) {
+            node_ptr_ptr = &p->m_value;
         }
         // - Otherwise, create a new borrow operation behind which the dereferences ahppen
         if( !node_ptr_ptr ) {
@@ -3002,22 +3004,15 @@ namespace {
             const auto& src_inner_ty = *src_type.m_data.as_Borrow().inner;
             auto borrow_type = src_type.m_data.as_Borrow().type;
             
-            ::HIR::ExprNode_UniOp::Op   op = ::HIR::ExprNode_UniOp::Op::Ref;
-            switch(borrow_type)
-            {
-            case ::HIR::BorrowType::Shared: op = ::HIR::ExprNode_UniOp::Op::Ref;    break;
-            case ::HIR::BorrowType::Unique: op = ::HIR::ExprNode_UniOp::Op::RefMut; break;
-            case ::HIR::BorrowType::Owned:  TODO(sp, "Move borrow autoderef");
-            }
             auto inner_ty_ref = ::HIR::TypeRef::new_borrow(borrow_type, des_borrow_inner.clone());
             
             // 1. Dereference (resulting in the dereferenced input type)
             node_ptr = NEWNODE(src_inner_ty.clone(), span, _Deref,  mv$(node_ptr));
             // 2. Borrow (resulting in the referenced output type)
-            node_ptr = NEWNODE(mv$(inner_ty_ref), span, _UniOp,  op, mv$(node_ptr));
+            node_ptr = NEWNODE(mv$(inner_ty_ref), span, _Borrow,  borrow_type, mv$(node_ptr));
             
             // - Set node pointer reference to point into the new borrow op
-            node_ptr_ptr = &dynamic_cast< ::HIR::ExprNode_UniOp&>(*node_ptr).m_value;
+            node_ptr_ptr = &dynamic_cast< ::HIR::ExprNode_Borrow&>(*node_ptr).m_value;
         }
         else {
             auto borrow_type = context.m_ivars.get_type(node_ptr->m_res_type).m_data.as_Borrow().type;
@@ -3402,12 +3397,10 @@ namespace {
                     auto span = node_ptr->span();
                     // *<inner>
                     DEBUG("- Deref -> " << *l_e.inner);
-                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Deref(mv$(span), mv$(node_ptr)));
-                    node_ptr->m_res_type = l_e.inner->clone();
+                    node_ptr = NEWNODE( l_e.inner->clone(), span, _Deref,  mv$(node_ptr) );
                     context.m_ivars.get_type(node_ptr->m_res_type);
                     // &*<inner>
-                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_UniOp(mv$(span), ::HIR::ExprNode_UniOp::Op::Ref, mv$(node_ptr)));
-                    node_ptr->m_res_type = ty_dst.clone();
+                    node_ptr = NEWNODE( ty_dst.clone(), span, _Borrow,  ::HIR::BorrowType::Shared, mv$(node_ptr) );
                     context.m_ivars.get_type(node_ptr->m_res_type);
                     
                     context.m_ivars.mark_change();

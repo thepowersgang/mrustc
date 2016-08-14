@@ -569,12 +569,6 @@ namespace {
             auto res = m_builder.new_temporary(node.m_res_type);
             switch(node.m_op)
             {
-            case ::HIR::ExprNode_UniOp::Op::Ref:
-                m_builder.push_stmt_assign(res.as_Temporary(), ::MIR::RValue::make_Borrow({ 0, ::HIR::BorrowType::Shared, mv$(val) }));
-                break;
-            case ::HIR::ExprNode_UniOp::Op::RefMut:
-                m_builder.push_stmt_assign(res.as_Temporary(), ::MIR::RValue::make_Borrow({ 0, ::HIR::BorrowType::Unique, mv$(val) }));
-                break;
             case ::HIR::ExprNode_UniOp::Op::Invert:
                 if( ty_val.m_data.is_Primitive() ) {
                     switch( ty_val.m_data.as_Primitive() )
@@ -620,6 +614,18 @@ namespace {
                 m_builder.push_stmt_assign(res.as_Temporary(), ::MIR::RValue::make_UniOp({ mv$(val), ::MIR::eUniOp::NEG }));
                 break;
             }
+            m_builder.set_result( node.span(), mv$(res) );
+        }
+        void visit(::HIR::ExprNode_Borrow& node) override
+        {
+            TRACE_FUNCTION_F("_Borrow");
+            
+            const auto& ty_val = node.m_value->m_res_type;
+            this->visit_node_ptr(node.m_value);
+            auto val = m_builder.lvalue_or_temp( ty_val, m_builder.get_result(node.m_value->span()) );
+            
+            auto res = m_builder.new_temporary(node.m_res_type);
+            m_builder.push_stmt_assign(res.as_Temporary(), ::MIR::RValue::make_Borrow({ 0, node.m_type, mv$(val) }));
             m_builder.set_result( node.span(), mv$(res) );
         }
         void visit(::HIR::ExprNode_Cast& node) override
