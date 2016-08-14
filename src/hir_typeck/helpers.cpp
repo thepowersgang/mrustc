@@ -1243,6 +1243,50 @@ bool TraitResolution::find_trait_impls(const Span& sp,
         // Continue
     )
     
+    const auto& trait_index = this->m_crate.get_lang_item_path(sp, "index");
+    const auto& trait_indexmut = this->m_crate.get_lang_item_path(sp, "index_mut");
+    
+    // Magic index impls for Arrays
+    // NOTE: The index impl for [T] is in libcore.
+    TU_IFLET(::HIR::TypeRef::Data, type.m_data, Array, e,
+        if( trait == trait_index || trait == trait_indexmut ) {
+            if( params.m_types.size() != 1 )
+                BUG(sp, "Index* traits require a single argument");
+            DEBUG("- Magic impl of Index* for " << type);
+            const auto& index_ty = m_ivars.get_type(params.m_types[0]);
+            
+            ::HIR::Compare  cmp;
+            
+            // Index<usize> ?
+            auto ty_usize = ::HIR::TypeRef(::HIR::CoreType::Usize);
+            cmp = ty_usize.compare_with_placeholders(sp, index_ty, this->m_ivars.callback_resolve_infer());
+            if( cmp != ::HIR::Compare::Unequal )
+            {
+                ::HIR::PathParams   pp;
+                pp.m_types.push_back( mv$(ty_usize) );
+                ::std::map< ::std::string, ::HIR::TypeRef>  types;
+                types.insert( ::std::make_pair( "Output", e.inner->clone() ) );
+                return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), cmp );
+            }
+            
+            /*
+            // TODO: Index<Range/RangeFrom/RangeTo/FullRange>? - Requires knowing the path to the range ops (which isn't a lang item)
+            ::HIR::PathParams   pp;
+            pp.m_types.push_back( ::HIR::TypeRef(::HIR::CoreType::Usize) );
+            auto ty_range = ::HIR::TypeRef( ::HIR::GenericPath(this->m_crate.get_lang_item_path(sp, "range"), mv$(pp)) );
+            cmp = ty_range.compare_with_placeholders(sp, index_ty, this->m_ivars.callback_resolve_infer());
+            if( cmp != ::HIR::Compare::Unequal ) {
+                ::HIR::PathParams   pp;
+                pp.m_types.push_back( mv$(ty_range) );
+                ::std::map< ::std::string, ::HIR::TypeRef>  types;
+                types.insert(::std::make_pair( "Output", ::HIR::TypeRef::new_slice(e.inner->clone()) ));
+                return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), cmp );
+            )
+            */
+            return false;
+        }
+    )
+    
     // Trait objects automatically implement their own traits
     // - IF object safe (TODO)
     TU_IFLET(::HIR::TypeRef::Data, type.m_data, TraitObject, e,
@@ -2119,6 +2163,7 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
         DEBUG("Deref " << ty << " into " << *e.inner);
         return &*e.inner;
     )
+    // TODO: Just doing `*[1,2,3]` doesn't work, but this is needed to allow `[1,2,3].iter()` to work
     else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
         DEBUG("Deref " << ty << " into [" << *e.inner << "]");
         tmp_type = ::HIR::TypeRef::new_slice( e.inner->clone() );
