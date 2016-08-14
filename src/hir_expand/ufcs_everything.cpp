@@ -549,7 +549,56 @@ namespace {
             )
             
             // TODO: Which trait should be used?
-            TODO(sp, "Determine which trait should be used for index overload");
+            const char* langitem = nullptr;
+            const char* method = nullptr;
+            ::HIR::BorrowType   bt;
+            ::HIR::ExprNode_UniOp::Op   op;
+            switch( node.m_value->m_usage )
+            {
+            case ::HIR::ValueUsage::Unknown:
+                BUG(sp, "Usage of value in index op is unknown");
+                break;
+            case ::HIR::ValueUsage::Borrow:
+                bt = ::HIR::BorrowType::Shared;
+                op = ::HIR::ExprNode_UniOp::Op::Ref;
+                langitem = method = "index";
+                break;
+            case ::HIR::ValueUsage::Mutate:
+                bt = ::HIR::BorrowType::Unique;
+                op = ::HIR::ExprNode_UniOp::Op::RefMut;
+                langitem = method = "index_mut";
+                break;
+            case ::HIR::ValueUsage::Move:
+                TODO(sp, "Support moving out of indexed values");
+                break;
+            }
+            // Needs replacement, continue
+            assert(langitem);
+            assert(method);
+            
+            // - Construct trait path - Index*<IdxTy>
+            ::HIR::PathParams   pp;
+            pp.m_types.push_back( ty_idx.clone() );
+            ::HIR::GenericPath  trait { m_crate.get_lang_item_path(node.span(), langitem), mv$(pp) };
+            
+            ::std::vector< ::HIR::ExprNodeP>    args;
+            args.push_back( NEWNODE( ::HIR::TypeRef::new_borrow(bt, ty_val.clone()), UniOp, sp, op, mv$(node.m_value) ) );
+            args.push_back( mv$(node.m_index) );
+            
+            m_replacement = NEWNODE( ::HIR::TypeRef::new_borrow(bt, node.m_res_type.clone()), CallPath, sp,
+                ::HIR::Path(ty_val.clone(), mv$(trait), method),
+                mv$(args)
+                );
+            // Populate the cache for later passes
+            // TODO: The check pass should probably just ignore this and DIY
+            auto& call_node = dynamic_cast< ::HIR::ExprNode_CallPath&>(*m_replacement);
+            auto& arg_types = call_node.m_cache.m_arg_types;
+            arg_types.push_back( ::HIR::TypeRef::new_borrow(bt, ty_val.clone()) );
+            arg_types.push_back( ty_idx.clone() );
+            arg_types.push_back( m_replacement->m_res_type.clone() );
+            
+            // - Dereference the result (which is an &-ptr)
+            m_replacement = NEWNODE( mv$(node.m_res_type), Deref, sp,  mv$(m_replacement) );
         }
     };
     class OuterVisitor:
