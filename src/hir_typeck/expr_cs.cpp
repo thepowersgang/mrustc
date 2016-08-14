@@ -132,7 +132,7 @@ struct Context
     const ::HIR::TypeRef& get_type(const ::HIR::TypeRef& ty) const { return m_ivars.get_type(ty); }
         
     /// Create an autoderef operation from val_node->m_res_type to ty_dst (handling implicit unsizing)
-    ::HIR::ExprNodeP create_autoderef(::HIR::ExprNodeP val_node, ::HIR::TypeRef ty_dst, ::HIR::BorrowType bt) const;
+    ::HIR::ExprNodeP create_autoderef(::HIR::ExprNodeP val_node, ::HIR::TypeRef ty_dst) const;
     
 private:
     void add_ivars_params(::HIR::PathParams& params) {
@@ -1626,29 +1626,8 @@ namespace {
                 {
                     auto ty = mv$(deref_res_types.back());
                     deref_res_types.pop_back();
-                    const auto& src_ty = context.m_ivars.get_type(node.m_value->m_res_type);
                     
-                    #if 0
-                    node.m_value = this->create_autoderef( mv$(node.m_value), mv$(ty), unsize_borrow_type );
-                    #else
-                    // Special case for going Array->Slice, insert _Unsize instead of _Deref
-                    if( src_ty.m_data.is_Array() ) {
-                        #if 1
-                        BUG(node.span(), "Index on array caused deref");
-                        #else
-                        ASSERT_BUG(node.span(), ty.m_data.is_Slice(), "Array should only ever autoderef to Slice");
-                        auto ty_clone = ty.clone();
-                        node.m_value = NEWNODE( mv$(ty), node.span(), _Unsize,
-                            mv$(node.m_value), mv$(ty_clone)
-                            );
-                        #endif
-                    }
-                    else {
-                        node.m_value = NEWNODE( mv$(ty), node.span(), _Deref,
-                            mv$(node.m_value)
-                            );
-                    }
-                    #endif
+                    node.m_value = this->context.create_autoderef( mv$(node.m_value), mv$(ty) );
                     context.m_ivars.get_type(node.m_value->m_res_type);
                     deref_count -= 1;
                 }
@@ -1865,9 +1844,6 @@ namespace {
                 // Add derefs
                 if( deref_count > 0 )
                 {
-                    const auto& receiver_ty = node.m_cache.m_arg_types.front();
-                    auto unsize_borrow_type = (receiver_ty.m_data.is_Borrow() ? receiver_ty.m_data.as_Borrow().type : ::HIR::BorrowType::Owned);
-                    
                     DEBUG("- Inserting " << deref_count << " dereferences");
                     // Get dereferencing!
                     auto& node_ptr = node.m_value;
@@ -1880,7 +1856,7 @@ namespace {
                         assert(cur_ty);
                         auto ty = cur_ty->clone();
                         
-                        node.m_value = this->context.create_autoderef( mv$(node.m_value), mv$(ty), unsize_borrow_type );
+                        node.m_value = this->context.create_autoderef( mv$(node.m_value), mv$(ty) );
                     }
                 }
                 
@@ -2945,7 +2921,7 @@ const ::HIR::TypeRef& Context::get_var(const Span& sp, unsigned int idx) const {
     }
 }
 
-::HIR::ExprNodeP Context::create_autoderef(::HIR::ExprNodeP val_node, ::HIR::TypeRef ty_dst, ::HIR::BorrowType bt) const
+::HIR::ExprNodeP Context::create_autoderef(::HIR::ExprNodeP val_node, ::HIR::TypeRef ty_dst) const
 {
     const auto& span = val_node->span();
     const auto& ty_src = val_node->m_res_type;
@@ -2954,23 +2930,8 @@ const ::HIR::TypeRef& Context::get_var(const Span& sp, unsigned int idx) const {
     {
         ASSERT_BUG(span, ty_dst.m_data.is_Slice(), "Array should only ever autoderef to Slice");
         
-        // TODO: Abstract this code
-        ::HIR::ExprNode_UniOp::Op   ref_op = ::HIR::ExprNode_UniOp::Op::Ref;
-        switch(bt)
-        {
-        case ::HIR::BorrowType::Shared:  ref_op = ::HIR::ExprNode_UniOp::Op::Ref;    break;
-        case ::HIR::BorrowType::Unique:  ref_op = ::HIR::ExprNode_UniOp::Op::RefMut; break;
-        case ::HIR::BorrowType::Owned:   TODO(span, "Construct &move uni-op");
-        default:    throw "";
-        }
-        
-        auto ty_in_ref = ::HIR::TypeRef::new_borrow( bt, ty_src.clone() );
-        auto ty_out_ref = ::HIR::TypeRef::new_borrow( bt, ty_dst.clone() );
-        auto ty_out_ref_c = ty_out_ref.clone();
-        // _Unsize needs to work on an &-ptr, not an lvalue
-        val_node = NEWNODE( mv$(ty_in_ref), span, _UniOp,  ref_op, mv$(val_node) );
-        val_node = NEWNODE( mv$(ty_out_ref), span, _Unsize,  mv$(val_node), mv$(ty_out_ref_c) );
-        val_node = NEWNODE( mv$(ty_dst), span, _Deref,  mv$(val_node) );
+        auto ty_dst_c = ty_dst.clone();
+        val_node = NEWNODE( mv$(ty_dst), span, _Unsize,  mv$(val_node), mv$(ty_dst_c) );
         DEBUG("- Unsize " << &*val_node << " -> " << val_node->m_res_type);
     }
     else {
@@ -3117,17 +3078,16 @@ namespace {
         )
         
         // Fast hack for slices (avoids going via the Deref impl search)
-        #if 1
         if( ty_dst.m_data.is_Slice() && !ty_src.m_data.is_Slice() )
         {
             const auto& dst_slice = ty_dst.m_data.as_Slice();
             TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Array, src_array,
                 context.equate_types(sp, *dst_slice.inner, *src_array.inner);
                 
-                auto span = node_ptr->span();
-                auto ty_dst_ref = ::HIR::TypeRef::new_borrow(bt, ty_dst.clone() );
-                node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), mv$(ty_dst_ref) ));
-                //node_ptr->m_res_type = l_t.clone();
+                add_coerce_borrow(context, node_ptr, ty_dst, [&](auto& node_ptr) {
+                    auto span = node_ptr->span();
+                    node_ptr = NEWNODE( ty_dst.clone(), span, _Unsize,  mv$(node_ptr), ty_dst.clone() );
+                    });
                 
                 context.m_ivars.mark_change();
                 return true;
@@ -3137,7 +3097,6 @@ namespace {
                 // Apply deref coercions
             }
         }
-        #endif
         
         // Deref coercions
         // - If right can be dereferenced to left
@@ -3183,6 +3142,7 @@ namespace {
                     for(unsigned int i = 0; i < types.size(); i ++ )
                     {
                         auto span = node_ptr->span();
+                        // TODO: Replace with a call to context.create_autoderef to handle cases where the below assertion would fire.
                         ASSERT_BUG(span, !node_ptr->m_res_type.m_data.is_Array(), "Array->Slice shouldn't be in deref coercions");
                         auto ty = mv$(types[i]);
                         node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Deref( mv$(span), mv$(node_ptr) ));
@@ -3231,14 +3191,11 @@ namespace {
                 }
             }
             
-            // Add _Unsize operator to the &-ptr
-            {
+            // Add _Unsize operator
+            add_coerce_borrow(context, node_ptr, ty_dst, [&](auto& node_ptr) {
                 auto span = node_ptr->span();
-                auto ty_dst_ref = ::HIR::TypeRef::new_borrow(bt, ty_dst.clone() );
-                node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), mv$(ty_dst_ref) ));
-                DEBUG("- Unsize " << &*node_ptr << " -> " << ty_dst);
-                context.m_ivars.mark_change();
-            }
+                node_ptr = NEWNODE( ty_dst.clone(), span, _Unsize,  mv$(node_ptr), ty_dst.clone() );
+                });
             return true;
             )
         )
@@ -3269,11 +3226,11 @@ namespace {
                 return cmp == ::HIR::Compare::Equal;
                 });
             if( found ) {
-                auto span = node_ptr->span();
-                auto ty_dst_ref = ::HIR::TypeRef::new_borrow(bt, ty_dst.clone() );
-                node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Unsize( mv$(span), mv$(node_ptr), mv$(ty_dst_ref) ));
                 DEBUG("- Unsize " << &*node_ptr << " -> " << ty_dst);
-                context.m_ivars.mark_change();
+                add_coerce_borrow(context, node_ptr, ty_dst, [&](auto& node_ptr) {
+                    auto span = node_ptr->span();
+                    node_ptr = NEWNODE( ty_dst.clone(), span, _Unsize,  mv$(node_ptr), ty_dst.clone() );
+                    });
                 return true;
             }
         }

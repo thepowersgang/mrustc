@@ -283,14 +283,8 @@ namespace {
             TRACE_FUNCTION_F(&node << " ... : " << node.m_res_type);
             const Span& sp = node.span();
             
-            if( !node.m_value->m_res_type.m_data.is_Borrow() ) {
-                ERROR(sp, E0000, "Invalid unsizing operation from non-&-ptr");
-            }
-            const auto& src_ty = *node.m_value->m_res_type.m_data.as_Borrow().inner;
-            if( !node.m_res_type.m_data.is_Borrow() ) {
-                ERROR(sp, E0000, "Invalid unsizing operation to non-&-ptr");
-            }
-            const auto& dst_ty = *node.m_res_type.m_data.as_Borrow().inner;
+            const auto& src_ty = node.m_value->m_res_type;
+            const auto& dst_ty = node.m_res_type;
             // Check unsizability (including trait impls)
             // NOTE: Unsize applies inside borrows
             TU_MATCH_DEF(::HIR::TypeRef::Data, (dst_ty.m_data), (e),
@@ -300,7 +294,7 @@ namespace {
             (TraitObject,
                 ),
             (Slice,
-                // TODO: Does unsize ever apply to arrays?
+                // TODO: Does unsize ever apply to arrays? - Yes.
                 )
             )
             
