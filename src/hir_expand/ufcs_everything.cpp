@@ -518,6 +518,39 @@ namespace {
             arg_types.push_back( ty_val.clone() );
             arg_types.push_back( m_replacement->m_res_type.clone() );
         }
+        
+        
+        void visit(::HIR::ExprNode_Index& node) override
+        {
+            const auto& sp = node.span();
+            ::HIR::ExprVisitorDef::visit(node);
+            
+            const auto& ty_idx = node.m_index->m_res_type;
+            const auto& ty_val = node.m_value->m_res_type;
+            
+            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_val.m_data), (val_te),
+            (
+                // Unknown? fall down to the method call
+                ),
+            (Slice,
+                if( ty_idx == ::HIR::CoreType::Usize ) {
+                    // Slices can be trivially indexed using usize
+                    return ;
+                }
+                // Any other index type goes to the function call
+                ),
+            (Array,
+                if( ty_idx == ::HIR::CoreType::Usize ) {
+                    // Arrays also can be trivially indexed using usize
+                    return ;
+                }
+                // Any other index type goes to the function call
+                )
+            )
+            
+            // TODO: Which trait should be used?
+            TODO(sp, "Determine which trait should be used for index overload");
+        }
     };
     class OuterVisitor:
         public ::HIR::Visitor
