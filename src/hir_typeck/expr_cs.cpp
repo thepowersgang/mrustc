@@ -1627,15 +1627,12 @@ namespace {
             if( current_ty )
             {
                 assert( deref_count == deref_res_types.size() );
-                //auto unsize_borrow_type = 
-                while( !deref_res_types.empty() )
+                for(auto& ty_r : deref_res_types)
                 {
-                    auto ty = mv$(deref_res_types.back());
-                    deref_res_types.pop_back();
+                    auto ty = mv$(ty_r);
                     
                     node.m_value = this->context.create_autoderef( mv$(node.m_value), mv$(ty) );
                     context.m_ivars.get_type(node.m_value->m_res_type);
-                    deref_count -= 1;
                 }
                 
                 m_completed = true;
