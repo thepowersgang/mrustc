@@ -547,6 +547,28 @@ bool StaticTraitResolve::trait_contains_type(const Span& sp, const ::HIR::Generi
     return false;
 }
 
+bool StaticTraitResolve::type_is_copy(const ::HIR::TypeRef& ty) const
+{
+    TU_MATCH_DEF(::HIR::TypeRef::Data, (ty.m_data), (e),
+    (
+        // Search for a Copy bound or impl.
+        return false;
+        ),
+    (Borrow,
+        return (e.type == ::HIR::BorrowType::Shared);
+        ),
+    (Pointer,
+        return true;
+        ),
+    (Primitive,
+        return e != ::HIR::CoreType::Str;
+        ),
+    (Array,
+        return type_is_copy(*e.inner);
+        )
+    )
+}
+
 bool ImplRef::more_specific_than(const ImplRef& other) const
 {
     TU_MATCH(Data, (this->m_data), (te),

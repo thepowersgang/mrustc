@@ -94,5 +94,11 @@ public:
             ) const;
     /// 
     bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
+    
+    
+    // --------------
+    // Common bounds
+    // -------------
+    bool type_is_copy(const ::HIR::TypeRef& ty) const;
 };
 

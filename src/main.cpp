@@ -189,6 +189,11 @@ int main(int argc, char *argv[])
         CompilePhaseV("Typecheck Expressions", [&]() {
             Typecheck_Expressions(*hir_crate);
             });
+        // === HIR Expansion ===
+        // Annotate how each node's result is used
+        CompilePhaseV("Expand HIR Annotate", [&]() {
+            HIR_Expand_AnnotateUsage(*hir_crate);
+            });
         // - Now that all types are known, closures can be desugared
         CompilePhaseV("Expand HIR Closures", [&]() {
             HIR_Expand_Closures(*hir_crate);
@@ -206,7 +211,6 @@ int main(int argc, char *argv[])
             return 0;
         }
         
-        // Expand closures into items
         // Lower expressions into MIR
         CompilePhaseV("Lower MIR", [&]() {
             HIR_GenerateMIR(*hir_crate);

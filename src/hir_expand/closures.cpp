@@ -636,17 +636,7 @@ namespace {
     private:
         bool type_is_copy(const ::HIR::TypeRef& ty) const
         {
-            TU_MATCH_DEF(::HIR::TypeRef::Data, (ty.m_data), (e),
-            (
-                return false;
-                ),
-            (Primitive,
-                return e != ::HIR::CoreType::Str;
-                ),
-            (Array,
-                return type_is_copy(*e.inner);
-                )
-            )
+            return m_resolve.type_is_copy(ty);
         }
         
         void add_closure_def(unsigned int slot)

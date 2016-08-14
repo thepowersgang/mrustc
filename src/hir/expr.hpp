@@ -11,6 +11,18 @@ namespace HIR {
 
 typedef ::std::vector< ::std::pair<const ::HIR::SimplePath*,const ::HIR::Trait*> >  t_trait_list;
 
+// Indicates how a result is used
+enum class ValueUsage {
+    // Not yet known (defalt state)
+    Unknown,
+    // Value is borrowed (shared)
+    Borrow,
+    // Value is mutated or uniquely borrowed
+    Mutate,
+    // Value is moved
+    Move,
+};
+
 class GenericParams;
 
 class ExprVisitor;
@@ -20,6 +32,7 @@ class ExprNode
 public:
     Span    m_span;
     ::HIR::TypeRef    m_res_type;
+    ValueUsage  m_usage = ValueUsage::Unknown;
 
     const Span& span() const { return m_span; }
     
