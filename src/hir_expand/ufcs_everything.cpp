@@ -35,7 +35,9 @@ namespace {
             TRACE_FUNCTION_FR(&*root << " " << node_ty << " : " << root->m_res_type, node_ty);
             root->visit(*this);
             if( m_replacement ) {
+                auto usage = root->m_usage;
                 root.reset( m_replacement.release() );
+                root->m_usage = usage;
             }
         }
         
@@ -46,7 +48,9 @@ namespace {
             assert( node );
             node->visit(*this);
             if( m_replacement ) {
+                auto usage = node->m_usage;
                 node = mv$(m_replacement);
+                node->m_usage = usage;
             }
         }
         
@@ -582,6 +586,73 @@ namespace {
             auto& arg_types = call_node.m_cache.m_arg_types;
             arg_types.push_back( ::HIR::TypeRef::new_borrow(bt, ty_val.clone()) );
             arg_types.push_back( ty_idx.clone() );
+            arg_types.push_back( m_replacement->m_res_type.clone() );
+            
+            // - Dereference the result (which is an &-ptr)
+            m_replacement = NEWNODE( mv$(node.m_res_type), Deref, sp,  mv$(m_replacement) );
+        }
+        
+        void visit(::HIR::ExprNode_Deref& node) override
+        {
+            const auto& sp = node.span();
+            
+            ::HIR::ExprVisitorDef::visit(node);
+            
+            const auto& ty_val = node.m_value->m_res_type;
+            
+            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_val.m_data), (e),
+            (
+                BUG(sp, "Deref on unexpected type - " << ty_val);
+                ),
+            (Path,
+                ),
+            (Pointer,
+                return ;
+                ),
+            (Borrow,
+                return ;
+                )
+            )
+            
+            const char* langitem = nullptr;
+            const char* method = nullptr;
+            ::HIR::BorrowType   bt;
+            switch( node.m_value->m_usage )
+            {
+            case ::HIR::ValueUsage::Unknown:
+                BUG(sp, "Unknown usage type of deref value");
+                break;
+            case ::HIR::ValueUsage::Borrow:
+                bt = ::HIR::BorrowType::Shared;
+                langitem = method = "deref";
+                break;
+            case ::HIR::ValueUsage::Mutate:
+                bt = ::HIR::BorrowType::Unique;
+                langitem = method = "deref_mut";
+                break;
+            case ::HIR::ValueUsage::Move:
+                TODO(sp, "Support moving out of indexed values");
+                break;
+            }
+            // Needs replacement, continue
+            assert(langitem);
+            assert(method);
+            
+            // - Construct trait path - Index*<IdxTy>
+            ::HIR::GenericPath  trait { m_crate.get_lang_item_path(node.span(), langitem), {} };
+            
+            ::std::vector< ::HIR::ExprNodeP>    args;
+            args.push_back( NEWNODE( ::HIR::TypeRef::new_borrow(bt, ty_val.clone()), Borrow, sp, bt, mv$(node.m_value) ) );
+            
+            m_replacement = NEWNODE( ::HIR::TypeRef::new_borrow(bt, node.m_res_type.clone()), CallPath, sp,
+                ::HIR::Path(ty_val.clone(), mv$(trait), method),
+                mv$(args)
+                );
+            // Populate the cache for later passes
+            // TODO: The check pass should probably just ignore this and DIY
+            auto& call_node = dynamic_cast< ::HIR::ExprNode_CallPath&>(*m_replacement);
+            auto& arg_types = call_node.m_cache.m_arg_types;
+            arg_types.push_back( ::HIR::TypeRef::new_borrow(bt, ty_val.clone()) );
             arg_types.push_back( m_replacement->m_res_type.clone() );
             
             // - Dereference the result (which is an &-ptr)

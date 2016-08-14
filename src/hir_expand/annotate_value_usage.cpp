@@ -65,6 +65,11 @@ namespace {
         void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override
         {
             assert(node_ptr);
+            
+            const auto& node_ref = *node_ptr;
+            const char* node_tyname = typeid(node_ref).name();
+            TRACE_FUNCTION_FR(&*node_ptr << " " << node_tyname, node_ptr->m_usage);
+            
             node_ptr->m_usage = this->get_usage();
             
             auto expected_size = m_usage.size();
@@ -240,7 +245,7 @@ namespace {
                 this->visit_node_ptr(node.m_value);
             }
             else {
-                node.m_value->visit( *this );
+                this->visit_node_ptr(node.m_value);
             }
         }
         
@@ -361,6 +366,7 @@ namespace {
         // ------
         void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override {
             auto _ = this->m_resolve.set_item_generics(item.m_params);
+            DEBUG("Function " << p);
             ::HIR::Visitor::visit_function(p, item);
         }
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override {

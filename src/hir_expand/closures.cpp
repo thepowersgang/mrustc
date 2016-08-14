@@ -480,54 +480,6 @@ namespace {
             ::HIR::ExprVisitorDef::visit(node);
         }
         
-        void visit(::HIR::ExprNode_Assign& node) override
-        {
-            // If closure is set, set a flag on the LHS saying it's being mutated, and one on the RHS saying it's being moved.
-            if( !m_closure_stack.empty() )
-            {
-                node.m_slot->visit(*this);
-                node.m_value->visit(*this);
-            }
-            else
-            {
-                ::HIR::ExprVisitorDef::visit(node);
-            }
-        }
-        void visit(::HIR::ExprNode_UniOp& node) override
-        {
-            if( !m_closure_stack.empty() )
-            {
-                node.m_value->visit(*this);
-            }
-            else
-            {
-                ::HIR::ExprVisitorDef::visit(node);
-            }
-        }
-        void visit(::HIR::ExprNode_BinOp& node) override
-        {
-            if( !m_closure_stack.empty() )
-            {
-                node.m_left ->visit(*this);
-                node.m_right->visit(*this);
-            }
-            else
-            {
-                ::HIR::ExprVisitorDef::visit(node);
-            }
-        }
-        void visit(::HIR::ExprNode_Field& node) override
-        {
-            if( !m_closure_stack.empty() )
-            {
-                node.m_value->visit( *this );
-            }
-            else
-            {
-                ::HIR::ExprVisitorDef::visit(node);
-            }
-        }
-        
         void visit(::HIR::ExprNode_CallValue& node) override
         {
             if( !m_closure_stack.empty() )
@@ -560,31 +512,7 @@ namespace {
                 ::HIR::ExprVisitorDef::visit(node);
             }
         }
-        void visit(::HIR::ExprNode_CallMethod& node) override
-        {
-            if( !m_closure_stack.empty() )
-            {
-                node.m_value->visit(*this);
-                for(auto& arg : node.m_args)
-                    arg->visit(*this);
-            }
-            else
-            {
-                ::HIR::ExprVisitorDef::visit(node);
-            }
-        }
-        void visit(::HIR::ExprNode_CallPath& node) override
-        {
-            if( !m_closure_stack.empty() )
-            {
-                for(auto& arg : node.m_args)
-                    arg->visit(*this);
-            }
-            else
-            {
-                ::HIR::ExprVisitorDef::visit(node);
-            }
-        }
+        
     private:
         bool type_is_copy(const ::HIR::TypeRef& ty) const
         {
