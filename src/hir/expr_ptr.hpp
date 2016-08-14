@@ -28,7 +28,9 @@ public:
     ExprPtr();
     ExprPtr(::std::unique_ptr< ::HIR::ExprNode> _);
     ExprPtr(ExprPtr&& x):
-        node(x.node)
+        node(x.node),
+        m_bindings( ::std::move(x.m_bindings) ),
+        m_mir( ::std::move(x.m_mir) )
     {
         x.node = nullptr;
     }
@@ -36,6 +38,8 @@ public:
     {
         this->~ExprPtr();
         node = x.node;
+        m_bindings = ::std::move(x.m_bindings);
+        m_mir = ::std::move(x.m_mir);
         x.node = nullptr;
         return *this;
     }
