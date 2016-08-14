@@ -395,7 +395,24 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     }
                     ),
                 (Struct,
-                    TODO(sp, "Enum Struct");
+                    auto lval_var = ::MIR::LValue::make_Downcast({ box$(match_val.clone()), var_idx });
+                    const auto* subrules = re.sub_rules.data();
+                    unsigned int subrule_count = re.sub_rules.size();
+                    
+                    for(unsigned int i = 0; i < ve.size(); i ++)
+                    {
+                        const auto& tpl_ty = ve[i].second.ent;
+                        ::HIR::TypeRef  ent_ty_tmp;
+                        const auto& ent_ty = (monomorphise_type_needed(tpl_ty) ? ent_ty_tmp = monomorph(tpl_ty) : tpl_ty);
+                        unsigned int cnt = MIR_LowerHIR_Match_Simple__GeneratePattern(
+                            builder, sp,
+                            subrules, subrule_count, ent_ty,
+                            ::MIR::LValue::make_Field({ box$(lval_var.clone()), i }),
+                            fail_bb
+                            );
+                        subrules += cnt;
+                        subrule_count -= cnt;
+                    }
                     )
                 )
                 // NOTE: All enum variant patterns take one slot
