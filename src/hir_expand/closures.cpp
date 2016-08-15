@@ -430,7 +430,7 @@ namespace {
                 // - FnOnce
                 {
                     auto dispatch_node = NEWNODE(ret_type.clone(), CallPath, sp,
-                        ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_FnMut, trait_params.clone()), "call"),
+                        ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_FnMut, trait_params.clone()), "call_mut"),
                         make_vec2(
                             NEWNODE(method_self_ty.clone(), Borrow, sp, ::HIR::BorrowType::Unique, NEWNODE(closure_type.clone(), Variable, sp, "self", 0)),
                             NEWNODE(args_ty.clone(), Variable, sp, "arg", 1)

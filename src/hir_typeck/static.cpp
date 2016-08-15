@@ -405,12 +405,10 @@ void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef&
             
             rv = this->find_impl(sp, trait_path.m_path, trait_path.m_params, *e2.type, [&](const auto& impl) {
                 DEBUG("Found impl" << impl);
-                //auto it = assoc.find( e2.item );
-                //if( it == assoc.end() )
-                //    ERROR(sp, E0000, "Couldn't find assocated type " << e2.item << " in " << e2.trait);
-                //
-                //DEBUG("Converted UfcsKnown - " << e.path << " = " << it->second);
-                //input = it->second.clone();
+                
+                auto nt = impl.get_type( e2.item.c_str() );
+                DEBUG("Converted UfcsKnown - " << e.path << " = " << nt);
+                input = mv$(nt);
                 return true;
                 });
             if( rv ) {
@@ -418,17 +416,11 @@ void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef&
                 return;
             }
             
-            // If there are no ivars in this path, set its binding to Opaque
-            //if( !this->m_ivars.type_contains_ivars(input) ) {
-                // TODO: If the type is a generic or an opaque associated, we can't know.
-                // - If the trait contains any of the above, it's unknowable
-                // - Otherwise, it's an error
-                e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
-                DEBUG("Couldn't resolve associated type for " << input << " (and won't ever be able to, assuming opaque)");
-            //}
-            //else {
-            //    DEBUG("Couldn't resolve associated type for " << input << " (will try again later)");
-            //}
+            // TODO: If the type is a generic or an opaque associated, we can't know.
+            // - If the trait contains any of the above, it's unknowable
+            // - Otherwise, it's an error
+            e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+            DEBUG("Couldn't resolve associated type for " << input << " (and won't ever be able to, assuming opaque)");
             ),
         (UfcsUnknown,
             BUG(sp, "Encountered UfcsUnknown");

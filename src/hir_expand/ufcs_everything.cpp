@@ -64,14 +64,18 @@ namespace {
             
             ::HIR::ExprVisitorDef::visit(node);
             
-            ::HIR::PathParams   trait_args;
+            // TODO: Calling a `fn` type should be kept as a _CallValue
+            
+            // - Construct the argument tuple
+            ::HIR::TypeRef  arg_tup_type;
             {
                 ::std::vector< ::HIR::TypeRef>  arg_types;
-                // NOTE: In this case, m_arg_types is just the argument types
-                for(const auto& arg_ty : node.m_arg_types)
-                    arg_types.push_back(arg_ty.clone());
-                trait_args.m_types.push_back( ::HIR::TypeRef(mv$(arg_types)) );
+                for(unsigned int i = 0; i < node.m_arg_types.size() - 1; i ++)
+                    arg_types.push_back( node.m_arg_types[i].clone() );
+                arg_tup_type = ::HIR::TypeRef( mv$(arg_types) );
             }
+            ::HIR::PathParams   trait_args;
+            trait_args.m_types.push_back( arg_tup_type.clone() );
             
             // TODO: You can call via &-ptrs, but that currently isn't handled in typeck
             TU_IFLET(::HIR::TypeRef::Data, node.m_value->m_res_type.m_data, Closure, e,
@@ -131,12 +135,14 @@ namespace {
             }
             
             auto self_arg_type = node.m_value->m_res_type.clone();
+            
             // Construct argument list for the output
             ::std::vector< ::HIR::ExprNodeP>    args;
             args.reserve( 1 + node.m_args.size() );
             args.push_back( mv$(node.m_value) );
-            for(auto& arg : node.m_args)
-                args.push_back( mv$(arg) );
+            
+            auto n = mv$(node.m_args);
+            args.push_back(NEWNODE( arg_tup_type.clone(), Tuple, sp,  mv$(n) ));
             
             m_replacement = NEWNODE(mv$(node.m_res_type), CallPath, sp,
                 mv$(method_path),
@@ -146,8 +152,8 @@ namespace {
             // Populate the cache for later passes
             auto& arg_types = dynamic_cast< ::HIR::ExprNode_CallPath&>(*m_replacement).m_cache.m_arg_types;
             arg_types.push_back( mv$(self_arg_type) );
-            for(auto& ty : node.m_arg_types)
-                arg_types.push_back( mv$(ty) );
+            arg_types.push_back( mv$(arg_tup_type) );
+            arg_types.push_back( m_replacement->m_res_type.clone() );
         }
         
         // ----------
