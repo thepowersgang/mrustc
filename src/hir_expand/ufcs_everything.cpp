@@ -63,10 +63,14 @@ namespace {
             const auto& sp = node.span();
             
             ::HIR::ExprVisitorDef::visit(node);
+            const auto& ty_val = node.m_value->m_res_type;
             
-            // TODO: Calling a `fn` type should be kept as a _CallValue
+            // Calling a `fn` type should be kept as a _CallValue
+            if( ty_val.m_data.is_Function() ) {
+                return ;
+            }
             
-            // - Construct the argument tuple
+            // 1. Construct tuple type containing argument types for `Args`
             ::HIR::TypeRef  arg_tup_type;
             {
                 ::std::vector< ::HIR::TypeRef>  arg_types;
@@ -74,9 +78,11 @@ namespace {
                     arg_types.push_back( node.m_arg_types[i].clone() );
                 arg_tup_type = ::HIR::TypeRef( mv$(arg_types) );
             }
+            // - Make the trait arguments.
             ::HIR::PathParams   trait_args;
             trait_args.m_types.push_back( arg_tup_type.clone() );
             
+            // - If the called value is a local closure, figure out how it's being used.
             // TODO: You can call via &-ptrs, but that currently isn't handled in typeck
             TU_IFLET(::HIR::TypeRef::Data, node.m_value->m_res_type.m_data, Closure, e,
                 if( node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Unknown )
@@ -89,41 +95,45 @@ namespace {
                     case ::HIR::ExprNode_Closure::Class::NoCapture:
                     case ::HIR::ExprNode_Closure::Class::Shared:
                         node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
-                        // TODO: Add borrow.
                         break;
                     case ::HIR::ExprNode_Closure::Class::Mut:
                         node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnMut;
-                        // TODO: Add borrow.
                         break;
                     case ::HIR::ExprNode_Closure::Class::Once:
                         node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnOnce;
-                        // TODO: Add borrow.
                         break;
                     }
                 }
             )
             
             // Use marking in node to determine trait to use
+            ::HIR::TypeRef self_arg_type;
             ::HIR::Path   method_path(::HIR::SimplePath{});
             switch(node.m_trait_used)
             {
             case ::HIR::ExprNode_CallValue::TraitUsed::Fn:
+                // Insert a borrow op.
+                self_arg_type = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ty_val.clone() );
+                node.m_value = NEWNODE(self_arg_type.clone(), Borrow, sp,  ::HIR::BorrowType::Shared, mv$(node.m_value));
                 method_path = ::HIR::Path(
-                    node.m_value->m_res_type.clone(),
+                    ty_val.clone(),
                     ::HIR::GenericPath( m_crate.get_lang_item_path(sp, "fn"), mv$(trait_args) ),
                     "call"
                     );
                 break;
             case ::HIR::ExprNode_CallValue::TraitUsed::FnMut:
+                self_arg_type = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Unique, ty_val.clone() );
+                node.m_value = NEWNODE(self_arg_type.clone(), Borrow, sp,  ::HIR::BorrowType::Unique, mv$(node.m_value));
                 method_path = ::HIR::Path(
-                    node.m_value->m_res_type.clone(),
+                    ty_val.clone(),
                     ::HIR::GenericPath( m_crate.get_lang_item_path(sp, "fn_mut"), mv$(trait_args) ),
                     "call_mut"
                     );
                 break;
             case ::HIR::ExprNode_CallValue::TraitUsed::FnOnce:
+                self_arg_type = ty_val.clone();
                 method_path = ::HIR::Path(
-                    node.m_value->m_res_type.clone(),
+                    ty_val.clone(),
                     ::HIR::GenericPath( m_crate.get_lang_item_path(sp, "fn_once"), mv$(trait_args) ),
                     "call_once"
                     );
@@ -133,16 +143,14 @@ namespace {
             default:
                 BUG(node.span(), "Encountered CallValue with TraitUsed::Unknown, ty=" << node.m_value->m_res_type);
             }
+            assert(self_arg_type != ::HIR::TypeRef());
             
-            auto self_arg_type = node.m_value->m_res_type.clone();
             
             // Construct argument list for the output
             ::std::vector< ::HIR::ExprNodeP>    args;
-            args.reserve( 1 + node.m_args.size() );
+            args.reserve( 2 );
             args.push_back( mv$(node.m_value) );
-            
-            auto n = mv$(node.m_args);
-            args.push_back(NEWNODE( arg_tup_type.clone(), Tuple, sp,  mv$(n) ));
+            args.push_back(NEWNODE( arg_tup_type.clone(), Tuple, sp,  mv$(node.m_args) ));
             
             m_replacement = NEWNODE(mv$(node.m_res_type), CallPath, sp,
                 mv$(method_path),

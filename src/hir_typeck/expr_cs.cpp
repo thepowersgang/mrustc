@@ -1730,16 +1730,13 @@ namespace {
                 }
                 
                 // 3. Locate the most permissive implemented Fn* trait (Fn first, then FnMut, then assume just FnOnce)
+                // NOTE: Borrowing is added by the expansion to CallPath
                 if( this->context.m_resolve.find_trait_impls(node.span(), lang_Fn, trait_pp, ty, [&](auto , auto cmp) {
                     return cmp == ::HIR::Compare::Equal;
                     })
                     )
                 {
                     node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
-                    
-                    auto borrow_ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ty.clone() );
-                    node.m_value = ::HIR::ExprNodeP(new ::HIR::ExprNode_Borrow(sp, ::HIR::BorrowType::Shared, mv$(node.m_value)));
-                    node.m_value->m_res_type = mv$(borrow_ty);
                 }
                 else if( this->context.m_resolve.find_trait_impls(node.span(), lang_FnMut, trait_pp, ty, [&](auto , auto cmp) {
                     return cmp == ::HIR::Compare::Equal;
@@ -1747,10 +1744,6 @@ namespace {
                     )
                 {
                     node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnMut;
-                    
-                    auto borrow_ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Unique, ty.clone() );
-                    node.m_value = ::HIR::ExprNodeP(new ::HIR::ExprNode_Borrow(sp, ::HIR::BorrowType::Unique, mv$(node.m_value)));
-                    node.m_value->m_res_type = mv$(borrow_ty);
                 }
                 else
                 {
