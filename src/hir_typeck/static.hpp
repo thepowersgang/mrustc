@@ -78,6 +78,17 @@ public:
         const ::HIR::TypeRef& type,
         t_cb_find_impl found_cb
         ) const;
+    
+private:
+    bool find_impl__check_crate(
+        const Span& sp,
+        const ::HIR::SimplePath& trait_path, const ::HIR::PathParams* trait_params,
+        const ::HIR::TypeRef& type,
+        t_cb_find_impl found_cb,
+        const ::HIR::TraitImpl& impl
+        ) const;
+
+public:
 
     void expand_associated_types(const Span& sp, ::HIR::TypeRef& input) const;
     /// \}

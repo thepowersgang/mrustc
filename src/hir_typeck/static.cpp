@@ -122,104 +122,136 @@ bool StaticTraitResolve::find_impl(
     
     // Search the crate for impls
     ret = m_crate.find_trait_impls(trait_path, type, cb_ident, [&](const auto& impl) {
-        DEBUG("[find_impl] - impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << impl.m_params.fmt_bounds());
-        
-        ::std::vector< const ::HIR::TypeRef*> impl_params;
-        impl_params.resize( impl.m_params.m_types.size() );
-        
-        auto cb = [&impl_params,&sp,cb_ident](auto idx, const auto& ty) {
-            assert( idx < impl_params.size() );
-            if( ! impl_params[idx] ) {
-                impl_params[idx] = &ty;
-                return ::HIR::Compare::Equal;
-            }
-            else {
-                return impl_params[idx]->compare_with_placeholders(sp, ty, cb_ident);
-            }
-            };
-        auto match = impl.m_type.match_test_generics_fuzz(sp, type, cb_ident, cb);
-        if( trait_params )
-        {
-            assert( trait_params->m_types.size() == impl.m_trait_args.m_types.size() );
-            for( unsigned int i = 0; i < impl.m_trait_args.m_types.size(); i ++ )
-            {
-                const auto& l = impl.m_trait_args.m_types[i];
-                const auto& r = trait_params->m_types[i];
-                match &= l.match_test_generics_fuzz(sp, r, cb_ident, cb);
-            }
-        }
-        if( match != ::HIR::Compare::Equal ) {
-            DEBUG("[find_impl]  > Type mismatch");
-            // TODO: Support fuzzy matches for some edge cases
-            return false;
-        }
-        
-        ::std::vector< ::HIR::TypeRef>  placeholders;
-        for(unsigned int i = 0; i < impl_params.size(); i ++ ) {
-            if( !impl_params[i] ) {
-                if( placeholders.size() == 0 )
-                    placeholders.resize(impl_params.size());
-                placeholders[i] = ::HIR::TypeRef("impl_?", 2*256 + i);
-            }
-        }
-        //auto cb_match = [&](unsigned int idx, const auto& ty) {
-        //    if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding == idx )
-        //        return ::HIR::Compare::Equal;
-        //    if( idx >> 8 == 2 ) {
-        //        auto i = idx % 256;
-        //        ASSERT_BUG(sp, !impl_params[i], "Placeholder to populated type returned");
-        //        auto& ph = placeholders[i];
-        //        if( ph.m_data.is_Generic() && ph.m_data.as_Generic().binding == idx ) {
-        //            DEBUG("Bind placeholder " << i << " to " << ty);
-        //            ph = ty.clone();
-        //            return ::HIR::Compare::Equal;
-        //        }
-        //        else {
-        //            TODO(sp, "Compare placeholder " << i << " " << ph << " == " << ty);
-        //        }
-        //    }
-        //    else {
-        //        return ::HIR::Compare::Unequal;
-        //    }
-        //    };
-        auto cb_monomorph = [&](const auto& gt)->const auto& {
-                const auto& ge = gt.m_data.as_Generic();
-                ASSERT_BUG(sp, ge.binding >> 8 != 2, "");
-                assert( ge.binding < impl_params.size() );
-                if( !impl_params[ge.binding] ) {
-                    return placeholders[ge.binding];
-                }
-                return *impl_params[ge.binding];
-                };
-        
-        // Bounds
-        for(const auto& bound : impl.m_params.m_bounds) {
-            TU_MATCH_DEF(::HIR::GenericBound, (bound), (e),
-            (
-                ),
-            (TraitBound,
-                DEBUG("Trait bound " << e.type << " : " << e.trait);
-                auto b_ty_mono = monomorphise_type_with(sp, e.type, cb_monomorph);
-                auto b_tp_mono = monomorphise_traitpath_with(sp, e.trait, cb_monomorph, false);
-                DEBUG("- b_ty_mono = " << b_ty_mono << ", b_tp_mono = " << b_tp_mono);
-                // HACK: If the type is '_', assume the bound passes
-                if( b_ty_mono.m_data.is_Infer() ) {
-                    continue ;
-                }
-                if( !this->find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [](const auto&){return true;}) ) {
-                    DEBUG("> Fail - " << b_ty_mono << ": " << b_tp_mono);
-                    return false;
-                }
-                )
-            )
-        }
-        
-        return found_cb( ImplRef(impl_params, impl) );
+        return this->find_impl__check_crate(sp, trait_path, trait_params, type, found_cb,  impl);
         });
     if(ret)
         return true;
     
     return false;
+}
+
+bool StaticTraitResolve::find_impl__check_crate(
+        const Span& sp,
+        const ::HIR::SimplePath& trait_path, const ::HIR::PathParams* trait_params,
+        const ::HIR::TypeRef& type,
+        t_cb_find_impl found_cb,
+        const ::HIR::TraitImpl& impl
+    ) const
+{
+    auto cb_ident = [](const auto&ty)->const auto&{return ty;};
+    DEBUG("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << impl.m_params.fmt_bounds());
+    
+    ::std::vector< const ::HIR::TypeRef*> impl_params;
+    impl_params.resize( impl.m_params.m_types.size() );
+    
+    auto cb = [&impl_params,&sp,cb_ident](auto idx, const auto& ty) {
+        assert( idx < impl_params.size() );
+        if( ! impl_params[idx] ) {
+            impl_params[idx] = &ty;
+            return ::HIR::Compare::Equal;
+        }
+        else {
+            return impl_params[idx]->compare_with_placeholders(sp, ty, cb_ident);
+        }
+        };
+    auto match = impl.m_type.match_test_generics_fuzz(sp, type, cb_ident, cb);
+    if( trait_params )
+    {
+        assert( trait_params->m_types.size() == impl.m_trait_args.m_types.size() );
+        for( unsigned int i = 0; i < impl.m_trait_args.m_types.size(); i ++ )
+        {
+            const auto& l = impl.m_trait_args.m_types[i];
+            const auto& r = trait_params->m_types[i];
+            match &= l.match_test_generics_fuzz(sp, r, cb_ident, cb);
+        }
+    }
+    if( match != ::HIR::Compare::Equal ) {
+        DEBUG("[find_impl]  > Type mismatch");
+        // TODO: Support fuzzy matches for some edge cases
+        return false;
+    }
+    
+    ::std::vector< ::HIR::TypeRef>  placeholders;
+    for(unsigned int i = 0; i < impl_params.size(); i ++ ) {
+        if( !impl_params[i] ) {
+            if( placeholders.size() == 0 )
+                placeholders.resize(impl_params.size());
+            placeholders[i] = ::HIR::TypeRef("impl_?", 2*256 + i);
+        }
+    }
+    // Callback that matches placeholders to concrete types
+    auto cb_match = [&](unsigned int idx, const auto& ty) {
+        if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding == idx )
+            return ::HIR::Compare::Equal;
+        if( idx >> 8 == 2 ) {
+            auto i = idx % 256;
+            ASSERT_BUG(sp, !impl_params[i], "Placeholder to populated type returned");
+            auto& ph = placeholders[i];
+            if( ph.m_data.is_Generic() && ph.m_data.as_Generic().binding == idx ) {
+                DEBUG("Bind placeholder " << i << " to " << ty);
+                ph = ty.clone();
+                return ::HIR::Compare::Equal;
+            }
+            else {
+                TODO(sp, "Compare placeholder " << i << " " << ph << " == " << ty);
+            }
+        }
+        else {
+            return ::HIR::Compare::Unequal;
+        }
+        };
+    // Callback that returns monomorpisation results
+    auto cb_monomorph = [&](const auto& gt)->const auto& {
+            const auto& ge = gt.m_data.as_Generic();
+            ASSERT_BUG(sp, ge.binding >> 8 != 2, "");
+            assert( ge.binding < impl_params.size() );
+            if( !impl_params[ge.binding] ) {
+                return placeholders[ge.binding];
+            }
+            return *impl_params[ge.binding];
+            };
+    
+    // Bounds
+    for(const auto& bound : impl.m_params.m_bounds) {
+        TU_MATCH_DEF(::HIR::GenericBound, (bound), (e),
+        (
+            ),
+        (TraitBound,
+            DEBUG("[find_impl] Trait bound " << e.type << " : " << e.trait);
+            auto b_ty_mono = monomorphise_type_with(sp, e.type, cb_monomorph);
+            auto b_tp_mono = monomorphise_traitpath_with(sp, e.trait, cb_monomorph, false);
+            for(auto& assoc_bound : b_tp_mono.m_type_bounds) {
+                this->expand_associated_types(sp, assoc_bound.second);
+            }
+            DEBUG("[find_impl] - b_ty_mono = " << b_ty_mono << ", b_tp_mono = " << b_tp_mono);
+            // HACK: If the type is '_', assume the bound passes
+            if( b_ty_mono.m_data.is_Infer() ) {
+                continue ;
+            }
+            auto rv = this->find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const auto& impl) {
+                
+                for(const auto& assoc_bound : b_tp_mono.m_type_bounds) {
+                    const char* name = assoc_bound.first.c_str();
+                    const ::HIR::TypeRef& exp = assoc_bound.second;
+                    ::HIR::TypeRef have = impl.get_type(name);
+                    // TODO: Returning `_` means unset associated type, should that still be compared?
+                    if( have != ::HIR::TypeRef() )
+                    {
+                        auto cmp = have .match_test_generics_fuzz(sp, exp, cb_ident, cb_match);
+                        ASSERT_BUG(sp, cmp == ::HIR::Compare::Equal, "Assoc ty " << name << " mismatch, " << have << " != des " << exp);
+                    }
+                }
+                return true;
+                });
+            if( !rv ) {
+                DEBUG("[find_impl] > Fail - " << b_ty_mono << ": " << b_tp_mono);
+                return false;
+            }
+            )
+        )
+    }
+    
+    return found_cb( ImplRef(impl_params, impl) );
 }
 
 void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef& input) const
@@ -404,7 +436,7 @@ void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef&
             //e2.trait = mv$(trait_path);
             
             rv = this->find_impl(sp, trait_path.m_path, trait_path.m_params, *e2.type, [&](const auto& impl) {
-                DEBUG("Found impl" << impl);
+                DEBUG("[expand_associated_types] Found " << impl);
                 
                 auto nt = impl.get_type( e2.item.c_str() );
                 DEBUG("Converted UfcsKnown - " << e.path << " = " << nt);
@@ -697,7 +729,7 @@ bool ImplRef::type_is_specializable(const char* name) const
     static Span  sp;
     TU_MATCH(Data, (this->m_data), (e),
     (TraitImpl,
-        DEBUG(*this);
+        DEBUG("name=" << name << " " << *this);
         auto it = e.impl->m_types.find(name);
         if( it == e.impl->m_types.end() )
             return ::HIR::TypeRef();
@@ -754,18 +786,27 @@ bool ImplRef::type_is_specializable(const char* name) const
                 for( unsigned int i = 0; i < e.impl->m_params.m_types.size(); i ++ )
                 {
                     const auto& ty_d = e.impl->m_params.m_types[i];
-                    os << ty_d.m_name << " = ";
-                    if( e.params[i] ) {
-                        os << *e.params[i];
-                    }
-                    else {
-                        os << "?";
-                    }
+                    os << ty_d.m_name;
                     os << ",";
                 }
                 os << ">";
             }
             os << " ?" << e.impl->m_trait_args << " for " << e.impl->m_type << e.impl->m_params.fmt_bounds();
+            os << " {";
+            for( unsigned int i = 0; i < e.impl->m_params.m_types.size(); i ++ )
+            {
+                const auto& ty_d = e.impl->m_params.m_types[i];
+                os << ty_d.m_name;
+                os << ty_d.m_name << " = ";
+                if( e.params[i] ) {
+                    os << *e.params[i];
+                }
+                else {
+                    os << "?";
+                }
+                os << ",";
+            }
+            os << "}";
         }
         ),
     (BoundedPtr,
