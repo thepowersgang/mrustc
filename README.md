@@ -1,4 +1,8 @@
 
+Mutabah's Rust Compiler
+
+_In-progress_ alternative rust compiler.
+
 Intro
 ===
 This project is an attempt at creating a simple rust compiler in C++, with the ultimate goal of being a seperate reimplementation.
