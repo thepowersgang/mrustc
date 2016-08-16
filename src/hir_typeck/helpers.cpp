@@ -2090,7 +2090,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             //if( match == ::HIR::Compare::Fuzzy ) {
             //    TODO(sp, "- Pass on fuzzy match status");
             //}
-            return callback(ImplRef(mv$(impl_params), impl, mv$(placeholders)), match);
+            return callback(ImplRef(mv$(impl_params), trait, impl, mv$(placeholders)), match);
             //return callback(ty_mono, args_mono, types/*, (match == ::HIR::Compare::Fuzzy)*/);
         }
         );

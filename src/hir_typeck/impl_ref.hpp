@@ -10,6 +10,7 @@ struct ImplRef
     (TraitImpl, struct {
         ::std::vector<const ::HIR::TypeRef*>   params;
         ::std::vector<::HIR::TypeRef>   params_ph;
+        const ::HIR::SimplePath*    trait_path;
         const ::HIR::TraitImpl* impl;
         }),
     (BoundedPtr, struct {
@@ -27,10 +28,10 @@ struct ImplRef
     Data    m_data;
     
     ImplRef():
-        m_data(Data::make_TraitImpl({ {}, {}, nullptr }))
+        m_data(Data::make_TraitImpl({ {}, {}, nullptr, nullptr }))
     {}
-    ImplRef(::std::vector<const ::HIR::TypeRef*> params, const ::HIR::TraitImpl& impl, ::std::vector< ::HIR::TypeRef> params_ph={}):
-        m_data(Data::make_TraitImpl({ mv$(params), mv$(params_ph), &impl }))
+    ImplRef(::std::vector<const ::HIR::TypeRef*> params, const ::HIR::SimplePath& trait, const ::HIR::TraitImpl& impl, ::std::vector< ::HIR::TypeRef> params_ph={}):
+        m_data(Data::make_TraitImpl({ mv$(params), mv$(params_ph), &trait, &impl }))
 
     {}
     ImplRef(const ::HIR::TypeRef* type, const ::HIR::PathParams* args, const ::std::map< ::std::string, ::HIR::TypeRef>* assoc):

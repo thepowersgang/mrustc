@@ -166,7 +166,7 @@ bool StaticTraitResolve::find_impl__check_crate(
         }
     }
     if( match != ::HIR::Compare::Equal ) {
-        DEBUG("[find_impl]  > Type mismatch");
+        DEBUG(" > Type mismatch");
         // TODO: Support fuzzy matches for some edge cases
         return false;
     }
@@ -240,18 +240,22 @@ bool StaticTraitResolve::find_impl__check_crate(
                         auto cmp = have .match_test_generics_fuzz(sp, exp, cb_ident, cb_match);
                         ASSERT_BUG(sp, cmp == ::HIR::Compare::Equal, "Assoc ty " << name << " mismatch, " << have << " != des " << exp);
                     }
+                    else
+                    {
+                        DEBUG("Assoc `" << name << "` unbound, can't compare with " << exp);
+                    }
                 }
                 return true;
                 });
             if( !rv ) {
-                DEBUG("[find_impl] > Fail - " << b_ty_mono << ": " << b_tp_mono);
+                DEBUG("> Fail - " << b_ty_mono << ": " << b_tp_mono);
                 return false;
             }
             )
         )
     }
     
-    return found_cb( ImplRef(impl_params, impl) );
+    return found_cb( ImplRef(impl_params, trait_path, impl) );
 }
 
 void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef& input) const
@@ -780,6 +784,7 @@ bool ImplRef::type_is_specializable(const char* name) const
         }
         else {
             os << "impl";
+            os << "(" << e.impl << ")";
             if( e.impl->m_params.m_types.size() )
             {
                 os << "<";
@@ -791,12 +796,11 @@ bool ImplRef::type_is_specializable(const char* name) const
                 }
                 os << ">";
             }
-            os << " ?" << e.impl->m_trait_args << " for " << e.impl->m_type << e.impl->m_params.fmt_bounds();
+            os << " " << *e.trait_path << e.impl->m_trait_args << " for " << e.impl->m_type << e.impl->m_params.fmt_bounds();
             os << " {";
             for( unsigned int i = 0; i < e.impl->m_params.m_types.size(); i ++ )
             {
                 const auto& ty_d = e.impl->m_params.m_types[i];
-                os << ty_d.m_name;
                 os << ty_d.m_name << " = ";
                 if( e.params[i] ) {
                     os << *e.params[i];
@@ -805,6 +809,10 @@ bool ImplRef::type_is_specializable(const char* name) const
                     os << "?";
                 }
                 os << ",";
+            }
+            for(const auto& aty : e.impl->m_types)
+            {
+                os << "Self::" << aty.first << " = " << aty.second.data << ",";
             }
             os << "}";
         }

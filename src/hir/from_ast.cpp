@@ -975,6 +975,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
             else
             {
                 ::HIR::ItemPath    path(type, trait_name);
+                DEBUG(path);
                 
                 ::std::map< ::std::string, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> > methods;
                 ::std::map< ::std::string, ::HIR::TraitImpl::ImplEnt< ::HIR::ExprPtr> > constants;
@@ -989,9 +990,11 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                         ),
                     // TODO: Associated constants
                     (Type,
+                        DEBUG("- type " << item.name);
                         types.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> { item.is_specialisable, LowerHIR_Type(e.type()) }) );
                         ),
                     (Function,
+                        DEBUG("- method " << item.name);
                         methods.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { item.is_specialisable, LowerHIR_Function(item_path, e) }) );
                         )
                     )
