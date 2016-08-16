@@ -319,6 +319,29 @@ namespace {
                     BUG(sp, "Generic type " << ty << " unknown");
                 }
                 };
+            auto monomorph = [&](const auto& ty){ return monomorphise_type_with(sp, ty, monomorph_cb); };
+            
+            // - Clone the bounds (from both levels)
+            auto monomorph_bound = [&](const ::HIR::GenericBound& b)->auto {
+                TU_MATCHA( (b), (e),
+                (Lifetime,
+                    return ::HIR::GenericBound(e); ),
+                (TypeLifetime,
+                    return ::HIR::GenericBound::make_TypeLifetime({ monomorph(e.type), e.valid_for }); ),
+                (TraitBound,
+                    return ::HIR::GenericBound::make_TraitBound({ monomorph(e.type), monomorphise_traitpath_with(sp, e.trait, monomorph_cb, false) }); ),
+                (TypeEquality,
+                    return ::HIR::GenericBound::make_TypeEquality({ monomorph(e.type), monomorph(e.other_type) }); )
+                )
+                throw "";
+                };
+            for(const auto& bound : m_resolve.impl_generics().m_bounds ) {
+                params.m_bounds.push_back( monomorph_bound(bound) );
+            }
+            for(const auto& bound : m_resolve.item_generics().m_bounds ) {
+                params.m_bounds.push_back( monomorph_bound(bound) );
+            }
+
 
             // 2. Iterate over the nodes and rewrite variable accesses to either renumbered locals, or field accesses
             // - TODO: Monomorphise all referenced types within this
