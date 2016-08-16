@@ -4,6 +4,10 @@
 
 #include <hir/type.hpp>
 
+namespace HIR {
+    class TraitImpl;
+}
+
 struct ImplRef
 {
     TAGGED_UNION(Data, TraitImpl,
