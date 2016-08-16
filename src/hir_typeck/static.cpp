@@ -221,6 +221,7 @@ bool StaticTraitResolve::find_impl__check_crate(
             auto b_ty_mono = monomorphise_type_with(sp, e.type, cb_monomorph);
             auto b_tp_mono = monomorphise_traitpath_with(sp, e.trait, cb_monomorph, false);
             for(auto& assoc_bound : b_tp_mono.m_type_bounds) {
+                // TODO: These should be tagged with the source trait and that source trait used for expansion.
                 this->expand_associated_types(sp, assoc_bound.second);
             }
             DEBUG("[find_impl] - b_ty_mono = " << b_ty_mono << ", b_tp_mono = " << b_tp_mono);
@@ -228,8 +229,34 @@ bool StaticTraitResolve::find_impl__check_crate(
             if( b_ty_mono.m_data.is_Infer() ) {
                 continue ;
             }
+            
+            // TODO: This is extrememly inefficient (looks up the trait impl 1+N times)
+            if( b_tp_mono.m_type_bounds.size() > 0 ) {
+                //
+                for(const auto& assoc_bound : b_tp_mono.m_type_bounds) {
+                    const auto& aty_name = assoc_bound.first;
+                    const ::HIR::TypeRef& exp = assoc_bound.second;
+                    
+                    ::HIR::GenericPath  aty_src_trait;
+                    trait_contains_type(sp, b_tp_mono.m_path, *e.trait.m_trait_ptr, aty_name, aty_src_trait);
+                    
+                    auto rv = this->find_impl(sp, aty_src_trait.m_path, aty_src_trait.m_params, b_ty_mono, [&](const auto& impl) {
+                        ::HIR::TypeRef have = impl.get_type(aty_name.c_str());
+                        //auto cmp = have .match_test_generics_fuzz(sp, exp, cb_ident, cb_match);
+                        auto cmp = exp .match_test_generics_fuzz(sp, have, cb_ident, cb_match);
+                        ASSERT_BUG(sp, cmp == ::HIR::Compare::Equal, "Assoc ty " << aty_name << " mismatch, " << have << " != des " << exp);
+                        return true;
+                        });
+                    if( !rv ) {
+                        DEBUG("> Fail - " << b_ty_mono << ": " << aty_src_trait);
+                        return false;
+                    }
+                }
+            }
+            
             auto rv = this->find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const auto& impl) {
                 
+                #if 0
                 for(const auto& assoc_bound : b_tp_mono.m_type_bounds) {
                     const char* name = assoc_bound.first.c_str();
                     const ::HIR::TypeRef& exp = assoc_bound.second;
@@ -245,6 +272,7 @@ bool StaticTraitResolve::find_impl__check_crate(
                         DEBUG("Assoc `" << name << "` unbound, can't compare with " << exp);
                     }
                 }
+                #endif
                 return true;
                 });
             if( !rv ) {
@@ -255,7 +283,7 @@ bool StaticTraitResolve::find_impl__check_crate(
         )
     }
     
-    return found_cb( ImplRef(impl_params, trait_path, impl) );
+    return found_cb( ImplRef(impl_params, trait_path, impl, mv$(placeholders)) );
 }
 
 void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef& input) const
