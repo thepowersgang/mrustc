@@ -948,7 +948,7 @@ namespace {
         }
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
         {
-            TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
+            TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << " for " << impl.m_type);
             auto _ = this->m_resolve.set_impl_generics(impl.m_params);
             
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);

@@ -7,6 +7,80 @@
  */
 #include "static.hpp"
 
+void StaticTraitResolve::prep_indexes()
+{
+    static Span sp_AAA;
+    const Span& sp = sp_AAA;
+    
+    TRACE_FUNCTION_F("");
+    
+    auto add_equality = [&](::HIR::TypeRef long_ty, ::HIR::TypeRef short_ty){
+        DEBUG("[prep_indexes] ADD " << long_ty << " => " << short_ty);
+        // TODO: Sort the two types by "complexity" (most of the time long >= short)
+        this->m_type_equalities.insert(::std::make_pair( mv$(long_ty), mv$(short_ty) ));
+        };
+    
+    this->iterate_bounds([&](const auto& b) {
+        TU_MATCH_DEF(::HIR::GenericBound, (b), (be),
+        (
+            ),
+        (TraitBound,
+            DEBUG("[prep_indexes] `" << be.type << " : " << be.trait);
+            for( const auto& tb : be.trait.m_type_bounds ) {
+                DEBUG("[prep_indexes] Equality (TB) - <" << be.type << " as " << be.trait.m_path << ">::" << tb.first << " = " << tb.second);
+                auto ty_l = ::HIR::TypeRef( ::HIR::Path( be.type.clone(), be.trait.m_path.clone(), tb.first ) );
+                ty_l.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                
+                add_equality( mv$(ty_l), tb.second.clone() );
+            }
+            
+            const auto& trait_params = be.trait.m_path.m_params;
+            auto cb_mono = [&](const auto& ty)->const auto& {
+                const auto& ge = ty.m_data.as_Generic();
+                if( ge.binding == 0xFFFF ) {
+                    return be.type;
+                }
+                else if( ge.binding < 256 ) {
+                    unsigned idx = ge.binding % 256;
+                    ASSERT_BUG(sp, idx < trait_params.m_types.size(), "Generic binding out of range in trait " << be.trait);
+                    return trait_params.m_types[idx];
+                }
+                else {
+                    BUG(sp, "Unknown generic binding " << ty);
+                }
+                };
+            
+            const auto& trait = m_crate.get_trait_by_path(sp, be.trait.m_path.m_path);
+            for(const auto& a_ty : trait.m_types)
+            {
+                ::HIR::TypeRef ty_a;
+                for( const auto& a_ty_b : a_ty.second.m_trait_bounds ) {
+                    DEBUG("[prep_indexes] (Assoc) " << a_ty_b);
+                    auto trait_mono = monomorphise_traitpath_with(sp, a_ty_b, cb_mono, false);
+                    for( auto& tb : trait_mono.m_type_bounds ) {
+                        if( ty_a == ::HIR::TypeRef() ) {
+                            ty_a = ::HIR::TypeRef( ::HIR::Path( be.type.clone(), be.trait.m_path.clone(), a_ty.first ) );
+                            ty_a.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                        }
+                        DEBUG("[prep_indexes] Equality (ATB) - <" << ty_a << " as " << a_ty_b.m_path << ">::" << tb.first << " = " << tb.second);
+                        
+                        auto ty_l = ::HIR::TypeRef( ::HIR::Path( ty_a.clone(), trait_mono.m_path.clone(), tb.first ) );
+                        ty_l.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                        
+                        add_equality( mv$(ty_l), mv$(tb.second) );
+                    }
+                }
+            }
+            ),
+        (TypeEquality,
+            DEBUG("Equality - " << be.type << " = " << be.other_type);
+            add_equality( be.type.clone(), be.other_type.clone() );
+            )
+        )
+        return false;
+        });
+}
+
 bool StaticTraitResolve::find_impl(
     const Span& sp,
     const ::HIR::SimplePath& trait_path, const ::HIR::PathParams* trait_params,
@@ -220,6 +294,9 @@ bool StaticTraitResolve::find_impl__check_crate(
             DEBUG("[find_impl] Trait bound " << e.type << " : " << e.trait);
             auto b_ty_mono = monomorphise_type_with(sp, e.type, cb_monomorph);
             auto b_tp_mono = monomorphise_traitpath_with(sp, e.trait, cb_monomorph, false);
+            for(auto& ty : b_tp_mono.m_path.m_params.m_types) {
+                this->expand_associated_types(sp, ty);
+            }
             for(auto& assoc_bound : b_tp_mono.m_type_bounds) {
                 // TODO: These should be tagged with the source trait and that source trait used for expansion.
                 this->expand_associated_types(sp, assoc_bound.second);
@@ -242,6 +319,7 @@ bool StaticTraitResolve::find_impl__check_crate(
                     
                     auto rv = this->find_impl(sp, aty_src_trait.m_path, aty_src_trait.m_params, b_ty_mono, [&](const auto& impl) {
                         ::HIR::TypeRef have = impl.get_type(aty_name.c_str());
+                        
                         //auto cmp = have .match_test_generics_fuzz(sp, exp, cb_ident, cb_match);
                         auto cmp = exp .match_test_generics_fuzz(sp, have, cb_ident, cb_match);
                         ASSERT_BUG(sp, cmp == ::HIR::Compare::Equal, "Assoc ty " << aty_name << " mismatch, " << have << " != des " << exp);
@@ -410,6 +488,8 @@ void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef&
                 if( assume_opaque ) {
                     input.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
                     DEBUG("Assuming that " << input << " is an opaque name");
+                    
+                    this->replace_equalities(input);
                 }
                 this->expand_associated_types(sp, input);
                 return;
@@ -484,6 +564,7 @@ void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef&
             // - If the trait contains any of the above, it's unknowable
             // - Otherwise, it's an error
             e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+            this->replace_equalities(input);
             DEBUG("Couldn't resolve associated type for " << input << " (and won't ever be able to, assuming opaque)");
             ),
         (UfcsUnknown,
@@ -520,6 +601,18 @@ void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef&
         // Recurse?
         )
     )
+}
+
+void StaticTraitResolve::replace_equalities(::HIR::TypeRef& input) const
+{
+    TRACE_FUNCTION_F("input="<<input);
+    DEBUG("m_type_equalities = {" << m_type_equalities << "}");
+    // - Check if there's an alias for this opaque name
+    auto a = m_type_equalities.find(input);
+    if( a != m_type_equalities.end() ) {
+        input = a->second.clone();
+        DEBUG("- Replace with " << input);
+    }
 }
 
 // -------------------------------------------------------------------------------------------------------------------

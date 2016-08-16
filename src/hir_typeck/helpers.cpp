@@ -167,7 +167,11 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
                 }) );
             ),
         (UfcsUnknown,
-            TODO(sp, "UfcsUnknown - " << tpl);
+            rv = ::HIR::TypeRef( ::HIR::Path::Data::make_UfcsUnknown({
+                box$( monomorphise_type_with(sp, *e2.type, callback, allow_infer) ),
+                e2.item,
+                monomorphise_path_params_with(sp, e2.params, callback, allow_infer)
+                }) );
             ),
         (UfcsInherent,
             TODO(sp, "UfcsInherent - " << tpl);

@@ -18,13 +18,22 @@ public:
     
     ::HIR::GenericParams*   m_impl_generics;
     ::HIR::GenericParams*   m_item_generics;
+    
+    
+    ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
 public:
     StaticTraitResolve(const ::HIR::Crate& crate):
         m_crate(crate),
         m_impl_generics(nullptr),
         m_item_generics(nullptr)
-    {}
+    {
+        prep_indexes();
+    }
+
+private:
+    void prep_indexes();
     
+public:
     const ::HIR::GenericParams& impl_generics() const {
         static ::HIR::GenericParams empty;
         return m_impl_generics ? *m_impl_generics : empty;
@@ -50,11 +59,15 @@ public:
     NullOnDrop< ::HIR::GenericParams> set_impl_generics(::HIR::GenericParams& gps) {
         assert( !m_impl_generics );
         m_impl_generics = &gps;
+        m_type_equalities.clear();
+        prep_indexes();
         return NullOnDrop< ::HIR::GenericParams>(m_impl_generics);
     }
     NullOnDrop< ::HIR::GenericParams> set_item_generics(::HIR::GenericParams& gps) {
         assert( !m_item_generics );
         m_item_generics = &gps;
+        m_type_equalities.clear();
+        prep_indexes();
         return NullOnDrop< ::HIR::GenericParams>(m_item_generics);
     }
     /// \}
@@ -91,6 +104,11 @@ private:
 public:
 
     void expand_associated_types(const Span& sp, ::HIR::TypeRef& input) const;
+
+private:
+    void replace_equalities(::HIR::TypeRef& input) const;
+
+public:
     /// \}
     
     /// Iterate over in-scope bounds (function then top)

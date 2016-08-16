@@ -344,7 +344,7 @@ namespace {
 
 
             // 2. Iterate over the nodes and rewrite variable accesses to either renumbered locals, or field accesses
-            // - TODO: Monomorphise all referenced types within this
+            // - TODO: Monomorphise all referenced types within this.
             ExprVisitor_Mutate    ev { node.m_res_type, ent.local_vars, ent.node.m_var_captures };
             ev.visit_node_ptr( node.m_code );
             
