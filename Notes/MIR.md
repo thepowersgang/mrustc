@@ -56,4 +56,11 @@ Drop Scopes
  - Standard scoped definitions (e.g. blocks) - Where the runtime scope and the generator's stack frame correspond
  - Deferred scope completion (e.g. within match codegen)
  - Generated drops for panic cleanup.
+ - Would want to track moves within sub-blocks (i.e. if/match arms)
 
+- Ideas
+ - Scope IDs passed to terminator construction.
+ - RAII guards to ensure that a constructed scope is dropped (and all child scopes are terminated before it is)
+ - Scopes contain child scopes (started within them)
+ - Special named scope for the entire function.
+ - For match, scope handles can be passed around

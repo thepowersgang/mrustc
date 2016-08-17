@@ -196,6 +196,8 @@ namespace {
             this->visit_node_ptr(node.m_value);
             
             m_builder.push_stmt_assign( ::MIR::LValue::make_Return({}),  m_builder.get_result(node.span()) );
+            // TODO: Insert drop of all current scopes
+            //terminate_scope_early( 0 );
             m_builder.end_block( ::MIR::Terminator::make_Return({}) );
         }
         void visit(::HIR::ExprNode_Let& node) override
@@ -212,6 +214,7 @@ namespace {
         void visit(::HIR::ExprNode_Loop& node) override
         {
             TRACE_FUNCTION_F("_Loop");
+            //auto loop_body_scope = m_builder.new_scope(node.span());  // TODO: Does loop actually need a scope? It usually contains a block.
             auto loop_block = m_builder.new_bb_linked();
             auto loop_next = m_builder.new_bb_unlinked();
             
@@ -231,6 +234,7 @@ namespace {
             // Terminate block with a jump back to the start
             if( m_builder.block_active() )
             {
+                // TODO: Insert drop of all scopes within the current scope
                 m_builder.end_block( ::MIR::Terminator::make_Goto(loop_block) );
             }
             m_builder.set_cur_block(loop_next);
@@ -251,6 +255,8 @@ namespace {
                 target_block = &*it;
             }
             
+            // TODO: Insert drop of all active scopes within the loop
+            //terminate_scope_early( target_block->scope );
             if( node.m_continue ) {
                 m_builder.end_block( ::MIR::Terminator::make_Goto(target_block->cur) );
             }
@@ -299,6 +305,7 @@ namespace {
             if( m_builder.block_active() )
             {
                 m_builder.push_stmt_assign( result_val.clone(), m_builder.get_result(node.m_true->span()) );
+                // TODO: Emit drops for all variables defined within this branch. (Needed? The inner should handle that)
                 m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
             }
             
@@ -309,6 +316,7 @@ namespace {
                 if( m_builder.block_active() )
                 {
                     m_builder.push_stmt_assign( result_val.clone(), m_builder.get_result(node.m_false->span()) );
+                    // TODO: Emit drops for all variables defined within this branch.
                     m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
                 }
             }
@@ -923,7 +931,7 @@ namespace {
                 }));
             
             m_builder.set_cur_block(panic_block);
-            // TODO: Proper panic handling
+            // TODO: Proper panic handling, including scope destruction
             m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
             
             m_builder.set_cur_block( next_block );
