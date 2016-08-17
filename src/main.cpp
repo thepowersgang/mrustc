@@ -8,6 +8,7 @@
 #include <iostream>
 #include <iomanip>
 #include <string>
+#include <set>
 #include "parse/lex.hpp"
 #include "parse/parseerror.hpp"
 #include "ast/ast.hpp"
@@ -25,17 +26,25 @@
 
 int g_debug_indent_level = 0;
 ::std::string g_cur_phase;
-//::std::set< ::std::string>    g_debug_disable_map;
+::std::set< ::std::string>    g_debug_disable_map;
 
+void init_debug_list()
+{
+    //g_debug_disable_map.insert( "Parse" );
+    g_debug_disable_map.insert( "Expand" );
+    g_debug_disable_map.insert( "Resolve" );
+    g_debug_disable_map.insert( "Resolve UFCS paths" );
+    g_debug_disable_map.insert( "Typecheck Expressions" );
+}
 bool debug_enabled()
 {
-    //return true;
-    //return g_cur_phase != "Parse";
-    //return g_cur_phase != "Parse" && g_cur_phase != "Expand";
-    //return g_cur_phase != "Parse" && g_cur_phase != "Expand" && g_cur_phase != "Resolve";
-    //return g_cur_phase != "Parse" && g_cur_phase != "Expand" && g_cur_phase != "Resolve" && g_cur_phase != "Resolve UFCS paths";
-    return g_cur_phase != "Parse" && g_cur_phase != "Expand" && g_cur_phase != "Resolve" && g_cur_phase != "Resolve UFCS paths" && g_cur_phase != "Typecheck Expressions";
-    //return false;
+    // TODO: Have an explicit enable list?
+    if( g_debug_disable_map.count(g_cur_phase) != 0 ) {
+        return false;
+    }
+    else {
+        return true;
+    }
     //return g_cur_phase == "Lower MIR";
 }
 ::std::ostream& debug_output(int indent, const char* function)

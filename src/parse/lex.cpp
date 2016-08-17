@@ -20,8 +20,8 @@
 #include <typeinfo>
 #include <algorithm>	// std::count
 
-const bool DEBUG_PRINT_TOKENS = false;
-//const bool DEBUG_PRINT_TOKENS = true;
+//const bool DEBUG_PRINT_TOKENS = false;
+const bool DEBUG_PRINT_TOKENS = true;
 
 Lexer::Lexer(const ::std::string& filename):
     m_path(filename.c_str()),
@@ -207,7 +207,12 @@ signed int Lexer::getSymbol()
 
         while( chars[ofs] && chars[ofs] == ch )
         {
-            ch = this->getc();
+            try {
+                ch = this->getc();
+            }
+            catch(Lexer::EndOfFile) {
+                ch = 0;
+            }
             ofs ++;
         }
         if( chars[ofs] == 0 )
@@ -322,7 +327,9 @@ Token Lexer::getTokenInt()
                     DEC,
                     HEX,
                 } num_mode = DEC;
-                // TODO: handle integers/floats
+                
+                
+                // Handle integers/floats
                 uint64_t    val = 0;
                 if( ch == '0' ) {
                     // Octal/hex handling
@@ -399,12 +406,24 @@ Token Lexer::getTokenInt()
                             }
                             return Token(val, CORETYPE_ANY);
                         }
-                        // Single dot
+                        // Single dot - Still a float. (TODO)
                         else if( !isdigit(ch) )
                         {
                             this->ungetc();
-                            this->m_next_token = Token(TOK_DOT);
-                            return Token(val, CORETYPE_ANY);
+                            if( issym(ch) )
+                            {
+                                this->m_next_token = Token(TOK_DOT);
+                                return Token(val, CORETYPE_ANY);
+                            }
+                            else
+                            {
+                                double fval = static_cast<double>(val);
+                                return Token(fval, CORETYPE_ANY);
+                            }
+                        }
+                        else
+                        {
+                            // Digit, continue
                         }
                     }
                     
@@ -777,6 +796,8 @@ double Lexer::parseFloat(uint64_t whole)
     }
     this->ungetc();
     buf[ofs] = 0;
+    
+    DEBUG("buf = " << buf << ", ch = '" << ch << "'");
     
     return ::std::strtod(buf, NULL);
 }

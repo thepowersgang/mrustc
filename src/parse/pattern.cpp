@@ -206,19 +206,19 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
                 dt = CORETYPE_I32;
             return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Integer({dt, -tok.intval()}) );
         }
-        //else if( tok.type() == TOK_FLOAT )
-        //{
-        //    auto dt = tok.datatype();
-        //    if(dt == CORETYPE_ANY)
-        //        dt = CORETYPE_F32;
-        //    return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Integer({dt, reinterpret_cast<uint64_t>(-tok.floatval()), dt}) );
-        //}
+        else if( tok.type() == TOK_FLOAT )
+        {
+            auto dt = tok.datatype();
+            if(dt == CORETYPE_ANY)
+                dt = CORETYPE_F32;
+            return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Float({dt, -tok.floatval()}) );
+        }
         else
         {
             throw ParseError::Unexpected(lex, tok, {TOK_INTEGER, TOK_FLOAT});
         }
-    //case TOK_FLOAT:
-    //    return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Integer({tok.datatype(), reinterpret_cast<uint64_t>(tok.floatval())}) );
+    case TOK_FLOAT:
+        return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Float({tok.datatype(), tok.floatval()}) );
     case TOK_INTEGER:
         return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Integer({tok.datatype(), tok.intval()}) );
     case TOK_RWORD_TRUE:

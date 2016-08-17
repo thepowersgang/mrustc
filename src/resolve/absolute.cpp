@@ -1136,14 +1136,9 @@ void Resolve_Absolute_Generic(Context& context, ::AST::GenericParams& params)
 // Locals shouldn't be possible, as they'd end up as MaybeBind. Will assert the path class.
 void Resolve_Absolute_PatternValue(/*const*/ Context& context, const Span& sp, ::AST::Pattern::Value& val)
 {
-    TU_MATCH(::AST::Pattern::Value, (val), (e),
-    (Invalid, ),
-    (Integer, ),
-    (String, ),
-    (Named,
+    TU_IFLET(::AST::Pattern::Value, val, Named, e,
         //assert( ! e.is_trivial() );
         Resolve_Absolute_Path(context, sp, Context::LookupMode::Constant, e);
-        )
     )
 }
 void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pattern& pat)

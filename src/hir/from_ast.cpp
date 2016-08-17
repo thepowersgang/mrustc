@@ -297,6 +297,13 @@ const ::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
                         e.value
                         });
                     ),
+                (Float,
+                    TODO(sp, "Floating point patterns");
+                    //return ::HIR::Pattern::Value::make_Float({
+                    //    H::get_int_type(sp, e.type),
+                    //    e.value
+                    //    });
+                    ),
                 (String,
                     return ::HIR::Pattern::Value::make_String(e);
                     ),

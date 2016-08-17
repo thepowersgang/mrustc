@@ -16,6 +16,8 @@ AST::PathParams Parse_Path_GenericList(TokenStream& lex);
 
 AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
 {
+    TRACE_FUNCTION_F("generic_mode="<<generic_mode);
+    
     Token   tok;
     switch( GET_TOK(tok, lex) )
     {
@@ -43,7 +45,7 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
     case TOK_DOUBLE_LT:
         lex.putback( Token(TOK_LT) );
     case TOK_LT: {
-        TypeRef ty = Parse_Type(lex);
+        TypeRef ty = Parse_Type(lex, false);    // Don't allow un-parenthesied trait objects
         if( GET_TOK(tok, lex) == TOK_RWORD_AS ) {
             ::AST::Path trait;
             if( GET_TOK(tok, lex) == TOK_DOUBLE_COLON ) {
@@ -100,6 +102,8 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
 
 ::std::vector<AST::PathNode> Parse_PathNodes(TokenStream& lex, eParsePathGenericMode generic_mode)
 {
+    TRACE_FUNCTION_F("generic_mode="<<generic_mode);
+    
     Token tok;
     ::std::vector<AST::PathNode>    ret;
 
@@ -145,7 +149,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                 
                 TypeRef ret_type = TypeRef( TypeRef::TagUnit(), Span(tok.get_pos()) );
                 if( GET_TOK(tok, lex) == TOK_THINARROW ) {
-                    ret_type = Parse_Type(lex);
+                    ret_type = Parse_Type(lex, false);
                 }
                 else {
                     PUTBACK(tok, lex);
@@ -217,7 +221,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
             {
                 ::std::string name = tok.str();
                 GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-                assoc_bounds.push_back( ::std::make_pair( mv$(name), Parse_Type(lex) ) );
+                assoc_bounds.push_back( ::std::make_pair( mv$(name), Parse_Type(lex,false) ) );
                 break;
             }
         default:

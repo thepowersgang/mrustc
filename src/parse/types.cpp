@@ -78,7 +78,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
             // TODO: Handle HRLS in fn types
             return Parse_Type_Fn(lex, hrls);
         default:
-            return Parse_Type_Path(lex, hrls, allow_trait_list);
+            return Parse_Type_Path(lex, hrls, true);
         }
         }
     // <ident> - Either a primitive, or a path
@@ -114,12 +114,12 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         }
         if( tok.type() == TOK_RWORD_MUT ) {
             // Mutable reference
-            return TypeRef(TypeRef::TagReference(), lex.end_span(ps), true, Parse_Type(lex));
+            return TypeRef(TypeRef::TagReference(), lex.end_span(ps), true, Parse_Type(lex, false));
         }
         else {
             PUTBACK(tok, lex);
             // Immutable reference
-            return TypeRef(TypeRef::TagReference(), lex.end_span(ps), false, Parse_Type(lex));
+            return TypeRef(TypeRef::TagReference(), lex.end_span(ps), false, Parse_Type(lex, false));
         }
         throw ParseError::BugCheck("Reached end of Parse_Type:AMP");
         }
@@ -130,10 +130,10 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         {
         case TOK_RWORD_MUT:
             // Mutable pointer
-            return TypeRef(TypeRef::TagPointer(), lex.end_span(ps), true, Parse_Type(lex));
+            return TypeRef(TypeRef::TagPointer(), lex.end_span(ps), true, Parse_Type(lex, false));
         case TOK_RWORD_CONST:
             // Immutable pointer
-            return TypeRef(TypeRef::TagPointer(), lex.end_span(ps), false, Parse_Type(lex));
+            return TypeRef(TypeRef::TagPointer(), lex.end_span(ps), false, Parse_Type(lex, false));
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_RWORD_CONST, TOK_RWORD_MUT});
         }
@@ -247,7 +247,7 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
     TypeRef ret_type = TypeRef(TypeRef::TagUnit(), Span(tok.get_pos()));
     if( GET_TOK(tok, lex) == TOK_THINARROW )
     {
-        ret_type = Parse_Type(lex);
+        ret_type = Parse_Type(lex, false);
     }
     else {
         PUTBACK(tok, lex);

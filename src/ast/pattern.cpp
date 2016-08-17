@@ -32,6 +32,22 @@ namespace AST {
             break;
         }
         ),
+    (Float,
+        switch(e.type)
+        {
+        case CORETYPE_BOOL:
+            os << (e.value ? "true" : "false");
+            break;
+        case CORETYPE_ANY:
+        case CORETYPE_F32:
+        case CORETYPE_F64:
+            os << e.value;
+            break;
+        default:
+            BUG(Span(), "Hit integer in printing pattern literal");
+            break;
+        }
+        ),
     (String,
         os << "\"" << e << "\"";
         ),
@@ -109,63 +125,17 @@ namespace AST {
     return os;
 }
 void operator%(Serialiser& s, Pattern::Value::Tag c) {
-    s << Pattern::Value::tag_to_str(c);
 }
 void operator%(::Deserialiser& s, Pattern::Value::Tag& c) {
-    ::std::string   n;
-    s.item(n);
-    c = Pattern::Value::tag_from_str(n);
 }
 void operator%(::Serialiser& s, const Pattern::Value& v) {
-    s % v.tag();
-    TU_MATCH(Pattern::Value, (v), (e),
-    (Invalid, ),
-    (Integer,
-        s % e.type;
-        s.item( e.value );
-        ),
-    (String,
-        s.item( e );
-        ),
-    (Named,
-        s.item(e);
-        )
-    )
 }
 void operator%(::Deserialiser& s, Pattern::Value& v) {
-    Pattern::Value::Tag  tag;
-    s % tag;
-    switch(tag)
-    {
-    case Pattern::Value::TAGDEAD: throw "";
-    case Pattern::Value::TAG_Invalid:
-        v = Pattern::Value::make_Invalid({});
-        break;
-    case Pattern::Value::TAG_Integer: {
-        enum eCoreType ct;  s % ct;
-        uint64_t val;  s.item( val );
-        v = Pattern::Value::make_Integer({ct, val});
-        break; }
-    case Pattern::Value::TAG_String: {
-        ::std::string val;
-        s.item( val );
-        v = Pattern::Value::make_String(val);
-        break; }
-    case Pattern::Value::TAG_Named: {
-        ::AST::Path val;
-        s.item( val );
-        v = Pattern::Value::make_Named(val);
-        break; }
-    }
 }
 
 void operator%(Serialiser& s, Pattern::Data::Tag c) {
-    s << Pattern::Data::tag_to_str(c);
 }
 void operator%(::Deserialiser& s, Pattern::Data::Tag& c) {
-    ::std::string   n;
-    s.item(n);
-    c = Pattern::Data::tag_from_str(n);
 }
 
 Pattern::~Pattern()
@@ -193,6 +163,7 @@ AST::Pattern AST::Pattern::clone() const
             TU_MATCH(::AST::Pattern::Value, (v), (e),
             (Invalid, return Value(e);),
             (Integer, return Value(e);),
+            (Float, return Value(e);),
             (String, return Value(e);),
             (Named, return Value::make_Named( AST::Path(e) );)
             )
@@ -244,91 +215,7 @@ AST::Pattern AST::Pattern::clone() const
 
 #define _D(VAR, ...)  case Pattern::Data::TAG_##VAR: { m_data = Pattern::Data::make_##VAR({}); auto& ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
 SERIALISE_TYPE(Pattern::, "Pattern", {
-    //s.item(m_binding);
-    s % m_data.tag();
-    TU_MATCH(Pattern::Data, (m_data), (e),
-    (Any,
-        ),
-    (MaybeBind,
-        ),
-    (Macro,
-        s.item( e.inv );
-        ),
-    (Box,
-        s << e.sub;
-        ),
-    (Ref,
-        s << e.mut;
-        s << e.sub;
-        ),
-    (Value,
-        s % e.start;
-        s % e.end;
-        ),
-    (Tuple,
-        s << e.sub_patterns;
-        ),
-    (WildcardStructTuple,
-        s << e.path;
-        ),
-    (StructTuple,
-        s << e.path;
-        s << e.sub_patterns;
-        ),
-    (Struct,
-        s << e.path;
-        s << e.sub_patterns;
-        ),
-    (Slice,
-        s << e.leading;
-        s << e.extra_bind;
-        s << e.trailing;
-        )
-    )
 },{
-    //s.item(m_binding);
-    Pattern::Data::Tag  tag;
-    s % tag;
-    switch(tag)
-    {
-    case Pattern::Data::TAGDEAD: throw "";
-    _D(Any, )
-    _D(MaybeBind,
-        )
-    _D(Macro,
-        s.item( ent.inv );
-        )
-    _D(Box,
-        s.item( ent.sub );
-        )
-    _D(Ref,
-        s.item( ent.mut );
-        s.item( ent.sub );
-        )
-    _D(Value,
-        s % ent.start;
-        s % ent.end;
-        )
-    _D(Tuple,
-        s.item( ent.sub_patterns );
-        )
-    _D(WildcardStructTuple,
-        s.item( ent.path );
-        )
-    _D(StructTuple,
-        s.item( ent.path );
-        s.item( ent.sub_patterns );
-        )
-    _D(Struct,
-        s.item( ent.path );
-        s.item( ent.sub_patterns );
-        )
-    _D(Slice,
-        s.item( ent.leading );
-        s.item( ent.extra_bind );
-        s.item( ent.trailing );
-        )
-    }
 });
 
 }

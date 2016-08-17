@@ -966,7 +966,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     
     // UFCS
     case TOK_DOUBLE_LT:
-        PUTBACK(tok, lex);
+        PUTBACK(TOK_LT, lex);
     case TOK_LT: {
         TypeRef ty = Parse_Type(lex);
         if( GET_TOK(tok, lex) == TOK_RWORD_AS ) {

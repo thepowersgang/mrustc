@@ -52,6 +52,10 @@ public:
             enum eCoreType type;
             uint64_t value; // Signed numbers are encoded as 2's complement
             }),
+        (Float, struct {
+            enum eCoreType type;
+            double value;
+            }),
         (String, ::std::string),
         (Named, Path)
         );
