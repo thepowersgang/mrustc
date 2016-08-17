@@ -36,6 +36,8 @@ namespace {
             root->visit(*this);
             if( m_replacement ) {
                 auto usage = root->m_usage;
+                const auto* ptr = m_replacement.get();
+                DEBUG("=> REPLACE " << ptr << " " << typeid(*ptr).name());
                 root.reset( m_replacement.release() );
                 root->m_usage = usage;
             }
@@ -49,6 +51,8 @@ namespace {
             node->visit(*this);
             if( m_replacement ) {
                 auto usage = node->m_usage;
+                const auto* ptr = m_replacement.get();
+                DEBUG("=> REPLACE " << ptr << " " << typeid(*ptr).name());
                 node = mv$(m_replacement);
                 node->m_usage = usage;
             }
@@ -74,8 +78,8 @@ namespace {
             ::HIR::TypeRef  arg_tup_type;
             {
                 ::std::vector< ::HIR::TypeRef>  arg_types;
-                for(unsigned int i = 0; i < node.m_arg_types.size() - 1; i ++)
-                    arg_types.push_back( node.m_arg_types[i].clone() );
+                for(unsigned int i = 0; i < node.m_args.size(); i ++)
+                    arg_types.push_back( node.m_args[i]->m_res_type.clone() );
                 arg_tup_type = ::HIR::TypeRef( mv$(arg_types) );
             }
             // - Make the trait arguments.

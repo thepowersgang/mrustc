@@ -341,6 +341,7 @@ namespace {
             ASSERT_BUG(sp, fields.size() == node.m_args.size(), "");
             
             // Bind fields with type params (coercable)
+            // TODO: Remove use of m_arg_types (maybe assert that cache is correct?)
             for( unsigned int i = 0; i < node.m_args.size(); i ++ )
             {
                 const auto& des_ty_r = fields[i].ent;
@@ -439,6 +440,10 @@ namespace {
         {
             const auto& sp = node.span();
             TRACE_FUNCTION_F(&node << " " << node.m_path << "(..., )");
+            
+            for( auto& val : node.m_args ) {
+                val->visit( *this );
+            }
             
             // Do function resolution again, this time with concrete types.
             const auto& path = node.m_path;
@@ -600,8 +605,10 @@ namespace {
             
             // Check types
             for(unsigned int i = 0; i < node.m_args.size(); i ++) {
+                DEBUG("CHECK ARG " << i << " " << node.m_cache.m_arg_types[i] << " == " << node.m_args[i]->m_res_type);
                 check_types_equal(node.span(), node.m_cache.m_arg_types[i], node.m_args[i]->m_res_type);
             }
+            DEBUG("CHECK RV " << node.m_res_type << " == " << node.m_cache.m_arg_types.back());
             check_types_equal(node.span(), node.m_res_type,  node.m_cache.m_arg_types.back());
             
             cache.m_monomorph_cb = mv$(monomorph_cb);
@@ -643,14 +650,11 @@ namespace {
                     )
                 )
             }
-            
-            for( auto& val : node.m_args ) {
-                val->visit( *this );
-            }
         }
         void visit(::HIR::ExprNode_CallValue& node) override
         {
             TRACE_FUNCTION_F(&node << " (...)(..., )");
+            // TODO: Don't use m_arg_types (do full resolution again)
             ASSERT_BUG(node.span(), node.m_arg_types.size() > 0, "CallValue cache not populated");
             for(unsigned int i = 0; i < node.m_args.size(); i ++)
             {
@@ -668,6 +672,7 @@ namespace {
         void visit(::HIR::ExprNode_CallMethod& node) override
         {
             TRACE_FUNCTION_F(&node << " (...)." << node.m_method << "(...,) - " << node.m_method_path);
+            // TODO: Don't use m_cache
             ASSERT_BUG(node.span(), node.m_cache.m_arg_types.size() > 0, "CallMethod cache not populated");
             ASSERT_BUG(node.span(), node.m_cache.m_arg_types.size() == 1 + node.m_args.size() + 1, "CallMethod cache mis-sized");
             check_types_equal(node.m_cache.m_arg_types[0], node.m_value);

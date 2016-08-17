@@ -845,10 +845,41 @@ namespace {
         
         void visit(::HIR::ExprNode_CallValue& node) override
         {
-            BUG(node.span(), "Leftover _CallValue");
+            TRACE_FUNCTION_F("_CallValue " << node.m_value->m_res_type);
+            
+            // _CallValue is ONLY valid on function pointers (all others must be desugared)
+            ASSERT_BUG(node.span(), node.m_value->m_res_type.m_data.is_Function(), "Leftover _CallValue on a non-fn()");
+            this->visit_node_ptr(node.m_value);
+            auto fcn_val = m_builder.lvalue_or_temp( node.m_value->m_res_type, m_builder.get_result(node.m_value->span()) );
+            
+            ::std::vector< ::MIR::LValue>   values;
+            values.reserve( node.m_args.size() );
+            for(auto& arg : node.m_args)
+            {
+                this->visit_node_ptr(arg);
+                values.push_back( m_builder.lvalue_or_temp( arg->m_res_type, m_builder.get_result(arg->span()) ) );
+            }
+            
+            
+            auto panic_block = m_builder.new_bb_unlinked();
+            auto next_block = m_builder.new_bb_unlinked();
+            auto res = m_builder.new_temporary( node.m_res_type );
+            m_builder.end_block(::MIR::Terminator::make_Call({
+                next_block, panic_block,
+                res.clone(), mv$(fcn_val),
+                mv$(values)
+                }));
+            
+            m_builder.set_cur_block(panic_block);
+            // TODO: Proper panic handling
+            m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+            
+            m_builder.set_cur_block( next_block );
+            m_builder.set_result( node.span(), mv$(res) );
         }
         void visit(::HIR::ExprNode_CallMethod& node) override
         {
+            // TODO: Allow use on trait objects.
             BUG(node.span(), "Leftover _CallMethod");
         }
         void visit(::HIR::ExprNode_Field& node) override

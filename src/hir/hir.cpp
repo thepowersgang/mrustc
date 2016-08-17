@@ -148,8 +148,7 @@ namespace {
             return false;
             ),
         (Closure,
-            DEBUG("TODO: Compare " << left << " and " << right);
-            return false;
+            return le.node == re.node;
             )
         )
         return false;

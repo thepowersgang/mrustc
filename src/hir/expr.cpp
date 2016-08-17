@@ -23,6 +23,7 @@ DEF_VISIT(ExprNode_Return, node,
     visit_node_ptr(node.m_value);
 )
 DEF_VISIT(ExprNode_Let, node,
+    visit_type(node.m_type);
     if( node.m_value ) {
         visit_node_ptr(node.m_value);
     }
@@ -76,19 +77,39 @@ DEF_VISIT(ExprNode_Deref, node,
 )
 
 DEF_VISIT(ExprNode_TupleVariant, node,
+    visit_generic_path(::HIR::Visitor::PathContext::VALUE, node.m_path);
+    
+    for(auto& ty : node.m_arg_types)
+        visit_type(ty);
+    
     for(auto& arg : node.m_args)
         visit_node_ptr(arg);
 )
 DEF_VISIT(ExprNode_CallPath, node,
+    for(auto& ty : node.m_cache.m_arg_types)
+        visit_type(ty);
+    visit_path_params(node.m_cache.m_ty_impl_params);
+    
+    DEBUG("DEF _CallPath: " << node.m_path);
+    visit_path(::HIR::Visitor::PathContext::VALUE, node.m_path);
     for(auto& arg : node.m_args)
         visit_node_ptr(arg);
 )
 DEF_VISIT(ExprNode_CallValue, node,
+    for(auto& ty : node.m_arg_types)
+        visit_type(ty);
+    
     visit_node_ptr(node.m_value);
     for(auto& arg : node.m_args)
         visit_node_ptr(arg);
 )
 DEF_VISIT(ExprNode_CallMethod, node,
+    for(auto& ty : node.m_cache.m_arg_types)
+        visit_type(ty);
+    visit_path_params(node.m_cache.m_ty_impl_params);
+
+    visit_path(::HIR::Visitor::PathContext::VALUE, node.m_method_path);
+    
     visit_node_ptr(node.m_value);
     for(auto& arg : node.m_args)
         visit_node_ptr(arg);
@@ -98,10 +119,15 @@ DEF_VISIT(ExprNode_Field, node,
 )
 
 DEF_VISIT(ExprNode_Literal, , )
-DEF_VISIT(ExprNode_UnitVariant, , )
-DEF_VISIT(ExprNode_PathValue, , )
+DEF_VISIT(ExprNode_UnitVariant, node,
+    visit_generic_path(::HIR::Visitor::PathContext::VALUE, node.m_path);
+)
+DEF_VISIT(ExprNode_PathValue, node,
+    visit_path(::HIR::Visitor::PathContext::VALUE, node.m_path);
+)
 DEF_VISIT(ExprNode_Variable, , )
 DEF_VISIT(ExprNode_StructLiteral, node,
+    visit_generic_path(::HIR::Visitor::PathContext::VALUE, node.m_path);
     if( node.m_base_value )
         visit_node_ptr(node.m_base_value);
     for(auto& val : node.m_values)
@@ -121,6 +147,9 @@ DEF_VISIT(ExprNode_ArraySized, node,
 )
 
 DEF_VISIT(ExprNode_Closure, node,
+    for(auto& arg : node.m_args)
+        visit_type(arg.second);
+    visit_type(node.m_return);
     if(node.m_code)
     {
         visit_node_ptr(node.m_code);

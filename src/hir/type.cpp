@@ -140,10 +140,13 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         os << ") -> " << *e.m_rettype;
         ),
     (Closure,
-        os << "closure["<<e.node<<"](";
+        os << "closure["<<e.node<<"]";
+        #if 0
+        os << "(";
         for(const auto& t : e.m_arg_types)
             os << t << ", ";
         os << ") -> " << *e.m_rettype;
+        #endif
         )
     )
 }
@@ -217,7 +220,7 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
         if( xe.size_val != te.size_val )
             return false;
         if( te.size_val == ~0u )
-            assert(!"TOD: Compre array types with non-resolved sizes");
+            assert(!"TODO: Compre array types with non-resolved sizes");
         return true;
         ),
     (Slice,
@@ -586,7 +589,9 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         TODO(sp, "Function");
         ),
     (Closure,
-        TODO(sp, "Closure");
+        if( te.node != xe.node )
+            return Compare::Unequal;
+        return Compare::Equal;
         )
     )
     throw "";
