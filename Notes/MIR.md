@@ -1,6 +1,5 @@
 % Mid-level intermediate representation
 
-
 See https://github.com/rust-lang/rfcs/blob/master/text/1211-mir.md
 
 
@@ -13,7 +12,7 @@ Graph of "Basic Blocks"
 - Varaibles are single-assigment, but mutable via &mut or field accesses
 
 
-Types
+Operations and value types
 =====
 
 LValues (assignable locations)
@@ -46,4 +45,15 @@ RValues (usable values)
 - `fatptr(LVALUE, LVALUE)` - Construct a fat pointer from a pair of lvalues
 - `CONSTANT` - Subset of RValues that are known at compile-time
 
+
+Generation Notes
+================
+
+Drop Scopes
+-----------
+
+- Requirements:
+ - Standard scoped definitions (e.g. blocks) - Where the runtime scope and the generator's stack frame correspond
+ - Deferred scope completion (e.g. within match codegen)
+ - Generated drops for panic cleanup.
 
