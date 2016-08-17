@@ -219,9 +219,10 @@ namespace {
             this->visit_node_ptr(node.m_code);
             m_loop_stack.pop_back();
             
-            // If there's a stray result, drop i
+            // If there's a stray result, drop it
             if( m_builder.has_result() ) {
                 assert( m_builder.block_active() );
+                // TODO: Does this result have to be dropped? Ideally this should always be ()
                 //::MIR::RValue res = m_builder.get_result(node.span());
                 //if( res.is_Use() ) {
                 //    m_builder.push_stmt_drop( mv$(res.as_Use()) );
@@ -634,18 +635,104 @@ namespace {
             this->visit_node_ptr(node.m_value);
             auto val = m_builder.lvalue_or_temp( node.m_value->m_res_type, m_builder.get_result(node.m_value->span()) );
             
-            #if 0
-            TU_MATCH_DEF( ::HIR::TypeRef::Data, (node.m_res_type->m_data), (de),
+            const auto& ty_out = node.m_res_type;
+            const auto& ty_in = node.m_value->m_res_type;
+            
+            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_out.m_data), (de),
             (
+                BUG(node.span(), "Invalid cast to " << ty_out);
+                ),
+            (Pointer,
+                if( ty_in.m_data.is_Primitive() && ty_in.m_data.as_Primitive() == ::HIR::CoreType::Usize ) {
+                    // TODO: Only valid if T: Sized in *{const/mut/move} T
+                }
+                else TU_IFLET( ::HIR::TypeRef::Data, ty_in.m_data, Borrow, se,
+                    if( *de.inner != *se.inner ) {
+                        BUG(node.span(), "Cannot cast to " << ty_out << " from " << ty_in);
+                    }
+                    // Valid
+                )
+                else TU_IFLET( ::HIR::TypeRef::Data, ty_in.m_data, Function, se,
+                    if( *de.inner != ::HIR::TypeRef::new_unit() ) {
+                        BUG(node.span(), "Cannot cast to " << ty_out << " from " << ty_in);
+                    }
+                    // Valid
+                )
+                else TU_IFLET( ::HIR::TypeRef::Data, ty_in.m_data, Pointer, se,
+                    // Valid
+                )
+                else {
+                    BUG(node.span(), "Cannot cast to pointer from " << ty_in);
+                }
                 ),
             (Primitive,
                 switch(de)
                 {
-                
+                case ::HIR::CoreType::Str:
+                    BUG(node.span(), "Cannot cast to str");
+                    break;
+                case ::HIR::CoreType::Char:
+                    if( ty_in.m_data.is_Primitive() && ty_in.m_data.as_Primitive() == ::HIR::CoreType::U8 ) {
+                        // Valid
+                    }
+                    else {
+                        BUG(node.span(), "Cannot cast to char from " << ty_in);
+                    }
+                    break;
+                case ::HIR::CoreType::Bool:
+                    BUG(node.span(), "Cannot cast to bool");
+                    break;
+                case ::HIR::CoreType::F32:
+                case ::HIR::CoreType::F64:
+                    TU_IFLET(::HIR::TypeRef::Data, ty_in.m_data, Primitive, se,
+                        switch(de)
+                        {
+                        case ::HIR::CoreType::Str:
+                        case ::HIR::CoreType::Char:
+                        case ::HIR::CoreType::Bool:
+                            BUG(node.span(), "Cannot cast to " << ty_out << " from " << ty_in);
+                            break;
+                        default:
+                            // Valid
+                            break;
+                        }
+                    )
+                    else {
+                        BUG(node.span(), "Cannot cast to " << ty_out << " from " << ty_in);
+                    }
+                    break;
+                default:
+                    TU_IFLET(::HIR::TypeRef::Data, ty_in.m_data, Primitive, se,
+                        switch(de)
+                        {
+                        case ::HIR::CoreType::Str:
+                            BUG(node.span(), "Cannot cast to " << ty_out << " from " << ty_in);
+                        default:
+                            // Valid
+                            break;
+                        }
+                    )
+                    else TU_IFLET(::HIR::TypeRef::Data, ty_in.m_data, Path, se,
+                        TU_IFLET(::HIR::TypeRef::TypePathBinding, se.binding, Enum, pbe,
+                            // TODO: Check if it's a repr(ty/C) enum - and if the type matches
+                        )
+                        else {
+                            BUG(node.span(), "Cannot cast to " << ty_out << " from " << ty_in);
+                        }
+                    )
+                    else if( de == ::HIR::CoreType::Usize && ty_in.m_data.is_Pointer() ) {
+                        // TODO: Only valid for T: Sized?
+                    }
+                    else if( de == ::HIR::CoreType::Usize && ty_in.m_data.is_Function() ) {
+                        // TODO: Always valid?
+                    }
+                    else {
+                        BUG(node.span(), "Cannot cast to " << ty_out << " from " << ty_in);
+                    }
+                    break;
                 }
                 )
             )
-            #endif
             auto res = m_builder.new_temporary(node.m_res_type);
             m_builder.push_stmt_assign(res.clone(), ::MIR::RValue::make_Cast({ mv$(val), node.m_res_type.clone() }));
             m_builder.set_result( node.span(), mv$(res) );
@@ -879,7 +966,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_CallMethod& node) override
         {
-            // TODO: Allow use on trait objects.
+            // TODO: Allow use on trait objects? May not be needed, depends.
             BUG(node.span(), "Leftover _CallMethod");
         }
         void visit(::HIR::ExprNode_Field& node) override
