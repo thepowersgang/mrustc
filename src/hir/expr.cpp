@@ -129,3 +129,95 @@ DEF_VISIT(ExprNode_Closure, node,
 
 #undef DEF_VISIT
 
+// TODO: Merge this with the stuff in ::HIR::Visitor
+void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
+{
+    TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
+    (Infer,
+        ),
+    (Diverge,
+        ),
+    (Primitive,
+        ),
+    (Path,
+        this->visit_path(::HIR::Visitor::PathContext::TYPE, e.path);
+        ),
+    (Generic,
+        ),
+    (TraitObject,
+        this->visit_trait_path(e.m_trait);
+        for(auto& trait : e.m_markers) {
+            this->visit_generic_path(::HIR::Visitor::PathContext::TYPE, trait);
+        }
+        ),
+    (Array,
+        this->visit_type( *e.inner );
+        //this->visit_expr( e.size );
+        ),
+    (Slice,
+        this->visit_type( *e.inner );
+        ),
+    (Tuple,
+        for(auto& t : e) {
+            this->visit_type(t);
+        }
+        ),
+    (Borrow,
+        this->visit_type( *e.inner );
+        ),
+    (Pointer,
+        this->visit_type( *e.inner );
+        ),
+    (Function,
+        for(auto& t : e.m_arg_types) {
+            this->visit_type(t);
+        }
+        this->visit_type(*e.m_rettype);
+        ),
+    (Closure,
+        for(auto& t : e.m_arg_types) {
+            this->visit_type(t);
+        }
+        this->visit_type(*e.m_rettype);
+        )
+    )
+}
+void ::HIR::ExprVisitorDef::visit_path_params(::HIR::PathParams& pp)
+{
+    for(auto& ty : pp.m_types)
+    {
+        visit_type(ty);
+    }
+}
+void ::HIR::ExprVisitorDef::visit_trait_path(::HIR::TraitPath& p)
+{
+    this->visit_generic_path(::HIR::Visitor::PathContext::TYPE, p.m_path);
+    for(auto& assoc : p.m_type_bounds)
+        this->visit_type(assoc.second);
+}
+void ::HIR::ExprVisitorDef::visit_path(::HIR::Visitor::PathContext pc, ::HIR::Path& path)
+{
+    TU_MATCHA( (path.m_data), (e),
+    (Generic,
+        visit_generic_path(pc, e);
+        ),
+    (UfcsKnown,
+        visit_type(*e.type);
+        visit_generic_path(pc, e.trait);
+        visit_path_params(e.params);
+        ),
+    (UfcsUnknown,
+        visit_type(*e.type);
+        visit_path_params(e.params);
+        ),
+    (UfcsInherent,
+        visit_type(*e.type);
+        visit_path_params(e.params);
+        )
+    )
+}
+void ::HIR::ExprVisitorDef::visit_generic_path(::HIR::Visitor::PathContext pc, ::HIR::GenericPath& path)
+{
+    visit_path_params(path.m_params);
+}
+

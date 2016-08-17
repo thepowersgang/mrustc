@@ -6,6 +6,7 @@
 #include <hir/pattern.hpp>
 #include <hir/type.hpp>
 #include <span.hpp>
+#include <hir/visitor.hpp>
 
 namespace HIR {
 
@@ -808,6 +809,12 @@ public:
     
     NV(ExprNode_Closure);
     #undef NV
+    
+    virtual void visit_type(::HIR::TypeRef& ty);
+    virtual void visit_trait_path(::HIR::TraitPath& p);
+    virtual void visit_path_params(::HIR::PathParams& ty);
+    virtual void visit_path(::HIR::Visitor::PathContext pc, ::HIR::Path& ty);
+    virtual void visit_generic_path(::HIR::Visitor::PathContext pc, ::HIR::GenericPath& ty);
 };
 
 }

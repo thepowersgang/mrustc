@@ -6,6 +6,7 @@
 
 namespace HIR {
 
+// TODO: Split into Visitor and ItemVisitor
 class Visitor
 {
 public:
