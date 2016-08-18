@@ -232,7 +232,7 @@ bool issym(Codepoint ch)
     if( ch == '_' )
         return true;
     if( ch.v >= 128 )
-        return true;
+        return !ch.isspace();
     return false;
 }
 
@@ -1170,6 +1170,11 @@ bool Codepoint::isspace() const {
     case '\r':
     case '\n':
     case ' ':
+    case 0xC:   // ^L
+    case 0x85:
+    case 0x200E ... 0x200F: // LTR / RTL markers
+    case 0x2028:    // Line Separator
+    case 0x2029:    // Paragrah Separator
         return true;
     default:
         return false;
