@@ -407,7 +407,7 @@ namespace {
                 args_ty_inner.push_back( monomorphise_type_with(sp, arg.second, monomorph_cb) );
             }
             ::HIR::TypeRef  args_ty { mv$(args_ty_inner) };
-            ::HIR::Pattern  args_pat { {}, ::HIR::Pattern::Data::make_Tuple({ mv$(args_pat_inner) }) };
+            ::HIR::Pattern  args_pat { {}, ::HIR::Pattern::Data::make_Tuple({ ::HIR::Pattern::GlobPos::None, mv$(args_pat_inner) }) };
             ::HIR::TypeRef  ret_type = monomorphise_type_with(sp, node.m_return, monomorph_cb);
             
             DEBUG("args_ty = " << args_ty << ", ret_type = " << ret_type);
@@ -631,8 +631,6 @@ namespace {
                     add_closure_def_from_pattern(sp, field);
                 }
                 ),
-            (StructTupleWildcard,
-                ),
             (Struct,
                 for( auto& field_pat : e.sub_patterns ) {
                     add_closure_def_from_pattern(sp, field_pat.second);
@@ -644,8 +642,6 @@ namespace {
                 for(const auto& field : e.sub_patterns) {
                     add_closure_def_from_pattern(sp, field);
                 }
-                ),
-            (EnumTupleWildcard,
                 ),
             (EnumStruct,
                 for( auto& field_pat : e.sub_patterns ) {

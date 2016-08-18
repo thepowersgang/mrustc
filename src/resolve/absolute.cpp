@@ -1194,12 +1194,9 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         for(auto& sp : e.sub_patterns)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
         ),
-    (WildcardStructTuple,
-        Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::Pattern, e.path);
-        ),
     (StructTuple,
         Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::Pattern, e.path);
-        for(auto& sp : e.sub_patterns)
+        for(auto& sp : e.tup_pat.sub_patterns)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
         ),
     (Struct,

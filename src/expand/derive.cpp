@@ -357,7 +357,7 @@ public:
                         vec$( NEWNODE(String, v.m_name + "(...)") )
                         );
                     
-                    pat_a = AST::Pattern(AST::Pattern::TagEnumVariant(), base_path + v.m_name, mv$(pats_a));
+                    pat_a = AST::Pattern(AST::Pattern::TagNamedTuple(), base_path + v.m_name, mv$(pats_a));
                 }
                 ),
             (Struct,
@@ -510,8 +510,8 @@ public:
                     }
                     
                     nodes.push_back( NEWNODE(Bool, true) );
-                    pat_a = AST::Pattern(AST::Pattern::TagEnumVariant(), base_path + v.m_name, mv$(pats_a));
-                    pat_b = AST::Pattern(AST::Pattern::TagEnumVariant(), base_path + v.m_name, mv$(pats_b));
+                    pat_a = AST::Pattern(AST::Pattern::TagNamedTuple(), base_path + v.m_name, mv$(pats_a));
+                    pat_b = AST::Pattern(AST::Pattern::TagNamedTuple(), base_path + v.m_name, mv$(pats_b));
                     code = NEWNODE(Block, mv$(nodes), nullptr);
                 }
                 ),
@@ -673,7 +673,7 @@ public:
                         nodes.push_back( this->assert_is_eq(assert_method_path, NEWNODE(NamedValue, AST::Path(name_a))) );
                     }
                     
-                    pat_a = AST::Pattern(AST::Pattern::TagEnumVariant(), base_path + v.m_name, mv$(pats_a));
+                    pat_a = AST::Pattern(AST::Pattern::TagNamedTuple(), base_path + v.m_name, mv$(pats_a));
                     code = NEWNODE(Block, mv$(nodes), nullptr);
                 }
                 ),
@@ -820,7 +820,7 @@ public:
                         nodes.push_back( this->clone_val(NEWNODE(NamedValue, AST::Path(name_a))) );
                     }
                     
-                    pat_a = AST::Pattern(AST::Pattern::TagEnumVariant(), base_path + v.m_name, mv$(pats_a));
+                    pat_a = AST::Pattern(AST::Pattern::TagNamedTuple(), base_path + v.m_name, mv$(pats_a));
                     code = NEWNODE(CallPath, base_path + v.m_name, mv$(nodes));
                 }
                 ),

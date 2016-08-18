@@ -47,8 +47,12 @@ namespace HIR {
             ),
         (Tuple,
             os << "(";
+            if(e.glob_pos == ::HIR::Pattern::GlobPos::Start)
+                os << ".., ";
             for(const auto& s : e.sub_patterns)
                 os << s << ", ";
+            if(e.glob_pos == ::HIR::Pattern::GlobPos::End)
+                os << ".., ";
             os << ")";
             ),
         (StructValue,
@@ -60,9 +64,6 @@ namespace HIR {
             for(const auto& s : e.sub_patterns)
                 os << s << ", ";
             os << ")";
-            ),
-        (StructTupleWildcard,
-            os << e.path << "(..)";
             ),
         (Struct,
             os << e.path;
@@ -88,9 +89,6 @@ namespace HIR {
             for(const auto& s : e.sub_patterns)
                 os << s << ", ";
             os << ")";
-            ),
-        (EnumTupleWildcard,
-            os << e.path << "(..)";
             ),
         (EnumStruct,
             os << e.path;
@@ -173,6 +171,7 @@ namespace {
         ),
     (Tuple,
         return Pattern(m_binding, Data::make_Tuple({
+            e.glob_pos,
             clone_pat_vec(e.sub_patterns)
             }));
         ),
@@ -186,12 +185,6 @@ namespace {
             e.path.clone(),
             e.binding,
             clone_pat_vec(e.sub_patterns)
-            }));
-        ),
-    (StructTupleWildcard,
-        return Pattern(m_binding, Data::make_StructTupleWildcard({
-            e.path.clone(),
-            e.binding
             }));
         ),
     (Struct,
@@ -219,13 +212,11 @@ namespace {
         return Pattern(m_binding, Data::make_EnumValue({ e.path.clone(), e.binding_ptr, e.binding_idx }));
         ),
     (EnumTuple,
-        return Pattern(m_binding, Data::make_EnumTupleWildcard({
-            e.path.clone(), e.binding_ptr, e.binding_idx
-            }));
-        ),
-    (EnumTupleWildcard,
-        return Pattern(m_binding, Data::make_EnumTupleWildcard({
-            e.path.clone(), e.binding_ptr, e.binding_idx
+        return Pattern(m_binding, Data::make_EnumTuple({
+            e.path.clone(),
+            e.binding_ptr,
+            e.binding_idx,
+            clone_pat_vec(e.sub_patterns)
             }));
         ),
     (EnumStruct,

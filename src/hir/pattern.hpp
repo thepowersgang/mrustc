@@ -57,13 +57,23 @@ struct Pattern
             })
         );
     friend ::std::ostream& operator<<(::std::ostream& os, const Pattern::Value& x);
+    
+    enum class GlobPos {
+        None,
+        Start,
+        End,
+    };
 
     TAGGED_UNION(Data, Any,
         // Irrefutable / destructuring
         (Any,       struct { } ),
         (Box,       struct { ::std::unique_ptr<Pattern> sub; }),
         (Ref,       struct { ::HIR::BorrowType type; ::std::unique_ptr<Pattern> sub; } ),
-        (Tuple,     struct { ::std::vector<Pattern> sub_patterns; } ),
+        (Tuple,     struct {
+            // NOTE: Has the glob still because the tuple isn't yet known
+            GlobPos glob_pos;
+            ::std::vector<Pattern> sub_patterns;
+            }),
         (StructValue, struct {
             GenericPath path;
             const Struct*   binding;
@@ -74,10 +84,6 @@ struct Pattern
             const Struct*   binding;
             ::std::vector<Pattern> sub_patterns;
             } ),
-        (StructTupleWildcard, struct {
-            GenericPath path;
-            const Struct*   binding;
-            }),
         (Struct,    struct {
             GenericPath path;
             const Struct*   binding;
@@ -97,11 +103,6 @@ struct Pattern
             const Enum* binding_ptr;
             unsigned binding_idx;
             ::std::vector<Pattern> sub_patterns;
-            } ),
-        (EnumTupleWildcard, struct {
-            GenericPath path;
-            const Enum* binding_ptr;
-            unsigned binding_idx;
             } ),
         (EnumStruct, struct {
             GenericPath path;

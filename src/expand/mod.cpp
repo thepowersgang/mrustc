@@ -161,10 +161,8 @@ void Expand_Pattern(bool is_early, ::AST::Crate& crate, LList<const AST::Module*
         for(auto& sp : e.sub_patterns)
             Expand_Pattern(is_early, crate, modstack, mod, sp);
         ),
-    (WildcardStructTuple,
-        ),
     (StructTuple,
-        for(auto& sp : e.sub_patterns)
+        for(auto& sp : e.tup_pat.sub_patterns)
             Expand_Pattern(is_early, crate, modstack, mod, sp);
         ),
     (Struct,
@@ -371,7 +369,7 @@ struct CExpandExpr:
             ::std::vector< ::AST::ExprNode_Match_Arm>   arms;
             // - `Some(pattern ) => code`
             arms.push_back( ::AST::ExprNode_Match_Arm(
-                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagEnumVariant(), path_Some, ::make_vec1( mv$(node.m_pattern) ) ) ),
+                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), path_Some, ::make_vec1( mv$(node.m_pattern) ) ) ),
                 nullptr,
                 mv$(node.m_code)
                 ) );
@@ -506,13 +504,13 @@ struct CExpandExpr:
             ::std::vector< ::AST::ExprNode_Match_Arm>   arms;
             // `Ok(v) => v,`
             arms.push_back(::AST::ExprNode_Match_Arm(
-                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagEnumVariant(), path_Ok, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), "v") )) ),
+                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), path_Ok, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), "v") )) ),
                 nullptr,
                 ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path(::AST::Path::TagLocal(), "v") ) )
                 ));
             // `Err(e) => return Err(From::from(e)),`
             arms.push_back(::AST::ExprNode_Match_Arm(
-                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagEnumVariant(), path_Err, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), "e") )) ),
+                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), path_Err, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), "e") )) ),
                 nullptr,
                 ::AST::ExprNodeP(new ::AST::ExprNode_Flow(
                     ::AST::ExprNode_Flow::RETURN,

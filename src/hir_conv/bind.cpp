@@ -253,15 +253,6 @@ namespace {
                     ERROR(sp, E0000, "Struct tuple pattern on non-tuple struct " << e.path);
                 }
                 ),
-            (StructTupleWildcard,
-                const auto& str = get_struct_ptr(sp, m_crate, e.path);
-                TU_IFLET(::HIR::Struct::Data, str.m_data, Tuple, _,
-                    e.binding = &str;
-                )
-                else {
-                    ERROR(sp, E0000, "Struct tuple pattern on non-tuple struct " << e.path);
-                }
-                ),
             (Struct,
                 const auto& str = get_struct_ptr(sp, m_crate, e.path);
                 TU_IFLET(::HIR::Struct::Data, str.m_data, Named, _,
@@ -272,17 +263,6 @@ namespace {
                 }
                 ),
             (EnumTuple,
-                auto p = get_enum_ptr(sp, m_crate, e.path);
-                const auto& var = p.first->m_variants[p.second].second;
-                TU_IFLET(::HIR::Enum::Variant, var, Tuple, _,
-                    e.binding_ptr = p.first;
-                    e.binding_idx = p.second;
-                )
-                else {
-                    ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
-                }
-                ),
-            (EnumTupleWildcard,
                 auto p = get_enum_ptr(sp, m_crate, e.path);
                 const auto& var = p.first->m_variants[p.second].second;
                 TU_IFLET(::HIR::Enum::Variant, var, Tuple, _,

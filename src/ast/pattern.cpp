@@ -57,6 +57,17 @@ namespace AST {
     )
     return os;
 }
+::std::ostream& operator<<(::std::ostream& os, const Pattern::TuplePat& val)
+{
+    if( val.glob_pos == Pattern::TupleGlob::Start ) {
+        os << ".., ";
+    }
+    os << val.sub_patterns;
+    if( val.glob_pos == Pattern::TupleGlob::End ) {
+        os << ".., ";
+    }
+    return os;
+}
 ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat)
 {
     os << "Pattern(";
@@ -85,13 +96,10 @@ namespace AST {
             os << " ... " << ent.end;
         ),
     (Tuple,
-        os << "(" << ent.sub_patterns << ")";
-        ),
-    (WildcardStructTuple,
-        os << ent.path << " (..)";
+        os << "(" << ent << ")";
         ),
     (StructTuple,
-        os << ent.path << " (" << ent.sub_patterns << ")";
+        os << ent.path << " (" << ent.tup_pat << ")";
         ),
     (Struct,
         os << ent.path << " {" << ent.sub_patterns << "}";
@@ -159,6 +167,12 @@ AST::Pattern AST::Pattern::clone() const
                 rv.push_back( p.clone() );
             return rv;
         }
+        static TuplePat clone_tup(const TuplePat& p) {
+            return TuplePat {
+                p.glob_pos,
+                H::clone_list(p.sub_patterns)
+                };
+        }
         static AST::Pattern::Value clone_val(const AST::Pattern::Value& v) {
             TU_MATCH(::AST::Pattern::Value, (v), (e),
             (Invalid, return Value(e);),
@@ -191,13 +205,10 @@ AST::Pattern AST::Pattern::clone() const
         rv.m_data = Data::make_Value({ H::clone_val(e.start), H::clone_val(e.end) });
         ),
     (Tuple,
-        rv.m_data = Data::make_Tuple({ H::clone_list(e.sub_patterns) });
-        ),
-    (WildcardStructTuple,
-        rv.m_data = Data::make_WildcardStructTuple({ ::AST::Path(e.path) });
+        rv.m_data = Data::make_Tuple({ H::clone_tup(e) });
         ),
     (StructTuple,
-        rv.m_data = Data::make_StructTuple({ ::AST::Path(e.path), H::clone_list(e.sub_patterns) });
+        rv.m_data = Data::make_StructTuple({ ::AST::Path(e.path), H::clone_tup(e.tup_pat) });
         ),
     (Struct,
         ::std::vector< ::std::pair< ::std::string, Pattern> >   sps;

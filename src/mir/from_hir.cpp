@@ -81,6 +81,7 @@ namespace {
                 destructure_from_ex(sp, *e.sub, ::MIR::LValue::make_Deref({ box$( mv$(lval) ) }), allow_refutable);
                 ),
             (Tuple,
+                ASSERT_BUG(sp, e.glob_pos == ::HIR::Pattern::GlobPos::None, "Tuple .. should be eliminated");
                 for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
                 {
                     destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), i}), allow_refutable);
@@ -94,9 +95,6 @@ namespace {
                 {
                     destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), i}), allow_refutable);
                 }
-                ),
-            (StructTupleWildcard,
-                // Nothing.
                 ),
             (Struct,
                 const auto& str = *e.binding;
@@ -124,9 +122,6 @@ namespace {
                 {
                     destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::make_Field({ box$( lval_var.clone() ), i}), allow_refutable);
                 }
-                ),
-            (EnumTupleWildcard,
-                ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
                 ),
             (EnumStruct,
                 ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);

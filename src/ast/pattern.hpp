@@ -60,6 +60,16 @@ public:
         (Named, Path)
         );
 
+    enum class TupleGlob {
+        None,   // (a, b)
+        Start,  // (.., a, b)
+        End,    // (a, b, ..)
+    };
+    struct TuplePat {
+        TupleGlob   glob_pos;
+        ::std::vector<Pattern>  sub_patterns;
+    };
+    
     TAGGED_UNION(Data, Any,
         (MaybeBind, struct { ::std::string name; } ),
         (Macro,     struct { unique_ptr<::AST::MacroInvocation> inv; } ),
@@ -67,9 +77,8 @@ public:
         (Box,       struct { unique_ptr<Pattern> sub; } ),
         (Ref,       struct { bool mut; unique_ptr<Pattern> sub; } ),
         (Value,     struct { Value start; Value end; } ),
-        (Tuple,     struct { ::std::vector<Pattern> sub_patterns; } ),
-        (WildcardStructTuple, struct { Path path;  } ),
-        (StructTuple, struct { Path path; ::std::vector<Pattern> sub_patterns; } ),
+        (Tuple,     TuplePat ),
+        (StructTuple, struct { Path path; TuplePat tup_pat; } ),
         (Struct,    struct { Path path; ::std::vector< ::std::pair< ::std::string, Pattern> > sub_patterns; bool is_exhaustive; } ),
         (Slice,     struct { ::std::vector<Pattern> leading; ::std::string extra_bind; ::std::vector<Pattern> trailing; } )
         );
@@ -85,6 +94,11 @@ public:
     {}
     Pattern(Pattern&&) = default;
     Pattern& operator=(Pattern&&) = default;
+    
+    Pattern(Data dat):
+        m_binding(),
+        m_data( mv$(dat) )
+    {};
 
     struct TagMaybeBind {};
     Pattern(TagMaybeBind, ::std::string name):
@@ -95,12 +109,6 @@ public:
     struct TagMacro {};
     Pattern(TagMacro, unique_ptr<::AST::MacroInvocation> inv):
         m_data( Data::make_Macro({mv$(inv)}) )
-    {}
-
-    // Wildcard = '..', distinct from '_'
-    // TODO: Store wildcard as a different pattern type
-    struct TagWildcard {};
-    Pattern(TagWildcard)
     {}
 
     struct TagBind {};
@@ -128,16 +136,19 @@ public:
     }
 
     struct TagTuple {};
-    Pattern(TagTuple, ::std::vector<Pattern> sub_patterns):
-        m_data( Data::make_Tuple( { ::std::move(sub_patterns) } ) )
+    Pattern(TagTuple, TuplePat pat):
+        m_data( Data::make_Tuple( ::std::move(pat) ) )
+    {}
+    Pattern(TagTuple, ::std::vector<Pattern> pats):
+        m_data( Data::make_Tuple( TuplePat { TupleGlob::None, ::std::move(pats) } ) )
     {}
 
-    struct TagEnumVariant {};
-    Pattern(TagEnumVariant, Path path):
-        m_data( Data::make_WildcardStructTuple( { ::std::move(path) } ) ) 
+    struct TagNamedTuple {};
+    Pattern(TagNamedTuple, Path path, ::std::vector<Pattern> pats):
+        m_data( Data::make_StructTuple( { ::std::move(path), TuplePat { TupleGlob::None, ::std::move(pats) } } ) )
     {}
-    Pattern(TagEnumVariant, Path path, ::std::vector<Pattern> sub_patterns):
-        m_data( Data::make_StructTuple( { ::std::move(path), ::std::move(sub_patterns) } ) ) 
+    Pattern(TagNamedTuple, Path path, TuplePat pat = TuplePat { TupleGlob::Start, {} }):
+        m_data( Data::make_StructTuple( { ::std::move(path), ::std::move(pat) } ) )
     {}
 
     struct TagStruct {};
@@ -179,7 +190,8 @@ public:
     }
 };
 
-::std::ostream& operator<<(::std::ostream& os, const Pattern::Value& val);
+extern ::std::ostream& operator<<(::std::ostream& os, const Pattern::Value& val);
+extern ::std::ostream& operator<<(::std::ostream& os, const Pattern::TuplePat& val);
 
 };
 

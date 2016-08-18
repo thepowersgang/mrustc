@@ -15,7 +15,7 @@ using AST::ExprNode;
 
 
 
-::std::vector<AST::Pattern> Parse_PatternList(TokenStream& lex, bool is_refutable);
+::AST::Pattern::TuplePat Parse_PatternList(TokenStream& lex, bool is_refutable);
 AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable);
 AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path, bool is_refutable);
 AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable);
@@ -245,14 +245,9 @@ AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path, bool is_re
     switch( GET_TOK(tok, lex) )
     {
     case TOK_PAREN_OPEN:
-        if( LOOK_AHEAD(lex) == TOK_DOUBLE_DOT ) {
-            GET_TOK(tok, lex);
-            GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
-            return AST::Pattern( AST::Pattern::TagEnumVariant(), ::std::move(path) );
-        }
-        return AST::Pattern( AST::Pattern::TagEnumVariant(), ::std::move(path), Parse_PatternList(lex, is_refutable) );
+        return AST::Pattern( AST::Pattern::TagNamedTuple(), mv$(path), Parse_PatternList(lex, is_refutable) );
     case TOK_BRACE_OPEN:
-        return Parse_PatternStruct(lex, ::std::move(path), is_refutable);
+        return Parse_PatternStruct(lex, mv$(path), is_refutable);
     default:
         PUTBACK(tok, lex);
         return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(mv$(path)) );
@@ -315,15 +310,29 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
     return rv;
 }
 
-::std::vector<AST::Pattern> Parse_PatternList(TokenStream& lex, bool is_refutable)
+::AST::Pattern::TuplePat Parse_PatternList(TokenStream& lex, bool is_refutable)
 {
     TRACE_FUNCTION;
+    auto sp = lex.start_span();
     Token tok;
-    ::std::vector<AST::Pattern> child_pats;
+    
+    auto glob_pos = ::AST::Pattern::TupleGlob::None;
     
     auto end = TOK_PAREN_CLOSE;
+    // 1. Leading `..`
+    if( LOOK_AHEAD(lex) == TOK_DOUBLE_DOT ) {
+        GET_TOK(tok, lex);
+        glob_pos = ::AST::Pattern::TupleGlob::Start;
+        if( GET_TOK(tok, lex) != TOK_COMMA ) {
+            CHECK_TOK(tok, end);
+            return ::AST::Pattern::TuplePat { glob_pos, {} };
+        }
+    }
+    
+    // 2. Body
+    ::std::vector<AST::Pattern> child_pats;
     do {
-        if( GET_TOK(tok, lex) == end )
+        if( GET_TOK(tok, lex) == end || tok.type() == TOK_DOUBLE_DOT )
             break;
         else
             PUTBACK(tok, lex);
@@ -332,8 +341,17 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
         DEBUG("pat = " << pat);
         child_pats.push_back( ::std::move(pat) );
     } while( GET_TOK(tok, lex) == TOK_COMMA );
+    
+    // 3. Trailing `..`
+    if( tok.type() == TOK_DOUBLE_DOT ) {
+        if( glob_pos != ::AST::Pattern::TupleGlob::None ) {
+            ERROR(lex.end_span(sp), E0000, "Multiple instances of .. in pattern");
+        }
+        glob_pos = ::AST::Pattern::TupleGlob::End;
+        GET_TOK(tok, lex);
+    }
     CHECK_TOK(tok, end);
-    return child_pats;
+    return ::AST::Pattern::TuplePat { glob_pos, mv$(child_pats) };
 }
 
 AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refutable)

@@ -949,6 +949,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             }
             ),
         (Tuple,
+            ASSERT_BUG(sp, pe.glob_pos == ::HIR::Pattern::GlobPos::None, "Tuple .. should be eliminated");
             assert(e.size() == pe.sub_patterns.size());
             for(unsigned int i = 0; i < e.size(); i ++) {
                 this->append_from(sp, pe.sub_patterns[i], e[i]);
@@ -996,9 +997,6 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                     ),
                 (StructTuple,
                     TODO(sp, "Match over struct - Tuple + StructTuple");
-                    ),
-                (StructTupleWildcard,
-                    TODO(sp, "Match over struct - Tuple + StructTupleWildcard");
                     )
                 )
                 ),
@@ -1052,9 +1050,6 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                     sub_builder.append_from( sp, subpat, subty );
                 }
                 this->push_rule( PatternRule::make_Variant({ pe.binding_idx, mv$(sub_builder.m_rules) }) );
-                ),
-            (EnumTupleWildcard,
-                this->push_rule( PatternRule::make_Variant({ pe.binding_idx, {} }) );
                 ),
             (EnumStruct,
                 const auto& var_def = pe.binding_ptr->m_variants.at(pe.binding_idx);

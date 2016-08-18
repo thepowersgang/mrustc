@@ -2502,13 +2502,38 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
     (Tuple,
         const auto& ty = this->get_type(type);
         TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Tuple, te,
-            if( te.size() != e.sub_patterns.size() ) {
-                ERROR(sp, E0000, "Pattern-type mismatch, expected " << e.sub_patterns.size() << "-tuple, got " << ty);
+            
+            unsigned int field_ofs = 0;
+            switch(e.glob_pos)
+            {
+            case ::HIR::Pattern::GlobPos::None:
+                if( e.sub_patterns.size() != te.size() ) { 
+                    ERROR(sp, E0000, "Tuple pattern with an incorrect number of fields, expected " << e.sub_patterns.size() << "-tuple, got " << ty);
+                }
+                break;
+            case ::HIR::Pattern::GlobPos::End:
+                field_ofs = te.size() - e.sub_patterns.size();
+            case ::HIR::Pattern::GlobPos::Start:
+                if( e.sub_patterns.size() > te.size() ) { 
+                    ERROR(sp, E0000, "Tuple pattern with too many fields");
+                }
+                break;
             }
+            
             for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
-                this->add_binding(sp, e.sub_patterns[i], te[i] );
+                this->add_binding(sp, e.sub_patterns[i], te[field_ofs+i] );
         )
         else {
+            switch(e.glob_pos)
+            {
+            case ::HIR::Pattern::GlobPos::None:
+                break;
+            case ::HIR::Pattern::GlobPos::End:
+            case ::HIR::Pattern::GlobPos::Start:
+                TODO(sp, "Create ivar type when wildcard is present");
+                break;
+            }
+            
             ::std::vector< ::HIR::TypeRef>  sub_types;
             for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ ) {
                 sub_types.push_back( this->m_ivars.new_ivar_tr() );
@@ -2580,44 +2605,19 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         assert(e.binding);
         const auto& params = *params_ptr;
         
-        if( e.sub_patterns.size() != sd.size() ) { 
-            ERROR(sp, E0000, "Tuple struct pattern with an incorrect number of fields");
-        }
         for( unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
         {
+            /*const*/ auto& sub_pat = e.sub_patterns[i];
             const auto& field_type = sd[i].ent;
             if( monomorphise_type_needed(field_type) ) {
                 auto var_ty = monomorphise_type(sp, str.m_params, params,  field_type);
-                this->add_binding(sp, e.sub_patterns[i], var_ty);
+                this->add_binding(sp, sub_pat, var_ty);
             }
             else {
                 // SAFE: Can't have _ as monomorphise_type_needed checks for that
-                this->add_binding(sp, e.sub_patterns[i], const_cast< ::HIR::TypeRef&>(field_type));
+                this->add_binding(sp, sub_pat, const_cast< ::HIR::TypeRef&>(field_type));
             }
         }
-        ),
-    (StructTupleWildcard,
-        this->add_ivars_params( e.path.m_params );
-        if( type.m_data.is_Infer() ) {
-            this->equate_types( sp, type, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)) );
-        }
-        const auto& ty = this->get_type(type);
-        assert(e.binding);
-        const auto& str = *e.binding;
-        // - assert check from earlier pass
-        assert( str.m_data.is_Tuple() );
-        
-        TU_MATCH_DEF(::HIR::TypeRef::Data, (ty.m_data), (te),
-        (
-            ERROR(sp, E0000, "Type mismatch in struct pattern - " << ty << " is not " << e.path);
-            ),
-        (Infer, throw ""; ),
-        (Path,
-            if( ! te.binding.is_Struct() || te.binding.as_Struct() != &str ) {
-                ERROR(sp, E0000, "Type mismatch in struct pattern - " << ty << " is not " << e.path);
-            }
-            )
-        )
         ),
     (Struct,
         this->add_ivars_params( e.path.m_params );
@@ -2661,51 +2661,6 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             )
         )
         ),
-    (EnumTuple,
-        this->add_ivars_params( e.path.m_params );
-        if( type.m_data.is_Infer() ) {
-            auto path = e.path.clone();
-            path.m_path.m_components.pop_back();
-
-            this->equate_types( sp, type, ::HIR::TypeRef::new_path(mv$(path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
-        }
-        const auto& ty = this->get_type(type);
-        const auto& type = ty;
-        
-        assert(e.binding_ptr);
-        const auto& enm = *e.binding_ptr;
-        const auto& var = enm.m_variants[e.binding_idx].second;
-        assert(var.is_Tuple());
-        const auto& tup_var = var.as_Tuple();
-        
-        TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
-        (
-            ERROR(sp, E0000, "Type mismatch in enum pattern - " << type << " is not " << e.path);
-            ),
-        (Infer, throw ""; ),
-        (Path,
-            if( ! te.binding.is_Enum() || te.binding.as_Enum() != &enm ) {
-                ERROR(sp, E0000, "Type mismatch in enum pattern - " << type << " is not " << e.path);
-            }
-            // NOTE: Must be Generic for the above to have passed
-            auto& gp = te.path.m_data.as_Generic();
-            if( e.sub_patterns.size() != tup_var.size() ) { 
-                ERROR(sp, E0000, "Enum pattern with an incorrect number of fields - " << e.path << " - expected " << tup_var.size() << ", got " << e.sub_patterns.size());
-            }
-            for( unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
-            {
-                if( monomorphise_type_needed(tup_var[i].ent) ) {
-                    auto var_ty = monomorphise_type(sp, enm.m_params, gp.m_params,  tup_var[i].ent);
-                    this->add_binding(sp, e.sub_patterns[i], var_ty);
-                }
-                else {
-                    // SAFE: Can't have a _ (monomorphise_type_needed checks for that)
-                    this->add_binding(sp, e.sub_patterns[i], const_cast< ::HIR::TypeRef&>(tup_var[i].ent));
-                }
-            }
-            )
-        )
-        ),
     (EnumValue,
         this->add_ivars_params( e.path.m_params );
         if( type.m_data.is_Infer() ) {
@@ -2735,7 +2690,7 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             )
         )
         ),
-    (EnumTupleWildcard,
+    (EnumTuple,
         this->add_ivars_params( e.path.m_params );
         if( type.m_data.is_Infer() ) {
             auto path = e.path.clone();
@@ -2745,11 +2700,12 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         }
         const auto& ty = this->get_type(type);
         const auto& type = ty;
-
+        
         assert(e.binding_ptr);
         const auto& enm = *e.binding_ptr;
         const auto& var = enm.m_variants[e.binding_idx].second;
         assert(var.is_Tuple());
+        const auto& tup_var = var.as_Tuple();
         
         TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
         (
@@ -2759,6 +2715,24 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         (Path,
             if( ! te.binding.is_Enum() || te.binding.as_Enum() != &enm ) {
                 ERROR(sp, E0000, "Type mismatch in enum pattern - " << type << " is not " << e.path);
+            }
+            // NOTE: Must be Generic for the above to have passed
+            auto& gp = te.path.m_data.as_Generic();
+            
+            ASSERT_BUG(sp, e.sub_patterns.size() != tup_var.size(),
+                "Enum pattern with an incorrect number of fields - " << e.path << " - expected " << tup_var.size() << ", got " << e.sub_patterns.size()
+                );
+            
+            for( unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
+            {
+                if( monomorphise_type_needed(tup_var[i].ent) ) {
+                    auto var_ty = monomorphise_type(sp, enm.m_params, gp.m_params,  tup_var[i].ent);
+                    this->add_binding(sp, e.sub_patterns[i], var_ty);
+                }
+                else {
+                    // SAFE: Can't have a _ (monomorphise_type_needed checks for that)
+                    this->add_binding(sp, e.sub_patterns[i], const_cast< ::HIR::TypeRef&>(tup_var[i].ent));
+                }
             }
             )
         )

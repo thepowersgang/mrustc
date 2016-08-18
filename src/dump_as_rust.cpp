@@ -812,14 +812,17 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
             m_os << " ... " << v.end;
         }
         ),
-    (WildcardStructTuple,
-        m_os << v.path << "(..)";
-        ),
     (StructTuple,
         m_os << v.path << "(";
-        for(const auto& sp : v.sub_patterns) {
+        if( v.tup_pat.glob_pos == ::AST::Pattern::TupleGlob::Start ) {
+            m_os << ".., ";
+        }
+        for(const auto& sp : v.tup_pat.sub_patterns) {
             print_pattern(sp, is_refutable);
             m_os << ",";
+        }
+        if( v.tup_pat.glob_pos == ::AST::Pattern::TupleGlob::End ) {
+            m_os << " ..";
         }
         m_os << ")";
         ),
@@ -833,15 +836,20 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
         }
         m_os << ")";
         }),
-    (Tuple, {
-        const auto& v = p.data().as_Tuple();
+    (Tuple,
         m_os << "(";
+        if( v.glob_pos == ::AST::Pattern::TupleGlob::Start ) {
+            m_os << ".., ";
+        }
         for(const auto& sp : v.sub_patterns) {
             print_pattern(sp, is_refutable);
             m_os << ",";
         }
+        if( v.glob_pos == ::AST::Pattern::TupleGlob::End ) {
+            m_os << " ..";
+        }
         m_os << ")";
-        }),
+        ),
     (Slice,
         m_os << "[";
         bool needs_comma = false;
