@@ -189,7 +189,7 @@ static const struct {
 
 signed int Lexer::getSymbol()
 {
-    char ch = this->getc();
+    Codepoint ch = this->getc();
     // 1. lsearch for character
     // 2. Consume as many characters as currently match
     // 3. IF: a smaller character or, EOS is hit - Return current best
@@ -200,12 +200,12 @@ signed int Lexer::getSymbol()
         const char* const chars = TOKENMAP[i].chars;
         const size_t len = TOKENMAP[i].len;
 
-        if( ofs >= len || chars[ofs] > ch ) {
+        if( ofs >= len || static_cast<uint32_t>(chars[ofs]) > ch.v ) {
             this->ungetc();
             return best;
         }
 
-        while( chars[ofs] && chars[ofs] == ch )
+        while( chars[ofs] && ch == chars[ofs] )
         {
             try {
                 ch = this->getc();
@@ -225,13 +225,13 @@ signed int Lexer::getSymbol()
     return best;
 }
 
-bool issym(int ch)
+bool issym(Codepoint ch)
 {
-    if( ::std::isalnum(ch) )
+    if( ::std::isalnum(ch.v) )
         return true;
     if( ch == '_' )
         return true;
-    if( ch >= 128 || ch < 0 )
+    if( ch.v >= 128 )
         return true;
     return false;
 }
@@ -275,13 +275,13 @@ Token Lexer::getTokenInt()
     }
     try
     {
-        char ch = this->getc();
+        Codepoint ch = this->getc();
         
         if( ch == '#' && m_line == 1 && m_line_ofs == 1 ) {
-            switch(ch = this->getc())
+            switch( (ch = this->getc()).v )
             {
             case '!':
-                switch(ch = this->getc())
+                switch( (ch = this->getc()).v )
                 {
                 case '/':
                     // SHEBANG!
@@ -291,22 +291,22 @@ Token Lexer::getTokenInt()
                 case '[':
                     return Token(TOK_CATTR_OPEN);
                 default:
-                    throw ParseError::BadChar(*this, ch);
+                    throw ParseError::BadChar(*this, ch.v);
                 }
             case '[':
                 return Token(TOK_ATTR_OPEN);
             default:
                 this->ungetc();
                 //return Token(TOK_HASH);
-                throw ParseError::BadChar(*this, ch);
+                throw ParseError::BadChar(*this, ch.v);
             }
         }
 
         if( ch == '\n' )
             return Token(TOK_NEWLINE);
-        if( isspace(ch) )
+        if( ch.isspace() )
         {
-            while( isspace(ch = this->getc()) && ch != '\n' )
+            while( (ch = this->getc()).isspace() && ch != '\n' )
                 ;
             this->ungetc();
             return Token(TOK_WHITESPACE);
@@ -317,8 +317,8 @@ Token Lexer::getTokenInt()
         if( sym == 0 )
         {
             // No match at all, check for symbol
-            char ch = this->getc();
-            if( isdigit(ch) )
+            auto ch = this->getc();
+            if( ch.isdigit() )
             {
                 enum eCoreType  num_type = CORETYPE_ANY;
                 enum {
@@ -336,25 +336,25 @@ Token Lexer::getTokenInt()
                     ch = this->getc_num();
                     if( ch == 'x' ) {
                         num_mode = HEX;
-                        while( isxdigit(ch = this->getc_num()) )
+                        while( (ch = this->getc_num()).isxdigit() )
                         {
                             val *= 16;
-                            if(ch <= '9')
-                                val += ch - '0';
-                            else if( ch <= 'F' )
-                                val += ch - 'A' + 10;
-                            else if( ch <= 'f' )
-                                val += ch - 'a' + 10;
+                            if(ch.v <= '9')
+                                val += ch.v - '0';
+                            else if( ch.v <= 'F' )
+                                val += ch.v - 'A' + 10;
+                            else if( ch.v <= 'f' )
+                                val += ch.v - 'a' + 10;
                         }
                     }
                     else if( ch == 'b' ) {
                         num_mode = BIN;
-                        while( isdigit(ch = this->getc_num()) )
+                        while( (ch = this->getc_num()).isdigit() )
                         {
                             val *= 2;
-                            if(ch == '0')
+                            if(ch.v == '0')
                                 val += 0;
-                            else if( ch == '1' )
+                            else if( ch.v == '1' )
                                 val += 1;
                             else
                                 throw ParseError::Generic("Invalid digit in binary literal");
@@ -362,27 +362,27 @@ Token Lexer::getTokenInt()
                     }
                     else if( ch == 'o' ) {
                         num_mode = OCT;
-                        while( isdigit(ch = this->getc_num()) ) {
+                        while( (ch = this->getc_num()).isdigit() ) {
                             val *= 8;
-                            if('0' <= ch && ch <= '7')
-                                val += ch - '0';
+                            if('0' <= ch.v && ch.v <= '7')
+                                val += ch.v - '0';
                             else
                                 throw ParseError::Generic("Invalid digit in octal literal");
                         }
                     }
                     else {
                         num_mode = DEC;
-                        while( isdigit(ch) ) {
+                        while( ch.isdigit() ) {
                             val *= 10;
-                            val += ch - '0';
+                            val += ch.v - '0';
                             ch = this->getc_num();
                         }
                     }
                 }
                 else {
-                    while( isdigit(ch) ) {
+                    while( ch.isdigit() ) {
                         val *= 10;
-                        val += ch - '0';
+                        val += ch.v - '0';
                         ch = this->getc_num();
                     }
                 }
@@ -407,7 +407,7 @@ Token Lexer::getTokenInt()
                             return Token(val, CORETYPE_ANY);
                         }
                         // Single dot - Still a float. (TODO)
-                        else if( !isdigit(ch) )
+                        else if( !ch.isdigit() )
                         {
                             this->ungetc();
                             if( issym(ch) )
@@ -434,7 +434,7 @@ Token Lexer::getTokenInt()
                         ::std::string   suffix;
                         while( issym(ch) )
                         {
-                            suffix.push_back(ch);
+                            suffix += ch;
                             ch = this->getc();
                         }
                         this->ungetc();
@@ -457,7 +457,7 @@ Token Lexer::getTokenInt()
                     ::std::string   suffix;
                     while( issym(ch) )
                     {
-                        suffix.push_back(ch);
+                        suffix += ch;
                         ch = this->getc();
                     }
                     this->ungetc();
@@ -513,7 +513,7 @@ Token Lexer::getTokenInt()
                                 }
                             }
                             else {
-                                str.push_back(ch);
+                                str += ch;
                             }
                         }
                         return Token(TOK_BYTESTRING, str);
@@ -531,7 +531,7 @@ Token Lexer::getTokenInt()
                         else {
                             if( this->getc() != '\'' )
                                 throw ParseError::Generic(*this, "Multi-byte character literal");
-                            return Token((uint64_t)ch, CORETYPE_U8);
+                            return Token((uint64_t)ch.v, CORETYPE_U8);
                         }
                     }
                     else {
@@ -548,7 +548,7 @@ Token Lexer::getTokenInt()
             }
             else
             {
-                throw ParseError::BadChar(*this, ch);
+                throw ParseError::BadChar(*this, ch.v);
             }
         }
         else if( sym > 0 )
@@ -562,10 +562,10 @@ Token Lexer::getTokenInt()
             case LINECOMMENT: {
                 // Line comment
                 ::std::string   str;
-                char ch = this->getc();
+                auto ch = this->getc();
                 while(ch != '\n' && ch != '\r')
                 {
-                    str.push_back(ch);
+                    str += ch;
                     ch = this->getc();
                 }
                 this->ungetc();
@@ -578,12 +578,12 @@ Token Lexer::getTokenInt()
                     ch = this->getc();
                     
                     if( ch == '/' ) {
-                        str.push_back(ch);
+                        str += ch;
                         ch = this->getc();
                         if( ch == '*' ) {
                             level ++;
                         }
-                        str.push_back(ch);
+                        str += ch;
                     }
                     else {
                         if( ch == '*' ) {
@@ -597,17 +597,17 @@ Token Lexer::getTokenInt()
                             }
                             else {
                                 str.push_back('*');
-                                str.push_back(ch);
+                                str += ch;
                             }
                         }
                         else {
-                            str.push_back(ch);
+                            str += ch;
                         }
                     }
                 }
                 return Token(TOK_COMMENT, str); }
             case SINGLEQUOTE: {
-                auto firstchar = this->getc_codepoint();
+                auto firstchar = this->getc();
                 if( firstchar.v == '\\' ) {
                     // Character constant with an escape code
                     uint32_t val = this->parseEscape('\'');
@@ -628,7 +628,7 @@ Token Lexer::getTokenInt()
                         str += firstchar;
                         while( issym(ch) )
                         {
-                            str.push_back(ch);
+                            str += ch;
                             ch = this->getc();
                         }
                         this->ungetc();
@@ -653,7 +653,7 @@ Token Lexer::getTokenInt()
                     }
                     else
                     {
-                        str.push_back(ch);
+                        str += ch;
                     }
                 }
                 return Token(TOK_STRING, str);
@@ -673,7 +673,7 @@ Token Lexer::getTokenInt()
 Token Lexer::getTokenInt_RawString(bool is_byte)
 {
     // Raw string (possibly byte)
-    char ch = this->getc();
+    Codepoint ch = this->getc();
     unsigned int hashes = 0;
     while(ch == '#')
     {
@@ -687,7 +687,7 @@ Token Lexer::getTokenInt_RawString(bool is_byte)
         else
             return this->getTokenInt_Identifier('r');
     }
-    char terminator = ch;
+    auto terminator = ch;
     ::std::string   val;
     DEBUG("terminator = '" << terminator << "', hashes = " << hashes);
 
@@ -736,15 +736,15 @@ Token Lexer::getTokenInt_RawString(bool is_byte)
     }
     return Token(is_byte ? TOK_BYTESTRING : TOK_STRING, val);
 }
-Token Lexer::getTokenInt_Identifier(char leader, char leader2)
+Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2)
 {
     ::std::string   str;
     if( leader2 != '\0' )
         str += leader;
-    char ch = leader2 == '\0' ? leader : leader2;
+    auto ch = leader2 == '\0' ? leader : leader2;
     while( issym(ch) )
     {
-        str.push_back(ch);
+        str += ch;
         ch = this->getc();
     }
 
@@ -772,9 +772,9 @@ double Lexer::parseFloat(uint64_t whole)
     char buf[MAX_LEN+1];
     int ofs = snprintf(buf, MAX_LEN+1, "%llu.", (unsigned long long)whole);
 
-    char ch = this->getc_num();
-    #define PUTC(ch)    do { if( ofs < MAX_SIG ) { buf[ofs] = ch; ofs ++; } else { throw ParseError::Generic("Oversized float"); } } while(0)
-    while( isdigit(ch) )
+    auto ch = this->getc_num();
+    #define PUTC(ch)    do { if( ofs < MAX_SIG ) { assert(ch.v < 127); buf[ofs] = ch.v; ofs ++; } else { throw ParseError::Generic("Oversized float"); } } while(0)
+    while( ch.isdigit() )
     {
         PUTC(ch);
         ch = this->getc_num();
@@ -787,12 +787,12 @@ double Lexer::parseFloat(uint64_t whole)
             PUTC(ch);
             ch = this->getc_num();
         }
-        if( !isdigit(ch) )
+        if( !ch.isdigit() )
             throw ParseError::Generic( FMT("Non-numeric '"<<ch<<"' in float exponent") );
         do {
             PUTC(ch);
             ch = this->getc_num();
-        } while( isdigit(ch) );
+        } while( ch.isdigit() );
     }
     this->ungetc();
     buf[ofs] = 0;
@@ -804,8 +804,8 @@ double Lexer::parseFloat(uint64_t whole)
 
 uint32_t Lexer::parseEscape(char enclosing)
 {
-    char ch = this->getc();
-    switch(ch)
+    auto ch = this->getc();
+    switch(ch.v)
     {
     case 'x':
     case 'u': {
@@ -817,17 +817,17 @@ uint32_t Lexer::parseEscape(char enclosing)
             req_close_brace = true;
             ch = this->getc();
         }
-        if( !isxdigit(ch) )
-            throw ParseError::Generic(*this, FMT("Found invalid character '\\x" << ::std::hex << (int)ch << "' in \\u sequence" ) );
-        while( isxdigit(ch) )
+        if( !ch.isxdigit() )
+            throw ParseError::Generic(*this, FMT("Found invalid character '\\x" << ::std::hex << ch.v << "' in \\u sequence" ) );
+        while( ch.isxdigit() )
         {
-            char    tmp[2] = {ch, 0};
+            char    tmp[2] = {static_cast<char>(ch.v), 0};
             val *= 16;
             val += ::std::strtol(tmp, NULL, 16);
             ch = this->getc();
         }
         if( !req_close_brace )
-                this->ungetc();
+            this->ungetc();
         else if( ch != '}' )
             throw ParseError::Generic(*this, "Expected terminating } in \\u sequence");
         else {
@@ -850,19 +850,26 @@ uint32_t Lexer::parseEscape(char enclosing)
     case '\r':
     case '\n':
         m_line ++;
-        while( isspace(ch) )
+        while( ch.isspace() )
             ch = this->getc();
         this->ungetc();
         if( ch == enclosing )
             return ~0;
         else
-            return ch;
+            return ch.v;
     default:
         throw ParseError::Todo( FMT("Unknown escape sequence \\" << ch) );
     }
 }
 
-char Lexer::getc()
+char Lexer::getc_byte()
+{
+    char rv = m_istream.get();
+    if( m_istream.eof() )
+        throw Lexer::EndOfFile();
+    return rv;
+}
+Codepoint Lexer::getc()
 {
     if( m_last_char_valid )
     {
@@ -870,26 +877,24 @@ char Lexer::getc()
     }
     else
     {
-        m_last_char = m_istream.get();
+        m_last_char = this->getc_cp();
         m_line_ofs += 1;
-        if( m_istream.eof() )
-            throw Lexer::EndOfFile();
     }
     //::std::cout << "getc(): '" << m_last_char << "'" << ::std::endl;
     return m_last_char;
 }
 
-char Lexer::getc_num()
+Codepoint Lexer::getc_num()
 {
-    char ch;
+    Codepoint ch;
     do {
         ch = this->getc();
     } while( ch == '_' );
     return ch;
 }
-Codepoint Lexer::getc_codepoint()
+Codepoint Lexer::getc_cp()
 {
-    uint8_t v1 = this->getc();
+    uint8_t v1 = this->getc_byte();
     if( v1 < 128 ) {
         return {v1};
     }
@@ -899,7 +904,7 @@ Codepoint Lexer::getc_codepoint()
     }
     else if( (v1 & 0xE0) == 0xC0 ) {
         // Two bytes
-        uint8_t e1 = this->getc();
+        uint8_t e1 = this->getc_byte();
         if( (e1 & 0xC0) != 0x80 )  return {0xFFFE};
         
         uint32_t outval
@@ -910,9 +915,9 @@ Codepoint Lexer::getc_codepoint()
     }
     else if( (v1 & 0xF0) == 0xE0 ) {
         // Three bytes
-        uint8_t e1 = this->getc();
+        uint8_t e1 = this->getc_byte();
         if( (e1 & 0xC0) != 0x80 )  return {0xFFFE};
-        uint8_t e2 = this->getc();
+        uint8_t e2 = this->getc_byte();
         if( (e2 & 0xC0) != 0x80 )  return {0xFFFE};
         
         uint32_t outval
@@ -924,11 +929,11 @@ Codepoint Lexer::getc_codepoint()
     }
     else if( (v1 & 0xF8) == 0xF0 ) {
         // Four bytes
-        uint8_t e1 = this->getc();
+        uint8_t e1 = this->getc_byte();
         if( (e1 & 0xC0) != 0x80 )  return {0xFFFE};
-        uint8_t e2 = this->getc();
+        uint8_t e2 = this->getc_byte();
         if( (e2 & 0xC0) != 0x80 )  return {0xFFFE};
-        uint8_t e3 = this->getc();
+        uint8_t e3 = this->getc_byte();
         if( (e3 & 0xC0) != 0x80 )  return {0xFFFE};
         
         uint32_t outval
@@ -1158,6 +1163,25 @@ SERIALISE_TYPE_A(TokenTree::, "TokenTree", {
     s.item(m_subtrees);
 })
 
+bool Codepoint::isspace() const {
+    switch(this->v)
+    {
+    case '\t':
+    case '\r':
+    case '\n':
+    case ' ':
+        return true;
+    default:
+        return false;
+    }
+}
+bool Codepoint::isdigit() const {
+    return this->v < 128 && std::isdigit(static_cast<int>(this->v));
+}
+bool Codepoint::isxdigit() const {
+    return this->v < 128 && std::isxdigit(static_cast<int>(this->v));
+}
+
 ::std::string& operator+=(::std::string& s, const Codepoint& cp)
 {
     if( cp.v < 0x80 ) {
@@ -1184,4 +1208,28 @@ SERIALISE_TYPE_A(TokenTree::, "TokenTree", {
     }
     return s;
 }
-
+::std::ostream& operator<<(::std::ostream& os, const Codepoint& cp)
+{
+    if( cp.v < 0x80 ) {
+        os << (char)cp.v;
+    }
+    else if( cp.v < (0x1F+1)<<(1*6) ) {
+        os << (char)(0xC0 | ((cp.v >> 6) & 0x1F));
+        os << (char)(0x80 | ((cp.v >> 0) & 0x3F));
+    }
+    else if( cp.v <= (0x0F+1)<<(2*6) ) {
+        os << (char)(0xE0 | ((cp.v >> 12) & 0x0F));
+        os << (char)(0x80 | ((cp.v >>  6) & 0x3F));
+        os << (char)(0x80 | ((cp.v >>  0) & 0x3F));
+    }
+    else if( cp.v <= (0x07+1)<<(2*6) ) {
+        os << (char)(0xF0 | ((cp.v >> 18) & 0x07));
+        os << (char)(0x80 | ((cp.v >> 12) & 0x3F));
+        os << (char)(0x80 | ((cp.v >>  6) & 0x3F));
+        os << (char)(0x80 | ((cp.v >>  0) & 0x3F));
+    }
+    else {
+        throw ::std::runtime_error("BUGCHECK: Bad unicode codepoint encountered");
+    }
+    return os;
+}

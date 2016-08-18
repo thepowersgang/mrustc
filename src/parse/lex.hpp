@@ -100,9 +100,19 @@ public:
 
 struct Codepoint {
     uint32_t    v;
+    Codepoint(): v(0) { }
     Codepoint(uint32_t v): v(v) { }
+    bool isspace() const;
+    bool isdigit() const;
+    bool isxdigit() const;
+    bool operator==(char x) { return v == static_cast<uint32_t>(x); }
+    bool operator!=(char x) { return v != static_cast<uint32_t>(x); }
+    bool operator==(Codepoint x) { return v == x.v; }
+    bool operator!=(Codepoint x) { return v != x.v; }
 };
 extern ::std::string& operator+=(::std::string& s, const Codepoint& cp);
+extern ::std::ostream& operator<<(::std::ostream& s, const Codepoint& cp);
+typedef Codepoint   uchar;
 
 class Lexer:
     public TokenStream
@@ -113,7 +123,7 @@ class Lexer:
 
     ::std::ifstream m_istream;
     bool    m_last_char_valid;
-    char    m_last_char;
+    Codepoint   m_last_char;
     Token   m_next_token;   // Used when lexing generated two tokens
 public:
     Lexer(const ::std::string& filename);
@@ -126,14 +136,15 @@ private:
     
     signed int getSymbol();
     Token getTokenInt_RawString(bool is_byte);
-    Token getTokenInt_Identifier(char ch, char ch2='\0');
+    Token getTokenInt_Identifier(Codepoint ch, Codepoint ch2='\0');
     double parseFloat(uint64_t whole);
     uint32_t parseEscape(char enclosing);
 
-    char getc();
-    char getc_num();
-    Codepoint getc_codepoint();
     void ungetc();
+    Codepoint getc_num();
+    Codepoint getc();
+    Codepoint getc_cp();
+    char getc_byte();
 
     class EndOfFile {};
 };
