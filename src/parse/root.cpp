@@ -1304,12 +1304,13 @@ void Parse_ExternCrate(TokenStream& lex, AST::Module& mod, bool is_public, AST::
         name = mv$(tok.str());
         if(GET_TOK(tok, lex) == TOK_RWORD_AS) {
             path = mv$(name);
+            
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             name = mv$(tok.str());
         }
         else {
             PUTBACK(tok, lex);
-            name = path;
+            path = name;
         }
         break;
     default:
@@ -1317,6 +1318,7 @@ void Parse_ExternCrate(TokenStream& lex, AST::Module& mod, bool is_public, AST::
     }
     GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
     
+    DEBUG("- `extern crate` path='" << path << "', name="<<name);
     mod.add_ext_crate(is_public, mv$(path), mv$(name), mv$(meta_items));
 }
 
