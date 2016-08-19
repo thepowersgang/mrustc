@@ -330,6 +330,12 @@ void ::HIR::Visitor::visit_pattern(::HIR::Pattern& pat)
         for(auto& sp : e.sub_patterns)
             this->visit_pattern(sp);
         ),
+    (SplitTuple,
+        for(auto& sp : e.leading)
+            this->visit_pattern(sp);
+        for(auto& sp : e.trailing)
+            this->visit_pattern(sp);
+        ),
     (StructValue,
         this->visit_generic_path(e.path, ::HIR::Visitor::PathContext::TYPE);
         ),

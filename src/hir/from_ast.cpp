@@ -132,18 +132,6 @@ const ::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
                 rv.push_back( LowerHIR_Pattern(sp) );
             return rv;
         }
-        static ::HIR::Pattern::GlobPos lowerhir_globpos(::AST::Pattern::TupleGlob pos) {
-            switch(pos)
-            {
-            case ::AST::Pattern::TupleGlob::None:
-                return ::HIR::Pattern::GlobPos::None;
-            case ::AST::Pattern::TupleGlob::Start:
-                return ::HIR::Pattern::GlobPos::Start;
-            case ::AST::Pattern::TupleGlob::End:
-                return ::HIR::Pattern::GlobPos::End;
-            }
-            throw "";
-        }
     };
     
     TU_MATCH(::AST::Pattern::Data, (pat.data()), (e),
@@ -177,54 +165,67 @@ const ::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
             };
         ),
     (Tuple,
-        auto glob_pos = H::lowerhir_globpos( e.glob_pos );
-        auto sub_patterns = H::lowerhir_patternvec( e.sub_patterns );
+        auto leading  = H::lowerhir_patternvec( e.start );
+        auto trailing = H::lowerhir_patternvec( e.end   );
         
-        return ::HIR::Pattern {
-            mv$(binding),
-            ::HIR::Pattern::Data::make_Tuple({
-                glob_pos, mv$(sub_patterns)
-                })
-            };
+        if( e.has_wildcard )
+        {
+            return ::HIR::Pattern {
+                mv$(binding),
+                ::HIR::Pattern::Data::make_SplitTuple({
+                    mv$(leading), mv$(trailing)
+                    })
+                };
+        }
+        else
+        {
+            assert( trailing.size() == 0 );
+            return ::HIR::Pattern {
+                mv$(binding),
+                ::HIR::Pattern::Data::make_Tuple({
+                    mv$(leading)
+                    })
+                };
+        }
         ),
     
     (StructTuple,
-        auto sub_patterns = H::lowerhir_patternvec( e.tup_pat.sub_patterns );
-        
+        unsigned int leading_count  = e.tup_pat.start.size();
+        unsigned int trailing_count = e.tup_pat.end  .size();
         TU_MATCH_DEF(::AST::PathBinding, (e.path.binding()), (pb),
         (
             BUG(pat.span(), "Encountered StructTuple pattern not pointing to a enum variant or a struct - " << e.path);
             ),
         (EnumVar,
             const auto& var = pb.enum_->variants()[pb.idx].m_data;
-            const auto& var_tup_tys = var.as_Tuple().m_sub_types;
-            switch(e.tup_pat.glob_pos)
-            {
-            case ::AST::Pattern::TupleGlob::None:
-                // Check count
-                if( var_tup_tys.size() != sub_patterns.size() ) {
-                    ERROR(pat.span(), E0000, "Enum variant pattern has a mismatched field count - " << var_tup_tys.size() << " exp, got " << sub_patterns.size());
+            unsigned int field_count = var.as_Tuple().m_sub_types.size();
+            ::std::vector<HIR::Pattern> sub_patterns;
+        
+            if( e.tup_pat.has_wildcard ) {
+                sub_patterns.reserve( field_count );
+                if( leading_count + trailing_count > field_count ) {
+                    ERROR(pat.span(), E0000, "Enum variant pattern has too many fields - " << field_count << " max, got " << leading_count + trailing_count);
                 }
-                break;
-            case ::AST::Pattern::TupleGlob::Start:
-                // NOTE == is allowed
-                if( var_tup_tys.size() < sub_patterns.size() ) {
-                    ERROR(pat.span(), E0000, "Enum variant pattern has too many fields - " << var_tup_tys.size() << " max, got " << sub_patterns.size());
+                unsigned int padding_count = field_count - leading_count - trailing_count;
+                for(const auto& subpat : e.tup_pat.start) {
+                    sub_patterns.push_back( LowerHIR_Pattern(subpat) );
                 }
-                while( sub_patterns.size() < var_tup_tys.size() ) {
-                    sub_patterns.insert( sub_patterns.begin(), ::HIR::Pattern() );
+                for(unsigned int i = 0; i < padding_count; i ++) {
+                    sub_patterns.push_back( ::HIR::Pattern() );
                 }
-                break;
-            case ::AST::Pattern::TupleGlob::End:
-                // NOTE == is allowed
-                if( var_tup_tys.size() < sub_patterns.size() ) {
-                    ERROR(pat.span(), E0000, "Enum variant pattern has too many fields - " << var_tup_tys.size() << " max, got " << sub_patterns.size());
+                for(const auto& subpat : e.tup_pat.end) {
+                    sub_patterns.push_back( LowerHIR_Pattern(subpat) );
                 }
-                while( sub_patterns.size() < var_tup_tys.size() ) {
-                    sub_patterns.insert( sub_patterns.end(), ::HIR::Pattern() );
-                }
-                break;
             }
+            else {
+                assert( trailing_count == 0 );
+                
+                if( leading_count != field_count ) {
+                    ERROR(pat.span(), E0000, "Enum variant pattern has a mismatched field count - " << field_count << " exp, got " << leading_count);
+                }
+                sub_patterns = H::lowerhir_patternvec( e.tup_pat.start );
+            }
+            
             return ::HIR::Pattern {
                 mv$(binding),
                 ::HIR::Pattern::Data::make_EnumTuple({
@@ -235,34 +236,34 @@ const ::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
                 };
             ),
         (Struct,
-            const auto& tys = pb.struct_->m_data.as_Tuple().ents;
-            switch(e.tup_pat.glob_pos)
-            {
-            case ::AST::Pattern::TupleGlob::None:
-                // Check count
-                if( tys.size() != sub_patterns.size() ) {
-                    ERROR(pat.span(), E0000, "Struct pattern has a mismatched field count - " << tys.size() << " exp, got " << sub_patterns.size());
+            unsigned int field_count = pb.struct_->m_data.as_Tuple().ents.size();
+            ::std::vector<HIR::Pattern> sub_patterns;
+        
+            if( e.tup_pat.has_wildcard ) {
+                sub_patterns.reserve( field_count );
+                if( leading_count + trailing_count > field_count ) {
+                    ERROR(pat.span(), E0000, "Struct pattern has too many fields - " << field_count << " max, got " << leading_count + trailing_count);
                 }
-                break;
-            case ::AST::Pattern::TupleGlob::Start:
-                // NOTE == is allowed
-                if( sub_patterns.size() > tys.size() ) {
-                    ERROR(pat.span(), E0000, "Struct pattern has too many fields - " << tys.size() << " max, got " << sub_patterns.size());
+                unsigned int padding_count = field_count - leading_count - trailing_count;
+                for(const auto& subpat : e.tup_pat.start) {
+                    sub_patterns.push_back( LowerHIR_Pattern(subpat) );
                 }
-                while( sub_patterns.size() < tys.size() ) {
-                    sub_patterns.insert( sub_patterns.begin(), ::HIR::Pattern() );
+                for(unsigned int i = 0; i < padding_count; i ++) {
+                    sub_patterns.push_back( ::HIR::Pattern() );
                 }
-                break;
-            case ::AST::Pattern::TupleGlob::End:
-                // NOTE == is allowed
-                if( sub_patterns.size() > tys.size() ) {
-                    ERROR(pat.span(), E0000, "Struct pattern has too many fields - " << tys.size() << " max, got " << sub_patterns.size());
+                for(const auto& subpat : e.tup_pat.end) {
+                    sub_patterns.push_back( LowerHIR_Pattern(subpat) );
                 }
-                while( sub_patterns.size() < tys.size() ) {
-                    sub_patterns.insert( sub_patterns.end(), ::HIR::Pattern() );
-                }
-                break;
             }
+            else {
+                assert( trailing_count == 0 );
+                
+                if( leading_count != field_count ) {
+                    ERROR(pat.span(), E0000, "Struct pattern has a mismatched field count - " << field_count << " exp, got " << leading_count);
+                }
+                sub_patterns = H::lowerhir_patternvec( e.tup_pat.start );
+            }
+            
             return ::HIR::Pattern {
                 mv$(binding),
                 ::HIR::Pattern::Data::make_StructTuple({

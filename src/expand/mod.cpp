@@ -158,11 +158,15 @@ void Expand_Pattern(bool is_early, ::AST::Crate& crate, LList<const AST::Module*
         //Expand_Expr(is_early, crate, modstack, e.end);
         ),
     (Tuple,
-        for(auto& sp : e.sub_patterns)
+        for(auto& sp : e.start)
+            Expand_Pattern(is_early, crate, modstack, mod, sp);
+        for(auto& sp : e.end)
             Expand_Pattern(is_early, crate, modstack, mod, sp);
         ),
     (StructTuple,
-        for(auto& sp : e.tup_pat.sub_patterns)
+        for(auto& sp : e.tup_pat.start)
+            Expand_Pattern(is_early, crate, modstack, mod, sp);
+        for(auto& sp : e.tup_pat.end)
             Expand_Pattern(is_early, crate, modstack, mod, sp);
         ),
     (Struct,

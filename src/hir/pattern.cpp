@@ -47,12 +47,17 @@ namespace HIR {
             ),
         (Tuple,
             os << "(";
-            if(e.glob_pos == ::HIR::Pattern::GlobPos::Start)
-                os << ".., ";
             for(const auto& s : e.sub_patterns)
                 os << s << ", ";
-            if(e.glob_pos == ::HIR::Pattern::GlobPos::End)
-                os << ".., ";
+            os << ")";
+            ),
+        (SplitTuple,
+            os << "(";
+            for(const auto& s : e.leading)
+                os << s << ", ";
+            os << ".., ";
+            for(const auto& s : e.trailing)
+                os << s << ", ";
             os << ")";
             ),
         (StructValue,
@@ -171,8 +176,13 @@ namespace {
         ),
     (Tuple,
         return Pattern(m_binding, Data::make_Tuple({
-            e.glob_pos,
             clone_pat_vec(e.sub_patterns)
+            }));
+        ),
+    (SplitTuple,
+        return Pattern(m_binding, Data::make_SplitTuple({
+            clone_pat_vec(e.leading),
+            clone_pat_vec(e.trailing)
             }));
         ),
     (StructValue,

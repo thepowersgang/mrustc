@@ -70,9 +70,11 @@ struct Pattern
         (Box,       struct { ::std::unique_ptr<Pattern> sub; }),
         (Ref,       struct { ::HIR::BorrowType type; ::std::unique_ptr<Pattern> sub; } ),
         (Tuple,     struct {
-            // NOTE: Has the glob still because the tuple isn't yet known
-            GlobPos glob_pos;
             ::std::vector<Pattern> sub_patterns;
+            }),
+        (SplitTuple, struct {
+            ::std::vector<Pattern> leading;
+            ::std::vector<Pattern> trailing;
             }),
         (StructValue, struct {
             GenericPath path;

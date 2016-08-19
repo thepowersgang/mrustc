@@ -1191,12 +1191,16 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         Resolve_Absolute_PatternValue(context, pat.span(), e.end);
         ),
     (Tuple,
-        for(auto& sp : e.sub_patterns)
+        for(auto& sp : e.start)
+            Resolve_Absolute_Pattern(context, allow_refutable,  sp);
+        for(auto& sp : e.end)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
         ),
     (StructTuple,
         Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::Pattern, e.path);
-        for(auto& sp : e.tup_pat.sub_patterns)
+        for(auto& sp : e.tup_pat.start)
+            Resolve_Absolute_Pattern(context, allow_refutable,  sp);
+        for(auto& sp : e.tup_pat.end)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
         ),
     (Struct,

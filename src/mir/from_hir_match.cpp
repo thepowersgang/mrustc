@@ -949,7 +949,6 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             }
             ),
         (Tuple,
-            ASSERT_BUG(sp, pe.glob_pos == ::HIR::Pattern::GlobPos::None, "Tuple .. should be eliminated");
             assert(e.size() == pe.sub_patterns.size());
             for(unsigned int i = 0; i < e.size(); i ++) {
                 this->append_from(sp, pe.sub_patterns[i], e[i]);

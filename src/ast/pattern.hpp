@@ -60,14 +60,10 @@ public:
         (Named, Path)
         );
 
-    enum class TupleGlob {
-        None,   // (a, b)
-        Start,  // (.., a, b)
-        End,    // (a, b, ..)
-    };
     struct TuplePat {
-        TupleGlob   glob_pos;
-        ::std::vector<Pattern>  sub_patterns;
+        ::std::vector<Pattern>  start;
+        bool has_wildcard;
+        ::std::vector<Pattern>  end;
     };
     
     TAGGED_UNION(Data, Any,
@@ -136,18 +132,18 @@ public:
     }
 
     struct TagTuple {};
-    Pattern(TagTuple, TuplePat pat):
-        m_data( Data::make_Tuple( ::std::move(pat) ) )
-    {}
     Pattern(TagTuple, ::std::vector<Pattern> pats):
-        m_data( Data::make_Tuple( TuplePat { TupleGlob::None, ::std::move(pats) } ) )
+        m_data( Data::make_Tuple( TuplePat { mv$(pats), false, {} } ) )
+    {}
+    Pattern(TagTuple, TuplePat pat):
+        m_data( Data::make_Tuple( mv$(pat) ) )
     {}
 
     struct TagNamedTuple {};
     Pattern(TagNamedTuple, Path path, ::std::vector<Pattern> pats):
-        m_data( Data::make_StructTuple( { ::std::move(path), TuplePat { TupleGlob::None, ::std::move(pats) } } ) )
+        m_data( Data::make_StructTuple( { mv$(path), TuplePat { mv$(pats), false, {} } } ) )
     {}
-    Pattern(TagNamedTuple, Path path, TuplePat pat = TuplePat { TupleGlob::Start, {} }):
+    Pattern(TagNamedTuple, Path path, TuplePat pat = TuplePat { {}, false, {} }):
         m_data( Data::make_StructTuple( { ::std::move(path), ::std::move(pat) } ) )
     {}
 

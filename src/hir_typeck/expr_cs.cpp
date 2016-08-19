@@ -2427,6 +2427,7 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
         }
     }
 }
+// NOTE: Mutates the pattern to add ivars to contained paths
 void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type)
 {
     TRACE_FUNCTION_F("pat = " << pat << ", type = " << type);
@@ -2503,36 +2504,14 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         const auto& ty = this->get_type(type);
         TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Tuple, te,
             
-            unsigned int field_ofs = 0;
-            switch(e.glob_pos)
-            {
-            case ::HIR::Pattern::GlobPos::None:
-                if( e.sub_patterns.size() != te.size() ) { 
-                    ERROR(sp, E0000, "Tuple pattern with an incorrect number of fields, expected " << e.sub_patterns.size() << "-tuple, got " << ty);
-                }
-                break;
-            case ::HIR::Pattern::GlobPos::End:
-                field_ofs = te.size() - e.sub_patterns.size();
-            case ::HIR::Pattern::GlobPos::Start:
-                if( e.sub_patterns.size() > te.size() ) { 
-                    ERROR(sp, E0000, "Tuple pattern with too many fields");
-                }
-                break;
+            if( e.sub_patterns.size() != te.size() ) { 
+                ERROR(sp, E0000, "Tuple pattern with an incorrect number of fields, expected " << e.sub_patterns.size() << "-tuple, got " << ty);
             }
             
             for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
-                this->add_binding(sp, e.sub_patterns[i], te[field_ofs+i] );
+                this->add_binding(sp, e.sub_patterns[i], te[i] );
         )
         else {
-            switch(e.glob_pos)
-            {
-            case ::HIR::Pattern::GlobPos::None:
-                break;
-            case ::HIR::Pattern::GlobPos::End:
-            case ::HIR::Pattern::GlobPos::Start:
-                TODO(sp, "Create ivar type when wildcard is present");
-                break;
-            }
             
             ::std::vector< ::HIR::TypeRef>  sub_types;
             for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ ) {
@@ -2540,6 +2519,29 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
                 this->add_binding(sp, e.sub_patterns[i], sub_types[i] );
             }
             this->equate_types(sp, ty, ::HIR::TypeRef( mv$(sub_types) ));
+        }
+        ),
+    (SplitTuple,
+        const auto& ty = this->get_type(type);
+        TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Tuple, te,
+            // - Should have been checked in AST resolve
+            ASSERT_BUG(sp, e.leading.size() + e.trailing.size() <= te.size(), "Invalid field count for split tuple pattern");
+            
+            unsigned int tup_idx = 0;
+            for(auto& subpat : e.leading) {
+                this->add_binding(sp, subpat, te[tup_idx++]);
+            }
+            tup_idx = te.size() - e.trailing.size();
+            for(auto& subpat : e.leading) {
+                this->add_binding(sp, subpat, te[tup_idx++]);
+            }
+        )
+        else {
+            if( !ty.m_data.is_Infer() ) {
+                ERROR(sp, E0000, "Tuple pattern on non-tuple");
+            }
+            
+            TODO(sp, "Handle split tuple patterns when type isn't known in starting pass");
         }
         ),
     (Slice,

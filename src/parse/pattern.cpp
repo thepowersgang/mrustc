@@ -15,7 +15,7 @@ using AST::ExprNode;
 
 
 
-::AST::Pattern::TuplePat Parse_PatternList(TokenStream& lex, bool is_refutable);
+::AST::Pattern::TuplePat Parse_PatternTuple(TokenStream& lex, bool is_refutable);
 AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable);
 AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path, bool is_refutable);
 AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable);
@@ -231,7 +231,7 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
         // TODO: Differentiate byte and UTF-8 strings
         return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_String( mv$(tok.str()) ) );
     case TOK_PAREN_OPEN:
-        return AST::Pattern( AST::Pattern::TagTuple(), Parse_PatternList(lex, is_refutable) );
+        return AST::Pattern( AST::Pattern::TagTuple(), Parse_PatternTuple(lex, is_refutable) );
     case TOK_SQUARE_OPEN:
         return Parse_PatternReal_Slice(lex, is_refutable);
     default:
@@ -245,7 +245,7 @@ AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path, bool is_re
     switch( GET_TOK(tok, lex) )
     {
     case TOK_PAREN_OPEN:
-        return AST::Pattern( AST::Pattern::TagNamedTuple(), mv$(path), Parse_PatternList(lex, is_refutable) );
+        return AST::Pattern( AST::Pattern::TagNamedTuple(), mv$(path), Parse_PatternTuple(lex, is_refutable) );
     case TOK_BRACE_OPEN:
         return Parse_PatternStruct(lex, mv$(path), is_refutable);
     default:
@@ -310,48 +310,49 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
     return rv;
 }
 
-::AST::Pattern::TuplePat Parse_PatternList(TokenStream& lex, bool is_refutable)
+::AST::Pattern::TuplePat Parse_PatternTuple(TokenStream& lex, bool is_refutable)
 {
     TRACE_FUNCTION;
     auto sp = lex.start_span();
     Token tok;
     
-    auto glob_pos = ::AST::Pattern::TupleGlob::None;
-    
-    auto end = TOK_PAREN_CLOSE;
-    // 1. Leading `..`
-    if( LOOK_AHEAD(lex) == TOK_DOUBLE_DOT ) {
-        GET_TOK(tok, lex);
-        glob_pos = ::AST::Pattern::TupleGlob::Start;
-        if( GET_TOK(tok, lex) != TOK_COMMA ) {
-            CHECK_TOK(tok, end);
-            return ::AST::Pattern::TuplePat { glob_pos, {} };
-        }
-    }
-    
-    // 2. Body
-    ::std::vector<AST::Pattern> child_pats;
-    do {
-        if( GET_TOK(tok, lex) == end || tok.type() == TOK_DOUBLE_DOT )
-            break;
-        else
-            PUTBACK(tok, lex);
+    ::std::vector<AST::Pattern> leading;
+    while( LOOK_AHEAD(lex) != TOK_PAREN_CLOSE && LOOK_AHEAD(lex) != TOK_DOUBLE_DOT )
+    {
+        leading.push_back( Parse_Pattern(lex, is_refutable) );
         
-        AST::Pattern pat = Parse_Pattern(lex, is_refutable);
-        DEBUG("pat = " << pat);
-        child_pats.push_back( ::std::move(pat) );
-    } while( GET_TOK(tok, lex) == TOK_COMMA );
-    
-    // 3. Trailing `..`
-    if( tok.type() == TOK_DOUBLE_DOT ) {
-        if( glob_pos != ::AST::Pattern::TupleGlob::None ) {
-            ERROR(lex.end_span(sp), E0000, "Multiple instances of .. in pattern");
+        if( GET_TOK(tok, lex) != TOK_COMMA ) {
+            CHECK_TOK(tok, TOK_PAREN_CLOSE);
+            return AST::Pattern::TuplePat { mv$(leading), false, {} };
         }
-        glob_pos = ::AST::Pattern::TupleGlob::End;
+    }
+    
+    if( LOOK_AHEAD(lex) != TOK_DOUBLE_DOT )
+    {
+        GET_TOK(tok, lex);
+        
+        CHECK_TOK(tok, TOK_PAREN_CLOSE);
+        return AST::Pattern::TuplePat { mv$(leading), false, {} };
+    }
+    GET_CHECK_TOK(tok, lex, TOK_DOUBLE_DOT);
+    
+    ::std::vector<AST::Pattern> trailing;
+    if( GET_TOK(tok, lex) == TOK_COMMA )
+    {
+        while( LOOK_AHEAD(lex) != TOK_PAREN_CLOSE )
+        {
+            trailing.push_back( Parse_Pattern(lex, is_refutable) );
+            
+            if( GET_TOK(tok, lex) != TOK_COMMA ) {
+                PUTBACK(tok, lex);
+                break;
+            }
+        }
         GET_TOK(tok, lex);
     }
-    CHECK_TOK(tok, end);
-    return ::AST::Pattern::TuplePat { glob_pos, mv$(child_pats) };
+    
+    CHECK_TOK(tok, TOK_PAREN_CLOSE);
+    return ::AST::Pattern::TuplePat { mv$(leading), true, mv$(trailing) };
 }
 
 AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refutable)

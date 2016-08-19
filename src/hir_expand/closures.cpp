@@ -407,7 +407,7 @@ namespace {
                 args_ty_inner.push_back( monomorphise_type_with(sp, arg.second, monomorph_cb) );
             }
             ::HIR::TypeRef  args_ty { mv$(args_ty_inner) };
-            ::HIR::Pattern  args_pat { {}, ::HIR::Pattern::Data::make_Tuple({ ::HIR::Pattern::GlobPos::None, mv$(args_pat_inner) }) };
+            ::HIR::Pattern  args_pat { {}, ::HIR::Pattern::Data::make_Tuple({ mv$(args_pat_inner) }) };
             ::HIR::TypeRef  ret_type = monomorphise_type_with(sp, node.m_return, monomorph_cb);
             
             DEBUG("args_ty = " << args_ty << ", ret_type = " << ret_type);
@@ -607,6 +607,12 @@ namespace {
                 ),
             (Tuple,
                 for( const auto& subpat : e.sub_patterns )
+                    add_closure_def_from_pattern(sp, subpat);
+                ),
+            (SplitTuple,
+                for( const auto& subpat : e.leading )
+                    add_closure_def_from_pattern(sp, subpat);
+                for( const auto& subpat : e.trailing )
                     add_closure_def_from_pattern(sp, subpat);
                 ),
             (Slice,

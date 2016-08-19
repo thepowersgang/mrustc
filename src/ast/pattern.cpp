@@ -59,12 +59,16 @@ namespace AST {
 }
 ::std::ostream& operator<<(::std::ostream& os, const Pattern::TuplePat& val)
 {
-    if( val.glob_pos == Pattern::TupleGlob::Start ) {
+    if( val.has_wildcard )
+    {
+        os << val.start;
         os << ".., ";
+        os << val.end;
     }
-    os << val.sub_patterns;
-    if( val.glob_pos == Pattern::TupleGlob::End ) {
-        os << ".., ";
+    else
+    {
+        os << val.start;
+        assert(val.end.size() == 0);
     }
     return os;
 }
@@ -169,8 +173,9 @@ AST::Pattern AST::Pattern::clone() const
         }
         static TuplePat clone_tup(const TuplePat& p) {
             return TuplePat {
-                p.glob_pos,
-                H::clone_list(p.sub_patterns)
+                H::clone_list(p.start),
+                p.has_wildcard,
+                H::clone_list(p.end)
                 };
         }
         static AST::Pattern::Value clone_val(const AST::Pattern::Value& v) {

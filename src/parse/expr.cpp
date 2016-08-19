@@ -730,7 +730,7 @@ LEFTASSOC(Parse_Expr10, Parse_Expr11,
 // 11: Cast
 LEFTASSOC(Parse_Expr11, Parse_Expr12,
     case TOK_RWORD_AS:
-        rv = NEWNODE( AST::ExprNode_Cast, ::std::move(rv), Parse_Type(lex) );
+        rv = NEWNODE( AST::ExprNode_Cast, ::std::move(rv), Parse_Type(lex, false) );
         break;
 )
 // 12: Type Ascription
