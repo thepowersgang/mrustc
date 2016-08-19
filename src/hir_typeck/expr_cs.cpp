@@ -2614,8 +2614,7 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
                 this->add_binding(sp, sub_pat, var_ty);
             }
             else {
-                // SAFE: Can't have _ as monomorphise_type_needed checks for that
-                this->add_binding(sp, sub_pat, const_cast< ::HIR::TypeRef&>(field_type));
+                this->add_binding(sp, sub_pat, field_type);
             }
         }
         ),
@@ -2654,8 +2653,7 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
                     this->add_binding(sp, field_pat.second, field_type_mono);
                 }
                 else {
-                    // SAFE: Can't have _ as monomorphise_type_needed checks for that
-                    this->add_binding(sp, field_pat.second, const_cast< ::HIR::TypeRef&>(field_type));
+                    this->add_binding(sp, field_pat.second, field_type);
                 }
             }
             )
@@ -2730,8 +2728,7 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
                     this->add_binding(sp, e.sub_patterns[i], var_ty);
                 }
                 else {
-                    // SAFE: Can't have a _ (monomorphise_type_needed checks for that)
-                    this->add_binding(sp, e.sub_patterns[i], const_cast< ::HIR::TypeRef&>(tup_var[i].ent));
+                    this->add_binding(sp, e.sub_patterns[i], tup_var[i].ent);
                 }
             }
             )
@@ -2778,8 +2775,7 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
                     this->add_binding(sp, field_pat.second, field_type_mono);
                 }
                 else {
-                    // SAFE: Can't have _ as monomorphise_type_needed checks for that
-                    this->add_binding(sp, field_pat.second, const_cast< ::HIR::TypeRef&>(field_type));
+                    this->add_binding(sp, field_pat.second, field_type);
                 }
             }
             )
