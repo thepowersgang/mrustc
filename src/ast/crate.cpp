@@ -36,10 +36,10 @@ void Crate::load_externs()
     auto cb = [this](Module& mod) {
         for( const auto& it : mod.items() )
         {
-            if( it.data.is_Crate() ) {
-                const auto& name = it.data.as_Crate().name;
-                throw ::std::runtime_error( FMT("TODO: Load crate '" << name << "' as '" << it.name << "'") );
-            }
+            TU_IFLET(AST::Item, it.data, Crate, c,
+                const auto& name = c.name;
+                TODO(it.data.span, "Load crate '" << name << "' as '" << it.name << "'");
+            )
         }
         };
     iterate_module(m_root_module, cb);
