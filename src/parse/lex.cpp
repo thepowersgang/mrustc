@@ -35,17 +35,19 @@ Lexer::Lexer(const ::std::string& filename):
         throw ::std::runtime_error("Unable to open file");
     }
     // Consume the BOM
-    if( this->getc() == '\xef' )
+    if( this->getc_byte() == '\xef' )
     {
-        if( this->getc() != '\xbb' ) {
+        if( this->getc_byte() != '\xbb' ) {
+            throw ::std::runtime_error("Incomplete BOM - missing \\xBB in second position");
         }
-        if( this->getc() != '\xbf' ) {
+        if( this->getc_byte() != '\xbf' ) {
+            throw ::std::runtime_error("Incomplete BOM - missing \\xBF in second position");
         }
         m_line_ofs = 0;
     }
     else
     {
-        this->ungetc();
+        m_istream.unget();
     }
 }
 
