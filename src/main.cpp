@@ -30,7 +30,7 @@ int g_debug_indent_level = 0;
 
 void init_debug_list()
 {
-    //g_debug_disable_map.insert( "Parse" );
+    g_debug_disable_map.insert( "Parse" );
     g_debug_disable_map.insert( "Expand" );
     g_debug_disable_map.insert( "Resolve" );
     g_debug_disable_map.insert( "Resolve UFCS paths" );
