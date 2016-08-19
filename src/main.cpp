@@ -97,6 +97,7 @@ void CompilePhaseV(const char *name, Fcn f) {
 /// main!
 int main(int argc, char *argv[])
 {
+    init_debug_list();
     ProgramParams   params(argc, argv);
     
     // Set up cfg values
