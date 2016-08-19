@@ -481,7 +481,7 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
                 GET_TOK(tok, lex);
                 break;
             }
-            rv.push_back( Parse_Stmt(lex) );
+            rv.push_back( Parse_Expr0(lex) );
         } while( GET_TOK(tok, lex) == TOK_COMMA );
         CHECK_TOK(tok, TOK_PAREN_CLOSE);
     }
