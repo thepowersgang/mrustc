@@ -111,6 +111,7 @@ TypeRef::TypeRef(const TypeRef& other)
     #define _CLONE(VAR, code...)    case TypeData::TAG_##VAR: { auto& old = other.m_data.as_##VAR(); m_data = TypeData::make_##VAR(code); } break;
     _COPY(None)
     _COPY(Any)
+    _COPY(Bang)
     case TypeData::TAG_Macro:   assert( !"Copying an unexpanded type macro" );
     _COPY(Unit)
     _COPY(Primitive)
@@ -139,6 +140,7 @@ Ordering TypeRef::ord(const TypeRef& x) const
     (Macro, throw CompileError::BugCheck("TypeRef::ord - unexpanded macro");),
     (Any,  return OrdEqual;),
     (Unit, return OrdEqual;),
+    (Bang, return OrdEqual;),
     (Primitive,
         return ::ord( (unsigned)ent.core_type, (unsigned)x_ent.core_type );
         ),
@@ -191,10 +193,13 @@ Ordering TypeRef::ord(const TypeRef& x) const
     {
     case TypeData::TAGDEAD: throw "";
     _(None,
-        os << "!";
+        os << "!!";
         )
     _(Any,
         os << "_";
+        )
+    _(Bang,
+        os << "!";
         )
     _(Macro,
         os << ent.inv;
@@ -307,6 +312,7 @@ SERIALISE_TYPE(TypeRef::, "TypeRef", {
         s.item( ent.inv );
         )
     _S(Any)
+    _S(Bang)
     _S(Unit)
     _S(Primitive,
         s << coretype_name(ent.core_type);
@@ -353,6 +359,7 @@ SERIALISE_TYPE(TypeRef::, "TypeRef", {
     _D(None)
     _D(Any)
     _D(Unit)
+    _D(Bang)
     _D(Macro,
         m_data = TypeData::make_Macro({});
         s.item( ent.inv );

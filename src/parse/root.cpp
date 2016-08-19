@@ -372,13 +372,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
     if( GET_TOK(tok, lex) == TOK_THINARROW )
     {
         // Return type
-        if( GET_TOK(tok, lex) == TOK_EXCLAM ) {
-            ret_type = TypeRef(TypeRef::TagInvalid(), Span(tok.get_pos()));
-        }
-        else {
-            PUTBACK(tok, lex);
-            ret_type = Parse_Type(lex);
-        }
+        ret_type = Parse_Type(lex);
     }
     else
     {

@@ -191,6 +191,8 @@ void Expand_Type(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
         ),
     (Unit,
         ),
+    (Bang,
+        ),
     (Macro,
         auto tt = Expand_Macro(is_early, crate, modstack, mod,  e.inv);
         TODO(e.inv.span(), "Expand macro invocation in type");

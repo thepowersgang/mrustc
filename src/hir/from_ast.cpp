@@ -577,6 +577,9 @@ const ::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
 {
     TU_MATCH(::TypeData, (ty.m_data), (e),
     (None,
+        BUG(ty.span(), "TypeData::None");
+        ),
+    (Bang,
         // Aka diverging
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Diverge({}) );
         ),
@@ -587,7 +590,7 @@ const ::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Tuple({}) );
         ),
     (Macro,
-        BUG(ty.span(), "TypeData::None");
+        BUG(ty.span(), "TypeData::Macro");
         ),
     (Primitive,
         switch(e.core_type)
@@ -1012,7 +1015,6 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
     for( const auto& impl : ast_mod.impls() )
     {
         auto params = LowerHIR_GenericParams(impl.def().params(), nullptr);
-        auto type = LowerHIR_Type(impl.def().type());
         
         if( impl.def().trait().ent.is_valid() )
         {
@@ -1022,19 +1024,10 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
             auto trait_name = mv$(trait_path.m_path);
             auto trait_args = mv$(trait_path.m_params);
             
-            if( is_marker )
+            if( !is_marker )
             {
-                hir_crate.m_marker_impls.insert( ::std::make_pair( mv$(trait_name), ::HIR::MarkerImpl {
-                    mv$(params),
-                    mv$(trait_args),
-                    true,
-                    mv$(type),
-                    
-                    LowerHIR_SimplePath(Span(), ast_mod.path())
-                    } ) );
-            }
-            else
-            {
+                auto type = LowerHIR_Type(impl.def().type());
+                
                 ::HIR::ItemPath    path(type, trait_name);
                 DEBUG(path);
                 
@@ -1073,10 +1066,27 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                     LowerHIR_SimplePath(Span(), ast_mod.path())
                     }) );
             }
+            else if( impl.def().type().m_data.is_None() )
+            {
+                // Ignore - These are encoded in the 'is_marker' field of the trait
+            }
+            else
+            {
+                auto type = LowerHIR_Type(impl.def().type());
+                hir_crate.m_marker_impls.insert( ::std::make_pair( mv$(trait_name), ::HIR::MarkerImpl {
+                    mv$(params),
+                    mv$(trait_args),
+                    true,
+                    mv$(type),
+                    
+                    LowerHIR_SimplePath(Span(), ast_mod.path())
+                    } ) );
+            }
         }
         else
         {
             // Inherent impls
+            auto type = LowerHIR_Type(impl.def().type());
             ::HIR::ItemPath    path(type);
             ::std::map< ::std::string, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> > methods;
             

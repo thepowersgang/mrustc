@@ -878,12 +878,15 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
     const auto& sp = type.span();
     TU_MATCH(TypeData, (type.m_data), (e),
     (None,
-        // ! type
+        // invalid type
         ),
     (Any,
         // _ type
         ),
     (Unit,
+        ),
+    (Bang,
+        // ! type
         ),
     (Macro,
         BUG(sp, "Resolve_Absolute_Type - Encountered an unexpanded macro");

@@ -61,6 +61,7 @@ struct Type_Function:
 TAGGED_UNION(TypeData, None,
     (None, struct { }),
     (Any,  struct { }),
+    (Bang, struct { }),
     (Unit, struct { }),
     (Macro, struct {
         ::AST::MacroInvocation inv;
@@ -126,9 +127,13 @@ public:
         return *this;
     }
     
-    TypeRef(Span sp=Span()):
+    TypeRef(Span sp = Span()):
         m_span( mv$(sp) ),
-        m_data(TypeData::make_Any({}))
+        m_data( TypeData::make_Any({}) )
+    {}
+    TypeRef(Span sp, TypeData data):
+        m_span( mv$(sp) ),
+        m_data( mv$(data) )
     {}
     
     struct TagInvalid {};
@@ -136,7 +141,7 @@ public:
         m_span(mv$(sp)),
         m_data(TypeData::make_None({}))
     {}
-    
+
     struct TagMacro {};
     TypeRef(TagMacro, ::AST::MacroInvocation inv):
         m_span(inv.span()),

@@ -40,7 +40,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         return TypeRef(TypeRef::TagMacro(), Parse_MacroInvocation(ps, AST::MetaItems(), mv$(tok.str()), lex));
     // '!' - Only ever used as part of function prototypes, but is kinda a type... not allowed here though
     case TOK_EXCLAM:
-        throw ParseError::Generic(lex, "! is not a real type");
+        return TypeRef( Span(tok.get_pos()), TypeData::make_Bang({}) );
     // '_' = Wildcard (type inferrence variable)
     case TOK_UNDERSCORE:
         return TypeRef(Span(tok.get_pos()));

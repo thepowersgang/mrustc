@@ -129,6 +129,8 @@ struct Deriver
             ),
         (Unit,
             ),
+        (Bang,
+            ),
         (Macro,
             // not allowed
             ),
