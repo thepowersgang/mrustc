@@ -331,11 +331,12 @@ void HMTypeInferrence::check_for_loops()
                 for(auto idx : m_indexes)
                     ASSERT_BUG(Span(), e.index != idx, "Recursion in ivar #" << m_indexes.front() << " " << *ivars.m_ivars[m_indexes.front()].type
                         << " - loop with " << idx << " " << *ivars.m_ivars[idx].type);
-                m_indexes.push_back( e.index );
                 const auto& ivd = ivars.get_pointed_ivar(e.index);
                 assert( !ivd.is_alias() );
                 if( !ivd.type->m_data.is_Infer() ) {
+                    m_indexes.push_back( e.index );
                     this->check_ty(ivars, *ivd.type);
+                    m_indexes.pop_back( );
                 }
                 ),
             (Primitive,
