@@ -105,6 +105,12 @@ test: output/core.ast $(BIN)
 	@mkdir -p output/
 #	$(DBG) $(BIN) samples/1.rs --crate-path output/std.ast -o output/test.c 2>&1 | tee output/1_dbg.txt
 
+test_rustos: $(addprefix output/rust_os/,libkernel.rlib)
+
+output/rust_os/libkernel.rlib: ../rust_os/Kernel/Core/main.rs $(BIN)
+	@mkdir -p $(dir $@)
+	$(BIN) $< -o $@ 2>&1 | tee $@.txt | tail -n 30
+
 $(BIN): $(OBJ)
 	@mkdir -p $(dir $@)
 	@echo [CXX] -o $@
