@@ -2719,7 +2719,7 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             // NOTE: Must be Generic for the above to have passed
             auto& gp = te.path.m_data.as_Generic();
             
-            ASSERT_BUG(sp, e.sub_patterns.size() != tup_var.size(),
+            ASSERT_BUG(sp, e.sub_patterns.size() == tup_var.size(),
                 "Enum pattern with an incorrect number of fields - " << e.path << " - expected " << tup_var.size() << ", got " << e.sub_patterns.size()
                 );
             

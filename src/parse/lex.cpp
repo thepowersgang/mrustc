@@ -1202,14 +1202,14 @@ bool Codepoint::isxdigit() const {
         s += (char)(0x80 | ((cp.v >>  6) & 0x3F));
         s += (char)(0x80 | ((cp.v >>  0) & 0x3F));
     }
-    else if( cp.v <= (0x07+1)<<(2*6) ) {
+    else if( cp.v <= (0x07+1)<<(3*6) ) {
         s += (char)(0xF0 | ((cp.v >> 18) & 0x07));
         s += (char)(0x80 | ((cp.v >> 12) & 0x3F));
         s += (char)(0x80 | ((cp.v >>  6) & 0x3F));
         s += (char)(0x80 | ((cp.v >>  0) & 0x3F));
     }
     else {
-        throw ::std::runtime_error("BUGCHECK: Bad unicode codepoint encountered");
+        throw ::std::runtime_error( FMT("BUGCHECK: Bad unicode codepoint encountered - " << ::std::hex << cp.v) );
     }
     return s;
 }
