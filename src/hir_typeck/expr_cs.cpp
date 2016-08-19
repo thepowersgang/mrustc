@@ -453,7 +453,11 @@ namespace {
                 // If the type was omitted or was just `_`, equate
                 if( node.m_type.m_data.is_Infer() ) {
                     this->context.equate_types( node.span(), node.m_type, node.m_value->m_res_type );
+                    #if 0
                     this->push_inner_coerce(false);
+                    #else
+                    this->push_inner_coerce(true);
+                    #endif
                 }
                 // otherwise coercions apply
                 else {
@@ -1387,18 +1391,24 @@ namespace {
             ExprVisitor_Enum& t;
         public:
             InnerCoerceGuard(ExprVisitor_Enum& t): t(t) {}
-            ~InnerCoerceGuard() { t.inner_coerce_enabled_stack.pop_back(); }
+            ~InnerCoerceGuard() {
+                t.inner_coerce_enabled_stack.pop_back();
+                DEBUG("inner_coerce POP (S) " << t.can_coerce_inner_result());
+            }
         };
         InnerCoerceGuard push_inner_coerce_scoped(bool val) {
+            DEBUG("inner_coerce PUSH (S) " << val);
             this->inner_coerce_enabled_stack.push_back(val);
             return InnerCoerceGuard(*this);
         }
         void push_inner_coerce(bool val) {
+            DEBUG("inner_coerce PUSH " << val);
             this->inner_coerce_enabled_stack.push_back(val);
         }
         void pop_inner_coerce() {
             assert( this->inner_coerce_enabled_stack.size() );
             this->inner_coerce_enabled_stack.pop_back();
+            DEBUG("inner_coerce POP " << can_coerce_inner_result());
         }
         bool can_coerce_inner_result() const {
             if( this->inner_coerce_enabled_stack.size() == 0 ) {
@@ -1409,6 +1419,7 @@ namespace {
             }
         }
         void equate_types_inner_coerce(const Span& sp, const ::HIR::TypeRef& target, ::HIR::ExprNodeP& node) {
+            DEBUG("can_coerce_inner_result() = " << can_coerce_inner_result());
             if( can_coerce_inner_result() ) {
                 this->context.equate_types_coerce(sp, target,  node);
             }
@@ -1573,6 +1584,7 @@ namespace {
             const auto& idx_ty = this->context.get_type(node.m_index->m_res_type);
             TRACE_FUNCTION_F("Index: val=" << val_ty << ", idx=" << idx_ty << "");
             
+            this->context.equate_types_shadow(node.span(), node.m_res_type);
             
             // NOTE: Indexing triggers autoderef
             unsigned int deref_count = 0;
@@ -1600,6 +1612,7 @@ namespace {
                     return false;
                     });
                 if( rv ) {
+                    // TODO: Node's result type could be an &-ptr?
                     this->context.equate_types(node.span(), node.m_res_type,  possible_res_type);
                     break;
                 }
@@ -1626,6 +1639,7 @@ namespace {
             
             if( current_ty )
             {
+                DEBUG("Found impl on type " << *current_ty << " with " << deref_count << " derefs");
                 assert( deref_count == deref_res_types.size() );
                 for(auto& ty_r : deref_res_types)
                 {

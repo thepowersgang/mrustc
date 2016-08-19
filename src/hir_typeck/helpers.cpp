@@ -316,9 +316,100 @@ void HMTypeInferrence::dump() const
         i ++ ;
     }
 }
+void HMTypeInferrence::check_for_loops()
+{
+    struct LoopChecker {
+        ::std::vector<unsigned int> m_indexes;
+        
+        void check_pathparams(const HMTypeInferrence& ivars, const ::HIR::PathParams& pp) {
+            for(const auto& ty : pp.m_types)
+                this->check_ty(ivars, ty);
+        }
+        void check_ty(const HMTypeInferrence& ivars, const ::HIR::TypeRef& ty) {
+            TU_MATCH( ::HIR::TypeRef::Data, (ty.m_data), (e),
+            (Infer,
+                for(auto idx : m_indexes)
+                    ASSERT_BUG(Span(), e.index != idx, "Recursion in ivar #" << m_indexes.front() << " " << *ivars.m_ivars[m_indexes.front()].type
+                        << " - loop with " << idx << " " << *ivars.m_ivars[idx].type);
+                m_indexes.push_back( e.index );
+                const auto& ivd = ivars.get_pointed_ivar(e.index);
+                assert( !ivd.is_alias() );
+                if( !ivd.type->m_data.is_Infer() ) {
+                    this->check_ty(ivars, *ivd.type);
+                }
+                ),
+            (Primitive,
+                ),
+            (Diverge, ),
+            (Generic, ),
+            (Path,
+                TU_MATCH(::HIR::Path::Data, (e.path.m_data), (pe),
+                (Generic,
+                    this->check_pathparams(ivars, pe.m_params);
+                    ),
+                (UfcsKnown,
+                    this->check_ty(ivars, *pe.type);
+                    this->check_pathparams(ivars, pe.trait.m_params);
+                    this->check_pathparams(ivars, pe.params);
+                    ),
+                (UfcsInherent,
+                    this->check_ty(ivars, *pe.type);
+                    this->check_pathparams(ivars, pe.params);
+                    ),
+                (UfcsUnknown,
+                    BUG(Span(), "UfcsUnknown");
+                    )
+                )
+                ),
+            (Borrow,
+                this->check_ty(ivars, *e.inner);
+                ),
+            (Pointer,
+                this->check_ty(ivars, *e.inner);
+                ),
+            (Slice,
+                this->check_ty(ivars, *e.inner);
+                ),
+            (Array,
+                this->check_ty(ivars, *e.inner);
+                ),
+            (Closure,
+                ),
+            (Function,
+                for(const auto& arg : e.m_arg_types) {
+                    this->check_ty(ivars, arg);
+                }
+                this->check_ty(ivars, *e.m_rettype);
+                ),
+            (TraitObject,
+                this->check_pathparams(ivars, e.m_trait.m_path.m_params);
+                for(const auto& marker : e.m_markers) {
+                    this->check_pathparams(ivars, marker.m_params);
+                }
+                ),
+            (Tuple,
+                for(const auto& st : e) {
+                    this->check_ty(ivars, st);
+                }
+                )
+            )
+        }
+    };
+    unsigned int i = 0;
+    for(const auto& v : m_ivars)
+    {
+        if( !v.is_alias() && !v.type->m_data.is_Infer() )
+        {
+            DEBUG("- " << i << " " << *v.type);
+            (LoopChecker { {i} }).check_ty(*this, *v.type);
+        }
+        i ++;
+    }
+}
 void HMTypeInferrence::compact_ivars()
 {
-    #if 1
+    this->check_for_loops();
+    
     unsigned int i = 0;
     for(auto& v : m_ivars)
     {
@@ -347,7 +438,6 @@ void HMTypeInferrence::compact_ivars()
         }
         i ++;
     }
-    #endif
 }
 
 bool HMTypeInferrence::apply_defaults()
@@ -821,7 +911,9 @@ bool HMTypeInferrence::pathparams_contain_ivars(const ::HIR::PathParams& pps) co
     return false;
 }
 bool HMTypeInferrence::type_contains_ivars(const ::HIR::TypeRef& ty) const {
-    TU_MATCH(::HIR::TypeRef::Data, (this->get_type(ty).m_data), (e),
+    TRACE_FUNCTION_F("ty = " << ty);
+    //TU_MATCH(::HIR::TypeRef::Data, (this->get_type(ty).m_data), (e),
+    TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
     (Infer, return true; ),
     (Primitive, return false; ),
     (Diverge, return false; ),
@@ -1326,6 +1418,8 @@ bool TraitResolution::find_trait_impls(const Span& sp,
 
 void TraitResolution::compact_ivars(HMTypeInferrence& m_ivars)
 {
+    m_ivars.check_for_loops();
+    
     //m_ivars.compact_ivars([&](const ::HIR::TypeRef& t)->auto{ return this->expand_associated_types(Span(), t.clone); });
     unsigned int i = 0;
     for(auto& v : m_ivars.m_ivars)
@@ -1448,19 +1542,23 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
     )
     BUG(Span(), "Fell off the end of has_associated_type - input=" << input);
 }
-::HIR::TypeRef TraitResolution::expand_associated_types(const Span& sp, ::HIR::TypeRef input) const
+void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::TypeRef& input, LList<const ::HIR::TypeRef*> stack) const
 {
+    for(const auto& ty : m_eat_active_stack)
+    {
+        if( input == ty ) {
+            DEBUG("Recursive lookup, skipping - input = " << input);
+            return ;
+        }
+    }
     //TRACE_FUNCTION_F(input);
     TU_MATCH(::HIR::TypeRef::Data, (input.m_data), (e),
     (Infer,
         auto& ty = this->m_ivars.get_type(input);
         if( ty != input ) {
-            input = expand_associated_types(sp, ty.clone());
-            return input;
+            input = ty.clone();
+            expand_associated_types_inplace(sp, input, stack);
         }
-        else {
-        }
-        return input;
         ),
     (Diverge,
         ),
@@ -1470,7 +1568,7 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
         TU_MATCH(::HIR::Path::Data, (e.path.m_data), (pe),
         (Generic,
             for(auto& arg : pe.m_params.m_types)
-                arg = expand_associated_types(sp, mv$(arg));
+                expand_associated_types_inplace(sp, arg, stack);
             ),
         (UfcsInherent,
             TODO(sp, "Path - UfcsInherent - " << e.path);
@@ -1478,9 +1576,8 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
         (UfcsKnown,
             // - Only try resolving if the binding isn't known
             if( !e.binding.is_Unbound() )
-                return input;
-            this->expand_associated_types__UfcsKnown(sp, input);
-            return input;
+                return ;
+            this->expand_associated_types_inplace__UfcsKnown(sp, input, stack);
             ),
         (UfcsUnknown,
             BUG(sp, "Encountered UfcsUnknown");
@@ -1493,21 +1590,21 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
         // Recurse?
         ),
     (Array,
-        *e.inner = expand_associated_types(sp, mv$(*e.inner));
+        expand_associated_types_inplace(sp, *e.inner, stack);
         ),
     (Slice,
-        *e.inner = expand_associated_types(sp, mv$(*e.inner));
+        expand_associated_types_inplace(sp, *e.inner, stack);
         ),
     (Tuple,
         for(auto& sub : e) {
-            sub = expand_associated_types(sp, mv$(sub));
+            expand_associated_types_inplace(sp, sub , stack);
         }
         ),
     (Borrow,
-        *e.inner = expand_associated_types(sp, mv$(*e.inner));
+        expand_associated_types_inplace(sp, *e.inner, stack);
         ),
     (Pointer,
-        *e.inner = expand_associated_types(sp, mv$(*e.inner));
+        expand_associated_types_inplace(sp, *e.inner, stack);
         ),
     (Function,
         // Recurse?
@@ -1516,18 +1613,32 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
         // Recurse?
         )
     )
-    return input;
 }
 
 
-void TraitResolution::expand_associated_types__UfcsKnown(const Span& sp, ::HIR::TypeRef& input) const
+void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp, ::HIR::TypeRef& input, LList<const ::HIR::TypeRef*> prev_stack) const
 {
     TRACE_FUNCTION_FR("input=" << input, input);
     auto& e = input.m_data.as_Path();
     auto& pe = e.path.m_data.as_UfcsKnown();
-    // TODO: If opaque, still search a list of known equalities
     
-    *pe.type = expand_associated_types(sp, mv$(*pe.type));
+    struct D {
+        const TraitResolution&  m_tr;
+        D(const TraitResolution& tr, ::HIR::TypeRef v): m_tr(tr) {
+            tr.m_eat_active_stack.push_back( mv$(v) );
+        }
+        ~D() {
+            m_tr.m_eat_active_stack.pop_back();
+        }
+    };
+    D   _(*this, input.clone());
+    LList<const ::HIR::TypeRef*>    stack(&prev_stack, &m_eat_active_stack.back());
+    
+    // TODO: State stack to avoid infinite recursion
+    // Example:
+    //  IVar 181 = <::ops::Range<<_/*181*/ as ::iter::iterator::Iterator>::Item/*U*/,>/*S*/ as ::iter::traits::IntoIterator>::IntoIter/*U*/
+    //  The above infinitely recurses due to the recursion here.
+    expand_associated_types_inplace(sp, *pe.type, stack);
     
     // - If it's a closure, then the only trait impls are those generated by typeck
     TU_IFLET(::HIR::TypeRef::Data, pe.type->m_data, Closure, te,
@@ -1634,7 +1745,10 @@ void TraitResolution::expand_associated_types__UfcsKnown(const Span& sp, ::HIR::
                 input = a->second.clone();
             }
         }
-        input = this->expand_associated_types(sp, mv$(input));
+        else {
+            DEBUG("- Found replacement: " << input);
+        }
+        this->expand_associated_types_inplace(sp, input, stack);
         return ;
     }
 
@@ -1675,7 +1789,8 @@ void TraitResolution::expand_associated_types__UfcsKnown(const Span& sp, ::HIR::
                         else {
                             input = it->second.clone();
                         }
-                        input = this->expand_associated_types(sp, mv$(input));
+                        DEBUG("- Found replacement: " << input);
+                        this->expand_associated_types_inplace(sp, input, stack);
                         return ;
                     }
                 }
@@ -1750,7 +1865,7 @@ void TraitResolution::expand_associated_types__UfcsKnown(const Span& sp, ::HIR::
         }
     }
     if( rv ) {
-        input = this->expand_associated_types(sp, mv$(input));
+        expand_associated_types_inplace(sp, input, stack);
         return ;
     }
     

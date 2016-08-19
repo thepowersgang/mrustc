@@ -129,6 +129,7 @@ public:
     ::HIR::TypeRef& get_type(::HIR::TypeRef& type);
     const ::HIR::TypeRef& get_type(const ::HIR::TypeRef& type) const;
     
+    void check_for_loops();
     void expand_ivars(::HIR::TypeRef& type);
     void expand_ivars_params(::HIR::PathParams& params);
 
@@ -141,7 +142,6 @@ private:
     IVar& get_pointed_ivar(unsigned int slot) const;
 };
 
-
 class TraitResolution
 {
     const HMTypeInferrence& m_ivars;
@@ -152,6 +152,7 @@ class TraitResolution
     
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
     
+    mutable ::std::vector< ::HIR::TypeRef>  m_eat_active_stack;
 public:
     TraitResolution(const HMTypeInferrence& ivars, const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params):
         m_ivars(ivars),
@@ -182,8 +183,11 @@ public:
     
     bool has_associated_type(const ::HIR::TypeRef& ty) const;
     /// Expand any located associated types in the input, operating in-place and returning the result
-    ::HIR::TypeRef expand_associated_types(const Span& sp, ::HIR::TypeRef input) const;
-    void expand_associated_types__UfcsKnown(const Span& sp, ::HIR::TypeRef& input) const;
+    ::HIR::TypeRef expand_associated_types(const Span& sp, ::HIR::TypeRef input) const {
+        expand_associated_types_inplace(sp, input, LList<const ::HIR::TypeRef*>());
+        return mv$(input);
+    }
+
     const ::HIR::TypeRef& expand_associated_types(const Span& sp, const ::HIR::TypeRef& input, ::HIR::TypeRef& tmp) const {
         if( this->has_associated_type(input) ) {
             return (tmp = this->expand_associated_types(sp, input.clone()));
@@ -230,5 +234,9 @@ public:
     /// Locates a named method in a trait, and returns the path of the trait that contains it (with fixed parameters)
     bool trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
     bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
+
+private:
+    void expand_associated_types_inplace(const Span& sp, ::HIR::TypeRef& input, LList<const ::HIR::TypeRef*> stack) const;
+    void expand_associated_types_inplace__UfcsKnown(const Span& sp, ::HIR::TypeRef& input, LList<const ::HIR::TypeRef*> stack) const;
 };
 
