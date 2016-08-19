@@ -133,11 +133,34 @@ struct LList
     const LList*  m_prev;
     T   m_item;
     
+    LList():
+        m_prev(nullptr)
+    {}
     LList(const LList* prev, T item):
         m_prev(prev),
         m_item( ::std::move(item) )
     {
-    };
+    }
+    
+    LList end() const {
+        return LList();
+    }
+    LList begin() const {
+        return *this;
+    }
+    bool operator==(const LList& x) {
+        return m_prev == x.m_prev;
+    }
+    bool operator!=(const LList& x) {
+        return m_prev != x.m_prev;
+    }
+    void operator++() {
+        assert(m_prev);
+        *this = *m_prev;
+    }
+    const T& operator*() const {
+        return m_item;
+    }
 };
 
 template<typename T>
