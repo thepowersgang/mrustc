@@ -582,6 +582,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, AST::Module& mod, const AST::MetaIte
     CHECK_TOK(tok, TOK_BRACE_OPEN);
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
+        
         AST::MetaItems  item_attrs;
         while( tok.type() == TOK_ATTR_OPEN )
         {
@@ -590,6 +591,17 @@ AST::Trait Parse_TraitDef(TokenStream& lex, AST::Module& mod, const AST::MetaIte
             GET_TOK(tok, lex);
         }
         SET_ATTRS(lex, item_attrs);
+        
+        auto ps = lex.start_span();
+        if( tok.type() == TOK_MACRO ) {
+            auto inv = Parse_MacroInvocation( ps, AST::MetaItems(), mv$(tok.str()), lex );
+            // - Silently consume ';' after the macro
+            if( GET_TOK(tok, lex) != TOK_SEMICOLON )
+                PUTBACK(tok, lex);
+            
+            trait.items().push_back( AST::Named<AST::Item>("", AST::Item(mv$(inv)), false) );
+            continue ;
+        }
         
         bool is_specialisable = false;
         if( tok.type() == TOK_IDENT && tok.str() == "default" ) {

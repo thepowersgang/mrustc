@@ -661,6 +661,7 @@ private:
 TAGGED_UNION_EX(Item, (: public Serialisable), None,
     (
     (None, struct {} ),
+    (MacroInv, MacroInvocation),
     (Module, Module),
     (Crate, struct {
         ::std::string   name;

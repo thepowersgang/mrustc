@@ -262,6 +262,9 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
             (None,
                 throw ::std::runtime_error("BUG: Hit a None item");
                 ),
+            (MacroInv,
+                throw ::std::runtime_error("BUG: Hit a macro invocation");
+                ),
             (Module, return ItemRef(e); ),
             (Crate, return ItemRef(e.name); ),
             (Type,  return ItemRef(e); ),

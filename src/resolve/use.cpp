@@ -219,6 +219,9 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             (None,
                 // IMPOSSIBLE - Handled above
                 ),
+            (MacroInv,
+                BUG(span, "HIt MacroInv in use resolution");
+                ),
             (Crate,
                 //return ::AST::PathBinding::make_Crate({&e});
                 TODO(span, "Handle importing from a crate");

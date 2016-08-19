@@ -941,6 +941,9 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
         TU_MATCH(::AST::Item, (item.data), (e),
         (None,
             ),
+        (MacroInv,
+            BUG(Span(), "Stray macro invocation in " << path);
+            ),
         (Module,
             _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Module(e, mv$(item_path)) );
             ),

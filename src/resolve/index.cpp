@@ -79,6 +79,8 @@ void Resolve_Index_Module_Base(AST::Module& mod)
         TU_MATCH(AST::Item, (i.data), (e),
         (None,
             ),
+        (MacroInv,
+            ),
         // - Types/modules only
         (Module,
             p.bind( ::AST::PathBinding::make_Module({&e}) );

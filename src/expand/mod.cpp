@@ -616,6 +616,9 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
         (None,
             // Skip, nothing
             ),
+        (MacroInv,
+            TODO(Span(), "Macro invocation");
+            ),
         (Module,
             LList<const AST::Module*>   sub_modstack(&modstack, &e);
             Expand_Mod(is_early, crate, sub_modstack, path, e);

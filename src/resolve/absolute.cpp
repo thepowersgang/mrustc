@@ -1229,6 +1229,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
     {
         TU_MATCH(AST::Item, (i.data), (e),
         (None, ),
+        (MacroInv, BUG(i.data.span, "Resolve_Absolute_ImplItems - MacroInv");),
         (Module, BUG(i.data.span, "Resolve_Absolute_ImplItems - Module");),
         (Crate , BUG(i.data.span, "Resolve_Absolute_ImplItems - Crate");),
         (Enum  , BUG(i.data.span, "Resolve_Absolute_ImplItems - Enum");),
@@ -1283,6 +1284,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Im
     {
         TU_MATCH(AST::Item, (*i.data), (e),
         (None, ),
+        (MacroInv, BUG(i.data->span, "Resolve_Absolute_ImplItems - MacroInv");),
         (Module, BUG(i.data->span, "Resolve_Absolute_ImplItems - Module");),
         (Crate , BUG(i.data->span, "Resolve_Absolute_ImplItems - Crate");),
         (Enum  , BUG(i.data->span, "Resolve_Absolute_ImplItems - Enum");),
@@ -1341,6 +1343,8 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
     {
         TU_MATCH(AST::Item, (i.data), (e),
         (None,
+            ),
+        (MacroInv,
             ),
         (Module,
             DEBUG("Module - " << i.name);
