@@ -1,7 +1,8 @@
 TODO:
-- Drops in MIR
 - MIR print
+- Drops in MIR
 - MIR Validation pass
-- Fix parser against rustc tests and tifflin
 - Save HIR+MIR into crate metadata
 - Method and type monomorphisation
+- Test compile against a no_std program
+- MIR Optimisations
