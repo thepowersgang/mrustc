@@ -1243,7 +1243,6 @@ namespace {
                 // - If they're not valid, then resolution can be done here.
                 ASSERT_BUG(sp, !this->context.m_ivars.type_contains_ivars(*e.type), "Found ivar in UfcsInherent");
                 
-                #if 1
                 // - Locate function (and impl block)
                 const ::HIR::Function* fcn_ptr = nullptr;
                 const ::HIR::TypeImpl* impl_ptr = nullptr;
@@ -1318,7 +1317,6 @@ namespace {
                 auto ty = ::HIR::TypeRef(mv$(ft));
                 
                 this->context.equate_types(node.span(), node.m_res_type, ty);
-                #endif
                 )
             )
         }
@@ -2229,6 +2227,24 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
     }
     #endif
     
+    // If either side is still a UfcsUnkonw after `expand_associated_types`, then emit an assoc bound instead of damaging ivars
+    TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Path, r_e,
+        TU_IFLET(::HIR::Path::Data, r_e.path.m_data, UfcsKnown, rpe,
+            if( r_e.binding.is_Unbound() ) {
+                this->equate_types_assoc(sp, l_t,  rpe.trait.m_path, rpe.trait.m_params.clone().m_types, *rpe.type,  rpe.item.c_str());
+                return ;
+            }
+        )
+    )
+    TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Path, l_e,
+        TU_IFLET(::HIR::Path::Data, l_e.path.m_data, UfcsKnown, lpe,
+            if( l_e.binding.is_Unbound() ) {
+                this->equate_types_assoc(sp, r_t,  lpe.trait.m_path, lpe.trait.m_params.clone().m_types, *lpe.type,  lpe.item.c_str());
+                return ;
+            }
+        )
+    )
+    
     DEBUG("- l_t = " << l_t << ", r_t = " << r_t);
     TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Infer, r_e,
         TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Infer, l_e,
@@ -2282,28 +2298,6 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
                 return ;
             }
             #endif
-            
-            // - If the destructuring would fail
-            //if( l_t.compare_with_placeholders(sp, r_t, this->m_ivars.callback_resolve_infer()) == ::HIR::Compare::Unequal )
-            //{
-                // BUT! It was due to an unknown associated type
-                TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Path, r_e,
-                    TU_IFLET(::HIR::Path::Data, r_e.path.m_data, UfcsKnown, rpe,
-                        if( r_e.binding.is_Unbound() ) {
-                            this->equate_types_assoc(sp, l_t,  rpe.trait.m_path, rpe.trait.m_params.clone().m_types, *rpe.type,  rpe.item.c_str());
-                            return ;
-                        }
-                    )
-                )
-                TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Path, l_e,
-                    TU_IFLET(::HIR::Path::Data, l_e.path.m_data, UfcsKnown, lpe,
-                        if( l_e.binding.is_Unbound() ) {
-                            this->equate_types_assoc(sp, r_t,  lpe.trait.m_path, lpe.trait.m_params.clone().m_types, *lpe.type,  lpe.item.c_str());
-                            return ;
-                        }
-                    )
-                )
-            //}
             
             if( l_t.m_data.tag() != r_t.m_data.tag() ) {
                 ERROR(sp, E0000, "Type mismatch between " << this->m_ivars.fmt_type(l_t) << " and " << this->m_ivars.fmt_type(r_t));
@@ -3706,6 +3700,8 @@ namespace {
             }
             
             // Types are equal from the view of being coercion targets
+            // - Inequality here means that the targets could coexist (e.g. &[u8; N] and &[u8])
+            // - Equality means that they HAVE to be equal (even if they're not currently due to ivars)
             static bool equal_to(const Context& context, const ::HIR::TypeRef& ia, const ::HIR::TypeRef& ib) {
                 const auto& a = context.m_ivars.get_type(ia);
                 const auto& b = context.m_ivars.get_type(ib);
@@ -3737,6 +3733,16 @@ namespace {
                         return context.m_ivars.types_equal(ia2, ib2);
                         )
                     )
+                    ),
+                (Pointer,
+                    if( e_a.type != e_b.type )
+                        return false;
+                    // TODO: Rules are subtly different when coercing from a pointer?
+                    const auto& ia2 = context.m_ivars.get_type(*e_a.inner);
+                    const auto& ib2 = context.m_ivars.get_type(*e_b.inner);
+                    if(ia2.m_data.is_Infer() || ib2.m_data.is_Infer())
+                        return true;
+                    return context.m_ivars.types_equal(ia2, ib2);
                     )
                 )
                 // 

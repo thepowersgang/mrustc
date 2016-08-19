@@ -881,6 +881,7 @@ void HMTypeInferrence::ivar_unify(unsigned int left_slot, unsigned int right_slo
             BUG(sp, "Unifying over a concrete type - " << *root_ivar.type);
         }
         
+        DEBUG("IVar " << root_ivar.type->m_data.as_Infer().index << " = @" << left_slot);
         root_ivar.alias = left_slot;
         root_ivar.type.reset();
         
