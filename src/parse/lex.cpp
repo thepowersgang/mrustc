@@ -20,8 +20,9 @@
 #include <typeinfo>
 #include <algorithm>	// std::count
 
-//const bool DEBUG_PRINT_TOKENS = false;
-const bool DEBUG_PRINT_TOKENS = true;
+const bool DEBUG_PRINT_TOKENS = false;
+//const bool DEBUG_PRINT_TOKENS = true;
+//#define DEBUG_PRINT_TOKENS  debug_enabled("Lexer Tokens")
 
 Lexer::Lexer(const ::std::string& filename):
     m_path(filename.c_str()),

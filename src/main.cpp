@@ -33,10 +33,21 @@ void init_debug_list()
 {
     g_debug_disable_map.insert( "Parse" );
     g_debug_disable_map.insert( "Expand" );
+    
     g_debug_disable_map.insert( "Resolve" );
+    
+    g_debug_disable_map.insert( "Resolve Type Aliases" );
+    g_debug_disable_map.insert( "Resolve Bind" );
     g_debug_disable_map.insert( "Resolve UFCS paths" );
+    g_debug_disable_map.insert( "Constant Evaluate" );
+    
     g_debug_disable_map.insert( "Typecheck Expressions" );
+    
+    g_debug_disable_map.insert( "Expand HIR Annotate" );
+    g_debug_disable_map.insert( "Expand HIR Closures" );
+    g_debug_disable_map.insert( "Expand HIR Calls" );
     g_debug_disable_map.insert( "Typecheck Expressions (validate)" );
+    
     g_debug_disable_map.insert( "Dump HIR" );
 }
 bool debug_enabled()
