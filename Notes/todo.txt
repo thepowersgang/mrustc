@@ -1,5 +1,4 @@
 TODO:
-- MIR print
 - Drops in MIR
 - MIR Validation pass
 - Save HIR+MIR into crate metadata
