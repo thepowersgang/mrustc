@@ -1348,6 +1348,7 @@ void MirBuilder::set_cur_block(unsigned int new_block)
     if( m_block_active ) {
         BUG(Span(), "Updating block when previous is active");
     }
+    DEBUG("BB" << new_block << " START");
     m_current_block = new_block;
     m_block_active = true;
 }
@@ -1356,6 +1357,7 @@ void MirBuilder::end_block(::MIR::Terminator term)
     if( !m_block_active ) {
         BUG(Span(), "Terminating block when none active");
     }
+    DEBUG("BB" << m_current_block << " END -> " << term);
     m_output.blocks.at(m_current_block).terminator = mv$(term);
     m_block_active = false;
     m_current_block = 0;
@@ -1365,12 +1367,14 @@ void MirBuilder::pause_cur_block()
     if( !m_block_active ) {
         BUG(Span(), "Pausing block when none active");
     }
+    DEBUG("BB" << m_current_block << " PAUSE");
     m_block_active = false;
     m_current_block = 0;
 }
 ::MIR::BasicBlockId MirBuilder::new_bb_linked()
 {
     auto rv = new_bb_unlinked();
+    DEBUG("BB" << rv);
     end_block( ::MIR::Terminator::make_Goto(rv) );
     set_cur_block(rv);
     return rv;
@@ -1378,6 +1382,7 @@ void MirBuilder::pause_cur_block()
 ::MIR::BasicBlockId MirBuilder::new_bb_unlinked()
 {
     auto rv = m_output.blocks.size();
+    DEBUG("BB" << rv);
     m_output.blocks.push_back({});
     return rv;
 }

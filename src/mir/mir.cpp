@@ -35,6 +35,49 @@ namespace MIR {
         )
         return os;
     }
+    
+    ::std::ostream& operator<<(::std::ostream& os, const LValue& x)
+    {
+        return os;
+    }
+    
+    ::std::ostream& operator<<(::std::ostream& os, const Terminator& x)
+    {
+        TU_MATCHA( (x), (e),
+        (Incomplete,
+            os << "Invalid";
+            ),
+        (Return,
+            os << "Return";
+            ),
+        (Diverge,
+            os << "Diverge";
+            ),
+        (Goto,
+            os << "Goto(" << e << ")";
+            ),
+        (Panic,
+            os << "Panic(" << e.dst << ";)";
+            ),
+        (If,
+            os << "If( ? : " << e.bb0 << ", " << e.bb1 << ")";
+            ),
+        (Switch,
+            os << "Switch( ? : ";
+            for(unsigned int j = 0; j < e.targets.size(); j ++)
+                os << j << " => bb" << e.targets[j] << ", ";
+            os << ")";
+            ),
+        (Call,
+            os << "Call( ? = ?( ";
+            for(const auto& arg : e.args)
+                os << arg << ", ";
+            os << "), bb" << e.ret_block << ", bb" << e.panic_block << ")";
+            )
+        )
+
+        return os;
+    }
 }
 
 ::MIR::LValue MIR::LValue::clone() const

@@ -53,6 +53,7 @@ TAGGED_UNION_EX(LValue, (), Variable, (
         LValue clone() const;
     )
     );
+extern ::std::ostream& operator<<(::std::ostream& os, const LValue& x);
 
 enum class eBinOp
 {
@@ -158,6 +159,7 @@ TAGGED_UNION(Terminator, Incomplete,
         ::std::vector<LValue>   args;
         })
     );
+extern ::std::ostream& operator<<(::std::ostream& os, const Terminator& x);
 
 enum class eDropKind {
     SHALLOW,
