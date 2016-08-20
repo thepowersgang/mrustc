@@ -1,7 +1,7 @@
 
 #include "common.hpp"
 #include "hir.hpp"
-#include <main_bindings.hpp>
+#include "main_bindings.hpp"
 #include <ast/ast.hpp>
 #include <ast/crate.hpp>
 #include "from_ast.hpp"

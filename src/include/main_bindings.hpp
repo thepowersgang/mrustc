@@ -5,7 +5,6 @@
 
 #include <string>
 #include <memory>
-#include <hir/crate_ptr.hpp>
 
 namespace AST {
     class Crate;
@@ -20,8 +19,6 @@ extern void Expand(::AST::Crate& crate);
 
 /// Process #[] decorators
 extern void Process_Decorators(AST::Crate& crate);
-
-extern ::HIR::CratePtr  LowerHIR_FromAST(::AST::Crate crate);
 
 /// Convert the AST to a flat tree
 extern AST::Flat Convert_Flatten(const AST::Crate& crate);

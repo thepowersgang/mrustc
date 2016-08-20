@@ -17,6 +17,7 @@
 #include <cstring>
 #include <main_bindings.hpp>
 #include "resolve/main_bindings.hpp"
+#include "hir/main_bindings.hpp"
 #include "hir_conv/main_bindings.hpp"
 #include "hir_typeck/main_bindings.hpp"
 #include "hir_expand/main_bindings.hpp"
@@ -219,6 +220,11 @@ int main(int argc, char *argv[])
             Typecheck_Expressions_Validate(*hir_crate);
             });
 
+        CompilePhaseV("Dump HIR", [&]() {
+            ::std::ofstream os (FMT(params.outfile << "_3_hir.rs"));
+            HIR_Dump( os, *hir_crate );
+            });
+        
         if( params.last_stage == ProgramParams::STAGE_TYPECK ) {
             return 0;
         }
@@ -228,12 +234,12 @@ int main(int argc, char *argv[])
             HIR_GenerateMIR(*hir_crate);
             });
         
-        // Flatten modules into "mangled" set
-        //g_cur_phase = "Flatten";
-        //AST::Flat flat_crate = Convert_Flatten(crate);
+        // Validate the MIR
+        // TODO: ^
+        
+        // Generate code for non-generic public items (if requested)
 
-        // Convert structures to C structures / tagged enums
-        //Convert_Render(flat_crate, stdout);
+        // Save HIR tree (if requested)
     }
     catch(unsigned int) {}
     //catch(const CompileError::Base& e)
