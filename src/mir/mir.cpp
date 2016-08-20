@@ -38,6 +38,35 @@ namespace MIR {
     
     ::std::ostream& operator<<(::std::ostream& os, const LValue& x)
     {
+        TU_MATCHA( (x), (e),
+        (Variable,
+            os << "Variable(" << e << ")";
+            ),
+        (Temporary,
+            os << "Temporary(" << e.idx << ")";
+            ),
+        (Argument,
+            os << "Argument(" << e.idx << ")";
+            ),
+        (Static,
+            os << "Static(" << e << ")";
+            ),
+        (Return,
+            os << "Return";
+            ),
+        (Field,
+            os << "Field(" << e.field_index << ", " << *e.val << ")";
+            ),
+        (Deref,
+            os << "Deref(" << *e.val << ")";
+            ),
+        (Index,
+            os << "Deref(" << *e.val << ", " << *e.idx << ")";
+            ),
+        (Downcast,
+            os << "Downcast(" << e.variant_index << ", " << *e.val << ")";
+            )
+        )
         return os;
     }
     
@@ -60,16 +89,16 @@ namespace MIR {
             os << "Panic(" << e.dst << ";)";
             ),
         (If,
-            os << "If( ? : " << e.bb0 << ", " << e.bb1 << ")";
+            os << "If( " << e.cond << " : " << e.bb0 << ", " << e.bb1 << ")";
             ),
         (Switch,
-            os << "Switch( ? : ";
+            os << "Switch( " << e.val << " : ";
             for(unsigned int j = 0; j < e.targets.size(); j ++)
                 os << j << " => bb" << e.targets[j] << ", ";
             os << ")";
             ),
         (Call,
-            os << "Call( ? = ?( ";
+            os << "Call( " << e.ret_val << " = " << e.fcn_val << "( ";
             for(const auto& arg : e.args)
                 os << arg << ", ";
             os << "), bb" << e.ret_block << ", bb" << e.panic_block << ")";

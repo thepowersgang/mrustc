@@ -443,7 +443,6 @@ namespace {
                 ASSERT_BUG(sp, ty_slot.m_data.is_Primitive(), "Assignment operator overloads are only valid on primitives - ty_slot="<<ty_slot);
                 ASSERT_BUG(sp, ty_val.m_data.is_Primitive(), "Assignment operator overloads are only valid on primitives - ty_val="<<ty_val);
                 
-                ::MIR::RValue res;
                 #define _(v)    ::HIR::ExprNode_Assign::Op::v
                 ::MIR::eBinOp   op;
                 switch(node.m_op)
@@ -470,8 +469,6 @@ namespace {
                     break;
                 }
                 #undef _
-                
-                m_builder.push_stmt_assign(mv$(dst), mv$(res));
             }
             else
             {
@@ -1335,11 +1332,14 @@ void MirBuilder::set_result(const Span& sp, ::MIR::RValue val)
 void MirBuilder::push_stmt_assign(::MIR::LValue dst, ::MIR::RValue val)
 {
     ASSERT_BUG(Span(), m_block_active, "Pushing statement with no active block");
+    ASSERT_BUG(Span(), dst.tag() != ::MIR::LValue::TAGDEAD, "");
+    ASSERT_BUG(Span(), val.tag() != ::MIR::RValue::TAGDEAD, "");
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Assign({ mv$(dst), mv$(val) }) );
 }
 void MirBuilder::push_stmt_drop(::MIR::LValue val)
 {
     ASSERT_BUG(Span(), m_block_active, "Pushing statement with no active block");
+    ASSERT_BUG(Span(), val.tag() != ::MIR::LValue::TAGDEAD, "");
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::DEEP, mv$(val) }) );
 }
 
