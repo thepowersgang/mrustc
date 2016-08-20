@@ -36,6 +36,8 @@ void init_debug_list()
     g_debug_disable_map.insert( "Resolve" );
     g_debug_disable_map.insert( "Resolve UFCS paths" );
     g_debug_disable_map.insert( "Typecheck Expressions" );
+    g_debug_disable_map.insert( "Typecheck Expressions (validate)" );
+    g_debug_disable_map.insert( "Dump HIR" );
 }
 bool debug_enabled()
 {
@@ -236,6 +238,11 @@ int main(int argc, char *argv[])
         
         // Validate the MIR
         // TODO: ^
+
+        CompilePhaseV("Dump MIR", [&]() {
+            ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));
+            MIR_Dump( os, *hir_crate );
+            });
         
         // Generate code for non-generic public items (if requested)
 

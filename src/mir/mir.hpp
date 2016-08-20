@@ -135,7 +135,8 @@ TAGGED_UNION(RValue, Use,
         })
 );
 
-TAGGED_UNION(Terminator, Return,
+TAGGED_UNION(Terminator, Incomplete,
+    (Incomplete, struct {}),
     (Return, struct {}),
     (Diverge, struct {}),
     (Goto, BasicBlockId),
@@ -146,7 +147,7 @@ TAGGED_UNION(Terminator, Return,
         BasicBlockId    bb1;
         }),
     (Switch, struct {
-        LValue enum_val;
+        LValue val;
         ::std::vector<BasicBlockId>  targets;
         }),
     (Call, struct {
