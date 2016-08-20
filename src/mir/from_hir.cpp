@@ -22,7 +22,9 @@ namespace {
     class ExprVisitor_Conv:
         public MirConverter
     {
+    public:
         MirBuilder  m_builder;
+    private:
         const ::std::vector< ::HIR::TypeRef>&  m_variable_types;
         
         struct LoopDesc {
@@ -1204,6 +1206,14 @@ namespace {
     // 2. Destructure code
     ::HIR::ExprNode& root_node = const_cast<::HIR::ExprNode&>(*ptr);
     root_node.visit( ev );
+    
+    if( ev.m_builder.has_result() ) {
+        ev.m_builder.push_stmt_assign( ::MIR::LValue::make_Return({}), ev.m_builder.get_result(root_node.span()) );
+    }
+    if( ev.m_builder.block_active() )
+    {
+        ev.m_builder.end_block( ::MIR::Terminator::make_Return({}) );
+    }
     
     return ::MIR::FunctionPointer(new ::MIR::Function(mv$(fcn)));
 }
