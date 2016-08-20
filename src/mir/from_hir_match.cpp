@@ -81,16 +81,21 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     // 1. Stop the current block so we can generate code
     //  > TODO: Can this goto be avoided while still being defensive? (Avoiding incomplete blocks)
     auto first_cmp_block = builder.new_bb_unlinked();
-    builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
+    builder.end_block( ::MIR::Terminator::make_Goto(first_cmp_block) );
+
+    auto match_scope = builder.new_scope(node.span());
 
     // Map of arm index to ruleset
     ::std::vector< ArmCode> arm_code;
     t_arm_rules arm_rules;
     for(unsigned int arm_idx = 0; arm_idx < node.m_arms.size(); arm_idx ++)
     {
+        /*const*/ auto& arm = node.m_arms[arm_idx];
         ArmCode ac;
         
-        /*const*/ auto& arm = node.m_arms[arm_idx];
+        // Register introduced bindings to be dropped on return/diverge within this scope
+        auto drop_scope = builder.new_scope( arm.m_code->span(), true );
+        
         unsigned int pat_idx = 0;
         for( const auto& pat : arm.m_patterns )
         {
@@ -102,23 +107,31 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             
             pat_idx += 1;
         }
-        
-        // TODO: Register introduced bindings to be dropped on return/diverge within this scope
-        //auto drop_scope = builder.new_drop_scope( arm.m_patterns[0] );
 
         // Code
         ac.code = builder.new_bb_unlinked();
         builder.set_cur_block( ac.code );
         conv.visit_node_ptr( arm.m_code );
         if( !builder.block_active() && !builder.has_result() ) {
+            DEBUG("Arm diverged");
             // Nothing need be done, as the block diverged.
+            // - Drops were handled by the diverging block (if not, the below will panic)
+            auto _ = mv$(drop_scope);
         }
         else {
+            DEBUG("Arm result");
+            // - Set result
             builder.push_stmt_assign( result_val.clone(), builder.get_result(arm.m_code->span()) );
+            // - Drop all non-moved values from this scope
+            builder.terminate_scope( arm.m_code->span(), mv$(drop_scope) );
+            // - Go to the next block
             builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
         }
         
         // Condition
+        // NOTE: The condition isn't covered by the drop scope, because the only values that can be used within it are
+        // Copy (otherwise they'd move out and invalidate on failure).
+        // - The above is rustc E0008 "cannot bind by-move into a pattern guard"
         if(arm.m_cond)
         {
             ac.has_condition = true;
@@ -130,9 +143,8 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             builder.pause_cur_block();
             // NOTE: Paused so that later code (which knows what the false branch will be) can end it correctly
             
-            // TODO: What to do with contidionals?
-            // > Could fall back on a sequential comparison model.
-            // > OR split the match on each conditional.
+            // TODO: What to do with contidionals in the fast model?
+            // > Could split the match on each conditional - separating such that if a conditional fails it can fall into the other compatible branches.
             fall_back_on_simple = true;
         }
         else
@@ -157,6 +169,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     
     builder.set_cur_block( next_block );
     builder.set_result( node.span(), mv$(result_val) );
+    builder.terminate_scope( node.span(), mv$(match_scope) );
 }
 
 // --------------------------------------------------------------------

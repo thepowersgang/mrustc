@@ -25,9 +25,11 @@ namespace {
     public:
         MirBuilder  m_builder;
     private:
+        
         const ::std::vector< ::HIR::TypeRef>&  m_variable_types;
         
         struct LoopDesc {
+            ScopeHandle scope;
             ::std::string   label;
             unsigned int    cur;
             unsigned int    next;
@@ -156,30 +158,41 @@ namespace {
             // NOTE: This doesn't create a BB, as BBs are not needed for scoping
             if( node.m_nodes.size() > 0 )
             {
+                auto scope = m_builder.new_scope( node.span() );
+                
                 m_block_stack.push_back( {} );
                 for(unsigned int i = 0; i < node.m_nodes.size()-1; i ++)
                 {
                     auto& subnode = node.m_nodes[i];
                     const Span& sp = subnode->span();
+                    
+                    // - Covers just temporaries? (what about variables defined?)
+                    auto stmt_scope = m_builder.new_scope(sp);
                     this->visit_node_ptr(subnode);
-                    if( m_builder.block_active() || m_builder.has_result() )
-                    {
-                        m_builder.push_stmt_drop( m_builder.lvalue_or_temp(subnode->m_res_type, m_builder.get_result(sp)) );
+                    if( m_builder.has_result() ) {
+                        m_builder.get_result(sp);
+                    }
+                    
+                    if( m_builder.block_active() ) {
+                        m_builder.terminate_scope(sp, mv$(stmt_scope));
+                    }
+                    else {
+                        auto _ = mv$(stmt_scope);
                     }
                 }
                 
+                // - For the last node, don't bother with a statement scope
                 this->visit_node_ptr(node.m_nodes.back());
                 
                 auto bd = mv$( m_block_stack.back() );
                 m_block_stack.pop_back();
                 
                 // Drop all bindings introduced during this block.
-                // TODO: This should be done in a more generic manner, allowing for drops on panic/return
-                if( m_builder.block_active() )
-                {
-                    for( auto& var_idx : bd.bindings ) {
-                        m_builder.push_stmt_drop( ::MIR::LValue::make_Variable(var_idx) );
-                    }
+                if( m_builder.block_active() ) {
+                    m_builder.terminate_scope( node.span(), mv$(scope) );
+                }
+                else {
+                    auto _ = mv$(scope);
                 }
                 
                 // Result maintained from last node
@@ -196,7 +209,7 @@ namespace {
             
             m_builder.push_stmt_assign( ::MIR::LValue::make_Return({}),  m_builder.get_result(node.span()) );
             // TODO: Insert drop of all current scopes
-            //terminate_scope_early( 0 );
+            m_builder.terminate_scope_early( node.span(), m_builder.fcn_scope() );
             m_builder.end_block( ::MIR::Terminator::make_Return({}) );
         }
         void visit(::HIR::ExprNode_Let& node) override
@@ -213,27 +226,24 @@ namespace {
         void visit(::HIR::ExprNode_Loop& node) override
         {
             TRACE_FUNCTION_F("_Loop");
-            //auto loop_body_scope = m_builder.new_scope(node.span());  // TODO: Does loop actually need a scope? It usually contains a block.
+            auto loop_body_scope = m_builder.new_scope(node.span(), true);
             auto loop_block = m_builder.new_bb_linked();
             auto loop_next = m_builder.new_bb_unlinked();
             
-            m_loop_stack.push_back( LoopDesc { node.m_label, loop_block, loop_next } );
+            m_loop_stack.push_back( LoopDesc { mv$(loop_body_scope), node.m_label, loop_block, loop_next } );
             this->visit_node_ptr(node.m_code);
+            auto loop_scope = mv$(m_loop_stack.back().scope);
             m_loop_stack.pop_back();
             
             // If there's a stray result, drop it
             if( m_builder.has_result() ) {
                 assert( m_builder.block_active() );
-                // TODO: Does this result have to be dropped? Ideally this should always be ()
-                //::MIR::RValue res = m_builder.get_result(node.span());
-                //if( res.is_Use() ) {
-                //    m_builder.push_stmt_drop( mv$(res.as_Use()) );
-                //}
             }
             // Terminate block with a jump back to the start
             if( m_builder.block_active() )
             {
                 // TODO: Insert drop of all scopes within the current scope
+                m_builder.terminate_scope( node.span(), mv$(loop_scope) );
                 m_builder.end_block( ::MIR::Terminator::make_Goto(loop_block) );
             }
             m_builder.set_cur_block(loop_next);
@@ -255,7 +265,7 @@ namespace {
             }
             
             // TODO: Insert drop of all active scopes within the loop
-            //terminate_scope_early( target_block->scope );
+            m_builder.terminate_scope_early( node.span(), target_block->scope );
             if( node.m_continue ) {
                 m_builder.end_block( ::MIR::Terminator::make_Goto(target_block->cur) );
             }
@@ -299,24 +309,35 @@ namespace {
             
             auto result_val = m_builder.new_temporary(node.m_res_type);
             
-            m_builder.set_cur_block(true_branch);
-            this->visit_node_ptr(node.m_true);
-            if( m_builder.block_active() )
+            // TODO: Scope handle cases where one arm moves a value but the other doesn't
+            
             {
-                m_builder.push_stmt_assign( result_val.clone(), m_builder.get_result(node.m_true->span()) );
-                // TODO: Emit drops for all variables defined within this branch. (Needed? The inner should handle that)
-                m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
+                m_builder.set_cur_block(true_branch);
+                auto branch_handle = m_builder.new_scope( node.m_true->span(), true );
+                this->visit_node_ptr(node.m_true);
+                if( m_builder.block_active() ) {
+                    m_builder.push_stmt_assign( result_val.clone(), m_builder.get_result(node.m_true->span()) );
+                    m_builder.terminate_scope(node.m_true->span(), mv$(branch_handle));
+                    m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
+                }
+                else {
+                    auto _ = mv$(branch_handle);
+                }
             }
             
             m_builder.set_cur_block(false_branch);
             if( node.m_false )
             {
+                auto branch_scope = m_builder.new_scope( node.m_true->span(), true );
                 this->visit_node_ptr(node.m_false);
                 if( m_builder.block_active() )
                 {
                     m_builder.push_stmt_assign( result_val.clone(), m_builder.get_result(node.m_false->span()) );
-                    // TODO: Emit drops for all variables defined within this branch.
+                    m_builder.terminate_scope(node.m_true->span(), mv$(branch_scope));
                     m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
+                }
+                else {
+                    auto _ = mv$(branch_scope);
                 }
             }
             else
@@ -1192,27 +1213,24 @@ namespace {
 
 ::MIR::FunctionPointer LowerMIR(const ::HIR::ExprPtr& ptr, const ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >& args)
 {
+    TRACE_FUNCTION;
+    
     ::MIR::Function fcn;
     
-    ExprVisitor_Conv    ev { fcn, ptr.m_bindings };
-    
-    // 1. Apply destructuring to arguments
-    unsigned int i = 0;
-    for( const auto& arg : args )
+    // TODO: Construct builder here and lend to ExprVisitor_Conv
     {
-        ev.destructure_from(ptr->span(), arg.first, ::MIR::LValue::make_Argument({i}));
-    }
-    
-    // 2. Destructure code
-    ::HIR::ExprNode& root_node = const_cast<::HIR::ExprNode&>(*ptr);
-    root_node.visit( ev );
-    
-    if( ev.m_builder.has_result() ) {
-        ev.m_builder.push_stmt_assign( ::MIR::LValue::make_Return({}), ev.m_builder.get_result(root_node.span()) );
-    }
-    if( ev.m_builder.block_active() )
-    {
-        ev.m_builder.end_block( ::MIR::Terminator::make_Return({}) );
+        ExprVisitor_Conv    ev { fcn, ptr.m_bindings };
+        
+        // 1. Apply destructuring to arguments
+        unsigned int i = 0;
+        for( const auto& arg : args )
+        {
+            ev.destructure_from(ptr->span(), arg.first, ::MIR::LValue::make_Argument({i}));
+        }
+        
+        // 2. Destructure code
+        ::HIR::ExprNode& root_node = const_cast<::HIR::ExprNode&>(*ptr);
+        root_node.visit( ev );
     }
     
     return ::MIR::FunctionPointer(new ::MIR::Function(mv$(fcn)));
@@ -1292,10 +1310,25 @@ namespace {
 // --------------------------------------------------------------------
 // MirBuilder
 // --------------------------------------------------------------------
+MirBuilder::~MirBuilder()
+{
+    if( has_result() )
+    {
+        push_stmt_assign( ::MIR::LValue::make_Return({}), get_result(Span()) );
+    }
+    if( block_active() )
+    {
+        terminate_scope( Span(), mv$(m_fcn_scope) );
+        end_block( ::MIR::Terminator::make_Return({}) );
+    }
+}
+
 ::MIR::LValue MirBuilder::new_temporary(const ::HIR::TypeRef& ty)
 {
     unsigned int rv = m_output.temporaries.size();
     m_output.temporaries.push_back( ty.clone() );
+    temporaries_valid.push_back(false);
+    m_scopes.at( m_scope_stack.back() ).temporaries.push_back( rv );
     return ::MIR::LValue::make_Temporary({rv});
 }
 ::MIR::LValue MirBuilder::lvalue_or_temp(const ::HIR::TypeRef& ty, ::MIR::RValue val)
@@ -1344,6 +1377,84 @@ void MirBuilder::push_stmt_assign(::MIR::LValue dst, ::MIR::RValue val)
     ASSERT_BUG(Span(), m_block_active, "Pushing statement with no active block");
     ASSERT_BUG(Span(), dst.tag() != ::MIR::LValue::TAGDEAD, "");
     ASSERT_BUG(Span(), val.tag() != ::MIR::RValue::TAGDEAD, "");
+    
+    TU_MATCHA( (val), (e),
+    (Use,
+        this->moved_lvalue(e);
+        ),
+    (Constant,
+        ),
+    (SizedArray,
+        this->moved_lvalue(e.val);
+        ),
+    (Borrow,
+        ),
+    (Cast,
+        this->moved_lvalue(e.val);
+        ),
+    (BinOp,
+        switch(e.op)
+        {
+        case ::MIR::eBinOp::EQ:
+        case ::MIR::eBinOp::NE:
+        case ::MIR::eBinOp::GT:
+        case ::MIR::eBinOp::GE:
+        case ::MIR::eBinOp::LT:
+        case ::MIR::eBinOp::LE:
+            break;
+        default:
+            this->moved_lvalue(e.val_l);
+            this->moved_lvalue(e.val_r);
+            break;
+        }
+        ),
+    (UniOp,
+        this->moved_lvalue(e.val);
+        ),
+    (DstMeta,
+        // Doesn't move
+        ),
+    (MakeDst,
+        // Doesn't move ptr_val
+        this->moved_lvalue(e.meta_val);
+        ),
+    (Tuple,
+        for(const auto& val : e.vals)
+            this->moved_lvalue(val);
+        ),
+    (Array,
+        for(const auto& val : e.vals)
+            this->moved_lvalue(val);
+        ),
+    (Struct,
+        for(const auto& val : e.vals)
+            this->moved_lvalue(val);
+        )
+    )
+    
+    // Drop target if not a temporary
+    TU_IFLET( ::MIR::LValue, dst, Temporary, e,
+        if( temporaries_valid.size() <= e.idx ) {
+            temporaries_valid.resize(e.idx + 1);
+        }
+        //assert( !temporaries_valid[e.idx] );
+        temporaries_valid[e.idx] = true;
+    )
+    else TU_IFLET( ::MIR::LValue, dst, Return, _e,
+    )
+    else TU_IFLET( ::MIR::LValue, dst, Variable, e,
+        if( variables_valid.size() <= e ) {
+            variables_valid.resize(e+1);
+        }
+        if( variables_valid[e] ) {
+            //this->push_stmt_drop( dst.clone() );
+        }
+        variables_valid[e] = true;
+    )
+    else {
+        //this->push_stmt_drop( dst.clone() );
+    }
+    
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Assign({ mv$(dst), mv$(val) }) );
 }
 void MirBuilder::push_stmt_drop(::MIR::LValue val)
@@ -1395,6 +1506,132 @@ void MirBuilder::pause_cur_block()
     DEBUG("BB" << rv);
     m_output.blocks.push_back({});
     return rv;
+}
+
+ScopeHandle MirBuilder::new_scope(const Span& sp, bool is_conditional)
+{
+    unsigned int idx = m_scopes.size();
+    m_scopes.push_back( {} );
+    m_scopes.back().is_conditional = is_conditional;
+    m_scope_stack.push_back( idx );
+    DEBUG("START scope " << idx);
+    return ScopeHandle { *this, idx };
+}
+void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope)
+{
+    DEBUG("DONE scope " << scope.idx);
+    // 1. Check that this is the current scope (at the top of the stack)
+    if( m_scope_stack.back() != scope.idx )
+    {
+        DEBUG("m_scope_stack = " << m_scope_stack);
+        auto it = ::std::find( m_scope_stack.begin(), m_scope_stack.end(), scope.idx );
+        if( it == m_scope_stack.end() )
+            BUG(sp, "Terminating scope not on the stack - scope " << scope.idx);
+        BUG(sp, "Terminating scope " << scope.idx << " when not at top of stack, " << (m_scope_stack.end() - it) << " in the way");
+    }
+    m_scope_stack.pop_back();
+    
+    auto& scope_def = m_scopes.at(scope.idx);
+    ASSERT_BUG( sp, scope_def.complete == false, "Terminating scope which is already terminated" );
+    scope_def.complete = true;
+    
+    // 2. Emit drops for all non-moved variables (share with below)
+    drop_scope_values(scope_def);
+}
+void MirBuilder::terminate_scope_early(const Span& sp, const ScopeHandle& scope)
+{
+    DEBUG("EARLY scope " << scope.idx);
+    
+    // 1. Ensure that this block is in the stack
+    auto it = ::std::find( m_scope_stack.begin(), m_scope_stack.end(), scope.idx );
+    if( it == m_scope_stack.end() ) {
+        BUG(sp, "Early-terminating scope not on the stack");
+    }
+    unsigned int slot = it - m_scope_stack.begin();
+    
+    for(unsigned int i = slot; i < m_scope_stack.size(); i ++)
+    {
+    }
+    
+    bool is_conditional = false;
+    for(unsigned int i = m_scope_stack.size(); i-- > slot; )
+    {
+        auto idx = m_scope_stack[i];
+        auto& scope_def = m_scopes.at( idx );
+        
+        if( !is_conditional ) {
+            DEBUG("Complete scope " << idx);
+            scope_def.complete = true;
+            m_scope_stack.pop_back();
+        }
+        else {
+            DEBUG("Drop part of scope " << idx);
+            // TODO: Mark the optional move/termination
+        }
+        // If a conditional block is hit, prevent full termination of the rest
+        if( scope_def.is_conditional )
+            is_conditional = true;
+        
+        // 2. Emit drops for all non-moved variables within this branch
+        drop_scope_values(scope_def);
+    }
+}
+void MirBuilder::drop_scope_values(const ScopeDef& sd)
+{
+    for(auto tmp_idx : sd.temporaries)
+    {
+        if( temporaries_valid.at(tmp_idx) ) {
+            //push_stmt_drop( ::MIR::LValue::make_Temporary({ tmp_idx }) );
+            temporaries_valid[tmp_idx] = false;
+        }
+    }
+}
+void MirBuilder::moved_lvalue(const ::MIR::LValue& lv)
+{
+    TU_MATCHA( (lv), (e),
+    (Variable,
+        //TODO(Span(), "Mark var as moved");
+        ),
+    (Temporary,
+        //TODO(Span(), "Mark temp as moved");
+        ),
+    (Argument,
+        //TODO(Span(), "Mark argument as moved");
+        ),
+    (Static,
+        //TODO(Span(), "Static - Assert that type is Copy");
+        ),
+    (Return,
+        BUG(Span(), "Read of return value");
+        ),
+    (Field,
+        //TODO(Span(), "Mark field of an lvalue as moved (if not Copy) - Partially moved structs?");
+        //moved_lvalue(*e.val);
+        ),
+    (Deref,
+        //TODO(Span(), "Mark deref of an lvalue as moved (if not Copy) - Req. DerefMove/&move otherwise");
+        //moved_lvalue(*e.val);
+        ),
+    (Index,
+        //TODO(Span(), "Mark index of an lvalue as moved (if not Copy) - Req. IndexGet/IndexMove");
+        //moved_lvalue(*e.val);
+        
+        moved_lvalue(*e.idx);
+        ),
+    (Downcast,
+        // TODO: What if the inner is Copy? What if the inner is a hidden pointer?
+        moved_lvalue(*e.val);
+        )
+    )
+}
+
+ScopeHandle::~ScopeHandle()
+{
+    if( idx != ~0u )
+    {
+        ASSERT_BUG(Span(), m_builder.m_scopes.size() > idx, "Scope invalid");
+        ASSERT_BUG(Span(), m_builder.m_scopes.at(idx).complete, "Scope " << idx << " not completed");
+    }
 }
 
 // --------------------------------------------------------------------
