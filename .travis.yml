@@ -6,5 +6,5 @@ before_script:
 
 script:
  - make
- - make test
+# - make test
  - make rust_tests-run-pass
