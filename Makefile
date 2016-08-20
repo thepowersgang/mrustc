@@ -5,7 +5,12 @@ V ?= @
 
 LINKFLAGS := -g
 LIBS :=
-CXXFLAGS := -g -Wall -std=c++14 -Werror
+CXXFLAGS := -g -Wall
+# - Only turn on -Werror when running as `tpg` (i.e. me)
+ifeq ($(shell whoami),tpg)
+  CXXFLAGS += -Werror
+endif
+CXXFLAGS += -std=c++14
 #CXXFLAGS += -Wextra
 CXXFLAGS += -O2
 CPPFLAGS := -I src/include/ -I src/
