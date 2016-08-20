@@ -290,8 +290,30 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     )
                 )
                 break;
-            default:
-                TODO(sp, "Primitive - " << ty);
+            case ::HIR::CoreType::Char:
+                TU_MATCH_DEF( PatternRule, (rule), (re),
+                (
+                    BUG(sp, "PatternRule for char is not Value or ValueRange");
+                    ),
+                (Value,
+                    auto succ_bb = builder.new_bb_unlinked();
+                    
+                    auto test_lval = builder.lvalue_or_temp(te, ::MIR::Constant(re.as_Uint()));
+                    auto cmp_lval = builder.lvalue_or_temp(::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
+                    builder.set_cur_block(succ_bb);
+                    ),
+                (ValueRange,
+                    TODO(sp, "Simple match over char - ValueRange");
+                    )
+                )
+                break;
+            case ::HIR::CoreType::F32:
+            case ::HIR::CoreType::F64:
+                TODO(sp, "Simple match over float - " << ty);
+                break;
+            case ::HIR::CoreType::Str:
+                BUG(sp, "Match on str shouldn't hit this code");
                 break;
             }
         }
