@@ -10,6 +10,8 @@
 #include <algorithm>
 
 namespace {
+    typedef ::std::vector< ::std::pair< ::std::string, ::HIR::Static> > t_new_values;
+    
     ::HIR::Literal clone_literal(const ::HIR::Literal& v)
     {
         TU_MATCH(::HIR::Literal, (v), (e),
@@ -27,6 +29,9 @@ namespace {
             return ::HIR::Literal(e);
             ),
         (Float,
+            return ::HIR::Literal(e);
+            ),
+        (BorrowOf,
             return ::HIR::Literal(e);
             ),
         (String,
@@ -172,18 +177,26 @@ namespace {
         return *rv_p;
     }
     
-    ::HIR::Literal evaluate_constant(const ::HIR::Crate& crate, const ::HIR::ExprNode& expr)
+    ::HIR::Literal evaluate_constant(const ::HIR::Crate& crate, t_new_values& newval_output, const ::HIR::ItemPath& mod_path, ::std::string prefix, const ::HIR::ExprNode& expr)
     {
         struct Visitor:
             public ::HIR::ExprVisitor
         {
             const ::HIR::Crate& m_crate;
+            t_new_values&   m_newval_output;
+            const ::HIR::ItemPath&  m_mod_path;
+            ::std::string   m_name_prefix;
+            
             ::std::vector< ::std::pair< ::std::string, ::HIR::Literal > >   m_values;
             
+            ::HIR::TypeRef  m_exp_type;
             ::HIR::Literal  m_rv;
             
-            Visitor(const ::HIR::Crate& crate):
-                m_crate(crate)
+            Visitor(const ::HIR::Crate& crate, t_new_values& newval_output, const ::HIR::ItemPath& mod_path, ::std::string prefix):
+                m_crate(crate),
+                m_newval_output(newval_output),
+                m_mod_path(mod_path),
+                m_name_prefix(prefix)
             {}
             
             void badnode(const ::HIR::ExprNode& node) const {
@@ -192,8 +205,11 @@ namespace {
             
             void visit(::HIR::ExprNode_Block& node) override {
                 TRACE_FUNCTION_F("_Block");
+                
                 for(const auto& e : node.m_nodes)
+                {
                     e->visit(*this);
+                }
             }
             void visit(::HIR::ExprNode_Return& node) override {
                 TODO(node.span(), "ExprNode_Return");
@@ -339,7 +355,24 @@ namespace {
                 }
             }
             void visit(::HIR::ExprNode_Borrow& node) override {
-                TODO(node.span(), "&/&mut in constant");
+                //auto ty = m_exp_type;
+                
+                node.m_value->visit(*this);
+                auto val = mv$(m_rv);
+                
+                if( node.m_type != ::HIR::BorrowType::Shared ) {
+                    ERROR(node.span(), E0000, "Only shared borrows are allowed in constants");
+                }
+                
+                // Create new static containing borrowed data
+                auto name = FMT(m_name_prefix << &node);
+                m_newval_output.push_back(::std::make_pair( name, ::HIR::Static {
+                    false,
+                    ::HIR::TypeRef(),
+                    ::HIR::ExprNodeP(),
+                    mv$(val)
+                    } ));
+                m_rv = ::HIR::Literal::make_BorrowOf( (m_mod_path + name).get_simple_path() );
             }
             void visit(::HIR::ExprNode_Cast& node) override {
                 TRACE_FUNCTION_F("_Cast");
@@ -525,7 +558,7 @@ namespace {
             }
         };
         
-        Visitor v { crate };
+        Visitor v { crate, newval_output, mod_path, prefix };
         const_cast<::HIR::ExprNode&>(expr).visit(v);
         
         if( v.m_rv.is_Invalid() ) {
@@ -539,18 +572,37 @@ namespace {
         public ::HIR::Visitor
     {
         const ::HIR::Crate& m_crate;
+        const ::HIR::ItemPath*  m_mod_path;
+        t_new_values    m_new_values;
 
     public:
         Expander(const ::HIR::Crate& crate):
             m_crate(crate)
         {}
         
+        void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
+        {
+            auto saved_mp = m_mod_path;
+            m_mod_path = &p;
+            auto saved = mv$( m_new_values );
+            
+            ::HIR::Visitor::visit_module(p, mod);
+            
+            //auto items = mv$( m_new_values );
+            //for( auto item : items )
+            //{
+            //    
+            //}
+            m_new_values = mv$(saved);
+            m_mod_path = saved_mp;
+        }
+        
         void visit_type(::HIR::TypeRef& ty) override
         {
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
                 ::HIR::Visitor::visit_type(*e.inner);
                 assert(e.size.get() != nullptr);
-                auto val = evaluate_constant(m_crate, *e.size);
+                auto val = evaluate_constant(m_crate, m_new_values, *m_mod_path, FMT("ty_" << &ty << "$"), *e.size);
                 if( !val.is_Integer() )
                     ERROR(e.size->span(), E0000, "Array size isn't an integer");
                 e.size_val = val.as_Integer();
@@ -563,13 +615,13 @@ namespace {
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override
         {
             visit_type(item.m_type);
-            item.m_value_res = evaluate_constant(m_crate, *item.m_value);
+            item.m_value_res = evaluate_constant(m_crate, m_new_values, *m_mod_path, FMT(p.get_name() << "$"), *item.m_value);
             DEBUG("constant: " << item.m_type <<  " = " << item.m_value_res);
         }
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override
         {
             visit_type(item.m_type);
-            item.m_value_res = evaluate_constant(m_crate, *item.m_value);
+            item.m_value_res = evaluate_constant(m_crate, m_new_values, *m_mod_path, FMT(p.get_name() << "$"), *item.m_value);
             DEBUG("static: " << item.m_type <<  " = " << item.m_value_res);
         }
         void visit_expr(::HIR::ExprPtr& expr) override
@@ -604,7 +656,7 @@ namespace {
                 }
 
                 void visit(::HIR::ExprNode_ArraySized& node) override {
-                    auto val = evaluate_constant(m_exp.m_crate, *node.m_size);
+                    auto val = evaluate_constant(m_exp.m_crate, m_exp.m_new_values, *m_exp.m_mod_path, FMT("array_" << &node << "$"), *node.m_size);
                     if( !val.is_Integer() )
                         ERROR(node.span(), E0000, "Array size isn't an integer");
                     node.m_size_val = val.as_Integer();

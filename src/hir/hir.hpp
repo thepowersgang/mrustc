@@ -46,6 +46,7 @@ TAGGED_UNION(Literal, Invalid,
     (List, ::std::vector<Literal>), // TODO: Have a variant for repetition lists
     (Integer, uint64_t),
     (Float, double),
+    (BorrowOf, ::HIR::SimplePath),
     // String = &'static str or &[u8; N]
     (String, ::std::string)
     );
@@ -368,6 +369,9 @@ public:
             assert(!name);
             return ::HIR::SimplePath();
         }
+    }
+    const char* get_name() const {
+        return name ? name : "";
     }
     
     ItemPath operator+(const ::std::string& name) const {

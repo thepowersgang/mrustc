@@ -21,6 +21,9 @@ namespace HIR {
         (Float,
             os << e;
             ),
+        (BorrowOf,
+            os << "&" << e;
+            ),
         (String,
             os << "\"" << e << "\"";
             )
