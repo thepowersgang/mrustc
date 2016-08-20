@@ -32,8 +32,7 @@ struct NamedNS
 
 template <typename T>
 struct Named:
-    public NamedNS<T>,
-    public Serialisable
+    public NamedNS<T>
 {
     Named():
         NamedNS<T>()
@@ -43,11 +42,6 @@ struct Named:
     Named(::std::string name, T data, bool is_pub):
         NamedNS<T>( ::std::move(name), ::std::move(data), is_pub )
     {}
-    SERIALISE_TYPE_A(, "Named", {
-        s.item(this->name);
-        s.item(this->data);
-        s.item(this->is_pub);
-    })
 };
 
 template <typename T>

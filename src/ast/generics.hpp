@@ -6,8 +6,7 @@
 namespace AST {
 
 
-class TypeParam:
-    public Serialisable
+class TypeParam
 {
     ::std::string   m_name;
     TypeRef m_default;
@@ -22,15 +21,14 @@ public:
     }
     
     const ::std::string&    name() const { return m_name; }
-    const TypeRef& get_default() const { return m_default; }
     
-    TypeRef& get_default() { return m_default; }
+    const TypeRef& get_default() const { return m_default; }
+          TypeRef& get_default()       { return m_default; }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeParam& tp);
-    SERIALISABLE_PROTOTYPES();
 };
 
-TAGGED_UNION_EX( GenericBound, (: public Serialisable), Lifetime,
+TAGGED_UNION_EX( GenericBound, (), Lifetime,
     (
     // Lifetime bound: 'test must be valid for 'bound
     (Lifetime, struct {
@@ -68,7 +66,6 @@ TAGGED_UNION_EX( GenericBound, (: public Serialisable), Lifetime,
     (, span(x.span) ), ( span = x.span; ),
     (
     public:
-        SERIALISABLE_PROTOTYPES();
         
         Span    span;
         
@@ -88,8 +85,7 @@ TAGGED_UNION_EX( GenericBound, (: public Serialisable), Lifetime,
 
 ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x);
 
-class GenericParams:
-    public Serialisable
+class GenericParams
 {
     ::std::vector<TypeParam>    m_type_params;
     ::std::vector< ::std::string > m_lifetime_params;
@@ -118,10 +114,10 @@ public:
     }
     
     const ::std::vector<TypeParam>& ty_params() const { return m_type_params; }
+          ::std::vector<TypeParam>& ty_params()       { return m_type_params; }
     const ::std::vector< ::std::string>&    lft_params() const { return m_lifetime_params; }
     const ::std::vector<GenericBound>& bounds() const { return m_bounds; }
-    ::std::vector<TypeParam>& ty_params() { return m_type_params; }
-    ::std::vector<GenericBound>& bounds() { return m_bounds; }
+          ::std::vector<GenericBound>& bounds()       { return m_bounds; }
     
     void add_ty_param(TypeParam param) { m_type_params.push_back( ::std::move(param) ); }
     void add_lft_param(::std::string name) { m_lifetime_params.push_back( ::std::move(name) ); }
@@ -134,7 +130,6 @@ public:
     bool check_params(Crate& crate, ::std::vector<TypeRef>& types, bool allow_infer) const;
     
     friend ::std::ostream& operator<<(::std::ostream& os, const GenericParams& tp);
-    SERIALISABLE_PROTOTYPES();
 };
 
 

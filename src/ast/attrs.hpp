@@ -7,8 +7,7 @@ namespace AST {
 //
 class MetaItem;
 
-class MetaItems:
-    public Serialisable
+class MetaItems
 {
 public:
     Span    m_span;
@@ -37,8 +36,6 @@ public:
     friend ::std::ostream& operator<<(::std::ostream& os, const MetaItems& x) {
         return os << "[" << x.m_items << "]";
     }
-    
-    SERIALISABLE_PROTOTYPES();
 };
 
 
@@ -52,8 +49,7 @@ TAGGED_UNION(MetaItemData, None,
         })
     );
 
-class MetaItem:
-    public Serialisable
+class MetaItem
 {
     ::std::string   m_name;
     MetaItemData    m_data;
@@ -106,8 +102,6 @@ public:
         )
         return os;
     }
-    
-    SERIALISABLE_PROTOTYPES();
 };
 
 }   // namespace AST

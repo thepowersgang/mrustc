@@ -1,9 +1,6 @@
 #ifndef CORETYPES_HPP_INCLUDED
 #define CORETYPES_HPP_INCLUDED
 
-class Serialiser;
-class Deserialiser;
-
 enum eCoreType
 {
     CORETYPE_INVAL,
@@ -21,7 +18,5 @@ enum eCoreType
 
 extern enum eCoreType coretype_fromstring(const ::std::string& name);
 extern const char* coretype_name(const eCoreType ct);
-extern void operator% (::Serialiser& d, eCoreType ct);
-extern void operator% (::Deserialiser& d, eCoreType& ct);
 
 #endif // CORETYPES_HPP_INCLUDED

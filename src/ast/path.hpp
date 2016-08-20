@@ -97,8 +97,7 @@ struct PathParams
     friend ::std::ostream& operator<<(::std::ostream& os, const PathParams& x);
 };
 
-class PathNode:
-    public ::Serialisable
+class PathNode
 {
     ::std::string   m_name;
     PathParams  m_params;
@@ -115,12 +114,9 @@ public:
     
     bool operator==(const PathNode& x) const { return ord(x) == OrdEqual; }
     friend ::std::ostream& operator<<(::std::ostream& os, const PathNode& pn);
-    
-    SERIALISABLE_PROTOTYPES();
 };
 
-class Path:
-    public ::Serialisable
+class Path
 {
 public:
     TAGGED_UNION(Class, Invalid,
@@ -301,12 +297,8 @@ public:
     bool operator!=(const Path& x) const { return ord(x) != OrdEqual; }
     bool operator<(const Path& x) const { return ord(x) != OrdLess; }
     
-    static ::std::unique_ptr<Path> from_deserialiser(Deserialiser& s);
-    SERIALISABLE_PROTOTYPES(); 
     void print_pretty(::std::ostream& os, bool is_type_context) const;
     friend ::std::ostream& operator<<(::std::ostream& os, const Path& path);
-    friend ::Serialiser& operator<<(Serialiser& s, Path::Class pc);
-    friend void operator>>(Deserialiser& s, Path::Class& pc);
 private:
     static void resolve_args_nl(::std::vector<PathNode>& nodes, ::std::function<TypeRef(const char*)> fcn);
     

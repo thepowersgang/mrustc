@@ -18,8 +18,7 @@ using ::std::unique_ptr;
 
 class NodeVisitor;
 
-class ExprNode:
-    public Serialisable
+class ExprNode
 {
     TypeRef m_res_type;
     MetaItems   m_attrs;
@@ -49,8 +48,7 @@ public:
 #define NODE_METHODS()  \
     void visit(NodeVisitor& nv) override;\
     void print(::std::ostream& os) const override; \
-    ::std::unique_ptr<ExprNode> clone() const override; \
-    SERIALISABLE_PROTOTYPES();
+    ::std::unique_ptr<ExprNode> clone() const override;
 
 struct ExprNode_Block:
     public ExprNode
@@ -237,8 +235,7 @@ struct ExprNode_Loop:
     NODE_METHODS();
 };
 
-struct ExprNode_Match_Arm:
-    public Serialisable
+struct ExprNode_Match_Arm
 {
     MetaItems   m_attrs;
     ::std::vector<Pattern>  m_patterns;
@@ -254,8 +251,6 @@ struct ExprNode_Match_Arm:
         m_cond( mv$(cond) ),
         m_code( mv$(code) )
     {}
-
-    SERIALISABLE_PROTOTYPES();
 };
     
 struct ExprNode_Match:
@@ -686,8 +681,7 @@ public:
     #undef NT
 };
 
-class Expr:
-    public Serialisable
+class Expr
 {
     ::std::shared_ptr<ExprNode> m_node;
 public:
@@ -712,8 +706,6 @@ public:
     void visit_nodes(NodeVisitor& v) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Expr& pat);
-    
-    SERIALISABLE_PROTOTYPES();
 };
 
 typedef ::std::unique_ptr<AST::ExprNode>    ExprNodeP;

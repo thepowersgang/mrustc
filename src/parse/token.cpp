@@ -372,6 +372,14 @@ void operator%(::Deserialiser& s, enum eTokenType& c) {
     s.item(n);
     c = Token::typefromstr(n);
 }
+void operator%(::Serialiser& s, enum eCoreType t) {
+    s << coretype_name(t);
+}
+void operator%(::Deserialiser& s, enum eCoreType& t) {
+    ::std::string   n;
+    s.item(n);
+    t = coretype_fromstring(n);
+}
 SERIALISE_TYPE(Token::, "Token", {
     s % m_type;
     s << Token::Data::tag_to_str(m_data.tag());

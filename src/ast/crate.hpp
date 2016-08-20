@@ -9,8 +9,7 @@ namespace AST {
 
 class ExternCrate;
 
-class Crate:
-    public Serialisable
+class Crate
 {
 public:
     ::std::map< TypeRef, ::std::vector<Impl*> >  m_impl_map;
@@ -47,14 +46,11 @@ public:
     void load_externs();
     
     void load_extern_crate(::std::string name);
-    
-    SERIALISABLE_PROTOTYPES();
 };
 
 /// Representation of an imported crate
 /// - Functions are stored as resolved+typechecked ASTs
-class ExternCrate:
-    public Serialisable
+class ExternCrate
 {
     ::std::map< ::std::string, MacroRulesPtr > m_mr_macros;
     
@@ -73,8 +69,6 @@ public:
     //const Crate& crate() const { return m_crate; }
     //Module& root_module() { return m_crate.root_module(); }
     //const Module& root_module() const { return m_crate.root_module(); }
-    
-    SERIALISABLE_PROTOTYPES();
 };
 
 }   // namespace AST

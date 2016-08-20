@@ -44,9 +44,6 @@ MetaItem* MetaItems::get(const char *name)
     }
     return 0;
 }
-SERIALISE_TYPE_A(MetaItems::, "AST_MetaItems", {
-    s.item(m_items);
-})
 
 MetaItem::~MetaItem()
 {
@@ -67,41 +64,10 @@ MetaItem MetaItem::clone() const
     throw ::std::runtime_error("MetaItem::clone - Fell off end");
 }
 
-
-SERIALISE_TYPE(MetaItem::, "AST_MetaItem", {
-    s << m_name;
-    //s << m_str_val;
-    //s << m_sub_items;
-},{
-    s.item(m_name);
-    //s.item(m_str_val);
-    //s.item(m_sub_items);
-})
-
-template<typename T>
-void operator<<(Serialiser& s, const Spanned<T>& x) {
-    //s << x.sp;
-    s << x.ent;
-}
-template<typename T>
-void operator>>(Deserialiser& s, Spanned<T>& x) {
-    //s >> x.sp;
-    s >> x.ent;
-}
-
 ::std::ostream& operator<<(::std::ostream& os, const ImplDef& impl)
 {
     return os << "impl<" << impl.m_params << "> " << impl.m_trait.ent << " for " << impl.m_type << "";
 }
-SERIALISE_TYPE(ImplDef::, "AST_ImplDef", {
-    s << m_params;
-    s << m_trait;
-    s << m_type;
-},{
-    s.item(m_params);
-    s >> m_trait;
-    s.item(m_type);
-})
 
 void Impl::add_function(bool is_public, bool is_specialisable, ::std::string name, Function fcn)
 {
@@ -132,11 +98,6 @@ bool Impl::has_named_item(const ::std::string& name) const
 {
     return os << impl.m_def;
 }
-SERIALISE_TYPE(Impl::, "AST_Impl", {
-    s << m_def;
-},{
-    s.item(m_def);
-})
 
 ::rust::option<char> ImplRef::find_named_item(const ::std::string& name) const
 {
@@ -154,35 +115,13 @@ SERIALISE_TYPE(Impl::, "AST_Impl", {
     return os;
 }
 
-SERIALISE_TYPE_A(UseStmt::, "AST_UseStmt", {
-    //s.item(sp);
-    s.item(attrs);
-    s.item(path);
-})
 
 
 MacroInvocation MacroInvocation::clone() const
 {
     return MacroInvocation(m_span, m_attrs.clone(), m_macro_name, m_ident, m_input.clone());
 }
-SERIALISE_TYPE_A(MacroInvocation::, "AST_MacroInvocation", {
-    s.item(m_attrs);
-    s.item(m_macro_name);
-    s.item(m_ident);
-    s.item(m_input);
-})
 
-SERIALISE_TYPE_A(Module::, "AST_Module", {
-    s.item(m_my_path);
-    
-    s.item(m_items);
-    
-    s.item(m_macros);
-    
-    s.item(m_imports);
-    
-    s.item(m_impls);
-})
 
 ::std::unique_ptr<AST::Module> Module::add_anon() {
     auto rv = box$( Module(m_my_path + FMT("#" << m_anon_modules.size())) );
@@ -362,69 +301,7 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
     return Module::ItemRef();
 }
 
-SERIALISE_TYPE(Item::, "AST_Item", {
-    s.item(attrs);
-},{
-    s.item(attrs);
-})
 
-SERIALISE_TYPE(TypeAlias::, "AST_TypeAlias", {
-    s << m_params;
-    s << m_type;
-},{
-    s.item(m_params);
-    s.item(m_type);
-})
-
-::Serialiser& operator<<(::Serialiser& s, Static::Class fc)
-{
-    switch(fc)
-    {
-    case Static::CONST:  s << "CONST"; break;
-    case Static::STATIC: s << "STATIC"; break;
-    case Static::MUT:    s << "MUT"; break;
-    }
-    return s;
-}
-void operator>>(::Deserialiser& s, Static::Class& fc)
-{
-    ::std::string   n;
-    s.item(n);
-         if(n == "CONST")   fc = Static::CONST;
-    else if(n == "STATIC")  fc = Static::STATIC;
-    else if(n == "MUT")     fc = Static::MUT;
-    else
-        throw ::std::runtime_error("Deserialise Static::Class");
-}
-SERIALISE_TYPE(Static::, "AST_Static", {
-    s << m_class;
-    s << m_type;
-    s << m_value;
-},{
-    s >> m_class;
-    s.item(m_type);
-    s.item(m_value);
-})
-
-SERIALISE_TYPE(Function::, "AST_Function", {
-    s << m_params;
-    s << m_rettype;
-    s << m_args;
-    s << m_code;
-},{
-    s.item(m_params);
-    s.item(m_rettype);
-    s.item(m_args);
-    s.item(m_code);
-})
-
-SERIALISE_TYPE(Trait::, "AST_Trait", {
-    s << m_params;
-    s << m_items;
-},{
-    s.item(m_params);
-    s.item(m_items);
-})
 void Trait::add_type(::std::string name, TypeRef type) {
     m_items.push_back( Named<Item>(mv$(name), Item::make_Type({TypeAlias(GenericParams(), mv$(type))}), true) );
 }
@@ -453,51 +330,6 @@ bool Trait::has_named_item(const ::std::string& name, bool& out_is_fcn) const
     return false;
 }
 
-SERIALISE_TYPE_A(EnumVariant::, "AST_EnumVariant", {
-    s.item(m_attrs);
-    s.item(m_name);
-    s.item(m_data);
-})
-SERIALISE_TYPE(EnumVariantData::, "AST_EnumVariantData", {
-    // TODO: Serialise AST::EnumVariantData
-    (void)s;
-},{
-    (void)s;
-})
-
-SERIALISE_TYPE(Enum::, "AST_Enum", {
-    s << m_params;
-    s << m_variants;
-},{
-    s.item(m_params);
-    s.item(m_variants);
-})
-
-SERIALISE_TYPE(Struct::, "AST_Struct", {
-    s << m_params;
-    s << m_data;
-},{
-    s.item(m_params);
-    s.item(m_data);
-})
-SERIALISE_TYPE(StructData::, "AST_StructData", {
-    // TODO: AST::StructData serialise
-    (void)s;
-},{
-    (void)s;
-})
-SERIALISE_TYPE(StructItem::, "AST_StructItem", {
-    // TODO: AST::StructItem serialise
-    (void)s;
-},{
-    (void)s;
-})
-SERIALISE_TYPE(TupleItem::, "AST_TupleItem", {
-    // TODO: AST::TupleItem serialise
-    (void)s;
-},{
-    (void)s;
-})
 
 ::std::ostream& operator<<(::std::ostream& os, const TypeParam& tp)
 {
@@ -508,13 +340,6 @@ SERIALISE_TYPE(TupleItem::, "AST_TupleItem", {
     //os << ")";
     return os;
 }
-SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
-    s << m_name;
-    s << m_default;
-},{
-    s.item(m_name);
-    s.item(m_default);
-})
 
 ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x)
 {
@@ -548,46 +373,6 @@ SERIALISE_TYPE(TypeParam::, "AST_TypeParam", {
     return os;
 }
 
-#if 0
-#define SERIALISE_TU_ARM(CLASS, NAME, TAG, ...)    case CLASS::TAG_##TAG: { *this = CLASS::make_##TAG({}); auto& NAME = this->as_##TAG(); (void)&NAME; __VA_ARGS__ } break;
-#define SERIALISE_TU_ARMS(CLASS, NAME, ...)    TU_GMA(__VA_ARGS__)(SERIALISE_TU_ARM, (CLASS, NAME), __VA_ARGS__)
-#define SERIALISE_TU(PATH, TAG, NAME, ...) \
-    void operator%(::Serialiser& s, PATH::Tag c) { s << PATH::tag_to_str(c); } \
-    void operator%(::Deserialiser& s, PATH::Tag& c) { ::std::string n; s.item(n); c = PATH::tag_from_str(n); }\
-    SERIALISE_TYPE(PATH::, TAG, {\
-        s % this->tag(); TU_MATCH(PATH, ((*this)), (NAME), __VA_ARGS__)\
-    }, {\
-        PATH::Tag tag; s % tag; switch(tag) { case PATH::TAGDEAD: throw ""; SERIALISE_TU_ARMS(PATH, NAME, __VA_ARGS__) } \
-    })
-#endif
-
-SERIALISE_TU(GenericBound, "GenericBound", ent,
-    (Lifetime,
-        s.item(ent.test);
-        s.item(ent.bound);
-        ),
-    (TypeLifetime,
-        s.item(ent.type);
-        s.item(ent.bound);
-        ),
-    (IsTrait,
-        s.item(ent.type);
-        s.item(ent.hrls);
-        s.item(ent.trait);
-        ),
-    (MaybeTrait,
-        s.item(ent.type);
-        s.item(ent.trait);
-        ),
-    (NotTrait,
-        s.item(ent.type);
-        s.item(ent.trait);
-        ),
-    (Equality,
-        s.item(ent.type);
-        s.item(ent.replacement);
-        )
-)
 
 int GenericParams::find_name(const char* name) const
 {
@@ -604,10 +389,5 @@ int GenericParams::find_name(const char* name) const
 {
     return os << "<" << tps.m_lifetime_params << "," << tps.m_type_params << "> where {" << tps.m_bounds << "}";
 }
-SERIALISE_TYPE_S(GenericParams, {
-    s.item(m_type_params);
-    s.item(m_lifetime_params);
-    s.item(m_bounds);
-})
 
-}
+}    // namespace AST

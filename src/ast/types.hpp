@@ -35,8 +35,7 @@ struct TypeArgRef
     const AST::GenericParams*  params;
 };
 
-struct Type_Function:
-    public Serialisable
+struct Type_Function
 {
     bool    is_unsafe;
     ::std::string   m_abi;
@@ -54,8 +53,6 @@ struct Type_Function:
     Type_Function(const Type_Function& other);
 
     Ordering ord(const Type_Function& x) const;
-    
-    SERIALISABLE_PROTOTYPES();
 };
 
 TAGGED_UNION(TypeData, None,
@@ -101,8 +98,7 @@ TAGGED_UNION(TypeData, None,
     );
 
 /// A type
-class TypeRef:
-    public Serialisable
+class TypeRef
 {
     Span    m_span;
 public:
@@ -282,9 +278,6 @@ public:
     friend class PrettyPrintType;
     
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr);
-   
-    static ::std::unique_ptr<TypeRef> from_deserialiser(Deserialiser& s);
-    SERIALISABLE_PROTOTYPES(); 
 };
 
 #endif // TYPES_HPP_INCLUDED

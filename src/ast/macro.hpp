@@ -8,8 +8,7 @@
 
 namespace AST {
 
-class MacroInvocation:
-    public Serialisable
+class MacroInvocation
 {
     Span    m_span;
     
@@ -38,12 +37,6 @@ public:
     
     MacroInvocation clone() const;
 
-    static ::std::unique_ptr<MacroInvocation> from_deserialiser(Deserialiser& s) {
-        auto i = new MacroInvocation;
-        s.item( *i );
-        return ::std::unique_ptr<MacroInvocation>(i);
-    }
-
     void clear() {
         m_macro_name = "";
         m_ident = "";
@@ -59,9 +52,6 @@ public:
     const ::std::string& input_ident() const { return m_ident; }
     const TokenTree& input_tt() const { return m_input; }
 
-
-    SERIALISABLE_PROTOTYPES();
-    
     friend ::std::ostream& operator<<(::std::ostream& os, const MacroInvocation& x) {
         os << x.m_attrs;
         if(x.m_attrs.m_items.size() > 0)

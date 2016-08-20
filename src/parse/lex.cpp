@@ -1161,10 +1161,6 @@ TokenTree TokenTree::clone() const
         return TokenTree( mv$(ents) );
     }
 }
-SERIALISE_TYPE_A(TokenTree::, "TokenTree", {
-    s.item(m_tok);
-    s.item(m_subtrees);
-})
 
 bool Codepoint::isspace() const {
     switch(this->v)

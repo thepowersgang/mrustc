@@ -66,26 +66,15 @@ void Crate::load_extern_crate(::std::string name)
     {
         throw ParseError::Generic("Can't open crate '" + name + "'");
     }
-    Deserialiser_TextTree   ds(is);
-    Deserialiser&   d = ds;
+    //Deserialiser_TextTree   ds(is);
+    //Deserialiser&   d = ds;
     
     ExternCrate ret;
-    ret.deserialise( d );
+    
+    // TODO: ...
     
     m_extern_crates.insert( make_pair(::std::move(name), ::std::move(ret)) );
 }
-SERIALISE_TYPE(Crate::, "AST_Crate", {
-    unsigned ls = m_load_std;
-    s.item(ls);
-    s.item(m_extern_crates);
-    s.item(m_root_module);
-},{
-    unsigned ls = m_load_std;
-    s.item(ls);
-    m_load_std = (::AST::Crate::LoadStd)ls;
-    s.item(m_extern_crates);
-    s.item(m_root_module);
-})
 
 ExternCrate::ExternCrate()
 {
@@ -96,35 +85,6 @@ ExternCrate::ExternCrate(const char *path)
     throw ParseError::Todo( FMT("Load extern crate from a file - '" << path << "'") );
 }
 
-// Fill runtime-generated structures in the crate
-#if 0
-void ExternCrate::prescan()
-{
-    TRACE_FUNCTION;
-    
-    Crate& cr = m_crate;
-
-    cr.m_root_module.prescan();
-    
-    for( const auto& mi : cr.m_root_module.macro_imports_res() )
-    {
-        DEBUG("Macro (I) '"<<mi.name<<"' is_pub="<<mi.is_pub);
-        if( mi.is_pub )
-        {
-            m_crate.m_exported_macros.insert( ::std::make_pair(mi.name, mi.data) );
-        }
-    }
-    for( const auto& mi : cr.m_root_module.macros() )
-    {
-        DEBUG("Macro '"<<mi.name<<"' is_pub="<<mi.is_pub);
-        if( mi.is_pub )
-        {
-            m_crate.m_exported_macros.insert( ::std::make_pair(mi.name, &mi.data) );
-        }
-    }
-}
-#endif
-
 const MacroRules* ExternCrate::find_macro_rules(const ::std::string& name)
 {
     auto i = m_mr_macros.find(name);
@@ -132,12 +92,6 @@ const MacroRules* ExternCrate::find_macro_rules(const ::std::string& name)
         return &*i->second;
     return nullptr;
 }
-
-SERIALISE_TYPE(ExternCrate::, "AST_ExternCrate", {
-    (void)s;
-},{
-    (void)s;
-})
 
 
 }   // namespace AST

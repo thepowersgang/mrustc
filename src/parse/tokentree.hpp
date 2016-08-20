@@ -2,10 +2,8 @@
 #define TOKENTREE_HPP_INCLUDED
 
 #include "lex.hpp"
-#include "../include/serialise.hpp"
 
-class TokenTree:
-    public Serialisable
+class TokenTree
 {
     Token   m_tok;
     ::std::vector<TokenTree>    m_subtrees;
@@ -54,8 +52,6 @@ public:
             return os;
         }
     }
-
-    SERIALISABLE_PROTOTYPES();
 };
 
 class TTStream:

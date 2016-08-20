@@ -115,13 +115,6 @@ void PathNode::print_pretty(::std::ostream& os, bool is_type_context) const
     pn.print_pretty(os, false);
     return os;
 }
-SERIALISE_TYPE(PathNode::, "PathNode", {
-    s << m_name;
-    //s << m_params;
-},{
-    s.item(m_name);
-    //s.item(m_params);
-})
 
 /// Return an iterator to the named item
 template<typename T>
@@ -420,55 +413,5 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context) const
     path.print_pretty(os, false);
     return os;
 }
-void operator%(Serialiser& s, Path::Class::Tag c) {
-    s << Path::Class::tag_to_str(c);
-}
-void operator%(::Deserialiser& s, Path::Class::Tag& c) {
-    ::std::string   n;
-    s.item(n);
-    c = Path::Class::tag_from_str(n);
-}
-#define _D(VAR, ...)  case Class::TAG_##VAR: { m_class = Class::make_##VAR({}); auto& ent = m_class.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
-::std::unique_ptr<Path> Path::from_deserialiser(Deserialiser& s) {
-    Path    p;
-    s.item(p);
-    return ::std::unique_ptr<Path>( new Path( mv$(p) ) );
-}
-SERIALISE_TYPE(Path::, "AST_Path", {
-    s % m_class.tag();
-    TU_MATCH(Path::Class, (m_class), (ent),
-    (Invalid),
-    (Local, s << ent.name; ),
-    (Relative, s.item(ent.nodes); ),
-    (Absolute, s.item(ent.nodes); ),
-    (Self    , s.item(ent.nodes); ),
-    (Super   , s.item(ent.nodes); ),
-    (UFCS,
-        s.item( ent.type );
-        s.item( ent.trait );
-        s.item( ent.nodes );
-        )
-    )
-},{
-    Class::Tag  tag;
-    s % tag;
-    switch(tag)
-    {
-    case Class::TAGDEAD: throw "";
-    _D(Invalid)
-    _D(Local   , s.item( ent.name ); )
-    
-    _D(Relative, s.item(ent.nodes); )
-    _D(Absolute, s.item(ent.nodes); )
-    _D(Self    , s.item(ent.nodes); )
-    _D(Super   , s.item(ent.nodes); )
-    _D(UFCS,
-        s.item( ent.type );
-        s.item( ent.trait );
-        s.item( ent.nodes );
-        )
-    }
-})
-#undef _D
 
 }

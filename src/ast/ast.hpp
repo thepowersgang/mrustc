@@ -48,8 +48,7 @@ enum eItemType
     ITEM_FN,
 };
 
-struct StructItem:
-    public Serialisable
+struct StructItem
 {
     ::AST::MetaItems    m_attrs;
     bool    m_is_public;
@@ -71,12 +70,9 @@ struct StructItem:
     friend ::std::ostream& operator<<(::std::ostream& os, const StructItem& x) {
         return os << (x.m_is_public ? "pub " : "") << x.m_name << ": " << x.m_type;
     }
-    
-    SERIALISABLE_PROTOTYPES();
 };
 
-struct TupleItem:
-    public Serialisable
+struct TupleItem
 {
     ::AST::MetaItems    m_attrs;
     bool    m_is_public;
@@ -96,12 +92,9 @@ struct TupleItem:
     friend ::std::ostream& operator<<(::std::ostream& os, const TupleItem& x) {
         return os << (x.m_is_public ? "pub " : "") << x.m_type;
     }
-    
-    SERIALISABLE_PROTOTYPES();
 };
 
-class TypeAlias:
-    public Serialisable
+class TypeAlias
 {
     GenericParams  m_params;
     TypeRef m_type;
@@ -117,12 +110,9 @@ public:
     
     GenericParams& params() { return m_params; }
     TypeRef& type() { return m_type; }
-    
-    SERIALISABLE_PROTOTYPES();
 };
 
-class Static:
-    public Serialisable
+class Static
 {
 public:
     enum Class
@@ -151,12 +141,9 @@ public:
     
     TypeRef& type() { return m_type; }
     Expr& value() { return m_value; }
-    
-    SERIALISABLE_PROTOTYPES();
 };
 
-class Function:
-    public Serialisable
+class Function
 {
 public:
     typedef ::std::vector< ::std::pair<AST::Pattern,TypeRef> >   Arglist;
@@ -192,12 +179,9 @@ public:
     Expr& code() { return m_code; }
     TypeRef& rettype() { return m_rettype; }
     Arglist& args() { return m_args; }
-    
-    SERIALISABLE_PROTOTYPES();
 };
 
-class Trait:
-    public Serialisable
+class Trait
 {
     GenericParams  m_params;
     ::std::vector< Spanned<AST::Path> > m_supertraits;
@@ -231,11 +215,9 @@ public:
     bool is_marker() const;
     
     bool has_named_item(const ::std::string& name, bool& out_is_fcn) const;
-    
-    SERIALISABLE_PROTOTYPES();
 };
 
-TAGGED_UNION_EX(EnumVariantData, (: public Serialisable), Value,
+TAGGED_UNION_EX(EnumVariantData, (), Value,
     (
     (Value, struct {
         ::AST::Expr m_value;
@@ -250,12 +232,10 @@ TAGGED_UNION_EX(EnumVariantData, (: public Serialisable), Value,
     (), (),
     (
     public:
-        SERIALISABLE_PROTOTYPES();
     )
     );
 
-struct EnumVariant:
-    public Serialisable
+struct EnumVariant
 {
     MetaItems   m_attrs;
     ::std::string   m_name;
@@ -302,12 +282,9 @@ struct EnumVariant:
         )
         return os << ")";
     }
-    
-    SERIALISABLE_PROTOTYPES();
 };
 
-class Enum:
-    public Serialisable
+class Enum
 {
     GenericParams    m_params;
     ::std::vector<EnumVariant>   m_variants;
@@ -323,11 +300,9 @@ public:
     
     GenericParams& params() { return m_params; }
     ::std::vector<EnumVariant>& variants() { return m_variants; }
-    
-    SERIALISABLE_PROTOTYPES();
 };
 
-TAGGED_UNION_EX(StructData, (: public Serialisable), Struct,
+TAGGED_UNION_EX(StructData, (), Struct,
     (
     (Tuple, struct {
         ::std::vector<TupleItem>    ents;
@@ -339,12 +314,10 @@ TAGGED_UNION_EX(StructData, (: public Serialisable), Struct,
     (),(),
     (
     public:
-        SERIALISABLE_PROTOTYPES();
         )
     );
 
-class Struct:
-    public Serialisable
+class Struct
 {
     GenericParams    m_params;
 public:
@@ -365,11 +338,9 @@ public:
     
     TypeRef get_field_type(const char *name, const ::std::vector<TypeRef>& args);
     
-    SERIALISABLE_PROTOTYPES();
 };
 
-class ImplDef:
-    public Serialisable
+class ImplDef
 {
     Span    m_span;
     MetaItems   m_attrs;
@@ -401,11 +372,9 @@ public:
 
     
     friend ::std::ostream& operator<<(::std::ostream& os, const ImplDef& impl);
-    SERIALISABLE_PROTOTYPES();
 };
 
-class Impl:
-    public Serialisable
+class Impl
 {
 public:
     struct ImplItem {
@@ -450,13 +419,11 @@ public:
     bool has_named_item(const ::std::string& name) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Impl& impl);
-    SERIALISABLE_PROTOTYPES();
     
 private:
 };
 
-struct UseStmt:
-    public Serialisable
+struct UseStmt
 {
     Span    sp;
     ::AST::Path path;
@@ -471,13 +438,10 @@ struct UseStmt:
     }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const UseStmt& x);
-    
-    SERIALISABLE_PROTOTYPES();
 };
 
 /// Representation of a parsed (and being converted) function
-class Module:
-    public Serialisable
+class Module
 {
 public:
     class ItemRef
@@ -651,14 +615,12 @@ public:
     const NamedList<MacroRulesPtr>&    macros()  const { return m_macros; }
     const ::std::vector<NamedNS<const MacroRules*> >  macro_imports_res() const { return m_macro_import_res; }
 
-
-    SERIALISABLE_PROTOTYPES();
 private:
     void resolve_macro_import(const Crate& crate, const ::std::string& modname, const ::std::string& macro_name);
 };
 
 
-TAGGED_UNION_EX(Item, (: public Serialisable), None,
+TAGGED_UNION_EX(Item, (), None,
     (
     (None, struct {} ),
     (MacroInv, MacroInvocation),
@@ -681,8 +643,6 @@ TAGGED_UNION_EX(Item, (: public Serialisable), None,
     public:
         MetaItems   attrs;
         Span    span;
-        
-        SERIALISABLE_PROTOTYPES();
     )
     );
 

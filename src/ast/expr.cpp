@@ -28,16 +28,6 @@ void Expr::visit_nodes(NodeVisitor& v) const
     else
         return os << "/* null */";
 }
-SERIALISE_TYPE(Expr::, "Expr", {
-    s.item(m_node);
-},{
-    bool tmp;
-    s.item(tmp);
-    if( tmp )
-        m_node = ExprNode::from_deserialiser(s);
-    else
-        m_node.reset();
-});
 
 ::std::ostream& operator<<(::std::ostream& os, const ExprNode& node)
 {
@@ -49,51 +39,13 @@ SERIALISE_TYPE(Expr::, "Expr", {
     }
     return os;
 }
-::std::unique_ptr<ExprNode> ExprNode::from_deserialiser(Deserialiser& d) {
-    ::std::string tag = d.start_object();
-    
-    DEBUG("tag = " << tag);
-    ExprNode*   ptr = nullptr;
-    #define _(x)    if(tag == #x) ptr = new x;
-         _(ExprNode_Block)
-    else _(ExprNode_Macro)
-    else _(ExprNode_Flow)
-    else _(ExprNode_LetBinding)
-    else _(ExprNode_Assign)
-    else _(ExprNode_CallPath)
-    else _(ExprNode_CallMethod)
-    else _(ExprNode_CallObject)
-    else _(ExprNode_Match)
-    else _(ExprNode_Loop)
-    else _(ExprNode_If)
-    else _(ExprNode_IfLet)
-    else _(ExprNode_Integer)
-    else _(ExprNode_Closure)
-    else _(ExprNode_StructLiteral)
-    else _(ExprNode_Array)
-    else _(ExprNode_Tuple)
-    else _(ExprNode_NamedValue)
-    else _(ExprNode_Field)
-    else _(ExprNode_Deref)
-    else _(ExprNode_Cast)
-    else _(ExprNode_BinOp)
-    else _(ExprNode_UniOp)
-    else
-        throw ::std::runtime_error("Unknown node type " + tag);
-    #undef _
-    
-    ptr->deserialise(d);
-    d.end_object(tag.c_str());
-    return ::std::unique_ptr<ExprNode>(ptr);
-}
 ExprNode::~ExprNode() {
 }
 
-#define NODE(class, serialise, _print, _clone)\
+#define NODE(class, _print, _clone)\
     void class::visit(NodeVisitor& nv) { nv.visit(*this); } \
     void class::print(::std::ostream& os) const _print \
-    ::std::unique_ptr<ExprNode> class::clone() const _clone \
-    SERIALISE_TYPE_S(class, serialise)
+    ::std::unique_ptr<ExprNode> class::clone() const _clone
 #define OPT_CLONE(node) (node.get() ? node->clone() : ::AST::ExprNodeP())
 
 namespace {
@@ -105,8 +57,6 @@ namespace {
 }
 
 NODE(ExprNode_Block, {
-    s.item(m_nodes);
-},{
     os << "{";
     for(const auto& n : m_nodes)
         os << *n << ";";
@@ -121,10 +71,6 @@ NODE(ExprNode_Block, {
 })
 
 NODE(ExprNode_Macro, {
-    s.item(m_name);
-    s.item(m_ident);
-    s.item(m_tokens);
-},{
     os << m_name << "!";
     if( m_ident.size() > 0 )
     {
@@ -135,33 +81,7 @@ NODE(ExprNode_Macro, {
     return NEWNODE(ExprNode_Macro, m_name, m_ident, m_tokens.clone());
 })
 
-void operator%(::Serialiser& s, const ExprNode_Flow::Type t) {
-    switch(t)
-    {
-    #define _(v)    case ExprNode_Flow::v: s << #v; return
-    _(RETURN);
-    _(BREAK);
-    _(CONTINUE);
-    #undef _
-    }
-}
-void operator%(::Deserialiser& s, ExprNode_Flow::Type& t) {
-    ::std::string   n;
-    s.item(n);
-    if(0)   ;
-    #define _(v)    else if(n == #v) t = ExprNode_Flow::v
-    _(RETURN);
-    _(BREAK);
-    _(CONTINUE);
-    #undef _
-    else
-        throw ::std::runtime_error("");
-}
 NODE(ExprNode_Flow, {
-    s % m_type;
-    s.item(m_target);
-    s.item(m_value);
-},{
     switch(m_type)
     {
     case RETURN:    os << "return"; break;
@@ -175,28 +95,18 @@ NODE(ExprNode_Flow, {
 
 
 NODE(ExprNode_LetBinding, {
-    s.item(m_pat);
-    s.item(m_type);
-    s.item(m_value);
-},{
     os << "let " << m_pat << ": " << m_type << " = " << *m_value;
 },{
     return NEWNODE(ExprNode_LetBinding, m_pat.clone(), TypeRef(m_type), OPT_CLONE(m_value));
 })
 
 NODE(ExprNode_Assign, {
-    s.item(m_slot);
-    s.item(m_value);
-},{
     os << *m_slot << " = " << *m_value;
 },{
     return NEWNODE(ExprNode_Assign, m_op, m_slot->clone(), m_value->clone());
 })
 
 NODE(ExprNode_CallPath, {
-    s.item(m_path);
-    s.item(m_args);
-},{
     os << m_path << "(";
     for(const auto& a : m_args) {
         os << *a << ",";
@@ -211,10 +121,6 @@ NODE(ExprNode_CallPath, {
 })
 
 NODE(ExprNode_CallMethod, {
-    s.item(m_val);
-    s.item(m_method);
-    s.item(m_args);
-},{
     os << "(" << *m_val << ")." << m_method << "(";
     for(const auto& a : m_args) {
         os << *a << ",";
@@ -229,9 +135,6 @@ NODE(ExprNode_CallMethod, {
 })
 
 NODE(ExprNode_CallObject, {
-    s.item(m_val);
-    s.item(m_args);
-},{
     os << "(" << *m_val << ")(";
     for(const auto& a : m_args) {
         os << *a << ",";
@@ -245,51 +148,13 @@ NODE(ExprNode_CallObject, {
     return NEWNODE(ExprNode_CallObject, m_val->clone(), mv$(args));
 })
 
-void operator%(::Serialiser& s, const ExprNode_Loop::Type t) {
-    switch(t)
-    {
-    #define _(v)    case ExprNode_Loop::v: s << #v; return
-    _(LOOP);
-    _(WHILE);
-    _(WHILELET);
-    _(FOR);
-    #undef _
-    }
-}
-void operator%(::Deserialiser& s, ExprNode_Loop::Type& t) {
-    ::std::string   n;
-    s.item(n);
-    if(0)   ;
-    #define _(v)    else if(n == #v) t = ExprNode_Loop::v
-    _(LOOP);
-    _(WHILE);
-    _(WHILELET);
-    _(FOR);
-    #undef _
-    else
-        throw ::std::runtime_error("");
-}
 NODE(ExprNode_Loop, {
-    s % m_type;
-    s.item(m_label);
-    s.item(m_pattern);
-    s.item(m_cond);
-    s.item(m_code);
-},{
     os << "LOOP [" << m_label << "] " << m_pattern << " in/= " << *m_cond << " " << *m_code;
 },{
     return NEWNODE(ExprNode_Loop, m_label, m_type, m_pattern.clone(), OPT_CLONE(m_cond), m_code->clone());
 })
 
-SERIALISE_TYPE_A(ExprNode_Match_Arm::, "ExprNode_Match_Arm", {
-    s.item(m_patterns);
-    s.item(m_cond);
-    s.item(m_code);
-});
 NODE(ExprNode_Match, {
-    s.item(m_val);
-    s.item(m_arms);
-},{
     os << "match ("<<*m_val<<") {";
     for(const auto& arm : m_arms)
     {
@@ -314,68 +179,43 @@ NODE(ExprNode_Match, {
 })
 
 NODE(ExprNode_If, {
-    s.item(m_cond);
-    s.item(m_true);
-    s.item(m_false);
-},{
     os << "if " << *m_cond << " { " << *m_true << " } else { " << *m_false << " }";
 },{
     return NEWNODE(ExprNode_If, m_cond->clone(), m_true->clone(), OPT_CLONE(m_false));
 })
 NODE(ExprNode_IfLet, {
-    s.item(m_pattern);
-    s.item(m_value);
-    s.item(m_true);
-    s.item(m_false);
-},{
     os << "if let " << m_pattern << " = (" << *m_value << ") { " << *m_true << " } else { " << *m_false << " }";
 },{
     return NEWNODE(ExprNode_IfLet, m_pattern.clone(), m_value->clone(), m_true->clone(), OPT_CLONE(m_false));
 })
 
 NODE(ExprNode_Integer, {
-    s % m_datatype;
-    s.item(m_value);
-},{
     os << m_value;
 },{
     return NEWNODE(ExprNode_Integer, m_value, m_datatype);
 })
 NODE(ExprNode_Float, {
-    s % m_datatype;
-    s.item(m_value);
-},{
     os << m_value;
 },{
     return NEWNODE(ExprNode_Float, m_value, m_datatype);
 })
 NODE(ExprNode_Bool, {
-    s.item(m_value);
-},{
     os << m_value;
 },{
     return NEWNODE(ExprNode_Bool, m_value);
 })
 NODE(ExprNode_String, {
-    s.item(m_value);
-},{
     os << "\"" << m_value << "\"";
 },{
     return NEWNODE(ExprNode_String, m_value);
 })
 NODE(ExprNode_ByteString, {
-    s.item(m_value);
-},{
     os << "b\"" << m_value << "\"";
 },{
     return NEWNODE(ExprNode_ByteString, m_value);
 })
 
 NODE(ExprNode_Closure, {
-    s.item(m_args);
-    s.item(m_return);
-    s.item(m_code);
-},{
     os << "/* todo: closure */";
 },{
     ExprNode_Closure::args_t    args;
@@ -386,10 +226,6 @@ NODE(ExprNode_Closure, {
 });
 
 NODE(ExprNode_StructLiteral, {
-    s.item(m_path);
-    s.item(m_base_value);
-    s.item(m_values);
-},{
     os << "/* todo: sl */";
 },{
     ExprNode_StructLiteral::t_values    vals;
@@ -402,9 +238,6 @@ NODE(ExprNode_StructLiteral, {
 })
 
 NODE(ExprNode_Array, {
-    s.item(m_size);
-    s.item(m_values);
-},{
     os << "[";
     if( m_size.get() )
         os << *m_values[0] << "; " << *m_size;
@@ -427,8 +260,6 @@ NODE(ExprNode_Array, {
 })
 
 NODE(ExprNode_Tuple, {
-    s.item(m_values);
-},{
     os << "(";
     for(const auto& a : m_values) {
         os << *a << ",";
@@ -442,110 +273,36 @@ NODE(ExprNode_Tuple, {
 })
 
 NODE(ExprNode_NamedValue, {
-    s.item(m_path);
-},{
     os << m_path;
 },{
     return NEWNODE(ExprNode_NamedValue, AST::Path(m_path));
 })
 
 NODE(ExprNode_Field, {
-    s.item(m_obj);
-    s.item(m_name);
-},{
     os << "(" << *m_obj << ")." << m_name;
 },{
     return NEWNODE(ExprNode_Field, m_obj->clone(), m_name);
 })
 
 NODE(ExprNode_Index, {
-    s.item(m_obj);
-    s.item(m_idx);
-},{
     os << "(" << *m_obj << ")[" << *m_idx << "]";
 },{
     return NEWNODE(ExprNode_Index, m_obj->clone(), m_idx->clone());
 })
 
 NODE(ExprNode_Deref, {
-    s.item(m_value);
-},{
     os << "*(" << *m_value << ")";
 },{
     return NEWNODE(ExprNode_Deref, m_value->clone());
 });
 
 NODE(ExprNode_Cast, {
-    s.item(m_value);
-    s.item(m_type);
-},{
     os << "(" << *m_value << " as " << m_type << ")";
 },{
     return NEWNODE(ExprNode_Cast, m_value->clone(), TypeRef(m_type));
 })
 
-void operator%(::Serialiser& s, const ExprNode_BinOp::Type& t) {
-    switch(t)
-    {
-    #define _(v)    case ExprNode_BinOp::v: s << #v; return
-    _(CMPEQU);
-    _(CMPNEQU);
-    _(CMPLT);
-    _(CMPLTE);
-    _(CMPGT);
-    _(CMPGTE);
-    _(RANGE);
-    _(RANGE_INC);
-    _(BOOLAND);
-    _(BOOLOR);
-    _(BITAND);
-    _(BITOR);
-    _(BITXOR);
-    _(SHL);
-    _(SHR);
-    _(MULTIPLY);
-    _(DIVIDE);
-    _(MODULO);
-    _(ADD);
-    _(SUB);
-    _(PLACE_IN);
-    #undef _
-    }
-}
-void operator%(::Deserialiser& s, ExprNode_BinOp::Type& t) {
-    ::std::string   n;
-    s.item(n);
-    if(0)   ;
-    #define _(v)    else if(n == #v) t = ExprNode_BinOp::v
-    _(CMPEQU);
-    _(CMPNEQU);
-    _(CMPLT);
-    _(CMPLTE);
-    _(CMPGT);
-    _(CMPGTE);
-    _(RANGE);
-    _(RANGE_INC);
-    _(BOOLAND);
-    _(BOOLOR);
-    _(BITAND);
-    _(BITOR);
-    _(BITXOR);
-    _(SHL);
-    _(SHR);
-    _(MULTIPLY);
-    _(DIVIDE);
-    _(MODULO);
-    _(ADD);
-    _(SUB);
-    #undef _
-    else
-        throw ::std::runtime_error("");
-}
 NODE(ExprNode_BinOp, {
-    s % m_type;
-    s.item(m_left);
-    s.item(m_right);
-},{
     os << "(" << *m_left << " ";
     switch(m_type)
     {
@@ -576,38 +333,7 @@ NODE(ExprNode_BinOp, {
     return NEWNODE(ExprNode_BinOp, m_type, OPT_CLONE(m_left), OPT_CLONE(m_right));
 })
 
-void operator%(::Serialiser& s, const ExprNode_UniOp::Type t) {
-    switch(t)
-    {
-    #define _(v)    case ExprNode_UniOp::v: s << #v; return;
-    _(NEGATE)
-    _(INVERT)
-    _(BOX)
-    _(REF)
-    _(REFMUT)
-    _(QMARK)
-    #undef _
-    }
-}
-void operator%(::Deserialiser& s, enum ExprNode_UniOp::Type& t) {
-    ::std::string   n;
-    s.item(n);
-    if(1)   ;
-    #define _(v)    else if(n == #v) t = ExprNode_UniOp::v;
-    _(NEGATE)
-    _(INVERT)
-    _(BOX)
-    _(REF)
-    _(REFMUT)
-    _(QMARK)
-    #undef _
-    else
-        throw ::std::runtime_error( FMT("No uniop type for '" << n << "'") );
-}
 NODE(ExprNode_UniOp, {
-    s % m_type;
-    s.item(m_value);
-},{
     switch(m_type)
     {
     case NEGATE: os << "(-"; break;
