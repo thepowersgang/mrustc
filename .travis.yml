@@ -1,5 +1,6 @@
 language: cpp
 install: make
+compiler: clang
 sudo: false
 
 before_script:
