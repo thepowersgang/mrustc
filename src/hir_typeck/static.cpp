@@ -711,16 +711,33 @@ bool StaticTraitResolve::type_is_copy(const ::HIR::TypeRef& ty) const
         return false;
         ),
     (Borrow,
+        // Only shared &-ptrs are copy
         return (e.type == ::HIR::BorrowType::Shared);
         ),
     (Pointer,
+        // All raw pointers are Copy
+        return true;
+        ),
+    (Function,
+        // All function pointers are Copy
         return true;
         ),
     (Primitive,
+        // All primitives (except the unsized `str`) are Copy
         return e != ::HIR::CoreType::Str;
         ),
     (Array,
-        return type_is_copy(*e.inner);
+        return e.size_val == 0 || type_is_copy(*e.inner);
+        ),
+    (Slice,
+        // [T] isn't Sized, so isn't Copy ether
+        return false;
+        ),
+    (Tuple,
+        for(const auto& ty : e)
+            if( !type_is_copy(ty) )
+                return false;
+        return true;
         )
     )
 }
