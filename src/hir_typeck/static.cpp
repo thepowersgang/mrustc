@@ -705,9 +705,24 @@ bool StaticTraitResolve::trait_contains_type(const Span& sp, const ::HIR::Generi
 
 bool StaticTraitResolve::type_is_copy(const ::HIR::TypeRef& ty) const
 {
-    TU_MATCH_DEF(::HIR::TypeRef::Data, (ty.m_data), (e),
-    (
-        // Search for a Copy bound or impl.
+    static Span sp;
+    TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
+    (Generic,
+        return this->find_impl(sp, m_crate.get_lang_item_path(sp, "copy"), {}, ty, [&](auto ){ return true;});
+        ),
+    (Path,
+        // TODO: Cache this result for the relevant scope.
+        return this->find_impl(sp, m_crate.get_lang_item_path(sp, "copy"), {}, ty, [&](auto ){ return true;});
+        ),
+    (Diverge,
+        // The ! type is kinda Copy ...
+        return true;
+        ),
+    (Closure,
+        return false;
+        ),
+    (Infer,
+        // Shouldn't be hit
         return false;
         ),
     (Borrow,
@@ -733,6 +748,10 @@ bool StaticTraitResolve::type_is_copy(const ::HIR::TypeRef& ty) const
         // [T] isn't Sized, so isn't Copy ether
         return false;
         ),
+    (TraitObject,
+        // [T] isn't Sized, so isn't Copy ether
+        return false;
+        ),
     (Tuple,
         for(const auto& ty : e)
             if( !type_is_copy(ty) )
@@ -740,4 +759,5 @@ bool StaticTraitResolve::type_is_copy(const ::HIR::TypeRef& ty) const
         return true;
         )
     )
+    throw "";
 }
