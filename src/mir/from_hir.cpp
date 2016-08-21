@@ -22,9 +22,7 @@ namespace {
     class ExprVisitor_Conv:
         public MirConverter
     {
-    public:
-        MirBuilder  m_builder;
-    private:
+        MirBuilder& m_builder;
         
         const ::std::vector< ::HIR::TypeRef>&  m_variable_types;
         
@@ -37,8 +35,8 @@ namespace {
         ::std::vector<LoopDesc> m_loop_stack;
         
     public:
-        ExprVisitor_Conv(::MIR::Function& output, const ::std::vector< ::HIR::TypeRef>& var_types):
-            m_builder(output),
+        ExprVisitor_Conv(MirBuilder& builder, const ::std::vector< ::HIR::TypeRef>& var_types):
+            m_builder(builder),
             m_variable_types(var_types)
         {
         }
@@ -1303,7 +1301,7 @@ namespace {
 }
 
 
-::MIR::FunctionPointer LowerMIR(const ::HIR::ExprPtr& ptr, const ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >& args)
+::MIR::FunctionPointer LowerMIR(const StaticTraitResolve& resolve, const ::HIR::ExprPtr& ptr, const ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >& args)
 {
     TRACE_FUNCTION;
     
@@ -1312,9 +1310,10 @@ namespace {
     for(const auto& t : ptr.m_bindings)
         fcn.named_variables.push_back( t.clone() );
     
-    // TODO: Construct builder here and lend to ExprVisitor_Conv
+    // Scope ensures that builder cleanup happens before `fcn` is moved
     {
-        ExprVisitor_Conv    ev { fcn, ptr.m_bindings };
+        MirBuilder  builder { resolve, fcn };
+        ExprVisitor_Conv    ev { builder, ptr.m_bindings };
         
         // 1. Apply destructuring to arguments
         unsigned int i = 0;
@@ -1333,11 +1332,14 @@ namespace {
 }
 
 namespace {
+    // TODO: Create visitor that handles setting up a StaticTraitResolve?
     class OuterVisitor:
         public ::HIR::Visitor
     {
+        StaticTraitResolve  m_resolve;
     public:
-        OuterVisitor(const ::HIR::Crate& crate)
+        OuterVisitor(const ::HIR::Crate& crate):
+            m_resolve(crate)
         {}
         
         // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
@@ -1351,7 +1353,7 @@ namespace {
                 this->visit_type( *e.inner );
                 DEBUG("Array size " << ty);
                 if( e.size ) {
-                    auto fcn = LowerMIR(e.size, {});
+                    auto fcn = LowerMIR(m_resolve, e.size, {});
                     e.size.m_mir = mv$(fcn);
                 }
             )
@@ -1364,10 +1366,11 @@ namespace {
         // Code-containing items
         // ------
         void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override {
+            auto _ = this->m_resolve.set_item_generics(item.m_params);
             if( item.m_code )
             {
                 DEBUG("Function code " << p);
-                item.m_code.m_mir = LowerMIR(item.m_code, item.m_args);
+                item.m_code.m_mir = LowerMIR(m_resolve, item.m_code, item.m_args);
             }
             else
             {
@@ -1378,17 +1381,18 @@ namespace {
             if( item.m_value )
             {
                 DEBUG("`static` value " << p);
-                item.m_value.m_mir = LowerMIR(item.m_value, {});
+                item.m_value.m_mir = LowerMIR(m_resolve, item.m_value, {});
             }
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override {
             if( item.m_value )
             {
                 DEBUG("`const` value " << p);
-                item.m_value.m_mir = LowerMIR(item.m_value, {});
+                item.m_value.m_mir = LowerMIR(m_resolve, item.m_value, {});
             }
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
+            //auto _ = this->m_resolve.set_item_generics(item.m_params);
             //auto enum_type = ::HIR::TypeRef(::HIR::CoreType::Isize);
             for(auto& var : item.m_variants)
             {
@@ -1399,6 +1403,20 @@ namespace {
                     //ev.visit_root(*e);
                 )
             }
+        }
+        
+        // Boilerplate
+        void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override {
+            auto _ = this->m_resolve.set_impl_generics(item.m_params);
+            ::HIR::Visitor::visit_trait(p, item);
+        }
+        void visit_type_impl(::HIR::TypeImpl& impl) override {
+            auto _ = this->m_resolve.set_impl_generics(impl.m_params);
+            ::HIR::Visitor::visit_type_impl(impl);
+        }
+        void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override {
+            auto _ = this->m_resolve.set_impl_generics(impl.m_params);
+            ::HIR::Visitor::visit_trait_impl(trait_path, impl);
         }
     };
 }

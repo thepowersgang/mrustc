@@ -9,6 +9,7 @@
 #include "mir.hpp"
 #include <hir/type.hpp>
 #include <hir/expr.hpp> // for ExprNode_Match
+#include <hir_typeck/static.hpp>    // StaticTraitResolve for Copy
 
 class MirBuilder;
 
@@ -74,6 +75,7 @@ class MirBuilder
 {
     friend class ScopeHandle;
     
+    const StaticTraitResolve& m_resolve;
     ::MIR::Function&    m_output;
     
     unsigned int    m_current_block;
@@ -95,7 +97,7 @@ class MirBuilder
     ::std::vector<unsigned int> m_scope_stack;
     ScopeHandle m_fcn_scope;
 public:
-    MirBuilder(::MIR::Function& output);
+    MirBuilder(const StaticTraitResolve& resolve, ::MIR::Function& output);
     ~MirBuilder();
     
     // - Values
@@ -152,6 +154,9 @@ private:
     void complete_scope(ScopeDef& sd);
     // Helper - Marks a variable/... as moved (and checks if the move is valid)
     void moved_lvalue(const ::MIR::LValue& lv);
+    
+    void with_val_type(const ::MIR::LValue& val, ::std::function<void(const ::HIR::TypeRef&)> cb);
+    bool lvalue_is_copy(const ::MIR::LValue& lv);
 };
 
 class MirConverter:

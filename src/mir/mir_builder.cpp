@@ -11,7 +11,8 @@
 // --------------------------------------------------------------------
 // MirBuilder
 // --------------------------------------------------------------------
-MirBuilder::MirBuilder(::MIR::Function& output):
+MirBuilder::MirBuilder(const StaticTraitResolve& resolve, ::MIR::Function& output):
+    m_resolve(resolve),
     m_output(output),
     m_block_active(false),
     m_result_valid(false),
@@ -208,10 +209,10 @@ void MirBuilder::push_stmt_assign(::MIR::LValue dst, ::MIR::RValue val)
             break;
         case VarState::Moved:
         case VarState::MaybeMoved:
-            // ERROR?
+            // ERROR? Temporaries shouldn't be resassigned after becoming valid
             break;
         case VarState::Init:
-            // ERROR.
+            // ERROR. Temporaries are single-assignment
             break;
         }
         set_temp_state(e.idx, VarState::Init);
@@ -227,11 +228,11 @@ void MirBuilder::push_stmt_assign(::MIR::LValue dst, ::MIR::RValue val)
         case VarState::Moved:
             break;
         case VarState::Dropped:
-            // TODO: Is this an error?
+            // TODO: Is this an error? The variable has descoped.
             break;
         case VarState::Init:
             // 1. Must be mut
-            // 2. Drop
+            // 2. Drop (if not Copy)
             push_stmt_drop( dst.clone() );
             break;
         case VarState::MaybeMoved:
@@ -247,6 +248,12 @@ void MirBuilder::push_stmt_drop(::MIR::LValue val)
 {
     ASSERT_BUG(Span(), m_block_active, "Pushing statement with no active block");
     ASSERT_BUG(Span(), val.tag() != ::MIR::LValue::TAGDEAD, "");
+    
+    if( lvalue_is_copy(val) ) {
+        // Don't emit a drop for Copy values
+        return ;
+    }
+    
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::DEEP, mv$(val) }) );
 }
 
@@ -448,6 +455,95 @@ void MirBuilder::complete_scope(ScopeDef& sd)
     )
 }
 
+void MirBuilder::with_val_type(const ::MIR::LValue& val, ::std::function<void(const ::HIR::TypeRef&)> cb)
+{
+    Span    sp;
+    TU_MATCH(::MIR::LValue, (val), (e),
+    (Variable,
+        cb( m_output.named_variables.at(e) );
+        ),
+    (Temporary,
+        cb( m_output.temporaries.at(e.idx) );
+        ),
+    (Argument,
+        TODO(sp, "Argument");
+        ),
+    (Static,
+        TODO(sp, "Static");
+        ),
+    (Return,
+        TODO(sp, "Return");
+        ),
+    (Field,
+        with_val_type(*e.val, [&](const auto& ty){
+            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
+            (
+                BUG(sp, "");
+                ),
+            (Path,
+                TODO(sp, "Field -  Path");
+                ),
+            (Tuple,
+                assert( e.field_index < te.size() );
+                cb( te[e.field_index] );
+                )
+            )
+            });
+        ),
+    (Deref,
+        with_val_type(*e.val, [&](const auto& ty){
+            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
+            (
+                BUG(sp, "");
+                ),
+            (Pointer,
+                cb(*te.inner);
+                ),
+            (Borrow,
+                cb(*te.inner);
+                )
+            )
+            });
+        ),
+    (Index,
+        with_val_type(*e.val, [&](const auto& ty){
+            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
+            (
+                BUG(sp, "");
+                ),
+            (Slice,
+                cb(*te.inner);
+                ),
+            (Array,
+                cb(*te.inner);
+                )
+            )
+            });
+        ),
+    (Downcast,
+        with_val_type(*e.val, [&](const auto& ty){
+            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
+            (
+                BUG(sp, "");
+                ),
+            (Path,
+                TODO(sp, "Downcast -  Path");
+                )
+            )
+            });
+        )
+    )
+}
+
+bool MirBuilder::lvalue_is_copy(const ::MIR::LValue& val)
+{
+    int rv = 0;
+    with_val_type(val, [&](const auto& ty){
+        rv = (m_resolve.type_is_copy(ty) ? 2 : 1);
+        });
+    assert(rv != 0);
+    return rv == 2;
+}
 
 VarState MirBuilder::get_variable_state(unsigned int idx) const
 {
