@@ -259,9 +259,9 @@ void MirBuilder::push_stmt_drop(::MIR::LValue val)
 
 void MirBuilder::set_cur_block(unsigned int new_block)
 {
-    if( m_block_active ) {
-        BUG(Span(), "Updating block when previous is active");
-    }
+    ASSERT_BUG(Span(), !m_block_active, "Updating block when previous is active");
+    ASSERT_BUG(Span(), new_block < m_output.blocks.size(), "Invalid block ID being started - " << new_block);
+    ASSERT_BUG(Span(), m_output.blocks[new_block].terminator.is_Incomplete(), "Attempting to resume a completed block - BB" << new_block);
     DEBUG("BB" << new_block << " START");
     m_current_block = new_block;
     m_block_active = true;
@@ -276,14 +276,16 @@ void MirBuilder::end_block(::MIR::Terminator term)
     m_block_active = false;
     m_current_block = 0;
 }
-void MirBuilder::pause_cur_block()
+::MIR::BasicBlockId MirBuilder::pause_cur_block()
 {
     if( !m_block_active ) {
         BUG(Span(), "Pausing block when none active");
     }
     DEBUG("BB" << m_current_block << " PAUSE");
     m_block_active = false;
+    auto rv = m_current_block;
     m_current_block = 0;
+    return rv;
 }
 ::MIR::BasicBlockId MirBuilder::new_bb_linked()
 {

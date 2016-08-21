@@ -123,7 +123,7 @@ public:
     }
     
     void set_cur_block(unsigned int new_block);
-    void pause_cur_block();
+    ::MIR::BasicBlockId pause_cur_block();
     void end_block(::MIR::Terminator term);
     
     ::MIR::BasicBlockId new_bb_linked();

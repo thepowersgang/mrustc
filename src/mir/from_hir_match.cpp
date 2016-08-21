@@ -45,11 +45,12 @@ struct PatternRuleset
 };
 /// Generated code for an arm
 struct ArmCode {
-    ::MIR::BasicBlockId   code;
-    bool has_condition;
-    ::MIR::BasicBlockId   cond_code; // NOTE: Incomplete, requires terminating If
+    ::MIR::BasicBlockId   code = 0;
+    bool has_condition = false;
+    ::MIR::BasicBlockId   cond_start;
+    ::MIR::BasicBlockId   cond_end;
     ::MIR::LValue   cond_lval;
-    ::std::vector< ::MIR::BasicBlockId> destructures;
+    ::std::vector< ::MIR::BasicBlockId> destructures;   // NOTE: Incomplete
 };
 
 typedef ::std::vector<PatternRuleset>  t_arm_rules;
@@ -93,6 +94,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     t_arm_rules arm_rules;
     for(unsigned int arm_idx = 0; arm_idx < node.m_arms.size(); arm_idx ++)
     {
+        DEBUG("ARM " << arm_idx);
         /*const*/ auto& arm = node.m_arms[arm_idx];
         ArmCode ac;
         
@@ -104,6 +106,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         unsigned int pat_idx = 0;
         for( const auto& pat : arm.m_patterns )
         {
+            
             // - Convert HIR pattern into ruleset
             auto pat_builder = PatternRulesetBuilder {};
             pat_builder.append_from(node.span(), pat, node.m_value->m_res_type);
@@ -126,13 +129,14 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         // - The above is rustc E0008 "cannot bind by-move into a pattern guard"
         if(arm.m_cond)
         {
+            DEBUG("-- Condition Code");
             ac.has_condition = true;
-            ac.cond_code = builder.new_bb_unlinked();
-            builder.set_cur_block( ac.cond_code );
+            ac.cond_start = builder.new_bb_unlinked();
+            builder.set_cur_block( ac.cond_start );
             
             conv.visit_node_ptr( arm.m_cond );
             ac.cond_lval = builder.lvalue_or_temp( ::HIR::TypeRef(::HIR::CoreType::Bool), builder.get_result(arm.m_cond->span()) );
-            builder.pause_cur_block();
+            ac.cond_end = builder.pause_cur_block();
             // NOTE: Paused so that later code (which knows what the false branch will be) can end it correctly
             
             // TODO: What to do with contidionals in the fast model?
@@ -145,6 +149,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         }
 
         // Code
+        DEBUG("-- Body Code");
         ac.code = builder.new_bb_unlinked();
         builder.set_cur_block( ac.code );
         conv.visit_node_ptr( arm.m_code );
@@ -220,7 +225,7 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
             // - Go to code/condition check
             if( arm_code.has_condition )
             {
-                builder.end_block( ::MIR::Terminator::make_Goto(arm_code.cond_code) );
+                builder.end_block( ::MIR::Terminator::make_Goto(arm_code.cond_start) );
             }
             else
             {
@@ -236,7 +241,7 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
         }
         if( arm_code.has_condition )
         {
-            builder.set_cur_block( arm_code.cond_code );
+            builder.set_cur_block( arm_code.cond_end );
             builder.end_block( ::MIR::Terminator::make_If({ mv$(arm_code.cond_lval), arm_code.code, next_arm_bb }) );
         }
         builder.set_cur_block( next_arm_bb );
