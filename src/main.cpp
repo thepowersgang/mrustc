@@ -248,7 +248,9 @@ int main(int argc, char *argv[])
             });
         
         // Validate the MIR
-        // TODO: ^
+        CompilePhaseV("MIR Validate", [&]() {
+            MIR_CheckCrate(*hir_crate);
+            });
 
         CompilePhaseV("Dump MIR", [&]() {
             ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));

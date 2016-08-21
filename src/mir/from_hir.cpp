@@ -1394,15 +1394,11 @@ namespace {
             }
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
-            //auto _ = this->m_resolve.set_item_generics(item.m_params);
-            //auto enum_type = ::HIR::TypeRef(::HIR::CoreType::Isize);
+            auto _ = this->m_resolve.set_item_generics(item.m_params);
             for(auto& var : item.m_variants)
             {
                 TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-                    //DEBUG("Enum value " << p << " - " << var.first);
-                    //::std::vector< ::HIR::TypeRef>  tmp;
-                    //ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
-                    //ev.visit_root(*e);
+                    e.m_mir = LowerMIR(m_resolve, e, {});
                 )
             }
         }

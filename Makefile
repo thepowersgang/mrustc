@@ -65,6 +65,7 @@ OBJ += hir_expand/annotate_value_usage.o hir_expand/closures.o hir_expand/ufcs_e
 OBJ += mir/mir.o mir/mir_ptr.o
 OBJ +=  mir/dump.o
 OBJ +=  mir/from_hir.o mir/from_hir_match.o mir/mir_builder.o
+OBJ +=  mir/check.o
 
 PCHS := ast/ast.hpp
 
