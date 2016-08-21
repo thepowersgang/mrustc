@@ -1,7 +1,10 @@
 language: cpp
 install: make
 compiler: clang
-sudo: false
+
+sudo: required
+dist: trusty
+#sudo: false
 
 before_script:
  - make UPDATE
