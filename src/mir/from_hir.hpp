@@ -37,6 +37,38 @@ public:
     ~ScopeHandle();
 };
 
+enum class VarState {
+    Uninit, // No value assigned yet
+    Init,   // Initialised and valid at this point
+    MaybeMoved, // Possibly has been moved
+    Moved,  // Definitely moved
+    Dropped,    // Dropped (out of scope)
+};
+extern ::std::ostream& operator<<(::std::ostream& os, VarState x);
+
+struct SplitArm {
+    bool    has_early_terminated = false;
+    bool    always_early_terminated = false;    // Populated on completion
+    ::std::vector<bool> changed_var_states; // Indexed by binding bumber
+    ::std::vector<VarState> var_states;
+};
+
+TAGGED_UNION(ScopeType, Variables,
+    (Variables, struct {
+        ::std::vector<unsigned int> vars;   // List of owned variables
+        ::std::vector<VarState> var_states; // Indexed by position in above list
+        }),
+    (Temporaries, struct {
+        ::std::vector<unsigned int> temporaries;    // Controlled temporaries
+        ::std::vector<VarState> states; // Indexed by position in above list
+        }),
+    (Split, struct {
+        ::std::vector<SplitArm> arms;
+        }),
+    (Loop, struct {
+        })
+    );
+
 /// Helper class to construct MIR
 class MirBuilder
 {
@@ -56,31 +88,14 @@ class MirBuilder
     struct ScopeDef
     {
         bool complete = false;
-        ::std::vector<unsigned int> variables;  // Variables to be dropped at the end of this scope
-        ::std::vector<unsigned int> temporaries;  // Temporaries introduced during this scope
-        
-        bool is_conditional = false;
-        #if 0
-        ::std::vector<bool> moved_vars; // Bitmap of variables moved in the current branch
-        ::std::vector<bool> all_moved_vars; // Bitmap of variables moved in at least one branch
-        ::std::vector<bool> all_unmoved_vars; // Bitmap of variables NOT moved in at least one branch
-        #endif
+        ScopeType   data;
     };
     
     ::std::vector<ScopeDef> m_scopes;
     ::std::vector<unsigned int> m_scope_stack;
     ScopeHandle m_fcn_scope;
 public:
-    MirBuilder(::MIR::Function& output):
-        m_output(output),
-        m_block_active(false),
-        m_result_valid(false),
-        m_fcn_scope(*this, 0)
-    {
-        set_cur_block( new_bb_unlinked() );
-        m_scopes.push_back( ScopeDef {} );
-        m_scope_stack.push_back( 0 );
-    }
+    MirBuilder(::MIR::Function& output);
     ~MirBuilder();
     
     // - Values
@@ -113,17 +128,28 @@ public:
     ::MIR::BasicBlockId new_bb_unlinked();
     
     // --- Scopes ---
-    /// `is_conditional`: If true, this scope is the contents of a conditional branch of the parent scope
-    ScopeHandle new_scope(const Span& sp, bool is_conditional=false);
+    ScopeHandle new_scope_var(const Span& sp);
+    ScopeHandle new_scope_temp(const Span& sp);
+    ScopeHandle new_scope_split(const Span& sp);
+    ScopeHandle new_scope_loop(const Span& sp);
     void terminate_scope(const Span& sp, ScopeHandle );
     void terminate_scope_early(const Span& sp, const ScopeHandle& );
+    void end_split_arm(const Span& sp, const ScopeHandle& , bool reachable);
     
     const ScopeHandle& fcn_scope() const {
         return m_fcn_scope;
     }
 
+    /// Introduce a new variable within the current scope
+    void define_variable(unsigned int idx);
 private:
+    VarState get_variable_state(unsigned int idx) const;
+    void set_variable_state(unsigned int idx, VarState state);
+    VarState get_temp_state(unsigned int idx) const;
+    void set_temp_state(unsigned int idx, VarState state);
+    
     void drop_scope_values(const ScopeDef& sd);
+    void complete_scope(ScopeDef& sd);
     // Helper - Marks a variable/... as moved (and checks if the move is valid)
     void moved_lvalue(const ::MIR::LValue& lv);
 };
@@ -133,6 +159,7 @@ class MirConverter:
 {
 public:
     virtual void destructure_from(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, bool allow_refutable=false) = 0;
+    virtual void define_vars_from(const Span& sp, const ::HIR::Pattern& pat) = 0;
 };
 
 extern void MIR_LowerHIR_Match(MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val);

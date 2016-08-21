@@ -49,6 +49,7 @@ struct ArmCode {
     bool has_condition;
     ::MIR::BasicBlockId   cond_code; // NOTE: Incomplete, requires terminating If
     ::MIR::LValue   cond_lval;
+    ::std::vector< ::MIR::BasicBlockId> destructures;
 };
 
 typedef ::std::vector<PatternRuleset>  t_arm_rules;
@@ -83,7 +84,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     auto first_cmp_block = builder.new_bb_unlinked();
     builder.end_block( ::MIR::Terminator::make_Goto(first_cmp_block) );
 
-    auto match_scope = builder.new_scope(node.span());
+    auto match_scope = builder.new_scope_split(node.span());
 
     // Map of arm index to ruleset
     ::std::vector< ArmCode> arm_code;
@@ -94,43 +95,32 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         ArmCode ac;
         
         // Register introduced bindings to be dropped on return/diverge within this scope
-        auto drop_scope = builder.new_scope( arm.m_code->span(), true );
+        auto drop_scope = builder.new_scope_var( arm.m_code->span() );
+        // - Define variables from the first pattern
+        conv.define_vars_from(node.span(), arm.m_patterns.front());
         
         unsigned int pat_idx = 0;
         for( const auto& pat : arm.m_patterns )
         {
+            // - Convert HIR pattern into ruleset
             auto pat_builder = PatternRulesetBuilder {};
             pat_builder.append_from(node.span(), pat, node.m_value->m_res_type);
             arm_rules.push_back( PatternRuleset { arm_idx, pat_idx, mv$(pat_builder.m_rules) } );
             
             DEBUG("(" << arm_idx << "," << pat_idx << ") " << pat << " ==> [" << arm_rules.back().m_rules << "]");
             
+            // - Emit code to destructure the matched pattern
+            ac.destructures.push_back( builder.new_bb_unlinked() );
+            builder.set_cur_block( ac.destructures.back() );
+            conv.destructure_from( arm.m_code->span(), pat, match_val.clone(), true );
+            builder.pause_cur_block();
+            // NOTE: Paused block resumed upon successful match
+            
             pat_idx += 1;
-        }
-
-        // Code
-        ac.code = builder.new_bb_unlinked();
-        builder.set_cur_block( ac.code );
-        conv.visit_node_ptr( arm.m_code );
-        if( !builder.block_active() && !builder.has_result() ) {
-            DEBUG("Arm diverged");
-            // Nothing need be done, as the block diverged.
-            // - Drops were handled by the diverging block (if not, the below will panic)
-            auto _ = mv$(drop_scope);
-        }
-        else {
-            DEBUG("Arm result");
-            // - Set result
-            builder.push_stmt_assign( result_val.clone(), builder.get_result(arm.m_code->span()) );
-            // - Drop all non-moved values from this scope
-            builder.terminate_scope( arm.m_code->span(), mv$(drop_scope) );
-            // - Go to the next block
-            builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
         }
         
         // Condition
-        // NOTE: The condition isn't covered by the drop scope, because the only values that can be used within it are
-        // Copy (otherwise they'd move out and invalidate on failure).
+        // NOTE: Lack of drop due to early exit from this arm isn't an issue. All captures must be Copy
         // - The above is rustc E0008 "cannot bind by-move into a pattern guard"
         if(arm.m_cond)
         {
@@ -150,6 +140,29 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         else
         {
             ac.has_condition = false;
+        }
+
+        // Code
+        ac.code = builder.new_bb_unlinked();
+        builder.set_cur_block( ac.code );
+        conv.visit_node_ptr( arm.m_code );
+        if( !builder.block_active() && !builder.has_result() ) {
+            DEBUG("Arm diverged");
+            // Nothing need be done, as the block diverged.
+            // - Drops were handled by the diverging block (if not, the below will panic)
+            auto _ = mv$(drop_scope);
+            builder.end_split_arm( arm.m_code->span(), match_scope, false );
+        }
+        else {
+            DEBUG("Arm result");
+            // - Set result
+            builder.push_stmt_assign( result_val.clone(), builder.get_result(arm.m_code->span()) );
+            // - Drop all non-moved values from this scope
+            builder.terminate_scope( arm.m_code->span(), mv$(drop_scope) );
+            // - Go to the next block
+            builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
+            
+            builder.end_split_arm( arm.m_code->span(), match_scope, true );
         }
 
         arm_code.push_back( mv$(ac) );
@@ -192,14 +205,13 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
         for( unsigned int i = 0; i < arm.m_patterns.size(); i ++ )
         {
             const auto& pat_rule = arm_rules[rule_idx];
-            const auto& pat = arm.m_patterns[i];
             bool is_last_pat = (i+1 == arm.m_patterns.size());
             auto next_pattern_bb = (!is_last_pat ? builder.new_bb_unlinked() : next_arm_bb);
             
             // 1. Check
             MIR_LowerHIR_Match_Simple__GeneratePattern(builder, arm.m_code->span(), pat_rule.m_rules.data(), pat_rule.m_rules.size(), node.m_value->m_res_type, match_val, next_pattern_bb);
-            // 2. Destructure
-            conv.destructure_from( arm.m_code->span(), pat, match_val.clone(), true );
+            builder.end_block( ::MIR::Terminator::make_Goto(arm_code.destructures[i]) );
+            builder.set_cur_block( arm_code.destructures[i] );
             
             // - Go to code/condition check
             if( arm_code.has_condition )
@@ -739,17 +751,11 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
     ::std::vector< ::MIR::BasicBlockId> rule_blocks;
     for(const auto& rule : arm_rules)
     {
-        rule_blocks.push_back( builder.new_bb_unlinked() );
-        builder.set_cur_block(rule_blocks.back());
+        const auto& arm_code = arms_code[rule.arm_idx];
+        ASSERT_BUG(node.span(), !arm_code.has_condition, "Decision tree doesn't (yet) support conditionals");
         
-        const auto& arm = node.m_arms[ rule.arm_idx ];
-        const auto& pat = arm.m_patterns[rule.pat_idx];
-        
-        // Assign bindings (drop registration happens in previous loop) - Allow refutable patterns
-        conv.destructure_from( arm.m_code->span(), pat, match_val.clone(), true );
-        
-        ASSERT_BUG(node.span(), ! arms_code[rule.arm_idx].has_condition, "Decision tree doesn't (yet) support conditionals");
-        builder.end_block( ::MIR::Terminator::make_Goto( arms_code[rule.arm_idx].code ) );
+        assert( rule.pat_idx < arm_code.destructures.size() );
+        rule_blocks.push_back( arm_code.destructures[rule.pat_idx] );
     }
     
     
