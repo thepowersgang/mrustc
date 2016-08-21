@@ -1,6 +1,5 @@
 language: cpp
 install: make
-compiler: clang
 
 sudo: required
 dist: trusty
