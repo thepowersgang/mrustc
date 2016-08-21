@@ -208,7 +208,21 @@ namespace {
             if( item.m_code )
             {
                 m_os << indent();
-                item.m_code->visit( *this );
+                if( dynamic_cast< ::HIR::ExprNode_Block*>(&*item.m_code) ) {
+                    item.m_code->visit( *this );
+                }
+                else {
+                    m_os << "{\n";
+                    inc_indent();
+                    m_os << indent();
+                    
+                    item.m_code->visit( *this );
+                    
+                    m_os << "\n";
+                    dec_indent();
+                    m_os << indent();
+                    m_os << "}";
+                }
                 m_os << "\n";
             }
             else
