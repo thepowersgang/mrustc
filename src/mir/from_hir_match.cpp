@@ -74,6 +74,8 @@ struct PatternRulesetBuilder
 // - Non-trivial means that there's more than one pattern
 void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val )
 {
+    TRACE_FUNCTION;
+    
     bool fall_back_on_simple = false;
     
     auto result_val = builder.new_temporary( node.m_res_type );
@@ -107,7 +109,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             pat_builder.append_from(node.span(), pat, node.m_value->m_res_type);
             arm_rules.push_back( PatternRuleset { arm_idx, pat_idx, mv$(pat_builder.m_rules) } );
             
-            DEBUG("(" << arm_idx << "," << pat_idx << ") " << pat << " ==> [" << arm_rules.back().m_rules << "]");
+            DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << ") " << pat << " ==> [" << arm_rules.back().m_rules << "]");
             
             // - Emit code to destructure the matched pattern
             ac.destructures.push_back( builder.new_bb_unlinked() );
@@ -192,6 +194,8 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
 
 void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arms_code, ::MIR::BasicBlockId first_cmp_block )
 {
+    TRACE_FUNCTION;
+    
     // 1. Generate pattern matches
     unsigned int rule_idx = 0;
     builder.set_cur_block( first_cmp_block );
@@ -733,6 +737,8 @@ struct DecisionTreeGen
 
 void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arms_code, ::MIR::BasicBlockId first_cmp_block )
 {
+    TRACE_FUNCTION;
+    
     // XXX XXX XXX: The current codegen (below) will generate incorrect code if ordering matters.
     // ```
     // match ("foo", "bar")
@@ -755,7 +761,11 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
         ASSERT_BUG(node.span(), !arm_code.has_condition, "Decision tree doesn't (yet) support conditionals");
         
         assert( rule.pat_idx < arm_code.destructures.size() );
+        // Set the target for when a rule succeeds to the destructuring code for this rule
         rule_blocks.push_back( arm_code.destructures[rule.pat_idx] );
+        // - Tie the end of that block to the code block for this arm
+        builder.set_cur_block( rule_blocks.back() );
+        builder.end_block( ::MIR::Terminator::make_Goto(arm_code.code) );
     }
     
     
