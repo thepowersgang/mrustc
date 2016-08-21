@@ -23,6 +23,7 @@ DEF_VISIT(ExprNode_Return, node,
     visit_node_ptr(node.m_value);
 )
 DEF_VISIT(ExprNode_Let, node,
+    visit_pattern(node.m_pattern);
     visit_type(node.m_type);
     if( node.m_value ) {
         visit_node_ptr(node.m_value);
@@ -36,6 +37,8 @@ DEF_VISIT(ExprNode_Match, node,
     visit_node_ptr(node.m_value);
     for(auto& arm : node.m_arms)
     {
+        for(auto& pat : arm.m_patterns)
+            visit_pattern(pat);
         if( arm.m_cond )
             visit_node_ptr(arm.m_cond);
         visit_node_ptr(arm.m_code);
@@ -147,8 +150,10 @@ DEF_VISIT(ExprNode_ArraySized, node,
 )
 
 DEF_VISIT(ExprNode_Closure, node,
-    for(auto& arg : node.m_args)
+    for(auto& arg : node.m_args) {
+        visit_pattern(arg.first);
         visit_type(arg.second);
+    }
     visit_type(node.m_return);
     if(node.m_code)
     {
@@ -159,6 +164,67 @@ DEF_VISIT(ExprNode_Closure, node,
 #undef DEF_VISIT
 
 // TODO: Merge this with the stuff in ::HIR::Visitor
+void ::HIR::ExprVisitorDef::visit_pattern(::HIR::Pattern& pat)
+{
+    TU_MATCH(::HIR::Pattern::Data, (pat.m_data), (e),
+    (Any,
+        ),
+    (Box,
+        this->visit_pattern(*e.sub);
+        ),
+    (Ref,
+        this->visit_pattern(*e.sub);
+        ),
+    (Tuple,
+        for(auto& subpat : e.sub_patterns)
+            this->visit_pattern(subpat);
+        ),
+    (SplitTuple,
+        for(auto& subpat : e.leading)
+            this->visit_pattern(subpat);
+        for(auto& subpat : e.trailing)
+            this->visit_pattern(subpat);
+        ),
+    (StructValue,
+        // Nothing.
+        ),
+    (StructTuple,
+        for(auto& subpat : e.sub_patterns)
+            this->visit_pattern(subpat);
+        ),
+    (Struct,
+        for(auto& fld_pat : e.sub_patterns)
+        {
+            this->visit_pattern(fld_pat.second);
+        }
+        ),
+    // Refutable
+    (Value,
+        ),
+    (Range,
+        ),
+    (EnumValue,
+        ),
+    (EnumTuple,
+        for(auto& subpat : e.sub_patterns)
+            this->visit_pattern(subpat);
+        ),
+    (EnumStruct,
+        for(auto& fld_pat : e.sub_patterns)
+            this->visit_pattern(fld_pat.second);
+        ),
+    (Slice,
+        for(auto& subpat : e.sub_patterns)
+            this->visit_pattern(subpat);
+        ),
+    (SplitSlice,
+        for(auto& subpat : e.leading)
+            this->visit_pattern(subpat);
+        for(auto& subpat : e.trailing)
+            this->visit_pattern(subpat);
+        )
+    )
+}
 void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
 {
     TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),

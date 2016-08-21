@@ -65,6 +65,25 @@ namespace {
         {
         }
         
+        void visit_pattern(::HIR::Pattern& pat) override {
+            if( pat.m_binding.is_valid() ) {
+                auto binding_it = ::std::find(m_local_vars.begin(), m_local_vars.end(), pat.m_binding.m_slot);
+                if( binding_it != m_local_vars.end() ) {
+                    // NOTE: Offset of 1 is for `self` (`args` is destructured)
+                    pat.m_binding.m_slot = 1 + binding_it - m_local_vars.begin();
+                }
+                else {
+                    BUG(Span(), "Pattern binds to non-local");
+                }
+            }
+            
+            TU_IFLET(::HIR::Pattern::Data, (pat.m_data), SplitSlice, e,
+                TODO(Span(), "Fixup binding in split slice");
+            )
+            
+            ::HIR::ExprVisitorDef::visit_pattern(pat);
+        }
+        
         void visit_type(::HIR::TypeRef& ty) override {
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
                 auto n = m_monomorph_cb(ty).clone();
@@ -98,8 +117,8 @@ namespace {
             // 1. Is it a closure-local?
             auto binding_it = ::std::find(m_local_vars.begin(), m_local_vars.end(), node.m_slot);
             if( binding_it != m_local_vars.end() ) {
-                // NOTE: Offset of 2 is for `self` and `args`
-                node.m_slot = 2 + binding_it - m_local_vars.begin();
+                // NOTE: Offset of 1 is for `self` (`args` is destructured)
+                node.m_slot = 1 + binding_it - m_local_vars.begin();
                 return ;
             }
             
@@ -366,9 +385,9 @@ namespace {
             
             DEBUG("--- Mutate inner code");
             // 2. Iterate over the nodes and rewrite variable accesses to either renumbered locals, or field accesses
-            // - TODO: Monomorphise all referenced types within this.
             ExprVisitor_Mutate    ev { node.m_res_type, ent.local_vars, ent.node.m_var_captures, monomorph_cb };
             ev.visit_node_ptr( node.m_code );
+            // NOTE: `ev` is used down in `Args` to convert the argument destructuring pattern
             
             // - Types of local variables
             DEBUG("--- Build locals and captures");
@@ -404,6 +423,7 @@ namespace {
             ::std::vector< ::HIR::TypeRef>  args_ty_inner;
             for(const auto& arg : node.m_args) {
                 args_pat_inner.push_back( arg.first.clone() );
+                ev.visit_pattern( args_pat_inner.back() );
                 args_ty_inner.push_back( monomorphise_type_with(sp, arg.second, monomorph_cb) );
             }
             ::HIR::TypeRef  args_ty { mv$(args_ty_inner) };
@@ -516,14 +536,12 @@ namespace {
             }
         }
         
-        void visit(::HIR::ExprNode_Let& node) override
+        void visit_pattern(::HIR::Pattern& pat) override
         {
             if( !m_closure_stack.empty() )
             {
-                add_closure_def_from_pattern(node.span(), node.m_pattern);
+                add_closure_def_from_pattern(Span(), pat);
             }
-            
-            ::HIR::ExprVisitorDef::visit(node);
         }
         void visit(::HIR::ExprNode_Variable& node) override
         {

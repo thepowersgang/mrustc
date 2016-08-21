@@ -810,6 +810,7 @@ public:
     NV(ExprNode_Closure);
     #undef NV
     
+    virtual void visit_pattern(::HIR::Pattern& pat);
     virtual void visit_type(::HIR::TypeRef& ty);
     virtual void visit_trait_path(::HIR::TraitPath& p);
     virtual void visit_path_params(::HIR::PathParams& ty);
