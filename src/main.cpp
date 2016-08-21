@@ -234,7 +234,7 @@ int main(int argc, char *argv[])
             });
 
         CompilePhaseV("Dump HIR", [&]() {
-            ::std::ofstream os (FMT(params.outfile << "_3_hir.rs"));
+            ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
             HIR_Dump( os, *hir_crate );
             });
         
@@ -254,6 +254,13 @@ int main(int argc, char *argv[])
             ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));
             MIR_Dump( os, *hir_crate );
             });
+        
+        // Optimise the MIR
+
+        //CompilePhaseV("Dump MIR", [&]() {
+        //    ::std::ofstream os (FMT(params.outfile << "_4_mir_opt.rs"));
+        //    MIR_Dump( os, *hir_crate );
+        //    });
         
         // Generate code for non-generic public items (if requested)
 
