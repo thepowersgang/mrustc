@@ -1015,9 +1015,10 @@ namespace {
             {
                 this->visit_node_ptr(arg);
                 values.push_back( m_builder.lvalue_or_temp( arg->m_res_type, m_builder.get_result(arg->span()) ) );
+                m_builder.moved_lvalue( values.back() );
             }
             
-            // TODO: Obtain function type for this function
+            // TODO: Obtain function type for this function (i.e. a type that is specifically for this function)
             auto fcn_ty_data = ::HIR::FunctionType {
                 false,
                 "",
@@ -1063,6 +1064,7 @@ namespace {
             {
                 this->visit_node_ptr(arg);
                 values.push_back( m_builder.lvalue_or_temp( arg->m_res_type, m_builder.get_result(arg->span()) ) );
+                m_builder.moved_lvalue( values.back() );
             }
             
             
