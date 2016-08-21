@@ -1323,6 +1323,7 @@ namespace {
         {
             ev.define_vars_from(ptr->span(), arg.first);
             ev.destructure_from(ptr->span(), arg.first, ::MIR::LValue::make_Argument({i}));
+            i ++;
         }
         
         // 2. Destructure code
