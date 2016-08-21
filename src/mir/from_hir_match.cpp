@@ -75,6 +75,7 @@ struct PatternRulesetBuilder
 // - Non-trivial means that there's more than one pattern
 void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val )
 {
+    // TODO: If any arm moves a non-Copy value, then mark `match_val` as moved
     TRACE_FUNCTION;
     
     bool fall_back_on_simple = false;
