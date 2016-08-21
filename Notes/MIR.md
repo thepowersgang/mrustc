@@ -64,3 +64,21 @@ Drop Scopes
  - Scopes contain child scopes (started within them)
  - Special named scope for the entire function.
  - For match, scope handles can be passed around
+
+
+Validation
+----------
+- [CFA] All code paths from bb0 must end with either a return or a diverge (or loop)
+- [ValState] No drops or usage of uninitalised values (Uninit, Moved, or Dropped)
+- [ValState] Temporaries are write-once.
+ - Requires maintaining state information for all variables/temporaries with support for loops
+- [Flat] Types must be valid (correct type for slot etc.)
+ - Simple check of all assignments/calls/...
+
+Optimisiation
+-------------
+- Constant propagation
+- Dead code
+- Useless assignments
+- Basic-block chaining
+- De-duplication
