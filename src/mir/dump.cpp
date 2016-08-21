@@ -16,6 +16,7 @@ namespace {
     {
         ::std::ostream& m_os;
         unsigned int    m_indent_level;
+        bool m_short_item_name = false;
         
     public:
         TreeVisitor(::std::ostream& os):
@@ -26,6 +27,8 @@ namespace {
 
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
+            m_short_item_name = true;
+            
             m_os << indent() << "impl" << impl.m_params.fmt_args() << " " << impl.m_type << "\n";
             if( ! impl.m_params.m_bounds.empty() )
             {
@@ -36,9 +39,13 @@ namespace {
             ::HIR::Visitor::visit_type_impl(impl);
             dec_indent();
             m_os << indent() << "}\n";
+            
+            m_short_item_name = false;
         }
         virtual void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
         {
+            m_short_item_name = true;
+            
             m_os << indent() << "impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << "\n";
             if( ! impl.m_params.m_bounds.empty() )
             {
@@ -49,25 +56,29 @@ namespace {
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
             dec_indent();
             m_os << indent() << "}\n";
+            
+            m_short_item_name = false;
         }
         void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl) override
         {
+            m_short_item_name = true;
+            
             m_os << indent() << "impl" << impl.m_params.fmt_args() << " " << (impl.is_positive ? "" : "!") << trait_path << impl.m_trait_args << " for " << impl.m_type << "\n";
             if( ! impl.m_params.m_bounds.empty() )
             {
                 m_os << indent() << " " << impl.m_params.fmt_bounds() << "\n";
             }
             m_os << indent() << "{ }\n";
+            
+            m_short_item_name = false;
         }
         
         // - Type Items
-        void visit_type_alias(::HIR::ItemPath p, ::HIR::TypeAlias& item) override
-        {
-            m_os << indent() << "type " << p.get_name() << item.m_params.fmt_args() << " = " << item.m_type << item.m_params.fmt_bounds() << "\n";
-        }
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
         {
-            m_os << indent() << "trait " << p.get_name() << item.m_params.fmt_args() << "\n";
+            m_short_item_name = true;
+            
+            m_os << indent() << "trait " << p << item.m_params.fmt_args() << "\n";
             if( ! item.m_params.m_bounds.empty() )
             {
                 m_os << indent() << " " << item.m_params.fmt_bounds() << "\n";
@@ -77,6 +88,8 @@ namespace {
             ::HIR::Visitor::visit_trait(p, item);
             dec_indent();
             m_os << indent() << "}\n";
+            
+            m_short_item_name = false;
         }
 
         void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override
@@ -88,7 +101,12 @@ namespace {
                 m_os << "unsafe ";
             if( item.m_abi != "rust" )
                 m_os << "extern \"" << item.m_abi << "\" ";
-            m_os << "fn " << p.get_name() << item.m_params.fmt_args() << "(";
+            m_os << "fn ";
+            if( m_short_item_name )
+                m_os << p.get_name();
+            else
+                m_os << p;
+            m_os << item.m_params.fmt_args() << "(";
             for(const auto& arg : item.m_args)
             {
                 m_os << arg.first << ": " << arg.second << ", ";
