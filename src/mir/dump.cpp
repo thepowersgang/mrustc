@@ -107,9 +107,12 @@ namespace {
             else
                 m_os << p;
             m_os << item.m_params.fmt_args() << "(";
-            for(const auto& arg : item.m_args)
+            for(unsigned int i = 0; i < item.m_args.size(); i ++)
             {
-                m_os << arg.first << ": " << arg.second << ", ";
+                if( i == 0 && item.m_args[i].first.m_binding.m_name == "self" ) {
+                    m_os << "self=";
+                }
+                m_os << "arg$" << i << ": " << item.m_args[i].second << ", ";
             }
             m_os << ") -> " << item.m_return << "\n";
             if( ! item.m_params.m_bounds.empty() )
