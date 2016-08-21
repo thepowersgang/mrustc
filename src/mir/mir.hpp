@@ -137,11 +137,11 @@ TAGGED_UNION(RValue, Use,
 );
 
 TAGGED_UNION(Terminator, Incomplete,
-    (Incomplete, struct {}),
-    (Return, struct {}),
-    (Diverge, struct {}),
-    (Goto, BasicBlockId),
-    (Panic, struct { BasicBlockId dst; }),
+    (Incomplete, struct {}),    // Block isn't complete (ERROR in output)
+    (Return, struct {}),    // Return clealy to caller
+    (Diverge, struct {}),   // Continue unwinding up the stack
+    (Goto, BasicBlockId),   // Jump to another block
+    (Panic, struct { BasicBlockId dst; }),  // ?
     (If, struct {
         LValue cond;
         BasicBlockId    bb0;
