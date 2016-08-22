@@ -8,6 +8,7 @@
 #pragma once
 
 #include "impl_ref.hpp"
+#include <hir/generic_params.hpp>
 #include <hir/type.hpp>
 
 // TODO/NOTE - This is identical to ::HIR::t_cb_resolve_type
