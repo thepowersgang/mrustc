@@ -2035,6 +2035,20 @@ namespace {
             ivars(context.m_ivars)
         {
         }
+        void visit_node_ptr(::HIR::ExprPtr& node_ptr)
+        {
+            auto& node = *node_ptr;
+            const char* node_ty = typeid(node).name();
+            
+            TRACE_FUNCTION_FR(&node << " " << &node << " " << node_ty << " : " << node.m_res_type, node_ty);
+            this->check_type_resolved_top(node.span(), node.m_res_type);
+            DEBUG(node_ty << " : = " << node.m_res_type);
+            
+            node_ptr->visit(*this);
+            
+            for( auto& ty : node_ptr.m_bindings )
+                this->check_type_resolved_top(node.span(), ty);
+        }
         void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override {
             auto& node = *node_ptr;
             const char* node_ty = typeid(node).name();
@@ -3999,21 +4013,21 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         BUG(root_ptr->span(), "Spare rules left after typecheck stabilised");
     }
     
-    // - Validate typeck
-    {
-        DEBUG("==== VALIDATE ==== (" << count << " rounds)");
-        context.dump();
-        
-        ExprVisitor_Apply   visitor { context };
-        visitor.visit_node_ptr( root_ptr );
-    }
-    
     // - Recreate the pointer
     expr = ::HIR::ExprPtr( mv$(root_ptr) );
     //  > Steal the binding types
     expr.m_bindings.reserve( context.m_bindings.size() );
     for(auto& binding : context.m_bindings) {
         expr.m_bindings.push_back( mv$(binding.ty) );
+    }
+    
+    // - Validate typeck
+    {
+        DEBUG("==== VALIDATE ==== (" << count << " rounds)");
+        context.dump();
+        
+        ExprVisitor_Apply   visitor { context };
+        visitor.visit_node_ptr( expr );
     }
 }
 
