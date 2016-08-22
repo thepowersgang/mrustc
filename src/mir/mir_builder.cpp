@@ -41,7 +41,7 @@ MirBuilder::~MirBuilder()
 
 void MirBuilder::define_variable(unsigned int idx)
 {
-    DEBUG("DEFINE var" << idx /* << ": " << m_output.named_variables.at(idx)*/);
+    DEBUG("DEFINE var" << idx  << ": " << m_output.named_variables.at(idx));
     for( auto scope_idx : ::reverse(m_scope_stack) )
     {
         auto& scope_def = m_scopes.at(scope_idx);
