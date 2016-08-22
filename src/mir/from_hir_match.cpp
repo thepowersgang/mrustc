@@ -6,7 +6,7 @@
  * - Conversion of `match` blocks into MIR
  */
 #include "from_hir.hpp"
-#include <hir_typeck/helpers.hpp>   // monomorphise_type
+#include <hir_typeck/common.hpp>   // monomorphise_type
 #include <algorithm>
 
 void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val );

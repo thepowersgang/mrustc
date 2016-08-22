@@ -2311,8 +2311,13 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
 {
     unsigned int deref_count = 0;
     ::HIR::TypeRef  tmp_type;   // Temporary type used for handling Deref
-    const auto* current_ty = &top_ty;
-    TU_IFLET(::HIR::TypeRef::Data, this->m_ivars.get_type(top_ty).m_data, Borrow, e,
+    const auto& top_ty_r = this->m_ivars.get_type(top_ty);
+    const auto* current_ty = &top_ty_r;
+    
+    bool unconditional_allow_move = (!top_ty_r.m_data.is_Borrow() || top_ty_r.m_data.as_Borrow().type == ::HIR::BorrowType::Owned);
+    
+    // If the top is a borrow, search dereferenced first.
+    TU_IFLET(::HIR::TypeRef::Data, top_ty_r.m_data, Borrow, e,
         current_ty = &*e.inner;
         deref_count += 1;
     )
@@ -2326,7 +2331,7 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
             return ~0u;
         }
         
-        if( this->find_method(sp, traits, ty, method_name, fcn_path) ) {
+        if( this->find_method(sp, traits, ty, method_name,  unconditional_allow_move || (deref_count == 0), fcn_path) ) {
             return deref_count;
         }
         
@@ -2335,10 +2340,11 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
         current_ty = this->autoderef(sp, ty,  tmp_type);
     } while( current_ty );
     
-    TU_IFLET(::HIR::TypeRef::Data, this->m_ivars.get_type(top_ty).m_data, Borrow, e,
-        const auto& ty = this->m_ivars.get_type(top_ty);
+    // If the top is a borrow, search for methods on &/&mut 
+    TU_IFLET(::HIR::TypeRef::Data, top_ty_r.m_data, Borrow, e,
+        const auto& ty = top_ty_r;
         
-        if( find_method(sp, traits, ty, method_name, fcn_path) ) {
+        if( find_method(sp, traits, ty, method_name, true, fcn_path) ) {
             return 0;
         }
     )
@@ -2355,7 +2361,7 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
     }
 }
 
-bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& traits, const ::HIR::TypeRef& ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const
+bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& traits, const ::HIR::TypeRef& ty, const ::std::string& method_name, bool allow_move,  /* Out -> */::HIR::Path& fcn_path) const
 {
     TRACE_FUNCTION_F("ty=" << ty << ", name=" << method_name);
     // 1. Search generic bounds for a match

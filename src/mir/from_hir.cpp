@@ -12,7 +12,7 @@
 #include <hir/expr.hpp>
 #include <hir/hir.hpp>
 #include <hir/visitor.hpp>
-#include <hir_typeck/helpers.hpp>   // monomorphise_type
+#include <hir_typeck/common.hpp>   // monomorphise_type
 #include "main_bindings.hpp"
 #include "from_hir.hpp"
 

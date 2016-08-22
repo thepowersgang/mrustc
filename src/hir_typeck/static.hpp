@@ -8,7 +8,7 @@
 #pragma once
 
 #include <hir/hir.hpp>
-#include "helpers.hpp"
+#include "common.hpp"
 #include "impl_ref.hpp"
 
 class StaticTraitResolve

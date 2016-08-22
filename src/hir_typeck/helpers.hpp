@@ -1,30 +1,16 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir_typeck/helpers.hpp
+ * - Typecheck dynamic checker
  */
 #pragma once
 
-#include <hir/type.hpp>
 #include <hir/hir.hpp>
-#include <hir/expr.hpp>
-#include "impl_ref.hpp"
+#include <hir/expr.hpp> // t_trait_list
 
-// TODO/NOTE - This is identical to ::HIR::t_cb_resolve_type
-typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>   t_cb_generic;
-
-extern bool monomorphise_type_needed(const ::HIR::TypeRef& tpl);
-extern bool monomorphise_pathparams_needed(const ::HIR::PathParams& tpl);
-static inline bool monomorphise_genericpath_needed(const ::HIR::GenericPath& tpl) {
-    return monomorphise_pathparams_needed(tpl.m_params);
-}
-extern bool monomorphise_path_needed(const ::HIR::Path& tpl);
-extern bool monomorphise_traitpath_needed(const ::HIR::TraitPath& tpl);
-extern bool monomorphise_type_needed(const ::HIR::TypeRef& tpl);
-extern ::HIR::PathParams monomorphise_path_params_with(const Span& sp, const ::HIR::PathParams& tpl, t_cb_generic callback, bool allow_infer);
-extern ::HIR::GenericPath monomorphise_genericpath_with(const Span& sp, const ::HIR::GenericPath& tpl, t_cb_generic callback, bool allow_infer);
-extern ::HIR::TraitPath monomorphise_traitpath_with(const Span& sp, const ::HIR::TraitPath& tpl, t_cb_generic callback, bool allow_infer);
-extern ::HIR::TypeRef monomorphise_type_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer=true);
-extern ::HIR::TypeRef monomorphise_type(const Span& sp, const ::HIR::GenericParams& params_def, const ::HIR::PathParams& params,  const ::HIR::TypeRef& tpl);
-
-extern void check_type_class_primitive(const Span& sp, const ::HIR::TypeRef& type, ::HIR::InferClass ic, ::HIR::CoreType ct);
+#include "common.hpp"
 
 class HMTypeInferrence
 {
@@ -229,7 +215,7 @@ public:
     const ::HIR::TypeRef* autoderef(const Span& sp, const ::HIR::TypeRef& ty,  ::HIR::TypeRef& tmp_type) const;
 
     bool find_field(const Span& sp, const ::HIR::TypeRef& ty, const ::std::string& name,  /* Out -> */::HIR::TypeRef& field_type) const;
-    bool find_method(const Span& sp, const HIR::t_trait_list& traits, const ::HIR::TypeRef& ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const;
+    bool find_method(const Span& sp, const HIR::t_trait_list& traits, const ::HIR::TypeRef& ty, const ::std::string& method_name, bool allow_move,  /* Out -> */::HIR::Path& fcn_path) const;
     
     /// Locates a named method in a trait, and returns the path of the trait that contains it (with fixed parameters)
     bool trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
