@@ -352,13 +352,13 @@ void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope)
     auto& scope_def = m_scopes.at(scope.idx);
     ASSERT_BUG( sp, scope_def.complete == false, "Terminating scope which is already terminated" );
     
-    complete_scope(scope_def);
-    
     // 2. Emit drops for all non-moved variables (share with below)
     drop_scope_values(scope_def);
     
     // 3. Pop scope (last because `drop_scope_values` uses the stack)
     m_scope_stack.pop_back();
+    
+    complete_scope(scope_def);
 }
 void MirBuilder::terminate_scope_early(const Span& sp, const ScopeHandle& scope)
 {
@@ -383,9 +383,9 @@ void MirBuilder::terminate_scope_early(const Span& sp, const ScopeHandle& scope)
         
         if( !is_conditional ) {
             DEBUG("Complete scope " << idx);
-            complete_scope(scope_def);
             drop_scope_values(scope_def);
             m_scope_stack.pop_back();
+            complete_scope(scope_def);
         }
         else {
             // Mark patial within this scope?
@@ -415,6 +415,8 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
 }
 void MirBuilder::complete_scope(ScopeDef& sd)
 {
+    static Span    sp;
+    
     sd.complete = true;
     TU_MATCHA( (sd.data), (e),
     (Temporaries,
@@ -437,20 +439,112 @@ void MirBuilder::complete_scope(ScopeDef& sd)
         {
             var_count = ::std::max(var_count, arm.var_states.size());
         }
+        ::std::vector<bool> changed(var_count);
+        ::std::vector<VarState> new_states(var_count);
         for(const auto& arm : e.arms)
         {
             DEBUG("><");
             assert( arm.changed_var_states.size() == arm.var_states.size() );
             for(unsigned int i = 0; i < arm.var_states.size(); i ++ )
             {
-                if( arm.changed_var_states[i] )
+                assert(i < changed.size());
+                if( changed[i] )
                 {
-                    auto new_state = arm.var_states[i];
-                    // - NOTE: This scope should be off the stack now, so this call will get the original state
-                    auto old_state = get_variable_state(i);
-                    DEBUG("old_state = " << old_state << ", new_state = " << new_state);
-                    // TODO: Need to build up a merged copy of the states? Or just apply upwards directly?
+                    DEBUG("("<<new_states[i]<<","<<arm.var_states[i]<<")");
+                    switch(new_states[i])
+                    {
+                    case VarState::Uninit:
+                        BUG(sp, "Override to Uninit");
+                        break;
+                    case VarState::Init:
+                        if( arm.changed_var_states[i] ) {
+                            switch( arm.var_states[i] )
+                            {
+                            case VarState::Uninit:
+                                BUG(sp, "Override to Uninit");
+                                break;
+                            case VarState::Init:
+                                // No change
+                                break;
+                            case VarState::MaybeMoved:
+                                new_states[i] = VarState::MaybeMoved;
+                                break;
+                            case VarState::Moved:
+                                new_states[i] = VarState::MaybeMoved;
+                                break;
+                            case VarState::Dropped:
+                                BUG(sp, "Dropped value in arm");
+                                break;
+                            }
+                        }
+                        else {
+                            new_states[i] = VarState::MaybeMoved;   // MaybeInit?
+                        }
+                        break;
+                    case VarState::MaybeMoved:
+                        // Already optional, don't change
+                        break;
+                    case VarState::Moved:
+                        if( arm.changed_var_states[i] ) {
+                            switch( arm.var_states[i] )
+                            {
+                            case VarState::Uninit:
+                                // Wut?
+                                break;
+                            case VarState::Init:
+                                // Wut? Reinited?
+                                new_states[i] = VarState::MaybeMoved;   // This arm didn't touch it
+                                break;
+                            case VarState::MaybeMoved:
+                                new_states[i] = VarState::MaybeMoved;
+                                break;
+                            case VarState::Moved:
+                                // No change
+                                break;
+                            case VarState::Dropped:
+                                BUG(sp, "Dropped value in arm");
+                                break;
+                            }
+                        }
+                        else {
+                            new_states[i] = VarState::MaybeMoved;   // This arm didn't touch it
+                            // TODO: If the original state was Uninit, this could be updated to Uninit?
+                        }
+                        break;
+                    case VarState::Dropped:
+                        TODO(Span(), "How can an arm drop a value?");
+                        break;
+                    }
                 }
+                else if( arm.changed_var_states[i] )
+                {
+                    changed[i] = true;
+                    new_states[i] = arm.var_states[i];
+                }
+                else
+                {
+                    // No change
+                }
+            }
+        }
+        
+        for(unsigned int i = 0; i < var_count; i ++ )
+        {
+            if( changed[i] )
+            {
+                // - NOTE: This scope should be off the stack now, so this call will get the original state
+                auto old_state = get_variable_state(i);
+                auto new_state = new_states[i];
+                DEBUG("var" << i << " old_state = " << old_state << ", new_state = " << new_state);
+                set_variable_state(i, new_state);
+                //switch(old_state)
+                //{
+                //case VarState::Uninit:
+                //    set_variable_state(i, new_state);
+                //    break;
+                //case VarState::Init:
+                //
+                //}
             }
         }
         )
@@ -480,7 +574,7 @@ void MirBuilder::with_val_type(const ::MIR::LValue& val, ::std::function<void(co
         with_val_type(*e.val, [&](const auto& ty){
             TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
             (
-                BUG(sp, "");
+                BUG(sp, "Field access on unexpected type - " << ty);
                 ),
             (Path,
                 TODO(sp, "Field -  Path");
@@ -496,7 +590,7 @@ void MirBuilder::with_val_type(const ::MIR::LValue& val, ::std::function<void(co
         with_val_type(*e.val, [&](const auto& ty){
             TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
             (
-                BUG(sp, "");
+                BUG(sp, "Deref on unexpected type - " << ty);
                 ),
             (Pointer,
                 cb(*te.inner);
@@ -511,7 +605,7 @@ void MirBuilder::with_val_type(const ::MIR::LValue& val, ::std::function<void(co
         with_val_type(*e.val, [&](const auto& ty){
             TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
             (
-                BUG(sp, "");
+                BUG(sp, "Index on unexpected type - " << ty);
                 ),
             (Slice,
                 cb(*te.inner);
@@ -526,10 +620,33 @@ void MirBuilder::with_val_type(const ::MIR::LValue& val, ::std::function<void(co
         with_val_type(*e.val, [&](const auto& ty){
             TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
             (
-                BUG(sp, "");
+                BUG(sp, "Downcast on unexpected type - " << ty);
                 ),
             (Path,
-                TODO(sp, "Downcast -  Path");
+                ASSERT_BUG(sp, te.binding.is_Enum(), "Downcast on non-Enum");
+                const auto& enm = *te.binding.as_Enum();
+                const auto& variants = enm.m_variants;
+                ASSERT_BUG(sp, e.variant_index < variants.size(), "Variant index out of range");
+                const auto& variant = variants[e.variant_index];
+                // TODO: Make data variants refer to associated types (unify enum and struct handling)
+                TU_MATCHA( (variant.second), (ve),
+                (Value,
+                    ),
+                (Unit,
+                    ),
+                (Tuple,
+                    // HACK! Create tuple.
+                    ::std::vector< ::HIR::TypeRef>  tys;
+                    for(const auto& fld : ve)
+                        tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.ent) );
+                    ::HIR::TypeRef  tup( mv$(tys) );
+                    cb(tup);
+                    ),
+                (Struct,
+                    // HACK! Create tuple.
+                    TODO(sp, "Downcast - Named");
+                    )
+                )
                 )
             )
             });
@@ -595,13 +712,14 @@ void MirBuilder::set_variable_state(unsigned int idx, VarState state)
             ),
         (Split,
             auto& cur_arm = e.arms.back();
-            if( idx < cur_arm.changed_var_states.size() )
-            {
-                assert( idx < cur_arm.var_states.size() );
-                cur_arm.changed_var_states[idx] = true;
-                cur_arm.var_states[idx] = state;
-                return ;
+            if( idx >= cur_arm.changed_var_states.size() ) {
+                cur_arm.changed_var_states.resize( idx + 1 );
+                cur_arm.var_states.resize( idx + 1 );
             }
+            assert( idx < cur_arm.var_states.size() );
+            cur_arm.changed_var_states[idx] = true;
+            cur_arm.var_states[idx] = state;
+            return ;
             )
         )
     }
@@ -660,7 +778,7 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
 {
     TU_MATCHA( (sd.data), (e),
     (Temporaries,
-        for(auto tmp_idx : e.temporaries)
+        for(auto tmp_idx : ::reverse(e.temporaries))
         {
             if( get_temp_state(tmp_idx) == VarState::Init ) {
                 push_stmt_drop( ::MIR::LValue::make_Temporary({ tmp_idx }) );
@@ -669,7 +787,7 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
         }
         ),
     (Variables,
-        for(auto var_idx : e.vars)
+        for(auto var_idx : ::reverse(e.vars))
         {
             switch( get_variable_state(var_idx) )
             {
@@ -681,6 +799,7 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
                 push_stmt_drop( ::MIR::LValue::make_Variable(var_idx) );
                 break;
             case VarState::MaybeMoved:
+                //TODO(Span(), "MaybeMoved");
                 // TODO: Drop flags
                 break;
             }
@@ -699,10 +818,14 @@ void MirBuilder::moved_lvalue(const ::MIR::LValue& lv)
 {
     TU_MATCHA( (lv), (e),
     (Variable,
-        set_variable_state(e, VarState::Moved);
+        if( !lvalue_is_copy(lv) ) {
+            set_variable_state(e, VarState::Moved);
+        }
         ),
     (Temporary,
-        set_temp_state(e.idx, VarState::Moved);
+        //if( !lvalue_is_copy(lv) ) {
+            set_temp_state(e.idx, VarState::Moved);
+        //}
         ),
     (Argument,
         //TODO(Span(), "Mark argument as moved");
@@ -714,17 +837,28 @@ void MirBuilder::moved_lvalue(const ::MIR::LValue& lv)
         BUG(Span(), "Read of return value");
         ),
     (Field,
-        //TODO(Span(), "Mark field of an lvalue as moved (if not Copy) - Partially moved structs?");
-        //moved_lvalue(*e.val);
+        if( lvalue_is_copy(lv) ) {
+        }
+        else {
+            // TODO: Partial moves.
+            moved_lvalue(*e.val);
+        }
         ),
     (Deref,
-        //TODO(Span(), "Mark deref of an lvalue as moved (if not Copy) - Req. DerefMove/&move otherwise");
-        //moved_lvalue(*e.val);
+        if( lvalue_is_copy(lv) ) {
+        }
+        else {
+            BUG(Span(), "Move out of index with non-Copy values - &move?");
+            moved_lvalue(*e.val);
+        }
         ),
     (Index,
-        //TODO(Span(), "Mark index of an lvalue as moved (if not Copy) - Req. IndexGet/IndexMove");
-        //moved_lvalue(*e.val);
-        
+        if( lvalue_is_copy(lv) ) {
+        }
+        else {
+            BUG(Span(), "Move out of index with non-Copy values - Partial move?");
+            moved_lvalue(*e.val);
+        }
         moved_lvalue(*e.idx);
         ),
     (Downcast,

@@ -5,3 +5,4 @@ TODO:
 - Method and type monomorphisation
 - Test compile against a no_std program
 - MIR Optimisations
+- HIR Optimisation (remove dead code in `if true/if false` branches)

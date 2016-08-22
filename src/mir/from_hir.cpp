@@ -962,7 +962,7 @@ namespace {
                 m_builder.set_cur_block( arm_continue );
             }
             
-            m_builder.set_result( node.span(), ::MIR::LValue::make_Index({ box$(index), box$(value) }) );
+            m_builder.set_result( node.span(), ::MIR::LValue::make_Index({ box$(value), box$(index) }) );
         }
         
         void visit(::HIR::ExprNode_Deref& node) override
