@@ -1872,6 +1872,7 @@ namespace {
                 // Autoref
                 {
                     auto receiver_class = node.m_cache.m_fcn->m_receiver;
+                    ::HIR::BorrowType   bt;
                     
                     auto& node_ptr = node.m_value;
                     auto span = node_ptr->span();
@@ -1882,17 +1883,9 @@ namespace {
                     case ::HIR::Function::Receiver::Value:
                         // by value - nothing needs to be added
                         break;
-                    case ::HIR::Function::Receiver::BorrowShared:
-                    case ::HIR::Function::Receiver::BorrowUnique:
-                    case ::HIR::Function::Receiver::BorrowOwned: {
-                        ::HIR::BorrowType   bt;
-                        switch(receiver_class)
-                        {
-                        case ::HIR::Function::Receiver::BorrowShared:  bt = ::HIR::BorrowType::Shared; break;
-                        case ::HIR::Function::Receiver::BorrowUnique:  bt = ::HIR::BorrowType::Unique; break;
-                        case ::HIR::Function::Receiver::BorrowOwned:   bt = ::HIR::BorrowType::Owned; break;
-                        default:    throw "";
-                        }
+                    case ::HIR::Function::Receiver::BorrowShared: bt = ::HIR::BorrowType::Shared; if(0)
+                    case ::HIR::Function::Receiver::BorrowUnique: bt = ::HIR::BorrowType::Unique; if(0)
+                    case ::HIR::Function::Receiver::BorrowOwned:  bt = ::HIR::BorrowType::Owned; {
                         // - Add correct borrow operation
                         auto ty = ::HIR::TypeRef::new_borrow(bt, node_ptr->m_res_type.clone());
                         DEBUG("- Ref " << &*node_ptr << " -> " << ty);
