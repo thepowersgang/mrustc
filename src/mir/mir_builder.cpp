@@ -848,7 +848,7 @@ void MirBuilder::moved_lvalue(const ::MIR::LValue& lv)
         if( lvalue_is_copy(lv) ) {
         }
         else {
-            BUG(Span(), "Move out of index with non-Copy values - &move?");
+            BUG(Span(), "Move out of index with non-Copy values - &move? - " << lv);
             moved_lvalue(*e.val);
         }
         ),
