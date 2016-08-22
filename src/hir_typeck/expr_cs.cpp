@@ -297,6 +297,7 @@ namespace {
         )
 
         assert( fcn_ptr );
+        cache.m_fcn = fcn_ptr;
         const auto& fcn = *fcn_ptr;
         
         // --- Monomorphise the argument/return types (into current context)
@@ -1870,55 +1871,26 @@ namespace {
                 
                 // Autoref
                 {
-                    // TODO: Get the receiver type without Self having been expanded.
-                    // - Or some other indication of how Self is being taken
-                    const auto& receiver_type = node.m_cache.m_arg_types.front();
-                    enum class Receiver {
-                        Unknown,
-                        Value,
-                        Shared,
-                        Unique,
-                        Owned,
-                        //Box,
-                    }   receiver_class = Receiver::Unknown;
-                    if( this->context.m_ivars.types_equal(receiver_type, node.m_value->m_res_type) ) {
-                        receiver_class = Receiver::Value;
-                    }
-                    else TU_IFLET(::HIR::TypeRef::Data, receiver_type.m_data, Borrow, e,
-                        if( this->context.m_ivars.types_equal(*e.inner, node.m_value->m_res_type) ) {
-                            switch(e.type)
-                            {
-                            case ::HIR::BorrowType::Shared: receiver_class = Receiver::Shared;  break;
-                            case ::HIR::BorrowType::Unique: receiver_class = Receiver::Unique;  break;
-                            case ::HIR::BorrowType::Owned : receiver_class = Receiver::Owned ;  break;
-                            }
-                        }
-                        else {
-                            receiver_class = Receiver::Unknown;
-                        }
-                    )
-                    else {
-                        receiver_class = Receiver::Unknown;
-                    }
+                    auto receiver_class = node.m_cache.m_fcn->m_receiver;
                     
                     auto& node_ptr = node.m_value;
                     auto span = node_ptr->span();
                     switch(receiver_class)
                     {
-                    case Receiver::Unknown:
-                        BUG(sp, "Unknown receiver type - " << receiver_type << ", Self = " << node.m_value->m_res_type);
-                    case Receiver::Value:
+                    case ::HIR::Function::Receiver::Free:
+                        BUG(sp, "Method call resolved to a free function - " << node.m_method_path);
+                    case ::HIR::Function::Receiver::Value:
                         // by value - nothing needs to be added
                         break;
-                    case Receiver::Shared:
-                    case Receiver::Unique:
-                    case Receiver::Owned: {
+                    case ::HIR::Function::Receiver::BorrowShared:
+                    case ::HIR::Function::Receiver::BorrowUnique:
+                    case ::HIR::Function::Receiver::BorrowOwned: {
                         ::HIR::BorrowType   bt;
                         switch(receiver_class)
                         {
-                        case Receiver::Shared:  bt = ::HIR::BorrowType::Shared; break;
-                        case Receiver::Unique:  bt = ::HIR::BorrowType::Unique; break;
-                        case Receiver::Owned:   TODO(sp, "Construct &move uni-op");
+                        case ::HIR::Function::Receiver::BorrowShared:  bt = ::HIR::BorrowType::Shared; break;
+                        case ::HIR::Function::Receiver::BorrowUnique:  bt = ::HIR::BorrowType::Unique; break;
+                        case ::HIR::Function::Receiver::BorrowOwned:   bt = ::HIR::BorrowType::Owned; break;
                         default:    throw "";
                         }
                         // - Add correct borrow operation

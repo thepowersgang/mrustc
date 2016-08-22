@@ -2106,6 +2106,7 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
                 if( !this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, method_name,  final_trait_path) )
                     continue ;
                 DEBUG("- Found trait " << final_trait_path);
+                // TODO: Check that the receiver isn't by-value if `allow_move` is false
                 
                 // Found the method, return the UFCS path for it
                 fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
@@ -2130,6 +2131,7 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
             if( it->second.is_Function() ) {
                 const auto& v = it->second.as_Function();
                 if( v.m_args.size() > 0 && v.m_args[0].first.m_binding.m_name == "self" ) {
+                    // TODO: Check that the receiver isn't by-value if `allow_move` is false
                     fcn_path = ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown({
                         box$( ty.clone() ),
                         e.m_trait.m_path.clone(),

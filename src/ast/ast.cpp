@@ -302,6 +302,38 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
 }
 
 
+Function::Function(Span sp, GenericParams params, TypeRef ret_type, Arglist args):
+    m_span(sp),
+    m_params( move(params) ),
+    m_rettype( move(ret_type) ),
+    m_args( move(args) )
+{
+    if( m_args.size() > 0 && m_args.front().first.binding().m_name == "self" ) {
+        const auto& ty = m_args.front().second;
+        TU_MATCH_DEF( ::TypeData, (ty.m_data), (e),
+        (
+            // Whups!
+            ERROR(sp, E0000, "Invalid receiver type - " << ty);
+            ),
+        (Borrow,
+            if(e.is_mut) {
+                m_receiver = Receiver::BorrowUnique;
+            }
+            else {
+                m_receiver = Receiver::BorrowShared;
+            }
+            ),
+        // NOTE: This only applies for `self/&self/&mut self` syntax, NOT the `self: Self` syntax
+        (Generic,
+            if( e.index != 0xFFFF ) {
+                ERROR(sp, E0000, "Invalid receiver type - " << ty);
+            }
+            m_receiver = Receiver::Value;
+            )
+        )
+    }
+}
+
 void Trait::add_type(::std::string name, TypeRef type) {
     m_items.push_back( Named<Item>(mv$(name), Item::make_Type({TypeAlias(GenericParams(), mv$(type))}), true) );
 }

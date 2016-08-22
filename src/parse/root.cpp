@@ -233,6 +233,7 @@ void Parse_WhereClause(TokenStream& lex, AST::GenericParams& params)
 AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaItems& attrs, bool allow_self, bool can_be_prototype)
 {
     TRACE_FUNCTION;
+    ProtoSpan   ps = lex.start_span();
 
     Token   tok;
 
@@ -387,7 +388,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, AST::MetaIt
         PUTBACK(tok, lex);
     }
 
-    return AST::Function(::std::move(params), ::std::move(ret_type), ::std::move(args));
+    return AST::Function(lex.end_span(ps), mv$(params), mv$(ret_type), mv$(args));
 }
 
 AST::Function Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST::MetaItems& attrs, bool allow_self)

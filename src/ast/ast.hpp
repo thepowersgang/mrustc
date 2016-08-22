@@ -147,38 +147,49 @@ class Function
 {
 public:
     typedef ::std::vector< ::std::pair<AST::Pattern,TypeRef> >   Arglist;
+    
+    enum class Receiver {
+        Free,
+        Value,
+        BorrowOwned,
+        BorrowUnique,
+        BorrowShared,
+        //RawMut,
+        //RawConst,
+        //Box,
+    };
 
 private:
-    ::std::string   m_lifetime;
+    Span    m_span;
+    //::std::string   m_lifetime;
+    Receiver    m_receiver;
     GenericParams  m_params;
     Expr    m_code;
     TypeRef m_rettype;
     Arglist m_args;
 public:
-    Function()
+    Function():
+        m_receiver(Receiver::Free)
     {}
     Function(const Function&) = delete;
-    Function(Function&&) noexcept = default;
+    Function& operator=(const Function&) = delete;
+    Function(Function&&) = default;
     Function& operator=(Function&&) = default;
-    Function(GenericParams params, TypeRef ret_type, Arglist args):
-        m_params( move(params) ),
-        m_rettype( move(ret_type) ),
-        m_args( move(args) )
-    {
-    }
+    Function(Span sp, GenericParams params, TypeRef ret_type, Arglist args);
     
     void set_code(Expr code) { m_code = ::std::move(code); }
-    void set_self_lifetime(::std::string s) { m_lifetime = s; }
     
     const GenericParams& params() const { return m_params; }
+          GenericParams& params()       { return m_params; }
     const Expr& code() const { return m_code; }
+          Expr& code()       { return m_code; }
     const TypeRef& rettype() const { return m_rettype; }
+          TypeRef& rettype()       { return m_rettype; }
     const Arglist& args() const { return m_args; }
+          Arglist& args()       { return m_args; }
     
-    GenericParams& params() { return m_params; }
-    Expr& code() { return m_code; }
-    TypeRef& rettype() { return m_rettype; }
-    Arglist& args() { return m_args; }
+    Receiver receiver() const { return m_receiver; }
+    
 };
 
 class Trait

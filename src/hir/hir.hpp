@@ -76,6 +76,17 @@ struct Constant
 class Function
 {
 public:
+    enum class Receiver {
+        Free,
+        Value,
+        BorrowOwned,
+        BorrowUnique,
+        BorrowShared,
+        //PointerMut,
+        //PointerConst,
+    };
+    
+    Receiver    m_receiver;
     ::std::string   m_abi;
     bool    m_unsafe;
     bool    m_const;

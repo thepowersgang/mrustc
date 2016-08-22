@@ -234,6 +234,7 @@ class Deriver_Debug:
         DEBUG("node = " << *node);
         
         AST::Function fcn(
+            sp,
             AST::GenericParams(),
             ret_type,
             vec$(
@@ -409,6 +410,7 @@ class Deriver_PartialEq:
         const AST::Path    trait_path("", { AST::PathNode("cmp", {}), AST::PathNode("PartialEq", {}) });
         
         AST::Function fcn(
+            sp,
             AST::GenericParams(),
             TypeRef(sp, CORETYPE_BOOL),
             vec$(
@@ -591,6 +593,7 @@ class Deriver_Eq:
         const AST::Path    trait_path = this->get_trait_path();
         
         AST::Function fcn(
+            sp,
             AST::GenericParams(),
             TypeRef(TypeRef::TagUnit(), sp),
             vec$(
@@ -727,6 +730,7 @@ class Deriver_Clone:
         const AST::Path    trait_path = this->get_trait_path();
         
         AST::Function fcn(
+            sp,
             AST::GenericParams(),
             TypeRef("Self", 0xFFFF),
             vec$(

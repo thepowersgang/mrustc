@@ -416,6 +416,7 @@ struct ExprCallCache
     ::std::vector< ::HIR::TypeRef>  m_arg_types;
     const ::HIR::GenericParams* m_fcn_params;
     const ::HIR::GenericParams* m_top_params;
+    const ::HIR::Function*  m_fcn;
 
     ::HIR::PathParams   m_ty_impl_params;
     

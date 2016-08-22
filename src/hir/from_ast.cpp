@@ -891,13 +891,31 @@ namespace {
 }
 ::HIR::Function LowerHIR_Function(::HIR::ItemPath p, const ::AST::Function& f)
 {
+    static Span sp;
+    
     DEBUG(p);
     ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef > >    args;
     for(const auto& arg : f.args())
         args.push_back( ::std::make_pair( LowerHIR_Pattern(arg.first), LowerHIR_Type(arg.second) ) );
     
+    auto receiver = ::HIR::Function::Receiver::Free;
+    
+    switch( f.receiver() )
+    {
+    #define _(N) case ::AST::Function::Receiver::N: receiver = ::HIR::Function::Receiver::N; break;
+    _(Free)
+    _(Value)
+    _(BorrowOwned)
+    _(BorrowUnique)
+    _(BorrowShared)
+    //case ::AST::Function::Receiver::Box:
+    //    break;
+    #undef _
+    }
+    
     // TODO: ABI and unsafety/constness
     return ::HIR::Function {
+        receiver,
         "rust", false, false,
         LowerHIR_GenericParams(f.params(), nullptr),    // TODO: If this is a method, then it can add the Self: Sized bound
         mv$(args),

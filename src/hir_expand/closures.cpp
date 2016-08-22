@@ -166,6 +166,7 @@ namespace {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
                     ::std::string("call_once"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
+                        ::HIR::Function::Receiver::Value,
                         "rust", false, false,
                         {},
                         make_vec2(
@@ -197,6 +198,7 @@ namespace {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
                     ::std::string("call_mut"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
+                        ::HIR::Function::Receiver::BorrowUnique,
                         "rust", false, false,
                         {},
                         make_vec2(
@@ -229,6 +231,7 @@ namespace {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
                     ::std::string("call"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
+                        ::HIR::Function::Receiver::BorrowShared,
                         "rust", false, false,
                         {},
                         make_vec2(
