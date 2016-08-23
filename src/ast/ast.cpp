@@ -304,6 +304,7 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
 
 Function::Function(Span sp, GenericParams params, TypeRef ret_type, Arglist args):
     m_span(sp),
+    m_receiver(Receiver::Free),
     m_params( move(params) ),
     m_rettype( move(ret_type) ),
     m_args( move(args) )
