@@ -18,23 +18,26 @@ MirBuilder::MirBuilder(const StaticTraitResolve& resolve, ::MIR::Function& outpu
     m_result_valid(false),
     m_fcn_scope(*this, 0)
 {
+    Span    sp;
     set_cur_block( new_bb_unlinked() );
-    m_scopes.push_back( ScopeDef {} );
+    m_scopes.push_back( ScopeDef { sp } );
     m_scope_stack.push_back( 0 );
     
-    m_scopes.push_back( ScopeDef { false, ScopeType::make_Temporaries({}) } );
+    m_scopes.push_back( ScopeDef { sp, ScopeType::make_Temporaries({}) } );
     m_scope_stack.push_back( 1 );
 }
 MirBuilder::~MirBuilder()
 {
+    // TODO: Function span
+    Span    sp;
     if( has_result() )
     {
-        push_stmt_assign( ::MIR::LValue::make_Return({}), get_result(Span()) );
+        push_stmt_assign( sp, ::MIR::LValue::make_Return({}), get_result(Span()) );
     }
     if( block_active() )
     {
-        terminate_scope( Span(), ScopeHandle { *this, 1 } );
-        terminate_scope( Span(), mv$(m_fcn_scope) );
+        terminate_scope( sp, ScopeHandle { *this, 1 } );
+        terminate_scope( sp, mv$(m_fcn_scope) );
         end_block( ::MIR::Terminator::make_Return({}) );
     }
 }
@@ -85,14 +88,14 @@ void MirBuilder::define_variable(unsigned int idx)
     tmp_scope.states.push_back( VarState::Uninit );
     return ::MIR::LValue::make_Temporary({rv});
 }
-::MIR::LValue MirBuilder::lvalue_or_temp(const ::HIR::TypeRef& ty, ::MIR::RValue val)
+::MIR::LValue MirBuilder::lvalue_or_temp(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::RValue val)
 {
     TU_IFLET(::MIR::RValue, val, Use, e,
         return mv$(e);
     )
     else {
         auto temp = new_temporary(ty);
-        push_stmt_assign( ::MIR::LValue(temp.as_Temporary()), mv$(val) );
+        push_stmt_assign( sp, ::MIR::LValue(temp.as_Temporary()), mv$(val) );
         return temp;
     }
 }
@@ -107,7 +110,7 @@ void MirBuilder::define_variable(unsigned int idx)
     return rv;
 }
 
-::MIR::LValue MirBuilder::get_result_lvalue(const Span& sp)
+::MIR::LValue MirBuilder::get_result_unwrap_lvalue(const Span& sp)
 {
     auto rv = get_result(sp);
     TU_IFLET(::MIR::RValue, rv, Use, e,
@@ -115,6 +118,18 @@ void MirBuilder::define_variable(unsigned int idx)
     )
     else {
         BUG(sp, "LValue expected, got RValue");
+    }
+}
+::MIR::LValue MirBuilder::get_result_in_lvalue(const Span& sp, const ::HIR::TypeRef& ty)
+{
+    auto rv = get_result(sp);
+    TU_IFLET(::MIR::RValue, rv, Use, e,
+        return mv$(e);
+    )
+    else {
+        auto temp = new_temporary(ty);
+        push_stmt_assign( sp, ::MIR::LValue(temp.clone()), mv$(rv) );
+        return temp;
     }
 }
 void MirBuilder::set_result(const Span& sp, ::MIR::RValue val)
@@ -126,9 +141,8 @@ void MirBuilder::set_result(const Span& sp, ::MIR::RValue val)
     m_result_valid = true;
 }
 
-void MirBuilder::push_stmt_assign(::MIR::LValue dst, ::MIR::RValue val)
+void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val)
 {
-    static Span sp;
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
     ASSERT_BUG(sp, dst.tag() != ::MIR::LValue::TAGDEAD, "");
     ASSERT_BUG(sp, val.tag() != ::MIR::RValue::TAGDEAD, "");
@@ -234,7 +248,7 @@ void MirBuilder::push_stmt_assign(::MIR::LValue dst, ::MIR::RValue val)
         case VarState::Init:
             // 1. Must be mut
             // 2. Drop (if not Copy)
-            push_stmt_drop( dst.clone() );
+            push_stmt_drop( sp, dst.clone() );
             break;
         case VarState::MaybeMoved:
             // TODO: Conditional drop
@@ -245,10 +259,8 @@ void MirBuilder::push_stmt_assign(::MIR::LValue dst, ::MIR::RValue val)
     )
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Assign({ mv$(dst), mv$(val) }) );
 }
-void MirBuilder::push_stmt_drop(::MIR::LValue val)
+void MirBuilder::push_stmt_drop(const Span& sp, ::MIR::LValue val)
 {
-    static Span sp_drop;
-    const auto& sp = sp_drop;
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
     ASSERT_BUG(sp, val.tag() != ::MIR::LValue::TAGDEAD, "");
     
@@ -309,7 +321,7 @@ void MirBuilder::end_block(::MIR::Terminator term)
 ScopeHandle MirBuilder::new_scope_var(const Span& sp)
 {
     unsigned int idx = m_scopes.size();
-    m_scopes.push_back( {false, ScopeType::make_Variables({})} );
+    m_scopes.push_back( ScopeDef {sp, ScopeType::make_Variables({})} );
     m_scope_stack.push_back( idx );
     DEBUG("START (var) scope " << idx);
     return ScopeHandle { *this, idx };
@@ -317,7 +329,7 @@ ScopeHandle MirBuilder::new_scope_var(const Span& sp)
 ScopeHandle MirBuilder::new_scope_temp(const Span& sp)
 {
     unsigned int idx = m_scopes.size();
-    m_scopes.push_back( {false, ScopeType::make_Temporaries({})} );
+    m_scopes.push_back( ScopeDef {sp, ScopeType::make_Temporaries({})} );
     m_scope_stack.push_back( idx );
     DEBUG("START (temp) scope " << idx);
     return ScopeHandle { *this, idx };
@@ -325,7 +337,7 @@ ScopeHandle MirBuilder::new_scope_temp(const Span& sp)
 ScopeHandle MirBuilder::new_scope_split(const Span& sp)
 {
     unsigned int idx = m_scopes.size();
-    m_scopes.push_back( {false, ScopeType::make_Split({})} );
+    m_scopes.push_back( ScopeDef {sp, ScopeType::make_Split({})} );
     m_scopes.back().data.as_Split().arms.push_back( {} );
     m_scope_stack.push_back( idx );
     DEBUG("START (split) scope " << idx);
@@ -334,7 +346,7 @@ ScopeHandle MirBuilder::new_scope_split(const Span& sp)
 ScopeHandle MirBuilder::new_scope_loop(const Span& sp)
 {
     unsigned int idx = m_scopes.size();
-    m_scopes.push_back( {false, ScopeType::make_Loop({})} );
+    m_scopes.push_back( ScopeDef {sp, ScopeType::make_Loop({})} );
     m_scope_stack.push_back( idx );
     DEBUG("START (loop) scope " << idx);
     return ScopeHandle { *this, idx };
@@ -831,7 +843,7 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
         for(auto tmp_idx : ::reverse(e.temporaries))
         {
             if( get_temp_state(tmp_idx) == VarState::Init ) {
-                push_stmt_drop( ::MIR::LValue::make_Temporary({ tmp_idx }) );
+                push_stmt_drop( sd.span, ::MIR::LValue::make_Temporary({ tmp_idx }) );
                 set_temp_state(tmp_idx, VarState::Dropped);
             }
         }
@@ -846,7 +858,7 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
             case VarState::Moved:
                 break;
             case VarState::Init:
-                push_stmt_drop( ::MIR::LValue::make_Variable(var_idx) );
+                push_stmt_drop( sd.span, ::MIR::LValue::make_Variable(var_idx) );
                 break;
             case VarState::MaybeMoved:
                 //TODO(Span(), "MaybeMoved");

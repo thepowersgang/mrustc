@@ -89,8 +89,19 @@ class MirBuilder
     
     struct ScopeDef
     {
+        const Span& span;
         bool complete = false;
         ScopeType   data;
+        
+        ScopeDef(const Span& span):
+            span(span)
+        {
+        }
+        ScopeDef(const Span& span, ScopeType data):
+            span(span),
+            data(mv$(data))
+        {
+        }
     };
     
     ::std::vector<ScopeDef> m_scopes;
@@ -104,20 +115,23 @@ public:
     
     // - Values
     ::MIR::LValue new_temporary(const ::HIR::TypeRef& ty);
-    ::MIR::LValue lvalue_or_temp(const ::HIR::TypeRef& ty, ::MIR::RValue val);
+    ::MIR::LValue lvalue_or_temp(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::RValue val);
     
     bool has_result() const {
         return m_result_valid;
     }
-    ::MIR::RValue get_result(const Span& sp);
-    ::MIR::LValue get_result_lvalue(const Span& sp);
     void set_result(const Span& sp, ::MIR::RValue val);
+    ::MIR::RValue get_result(const Span& sp);
+    /// Obtains the result, unwrapping into a LValue (and erroring if not)
+    ::MIR::LValue get_result_unwrap_lvalue(const Span& sp);
+    /// Obtains the result, copying into a temporary if required
+    ::MIR::LValue get_result_in_lvalue(const Span& sp, const ::HIR::TypeRef& ty);
     
     // - Statements
     // Push an assignment. NOTE: This also marks the rvalue as moved
-    void push_stmt_assign(::MIR::LValue dst, ::MIR::RValue val);
+    void push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val);
     // Push a drop (likely only used by scope cleanup)
-    void push_stmt_drop(::MIR::LValue val);
+    void push_stmt_drop(const Span& sp, ::MIR::LValue val);
     
     // - Block management
     bool block_active() const {

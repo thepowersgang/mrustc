@@ -136,7 +136,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             builder.set_cur_block( ac.cond_start );
             
             conv.visit_node_ptr( arm.m_cond );
-            ac.cond_lval = builder.lvalue_or_temp( ::HIR::TypeRef(::HIR::CoreType::Bool), builder.get_result(arm.m_cond->span()) );
+            ac.cond_lval = builder.get_result_in_lvalue(arm.m_cond->span(), ::HIR::TypeRef(::HIR::CoreType::Bool));
             ac.cond_end = builder.pause_cur_block();
             // NOTE: Paused so that later code (which knows what the false branch will be) can end it correctly
             
@@ -164,7 +164,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         else {
             DEBUG("Arm result");
             // - Set result
-            builder.push_stmt_assign( result_val.clone(), builder.get_result(arm.m_code->span()) );
+            builder.push_stmt_assign( arm.m_code->span(), result_val.clone(), builder.get_result(arm.m_code->span()) );
             // - Drop all non-moved values from this scope
             builder.terminate_scope( arm.m_code->span(), mv$(drop_scope) );
             // - Go to the next block
@@ -293,8 +293,8 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 (Value,
                     auto succ_bb = builder.new_bb_unlinked();
                     
-                    auto test_lval = builder.lvalue_or_temp(te, ::MIR::Constant(re.as_Uint()));
-                    auto cmp_lval = builder.lvalue_or_temp(::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
+                    auto test_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant(re.as_Uint()));
+                    auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
                     builder.set_cur_block(succ_bb);
                     ),
@@ -315,8 +315,8 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 (Value,
                     auto succ_bb = builder.new_bb_unlinked();
                     
-                    auto test_lval = builder.lvalue_or_temp(te, ::MIR::Constant(re.as_Int()));
-                    auto cmp_lval = builder.lvalue_or_temp(::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
+                    auto test_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant(re.as_Int()));
+                    auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
                     builder.set_cur_block(succ_bb);
                     ),
@@ -333,8 +333,8 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 (Value,
                     auto succ_bb = builder.new_bb_unlinked();
                     
-                    auto test_lval = builder.lvalue_or_temp(te, ::MIR::Constant(re.as_Uint()));
-                    auto cmp_lval = builder.lvalue_or_temp(::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
+                    auto test_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant(re.as_Uint()));
+                    auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
                     builder.set_cur_block(succ_bb);
                     ),
@@ -2053,15 +2053,15 @@ void DecisionTreeGen::generate_tree_code(
                 
                 auto next_bb = (&branch == &branches.back() ? default_bb : m_builder.new_bb_unlinked());
                 
-                auto test_val = m_builder.lvalue_or_temp( ::HIR::TypeRef(::HIR::CoreType::Str), ::MIR::Constant(branch.first) );
+                auto test_val = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Str), ::MIR::Constant(branch.first) );
                 auto cmp_gt_bb = m_builder.new_bb_unlinked();
                 
-                auto lt_val = m_builder.lvalue_or_temp( ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ have_val.clone(), ::MIR::eBinOp::LT, test_val.clone() }) );
+                auto lt_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ have_val.clone(), ::MIR::eBinOp::LT, test_val.clone() }) );
                 m_builder.end_block( ::MIR::Terminator::make_If({ mv$(lt_val), default_bb, cmp_gt_bb }) );
                 m_builder.set_cur_block(cmp_gt_bb);
                 
                 auto eq_bb = m_builder.new_bb_unlinked();
-                auto gt_val = m_builder.lvalue_or_temp( ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(have_val), ::MIR::eBinOp::GT, test_val.clone() }) );
+                auto gt_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(have_val), ::MIR::eBinOp::GT, test_val.clone() }) );
                 m_builder.end_block( ::MIR::Terminator::make_If({ mv$(gt_val), next_bb, eq_bb }) );
                 m_builder.set_cur_block(eq_bb);
                 
@@ -2123,17 +2123,17 @@ void DecisionTreeGen::generate_branches_Unsigned(
     {
         auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
         
-        auto val_start = m_builder.lvalue_or_temp(ty, ::MIR::Constant(branch.first.start));
-        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(ty, ::MIR::Constant(branch.first.end)));
+        auto val_start = m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(branch.first.start));
+        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(branch.first.end)));
         
         auto cmp_gt_block = m_builder.new_bb_unlinked();
-        auto val_cmp_lt = m_builder.lvalue_or_temp( ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
+        auto val_cmp_lt = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
             val.clone(), ::MIR::eBinOp::LT, mv$(val_start)
             }) );
         m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_lt), default_block, cmp_gt_block }) );
         m_builder.set_cur_block( cmp_gt_block );
         auto success_block = m_builder.new_bb_unlinked();
-        auto val_cmp_gt = m_builder.lvalue_or_temp( ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
+        auto val_cmp_gt = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
             val.clone(), ::MIR::eBinOp::GT, mv$(val_end)
             }) );
         m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_gt), next_block, success_block }) );
@@ -2170,17 +2170,17 @@ void DecisionTreeGen::generate_branches_Char(
     {
         auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
         
-        auto val_start = m_builder.lvalue_or_temp(ty, ::MIR::Constant(branch.first.start));
-        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(ty, ::MIR::Constant(branch.first.end)));
+        auto val_start = m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(branch.first.start));
+        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(branch.first.end)));
         
         auto cmp_gt_block = m_builder.new_bb_unlinked();
-        auto val_cmp_lt = m_builder.lvalue_or_temp( ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
+        auto val_cmp_lt = m_builder.lvalue_or_temp( sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
             val.clone(), ::MIR::eBinOp::LT, mv$(val_start)
             }) );
         m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_lt), default_block, cmp_gt_block }) );
         m_builder.set_cur_block( cmp_gt_block );
         auto success_block = m_builder.new_bb_unlinked();
-        auto val_cmp_gt = m_builder.lvalue_or_temp( ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
+        auto val_cmp_gt = m_builder.lvalue_or_temp( sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
             val.clone(), ::MIR::eBinOp::GT, mv$(val_end)
             }) );
         m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_gt), next_block, success_block }) );

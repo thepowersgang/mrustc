@@ -132,15 +132,15 @@ namespace {
                 switch( pat.m_binding.m_type )
                 {
                 case ::HIR::PatternBinding::Type::Move:
-                    m_builder.push_stmt_assign( ::MIR::LValue::make_Variable(pat.m_binding.m_slot), mv$(lval) );
+                    m_builder.push_stmt_assign( sp, ::MIR::LValue::make_Variable(pat.m_binding.m_slot), mv$(lval) );
                     break;
                 case ::HIR::PatternBinding::Type::Ref:
-                    m_builder.push_stmt_assign( ::MIR::LValue::make_Variable(pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
+                    m_builder.push_stmt_assign( sp, ::MIR::LValue::make_Variable(pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
                         0, ::HIR::BorrowType::Shared, mv$(lval)
                         }) );
                     break;
                 case ::HIR::PatternBinding::Type::MutRef:
-                    m_builder.push_stmt_assign( ::MIR::LValue::make_Variable(pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
+                    m_builder.push_stmt_assign( sp, ::MIR::LValue::make_Variable(pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
                         0, ::HIR::BorrowType::Unique, mv$(lval)
                         }) );
                     break;
@@ -266,7 +266,7 @@ namespace {
                     auto stmt_scope = m_builder.new_scope_temp(sp);
                     this->visit_node_ptr(subnode);
                     if( m_builder.has_result() || m_builder.block_active() ) {
-                        m_builder.push_stmt_assign( res.clone(), m_builder.get_result(sp) );
+                        m_builder.push_stmt_assign( sp, res.clone(), m_builder.get_result(sp) );
                         m_builder.terminate_scope(sp, mv$(stmt_scope));
                         res_valid = true;
                     }
@@ -299,8 +299,7 @@ namespace {
             TRACE_FUNCTION_F("_Return");
             this->visit_node_ptr(node.m_value);
             
-            m_builder.push_stmt_assign( ::MIR::LValue::make_Return({}),  m_builder.get_result(node.span()) );
-            // TODO: Insert drop of all current scopes
+            m_builder.push_stmt_assign( node.span(), ::MIR::LValue::make_Return({}),  m_builder.get_result(node.span()) );
             m_builder.terminate_scope_early( node.span(), m_builder.fcn_scope() );
             m_builder.end_block( ::MIR::Terminator::make_Return({}) );
         }
@@ -312,7 +311,7 @@ namespace {
             {
                 this->visit_node_ptr(node.m_value);
                 
-                this->destructure_from(node.span(), node.m_pattern, m_builder.lvalue_or_temp(node.m_type, m_builder.get_result(node.span()) ));
+                this->destructure_from(node.span(), node.m_pattern, m_builder.get_result_in_lvalue(node.m_value->span(), node.m_type));
             }
             m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
         }
@@ -374,7 +373,7 @@ namespace {
         {
             TRACE_FUNCTION_F("_Match");
             this->visit_node_ptr(node.m_value);
-            auto match_val = m_builder.lvalue_or_temp(node.m_value->m_res_type, m_builder.get_result(node.m_value->span()));
+            auto match_val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
             
             if( node.m_arms.size() == 0 ) {
                 // Nothing
@@ -403,7 +402,7 @@ namespace {
             TRACE_FUNCTION_F("_If");
             
             this->visit_node_ptr(node.m_cond);
-            auto decision_val = m_builder.lvalue_or_temp(node.m_cond->m_res_type, m_builder.get_result(node.m_cond->span()) );
+            auto decision_val = m_builder.get_result_in_lvalue(node.m_cond->span(), node.m_cond->m_res_type);
             
             auto true_branch = m_builder.new_bb_unlinked();
             auto false_branch = m_builder.new_bb_unlinked();
@@ -420,7 +419,7 @@ namespace {
                 m_builder.set_cur_block(true_branch);
                 this->visit_node_ptr(node.m_true);
                 if( m_builder.block_active() || m_builder.has_result() ) {
-                    m_builder.push_stmt_assign( result_val.clone(), m_builder.get_result(node.m_true->span()) );
+                    m_builder.push_stmt_assign( node.span(), result_val.clone(), m_builder.get_result(node.m_true->span()) );
                     m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
                     m_builder.end_split_arm(node.span(), scope, true);
                 }
@@ -436,7 +435,7 @@ namespace {
                 this->visit_node_ptr(node.m_false);
                 if( m_builder.block_active() )
                 {
-                    m_builder.push_stmt_assign( result_val.clone(), m_builder.get_result(node.m_false->span()) );
+                    m_builder.push_stmt_assign( node.span(), result_val.clone(), m_builder.get_result(node.m_false->span()) );
                     m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
                     m_builder.end_split_arm(node.span(), scope, true);
                 }
@@ -447,7 +446,7 @@ namespace {
             else
             {
                 // Assign `()` to the result
-                m_builder.push_stmt_assign( result_val.clone(), ::MIR::RValue::make_Tuple({}) );
+                m_builder.push_stmt_assign(node.span(),  result_val.clone(), ::MIR::RValue::make_Tuple({}) );
                 m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
                 m_builder.end_split_arm(node.span(), scope, true);
             }
@@ -480,7 +479,7 @@ namespace {
                     }
                     )
                 )
-                m_builder.push_stmt_assign(mv$(res_slot), ::MIR::RValue::make_BinOp({ mv$(val_l), op, mv$(val_r) }));
+                m_builder.push_stmt_assign(sp, mv$(res_slot), ::MIR::RValue::make_BinOp({ mv$(val_l), op, mv$(val_r) }));
                 break;
             // Bitwise masking operations: Require equal integer types or bool
             case ::MIR::eBinOp::BIT_XOR:
@@ -498,7 +497,7 @@ namespace {
                 default:
                     break;
                 }
-                m_builder.push_stmt_assign(mv$(res_slot), ::MIR::RValue::make_BinOp({ mv$(val_l), op, mv$(val_r) }));
+                m_builder.push_stmt_assign(sp, mv$(res_slot), ::MIR::RValue::make_BinOp({ mv$(val_l), op, mv$(val_r) }));
                 break;
             case ::MIR::eBinOp::ADD:    case ::MIR::eBinOp::ADD_OV:
             case ::MIR::eBinOp::SUB:    case ::MIR::eBinOp::SUB_OV:
@@ -517,7 +516,7 @@ namespace {
                     break;
                 }
                 // TODO: Overflow checks (none for eBinOp::MOD)
-                m_builder.push_stmt_assign(mv$(res_slot), ::MIR::RValue::make_BinOp({ mv$(val_l), op, mv$(val_r) }));
+                m_builder.push_stmt_assign(sp, mv$(res_slot), ::MIR::RValue::make_BinOp({ mv$(val_l), op, mv$(val_r) }));
                 break;
             case ::MIR::eBinOp::BIT_SHL:
             case ::MIR::eBinOp::BIT_SHR:
@@ -545,7 +544,7 @@ namespace {
                     break;
                 }
                 // TODO: Overflow check
-                m_builder.push_stmt_assign(mv$(res_slot), ::MIR::RValue::make_BinOp({ mv$(val_l), op, mv$(val_r) }));
+                m_builder.push_stmt_assign(sp, mv$(res_slot), ::MIR::RValue::make_BinOp({ mv$(val_l), op, mv$(val_r) }));
                 break;
             }
         }
@@ -556,10 +555,10 @@ namespace {
             const auto& sp = node.span();
             
             this->visit_node_ptr(node.m_value);
-            auto val = m_builder.get_result(sp);
+            ::MIR::RValue val = m_builder.get_result(sp);
             
             this->visit_node_ptr(node.m_slot);
-            auto dst = m_builder.get_result_lvalue(sp);
+            auto dst = m_builder.get_result_unwrap_lvalue(sp);
             
             const auto& ty_slot = node.m_slot->m_res_type;
             const auto& ty_val  = node.m_value->m_res_type;
@@ -567,7 +566,7 @@ namespace {
             if( node.m_op != ::HIR::ExprNode_Assign::Op::None )
             {
                 auto dst_clone = dst.clone();
-                auto val_lv = m_builder.lvalue_or_temp( ty_val, mv$(val) );
+                auto val_lv = m_builder.lvalue_or_temp( node.span(), ty_val, mv$(val) );
                 
                 ASSERT_BUG(sp, ty_slot.m_data.is_Primitive(), "Assignment operator overloads are only valid on primitives - ty_slot="<<ty_slot);
                 ASSERT_BUG(sp, ty_val.m_data.is_Primitive(), "Assignment operator overloads are only valid on primitives - ty_val="<<ty_val);
@@ -602,7 +601,7 @@ namespace {
             else
             {
                 ASSERT_BUG(sp, ty_slot == ty_val, "Types must match for assignment - " << ty_slot << " != " << ty_val);
-                m_builder.push_stmt_assign(mv$(dst), mv$(val));
+                m_builder.push_stmt_assign(node.span(), mv$(dst), mv$(val));
             }
             m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
         }
@@ -614,11 +613,11 @@ namespace {
             
             const auto& ty_l = node.m_left->m_res_type;
             this->visit_node_ptr(node.m_left);
-            auto left = m_builder.lvalue_or_temp( ty_l, m_builder.get_result(node.m_left->span()) );
+            auto left = m_builder.get_result_in_lvalue(node.m_left->span(), ty_l);
             
             const auto& ty_r = node.m_right->m_res_type;
             this->visit_node_ptr(node.m_right);
-            auto right = m_builder.lvalue_or_temp( ty_r, m_builder.get_result(node.m_right->span()) );
+            auto right = m_builder.get_result_in_lvalue(node.m_right->span(), ty_r);
             
             auto res = m_builder.new_temporary(node.m_res_type);
             ::MIR::eBinOp   op;
@@ -659,12 +658,12 @@ namespace {
                 m_builder.end_block( ::MIR::Terminator::make_If({ mv$(left), bb_true, bb_false }) );
                 // If left is false, assign result false and return
                 m_builder.set_cur_block( bb_false );
-                m_builder.push_stmt_assign(res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool(false) ));
+                m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool(false) ));
                 m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
                 
                 // If left is true, assign result to right
                 m_builder.set_cur_block( bb_true );
-                m_builder.push_stmt_assign(res.clone(), mv$(right));    // TODO: Right doens't need to be an LValue here.
+                m_builder.push_stmt_assign(node.span(), res.clone(), mv$(right));    // TODO: Right doens't need to be an LValue here.
                 m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
                 
                 m_builder.set_cur_block( bb_next );
@@ -676,12 +675,12 @@ namespace {
                 m_builder.end_block( ::MIR::Terminator::make_If({ mv$(left), bb_true, bb_false }) );
                 // If left is true, assign result true and return
                 m_builder.set_cur_block( bb_true );
-                m_builder.push_stmt_assign(res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool(true) ));
+                m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool(true) ));
                 m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
                 
                 // If left is false, assign result to right
                 m_builder.set_cur_block( bb_false );
-                m_builder.push_stmt_assign(res.clone(), mv$(right));    // TODO: Right doens't need to be an LValue here.
+                m_builder.push_stmt_assign(node.span(), res.clone(), mv$(right));    // TODO: Right doens't need to be an LValue here.
                 m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
                 
                 m_builder.set_cur_block( bb_next );
@@ -696,9 +695,9 @@ namespace {
             
             const auto& ty_val = node.m_value->m_res_type;
             this->visit_node_ptr(node.m_value);
-            auto val = m_builder.lvalue_or_temp( ty_val, m_builder.get_result(node.m_value->span()) );
+            auto val = m_builder.get_result_in_lvalue(node.m_value->span(), ty_val);
             
-            auto res = m_builder.new_temporary(node.m_res_type);
+            ::MIR::RValue   res;
             switch(node.m_op)
             {
             case ::HIR::ExprNode_UniOp::Op::Invert:
@@ -718,7 +717,7 @@ namespace {
                 else {
                     BUG(node.span(), "`!` operator on invalid type - " << ty_val);
                 }
-                m_builder.push_stmt_assign(res.as_Temporary(), ::MIR::RValue::make_UniOp({ mv$(val), ::MIR::eUniOp::INV }));
+                res = ::MIR::RValue::make_UniOp({ mv$(val), ::MIR::eUniOp::INV });
                 break;
             case ::HIR::ExprNode_UniOp::Op::Negate:
                 if( ty_val.m_data.is_Primitive() ) {
@@ -743,7 +742,7 @@ namespace {
                 else {
                     BUG(node.span(), "`!` operator on invalid type - " << ty_val);
                 }
-                m_builder.push_stmt_assign(res.as_Temporary(), ::MIR::RValue::make_UniOp({ mv$(val), ::MIR::eUniOp::NEG }));
+                res = ::MIR::RValue::make_UniOp({ mv$(val), ::MIR::eUniOp::NEG });
                 break;
             }
             m_builder.set_result( node.span(), mv$(res) );
@@ -754,17 +753,17 @@ namespace {
             
             const auto& ty_val = node.m_value->m_res_type;
             this->visit_node_ptr(node.m_value);
-            auto val = m_builder.lvalue_or_temp( ty_val, m_builder.get_result(node.m_value->span()) );
+            auto val = m_builder.get_result_in_lvalue(node.m_value->span(), ty_val);
             
             auto res = m_builder.new_temporary(node.m_res_type);
-            m_builder.push_stmt_assign(res.as_Temporary(), ::MIR::RValue::make_Borrow({ 0, node.m_type, mv$(val) }));
+            m_builder.push_stmt_assign( node.span(), res.as_Temporary(), ::MIR::RValue::make_Borrow({ 0, node.m_type, mv$(val) }));
             m_builder.set_result( node.span(), mv$(res) );
         }
         void visit(::HIR::ExprNode_Cast& node) override
         {
             TRACE_FUNCTION_F("_Cast");
             this->visit_node_ptr(node.m_value);
-            auto val = m_builder.lvalue_or_temp( node.m_value->m_res_type, m_builder.get_result(node.m_value->span()) );
+            auto val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
             
             const auto& ty_out = node.m_res_type;
             const auto& ty_in = node.m_value->m_res_type;
@@ -865,14 +864,14 @@ namespace {
                 )
             )
             auto res = m_builder.new_temporary(node.m_res_type);
-            m_builder.push_stmt_assign(res.clone(), ::MIR::RValue::make_Cast({ mv$(val), node.m_res_type.clone() }));
+            m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue::make_Cast({ mv$(val), node.m_res_type.clone() }));
             m_builder.set_result( node.span(), mv$(res) );
         }
         void visit(::HIR::ExprNode_Unsize& node) override
         {
             TRACE_FUNCTION_F("_Unsize");
             this->visit_node_ptr(node.m_value);
-            auto ptr_lval = m_builder.lvalue_or_temp( node.m_value->m_res_type, m_builder.get_result(node.span()) );
+            auto ptr_lval = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
             
             const auto& ty_out = node.m_res_type;
             const auto& ty_in = node.m_value->m_res_type;
@@ -889,14 +888,14 @@ namespace {
                 if( ty_in.m_data.is_Array() )
                 {
                     const auto& in_array = ty_in.m_data.as_Array();
-                    auto size_lval = m_builder.lvalue_or_temp( ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::Constant( static_cast<uint64_t>(in_array.size_val) ) );
+                    auto size_lval = m_builder.lvalue_or_temp( node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::Constant( static_cast<uint64_t>(in_array.size_val) ) );
                     m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_lval) }) );
                 }
                 else if( ty_in.m_data.is_Generic() )
                 {
                     // HACK: FixedSizeArray uses `A: Unsize<[T]>` which will lead to the above code not working (as the size isn't known).
                     // - Maybe _Meta on the `&A` would work as a stopgap (since A: Sized, it won't collide with &[T] or similar)
-                    auto size_lval = m_builder.lvalue_or_temp( ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::RValue::make_DstMeta({ ptr_lval.clone() }) );
+                    auto size_lval = m_builder.lvalue_or_temp( node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::RValue::make_DstMeta({ ptr_lval.clone() }) );
                     m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_lval) }) );
                 }
                 else
@@ -911,6 +910,7 @@ namespace {
                 ::HIR::Path vtable { ty_in.clone(), e.m_trait.m_path.clone(), "#vtable" };
                 ::HIR::TypeRef  vtable_type { {} };
                 auto vtable_lval = m_builder.lvalue_or_temp(
+                    node.span(),
                     ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(vtable_type)),
                     ::MIR::RValue( ::MIR::Constant::make_ItemAddr(mv$(vtable)) )
                     );
@@ -926,11 +926,11 @@ namespace {
             // NOTE: Calculate the index first (so if it borrows from the source, it's over by the time that's needed)
             const auto& ty_idx = node.m_index->m_res_type;
             this->visit_node_ptr(node.m_index);
-            auto index = m_builder.lvalue_or_temp( ty_idx, m_builder.get_result(node.m_index->span()) );
+            auto index = m_builder.get_result_in_lvalue(node.m_index->span(), ty_idx);
             
             const auto& ty_val = node.m_value->m_res_type;
             this->visit_node_ptr(node.m_value);
-            auto value = m_builder.lvalue_or_temp( ty_val, m_builder.get_result(node.m_value->span()) );
+            auto value = m_builder.get_result_in_lvalue(node.m_value->span(), ty_val);
            
             ::MIR::RValue   limit_val;
             TU_MATCH_DEF(::HIR::TypeRef::Data, (ty_val.m_data), (e),
@@ -959,10 +959,10 @@ namespace {
             // Range checking (DISABLED)
             if( false )
             {
-                auto limit_lval = m_builder.lvalue_or_temp(node.m_index->m_res_type, mv$(limit_val));
+                auto limit_lval = m_builder.lvalue_or_temp( node.span(), ty_idx, mv$(limit_val) );
                 
                 auto cmp_res = m_builder.new_temporary( ::HIR::CoreType::Bool );
-                m_builder.push_stmt_assign(cmp_res.clone(), ::MIR::RValue::make_BinOp({ index.clone(), ::MIR::eBinOp::GE, mv$(limit_lval) }));
+                m_builder.push_stmt_assign(node.span(), cmp_res.clone(), ::MIR::RValue::make_BinOp({ index.clone(), ::MIR::eBinOp::GE, mv$(limit_lval) }));
                 auto arm_panic = m_builder.new_bb_unlinked();
                 auto arm_continue = m_builder.new_bb_unlinked();
                 m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_res), arm_panic, arm_continue }) );
@@ -985,7 +985,7 @@ namespace {
             
             const auto& ty_val = node.m_value->m_res_type;
             this->visit_node_ptr(node.m_value);
-            auto val = m_builder.lvalue_or_temp( ty_val, m_builder.get_result(node.m_value->span()) );
+            auto val = m_builder.get_result_in_lvalue(node.m_value->span(), ty_val);
             
             TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_val.m_data), (te),
             (
@@ -1010,7 +1010,7 @@ namespace {
             for(auto& arg : node.m_args)
             {
                 this->visit_node_ptr(arg);
-                values.push_back( m_builder.lvalue_or_temp( arg->m_res_type, m_builder.get_result(arg->span()) ) );
+                values.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
             }
             
             m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
@@ -1027,7 +1027,7 @@ namespace {
             for(auto& arg : node.m_args)
             {
                 this->visit_node_ptr(arg);
-                values.push_back( m_builder.lvalue_or_temp( arg->m_res_type, m_builder.get_result(arg->span()) ) );
+                values.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
                 m_builder.moved_lvalue( arg->span(), values.back() );
             }
             
@@ -1043,7 +1043,7 @@ namespace {
                 fcn_ty_data.m_arg_types.push_back( node.m_cache.m_arg_types[i].clone() );
             }
             auto fcn_val = m_builder.new_temporary( ::HIR::TypeRef(mv$(fcn_ty_data)) );
-            m_builder.push_stmt_assign( fcn_val.clone(), ::MIR::RValue::make_Constant( ::MIR::Constant(node.m_path.clone()) ) );
+            m_builder.push_stmt_assign( node.span(), fcn_val.clone(), ::MIR::RValue::make_Constant( ::MIR::Constant(node.m_path.clone()) ) );
             
             auto panic_block = m_builder.new_bb_unlinked();
             auto next_block = m_builder.new_bb_unlinked();
@@ -1069,14 +1069,14 @@ namespace {
             // _CallValue is ONLY valid on function pointers (all others must be desugared)
             ASSERT_BUG(node.span(), node.m_value->m_res_type.m_data.is_Function(), "Leftover _CallValue on a non-fn()");
             this->visit_node_ptr(node.m_value);
-            auto fcn_val = m_builder.lvalue_or_temp( node.m_value->m_res_type, m_builder.get_result(node.m_value->span()) );
+            auto fcn_val = m_builder.get_result_in_lvalue( node.m_value->span(), node.m_value->m_res_type );
             
             ::std::vector< ::MIR::LValue>   values;
             values.reserve( node.m_args.size() );
             for(auto& arg : node.m_args)
             {
                 this->visit_node_ptr(arg);
-                values.push_back( m_builder.lvalue_or_temp( arg->m_res_type, m_builder.get_result(arg->span()) ) );
+                values.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
                 m_builder.moved_lvalue( arg->span(), values.back() );
             }
             
@@ -1106,7 +1106,9 @@ namespace {
         {
             TRACE_FUNCTION_F("_Field");
             this->visit_node_ptr(node.m_value);
-            auto val = m_builder.get_result_lvalue(node.m_value->span());
+            // TODO: What if this is called as `(1, 2, 3).0`
+            // - NOTE: `rustc` accepts the above - even for assignments. So `get_result_in_lvalue` is likely more correct
+            auto val = m_builder.get_result_unwrap_lvalue(node.m_value->span());
             
             unsigned int idx;
             if( '0' <= node.m_field[0] && node.m_field[0] <= '9' ) {
@@ -1183,7 +1185,7 @@ namespace {
                     ),
                 (Constant,
                     auto tmp = m_builder.new_temporary( e.m_type );
-                    m_builder.push_stmt_assign( tmp.clone(), ::MIR::Constant::make_Const({node.m_path.clone()}) );
+                    m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_Const({node.m_path.clone()}) );
                     m_builder.set_result( node.span(), mv$(tmp) );
                     ),
                 (Static,
@@ -1206,8 +1208,8 @@ namespace {
                         fcn_ty_data.m_arg_types.push_back( monomorphise_type(sp, e.m_params, pe.m_params,  arg.second) );
                     }
                     auto tmp = m_builder.new_temporary( ::HIR::TypeRef( mv$(fcn_ty_data) ) );
-                    m_builder.push_stmt_assign( tmp.clone(), ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
-                    m_builder.set_result( node.span(), mv$(tmp) );
+                    m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
+                    m_builder.set_result( sp, mv$(tmp) );
                     ),
                 (StructConstructor,
                     BUG(sp, "StructConstructor as PathValue");
@@ -1238,7 +1240,7 @@ namespace {
             if( node.m_base_value )
             {
                 this->visit_node_ptr(node.m_base_value);
-                base_val = m_builder.get_result_lvalue(node.m_base_value->span());
+                base_val = m_builder.get_result_in_lvalue(node.m_base_value->span(), node.m_base_value->m_res_type);
             }
             
             const ::HIR::t_struct_fields* fields_ptr = nullptr;
@@ -1266,11 +1268,12 @@ namespace {
             
             for(auto& ent : node.m_values)
             {
+                auto& valnode = ent.second;
                 auto idx = ::std::find_if(fields.begin(), fields.end(), [&](const auto&x){ return x.first == ent.first; }) - fields.begin();
                 assert( !values_set[idx] );
                 values_set[idx] = true;
-                this->visit_node_ptr(ent.second);
-                values.at(idx) = m_builder.lvalue_or_temp( ent.second->m_res_type, m_builder.get_result(ent.second->span()) );
+                this->visit_node_ptr(valnode);
+                values.at(idx) = m_builder.lvalue_or_temp( valnode->span(), valnode->m_res_type, m_builder.get_result(valnode->span()) );
             }
             for(unsigned int i = 0; i < values.size(); i ++)
             {
@@ -1299,7 +1302,7 @@ namespace {
             for(auto& arg : node.m_vals)
             {
                 this->visit_node_ptr(arg);
-                values.push_back( m_builder.lvalue_or_temp( arg->m_res_type, m_builder.get_result(arg->span()) ) );
+                values.push_back( m_builder.lvalue_or_temp( arg->span(), arg->m_res_type, m_builder.get_result(arg->span()) ) );
             }
             
             m_builder.set_result( node.span(), ::MIR::RValue::make_Tuple({
@@ -1315,7 +1318,7 @@ namespace {
             for(auto& arg : node.m_vals)
             {
                 this->visit_node_ptr(arg);
-                values.push_back( m_builder.lvalue_or_temp( arg->m_res_type, m_builder.get_result(arg->span()) ) );
+                values.push_back( m_builder.lvalue_or_temp( arg->span(), arg->m_res_type, m_builder.get_result(arg->span()) ) );
             }
             
             m_builder.set_result( node.span(), ::MIR::RValue::make_Array({
@@ -1327,7 +1330,7 @@ namespace {
         {
             TRACE_FUNCTION_F("_ArraySized");
             this->visit_node_ptr( node.m_val );
-            auto value = m_builder.lvalue_or_temp( node.m_val->m_res_type, m_builder.get_result(node.m_val->span()) );
+            auto value = m_builder.lvalue_or_temp( node.span(), node.m_val->m_res_type, m_builder.get_result(node.m_val->span()) );
             
             m_builder.set_result( node.span(), ::MIR::RValue::make_SizedArray({
                 mv$(value),
@@ -1349,7 +1352,7 @@ namespace {
                 }
                 else {
                     auto borrow_ty = ::HIR::BorrowType::Shared;
-                    auto lval = m_builder.lvalue_or_temp(
+                    auto lval = m_builder.lvalue_or_temp( node.span(),
                         ::HIR::TypeRef::new_borrow(borrow_ty, m_variable_types[cap_idx].clone()),
                         ::MIR::RValue::make_Borrow({ 0, borrow_ty, ::MIR::LValue::make_Variable(cap_idx) })
                         );
