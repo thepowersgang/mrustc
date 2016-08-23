@@ -109,6 +109,14 @@ bool StaticTraitResolve::find_impl(
         )
     )
     
+    if( trait_path == m_lang_Copy ) {
+        if( this->type_is_copy(type) ) {
+            static ::HIR::PathParams    null_params;
+            static ::std::map< ::std::string, ::HIR::TypeRef>    null_assoc;
+            return found_cb( ImplRef(&type, &null_params, &null_assoc) );
+        }
+    }
+    
     bool ret;
     
     // TODO: A bound can imply something via its associated types. How deep can this go?
@@ -708,11 +716,22 @@ bool StaticTraitResolve::type_is_copy(const ::HIR::TypeRef& ty) const
     static Span sp;
     TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
     (Generic,
-        return this->find_impl(sp, m_crate.get_lang_item_path(sp, "copy"), {}, ty, [&](auto ){ return true;});
+        return this->iterate_bounds([&](const auto& b) {
+            TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
+                if( e.type == ty && e.trait.m_path.m_path == m_lang_Copy ) {
+                    return true;
+                }
+            )
+            return false;
+            });
         ),
     (Path,
         // TODO: Cache this result for the relevant scope.
-        return this->find_impl(sp, m_crate.get_lang_item_path(sp, "copy"), {}, ty, [&](auto ){ return true;});
+        auto cb_ident = [](const auto&ty)->const auto&{return ty;};
+        return m_crate.find_trait_impls(m_lang_Copy, ty, cb_ident, [&](const auto& impl) {
+            auto pp = ::HIR::PathParams();
+            return this->find_impl__check_crate(sp, m_lang_Copy, &pp, ty, [&](auto ){ return true; },  impl);
+            });
         ),
     (Diverge,
         // The ! type is kinda Copy ...

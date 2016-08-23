@@ -21,12 +21,16 @@ public:
     
     
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
+private:
+    ::HIR::SimplePath   m_lang_Copy;
+    
 public:
     StaticTraitResolve(const ::HIR::Crate& crate):
         m_crate(crate),
         m_impl_generics(nullptr),
         m_item_generics(nullptr)
     {
+        m_lang_Copy = m_crate.get_lang_item_path(Span(), "copy");
         prep_indexes();
     }
 
