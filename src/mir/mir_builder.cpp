@@ -565,7 +565,8 @@ void MirBuilder::with_val_type(const ::MIR::LValue& val, ::std::function<void(co
         TODO(sp, "Argument");
         ),
     (Static,
-        TODO(sp, "Static");
+        TODO(sp, "Static - " << e);
+        // TODO: Having a reference to the relevant static would be useful.
         ),
     (Return,
         TODO(sp, "Return");
@@ -577,7 +578,35 @@ void MirBuilder::with_val_type(const ::MIR::LValue& val, ::std::function<void(co
                 BUG(sp, "Field access on unexpected type - " << ty);
                 ),
             (Path,
-                TODO(sp, "Field -  Path");
+                ASSERT_BUG(sp, te.binding.is_Struct(), "Field on non-Struct - " << ty);
+                const auto& str = *te.binding.as_Struct();
+                TU_MATCHA( (str.m_data), (se),
+                (Unit,
+                    BUG(sp, "Field on unit-like struct - " << ty);
+                    ),
+                (Tuple,
+                    ASSERT_BUG(sp, e.field_index < se.size(), "");
+                    const auto& fld = se[e.field_index];
+                    if( monomorphise_type_needed(fld.ent) ) {
+                        auto sty = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, fld.ent);
+                        cb(sty);
+                    }
+                    else {
+                        cb(fld.ent);
+                    }
+                    ),
+                (Named,
+                    ASSERT_BUG(sp, e.field_index < se.size(), "");
+                    const auto& fld = se[e.field_index].second;
+                    if( monomorphise_type_needed(fld.ent) ) {
+                        auto sty = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, fld.ent);
+                        cb(sty);
+                    }
+                    else {
+                        cb(fld.ent);
+                    }
+                    )
+                )
                 ),
             (Tuple,
                 assert( e.field_index < te.size() );
