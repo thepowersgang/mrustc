@@ -123,14 +123,27 @@ namespace {
                 }
                 else if( allow_refutable == 0 ) {
                     ASSERT_BUG(sp, pat.m_data.is_Any(), "Destructure patterns can't bind and match");
-                    
-                    m_builder.push_stmt_assign( ::MIR::LValue::make_Variable(pat.m_binding.m_slot), mv$(lval) );
                 }
                 else {
                     // Refutable and binding allowed
-                    m_builder.push_stmt_assign( ::MIR::LValue::make_Variable(pat.m_binding.m_slot), lval.clone() );
-                    
-                    destructure_from_ex(sp, pat, mv$(lval), 3);
+                    destructure_from_ex(sp, pat, lval.clone(), 3);
+                }
+                
+                switch( pat.m_binding.m_type )
+                {
+                case ::HIR::PatternBinding::Type::Move:
+                    m_builder.push_stmt_assign( ::MIR::LValue::make_Variable(pat.m_binding.m_slot), mv$(lval) );
+                    break;
+                case ::HIR::PatternBinding::Type::Ref:
+                    m_builder.push_stmt_assign( ::MIR::LValue::make_Variable(pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
+                        0, ::HIR::BorrowType::Shared, mv$(lval)
+                        }) );
+                    break;
+                case ::HIR::PatternBinding::Type::MutRef:
+                    m_builder.push_stmt_assign( ::MIR::LValue::make_Variable(pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
+                        0, ::HIR::BorrowType::Unique, mv$(lval)
+                        }) );
+                    break;
                 }
                 return;
             }
@@ -1159,8 +1172,58 @@ namespace {
         }
         void visit(::HIR::ExprNode_PathValue& node) override
         {
+            const auto& sp = node.span();
             TRACE_FUNCTION_F("_PathValue - " << node.m_path);
-            m_builder.set_result( node.span(), ::MIR::LValue::make_Static(node.m_path.clone()) );
+            TU_MATCH( ::HIR::Path::Data, (node.m_path.m_data), (pe),
+            (Generic,
+                const auto& vi = m_builder.crate().get_valitem_by_path(node.span(), pe.m_path);
+                TU_MATCHA( (vi), (e),
+                (Import,
+                    BUG(sp, "All references via imports should be replaced");
+                    ),
+                (Constant,
+                    auto tmp = m_builder.new_temporary( e.m_type );
+                    m_builder.push_stmt_assign( tmp.clone(), ::MIR::Constant::make_Const({node.m_path.clone()}) );
+                    m_builder.set_result( node.span(), mv$(tmp) );
+                    ),
+                (Static,
+                    m_builder.set_result( node.span(), ::MIR::LValue::make_Static(node.m_path.clone()) );
+                    ),
+                (StructConstant,
+                    BUG(sp, "StructConstant as PathValue");
+                    ),
+                (Function,
+                    // TODO: Obtain function type for this function (i.e. a type that is specifically for this function)
+                    auto fcn_ty_data = ::HIR::FunctionType {
+                        e.m_unsafe,
+                        e.m_abi,
+                        box$( monomorphise_type(sp, e.m_params, pe.m_params,  e.m_return) ),
+                        {}
+                        };
+                    fcn_ty_data.m_arg_types.reserve( e.m_args.size() );
+                    for(const auto& arg : e.m_args)
+                    {
+                        fcn_ty_data.m_arg_types.push_back( monomorphise_type(sp, e.m_params, pe.m_params,  arg.second) );
+                    }
+                    auto tmp = m_builder.new_temporary( ::HIR::TypeRef( mv$(fcn_ty_data) ) );
+                    m_builder.push_stmt_assign( tmp.clone(), ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
+                    m_builder.set_result( node.span(), mv$(tmp) );
+                    ),
+                (StructConstructor,
+                    BUG(sp, "StructConstructor as PathValue");
+                    )
+                )
+                ),
+            (UfcsKnown,
+                TODO(sp, "PathValue - UfcsKnown");
+                ),
+            (UfcsUnknown,
+                BUG(sp, "PathValue - Encountered UfcsUnknown - " << node.m_path);
+                ),
+            (UfcsInherent,
+                TODO(sp, "PathValue - UfcsInherent");
+                )
+            )
         }
         void visit(::HIR::ExprNode_Variable& node) override
         {

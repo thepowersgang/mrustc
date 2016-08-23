@@ -86,9 +86,10 @@ TAGGED_UNION(Constant, Int,
     (Uint, ::std::uint64_t),
     (Float, double),
     (Bool, bool),
-    (Bytes, ::std::vector< ::std::uint8_t>),
-    (StaticString, ::std::string),
-    (ItemAddr, ::HIR::Path)
+    (Bytes, ::std::vector< ::std::uint8_t>),    // Byte string
+    (StaticString, ::std::string),  // String
+    (Const, struct { ::HIR::Path p; }),   // `const`
+    (ItemAddr, ::HIR::Path) // address of a value
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const Constant& v);
 

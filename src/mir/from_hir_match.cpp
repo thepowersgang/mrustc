@@ -1461,6 +1461,9 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
                 and_then(branch);
             }
             ),
+        (Const,
+            throw "";
+            ),
         (ItemAddr,
             throw "";
             )
@@ -1554,6 +1557,9 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
             ),
         (StaticString,
             ERROR(sp, E0000, "Use of string in value range patter");
+            ),
+        (Const,
+            throw "";
             ),
         (ItemAddr,
             throw "";

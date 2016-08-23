@@ -100,6 +100,8 @@ public:
     MirBuilder(const StaticTraitResolve& resolve, ::MIR::Function& output);
     ~MirBuilder();
     
+    const ::HIR::Crate& crate() const { return m_resolve.m_crate; }
+    
     // - Values
     ::MIR::LValue new_temporary(const ::HIR::TypeRef& ty);
     ::MIR::LValue lvalue_or_temp(const ::HIR::TypeRef& ty, ::MIR::RValue val);

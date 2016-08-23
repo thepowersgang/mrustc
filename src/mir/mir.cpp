@@ -29,6 +29,9 @@ namespace MIR {
         (StaticString,
             os << "\"" << e << "\"";
             ),
+        (Const,
+            os << e.p;
+            ),
         (ItemAddr,
             os << "&" << e;
             )

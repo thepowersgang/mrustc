@@ -270,6 +270,9 @@ namespace {
                 (StaticString,
                     os << "\"" << ce << "\"";
                     ),
+                (Const,
+                    os << ce.p;
+                    ),
                 (ItemAddr,
                     os << "addr " << ce;
                     )

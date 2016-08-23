@@ -565,8 +565,22 @@ void MirBuilder::with_val_type(const ::MIR::LValue& val, ::std::function<void(co
         TODO(sp, "Argument");
         ),
     (Static,
-        TODO(sp, "Static - " << e);
-        // TODO: Having a reference to the relevant static would be useful.
+        TU_MATCHA( (e.m_data), (pe),
+        (Generic,
+            ASSERT_BUG(sp, pe.m_params.m_types.empty(), "Path params on static");
+            const auto& s = m_resolve.m_crate.get_static_by_path(sp, pe.m_path);
+            cb( s.m_type );
+            ),
+        (UfcsKnown,
+            TODO(sp, "Static - UfcsKnown - " << e);
+            ),
+        (UfcsUnknown,
+            BUG(sp, "Encountered UfcsUnknown in Static - " << e);
+            ),
+        (UfcsInherent,
+            TODO(sp, "Static - UfcsInherent - " << e);
+            )
+        )
         ),
     (Return,
         TODO(sp, "Return");
@@ -673,7 +687,11 @@ void MirBuilder::with_val_type(const ::MIR::LValue& val, ::std::function<void(co
                     ),
                 (Struct,
                     // HACK! Create tuple.
-                    TODO(sp, "Downcast - Named");
+                    ::std::vector< ::HIR::TypeRef>  tys;
+                    for(const auto& fld : ve)
+                        tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.second.ent) );
+                    ::HIR::TypeRef  tup( mv$(tys) );
+                    cb(tup);
                     )
                 )
                 )
@@ -845,6 +863,7 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
 
 void MirBuilder::moved_lvalue(const ::MIR::LValue& lv)
 {
+    TRACE_FUNCTION_F(lv);
     TU_MATCHA( (lv), (e),
     (Variable,
         if( !lvalue_is_copy(lv) ) {
@@ -877,7 +896,7 @@ void MirBuilder::moved_lvalue(const ::MIR::LValue& lv)
         if( lvalue_is_copy(lv) ) {
         }
         else {
-            BUG(Span(), "Move out of index with non-Copy values - &move? - " << lv);
+            BUG(Span(), "Move out of deref with non-Copy values - &move? - " << lv);
             moved_lvalue(*e.val);
         }
         ),
