@@ -1223,7 +1223,25 @@ namespace {
                 BUG(sp, "PathValue - Encountered UfcsUnknown - " << node.m_path);
                 ),
             (UfcsInherent,
-                TODO(sp, "PathValue - UfcsInherent");
+                // 1. Find item in an impl block
+                auto rv = m_builder.crate().find_type_impls(*pe.type, [&](const auto& ty)->const auto& { return ty; },
+                    [&](const auto& impl) {
+                        DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+                        auto it = impl.m_methods.find(pe.item);
+                        if( it != impl.m_methods.end() ) {
+                            // Function!
+                            auto tmp = m_builder.new_temporary( node.m_res_type );
+                            m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
+                            m_builder.set_result( sp, mv$(tmp) );
+                            return true;
+                        }
+                        // Associated consts (unimpl)
+                        // Associated static (undef)
+                        return false;
+                    });
+                if( !rv ) {
+                    ERROR(sp, E0000, "Failed to locate item for " << node.m_path);
+                }
                 )
             )
         }
