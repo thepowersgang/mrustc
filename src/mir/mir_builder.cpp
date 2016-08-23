@@ -430,8 +430,6 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
 }
 void MirBuilder::complete_scope(ScopeDef& sd)
 {
-    static Span    sp;
-    
     sd.complete = true;
     TU_MATCHA( (sd.data), (e),
     (Temporaries,
@@ -469,14 +467,14 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                     switch(new_states[i])
                     {
                     case VarState::Uninit:
-                        BUG(sp, "Override to Uninit");
+                        BUG(sd.span, "Override to Uninit");
                         break;
                     case VarState::Init:
                         if( arm.changed_var_states[i] ) {
                             switch( arm.var_states[i] )
                             {
                             case VarState::Uninit:
-                                BUG(sp, "Override to Uninit");
+                                BUG(sd.span, "Override to Uninit");
                                 break;
                             case VarState::Init:
                                 // No change
@@ -488,7 +486,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                                 new_states[i] = VarState::MaybeMoved;
                                 break;
                             case VarState::Dropped:
-                                BUG(sp, "Dropped value in arm");
+                                BUG(sd.span, "Dropped value in arm");
                                 break;
                             }
                         }
@@ -517,7 +515,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                                 // No change
                                 break;
                             case VarState::Dropped:
-                                BUG(sp, "Dropped value in arm");
+                                BUG(sd.span, "Dropped value in arm");
                                 break;
                             }
                         }
@@ -566,9 +564,8 @@ void MirBuilder::complete_scope(ScopeDef& sd)
     )
 }
 
-void MirBuilder::with_val_type(const ::MIR::LValue& val, ::std::function<void(const ::HIR::TypeRef&)> cb)
+void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::function<void(const ::HIR::TypeRef&)> cb)
 {
-    Span    sp;
     TU_MATCH(::MIR::LValue, (val), (e),
     (Variable,
         cb( m_output.named_variables.at(e) );
@@ -601,7 +598,7 @@ void MirBuilder::with_val_type(const ::MIR::LValue& val, ::std::function<void(co
         TODO(sp, "Return");
         ),
     (Field,
-        with_val_type(*e.val, [&](const auto& ty){
+        with_val_type(sp, *e.val, [&](const auto& ty){
             TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
             (
                 BUG(sp, "Field access on unexpected type - " << ty);
@@ -645,7 +642,7 @@ void MirBuilder::with_val_type(const ::MIR::LValue& val, ::std::function<void(co
             });
         ),
     (Deref,
-        with_val_type(*e.val, [&](const auto& ty){
+        with_val_type(sp, *e.val, [&](const auto& ty){
             TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
             (
                 BUG(sp, "Deref on unexpected type - " << ty);
@@ -660,7 +657,7 @@ void MirBuilder::with_val_type(const ::MIR::LValue& val, ::std::function<void(co
             });
         ),
     (Index,
-        with_val_type(*e.val, [&](const auto& ty){
+        with_val_type(sp, *e.val, [&](const auto& ty){
             TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
             (
                 BUG(sp, "Index on unexpected type - " << ty);
@@ -675,7 +672,7 @@ void MirBuilder::with_val_type(const ::MIR::LValue& val, ::std::function<void(co
             });
         ),
     (Downcast,
-        with_val_type(*e.val, [&](const auto& ty){
+        with_val_type(sp, *e.val, [&](const auto& ty){
             TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
             (
                 BUG(sp, "Downcast on unexpected type - " << ty);
@@ -719,7 +716,7 @@ void MirBuilder::with_val_type(const ::MIR::LValue& val, ::std::function<void(co
 bool MirBuilder::lvalue_is_copy(const Span& sp, const ::MIR::LValue& val)
 {
     int rv = 0;
-    with_val_type(val, [&](const auto& ty){
+    with_val_type(sp, val, [&](const auto& ty){
         rv = (m_resolve.type_is_copy(sp, ty) ? 2 : 1);
         });
     assert(rv != 0);
