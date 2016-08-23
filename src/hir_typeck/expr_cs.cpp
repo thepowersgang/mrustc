@@ -2023,6 +2023,17 @@ namespace {
             ::HIR::ExprVisitorDef::visit_node_ptr(node_ptr);
         }
         
+        void visit_pattern(::HIR::Pattern& pat) override {
+            TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (e),
+            (
+                ),
+            (StructValue,
+                // TODO: Clean
+                )
+            )
+            ::HIR::ExprVisitorDef::visit_pattern(pat);
+        }
+        
         void visit(::HIR::ExprNode_Let& node) override {
             this->check_type_resolved_top(node.span(), node.m_type);
             ::HIR::ExprVisitorDef::visit(node);
@@ -3983,7 +3994,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
     //  > Steal the binding types
     expr.m_bindings.reserve( context.m_bindings.size() );
     for(auto& binding : context.m_bindings) {
-        expr.m_bindings.push_back( mv$(binding.ty) );
+        expr.m_bindings.push_back( binding.ty.clone() );
     }
     
     // - Validate typeck

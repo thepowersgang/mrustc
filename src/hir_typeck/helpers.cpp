@@ -957,31 +957,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     }
     
     if( trait == this->m_crate.get_lang_item_path(sp, "copy") ) {
-        struct H {
-            static bool is_copy(const Span& sp, const TraitResolution& self, const ::HIR::TypeRef& ty) {
-                const auto& type = self.m_ivars.get_type(ty);
-                TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (e),
-                (
-                    TODO(sp, "Search for Copy impl on " << type);
-                    ),
-                (Primitive,
-                    if( e == ::HIR::CoreType::Str )
-                        return false;
-                    return true;
-                    ),
-                (Borrow,
-                    return e.type == ::HIR::BorrowType::Shared;
-                    ),
-                (Pointer,
-                    return true;
-                    ),
-                (Array,
-                    return is_copy(sp, self, *e.inner);
-                    )
-                )
-            }
-        };
-        if( H::is_copy(sp, *this, type) ) {
+        if( this->type_is_copy(sp, type) ) {
             return callback( ImplRef(&type, &null_params, &null_assoc), ::HIR::Compare::Equal );
         }
         else {
@@ -1942,13 +1918,21 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         );
 }
 
-bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const
+bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name, bool allow_move,  ::HIR::GenericPath& out_path) const
 {
     auto it = trait_ptr.m_values.find(name);
     if( it != trait_ptr.m_values.end() ) {
         if( it->second.is_Function() ) {
             const auto& v = it->second.as_Function();
-            if( v.m_args.size() > 0 && v.m_args[0].first.m_binding.m_name == "self" ) {
+            switch(v.m_receiver)
+            {
+            case ::HIR::Function::Receiver::Free:
+                break;
+            case ::HIR::Function::Receiver::Value:
+                if( !allow_move ) {
+                    break;
+                }
+            default:
                 out_path = trait_path.clone();
                 return true;
             }
@@ -1959,7 +1943,7 @@ bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::Generic
     for(const auto& st : trait_ptr.m_parent_traits)
     {
         auto& st_ptr = this->m_crate.get_trait_by_path(sp, st.m_path.m_path);
-        if( trait_contains_method(sp, st.m_path, st_ptr, name, out_path) ) {
+        if( trait_contains_method(sp, st.m_path, st_ptr, name, allow_move,  out_path) ) {
             out_path.m_params = monomorphise_path_params_with(sp, mv$(out_path.m_params), [&](const auto& gt)->const auto& {
                 const auto& ge = gt.m_data.as_Generic();
                 assert(ge.binding < 256);
@@ -1997,6 +1981,51 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
     return false;
 }
 
+bool TraitResolution::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const
+{
+    const auto& type = this->m_ivars.get_type(ty);
+    TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (e),
+    (
+        const auto& lang_Copy = this->m_crate.get_lang_item_path(sp, "copy");
+        // NOTE: Don't use find_trait_impls, because that calls this
+        return find_trait_impls_crate(sp, lang_Copy, ::HIR::PathParams{}, ty,  [&](auto , auto c){ return c == ::HIR::Compare::Equal; });
+        ),
+    (Generic,
+        const auto& lang_Copy = this->m_crate.get_lang_item_path(sp, "copy");
+        return this->iterate_bounds([&](const auto& b) {
+            TU_IFLET(::HIR::GenericBound, b, TraitBound, be,
+                if(be.type == ty && be.trait.m_path == lang_Copy ) {
+                    return true;
+                }
+            )
+            return false;
+            });
+        ),
+    (Primitive,
+        if( e == ::HIR::CoreType::Str )
+            return false;
+        return true;
+        ),
+    (Borrow,
+        return e.type == ::HIR::BorrowType::Shared;
+        ),
+    (Pointer,
+        return true;
+        ),
+    (Tuple,
+        for(const auto& sty : e)
+            if( !type_is_copy(sp, sty) )
+                return false;
+        return true;
+        ),
+    (Slice,
+        return false;
+        ),
+    (Array,
+        return type_is_copy(sp, *e.inner);
+        )
+    )
+}
 
 
 // -------------------------------------------------------------------------------------------------------------------
@@ -2035,10 +2064,19 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
     const auto& top_ty_r = this->m_ivars.get_type(top_ty);
     const auto* current_ty = &top_ty_r;
     
-    bool unconditional_allow_move = (!top_ty_r.m_data.is_Borrow() || top_ty_r.m_data.as_Borrow().type == ::HIR::BorrowType::Owned);
+    bool unconditional_allow_move = true;
     
     // If the top is a borrow, search dereferenced first.
     TU_IFLET(::HIR::TypeRef::Data, top_ty_r.m_data, Borrow, e,
+        if( e.type == ::HIR::BorrowType::Owned ) {
+            // Can move, because we have &move
+        }
+        else if( this->type_is_copy(sp, *e.inner) ) {
+            // Can move, because it's Copy
+        }
+        else {
+            unconditional_allow_move = false;
+        }
         current_ty = &*e.inner;
         deref_count += 1;
     )
@@ -2047,12 +2085,14 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
     // - Shouldn't deref to get a by-value receiver.// unless it's via a &move.
     
     do {
+        // TODO: Update `unconditional_allow_move` based on the current type.
         const auto& ty = this->m_ivars.get_type(*current_ty);
         if( ty.m_data.is_Infer() ) {
             return ~0u;
         }
         
         if( this->find_method(sp, traits, ty, method_name,  unconditional_allow_move || (deref_count == 0), fcn_path) ) {
+            DEBUG("FOUND " << deref_count << ", fcn_path = " << fcn_path);
             return deref_count;
         }
         
@@ -2066,6 +2106,7 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
         const auto& ty = top_ty_r;
         
         if( find_method(sp, traits, ty, method_name, true, fcn_path) ) {
+            DEBUG("FOUND " << 0 << ", fcn_path = " << fcn_path);
             return 0;
         }
     )
@@ -2094,19 +2135,17 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
         {
             TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
                 DEBUG("Bound " << e.type << " : " << e.trait.m_path);
-                // TODO: Match using _ replacement
+                // TODO: Do a fuzzy match here?
                 if( e.type != ty )
                     continue ;
                 
                 // - Bound's type matches, check if the bounded trait has the method we're searching for
-                //  > TODO: Search supertraits too
                 DEBUG("- Matches " << ty);
                 ::HIR::GenericPath final_trait_path;
                 assert(e.trait.m_trait_ptr);
-                if( !this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, method_name,  final_trait_path) )
+                if( !this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, method_name, allow_move,  final_trait_path) )
                     continue ;
                 DEBUG("- Found trait " << final_trait_path);
-                // TODO: Check that the receiver isn't by-value if `allow_move` is false
                 
                 // Found the method, return the UFCS path for it
                 fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
@@ -2130,8 +2169,15 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
         {
             if( it->second.is_Function() ) {
                 const auto& v = it->second.as_Function();
-                if( v.m_args.size() > 0 && v.m_args[0].first.m_binding.m_name == "self" ) {
-                    // TODO: Check that the receiver isn't by-value if `allow_move` is false
+                switch(v.m_receiver)
+                {
+                case ::HIR::Function::Receiver::Free:
+                    break;
+                case ::HIR::Function::Receiver::Value:
+                    // Only accept by-value methods if not dereferencing to them
+                    if( !allow_move ) 
+                        break;
+                default:
                     fcn_path = ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown({
                         box$( ty.clone() ),
                         e.m_trait.m_path.clone(),
@@ -2158,7 +2204,7 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
         {
             ASSERT_BUG(sp, bound.m_trait_ptr, "Pointer to trait " << bound.m_path << " not set in " << e.trait.m_path);
             ::HIR::GenericPath final_trait_path;
-            if( !this->trait_contains_method(sp, bound.m_path, *bound.m_trait_ptr, method_name,  final_trait_path) )
+            if( !this->trait_contains_method(sp, bound.m_path, *bound.m_trait_ptr, method_name, allow_move,  final_trait_path) )
                 continue ;
             DEBUG("- Found trait " << final_trait_path);
             
@@ -2181,7 +2227,14 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
                 if( it == impl.m_methods.end() )
                     continue ;
                 const ::HIR::Function&  fcn = it->second.data;
-                if( fcn.m_args.size() > 0 && fcn.m_args[0].first.m_binding.m_name == "self" ) {
+                switch(fcn.m_receiver)
+                {
+                case ::HIR::Function::Receiver::Free:
+                    break;
+                case ::HIR::Function::Receiver::Value:
+                    if( !allow_move )
+                        break;
+                default:
                     DEBUG("Matching `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "`"/* << " - " << top_ty*/);
                     fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsInherent({
                         box$(ty.clone()),
@@ -2203,6 +2256,7 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
             //    continue ;
             //DEBUG("- Found trait " << final_trait_path);
             
+            // TODO: Shouldn't this use trait_contains_method?
             // TODO: Search supertraits too
             auto it = trait_ref.second->m_values.find(method_name);
             if( it == trait_ref.second->m_values.end() )
@@ -2210,7 +2264,14 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
             if( !it->second.is_Function() )
                 continue ;
             const auto& v = it->second.as_Function();
-            if( v.m_args.size() > 0 && v.m_args[0].first.m_binding.m_name == "self" ) {
+            switch(v.m_receiver)
+            {
+            case ::HIR::Function::Receiver::Free:
+                break;
+            case ::HIR::Function::Receiver::Value:
+                if( !allow_move )
+                    break;
+            default:
                 DEBUG("Search for impl of " << *trait_ref.first);
                 
                 //::HIR::PathParams   params;
