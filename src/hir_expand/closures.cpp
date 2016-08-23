@@ -550,7 +550,7 @@ namespace {
         {
             if( !m_closure_stack.empty() )
             {
-                mark_used_variable(node.m_slot, node.m_usage);
+                mark_used_variable(node.span(), node.m_slot, node.m_usage);
             }
             ::HIR::ExprVisitorDef::visit(node);
         }
@@ -589,11 +589,6 @@ namespace {
         }
         
     private:
-        bool type_is_copy(const ::HIR::TypeRef& ty) const
-        {
-            return m_resolve.type_is_copy(ty);
-        }
-        
         void add_closure_def(unsigned int slot)
         {
             assert(m_closure_stack.size() > 0);
@@ -677,7 +672,7 @@ namespace {
                 )
             )
         }
-        void mark_used_variable(unsigned int slot, ::HIR::ValueUsage usage)
+        void mark_used_variable(const Span& sp, unsigned int slot, ::HIR::ValueUsage usage)
         {
             //for(const auto& closure_rec : m_closure_stack)
             //{
@@ -702,7 +697,7 @@ namespace {
             switch( usage )
             {
             case ::HIR::ValueUsage::Unknown:
-                BUG(Span(), "Unknown usage of variable " << slot);
+                BUG(sp, "Unknown usage of variable " << slot);
             case ::HIR::ValueUsage::Borrow:
                 closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Shared);
                 break;
@@ -710,7 +705,7 @@ namespace {
                 closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Mut);
                 break;
             case ::HIR::ValueUsage::Move:
-                if( type_is_copy( m_variable_types.at(slot) ) ) {
+                if( m_resolve.type_is_copy( sp, m_variable_types.at(slot) ) ) {
                     closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Shared);
                 }
                 else {

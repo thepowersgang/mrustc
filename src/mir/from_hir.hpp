@@ -147,7 +147,7 @@ public:
     /// Introduce a new variable within the current scope
     void define_variable(unsigned int idx);
     // Helper - Marks a variable/... as moved (and checks if the move is valid)
-    void moved_lvalue(const ::MIR::LValue& lv);
+    void moved_lvalue(const Span& sp, const ::MIR::LValue& lv);
 private:
     VarState get_variable_state(unsigned int idx) const;
     void set_variable_state(unsigned int idx, VarState state);
@@ -158,7 +158,7 @@ private:
     void complete_scope(ScopeDef& sd);
     
     void with_val_type(const ::MIR::LValue& val, ::std::function<void(const ::HIR::TypeRef&)> cb);
-    bool lvalue_is_copy(const ::MIR::LValue& lv);
+    bool lvalue_is_copy(const Span& sp, const ::MIR::LValue& lv);
 };
 
 class MirConverter:

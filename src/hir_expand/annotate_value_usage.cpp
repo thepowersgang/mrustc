@@ -215,7 +215,7 @@ namespace {
         void visit(::HIR::ExprNode_Index& node) override
         {
             // TODO: Override to ::Borrow if Res: Copy and moving
-            if( this->get_usage() == ::HIR::ValueUsage::Move && type_is_copy(node.m_res_type) ) {
+            if( this->get_usage() == ::HIR::ValueUsage::Move && m_resolve.type_is_copy(node.span(), node.m_res_type) ) {
                 auto _ = push_usage( ::HIR::ValueUsage::Borrow );
                 this->visit_node_ptr(node.m_value);
             }
@@ -228,7 +228,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Deref& node) override
         {
-            if( this->get_usage() == ::HIR::ValueUsage::Move && type_is_copy(node.m_res_type) ) {
+            if( this->get_usage() == ::HIR::ValueUsage::Move && m_resolve.type_is_copy(node.span(), node.m_res_type) ) {
                 auto _ = push_usage( ::HIR::ValueUsage::Borrow );
                 this->visit_node_ptr(node.m_value);
             }
@@ -240,7 +240,7 @@ namespace {
         void visit(::HIR::ExprNode_Field& node) override
         {
             // If taking this field by value, but the type is Copy - pretend it's a borrow.
-            if( this->get_usage() == ::HIR::ValueUsage::Move && type_is_copy(node.m_res_type) ) {
+            if( this->get_usage() == ::HIR::ValueUsage::Move && m_resolve.type_is_copy(node.span(), node.m_res_type) ) {
                 auto _ = push_usage( ::HIR::ValueUsage::Borrow );
                 this->visit_node_ptr(node.m_value);
             }
@@ -335,11 +335,6 @@ namespace {
         {
             // TODO: Detect if a by-value binding exists for a non-Copy type
             return ::HIR::ValueUsage::Move;
-        }
-        
-        bool type_is_copy(const ::HIR::TypeRef& ty) const
-        {
-            return m_resolve.type_is_copy(ty);
         }
     };
 

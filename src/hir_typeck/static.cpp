@@ -91,26 +91,8 @@ bool StaticTraitResolve::find_impl(
     TRACE_FUNCTION_F(trait_path << FMT_CB(os, if(trait_params) { os << *trait_params; } else { os << "<?>"; }) << " for " << type);
     auto cb_ident = [](const auto&ty)->const auto&{return ty;};
     
-    struct H {
-        static bool compare_pp(const Span& sp, const ::HIR::PathParams& left, const ::HIR::PathParams& right) {
-            ASSERT_BUG( sp, left.m_types.size() == right.m_types.size(), "Parameter count mismatch" );
-            for(unsigned int i = 0; i < left.m_types.size(); i ++) {
-                if( left.m_types[i] != right.m_types[i] ) {
-                    return false;
-                }
-            }
-            return true;
-        } 
-    };
-    const ::HIR::Path::Data::Data_UfcsKnown* assoc_info = nullptr;
-    TU_IFLET(::HIR::TypeRef::Data, type.m_data, Path, e,
-        TU_IFLET(::HIR::Path::Data, e.path.m_data, UfcsKnown, pe,
-            assoc_info = &pe;
-        )
-    )
-    
     if( trait_path == m_lang_Copy ) {
-        if( this->type_is_copy(type) ) {
+        if( this->type_is_copy(sp, type) ) {
             static ::HIR::PathParams    null_params;
             static ::std::map< ::std::string, ::HIR::TypeRef>    null_assoc;
             return found_cb( ImplRef(&type, &null_params, &null_assoc) );
@@ -122,82 +104,7 @@ bool StaticTraitResolve::find_impl(
     // TODO: A bound can imply something via its associated types. How deep can this go?
     // E.g. `T: IntoIterator<Item=&u8>` implies `<T as IntoIterator>::IntoIter : Iterator<Item=&u8>`
     ret = this->iterate_bounds([&](const auto& b) {
-        TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
-            const auto& b_params = e.trait.m_path.m_params;
-            DEBUG("(bound) - " << e.type << " : " << e.trait);
-            if( e.type == type )
-            {
-                if( e.trait.m_path.m_path == trait_path ) {
-                    // Check against `params`
-                    if( trait_params ) {
-                        DEBUG("Checking " << *trait_params << " vs " << b_params);
-                        if( !H::compare_pp(sp, *trait_params, b_params) )
-                            return false;
-                    }
-                    // Hand off to the closure, and return true if it does
-                    if( found_cb(ImplRef(&e.type, &e.trait.m_path.m_params, &e.trait.m_type_bounds)) ) {
-                        return true;
-                    }
-                }
-                #if 1
-                // HACK: The wrapping closure takes associated types from this bound and applies them to the returned set
-                // - XXX: This is actually wrong (false-positive) in many cases. FIXME
-                bool rv = this->find_named_trait_in_trait(sp,
-                    trait_path,b_params,
-                    *e.trait.m_trait_ptr, e.trait.m_path.m_path,e.trait.m_path.m_params,
-                    type,
-                    [&](const auto& params, auto assoc) {
-                        for(const auto& i : e.trait.m_type_bounds) {
-                            // TODO: Only include from above when needed
-                            //if( des_trait_ref.m_types.count(i.first) ) {
-                                assoc.insert( ::std::make_pair(i.first, i.second.clone())  );
-                            //}
-                        }
-                        return found_cb( ImplRef(type.clone(), params.clone(), mv$(assoc)) );
-                    });
-                if( rv ) {
-                    return true;
-                }
-                #endif
-            }
-            
-            // If the input type is an associated type controlled by this trait bound, check for added bounds.
-            // TODO: This just checks a single layer, but it's feasable that there could be multiple layers
-            if( assoc_info && e.trait.m_path.m_path == assoc_info->trait.m_path && e.type == *assoc_info->type && H::compare_pp(sp, b_params, assoc_info->trait.m_params) ) {
-                
-                const auto& trait_ref = *e.trait.m_trait_ptr;
-                const auto& at = trait_ref.m_types.at(assoc_info->item);
-                for(const auto& bound : at.m_trait_bounds) {
-                    if( bound.m_path.m_path == trait_path && (!trait_params || H::compare_pp(sp, bound.m_path.m_params, *trait_params)) ) {
-                        DEBUG("- Found an associated type impl");
-                        
-                        auto tp_mono = monomorphise_traitpath_with(sp, bound, [&assoc_info,&sp](const auto& gt)->const auto& {
-                            const auto& ge = gt.m_data.as_Generic();
-                            if( ge.binding == 0xFFFF ) {
-                                return *assoc_info->type;
-                            }
-                            else {
-                                if( ge.binding >= assoc_info->trait.m_params.m_types.size() )
-                                    BUG(sp, "find_trait_impls_bound - Generic #" << ge.binding << " " << ge.name << " out of range");
-                                return assoc_info->trait.m_params.m_types[ge.binding];
-                            }
-                            }, false);
-                        // - Expand associated types
-                        for(auto& ty : tp_mono.m_type_bounds) {
-                            this->expand_associated_types(sp, ty.second);
-                        }
-                        DEBUG("- tp_mono = " << tp_mono);
-                        // TODO: Instead of using `type` here, build the real type
-                        if( found_cb( ImplRef(type.clone(), mv$(tp_mono.m_path.m_params), mv$(tp_mono.m_type_bounds)) ) ) {
-                            return true;
-                        }
-                    }
-                }
-            }
-            
-            return false;
-        )
-        return false;
+        return this->find_impl__check_bound(sp, trait_path, trait_params, type, found_cb,  b);
         });
     if(ret)
         return true;
@@ -208,6 +115,113 @@ bool StaticTraitResolve::find_impl(
         });
     if(ret)
         return true;
+    
+    return false;
+}
+
+bool StaticTraitResolve::find_impl__check_bound(
+        const Span& sp,
+        const ::HIR::SimplePath& trait_path, const ::HIR::PathParams* trait_params,
+        const ::HIR::TypeRef& type,
+        t_cb_find_impl found_cb,
+        const ::HIR::GenericBound& bound
+    ) const
+{
+    struct H {
+        static bool compare_pp(const Span& sp, const ::HIR::PathParams& left, const ::HIR::PathParams& right) {
+            ASSERT_BUG( sp, left.m_types.size() == right.m_types.size(), "Parameter count mismatch" );
+            for(unsigned int i = 0; i < left.m_types.size(); i ++) {
+                if( left.m_types[i] != right.m_types[i] ) {
+                    return false;
+                }
+            }
+            return true;
+        } 
+    };
+    
+    // Can only get good information out of TraitBound
+    if( !bound.is_TraitBound() ) {
+        return false;
+    }
+    const auto& e = bound.as_TraitBound();
+    
+    // Obtain a pointer to UfcsKnown for magic later
+    const ::HIR::Path::Data::Data_UfcsKnown* assoc_info = nullptr;
+    TU_IFLET(::HIR::TypeRef::Data, type.m_data, Path, e,
+        TU_IFLET(::HIR::Path::Data, e.path.m_data, UfcsKnown, pe,
+            assoc_info = &pe;
+        )
+    )
+    
+    const auto& b_params = e.trait.m_path.m_params;
+    DEBUG("(bound) - " << e.type << " : " << e.trait);
+    if( e.type == type )
+    {
+        if( e.trait.m_path.m_path == trait_path ) {
+            // Check against `params`
+            if( trait_params ) {
+                DEBUG("Checking " << *trait_params << " vs " << b_params);
+                if( !H::compare_pp(sp, *trait_params, b_params) )
+                    return false;
+            }
+            // Hand off to the closure, and return true if it does
+            if( found_cb(ImplRef(&e.type, &e.trait.m_path.m_params, &e.trait.m_type_bounds)) ) {
+                return true;
+            }
+        }
+        // HACK: The wrapping closure takes associated types from this bound and applies them to the returned set
+        // - XXX: This is actually wrong (false-positive) in many cases. FIXME
+        bool rv = this->find_named_trait_in_trait(sp,
+            trait_path,b_params,
+            *e.trait.m_trait_ptr, e.trait.m_path.m_path,e.trait.m_path.m_params,
+            type,
+            [&](const auto& params, auto assoc) {
+                for(const auto& i : e.trait.m_type_bounds) {
+                    // TODO: Only include from above when needed
+                    //if( des_trait_ref.m_types.count(i.first) ) {
+                        assoc.insert( ::std::make_pair(i.first, i.second.clone())  );
+                    //}
+                }
+                return found_cb( ImplRef(type.clone(), params.clone(), mv$(assoc)) );
+            });
+        if( rv ) {
+            return true;
+        }
+    }
+    
+    // If the input type is an associated type controlled by this trait bound, check for added bounds.
+    // TODO: This just checks a single layer, but it's feasable that there could be multiple layers
+    if( assoc_info && e.trait.m_path.m_path == assoc_info->trait.m_path && e.type == *assoc_info->type && H::compare_pp(sp, b_params, assoc_info->trait.m_params) ) {
+        
+        const auto& trait_ref = *e.trait.m_trait_ptr;
+        const auto& at = trait_ref.m_types.at(assoc_info->item);
+        for(const auto& bound : at.m_trait_bounds) {
+            if( bound.m_path.m_path == trait_path && (!trait_params || H::compare_pp(sp, bound.m_path.m_params, *trait_params)) ) {
+                DEBUG("- Found an associated type impl");
+                
+                auto tp_mono = monomorphise_traitpath_with(sp, bound, [&assoc_info,&sp](const auto& gt)->const auto& {
+                    const auto& ge = gt.m_data.as_Generic();
+                    if( ge.binding == 0xFFFF ) {
+                        return *assoc_info->type;
+                    }
+                    else {
+                        if( ge.binding >= assoc_info->trait.m_params.m_types.size() )
+                            BUG(sp, "find_trait_impls_bound - Generic #" << ge.binding << " " << ge.name << " out of range");
+                        return assoc_info->trait.m_params.m_types[ge.binding];
+                    }
+                    }, false);
+                // - Expand associated types
+                for(auto& ty : tp_mono.m_type_bounds) {
+                    this->expand_associated_types(sp, ty.second);
+                }
+                DEBUG("- tp_mono = " << tp_mono);
+                // TODO: Instead of using `type` here, build the real type
+                if( found_cb( ImplRef(type.clone(), mv$(tp_mono.m_path.m_params), mv$(tp_mono.m_type_bounds)) ) ) {
+                    return true;
+                }
+            }
+        }
+    }
     
     return false;
 }
@@ -711,18 +725,13 @@ bool StaticTraitResolve::trait_contains_type(const Span& sp, const ::HIR::Generi
     return false;
 }
 
-bool StaticTraitResolve::type_is_copy(const ::HIR::TypeRef& ty) const
+bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const
 {
-    static Span sp;
     TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
     (Generic,
         return this->iterate_bounds([&](const auto& b) {
-            TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
-                if( e.type == ty && e.trait.m_path.m_path == m_lang_Copy ) {
-                    return true;
-                }
-            )
-            return false;
+            auto pp = ::HIR::PathParams();
+            return this->find_impl__check_bound(sp, m_lang_Copy, &pp, ty, [&](auto ){ return true; },  b);
             });
         ),
     (Path,
@@ -761,7 +770,7 @@ bool StaticTraitResolve::type_is_copy(const ::HIR::TypeRef& ty) const
         return e != ::HIR::CoreType::Str;
         ),
     (Array,
-        return e.size_val == 0 || type_is_copy(*e.inner);
+        return e.size_val == 0 || type_is_copy(sp, *e.inner);
         ),
     (Slice,
         // [T] isn't Sized, so isn't Copy ether
@@ -773,7 +782,7 @@ bool StaticTraitResolve::type_is_copy(const ::HIR::TypeRef& ty) const
         ),
     (Tuple,
         for(const auto& ty : e)
-            if( !type_is_copy(ty) )
+            if( !type_is_copy(sp, ty) )
                 return false;
         return true;
         )

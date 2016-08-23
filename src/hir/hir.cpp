@@ -183,6 +183,23 @@ namespace {
     }
 }
 
+//::HIR::TypeRef HIR::Function::make_ty(const Span& sp, const ::HIR::PathParams& params) const
+//{
+//    // TODO: Obtain function type for this function (i.e. a type that is specifically for this function)
+//    auto fcn_ty_data = ::HIR::FunctionType {
+//        m_is_unsafe,
+//        m_abi,
+//        box$( monomorphise_type(sp, m_params, params,  m_return) ),
+//        {}
+//        };
+//    fcn_ty_data.m_arg_types.reserve( m_args.size() );
+//    for(const auto& arg : m_args)
+//    {
+//        fcn_ty_data.m_arg_types.push_back( monomorphise_type(sp, m_params, params,  arg.second) );
+//    }
+//    return ::HIR::TypeRef( mv$(fcn_ty_data) );
+//}
+
 bool ::HIR::TraitImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
     return matches_type_int(m_params, m_type, type, ty_res, true);

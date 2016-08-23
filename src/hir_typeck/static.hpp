@@ -97,6 +97,13 @@ public:
         ) const;
     
 private:
+    bool find_impl__check_bound(
+        const Span& sp,
+        const ::HIR::SimplePath& trait_path, const ::HIR::PathParams* trait_params,
+        const ::HIR::TypeRef& type,
+        t_cb_find_impl found_cb,
+        const ::HIR::GenericBound& bound
+        ) const;
     bool find_impl__check_crate(
         const Span& sp,
         const ::HIR::SimplePath& trait_path, const ::HIR::PathParams* trait_params,
@@ -132,6 +139,6 @@ public:
     // --------------
     // Common bounds
     // -------------
-    bool type_is_copy(const ::HIR::TypeRef& ty) const;
+    bool type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const;
 };
 

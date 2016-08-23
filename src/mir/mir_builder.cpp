@@ -128,31 +128,32 @@ void MirBuilder::set_result(const Span& sp, ::MIR::RValue val)
 
 void MirBuilder::push_stmt_assign(::MIR::LValue dst, ::MIR::RValue val)
 {
-    ASSERT_BUG(Span(), m_block_active, "Pushing statement with no active block");
-    ASSERT_BUG(Span(), dst.tag() != ::MIR::LValue::TAGDEAD, "");
-    ASSERT_BUG(Span(), val.tag() != ::MIR::RValue::TAGDEAD, "");
+    static Span sp;
+    ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
+    ASSERT_BUG(sp, dst.tag() != ::MIR::LValue::TAGDEAD, "");
+    ASSERT_BUG(sp, val.tag() != ::MIR::RValue::TAGDEAD, "");
     
     TU_MATCHA( (val), (e),
     (Use,
-        this->moved_lvalue(e);
+        this->moved_lvalue(sp, e);
         ),
     (Constant,
         ),
     (SizedArray,
-        this->moved_lvalue(e.val);
+        this->moved_lvalue(sp, e.val);
         ),
     (Borrow,
         if( e.type == ::HIR::BorrowType::Owned ) {
-            TODO(Span(), "Move using &move");
+            TODO(sp, "Move using &move");
             // Likely would require a marker that ensures that the memory isn't reused.
-            this->moved_lvalue(e.val);
+            this->moved_lvalue(sp, e.val);
         }
         else {
             // Doesn't move
         }
         ),
     (Cast,
-        this->moved_lvalue(e.val);
+        this->moved_lvalue(sp, e.val);
         ),
     (BinOp,
         switch(e.op)
@@ -166,32 +167,32 @@ void MirBuilder::push_stmt_assign(::MIR::LValue dst, ::MIR::RValue val)
             // Takes an implicit borrow... and only works on copy, so why is this block here?
             break;
         default:
-            this->moved_lvalue(e.val_l);
-            this->moved_lvalue(e.val_r);
+            this->moved_lvalue(sp, e.val_l);
+            this->moved_lvalue(sp, e.val_r);
             break;
         }
         ),
     (UniOp,
-        this->moved_lvalue(e.val);
+        this->moved_lvalue(sp, e.val);
         ),
     (DstMeta,
         // Doesn't move
         ),
     (MakeDst,
         // Doesn't move ptr_val
-        this->moved_lvalue(e.meta_val);
+        this->moved_lvalue(sp, e.meta_val);
         ),
     (Tuple,
         for(const auto& val : e.vals)
-            this->moved_lvalue(val);
+            this->moved_lvalue(sp, val);
         ),
     (Array,
         for(const auto& val : e.vals)
-            this->moved_lvalue(val);
+            this->moved_lvalue(sp, val);
         ),
     (Struct,
         for(const auto& val : e.vals)
-            this->moved_lvalue(val);
+            this->moved_lvalue(sp, val);
         )
     )
     
@@ -246,10 +247,12 @@ void MirBuilder::push_stmt_assign(::MIR::LValue dst, ::MIR::RValue val)
 }
 void MirBuilder::push_stmt_drop(::MIR::LValue val)
 {
-    ASSERT_BUG(Span(), m_block_active, "Pushing statement with no active block");
-    ASSERT_BUG(Span(), val.tag() != ::MIR::LValue::TAGDEAD, "");
+    static Span sp_drop;
+    const auto& sp = sp_drop;
+    ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
+    ASSERT_BUG(sp, val.tag() != ::MIR::LValue::TAGDEAD, "");
     
-    if( lvalue_is_copy(val) ) {
+    if( lvalue_is_copy(sp, val) ) {
         // Don't emit a drop for Copy values
         return ;
     }
@@ -701,11 +704,11 @@ void MirBuilder::with_val_type(const ::MIR::LValue& val, ::std::function<void(co
     )
 }
 
-bool MirBuilder::lvalue_is_copy(const ::MIR::LValue& val)
+bool MirBuilder::lvalue_is_copy(const Span& sp, const ::MIR::LValue& val)
 {
     int rv = 0;
     with_val_type(val, [&](const auto& ty){
-        rv = (m_resolve.type_is_copy(ty) ? 2 : 1);
+        rv = (m_resolve.type_is_copy(sp, ty) ? 2 : 1);
         });
     assert(rv != 0);
     return rv == 2;
@@ -861,57 +864,57 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
     )
 }
 
-void MirBuilder::moved_lvalue(const ::MIR::LValue& lv)
+void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
 {
     TRACE_FUNCTION_F(lv);
     TU_MATCHA( (lv), (e),
     (Variable,
-        if( !lvalue_is_copy(lv) ) {
+        if( !lvalue_is_copy(sp, lv) ) {
             set_variable_state(e, VarState::Moved);
         }
         ),
     (Temporary,
-        //if( !lvalue_is_copy(lv) ) {
+        if( !lvalue_is_copy(sp, lv) ) {
             set_temp_state(e.idx, VarState::Moved);
-        //}
+        }
         ),
     (Argument,
-        //TODO(Span(), "Mark argument as moved");
+        //TODO(sp, "Mark argument as moved");
         ),
     (Static,
-        //TODO(Span(), "Static - Assert that type is Copy");
+        //TODO(sp, "Static - Assert that type is Copy");
         ),
     (Return,
-        BUG(Span(), "Read of return value");
+        BUG(sp, "Read of return value");
         ),
     (Field,
-        if( lvalue_is_copy(lv) ) {
+        if( lvalue_is_copy(sp, lv) ) {
         }
         else {
             // TODO: Partial moves.
-            moved_lvalue(*e.val);
+            moved_lvalue(sp, *e.val);
         }
         ),
     (Deref,
-        if( lvalue_is_copy(lv) ) {
+        if( lvalue_is_copy(sp, lv) ) {
         }
         else {
-            BUG(Span(), "Move out of deref with non-Copy values - &move? - " << lv);
-            moved_lvalue(*e.val);
+            BUG(sp, "Move out of deref with non-Copy values - &move? - " << lv);
+            moved_lvalue(sp, *e.val);
         }
         ),
     (Index,
-        if( lvalue_is_copy(lv) ) {
+        if( lvalue_is_copy(sp, lv) ) {
         }
         else {
-            BUG(Span(), "Move out of index with non-Copy values - Partial move?");
-            moved_lvalue(*e.val);
+            BUG(sp, "Move out of index with non-Copy values - Partial move?");
+            moved_lvalue(sp, *e.val);
         }
-        moved_lvalue(*e.idx);
+        moved_lvalue(sp, *e.idx);
         ),
     (Downcast,
         // TODO: What if the inner is Copy? What if the inner is a hidden pointer?
-        moved_lvalue(*e.val);
+        moved_lvalue(sp, *e.val);
         )
     )
 }

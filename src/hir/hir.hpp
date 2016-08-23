@@ -97,6 +97,8 @@ public:
     TypeRef m_return;
     
     ExprPtr m_code;
+    
+    //::HIR::TypeRef make_ty(const Span& sp, const ::HIR::PathParams& params) const;
 };
 
 // --------------------------------------------------------------------

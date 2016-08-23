@@ -1028,7 +1028,7 @@ namespace {
             {
                 this->visit_node_ptr(arg);
                 values.push_back( m_builder.lvalue_or_temp( arg->m_res_type, m_builder.get_result(arg->span()) ) );
-                m_builder.moved_lvalue( values.back() );
+                m_builder.moved_lvalue( arg->span(), values.back() );
             }
             
             // TODO: Obtain function type for this function (i.e. a type that is specifically for this function)
@@ -1077,7 +1077,7 @@ namespace {
             {
                 this->visit_node_ptr(arg);
                 values.push_back( m_builder.lvalue_or_temp( arg->m_res_type, m_builder.get_result(arg->span()) ) );
-                m_builder.moved_lvalue( values.back() );
+                m_builder.moved_lvalue( arg->span(), values.back() );
             }
             
             
