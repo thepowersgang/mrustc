@@ -321,8 +321,12 @@ namespace {
             const ::HIR::t_tuple_fields* fields_ptr = nullptr;
             ASSERT_BUG(sp, ty.m_data.is_Path(), "Result type of _TupleVariant isn't Path");
             TU_MATCH(::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (e),
-            (Unbound, ),
-            (Opaque, ),
+            (Unbound,
+                BUG(sp, "Unbound type in _TupleVariant - " << ty);
+                ),
+            (Opaque,
+                BUG(sp, "Opaque type binding in _TupleVariant - " << ty);
+                ),
             (Enum,
                 const auto& var_name = node.m_path.m_path.m_components.back();
                 const auto& enm = *e;
