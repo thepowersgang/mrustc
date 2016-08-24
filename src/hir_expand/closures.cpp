@@ -140,16 +140,16 @@ namespace {
         static void fix_fn_params(::HIR::ExprPtr& code, const ::HIR::TypeRef& self_ty, const ::HIR::TypeRef& args_ty)
         {
             if( code.m_bindings.size() == 0 ) {
+                // No bindings - Wrapper function
                 // Insert 0 = Self, 1 = Args
                 code.m_bindings.push_back( self_ty.clone() );
                 code.m_bindings.push_back( args_ty.clone() );
             }
             else {
-                assert( code.m_bindings.size() >= 2 );
+                // Bindings present - Actual code (which destructures `args`)
+                assert( code.m_bindings.size() >= 1 );
                 assert( code.m_bindings[0] == ::HIR::TypeRef() );
-                assert( code.m_bindings[1] == ::HIR::TypeRef() );
                 code.m_bindings[0] = self_ty.clone();
-                code.m_bindings[1] = args_ty.clone();
             }
         }
         static ::HIR::TraitImpl make_fnonce(
@@ -396,7 +396,6 @@ namespace {
             DEBUG("--- Build locals and captures");
             ::std::vector< ::HIR::TypeRef>  local_types;
             local_types.push_back( ::HIR::TypeRef() );  // self - filled by make_fn*
-            local_types.push_back( ::HIR::TypeRef() );  // args - filled by make_fn*
             for(const auto binding_idx : ent.local_vars) {
                 auto ty_mono = monomorphise_type_with(sp, m_variable_types.at(binding_idx).clone(), monomorph_cb);
                 local_types.push_back( mv$(ty_mono) );
