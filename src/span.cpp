@@ -62,3 +62,9 @@ void Span::note(::std::function<void(::std::ostream&)> msg) const {
     ::std::cerr << ::std::endl;
     //abort();
 }
+
+::std::ostream& operator<<(::std::ostream& os, const Span& sp)
+{
+    os << sp.filename << ":" << sp.start_line;
+    return os;
+}

@@ -228,6 +228,9 @@ int main(int argc, char *argv[])
         CompilePhaseV("Expand HIR Calls", [&]() {
             HIR_Expand_UfcsEverything(*hir_crate);
             });
+        CompilePhaseV("Expand HIR Reborrows", [&]() {
+            HIR_Expand_Reborrows(*hir_crate);
+            });
         // - Ensure that typeck worked (including Fn trait call insertion etc)
         CompilePhaseV("Typecheck Expressions (validate)", [&]() {
             Typecheck_Expressions_Validate(*hir_crate);

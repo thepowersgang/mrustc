@@ -51,6 +51,8 @@ struct Span
     void error(ErrorType tag, ::std::function<void(::std::ostream&)> msg) const;
     void warning(WarningType tag, ::std::function<void(::std::ostream&)> msg) const;
     void note(::std::function<void(::std::ostream&)> msg) const;
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const Span& sp);
 };
 
 template<typename T>
