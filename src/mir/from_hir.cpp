@@ -235,6 +235,7 @@ namespace {
             if( node.m_nodes.size() > 0 )
             {
                 bool res_valid;
+                //::MIR::RValue   res;
                 auto res = m_builder.new_temporary( node.m_res_type );
                 
                 auto scope = m_builder.new_scope_var(node.span());
@@ -266,6 +267,7 @@ namespace {
                     auto stmt_scope = m_builder.new_scope_temp(sp);
                     this->visit_node_ptr(subnode);
                     if( m_builder.has_result() || m_builder.block_active() ) {
+                        //res = m_builder.get_result(sp);
                         m_builder.push_stmt_assign( sp, res.clone(), m_builder.get_result(sp) );
                         m_builder.terminate_scope(sp, mv$(stmt_scope));
                         res_valid = true;
@@ -1417,7 +1419,7 @@ namespace {
     
     // Scope ensures that builder cleanup happens before `fcn` is moved
     {
-        MirBuilder  builder { resolve, fcn };
+        MirBuilder  builder { ptr->span(), resolve, fcn };
         ExprVisitor_Conv    ev { builder, ptr.m_bindings };
         
         // 1. Apply destructuring to arguments

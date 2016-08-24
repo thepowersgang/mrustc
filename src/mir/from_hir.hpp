@@ -75,6 +75,7 @@ class MirBuilder
 {
     friend class ScopeHandle;
     
+    const Span& m_root_span;
     const StaticTraitResolve& m_resolve;
     ::MIR::Function&    m_output;
     
@@ -108,7 +109,7 @@ class MirBuilder
     ::std::vector<unsigned int> m_scope_stack;
     ScopeHandle m_fcn_scope;
 public:
-    MirBuilder(const StaticTraitResolve& resolve, ::MIR::Function& output);
+    MirBuilder(const Span& sp, const StaticTraitResolve& resolve, ::MIR::Function& output);
     ~MirBuilder();
     
     const ::HIR::Crate& crate() const { return m_resolve.m_crate; }
@@ -163,10 +164,10 @@ public:
     // Helper - Marks a variable/... as moved (and checks if the move is valid)
     void moved_lvalue(const Span& sp, const ::MIR::LValue& lv);
 private:
-    VarState get_variable_state(unsigned int idx) const;
-    void set_variable_state(unsigned int idx, VarState state);
-    VarState get_temp_state(unsigned int idx) const;
-    void set_temp_state(unsigned int idx, VarState state);
+    VarState get_variable_state(const Span& sp, unsigned int idx) const;
+    void set_variable_state(const Span& sp, unsigned int idx, VarState state);
+    VarState get_temp_state(const Span& sp, unsigned int idx) const;
+    void set_temp_state(const Span& sp, unsigned int idx, VarState state);
     
     void drop_scope_values(const ScopeDef& sd);
     void complete_scope(ScopeDef& sd);

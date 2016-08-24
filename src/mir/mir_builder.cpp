@@ -11,14 +11,14 @@
 // --------------------------------------------------------------------
 // MirBuilder
 // --------------------------------------------------------------------
-MirBuilder::MirBuilder(const StaticTraitResolve& resolve, ::MIR::Function& output):
+MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, ::MIR::Function& output):
+    m_root_span(sp),
     m_resolve(resolve),
     m_output(output),
     m_block_active(false),
     m_result_valid(false),
     m_fcn_scope(*this, 0)
 {
-    Span    sp;
     set_cur_block( new_bb_unlinked() );
     m_scopes.push_back( ScopeDef { sp } );
     m_scope_stack.push_back( 0 );
@@ -29,7 +29,7 @@ MirBuilder::MirBuilder(const StaticTraitResolve& resolve, ::MIR::Function& outpu
 MirBuilder::~MirBuilder()
 {
     // TODO: Function span
-    Span    sp;
+    const auto& sp = m_root_span;
     if( has_result() )
     {
         push_stmt_assign( sp, ::MIR::LValue::make_Return({}), get_result(Span()) );
@@ -215,7 +215,7 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
     (
         ),
     (Temporary,
-        switch(get_temp_state(e.idx))
+        switch(get_temp_state(sp, e.idx))
         {
         case VarState::Uninit:
             break;
@@ -230,14 +230,14 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
             // ERROR. Temporaries are single-assignment
             break;
         }
-        set_temp_state(e.idx, VarState::Init);
+        set_temp_state(sp, e.idx, VarState::Init);
         ),
     (Return,
         // Don't drop.
         //m_return_valid = true;
         ),
     (Variable,
-        switch( get_variable_state(e) )
+        switch( get_variable_state(sp, e) )
         {
         case VarState::Uninit:
         case VarState::Moved:
@@ -254,7 +254,7 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
             // TODO: Conditional drop
             break;
         }
-        set_variable_state(e, VarState::Init);
+        set_variable_state(sp, e, VarState::Init);
         )
     )
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Assign({ mv$(dst), mv$(val) }) );
@@ -546,10 +546,10 @@ void MirBuilder::complete_scope(ScopeDef& sd)
             if( changed[i] )
             {
                 // - NOTE: This scope should be off the stack now, so this call will get the original state
-                auto old_state = get_variable_state(i);
+                auto old_state = get_variable_state(sd.span, i);
                 auto new_state = new_states[i];
                 DEBUG("var" << i << " old_state = " << old_state << ", new_state = " << new_state);
-                set_variable_state(i, new_state);
+                set_variable_state(sd.span, i, new_state);
                 //switch(old_state)
                 //{
                 //case VarState::Uninit:
@@ -725,7 +725,7 @@ bool MirBuilder::lvalue_is_copy(const Span& sp, const ::MIR::LValue& val)
     return rv == 2;
 }
 
-VarState MirBuilder::get_variable_state(unsigned int idx) const
+VarState MirBuilder::get_variable_state(const Span& sp, unsigned int idx) const
 {
     for( auto scope_idx : ::reverse(m_scope_stack) )
     {
@@ -752,9 +752,9 @@ VarState MirBuilder::get_variable_state(unsigned int idx) const
         )
     }
     
-    BUG(Span(), "Variable " << idx << " not found in stack");
+    BUG(sp, "Variable " << idx << " not found in stack");
 }
-void MirBuilder::set_variable_state(unsigned int idx, VarState state)
+void MirBuilder::set_variable_state(const Span& sp, unsigned int idx, VarState state)
 {
     for( auto scope_idx : ::reverse(m_scope_stack) )
     {
@@ -766,7 +766,7 @@ void MirBuilder::set_variable_state(unsigned int idx, VarState state)
             auto it = ::std::find(e.vars.begin(), e.vars.end(), idx);
             if( it != e.vars.end() ) {
                 unsigned int sub_idx = it - e.vars.begin();
-                assert(sub_idx < e.var_states.size());
+                ASSERT_BUG(sp, sub_idx < e.var_states.size(), "Variable list size invalid - " << sub_idx << " >= " << e.var_states.size());
                 e.var_states[sub_idx] = state;
                 return ;
             }
@@ -785,9 +785,9 @@ void MirBuilder::set_variable_state(unsigned int idx, VarState state)
         )
     }
     
-    BUG(Span(), "Variable " << idx << " not found in stack");
+    BUG(sp, "Variable " << idx << " not found in stack");
 }
-VarState MirBuilder::get_temp_state(unsigned int idx) const
+VarState MirBuilder::get_temp_state(const Span& sp, unsigned int idx) const
 {
     for( auto scope_idx : ::reverse(m_scope_stack) )
     {
@@ -799,7 +799,7 @@ VarState MirBuilder::get_temp_state(unsigned int idx) const
             auto it = ::std::find(e.temporaries.begin(), e.temporaries.end(), idx);
             if( it != e.temporaries.end() ) {
                 unsigned int sub_idx = it - e.temporaries.begin();
-                ASSERT_BUG(Span(), sub_idx < e.states.size(), "Temporary list sizes invalid - " << sub_idx << " >= " << e.states.size());
+                ASSERT_BUG(sp, sub_idx < e.states.size(), "Temporary list sizes invalid - " << sub_idx << " >= " << e.states.size());
                 return e.states[sub_idx];
             }
             ),
@@ -809,9 +809,9 @@ VarState MirBuilder::get_temp_state(unsigned int idx) const
         )
     }
     
-    BUG(Span(), "Temporary " << idx << " not found in stack");
+    BUG(sp, "Temporary " << idx << " not found in stack");
 }
-void MirBuilder::set_temp_state(unsigned int idx, VarState state)
+void MirBuilder::set_temp_state(const Span& sp, unsigned int idx, VarState state)
 {
     for( auto scope_idx : ::reverse(m_scope_stack) )
     {
@@ -841,16 +841,16 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
     (Temporaries,
         for(auto tmp_idx : ::reverse(e.temporaries))
         {
-            if( get_temp_state(tmp_idx) == VarState::Init ) {
+            if( get_temp_state(sd.span, tmp_idx) == VarState::Init ) {
                 push_stmt_drop( sd.span, ::MIR::LValue::make_Temporary({ tmp_idx }) );
-                set_temp_state(tmp_idx, VarState::Dropped);
+                set_temp_state(sd.span, tmp_idx, VarState::Dropped);
             }
         }
         ),
     (Variables,
         for(auto var_idx : ::reverse(e.vars))
         {
-            switch( get_variable_state(var_idx) )
+            switch( get_variable_state(sd.span, var_idx) )
             {
             case VarState::Uninit:
             case VarState::Dropped:
@@ -881,12 +881,12 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
     TU_MATCHA( (lv), (e),
     (Variable,
         if( !lvalue_is_copy(sp, lv) ) {
-            set_variable_state(e, VarState::Moved);
+            set_variable_state(sp, e, VarState::Moved);
         }
         ),
     (Temporary,
         if( !lvalue_is_copy(sp, lv) ) {
-            set_temp_state(e.idx, VarState::Moved);
+            set_temp_state(sp, e.idx, VarState::Moved);
         }
         ),
     (Argument,
