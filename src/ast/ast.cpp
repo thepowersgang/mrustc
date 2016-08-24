@@ -320,6 +320,9 @@ Function::Function(Span sp, GenericParams params, TypeRef ret_type, Arglist args
             TU_IFLET( ::AST::Path::Class, e.path.m_class, Relative, pe,
                 if( pe.nodes.size() == 1 && pe.nodes.front().name() == "Box" )
                 {
+                    if( pe.nodes.front().args().m_types.size() != 1 ) {
+                        ERROR(sp, E0000, "Box takes 1 argument - " << ty);
+                    }
                     // HACK: Assumes that the param is Self or equivalent
                     m_receiver = Receiver::Box;
                 }
