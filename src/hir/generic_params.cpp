@@ -63,7 +63,7 @@ namespace HIR {
 ::HIR::GenericParams HIR::GenericParams::clone() const
 {
     ::HIR::GenericParams    rv;
-    rv.m_types.resize(m_types.size());
+    rv.m_types.reserve(m_types.size());
     for(const auto& type : m_types)
     {
         rv.m_types.push_back(::HIR::TypeParamDef {
@@ -73,7 +73,7 @@ namespace HIR {
             });
     }
     rv.m_lifetimes = m_lifetimes;
-    rv.m_bounds.resize(m_bounds.size());
+    rv.m_bounds.reserve(m_bounds.size());
     for(const auto& bound : m_bounds)
     {
         TU_MATCH(::HIR::GenericBound, (bound), (e),
