@@ -57,11 +57,9 @@ struct SplitArm {
 TAGGED_UNION(ScopeType, Variables,
     (Variables, struct {
         ::std::vector<unsigned int> vars;   // List of owned variables
-        ::std::vector<VarState> var_states; // Indexed by position in above list
         }),
     (Temporaries, struct {
         ::std::vector<unsigned int> temporaries;    // Controlled temporaries
-        ::std::vector<VarState> states; // Indexed by position in above list
         }),
     (Split, struct {
         ::std::vector<SplitArm> arms;
@@ -85,8 +83,8 @@ class MirBuilder
     ::MIR::RValue   m_result;
     bool    m_result_valid;
     
-    ::std::vector<bool> variables_valid;
-    ::std::vector<bool> temporaries_valid;
+    ::std::vector<VarState> m_variable_states;
+    ::std::vector<VarState> m_temporary_states;
     
     struct ScopeDef
     {

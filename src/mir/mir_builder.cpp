@@ -25,6 +25,8 @@ MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, ::MIR:
     
     m_scopes.push_back( ScopeDef { sp, ScopeType::make_Temporaries({}) } );
     m_scope_stack.push_back( 1 );
+    
+    m_variable_states.resize( output.named_variables.size(), VarState::Uninit );
 }
 MirBuilder::~MirBuilder()
 {
@@ -55,7 +57,6 @@ void MirBuilder::define_variable(unsigned int idx)
             auto it = ::std::find(e.vars.begin(), e.vars.end(), idx);
             assert(it == e.vars.end());
             e.vars.push_back( idx );
-            e.var_states.push_back( VarState::Uninit );
             return ;
             ),
         (Split,
@@ -71,7 +72,8 @@ void MirBuilder::define_variable(unsigned int idx)
     DEBUG("DEFINE tmp" << rv << ": " << ty);
     
     m_output.temporaries.push_back( ty.clone() );
-    temporaries_valid.push_back(false);
+    m_temporary_states.push_back( VarState::Uninit );
+    assert(m_output.temporaries.size() == m_temporary_states.size());
     
     ScopeDef* top_scope = nullptr;
     for(unsigned int i = m_scope_stack.size(); i --; )
@@ -85,7 +87,6 @@ void MirBuilder::define_variable(unsigned int idx)
     assert( top_scope );
     auto& tmp_scope = top_scope->data.as_Temporaries();
     tmp_scope.temporaries.push_back( rv );
-    tmp_scope.states.push_back( VarState::Uninit );
     return ::MIR::LValue::make_Temporary({rv});
 }
 ::MIR::LValue MirBuilder::lvalue_or_temp(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::RValue val)
@@ -736,9 +737,8 @@ VarState MirBuilder::get_variable_state(const Span& sp, unsigned int idx) const
         (Variables,
             auto it = ::std::find(e.vars.begin(), e.vars.end(), idx);
             if( it != e.vars.end() ) {
-                unsigned int sub_idx = it - e.vars.begin();
-                assert(sub_idx < e.var_states.size());
-                return e.var_states[sub_idx];
+                // If controlled by this block, exit early (won't find it elsewhere)
+                break ;
             }
             ),
         (Split,
@@ -752,7 +752,8 @@ VarState MirBuilder::get_variable_state(const Span& sp, unsigned int idx) const
         )
     }
     
-    BUG(sp, "Variable " << idx << " not found in stack");
+    ASSERT_BUG(sp, idx < m_variable_states.size(), "Variable " << idx << " out of range for state table");
+    return m_variable_states[idx];
 }
 void MirBuilder::set_variable_state(const Span& sp, unsigned int idx, VarState state)
 {
@@ -765,10 +766,7 @@ void MirBuilder::set_variable_state(const Span& sp, unsigned int idx, VarState s
         (Variables,
             auto it = ::std::find(e.vars.begin(), e.vars.end(), idx);
             if( it != e.vars.end() ) {
-                unsigned int sub_idx = it - e.vars.begin();
-                ASSERT_BUG(sp, sub_idx < e.var_states.size(), "Variable list size invalid - " << sub_idx << " >= " << e.var_states.size());
-                e.var_states[sub_idx] = state;
-                return ;
+                break ;
             }
             ),
         (Split,
@@ -785,7 +783,8 @@ void MirBuilder::set_variable_state(const Span& sp, unsigned int idx, VarState s
         )
     }
     
-    BUG(sp, "Variable " << idx << " not found in stack");
+    ASSERT_BUG(sp, idx < m_variable_states.size(), "Variable " << idx << " out of range for state table");
+    m_variable_states[idx] = state;
 }
 VarState MirBuilder::get_temp_state(const Span& sp, unsigned int idx) const
 {
@@ -798,9 +797,7 @@ VarState MirBuilder::get_temp_state(const Span& sp, unsigned int idx) const
         (Temporaries,
             auto it = ::std::find(e.temporaries.begin(), e.temporaries.end(), idx);
             if( it != e.temporaries.end() ) {
-                unsigned int sub_idx = it - e.temporaries.begin();
-                ASSERT_BUG(sp, sub_idx < e.states.size(), "Temporary list sizes invalid - " << sub_idx << " >= " << e.states.size());
-                return e.states[sub_idx];
+                break ;
             }
             ),
         (Split,
@@ -809,7 +806,8 @@ VarState MirBuilder::get_temp_state(const Span& sp, unsigned int idx) const
         )
     }
     
-    BUG(sp, "Temporary " << idx << " not found in stack");
+    ASSERT_BUG(sp, idx < m_temporary_states.size(), "Temporary " << idx << " out of range for state table");
+    return m_temporary_states[idx];
 }
 void MirBuilder::set_temp_state(const Span& sp, unsigned int idx, VarState state)
 {
@@ -822,10 +820,7 @@ void MirBuilder::set_temp_state(const Span& sp, unsigned int idx, VarState state
         (Temporaries,
             auto it = ::std::find(e.temporaries.begin(), e.temporaries.end(), idx);
             if( it != e.temporaries.end() ) {
-                unsigned int sub_idx = it - e.temporaries.begin();
-                assert(sub_idx < e.states.size());
-                e.states[sub_idx] = state;
-                return ;
+                break;
             }
             ),
         (Split,
@@ -833,6 +828,9 @@ void MirBuilder::set_temp_state(const Span& sp, unsigned int idx, VarState state
             )
         )
     }
+    
+    ASSERT_BUG(sp, idx < m_temporary_states.size(), "Temporary " << idx << " out of range for state table");
+    m_temporary_states[idx] = state;
 }
 
 void MirBuilder::drop_scope_values(const ScopeDef& sd)
