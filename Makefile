@@ -26,6 +26,8 @@ else ifeq ($(DBGTPL),gdb)
   DBG := echo -e "r\nbt 12\nq" | gdb --args
 else ifeq ($(DBGTPL),valgrind)
   DBG := valgrind --leak-check=full --num-callers=35
+else ifeq ($(DBGTPL),time)
+  DBG := time
 else
   $(error "Unknown debug template")
 endif

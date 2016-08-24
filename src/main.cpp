@@ -59,7 +59,6 @@ bool debug_enabled()
     else {
         return true;
     }
-    //return g_cur_phase == "Lower MIR";
 }
 ::std::ostream& debug_output(int indent, const char* function)
 {
