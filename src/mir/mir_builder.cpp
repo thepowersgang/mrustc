@@ -611,10 +611,11 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                     BUG(sp, "Field on unit-like struct - " << ty);
                     ),
                 (Tuple,
-                    ASSERT_BUG(sp, e.field_index < se.size(), "");
+                    ASSERT_BUG(sp, e.field_index < se.size(), "Field index out of range in tuple-struct");
                     const auto& fld = se[e.field_index];
                     if( monomorphise_type_needed(fld.ent) ) {
                         auto sty = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, fld.ent);
+                        m_resolve.expand_associated_types(sp, sty);
                         cb(sty);
                     }
                     else {
@@ -622,10 +623,11 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                     }
                     ),
                 (Named,
-                    ASSERT_BUG(sp, e.field_index < se.size(), "");
+                    ASSERT_BUG(sp, e.field_index < se.size(), "Field index out of range in struct");
                     const auto& fld = se[e.field_index].second;
                     if( monomorphise_type_needed(fld.ent) ) {
                         auto sty = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, fld.ent);
+                        m_resolve.expand_associated_types(sp, sty);
                         cb(sty);
                     }
                     else {
@@ -635,7 +637,7 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                 )
                 ),
             (Tuple,
-                assert( e.field_index < te.size() );
+                ASSERT_BUG(sp, e.field_index < te.size(), "Field index out of range in tuple " << e.field_index << " >= " << te.size());
                 cb( te[e.field_index] );
                 )
             )
