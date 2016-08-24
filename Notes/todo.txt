@@ -7,3 +7,5 @@ TODO:
 - MIR Optimisations
 - HIR Optimisation (remove dead code in `if true/if false` branches)
 - Convert enum variants to point to structs for the data type
+- Clean up Span code to correctly handle nested spans
+- Clean up AST
