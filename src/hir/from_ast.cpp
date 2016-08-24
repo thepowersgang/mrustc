@@ -977,7 +977,7 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             ),
         (Struct,
             /// Add value reference
-            TU_IFLET( ::AST::StructData, e.m_data, Struct, e2,
+            TU_IFLET( ::AST::StructData, e.m_data, Tuple, e2,
                 if( e2.ents.size() == 0 )
                     _add_mod_val_item( mod,  item.name, item.is_pub, ::HIR::ValueItem::make_StructConstant({item_path.get_simple_path()}) );
                 else
