@@ -1407,7 +1407,7 @@ namespace {
 }
 
 
-::MIR::FunctionPointer LowerMIR(const StaticTraitResolve& resolve, const ::HIR::ExprPtr& ptr, const ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >& args)
+::MIR::FunctionPointer LowerMIR(const StaticTraitResolve& resolve, const ::HIR::ExprPtr& ptr, const ::HIR::Function::args_t& args)
 {
     TRACE_FUNCTION;
     
@@ -1418,7 +1418,7 @@ namespace {
     
     // Scope ensures that builder cleanup happens before `fcn` is moved
     {
-        MirBuilder  builder { ptr->span(), resolve, fcn };
+        MirBuilder  builder { ptr->span(), resolve, args, fcn };
         ExprVisitor_Conv    ev { builder, ptr.m_bindings };
         
         // 1. Apply destructuring to arguments

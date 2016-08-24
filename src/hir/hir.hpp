@@ -86,6 +86,8 @@ public:
         //PointerConst,
     };
     
+    typedef ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >   args_t;
+    
     Receiver    m_receiver;
     ::std::string   m_abi;
     bool    m_unsafe;
@@ -93,7 +95,7 @@ public:
     
     GenericParams   m_params;
     
-    ::std::vector< ::std::pair< Pattern, TypeRef > >    m_args;
+    args_t  m_args;
     TypeRef m_return;
     
     ExprPtr m_code;

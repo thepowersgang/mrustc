@@ -75,6 +75,7 @@ class MirBuilder
     
     const Span& m_root_span;
     const StaticTraitResolve& m_resolve;
+    const ::HIR::Function::args_t&  m_args;
     ::MIR::Function&    m_output;
     
     unsigned int    m_current_block;
@@ -107,7 +108,7 @@ class MirBuilder
     ::std::vector<unsigned int> m_scope_stack;
     ScopeHandle m_fcn_scope;
 public:
-    MirBuilder(const Span& sp, const StaticTraitResolve& resolve, ::MIR::Function& output);
+    MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::Function::args_t& args, ::MIR::Function& output);
     ~MirBuilder();
     
     const ::HIR::Crate& crate() const { return m_resolve.m_crate; }

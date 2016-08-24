@@ -11,9 +11,10 @@
 // --------------------------------------------------------------------
 // MirBuilder
 // --------------------------------------------------------------------
-MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, ::MIR::Function& output):
+MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::Function::args_t& args, ::MIR::Function& output):
     m_root_span(sp),
     m_resolve(resolve),
+    m_args(args),
     m_output(output),
     m_block_active(false),
     m_result_valid(false),
@@ -575,7 +576,8 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
         cb( m_output.temporaries.at(e.idx) );
         ),
     (Argument,
-        TODO(sp, "Argument");
+        ASSERT_BUG(sp, e.idx < m_args.size(), "Argument number out of range");
+        cb( m_args.at(e.idx).second );
         ),
     (Static,
         TU_MATCHA( (e.m_data), (pe),
