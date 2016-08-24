@@ -156,7 +156,7 @@ public:
         BorrowShared,
         //RawMut,
         //RawConst,
-        //Box,
+        Box,
     };
 
 private:

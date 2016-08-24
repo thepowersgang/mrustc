@@ -908,8 +908,9 @@ namespace {
     _(BorrowOwned)
     _(BorrowUnique)
     _(BorrowShared)
-    //case ::AST::Function::Receiver::Box:
-    //    break;
+    case ::AST::Function::Receiver::Box:
+        TODO(sp, "Support `self: Box<Self>` receiver");
+        break;
     #undef _
     }
     

@@ -316,6 +316,19 @@ Function::Function(Span sp, GenericParams params, TypeRef ret_type, Arglist args
             // Whups!
             ERROR(sp, E0000, "Invalid receiver type - " << ty);
             ),
+        (Path,
+            TU_IFLET( ::AST::Path::Class, e.path.m_class, Relative, pe,
+                if( pe.nodes.size() == 1 && pe.nodes.front().name() == "Box" )
+                {
+                    // HACK: Assumes that the param is Self or equivalent
+                    m_receiver = Receiver::Box;
+                }
+            )
+            
+            if( m_receiver == Receiver::Free ) {
+                ERROR(sp, E0000, "Invalid receiver type - " << ty);
+            }
+            ),
         (Borrow,
             if(e.is_mut) {
                 m_receiver = Receiver::BorrowUnique;
