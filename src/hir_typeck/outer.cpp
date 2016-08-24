@@ -259,13 +259,13 @@ namespace {
                             if( best_impl.more_specific_than(impl) )
                                 return false;
                             best_impl = mv$(impl);
-                            if( ! best_impl.type_is_specializable(pe.item.c_str()) )
+                            if( ! best_impl.type_is_specialisable(pe.item.c_str()) )
                                 return true;
                             return false;
                             });
                         if( best_impl.is_valid() ) {
                             // If the type is still specialisable, and there's geerics in the type.
-                            if( best_impl.type_is_specializable(pe.item.c_str()) && pe.type->contains_generics() ) {
+                            if( best_impl.type_is_specialisable(pe.item.c_str()) && pe.type->contains_generics() ) {
                                 // Mark it as opaque (because monomorphisation could change things)
                                 DEBUG("Still-specialisable impl for " << ty << " also opaque");
                                 e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});

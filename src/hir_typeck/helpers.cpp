@@ -1534,7 +1534,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             }
             
             // If the type is specialisable
-            if( impl.type_is_specializable(pe.item.c_str()) ) {
+            if( impl.type_is_specialisable(pe.item.c_str()) ) {
                 // Check if this is more specific
                 if( impl.more_specific_than( best_impl ) ) {
                     best_impl = mv$(impl);

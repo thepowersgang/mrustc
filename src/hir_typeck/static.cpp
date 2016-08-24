@@ -612,26 +612,45 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
     )
 
     // 2. Crate-level impls
-    // TODO: Search for the actual trait containing this associated type
+
+    // - Search for the actual trait containing this associated type
     ::HIR::GenericPath  trait_path;
     if( !this->trait_contains_type(sp, e2.trait, this->m_crate.get_trait_by_path(sp, e2.trait.m_path), e2.item, trait_path) )
         BUG(sp, "Cannot find associated type " << e2.item << " anywhere in trait " << e2.trait);
     //e2.trait = mv$(trait_path);
     
-    rv = this->find_impl(sp, trait_path.m_path, trait_path.m_params, *e2.type, [&](const auto& impl) {
+    ::ImplRef  best_impl;
+    rv = this->find_impl(sp, trait_path.m_path, trait_path.m_params, *e2.type, [&](auto impl) {
         DEBUG("[expand_associated_types] Found " << impl);
         
-        auto nt = impl.get_type( e2.item.c_str() );
-        DEBUG("Converted UfcsKnown - " << e.path << " = " << nt);
-        input = mv$(nt);
-        return true;
+        if( impl.type_is_specialisable(e2.item.c_str()) ) {
+            if( impl.more_specific_than(best_impl) ) {
+                best_impl = mv$(impl);
+                DEBUG("- Still specialisable");
+            }
+            return false;
+        }
+        else {
+            auto nt = impl.get_type( e2.item.c_str() );
+            DEBUG("Converted UfcsKnown - " << e.path << " = " << nt);
+            input = mv$(nt);
+            return true;
+        }
         });
     if( rv ) {
         this->expand_associated_types(sp, input);
         return;
     }
+    if( best_impl.is_valid() ) {
+        auto nt = best_impl.get_type( e2.item.c_str() );
+        DEBUG("Converted UfcsKnown (best specialisation) - " << e.path << " = " << nt);
+        input = mv$(nt);
+        
+        this->expand_associated_types(sp, input);
+        return;
+    }
     
-    // TODO: If the type is a generic or an opaque associated, we can't know.
+    // If the type is a generic or an opaque associated, we can't know.
     // - If the trait contains any of the above, it's unknowable
     // - Otherwise, it's an error
     e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});

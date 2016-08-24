@@ -40,7 +40,7 @@ bool ImplRef::more_specific_than(const ImplRef& other) const
     )
     throw "";
 }
-bool ImplRef::type_is_specializable(const char* name) const
+bool ImplRef::type_is_specialisable(const char* name) const
 {
     TU_MATCH(Data, (this->m_data), (e),
     (TraitImpl,

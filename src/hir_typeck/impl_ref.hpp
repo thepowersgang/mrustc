@@ -56,7 +56,7 @@ struct ImplRef
     
     ::HIR::TypeRef get_trait_ty_param(unsigned int) const;
     
-    bool type_is_specializable(const char* name) const;
+    bool type_is_specialisable(const char* name) const;
     ::HIR::TypeRef get_type(const char* name) const;
     
     friend ::std::ostream& operator<<(::std::ostream& os, const ImplRef& x);
