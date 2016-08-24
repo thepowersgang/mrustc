@@ -1193,7 +1193,11 @@ namespace {
                     m_builder.set_result( node.span(), ::MIR::LValue::make_Static(node.m_path.clone()) );
                     ),
                 (StructConstant,
-                    BUG(sp, "StructConstant as PathValue");
+                    // TODO: Why is this still a PathValue?
+                    m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
+                        pe.clone(),
+                        {}
+                        }) );
                     ),
                 (Function,
                     // TODO: Obtain function type for this function (i.e. a type that is specifically for this function)
@@ -1213,7 +1217,10 @@ namespace {
                     m_builder.set_result( sp, mv$(tmp) );
                     ),
                 (StructConstructor,
-                    BUG(sp, "StructConstructor as PathValue");
+                    // TODO: Ideally, the creation of the wrapper function would happen somewhere before this?
+                    auto tmp = m_builder.new_temporary( node.m_res_type );
+                    m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
+                    m_builder.set_result( sp, mv$(tmp) );
                     )
                 )
                 ),
