@@ -1217,7 +1217,26 @@ namespace {
                 )
                 ),
             (UfcsKnown,
-                TODO(sp, "PathValue - UfcsKnown");
+                // Check what item type this is (from the trait)
+                const auto& tr = m_builder.crate().get_trait_by_path(sp, pe.trait.m_path);
+                auto it = tr.m_values.find(pe.item);
+                ASSERT_BUG(sp, it != tr.m_values.end(), "Cannot find trait item for " << node.m_path);
+                TU_MATCHA( (it->second), (e),
+                (None,
+                    BUG(sp, "Path " << node.m_path << " points to a None trait item");
+                    ),
+                (Constant,
+                    TODO(sp, "Associated constants - " << node.m_path);
+                    ),
+                (Static,
+                    TODO(sp, "Associated statics (non-rustc) - " << node.m_path);
+                    ),
+                (Function,
+                    auto tmp = m_builder.new_temporary( node.m_res_type.clone() );
+                    m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
+                    m_builder.set_result( sp, mv$(tmp) );
+                    )
+                )
                 ),
             (UfcsUnknown,
                 BUG(sp, "PathValue - Encountered UfcsUnknown - " << node.m_path);
