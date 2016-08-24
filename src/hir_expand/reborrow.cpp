@@ -22,7 +22,6 @@ namespace {
         public ::HIR::ExprVisitorDef
     {
         const ::HIR::Crate& m_crate;
-        ::HIR::ExprNodeP    m_replacement;
         
     public:
         ExprVisitor_Mutate(const ::HIR::Crate& crate):
@@ -33,14 +32,15 @@ namespace {
             const auto& node_ref = *root;
             const char* node_ty = typeid(node_ref).name();
             TRACE_FUNCTION_FR(&*root << " " << node_ty << " : " << root->m_res_type, node_ty);
+            
             root->visit(*this);
-            if( m_replacement ) {
-                auto usage = root->m_usage;
-                const auto* ptr = m_replacement.get();
-                DEBUG("=> REPLACE " << ptr << " " << typeid(*ptr).name());
-                root.reset( m_replacement.release() );
-                root->m_usage = usage;
-            }
+            
+            // 1. Convert into an ExprNodeP
+            auto np = root.into_unique();
+            // 2. Pass to do_reborrow
+            np = do_reborrow(mv$(np));
+            // 3. Convert back
+            root.reset( np.release() );
         }
         
         void visit_node_ptr(::HIR::ExprNodeP& node) override {
@@ -49,13 +49,6 @@ namespace {
             TRACE_FUNCTION_FR(&*node << " " << node_ty << " : " << node->m_res_type, node_ty);
             assert( node );
             node->visit(*this);
-            if( m_replacement ) {
-                auto usage = node->m_usage;
-                const auto* ptr = m_replacement.get();
-                DEBUG("=> REPLACE " << ptr << " " << typeid(*ptr).name());
-                node = mv$(m_replacement);
-                node->m_usage = usage;
-            }
         }
         
         ::HIR::ExprNodeP do_reborrow(::HIR::ExprNodeP node_ptr)
@@ -77,6 +70,16 @@ namespace {
                             NEWNODE(mv$(ty), Deref, sp,  mv$(node_ptr))
                             );
                     }
+                    // Recurse into blocks - Neater this way
+                    else if( auto p = dynamic_cast< ::HIR::ExprNode_Block*>(node_ptr.get()) )
+                    {
+                        auto& last_node = p->m_nodes.back();
+                        last_node = do_reborrow(mv$(last_node));
+                    }
+                    else
+                    {
+                        // Not a node that should have reborrow applied (likely generated an owned &mut)
+                    }
                 }
             )
             return node_ptr;
@@ -86,20 +89,20 @@ namespace {
             node.m_value = do_reborrow(mv$(node.m_value));
         }
         void visit(::HIR::ExprNode_CallPath& node) override {
-            for(auto& arg : node.m_args)
-            {
+            ::HIR::ExprVisitorDef::visit(node);
+            for(auto& arg : node.m_args) {
                 arg = do_reborrow(mv$(arg));
             }
         }
         void visit(::HIR::ExprNode_CallValue& node) override {
-            for(auto& arg : node.m_args)
-            {
+            ::HIR::ExprVisitorDef::visit(node);
+            for(auto& arg : node.m_args) {
                 arg = do_reborrow(mv$(arg));
             }
         }
         void visit(::HIR::ExprNode_CallMethod& node) override {
-            for(auto& arg : node.m_args)
-            {
+            ::HIR::ExprVisitorDef::visit(node);
+            for(auto& arg : node.m_args) {
                 arg = do_reborrow(mv$(arg));
             }
         }
