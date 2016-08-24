@@ -470,7 +470,7 @@ const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const 
     }
     auto it = mod->m_value_items.find( path.m_components.back() );
     if( it == mod->m_value_items.end() ) {
-        BUG(sp, "Could not find type name in " << path);
+        BUG(sp, "Could not find value name " << path);
     }
     
     return it->second->ent;
