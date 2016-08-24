@@ -1725,6 +1725,32 @@ namespace {
                         {}
                         })) );
                     fcn_ret.m_data.as_Path().path.m_data.as_UfcsKnown().trait.m_params.m_types.push_back( fcn_args_tup.clone() );
+                    
+                    // 3. Locate the most permissive implemented Fn* trait (Fn first, then FnMut, then assume just FnOnce)
+                    // NOTE: Borrowing is added by the expansion to CallPath
+                    if( this->context.m_resolve.find_trait_impls_bound(node.span(), lang_Fn, trait_pp, ty, [&](auto , auto cmp) {
+                        return true;
+                        //return cmp == ::HIR::Compare::Equal;
+                        })
+                        )
+                    {
+                        DEBUG("-- Using Fn");
+                        node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
+                    }
+                    else if( this->context.m_resolve.find_trait_impls_bound(node.span(), lang_FnMut, trait_pp, ty, [&](auto , auto cmp) {
+                        return true;
+                        //return cmp == ::HIR::Compare::Equal;
+                        })
+                        )
+                    {
+                        DEBUG("-- Using FnMut");
+                        node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnMut;
+                    }
+                    else
+                    {
+                        DEBUG("-- Using FnOnce (default)");
+                        node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnOnce;
+                    }
                 }
                 else if( !ty.m_data.is_Generic() )
                 {
@@ -1740,27 +1766,6 @@ namespace {
                 {
                     // Didn't find anything. Error?
                     ERROR(node.span(), E0000, "Unable to find an implementation of Fn* for " << ty);
-                }
-                
-                // 3. Locate the most permissive implemented Fn* trait (Fn first, then FnMut, then assume just FnOnce)
-                // NOTE: Borrowing is added by the expansion to CallPath
-                if( this->context.m_resolve.find_trait_impls(node.span(), lang_Fn, trait_pp, ty, [&](auto , auto cmp) {
-                    return cmp == ::HIR::Compare::Equal;
-                    })
-                    )
-                {
-                    node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
-                }
-                else if( this->context.m_resolve.find_trait_impls(node.span(), lang_FnMut, trait_pp, ty, [&](auto , auto cmp) {
-                    return cmp == ::HIR::Compare::Equal;
-                    })
-                    )
-                {
-                    node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnMut;
-                }
-                else
-                {
-                    node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnOnce;
                 }
                 
                 node.m_arg_types = mv$( fcn_args_tup.m_data.as_Tuple() );
