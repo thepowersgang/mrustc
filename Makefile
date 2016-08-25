@@ -49,7 +49,7 @@ OBJ += expand/mod.o expand/macro_rules.o expand/cfg.o
 OBJ +=  expand/format_args.o
 OBJ +=  expand/concat.o expand/stringify.o expand/file_line.o
 OBJ +=  expand/derive.o expand/lang_item.o
-OBJ +=  expand/std_prelude.o
+OBJ +=  expand/std_prelude.o expand/crate_tags.o
 OBJ += macro_rules/mod.o macro_rules/eval.o macro_rules/parse.o
 OBJ += resolve/use.o resolve/index.o resolve/absolute.o
 OBJ += hir/from_ast.o hir/from_ast_expr.o
@@ -85,12 +85,15 @@ PIPECMD ?= 2>&1 | tee $@_dbg.txt | tail -n 45 ; test $${PIPESTATUS[0]} -eq 0
 
 output/%.ast: samples/%.rs $(BIN) 
 	@mkdir -p output/
-	$(DBG) $(BIN) $< --emit ast -o $@ $(PIPECMD)
+	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 
 RUSTCSRC := ./rustc-nightly/
-output/core.ast: $(RUSTCSRC)src/libcore/lib.rs $(BIN)
+output/libcore.hir: $(RUSTCSRC)src/libcore/lib.rs $(BIN)
 	@mkdir -p output/
-	$(DBG) $(BIN) $< --emit ast -o $@ $(PIPECMD)
+	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
+output/libcollections.hir: $(RUSTCSRC)src/libcollections.rs output/libcore.hir $(BIN)
+	@mkdir -p output/
+	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 
 .PHONY: UPDATE
 UPDATE:
@@ -111,10 +114,8 @@ output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(BIN)
 	$(BIN) $< -o $@ --stop-after parse > $@.txt 2>&1
 	touch $@
 
-test: output/core.ast $(BIN)
-# output/std.ast output/log.ast output/env_logger.ast output/getopts.ast
-	@mkdir -p output/
-#	$(DBG) $(BIN) samples/1.rs --crate-path output/std.ast -o output/test.c 2>&1 | tee output/1_dbg.txt
+.PHONY: test test_rustos
+test: output/libcore.hir $(BIN)
 
 test_rustos: $(addprefix output/rust_os/,libkernel.rlib)
 

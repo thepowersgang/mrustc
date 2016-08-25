@@ -25,13 +25,22 @@ public:
     // Mapping filled by searching for (?visible) macros with is_pub=true
     ::std::map< ::std::string, const MacroRules*> m_exported_macros;
     
+    enum class Type {
+        Unknown,
+        RustLib,
+        RustDylib,
+        CDylib,
+        Executable,
+    } m_crate_type = Type::Unknown;
     enum LoadStd {
         LOAD_STD,
         LOAD_CORE,
         LOAD_NONE,
-    } m_load_std;
+    } m_load_std = LOAD_STD;
+    ::std::string   m_crate_name;
     AST::Path   m_prelude_path;
 
+    
     Crate();
 
     Module& root_module() { return m_root_module; }
@@ -49,7 +58,6 @@ public:
 };
 
 /// Representation of an imported crate
-/// - Functions are stored as resolved+typechecked ASTs
 class ExternCrate
 {
     ::std::map< ::std::string, MacroRulesPtr > m_mr_macros;

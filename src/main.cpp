@@ -67,21 +67,19 @@ bool debug_enabled()
 
 struct ProgramParams
 {
-    static const unsigned int EMIT_C = 0x1;
-    static const unsigned int EMIT_AST = 0x2;
     enum eLastStage {
         STAGE_PARSE,
         STAGE_EXPAND,
         STAGE_RESOLVE,
         STAGE_TYPECK,
         STAGE_BORROWCK,
+        STAGE_MIR,
         STAGE_ALL,
     } last_stage = STAGE_ALL;
 
     const char *infile = NULL;
     ::std::string   outfile;
     const char *crate_path = ".";
-    unsigned emit_flags = EMIT_C;
     
     ProgramParams(int argc, char *argv[]);
 };
@@ -177,6 +175,8 @@ int main(int argc, char *argv[])
             return 0;
         }
         
+        // TODO: Extract the crate type from the crate attributes
+        
         // --------------------------------------
         // HIR Section
         // --------------------------------------
@@ -258,6 +258,9 @@ int main(int argc, char *argv[])
             ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));
             MIR_Dump( os, *hir_crate );
             });
+        if( params.last_stage == ProgramParams::STAGE_MIR ) {
+            return 0;
+        }
         
         // Optimise the MIR
 
@@ -267,6 +270,7 @@ int main(int argc, char *argv[])
         //    });
         
         // Generate code for non-generic public items (if requested)
+        //
 
         // Save HIR tree (if requested)
     }
@@ -329,22 +333,6 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 }
                 this->crate_path = argv[++i];
             }
-            else if( strcmp(arg, "--emit") == 0 ) {
-                if( i == argc - 1 ) {
-                    // TODO: BAIL!
-                    exit(1);
-                }
-                
-                arg = argv[++i];
-                if( strcmp(arg, "ast") == 0 )
-                    this->emit_flags = EMIT_AST;
-                else if( strcmp(arg, "c") == 0 )
-                    this->emit_flags = EMIT_C;
-                else {
-                    ::std::cerr << "Unknown argument to --emit : '" << arg << "'" << ::std::endl;
-                    exit(1);
-                }
-            }
             else if( strcmp(arg, "--stop-after") == 0 ) {
                 if( i == argc - 1 ) {
                     // TODO: BAIL!
@@ -360,6 +348,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 }
             }
             else {
+                ::std::cerr << "Unknown option '" << arg << "'" << ::std::endl;
                 exit(1);
             }
         }
