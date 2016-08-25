@@ -18,7 +18,7 @@ namespace {
 
 namespace {
     
-    typedef ::std::function<const ::HIR::Struct&(::std::string , ::HIR::Struct )>   new_type_cb_t;
+    typedef ::std::function< ::HIR::SimplePath(::HIR::Struct )>   new_type_cb_t;
     typedef ::std::vector< ::std::pair< ::HIR::ExprNode_Closure::Class, ::HIR::TraitImpl> > out_impls_t;
     
     template<typename K, typename V>
@@ -406,18 +406,17 @@ namespace {
                 auto ty_mono = monomorphise_type_with(sp, m_variable_types.at(binding_idx).clone(), monomorph_cb);
                 capture_types.push_back( ::HIR::VisEnt< ::HIR::TypeRef> { false, mv$(ty_mono) } );
             }
-            auto closure_struct_name = FMT("closure_" << &node);
-            const auto& closure_struct_ref = m_new_type(
-                closure_struct_name,
+            auto closure_struct_path = m_new_type(
                 ::HIR::Struct {
                     params.clone(),
                     ::HIR::Struct::Repr::Rust,
                     ::HIR::Struct::Data::make_Tuple(mv$(capture_types))
                     }
                 );
+            const auto& closure_struct_ref = m_resolve.m_crate.get_struct_by_path(sp, closure_struct_path);
             
             // Mark the object pathname in the closure.
-            node.m_obj_path = ::HIR::GenericPath( m_module_path + closure_struct_name, mv$(constructor_path_params) );
+            node.m_obj_path = ::HIR::GenericPath( closure_struct_path, mv$(constructor_path_params) );
             //node.m_res_type = ::HIR::TypeRef( node.m_obj_path.clone() );
             DEBUG("-- Object name: " << node.m_obj_path);
             ::HIR::TypeRef  closure_type = ::HIR::TypeRef( ::HIR::GenericPath(node.m_obj_path.m_path.clone(), mv$(impl_path_params)) );
@@ -733,13 +732,15 @@ namespace {
         {
             Span    sp;
             
+            unsigned int closure_count = 0;
             ::HIR::SimplePath   root_mod_path("",{});
             m_cur_mod_path = &root_mod_path;
-            m_new_type = [&](auto name, auto s)->const auto& {
+            m_new_type = [&](auto s)->auto {
+                auto name = FMT("closure_" << closure_count);
+                closure_count += 1;
                 auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { false, ::HIR::TypeItem( mv$(s) ) } ));
-                const auto& rv = boxed->ent.as_Struct();
-                crate.m_root_module.m_mod_items.insert( ::std::make_pair(mv$(name), mv$(boxed)) );
-                return rv;
+                crate.m_root_module.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
+                return ::HIR::SimplePath() + name;
                 };
             
             ::HIR::Visitor::visit_crate(crate);
@@ -762,12 +763,14 @@ namespace {
             auto path = p.get_simple_path();
             m_cur_mod_path = &path;
             
+            unsigned int closure_count = 0;
             auto saved_nt = mv$(m_new_type);
-            m_new_type = [&](auto name, auto s)->const auto& {
+            m_new_type = [&](auto s)->auto {
+                auto name = FMT("closure_" << closure_count);
+                closure_count += 1;
                 auto boxed = box$( (::HIR::VisEnt< ::HIR::TypeItem> { false, ::HIR::TypeItem( mv$(s) ) }) );
-                const auto& rv = boxed->ent.as_Struct();
-                mod.m_mod_items.insert( ::std::make_pair(mv$(name), mv$(boxed)) );
-                return rv;
+                mod.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
+                return (p + name).get_simple_path();
                 };
             
             ::HIR::Visitor::visit_module(p, mod);
