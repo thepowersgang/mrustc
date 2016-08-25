@@ -9,6 +9,7 @@
 
 #include "crate_ptr.hpp"
 #include <iostream>
+#include <string>
 
 namespace AST {
     class Crate;
@@ -16,3 +17,4 @@ namespace AST {
 
 extern void HIR_Dump(::std::ostream& sink, const ::HIR::Crate& crate);
 extern ::HIR::CratePtr  LowerHIR_FromAST(::AST::Crate crate);
+extern void HIR_Serialise(const ::std::string& filename, const ::HIR::Crate& crate);

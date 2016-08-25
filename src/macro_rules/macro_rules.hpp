@@ -15,6 +15,7 @@ class MacroExpander;
 TAGGED_UNION_EX(MacroExpansionEnt, (: public Serialisable), Token, (
     // TODO: have a "raw" stream instead of just tokens
     (Token, Token),
+    // TODO: This is a bit-mangled number, what does it mean?
     (NamedValue, unsigned int),
     (Loop, struct {
         /// Contained entries
@@ -39,7 +40,7 @@ struct MacroPatEnt:
     public Serialisable
 {
     ::std::string   name;
-    unsigned int    name_index;
+    unsigned int    name_index = 0;
     Token   tok;
     
     ::std::vector<MacroPatEnt>  subpats;

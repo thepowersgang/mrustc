@@ -6,6 +6,7 @@
  * - HIR (De)Serialisation for crate metadata
  */
 #include "hir.hpp"
+#include "main_bindings.hpp"
 
 namespace {
     class HirSerialiser
@@ -23,16 +24,59 @@ namespace {
             write_u8(v & 0xFF);
             write_u8(v >> 8);
         }
+        void write_u32(uint32_t v) {
+            write_u8(v & 0xFF);
+            write_u8(v >>  8);
+            write_u8(v >> 16);
+            write_u8(v >> 24);
+        }
+        void write_u64(uint64_t v) {
+            write_u8(v & 0xFF);
+            write_u8(v >>  8);
+            write_u8(v >> 16);
+            write_u8(v >> 24);
+            write_u8(v >> 32);
+            write_u8(v >> 40);
+            write_u8(v >> 48);
+            write_u8(v >> 56);
+        }
+        // Variable-length encoded u64 (for array sizes)
+        void write_u64c(uint64_t v) {
+            if( v < (1<<7) ) {
+                write_u8(v);
+            }
+            else if( v < (1<<(6+16)) ) {
+                write_u8( 0x80 + (v >> 16)); // 0x80 -- 0xB0
+                write_u8(v >> 8);
+                write_u8(v);
+            }
+            else if( v < (1ul << (5 + 32)) ) {
+                write_u8( 0xC0 + (v >> 32)); // 0x80 -- 0xB0
+                write_u8(v >> 24);
+                write_u8(v >> 16);
+                write_u8(v >> 8);
+                write_u8(v);
+            }
+            else {
+                write_u8(0xFF);
+                write_u64(v);
+            }
+        }
         void write_tag(unsigned int t) {
             assert(t < 256);
             write_u8( static_cast<uint8_t>(t) );
         }
         void write_count(size_t c) {
-            if(c < 255) {
+            DEBUG("c = " << c);
+            if(c < 0xFE) {
                 write_u8( static_cast<uint8_t>(c) );
             }
+            else if( c == ~0u ) {
+                write_u8( 0xFF );
+            }
             else {
-                assert(c < (1<<16));
+                assert(c < (1u<<16));
+                write_u8( 0xFE );
                 write_u16( static_cast<uint16_t>(c) );
             }
         }
@@ -41,7 +85,7 @@ namespace {
                 write_u8( static_cast<uint8_t>(v.size()) );
             }
             else {
-                assert(v.size() < (1<<(16+7)));
+                assert(v.size() < (1u<<(16+7)));
                 write_u16( static_cast<uint8_t>(128 + (v.size() >> 16)) );
                 write_u16( static_cast<uint16_t>(v.size() & 0xFFFF) );
             }
@@ -70,6 +114,13 @@ namespace {
             }
         }
         template<typename T>
+        void serialise_vec(const ::std::vector<T>& vec)
+        {
+            write_count(vec.size());
+            for(const auto& i : vec)
+                serialise(i);
+        }
+        template<typename T>
         void serialise(const ::HIR::VisEnt<T>& e)
         {
             write_bool(e.is_public);
@@ -82,10 +133,65 @@ namespace {
         
         void serialise_type(const ::HIR::TypeRef& ty)
         {
-            // TODO:
+            write_tag( ty.m_data.tag() );
+            TU_MATCHA( (ty.m_data), (e),
+            (Infer,
+                // BAAD
+                ),
+            (Diverge,
+                ),
+            (Primitive,
+                write_tag( static_cast<int>(e) );
+                ),
+            (Path,
+                serialise_path(e.path);
+                ),
+            (Generic,
+                write_string(e.name);
+                write_u16(e.binding);
+                ),
+            (TraitObject,
+                serialise_traitpath(e.m_trait);
+                write_count(e.m_markers.size());
+                for(const auto& m : e.m_markers)
+                    serialise_genericpath(m);
+                //write_string(e.lifetime); // TODO: Need a better type
+                ),
+            (Array,
+                assert(e.size_val != ~0u);
+                serialise_type(*e.inner);
+                write_u64c(e.size_val);
+                ),
+            (Slice,
+                serialise_type(*e.inner);
+                ),
+            (Tuple,
+                write_count(e.size());
+                for(const auto& st : e)
+                    serialise_type(st);
+                ),
+            (Borrow,
+                write_tag(static_cast<int>(e.type));
+                serialise_type(*e.inner);
+                ),
+            (Pointer,
+                write_tag(static_cast<int>(e.type));
+                serialise_type(*e.inner);
+                ),
+            (Function,
+                write_bool(e.is_unsafe);
+                write_string(e.m_abi);
+                serialise_type(*e.m_rettype);
+                serialise_vec(e.m_arg_types);
+                ),
+            (Closure,
+                throw "";
+                )
+            )
         }
         void serialise_simplepath(const ::HIR::SimplePath& path)
         {
+            TRACE_FUNCTION_F("path="<<path);
             write_string(path.m_crate_name);
             write_count(path.m_components.size());
             for(const auto& c : path.m_components)
@@ -99,11 +205,20 @@ namespace {
         }
         void serialise_genericpath(const ::HIR::GenericPath& path)
         {
+            TRACE_FUNCTION_F("path="<<path);
             serialise_simplepath(path.m_path);
             serialise_pathparams(path.m_params);
         }
+        void serialise_traitpath(const ::HIR::TraitPath& path)
+        {
+            TRACE_FUNCTION_F("path="<<path);
+            serialise_genericpath(path.m_path);
+            // TODO: Lifetimes? (m_hrls)
+            serialise_strmap(path.m_type_bounds);
+        }
         void serialise_path(const ::HIR::Path& path)
         {
+            TRACE_FUNCTION_F("path="<<path);
             TU_MATCHA( (path.m_data), (e),
             (Generic,
                 write_tag(0);
@@ -130,7 +245,35 @@ namespace {
 
         void serialise_generics(const ::HIR::GenericParams& params)
         {
-            // TODO:
+            DEBUG("params = " << params.fmt_args() << ", " << params.fmt_bounds());
+            serialise_vec(params.m_types);
+            serialise_vec(params.m_lifetimes);
+            serialise_vec(params.m_bounds);
+        }
+        void serialise(const ::HIR::TypeParamDef& pd) {
+            write_string(pd.m_name);
+            serialise_type(pd.m_default);
+            write_bool(pd.m_is_sized);
+        }
+        void serialise(const ::HIR::GenericBound& b) {
+            TU_MATCHA( (b), (e),
+            (Lifetime,
+                //write_tag(0);
+                ),
+            (TypeLifetime,
+                //write_tag(1);
+                ),
+            (TraitBound,
+                write_tag(2);
+                serialise_type(e.type);
+                serialise_traitpath(e.trait);
+                ),
+            (TypeEquality,
+                write_tag(3);
+                serialise_type(e.type);
+                serialise_type(e.other_type);
+                )
+            )
         }
         
         
@@ -216,11 +359,60 @@ namespace {
         void serialise(const ::HIR::SimplePath& p) {
             serialise_simplepath(p);
         }
+        void serialise(const ::std::string& v) {
+            write_string(v);
+        }
 
         void serialise(const ::MacroRules& mac)
         {
-            // TODO:
+            //m_exported: IGNORE, should be set
+            serialise(mac.m_pattern);
+            serialise_vec(mac.m_rules);
         }
+        void serialise(const ::MacroRulesPatFrag& pat) {
+            serialise_vec(pat.m_pats_ents);
+            write_count(pat.m_pattern_end);
+            serialise_vec(pat.m_next_frags);
+        }
+        void serialise(const ::MacroPatEnt& pe) {
+            write_string(pe.name);
+            write_count(pe.name_index);
+            serialise(pe.tok);
+            serialise_vec(pe.subpats);
+            write_tag( static_cast<int>(pe.type) );
+        }
+        void serialise(const ::MacroRulesArm& arm) {
+            serialise_vec(arm.m_param_names);
+            serialise_vec(arm.m_contents);
+        }
+        void serialise(const ::MacroExpansionEnt& ent) {
+            TU_MATCHA( (ent), (e),
+            (Token,
+                write_tag(0);
+                serialise(e);
+                ),
+            (NamedValue,
+                DEBUG("NamedValue " << e);
+                write_tag(1);
+                write_u8(e >> 24);
+                write_count(e & 0x00FFFFFF);
+                ),
+            (Loop,
+                write_tag(2);
+                serialise_vec(e.entries);
+                serialise(e.joiner);
+                // ::std::set<unsigned int>
+                write_count(e.variables.size());
+                for(const auto& var : e.variables)
+                    write_count(var);
+                )
+            )
+        }
+        void serialise(const ::Token& tok) {
+            // TODO
+            write_tag(tok.type());
+        }
+        
         void serialise(const ::HIR::ExprPtr& exp)
         {
             // Write out MIR.
