@@ -36,19 +36,26 @@ void init_debug_list()
     
     g_debug_disable_map.insert( "Resolve" );
     
+    g_debug_disable_map.insert( "HIR Lower" );
+    
     g_debug_disable_map.insert( "Resolve Type Aliases" );
     g_debug_disable_map.insert( "Resolve Bind" );
     g_debug_disable_map.insert( "Resolve UFCS paths" );
     g_debug_disable_map.insert( "Constant Evaluate" );
     
+    g_debug_disable_map.insert( "Typecheck Outer");
     g_debug_disable_map.insert( "Typecheck Expressions" );
     
     g_debug_disable_map.insert( "Expand HIR Annotate" );
     g_debug_disable_map.insert( "Expand HIR Closures" );
     g_debug_disable_map.insert( "Expand HIR Calls" );
+    g_debug_disable_map.insert( "Expand HIR Reborrows" );
     g_debug_disable_map.insert( "Typecheck Expressions (validate)" );
     
     g_debug_disable_map.insert( "Dump HIR" );
+    g_debug_disable_map.insert( "Lower MIR" );
+    g_debug_disable_map.insert( "MIR Validate" );
+    g_debug_disable_map.insert( "Dump MIR" );
 }
 bool debug_enabled()
 {
@@ -284,7 +291,9 @@ int main(int argc, char *argv[])
             break;
         case ::AST::Crate::Type::RustLib:
             // Save a loadable HIR dump
-            //HIR_Serialise(params.outfile + ".meta", *hir_crate);
+            CompilePhaseV("RustLib - HIR Serialise", [&]() {
+                HIR_Serialise(params.outfile + ".meta", *hir_crate);
+                });
             // Generate a .o
             //HIR_Codegen(params.outfile + ".o", *hir_crate);
             // Link into a .rlib
