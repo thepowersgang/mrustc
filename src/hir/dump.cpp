@@ -29,14 +29,20 @@ namespace {
         
         void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
         {
-            m_os << indent() << "mod " << p.get_name() << " {\n";
-            inc_indent();
+            if( p.get_name()[0] )
+            {
+                m_os << indent() << "mod " << p.get_name() << " {\n";
+                inc_indent();
+            }
             
             // TODO: Print publicitiy.
             ::HIR::Visitor::visit_module(p, mod);
             
-            dec_indent();
-            m_os << indent() << "}\n";
+            if( p.get_name()[0] )
+            {
+                dec_indent();
+                m_os << indent() << "}\n";
+            }
         }
         
         void visit_type_impl(::HIR::TypeImpl& impl) override
