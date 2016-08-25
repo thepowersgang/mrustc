@@ -304,51 +304,10 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
 
 Function::Function(Span sp, GenericParams params, TypeRef ret_type, Arglist args):
     m_span(sp),
-    m_receiver(Receiver::Free),
     m_params( move(params) ),
     m_rettype( move(ret_type) ),
     m_args( move(args) )
 {
-    if( m_args.size() > 0 && m_args.front().first.binding().m_name == "self" ) {
-        const auto& ty = m_args.front().second;
-        TU_MATCH_DEF( ::TypeData, (ty.m_data), (e),
-        (
-            // Whups!
-            ERROR(sp, E0000, "Invalid receiver type - " << ty);
-            ),
-        (Path,
-            TU_IFLET( ::AST::Path::Class, e.path.m_class, Relative, pe,
-                if( pe.nodes.size() == 1 && pe.nodes.front().name() == "Box" )
-                {
-                    if( pe.nodes.front().args().m_types.size() != 1 ) {
-                        ERROR(sp, E0000, "Box takes 1 argument - " << ty);
-                    }
-                    // HACK: Assumes that the param is Self or equivalent
-                    m_receiver = Receiver::Box;
-                }
-            )
-            
-            if( m_receiver == Receiver::Free ) {
-                ERROR(sp, E0000, "Invalid receiver type - " << ty);
-            }
-            ),
-        (Borrow,
-            if(e.is_mut) {
-                m_receiver = Receiver::BorrowUnique;
-            }
-            else {
-                m_receiver = Receiver::BorrowShared;
-            }
-            ),
-        // NOTE: This only applies for `self/&self/&mut self` syntax, NOT the `self: Self` syntax
-        (Generic,
-            if( e.index != 0xFFFF ) {
-                ERROR(sp, E0000, "Invalid receiver type - " << ty);
-            }
-            m_receiver = Receiver::Value;
-            )
-        )
-    }
 }
 
 void Trait::add_type(::std::string name, TypeRef type) {

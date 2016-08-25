@@ -8,7 +8,7 @@
 #include "visitor.hpp"
 
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::ItemPath path, ::std::vector< ::HIR::SimplePath> traits = {});
-::HIR::Function LowerHIR_Function(::HIR::ItemPath path, const ::AST::Function& f);
+::HIR::Function LowerHIR_Function(::HIR::ItemPath path, const ::AST::Function& f, const ::HIR::TypeRef& self_type);
 ::HIR::PathParams LowerHIR_PathParams(const Span& sp, const ::AST::PathParams& src_params, bool allow_assoc);
 ::HIR::TraitPath LowerHIR_TraitPath(const Span& sp, const ::AST::Path& path);
 
@@ -867,7 +867,8 @@ namespace {
                 }) );
             ),
         (Function,
-            rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Function( LowerHIR_Function(item_path, i) )) );
+            ::HIR::TypeRef  self_type {"Self", 0xFFFF};
+            rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Function( LowerHIR_Function(item_path, i, self_type) )) );
             ),
         (Static,
             if( i.s_class() == ::AST::Static::CONST )
@@ -889,7 +890,7 @@ namespace {
     
     return rv;
 }
-::HIR::Function LowerHIR_Function(::HIR::ItemPath p, const ::AST::Function& f)
+::HIR::Function LowerHIR_Function(::HIR::ItemPath p, const ::AST::Function& f, const ::HIR::TypeRef& self_type)
 {
     static Span sp;
     
@@ -900,18 +901,27 @@ namespace {
     
     auto receiver = ::HIR::Function::Receiver::Free;
     
-    switch( f.receiver() )
+    if( args.size() > 0 && args.front().first.m_binding.m_name == "self" )
     {
-    #define _(N) case ::AST::Function::Receiver::N: receiver = ::HIR::Function::Receiver::N; break;
-    _(Free)
-    _(Value)
-    _(BorrowOwned)
-    _(BorrowUnique)
-    _(BorrowShared)
-    case ::AST::Function::Receiver::Box:
-        TODO(sp, "Support `self: Box<Self>` receiver");
-        break;
-    #undef _
+        const auto& arg_self_ty = args.front().second;
+        if( arg_self_ty == self_type ) {
+            receiver = ::HIR::Function::Receiver::Value;
+        }
+        else TU_IFLET(::HIR::TypeRef::Data, arg_self_ty.m_data, Borrow, e,
+            if( *e.inner != self_type ) {
+                ERROR(sp, E0000, "Unknown receiver type - " << arg_self_ty);
+            }
+            switch(e.type)
+            {
+            case ::HIR::BorrowType::Owned:  receiver = ::HIR::Function::Receiver::BorrowOwned;  break;
+            case ::HIR::BorrowType::Unique: receiver = ::HIR::Function::Receiver::BorrowUnique; break;
+            case ::HIR::BorrowType::Shared: receiver = ::HIR::Function::Receiver::BorrowShared; break;
+            }
+        )
+        else {
+            // TODO: Box - Compare with `boxed` lang item - May require moving to another pass
+            ERROR(sp, E0000, "Unknown receiver type - " << arg_self_ty);
+        }
     }
     
     // TODO: ABI and unsafety/constness
@@ -993,7 +1003,7 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Trait(item_path.get_simple_path(), e) );
             ),
         (Function,
-            _add_mod_val_item(mod, item.name, item.is_pub,  LowerHIR_Function(item_path, e));
+            _add_mod_val_item(mod, item.name, item.is_pub,  LowerHIR_Function(item_path, e, ::HIR::TypeRef{}));
             ),
         (Static,
             if( e.s_class() == ::AST::Static::CONST )
@@ -1068,7 +1078,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                         ),
                     (Function,
                         DEBUG("- method " << item.name);
-                        methods.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { item.is_specialisable, LowerHIR_Function(item_path, e) }) );
+                        methods.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { item.is_specialisable, LowerHIR_Function(item_path, e, type) }) );
                         )
                     )
                 }
@@ -1117,7 +1127,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                     ERROR(item.data->span, E0000, "Unexpected item type in inherent impl");
                     ),
                 (Function,
-                    methods.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> { item.is_pub, item.is_specialisable, LowerHIR_Function(item_path, e) } ) );
+                    methods.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> { item.is_pub, item.is_specialisable, LowerHIR_Function(item_path, e, type) } ) );
                     )
                 )
             }

@@ -147,29 +147,16 @@ class Function
 {
 public:
     typedef ::std::vector< ::std::pair<AST::Pattern,TypeRef> >   Arglist;
-    
-    enum class Receiver {
-        Free,
-        Value,
-        BorrowOwned,
-        BorrowUnique,
-        BorrowShared,
-        //RawMut,
-        //RawConst,
-        Box,
-    };
 
 private:
     Span    m_span;
     //::std::string   m_lifetime;
-    Receiver    m_receiver;
     GenericParams  m_params;
     Expr    m_code;
     TypeRef m_rettype;
     Arglist m_args;
 public:
-    Function():
-        m_receiver(Receiver::Free)
+    Function()
     {}
     Function(const Function&) = delete;
     Function& operator=(const Function&) = delete;
@@ -187,9 +174,6 @@ public:
           TypeRef& rettype()       { return m_rettype; }
     const Arglist& args() const { return m_args; }
           Arglist& args()       { return m_args; }
-    
-    Receiver receiver() const { return m_receiver; }
-    
 };
 
 class Trait
