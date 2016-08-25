@@ -854,6 +854,39 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
     TRACE_FUNCTION;
     Token   tok;
 
+    // #![feature(relaxed_adts)]
+    if( LOOK_AHEAD(lex) == TOK_INTEGER )
+    {
+        ::std::map<unsigned int, ExprNodeP> nodes;
+        while( GET_TOK(tok, lex) == TOK_INTEGER )
+        {
+            unsigned int ofs = tok.intval();
+            GET_CHECK_TOK(tok, lex, TOK_COLON);
+            ExprNodeP   val = Parse_Stmt(lex);
+            if( ! nodes.insert( ::std::make_pair(ofs, mv$(val)) ).second ) {
+                ERROR(lex.getPosition(), E0000, "Duplicate index");
+            }
+            
+            if( GET_TOK(tok,lex) == TOK_BRACE_CLOSE )
+                break;
+            CHECK_TOK(tok, TOK_COMMA);
+        }
+        CHECK_TOK(tok, TOK_BRACE_CLOSE);
+        
+        ::std::vector<ExprNodeP>    items;
+        unsigned int i = 0;
+        for(auto& p : nodes)
+        {
+            if( p.first != i ) {
+                ERROR(lex.getPosition(), E0000, "Missing index " << i);
+            }
+            items.push_back( mv$(p.second) );
+            i ++;
+        }
+        
+        return NEWNODE( AST::ExprNode_CallPath, mv$(path), mv$(items) );
+    }
+    
     // Braced structure literal
     // - A series of 0 or more pairs of <ident>: <expr>,
     // - '..' <expr>

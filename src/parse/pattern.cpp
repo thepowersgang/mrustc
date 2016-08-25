@@ -360,6 +360,55 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
     TRACE_FUNCTION;
     Token tok;
     
+    // #![feature(relaxed_adts)]
+    if( LOOK_AHEAD(lex) == TOK_INTEGER )
+    {
+        bool split_allowed = false;
+        ::std::map<unsigned int, AST::Pattern> pats;
+        while( GET_TOK(tok, lex) == TOK_INTEGER )
+        {
+            unsigned int ofs = tok.intval();
+            GET_CHECK_TOK(tok, lex, TOK_COLON);
+            auto val = Parse_Pattern(lex, is_refutable);
+            if( ! pats.insert( ::std::make_pair(ofs, mv$(val)) ).second ) {
+                ERROR(lex.getPosition(), E0000, "Duplicate index");
+            }
+            
+            if( GET_TOK(tok,lex) == TOK_BRACE_CLOSE )
+                break;
+            CHECK_TOK(tok, TOK_COMMA);
+        }
+        if( tok.type() == TOK_DOUBLE_DOT ) {
+            split_allowed = true;
+            GET_TOK(tok, lex);
+        }
+        CHECK_TOK(tok, TOK_BRACE_CLOSE);
+        
+        bool has_split = false;
+        ::std::vector<AST::Pattern> leading;
+        ::std::vector<AST::Pattern> trailing;
+        unsigned int i = 0;
+        for(auto& p : pats)
+        {
+            if( p.first != i ) {
+                if( has_split || !split_allowed ) {
+                    ERROR(lex.getPosition(), E0000, "Missing index " << i);
+                }
+                has_split = true;
+                i = p.first;
+            }
+            if( ! has_split ) {
+                leading.push_back( mv$(p.second) );
+            }
+            else {
+                trailing.push_back( mv$(p.second) );
+            }
+            i ++;
+        }
+        
+        return AST::Pattern(AST::Pattern::TagNamedTuple(), mv$(path),  AST::Pattern::TuplePat { mv$(leading), has_split, mv$(trailing) });
+    }
+    
     bool is_exhaustive = true;
     ::std::vector< ::std::pair< ::std::string, AST::Pattern> >  subpats;
     do {
