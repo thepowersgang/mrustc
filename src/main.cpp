@@ -93,8 +93,6 @@ Rv CompilePhase(const char *name, Fcn f) {
     auto end = clock();
     g_cur_phase = "";
     
-    //::std::cout << name << ": DONE (" << ::std::fixed << ::std::setprecision(2) << static_cast<double>(end - start) / static_cast<double>(CLOCKS_PER_SEC) << " s)" << ::std::endl;
-
     ::std::cout <<"(" << ::std::fixed << ::std::setprecision(2) << static_cast<double>(end - start) / static_cast<double>(CLOCKS_PER_SEC) << " s) ";
     ::std::cout << name << ": DONE";
     ::std::cout << ::std::endl;
@@ -175,7 +173,16 @@ int main(int argc, char *argv[])
             return 0;
         }
         
-        // TODO: Extract the crate type from the crate attributes
+        // Extract the crate type and name from the crate attributes
+        auto crate_type = crate.m_crate_type;
+        if( crate_type == ::AST::Crate::Type::Unknown ) {
+            // Assume to be executable
+            crate_type = ::AST::Crate::Type::Executable;
+        }
+        auto crate_name = crate.m_crate_name;
+        if( crate_name == "" ) {
+            // TODO: Take the crate name from the input filename
+        }
         
         // --------------------------------------
         // HIR Section
@@ -270,9 +277,29 @@ int main(int argc, char *argv[])
         //    });
         
         // Generate code for non-generic public items (if requested)
-        //
-
-        // Save HIR tree (if requested)
+        switch( crate_type )
+        {
+        case ::AST::Crate::Type::Unknown:
+            // ERROR?
+            break;
+        case ::AST::Crate::Type::RustLib:
+            // Save a loadable HIR dump
+            //HIR_Serialise(params.outfile + ".meta", *hir_crate);
+            // Generate a .o
+            //HIR_Codegen(params.outfile + ".o", *hir_crate);
+            // Link into a .rlib
+            break;
+        case ::AST::Crate::Type::RustDylib:
+            // Save a loadable HIR dump
+            // Generate a .so/.dll
+            break;
+        case ::AST::Crate::Type::CDylib:
+            // Generate a .so/.dll
+            break;
+        case ::AST::Crate::Type::Executable:
+            // Generate a binary
+            break;
+        }
     }
     catch(unsigned int) {}
     //catch(const CompileError::Base& e)
