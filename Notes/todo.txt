@@ -1,4 +1,6 @@
 TODO:
+- Fix parser against the rust tests
+- Pick stable closure type names
 - MIR Validation pass
 - Audit TODOs in codebase
 - Save HIR+MIR into crate metadata
