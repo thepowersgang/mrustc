@@ -133,7 +133,7 @@ namespace {
                 TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
                     DEBUG("Enum value " << p << " - " << var.first);
                     t_args  tmp;
-                    Typecheck_Code(m_ms, tmp, enum_type, e);
+                    Typecheck_Code(m_ms, tmp, enum_type, e.expr);
                 )
             }
         }

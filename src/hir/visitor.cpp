@@ -155,7 +155,7 @@ void ::HIR::Visitor::visit_trait(::HIR::ItemPath p, ::HIR::Trait& item)
     for(auto& i : item.m_values) {
         auto item_path = ::HIR::ItemPath(trait_ip, i.first.c_str());
         TU_MATCH(::HIR::TraitValueItem, (i.second), (e),
-        (None, ),
+        //(None, ),
         (Constant,
             DEBUG("constant " << i.first);
             this->visit_constant(item_path, e);
@@ -198,7 +198,7 @@ void ::HIR::Visitor::visit_enum(::HIR::ItemPath p, ::HIR::Enum& item)
         (Unit,
             ),
         (Value,
-            this->visit_expr(v);
+            this->visit_expr(v.expr);
             ),
         (Tuple,
             for(auto& ty : v) {

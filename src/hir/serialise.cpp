@@ -807,9 +807,6 @@ namespace {
         {
             write_tag( tvi.tag() );
             TU_MATCHA( (tvi), (e),
-            (None,
-                BUG(Span(), "Found None TraitValueItem");
-                ),
             (Constant,
                 serialise(e);
                 ),

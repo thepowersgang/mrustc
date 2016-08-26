@@ -1187,11 +1187,10 @@ namespace {
                 // - If it's an associated `const`, will have to revisit
                 const auto& trait = this->context.m_crate.get_trait_by_path(sp, e.trait.m_path);
                 auto it = trait.m_values.find( e.item );
-                if( it == trait.m_values.end() || it->second.is_None() ) {
+                if( it == trait.m_values.end() ) {
                     ERROR(sp, E0000, "`" << e.item << "` is not a value member of trait " << e.trait.m_path);
                 }
                 TU_MATCH( ::HIR::TraitValueItem, (it->second), (ie),
-                (None, throw ""; ),
                 (Constant,
                     TODO(sp, "Monomorpise associated constant type - " << ie.m_type);
                     ),

@@ -766,7 +766,10 @@ namespace {
     {
         TU_MATCH(::AST::EnumVariantData, (var.m_data), (e),
         (Value,
-            variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Value(LowerHIR_Expr(e.m_value)) ) );
+            variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Value({
+                LowerHIR_Expr(e.m_value),
+                ::HIR::Literal {}
+                }) ) );
             ),
         (Tuple,
             if( e.m_sub_types.size() == 0 ) {

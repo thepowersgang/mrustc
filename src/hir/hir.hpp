@@ -120,7 +120,10 @@ class Enum
 public:
     TAGGED_UNION(Variant, Unit,
         (Unit, struct{}),
-        (Value, ::HIR::ExprPtr),
+        (Value, struct {
+            ::HIR::ExprPtr  expr;
+            Literal val;
+            }),
         (Tuple, t_tuple_fields),
         (Struct, t_struct_fields)
         );
@@ -163,8 +166,7 @@ struct AssociatedType
     ::std::vector< ::HIR::TraitPath>    m_trait_bounds;
     ::HIR::TypeRef  m_default;
 };
-TAGGED_UNION(TraitValueItem, None,
-    (None,      struct {}),
+TAGGED_UNION(TraitValueItem, Constant,
     (Constant,  Constant),
     (Static,    Static),
     (Function,  Function)

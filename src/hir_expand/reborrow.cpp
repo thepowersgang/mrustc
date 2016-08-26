@@ -173,7 +173,7 @@ namespace {
                     DEBUG("Enum value " << p << " - " << var.first);
                     
                     ExprVisitor_Mutate  ev(m_crate);
-                    ev.visit_node_ptr(e);
+                    ev.visit_node_ptr(e.expr);
                 )
             }
         }

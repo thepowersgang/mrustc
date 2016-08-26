@@ -138,7 +138,7 @@ namespace {
             for(auto& var : item.m_variants)
             {
                 TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-                    MIR_Validate(m_resolve, *e.m_mir, {});
+                    MIR_Validate(m_resolve, *e.expr.m_mir, {});
                 )
             }
         }

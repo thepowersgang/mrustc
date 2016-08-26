@@ -1230,9 +1230,6 @@ namespace {
                 auto it = tr.m_values.find(pe.item);
                 ASSERT_BUG(sp, it != tr.m_values.end(), "Cannot find trait item for " << node.m_path);
                 TU_MATCHA( (it->second), (e),
-                (None,
-                    BUG(sp, "Path " << node.m_path << " points to a None trait item");
-                    ),
                 (Constant,
                     TODO(sp, "Associated constants - " << node.m_path);
                     ),
@@ -1510,7 +1507,7 @@ namespace {
             for(auto& var : item.m_variants)
             {
                 TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-                    e.m_mir = LowerMIR(m_resolve, e, {});
+                    e.expr.m_mir = LowerMIR(m_resolve, e.expr, {});
                 )
             }
         }
