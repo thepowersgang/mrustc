@@ -499,7 +499,8 @@ namespace {
             write_tag( static_cast<int>(term.tag()) );
             TU_MATCHA( (term), (e),
             (Incomplete,
-                assert(!"Entountered Incomplete MIR block");
+                // NOTE: loops that diverge (don't break) leave a dangling bb
+                //assert(!"Entountered Incomplete MIR block");
                 ),
             (Return,
                 ),
