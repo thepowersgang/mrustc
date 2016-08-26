@@ -136,6 +136,69 @@ namespace {
         }
     };
     
+    /// Visitor to replace closure types with actual type
+    class ExprVisitor_Fixup:
+        public ::HIR::ExprVisitorDef
+    {
+        const ::HIR::Crate& m_crate;
+    public:
+        ExprVisitor_Fixup(const ::HIR::Crate& crate):
+            m_crate(crate)
+        {
+        }
+        
+        static void fix_type(const ::HIR::Crate& crate, ::HIR::TypeRef& ty) {
+            TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Closure, e,
+                auto path = e.node->m_obj_path.clone();
+                const auto& str = crate.get_struct_by_path( Span(), path.m_path );
+                ty = ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypeRef::TypePathBinding::make_Struct(&str) );
+            )
+        }
+        
+        void visit_root(::HIR::ExprPtr& root)
+        {
+            root->visit(*this);
+            
+            for(auto& ty : root.m_bindings)
+                visit_type(ty);
+        }
+        
+        void visit_node_ptr(::HIR::ExprNodeP& node) override
+        {
+            node->visit(*this);
+            visit_type(node->m_res_type);
+        }
+        
+        void visit(::HIR::ExprNode_CallValue& node) override
+        {
+            TU_IFLET( ::HIR::TypeRef::Data, node.m_value->m_res_type.m_data, Closure, e,
+                switch(e.node->m_class)
+                {
+                case ::HIR::ExprNode_Closure::Class::Unknown:
+                    BUG(node.span(), "References an ::Unknown closure");
+                case ::HIR::ExprNode_Closure::Class::NoCapture:
+                case ::HIR::ExprNode_Closure::Class::Shared:
+                    node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
+                    break;
+                case ::HIR::ExprNode_Closure::Class::Mut:
+                    node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnMut;
+                    break;
+                case ::HIR::ExprNode_Closure::Class::Once:
+                    node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnOnce;
+                    break;
+                }
+            )
+            
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        
+        void visit_type(::HIR::TypeRef& ty) override
+        {
+            fix_type(m_crate, ty);
+            ::HIR::ExprVisitorDef::visit_type(ty);
+        }
+    };
+    
     struct H {
         static void fix_fn_params(::HIR::ExprPtr& code, const ::HIR::TypeRef& self_ty, const ::HIR::TypeRef& args_ty)
         {
@@ -404,6 +467,8 @@ namespace {
             ::std::vector< ::HIR::VisEnt< ::HIR::TypeRef> > capture_types;
             for(const auto binding_idx : node.m_var_captures) {
                 auto ty_mono = monomorphise_type_with(sp, m_variable_types.at(binding_idx).clone(), monomorph_cb);
+                // - Fix type to replace closure types with known paths
+                ExprVisitor_Fixup::fix_type(m_resolve.m_crate, ty_mono);
                 capture_types.push_back( ::HIR::VisEnt< ::HIR::TypeRef> { false, mv$(ty_mono) } );
             }
             auto closure_struct_path = m_new_type(
@@ -438,6 +503,11 @@ namespace {
             
             ::HIR::ExprPtr body_code { mv$(node.m_code) };
             body_code.m_bindings = mv$(local_types);
+            
+            {
+                ExprVisitor_Fixup   fixup { m_resolve.m_crate };
+                fixup.visit_root( body_code );
+            }
             
             // 3. Create trait impls
             
@@ -809,8 +879,16 @@ namespace {
             {
                 assert( m_cur_mod_path );
                 DEBUG("Function code " << p);
-                ExprVisitor_Extract    ev(m_resolve, *m_cur_mod_path, item.m_code.m_bindings, m_new_trait_impls, m_new_type);
-                ev.visit_root( *item.m_code );
+                
+                {
+                    ExprVisitor_Extract    ev(m_resolve, *m_cur_mod_path, item.m_code.m_bindings, m_new_trait_impls, m_new_type);
+                    ev.visit_root( *item.m_code );
+                }
+                
+                {
+                    ExprVisitor_Fixup   fixup(m_resolve.m_crate);
+                    fixup.visit_root( item.m_code );
+                }
             }
             else
             {
