@@ -9,3 +9,4 @@ TODO:
 - Convert enum variants to point to structs for the data type
 - Clean up Span code to correctly handle nested spans
 - Clean up AST
+- Explit arg patterns and arg types up for cleaner serialisation
