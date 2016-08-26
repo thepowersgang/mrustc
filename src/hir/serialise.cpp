@@ -7,6 +7,8 @@
  */
 #include "hir.hpp"
 #include "main_bindings.hpp"
+#include <serialiser_texttree.hpp>
+#include <mir/mir.hpp>
 
 namespace {
     class HirSerialiser
@@ -62,12 +64,44 @@ namespace {
                 write_u64(v);
             }
         }
+        void write_i64c(int64_t v) {
+            bool sign = (v < 0);
+            if( v == INT64_MIN ) {
+                write_u8(0xFF);
+                write_u64( static_cast<uint64_t>(v) );
+            }
+            else {
+                uint64_t va = (v < 0 ? -v : v);
+                if( va < (1 << 6) ) {
+                    write_u8( (sign ? 0x80 : 0x00) | static_cast<uint8_t>(va) );
+                }
+                else if( va < (1 << (5+16)) ) {
+                    write_u8( 0x80 + (sign ? 0x40 : 0x00) + (va >> 16)); // 0x80 -- 0xB0
+                    write_u8(va >> 8);
+                    write_u8(va);
+                }
+                else if( va < (1ul << (4 + 32)) ) {
+                    write_u8( 0xC0 + (sign ? 0x20 : 0x00) + (va >> 32)); // 0x80 -- 0xB0
+                    write_u8(va >> 24);
+                    write_u8(va >> 16);
+                    write_u8(va >> 8);
+                    write_u8(va);
+                }
+                else {
+                    write_u8(0xFF);
+                    write_u64( static_cast<uint64_t>(v) );
+                }
+            }
+        }
+        void write_double(double v) {
+            m_os.write(reinterpret_cast<const char*>(&v), sizeof v);
+        }
         void write_tag(unsigned int t) {
             assert(t < 256);
             write_u8( static_cast<uint8_t>(t) );
         }
         void write_count(size_t c) {
-            DEBUG("c = " << c);
+            //DEBUG("c = " << c);
             if(c < 0xFE) {
                 write_u8( static_cast<uint8_t>(c) );
             }
@@ -185,13 +219,14 @@ namespace {
                 serialise_vec(e.m_arg_types);
                 ),
             (Closure,
-                throw "";
+                DEBUG("-- Closure - " << ty);
+                assert(!"Encountered closure type!");
                 )
             )
         }
         void serialise_simplepath(const ::HIR::SimplePath& path)
         {
-            TRACE_FUNCTION_F("path="<<path);
+            //TRACE_FUNCTION_F("path="<<path);
             write_string(path.m_crate_name);
             write_count(path.m_components.size());
             for(const auto& c : path.m_components)
@@ -205,20 +240,20 @@ namespace {
         }
         void serialise_genericpath(const ::HIR::GenericPath& path)
         {
-            TRACE_FUNCTION_F("path="<<path);
+            //TRACE_FUNCTION_F("path="<<path);
             serialise_simplepath(path.m_path);
             serialise_pathparams(path.m_params);
         }
         void serialise_traitpath(const ::HIR::TraitPath& path)
         {
-            TRACE_FUNCTION_F("path="<<path);
+            //TRACE_FUNCTION_F("path="<<path);
             serialise_genericpath(path.m_path);
             // TODO: Lifetimes? (m_hrls)
             serialise_strmap(path.m_type_bounds);
         }
         void serialise_path(const ::HIR::Path& path)
         {
-            TRACE_FUNCTION_F("path="<<path);
+            //TRACE_FUNCTION_F("path="<<path);
             TU_MATCHA( (path.m_data), (e),
             (Generic,
                 write_tag(0);
@@ -238,7 +273,8 @@ namespace {
                 serialise_pathparams(e.params);
                 ),
             (UfcsUnknown,
-                throw "Unexpected UfcsUnknown";
+                DEBUG("-- UfcsUnknown - " << path);
+                assert(!"Unexpected UfcsUnknown");
                 )
             )
         }
@@ -301,6 +337,8 @@ namespace {
         }
         void serialise_module(const ::HIR::Module& mod)
         {
+            TRACE_FUNCTION;
+            
             // m_traits doesn't need to be serialised
             
             serialise_strmap(mod.m_value_items);
@@ -392,7 +430,6 @@ namespace {
                 serialise(e);
                 ),
             (NamedValue,
-                DEBUG("NamedValue " << e);
                 write_tag(1);
                 write_u8(e >> 24);
                 write_count(e & 0x00FFFFFF);
@@ -409,14 +446,200 @@ namespace {
             )
         }
         void serialise(const ::Token& tok) {
-            // TODO
-            write_tag(tok.type());
+            // HACK: Hand off to old serialiser code
+            ::std::stringstream tmp;
+            {
+                Serialiser_TextTree ser(tmp);
+                tok.serialise( ser );
+            }
+            
+            write_string(tmp.str());
         }
         
         void serialise(const ::HIR::ExprPtr& exp)
         {
+            serialise(*exp.m_mir);
+        }
+        void serialise(const ::MIR::Function& mir)
+        {
             // Write out MIR.
-            // TODO
+            serialise_vec( mir.named_variables );
+            serialise_vec( mir.temporaries );
+            serialise_vec( mir.blocks );
+        }
+        void serialise(const ::MIR::BasicBlock& block)
+        {
+            serialise_vec( block.statements );
+            serialise(block.terminator);
+        }
+        void serialise(const ::MIR::Statement& stmt)
+        {
+            TU_MATCHA( (stmt), (e),
+            (Assign,
+                write_tag(0);
+                serialise(e.dst);
+                serialise(e.src);
+                ),
+            (Drop,
+                write_tag(1);
+                assert(e.kind == ::MIR::eDropKind::DEEP);
+                serialise(e.slot);
+                )
+            )
+        }
+        void serialise(const ::MIR::Terminator& term)
+        {
+            write_tag( static_cast<int>(term.tag()) );
+            TU_MATCHA( (term), (e),
+            (Incomplete,
+                assert(!"Entountered Incomplete MIR block");
+                ),
+            (Return,
+                ),
+            (Diverge,
+                ),
+            (Goto,
+                write_count(e);
+                ),
+            (Panic,
+                write_count(e.dst);
+                ),
+            (If,
+                serialise(e.cond);
+                write_count(e.bb0);
+                write_count(e.bb1);
+                ),
+            (Switch,
+                serialise(e.val);
+                write_count(e.targets.size());
+                for(auto t : e.targets)
+                    write_count(t);
+                ),
+            (Call,
+                write_count(e.ret_block);
+                write_count(e.panic_block);
+                serialise(e.ret_val);
+                serialise(e.fcn_val);
+                serialise_vec(e.args);
+                )
+            )
+        }
+        void serialise(const ::MIR::LValue& lv)
+        {
+            write_tag( static_cast<int>(lv.tag()) );
+            TU_MATCHA( (lv), (e),
+            (Variable,
+                write_count(e);
+                ),
+            (Temporary,
+                write_count(e.idx);
+                ),
+            (Argument,
+                write_count(e.idx);
+                ),
+            (Static,
+                serialise_path(e);
+                ),
+            (Return,
+                ),
+            (Field,
+                serialise(e.val);
+                write_count(e.field_index);
+                ),
+            (Deref,
+                serialise(e.val);
+                ),
+            (Index,
+                serialise(e.val);
+                serialise(e.idx);
+                ),
+            (Downcast,
+                serialise(e.val);
+                write_count(e.variant_index);
+                )
+            )
+        }
+        void serialise(const ::MIR::RValue& val)
+        {
+            write_tag( val.tag() );
+            TU_MATCHA( (val), (e),
+            (Use,
+                serialise(e);
+                ),
+            (Constant,
+                serialise(e);
+                ),
+            (SizedArray,
+                serialise(e.val);
+                write_u64c(e.count);
+                ),
+            (Borrow,
+                // TODO: Region?
+                write_tag( static_cast<int>(e.type) );
+                serialise(e.val);
+                ),
+            (Cast,
+                serialise(e.val);
+                serialise(e.type);
+                ),
+            (BinOp,
+                serialise(e.val_l);
+                write_tag( static_cast<int>(e.op) );
+                serialise(e.val_r);
+                ),
+            (UniOp,
+                serialise(e.val);
+                write_tag( static_cast<int>(e.op) );
+                ),
+            (DstMeta,
+                serialise(e.val);
+                ),
+            (MakeDst,
+                serialise(e.ptr_val);
+                serialise(e.meta_val);
+                ),
+            (Tuple,
+                serialise_vec(e.vals);
+                ),
+            (Array,
+                serialise_vec(e.vals);
+                ),
+            (Struct,
+                serialise_genericpath(e.path);
+                serialise_vec(e.vals);
+                )
+            )
+        }
+        void serialise(const ::MIR::Constant& v)
+        {
+            write_tag(v.tag());
+            TU_MATCHA( (v), (e),
+            (Int,
+                write_i64c(e);
+                ),
+            (Uint,
+                write_u64c(e);
+                ),
+            (Float,
+                write_double(e);
+                ),
+            (Bool,
+                write_bool(e);
+                ),
+            (Bytes,
+                write_count(e.size());
+                m_os.write( reinterpret_cast<const char*>(e.data()), e.size() );
+                ),
+            (StaticString,
+                write_string(e);
+                ),
+            (Const,
+                serialise_path(e.p);
+                ),
+            (ItemAddr,
+                serialise_path(e);
+                )
+            )
         }
         
         void serialise(const ::HIR::TypeItem& item)
@@ -481,15 +704,31 @@ namespace {
         // - Value items
         void serialise(const ::HIR::Function& fcn)
         {
-            // TODO
+            write_tag( static_cast<int>(fcn.m_receiver) );
+            write_string(fcn.m_abi);
+            write_bool(fcn.m_unsafe);
+            write_bool(fcn.m_const);
+            
+            serialise_generics(fcn.m_params);
+            write_count(fcn.m_args.size());
+            for(const auto& a : fcn.m_args)
+                serialise(a.second);
+            serialise(fcn.m_return);
+            
+            serialise(fcn.m_code);
         }
-        void serialise(const ::HIR::Constant& con)
+        void serialise(const ::HIR::Constant& item)
         {
-            // TODO
+            serialise_generics(item.m_params);
+            serialise(item.m_type);
+            serialise(item.m_value);
+            //serialise(item.m_value_res);
         }
-        void serialise(const ::HIR::Static& con)
+        void serialise(const ::HIR::Static& item)
         {
-            // TODO
+            write_bool(item.m_is_mut);
+            serialise(item.m_type);
+            // NOTE: Omit the rest, not generic and emitted as part of the image.
         }
         
         // - Type items
