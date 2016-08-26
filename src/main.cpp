@@ -56,6 +56,8 @@ void init_debug_list()
     g_debug_disable_map.insert( "Lower MIR" );
     g_debug_disable_map.insert( "MIR Validate" );
     g_debug_disable_map.insert( "Dump MIR" );
+    
+    g_debug_disable_map.insert( "HIR Serialise" );
 }
 bool debug_enabled()
 {
@@ -291,7 +293,7 @@ int main(int argc, char *argv[])
             break;
         case ::AST::Crate::Type::RustLib:
             // Save a loadable HIR dump
-            CompilePhaseV("RustLib - HIR Serialise", [&]() {
+            CompilePhaseV("HIR Serialise", [&]() {
                 HIR_Serialise(params.outfile + ".meta", *hir_crate);
                 });
             // Generate a .o
