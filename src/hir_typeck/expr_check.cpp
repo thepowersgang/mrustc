@@ -658,15 +658,49 @@ namespace {
         void visit(::HIR::ExprNode_CallValue& node) override
         {
             TRACE_FUNCTION_F(&node << " (...)(..., )");
-            // TODO: Don't use m_arg_types (do full resolution again)
-            ASSERT_BUG(node.span(), node.m_arg_types.size() > 0, "CallValue cache not populated");
-            for(unsigned int i = 0; i < node.m_args.size(); i ++)
-            {
-                check_types_equal(node.span(), node.m_arg_types[i], node.m_args[i]->m_res_type);
-            }
-            check_types_equal(node.span(), node.m_res_type, node.m_arg_types.back());
             
-            // Don't bother checking for a FnOnce impl, if the cache is populated it was found
+            const auto& val_ty = node.m_value->m_res_type;
+            
+            TU_IFLET( ::HIR::TypeRef::Data, val_ty.m_data, Function, e,
+                
+                if( node.m_args.size() != e.m_arg_types.size() ) {
+                    ERROR(node.span(), E0000, "Incorrect number of arguments to call via " << val_ty);
+                }
+                for( unsigned int i = 0; i < node.m_args.size(); i ++ )
+                {
+                    check_types_equal(node.m_args[i]->span(), e.m_arg_types[i], node.m_args[i]->m_res_type);
+                }
+                check_types_equal(node.span(), node.m_res_type, *e.m_rettype);
+            )
+            else
+            {
+                // 1. Look up the encoded trait
+                const auto& trait = (
+                      node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Fn ? m_resolve.m_crate.get_lang_item_path(node.span(), "fn")
+                    : node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::FnMut ? m_resolve.m_crate.get_lang_item_path(node.span(), "fn_mut")
+                    : node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::FnOnce ? m_resolve.m_crate.get_lang_item_path(node.span(), "fn_once")
+                    : throw ""
+                    );
+                
+                ::std::vector< ::HIR::TypeRef>  tup_ents;
+                for(const auto& arg : node.m_args) {
+                    tup_ents.push_back( arg->m_res_type.clone() );
+                }
+                ::HIR::PathParams   params;
+                params.m_types.push_back( ::HIR::TypeRef( mv$(tup_ents) ) );
+                
+                bool found = m_resolve.find_impl(node.span(), trait, &params, val_ty, [](auto ){ return true; });
+                if( !found ) {
+                    ERROR(node.span(), E0000, "Unable to find a matching impl of " << trait << " for " << val_ty);
+                }
+                ::HIR::TypeRef  exp_ret( ::HIR::Path(
+                    node.m_value->m_res_type.clone(),
+                    { m_resolve.m_crate.get_lang_item_path(node.span(), "fn_once"), mv$(params) },
+                    "Output", {}
+                    ) );
+                m_resolve.expand_associated_types(node.span(), exp_ret);
+                check_types_equal(node.span(), node.m_res_type, exp_ret);
+            }
             
             node.m_value->visit( *this );
             for( auto& val : node.m_args ) {
