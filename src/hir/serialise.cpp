@@ -469,6 +469,31 @@ namespace {
             write_string(tmp.str());
         }
         
+        void serialise(const ::HIR::Literal& lit)
+        {
+            write_tag(lit.tag());
+            TU_MATCHA( (lit), (e),
+            (Invalid,
+                BUG(Span(), "Literal::Invalid in HIR");
+                ),
+            (List,
+                serialise_vec(e);
+                ),
+            (Integer,
+                write_u64(e);
+                ),
+            (Float,
+                write_double(e);
+                ),
+            (BorrowOf,
+                serialise_simplepath(e);
+                ),
+            (String,
+                write_string(e);
+                )
+            )
+        }
+        
         void serialise(const ::HIR::ExprPtr& exp)
         {
             if( exp.m_mir ) {
@@ -766,7 +791,8 @@ namespace {
             (Unit,
                 ),
             (Value,
-                // TODO: Should be fully known now
+                // NOTE: e.expr skipped as it's not needed anymore
+                serialise(e.val);
                 ),
             (Tuple,
                 serialise_vec(e);
