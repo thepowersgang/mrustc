@@ -346,6 +346,7 @@ namespace {
         }
         void serialise_typeimpl(const ::HIR::TypeImpl& impl)
         {
+            TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << impl.m_type);
             serialise_generics(impl.m_params);
             serialise_type(impl.m_type);
             
@@ -360,24 +361,28 @@ namespace {
         }
         void serialise_traitimpl(const ::HIR::TraitImpl& impl)
         {
+            TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " ?" << impl.m_trait_args << " for " << impl.m_type);
             serialise_generics(impl.m_params);
             serialise_pathparams(impl.m_trait_args);
             serialise_type(impl.m_type);
             
             write_count(impl.m_methods.size());
             for(const auto& v : impl.m_methods) {
+                DEBUG("fn " << v.first);
                 write_string(v.first);
                 write_bool(v.second.is_specialisable);
                 serialise(v.second.data);
             }
             write_count(impl.m_constants.size());
             for(const auto& v : impl.m_constants) {
+                DEBUG("const " << v.first);
                 write_string(v.first);
                 write_bool(v.second.is_specialisable);
                 serialise(v.second.data);
             }
             write_count(impl.m_types.size());
             for(const auto& v : impl.m_types) {
+                DEBUG("type " << v.first);
                 write_string(v.first);
                 write_bool(v.second.is_specialisable);
                 serialise(v.second.data);
@@ -458,7 +463,9 @@ namespace {
         
         void serialise(const ::HIR::ExprPtr& exp)
         {
-            serialise(*exp.m_mir);
+            if( exp.m_mir ) {
+                serialise(*exp.m_mir);
+            }
         }
         void serialise(const ::MIR::Function& mir)
         {
