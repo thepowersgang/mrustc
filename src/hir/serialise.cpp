@@ -164,6 +164,11 @@ namespace {
         void serialise(const ::std::unique_ptr<T>& e) {
             serialise(*e);
         }
+        template<typename T>
+        void serialise(const ::std::pair< ::std::string, T>& e) {
+            write_string(e.first);
+            serialise(e.second);
+        }
         
         void serialise_type(const ::HIR::TypeRef& ty)
         {
@@ -401,6 +406,9 @@ namespace {
         }
         void serialise(const ::HIR::SimplePath& p) {
             serialise_simplepath(p);
+        }
+        void serialise(const ::HIR::TraitPath& p) {
+            serialise_traitpath(p);
         }
         void serialise(const ::std::string& v) {
             write_string(v);
@@ -730,7 +738,7 @@ namespace {
             serialise_generics(item.m_params);
             serialise(item.m_type);
             serialise(item.m_value);
-            //serialise(item.m_value_res);
+            //serialise(item.m_value_res);  // - Can be calculated from value?
         }
         void serialise(const ::HIR::Static& item)
         {
@@ -742,19 +750,83 @@ namespace {
         // - Type items
         void serialise(const ::HIR::TypeAlias& ta)
         {
-            // TODO
+            serialise_generics(ta.m_params);
+            serialise_type(ta.m_type);
         }
         void serialise(const ::HIR::Enum& ta)
         {
-            // TODO
+            serialise_generics(ta.m_params);
+            write_tag( static_cast<int>(ta.m_repr) );
+            serialise_vec( ta.m_variants );
         }
-        void serialise(const ::HIR::Struct& ta)
+        void serialise(const ::HIR::Enum::Variant& v)
         {
-            // TODO
+            write_tag( v.tag() );
+            TU_MATCHA( (v), (e),
+            (Unit,
+                ),
+            (Value,
+                // TODO: Should be fully known now
+                ),
+            (Tuple,
+                serialise_vec(e);
+                ),
+            (Struct,
+                serialise_vec(e);
+                )
+            )
         }
-        void serialise(const ::HIR::Trait& ta)
+
+        void serialise(const ::HIR::Struct& item)
         {
-            // TODO
+            serialise_generics(item.m_params);
+            write_tag( static_cast<int>(item.m_repr) );
+            
+            write_tag( item.m_data.tag() );
+            TU_MATCHA( (item.m_data), (e),
+            (Unit,
+                ),
+            (Tuple,
+                serialise_vec(e);
+                ),
+            (Named,
+                serialise_vec(e);
+                )
+            )
+        }
+        void serialise(const ::HIR::Trait& item)
+        {
+            serialise_generics(item.m_params);
+            //write_string(item.m_lifetime);    // TODO: Better type for lifetime
+            serialise_vec( item.m_parent_traits );
+            write_bool( item.m_is_marker );
+            serialise_strmap( item.m_types );
+            serialise_strmap( item.m_values );
+        }
+        void serialise(const ::HIR::TraitValueItem& tvi)
+        {
+            write_tag( tvi.tag() );
+            TU_MATCHA( (tvi), (e),
+            (None,
+                BUG(Span(), "Found None TraitValueItem");
+                ),
+            (Constant,
+                serialise(e);
+                ),
+            (Static,
+                serialise(e);
+                ),
+            (Function,
+                serialise(e);
+                )
+            )
+        }
+        void serialise(const ::HIR::AssociatedType& at)
+        {
+            write_bool(at.is_sized);
+            //write_string(at.m_lifetime_bound);  // TODO: better type for lifetime
+            serialise_vec(at.m_trait_bounds);
+            serialise_type(at.m_default);
         }
     };
 }
