@@ -624,6 +624,18 @@ namespace {
             item.m_value_res = evaluate_constant(m_crate, m_new_values, *m_mod_path, FMT(p.get_name() << "$"), *item.m_value);
             DEBUG("static: " << item.m_type <<  " = " << item.m_value_res);
         }
+        void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
+            for(auto& var : item.m_variants)
+            {
+                TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
+                    
+                    e.val = evaluate_constant(m_crate, m_new_values, *m_mod_path, FMT(p.get_name() << "$" << var.first << "$"), *e.expr);
+                    DEBUG("enum variant: " << p << "::" << var.first << " = " << e.val);
+                )
+            }
+            ::HIR::Visitor::visit_enum(p, item);
+        }
+        
         void visit_expr(::HIR::ExprPtr& expr) override
         {
             struct Visitor:
