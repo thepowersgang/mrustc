@@ -195,7 +195,7 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
         return Path( Data::make_Generic(e.clone()) );
         ),
     (UfcsInherent,
-        return Path(Data::make_UfcsUnknown({
+        return Path(Data::make_UfcsInherent({
             box$( e.type->clone() ),
             e.item,
             e.params.clone()
@@ -210,7 +210,7 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
             }));
         ),
     (UfcsUnknown,
-        return Path(Data::make_UfcsInherent({
+        return Path(Data::make_UfcsUnknown({
             box$( e.type->clone() ),
             e.item,
             e.params.clone()
