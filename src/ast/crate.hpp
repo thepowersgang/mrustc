@@ -62,7 +62,8 @@ public:
     ExternCrate(const ExternCrate&) = delete;
     ExternCrate(ExternCrate&&) = default;
     
-    const MacroRules* find_macro_rules(const ::std::string& name);
+    void with_all_macros(::std::function<void(const ::std::string& , const MacroRules&)> cb) const;
+    const MacroRules* find_macro_rules(const ::std::string& name) const;
 };
 
 }   // namespace AST

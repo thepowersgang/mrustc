@@ -67,7 +67,14 @@ ExternCrate::ExternCrate(const ::std::string& path)
     m_hir = HIR_Deserialise(path);
 }
 
-const MacroRules* ExternCrate::find_macro_rules(const ::std::string& name)
+void ExternCrate::with_all_macros(::std::function<void(const ::std::string& , const MacroRules&)> cb) const
+{
+    for(const auto& m : m_hir->m_exported_macros)
+    {
+        cb(m.first, m.second);
+    }
+}
+const MacroRules* ExternCrate::find_macro_rules(const ::std::string& name) const
 {
     auto i = m_hir->m_exported_macros.find(name);
     if(i != m_hir->m_exported_macros.end())
