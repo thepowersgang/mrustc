@@ -15,6 +15,7 @@ namespace AST {
 ::std::ostream& operator<<(::std::ostream& os, const PathBinding& x) {
     TU_MATCH(PathBinding, (x), (i),
     (Unbound, os << "UNBOUND";   ),
+    (Crate ,  os << "Crate";    ),
     (Module,  os << "Module";    ),
     (Trait,     os << "Trait";   ),
     (Struct,    os << "Struct";  ),
@@ -36,6 +37,7 @@ PathBinding PathBinding::clone() const
     TU_MATCH(::AST::PathBinding, (*this), (e),
     (Unbound , return PathBinding::make_Unbound({}); ),
     (Module  , return PathBinding::make_Module(e);   ),
+    (Crate   , return PathBinding(e);   ),
     (Trait   , return PathBinding::make_Trait(e);    ),
     (Struct  , return PathBinding::make_Struct(e);   ),
     (Enum    , return PathBinding::make_Enum(e);     ),

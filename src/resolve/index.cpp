@@ -149,6 +149,7 @@ void Resolve_Index_Module_Base(AST::Module& mod)
                 BUG(sp, "Import was bound to struct method");
                 ),
             
+            (Crate ,  _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path); ),
             (Module,  _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path); ),
             //(Crate,   _add_item_type(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path); ),
             (Enum,    _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path); ),
@@ -225,6 +226,9 @@ void Resolve_Index_Module_Wildcard(AST::Module& mod, bool handle_pub)
                 BUG(sp, "Import was bound to struct method");
                 ),
             
+            (Crate,
+                TODO(sp, "Glob import of crate");
+                ),
             (Module,
                 DEBUG("Glob mod " << i.data.path);
                 if( e.module_ == &mod ) {

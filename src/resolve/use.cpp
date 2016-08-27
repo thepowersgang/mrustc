@@ -220,11 +220,10 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 // IMPOSSIBLE - Handled above
                 ),
             (MacroInv,
-                BUG(span, "HIt MacroInv in use resolution");
+                BUG(span, "Hit MacroInv in use resolution");
                 ),
             (Crate,
-                //return ::AST::PathBinding::make_Crate({&e});
-                TODO(span, "Handle importing from a crate");
+                return ::AST::PathBinding::make_Crate({ &crate.m_extern_crates.at(e.name) });
                 ),
             (Type,
                 return ::AST::PathBinding::make_TypeAlias({&e});
@@ -312,6 +311,9 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         TU_MATCH_DEF(::AST::PathBinding, (b), (e),
         (
             ERROR(span, E0000, "Unexpected item type in import");
+            ),
+        (Crate,
+            TODO(span, "Get binding within an extern crate");
             ),
         (Enum,
             const auto& enum_ = *e.enum_;

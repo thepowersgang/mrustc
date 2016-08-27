@@ -27,9 +27,13 @@ class Struct;
 class Trait;
 class Static;
 class Function;
+class ExternCrate;
 
 TAGGED_UNION_EX(PathBinding, (), Unbound, (
     (Unbound, struct {
+        }),
+    (Crate, struct {
+        const ExternCrate* crate_;
         }),
     (Module, struct {
         const Module* module_;
