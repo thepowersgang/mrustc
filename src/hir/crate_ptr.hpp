@@ -28,7 +28,10 @@ public:
     }
     ~CratePtr();
     
-    Crate& operator*() { return *m_ptr; }
+          Crate& operator*()       { return *m_ptr; }
+    const Crate& operator*() const { return *m_ptr; }
+          Crate* operator->()       { return m_ptr; }
+    const Crate* operator->() const { return m_ptr; }
 };
 
 }   // namespace HIR

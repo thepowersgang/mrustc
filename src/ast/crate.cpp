@@ -4,6 +4,7 @@
 #include "ast.hpp"
 #include "../parse/parseerror.hpp"
 #include "../expand/cfg.hpp"
+#include <hir/hir.hpp>  // HIR Crate
 
 #include <serialiser_texttree.hpp>
 
@@ -50,59 +51,28 @@ void Crate::load_externs()
                 const auto& name = c.name;
                 if( check_item_cfg(it.data.attrs) )
                 {
-                    TODO(it.data.span, "Load crate '" << name << "' as '" << it.name << "'");
+                    load_extern_crate( name );
                 }
             )
         }
         };
     iterate_module(m_root_module, cb);
 }
-
-
-Module& Crate::get_root_module(const ::std::string& name) {
-    return const_cast<Module&>( const_cast<const Crate*>(this)->get_root_module(name) );
-}
-const Module& Crate::get_root_module(const ::std::string& name) const {
-    if( name == "" )
-        return m_root_module;
-    auto it = m_extern_crates.find(name);
-    if( it != m_extern_crates.end() )
-        throw ::std::runtime_error("TODO: Get root module for extern crate");
-//        return it->second.root_module();
-    throw ParseError::Generic("crate name unknown");
-}
-
-void Crate::load_extern_crate(::std::string name)
+void Crate::load_extern_crate(const ::std::string& name)
 {
-    ::std::ifstream is("output/"+name+".ast");
-    if( !is.is_open() )
-    {
-        throw ParseError::Generic("Can't open crate '" + name + "'");
-    }
-    //Deserialiser_TextTree   ds(is);
-    //Deserialiser&   d = ds;
-    
-    ExternCrate ret;
-    
-    // TODO: ...
-    
-    m_extern_crates.insert( make_pair(::std::move(name), ::std::move(ret)) );
+    m_extern_crates.insert(::std::make_pair( name, ExternCrate { "output/lib"+name+".hir" } ));
 }
 
-ExternCrate::ExternCrate()
-{
-}
-
-ExternCrate::ExternCrate(const char *path)
+ExternCrate::ExternCrate(const ::std::string& path)
 {
     throw ParseError::Todo( FMT("Load extern crate from a file - '" << path << "'") );
 }
 
 const MacroRules* ExternCrate::find_macro_rules(const ::std::string& name)
 {
-    auto i = m_mr_macros.find(name);
-    if(i != m_mr_macros.end())
-        return &*i->second;
+    auto i = m_hir->m_exported_macros.find(name);
+    if(i != m_hir->m_exported_macros.end())
+        return &i->second;
     return nullptr;
 }
 

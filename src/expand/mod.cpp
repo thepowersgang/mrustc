@@ -853,12 +853,12 @@ void Expand(::AST::Crate& crate)
     case ::AST::Crate::LOAD_STD:
         if( crate.m_prelude_path != AST::Path() )
             crate.m_prelude_path = AST::Path("std", {AST::PathNode("prelude"), AST::PathNode("v1")});
-        TODO(Span("",0,0,0,0), "Load libstd");
+        crate.load_extern_crate("std");
         break;
     case ::AST::Crate::LOAD_CORE:
         if( crate.m_prelude_path != AST::Path() )
             crate.m_prelude_path = AST::Path("core", {AST::PathNode("prelude")});
-        TODO(Span("",0,0,0,0), "Load libcore");
+        crate.load_extern_crate("core");
         break;
     case ::AST::Crate::LOAD_NONE:
         break;

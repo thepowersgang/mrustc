@@ -3,6 +3,7 @@
 
 #include "ast.hpp"
 #include "types.hpp"
+#include <hir/crate_ptr.hpp>
 
 namespace AST {
 
@@ -43,40 +44,25 @@ public:
     
     Crate();
 
-    Module& root_module() { return m_root_module; }
-    Module& get_root_module(const ::std::string& name);
-    ::std::map< ::std::string, ExternCrate>& extern_crates() { return m_extern_crates; }   
-    
     const Module& root_module() const { return m_root_module; }
-    const Module& get_root_module(const ::std::string& name) const;
-    const ::std::map< ::std::string, ExternCrate>& extern_crates() const { return m_extern_crates; }   
+          Module& root_module()       { return m_root_module; }
  
     /// Load referenced crates
     void load_externs();
     
-    void load_extern_crate(::std::string name);
+    void load_extern_crate(const ::std::string& name);
 };
 
 /// Representation of an imported crate
 class ExternCrate
 {
-    ::std::map< ::std::string, MacroRulesPtr > m_mr_macros;
-    
-    //::MIR::Module   m_root_module;
-    
-    //Crate   m_crate;
+    ::HIR::CratePtr m_hir;
 public:
-    ExternCrate();
-    ExternCrate(const char *path);
+    ExternCrate(const ::std::string& path);
     ExternCrate(const ExternCrate&) = delete;
     ExternCrate(ExternCrate&&) = default;
     
     const MacroRules* find_macro_rules(const ::std::string& name);
-    
-    //Crate& crate() { return m_crate; }
-    //const Crate& crate() const { return m_crate; }
-    //Module& root_module() { return m_crate.root_module(); }
-    //const Module& root_module() const { return m_crate.root_module(); }
 };
 
 }   // namespace AST

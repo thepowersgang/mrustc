@@ -18,3 +18,4 @@ namespace AST {
 extern void HIR_Dump(::std::ostream& sink, const ::HIR::Crate& crate);
 extern ::HIR::CratePtr  LowerHIR_FromAST(::AST::Crate crate);
 extern void HIR_Serialise(const ::std::string& filename, const ::HIR::Crate& crate);
+extern ::HIR::CratePtr HIR_Deserialise(const ::std::string& filename);
