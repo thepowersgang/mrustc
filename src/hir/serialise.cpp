@@ -475,6 +475,7 @@ namespace {
         
         void serialise(const ::HIR::ExprPtr& exp)
         {
+            write_bool( (bool)exp.m_mir );
             if( exp.m_mir ) {
                 serialise(*exp.m_mir);
             }
@@ -678,15 +679,15 @@ namespace {
                 serialise(e);
                 ),
             (Enum,
-                write_tag(2);
-                serialise(e);
-                ),
-            (Struct,
                 write_tag(3);
                 serialise(e);
                 ),
-            (Trait,
+            (Struct,
                 write_tag(4);
+                serialise(e);
+                ),
+            (Trait,
+                write_tag(5);
                 serialise(e);
                 )
             )

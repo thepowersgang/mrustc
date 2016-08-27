@@ -69,7 +69,7 @@ OBJ += mir/mir.o mir/mir_ptr.o
 OBJ +=  mir/dump.o
 OBJ +=  mir/from_hir.o mir/from_hir_match.o mir/mir_builder.o
 OBJ +=  mir/check.o
-OBJ += hir/serialise.o
+OBJ += hir/serialise.o hir/deserialise.o
 
 PCHS := ast/ast.hpp
 

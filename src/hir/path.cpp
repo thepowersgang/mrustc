@@ -184,6 +184,10 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
     m_data( ::HIR::Path::Data::make_Generic(::HIR::GenericPath(mv$(sp))) )
 {
 }
+::HIR::Path::Path(TypeRef ty, ::std::string item, PathParams item_params):
+    m_data(Data::make_UfcsInherent({ box$(ty), mv$(item), mv$(item_params) }))
+{
+}
 ::HIR::Path::Path(TypeRef ty, GenericPath trait, ::std::string item, PathParams item_params):
     m_data( Data::make_UfcsKnown({ box$(mv$(ty)), mv$(trait), mv$(item), mv$(item_params) }) )
 {

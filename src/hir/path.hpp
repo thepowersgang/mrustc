@@ -183,6 +183,7 @@ public:
     Path(GenericPath _);
     Path(SimplePath _);
     
+    Path(TypeRef ty, ::std::string item, PathParams item_params=PathParams());
     Path(TypeRef ty, GenericPath trait, ::std::string item, PathParams item_params=PathParams());
     
     Path clone() const;
