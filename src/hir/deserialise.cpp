@@ -29,6 +29,10 @@ namespace {
         uint8_t read_u8() {
             uint8_t v;
             m_is.read(reinterpret_cast<char*>(&v), 1);
+            if( !m_is ) {
+                throw "";
+            }
+            assert( m_is );
             return v;
         }
         uint16_t read_u16() {
@@ -124,7 +128,7 @@ namespace {
                 len = (len & 0x7F) << 16;
                 len |= read_u16();
             }
-            ::std::string   rv( '\0', len );
+            ::std::string   rv( ' ', len );
             m_is.read(const_cast<char*>(rv.data()), len);
             return rv;
         }
@@ -362,7 +366,6 @@ namespace {
             ::HIR::ExprPtr  rv;
             if( read_bool() )
             {
-                assert( !"TODO: ");
                 rv.m_mir = deserialise_mir();
             }
             return rv;
@@ -978,8 +981,17 @@ namespace {
     ::std::ifstream in(filename);
     HirDeserialiser  s { in };
     
-    ::HIR::Crate    rv = s.deserialise_crate();
-    
-    return ::HIR::CratePtr( mv$(rv) );
+    try
+    {
+        ::HIR::Crate    rv = s.deserialise_crate();
+        
+        return ::HIR::CratePtr( mv$(rv) );
+    }
+    catch(const char*)
+    {
+        ::std::cerr << "Unable to load crate from " << filename << ": Deserialisation failure" << ::std::endl;
+        ::std::abort();
+        //return ::HIR::CratePtr();
+    }
 }
 
