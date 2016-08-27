@@ -3,20 +3,30 @@
 #include "crate.hpp"
 #include "ast.hpp"
 #include "../parse/parseerror.hpp"
+#include "../expand/cfg.hpp"
 
 #include <serialiser_texttree.hpp>
 
 namespace {
+    bool check_item_cfg(const ::AST::MetaItems& attrs)
+    {
+        for(const auto& at : attrs.m_items) {
+            if( at.name() == "cfg" && !check_cfg(attrs.m_span, at) ) {
+                return false;
+            }
+        }
+        return true;
+    }
     void iterate_module(::AST::Module& mod, ::std::function<void(::AST::Module& mod)> fcn)
     {
         fcn(mod);
         for( auto& sm : mod.items() )
         {
-            TU_MATCH_DEF(::AST::Item, (sm.data), (e),
-            ( ),
-            (Module,
-                iterate_module(e, fcn);
-                )
+            TU_IFLET(::AST::Item, sm.data, Module, e,
+                if( check_item_cfg(sm.data.attrs) )
+                {
+                    iterate_module(e, fcn);
+                }
             )
         }
     }
@@ -38,7 +48,10 @@ void Crate::load_externs()
         {
             TU_IFLET(AST::Item, it.data, Crate, c,
                 const auto& name = c.name;
-                TODO(it.data.span, "Load crate '" << name << "' as '" << it.name << "'");
+                if( check_item_cfg(it.data.attrs) )
+                {
+                    TODO(it.data.span, "Load crate '" << name << "' as '" << it.name << "'");
+                }
             )
         }
         };
