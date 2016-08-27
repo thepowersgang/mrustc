@@ -90,9 +90,11 @@ output/%.ast: samples/%.rs $(BIN)
 
 RUSTCSRC := ./rustc-nightly/
 output/libcore.hir: $(RUSTCSRC)src/libcore/lib.rs $(BIN)
+	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
-output/libcollections.hir: $(RUSTCSRC)src/libcollections.rs output/libcore.hir $(BIN)
+output/liballoc.hir output/libcollections.hir: output/%.hir: $(RUSTCSRC)src/%/lib.rs output/libcore.hir $(BIN)
+	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 
@@ -116,7 +118,7 @@ output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(BIN)
 	touch $@
 
 .PHONY: test test_rustos
-test: output/libcore.hir $(BIN)
+test: output/libcore.hir output/liballoc.hir $(BIN)
 
 test_rustos: $(addprefix output/rust_os/,libkernel.rlib)
 
