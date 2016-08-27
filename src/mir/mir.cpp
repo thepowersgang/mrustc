@@ -72,6 +72,49 @@ namespace MIR {
         )
         return os;
     }
+
+    ::std::ostream& operator<<(::std::ostream& os, const RValue& x)
+    {
+        TU_MATCHA( (x), (e),
+        (Use,
+            os << "Use(" << e << ")";
+            ),
+        (Constant,
+            os << "Constant(" << e << ")";
+            ),
+        (SizedArray,
+            os << "SizedArray(" << e.val << "; " << e.count << ")";
+            ),
+        (Borrow,
+            os << "Borrow(" << e.region << ", " << e.type << ", " << e.val << ")";
+            ),
+        (Cast,
+            os << "Cast(" << e.val << " as " << e.type << ")";
+            ),
+        (BinOp,
+            os << "BinOp(" << e.val_l << " " << static_cast<int>(e.op) << " " << e.val_r << ")";
+            ),
+        (UniOp,
+            os << "UniOp(" << e.val << " " << static_cast<int>(e.op) << ")";
+            ),
+        (DstMeta,
+            os << "DstMeta(" << e.val << ")";
+            ),
+        (MakeDst,
+            os << "MakeDst(" << e.ptr_val << ", " << e.meta_val << ")";
+            ),
+        (Tuple,
+            os << "Tuple(" << e.vals << ")";
+            ),
+        (Array,
+            os << "Array(" << e.vals << ")";
+            ),
+        (Struct,
+            os << "Struct(" << e.path << ", {" << e.vals << "})";
+            )
+        )
+        return os;
+    }
     
     ::std::ostream& operator<<(::std::ostream& os, const Terminator& x)
     {

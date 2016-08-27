@@ -136,6 +136,7 @@ TAGGED_UNION(RValue, Use,
         ::std::vector<LValue>   vals;
         })
 );
+extern ::std::ostream& operator<<(::std::ostream& os, const RValue& x);
 
 TAGGED_UNION(Terminator, Incomplete,
     (Incomplete, struct {}),    // Block isn't complete (ERROR in output)

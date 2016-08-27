@@ -36,6 +36,16 @@ namespace HIR {
         assert(!"Bad CoreType value");
         return os;
     }
+    ::std::ostream& operator<<(::std::ostream& os, const BorrowType& bt)
+    {
+        switch(bt)
+        {
+        case BorrowType::Owned:     return os << "Owned";
+        case BorrowType::Unique:    return os << "Unique";
+        case BorrowType::Shared:    return os << "Shared";
+        }
+        return os;
+    }
 }
 
 void ::HIR::TypeRef::fmt(::std::ostream& os) const

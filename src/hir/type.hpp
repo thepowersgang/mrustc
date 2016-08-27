@@ -70,6 +70,7 @@ enum class BorrowType
     Unique,
     Owned,
 };
+extern ::std::ostream& operator<<(::std::ostream& os, const BorrowType& bt);
 
 struct LifetimeRef
 {

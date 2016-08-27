@@ -122,6 +122,7 @@ namespace {
         {
             write_count(map.size());
             for(const auto& v : map) {
+                DEBUG("- " << v.first);
                 write_string(v.first);
                 serialise(v.second);
             }
@@ -230,14 +231,13 @@ namespace {
         }
         void serialise_traitpath(const ::HIR::TraitPath& path)
         {
-            //TRACE_FUNCTION_F("path="<<path);
             serialise_genericpath(path.m_path);
             // TODO: Lifetimes? (m_hrls)
             serialise_strmap(path.m_type_bounds);
         }
         void serialise_path(const ::HIR::Path& path)
         {
-            //TRACE_FUNCTION_F("path="<<path);
+            TRACE_FUNCTION_F("path="<<path);
             TU_MATCHA( (path.m_data), (e),
             (Generic,
                 write_tag(0);
@@ -278,10 +278,10 @@ namespace {
         void serialise(const ::HIR::GenericBound& b) {
             TU_MATCHA( (b), (e),
             (Lifetime,
-                //write_tag(0);
+                write_tag(0);
                 ),
             (TypeLifetime,
-                //write_tag(1);
+                write_tag(1);
                 ),
             (TraitBound,
                 write_tag(2);
@@ -408,9 +408,13 @@ namespace {
         void serialise(const ::MacroPatEnt& pe) {
             write_string(pe.name);
             write_count(pe.name_index);
-            serialise(pe.tok);
-            serialise_vec(pe.subpats);
             write_tag( static_cast<int>(pe.type) );
+            if( pe.type == ::MacroPatEnt::PAT_TOKEN ) {
+                serialise(pe.tok);
+            }
+            else if( pe.type == ::MacroPatEnt::PAT_LOOP ) {
+                serialise_vec(pe.subpats);
+            }
         }
         void serialise(const ::MacroRulesArm& arm) {
             serialise_vec(arm.m_param_names);
@@ -548,6 +552,7 @@ namespace {
         }
         void serialise(const ::MIR::LValue& lv)
         {
+            TRACE_FUNCTION_F("LValue = "<<lv);
             write_tag( static_cast<int>(lv.tag()) );
             TU_MATCHA( (lv), (e),
             (Variable,
@@ -583,6 +588,7 @@ namespace {
         }
         void serialise(const ::MIR::RValue& val)
         {
+            TRACE_FUNCTION_F("RValue = "<<val);
             write_tag( val.tag() );
             TU_MATCHA( (val), (e),
             (Use,
@@ -726,6 +732,8 @@ namespace {
         // - Value items
         void serialise(const ::HIR::Function& fcn)
         {
+            TRACE_FUNCTION_F("_function:");
+            
             write_tag( static_cast<int>(fcn.m_receiver) );
             write_string(fcn.m_abi);
             write_bool(fcn.m_unsafe);
@@ -736,11 +744,14 @@ namespace {
             for(const auto& a : fcn.m_args)
                 serialise(a.second);
             serialise(fcn.m_return);
+            DEBUG("m_args = " << fcn.m_args);
             
             serialise(fcn.m_code);
         }
         void serialise(const ::HIR::Constant& item)
         {
+            TRACE_FUNCTION_F("_constant:");
+            
             serialise_generics(item.m_params);
             serialise(item.m_type);
             serialise(item.m_value);
@@ -748,6 +759,8 @@ namespace {
         }
         void serialise(const ::HIR::Static& item)
         {
+            TRACE_FUNCTION_F("_static:");
+            
             write_bool(item.m_is_mut);
             serialise(item.m_type);
             // NOTE: Omit the rest, not generic and emitted as part of the image.
@@ -786,6 +799,8 @@ namespace {
 
         void serialise(const ::HIR::Struct& item)
         {
+            TRACE_FUNCTION;
+            
             serialise_generics(item.m_params);
             write_tag( static_cast<int>(item.m_repr) );
             
@@ -803,6 +818,7 @@ namespace {
         }
         void serialise(const ::HIR::Trait& item)
         {
+            TRACE_FUNCTION_F("_trait:");
             serialise_generics(item.m_params);
             //write_string(item.m_lifetime);    // TODO: Better type for lifetime
             serialise_vec( item.m_parent_traits );
@@ -815,12 +831,15 @@ namespace {
             write_tag( tvi.tag() );
             TU_MATCHA( (tvi), (e),
             (Constant,
+                DEBUG("Constant");
                 serialise(e);
                 ),
             (Static,
+                DEBUG("Static");
                 serialise(e);
                 ),
             (Function,
+                DEBUG("Function");
                 serialise(e);
                 )
             )
