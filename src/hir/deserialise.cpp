@@ -170,6 +170,16 @@ namespace {
             return rv;
         }
         template<typename T>
+        ::std::vector<T> deserialise_vec_c(::std::function<T()> cb)
+        {
+            size_t n = read_count();
+            ::std::vector<T>    rv;
+            rv.reserve(n);
+            for(size_t i = 0; i < n; i ++)
+                rv.push_back( cb() );
+            return rv;
+        }
+        template<typename T>
         ::HIR::VisEnt<T> deserialise_visent()
         {
             return ::HIR::VisEnt<T> { read_bool(), D<T>::des(*this) };
@@ -194,128 +204,157 @@ namespace {
         
         ::HIR::Crate deserialise_crate();
         ::HIR::Module deserialise_module();
-        #if 0
-        void serialise_typeimpl(const ::HIR::TypeImpl& impl)
+        
+        ::HIR::TypeImpl deserialise_typeimpl()
         {
-            TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-            serialise_generics(impl.m_params);
-            serialise_type(impl.m_type);
+            ::HIR::TypeImpl rv;
             
-            write_count(impl.m_methods.size());
-            for(const auto& v : impl.m_methods) {
-                write_string(v.first);
-                write_bool(v.second.is_pub);
-                write_bool(v.second.is_specialisable);
-                serialise(v.second.data);
+            rv.m_params = deserialise_genericparams();
+            rv.m_type = deserialise_type();
+            
+            size_t method_count = read_count();
+            for(size_t i = 0; i < method_count; i ++)
+            {
+                auto name = read_string();
+                rv.m_methods.insert( ::std::make_pair( mv$(name), ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> {
+                    read_bool(), read_bool(), deserialise_function()
+                    } ) );
             }
             // m_src_module doesn't matter after typeck
+            TRACE_FUNCTION_F("impl" << rv.m_params.fmt_args() << " " << rv.m_type);
+            return rv;
         }
-        void serialise_traitimpl(const ::HIR::TraitImpl& impl)
+        ::HIR::TraitImpl deserialise_traitimpl()
         {
-            TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " ?" << impl.m_trait_args << " for " << impl.m_type);
-            serialise_generics(impl.m_params);
-            serialise_pathparams(impl.m_trait_args);
-            serialise_type(impl.m_type);
+            ::HIR::TraitImpl    rv;
             
-            write_count(impl.m_methods.size());
-            for(const auto& v : impl.m_methods) {
-                DEBUG("fn " << v.first);
-                write_string(v.first);
-                write_bool(v.second.is_specialisable);
-                serialise(v.second.data);
+            rv.m_params = deserialise_genericparams();
+            rv.m_trait_args = deserialise_pathparams();
+            rv.m_type = deserialise_type();
+            
+            
+            size_t method_count = read_count();
+            for(size_t i = 0; i < method_count; i ++)
+            {
+                auto name = read_string();
+                rv.m_methods.insert( ::std::make_pair( mv$(name), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> {
+                    read_bool(), deserialise_function()
+                    } ) );
             }
-            write_count(impl.m_constants.size());
-            for(const auto& v : impl.m_constants) {
-                DEBUG("const " << v.first);
-                write_string(v.first);
-                write_bool(v.second.is_specialisable);
-                serialise(v.second.data);
+            size_t const_count = read_count();
+            for(size_t i = 0; i < const_count; i ++)
+            {
+                auto name = read_string();
+                rv.m_constants.insert( ::std::make_pair( mv$(name), ::HIR::TraitImpl::ImplEnt< ::HIR::ExprPtr> {
+                    read_bool(), deserialise_exprptr()
+                    } ) );
             }
-            write_count(impl.m_types.size());
-            for(const auto& v : impl.m_types) {
-                DEBUG("type " << v.first);
-                write_string(v.first);
-                write_bool(v.second.is_specialisable);
-                serialise(v.second.data);
+            size_t type_count = read_count();
+            for(size_t i = 0; i < type_count; i ++)
+            {
+                auto name = read_string();
+                rv.m_types.insert( ::std::make_pair( mv$(name), ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> {
+                    read_bool(), deserialise_type()
+                    } ) );
             }
+            
             // m_src_module doesn't matter after typeck
+            TRACE_FUNCTION_F("impl" << rv.m_params.fmt_args() << " ?" << rv.m_trait_args << " for " << rv.m_type);
+            return rv;
         }
-        void serialise_markerimpl(const ::HIR::MarkerImpl& impl)
+        ::HIR::MarkerImpl deserialise_markerimpl()
         {
-            serialise_generics(impl.m_params);
-            serialise_pathparams(impl.m_trait_args);
-            serialise_type(impl.m_type);
+            return ::HIR::MarkerImpl {
+                deserialise_genericparams(),
+                deserialise_pathparams(),
+                read_bool(),
+                deserialise_type()
+                };
         }
         
-        void serialise(const ::HIR::TypeRef& ty) {
-            serialise_type(ty);
+        ::MacroRules deserialise_macrorules()
+        {
+            ::MacroRules    rv;
+            rv.m_exported = true;
+            rv.m_pattern = deserialise_macropatfrag();
+            rv.m_rules = deserialise_vec_c< ::MacroRulesArm>( [&](){ return deserialise_macrorulesarm(); });
+            return rv;
         }
-        void serialise(const ::HIR::SimplePath& p) {
-            serialise_simplepath(p);
+        ::MacroRulesPatFrag deserialise_macropatfrag() {
+            ::MacroRulesPatFrag rv;
+            rv.m_pats_ents = deserialise_vec_c< ::MacroPatEnt>([&](){ return deserialise_macropatent(); });
+            rv.m_pattern_end = read_count();
+            rv.m_next_frags = deserialise_vec_c< ::MacroRulesPatFrag>([&](){ return deserialise_macropatfrag(); });
+            return rv;
         }
-        void serialise(const ::HIR::TraitPath& p) {
-            serialise_traitpath(p);
+        ::MacroPatEnt deserialise_macropatent() {
+            ::MacroPatEnt   rv { read_string(), static_cast<unsigned int>(read_count()), static_cast< ::MacroPatEnt::Type>(read_tag()) };
+            switch(rv.type)
+            {
+            case ::MacroPatEnt::PAT_TOKEN:
+                rv.tok = deserialise_token();
+                break;
+            case ::MacroPatEnt::PAT_LOOP:
+                rv.subpats = deserialise_vec_c< ::MacroPatEnt>([&](){ return deserialise_macropatent(); });
+                break;
+            case ::MacroPatEnt::PAT_TT: // :tt
+            case ::MacroPatEnt::PAT_PAT:    // :pat
+            case ::MacroPatEnt::PAT_IDENT:
+            case ::MacroPatEnt::PAT_PATH:
+            case ::MacroPatEnt::PAT_TYPE:
+            case ::MacroPatEnt::PAT_EXPR:
+            case ::MacroPatEnt::PAT_STMT:
+            case ::MacroPatEnt::PAT_BLOCK:
+            case ::MacroPatEnt::PAT_META:
+                break;
+            default:
+                throw "";
+            }
+            return rv;
         }
-        void serialise(const ::std::string& v) {
-            write_string(v);
+        ::MacroRulesArm deserialise_macrorulesarm() {
+            ::MacroRulesArm rv;
+            rv.m_param_names = deserialise_vec< ::std::string>();
+            rv.m_contents = deserialise_vec_c< ::MacroExpansionEnt>( [&](){ return deserialise_macroexpansionent(); } );
+            return rv;
+        }
+        ::MacroExpansionEnt deserialise_macroexpansionent() {
+            switch(read_tag())
+            {
+            case 0:
+                return ::MacroExpansionEnt( deserialise_token() );
+            case 1: {
+                unsigned int v = static_cast<unsigned int>(read_u8()) << 24;
+                return ::MacroExpansionEnt( v | read_count() );
+                }
+            case 2: {
+                auto entries = deserialise_vec_c< ::MacroExpansionEnt>( [&](){ return deserialise_macroexpansionent(); } );
+                auto joiner = deserialise_token();
+                ::std::set<unsigned int>    variables;
+                size_t n = read_count();
+                while(n--)
+                    variables.insert( static_cast<unsigned int>(read_count()) );
+                return ::MacroExpansionEnt::make_Loop({
+                    mv$(entries), mv$(joiner), mv$(variables)
+                    });
+                }
+            default:
+                throw "";
+            }
+        }
+        
+        ::Token deserialise_token() {
+            ::Token tok;
+            // HACK: Hand off to old serialiser code
+            auto s = read_string();
+            ::std::stringstream tmp(s);
+            {
+                Deserialiser_TextTree ser(tmp);
+                tok.deserialise( ser );
+            }
+            return tok;
         }
 
-        void serialise(const ::MacroRules& mac)
-        {
-            //m_exported: IGNORE, should be set
-            serialise(mac.m_pattern);
-            serialise_vec(mac.m_rules);
-        }
-        void serialise(const ::MacroRulesPatFrag& pat) {
-            serialise_vec(pat.m_pats_ents);
-            write_count(pat.m_pattern_end);
-            serialise_vec(pat.m_next_frags);
-        }
-        void serialise(const ::MacroPatEnt& pe) {
-            write_string(pe.name);
-            write_count(pe.name_index);
-            serialise(pe.tok);
-            serialise_vec(pe.subpats);
-            write_tag( static_cast<int>(pe.type) );
-        }
-        void serialise(const ::MacroRulesArm& arm) {
-            serialise_vec(arm.m_param_names);
-            serialise_vec(arm.m_contents);
-        }
-        void serialise(const ::MacroExpansionEnt& ent) {
-            TU_MATCHA( (ent), (e),
-            (Token,
-                write_tag(0);
-                serialise(e);
-                ),
-            (NamedValue,
-                write_tag(1);
-                write_u8(e >> 24);
-                write_count(e & 0x00FFFFFF);
-                ),
-            (Loop,
-                write_tag(2);
-                serialise_vec(e.entries);
-                serialise(e.joiner);
-                // ::std::set<unsigned int>
-                write_count(e.variables.size());
-                for(const auto& var : e.variables)
-                    write_count(var);
-                )
-            )
-        }
-        void serialise(const ::Token& tok) {
-            // HACK: Hand off to old serialiser code
-            ::std::stringstream tmp;
-            {
-                Serialiser_TextTree ser(tmp);
-                tok.serialise( ser );
-            }
-            
-            write_string(tmp.str());
-        }
-        
-        #endif
         ::HIR::Literal deserialise_literal();
         
         ::HIR::ExprPtr deserialise_exprptr()
@@ -328,191 +367,113 @@ namespace {
             }
             return rv;
         }
-        ::MIR::FunctionPointer deserialise_mir()
+        ::MIR::FunctionPointer deserialise_mir();
+        ::MIR::BasicBlock deserialise_mir_basicblock();
+        ::MIR::Statement deserialise_mir_statement();
+        ::MIR::Terminator deserialise_mir_terminator();
+        
+        ::MIR::LValue deserialise_mir_lvalue()
         {
-            ::MIR::Function rv;
-            rv.named_variables = deserialise_vec< ::HIR::TypeRef>( );
-            rv.temporaries = deserialise_vec< ::HIR::TypeRef>( );
-            //rv.blocks = deserialise_vec< ::MIR::BasicBlock>( );
-            return ::MIR::FunctionPointer( new ::MIR::Function(mv$(rv)) );
+            switch( read_tag() )
+            {
+            #define _(x, ...)    case ::MIR::LValue::TAG_##x: return ::MIR::LValue::make_##x( __VA_ARGS__ );
+            _(Variable,  static_cast<unsigned int>(read_count()) )
+            _(Temporary, { static_cast<unsigned int>(read_count()) } )
+            _(Argument,  { static_cast<unsigned int>(read_count()) } )
+            _(Static,  deserialise_path() )
+            _(Return, {})
+            _(Field, {
+                box$( deserialise_mir_lvalue() ),
+                static_cast<unsigned int>(read_count())
+                } )
+            _(Deref, { box$( deserialise_mir_lvalue() ) })
+            _(Index, {
+                box$( deserialise_mir_lvalue() ),
+                box$( deserialise_mir_lvalue() )
+                } )
+            _(Downcast, {
+                box$( deserialise_mir_lvalue() ),
+                static_cast<unsigned int>(read_count())
+                } )
+            #undef _
+            default:
+                throw "";
+            }
         }
-        #if 0
-        void serialise(const ::MIR::BasicBlock& block)
+        ::MIR::RValue deserialise_mir_rvalue()
         {
-            serialise_vec( block.statements );
-            serialise(block.terminator);
+            switch( read_tag() )
+            {
+            #define _(x, ...)    case ::MIR::RValue::TAG_##x: return ::MIR::RValue::make_##x( __VA_ARGS__ );
+            _(Use, deserialise_mir_lvalue() )
+            _(Constant, deserialise_mir_constant() )
+            _(SizedArray, {
+                deserialise_mir_lvalue(),
+                static_cast<unsigned int>(read_u64c())
+                })
+            _(Borrow, {
+                0, // TODO: Region?
+                static_cast< ::HIR::BorrowType>( read_tag() ),
+                deserialise_mir_lvalue()
+                })
+            _(Cast, {
+                deserialise_mir_lvalue(),
+                deserialise_type()
+                })
+            _(BinOp, {
+                deserialise_mir_lvalue(),
+                static_cast< ::MIR::eBinOp>( read_tag() ),
+                deserialise_mir_lvalue()
+                })
+            _(UniOp, {
+                deserialise_mir_lvalue(),
+                static_cast< ::MIR::eUniOp>( read_tag() )
+                })
+            _(DstMeta, {
+                deserialise_mir_lvalue()
+                })
+            _(MakeDst, {
+                deserialise_mir_lvalue(),
+                deserialise_mir_lvalue()
+                })
+            _(Tuple, {
+                deserialise_vec_c< ::MIR::LValue>([&](){ return deserialise_mir_lvalue(); })
+                })
+            _(Array, {
+                deserialise_vec_c< ::MIR::LValue>([&](){ return deserialise_mir_lvalue(); })
+                })
+            _(Struct, {
+                deserialise_genericpath(),
+                deserialise_vec_c< ::MIR::LValue>([&](){ return deserialise_mir_lvalue(); })
+                })
+            #undef _
+            default:
+                throw "";
+            }
         }
-        void serialise(const ::MIR::Statement& stmt)
+        ::MIR::Constant deserialise_mir_constant()
         {
-            TU_MATCHA( (stmt), (e),
-            (Assign,
-                write_tag(0);
-                serialise(e.dst);
-                serialise(e.src);
-                ),
-            (Drop,
-                write_tag(1);
-                assert(e.kind == ::MIR::eDropKind::DEEP);
-                serialise(e.slot);
-                )
-            )
+            switch( read_tag() )
+            {
+            #define _(x, ...)    case ::MIR::Constant::TAG_##x: return ::MIR::Constant::make_##x( __VA_ARGS__ );
+            _(Int, read_i64c())
+            _(Uint, read_u64c())
+            _(Float, read_double())
+            _(Bool, read_bool())
+            case ::MIR::Constant::TAG_Bytes: {
+                ::std::vector<unsigned char>    bytes;
+                bytes.resize( read_count() );
+                m_is.read( reinterpret_cast<char*>(bytes.data()), bytes.size() );
+                return ::MIR::Constant::make_Bytes( mv$(bytes) );
+                }
+            _(StaticString, read_string() )
+            _(Const,  { deserialise_path() } )
+            _(ItemAddr, deserialise_path() )
+            #undef _
+            default:
+                throw "";
+            }
         }
-        void serialise(const ::MIR::Terminator& term)
-        {
-            write_tag( static_cast<int>(term.tag()) );
-            TU_MATCHA( (term), (e),
-            (Incomplete,
-                // NOTE: loops that diverge (don't break) leave a dangling bb
-                //assert(!"Entountered Incomplete MIR block");
-                ),
-            (Return,
-                ),
-            (Diverge,
-                ),
-            (Goto,
-                write_count(e);
-                ),
-            (Panic,
-                write_count(e.dst);
-                ),
-            (If,
-                serialise(e.cond);
-                write_count(e.bb0);
-                write_count(e.bb1);
-                ),
-            (Switch,
-                serialise(e.val);
-                write_count(e.targets.size());
-                for(auto t : e.targets)
-                    write_count(t);
-                ),
-            (Call,
-                write_count(e.ret_block);
-                write_count(e.panic_block);
-                serialise(e.ret_val);
-                serialise(e.fcn_val);
-                serialise_vec(e.args);
-                )
-            )
-        }
-        void serialise(const ::MIR::LValue& lv)
-        {
-            write_tag( static_cast<int>(lv.tag()) );
-            TU_MATCHA( (lv), (e),
-            (Variable,
-                write_count(e);
-                ),
-            (Temporary,
-                write_count(e.idx);
-                ),
-            (Argument,
-                write_count(e.idx);
-                ),
-            (Static,
-                serialise_path(e);
-                ),
-            (Return,
-                ),
-            (Field,
-                serialise(e.val);
-                write_count(e.field_index);
-                ),
-            (Deref,
-                serialise(e.val);
-                ),
-            (Index,
-                serialise(e.val);
-                serialise(e.idx);
-                ),
-            (Downcast,
-                serialise(e.val);
-                write_count(e.variant_index);
-                )
-            )
-        }
-        void serialise(const ::MIR::RValue& val)
-        {
-            write_tag( val.tag() );
-            TU_MATCHA( (val), (e),
-            (Use,
-                serialise(e);
-                ),
-            (Constant,
-                serialise(e);
-                ),
-            (SizedArray,
-                serialise(e.val);
-                write_u64c(e.count);
-                ),
-            (Borrow,
-                // TODO: Region?
-                write_tag( static_cast<int>(e.type) );
-                serialise(e.val);
-                ),
-            (Cast,
-                serialise(e.val);
-                serialise(e.type);
-                ),
-            (BinOp,
-                serialise(e.val_l);
-                write_tag( static_cast<int>(e.op) );
-                serialise(e.val_r);
-                ),
-            (UniOp,
-                serialise(e.val);
-                write_tag( static_cast<int>(e.op) );
-                ),
-            (DstMeta,
-                serialise(e.val);
-                ),
-            (MakeDst,
-                serialise(e.ptr_val);
-                serialise(e.meta_val);
-                ),
-            (Tuple,
-                serialise_vec(e.vals);
-                ),
-            (Array,
-                serialise_vec(e.vals);
-                ),
-            (Struct,
-                serialise_genericpath(e.path);
-                serialise_vec(e.vals);
-                )
-            )
-        }
-        void serialise(const ::MIR::Constant& v)
-        {
-            write_tag(v.tag());
-            TU_MATCHA( (v), (e),
-            (Int,
-                write_i64c(e);
-                ),
-            (Uint,
-                write_u64c(e);
-                ),
-            (Float,
-                write_double(e);
-                ),
-            (Bool,
-                write_bool(e);
-                ),
-            (Bytes,
-                write_count(e.size());
-                m_os.write( reinterpret_cast<const char*>(e.data()), e.size() );
-                ),
-            (StaticString,
-                write_string(e);
-                ),
-            (Const,
-                serialise_path(e.p);
-                ),
-            (ItemAddr,
-                serialise_path(e);
-                )
-            )
-        }
-        #endif
         
         ::HIR::TypeItem deserialise_typeitem()
         {
@@ -656,6 +617,7 @@ namespace {
         return d.deserialise_visent<T>(); )
     
     template<> DEF_D( ::HIR::TypeRef, return d.deserialise_type(); )
+    template<> DEF_D( ::HIR::SimplePath, return d.deserialise_simplepath(); )
     template<> DEF_D( ::HIR::GenericPath, return d.deserialise_genericpath(); )
     template<> DEF_D( ::HIR::TraitPath, return d.deserialise_traitpath(); )
     
@@ -670,6 +632,12 @@ namespace {
     
     template<> DEF_D( ::HIR::AssociatedType, return d.deserialise_associatedtype(); )
     template<> DEF_D( ::HIR::TraitValueItem, return d.deserialise_traitvalueitem(); )
+    
+    template<> DEF_D( ::MIR::LValue, return d.deserialise_mir_lvalue(); )
+    template<> DEF_D( ::MIR::Statement, return d.deserialise_mir_statement(); )
+    
+    template<> DEF_D( ::HIR::TypeImpl, return d.deserialise_typeimpl(); )
+    template<> DEF_D( ::MacroRules, return d.deserialise_macrorules(); )
     
     ::HIR::TypeRef HirDeserialiser::deserialise_type()
     {
@@ -896,6 +864,71 @@ namespace {
         }
     }
     
+    ::MIR::FunctionPointer HirDeserialiser::deserialise_mir()
+    {
+        ::MIR::Function rv;
+        rv.named_variables = deserialise_vec< ::HIR::TypeRef>( );
+        rv.temporaries = deserialise_vec< ::HIR::TypeRef>( );
+        //rv.blocks = deserialise_vec< ::MIR::BasicBlock>( );
+        return ::MIR::FunctionPointer( new ::MIR::Function(mv$(rv)) );
+    }
+    ::MIR::BasicBlock HirDeserialiser::deserialise_mir_basicblock()
+    {
+        return ::MIR::BasicBlock {
+            deserialise_vec< ::MIR::Statement>(),
+            deserialise_mir_terminator()
+            };
+    }
+    ::MIR::Statement HirDeserialiser::deserialise_mir_statement()
+    {
+        switch( read_tag() )
+        {
+        case 0:
+            return ::MIR::Statement::make_Assign({
+                deserialise_mir_lvalue(),
+                deserialise_mir_rvalue()
+                });
+        case 1:
+            return ::MIR::Statement::make_Drop({
+                ::MIR::eDropKind::DEEP,
+                deserialise_mir_lvalue()
+                });
+        default:
+            throw "";
+        }
+    }
+    ::MIR::Terminator HirDeserialiser::deserialise_mir_terminator()
+    {
+        switch( read_tag() )
+        {
+        #define _(x, ...)    case ::MIR::Terminator::TAG_##x: return ::MIR::Terminator::make_##x( __VA_ARGS__ );
+        _(Incomplete, {})
+        _(Return, {})
+        _(Diverge, {})
+        _(Goto,  static_cast<unsigned int>(read_count()) )
+        _(Panic, { static_cast<unsigned int>(read_count()) })
+        _(If, {
+            deserialise_mir_lvalue(),
+            static_cast<unsigned int>(read_count()),
+            static_cast<unsigned int>(read_count())
+            })
+        _(Switch, {
+            deserialise_mir_lvalue(),
+            deserialise_vec_c<unsigned int>([&](){ return read_count(); })
+            })
+        _(Call, {
+            static_cast<unsigned int>(read_count()),
+            static_cast<unsigned int>(read_count()),
+            deserialise_mir_lvalue(),
+            deserialise_mir_lvalue(),
+            deserialise_vec< ::MIR::LValue>()
+            })
+        #undef _
+        default:
+            throw "";
+        }
+    }
+    
     ::HIR::Module HirDeserialiser::deserialise_module()
     {
         TRACE_FUNCTION;
@@ -914,23 +947,28 @@ namespace {
         
         rv.m_root_module = deserialise_module();
         
-        //write_count(crate.m_type_impls.size());
-        //for(const auto& impl : crate.m_type_impls) {
-        //    serialise_typeimpl(impl);
-        //}
-        //write_count(crate.m_trait_impls.size());
-        //for(const auto& tr_impl : crate.m_trait_impls) {
-        //    serialise_simplepath(tr_impl.first);
-        //    serialise_traitimpl(tr_impl.second);
-        //}
-        //write_count(crate.m_marker_impls.size());
-        //for(const auto& tr_impl : crate.m_marker_impls) {
-        //    serialise_simplepath(tr_impl.first);
-        //    serialise_markerimpl(tr_impl.second);
-        //}
-        //
-        //serialise_strmap(crate.m_exported_macros);
-        //serialise_strmap(crate.m_lang_items);
+        rv.m_type_impls = deserialise_vec< ::HIR::TypeImpl>();
+        
+        {
+            size_t n = read_count();
+            for(size_t i = 0; i < n; i ++)
+            {
+                auto p = deserialise_simplepath();
+                rv.m_trait_impls.insert( ::std::make_pair( mv$(p), deserialise_traitimpl() ) );
+            }
+        }
+        {
+            size_t n = read_count();
+            for(size_t i = 0; i < n; i ++)
+            {
+                auto p = deserialise_simplepath();
+                rv.m_marker_impls.insert( ::std::make_pair( mv$(p), deserialise_markerimpl() ) );
+            }
+        }
+        
+        rv.m_exported_macros = deserialise_strumap< ::MacroRules>();
+        rv.m_lang_items = deserialise_strumap< ::HIR::SimplePath>();
+        
         return rv;
     }
 }

@@ -377,6 +377,7 @@ namespace {
         {
             serialise_generics(impl.m_params);
             serialise_pathparams(impl.m_trait_args);
+            write_bool(impl.is_positive);
             serialise_type(impl.m_type);
         }
         
