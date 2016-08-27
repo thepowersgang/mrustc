@@ -293,7 +293,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         }
     }
 
-    if( mod.path().nodes().back().name()[0] == '#' ) {
+    if( mod.path().nodes().size() > 0 && mod.path().nodes().back().name()[0] == '#' ) {
         assert( parent_modules.size() > 0 );
         return Resolve_Use_GetBinding_Mod(span, crate, *parent_modules.back(), des_item_name, parent_modules.subslice(0, parent_modules.size()-1));
     }
