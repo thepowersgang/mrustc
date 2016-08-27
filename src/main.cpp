@@ -285,6 +285,11 @@ int main(int argc, char *argv[])
         //    MIR_Dump( os, *hir_crate );
         //    });
         
+        // TODO: Pass to mark items that are
+        // - Signature Exportable (public)
+        // - MIR Exportable (public generic, #[inline], or used by a either of those)
+        // - Require codegen (public or used by an exported function)
+        
         // Generate code for non-generic public items (if requested)
         switch( crate_type )
         {
