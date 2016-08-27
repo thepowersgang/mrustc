@@ -56,8 +56,9 @@ public:
 /// Representation of an imported crate
 class ExternCrate
 {
-    ::HIR::CratePtr m_hir;
 public:
+    ::HIR::CratePtr m_hir;
+    
     ExternCrate(const ::std::string& path);
     ExternCrate(const ExternCrate&) = delete;
     ExternCrate(ExternCrate&&) = default;
