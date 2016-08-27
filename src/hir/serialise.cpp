@@ -65,33 +65,12 @@ namespace {
             }
         }
         void write_i64c(int64_t v) {
+            // Convert from 2's completement
             bool sign = (v < 0);
-            if( v == INT64_MIN ) {
-                write_u8(0xFF);
-                write_u64( static_cast<uint64_t>(v) );
-            }
-            else {
-                uint64_t va = (v < 0 ? -v : v);
-                if( va < (1 << 6) ) {
-                    write_u8( (sign ? 0x80 : 0x00) | static_cast<uint8_t>(va) );
-                }
-                else if( va < (1 << (5+16)) ) {
-                    write_u8( 0x80 + (sign ? 0x40 : 0x00) + (va >> 16)); // 0x80 -- 0xB0
-                    write_u8(va >> 8);
-                    write_u8(va);
-                }
-                else if( va < (1ul << (4 + 32)) ) {
-                    write_u8( 0xC0 + (sign ? 0x20 : 0x00) + (va >> 32)); // 0x80 -- 0xB0
-                    write_u8(va >> 24);
-                    write_u8(va >> 16);
-                    write_u8(va >> 8);
-                    write_u8(va);
-                }
-                else {
-                    write_u8(0xFF);
-                    write_u64( static_cast<uint64_t>(v) );
-                }
-            }
+            uint64_t va = (v < 0 ? -v : v);
+            va <<= 1;
+            va |= (sign ? 1 : 0);
+            write_u64c(va);
         }
         void write_double(double v) {
             m_os.write(reinterpret_cast<const char*>(&v), sizeof v);
@@ -120,7 +99,7 @@ namespace {
             }
             else {
                 assert(v.size() < (1u<<(16+7)));
-                write_u16( static_cast<uint8_t>(128 + (v.size() >> 16)) );
+                write_u8( static_cast<uint8_t>(128 + (v.size() >> 16)) );
                 write_u16( static_cast<uint16_t>(v.size() & 0xFFFF) );
             }
             m_os.write(v.data(), v.size());
