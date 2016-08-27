@@ -4,9 +4,8 @@
 #include "ast.hpp"
 #include "../parse/parseerror.hpp"
 #include "../expand/cfg.hpp"
-#include <hir/hir.hpp>  // HIR Crate
-
-#include <serialiser_texttree.hpp>
+#include <hir/hir.hpp>  // HIR::Crate
+#include <hir/main_bindings.hpp>    // HIR_Deserialise
 
 namespace {
     bool check_item_cfg(const ::AST::MetaItems& attrs)
@@ -65,7 +64,7 @@ void Crate::load_extern_crate(const ::std::string& name)
 
 ExternCrate::ExternCrate(const ::std::string& path)
 {
-    throw ParseError::Todo( FMT("Load extern crate from a file - '" << path << "'") );
+    m_hir = HIR_Deserialise(path);
 }
 
 const MacroRules* ExternCrate::find_macro_rules(const ::std::string& name)

@@ -299,7 +299,8 @@ int main(int argc, char *argv[])
         case ::AST::Crate::Type::RustLib:
             // Save a loadable HIR dump
             CompilePhaseV("HIR Serialise", [&]() {
-                HIR_Serialise(params.outfile + ".meta", *hir_crate);
+                //HIR_Serialise(params.outfile + ".meta", *hir_crate);
+                HIR_Serialise(params.outfile, *hir_crate);
                 });
             // Generate a .o
             //HIR_Codegen(params.outfile + ".o", *hir_crate);
