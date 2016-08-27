@@ -89,6 +89,11 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "panic_bounds_check" ) { }
     else if( name == "panic_fmt" ) { }
     else if( name == "str_eq" ) { }
+    // - builtin `box` support
+    else if( name == "exchange_malloc" ) { }
+    else if( name == "exchange_free" ) { }
+    else if( name == "box_free" ) { }
+    else if( name == "owned_box" ) { }
     
     else {
         ERROR(sp, E0000, "Unknown language item '" << name << "'");
