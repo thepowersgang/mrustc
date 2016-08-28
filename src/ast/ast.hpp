@@ -424,8 +424,8 @@ struct UseStmt
     ::AST::Path path;
     ::AST::MetaItems    attrs;
     
-    UseStmt(UseStmt&&) = default;
-    UseStmt(){}
+    UseStmt()
+    {}
     UseStmt(Span sp, Path p):
         sp(sp),
         path(p)

@@ -18,6 +18,7 @@ struct NamedNS
     {}
     NamedNS(NamedNS&&) = default;
     NamedNS(const NamedNS&) = default;
+    NamedNS& operator=(NamedNS&&) = default;
     NamedNS(::std::string name, T data, bool is_pub):
         name( ::std::move(name) ),
         data( ::std::move(data) ),
@@ -39,6 +40,7 @@ struct Named:
     {}
     Named(Named&&) = default;
     Named(const Named&) = default;
+    Named& operator=(Named&&) = default;
     Named(::std::string name, T data, bool is_pub):
         NamedNS<T>( ::std::move(name), ::std::move(data), is_pub )
     {}

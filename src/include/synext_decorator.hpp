@@ -21,6 +21,7 @@ namespace AST {
     
     class Module;
     class Item;
+    class UseStmt;
     
     class Expr;
     class ExprNode;
@@ -47,6 +48,7 @@ public:
     
     virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const { unexpected(sp, mi, "crate"); }
     virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, AST::MacroInvocation& mac) const { unexpected(sp, mi, "macro invocation"); }
+    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, AST::UseStmt& use) const { unexpected(sp, mi, "use statement"); }
     virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const { unexpected(sp, mi, "item"); }
     // NOTE: To delete, set the type to `_`
     virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const { unexpected(sp, mi, "impl"); }

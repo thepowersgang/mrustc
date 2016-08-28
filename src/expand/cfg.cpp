@@ -117,6 +117,15 @@ class CCfgHandler:
             mac.clear();
         }
     }
+    void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, AST::UseStmt& use) const override {
+        DEBUG("#[cfg] use - " << mi);
+        if( check_cfg(sp, mi) ) {
+            // Leave as is
+        }
+        else {
+            use.path = AST::Path();
+        }
+    }
     void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
         DEBUG("#[cfg] item - " << mi);
         if( check_cfg(sp, mi) ) {

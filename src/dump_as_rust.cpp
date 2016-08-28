@@ -561,6 +561,9 @@ void RustPrinter::handle_module(const AST::Module& mod)
         //    m_os << "\n";
         //    need_nl = false;
         //}
+        if( i.data.path == AST::Path() ) {
+            continue ;
+        }
         m_os << indent() << (i.is_pub ? "pub " : "") << "use " << i.data;
         if( i.name == "" )
         {
