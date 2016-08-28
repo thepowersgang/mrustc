@@ -68,7 +68,7 @@ void _add_item_value(const Span& sp, AST::Module& mod, const ::std::string& name
     _add_item(sp, mod, IndexName::Value, name, is_pub, mv$(ir), error_on_collision);
 }
 
-void Resolve_Index_Module_Base(AST::Module& mod)
+void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
 {
     TRACE_FUNCTION_F("mod = " << mod.path());
     for( const auto& i : mod.items() )
@@ -87,9 +87,8 @@ void Resolve_Index_Module_Base(AST::Module& mod)
             _add_item(i.data.span, mod, IndexName::Namespace, i.name, i.is_pub,  mv$(p));
             ),
         (Crate,
-            TODO(i.data.span, "Crate in Resolve_Index_Module");
-            //p.bind( ::AST::PathBinding::make_Crate(e) );
-            //_add_item(i.data.span, mod, IndexName::Namespace, i.name, i.is_pub,  mv$(p));
+            p.bind( ::AST::PathBinding::make_Crate({ &crate.m_extern_crates.at(e.name) }) );
+            _add_item(i.data.span, mod, IndexName::Namespace, i.name, i.is_pub,  mv$(p));
             ),
         (Enum,
             p.bind( ::AST::PathBinding::make_Enum({&e}) );
@@ -151,15 +150,15 @@ void Resolve_Index_Module_Base(AST::Module& mod)
             
             (Crate ,  _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path); ),
             (Module,  _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path); ),
-            //(Crate,   _add_item_type(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path); ),
             (Enum,    _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path); ),
             (Trait,   _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path); ),
             (TypeAlias, _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path); ),
             
             (Struct,
                 _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path);
+                // TODO: Items from extern crates don't populate e.struct_ correctly
                 // - If the struct is a tuple-like struct, it presents in the value namespace
-                if( e.struct_->m_data.is_Tuple() ) {
+                if( e.struct_ && e.struct_->m_data.is_Tuple() ) {
                     _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path);
                 }
                 ),
@@ -186,13 +185,13 @@ void Resolve_Index_Module_Base(AST::Module& mod)
         (
             ),
         (Module,
-            Resolve_Index_Module_Base(e);
+            Resolve_Index_Module_Base(crate, e);
             )
         )
     }
     for(auto& mp : mod.anon_mods())
     {
-        Resolve_Index_Module_Base(*mp);
+        Resolve_Index_Module_Base(crate, *mp);
     }
 }
 
@@ -338,6 +337,9 @@ void Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
                 (Module,
                     mod = e.module_;
                     ),
+                (Crate,
+                    TODO(sp, "Handle extern crate");
+                    ),
                 (Enum,
                     // NOTE: Just assuming that if an Enum is hit, it's sane
                     return ;
@@ -371,7 +373,7 @@ void Resolve_Index_Module_Normalise(const ::AST::Crate& crate, const Span& mod_s
 void Resolve_Index(AST::Crate& crate)
 {
     // - Index all explicitly named items
-    Resolve_Index_Module_Base(crate.m_root_module);
+    Resolve_Index_Module_Base(crate, crate.m_root_module);
     // - Add all public glob imported items - `pub use module::*`
     Resolve_Index_Module_Wildcard(crate.m_root_module, true);
     // - Add all private glob imported items
