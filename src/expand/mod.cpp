@@ -883,7 +883,7 @@ void Expand(::AST::Crate& crate)
         break;
     case ::AST::Crate::LOAD_CORE:
         if( crate.m_prelude_path == AST::Path() )
-            crate.m_prelude_path = AST::Path("core", {AST::PathNode("prelude")});
+            crate.m_prelude_path = AST::Path("core", {AST::PathNode("prelude"), AST::PathNode("v1")});
         crate.load_extern_crate("core");
         crate.m_extern_crates.at("core").with_all_macros([&](const auto& name, const auto& mac) {
             crate.m_root_module.add_macro_import( name, mac );

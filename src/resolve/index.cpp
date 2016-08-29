@@ -234,7 +234,43 @@ void Resolve_Index_Module_Wildcard(AST::Module& mod, bool handle_pub)
                 if( !e.module_ )
                 {
                     ASSERT_BUG(sp, e.hir, "Glob import but module pointer not set - " << i.data.path);
-                    TODO(sp, "Glob import from HIR module - " << i.data.path);
+                    const auto& hmod = *e.hir;
+                    struct H {
+                        static AST::Path hir_to_ast(const HIR::SimplePath& p) {
+                            //assert( p.m_crate_name != "" );
+                            AST::Path   rv( p.m_crate_name, {} );
+                            rv.nodes().reserve( p.m_components.size() );
+                            for(const auto& n : p.m_components)
+                                rv.nodes().push_back( AST::PathNode(n) );
+                            return rv;
+                        }
+                    };
+                    for(const auto& it : hmod.m_mod_items) {
+                        const auto& ve = *it.second;
+                        if( ve.is_public ) {
+                            AST::Path   p;
+                            if( ve.ent.is_Import() ) {
+                                p = H::hir_to_ast( ve.ent.as_Import() );
+                            }
+                            else {
+                                p = i.data.path + it.first;
+                            }
+                            _add_item_type( sp, mod, it.first, i.is_pub, mv$(p), false );
+                        }
+                    }
+                    for(const auto& it : hmod.m_value_items) {
+                        const auto& ve = *it.second;
+                        if( ve.is_public ) {
+                            AST::Path   p;
+                            if( ve.ent.is_Import() ) {
+                                p = H::hir_to_ast( ve.ent.as_Import() );
+                            }
+                            else {
+                                p = i.data.path + it.first;
+                            }
+                            _add_item_value( sp, mod, it.first, i.is_pub, mv$(p), false );
+                        }
+                    }
                 }
                 else
                 {
@@ -305,7 +341,10 @@ void Resolve_Index_Module_Wildcard(AST::Module& mod, bool handle_pub)
 void Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& sp, ::AST::Path& path)
 {
     const auto& info = path.m_class.as_Absolute();
-    if( info.crate != "" )  TODO(sp, "Resolve_Index_Module_Normalise_Path - Crates");
+    if( info.crate != "" )
+    {
+        TODO(sp, "Resolve_Index_Module_Normalise_Path - Paths referring to extern crates - " << path);
+    }
     
     const ::AST::Module* mod = &crate.m_root_module;
     for( unsigned int i = 0; i < info.nodes.size() - 1; i ++ )
