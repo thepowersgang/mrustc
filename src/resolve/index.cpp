@@ -233,11 +233,12 @@ void Resolve_Index_Module_Wildcard(AST::Module& mod, bool handle_pub)
                 DEBUG("Glob mod " << i.data.path);
                 if( !e.module_ )
                 {
-                    ASSERT_BUG(sp, e.hir, "Glob import but module pointer not set - " << i.data.path);
+                    ASSERT_BUG(sp, e.hir, "Glob import where HIR module pointer not set - " << i.data.path);
                     const auto& hmod = *e.hir;
                     struct H {
                         static AST::Path hir_to_ast(const HIR::SimplePath& p) {
-                            //assert( p.m_crate_name != "" );
+                            // The crate name here has to be non-empty, because it's external.
+                            assert( p.m_crate_name != "" );
                             AST::Path   rv( p.m_crate_name, {} );
                             rv.nodes().reserve( p.m_components.size() );
                             for(const auto& n : p.m_components)
