@@ -352,7 +352,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                     TODO(span, "Recurse to get binding for an import");
                     ),
                 (Module,
-                    return ::AST::PathBinding::make_Module({nullptr});
+                    return ::AST::PathBinding::make_Module({nullptr, &e});
                     ),
                 (TypeAlias,
                     return ::AST::PathBinding::make_TypeAlias({nullptr});

@@ -903,35 +903,59 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
             // TODO: If this is a primitive name, and the next component isn't found in the located module, force to be the type
             if( ! p.m_class.is_Local() && coretype_fromstring(e.nodes[0].name()) != CORETYPE_INVAL ) {
                 TU_IFLET( ::AST::PathBinding, p.binding(), Module, pe,
-                    if( !pe.module_ ) {
-                        TODO(sp, "Check " << p << " for an item named " << e.nodes[1].name() << " (ext mod)");
-                    }
-                    const auto& mod = *pe.module_;
-                    const auto& name = e.nodes[1].name();
                     bool found = false;
-                    switch( e.nodes.size() == 2 ? mode : Context::LookupMode::Namespace )
+                    const auto& name = e.nodes[1].name();
+                    if( !pe.module_ ) {
+                        assert( pe.hir );
+                        const auto& mod = *pe.hir;
+                        
+                        switch( e.nodes.size() == 2 ? mode : Context::LookupMode::Namespace )
+                        {
+                        case Context::LookupMode::Namespace:
+                        case Context::LookupMode::Type:
+                            // TODO: Restrict if ::Type
+                            if( mod.m_mod_items.find(name) != mod.m_mod_items.end() ) {
+                                found = true;
+                            }
+                            break;
+                        case Context::LookupMode::Pattern:
+                            TODO(sp, "Check " << p << " for an item named " << name << " (Pattern)");
+                        case Context::LookupMode::Constant:
+                        case Context::LookupMode::Variable:
+                            if( mod.m_value_items.find(name) != mod.m_value_items.end() ) {
+                                found = true;
+                            }
+                            break;
+                        }
+                    }
+                    else
                     {
-                    case Context::LookupMode::Namespace:
-                        if( mod.m_namespace_items.find(name) != mod.m_namespace_items.end() ) {
-                            found = true;
+                        const auto& mod = *pe.module_;
+                        switch( e.nodes.size() == 2 ? mode : Context::LookupMode::Namespace )
+                        {
+                        case Context::LookupMode::Namespace:
+                            if( mod.m_namespace_items.find(name) != mod.m_namespace_items.end() ) {
+                                found = true;
+                            }
+                        case Context::LookupMode::Type:
+                            if( mod.m_namespace_items.find(name) != mod.m_namespace_items.end() ) {
+                                found = true;
+                            }
+                            break;
+                        case Context::LookupMode::Pattern:
+                            TODO(sp, "Check " << p << " for an item named " << name << " (Pattern)");
+                        case Context::LookupMode::Constant:
+                        case Context::LookupMode::Variable:
+                            if( mod.m_value_items.find(name) != mod.m_value_items.end() ) {
+                                found = true;
+                            }
+                            break;
                         }
-                    case Context::LookupMode::Type:
-                        if( mod.m_namespace_items.find(name) != mod.m_namespace_items.end() ) {
-                            found = true;
-                        }
-                        break;
-                    case Context::LookupMode::Pattern:
-                        TODO(sp, "Check " << p << " for an item named " << e.nodes[1].name() << " (Pattern");
-                    case Context::LookupMode::Constant:
-                    case Context::LookupMode::Variable:
-                        if( mod.m_value_items.find(name) != mod.m_value_items.end() ) {
-                            found = true;
-                        }
-                        break;
                     }
                     if( !found )
                     {
-                        TODO(sp, "Check " << p << " for an item named " << e.nodes[1].name());
+                        //TODO(sp, "Switch back to primitive from " << p << " for " << path);
+                        p = ::AST::Path( ::AST::Path::TagLocal(), e.nodes[0].name() );
                     }
                 )
             }

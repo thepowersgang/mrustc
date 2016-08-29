@@ -16,6 +16,10 @@
 
 class TypeRef;
 
+namespace HIR {
+class Module;
+}   // namespace HIR
+
 namespace AST {
 
 class GenericParams;
@@ -37,6 +41,7 @@ TAGGED_UNION_EX(PathBinding, (), Unbound, (
         }),
     (Module, struct {
         const Module* module_;
+        const ::HIR::Module* hir = nullptr;
         }),
     (Enum,   struct {
         const Enum* enum_;
