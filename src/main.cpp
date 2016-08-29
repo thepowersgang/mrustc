@@ -34,7 +34,9 @@ void init_debug_list()
     g_debug_disable_map.insert( "Parse" );
     g_debug_disable_map.insert( "Expand" );
     
-    g_debug_disable_map.insert( "Resolve" );
+    g_debug_disable_map.insert( "Resolve Use" );
+    g_debug_disable_map.insert( "Resolve Index" );
+    g_debug_disable_map.insert( "Resolve Absolute" );
     
     g_debug_disable_map.insert( "HIR Lower" );
     
@@ -167,13 +169,17 @@ int main(int argc, char *argv[])
         // Resolve names to be absolute names (include references to the relevant struct/global/function)
         // - This does name checking on types and free functions.
         // - Resolves all identifiers/paths to references
-        CompilePhaseV("Resolve", [&]() {
+        CompilePhaseV("Resolve Use", [&]() {
             Resolve_Use(crate); // - Absolutise and resolve use statements
+            });
+        CompilePhaseV("Resolve Index", [&]() {
             Resolve_Index(crate); // - Build up a per-module index of avalable names (faster and simpler later resolve)
+            });
+        CompilePhaseV("Resolve Absolute", [&]() {
             Resolve_Absolutise(crate);  // - Convert all paths to Absolute or UFCS, and resolve variables
             });
         
-        // XXX: Dump crate before typecheck
+        // XXX: Dump crate before HIR
         CompilePhaseV("Temp output - Resolved", [&]() {
             Dump_Rust( FMT(params.outfile << "_1_res.rs").c_str(), crate );
             });
