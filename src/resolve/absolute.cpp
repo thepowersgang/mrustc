@@ -900,7 +900,9 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
             // Look up type/module name
             auto p = context.lookup(sp, e.nodes[0].name(), Context::LookupMode::Namespace);
             DEBUG("Found type/mod - " << p);
-            // TODO: If this is a primitive name, and the next component isn't found in the located module, force to be the type
+            // HACK: If this is a primitive name, and resolved to a module.
+            // - If the next component isn't found in the located module
+            //  > Instead use the type name.
             if( ! p.m_class.is_Local() && coretype_fromstring(e.nodes[0].name()) != CORETYPE_INVAL ) {
                 TU_IFLET( ::AST::PathBinding, p.binding(), Module, pe,
                     bool found = false;
