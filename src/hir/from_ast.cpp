@@ -987,6 +987,8 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
         (Crate,
             // TODO: All 'extern crate' items should be normalised into a list in the crate root
             // - If public, add a namespace import here referring to the root of the imported crate
+            TODO(Span(), "Handle `extern crate` in HIR lower");
+            _add_mod_ns_item( mod, item.name, item.is_pub, ::HIR::TypeItem::make_Import( ::HIR::SimplePath(e.name, {}) ) );
             ),
         (Type,
             _add_mod_ns_item( mod,  item.name, item.is_pub, ::HIR::TypeItem::make_TypeAlias( LowerHIR_TypeAlias(e) ) );
