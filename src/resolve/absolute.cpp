@@ -9,6 +9,7 @@
 #include <ast/crate.hpp>
 #include <ast/ast.hpp>
 #include <main_bindings.hpp>
+#include <hir/hir.hpp>
 
 struct GenericSlot
 {
@@ -589,6 +590,37 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
         // - Methods can't be known until typeck (after the impl map is created)
     }
 }
+
+namespace {
+    AST::Path split_into_ufcs_ty(AST::Path path, unsigned int i /*item_name_idx*/)
+    {
+        const auto& path_abs = path.m_class.as_Absolute();
+        auto type_path = ::AST::Path( path );
+        type_path.m_class.as_Absolute().nodes.resize( i+1 );
+        
+        auto new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(type_path)), ::AST::Path());
+        for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
+            new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
+        
+        return new_path;
+    }
+    AST::Path split_replace_into_ufcs_path(AST::Path path, unsigned int i, const AST::Path& ty_path_tpl)
+    {
+        const auto& path_abs = path.m_class.as_Absolute();
+        const auto& n = path_abs.nodes[i];
+        
+        auto type_path = ::AST::Path(ty_path_tpl);
+        if( ! n.args().is_empty() ) {
+            type_path.nodes().back().args() = mv$(n.args());
+        }
+        auto new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(type_path)), ::AST::Path());
+        for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
+            new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
+        
+        return new_path;
+    }
+}
+
 void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path)
 {
     TRACE_FUNCTION_F("path = " << path);
@@ -596,19 +628,45 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
     
     if( path_abs.crate != "" ) {
         // TODO: Handle items from other crates (back-converting HIR paths)
-        TODO(sp, "Handle binding to items from extern crates");
+        const ::HIR::Module* hmod = &context.m_crate.m_extern_crates.at(path_abs.crate).m_hir->m_root_module;
+        for(unsigned int i = 0; i < path_abs.nodes.size() - 1; i ++ )
+        {
+            const auto& n = path_abs.nodes[i];
+            auto it = hmod->m_mod_items.find(n.name());
+            if( it == hmod->m_mod_items.end() )
+                ERROR(sp, E0000, "Couldn't find path component '" << n.name() << "' of " << path);
+            
+            TU_MATCH(::HIR::TypeItem, (it->second->ent), (e),
+            (Import,
+                TODO(sp, "Bind via extern use - " << path);
+                ),
+            (Module,
+                hmod = &e;
+                ),
+            (Trait,
+                TODO(sp, "Bind via extern trait - " << path);
+                ),
+            (TypeAlias,
+                path = split_into_ufcs_ty(mv$(path), i);
+                return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
+                ),
+            (Struct,
+                path = split_into_ufcs_ty(mv$(path), i);
+                return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
+                ),
+            (Enum,
+                TODO(sp, "Bind via extern enum - " << path);
+                )
+            )
+        }
+        
+        TODO(sp, "Handle binding to items from extern crates - " << path);
     }
     
     const ::AST::Module*    mod = &context.m_crate.m_root_module;
     for(unsigned int i = 0; i < path_abs.nodes.size() - 1; i ++ )
     {
         const auto& n = path_abs.nodes[i];
-        
-        //::AST::Path tmp;
-        //if( ! Context::lookup_in_mod(*mod, e.name(), Context::LookupMode::Namespace,  tmp) ) {
-        //    ERROR(sp, E0000, "Couldn't find path component '" << e.name() << "' of " << path);
-        //}
-        
 
         if( n.name()[0] == '#' ) {
             if( ! n.args().is_empty() ) {
@@ -693,28 +751,12 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                         }
                     }
                     
-                    auto type_path = ::AST::Path(name_ref.path);
-                    if( !n.args().is_empty() ) {
-                        type_path.nodes().back().args() = mv$(n.args());
-                    }
-                    auto new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(type_path)), ::AST::Path());
-                    for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
-                        new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
-                    
-                    path = mv$(new_path);
+                    path = split_replace_into_ufcs_path(mv$(path), i,  name_ref.path);
                     return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 }
                 ),
             (Struct,
-                auto type_path = ::AST::Path(name_ref.path);
-                if( ! n.args().is_empty() ) {
-                    type_path.nodes().back().args() = mv$(n.args());
-                }
-                auto new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(type_path)), ::AST::Path());
-                for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
-                    new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
-                
-                path = mv$(new_path);
+                path = split_replace_into_ufcs_path(mv$(path), i,  name_ref.path);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 ),
             (Module,
