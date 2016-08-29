@@ -59,12 +59,17 @@ void Crate::load_externs()
 }
 void Crate::load_extern_crate(const ::std::string& name)
 {
-    m_extern_crates.insert(::std::make_pair( name, ExternCrate { "output/lib"+name+".hir" } ));
+    m_extern_crates.insert(::std::make_pair( name, ExternCrate { name, "output/lib"+name+".hir" } ));
 }
 
-ExternCrate::ExternCrate(const ::std::string& path)
+ExternCrate::ExternCrate(const ::std::string& name, const ::std::string& path)
 {
     m_hir = HIR_Deserialise(path);
+    
+    // TODO: Do a pass across m_hir that
+    // 1. Loads referenced crates
+    // 2. Updates all absolute paths with the crate name
+    // 3. Updates macros with the crate name
 }
 
 void ExternCrate::with_all_macros(::std::function<void(const ::std::string& , const MacroRules&)> cb) const

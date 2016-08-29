@@ -59,9 +59,12 @@ class ExternCrate
 public:
     ::HIR::CratePtr m_hir;
     
-    ExternCrate(const ::std::string& path);
-    ExternCrate(const ExternCrate&) = delete;
+    ExternCrate(const ::std::string& name, const ::std::string& path);
+    
     ExternCrate(ExternCrate&&) = default;
+    ExternCrate& operator=(ExternCrate&&) = default;
+    ExternCrate(const ExternCrate&) = delete;
+    ExternCrate& operator=(const ExternCrate& ) = delete;
     
     void with_all_macros(::std::function<void(const ::std::string& , const MacroRules&)> cb) const;
     const MacroRules* find_macro_rules(const ::std::string& name) const;
