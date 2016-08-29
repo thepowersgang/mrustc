@@ -339,12 +339,78 @@ void Resolve_Index_Module_Wildcard(AST::Module& mod, bool handle_pub)
 }
 
 
+void Resolve_Index_Module_Normalise_Path_ext(const ::AST::Crate& crate, const Span& sp, ::AST::Path& path,  const ::AST::ExternCrate& ext, unsigned int start)
+{
+    const auto& info = path.m_class.as_Absolute();
+    const ::HIR::Module* hmod = &ext.m_hir->m_root_module;
+
+    // TODO: Mangle path into being absolute into the crate
+    //info.crate = ext.m_name;
+    //do {
+    //    path.nodes().erase( path.nodes().begin() + i );
+    //} while( --i > 0 );
+
+    
+    for(unsigned int i = start; i < info.nodes.size() - 1; i ++)
+    {
+        auto it = hmod->m_mod_items.find( info.nodes[i].name() );
+        if( it == hmod->m_mod_items.end() ) {
+            ERROR(sp, E0000,  "Couldn't find node " << i << " of path " << path);
+        }
+        TU_MATCH_DEF(::HIR::TypeItem, (it->second->ent), (e),
+        (
+            BUG(sp, "Path " << path << " pointed to non-module in component " << i);
+            ),
+        (Enum,
+            if( i != info.nodes.size() - 2 ) {
+                BUG(sp, "Path " << path << " pointed to non-module in component " << i);
+            }
+            // Lazy, not checking
+            return ;
+            ),
+        (Module,
+            hmod = &e;
+            ),
+        //(Crate,
+        //    TODO(sp, "Crates within HIR");
+        //    ),
+        (Import,
+            TODO(sp, "Imports in HIR - Module");
+            )
+        )
+    }
+    const auto& lastnode = info.nodes.back();
+    
+    auto it_m = hmod->m_mod_items.find( lastnode.name() );
+    if( it_m != hmod->m_mod_items.end() )
+    {
+        TU_IFLET( ::HIR::TypeItem, it_m->second->ent, Import, e,
+            TODO(sp, "Imports in HIR - TypeItem");
+        )
+        else {
+            return ;
+        }
+    }
+    auto it_v = hmod->m_value_items.find( lastnode.name() );
+    if( it_v != hmod->m_value_items.end() )
+    {
+        TU_IFLET( ::HIR::ValueItem, it_v->second->ent, Import, e,
+            TODO(sp, "Imports in HIR - ValueItem");
+        )
+        else {
+            return ;
+        }
+    }
+    
+    ERROR(sp, E0000,  "Couldn't find final node of path " << path);
+}
 void Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& sp, ::AST::Path& path)
 {
     const auto& info = path.m_class.as_Absolute();
     if( info.crate != "" )
     {
-        TODO(sp, "Resolve_Index_Module_Normalise_Path - Paths referring to extern crates - " << path);
+        Resolve_Index_Module_Normalise_Path_ext(crate, sp, path,  crate.m_extern_crates.at(info.crate), 0);
+        return ;
     }
     
     const ::AST::Module* mod = &crate.m_root_module;
@@ -369,59 +435,8 @@ void Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
                 mod = e.module_;
                 ),
             (Crate,
-                //const ::HIR::Module* hmod = &crate.m_extern_crates.at( e.name ).m_hir->m_root_module;
-                const ::HIR::Module* hmod = &e.crate_->m_hir->m_root_module;
-                for( i ++ ; i < info.nodes.size() - 1; i ++)
-                {
-                    auto it = hmod->m_mod_items.find( info.nodes[i].name() );
-                    if( it == hmod->m_mod_items.end() ) {
-                        ERROR(sp, E0000,  "Couldn't find node " << i << " of path " << path);
-                    }
-                    TU_MATCH_DEF(::HIR::TypeItem, (it->second->ent), (e),
-                    (
-                        BUG(sp, "Path " << path << " pointed to non-module in component " << i);
-                        ),
-                    (Enum,
-                        if( i != info.nodes.size() - 2 ) {
-                            BUG(sp, "Path " << path << " pointed to non-module in component " << i);
-                        }
-                        // Lazy, not checking
-                        return ;
-                        ),
-                    (Module,
-                        hmod = &e;
-                        ),
-                    //(Crate,
-                    //    TODO(sp, "Crates within HIR");
-                    //    ),
-                    (Import,
-                        TODO(sp, "Imports in HIR - Module");
-                        )
-                    )
-                }
-                
-                auto it_m = hmod->m_mod_items.find( info.nodes[i].name() );
-                if( it_m != hmod->m_mod_items.end() )
-                {
-                    TU_IFLET( ::HIR::TypeItem, it_m->second->ent, Import, e,
-                        TODO(sp, "Imports in HIR - TypeItem");
-                    )
-                    else {
-                        return ;
-                    }
-                }
-                auto it_v = hmod->m_value_items.find( info.nodes[i].name() );
-                if( it_v != hmod->m_value_items.end() )
-                {
-                    TU_IFLET( ::HIR::ValueItem, it_v->second->ent, Import, e,
-                        TODO(sp, "Imports in HIR - ValueItem");
-                    )
-                    else {
-                        return ;
-                    }
-                }
-                
-                ERROR(sp, E0000,  "Couldn't find final node of path " << path);
+                Resolve_Index_Module_Normalise_Path_ext(crate, sp, path, *e.crate_, i+1);
+                return ;
                 ),
             (Enum,
                 // NOTE: Just assuming that if an Enum is hit, it's sane
