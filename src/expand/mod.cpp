@@ -356,10 +356,11 @@ struct CExpandExpr:
         Expand_Pattern(is_early, crate, modstack, this->cur_mod(),  node.m_pattern);
         if(node.m_type == ::AST::ExprNode_Loop::FOR)
         {
-            auto path_Some = ::AST::Path("", {::AST::PathNode("option"), ::AST::PathNode("Option"), ::AST::PathNode("Some")});
-            auto path_None = ::AST::Path("", {::AST::PathNode("option"), ::AST::PathNode("Option"), ::AST::PathNode("None")});
-            auto path_IntoIterator = ::AST::Path("", {::AST::PathNode("iter"), ::AST::PathNode("IntoIterator")});
-            auto path_Iterator = ::AST::Path("", {::AST::PathNode("iter"), ::AST::PathNode("Iterator")});
+            auto core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core");
+            auto path_Some = ::AST::Path(core_crate, {::AST::PathNode("option"), ::AST::PathNode("Option"), ::AST::PathNode("Some")});
+            auto path_None = ::AST::Path(core_crate, {::AST::PathNode("option"), ::AST::PathNode("Option"), ::AST::PathNode("None")});
+            auto path_IntoIterator = ::AST::Path(core_crate, {::AST::PathNode("iter"), ::AST::PathNode("IntoIterator")});
+            auto path_Iterator = ::AST::Path(core_crate, {::AST::PathNode("iter"), ::AST::PathNode("Iterator")});
             // Desugar into:
             // {
             //     match <_ as ::iter::IntoIterator>::into_iter(`m_cond`) {
