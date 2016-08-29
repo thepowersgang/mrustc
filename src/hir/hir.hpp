@@ -315,6 +315,10 @@ public:
     /// Language items avaliable through this crate (includes ones from loaded externs)
     ::std::unordered_map< ::std::string, ::HIR::SimplePath> m_lang_items;
     
+    /// Method called to populate runtime state after deserialisation
+    /// See hir/crate_post_load.cpp
+    void post_load_update(const ::std::string& loaded_name);
+    
     const ::HIR::SimplePath& get_lang_item_path(const Span& sp, const char* name) const;
     
     const ::HIR::TypeItem& get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const;

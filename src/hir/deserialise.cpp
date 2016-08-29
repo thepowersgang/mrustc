@@ -20,10 +20,11 @@ namespace {
     
     class HirDeserialiser
     {
-        
+        const ::std::string& m_crate_name;
         ::std::istream& m_is;
     public:
-        HirDeserialiser(::std::istream& is):
+        HirDeserialiser(const ::std::string& crate_name, ::std::istream& is):
+            m_crate_name( crate_name ),
             m_is(is)
         {}
         
@@ -731,8 +732,12 @@ namespace {
     ::HIR::SimplePath HirDeserialiser::deserialise_simplepath()
     {
         TRACE_FUNCTION;
+        // HACK! If the read crate name is empty, replace it with the name we're loaded with
+        auto crate_name = read_string();
+        if( crate_name == "" )
+            crate_name = m_crate_name;
         return ::HIR::SimplePath {
-            read_string(),
+            mv$(crate_name),
             deserialise_vec< ::std::string>()
             };
     }
@@ -1039,10 +1044,10 @@ namespace {
     }
 }
 
-::HIR::CratePtr HIR_Deserialise(const ::std::string& filename)
+::HIR::CratePtr HIR_Deserialise(const ::std::string& filename, const ::std::string& loaded_name)
 {
     ::std::ifstream in(filename);
-    HirDeserialiser  s { in };
+    HirDeserialiser  s { loaded_name, in };
     
     try
     {

@@ -35,7 +35,7 @@ void init_debug_list()
     g_debug_disable_map.insert( "Expand" );
     
     g_debug_disable_map.insert( "Resolve Use" );
-    g_debug_disable_map.insert( "Resolve Index" );
+    //g_debug_disable_map.insert( "Resolve Index" );
     g_debug_disable_map.insert( "Resolve Absolute" );
     
     g_debug_disable_map.insert( "HIR Lower" );

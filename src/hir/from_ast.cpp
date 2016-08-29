@@ -1236,6 +1236,11 @@ public:
     {
         rv.m_lang_items.insert( ::std::make_pair(lang_item_path.first, LowerHIR_SimplePath(sp, lang_item_path.second)) );
     }
+    // TODO: Populate m_lang_items from loaded crates too
+    for(auto& ext_crate : crate.m_extern_crates)
+    {
+        TODO(sp, "Transfer extern crate - " << ext_crate.first);
+    }
     
     // Set all pointers in the HIR to the correct (now fixed) locations
     IndexVisitor(rv).visit_crate( rv );
