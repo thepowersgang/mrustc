@@ -592,7 +592,7 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
 }
 
 namespace {
-    AST::Path split_into_ufcs_ty(AST::Path path, unsigned int i /*item_name_idx*/)
+    AST::Path split_into_ufcs_ty(const Span& sp, AST::Path path, unsigned int i /*item_name_idx*/)
     {
         const auto& path_abs = path.m_class.as_Absolute();
         auto type_path = ::AST::Path( path );
@@ -604,7 +604,7 @@ namespace {
         
         return new_path;
     }
-    AST::Path split_replace_into_ufcs_path(AST::Path path, unsigned int i, const AST::Path& ty_path_tpl)
+    AST::Path split_replace_into_ufcs_path(const Span& sp, AST::Path path, unsigned int i, const AST::Path& ty_path_tpl)
     {
         const auto& path_abs = path.m_class.as_Absolute();
         const auto& n = path_abs.nodes[i];
@@ -619,17 +619,13 @@ namespace {
         
         return new_path;
     }
-}
-
-void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path)
-{
-    TRACE_FUNCTION_F("path = " << path);
-    const auto& path_abs = path.m_class.as_Absolute();
     
-    if( path_abs.crate != "" ) {
-        // TODO: Handle items from other crates (back-converting HIR paths)
-        const ::HIR::Module* hmod = &context.m_crate.m_extern_crates.at(path_abs.crate).m_hir->m_root_module;
-        for(unsigned int i = 0; i < path_abs.nodes.size() - 1; i ++ )
+    void Resolve_Absolute_Path_BindAbsolute__hir_from(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path, const AST::ExternCrate& crate, unsigned int start)
+    {
+        const auto& path_abs = path.m_class.as_Absolute();
+        
+        const ::HIR::Module* hmod = &crate.m_hir->m_root_module;
+        for(unsigned int i = start; i < path_abs.nodes.size() - 1; i ++ )
         {
             const auto& n = path_abs.nodes[i];
             auto it = hmod->m_mod_items.find(n.name());
@@ -647,11 +643,11 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                 TODO(sp, "Bind via extern trait - " << path);
                 ),
             (TypeAlias,
-                path = split_into_ufcs_ty(mv$(path), i);
+                path = split_into_ufcs_ty(sp, mv$(path), i);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 ),
             (Struct,
-                path = split_into_ufcs_ty(mv$(path), i);
+                path = split_into_ufcs_ty(sp, mv$(path), i);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 ),
             (Enum,
@@ -660,7 +656,81 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
             )
         }
         
-        TODO(sp, "Handle binding to items from extern crates - " << path);
+        const auto& name = path_abs.nodes.back().name();
+        switch(mode)
+        {
+        // TODO: What's the difference?
+        case Context::LookupMode::Namespace:
+        case Context::LookupMode::Type:
+            {
+                auto v = hmod->m_mod_items.find(name);
+                if( v != hmod->m_mod_items.end() ) {
+                    if( v->second->ent.is_Import() ) {
+                        TODO(sp, "Imports in HIR mod items");
+                    }
+                    return ;
+                }
+            }
+            break;
+        
+        case Context::LookupMode::Pattern:
+            {
+                auto v = hmod->m_mod_items.find(name);
+                if( v != hmod->m_mod_items.end() ) {
+                    if( v->second->ent.is_Import() ) {
+                        TODO(sp, "Imports in HIR mod items");
+                    }
+                    TU_MATCH_DEF(::HIR::TypeItem, (v->second->ent), (e),
+                    (
+                        ),
+                    (Struct,
+                        return ;
+                        )
+                    )
+                }
+            }
+            {
+                auto v = hmod->m_value_items.find(name);
+                if( v != hmod->m_value_items.end() ) {
+                    if( v->second->ent.is_Import() ) {
+                        TODO(sp, "Imports in HIR mod items");
+                    }
+                    TU_MATCH_DEF(::HIR::ValueItem, (v->second->ent), (e),
+                    (
+                        ),
+                    (Constant,
+                        return ;
+                        )
+                    )
+                }
+            }
+            break;
+        case Context::LookupMode::Constant:
+        case Context::LookupMode::Variable:
+            {
+                auto v = hmod->m_value_items.find(name);
+                if( v != hmod->m_value_items.end() ) {
+                    if( v->second->ent.is_Import() ) {
+                        TODO(sp, "Imports in HIR mod items");
+                    }
+                    return ;
+                }
+            }
+            break;
+        }
+        ERROR(sp, E0000, "Couldn't find path component '" << path_abs.nodes.back().name() << "' of " << path);
+    }
+}
+
+void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path)
+{
+    TRACE_FUNCTION_F("path = " << path);
+    const auto& path_abs = path.m_class.as_Absolute();
+    
+    if( path_abs.crate != "" ) {
+        // TODO: Handle items from other crates (back-converting HIR paths)
+        Resolve_Absolute_Path_BindAbsolute__hir_from(context, sp, mode, path,  context.m_crate.m_extern_crates.at(path_abs.crate), 0);
+        return ;
     }
     
     const ::AST::Module*    mod = &context.m_crate.m_root_module;
@@ -697,6 +767,10 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
             TU_MATCH_DEF(::AST::PathBinding, (name_ref.path.binding()), (e),
             (
                 ERROR(sp, E0000, "Encountered non-namespace item '" << n.name() << "' ("<<name_ref.path<<") in path " << path);
+                ),
+            (Crate,
+                Resolve_Absolute_Path_BindAbsolute__hir_from(context, sp, mode, path,  *e.crate_, i+1);
+                return ;
                 ),
             (Trait,
                 auto trait_path = ::AST::Path(name_ref.path);
@@ -751,12 +825,12 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                         }
                     }
                     
-                    path = split_replace_into_ufcs_path(mv$(path), i,  name_ref.path);
+                    path = split_replace_into_ufcs_path(sp, mv$(path), i,  name_ref.path);
                     return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 }
                 ),
             (Struct,
-                path = split_replace_into_ufcs_path(mv$(path), i,  name_ref.path);
+                path = split_replace_into_ufcs_path(sp, mv$(path), i,  name_ref.path);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 ),
             (Module,
