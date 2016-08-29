@@ -4,6 +4,7 @@
 #include <ast/ast.hpp>
 #include <ast/crate.hpp>
 #include <main_bindings.hpp>
+#include <hir/hir.hpp>
 
 enum class IndexName
 {
@@ -298,55 +299,105 @@ void Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
     if( info.crate != "" )  TODO(sp, "Resolve_Index_Module_Normalise_Path - Crates");
     
     const ::AST::Module* mod = &crate.m_root_module;
-    for( unsigned int i = 0; i < info.nodes.size(); i ++ )
+    for( unsigned int i = 0; i < info.nodes.size() - 1; i ++ )
     {
         const auto& node = info.nodes[i];
-        bool is_last = (i == info.nodes.size() - 1);
         
-        if( is_last ) {
-            auto it = mod->m_namespace_items.find( node.name() );
-            if( it == mod->m_namespace_items.end() )
-                it = mod->m_value_items.find( node.name() );
-            if( it == mod->m_value_items.end() )
-                ERROR(sp, E0000,  "Couldn't find final node of path " << path);
-            const auto& ie = it->second;
-            
-            if( ie.is_import ) {
-                // TODO: Prevent infinite recursion if the user does something dumb
-                path = ::AST::Path(ie.path);
-                Resolve_Index_Module_Normalise_Path(crate, sp, path);
-            }
-            else {
-                // All good
-            }
+        auto it = mod->m_namespace_items.find( node.name() );
+        if( it == mod->m_namespace_items.end() )
+            ERROR(sp, E0000,  "Couldn't find node " << i << " of path " << path);
+        const auto& ie = it->second;
+        
+        if( ie.is_import ) {
+            TODO(sp, "Replace imports");
         }
         else {
-            auto it = mod->m_namespace_items.find( node.name() );
-            if( it == mod->m_namespace_items.end() )
-                ERROR(sp, E0000,  "Couldn't find node " << i << " of path " << path);
-            const auto& ie = it->second;
-            
-            if( ie.is_import ) {
-                TODO(sp, "Replace imports");
-            }
-            else {
-                TU_MATCH_DEF(::AST::PathBinding, (ie.path.binding()), (e),
-                (
-                    BUG(sp, "Path " << path << " pointed to non-module " << ie.path);
-                    ),
-                (Module,
-                    mod = e.module_;
-                    ),
-                (Crate,
-                    TODO(sp, "Handle extern crate");
-                    ),
-                (Enum,
-                    // NOTE: Just assuming that if an Enum is hit, it's sane
-                    return ;
+            TU_MATCH_DEF(::AST::PathBinding, (ie.path.binding()), (e),
+            (
+                BUG(sp, "Path " << path << " pointed to non-module " << ie.path);
+                ),
+            (Module,
+                mod = e.module_;
+                ),
+            (Crate,
+                //const ::HIR::Module* hmod = &crate.m_extern_crates.at( e.name ).m_hir->m_root_module;
+                const ::HIR::Module* hmod = &e.crate_->m_hir->m_root_module;
+                for( i ++ ; i < info.nodes.size() - 1; i ++)
+                {
+                    auto it = hmod->m_mod_items.find( info.nodes[i].name() );
+                    if( it == hmod->m_mod_items.end() ) {
+                        ERROR(sp, E0000,  "Couldn't find node " << i << " of path " << path);
+                    }
+                    TU_MATCH_DEF(::HIR::TypeItem, (it->second->ent), (e),
+                    (
+                        BUG(sp, "Path " << path << " pointed to non-module in component " << i);
+                        ),
+                    (Enum,
+                        if( i != info.nodes.size() - 2 ) {
+                            BUG(sp, "Path " << path << " pointed to non-module in component " << i);
+                        }
+                        // Lazy, not checking
+                        return ;
+                        ),
+                    (Module,
+                        hmod = &e;
+                        ),
+                    //(Crate,
+                    //    TODO(sp, "Crates within HIR");
+                    //    ),
+                    (Import,
+                        TODO(sp, "Imports in HIR - Module");
+                        )
                     )
+                }
+                
+                auto it_m = hmod->m_mod_items.find( info.nodes[i].name() );
+                if( it_m != hmod->m_mod_items.end() )
+                {
+                    TU_IFLET( ::HIR::TypeItem, it_m->second->ent, Import, e,
+                        TODO(sp, "Imports in HIR - TypeItem");
+                    )
+                    else {
+                        return ;
+                    }
+                }
+                auto it_v = hmod->m_value_items.find( info.nodes[i].name() );
+                if( it_v != hmod->m_value_items.end() )
+                {
+                    TU_IFLET( ::HIR::ValueItem, it_v->second->ent, Import, e,
+                        TODO(sp, "Imports in HIR - ValueItem");
+                    )
+                    else {
+                        return ;
+                    }
+                }
+                
+                ERROR(sp, E0000,  "Couldn't find final node of path " << path);
+                ),
+            (Enum,
+                // NOTE: Just assuming that if an Enum is hit, it's sane
+                return ;
                 )
-            }
+            )
         }
+    }
+    
+    const auto& node = info.nodes.back();
+    
+    auto it = mod->m_namespace_items.find( node.name() );
+    if( it == mod->m_namespace_items.end() )
+        it = mod->m_value_items.find( node.name() );
+    if( it == mod->m_value_items.end() )
+        ERROR(sp, E0000,  "Couldn't find final node of path " << path);
+    const auto& ie = it->second;
+    
+    if( ie.is_import ) {
+        // TODO: Prevent infinite recursion if the user does something dumb
+        path = ::AST::Path(ie.path);
+        Resolve_Index_Module_Normalise_Path(crate, sp, path);
+    }
+    else {
+        // All good
     }
 }
 void Resolve_Index_Module_Normalise(const ::AST::Crate& crate, const Span& mod_span, ::AST::Module& mod)
