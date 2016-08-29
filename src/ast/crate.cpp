@@ -71,14 +71,14 @@ void ExternCrate::with_all_macros(::std::function<void(const ::std::string& , co
 {
     for(const auto& m : m_hir->m_exported_macros)
     {
-        cb(m.first, m.second);
+        cb(m.first, *m.second);
     }
 }
 const MacroRules* ExternCrate::find_macro_rules(const ::std::string& name) const
 {
     auto i = m_hir->m_exported_macros.find(name);
     if(i != m_hir->m_exported_macros.end())
-        return &i->second;
+        return &*i->second;
     return nullptr;
 }
 

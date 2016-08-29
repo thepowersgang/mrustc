@@ -7,6 +7,7 @@
 #include <ast/crate.hpp>
 #include "from_ast.hpp"
 #include "visitor.hpp"
+#include <macro_rules/macro_rules.hpp>
 
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::ItemPath path, ::std::vector< ::HIR::SimplePath> traits = {});
 ::HIR::Function LowerHIR_Function(::HIR::ItemPath path, const ::AST::Function& f, const ::HIR::TypeRef& self_type);
@@ -1198,14 +1199,12 @@ public:
     // - Extract macros from root module
     for( /*const*/ auto& mac : crate.m_root_module.macros() ) {
         //if( mac.data.export ) {
-        MacroRulesPtr& mrp = mac.data;
-        MacroRules  mac_data = mv$(*mrp);
-        macros.insert( ::std::make_pair( mac.name, mv$(mac_data) ) );
+        macros.insert( ::std::make_pair( mac.name, mv$(mac.data) ) );
         //}
     }
     for( auto& mac : crate.m_root_module.macro_imports_res() ) {
         //if( mac.data->export ) {
-        macros.insert( ::std::make_pair( mac.name, mv$(*const_cast<MacroRules*>(mac.data)) ) );
+        macros.insert( ::std::make_pair( mac.name, MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mac.data)) )) ) );
         //}
     }
     

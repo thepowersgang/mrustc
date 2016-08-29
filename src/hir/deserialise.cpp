@@ -9,6 +9,7 @@
 #include "main_bindings.hpp"
 #include <serialiser_texttree.hpp>
 #include <mir/mir.hpp>
+#include <macro_rules/macro_rules.hpp>
 
 namespace {
     
@@ -277,6 +278,10 @@ namespace {
                 };
         }
         
+        ::MacroRulesPtr deserialise_macrorulesptr()
+        {
+            return ::MacroRulesPtr( new MacroRules(deserialise_macrorules()) );
+        }
         ::MacroRules deserialise_macrorules()
         {
             ::MacroRules    rv;
@@ -666,7 +671,7 @@ namespace {
     template<> DEF_D( ::MIR::BasicBlock, return d.deserialise_mir_basicblock(); )
     
     template<> DEF_D( ::HIR::TypeImpl, return d.deserialise_typeimpl(); )
-    template<> DEF_D( ::MacroRules, return d.deserialise_macrorules(); )
+    template<> DEF_D( ::MacroRulesPtr, return d.deserialise_macrorulesptr(); )
     
     ::HIR::TypeRef HirDeserialiser::deserialise_type()
     {
@@ -1027,7 +1032,7 @@ namespace {
             }
         }
         
-        rv.m_exported_macros = deserialise_strumap< ::MacroRules>();
+        rv.m_exported_macros = deserialise_strumap< ::MacroRulesPtr>();
         rv.m_lang_items = deserialise_strumap< ::HIR::SimplePath>();
         
         return rv;

@@ -101,9 +101,6 @@ MacroRulesPtr::~MacroRulesPtr()
         m_ptr = nullptr;
     }
 }
-SERIALISE_TYPE(MacroRulesPtr::, "MacroRulesPtr", {
-},{
-})
 
 SERIALISE_TYPE_S(MacroRulesArm, {
 })

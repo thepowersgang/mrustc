@@ -1,3 +1,10 @@
+/*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * macro_rules/macro_rules.hpp
+ * - Macros by example - `macro_rules!`
+ */
 #ifndef MACROS_HPP_INCLUDED
 #define MACROS_HPP_INCLUDED
 
@@ -139,6 +146,9 @@ class MacroRules:
 {
 public:
     bool m_exported;
+    
+    ::std::string   m_source_crate; // Populated on load, used for $crate
+    
     /// Parsing patterns
     MacroRulesPatFrag  m_pattern;
     /// Expansion rules

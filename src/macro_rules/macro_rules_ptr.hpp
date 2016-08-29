@@ -1,11 +1,15 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * macro_rules/macro_rules_ptr.hpp
+ * - Pointer to a MacroRules instance
  */
 #pragma once
 
 class MacroRules;
 
-class MacroRulesPtr:
-    public Serialisable
+class MacroRulesPtr
 {
     MacroRules* m_ptr;
 public:
@@ -24,8 +28,8 @@ public:
     
     ~MacroRulesPtr();
     
-          MacroRules& operator*()       { assert(m_ptr); return *m_ptr; }
     const MacroRules& operator*() const { assert(m_ptr); return *m_ptr; }
-    
-    SERIALISABLE_PROTOTYPES();
+          MacroRules& operator*()       { assert(m_ptr); return *m_ptr; }
+    const MacroRules* operator->() const { assert(m_ptr); return m_ptr; }
+          MacroRules* operator->()       { assert(m_ptr); return m_ptr; }
 };

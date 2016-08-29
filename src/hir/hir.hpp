@@ -1,5 +1,9 @@
 /*
- * High-level intermediate representation
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/hir.hpp
+ * - Processed module tree (High-level Intermediate Representation)
  *
  * Contains the expanded and desugared AST
  */
@@ -12,7 +16,7 @@
 
 #include <tagged_union.hpp>
 
-#include <macro_rules/macro_rules.hpp>   // DAMNIT - Why can't I have it be incomplete
+#include <macro_rules/macro_rules_ptr.hpp>
 
 #include <hir/type.hpp>
 #include <hir/path.hpp>
@@ -306,7 +310,7 @@ public:
     ::std::multimap< ::HIR::SimplePath, ::HIR::MarkerImpl > m_marker_impls;
     
     /// Macros exported by this crate
-    ::std::unordered_map< ::std::string, ::MacroRules >   m_exported_macros;
+    ::std::unordered_map< ::std::string, ::MacroRulesPtr >  m_exported_macros;
     
     /// Language items avaliable through this crate (includes ones from loaded externs)
     ::std::unordered_map< ::std::string, ::HIR::SimplePath> m_lang_items;

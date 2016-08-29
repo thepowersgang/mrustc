@@ -8,6 +8,7 @@
 #include "hir.hpp"
 #include "main_bindings.hpp"
 #include <serialiser_texttree.hpp>
+#include <macro_rules/macro_rules.hpp>
 #include <mir/mir.hpp>
 
 namespace {
@@ -394,6 +395,10 @@ namespace {
             write_string(v);
         }
 
+        void serialise(const ::MacroRulesPtr& mac)
+        {
+            serialise(*mac);
+        }
         void serialise(const ::MacroRules& mac)
         {
             //m_exported: IGNORE, should be set
