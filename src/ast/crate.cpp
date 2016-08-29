@@ -62,7 +62,8 @@ void Crate::load_extern_crate(const ::std::string& name)
     m_extern_crates.insert(::std::make_pair( name, ExternCrate { name, "output/lib"+name+".hir" } ));
 }
 
-ExternCrate::ExternCrate(const ::std::string& name, const ::std::string& path)
+ExternCrate::ExternCrate(const ::std::string& name, const ::std::string& path):
+    m_name(name)
 {
     m_hir = HIR_Deserialise(path, name);
     

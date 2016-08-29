@@ -548,10 +548,14 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
     {
         // Trait is specified, definitely a trait item
         // - Must resolve here
-        if( ! ufcs.trait->binding().is_Trait() ) {
+        const auto& pb = ufcs.trait->binding();
+        if( ! pb.is_Trait() ) {
             ERROR(sp, E0000, "UFCS trait was not a trait - " << *ufcs.trait);
         }
-        const auto& tr = *ufcs.trait->binding().as_Trait().trait_;
+        if( !pb.as_Trait().trait_ )
+            return ;
+        assert( pb.as_Trait().trait_ );
+        const auto& tr = *pb.as_Trait().trait_;
         
         switch(mode)
         {
@@ -591,7 +595,7 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
                     path.bind_function(e);
                     ),
                 (Static,
-                    // Resolve to asociated type
+                    // Resolve to asociated static
                     )
                 )
             }
@@ -704,7 +708,42 @@ namespace {
                 hmod = &e;
                 ),
             (Trait,
-                TODO(sp, "Bind via extern trait - " << path);
+                auto trait_path = ::AST::Path( crate.m_name, {} );
+                for(unsigned int j = start; j <= i; j ++)
+                    trait_path.nodes().push_back( path_abs.nodes[j].name() );
+                if( !n.args().is_empty() ) {
+                    trait_path.nodes().back().args() = mv$(n.args());
+                }
+                trait_path.bind( ::AST::PathBinding::make_Trait({nullptr}) );
+                
+                ::AST::Path new_path;
+                const auto& next_node = path_abs.nodes[i+1];
+                // TODO: If the named item can't be found in the trait, fall back to it being a type binding
+                // - What if this item is from a nested trait?
+                bool found = false;
+                switch( i+1 < path_abs.nodes.size() ? Context::LookupMode::Namespace : mode )
+                {
+                case Context::LookupMode::Namespace:
+                case Context::LookupMode::Type:
+                case Context::LookupMode::Pattern:
+                    found = (e.m_types.find( next_node.name() ) != e.m_types.end());
+                case Context::LookupMode::Constant:
+                case Context::LookupMode::Variable:
+                    found = (e.m_values.find( next_node.name() ) != e.m_values.end());
+                    break;
+                }
+                
+                if( !found ) {
+                    new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(trait_path)));
+                }
+                else {
+                    new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(), mv$(trait_path));
+                }
+                for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
+                    new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
+                
+                path = mv$(new_path);
+                return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 ),
             (TypeAlias,
                 path = split_into_ufcs_ty(sp, mv$(path), i);
