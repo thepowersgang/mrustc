@@ -659,6 +659,8 @@ namespace {
             )
         }
         
+        ::AST::PathBinding  pb;
+        
         const auto& name = p.m_components.back();
         if( is_value )
         {
@@ -675,16 +677,31 @@ namespace {
             auto it = hmod->m_mod_items.find(name);
             if( it == hmod->m_mod_items.end() )
                 ERROR(sp, E0000, "Couldn't find final component of " << p);
-            if( it->second->ent.is_Import() ) {
-                // Wait? is this valid?
+            TU_MATCH(::HIR::TypeItem, (it->second->ent), (e),
+            (Import,
+                // Wait? is this even valid?
                 TODO(sp, "HIR Import item pointed to an import");
-            }
+                ),
+            (Module,
+                pb = ::AST::PathBinding::make_Module({nullptr, &e});
+                ),
+            (Trait,
+                pb = ::AST::PathBinding::make_Trait({nullptr/*, &e*/});
+                ),
+            (TypeAlias,
+                ),
+            (Struct,
+                ),
+            (Enum,
+                )
+            )
         }
         
         AST::Path   rv( p.m_crate_name, {} );
         rv.nodes().reserve( p.m_components.size() );
         for(const auto& c : p.m_components)
             rv.nodes().push_back( AST::PathNode(c) );
+        rv.bind( mv$(pb) );
         path = mv$(rv);
     }
     
@@ -786,11 +803,30 @@ namespace {
             {
                 auto v = hmod->m_mod_items.find(name);
                 if( v != hmod->m_mod_items.end() ) {
-                    if( v->second->ent.is_Import() ) {
-                        Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, false,  path, v->second->ent.as_Import());
+                    const auto& ti = v->second->ent;
+                    if( ti.is_Import() ) {
+                        DEBUG("= Import " << ti.as_Import());
+                        Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, false,  path, ti.as_Import());
                         return ;
                     }
                     // TODO: Update path
+                    TU_MATCH(::HIR::TypeItem, (v->second->ent), (e),
+                    (Import,
+                        throw "";
+                        ),
+                    (Trait,
+                        path.bind( ::AST::PathBinding::make_Trait({nullptr}) );
+                        ),
+                    (Module,
+                        path.bind( ::AST::PathBinding::make_Module({nullptr, &e}) );
+                        ),
+                    (TypeAlias,
+                        ),
+                    (Enum,
+                        ),
+                    (Struct,
+                        )
+                    )
                     return ;
                 }
             }
