@@ -353,6 +353,12 @@ struct Context
         return false;
     }
     AST::Path lookup_opt(const ::std::string& name, LookupMode mode) const {
+        
+        // TODO: Quirk with primitive types:
+        // - `usize::is_power_of_two` (associated function - liballoc/heap.rs)
+        // - `str::from_utf8_unchecked` (free function - libcore/fmt/mod.rs)
+        // A workaround would be to accept the path here and search the located module for the next entry and fall back on referring to the type otherwise.
+        
         for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
         {
             TU_MATCH(Ent, (*it), (e),
@@ -408,11 +414,19 @@ struct Context
             return rv;
         }
         
-        // Look up primitive types
-        auto ct = coretype_fromstring(name);
-        if( ct != CORETYPE_INVAL )
+        switch(mode)
         {
-            return ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span("-",0,0,0,0), ct), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
+        case LookupMode::Namespace:
+        case LookupMode::Type: {
+            // Look up primitive types
+            auto ct = coretype_fromstring(name);
+            if( ct != CORETYPE_INVAL )
+            {
+                return ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span("-",0,0,0,0), ct), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
+            }
+            } break;
+        default:
+            break;
         }
         
         return AST::Path();
@@ -883,12 +897,48 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
             BUG(sp, "Resolve_Absolute_Path - Relative path with no nodes");
         if(e.nodes.size() > 1)
         {
-            // Look up type
+            // Look up type/module name
             auto p = context.lookup(sp, e.nodes[0].name(), Context::LookupMode::Namespace);
             DEBUG("Found type/mod - " << p);
+            // TODO: If this is a primitive name, and the next component isn't found in the located module, force to be the type
+            if( ! p.m_class.is_Local() && coretype_fromstring(e.nodes[0].name()) != CORETYPE_INVAL ) {
+                TU_IFLET( ::AST::PathBinding, p.binding(), Module, pe,
+                    if( !pe.module_ ) {
+                        TODO(sp, "Check " << p << " for an item named " << e.nodes[1].name() << " (ext mod)");
+                    }
+                    const auto& mod = *pe.module_;
+                    const auto& name = e.nodes[1].name();
+                    bool found = false;
+                    switch( e.nodes.size() == 2 ? mode : Context::LookupMode::Namespace )
+                    {
+                    case Context::LookupMode::Namespace:
+                        if( mod.m_namespace_items.find(name) != mod.m_namespace_items.end() ) {
+                            found = true;
+                        }
+                    case Context::LookupMode::Type:
+                        if( mod.m_namespace_items.find(name) != mod.m_namespace_items.end() ) {
+                            found = true;
+                        }
+                        break;
+                    case Context::LookupMode::Pattern:
+                        TODO(sp, "Check " << p << " for an item named " << e.nodes[1].name() << " (Pattern");
+                    case Context::LookupMode::Constant:
+                    case Context::LookupMode::Variable:
+                        if( mod.m_value_items.find(name) != mod.m_value_items.end() ) {
+                            found = true;
+                        }
+                        break;
+                    }
+                    if( !found )
+                    {
+                        TODO(sp, "Check " << p << " for an item named " << e.nodes[1].name());
+                    }
+                )
+            }
             
             if( e.nodes.size() > 1 )
             {
+                // Only primitive types turn `Local` paths
                 if( p.m_class.is_Local() ) {
                     p = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(sp, mv$(p)), ::AST::Path() );
                 }
