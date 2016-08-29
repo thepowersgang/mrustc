@@ -1030,6 +1030,23 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
         )
     }
     
+    for( const auto& ie : ast_mod.m_namespace_items )
+    {
+        if( ie.second.is_import ) {
+            _add_mod_ns_item(mod, ie.first, ie.second.is_pub,  ::HIR::TypeItem::make_Import({
+                LowerHIR_SimplePath( Span(), ie.second.path )
+                }) );
+        }
+    }
+    for( const auto& ie : ast_mod.m_value_items )
+    {
+        if( ie.second.is_import ) {
+            _add_mod_val_item(mod, ie.first, ie.second.is_pub,  ::HIR::ValueItem::make_Import({
+                LowerHIR_SimplePath( Span(), ie.second.path )
+                }) );
+        }
+    }
+    
     return mod;
 }
 
