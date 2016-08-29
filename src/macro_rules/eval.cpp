@@ -426,8 +426,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, ::std::vector<un
     }
     //bound_tts.dump();
     
-    DEBUG("TODO: Obtain crate name correctly, using \"\" for now");
-    TokenStream* ret_ptr = new MacroExpander(name, rule.m_contents, mv$(bound_tts), "");
+    TokenStream* ret_ptr = new MacroExpander(name, rule.m_contents, mv$(bound_tts), rules.m_source_crate);
     // HACK! Disable nested macro expansion
     //ret_ptr->parse_state().no_expand_macros = true;
     

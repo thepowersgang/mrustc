@@ -6,6 +6,7 @@
 #include "../expand/cfg.hpp"
 #include <hir/hir.hpp>  // HIR::Crate
 #include <hir/main_bindings.hpp>    // HIR_Deserialise
+#include <macro_rules/macro_rules.hpp>  // Used to update the crate name
 
 namespace {
     bool check_item_cfg(const ::AST::MetaItems& attrs)
@@ -70,6 +71,14 @@ ExternCrate::ExternCrate(const ::std::string& name, const ::std::string& path)
     // 1. Loads referenced crates
     // 2. Updates all absolute paths with the crate name
     // 3. Updates macros with the crate name
+    for(auto& mac : m_hir->m_exported_macros)
+    {
+        if( mac.second->m_source_crate == "" )
+        {
+            mac.second->m_source_crate = name;
+        }
+    }
+    // 4. Sets binding pointers where required
 }
 
 void ExternCrate::with_all_macros(::std::function<void(const ::std::string& , const MacroRules&)> cb) const
