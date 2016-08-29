@@ -754,7 +754,25 @@ namespace {
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 ),
             (Enum,
-                TODO(sp, "Bind via extern enum - " << path);
+                const auto& last_node = path_abs.nodes.back();
+                for( const auto& var : e.m_variants )
+                {
+                    if( var.first == last_node.name() ) {
+                        
+                        if( i != path_abs.nodes.size() - 2 ) {
+                            ERROR(sp, E0000, "Unexpected enum in path " << path);
+                        }
+                        // NOTE: Type parameters for enums go after the _variant_
+                        if( ! n.args().is_empty() ) {
+                            ERROR(sp, E0000, "Type parameters were not expected here (enum params go on the variant)");
+                        }
+                        
+                        path.bind( ::AST::PathBinding::make_EnumVar({nullptr, static_cast<unsigned int>(&var - &*e.m_variants.begin())}) );
+                        return;
+                    }
+                }
+                path = split_into_ufcs_ty(sp, mv$(path), i);
+                return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 )
             )
         }
