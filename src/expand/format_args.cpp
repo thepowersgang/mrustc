@@ -5,6 +5,7 @@
 #include "../parse/parseerror.hpp"
 #include "../parse/tokentree.hpp"
 #include "../parse/lex.hpp"
+#include <ast/crate.hpp>    // for m_load_std
 
 namespace {
     
@@ -308,8 +309,20 @@ class CFormatArgsExpander:
         {
             // TODO: Figure out what path to use (::fmt, ::core::fmt, or ::std::fmt)
 
-            //toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-            //toks.push_back( Token(TOK_IDENT, "std") ); //toks.push_back( Token(TOK_STRING, "core") );
+            
+            switch(crate.m_load_std)
+            {
+            case ::AST::Crate::LOAD_NONE:
+                break;
+            case ::AST::Crate::LOAD_CORE:
+                toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
+                toks.push_back( Token(TOK_STRING, "core") );
+                break;
+            case ::AST::Crate::LOAD_STD:
+                toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
+                toks.push_back( Token(TOK_IDENT, "std") );
+                break;
+            }
             toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
             toks.push_back( Token(TOK_IDENT, "fmt") );
             toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
