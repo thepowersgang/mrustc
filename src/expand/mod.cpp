@@ -496,9 +496,10 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_value);
         // - Desugar question mark operator before resolve?
         if( node.m_type == ::AST::ExprNode_UniOp::QMARK ) {
-            auto path_Ok  = ::AST::Path("", {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Ok")});
-            auto path_Err = ::AST::Path("", {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Err")});
-            auto path_From = ::AST::Path("", {::AST::PathNode("convert"), ::AST::PathNode("From")});
+            auto core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core");
+            auto path_Ok  = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Ok")});
+            auto path_Err = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Err")});
+            auto path_From = ::AST::Path(core_crate, {::AST::PathNode("convert"), ::AST::PathNode("From")});
             
             // Desugars into
             // ```
