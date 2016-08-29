@@ -231,28 +231,37 @@ void Resolve_Index_Module_Wildcard(AST::Module& mod, bool handle_pub)
                 ),
             (Module,
                 DEBUG("Glob mod " << i.data.path);
-                if( e.module_ == &mod ) {
-                    ERROR(sp, E0000, "Glob import of self");
-                }
-                // 1. Begin indexing of this module if it is not already indexed
-                if( e.module_->m_index_populated == 1 )
+                if( !e.module_ )
                 {
-                    // TODO: Handle wildcard import of a module with a public wildcard import
-                    TODO(sp, "Handle wildcard import of module with a wildcard (" << e.module_->path() << " by " << mod.path() << ")");
-                    //Resolve_Index_Module( *e.module_ );
+                    ASSERT_BUG(sp, e.hir, "Glob import but module pointer not set - " << i.data.path);
+                    TODO(sp, "Glob import from HIR module - " << i.data.path);
                 }
-                for(const auto& vi : e.module_->m_type_items) {
-                    if( vi.second.is_pub ) {
-                        _add_item_type( sp, mod, vi.first, i.is_pub, vi.second.path, false );
+                else
+                {
+                    if( e.module_ == &mod ) {
+                        ERROR(sp, E0000, "Glob import of self");
                     }
-                }
-                for(const auto& vi : e.module_->m_value_items) {
-                    if( vi.second.is_pub ) {
-                        _add_item_value( sp, mod, vi.first, i.is_pub, vi.second.path, false );
+                    // 1. Begin indexing of this module if it is not already indexed
+                    if( e.module_->m_index_populated == 1 )
+                    {
+                        // TODO: Handle wildcard import of a module with a public wildcard import
+                        TODO(sp, "Handle wildcard import of module with a wildcard (" << e.module_->path() << " by " << mod.path() << ")");
+                        //Resolve_Index_Module( *e.module_ );
+                    }
+                    for(const auto& vi : e.module_->m_type_items) {
+                        if( vi.second.is_pub ) {
+                            _add_item_type( sp, mod, vi.first, i.is_pub, vi.second.path, false );
+                        }
+                    }
+                    for(const auto& vi : e.module_->m_value_items) {
+                        if( vi.second.is_pub ) {
+                            _add_item_value( sp, mod, vi.first, i.is_pub, vi.second.path, false );
+                        }
                     }
                 }
                 ),
             (Enum,
+                ASSERT_BUG(sp, e.enum_, "Glob import but enum pointer not set - " << i.data.path);
                 DEBUG("Glob enum " << i.data.path);
                 unsigned int idx = 0;
                 for( const auto& ev : e.enum_->variants() ) {

@@ -41,6 +41,15 @@ class Decorator_NoPrelude:
 {
 public:
     AttrStage stage() const override { return AttrStage::EarlyPre; }
+    
+    void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
+        if( i.is_Module() ) {
+            i.as_Module().m_insert_prelude = false;
+        }
+        else {
+            ERROR(sp, E0000, "Invalid use of #[no_prelude] on non-module");
+        }
+    }
 };
 
 

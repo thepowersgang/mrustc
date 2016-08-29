@@ -169,23 +169,6 @@ AST::Path::Path(const Path& x):
     )
     
     memcpy(&m_binding, &x.m_binding, sizeof(PathBinding));
-    //TU_MATCH(PathBinding, (x.m_binding), (ent),
-    //(Unbound, m_binding = PathBinding::make_Unbound({}); ),
-    //(Module,  os << "Module";    ),
-    //(Trait,     os << "Trait";   ),
-    //(Struct,    os << "Struct";  ),
-    //(Enum,      os << "Enum";    ),
-    //(Static,    os << "Static";  ),
-    //(Function,  os << "Function";),
-    //(EnumVar,  os << "EnumVar(" << i.idx << ")"; ),
-    //(TypeAlias, os << "TypeAlias";),
-    //(StructMethod, os << "StructMethod"; ),
-    //(TraitMethod,  os << "TraitMethod";  ),
-    //
-    //(TypeParameter, os << "TypeParameter(" << i.level << " # " << i.idx << ")"; ),
-    //(Variable, os << "Variable(" << i.slot << ")"; )
-    //)
-    
     //DEBUG("clone, x = " << x << ", this = " << *this );
 }
 

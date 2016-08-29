@@ -523,13 +523,14 @@ private:
     ::std::vector< Named<MacroRulesPtr> >  m_macros;
 
 public:
+    bool    m_insert_prelude = true;    // Set to false by `#[no_prelude]` handler
     char    m_index_populated = 0;  // 0 = no, 1 = partial, 2 = complete
-    // TODO: Add "namespace" list (separate to types)
     struct IndexEnt {
         bool is_pub;    // Used as part of glob import checking
         bool is_import; // Set if this item has a path that isn't `mod->path() + name`
         ::AST::Path path;
     };
+    // TODO: Add "namespace" list (separate to types)
     ::std::unordered_map< ::std::string, IndexEnt >    m_namespace_items;
     ::std::unordered_map< ::std::string, IndexEnt >    m_type_items;
     ::std::unordered_map< ::std::string, IndexEnt >    m_value_items;

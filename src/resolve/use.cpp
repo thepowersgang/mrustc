@@ -302,8 +302,96 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     }
 }
 
+::AST::PathBinding Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const AST::ExternCrate& ec, unsigned int start)
+{
+    const auto& nodes = path.nodes();
+    const ::HIR::Module* hmod = &ec.m_hir->m_root_module;
+    for(unsigned int i = start; i < nodes.size() - 1; i ++)
+    {
+        auto it = hmod->m_mod_items.find(nodes[i].name());
+        if( it == hmod->m_mod_items.end() ) {
+            // BZZT!
+            ERROR(span, E0000, "Unable to find path component " << nodes[i].name() << " in " << path);
+        }
+        TU_MATCH_DEF( ::HIR::TypeItem, (it->second->ent), (e),
+        (
+            ERROR(span, E0000, "Unexpected item type in import");
+            ),
+        (Module,
+            hmod = &e;
+            ),
+        (Enum,
+            i += 1;
+            if( i != nodes.size() - 1 ) {
+                ERROR(span, E0000, "Encountered enum at unexpected location in import");
+            }
+            const auto& name = nodes[i].name();
+            
+            auto it2 = ::std::find_if( e.m_variants.begin(), e.m_variants.end(), [&](const auto& x){ return x.first == name; } );
+            if( it2 == e.m_variants.end() ) {
+                ERROR(span, E0000, "Unable to find variant " << path);
+            }
+            return ::AST::PathBinding::make_EnumVar({ nullptr, static_cast<unsigned int>(it2 - e.m_variants.begin()) });
+            )
+        )
+    }
+    auto it = hmod->m_mod_items.find(nodes.back().name());
+    if( it != hmod->m_mod_items.end() ) {
+        TU_MATCHA( (it->second->ent), (e),
+        (Import,
+            TODO(span, "Recurse to get binding for an import");
+            ),
+        (Module,
+            return ::AST::PathBinding::make_Module({nullptr, &e});
+            ),
+        (TypeAlias,
+            return ::AST::PathBinding::make_TypeAlias({nullptr});
+            ),
+        (Enum,
+            return ::AST::PathBinding::make_Enum({nullptr});
+            ),
+        (Struct,
+            return ::AST::PathBinding::make_Struct({nullptr});
+            ),
+        (Trait,
+            return ::AST::PathBinding::make_Trait({nullptr});
+            )
+        )
+    }
+    auto it2 = hmod->m_value_items.find(nodes.back().name());
+    if( it2 != hmod->m_value_items.end() ) {
+        TU_MATCHA( (it2->second->ent), (e),
+        (Import,
+            TODO(span, "Recurse to get binding for an import");
+            ),
+        (Constant,
+            return ::AST::PathBinding::make_Static({ nullptr });
+            ),
+        (Static,
+            return ::AST::PathBinding::make_Static({ nullptr });
+            ),
+        (StructConstant,
+            return ::AST::PathBinding::make_Struct({ nullptr });
+            ),
+        (Function,
+            return ::AST::PathBinding::make_Function({ nullptr });
+            ),
+        (StructConstructor,
+            return ::AST::PathBinding::make_Struct({ nullptr });
+            )
+        )
+    }
+    
+    TODO(span, "Get binding within an extern crate");
+}
+
 ::AST::PathBinding Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, slice< const ::AST::Module* > parent_modules)
 {
+    if( path.m_class.is_Absolute() && path.m_class.as_Absolute().crate != "" ) {
+        const auto& path_abs = path.m_class.as_Absolute();
+        
+        return Resolve_Use_GetBinding__ext(span, crate, path,  crate.m_extern_crates.at( path_abs.crate ), 0);
+    }
     const AST::Module* mod = &crate.m_root_module;
     const auto& nodes = path.nodes();
     for( unsigned int i = 0; i < nodes.size()-1; i ++ )
@@ -314,85 +402,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             ERROR(span, E0000, "Unexpected item type in import");
             ),
         (Crate,
-            const ::HIR::Module* hmod = &e.crate_->m_hir->m_root_module;
-            i ++;
-            for(; i < nodes.size() - 1; i ++)
-            {
-                auto it = hmod->m_mod_items.find(nodes[i].name());
-                if( it == hmod->m_mod_items.end() ) {
-                    // BZZT!
-                    ERROR(span, E0000, "Unable to find path component " << nodes[i].name() << " in " << path);
-                }
-                TU_MATCH_DEF( ::HIR::TypeItem, (it->second->ent), (e),
-                (
-                    ERROR(span, E0000, "Unexpected item type in import");
-                    ),
-                (Module,
-                    hmod = &e;
-                    ),
-                (Enum,
-                    i += 1;
-                    if( i != nodes.size() - 1 ) {
-                        ERROR(span, E0000, "Encountered enum at unexpected location in import");
-                    }
-                    const auto& name = nodes[i].name();
-                    
-                    auto it2 = ::std::find_if( e.m_variants.begin(), e.m_variants.end(), [&](const auto& x){ return x.first == name; } );
-                    if( it2 == e.m_variants.end() ) {
-                        ERROR(span, E0000, "Unable to find variant " << path);
-                    }
-                    return ::AST::PathBinding::make_EnumVar({ nullptr, static_cast<unsigned int>(it2 - e.m_variants.begin()) });
-                    )
-                )
-            }
-            auto it = hmod->m_mod_items.find(nodes[i].name());
-            if( it != hmod->m_mod_items.end() ) {
-                TU_MATCHA( (it->second->ent), (e),
-                (Import,
-                    TODO(span, "Recurse to get binding for an import");
-                    ),
-                (Module,
-                    return ::AST::PathBinding::make_Module({nullptr, &e});
-                    ),
-                (TypeAlias,
-                    return ::AST::PathBinding::make_TypeAlias({nullptr});
-                    ),
-                (Enum,
-                    return ::AST::PathBinding::make_Enum({nullptr});
-                    ),
-                (Struct,
-                    return ::AST::PathBinding::make_Struct({nullptr});
-                    ),
-                (Trait,
-                    return ::AST::PathBinding::make_Trait({nullptr});
-                    )
-                )
-            }
-            auto it2 = hmod->m_value_items.find(nodes[i].name());
-            if( it2 != hmod->m_value_items.end() ) {
-                TU_MATCHA( (it2->second->ent), (e),
-                (Import,
-                    TODO(span, "Recurse to get binding for an import");
-                    ),
-                (Constant,
-                    return ::AST::PathBinding::make_Static({ nullptr });
-                    ),
-                (Static,
-                    return ::AST::PathBinding::make_Static({ nullptr });
-                    ),
-                (StructConstant,
-                    return ::AST::PathBinding::make_Struct({ nullptr });
-                    ),
-                (Function,
-                    return ::AST::PathBinding::make_Function({ nullptr });
-                    ),
-                (StructConstructor,
-                    return ::AST::PathBinding::make_Struct({ nullptr });
-                    )
-                )
-            }
-            
-            TODO(span, "Get binding within an extern crate");
+            return Resolve_Use_GetBinding__ext(span, crate, path,  *e.crate_, i+1);
             ),
         (Enum,
             const auto& enum_ = *e.enum_;

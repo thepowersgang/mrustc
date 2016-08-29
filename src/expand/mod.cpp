@@ -567,6 +567,10 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
     for( const auto& mi: mod.macro_imports_res() )
         DEBUG("- Imports '" << mi.name << "'");
     
+    if( mod.m_insert_prelude && crate.m_prelude_path != AST::Path() ) {
+        mod.add_alias(false, ::AST::UseStmt(Span(), crate.m_prelude_path), "", {});
+    }
+    
     // TODO: Have the AST representation of a module include the definition order,
     //  mixing macro invocations, general items, use statements, and `impl`s
     
@@ -869,7 +873,7 @@ void Expand(::AST::Crate& crate)
     switch( crate.m_load_std )
     {
     case ::AST::Crate::LOAD_STD:
-        if( crate.m_prelude_path != AST::Path() )
+        if( crate.m_prelude_path == AST::Path() )
             crate.m_prelude_path = AST::Path("std", {AST::PathNode("prelude"), AST::PathNode("v1")});
         crate.load_extern_crate("std");
         crate.m_extern_crates.at("std").with_all_macros([&](const auto& name, const auto& mac) {
@@ -878,7 +882,7 @@ void Expand(::AST::Crate& crate)
         crate.m_root_module.add_ext_crate(false, "std", "std", ::AST::MetaItems {});
         break;
     case ::AST::Crate::LOAD_CORE:
-        if( crate.m_prelude_path != AST::Path() )
+        if( crate.m_prelude_path == AST::Path() )
             crate.m_prelude_path = AST::Path("core", {AST::PathNode("prelude")});
         crate.load_extern_crate("core");
         crate.m_extern_crates.at("core").with_all_macros([&](const auto& name, const auto& mac) {
