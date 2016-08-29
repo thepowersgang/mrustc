@@ -634,6 +634,56 @@ namespace {
         return new_path;
     }
     
+    void Resolve_Absolute_Path_BindAbsolute__hir_from_import(Context& context, const Span& sp, bool is_value, AST::Path& path, const ::HIR::SimplePath& p)
+    {
+        const auto& ext_crate = context.m_crate.m_extern_crates.at(p.m_crate_name);
+        const ::HIR::Module* hmod = &ext_crate.m_hir->m_root_module;
+        for(unsigned int i = 0; i < p.m_components.size() - 1; i ++)
+        {
+            const auto& name = p.m_components[i];
+            auto it = hmod->m_mod_items.find(name);
+            if( it == hmod->m_mod_items.end() )
+                ERROR(sp, E0000, "Couldn't find path component '" << name << "' of " << p);
+            
+            TU_MATCH_DEF(::HIR::TypeItem, (it->second->ent), (e),
+            (
+                TODO(sp, "Unknown item type in path - " << i << " " << p << " - " << it->second->ent.tag_str());
+                ),
+            (Module,
+                hmod = &e;
+                )
+            )
+        }
+        
+        const auto& name = p.m_components.back();
+        if( is_value )
+        {
+            auto it = hmod->m_value_items.find(name);
+            if( it == hmod->m_value_items.end() )
+                ERROR(sp, E0000, "Couldn't find final component of " << p);
+            if( it->second->ent.is_Import() ) {
+                // Wait? is this valid?
+                TODO(sp, "HIR Import item pointed to an import");
+            }
+        }
+        else
+        {
+            auto it = hmod->m_mod_items.find(name);
+            if( it == hmod->m_mod_items.end() )
+                ERROR(sp, E0000, "Couldn't find final component of " << p);
+            if( it->second->ent.is_Import() ) {
+                // Wait? is this valid?
+                TODO(sp, "HIR Import item pointed to an import");
+            }
+        }
+        
+        AST::Path   rv( p.m_crate_name, {} );
+        rv.nodes().reserve( p.m_components.size() );
+        for(const auto& c : p.m_components)
+            rv.nodes().push_back( AST::PathNode(c) );
+        path = mv$(rv);
+    }
+    
     void Resolve_Absolute_Path_BindAbsolute__hir_from(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path, const AST::ExternCrate& crate, unsigned int start)
     {
         const auto& path_abs = path.m_class.as_Absolute();
@@ -680,8 +730,10 @@ namespace {
                 auto v = hmod->m_mod_items.find(name);
                 if( v != hmod->m_mod_items.end() ) {
                     if( v->second->ent.is_Import() ) {
-                        TODO(sp, "Imports in HIR mod items");
+                        Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, false,  path, v->second->ent.as_Import());
+                        return ;
                     }
+                    // TODO: Update path
                     return ;
                 }
             }
@@ -692,6 +744,7 @@ namespace {
                 auto v = hmod->m_mod_items.find(name);
                 if( v != hmod->m_mod_items.end() ) {
                     if( v->second->ent.is_Import() ) {
+                        Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, false,  path, v->second->ent.as_Import());
                         TODO(sp, "Imports in HIR mod items");
                     }
                     TU_MATCH_DEF(::HIR::TypeItem, (v->second->ent), (e),
@@ -707,7 +760,7 @@ namespace {
                 auto v = hmod->m_value_items.find(name);
                 if( v != hmod->m_value_items.end() ) {
                     if( v->second->ent.is_Import() ) {
-                        TODO(sp, "Imports in HIR mod items");
+                        TODO(sp, "Imports in HIR val items - " << v->second->ent.as_Import());
                     }
                     TU_MATCH_DEF(::HIR::ValueItem, (v->second->ent), (e),
                     (
@@ -725,8 +778,10 @@ namespace {
                 auto v = hmod->m_value_items.find(name);
                 if( v != hmod->m_value_items.end() ) {
                     if( v->second->ent.is_Import() ) {
-                        TODO(sp, "Imports in HIR mod items");
+                        Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, true,  path, v->second->ent.as_Import());
+                        return ;
                     }
+                    // TODO: Update path
                     return ;
                 }
             }
