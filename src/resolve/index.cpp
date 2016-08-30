@@ -40,12 +40,14 @@ enum class IndexName
 
 void _add_item(const Span& sp, AST::Module& mod, IndexName location, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
 {
-    DEBUG("Add " << location << " item '" << name << "': " << ir);
     auto& list = get_mod_index(mod, location);
     
     bool was_import = (ir != mod.path() + name);
     if( was_import ) {
         DEBUG("### Import " << name << " = " << ir); 
+    }
+    else {
+        DEBUG("Add " << location << " item '" << name << "': " << ir);
     }
     if( false == list.insert(::std::make_pair(name, ::AST::Module::IndexEnt { is_pub, was_import, mv$(ir) } )).second )
     {
@@ -55,7 +57,7 @@ void _add_item(const Span& sp, AST::Module& mod, IndexName location, const ::std
         }
         else
         {
-            DEBUG("Name collision " << mod.path() << ", ignored");
+            DEBUG("Name collision in " << mod.path() << " - '" << name << "', ignored");
         }
     }
 }

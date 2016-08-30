@@ -363,17 +363,20 @@ struct Context
         {
             TU_MATCH(Ent, (*it), (e),
             (Module,
+                DEBUG("- Module");
                 ::AST::Path rv;
                 if( this->lookup_in_mod(*e.mod, name, mode,  rv) ) {
                     return rv;
                 }
                 ),
             (ConcreteSelf,
+                DEBUG("- ConcreteSelf");
                 if( ( mode == LookupMode::Type || mode == LookupMode::Namespace ) && name == "Self" ) {
                     return ::AST::Path( ::AST::Path::TagUfcs(), *e, ::AST::Path(), ::std::vector< ::AST::PathNode>() );
                 }
                 ),
             (VarBlock,
+                DEBUG("- VarBlock");
                 assert(e.level <= m_block_level);
                 if( mode != LookupMode::Variable ) {
                     // ignore
@@ -390,6 +393,7 @@ struct Context
                 }
                 ),
             (Generic,
+                DEBUG("- Generic");
                 if( mode == LookupMode::Type || mode == LookupMode::Namespace ) {
                     for( auto it2 = e.types.rbegin(); it2 != e.types.rend(); ++ it2 )
                     {
@@ -409,11 +413,13 @@ struct Context
         }
         
         // Top-level module
+        DEBUG("- Top module");
         ::AST::Path rv;
         if( this->lookup_in_mod(m_mod, name, mode,  rv) ) {
             return rv;
         }
         
+        DEBUG("- Primitives");
         switch(mode)
         {
         case LookupMode::Namespace:
