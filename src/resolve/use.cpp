@@ -77,10 +77,8 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         if( !use_stmt.data.path.m_class.is_Absolute() )
             BUG(span, "Use path is not absolute after absolutisation");
         
-        // TODO: Is this a valid assertion?
-        //if( use_stmt.data.path.crate() != "" )
-        //    BUG(span, "Use path crate was set before resolve");
-        
+        // TODO: Handle case where a use can resolve to two different items (one value, one type/namespace)
+        // - Easiest way is with an extra binding slot
         use_stmt.data.path.bind( Resolve_Use_GetBinding(span, crate, use_stmt.data.path, parent_modules) );
         
         // - If doing a glob, ensure the item type is valid
