@@ -1111,8 +1111,12 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                     if( !found )
                     {
                         //TODO(sp, "Switch back to primitive from " << p << " for " << path);
-                        p = ::AST::Path( ::AST::Path::TagLocal(), e.nodes[0].name() );
+                        //p = ::AST::Path( ::AST::Path::TagLocal(), e.nodes[0].name() );
+                        auto ct = coretype_fromstring(e.nodes[0].name());
+                        p = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span("-",0,0,0,0), ct), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
                     }
+                    
+                    DEBUG("Primitive module hack yeilded " << p);
                 )
             }
             
