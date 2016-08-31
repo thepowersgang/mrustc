@@ -7,9 +7,16 @@
 #include <ast/expr.hpp>
 #include <hir/hir.hpp>
 
+enum class Lookup
+{
+    Any,
+    Type,
+    Value,
+};
+
 ::AST::Path Resolve_Use_AbsolutisePath(const ::AST::Path& base_path, ::AST::Path path);
 void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path path, slice< const ::AST::Module* > parent_modules={});
-::AST::PathBinding Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, slice< const ::AST::Module* > parent_modules);
+::AST::PathBinding Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, slice< const ::AST::Module* > parent_modules, Lookup allow=Lookup::Any);
 
 
 void Resolve_Use(::AST::Crate& crate)
@@ -77,8 +84,6 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         if( !use_stmt.data.path.m_class.is_Absolute() )
             BUG(span, "Use path is not absolute after absolutisation");
         
-        // TODO: Handle case where a use can resolve to two different items (one value, one type/namespace)
-        // - Easiest way is with an extra binding slot
         use_stmt.data.path.bind( Resolve_Use_GetBinding(span, crate, use_stmt.data.path, parent_modules) );
         
         // - If doing a glob, ensure the item type is valid
@@ -94,6 +99,36 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 )
             )
         }
+        else
+        {
+            // TODO: Handle case where a use can resolve to two different items (one value, one type/namespace)
+            // - Easiest way is with an extra binding slot
+            Lookup  allow = Lookup::Any;
+            switch( use_stmt.data.path.binding().tag() )
+            {
+            case ::AST::PathBinding::TAG_Crate:
+            case ::AST::PathBinding::TAG_Module:
+            case ::AST::PathBinding::TAG_Trait:
+            case ::AST::PathBinding::TAG_TypeAlias:
+            case ::AST::PathBinding::TAG_Enum:
+                allow = Lookup::Value;
+                break;
+            case ::AST::PathBinding::TAG_Struct:
+                allow = Lookup::Value;
+                break;
+            case ::AST::PathBinding::TAG_EnumVar:
+                allow = Lookup::Value;
+                break;
+            case ::AST::PathBinding::TAG_Static:
+            case ::AST::PathBinding::TAG_Function:
+                allow = Lookup::Type;
+                break;
+            default:
+                break;
+            }
+            ASSERT_BUG(span, allow != Lookup::Any, "");
+            use_stmt.data.alt_binding = Resolve_Use_GetBinding(span, crate, use_stmt.data.path, parent_modules, allow);
+        }
     }
     
     for(auto& i : mod.items())
@@ -103,15 +138,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             Resolve_Use_Mod(crate, i.data.as_Module(), path + i.name);
         }
     }
-    /*
-    unsigned int idx = 0;
-    for(auto& mp : mod.anon_mods())
-    {
-        Resolve_Use_Mod(crate, *mp, path + FMT("#" << idx));
-        idx ++;
-    }
-    */
-    // TODO: Handle anon modules by iterating code (allowing correct item mappings)
+    // - Handle anon modules by iterating code (allowing correct item mappings)
 
     struct NV:
         public AST::NodeVisitorDef
@@ -179,7 +206,13 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     }
 }
 
-::AST::PathBinding Resolve_Use_GetBinding_Mod(const Span& span, const ::AST::Crate& crate, const ::AST::Module& mod, const ::std::string& des_item_name, slice< const ::AST::Module* > parent_modules)
+::AST::PathBinding Resolve_Use_GetBinding_Mod(
+        const Span& span,
+        const ::AST::Crate& crate, const ::AST::Module& mod,
+        const ::std::string& des_item_name,
+        slice< const ::AST::Module* > parent_modules,
+        Lookup allow
+    )
 {
     // HACK - Catch the possibiliy of a name clash (not sure if this is really an error)
     {
@@ -222,29 +255,39 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 BUG(span, "Hit MacroInv in use resolution");
                 ),
             (Crate,
-                return ::AST::PathBinding::make_Crate({ &crate.m_extern_crates.at(e.name) });
+                if( allow != Lookup::Value )
+                    return ::AST::PathBinding::make_Crate({ &crate.m_extern_crates.at(e.name) });
                 ),
             (Type,
-                return ::AST::PathBinding::make_TypeAlias({&e});
+                if( allow != Lookup::Value )
+                    return ::AST::PathBinding::make_TypeAlias({&e});
                 ),
             (Trait,
-                return ::AST::PathBinding::make_Trait({&e});
+                if( allow != Lookup::Value )
+                    return ::AST::PathBinding::make_Trait({&e});
                 ),
             
             (Function,
-                return ::AST::PathBinding::make_Function({&e});
+                if( allow != Lookup::Type )
+                    return ::AST::PathBinding::make_Function({&e});
                 ),
             (Static,
-                return ::AST::PathBinding::make_Static({&e});
+                if( allow != Lookup::Type )
+                    return ::AST::PathBinding::make_Static({&e});
                 ),
             (Struct,
-                return ::AST::PathBinding::make_Struct({&e});
+                if( allow != Lookup::Value )
+                    return ::AST::PathBinding::make_Struct({&e});
+                if( e.m_data.is_Tuple() && allow != Lookup::Type )
+                    return ::AST::PathBinding::make_Struct({&e});
                 ),
             (Enum,
-                return ::AST::PathBinding::make_Enum({&e});
+                if( allow != Lookup::Value )
+                    return ::AST::PathBinding::make_Enum({&e});
                 ),
             (Module,
-                return ::AST::PathBinding::make_Module({&e});
+                if( allow != Lookup::Value )
+                    return ::AST::PathBinding::make_Module({&e});
                 )
             )
             break ;
@@ -260,9 +303,34 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             if( imp.data.path.binding().is_Unbound() ) {
                 DEBUG(" > Needs resolve");
                 // TODO: Handle possibility of recursion
-                return Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp.data.path), parent_modules);
+                return Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp.data.path), parent_modules, allow);
             }
             else {
+                if( allow != Lookup::Any )
+                {
+                    switch( imp.data.path.binding().tag() )
+                    {
+                    case ::AST::PathBinding::TAG_Crate:
+                    case ::AST::PathBinding::TAG_Module:
+                    case ::AST::PathBinding::TAG_Trait:
+                    case ::AST::PathBinding::TAG_TypeAlias:
+                    case ::AST::PathBinding::TAG_Enum:
+                        if( allow != Lookup::Type )
+                            continue;
+                        break;
+                    case ::AST::PathBinding::TAG_Struct:
+                        break;
+                    case ::AST::PathBinding::TAG_EnumVar:
+                        break;
+                    case ::AST::PathBinding::TAG_Static:
+                    case ::AST::PathBinding::TAG_Function:
+                        if( allow != Lookup::Value )
+                            continue;
+                        break;
+                    default:
+                        break;
+                    }
+                }
                 return imp.data.path.binding().clone();
             }
         }
@@ -293,14 +361,17 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
 
     if( mod.path().nodes().size() > 0 && mod.path().nodes().back().name()[0] == '#' ) {
         assert( parent_modules.size() > 0 );
-        return Resolve_Use_GetBinding_Mod(span, crate, *parent_modules.back(), des_item_name, parent_modules.subslice(0, parent_modules.size()-1));
+        return Resolve_Use_GetBinding_Mod(span, crate, *parent_modules.back(), des_item_name, parent_modules.subslice(0, parent_modules.size()-1), allow);
     }
     else {
-        ERROR(span, E0000, "Could not find node '" << des_item_name << "' in module " << mod.path());
+        if( allow == Lookup::Any )
+            ERROR(span, E0000, "Could not find node '" << des_item_name << "' in module " << mod.path());
+        else
+            return ::AST::PathBinding::make_Unbound({});
     }
 }
 
-::AST::PathBinding Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const AST::ExternCrate& ec, unsigned int start)
+::AST::PathBinding Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const AST::ExternCrate& ec, unsigned int start,  Lookup allow)
 {
     const auto& nodes = path.nodes();
     const ::HIR::Module* hmod = &ec.m_hir->m_root_module;
@@ -333,74 +404,80 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             )
         )
     }
-    auto it = hmod->m_mod_items.find(nodes.back().name());
-    if( it != hmod->m_mod_items.end() ) {
-        TU_MATCHA( (it->second->ent), (e),
-        (Import,
-            TODO(span, "Recurse to get binding for an import");
-            ),
-        (Module,
-            return ::AST::PathBinding::make_Module({nullptr, &e});
-            ),
-        (TypeAlias,
-            return ::AST::PathBinding::make_TypeAlias({nullptr});
-            ),
-        (Enum,
-            return ::AST::PathBinding::make_Enum({nullptr});
-            ),
-        (Struct,
-            return ::AST::PathBinding::make_Struct({nullptr});
-            ),
-        (Trait,
-            return ::AST::PathBinding::make_Trait({nullptr});
+    if( allow != Lookup::Value )
+    {
+        auto it = hmod->m_mod_items.find(nodes.back().name());
+        if( it != hmod->m_mod_items.end() ) {
+            TU_MATCHA( (it->second->ent), (e),
+            (Import,
+                TODO(span, "Recurse to get binding for an import");
+                ),
+            (Module,
+                return ::AST::PathBinding::make_Module({nullptr, &e});
+                ),
+            (TypeAlias,
+                return ::AST::PathBinding::make_TypeAlias({nullptr});
+                ),
+            (Enum,
+                return ::AST::PathBinding::make_Enum({nullptr});
+                ),
+            (Struct,
+                return ::AST::PathBinding::make_Struct({nullptr});
+                ),
+            (Trait,
+                return ::AST::PathBinding::make_Trait({nullptr});
+                )
             )
-        )
+        }
     }
-    auto it2 = hmod->m_value_items.find(nodes.back().name());
-    if( it2 != hmod->m_value_items.end() ) {
-        TU_MATCHA( (it2->second->ent), (e),
-        (Import,
-            TODO(span, "Recurse to get binding for an import");
-            ),
-        (Constant,
-            return ::AST::PathBinding::make_Static({ nullptr });
-            ),
-        (Static,
-            return ::AST::PathBinding::make_Static({ nullptr });
-            ),
-        (StructConstant,
-            return ::AST::PathBinding::make_Struct({ nullptr });
-            ),
-        (Function,
-            return ::AST::PathBinding::make_Function({ nullptr });
-            ),
-        (StructConstructor,
-            return ::AST::PathBinding::make_Struct({ nullptr });
+    if( allow != Lookup::Type )
+    {
+        auto it2 = hmod->m_value_items.find(nodes.back().name());
+        if( it2 != hmod->m_value_items.end() ) {
+            TU_MATCHA( (it2->second->ent), (e),
+            (Import,
+                TODO(span, "Recurse to get binding for an import");
+                ),
+            (Constant,
+                return ::AST::PathBinding::make_Static({ nullptr });
+                ),
+            (Static,
+                return ::AST::PathBinding::make_Static({ nullptr });
+                ),
+            (StructConstant,
+                return ::AST::PathBinding::make_Struct({ nullptr });
+                ),
+            (Function,
+                return ::AST::PathBinding::make_Function({ nullptr });
+                ),
+            (StructConstructor,
+                return ::AST::PathBinding::make_Struct({ nullptr });
+                )
             )
-        )
+        }
     }
     
-    TODO(span, "Get binding within an extern crate");
+    return ::AST::PathBinding::make_Unbound({});
 }
 
-::AST::PathBinding Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, slice< const ::AST::Module* > parent_modules)
+::AST::PathBinding Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, slice< const ::AST::Module* > parent_modules, Lookup allow)
 {
     if( path.m_class.is_Absolute() && path.m_class.as_Absolute().crate != "" ) {
         const auto& path_abs = path.m_class.as_Absolute();
         
-        return Resolve_Use_GetBinding__ext(span, crate, path,  crate.m_extern_crates.at( path_abs.crate ), 0);
+        return Resolve_Use_GetBinding__ext(span, crate, path,  crate.m_extern_crates.at( path_abs.crate ), 0, allow);
     }
     const AST::Module* mod = &crate.m_root_module;
     const auto& nodes = path.nodes();
     for( unsigned int i = 0; i < nodes.size()-1; i ++ )
     {
-        auto b = Resolve_Use_GetBinding_Mod(span, crate, *mod, nodes[i].name(), parent_modules);
+        auto b = Resolve_Use_GetBinding_Mod(span, crate, *mod, nodes[i].name(), parent_modules, Lookup::Type);
         TU_MATCH_DEF(::AST::PathBinding, (b), (e),
         (
             ERROR(span, E0000, "Unexpected item type in import");
             ),
         (Crate,
-            return Resolve_Use_GetBinding__ext(span, crate, path,  *e.crate_, i+1);
+            return Resolve_Use_GetBinding__ext(span, crate, path,  *e.crate_, i+1, allow);
             ),
         (Enum,
             const auto& enum_ = *e.enum_;
@@ -430,6 +507,6 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         )
     }
     
-    return Resolve_Use_GetBinding_Mod(span, crate, *mod, nodes.back().name(), parent_modules);
+    return Resolve_Use_GetBinding_Mod(span, crate, *mod, nodes.back().name(), parent_modules, allow);
 }
 

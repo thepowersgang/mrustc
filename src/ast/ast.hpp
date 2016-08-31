@@ -421,8 +421,9 @@ private:
 struct UseStmt
 {
     Span    sp;
-    ::AST::Path path;
     ::AST::MetaItems    attrs;
+    ::AST::Path path;
+    ::AST::PathBinding  alt_binding;
     
     UseStmt()
     {}

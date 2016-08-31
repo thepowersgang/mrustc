@@ -133,42 +133,57 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
         if( i.name != "" )
         {
             const auto& sp = i.data.sp;
-            const auto& b = i.data.path.binding();
-            TU_MATCH(::AST::PathBinding, (b), (e),
-            (Unbound,
-                BUG(sp, "Import left unbound ("<<i.data.path<<")");
-                ),
-            (Variable,
-                BUG(sp, "Import was bound to variable");
-                ),
-            (TypeParameter,
-                BUG(sp, "Import was bound to type parameter");
-                ),
-            (TraitMethod,
-                BUG(sp, "Import was bound to trait method");
-                ),
-            (StructMethod,
-                BUG(sp, "Import was bound to struct method");
-                ),
-            
-            (Crate ,  _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path); ),
-            (Module,  _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path); ),
-            (Enum,    _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path); ),
-            (Trait,   _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path); ),
-            (TypeAlias, _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path); ),
-            
-            (Struct,
-                _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path);
-                // TODO: Items from extern crates don't populate e.struct_ correctly
-                // - If the struct is a tuple-like struct, it presents in the value namespace
-                if( e.struct_ && e.struct_->m_data.is_Tuple() ) {
-                    _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path);
+            struct H {
+                static void handle_pb(const Span& sp, AST::Module& mod, const AST::Named<AST::UseStmt>& i, const AST::PathBinding& pb, bool allow_collide)
+                {
+                    TU_MATCH(::AST::PathBinding, (pb), (e),
+                    (Unbound,
+                        ),
+                    (Variable,
+                        BUG(sp, "Import was bound to variable");
+                        ),
+                    (TypeParameter,
+                        BUG(sp, "Import was bound to type parameter");
+                        ),
+                    (TraitMethod,
+                        BUG(sp, "Import was bound to trait method");
+                        ),
+                    (StructMethod,
+                        BUG(sp, "Import was bound to struct method");
+                        ),
+                    
+                    (Crate ,  _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path, !allow_collide); ),
+                    (Module,  _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path, !allow_collide); ),
+                    (Enum,     _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide); ),
+                    (Trait,    _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide); ),
+                    (TypeAlias,_add_item_type(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide); ),
+                    
+                    (Struct,
+                        _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide);
+                        // TODO: Items from extern crates don't populate e.struct_ correctly
+                        // - If the struct is a tuple-like struct, it presents in the value namespace
+                        if( e.struct_ && e.struct_->m_data.is_Tuple() ) {
+                            _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide);
+                        }
+                        ),
+                    (Static  , _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide); ),
+                    (Function, _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide); ),
+                    (EnumVar , _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide); )
+                    )
                 }
-                ),
-            (Static  , _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path); ),
-            (Function, _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path); ),
-            (EnumVar , _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path); )
-            )
+            };
+            if( i.data.path.binding().is_Unbound() ) {
+                BUG(sp, "Import left unbound ("<<i.data.path<<")");
+            }
+            else {
+                H::handle_pb(sp, mod, i, i.data.path.binding(), false);
+            }
+            if( i.data.alt_binding.is_Unbound() ) {
+                // Doesn't matter
+            }
+            else {
+                H::handle_pb(sp, mod, i, i.data.alt_binding, true);
+            }
         }
         else
         {
