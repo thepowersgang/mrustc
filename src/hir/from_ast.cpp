@@ -14,7 +14,7 @@
 ::HIR::PathParams LowerHIR_PathParams(const Span& sp, const ::AST::PathParams& src_params, bool allow_assoc);
 ::HIR::TraitPath LowerHIR_TraitPath(const Span& sp, const ::AST::Path& path);
 
-const ::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
+::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
 
 // --------------------------------------------------------------------
 ::HIR::GenericParams LowerHIR_GenericParams(const ::AST::GenericParams& gp, bool* self_is_sized)
@@ -1227,20 +1227,31 @@ public:
         //}
     }
     
-    rv.m_root_module = LowerHIR_Module( crate.m_root_module, ::HIR::ItemPath() );
-    
-    LowerHIR_Module_Impls(crate.m_root_module,  rv);
-    
     auto sp = Span();
     for( const auto& lang_item_path : crate.m_lang_items )
     {
         rv.m_lang_items.insert( ::std::make_pair(lang_item_path.first, LowerHIR_SimplePath(sp, lang_item_path.second)) );
     }
-    // TODO: Populate m_lang_items from loaded crates too
     for(auto& ext_crate : crate.m_extern_crates)
     {
-        TODO(sp, "Transfer extern crate - " << ext_crate.first);
+        // Populate m_lang_items from loaded crates too
+        for( const auto& lang : ext_crate.second.m_hir->m_lang_items )
+        {
+            const auto& name = lang.first;
+            const auto& path = lang.second;
+            auto irv = rv.m_lang_items.insert( ::std::make_pair(name, path) );
+            if( irv.second == false && irv.first->second != path )
+            {
+                ERROR(sp, E0000, "Conflicting definitions of lang item '" << name << "'. " << path << " and " << irv.first->second);
+            }
+        }
+        rv.m_ext_crates.insert( ::std::make_pair( ext_crate.first, mv$(ext_crate.second.m_hir) ) );
     }
+    path_Sized = rv.get_lang_item_path(sp, "sized");
+    
+    rv.m_root_module = LowerHIR_Module( crate.m_root_module, ::HIR::ItemPath() );
+    
+    LowerHIR_Module_Impls(crate.m_root_module,  rv);
     
     // Set all pointers in the HIR to the correct (now fixed) locations
     IndexVisitor(rv).visit_crate( rv );

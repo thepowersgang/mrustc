@@ -23,6 +23,7 @@
 #include <hir/pattern.hpp>
 #include <hir/expr_ptr.hpp>
 #include <hir/generic_params.hpp>
+#include <hir/crate_ptr.hpp>
 
 namespace HIR {
 
@@ -314,6 +315,8 @@ public:
     
     /// Language items avaliable through this crate (includes ones from loaded externs)
     ::std::unordered_map< ::std::string, ::HIR::SimplePath> m_lang_items;
+    
+    ::std::unordered_map< ::std::string, ::HIR::CratePtr>  m_ext_crates;
     
     /// Method called to populate runtime state after deserialisation
     /// See hir/crate_post_load.cpp
