@@ -15,6 +15,7 @@
 ::HIR::TraitPath LowerHIR_TraitPath(const Span& sp, const ::AST::Path& path);
 
 ::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
+::HIR::Crate*   g_crate_ptr = nullptr;
 
 // --------------------------------------------------------------------
 ::HIR::GenericParams LowerHIR_GenericParams(const ::AST::GenericParams& gp, bool* self_is_sized)
@@ -913,18 +914,33 @@ namespace {
             receiver = ::HIR::Function::Receiver::Value;
         }
         else TU_IFLET(::HIR::TypeRef::Data, arg_self_ty.m_data, Borrow, e,
-            if( *e.inner != self_type ) {
-                ERROR(sp, E0000, "Unknown receiver type - " << arg_self_ty);
-            }
-            switch(e.type)
+            if( *e.inner == self_type )
             {
-            case ::HIR::BorrowType::Owned:  receiver = ::HIR::Function::Receiver::BorrowOwned;  break;
-            case ::HIR::BorrowType::Unique: receiver = ::HIR::Function::Receiver::BorrowUnique; break;
-            case ::HIR::BorrowType::Shared: receiver = ::HIR::Function::Receiver::BorrowShared; break;
+                switch(e.type)
+                {
+                case ::HIR::BorrowType::Owned:  receiver = ::HIR::Function::Receiver::BorrowOwned;  break;
+                case ::HIR::BorrowType::Unique: receiver = ::HIR::Function::Receiver::BorrowUnique; break;
+                case ::HIR::BorrowType::Shared: receiver = ::HIR::Function::Receiver::BorrowShared; break;
+                }
             }
         )
+        else TU_IFLET(::HIR::TypeRef::Data, arg_self_ty.m_data, Path, e,
+            // Box - Compare with `owned_box` lang item
+            TU_IFLET(::HIR::Path::Data, e.path.m_data, Generic, pe,
+                if( pe.m_path == g_crate_ptr->get_lang_item_path(sp, "owned_box") )
+                {
+                    if( pe.m_params.m_types.size() == 1 && pe.m_params.m_types[0] == self_type )
+                    {
+                        receiver = ::HIR::Function::Receiver::Box;
+                    }
+                }
+            )
+        )
         else {
-            // TODO: Box - Compare with `boxed` lang item - May require moving to another pass
+        }
+        
+        if( receiver == ::HIR::Function::Receiver::Free )
+        {
             ERROR(sp, E0000, "Unknown receiver type - " << arg_self_ty);
         }
     }
@@ -985,9 +1001,8 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Module(e, mv$(item_path)) );
             ),
         (Crate,
-            // TODO: All 'extern crate' items should be normalised into a list in the crate root
+            // All 'extern crate' items should be normalised into a list in the crate root
             // - If public, add a namespace import here referring to the root of the imported crate
-            TODO(Span(), "Handle `extern crate` in HIR lower");
             _add_mod_ns_item( mod, item.name, item.is_pub, ::HIR::TypeItem::make_Import( ::HIR::SimplePath(e.name, {}) ) );
             ),
         (Type,
@@ -1071,7 +1086,11 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
         
         if( impl.def().trait().ent.is_valid() )
         {
-            const auto& trait_def = *impl.def().trait().ent.binding().as_Trait().trait_;
+            const auto& pb = impl.def().trait().ent.binding();
+            ASSERT_BUG(Span(), pb.is_Trait(), "Binding for trait path in impl isn't a Trait - " << impl.def().trait().ent);
+            ASSERT_BUG(Span(), pb.as_Trait().trait_ || pb.as_Trait().hir, "Trait pointer for trait path in impl isn't set");
+            ASSERT_BUG(Span(), pb.as_Trait().trait_, "Trait pointer for trait path in impl isn't set");
+            const auto& trait_def = *pb.as_Trait().trait_;
             bool is_marker = trait_def.is_marker();
             auto trait_path = LowerHIR_GenericPath(impl.def().trait().sp, impl.def().trait().ent);
             auto trait_name = mv$(trait_path.m_path);
@@ -1213,6 +1232,7 @@ public:
 ::HIR::CratePtr LowerHIR_FromAST(::AST::Crate crate)
 {
     ::HIR::Crate    rv;
+    g_crate_ptr = &rv;
     auto& macros = rv.m_exported_macros;
     
     // - Extract macros from root module
@@ -1256,6 +1276,7 @@ public:
     // Set all pointers in the HIR to the correct (now fixed) locations
     IndexVisitor(rv).visit_crate( rv );
     
+    g_crate_ptr = nullptr;
     return ::HIR::CratePtr( mv$(rv) );
 }
 

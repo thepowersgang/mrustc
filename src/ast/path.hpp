@@ -18,6 +18,7 @@ class TypeRef;
 
 namespace HIR {
 class Module;
+class Trait;
 }   // namespace HIR
 
 namespace AST {
@@ -51,6 +52,7 @@ TAGGED_UNION_EX(PathBinding, (), Unbound, (
         }),
     (Trait,  struct {
         const Trait* trait_;
+        const ::HIR::Trait* hir = nullptr;
         }),
     (Static, struct {
         const Static* static_;

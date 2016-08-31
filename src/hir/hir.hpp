@@ -89,6 +89,7 @@ public:
         BorrowShared,
         //PointerMut,
         //PointerConst,
+        Box,
     };
     
     typedef ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >   args_t;

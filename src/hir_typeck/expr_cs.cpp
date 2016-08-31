@@ -1895,6 +1895,8 @@ namespace {
                         DEBUG("- Ref " << &*node_ptr << " -> " << ty);
                         node_ptr = NEWNODE(mv$(ty), span, _Borrow,  bt, mv$(node_ptr) );
                         } break;
+                    case ::HIR::Function::Receiver::Box:
+                        TODO(sp, "Box method receiver calling - " << node.m_method_path);
                     }
                 }
                 
