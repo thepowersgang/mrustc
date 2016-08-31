@@ -1089,9 +1089,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
             const auto& pb = impl.def().trait().ent.binding();
             ASSERT_BUG(Span(), pb.is_Trait(), "Binding for trait path in impl isn't a Trait - " << impl.def().trait().ent);
             ASSERT_BUG(Span(), pb.as_Trait().trait_ || pb.as_Trait().hir, "Trait pointer for trait path in impl isn't set");
-            ASSERT_BUG(Span(), pb.as_Trait().trait_, "Trait pointer for trait path in impl isn't set");
-            const auto& trait_def = *pb.as_Trait().trait_;
-            bool is_marker = trait_def.is_marker();
+            bool is_marker = (pb.as_Trait().trait_ ? pb.as_Trait().trait_->is_marker() : pb.as_Trait().hir->m_is_marker);
             auto trait_path = LowerHIR_GenericPath(impl.def().trait().sp, impl.def().trait().ent);
             auto trait_name = mv$(trait_path.m_path);
             auto trait_args = mv$(trait_path.m_params);

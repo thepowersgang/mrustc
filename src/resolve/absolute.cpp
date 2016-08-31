@@ -692,7 +692,7 @@ namespace {
                 pb = ::AST::PathBinding::make_Module({nullptr, &e});
                 ),
             (Trait,
-                pb = ::AST::PathBinding::make_Trait({nullptr/*, &e*/});
+                pb = ::AST::PathBinding::make_Trait({nullptr, &e});
                 ),
             (TypeAlias,
                 ),
@@ -737,7 +737,7 @@ namespace {
                 if( !n.args().is_empty() ) {
                     trait_path.nodes().back().args() = mv$(n.args());
                 }
-                trait_path.bind( ::AST::PathBinding::make_Trait({nullptr}) );
+                trait_path.bind( ::AST::PathBinding::make_Trait({nullptr, &e}) );
                 
                 ::AST::Path new_path;
                 const auto& next_node = path_abs.nodes[i+1];
@@ -821,7 +821,7 @@ namespace {
                         throw "";
                         ),
                     (Trait,
-                        path.bind( ::AST::PathBinding::make_Trait({nullptr}) );
+                        path.bind( ::AST::PathBinding::make_Trait({nullptr, &e}) );
                         ),
                     (Module,
                         path.bind( ::AST::PathBinding::make_Module({nullptr, &e}) );
