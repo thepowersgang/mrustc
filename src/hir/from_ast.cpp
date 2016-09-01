@@ -200,6 +200,7 @@
             BUG(pat.span(), "Encountered StructTuple pattern not pointing to a enum variant or a struct - " << e.path);
             ),
         (EnumVar,
+            assert( pb.enum_ );
             const auto& var = pb.enum_->variants()[pb.idx].m_data;
             unsigned int field_count = var.as_Tuple().m_sub_types.size();
             ::std::vector<HIR::Pattern> sub_patterns;
@@ -239,6 +240,7 @@
                 };
             ),
         (Struct,
+            assert( pb.struct_ );
             unsigned int field_count = pb.struct_->m_data.as_Tuple().ents.size();
             ::std::vector<HIR::Pattern> sub_patterns;
         
@@ -674,7 +676,11 @@
         ::HIR::TypeRef::Data::Data_TraitObject  v;
         for(const auto& t : e.traits)
         {
-            if( t.binding().as_Trait().trait_->is_marker() ) {
+            const auto& tb = t.binding().as_Trait();
+            if( tb.trait_ && tb.trait_->is_marker() ) {
+                v.m_markers.push_back( LowerHIR_GenericPath(ty.span(), t) );
+            }
+            else if( tb.hir && tb.hir->m_is_marker ) {
                 v.m_markers.push_back( LowerHIR_GenericPath(ty.span(), t) );
             }
             else {

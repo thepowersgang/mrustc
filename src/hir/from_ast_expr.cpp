@@ -188,7 +188,7 @@ struct LowerHIR_ExprNode_Visitor:
         switch(v.m_type)
         {
         case ::AST::ExprNode_UniOp::BOX:
-            TODO(v.get_pos(), "Desugar box");
+            BUG(v.get_pos(), "Encounterd box operator (should have been expanded in AST)");
             break;
         case ::AST::ExprNode_UniOp::QMARK:
             BUG(v.get_pos(), "Encounterd question mark operator (should have been expanded in AST)");
