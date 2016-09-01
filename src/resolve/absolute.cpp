@@ -616,6 +616,17 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
 }
 
 namespace {
+    AST::Path split_into_crate(const Span& sp, AST::Path path, unsigned int start, const ::std::string& crate_name)
+    {
+        auto& nodes = path.nodes();
+        AST::Path   np = AST::Path(crate_name, {});
+        for(unsigned int i = start; i < nodes.size(); i ++)
+        {
+            np.nodes().push_back( mv$(nodes[i]) );
+        }
+        np.bind( path.binding().clone() );
+        return np;
+    }
     AST::Path split_into_ufcs_ty(const Span& sp, AST::Path path, unsigned int i /*item_name_idx*/)
     {
         const auto& path_abs = path.m_class.as_Absolute();
@@ -769,15 +780,18 @@ namespace {
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 ),
             (TypeAlias,
+                // TODO: set binding
                 path = split_into_ufcs_ty(sp, mv$(path), i);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 ),
             (Struct,
+                // TODO: set binding
                 path = split_into_ufcs_ty(sp, mv$(path), i);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 ),
             (Enum,
                 const auto& last_node = path_abs.nodes.back();
+                // If this refers to an enum variant, return the full path
                 for( const auto& var : e.m_variants )
                 {
                     if( var.first == last_node.name() ) {
@@ -794,6 +808,7 @@ namespace {
                         return;
                     }
                 }
+                // TODO: Set binding
                 path = split_into_ufcs_ty(sp, mv$(path), i);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 )
@@ -803,7 +818,7 @@ namespace {
         const auto& name = path_abs.nodes.back().name();
         switch(mode)
         {
-        // TODO: What's the difference?
+        // TODO: Don't bind to a Module if LookupMode::Type
         case Context::LookupMode::Namespace:
         case Context::LookupMode::Type:
             {
@@ -815,7 +830,6 @@ namespace {
                         Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, false,  path, ti.as_Import());
                         return ;
                     }
-                    // TODO: Update path
                     TU_MATCH(::HIR::TypeItem, (v->second->ent), (e),
                     (Import,
                         throw "";
@@ -827,12 +841,17 @@ namespace {
                         path.bind( ::AST::PathBinding::make_Module({nullptr, &e}) );
                         ),
                     (TypeAlias,
+                        path.bind( ::AST::PathBinding::make_TypeAlias({nullptr/*, &e*/}) );
                         ),
                     (Enum,
+                        path.bind( ::AST::PathBinding::make_Enum({nullptr, &e}) );
                         ),
                     (Struct,
+                        path.bind( ::AST::PathBinding::make_Struct({nullptr, &e}) );
                         )
                     )
+                    // Update path (trim down to `start` and set crate name)
+                    path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                     return ;
                 }
             }
@@ -850,6 +869,9 @@ namespace {
                     (
                         ),
                     (Struct,
+                        // Bind and update path
+                        path.bind( ::AST::PathBinding::make_Struct({nullptr, &e}) );
+                        path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                         return ;
                         )
                     )
@@ -865,6 +887,9 @@ namespace {
                     (
                         ),
                     (Constant,
+                        // Bind and update path
+                        path.bind( ::AST::PathBinding::make_Static({nullptr, nullptr}) );
+                        path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                         return ;
                         )
                     )
@@ -880,7 +905,8 @@ namespace {
                         Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, true,  path, v->second->ent.as_Import());
                         return ;
                     }
-                    // TODO: Update path
+                    // TODO: Set binding
+                    path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                     return ;
                 }
             }
