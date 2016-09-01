@@ -690,10 +690,8 @@
         for(const auto& t : e.traits)
         {
             const auto& tb = t.binding().as_Trait();
-            if( tb.trait_ && tb.trait_->is_marker() ) {
-                v.m_markers.push_back( LowerHIR_GenericPath(ty.span(), t) );
-            }
-            else if( tb.hir && tb.hir->m_is_marker ) {
+            assert( tb.trait_ || tb.hir );
+            if( (tb.trait_ && tb.trait_->is_marker()) || (tb.hir->m_is_marker) ) {
                 v.m_markers.push_back( LowerHIR_GenericPath(ty.span(), t) );
             }
             else {
@@ -704,6 +702,7 @@
                 v.m_trait = LowerHIR_TraitPath(ty.span(), t);
             }
         }
+        ASSERT_BUG(ty.span(), v.m_trait.m_path.m_path.m_components.size() > 0, "TraitObject type didn't contain a data trait - " << ty);
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_TraitObject( mv$(v) ) );
         ),
     (Function,

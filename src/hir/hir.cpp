@@ -375,9 +375,7 @@ const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path(const Span& sp, const 
 
 const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const
 {
-    if( path.m_components.size() == 0) {
-        BUG(sp, "get_typeitem_by_path received invalid path");
-    }
+    ASSERT_BUG(sp, path.m_components.size() > 0, "get_typeitem_by_path received invalid path - " << path);
     
     const ::HIR::Module* mod;
     if( path.m_crate_name != "" ) {

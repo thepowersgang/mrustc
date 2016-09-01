@@ -781,12 +781,14 @@ namespace {
                 ),
             (TypeAlias,
                 // TODO: set binding
-                path = split_into_ufcs_ty(sp, mv$(path), i);
+                path = split_into_crate(sp, mv$(path), start,  crate.m_name);
+                path = split_into_ufcs_ty(sp, mv$(path), i-start);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 ),
             (Struct,
                 // TODO: set binding
-                path = split_into_ufcs_ty(sp, mv$(path), i);
+                path = split_into_crate(sp, mv$(path), start,  crate.m_name);
+                path = split_into_ufcs_ty(sp, mv$(path), i-start);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 ),
             (Enum,

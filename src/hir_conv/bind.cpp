@@ -19,11 +19,16 @@ namespace {
     };
     const void* get_type_pointer(const Span& sp, const ::HIR::Crate& crate, const ::HIR::SimplePath& path, Target t)
     {
+        // NOTE: Can't share with HIR::Crate::get_typeitem_by_path because it has to handle enum variants
+        const ::HIR::Module*    mod;
         if( path.m_crate_name != "" ) {
-            TODO(sp, "Handle extern crates");
+            ASSERT_BUG(sp, crate.m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
+            mod = &crate.m_ext_crates.at(path.m_crate_name)->m_root_module;
+        }
+        else {
+            mod = &crate.m_root_module;
         }
         
-        const ::HIR::Module*    mod = &crate.m_root_module;
         for( unsigned int i = 0; i < path.m_components.size()-1; i ++ )
         {
             const auto& pc = path.m_components[i];
