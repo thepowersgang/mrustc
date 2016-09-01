@@ -188,16 +188,6 @@ namespace {
             TODO(sp, "Could not find struct for " << path << " - " << rv.tag_str());
         }
     }
-    const ::HIR::Constant& get_constant(const Span& sp, const ::HIR::Crate& crate, const ::HIR::Path& path)
-    {
-        auto rv = get_ent_fullpath(sp, crate, path, EntNS::Value);
-        TU_IFLET( EntPtr, rv, Constant, e,
-            return *e;
-        )
-        else {
-            TODO(sp, "Could not find const for " << path << " - " << rv.tag_str());
-        }
-    }
     
     ::HIR::Literal evaluate_constant(const ::HIR::Crate& crate, t_new_values& newval_output, const ::HIR::ItemPath& mod_path, ::std::string prefix, const ::HIR::ExprNode& expr)
     {
@@ -444,6 +434,7 @@ namespace {
                 // Call by running the code directly
                 {
                     TRACE_FUNCTION_F("Call const fn " << node.m_path);
+                    ASSERT_BUG(node.span(), fcn.m_code, "Calling const fn with no code - " << node.m_path);
                     const_cast<HIR::ExprNode&>(*fcn.m_code).visit( *this );
                     assert( ! m_rv.is_Invalid() );
                 }
@@ -489,13 +480,25 @@ namespace {
             }
             void visit(::HIR::ExprNode_PathValue& node) override {
                 TRACE_FUNCTION_FR("_PathValue - " << node.m_path, m_rv);
-                const auto& c = get_constant(node.span(), m_crate, node.m_path);
-                if( c.m_value_res.is_Invalid() ) {
-                    const_cast<HIR::ExprNode&>(*c.m_value).visit(*this);
-                }
-                else {
-                    m_rv = clone_literal(c.m_value_res);
-                }
+                auto ep = get_ent_fullpath(node.span(), m_crate, node.m_path, EntNS::Value);
+                TU_MATCH_DEF( EntPtr, (ep), (e),
+                (
+                    BUG(node.span(), "Path value with unsupported value type - " << ep.tag_str());
+                    ),
+                (Function,
+                    // TODO: Should be a more complex path
+                    m_rv = ::HIR::Literal(node.m_path.m_data.as_Generic().m_path);
+                    ),
+                (Constant,
+                    const auto& c = *e;
+                    if( c.m_value_res.is_Invalid() ) {
+                        const_cast<HIR::ExprNode&>(*c.m_value).visit(*this);
+                    }
+                    else {
+                        m_rv = clone_literal(c.m_value_res);
+                    }
+                    )
+                )
             }
             void visit(::HIR::ExprNode_Variable& node) override {
                 TRACE_FUNCTION_FR("_Variable - " << node.m_name, m_rv);
