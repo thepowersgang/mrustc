@@ -1895,6 +1895,24 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
         item_context.pop(impl_def.params());
         item_context.pop_self( impl_def.type() );
     }
+    
+    // - Run through the indexed items and fix up those paths
+    static Span sp;
+    for(auto& i : mod.m_namespace_items) {
+        if( i.second.is_import ) {
+            Resolve_Absolute_Path(item_context, sp, Context::LookupMode::Namespace, i.second.path);
+        }
+    }
+    for(auto& i : mod.m_type_items) {
+        if( i.second.is_import ) {
+            Resolve_Absolute_Path(item_context, sp, Context::LookupMode::Type, i.second.path);
+        }
+    }
+    for(auto& i : mod.m_value_items) {
+        if( i.second.is_import ) {
+            Resolve_Absolute_Path(item_context, sp, Context::LookupMode::Constant, i.second.path);
+        }
+    }
 }
 
 void Resolve_Absolutise(AST::Crate& crate)
