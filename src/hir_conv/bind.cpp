@@ -144,8 +144,15 @@ namespace {
             TU_IFLET( ::HIR::Pattern::Value, val, Named, ve,
                 TU_IFLET( ::HIR::Path::Data, ve.path.m_data, Generic, pe,
                     const ::HIR::Enum* enm = nullptr;
-                    const ::HIR::Module*  mod = &m_crate.m_root_module;
                     const auto& path = pe.m_path;
+                    const ::HIR::Module*  mod;
+                    if( path.m_crate_name != "" ) {
+                        ASSERT_BUG(sp, m_crate.m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
+                        mod = &m_crate.m_ext_crates.at(path.m_crate_name)->m_root_module;
+                    }
+                    else {
+                        mod = &m_crate.m_root_module;
+                    }
                     for(unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
                     {
                         const auto& pc = path.m_components[i];
