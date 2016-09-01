@@ -685,13 +685,17 @@
         ),
     (TraitObject,
         if( e.hrls.size() > 0 )
-            TODO(ty.span(), "TODO: TraitObjects with HRLS");
+            TODO(ty.span(), "TraitObjects with HRLS - " << ty);
         ::HIR::TypeRef::Data::Data_TraitObject  v;
         for(const auto& t : e.traits)
         {
+            DEBUG("t = " << t);
             const auto& tb = t.binding().as_Trait();
             assert( tb.trait_ || tb.hir );
-            if( (tb.trait_ && tb.trait_->is_marker()) || (tb.hir->m_is_marker) ) {
+            if( (tb.trait_ ? tb.trait_->is_marker() : tb.hir->m_is_marker) ) {
+                if( tb.hir ) {
+                    DEBUG(tb.hir->m_values.size());
+                }
                 v.m_markers.push_back( LowerHIR_GenericPath(ty.span(), t) );
             }
             else {
@@ -911,6 +915,8 @@ namespace {
             )
         )
     }
+    
+    rv.m_is_marker = f.is_marker();
     
     return rv;
 }

@@ -191,7 +191,8 @@ struct Trait
     Trait( GenericParams gps, ::std::string lifetime, ::std::vector< ::HIR::TraitPath> parents):
         m_params( mv$(gps) ),
         m_lifetime( mv$(lifetime) ),
-        m_parent_traits( mv$(parents) )
+        m_parent_traits( mv$(parents) ),
+        m_is_marker( false )
     {}
 };
 
