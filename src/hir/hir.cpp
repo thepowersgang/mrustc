@@ -505,6 +505,12 @@ bool ::HIR::Crate::find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR:
             }
         }
     }
+    for( const auto& ec : this->m_ext_crates )
+    {
+        if( ec.second->find_trait_impls(trait, type, ty_res, callback) ) {
+            return true;
+        }
+    }
     return false;
 }
 bool ::HIR::Crate::find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback) const
@@ -515,6 +521,13 @@ bool ::HIR::Crate::find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type
             if( callback(impl) ) {
                 return true;
             }
+        }
+    }
+    for( const auto& ec : this->m_ext_crates )
+    {
+        DEBUG("- " << ec.first);
+        if( ec.second->find_type_impls(type, ty_res, callback) ) {
+            return true;
         }
     }
     return false;
