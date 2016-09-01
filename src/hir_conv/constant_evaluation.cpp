@@ -41,12 +41,17 @@ namespace {
         throw "";
     }
     
-    enum class EntType {
-        Function,
-        Constant,
-        Struct,
+    TAGGED_UNION(EntPtr, Function,
+        (NotFound, struct{}),
+        (Function, const ::HIR::Function*),
+        (Constant, const ::HIR::Constant*),
+        (Struct, const ::HIR::Struct*)
+        );
+    enum class EntNS {
+        Type,
+        Value
     };
-    const void* get_ent_simplepath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::SimplePath& path, EntType et)
+    EntPtr get_ent_simplepath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::SimplePath& path, EntNS ns)
     {
         const ::HIR::Module* mod;
         if( path.m_crate_name != "" ) {
@@ -74,78 +79,84 @@ namespace {
             )
         }
         
-        switch( et )
+        switch( ns )
         {
-        case EntType::Function: {
+        case EntNS::Value: {
             auto it = mod->m_value_items.find( path.m_components.back() );
             if( it == mod->m_value_items.end() ) {
-                return nullptr;
+                return EntPtr {};
             }
             
-            TU_IFLET( ::HIR::ValueItem, it->second->ent, Function, e,
-                return &e;
+            TU_MATCH( ::HIR::ValueItem, (it->second->ent), (e),
+            (Import,
+                ),
+            (StructConstant,
+                ),
+            (StructConstructor,
+                ),
+            (Function,
+                return EntPtr { &e };
+                ),
+            (Constant,
+                return EntPtr { &e };
+                ),
+            (Static,
+                )
             )
-            else {
-                BUG(sp, "Path " << path << " didn't point to a functon");
-            }
+            BUG(sp, "Path " << path << " pointed to a invalid item - " << it->second->ent.tag_str());
             } break;
-        case EntType::Constant: {
-            auto it = mod->m_value_items.find( path.m_components.back() );
-            if( it == mod->m_value_items.end() ) {
-                return nullptr;
-            }
-            
-            TU_IFLET( ::HIR::ValueItem, it->second->ent, Constant, e,
-                return &e;
-            )
-            else {
-                BUG(sp, "Path " << path << " didn't point to a functon");
-            }
-            } break;
-        case EntType::Struct: {
+        case EntNS::Type: {
             auto it = mod->m_mod_items.find( path.m_components.back() );
             if( it == mod->m_mod_items.end() ) {
-                return nullptr;
+                return EntPtr {};
             }
             
-            TU_IFLET( ::HIR::TypeItem, it->second->ent, Struct, e,
+            TU_MATCH( ::HIR::TypeItem, (it->second->ent), (e),
+            (Import,
+                ),
+            (Module,
+                ),
+            (Trait,
+                ),
+            (Struct,
                 return &e;
+                ),
+            (Enum,
+                ),
+            (TypeAlias,
+                )
             )
-            else {
-                BUG(sp, "Path " << path << " didn't point to a struct");
-            }
+            BUG(sp, "Path " << path << " pointed to an invalid item - " << it->second->ent.tag_str());
             } break;
         }
         throw "";
     }
-    const void* get_ent_fullpath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::Path& path, EntType et)
+    EntPtr get_ent_fullpath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::Path& path, EntNS ns)
     {
         TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
         (Generic,
-            return get_ent_simplepath(sp, crate, e.m_path, et);
+            return get_ent_simplepath(sp, crate, e.m_path, ns);
             ),
         (UfcsInherent,
             // Easy (ish)
-            for( const auto& impl : crate.m_type_impls )
-            {
-                if( ! impl.matches_type(*e.type) ) {
-                    continue ;
-                }
-                switch( et )
+            EntPtr rv {};
+            crate.find_type_impls(*e.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
+                switch( ns )
                 {
-                case EntType::Function: {
+                case EntNS::Value: {
                     auto fit = impl.m_methods.find(e.item);
-                    if( fit == impl.m_methods.end() )
-                        continue ;
-                    return &fit->second.data;
+                    if( fit != impl.m_methods.end() )
+                    {
+                        rv = EntPtr { &fit->second.data };
+                        return true;
+                    }
                     } break;
-                case EntType::Struct:
-                    break;
-                case EntType::Constant:
+                case EntNS::Type:
                     break;
                 }
-            }
-            return nullptr;
+                return false;
+                });
+            return rv;
             ),
         (UfcsKnown,
             TODO(sp, "get_ent_fullpath(path = " << path << ")");
@@ -159,27 +170,33 @@ namespace {
     }
     const ::HIR::Function& get_function(const Span& sp, const ::HIR::Crate& crate, const ::HIR::Path& path)
     {
-        auto* rv_p = reinterpret_cast<const ::HIR::Function*>( get_ent_fullpath(sp, crate, path, EntType::Function) );
-        if( !rv_p ) {
-            TODO(sp, "get_function(path = " << path << ")");
+        auto rv = get_ent_fullpath(sp, crate, path, EntNS::Value);
+        TU_IFLET( EntPtr, rv, Function, e,
+            return *e;
+        )
+        else {
+            TODO(sp, "Could not find function for " << path << " - " << rv.tag_str());
         }
-        return *rv_p;
     }
     const ::HIR::Struct& get_struct(const Span& sp, const ::HIR::Crate& crate, const ::HIR::SimplePath& path)
     {
-        auto rv_p = reinterpret_cast<const ::HIR::Struct*>( get_ent_simplepath(sp, crate, path, EntType::Struct) );
-        if( !rv_p ) {
-            BUG(sp, "Could not find struct name in " << path);
+        auto rv = get_ent_fullpath(sp, crate, path, EntNS::Type);
+        TU_IFLET( EntPtr, rv, Struct, e,
+            return *e;
+        )
+        else {
+            TODO(sp, "Could not find struct for " << path << " - " << rv.tag_str());
         }
-        return *rv_p;
     }
     const ::HIR::Constant& get_constant(const Span& sp, const ::HIR::Crate& crate, const ::HIR::Path& path)
     {
-        auto rv_p = reinterpret_cast<const ::HIR::Constant*>( get_ent_fullpath(sp, crate, path, EntType::Constant) );
-        if( !rv_p ) {
-            BUG(sp, "Could not find constant in " << path);
+        auto rv = get_ent_fullpath(sp, crate, path, EntNS::Value);
+        TU_IFLET( EntPtr, rv, Constant, e,
+            return *e;
+        )
+        else {
+            TODO(sp, "Could not find const for " << path << " - " << rv.tag_str());
         }
-        return *rv_p;
     }
     
     ::HIR::Literal evaluate_constant(const ::HIR::Crate& crate, t_new_values& newval_output, const ::HIR::ItemPath& mod_path, ::std::string prefix, const ::HIR::ExprNode& expr)
