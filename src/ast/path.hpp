@@ -19,6 +19,9 @@ class TypeRef;
 namespace HIR {
 class Module;
 class Trait;
+class Enum;
+class Struct;
+class Static;
 }   // namespace HIR
 
 namespace AST {
@@ -46,9 +49,11 @@ TAGGED_UNION_EX(PathBinding, (), Unbound, (
         }),
     (Enum,   struct {
         const Enum* enum_;
+        const ::HIR::Enum*  hir = nullptr;
         }),
     (Struct, struct {
         const Struct* struct_;
+        const ::HIR::Struct* hir = nullptr;
         }),
     (Trait,  struct {
         const Trait* trait_;
@@ -56,6 +61,7 @@ TAGGED_UNION_EX(PathBinding, (), Unbound, (
         }),
     (Static, struct {
         const Static* static_;
+        const ::HIR::Static* hir = nullptr; // if nullptr and static_ == nullptr, points to a `const`
         }),
     (Function, struct {
         const Function* func_;
@@ -63,6 +69,7 @@ TAGGED_UNION_EX(PathBinding, (), Unbound, (
     (EnumVar, struct {
         const Enum* enum_;
         unsigned int idx;
+        const ::HIR::Enum*  hir = nullptr;
         }),
     (TypeAlias, struct {
         const TypeAlias* alias_;

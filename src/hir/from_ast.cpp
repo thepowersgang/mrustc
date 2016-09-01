@@ -200,9 +200,16 @@
             BUG(pat.span(), "Encountered StructTuple pattern not pointing to a enum variant or a struct - " << e.path);
             ),
         (EnumVar,
-            assert( pb.enum_ );
-            const auto& var = pb.enum_->variants()[pb.idx].m_data;
-            unsigned int field_count = var.as_Tuple().m_sub_types.size();
+            assert( pb.enum_ || pb.hir );
+            unsigned int field_count;
+            if( pb.enum_ ) {
+                const auto& var = pb.enum_->variants()[pb.idx].m_data;
+                field_count = var.as_Tuple().m_sub_types.size();
+            }
+            else {
+                const auto& var = pb.hir->m_variants.at(pb.idx).second;
+                field_count = var.as_Tuple().size();
+            }
             ::std::vector<HIR::Pattern> sub_patterns;
         
             if( e.tup_pat.has_wildcard ) {
@@ -240,8 +247,14 @@
                 };
             ),
         (Struct,
-            assert( pb.struct_ );
-            unsigned int field_count = pb.struct_->m_data.as_Tuple().ents.size();
+            assert( pb.struct_ || pb.hir );
+            unsigned int field_count;
+            if( pb.struct_ ) {
+                field_count = pb.struct_->m_data.as_Tuple().ents.size();
+            }
+            else {
+                field_count = pb.hir->m_data.as_Tuple().size();
+            }
             ::std::vector<HIR::Pattern> sub_patterns;
         
             if( e.tup_pat.has_wildcard ) {

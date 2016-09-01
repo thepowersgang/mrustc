@@ -790,7 +790,7 @@ namespace {
                             ERROR(sp, E0000, "Type parameters were not expected here (enum params go on the variant)");
                         }
                         
-                        path.bind( ::AST::PathBinding::make_EnumVar({nullptr, static_cast<unsigned int>(&var - &*e.m_variants.begin())}) );
+                        path.bind( ::AST::PathBinding::make_EnumVar({nullptr, static_cast<unsigned int>(&var - &*e.m_variants.begin()), &e}) );
                         return;
                     }
                 }

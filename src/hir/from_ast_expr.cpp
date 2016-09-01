@@ -559,6 +559,7 @@ struct LowerHIR_ExprNode_Visitor:
                 m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::UNKNOWN ) );
                 ),
             (Struct,
+                assert( e.struct_ );
                 // TODO: Check the form and emit a PathValue if not a unit
                 if( e.struct_->m_data.is_Struct() ) {
                     // ERROR.
@@ -577,6 +578,7 @@ struct LowerHIR_ExprNode_Visitor:
                 m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::FUNCTION ) );
                 ),
             (Static,
+                assert( e.static_ );
                 if( e.static_->s_class() != ::AST::Static::CONST ) {
                     m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::STATIC ) );
                 }
