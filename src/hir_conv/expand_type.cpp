@@ -8,32 +8,11 @@
 
 ::HIR::TypeRef ConvertHIR_ExpandAliases_GetExpansion(const ::HIR::Crate& crate, const ::HIR::Path& path)
 {
+    static Span sp;
     TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
     (Generic,
-        const ::HIR::Module* mod = &crate.m_root_module;
-        assert( e.m_path.m_crate_name == "" && "TODO: Handle extern crates" );
-        for( unsigned int i = 0; i < e.m_path.m_components.size() - 1; i ++ )
-        {
-            const auto& pc = e.m_path.m_components[i];
-            auto it = mod->m_mod_items.find( pc );
-            if( it == mod->m_mod_items.end() ) {
-                BUG(Span(), "Couldn't find component " << i << " of " << e.m_path);
-            }
-            TU_MATCH_DEF( ::HIR::TypeItem, (it->second->ent), (e2),
-            (
-                BUG(Span(), "Node " << i << " of path " << e.m_path << " wasn't a module");
-                ),
-            (Module,
-                mod = &e2;
-                )
-            )
-        }
-        auto it = mod->m_mod_items.find( e.m_path.m_components.back() );
-        if( it == mod->m_mod_items.end() ) {
-            BUG(Span(), "Could not find type name in " << e.m_path);
-        }
-        
-        TU_MATCH_DEF( ::HIR::TypeItem, (it->second->ent), (e2),
+        const auto& ti = crate.get_typeitem_by_path(sp, e.m_path);
+        TU_MATCH_DEF( ::HIR::TypeItem, (ti), (e2),
         (
             // Anything else - leave it be
             ),
