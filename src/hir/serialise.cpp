@@ -760,7 +760,7 @@ namespace {
             serialise_generics(item.m_params);
             serialise(item.m_type);
             serialise(item.m_value);
-            //serialise(item.m_value_res);  // - Can be calculated from value?
+            serialise(item.m_value_res);
         }
         void serialise(const ::HIR::Static& item)
         {

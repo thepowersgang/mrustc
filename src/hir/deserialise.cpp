@@ -575,8 +575,7 @@ namespace {
                 deserialise_genericparams(),
                 deserialise_type(),
                 deserialise_exprptr(),
-                ::HIR::Literal {}
-                //serialise(item.m_value_res);  // - Can be calculated from value?
+                deserialise_literal()
                 };
         }
         ::HIR::Static deserialise_static()
