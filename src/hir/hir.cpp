@@ -378,10 +378,15 @@ const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const 
     if( path.m_components.size() == 0) {
         BUG(sp, "get_typeitem_by_path received invalid path");
     }
-    if( path.m_crate_name != "" )
-        TODO(sp, "::HIR::Crate::get_typeitem_by_path in extern crate");
     
-    const ::HIR::Module* mod = &this->m_root_module;
+    const ::HIR::Module* mod;
+    if( path.m_crate_name != "" ) {
+        ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
+        mod = &m_ext_crates.at(path.m_crate_name)->m_root_module;
+    }
+    else {
+        mod =  &this->m_root_module;
+    }
     for( unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
     {
         const auto& pc = path.m_components[i];
@@ -450,10 +455,14 @@ const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const 
     if( path.m_components.size() == 0) {
         BUG(sp, "get_valitem_by_path received invalid path");
     }
-    if( path.m_crate_name != "" )
-        TODO(sp, "::HIR::Crate::get_valitem_by_path in extern crate");
-    
-    const ::HIR::Module* mod = &this->m_root_module;
+    const ::HIR::Module* mod;
+    if( path.m_crate_name != "" ) {
+        ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
+        mod = &m_ext_crates.at(path.m_crate_name)->m_root_module;
+    }
+    else {
+        mod =  &this->m_root_module;
+    }
     for( unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
     {
         const auto& pc = path.m_components[i];
