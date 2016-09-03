@@ -802,6 +802,7 @@ namespace {
                         }
                         
                         path.bind( ::AST::PathBinding::make_EnumVar({nullptr, static_cast<unsigned int>(&var - &*e.m_variants.begin()), &e}) );
+                        path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                         return;
                     }
                 }
