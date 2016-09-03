@@ -1,7 +1,6 @@
 TODO:
 - MIR Validation pass
 - Audit TODOs in codebase
-- Save HIR+MIR into crate metadata
 - Method and type monomorphisation
 - Test compile against a no_std program
 - MIR Optimisations
