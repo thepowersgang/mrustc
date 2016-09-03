@@ -2220,31 +2220,33 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
     }
     else {
         // 2. Search for inherent methods
-        for(const auto& impl : m_crate.m_type_impls)
-        {
-            if( impl.matches_type(ty) ) {
-                auto it = impl.m_methods.find( method_name );
-                if( it == impl.m_methods.end() )
-                    continue ;
-                const ::HIR::Function&  fcn = it->second.data;
-                switch(fcn.m_receiver)
-                {
-                case ::HIR::Function::Receiver::Free:
+        bool rv = m_crate.find_type_impls(ty, m_ivars.callback_resolve_infer(), [&](const auto& impl) {
+            auto it = impl.m_methods.find( method_name );
+            if( it == impl.m_methods.end() )
+                return false ;
+            const ::HIR::Function&  fcn = it->second.data;
+            switch(fcn.m_receiver)
+            {
+            case ::HIR::Function::Receiver::Free:
+                break;
+            case ::HIR::Function::Receiver::Value:
+                if( !allow_move )
                     break;
-                case ::HIR::Function::Receiver::Value:
-                    if( !allow_move )
-                        break;
-                default:
-                    DEBUG("Matching `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "`"/* << " - " << top_ty*/);
-                    fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsInherent({
-                        box$(ty.clone()),
-                        method_name,
-                        {}
-                        }) );
-                    return true;
-                }
+            default:
+                DEBUG("Matching `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "`"/* << " - " << top_ty*/);
+                fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsInherent({
+                    box$(ty.clone()),
+                    method_name,
+                    {}
+                    }) );
+                return true;
             }
+            return false;
+            });
+        if( rv ) {
+            return true;
         }
+        
         // 3. Search for trait methods (using currently in-scope traits)
         for(const auto& trait_ref : ::reverse(traits))
         {
