@@ -556,13 +556,17 @@ struct LowerHIR_ExprNode_Visitor:
         else {
             TU_MATCH_DEF(::AST::PathBinding, (v.m_path.binding()), (e),
             (
-                m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::UNKNOWN ) );
+                auto p = LowerHIR_Path(Span(v.get_pos()), v.m_path);
+                if( p.m_data.is_Generic() ) {
+                    BUG(v.span(), "Unknown binding for PathValue but path is generic - " << v.m_path);
+                }
+                m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), mv$(p), ::HIR::ExprNode_PathValue::UNKNOWN ) );
                 ),
             (Struct,
                 assert( e.struct_ );
-                // TODO: Check the form and emit a PathValue if not a unit
+                // Check the form and emit a PathValue if not a unit
                 if( e.struct_->m_data.is_Struct() ) {
-                    // ERROR.
+                    ERROR(v.span(), E0000, "Named value referring to a struct that isn't tuple-like or unit-like - " << v.m_path);
                 }
                 else if( e.struct_->m_data.as_Tuple().ents.size() > 0 ) {
                     m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::STRUCT_CONSTR ) );
