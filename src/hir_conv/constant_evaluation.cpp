@@ -48,7 +48,7 @@ namespace {
             return ::HIR::Literal(e);
             ),
         (BorrowOf,
-            return ::HIR::Literal(e);
+            return ::HIR::Literal(e.clone());
             ),
         (String,
             return ::HIR::Literal(e);

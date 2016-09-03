@@ -51,7 +51,7 @@ TAGGED_UNION(Literal, Invalid,
     (List, ::std::vector<Literal>), // TODO: Have a variant for repetition lists
     (Integer, uint64_t),
     (Float, double),
-    (BorrowOf, ::HIR::SimplePath),
+    (BorrowOf, ::HIR::Path),
     // String = &'static str or &[u8; N]
     (String, ::std::string)
     );

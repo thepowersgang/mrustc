@@ -475,7 +475,7 @@ namespace {
                 write_double(e);
                 ),
             (BorrowOf,
-                serialise_simplepath(e);
+                serialise_path(e);
                 ),
             (String,
                 write_string(e);

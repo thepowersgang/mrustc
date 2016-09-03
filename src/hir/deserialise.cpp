@@ -914,7 +914,7 @@ namespace {
         _(List,   deserialise_vec< ::HIR::Literal>() )
         _(Integer, read_u64() )
         _(Float,   read_double() )
-        _(BorrowOf, deserialise_simplepath() )
+        _(BorrowOf, deserialise_path() )
         _(String,  read_string() )
         #undef _
         default:
