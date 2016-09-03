@@ -450,4 +450,9 @@ void ConvertHIR_Bind(::HIR::Crate& crate)
 {
     Visitor exp { crate };
     exp.visit_crate( crate );
+    
+    for(auto& ec : crate.m_ext_crates)
+    {
+        exp.visit_crate( *ec.second );
+    }
 }
