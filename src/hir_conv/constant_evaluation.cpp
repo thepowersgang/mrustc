@@ -445,7 +445,7 @@ namespace {
                     }
                 }
                 
-                // Call by running the code directly
+                // Call by invoking evaluate_constant on the function
                 {
                     TRACE_FUNCTION_F("Call const fn " << node.m_path);
                     m_rv = evaluate_constant(node.span(), m_crate, m_newval_state,  fcn.m_code, mv$(args));
@@ -767,7 +767,7 @@ namespace {
             }
             TU_MATCH_DEF( ::MIR::Terminator, (block.terminator), (e),
             (
-                BUG(sp, "");
+                BUG(sp, "Unexpected terminator - " << block.terminator);
                 ),
             (Goto,
                 cur_block = e;
@@ -776,13 +776,27 @@ namespace {
                 return retval;
                 ),
             (Call,
-                //auto& dst = get_lval(e.ret_val);
-                auto fcn = read_lval(e.fcn_val);
-                if( ! fcn.is_BorrowOf() ) {
-                    BUG(sp, "Execute MIR - Calling function through invalid value - " << fcn);
+                auto& dst = get_lval(e.ret_val);
+                auto fcn_v = read_lval(e.fcn_val);
+                if( ! fcn_v.is_BorrowOf() ) {
+                    BUG(sp, "Execute MIR - Calling function through invalid value - " << fcn_v);
                 }
-                const auto& fcnp = fcn.as_BorrowOf();
-                TODO(sp, "Execute MIR - call function " << fcnp);
+                const auto& fcnp = fcn_v.as_BorrowOf();
+                auto& fcn = get_function(sp, crate, fcnp);
+                
+                ::std::vector< ::HIR::Literal>  call_args;
+                call_args.reserve( e.args.size() );
+                for(const auto& a : e.args)
+                    call_args.push_back( read_lval(a) );
+                // TODO: Set m_const during parse and check here
+                
+                // Call by invoking evaluate_constant on the function
+                {
+                    TRACE_FUNCTION_F("Call const fn " << fcnp);
+                    dst = evaluate_constant(sp, crate, newval_state,  fcn.m_code, mv$(call_args));
+                }
+                
+                cur_block = e.ret_block;
                 )
             )
         }
