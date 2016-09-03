@@ -8,6 +8,7 @@
 #include <hir/expr.hpp>
 #include <hir/visitor.hpp>
 #include <algorithm>
+#include <mir/mir.hpp>
 
 namespace {
     typedef ::std::vector< ::std::pair< ::std::string, ::HIR::Static> > t_new_values;
@@ -599,13 +600,184 @@ namespace {
         return mv$(v.m_rv);
     }
     
+    ::HIR::Literal evaluate_constant_mir(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::MIR::Function& fcn, ::std::vector< ::HIR::Literal> args)
+    {
+        ::HIR::Literal  retval;
+        ::std::vector< ::HIR::Literal>  locals;
+        ::std::vector< ::HIR::Literal>  temps;
+        
+        auto get_lval = [&](const ::MIR::LValue& lv) -> ::HIR::Literal& {
+            TU_MATCHA( (lv), (e),
+            (Variable,
+                if( e >= locals.size() )
+                    BUG(sp, "Local index out of range - " << e << " >= " << locals.size());
+                return locals[e];
+                ),
+            (Temporary,
+                if( e.idx >= temps.size() )
+                    BUG(sp, "Temp index out of range - " << e.idx << " >= " << temps.size());
+                return temps[e.idx];
+                ),
+            (Argument,
+                return args[e.idx];
+                ),
+            (Static,
+                TODO(sp, "LValue::Static");
+                ),
+            (Return,
+                return retval;
+                ),
+            (Field,
+                TODO(sp, "LValue::Field");
+                ),
+            (Deref,
+                TODO(sp, "LValue::Deref");
+                ),
+            (Index,
+                TODO(sp, "LValue::Index");
+                ),
+            (Downcast,
+                TODO(sp, "LValue::Downcast");
+                )
+            )
+            throw "";
+            };
+        auto read_lval = [&](const ::MIR::LValue& lv) -> ::HIR::Literal {
+            auto& v = get_lval(lv);
+            TU_MATCH_DEF(::HIR::Literal, (v), (e),
+            (
+                return mv$(v);
+                ),
+            (Integer,
+                return ::HIR::Literal(e);
+                ),
+            (Float,
+                return ::HIR::Literal(e);
+                )
+            )
+            };
+        
+        unsigned int cur_block = 0;
+        for(;;)
+        {
+            const auto& block = fcn.blocks[cur_block];
+            for(const auto& stmt : block.statements)
+            {
+                if( ! stmt.is_Assign() ) {
+                    BUG(sp, "");
+                }
+                
+                ::HIR::Literal  val;
+                const auto& sa = stmt.as_Assign();
+                TU_MATCHA( (sa.src), (e),
+                (Use,
+                    val = read_lval(e);
+                    ),
+                (Constant,
+                    TU_MATCH(::MIR::Constant, (e), (e2),
+                    (Int,
+                        val = ::HIR::Literal(static_cast<uint64_t>(e2));
+                        ),
+                    (Uint,
+                        val = ::HIR::Literal(e2);
+                        ),
+                    (Float,
+                        val = ::HIR::Literal(e2);
+                        ),
+                    (Bool,
+                        val = ::HIR::Literal(static_cast<uint64_t>(e2));
+                        ),
+                    (Bytes,
+                        val = ::HIR::Literal::make_String({e2.begin(), e2.end()});
+                        ),
+                    (StaticString,
+                        val = ::HIR::Literal(e2);
+                        ),
+                    (Const,
+                        TODO(sp, "Constant::Const - " << e);
+                        ),
+                    (ItemAddr,
+                        TODO(sp, "Constant::ItemAddr - " << e);
+                        )
+                    )
+                    ),
+                (SizedArray,
+                    ::std::vector< ::HIR::Literal>  vals;
+                    if( e.count > 0 )
+                    {
+                        vals.reserve( e.count );
+                        val = read_lval(e.val);
+                        for(unsigned int i = 1; i < e.count; i++)
+                            vals.push_back( clone_literal(val) );
+                        vals.push_back( mv$(val) );
+                    }
+                    val = ::HIR::Literal::make_List( mv$(vals) );
+                    ),
+                (Borrow,
+                    TODO(sp, "RValue::Borrow");
+                    ),
+                (Cast,
+                    TODO(sp, "RValue::Cast");
+                    ),
+                (BinOp,
+                    TODO(sp, "RValue::BinOp");
+                    ),
+                (UniOp,
+                    TODO(sp, "RValue::UniOp");
+                    ),
+                (DstMeta,
+                    TODO(sp, "RValue::DstMeta");
+                    ),
+                (MakeDst,
+                    TODO(sp, "RValue::MakeDst");
+                    ),
+                (Tuple,
+                    ::std::vector< ::HIR::Literal>  vals;
+                    vals.reserve( e.vals.size() );
+                    for(const auto& v : e.vals)
+                        vals.push_back( read_lval(v) );
+                    val = ::HIR::Literal::make_List( mv$(vals) );
+                    ),
+                (Array,
+                    ::std::vector< ::HIR::Literal>  vals;
+                    vals.reserve( e.vals.size() );
+                    for(const auto& v : e.vals)
+                        vals.push_back( read_lval(v) );
+                    val = ::HIR::Literal::make_List( mv$(vals) );
+                    ),
+                (Struct,
+                    ::std::vector< ::HIR::Literal>  vals;
+                    vals.reserve( e.vals.size() );
+                    for(const auto& v : e.vals)
+                        vals.push_back( read_lval(v) );
+                    val = ::HIR::Literal::make_List( mv$(vals) );
+                    )
+                )
+            }
+            TU_MATCH_DEF( ::MIR::Terminator, (block.terminator), (e),
+            (
+                BUG(sp, "");
+                ),
+            (Goto,
+                cur_block = e;
+                ),
+            (Return,
+                return retval;
+                ),
+            (Call,
+                TODO(sp, "Execute MIR - call function");
+                )
+            )
+        }
+    }
+    
     ::HIR::Literal evaluate_constant(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::HIR::ExprPtr& expr, ::std::vector< ::HIR::Literal> args)
     {
         if( expr ) {
             return evaluate_constant_hir(sp, crate, mv$(newval_state), *expr, mv$(args));
         }
         else if( expr.m_mir ) {
-            TODO(sp, "Execute MIR");
+            return evaluate_constant_mir(sp, crate, mv$(newval_state), *expr.m_mir, mv$(args));
         }
         else {
             BUG(sp, "Attempting to evaluate constant expression with code");
