@@ -563,16 +563,32 @@ struct LowerHIR_ExprNode_Visitor:
                 m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), mv$(p), ::HIR::ExprNode_PathValue::UNKNOWN ) );
                 ),
             (Struct,
-                assert( e.struct_ );
+                ASSERT_BUG(v.span(), e.struct_ || e.hir, "PathValue bound to a struct but pointer not set - " << v.m_path);
                 // Check the form and emit a PathValue if not a unit
-                if( e.struct_->m_data.is_Struct() ) {
-                    ERROR(v.span(), E0000, "Named value referring to a struct that isn't tuple-like or unit-like - " << v.m_path);
+                if( e.struct_ )
+                {
+                    if( e.struct_->m_data.is_Struct() ) {
+                        ERROR(v.span(), E0000, "Named value referring to a struct that isn't tuple-like or unit-like - " << v.m_path);
+                    }
+                    else if( e.struct_->m_data.as_Tuple().ents.size() > 0 ) {
+                        m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::STRUCT_CONSTR ) );
+                    }
+                    else {
+                        m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(Span(v.get_pos()), v.m_path), true ) );
+                    }
                 }
-                else if( e.struct_->m_data.as_Tuple().ents.size() > 0 ) {
-                    m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::STRUCT_CONSTR ) );
-                }
-                else {
-                    m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(Span(v.get_pos()), v.m_path), true ) );
+                else
+                {
+                    const auto& str = *e.hir;
+                    if( str.m_data.is_Unit() ) {
+                        m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(Span(v.get_pos()), v.m_path), true ) );
+                    }
+                    else if( str.m_data.is_Tuple() ) {
+                        m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::STRUCT_CONSTR ) );
+                    }
+                    else {
+                        ERROR(v.span(), E0000, "Named value referring to a struct that isn't tuple-like or unit-like - " << v.m_path);
+                    }
                 }
                 ),
             (EnumVar,
@@ -582,11 +598,22 @@ struct LowerHIR_ExprNode_Visitor:
                 m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::FUNCTION ) );
                 ),
             (Static,
-                assert( e.static_ );
-                if( e.static_->s_class() != ::AST::Static::CONST ) {
+                if( e.static_ )
+                {
+                    if( e.static_->s_class() != ::AST::Static::CONST ) {
+                        m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::STATIC ) );
+                    }
+                    else {
+                        m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::CONSTANT ) );
+                    }
+                }
+                else if( e.hir )
+                {
                     m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::STATIC ) );
                 }
-                else {
+                // HACK: If the HIR pointer is nullptr, then it refers to a `const
+                else
+                {
                     m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::CONSTANT ) );
                 }
                 )

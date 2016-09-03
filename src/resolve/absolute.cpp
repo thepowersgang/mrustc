@@ -354,11 +354,6 @@ struct Context
     }
     AST::Path lookup_opt(const ::std::string& name, LookupMode mode) const {
         
-        // TODO: Quirk with primitive types:
-        // - `usize::is_power_of_two` (associated function - liballoc/heap.rs)
-        // - `str::from_utf8_unchecked` (free function - libcore/fmt/mod.rs)
-        // A workaround would be to accept the path here and search the located module for the next entry and fall back on referring to the type otherwise.
-        
         for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
         {
             TU_MATCH(Ent, (*it), (e),
@@ -752,7 +747,7 @@ namespace {
                 
                 ::AST::Path new_path;
                 const auto& next_node = path_abs.nodes[i+1];
-                // TODO: If the named item can't be found in the trait, fall back to it being a type binding
+                // If the named item can't be found in the trait, fall back to it being a type binding
                 // - What if this item is from a nested trait?
                 bool found = false;
                 switch( i+1 < path_abs.nodes.size() ? Context::LookupMode::Namespace : mode )
@@ -907,7 +902,32 @@ namespace {
                         Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, true,  path, v->second->ent.as_Import());
                         return ;
                     }
-                    // TODO: Set binding
+                    TU_MATCH_DEF(::HIR::ValueItem, (v->second->ent), (e),
+                    (
+                        // TODO: Handle other values types
+                        TODO(sp, "Bind item type " << v->second->ent.tag_str());
+                        ),
+                    (Function,
+                        path.bind( ::AST::PathBinding::make_Function({nullptr/*, &e*/}) );
+                        ),
+                    (StructConstructor,
+                        auto ty_path = e.ty;
+                        ty_path.m_crate_name = "";
+                        path.bind( ::AST::PathBinding::make_Struct({nullptr, &crate.m_hir->get_struct_by_path(sp, ty_path)}) );
+                        ),
+                    (StructConstant,
+                        auto ty_path = e.ty;
+                        ty_path.m_crate_name = "";
+                        path.bind( ::AST::PathBinding::make_Struct({nullptr, &crate.m_hir->get_struct_by_path(sp, ty_path)}) );
+                        ),
+                    (Static,
+                        path.bind( ::AST::PathBinding::make_Static({nullptr, &e}) );
+                        ),
+                    (Constant,
+                        // Bind
+                        path.bind( ::AST::PathBinding::make_Static({nullptr, nullptr}) );
+                        )
+                    )
                     path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                     return ;
                 }
