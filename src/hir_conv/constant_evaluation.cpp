@@ -605,6 +605,8 @@ namespace {
         ::HIR::Literal  retval;
         ::std::vector< ::HIR::Literal>  locals;
         ::std::vector< ::HIR::Literal>  temps;
+        locals.resize( fcn.named_variables.size() );
+        temps.resize( fcn.temporaries.size() );
         
         auto get_lval = [&](const ::MIR::LValue& lv) -> ::HIR::Literal& {
             TU_MATCHA( (lv), (e),
@@ -648,6 +650,12 @@ namespace {
             (
                 return mv$(v);
                 ),
+            (Invalid,
+                BUG(sp, "Read of invalid lvalue - " << lv);
+                ),
+            (BorrowOf,
+                return ::HIR::Literal(e.clone());
+                ),
             (Integer,
                 return ::HIR::Literal(e);
                 ),
@@ -664,7 +672,7 @@ namespace {
             for(const auto& stmt : block.statements)
             {
                 if( ! stmt.is_Assign() ) {
-                    BUG(sp, "");
+                    BUG(sp, "Non-assign statement - drop " << stmt.as_Drop().slot);
                 }
                 
                 ::HIR::Literal  val;
@@ -697,7 +705,7 @@ namespace {
                         TODO(sp, "Constant::Const - " << e);
                         ),
                     (ItemAddr,
-                        TODO(sp, "Constant::ItemAddr - " << e);
+                        val = ::HIR::Literal::make_BorrowOf( e2.clone() );
                         )
                     )
                     ),
@@ -753,6 +761,9 @@ namespace {
                     val = ::HIR::Literal::make_List( mv$(vals) );
                     )
                 )
+                
+                auto& dst = get_lval(sa.dst);
+                dst = mv$(val);
             }
             TU_MATCH_DEF( ::MIR::Terminator, (block.terminator), (e),
             (
@@ -765,7 +776,13 @@ namespace {
                 return retval;
                 ),
             (Call,
-                TODO(sp, "Execute MIR - call function");
+                //auto& dst = get_lval(e.ret_val);
+                auto fcn = read_lval(e.fcn_val);
+                if( ! fcn.is_BorrowOf() ) {
+                    BUG(sp, "Execute MIR - Calling function through invalid value - " << fcn);
+                }
+                const auto& fcnp = fcn.as_BorrowOf();
+                TODO(sp, "Execute MIR - call function " << fcnp);
                 )
             )
         }
