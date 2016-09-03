@@ -1124,7 +1124,7 @@ namespace {
             (Generic,
                 switch(node.m_target) {
                 case ::HIR::ExprNode_PathValue::UNKNOWN:
-                    BUG(sp, "Unknown target PathValue encountered with Generic path");
+                    BUG(sp, "_PathValue with target=UNKNOWN and a Generic path - " << e.m_path);
                 case ::HIR::ExprNode_PathValue::FUNCTION: {
                     const auto& f = this->context.m_crate.get_function_by_path(sp, e.m_path);
                     fix_param_count(sp, this->context, e, f.m_params, e.m_params);
