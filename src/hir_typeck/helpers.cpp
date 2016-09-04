@@ -1087,7 +1087,24 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             */
             return false;
         }
+        
+        // Unsize impl for arrays
+        if( trait == m_crate.get_lang_item_path(sp, "unsize") )
+        {
+            ASSERT_BUG(sp, params.m_types.size() == 1, "");
+            const auto& dst_ty = m_ivars.get_type( params.m_types[0] );
+            
+            TU_IFLET(::HIR::TypeRef::Data, dst_ty.m_data, Slice, e2,
+                auto cmp = e.inner->compare_with_placeholders(sp, *e2.inner, m_ivars.callback_resolve_infer());
+                if( cmp != ::HIR::Compare::Unequal ) {
+                    ::HIR::PathParams   pp;
+                    pp.m_types.push_back( e.inner->clone() );
+                    return callback( ImplRef(type.clone(), mv$(pp), {}), cmp );
+                }
+            )
+        }
     )
+    
     
     // Trait objects automatically implement their own traits
     // - IF object safe (TODO)
