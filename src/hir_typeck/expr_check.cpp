@@ -285,18 +285,37 @@ namespace {
             
             const auto& src_ty = node.m_value->m_res_type;
             const auto& dst_ty = node.m_res_type;
-            // Check unsizability (including trait impls)
-            // NOTE: Unsize applies inside borrows
-            TU_MATCH_DEF(::HIR::TypeRef::Data, (dst_ty.m_data), (e),
-            (
-                ERROR(sp, E0000, "Invalid unsizing operation to " << dst_ty << " from " << src_ty);
-                ),
-            (TraitObject,
-                ),
-            (Slice,
-                // TODO: Does unsize ever apply to arrays? - Yes.
+            
+            if( src_ty.m_data.is_Borrow() && dst_ty.m_data.is_Borrow() )
+            {
+                const auto& se = src_ty.m_data.as_Borrow();
+                const auto& de = dst_ty.m_data.as_Borrow();
+                if( se.type != de.type ) {
+                    ERROR(sp, E0000, "Invalid unsizing operation to " << dst_ty << " from " << src_ty << " - Borrow class mismatch");
+                }
+                const auto& src_ty = *se.inner;
+                const auto& dst_ty = *de.inner;
+                // Check unsizability (including trait impls)
+                // NOTE: Unsize applies inside borrows
+                TU_MATCH_DEF(::HIR::TypeRef::Data, (dst_ty.m_data), (e),
+                (
+                    ERROR(sp, E0000, "Invalid unsizing operation to " << dst_ty << " from " << src_ty);
+                    ),
+                (TraitObject,
+                    ),
+                (Slice,
+                    // TODO: Does unsize ever apply to arrays? - Yes.
+                    )
                 )
-            )
+            }
+            else if( src_ty.m_data.is_Borrow() || dst_ty.m_data.is_Borrow() )
+            {
+                ERROR(sp, E0000, "Invalid unsizing operation to " << dst_ty << " from " << src_ty);
+            }
+            else
+            {
+                TODO(sp, "Check for impl of Unsize<" << dst_ty << "> for " << src_ty);
+            }
             
             node.m_value->visit( *this );
         }

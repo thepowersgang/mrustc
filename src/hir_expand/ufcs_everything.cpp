@@ -4,6 +4,7 @@
  *
  * hir_expand/ufcs_everything.cpp
  * - Expand all function calls (_CallMethod, and _CallValue) and operator overloads to _CallPath
+ * - Also handles borrow-unsize-deref for _Unsize on arrays (see comment in _Unsize)
  */
 #include <hir/visitor.hpp>
 #include <hir/expr.hpp>
@@ -649,7 +650,7 @@ namespace {
                 langitem = method = "deref_mut";
                 break;
             case ::HIR::ValueUsage::Move:
-                TODO(sp, "Support moving out of indexed values");
+                TODO(sp, "Support moving out of borrows");
                 break;
             }
             // Needs replacement, continue
@@ -675,6 +676,47 @@ namespace {
             
             // - Dereference the result (which is an &-ptr)
             m_replacement = NEWNODE( mv$(node.m_res_type), Deref, sp,  mv$(m_replacement) );
+        }
+        
+        
+        
+        void visit(::HIR::ExprNode_Unsize& node) override
+        {
+            ::HIR::ExprVisitorDef::visit(node);
+            
+            // HACK: The autoderef code has to run before usage information is avaliable, so emits "invalid" _Unsize nodes
+            // - Fix that.
+            if( node.m_value->m_res_type.m_data.is_Array() )
+            {
+                const Span& sp = node.span();
+                
+                ::HIR::BorrowType   bt = ::HIR::BorrowType::Shared;
+                switch( node.m_usage )
+                {
+                case ::HIR::ValueUsage::Unknown:
+                    BUG(sp, "Unknown usage type of _Unsize value");
+                    break;
+                case ::HIR::ValueUsage::Borrow:
+                    bt = ::HIR::BorrowType::Shared;
+                    break;
+                case ::HIR::ValueUsage::Mutate:
+                    bt = ::HIR::BorrowType::Unique;
+                    break;
+                case ::HIR::ValueUsage::Move:
+                    TODO(sp, "Support moving in _Unsize");
+                    break;
+                }
+                
+                auto ty_src = ::HIR::TypeRef::new_borrow(bt, node.m_value->m_res_type.clone());
+                auto ty_dst = ::HIR::TypeRef::new_borrow(bt, node.m_res_type.clone());
+                auto ty_dst2 = ty_dst.clone();
+                // Borrow
+                node.m_value = NEWNODE( mv$(ty_src), Borrow, sp, bt, mv$(node.m_value) );
+                // Unsize borrow
+                m_replacement = NEWNODE( mv$(ty_dst), Unsize, sp, mv$(node.m_value), mv$(ty_dst2) );
+                // Deref
+                m_replacement = NEWNODE( mv$(node.m_res_type), Deref, sp,  mv$(m_replacement) );
+            }
         }
     };
     class OuterVisitor:

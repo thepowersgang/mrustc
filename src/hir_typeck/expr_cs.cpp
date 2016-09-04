@@ -2902,6 +2902,7 @@ const ::HIR::TypeRef& Context::get_var(const Span& sp, unsigned int idx) const {
     {
         ASSERT_BUG(span, ty_dst.m_data.is_Slice(), "Array should only ever autoderef to Slice");
         
+        // HACK: Emit an invalid _Unsize op that is fixed once usage type is known.
         auto ty_dst_c = ty_dst.clone();
         val_node = NEWNODE( mv$(ty_dst), span, _Unsize,  mv$(val_node), mv$(ty_dst_c) );
         DEBUG("- Unsize " << &*val_node << " -> " << val_node->m_res_type);
@@ -3053,10 +3054,10 @@ namespace {
             TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Array, src_array,
                 context.equate_types(sp, *dst_slice.inner, *src_array.inner);
                 
-                add_coerce_borrow(context, node_ptr, ty_dst, [&](auto& node_ptr) {
-                    auto span = node_ptr->span();
-                    node_ptr = NEWNODE( ty_dst.clone(), span, _Unsize,  mv$(node_ptr), ty_dst.clone() );
-                    });
+                auto ty_dst_b = ::HIR::TypeRef::new_borrow(bt, ty_dst.clone());
+                auto ty_dst_b2 = ty_dst_b.clone();
+                auto span = node_ptr->span();
+                node_ptr = NEWNODE( mv$(ty_dst_b), span, _Unsize,  mv$(node_ptr), mv$(ty_dst_b2) );
                 
                 context.m_ivars.mark_change();
                 return true;
@@ -3161,10 +3162,11 @@ namespace {
             }
             
             // Add _Unsize operator
-            add_coerce_borrow(context, node_ptr, ty_dst, [&](auto& node_ptr) {
-                auto span = node_ptr->span();
-                node_ptr = NEWNODE( ty_dst.clone(), span, _Unsize,  mv$(node_ptr), ty_dst.clone() );
-                });
+            auto ty_dst_b = ::HIR::TypeRef::new_borrow(bt, ty_dst.clone());
+            auto ty_dst_b2 = ty_dst_b.clone();
+            auto span = node_ptr->span();
+            node_ptr = NEWNODE( mv$(ty_dst_b), span, _Unsize,  mv$(node_ptr), mv$(ty_dst_b2) );
+            
             return true;
             )
         )
@@ -3196,10 +3198,11 @@ namespace {
                 });
             if( found ) {
                 DEBUG("- Unsize " << &*node_ptr << " -> " << ty_dst);
-                add_coerce_borrow(context, node_ptr, ty_dst, [&](auto& node_ptr) {
-                    auto span = node_ptr->span();
-                    node_ptr = NEWNODE( ty_dst.clone(), span, _Unsize,  mv$(node_ptr), ty_dst.clone() );
-                    });
+                auto ty_dst_b = ::HIR::TypeRef::new_borrow(bt, ty_dst.clone());
+                auto ty_dst_b2 = ty_dst_b.clone();
+                auto span = node_ptr->span();
+                node_ptr = NEWNODE( mv$(ty_dst_b), span, _Unsize,  mv$(node_ptr), mv$(ty_dst_b2) );
+                
                 return true;
             }
         }
@@ -3233,11 +3236,8 @@ namespace {
             {
                 DEBUG("- CoerceUnsize " << &*node_ptr << " -> " << ty_dst);
                 
-                TODO(sp, "Add Coerce op applying to pointer type for " << ty_src << " -> " << ty_dst);
-                //add_coerce_borrow(context, node_ptr, ty_dst, [&](auto& node_ptr) {
-                //    auto span = node_ptr->span();
-                //    node_ptr = NEWNODE( ty_dst.clone(), span, _Unsize,  mv$(node_ptr), ty_dst.clone() );
-                //    });
+                auto span = node_ptr->span();
+                node_ptr = NEWNODE( ty_dst.clone(), span, _Unsize,  mv$(node_ptr), ty_dst.clone() );
                 return true;
             }
         }

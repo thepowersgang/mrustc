@@ -816,7 +816,20 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return Compare::Equal;
         ),
     (TraitObject,
-        TODO(sp, "Compare " << *this << " and " << right);
+        if( le.m_markers.size() != re.m_markers.size() )
+            return Compare::Unequal;
+        auto rv = le.m_trait .compare_with_placeholders( sp, re.m_trait, resolve_placeholder );
+        if( rv == Compare::Unequal )
+            return rv;
+        for( unsigned int i = 0; i < le.m_markers.size(); i ++ )
+        {
+            auto rv2 = le.m_markers[i] .compare_with_placeholders( sp, re.m_markers[i], resolve_placeholder );
+            if( rv2 == Compare::Unequal )
+                return Compare::Unequal;
+            if( rv2 == Compare::Fuzzy )
+                rv = Compare::Fuzzy;
+        }
+        return rv;
         ),
     (Array,
         if( le.size_val != re.size_val )

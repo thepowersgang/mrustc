@@ -224,6 +224,43 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
     throw "";
 }
 
+::HIR::Compare HIR::PathParams::compare_with_placeholders(const Span& sp, const ::HIR::PathParams& x, ::HIR::t_cb_resolve_type resolve_placeholder) const
+{
+    using ::HIR::Compare;
+    
+    auto rv = Compare::Equal;
+    if( this->m_types.size() > 0 || x.m_types.size() > 0 ) {
+        if( this->m_types.size() != x.m_types.size() ) {
+            return Compare::Unequal;
+        }
+        for( unsigned int i = 0; i < x.m_types.size(); i ++ )
+        {
+            auto rv2 = this->m_types[i].compare_with_placeholders( sp, x.m_types[i], resolve_placeholder );
+            if( rv2 == Compare::Unequal )
+                return Compare::Unequal;
+            if( rv2 == Compare::Fuzzy )
+                rv = Compare::Fuzzy;
+        }
+    }
+    return rv;
+}
+::HIR::Compare HIR::GenericPath::compare_with_placeholders(const Span& sp, const ::HIR::GenericPath& x, ::HIR::t_cb_resolve_type resolve_placeholder) const
+{
+    using ::HIR::Compare;
+
+    if( this->m_path.m_crate_name != x.m_path.m_crate_name )
+        return Compare::Unequal;
+    if( this->m_path.m_components.size() != x.m_path.m_components.size() )
+        return Compare::Unequal;
+    for(unsigned int i = 0; i < this->m_path.m_components.size(); i ++ )
+    {
+        if( this->m_path.m_components[i] != x.m_path.m_components[i] )
+            return Compare::Unequal;
+    }
+    
+    return this->m_params. compare_with_placeholders(sp, x.m_params, resolve_placeholder);
+}
+
 namespace {
     ::HIR::Compare compare_with_placeholders(
             const Span& sp,
@@ -231,23 +268,7 @@ namespace {
             ::HIR::t_cb_resolve_type resolve_placeholder
             )
     {
-        using ::HIR::Compare;
-        
-        auto rv = Compare::Equal;
-        if( l.m_types.size() > 0 || r.m_types.size() > 0 ) {
-            if( l.m_types.size() != r.m_types.size() ) {
-                return Compare::Unequal;
-            }
-            for( unsigned int i = 0; i < r.m_types.size(); i ++ )
-            {
-                auto rv2 = l.m_types[i].compare_with_placeholders( sp, r.m_types[i], resolve_placeholder );
-                if( rv2 == Compare::Unequal )
-                    return Compare::Unequal;
-                if( rv2 == Compare::Fuzzy )
-                    rv = Compare::Fuzzy;
-            }
-        }
-        return rv;
+        return l.compare_with_placeholders(sp, r, resolve_placeholder);
     }
     ::HIR::Compare compare_with_placeholders(
             const Span& sp,
@@ -255,19 +276,7 @@ namespace {
             ::HIR::t_cb_resolve_type resolve_placeholder
             )
     {
-        using ::HIR::Compare;
-
-        if( l.m_path.m_crate_name != r.m_path.m_crate_name )
-            return Compare::Unequal;
-        if( l.m_path.m_components.size() != r.m_path.m_components.size() )
-            return Compare::Unequal;
-        for(unsigned int i = 0; i < l.m_path.m_components.size(); i ++ )
-        {
-            if( l.m_path.m_components[i] != r.m_path.m_components[i] )
-                return Compare::Unequal;
-        }
-        
-        return compare_with_placeholders(sp, l.m_params, r.m_params, resolve_placeholder);
+        return l.compare_with_placeholders(sp, r, resolve_placeholder);
     }
 }
 
@@ -278,6 +287,34 @@ namespace {
     case ::HIR::Compare::Equal: break; \
     }\
 } while(0)
+
+::HIR::Compare HIR::TraitPath::compare_with_placeholders(const Span& sp, const TraitPath& x, t_cb_resolve_type resolve_placeholder) const
+{
+    auto rv = m_path .compare_with_placeholders(sp, x.m_path, resolve_placeholder);
+    if( rv == Compare::Unequal )
+        return rv;
+    
+    // TODO: HRLs
+    
+    auto it_l = m_type_bounds.begin();
+    auto it_r = x.m_type_bounds.begin();
+    while( it_l != m_type_bounds.end() && it_r != x.m_type_bounds.end() )
+    {
+        if( it_l->first != it_r->first ) {
+            return Compare::Unequal;
+        }
+        CMP( rv, it_l->second .compare_with_placeholders( sp, it_r->second, resolve_placeholder ) );
+        ++ it_l;
+        ++ it_r;
+    }
+    
+    if( it_l != m_type_bounds.end() || it_r != x.m_type_bounds.end() )
+    {
+        return Compare::Unequal;
+    }
+    
+    return rv;
+}
 
 ::HIR::Compare HIR::Path::compare_with_placeholders(const Span& sp, const Path& x, t_cb_resolve_type resolve_placeholder) const
 {

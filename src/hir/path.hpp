@@ -89,6 +89,8 @@ struct PathParams
     PathParams(PathParams&&) = default;
     PathParams& operator=(PathParams&&) = default;
     
+    Compare compare_with_placeholders(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder) const;
+    
     bool operator==(const PathParams& x) const;
     bool operator!=(const PathParams& x) const { return !(*this == x); }
     bool operator<(const PathParams& x) const { return ord(x) == OrdLess; }
@@ -111,6 +113,7 @@ public:
     GenericPath(::HIR::SimplePath sp, ::HIR::PathParams params);
     
     GenericPath clone() const;
+    Compare compare_with_placeholders(const Span& sp, const GenericPath& x, t_cb_resolve_type resolve_placeholder) const;
     
     bool operator==(const GenericPath& x) const;
     bool operator!=(const GenericPath& x) const { return !(*this == x); }
@@ -136,6 +139,8 @@ public:
     const ::HIR::Trait* m_trait_ptr;
     
     TraitPath clone() const;
+    Compare compare_with_placeholders(const Span& sp, const TraitPath& x, t_cb_resolve_type resolve_placeholder) const;
+    
     bool operator==(const TraitPath& x) const;
     bool operator!=(const TraitPath& x) const { return !(*this == x); }
     

@@ -876,49 +876,61 @@ namespace {
             
             const auto& ty_out = node.m_res_type;
             const auto& ty_in = node.m_value->m_res_type;
-            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_out.m_data), (e),
-            (
-                TODO(node.span(), "MIR _Unsize to " << ty_out);
-                ),
-            // TODO: Unsize custom types containing a ?Size generic - See the Unsize trait
-            //(Path,
-            //    ),
-            //(Generic,
-            //    ),
-            (Slice,
-                if( ty_in.m_data.is_Array() )
-                {
-                    const auto& in_array = ty_in.m_data.as_Array();
-                    auto size_lval = m_builder.lvalue_or_temp( node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::Constant( static_cast<uint64_t>(in_array.size_val) ) );
-                    m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_lval) }) );
-                }
-                else if( ty_in.m_data.is_Generic() )
-                {
-                    // HACK: FixedSizeArray uses `A: Unsize<[T]>` which will lead to the above code not working (as the size isn't known).
-                    // - Maybe _Meta on the `&A` would work as a stopgap (since A: Sized, it won't collide with &[T] or similar)
-                    auto size_lval = m_builder.lvalue_or_temp( node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::RValue::make_DstMeta({ ptr_lval.clone() }) );
-                    m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_lval) }) );
-                }
-                else
-                {
-                    ASSERT_BUG(node.span(), ty_in.m_data.is_Array(), "Unsize to slice from non-array - " << ty_in);
-                }
-                ),
-            (TraitObject,
-                // TODO: Obtain the vtable if the destination is a trait object
-                // vtable exists as an unnamable associated type
+            
+            if( ty_out.m_data.is_Borrow() && ty_in.m_data.is_Borrow() )
+            {
+                const auto& oe = ty_out.m_data.as_Borrow();
+                const auto& ie = ty_in.m_data.as_Borrow();
+                const auto& ty_out = *oe.inner;
+                const auto& ty_in = *ie.inner;
+                TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_out.m_data), (e),
+                (
+                    TODO(node.span(), "MIR _Unsize to " << ty_out);
+                    ),
+                // TODO: Unsize custom types containing a ?Size generic - See the Unsize trait
+                //(Path,
+                //    ),
+                //(Generic,
+                //    ),
+                (Slice,
+                    if( ty_in.m_data.is_Array() )
+                    {
+                        const auto& in_array = ty_in.m_data.as_Array();
+                        auto size_lval = m_builder.lvalue_or_temp( node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::Constant( static_cast<uint64_t>(in_array.size_val) ) );
+                        m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_lval) }) );
+                    }
+                    else if( ty_in.m_data.is_Generic() )
+                    {
+                        // HACK: FixedSizeArray uses `A: Unsize<[T]>` which will lead to the above code not working (as the size isn't known).
+                        // - Maybe _Meta on the `&A` would work as a stopgap (since A: Sized, it won't collide with &[T] or similar)
+                        auto size_lval = m_builder.lvalue_or_temp( node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::RValue::make_DstMeta({ ptr_lval.clone() }) );
+                        m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_lval) }) );
+                    }
+                    else
+                    {
+                        ASSERT_BUG(node.span(), ty_in.m_data.is_Array(), "Unsize to slice from non-array - " << ty_in);
+                    }
+                    ),
+                (TraitObject,
+                    // TODO: Obtain the vtable if the destination is a trait object
+                    // vtable exists as an unnamable associated type
 
-                ::HIR::Path vtable { ty_in.clone(), e.m_trait.m_path.clone(), "#vtable" };
-                ::HIR::TypeRef  vtable_type { {} };
-                auto vtable_lval = m_builder.lvalue_or_temp(
-                    node.span(),
-                    ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(vtable_type)),
-                    ::MIR::RValue( ::MIR::Constant::make_ItemAddr(mv$(vtable)) )
-                    );
-                
-                m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(vtable_lval) }) );
+                    ::HIR::Path vtable { ty_in.clone(), e.m_trait.m_path.clone(), "#vtable" };
+                    ::HIR::TypeRef  vtable_type { {} };
+                    auto vtable_lval = m_builder.lvalue_or_temp(
+                        node.span(),
+                        ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(vtable_type)),
+                        ::MIR::RValue( ::MIR::Constant::make_ItemAddr(mv$(vtable)) )
+                        );
+                    
+                    m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(vtable_lval) }) );
+                    )
                 )
-            )
+            }
+            else
+            {
+                TODO(node.span(), "Support emitting CoerceUnsized-based _Unsize ops in MIR - " << ty_in << "  ->  " << ty_out);
+            }
         }
         void visit(::HIR::ExprNode_Index& node) override
         {
