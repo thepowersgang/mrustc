@@ -202,7 +202,11 @@ public:
     /// Search for a trait implementation in current bounds
     bool find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const;
     /// Search for a trait implementation in the crate
-    bool find_trait_impls_crate(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const;
+    bool find_trait_impls_crate(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const {
+        return find_trait_impls_crate(sp, trait, &params, type, callback);
+    }
+    /// Search for a trait implementation in the crate (allows nullptr to ignore params)
+    bool find_trait_impls_crate(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams* params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const;
     
     /// Locate the named method by applying auto-dereferencing.
     /// \return Number of times deref was applied (or ~0 if _ was hit)

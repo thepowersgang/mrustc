@@ -1775,18 +1775,13 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
     });
 }
 bool TraitResolution::find_trait_impls_crate(const Span& sp,
-        const ::HIR::SimplePath& trait, const ::HIR::PathParams& params,
+        const ::HIR::SimplePath& trait, const ::HIR::PathParams* params_ptr,
         const ::HIR::TypeRef& type,
         t_cb_trait_impl_r callback
         ) const
 {
     // TODO: Parameter defaults - apply here or in the caller?
-    return this->m_crate.find_trait_impls(trait, type, [&](const auto& ty)->const auto&{
-            if( ty.m_data.is_Infer() ) 
-                return this->m_ivars.get_type(ty);
-            else
-                return ty;
-        },
+    return this->m_crate.find_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
         [&](const auto& impl) {
             DEBUG("[find_trait_impls_crate] Found impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type);
             // Compare with `params`
@@ -1805,16 +1800,23 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 }
                 };
             match &= impl.m_type.match_test_generics_fuzz(sp, type , this->m_ivars.callback_resolve_infer(), cb);
-            // TODO: This is wrong (will false-positive), but works around an API deficiency (no "is there an impl for this trait with any param set")
-            if( params.m_types.size() > 0 )
+            if( params_ptr )
             {
+                const auto& params = *params_ptr;
                 ASSERT_BUG(sp, impl.m_trait_args.m_types.size() == params.m_types.size(), "Param count mismatch between `" << impl.m_trait_args << "` and `" << params << "` for " << trait );
                 for(unsigned int i = 0; i < impl.m_trait_args.m_types.size(); i ++)
                     match &= impl.m_trait_args.m_types[i].match_test_generics_fuzz(sp, params.m_types[i], this->m_ivars.callback_resolve_infer(), cb);
+                if( match == ::HIR::Compare::Unequal ) {
+                    DEBUG("- Failed to match parameters - " << impl.m_trait_args << "+" << impl.m_type << " != " << params << "+" << type);
+                    return false;
+                }
             }
-            if( match == ::HIR::Compare::Unequal ) {
-                DEBUG("- Failed to match parameters - " << impl.m_trait_args << "+" << impl.m_type << " != " << params << "+" << type);
-                return false;
+            else
+            {
+                if( match == ::HIR::Compare::Unequal ) {
+                    DEBUG("- Failed to match type - " << impl.m_type << " != " << type);
+                    return false;
+                }
             }
             
             // TODO: Some impl blocks have type params used as part of type bounds.
@@ -2320,8 +2322,8 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
                 //    params.m_types.push_back( m_ivars.new_ivar_tr() );
                 //}
                 
-                // TODO: Need a "don't care" marker for the PathParams
-                if( find_trait_impls_crate(sp, *trait_ref.first, ::HIR::PathParams{}, ty,  [](auto , auto ) { return true; }) ) {
+                // TODO: Need a "don't care" marker for the PathParams, because we can't create ivars in this method (or class)
+                if( find_trait_impls_crate(sp, *trait_ref.first, nullptr, ty,  [](auto , auto ) { return true; }) ) {
                     DEBUG("Found trait impl " << *trait_ref.first << " (" /*<< m_ivars.fmt_type(*trait_ref.first)*/  << ") for " << ty << " ("<<m_ivars.fmt_type(ty)<<")");
                     fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
                         box$( ty.clone() ),
