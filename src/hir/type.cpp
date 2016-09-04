@@ -549,7 +549,6 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                 return Compare::Unequal;
             cmp &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, callback);
             return cmp;
-            TODO(sp, "Path UfcsKnown - " << *this << " and " << x);
             ),
         (UfcsUnknown,
             auto cmp = tpe.type->match_test_generics_fuzz( sp, *xpe.type, resolve_placeholder, callback );
@@ -568,7 +567,34 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         )
         ),
     (TraitObject,
-        TODO(sp, "TraitObject");
+        if( te.m_trait.m_path.m_path != xe.m_trait.m_path.m_path ) {
+            return Compare::Unequal;
+        }
+        if( te.m_markers.size() != xe.m_markers.size() ) {
+            return Compare::Unequal;
+        }
+        auto cmp = match_generics_pp(sp, te.m_trait.m_path.m_params, xe.m_trait.m_path.m_params, resolve_placeholder, callback);
+        for(unsigned int i = 0; i < te.m_markers.size(); i ++)
+        {
+            cmp &= match_generics_pp(sp, te.m_markers[i].m_params, xe.m_markers[i].m_params, resolve_placeholder, callback);
+        }
+        
+        auto it_l = te.m_trait.m_type_bounds.begin();
+        auto it_r = xe.m_trait.m_type_bounds.begin();
+        while( it_l != te.m_trait.m_type_bounds.end() && it_r != xe.m_trait.m_type_bounds.end() )
+        {
+            if( it_l->first != it_r->first ) {
+                return Compare::Unequal;
+            }
+            cmp &= it_l->second .match_test_generics_fuzz( sp, it_r->second, resolve_placeholder, callback );
+            ++ it_l;
+            ++ it_r;
+        }
+        
+        if( it_l != te.m_trait.m_type_bounds.end() || it_r != xe.m_trait.m_type_bounds.end() ) {
+            return Compare::Unequal;
+        }
+        return cmp;
         ),
     (Array,
         return te.inner->match_test_generics_fuzz( sp, *xe.inner, resolve_placeholder, callback );
