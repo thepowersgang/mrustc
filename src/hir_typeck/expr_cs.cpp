@@ -3004,7 +3004,6 @@ namespace {
             return true;
         }
         
-        
 
         // If either side (or both) are ivars, then coercion can't be known yet - but they could be equal
         // TODO: Fix and deduplicate the following code for InferClass::Diverge
@@ -3219,7 +3218,29 @@ namespace {
             return true;
         }
         
-        // TODO: CoerceUnsized trait
+        // CoerceUnsized trait
+        // - Only valid for generic or path destination types
+        if( ty_dst.m_data.is_Generic() || ty_dst.m_data.is_Path() ) {
+            
+            const auto& lang_CoerceUnsized = context.m_crate.get_lang_item_path(sp, "coerce_unsized");
+            ::HIR::PathParams   pp;
+            pp.m_types.push_back( ty_dst.clone() );
+            bool found = context.m_resolve.find_trait_impls(sp, lang_CoerceUnsized, pp, ty_src, [&](auto impl, auto cmp) {
+                // TODO: Allow fuzzy match if only match
+                return cmp == ::HIR::Compare::Equal;
+                });
+            if( found )
+            {
+                DEBUG("- CoerceUnsize " << &*node_ptr << " -> " << ty_dst);
+                
+                TODO(sp, "Add Coerce op applying to pointer type for " << ty_src << " -> " << ty_dst);
+                //add_coerce_borrow(context, node_ptr, ty_dst, [&](auto& node_ptr) {
+                //    auto span = node_ptr->span();
+                //    node_ptr = NEWNODE( ty_dst.clone(), span, _Unsize,  mv$(node_ptr), ty_dst.clone() );
+                //    });
+                return true;
+            }
+        }
         
         // 1. Check that the source type can coerce
         TU_MATCH( ::HIR::TypeRef::Data, (ty_src.m_data), (e),

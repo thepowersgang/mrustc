@@ -1109,6 +1109,44 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                 }
             }
         }
+        
+        if( trait == m_crate.get_lang_item_path(sp, "unsize") )
+        {
+            ASSERT_BUG(sp, params.m_types.size() == 1, "");
+            const auto& dst_ty = m_ivars.get_type( params.m_types[0] );
+            if( ! dst_ty.m_data.is_TraitObject() ) {
+                // If the destination isn't a trait object, don't even bother
+                return false;
+            }
+            const auto& e2 = dst_ty.m_data.as_TraitObject();
+            
+            auto cmp = ::HIR::Compare::Equal;
+            
+            // TODO: Fuzzy compare
+            if( e2.m_trait != e.m_trait ) {
+                return false;
+            }
+            // The destination must have a strict subset of marker traits.
+            const auto& src_markers = e.m_markers;
+            const auto& dst_markers = e2.m_markers;
+            for(const auto& mt : dst_markers)
+            {
+                // TODO: Fuzzy match
+                bool found = false;
+                for(const auto& omt : src_markers) {
+                    if( omt == mt ) {
+                        found = true;
+                        break;
+                    }
+                }
+                if( !found ) {
+                    // Return early.
+                    return false;
+                }
+            }
+            
+            return callback( ImplRef(&type, &e.m_trait.m_path.m_params, &e.m_trait.m_type_bounds), cmp );
+        }
     )
     
     // 1. Search generic params
