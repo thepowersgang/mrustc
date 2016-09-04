@@ -3088,11 +3088,16 @@ namespace {
                 
                 if( context.m_ivars.types_equal(ty_dst, *out_ty) == false ) {
                     // Check equivalence
+                    
                     if( ty_dst.m_data.tag() == out_ty->m_data.tag() ) {
                         TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_dst.m_data, out_ty->m_data), (d_e, s_e),
                         (
-                            DEBUG("");
-                            continue ;
+                            if( ty_dst .compare_with_placeholders(sp, *out_ty, context.m_ivars.callback_resolve_infer()) == ::HIR::Compare::Unequal ) {
+                                DEBUG("Same tag, but not fuzzy match");
+                                continue ;
+                            }
+                            DEBUG("Same tag and fuzzy match - assuming " << ty_dst << " == " << *out_ty);
+                            context.equate_types(sp, ty_dst,  *out_ty);
                             ),
                         (Slice,
                             // Equate!
@@ -3208,6 +3213,13 @@ namespace {
         }
         
         DEBUG("TODO - Borrow Coercion " << context.m_ivars.fmt_type(ty_dst) << " from " << context.m_ivars.fmt_type(ty_src));
+        if( ty_dst.compare_with_placeholders(sp, ty_src, context.m_ivars.callback_resolve_infer()) != ::HIR::Compare::Unequal )
+        {
+            context.equate_types(sp, ty_dst,  ty_src);
+            return true;
+        }
+        
+        // Keep trying
         return false;
     }
     bool check_coerce(Context& context, const Context::Coercion& v) {
