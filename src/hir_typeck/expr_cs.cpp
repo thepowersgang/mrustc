@@ -1896,8 +1896,16 @@ namespace {
                         DEBUG("- Ref " << &*node_ptr << " -> " << ty);
                         node_ptr = NEWNODE(mv$(ty), span, _Borrow,  bt, mv$(node_ptr) );
                         } break;
-                    case ::HIR::Function::Receiver::Box:
-                        TODO(sp, "Box method receiver calling - " << node.m_method_path);
+                    case ::HIR::Function::Receiver::Box: {
+                        // - Undo a deref (there must have been one?) and ensure that it leads to a Box<Self>
+                        auto* deref_ptr = dynamic_cast< ::HIR::ExprNode_Deref*>(&*node_ptr);
+                        ASSERT_BUG(sp, deref_ptr != nullptr, "Calling Box receiver method but no deref happened");
+                        node_ptr = mv$(deref_ptr->m_value);
+                        DEBUG("- Undo deref " << deref_ptr << " -> " << node_ptr->m_res_type);
+                        // TODO: Triple-check that the input to the above Deref was a Box (lang="owned_box")
+                        //TU_IFLET(::HIR::TypeRef::Data, node_ptr->m_res_type.m_data, Path, e,
+                        //)
+                        } break;
                     }
                 }
                 
