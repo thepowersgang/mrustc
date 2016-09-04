@@ -38,7 +38,7 @@ namespace {
     bool matches_type_int(const ::HIR::GenericParams& params, const ::HIR::TypeRef& left,  const ::HIR::TypeRef& right_in, ::HIR::t_cb_resolve_type ty_res, bool expand_generic)
     {
         assert(! left.m_data.is_Infer() );
-        const auto& right = (right_in.m_data.is_Infer() || right_in.m_data.is_Generic() == expand_generic ? ty_res(right_in) : right_in);
+        const auto& right = (right_in.m_data.is_Infer() || (right_in.m_data.is_Generic() && expand_generic) ? ty_res(right_in) : right_in);
         if( right_in.m_data.is_Generic() )
             expand_generic = false;
 
