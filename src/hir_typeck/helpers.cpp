@@ -1417,6 +1417,38 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         }
     )
     
+    // If it's a TraitObject, then maybe we're asking for a bound
+    TU_IFLET(::HIR::TypeRef::Data, pe.type->m_data, TraitObject, te,
+        const auto& data_trait = te.m_trait.m_path;
+        if( pe.trait.m_path == data_trait.m_path ) {
+            auto cmp = ::HIR::Compare::Equal;
+            if( pe.trait.m_params.m_types.size() != data_trait.m_params.m_types.size() )
+            {
+                cmp = ::HIR::Compare::Unequal;
+            }
+            else
+            {
+                for(unsigned int i = 0; i < pe.trait.m_params.m_types.size(); i ++)
+                {
+                    const auto& l = pe.trait.m_params.m_types[i];
+                    const auto& r = data_trait.m_params.m_types[i];
+                    cmp &= l.compare_with_placeholders(sp, r, m_ivars.callback_resolve_infer());
+                }
+            }
+            if( cmp != ::HIR::Compare::Unequal )
+            {
+                auto it = te.m_trait.m_type_bounds.find( pe.item );
+                if( it == te.m_trait.m_type_bounds.end() ) {
+                    // TODO: Mark as opaque and return.
+                    // - Why opaque? It's not bounded, don't even bother
+                    TODO(sp, "Handle unconstrained associate type " << pe.item << " from " << *pe.type);
+                }
+                
+                input = it->second.clone();
+                return ;
+            }
+        }
+    )
     
     // 1. Bounds
     bool rv;
