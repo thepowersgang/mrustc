@@ -485,6 +485,25 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
         //}
     )
     
+    // If it's a TraitObject, then maybe we're asking for a bound
+    TU_IFLET(::HIR::TypeRef::Data, e2.type->m_data, TraitObject, te,
+        const auto& data_trait = te.m_trait.m_path;
+        if( e2.trait.m_path == data_trait.m_path ) {
+            if( e2.trait.m_params == data_trait.m_params )
+            {
+                auto it = te.m_trait.m_type_bounds.find( e2.item );
+                if( it == te.m_trait.m_type_bounds.end() ) {
+                    // TODO: Mark as opaque and return.
+                    // - Why opaque? It's not bounded, don't even bother
+                    TODO(sp, "Handle unconstrained associate type " << e2.item << " from " << *e2.type);
+                }
+                
+                input = it->second.clone();
+                return ;
+            }
+        }
+    )
+    
     // 1. Bounds
     bool rv;
     bool assume_opaque = true;
