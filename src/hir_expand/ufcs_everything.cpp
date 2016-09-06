@@ -24,11 +24,15 @@ namespace {
     {
         const ::HIR::Crate& m_crate;
         ::HIR::ExprNodeP    m_replacement;
+        ::HIR::SimplePath   m_lang_Box;
         
     public:
         ExprVisitor_Mutate(const ::HIR::Crate& crate):
             m_crate(crate)
         {
+            if( crate.m_lang_items.count("owned_box") > 0 ) {
+                m_lang_Box = crate.m_lang_items.at("owned_box");
+            }
         }
         void visit_node_ptr(::HIR::ExprPtr& root) {
             const auto& node_ref = *root;
@@ -624,6 +628,13 @@ namespace {
                 BUG(sp, "Deref on unexpected type - " << ty_val);
                 ),
             (Path,
+                TU_IFLET( ::HIR::Path::Data, e.path.m_data, Generic, pe,
+                    // Box<T> ("owned_box") is magical!
+                    if( pe.m_path == m_lang_Box ) {
+                        //TODO(sp, "Deref on Box");
+                        return ;
+                    }
+                )
                 ),
             (Pointer,
                 return ;
@@ -650,7 +661,7 @@ namespace {
                 langitem = method = "deref_mut";
                 break;
             case ::HIR::ValueUsage::Move:
-                TODO(sp, "Support moving out of borrows");
+                TODO(sp, "ValueUsage::Move for desugared Deref of " << node.m_value->m_res_type);
                 break;
             }
             // Needs replacement, continue
