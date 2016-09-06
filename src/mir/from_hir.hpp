@@ -78,6 +78,8 @@ class MirBuilder
     const ::HIR::Function::args_t&  m_args;
     ::MIR::Function&    m_output;
     
+    const ::HIR::SimplePath*    m_lang_Box;
+    
     unsigned int    m_current_block;
     bool    m_block_active;
     
@@ -111,6 +113,7 @@ public:
     MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::Function::args_t& args, ::MIR::Function& output);
     ~MirBuilder();
     
+    const ::HIR::SimplePath* lang_Box() const { return m_lang_Box; }
     const ::HIR::Crate& crate() const { return m_resolve.m_crate; }
     
     // - Values

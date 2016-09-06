@@ -16,10 +16,15 @@ MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const 
     m_resolve(resolve),
     m_args(args),
     m_output(output),
+    m_lang_Box(nullptr),
     m_block_active(false),
     m_result_valid(false),
     m_fcn_scope(*this, 0)
 {
+    if( resolve.m_crate.m_lang_items.count("owned_box") > 0 ) {
+        m_lang_Box = &resolve.m_crate.m_lang_items.at("owned_box");
+    }
+    
     set_cur_block( new_bb_unlinked() );
     m_scopes.push_back( ScopeDef { sp } );
     m_scope_stack.push_back( 0 );
@@ -652,6 +657,25 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
             (
                 BUG(sp, "Deref on unexpected type - " << ty);
                 ),
+            (Path,
+                if( m_lang_Box )
+                {
+                    TU_IFLET( ::HIR::Path::Data, te.path.m_data, Generic, e,
+                        if( e.m_path == *m_lang_Box ) {
+                            cb( e.m_params.m_types.at(0) );
+                        }
+                        else {
+                            BUG(sp, "Deref on unexpected type - " << ty);
+                        }
+                    )
+                    else {
+                        BUG(sp, "Deref on unexpected type - " << ty);
+                    }
+                }
+                else {
+                    BUG(sp, "Deref on unexpected type - " << ty);
+                }
+                ),
             (Pointer,
                 cb(*te.inner);
                 ),
@@ -910,6 +934,7 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
         if( lvalue_is_copy(sp, lv) ) {
         }
         else {
+            // TODO: Move out of owned_box _is_ valid, and marks the box slot for shallow drop
             BUG(sp, "Move out of deref with non-Copy values - &move? - " << lv);
             moved_lvalue(sp, *e.val);
         }

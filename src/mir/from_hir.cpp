@@ -929,7 +929,13 @@ namespace {
             }
             else
             {
-                TODO(node.span(), "Support emitting CoerceUnsized-based _Unsize ops in MIR - " << ty_in << "  ->  " << ty_out);
+                // NOTES: (from IRC: eddyb)
+                // < eddyb> they're required that T and U are the same struct definition (with different type parameters) and exactly one field differs in type between T and U (ignoring PhantomData)
+                // < eddyb> Mutabah: I forgot to mention that the field that differs in type must also impl CoerceUnsized
+
+                // TODO: Just emit a cast and leave magic handling to codegen
+                // - This code _could_ do inspection of the types and insert a destructure+unsize+restructure, but that does't handle direct `T: CoerceUnsize<U>`
+                m_builder.set_result( node.span(), ::MIR::RValue::make_Cast({ mv$(ptr_lval), node.m_res_type.clone() }) );
             }
         }
         void visit(::HIR::ExprNode_Index& node) override
@@ -1002,13 +1008,25 @@ namespace {
             
             TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_val.m_data), (te),
             (
+                if( m_builder.lang_Box() )
+                {
+                    if( ty_val.m_data.is_Path()
+                     && ty_val.m_data.as_Path().path.m_data.is_Generic()
+                     && ty_val.m_data.as_Path().path.m_data.as_Generic().m_path == *m_builder.lang_Box()
+                        )
+                    {
+                        // Box magically derefs.
+                        // HACK: Break out of the switch used for TU_MATCH_DEF
+                        break;
+                    }
+                }
                 BUG(sp, "Deref on unsupported type - " << ty_val);
                 ),
-            //(Array,
-            //    ),
             (Pointer,
+                // Deref on a pointer - TODO: Requires unsafe
                 ),
             (Borrow,
+                // Deref on a borrow - Always valid... assuming borrowck is there :)
                 )
             )
             
