@@ -3,7 +3,7 @@
  * - By John Hodge (Mutabah/thePowersGang)
  *
  * hir_typeck/expr_check.cpp
- * - Expression type checking
+ * - Expression type checking (validation pass)
  */
 #include <hir/visitor.hpp>
 #include <hir/expr.hpp>
@@ -262,7 +262,7 @@ namespace {
                     }
                     ),
                 (Function,
-                    if( de.type != ::HIR::BorrowType::Shared || *de.inner != ::HIR::TypeRef::new_unit() ) {
+                    if( *de.inner != ::HIR::TypeRef::new_unit() ) {
                         ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
                     }
                     ),
@@ -296,15 +296,17 @@ namespace {
                 const auto& src_ty = *se.inner;
                 const auto& dst_ty = *de.inner;
                 // Check unsizability (including trait impls)
-                // NOTE: Unsize applies inside borrows
+                // TODO: Unsize trait?
                 TU_MATCH_DEF(::HIR::TypeRef::Data, (dst_ty.m_data), (e),
                 (
                     ERROR(sp, E0000, "Invalid unsizing operation to " << dst_ty << " from " << src_ty);
                     ),
                 (TraitObject,
+                    // TODO: Ensure that the source type impls all the required traits
+                    // - Must be sized unless it's a superset TraitObject
                     ),
                 (Slice,
-                    // TODO: Does unsize ever apply to arrays? - Yes.
+                    // TODO: Ensure that the source is an array (or impls Unsize)
                     )
                 )
             }
@@ -314,7 +316,9 @@ namespace {
             }
             else
             {
-                TODO(sp, "Check for impl of Unsize<" << dst_ty << "> for " << src_ty);
+                const auto& lang_CoerceUnsized = this->get_lang_item_path(node.span(), "coerce_unsized");
+                // _ == < `src_ty` as CoerceUnsize< `dst_ty` >::""
+                check_associated_type(sp, ::HIR::TypeRef(), lang_CoerceUnsized, ::make_vec1( dst_ty.clone() ), src_ty, "");
             }
             
             node.m_value->visit( *this );
@@ -904,10 +908,11 @@ namespace {
             }
         }
         void check_associated_type(const Span& sp,
-                const ::HIR::TypeRef& res,
+                const ::HIR::TypeRef& res,  // Expected result
                 const ::HIR::SimplePath& trait, const ::std::vector< ::HIR::TypeRef>& params, const ::HIR::TypeRef& ity, const char* name
             ) const
         {
+            // TODO: Actually check.
         }
         
         const ::HIR::SimplePath& get_lang_item_path(const Span& sp, const char* name) const
