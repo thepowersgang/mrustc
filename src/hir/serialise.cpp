@@ -512,7 +512,8 @@ namespace {
                 ),
             (Drop,
                 write_tag(1);
-                assert(e.kind == ::MIR::eDropKind::DEEP);
+                assert(e.kind == ::MIR::eDropKind::DEEP || e.kind == ::MIR::eDropKind::SHALLOW);
+                write_bool(e.kind == ::MIR::eDropKind::DEEP);
                 serialise(e.slot);
                 )
             )

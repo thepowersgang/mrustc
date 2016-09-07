@@ -958,7 +958,7 @@ namespace {
                 });
         case 1:
             return ::MIR::Statement::make_Drop({
-                ::MIR::eDropKind::DEEP,
+                read_bool() ? ::MIR::eDropKind::DEEP : ::MIR::eDropKind::SHALLOW,
                 deserialise_mir_lvalue()
                 });
         default:
