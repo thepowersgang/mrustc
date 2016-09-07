@@ -1008,17 +1008,11 @@ namespace {
             
             TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_val.m_data), (te),
             (
-                if( m_builder.lang_Box() )
+                if( m_builder.is_type_owned_box( ty_val ) )
                 {
-                    if( ty_val.m_data.is_Path()
-                     && ty_val.m_data.as_Path().path.m_data.is_Generic()
-                     && ty_val.m_data.as_Path().path.m_data.as_Generic().m_path == *m_builder.lang_Box()
-                        )
-                    {
-                        // Box magically derefs.
-                        // HACK: Break out of the switch used for TU_MATCH_DEF
-                        break;
-                    }
+                    // Box magically derefs.
+                    // HACK: Break out of the switch used for TU_MATCH_DEF
+                    break;
                 }
                 BUG(sp, "Deref on unsupported type - " << ty_val);
                 ),

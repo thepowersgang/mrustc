@@ -50,6 +50,32 @@ MirBuilder::~MirBuilder()
     }
 }
 
+const ::HIR::TypeRef* MirBuilder::is_type_owned_box(const ::HIR::TypeRef& ty) const
+{
+    if( m_lang_Box )
+    {
+        if( ! ty.m_data.is_Path() ) {
+            return nullptr;
+        }
+        const auto& te = ty.m_data.as_Path();
+        
+        if( ! te.path.m_data.is_Generic() ) {
+            return nullptr;
+        }
+        const auto& pe = te.path.m_data.as_Generic();
+        
+        if( pe.m_path != *m_lang_Box ) {
+            return nullptr;
+        }
+        // TODO: Properly assert?
+        return &pe.m_params.m_types.at(0);
+    }
+    else
+    {
+        return nullptr;
+    }
+}
+
 void MirBuilder::define_variable(unsigned int idx)
 {
     DEBUG("DEFINE var" << idx  << ": " << m_output.named_variables.at(idx));
@@ -658,19 +684,9 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                 BUG(sp, "Deref on unexpected type - " << ty);
                 ),
             (Path,
-                if( m_lang_Box )
+                if( const auto* inner_ptr = this->is_type_owned_box(ty) )
                 {
-                    TU_IFLET( ::HIR::Path::Data, te.path.m_data, Generic, e,
-                        if( e.m_path == *m_lang_Box ) {
-                            cb( e.m_params.m_types.at(0) );
-                        }
-                        else {
-                            BUG(sp, "Deref on unexpected type - " << ty);
-                        }
-                    )
-                    else {
-                        BUG(sp, "Deref on unexpected type - " << ty);
-                    }
+                    cb( *inner_ptr );
                 }
                 else {
                     BUG(sp, "Deref on unexpected type - " << ty);
@@ -934,7 +950,48 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
         if( lvalue_is_copy(sp, lv) ) {
         }
         else {
-            // TODO: Move out of owned_box _is_ valid, and marks the box slot for shallow drop
+            // HACK: If the dereferenced type is a Box ("owned_box") then hack in move and shallow drop
+            if( this->m_lang_Box )
+            {
+                bool is_box = false;
+                with_val_type(sp, *e.val, [&](const auto& ty){
+                    is_box = this->is_type_owned_box(ty);
+                    });
+                if( is_box )
+                {
+                    ::MIR::LValue   inner_lv;
+                    // 1. If the inner lvalue isn't a slot with move information, move out of the lvalue into a temporary (with standard temp scope)
+                    TU_MATCH_DEF( ::MIR::LValue, (*e.val), (ei),
+                    (
+                        TODO(sp, "Move Box out of indirect access " << *e.val << " and into a temp");
+                        ),
+                    (Variable,
+                        inner_lv = ::MIR::LValue(ei);
+                        ),
+                    (Temporary,
+                        inner_lv = ::MIR::LValue(ei);
+                        ),
+                    (Argument,
+                        inner_lv = ::MIR::LValue(ei);
+                        )
+                    )
+                    // 2. Mark the slot as requiring only a shallow drop
+                    TU_MATCH_DEF( ::MIR::LValue, (inner_lv), (ei),
+                    (
+                        BUG(sp, "Box move out of invalid LValue " << inner_lv << " - should have been moved");
+                        ),
+                    (Variable,
+                        TODO(sp, "Mark var " << ei << " for shallow drop");
+                        ),
+                    (Temporary,
+                        TODO(sp, "Mark temp " << ei.idx << " for shallow drop");
+                        ),
+                    (Argument,
+                        TODO(sp, "Mark arg " << ei.idx << " for shallow drop");
+                        )
+                    )
+                }
+            }
             BUG(sp, "Move out of deref with non-Copy values - &move? - " << lv);
             moved_lvalue(sp, *e.val);
         }

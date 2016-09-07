@@ -116,6 +116,11 @@ public:
     const ::HIR::SimplePath* lang_Box() const { return m_lang_Box; }
     const ::HIR::Crate& crate() const { return m_resolve.m_crate; }
     
+    //::HIR::TypeRef* is_type_owned_box(::HIR::TypeRef& ty) const {
+    //}
+    /// Check if the passed type is Box<T> and returns a pointer to the T type if so, otherwise nullptr
+    const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
+    
     // - Values
     ::MIR::LValue new_temporary(const ::HIR::TypeRef& ty);
     ::MIR::LValue lvalue_or_temp(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::RValue val);
