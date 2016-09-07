@@ -97,7 +97,11 @@ output/liballoc.hir: $(RUSTCSRC)src/liballoc/lib.rs output/libcore.hir $(BIN)
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
-output/libcollections.hir: $(RUSTCSRC)src/libcollections/lib.rs output/libcore.hir output/liballoc.hir $(BIN)
+output/libcollections.hir: $(RUSTCSRC)src/libcollections/lib.rs $(patsubst %,output/lib%.hir,core alloc rustc_unicode) $(BIN)
+	@echo "--- [MRUSTC] $@"
+	@mkdir -p output/
+	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
+output/librustc_unicode.hir: $(RUSTCSRC)src/librustc_unicode/lib.rs output/libcore.hir $(BIN)
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
