@@ -391,15 +391,13 @@ Token Lexer::getTokenInt()
                 }
 
                 if( ch == 'e' || ch == 'E' || ch == '.' ) {
-                    if( num_mode != DEC )
-                        throw ParseError::Todo("Non-decimal floats");
-                    
                     if( ch == '.' )
                     {
                         ch = this->getc();
                         
                         // Double/Triple Dot
-                        if( ch == '.' ) {
+                        if( ch == '.' )
+                        {
                             if( this->getc() == '.') {
                                 this->m_next_token = Token(TOK_TRIPLE_DOT);
                             }
@@ -409,8 +407,9 @@ Token Lexer::getTokenInt()
                             }
                             return Token(val, CORETYPE_ANY);
                         }
-                        // Single dot - Still a float. (TODO)
-                        else if( !ch.isdigit() )
+                        
+                        // Single dot followed by a non-digit, could be a float or an integer with a method/field access
+                        if( !ch.isdigit() )
                         {
                             this->ungetc();
                             if( issym(ch) )
@@ -427,8 +426,13 @@ Token Lexer::getTokenInt()
                         else
                         {
                             // Digit, continue
+                            // NOTE: parseFloat assumes that the '.' has been consumed, and reads digits until it hits a non-digit and then parses exponents
+                            // - Thus, continuing here and letting the below 'ungetc' push a digit back is correct.
                         }
                     }
+                    if( num_mode != DEC )
+                        TODO(this->getPosition(), "Non-decimal floats");
+                    
                     
                     this->ungetc();
                     double fval = this->parseFloat(val);
