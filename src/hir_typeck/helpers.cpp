@@ -969,7 +969,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     const auto& trait_fn_mut = this->m_crate.get_lang_item_path(sp, "fn_mut");
     const auto& trait_fn_once = this->m_crate.get_lang_item_path(sp, "fn_once");
     
-    // Closures are magical. They're unnamable and all trait impls come from within the compiler
+    // Magic impls of the Fn* traits for closure types
     TU_IFLET(::HIR::TypeRef::Data, type.m_data, Closure, e,
         DEBUG("Closure, "<< trait <<"  " << trait_fn << " " << trait_fn_mut << " " << trait_fn_once);
         if( trait == trait_fn || trait == trait_fn_mut || trait == trait_fn_once  ) {
@@ -996,15 +996,13 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             // - Could we?
             // - Not until after the first stage of typeck
             
+            DEBUG("Closure Fn* impl - cmp = " << cmp);
             
             ::HIR::PathParams   pp;
             pp.m_types.push_back( ::HIR::TypeRef(mv$(args)) );
             ::std::map< ::std::string, ::HIR::TypeRef>  types;
             types.insert( ::std::make_pair( "Output", e.m_rettype->clone() ) );
             return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), cmp );
-        }
-        else {
-            return false;
         }
     )
     
@@ -1411,9 +1409,6 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             else {
                 ERROR(sp, E0000, "No associated type " << pe.item << " for trait " << pe.trait);
             }
-        }
-        else {
-            ERROR(sp, E0000, "No implementation of " << pe.trait << " for " << *pe.type);
         }
     )
     
@@ -1832,7 +1827,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
     // TODO: Parameter defaults - apply here or in the caller?
     return this->m_crate.find_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
         [&](const auto& impl) {
-            DEBUG("[find_trait_impls_crate] Found impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type);
+            DEBUG("[find_trait_impls_crate] Found impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << " " << impl.m_params.fmt_bounds());
             // Compare with `params`
             auto    match = ::HIR::Compare::Equal;
             ::std::vector< const ::HIR::TypeRef*> impl_params;
@@ -1961,11 +1956,12 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                                 ty_p = &this->m_ivars.get_type(tmp);
                             }
                             const auto& ty = *ty_p;
-                            DEBUG(" - Compare " << ty << " and " << assoc_bound.second << ", matching generics");
+                            DEBUG("[find_trait_impls_crate] - Compare " << ty << " and " << assoc_bound.second << ", matching generics");
                             auto cmp = assoc_bound.second .match_test_generics_fuzz(sp, ty, cb_infer, cb_match);
                             switch(cmp)
                             {
                             case ::HIR::Compare::Equal:
+                                DEBUG("Equal");
                                 continue;
                             case ::HIR::Compare::Unequal:
                                 DEBUG("Assoc failure - " << ty << " != " << assoc_bound.second);
@@ -1990,9 +1986,11 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 )
             }
             
+            DEBUG("- Making associated type output map - " << impl.m_types.size() << " entries");
             ::std::map< ::std::string, ::HIR::TypeRef>  types;
             for( const auto& aty : impl.m_types )
             {
+                DEBUG(" > " << aty.first << " = monomorph(" << aty.second.data << ")");
                 types.insert( ::std::make_pair(aty.first,  this->expand_associated_types(sp, monomorphise_type_with(sp, aty.second.data, monomorph))) );
             }
             // TODO: Ensure that there are no-longer any magic params
