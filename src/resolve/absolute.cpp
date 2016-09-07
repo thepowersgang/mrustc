@@ -1563,6 +1563,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
             if( p.is_valid() ) {
                 pat = ::AST::Pattern(::AST::Pattern::TagValue(), ::AST::Pattern::Value::make_Named(mv$(p)));
                 DEBUG("MaybeBind resolved to " << pat);
+                Resolve_Absolute_Pattern(context, allow_refutable,  pat);
             }
             else {
                 pat = ::AST::Pattern(::AST::Pattern::TagBind(), mv$(name));
