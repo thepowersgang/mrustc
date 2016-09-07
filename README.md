@@ -21,13 +21,18 @@ Current Features
 - Type inference and checking
 - Closure and operator desugaring
 - MIR generation (with partial validation pass)
+- HIR/MIR (de)serialisation, allowing for `extern crate` handling
 
 Short-Term Plans
 ===
-- Storing of HIR/MIR for `extern crate` handling
 - Code generation (including picking the output format)
 
 Medium-Term Goals
 ===
 - Propagate lifetime annotations so that MIR can include a borrow checker
+
+
+Progress
+===
+- Compiles: `libcore` and `liballoc` through to emitting serialised HIR+MIR
 
