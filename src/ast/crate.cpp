@@ -50,21 +50,28 @@ void Crate::load_externs()
                 const auto& name = c.name;
                 if( check_item_cfg(it.data.attrs) )
                 {
-                    load_extern_crate( name );
+                    load_extern_crate( it.data.span, name );
                 }
             )
         }
         };
     iterate_module(m_root_module, cb);
 }
-void Crate::load_extern_crate(const ::std::string& name)
+void Crate::load_extern_crate(Span sp, const ::std::string& name)
 {
-    m_extern_crates.insert(::std::make_pair( name, ExternCrate { name, "output/lib"+name+".hir" } ));
+    DEBUG("Loading crate '" << name << "'");
+    // TODO: Search a list of load paths for the crate
+    ::std::string   path = "output/lib"+name+".hir";
+    if( !::std::ifstream(path).good() ) {
+        ERROR(sp, E0000, "Unable to locate crate '" << name << "'");
+    }
+    m_extern_crates.insert(::std::make_pair( name, ExternCrate { name, path } ));
 }
 
 ExternCrate::ExternCrate(const ::std::string& name, const ::std::string& path):
     m_name(name)
 {
+    TRACE_FUNCTION_F("name=" << name << ", path='" << path << "'");
     m_hir = HIR_Deserialise(path, name);
     
     m_hir->post_load_update(name);

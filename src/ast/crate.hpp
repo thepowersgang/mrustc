@@ -50,7 +50,7 @@ public:
     /// Load referenced crates
     void load_externs();
     
-    void load_extern_crate(const ::std::string& name);
+    void load_extern_crate(Span sp, const ::std::string& name);
 };
 
 /// Representation of an imported crate

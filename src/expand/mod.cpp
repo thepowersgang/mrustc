@@ -944,7 +944,7 @@ void Expand(::AST::Crate& crate)
     case ::AST::Crate::LOAD_STD:
         if( crate.m_prelude_path == AST::Path() )
             crate.m_prelude_path = AST::Path("std", {AST::PathNode("prelude"), AST::PathNode("v1")});
-        crate.load_extern_crate("std");
+        crate.load_extern_crate(Span(), "std");
         crate.m_extern_crates.at("std").with_all_macros([&](const auto& name, const auto& mac) {
             crate.m_root_module.add_macro_import( name, mac );
             });
@@ -953,7 +953,7 @@ void Expand(::AST::Crate& crate)
     case ::AST::Crate::LOAD_CORE:
         if( crate.m_prelude_path == AST::Path() )
             crate.m_prelude_path = AST::Path("core", {AST::PathNode("prelude"), AST::PathNode("v1")});
-        crate.load_extern_crate("core");
+        crate.load_extern_crate(Span(), "core");
         crate.m_extern_crates.at("core").with_all_macros([&](const auto& name, const auto& mac) {
             crate.m_root_module.add_macro_import( name, mac );
             });
