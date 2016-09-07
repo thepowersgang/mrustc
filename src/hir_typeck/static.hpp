@@ -23,6 +23,9 @@ public:
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
 private:
     ::HIR::SimplePath   m_lang_Copy;
+    ::HIR::SimplePath   m_lang_Fn;
+    ::HIR::SimplePath   m_lang_FnMut;
+    ::HIR::SimplePath   m_lang_FnOnce;
     
 public:
     StaticTraitResolve(const ::HIR::Crate& crate):
@@ -31,6 +34,9 @@ public:
         m_item_generics(nullptr)
     {
         m_lang_Copy = m_crate.get_lang_item_path(Span(), "copy");
+        m_lang_Fn = m_crate.get_lang_item_path(Span(), "fn");
+        m_lang_FnMut = m_crate.get_lang_item_path(Span(), "fn_mut");
+        m_lang_FnOnce = m_crate.get_lang_item_path(Span(), "fn_once");
         prep_indexes();
     }
 

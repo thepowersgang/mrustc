@@ -91,13 +91,42 @@ bool StaticTraitResolve::find_impl(
     TRACE_FUNCTION_F(trait_path << FMT_CB(os, if(trait_params) { os << *trait_params; } else { os << "<?>"; }) << " for " << type);
     auto cb_ident = [](const auto&ty)->const auto&{return ty;};
     
+    static ::HIR::PathParams    null_params;
+    
     if( trait_path == m_lang_Copy ) {
         if( this->type_is_copy(sp, type) ) {
-            static ::HIR::PathParams    null_params;
             static ::std::map< ::std::string, ::HIR::TypeRef>    null_assoc;
             return found_cb( ImplRef(&type, &null_params, &null_assoc) );
         }
     }
+    
+    // --- MAGIC IMPLS ---
+    // TODO: There should be quite a few more here, but laziness
+    TU_IFLET(::HIR::TypeRef::Data, type.m_data, Function, e,
+        if( trait_path == m_lang_Fn || trait_path == m_lang_FnMut || trait_path == m_lang_FnOnce ) {
+            if( trait_params )
+            {
+                const auto& des_arg_tys = trait_params->m_types.at(0).m_data.as_Tuple();
+                if( des_arg_tys.size() != e.m_arg_types.size() ) {
+                    return false;
+                }
+                for(unsigned int i = 0; i < des_arg_tys.size(); i ++)
+                {
+                    if( des_arg_tys[i] != e.m_arg_types[i] ) {
+                        return false;
+                    }
+                }
+            }
+            else
+            {
+                trait_params = &null_params;
+            }
+            ::std::map< ::std::string, ::HIR::TypeRef>  assoc;
+            assoc.insert( ::std::make_pair("Output", e.m_rettype->clone()) );
+            return found_cb( ImplRef(type.clone(), trait_params->clone(), mv$(assoc)) );
+        }
+    )
+    // --- / ---
     
     bool ret;
     
@@ -474,9 +503,6 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
                 else {
                     ERROR(sp, E0000, "No associated type " << e2.item << " for trait " << e2.trait);
                 }
-            }
-            else {
-                ERROR(sp, E0000, "No implementation of " << e2.trait << " for " << *e2.type);
             }
         //}
         //else
