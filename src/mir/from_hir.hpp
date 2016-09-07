@@ -42,7 +42,9 @@ enum class VarState {
     Uninit, // No value assigned yet
     Init,   // Initialised and valid at this point
     MaybeMoved, // Possibly has been moved
+    //MaybeMovedInner,  // Inner possibly has been moved
     Moved,  // Definitely moved
+    InnerMoved, // The inner has been moved, but the container needs to be dropped
     Dropped,    // Dropped (out of scope)
 };
 extern ::std::ostream& operator<<(::std::ostream& os, VarState x);
@@ -86,6 +88,7 @@ class MirBuilder
     ::MIR::RValue   m_result;
     bool    m_result_valid;
     
+    //::std::vector<VarState>   m_arg_states;
     ::std::vector<VarState> m_variable_states;
     ::std::vector<VarState> m_temporary_states;
     
@@ -140,6 +143,8 @@ public:
     void push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val);
     // Push a drop (likely only used by scope cleanup)
     void push_stmt_drop(const Span& sp, ::MIR::LValue val);
+    // Push a shallow drop (for Box)
+    void push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val);
     
     // - Block management
     bool block_active() const {

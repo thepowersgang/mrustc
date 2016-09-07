@@ -259,6 +259,9 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
         case VarState::MaybeMoved:
             // ERROR? Temporaries shouldn't be resassigned after becoming valid
             break;
+        case VarState::InnerMoved:
+            BUG(sp, "Reassigning inner-moved temporary - " << dst);
+            break;
         case VarState::Init:
             // ERROR. Temporaries are single-assignment
             break;
@@ -270,6 +273,7 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
         //m_return_valid = true;
         ),
     (Variable,
+        // TODO: Ensure that slot is mutable (information is lost, assume true)
         switch( get_variable_state(sp, e) )
         {
         case VarState::Uninit:
@@ -279,9 +283,11 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
             // TODO: Is this an error? The variable has descoped.
             break;
         case VarState::Init:
-            // 1. Must be mut
-            // 2. Drop (if not Copy)
+            // Drop (if not Copy) - Copy check is done within push_stmt_drop
             push_stmt_drop( sp, dst.clone() );
+            break;
+        case VarState::InnerMoved:
+            push_stmt_drop_shallow( sp, dst.clone() );
             break;
         case VarState::MaybeMoved:
             // TODO: Conditional drop
@@ -303,6 +309,19 @@ void MirBuilder::push_stmt_drop(const Span& sp, ::MIR::LValue val)
     }
     
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::DEEP, mv$(val) }) );
+}
+void MirBuilder::push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val)
+{
+    ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
+    ASSERT_BUG(sp, val.tag() != ::MIR::LValue::TAGDEAD, "");
+    
+    // TODO: Ensure that the type is a Box
+    //if( lvalue_is_copy(sp, val) ) {
+    //    // Don't emit a drop for Copy values
+    //    return ;
+    //}
+    
+    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::SHALLOW, mv$(val) }) );
 }
 
 void MirBuilder::set_cur_block(unsigned int new_block)
@@ -518,6 +537,9 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                             case VarState::Moved:
                                 new_states[i] = VarState::MaybeMoved;
                                 break;
+                            case VarState::InnerMoved:
+                                TODO(sd.span, "Handle InnerMoved in Split scope (Init:arm.var_states)");
+                                break;
                             case VarState::Dropped:
                                 BUG(sd.span, "Dropped value in arm");
                                 break;
@@ -526,6 +548,9 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                         else {
                             new_states[i] = VarState::MaybeMoved;   // MaybeInit?
                         }
+                        break;
+                    case VarState::InnerMoved:
+                        TODO(sd.span, "Handle InnerMoved in Split scope (new_states)");
                         break;
                     case VarState::MaybeMoved:
                         // Already optional, don't change
@@ -546,6 +571,9 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                                 break;
                             case VarState::Moved:
                                 // No change
+                                break;
+                            case VarState::InnerMoved:
+                                TODO(sd.span, "Handle InnerMoved in Split scope (Moved:arm.var_states)");
                                 break;
                             case VarState::Dropped:
                                 BUG(sd.span, "Dropped value in arm");
@@ -881,9 +909,22 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
     (Temporaries,
         for(auto tmp_idx : ::reverse(e.temporaries))
         {
-            if( get_temp_state(sd.span, tmp_idx) == VarState::Init ) {
+            switch( get_temp_state(sd.span, tmp_idx) )
+            {
+            case VarState::Uninit:
+            case VarState::Dropped:
+            case VarState::Moved:
+                break;
+            case VarState::Init:
                 push_stmt_drop( sd.span, ::MIR::LValue::make_Temporary({ tmp_idx }) );
                 set_temp_state(sd.span, tmp_idx, VarState::Dropped);
+                break;
+            case VarState::InnerMoved:
+                push_stmt_drop_shallow( sd.span, ::MIR::LValue::make_Temporary({ tmp_idx }) );
+                set_temp_state(sd.span, tmp_idx, VarState::Dropped);
+                break;
+            case VarState::MaybeMoved:
+                BUG(sd.span, "Optionally moved temporary? - " << tmp_idx);
             }
         }
         ),
@@ -899,8 +940,11 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
             case VarState::Init:
                 push_stmt_drop( sd.span, ::MIR::LValue::make_Variable(var_idx) );
                 break;
+            case VarState::InnerMoved:
+                push_stmt_drop_shallow( sd.span, ::MIR::LValue::make_Variable(var_idx) );
+                break;
             case VarState::MaybeMoved:
-                //TODO(Span(), "MaybeMoved");
+                //TODO(sd.span, "Include drop flags");
                 // TODO: Drop flags
                 break;
             }
@@ -981,15 +1025,17 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
                         BUG(sp, "Box move out of invalid LValue " << inner_lv << " - should have been moved");
                         ),
                     (Variable,
-                        TODO(sp, "Mark var " << ei << " for shallow drop");
+                        set_variable_state(sp, ei, VarState::InnerMoved);
                         ),
                     (Temporary,
-                        TODO(sp, "Mark temp " << ei.idx << " for shallow drop");
+                        set_temp_state(sp, ei.idx, VarState::InnerMoved);
                         ),
                     (Argument,
                         TODO(sp, "Mark arg " << ei.idx << " for shallow drop");
                         )
                     )
+                    // Early return!
+                    return ;
                 }
             }
             BUG(sp, "Move out of deref with non-Copy values - &move? - " << lv);
@@ -1032,6 +1078,7 @@ ScopeHandle::~ScopeHandle()
     _(Init)
     _(MaybeMoved)
     _(Moved)
+    _(InnerMoved)
     _(Dropped)
     #undef _
     }
