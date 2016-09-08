@@ -339,7 +339,22 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     builder.set_cur_block(succ_bb);
                     ),
                 (ValueRange,
-                    TODO(sp, "Simple match over char - ValueRange");
+                    auto succ_bb = builder.new_bb_unlinked();
+                    auto test_bb_2 = builder.new_bb_unlinked();
+                    
+                    // IF `match_val` < `first` : fail_bb
+                    auto test_lt_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant(re.first.as_Uint()));
+                    auto cmp_lt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::LT, mv$(test_lt_lval) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lt_lval), fail_bb, test_bb_2 }) );
+                    
+                    builder.set_cur_block(test_bb_2);
+                    
+                    // IF `match_val` > `last` : fail_bb
+                    auto test_gt_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant(re.last.as_Uint()));
+                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::GT, mv$(test_gt_lval) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_gt_lval), fail_bb, succ_bb }) );
+                    
+                    builder.set_cur_block(succ_bb);
                     )
                 )
                 break;
