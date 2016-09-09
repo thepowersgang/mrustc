@@ -354,6 +354,9 @@ bool patterns_are_same(const Span& sp, const MacroPatEnt& left, const MacroPatEn
             if( is_token_expr(left.tok.type()) )
                 ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
             return false;
+        // TODO: Allow a loop starting with an expr?
+        // - Consume, add split based on loop condition or next arm
+        // - Possible problem with binding levels.
         case MacroPatEnt::PAT_EXPR:
             return true;
         default:
@@ -446,6 +449,7 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
             break;
         }
     }
+    DEBUG("- " << rules.size() << " rules");
     
     MacroRulesPatFrag   root_frag;
     ::std::vector<MacroRulesArm>    rule_arms;
@@ -464,8 +468,11 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
         {
             Span    sp(pat.tok.get_pos());
             
+            // If the current position is the end of the current fragment:
             if( frag_ofs == cur_frag->m_pats_ents.size() ) {
+                // But this fragment is incomplete (doesn't end a pattern, or split)
                 if( cur_frag->m_pattern_end == ~0u && cur_frag->m_next_frags.size() == 0 ) {
+                    // Keep pushing onto the end
                     cur_frag->m_pats_ents.push_back( pat );
                     frag_ofs += 1;
                 }
@@ -489,6 +496,7 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
                     frag_ofs = 1;
                 }
             }
+            // TODO: If `:expr` and `$( :expr)` are seen, split _after_ the :expr
             else if( ! patterns_are_same(sp, cur_frag->m_pats_ents[frag_ofs], pat) ) {
                 // Difference, split the block.
                 auto new_frag = split_fragment_at(*cur_frag, frag_ofs);

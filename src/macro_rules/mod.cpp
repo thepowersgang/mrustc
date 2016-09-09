@@ -199,7 +199,12 @@ SERIALISE_TU(MacroExpansionEnt, "MacroExpansionEnt", e,
         os << "=" << e;
         ),
     (NamedValue,
-        os << "$" << e;
+        if( e >> 30 ) {
+            os << "$crate";
+        }
+        else {
+            os << "$" << e;
+        }
         ),
     (Loop,
         os << "${" << *e.variables.begin() << "}(" << e.entries << ") " << e.joiner;
