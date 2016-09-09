@@ -938,13 +938,13 @@ void Expand(::AST::Crate& crate)
     // 1. Crate attributes
     Expand_Attrs(crate.m_attrs, AttrStage::EarlyPre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate); });
     
-    // Load libstd/libcore
+    // Insert magic for libstd/libcore
+    // NOTE: The actual crates are loaded in "LoadCrates" using magic in AST::Crate::load_externs
     switch( crate.m_load_std )
     {
     case ::AST::Crate::LOAD_STD:
         if( crate.m_prelude_path == AST::Path() )
             crate.m_prelude_path = AST::Path("std", {AST::PathNode("prelude"), AST::PathNode("v1")});
-        crate.load_extern_crate(Span(), "std");
         crate.m_extern_crates.at("std").with_all_macros([&](const auto& name, const auto& mac) {
             crate.m_root_module.add_macro_import( name, mac );
             });
@@ -953,7 +953,6 @@ void Expand(::AST::Crate& crate)
     case ::AST::Crate::LOAD_CORE:
         if( crate.m_prelude_path == AST::Path() )
             crate.m_prelude_path = AST::Path("core", {AST::PathNode("prelude"), AST::PathNode("v1")});
-        crate.load_extern_crate(Span(), "core");
         crate.m_extern_crates.at("core").with_all_macros([&](const auto& name, const auto& mac) {
             crate.m_root_module.add_macro_import( name, mac );
             });

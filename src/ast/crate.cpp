@@ -56,6 +56,29 @@ void Crate::load_externs()
         }
         };
     iterate_module(m_root_module, cb);
+    
+    // Check for no_std or no_core, and load libstd/libcore
+    // - Duplicates some of the logic in "Expand", but also helps keep crate loading separate to most of expand
+    bool no_std  = false;
+    bool no_core = false;
+    
+    for( const auto& a : this->m_attrs.m_items )
+    {
+        if( a.name() == "no_std" )
+            no_std = true;
+        if( a.name() == "no_core" )
+            no_core = true;
+    }
+
+    if( no_core ) {
+        // Don't load anything
+    }
+    else if( no_std ) {
+        this->load_extern_crate(Span(), "core");
+    }
+    else {
+        this->load_extern_crate(Span(), "std");
+    }
 }
 void Crate::load_extern_crate(Span sp, const ::std::string& name)
 {
