@@ -16,7 +16,7 @@ Problems:
 - All arms begin with $e:expr (or none)
 - Two arms follow the same pattern until the end. (where one terminates with no comma)
 
-Parsing Ruleset
+Parsing Ruleset?
 - if empty, ARM 2
 - expect `:expr`
 - if `;`
@@ -65,8 +65,25 @@ Merging
  - "EXPECT `:expr`" + (2) "EXPECT `:expr`"
   - "EXPECT `:expr`"
  - "EXPECT `;`" + "IF NOT `,` BREAK"
-  - TODO TODO TODO
+  - "IF `;` { EXPECT `;` ... } LOOP { IF 
+  - TODO: This needs to break out of the loop.
 
 Problem: Generating LOOP
 ------------------------
 Looping is ideally handled by a loop sub-tree as in the example ruleset, but generating that sub-tree from an overlapping set of rules may be non-trivial.
+
+
+
+
+Solution 2: Lockstep execution
+==============================
+
+- Generate a sequence of simple pattern rules from the parsed pattern
+ - `EXPECT`, `IF-BREAK`, `END`
+ - These are genrated by an "iterator" structure that has a way to be poked if an `IF` succeeded
+- Run all arms in lockstep, pruning arms as they fail to match
+- Error if two arms attempt to do an incompatible expect (basically any pattern with another pattern)
+- TODO: How to handle bindings from `EXPECT` at different levels
+ - E.g. In the `vec!` example, the first arm binds at the root, but the other two bind inside a loop
+ - Possibly solvable with brute-force allowing non-repeating contexts to read from a single-repetition?
+ - Or multi-tagging the binding (so once the arm is known, the level is fixed)
