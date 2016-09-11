@@ -449,9 +449,16 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     {
         auto it2 = hmod->m_value_items.find(nodes.back().name());
         if( it2 != hmod->m_value_items.end() ) {
-            TU_MATCHA( (it2->second->ent), (e),
+            const auto* item_ptr = &it2->second->ent;
+            if( item_ptr->is_Import() ) {
+                const auto& e = item_ptr->as_Import();
+                // This doesn't need to recurse - it can just do a single layer (as no Import should refer to another)
+                const auto& ec = crate.m_extern_crates.at( e.m_crate_name );
+                item_ptr = &ec.m_hir->get_valitem_by_path(span, e, true);    // ignore_crate_name=true
+            }
+            TU_MATCHA( (*item_ptr), (e),
             (Import,
-                TODO(span, "Recurse to get binding for an import - " << path << " = " << e);
+                BUG(span, "Recursive import in " << path << " - " << it2->second->ent.as_Import() << " -> " << e);
                 ),
             (Constant,
                 return ::AST::PathBinding::make_Static({ nullptr });
