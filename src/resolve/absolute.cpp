@@ -990,6 +990,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                 return ;
                 ),
             (Trait,
+                assert( e.trait_ );
                 auto trait_path = ::AST::Path(name_ref.path);
                 if( !n.args().is_empty() ) {
                     trait_path.nodes().back().args() = mv$(n.args());
@@ -1025,6 +1026,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                     TODO(sp, "Replace path component with new path - " << path << "[.."<<i<<"] with " << name_ref.path);
                 }
                 else {
+                    assert( e.enum_ );
                     const auto& last_node = path_abs.nodes.back();
                     for( const auto& var : e.enum_->variants() ) {
                         if( var.m_name == last_node.name() ) {
