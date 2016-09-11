@@ -509,7 +509,12 @@ void Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
         
         if( ie.is_import ) {
             // Need to replace all nodes up to and including the current with the import path
-            TODO(sp, "Replace imports - " << path << " (0 - " << i << ") with " << ie.path);
+            auto new_path = ie.path;
+            for(unsigned int j = i+1; j < info.nodes.size(); j ++)
+                new_path.nodes().push_back( mv$(info.nodes[j]) );
+            new_path.bind( path.binding().clone() );
+            path = mv$(new_path);
+            return Resolve_Index_Module_Normalise_Path(crate, sp, path);
         }
         else {
             TU_MATCH_DEF(::AST::PathBinding, (ie.path.binding()), (e),
