@@ -437,7 +437,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 return ::AST::PathBinding::make_Enum({nullptr});
                 ),
             (Struct,
-                return ::AST::PathBinding::make_Struct({nullptr});
+                return ::AST::PathBinding::make_Struct({nullptr, &e});
                 ),
             (Trait,
                 return ::AST::PathBinding::make_Trait({nullptr});
@@ -466,14 +466,15 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             (Static,
                 return ::AST::PathBinding::make_Static({ nullptr });
                 ),
+            // TODO: What happens if these two refer to an enum constructor?
             (StructConstant,
-                return ::AST::PathBinding::make_Struct({ nullptr });
+                return ::AST::PathBinding::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(span, e.ty, true).as_Struct() });
+                ),
+            (StructConstructor,
+                return ::AST::PathBinding::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(span, e.ty, true).as_Struct() });
                 ),
             (Function,
                 return ::AST::PathBinding::make_Function({ nullptr });
-                ),
-            (StructConstructor,
-                return ::AST::PathBinding::make_Struct({ nullptr });
                 )
             )
         }

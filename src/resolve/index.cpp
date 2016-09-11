@@ -172,10 +172,17 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                     
                     (Struct,
                         _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide);
-                        // TODO: Items from extern crates don't populate e.struct_ correctly
                         // - If the struct is a tuple-like struct, it presents in the value namespace
-                        if( e.struct_ && e.struct_->m_data.is_Tuple() ) {
-                            _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide);
+                        assert(e.struct_ || e.hir);
+                        if( e.struct_ ) {
+                            if( e.struct_->m_data.is_Tuple() ) {
+                                _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide);
+                            }
+                        }
+                        else {
+                            if( ! e.hir->m_data.is_Named() ) {
+                                _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide);
+                            }
                         }
                         ),
                     (Static  , _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide); ),
@@ -282,10 +289,10 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
                                 p.bind( ::AST::PathBinding::make_Module({nullptr, &e}) );
                                 ),
                             (Trait,
-                                p.bind( ::AST::PathBinding::make_Trait({nullptr/*, &e*/}) );
+                                p.bind( ::AST::PathBinding::make_Trait({nullptr, &e}) );
                                 ),
                             (Struct,
-                                p.bind( ::AST::PathBinding::make_Struct({nullptr}) );
+                                p.bind( ::AST::PathBinding::make_Struct({nullptr, &e}) );
                                 ),
                             (Enum,
                                 p.bind( ::AST::PathBinding::make_Enum({nullptr}) );
@@ -337,11 +344,12 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
                                 (Static,
                                     p.bind( ::AST::PathBinding::make_Static({nullptr}) );
                                     ),
+                                // TODO: What if these refer to an enum variant?
                                 (StructConstant,
-                                    p.bind( ::AST::PathBinding::make_Struct({nullptr}) );
+                                    p.bind( ::AST::PathBinding::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct() }) );
                                     ),
                                 (StructConstructor,
-                                    p.bind( ::AST::PathBinding::make_Struct({nullptr}) );
+                                    p.bind( ::AST::PathBinding::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct() }) );
                                     ),
                                 (Function,
                                     p.bind( ::AST::PathBinding::make_Function({nullptr}) );
