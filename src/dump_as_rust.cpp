@@ -688,7 +688,10 @@ void RustPrinter::handle_module(const AST::Module& mod)
         {
             TU_MATCH_DEF(AST::Item, (*it.data), (e),
             (
-                throw ::std::runtime_error("Unexpected item type in impl block");
+                throw ::std::runtime_error(FMT("Unexpected item type in impl block - " << it.data->tag_str()));
+                ),
+            (None,
+                // Ignore, it's been deleted by #[cfg]
                 ),
             (Type,
                 m_os << indent() << "type " << it.name << " = " << e.type() << ";\n";
