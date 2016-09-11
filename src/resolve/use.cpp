@@ -379,10 +379,10 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     }
 }
 
-::AST::PathBinding Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const AST::ExternCrate& ec, unsigned int start,  Lookup allow)
+::AST::PathBinding Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const ::HIR::Module& hmodr, unsigned int start,  Lookup allow)
 {
     const auto& nodes = path.nodes();
-    const ::HIR::Module* hmod = &ec.m_hir->m_root_module;
+    const ::HIR::Module* hmod = &hmodr;
     for(unsigned int i = start; i < nodes.size() - 1; i ++)
     {
         auto it = hmod->m_mod_items.find(nodes[i].name());
@@ -474,6 +474,10 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     
     return ::AST::PathBinding::make_Unbound({});
 }
+::AST::PathBinding Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const AST::ExternCrate& ec, unsigned int start,  Lookup allow)
+{
+    return Resolve_Use_GetBinding__ext(span, crate, path, ec.m_hir->m_root_module, start, allow);
+}
 
 ::AST::PathBinding Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, slice< const ::AST::Module* > parent_modules, Lookup allow)
 {
@@ -521,7 +525,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             if( !e.module_ ) 
             {
                 assert(e.hir);
-                TODO(span, "Look up the remainder of " << path << " from " << i << " in HIR");
+                return Resolve_Use_GetBinding__ext(span, crate, path,  *e.hir, i+1, allow);
             }
             mod = e.module_;
             )
