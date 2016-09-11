@@ -33,7 +33,7 @@ void init_debug_list()
 {
     g_debug_disable_map.insert( "Parse" );
     g_debug_disable_map.insert( "LoadCrates" );
-    //g_debug_disable_map.insert( "Expand" );
+    g_debug_disable_map.insert( "Expand" );
     
     g_debug_disable_map.insert( "Resolve Use" );
     g_debug_disable_map.insert( "Resolve Index" );
