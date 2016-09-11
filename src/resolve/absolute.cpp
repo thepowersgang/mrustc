@@ -990,7 +990,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                 return ;
                 ),
             (Trait,
-                assert( e.trait_ );
+                assert( e.trait_ || e.hir );
                 auto trait_path = ::AST::Path(name_ref.path);
                 if( !n.args().is_empty() ) {
                     trait_path.nodes().back().args() = mv$(n.args());
@@ -999,16 +999,30 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                 // - What if this item is from a nested trait?
                 ::AST::Path new_path;
                 bool found = false;
-                //switch(mode)
-                //{
-                //case Context::LookupMode::Value: {
-                    assert(i+1 < path_abs.nodes.size());
-                    auto it = ::std::find_if( e.trait_->items().begin(), e.trait_->items().end(), [&](const auto& x){ return x.name == path_abs.nodes[i+1].name(); } );
+                assert(i+1 < path_abs.nodes.size());
+                const auto& item_name = path_abs.nodes[i+1].name();
+                if( e.trait_ )
+                {
+                    auto it = ::std::find_if( e.trait_->items().begin(), e.trait_->items().end(), [&](const auto& x){ return x.name == item_name; } );
                     if( it != e.trait_->items().end() ) {
                         found = true;
                     }
-                //    } break;
-                //}
+                }
+                else
+                {
+                    switch(mode)
+                    {
+                    case Context::LookupMode::Constant:
+                    case Context::LookupMode::Pattern:
+                    case Context::LookupMode::Variable:
+                        found = (e.hir->m_values.count(item_name) != 0);
+                        break;
+                    case Context::LookupMode::Namespace:
+                    case Context::LookupMode::Type:
+                        found = (e.hir->m_types.count(item_name) != 0);
+                        break;
+                    }
+                }
                 if( !found ) {
                     new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(trait_path)));
                 }

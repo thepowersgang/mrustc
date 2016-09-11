@@ -440,7 +440,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 return ::AST::PathBinding::make_Struct({nullptr, &e});
                 ),
             (Trait,
-                return ::AST::PathBinding::make_Trait({nullptr});
+                return ::AST::PathBinding::make_Trait({nullptr, &e});
                 )
             )
         }
