@@ -38,6 +38,18 @@ enum class IndexName
     throw "";
 }
 
+namespace {
+    AST::Path hir_to_ast(const HIR::SimplePath& p) {
+        // The crate name here has to be non-empty, because it's external.
+        assert( p.m_crate_name != "" );
+        AST::Path   rv( p.m_crate_name, {} );
+        rv.nodes().reserve( p.m_components.size() );
+        for(const auto& n : p.m_components)
+            rv.nodes().push_back( AST::PathNode(n) );
+        return rv;
+    }
+}   // namespace
+
 void _add_item(const Span& sp, AST::Module& mod, IndexName location, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
 {
     auto& list = get_mod_index(mod, location);
@@ -252,23 +264,12 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
                 {
                     ASSERT_BUG(sp, e.hir, "Glob import where HIR module pointer not set - " << i.data.path);
                     const auto& hmod = *e.hir;
-                    struct H {
-                        static AST::Path hir_to_ast(const HIR::SimplePath& p) {
-                            // The crate name here has to be non-empty, because it's external.
-                            assert( p.m_crate_name != "" );
-                            AST::Path   rv( p.m_crate_name, {} );
-                            rv.nodes().reserve( p.m_components.size() );
-                            for(const auto& n : p.m_components)
-                                rv.nodes().push_back( AST::PathNode(n) );
-                            return rv;
-                        }
-                    };
                     for(const auto& it : hmod.m_mod_items) {
                         const auto& ve = *it.second;
                         if( ve.is_public ) {
                             AST::Path   p;
                             if( ve.ent.is_Import() ) {
-                                p = H::hir_to_ast( ve.ent.as_Import() );
+                                p = hir_to_ast( ve.ent.as_Import() );
                             }
                             else {
                                 p = i.data.path + it.first;
@@ -303,7 +304,7 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
                             const auto* vep = &ve.ent;
                             if( ve.ent.is_Import() ) {
                                 const auto& spath = ve.ent.as_Import();
-                                p = H::hir_to_ast( spath );
+                                p = hir_to_ast( spath );
                                 
                                 const auto* hmod = &crate.m_extern_crates.at(spath.m_crate_name).m_hir->m_root_module;
                                 for(unsigned int i = 0; i < spath.m_components.size()-1; i ++) {
@@ -435,9 +436,18 @@ void Resolve_Index_Module_Normalise_Path_ext(const ::AST::Crate& crate, const Sp
         if( it == hmod->m_mod_items.end() ) {
             ERROR(sp, E0000,  "Couldn't find node " << i << " of path " << path);
         }
-        TU_MATCH_DEF(::HIR::TypeItem, (it->second->ent), (e),
+        const auto* item_ptr = &it->second->ent;
+        if( item_ptr->is_Import() ) {
+            const auto& e = item_ptr->as_Import();
+            const auto& ec = crate.m_extern_crates.at( e.m_crate_name );
+            item_ptr = &ec.m_hir->get_typeitem_by_path(sp, e, true);    // ignore_crate_name=true
+        }
+        TU_MATCH_DEF(::HIR::TypeItem, (*item_ptr), (e),
         (
             BUG(sp, "Path " << path << " pointed to non-module in component " << i);
+            ),
+        (Import,
+            BUG(sp, "Recursive import in " << path << " - " << it->second->ent.as_Import() << " -> " << e);
             ),
         (Enum,
             if( i != info.nodes.size() - 2 ) {
@@ -448,12 +458,6 @@ void Resolve_Index_Module_Normalise_Path_ext(const ::AST::Crate& crate, const Sp
             ),
         (Module,
             hmod = &e;
-            ),
-        //(Crate,
-        //    TODO(sp, "Crates within HIR");
-        //    ),
-        (Import,
-            TODO(sp, "Imports in HIR - Module");
             )
         )
     }
@@ -463,21 +467,23 @@ void Resolve_Index_Module_Normalise_Path_ext(const ::AST::Crate& crate, const Sp
     if( it_m != hmod->m_mod_items.end() )
     {
         TU_IFLET( ::HIR::TypeItem, it_m->second->ent, Import, e,
-            TODO(sp, "Imports in HIR - TypeItem");
+            // Replace the path with this path (maintaining binding)
+            auto binding = path.binding().clone();
+            path = hir_to_ast(e);
+            path.bind( mv$(binding) );
         )
-        else {
-            return ;
-        }
+        return ;
     }
     auto it_v = hmod->m_value_items.find( lastnode.name() );
     if( it_v != hmod->m_value_items.end() )
     {
         TU_IFLET( ::HIR::ValueItem, it_v->second->ent, Import, e,
-            TODO(sp, "Imports in HIR - ValueItem");
+            // Replace the path with this path (maintaining binding)
+            auto binding = path.binding().clone();
+            path = hir_to_ast(e);
+            path.bind( mv$(binding) );
         )
-        else {
-            return ;
-        }
+        return ;
     }
     
     ERROR(sp, E0000,  "Couldn't find final node of path " << path);
@@ -502,7 +508,8 @@ void Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
         const auto& ie = it->second;
         
         if( ie.is_import ) {
-            TODO(sp, "Replace imports");
+            // Need to replace all nodes up to and including the current with the import path
+            TODO(sp, "Replace imports - " << path << " (0 - " << i << ") with " << ie.path);
         }
         else {
             TU_MATCH_DEF(::AST::PathBinding, (ie.path.binding()), (e),
