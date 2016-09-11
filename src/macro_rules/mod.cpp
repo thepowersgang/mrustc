@@ -54,6 +54,9 @@ bool is_token_type(eTokenType tt) {
     case TOK_SQUARE_OPEN:
     case TOK_STAR:
     case TOK_AMP:
+    case TOK_RWORD_EXTERN:
+    case TOK_RWORD_UNSAFE:
+    case TOK_RWORD_FN:
     case TOK_INTERPOLATED_TYPE:
         return true;
     default:
@@ -65,14 +68,26 @@ bool is_token_expr(eTokenType tt) {
         return true;
     switch( tt )
     {
-    case TOK_AMP:
-    case TOK_STAR:
-    case TOK_PAREN_OPEN:
+    case TOK_AMP:   // Borrow
+    case TOK_STAR:  // Deref
+    case TOK_PAREN_OPEN:    // Parenthesised
+    case TOK_SQUARE_OPEN:   // Array
     case TOK_MACRO:
-    case TOK_DASH:
+    case TOK_DASH:  // Negate
+    case TOK_EXCLAM:    // Invert
+    case TOK_RWORD_BOX: // Box
     
+    // Closures
+    case TOK_RWORD_MOVE:
+    case TOK_PIPE:
+    case TOK_DOUBLE_PIPE:
+    
+    // Literal tokens
     case TOK_INTEGER:
+    case TOK_FLOAT:
     case TOK_STRING:
+    case TOK_RWORD_TRUE:
+    case TOK_RWORD_FALSE:
     case TOK_INTERPOLATED_EXPR:
         return true;
     default:
@@ -103,8 +118,6 @@ MacroRulesPtr::~MacroRulesPtr()
 }
 
 SERIALISE_TYPE_S(MacroRulesArm, {
-})
-SERIALISE_TYPE_S(MacroRulesPatFrag, {
 })
 
 void operator%(Serialiser& s, MacroPatEnt::Type c) {
@@ -174,6 +187,24 @@ SERIALISE_TYPE_S(MacroPatEnt, {
         case MacroPatEnt::PAT_META:  os << "meta"; break;
         }
         break;
+    }
+    return os;
+}
+::std::ostream& operator<<(::std::ostream& os, const MacroPatEnt::Type& x)
+{
+    switch(x)
+    {
+    case MacroPatEnt::PAT_TOKEN: os << "PAT_TOKEN"; break;
+    case MacroPatEnt::PAT_LOOP:  os << "PAT_LOOP";  break;
+    case MacroPatEnt::PAT_TT:    os << "PAT_TT";    break;
+    case MacroPatEnt::PAT_PAT:   os << "PAT_PAT";   break;
+    case MacroPatEnt::PAT_IDENT: os << "PAT_IDENT"; break;
+    case MacroPatEnt::PAT_PATH:  os << "PAT_PATH";  break;
+    case MacroPatEnt::PAT_TYPE:  os << "PAT_TYPE";  break;
+    case MacroPatEnt::PAT_EXPR:  os << "PAT_EXPR";  break;
+    case MacroPatEnt::PAT_STMT:  os << "PAT_STMT";  break;
+    case MacroPatEnt::PAT_BLOCK: os << "PAT_BLOCK"; break;
+    case MacroPatEnt::PAT_META:  os << "PAT_META"; break;
     }
     return os;
 }

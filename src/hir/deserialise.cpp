@@ -287,15 +287,7 @@ namespace {
         {
             ::MacroRules    rv;
             rv.m_exported = true;
-            rv.m_pattern = deserialise_macropatfrag();
             rv.m_rules = deserialise_vec_c< ::MacroRulesArm>( [&](){ return deserialise_macrorulesarm(); });
-            return rv;
-        }
-        ::MacroRulesPatFrag deserialise_macropatfrag() {
-            ::MacroRulesPatFrag rv;
-            rv.m_pats_ents = deserialise_vec_c< ::MacroPatEnt>([&](){ return deserialise_macropatent(); });
-            rv.m_pattern_end = read_count();
-            rv.m_next_frags = deserialise_vec_c< ::MacroRulesPatFrag>([&](){ return deserialise_macropatfrag(); });
             return rv;
         }
         ::MacroPatEnt deserialise_macropatent() {
@@ -330,6 +322,7 @@ namespace {
         ::MacroRulesArm deserialise_macrorulesarm() {
             ::MacroRulesArm rv;
             rv.m_param_names = deserialise_vec< ::std::string>();
+            rv.m_pattern = deserialise_vec_c< ::MacroPatEnt>( [&](){ return deserialise_macropatent(); } );
             rv.m_contents = deserialise_vec_c< ::MacroExpansionEnt>( [&](){ return deserialise_macroexpansionent(); } );
             return rv;
         }

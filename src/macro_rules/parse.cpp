@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * macro_rules/parse.cpp
+ * - macro_rules! parsing
  */
 #include <common.hpp>
 #include "../parse/common.hpp"
@@ -16,7 +21,8 @@ public:
     ::std::vector<MacroExpansionEnt> m_contents;
 };
 
-::std::vector<MacroPatEnt> Parse_MacroRules_Pat(TokenStream& lex, bool allow_sub, enum eTokenType open, enum eTokenType close,  ::std::vector< ::std::string>& names)
+/// Parse the pattern of a macro_rules! arm
+::std::vector<MacroPatEnt> Parse_MacroRules_Pat(TokenStream& lex, enum eTokenType open, enum eTokenType close,  ::std::vector< ::std::string>& names)
 {
     TRACE_FUNCTION;
     Token tok;
@@ -73,38 +79,31 @@ public:
                 else
                     throw ParseError::Generic(lex, FMT("Unknown fragment type '" << type << "'"));
                 break; }
-            case TOK_PAREN_OPEN:
-                if( allow_sub )
+            case TOK_PAREN_OPEN: {
+                auto subpat = Parse_MacroRules_Pat(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, names);
+                enum eTokenType joiner = TOK_NULL;
+                GET_TOK(tok, lex);
+                if( tok.type() != TOK_PLUS && tok.type() != TOK_STAR )
                 {
-                    auto subpat = Parse_MacroRules_Pat(lex, true, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, names);
-                    enum eTokenType joiner = TOK_NULL;
+                    DEBUG("joiner = " << tok);
+                    joiner = tok.type();
                     GET_TOK(tok, lex);
-                    if( tok.type() != TOK_PLUS && tok.type() != TOK_STAR )
-                    {
-                        DEBUG("Joiner = " << tok);
-                        joiner = tok.type();
-                        GET_TOK(tok, lex);
-                    }
-                    DEBUG("tok = " << tok);
-                    switch(tok.type())
-                    {
-                    case TOK_PLUS:
-                        DEBUG("$()+ " << subpat);
-                        ret.push_back( MacroPatEnt(Token(joiner), true, ::std::move(subpat)) );
-                        break;
-                    case TOK_STAR:
-                        DEBUG("$()* " << subpat);
-                        ret.push_back( MacroPatEnt(Token(joiner), false, ::std::move(subpat)) );
-                        break;
-                    default:
-                        throw ParseError::Unexpected(lex, tok);
-                    }
                 }
-                else
+                DEBUG("tok = " << tok);
+                switch(tok.type())
                 {
-                    throw ParseError::Generic(lex, FMT("Nested repetitions in macro"));
+                case TOK_PLUS:
+                    DEBUG("$()+ " << subpat);
+                    ret.push_back( MacroPatEnt(Token(joiner), true, ::std::move(subpat)) );
+                    break;
+                case TOK_STAR:
+                    DEBUG("$()* " << subpat);
+                    ret.push_back( MacroPatEnt(Token(joiner), false, ::std::move(subpat)) );
+                    break;
+                default:
+                    throw ParseError::Unexpected(lex, tok);
                 }
-                break;
+                break; }
             default:
                 throw ParseError::Unexpected(lex, tok);
             }
@@ -123,7 +122,7 @@ public:
 /// Parse the contents (replacement) of a macro_rules! arm
 ::std::vector<MacroExpansionEnt> Parse_MacroRules_Cont(
     TokenStream& lex,
-    bool allow_sub, enum eTokenType open, enum eTokenType close,
+    enum eTokenType open, enum eTokenType close,
     const ::std::vector< ::std::string>& var_names,
     ::std::set<unsigned int>* var_set_ptr=nullptr
     )
@@ -163,11 +162,8 @@ public:
             // `$(`
             if( tok.type() == TOK_PAREN_OPEN )
             {   
-                if( !allow_sub )
-                    throw ParseError::Unexpected(lex, tok);
-                
                 ::std::set<unsigned int> var_set;
-                auto content = Parse_MacroRules_Cont(lex, true, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, var_names, &var_set);
+                auto content = Parse_MacroRules_Cont(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, var_names, &var_set);
                 // ^^ The above will eat the PAREN_CLOSE
                 
                 if( var_set_ptr ) {
@@ -224,6 +220,7 @@ public:
     return ret;
 }
 
+/// Parse a single arm of a macro_rules! block - `(foo) => (bar)`
 MacroRule Parse_MacroRules_Var(TokenStream& lex)
 {
     TRACE_FUNCTION;
@@ -242,7 +239,7 @@ MacroRule Parse_MacroRules_Var(TokenStream& lex)
     }
     // - Pattern entries
     ::std::vector< ::std::string>   names;
-    rule.m_pattern = Parse_MacroRules_Pat(lex, true, tok.type(), close,  names);
+    rule.m_pattern = Parse_MacroRules_Pat(lex, tok.type(), close,  names);
     
     GET_CHECK_TOK(tok, lex, TOK_FATARROW);
 
@@ -254,7 +251,7 @@ MacroRule Parse_MacroRules_Var(TokenStream& lex)
     default:
         throw ParseError::Unexpected(lex, tok);
     }
-    rule.m_contents = Parse_MacroRules_Cont(lex, true, tok.type(), close, names);
+    rule.m_contents = Parse_MacroRules_Cont(lex, tok.type(), close, names);
 
     DEBUG("Rule - ["<<rule.m_pattern<<"] => "<<rule.m_contents<<"");
     
@@ -404,17 +401,6 @@ bool patterns_are_same(const Span& sp, const MacroPatEnt& left, const MacroPatEn
     throw "";
 }
 
-MacroRulesPatFrag split_fragment_at(MacroRulesPatFrag& frag, unsigned int remaining_count)
-{
-    MacroRulesPatFrag   rv;
-    for(unsigned int i = remaining_count; i < frag.m_pats_ents.size(); i ++)
-        rv.m_pats_ents.push_back( mv$(frag.m_pats_ents[i]) );
-    frag.m_pats_ents.resize(remaining_count);
-    rv.m_pattern_end = frag.m_pattern_end;   frag.m_pattern_end = ~0;
-    rv.m_next_frags = mv$(frag.m_next_frags);
-    return rv;
-}
-
 void enumerate_names(const ::std::vector<MacroPatEnt>& pats, ::std::vector< ::std::string>& names) {
     for( const auto& pat : pats )
     {
@@ -431,6 +417,7 @@ void enumerate_names(const ::std::vector<MacroPatEnt>& pats, ::std::vector< ::st
     }
 }
 
+/// Parse an entire macro_rules! block into a format that exec.cpp can use
 MacroRulesPtr Parse_MacroRules(TokenStream& lex)
 {
     TRACE_FUNCTION_F("");
@@ -451,87 +438,19 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
     }
     DEBUG("- " << rules.size() << " rules");
     
-    MacroRulesPatFrag   root_frag;
     ::std::vector<MacroRulesArm>    rule_arms;
     
     // Re-parse the patterns into a unified form
-    for(unsigned int rule_idx = 0; rule_idx < rules.size(); rule_idx ++)
+    for(auto& rule : rules)
     {
-        auto& rule = rules[rule_idx];
-        MacroRulesArm   arm = MacroRulesArm( mv$(rule.m_contents) );
+        MacroRulesArm   arm = MacroRulesArm( mv$(rule.m_pattern), mv$(rule.m_contents) );
         
-        enumerate_names(rule.m_pattern,  arm.m_param_names);
-        
-        auto* cur_frag = &root_frag;
-        unsigned int    frag_ofs = 0;
-        for( const auto& pat : rule.m_pattern )
-        {
-            Span    sp(pat.tok.get_pos());
-            
-            // If the current position is the end of the current fragment:
-            if( frag_ofs == cur_frag->m_pats_ents.size() ) {
-                // But this fragment is incomplete (doesn't end a pattern, or split)
-                if( cur_frag->m_pattern_end == ~0u && cur_frag->m_next_frags.size() == 0 ) {
-                    // Keep pushing onto the end
-                    cur_frag->m_pats_ents.push_back( pat );
-                    frag_ofs += 1;
-                }
-                else {
-                    // Check if any of the other paths match
-                    bool found = false;
-                    for( auto& next_frag : cur_frag->m_next_frags ) {
-                        assert( next_frag.m_pats_ents.size() > 0 );
-                        if( patterns_are_same( Span(pat.tok.get_pos()), next_frag.m_pats_ents[0], pat ) ) {
-                            found = true;
-                            cur_frag = &next_frag;
-                            break;
-                        }
-                    }
-                    // If not, create a new frag
-                    if( ! found ) {
-                        cur_frag->m_next_frags.push_back( MacroRulesPatFrag() );
-                        cur_frag = &cur_frag->m_next_frags.back();
-                        cur_frag->m_pats_ents.push_back( pat );
-                    }
-                    frag_ofs = 1;
-                }
-            }
-            // TODO: If `:expr` and `$( :expr)` are seen, split _after_ the :expr
-            else if( ! patterns_are_same(sp, cur_frag->m_pats_ents[frag_ofs], pat) ) {
-                // Difference, split the block.
-                auto new_frag = split_fragment_at(*cur_frag, frag_ofs);
-                assert( cur_frag->m_next_frags.size() == 0 );
-                cur_frag->m_next_frags.push_back( mv$(new_frag) );
-                
-                // - Update cur_frag to a newly pushed fragment, and push this pattern to it
-                cur_frag->m_next_frags.push_back( MacroRulesPatFrag() );
-                cur_frag = &cur_frag->m_next_frags.back();
-                cur_frag->m_pats_ents.push_back( pat );
-                frag_ofs = 1;
-            }
-            else {
-                // Matches - Keep going
-                frag_ofs += 1;
-            }
-        }
-        
-        // If this pattern ended before the current fragment ended
-        if( frag_ofs < cur_frag->m_pats_ents.size() ) {
-            // Split the current fragment
-            auto new_frag = split_fragment_at(*cur_frag, frag_ofs);
-            assert( cur_frag->m_next_frags.size() == 0 );
-            cur_frag->m_next_frags.push_back( mv$(new_frag) );
-            // Keep cur_frag the same
-        }
-        cur_frag->m_pattern_end = rule_idx;
+        enumerate_names(arm.m_pattern,  arm.m_param_names);
         
         rule_arms.push_back( mv$(arm) );
     }
     
-    // TODO: use `root_frag` above for the actual evaluation
-    
     auto rv = new MacroRules();
-    rv->m_pattern = mv$(root_frag);
     rv->m_rules = mv$(rule_arms);
     
     return MacroRulesPtr(rv);

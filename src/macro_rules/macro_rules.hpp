@@ -22,7 +22,7 @@ class MacroExpander;
 TAGGED_UNION_EX(MacroExpansionEnt, (: public Serialisable), Token, (
     // TODO: have a "raw" stream instead of just tokens
     (Token, Token),
-    // TODO: This is a bit-mangled number, what does it mean?
+    // NOTE: This is a 2:30 bitfield - with the high range indicating $crate
     (NamedValue, unsigned int),
     (Loop, struct {
         /// Contained entries
@@ -95,24 +95,7 @@ struct MacroPatEnt:
     }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const MacroPatEnt& x);
-    
-    SERIALISABLE_PROTOTYPES();
-};
-
-/// Fragment of a match pattern
-struct MacroRulesPatFrag:
-    public Serialisable
-{
-    /// Pattern entries within this fragment
-    ::std::vector<MacroPatEnt>  m_pats_ents;
-    /// Index of the arm that matches if the input ends after this fragment (~0 for nothing)
-    unsigned int    m_pattern_end;
-    /// List of fragments that follow this fragment
-    ::std::vector< MacroRulesPatFrag >  m_next_frags;
-    
-    MacroRulesPatFrag():
-        m_pattern_end(~0)
-    {}
+    friend ::std::ostream& operator<<(::std::ostream& os, const MacroPatEnt::Type& x);
     
     SERIALISABLE_PROTOTYPES();
 };
@@ -124,12 +107,16 @@ struct MacroRulesArm:
     /// Names for the parameters
     ::std::vector< ::std::string>   m_param_names;
     
+    /// Patterns
+    ::std::vector<MacroPatEnt>  m_pattern;
+    
     /// Rule contents
     ::std::vector<MacroExpansionEnt> m_contents;
     
     MacroRulesArm()
     {}
-    MacroRulesArm(::std::vector<MacroExpansionEnt> contents):
+    MacroRulesArm(::std::vector<MacroPatEnt> pattern, ::std::vector<MacroExpansionEnt> contents):
+        m_pattern( mv$(pattern) ),
         m_contents( mv$(contents) )
     {}
     MacroRulesArm(const MacroRulesArm&) = delete;
@@ -149,8 +136,6 @@ public:
     
     ::std::string   m_source_crate; // Populated on load, used for $crate
     
-    /// Parsing patterns
-    MacroRulesPatFrag  m_pattern;
     /// Expansion rules
     ::std::vector<MacroRulesArm>  m_rules;
     

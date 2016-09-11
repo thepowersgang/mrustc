@@ -402,13 +402,7 @@ namespace {
         void serialise(const ::MacroRules& mac)
         {
             //m_exported: IGNORE, should be set
-            serialise(mac.m_pattern);
             serialise_vec(mac.m_rules);
-        }
-        void serialise(const ::MacroRulesPatFrag& pat) {
-            serialise_vec(pat.m_pats_ents);
-            write_count(pat.m_pattern_end);
-            serialise_vec(pat.m_next_frags);
         }
         void serialise(const ::MacroPatEnt& pe) {
             write_string(pe.name);
@@ -423,6 +417,7 @@ namespace {
         }
         void serialise(const ::MacroRulesArm& arm) {
             serialise_vec(arm.m_param_names);
+            serialise_vec(arm.m_pattern);
             serialise_vec(arm.m_contents);
         }
         void serialise(const ::MacroExpansionEnt& ent) {
