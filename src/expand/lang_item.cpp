@@ -146,8 +146,8 @@ public:
         // rustc_unicode
         else if( name == "char" ) {}
         // collections
-        //else if( name == "str" ) {}
-        //else if( name == "slice" ) {}
+        else if( name == "str" ) {}
+        else if( name == "slice" ) {}
         else {
             ERROR(sp, E0000, "Unknown lang item '" << name << "' on impl");
         }
