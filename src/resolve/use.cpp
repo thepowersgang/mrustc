@@ -307,7 +307,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 return Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp.data.path), parent_modules, allow);
             }
             else {
-                if( allow != Lookup::Any )
+                if( allow != Lookup::Any && allow != Lookup::AnyOpt )
                 {
                     switch( imp.data.path.binding().tag() )
                     {
@@ -336,6 +336,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             }
         }
         if( imp.is_pub && imp.name == "" ) {
+            DEBUG("- Search glob of " << imp.data.path);
             // INEFFICIENT! Resolves and throws away the result (because we can't/shouldn't mutate here)
             ::AST::PathBinding  binding_;
             const auto* binding = &imp.data.path.binding();
@@ -516,11 +517,18 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             return ::AST::PathBinding::make_EnumVar({&enum_, static_cast<unsigned int>(variant_index)});
             ),
         (Module,
+            ASSERT_BUG(span, e.module_ || e.hir, "nullptr module pointer in node " << i << " of " << path);
+            if( !e.module_ ) 
+            {
+                assert(e.hir);
+                TODO(span, "Look up the remainder of " << path << " from " << i << " in HIR");
+            }
             mod = e.module_;
             )
         )
     }
     
+    assert(mod);
     return Resolve_Use_GetBinding_Mod(span, crate, *mod, nodes.back().name(), parent_modules, allow);
 }
 
