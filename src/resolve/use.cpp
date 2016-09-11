@@ -9,9 +9,10 @@
 
 enum class Lookup
 {
-    Any,
-    Type,
-    Value,
+    Any,    // Allow binding to anything
+    AnyOpt, // Allow binding to anything, but don't error on failure
+    Type,   // Allow only type bindings
+    Value,  // Allow only value bindings
 };
 
 ::AST::Path Resolve_Use_AbsolutisePath(const ::AST::Path& base_path, ::AST::Path path);
@@ -230,7 +231,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         }
     }
     
-    if( des_item_name[0] == '#' ) {
+    if( des_item_name.size() > 0 && des_item_name[0] == '#' ) {
         unsigned int idx = 0;
         if( ::std::sscanf(des_item_name.c_str(), "#%u", &idx) != 1 ) {
             BUG(span, "Invalid anon path segment '" << des_item_name << "'");
@@ -345,12 +346,18 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 binding = &binding_;
             }
             
-            TU_MATCH_DEF(::AST::PathBinding, ((*binding)), (e),
+            TU_MATCH_DEF(::AST::PathBinding, (*binding), (e),
             (
                 BUG(sp2, "Wildcard import expanded to an invalid item class");
                 ),
             (Module,
-                TODO(span, "Look up wildcard in module");
+                auto allow_inner = (allow == Lookup::Any ? Lookup::AnyOpt : allow);
+                assert(e.module_);
+                // TODO: Prevent infinite recursion
+                auto rv = Resolve_Use_GetBinding_Mod(span, crate, *e.module_, des_item_name, {}, allow_inner);
+                if( ! rv.is_Unbound() ) {
+                    return mv$(rv);
+                }
                 ),
             (Enum,
                 TODO(span, "Look up wildcard in enum");
@@ -408,9 +415,16 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     {
         auto it = hmod->m_mod_items.find(nodes.back().name());
         if( it != hmod->m_mod_items.end() ) {
-            TU_MATCHA( (it->second->ent), (e),
+            const auto* item_ptr = &it->second->ent;
+            if( item_ptr->is_Import() ) {
+                const auto& e = item_ptr->as_Import();
+                // This doesn't need to recurse - it can just do a single layer (as no Import should refer to another)
+                const auto& ec = crate.m_extern_crates.at( e.m_crate_name );
+                item_ptr = &ec.m_hir->get_typeitem_by_path(span, e, true);    // ignore_crate_name=true
+            }
+            TU_MATCHA( (*item_ptr), (e),
             (Import,
-                TODO(span, "Recurse to get binding for an import");
+                BUG(span, "Recursive import in " << path << " - " << it->second->ent.as_Import() << " -> " << e);
                 ),
             (Module,
                 return ::AST::PathBinding::make_Module({nullptr, &e});
@@ -436,7 +450,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         if( it2 != hmod->m_value_items.end() ) {
             TU_MATCHA( (it2->second->ent), (e),
             (Import,
-                TODO(span, "Recurse to get binding for an import");
+                TODO(span, "Recurse to get binding for an import - " << path << " = " << e);
                 ),
             (Constant,
                 return ::AST::PathBinding::make_Static({ nullptr });

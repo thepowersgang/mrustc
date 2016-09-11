@@ -373,12 +373,12 @@ const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path(const Span& sp, const 
     return it->second;
 }
 
-const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const
+const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name) const
 {
     ASSERT_BUG(sp, path.m_components.size() > 0, "get_typeitem_by_path received invalid path - " << path);
     
     const ::HIR::Module* mod;
-    if( path.m_crate_name != "" ) {
+    if( !ignore_crate_name && path.m_crate_name != "" ) {
         ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
         mod = &m_ext_crates.at(path.m_crate_name)->m_root_module;
     }
@@ -448,13 +448,13 @@ const ::HIR::Enum& ::HIR::Crate::get_enum_by_path(const Span& sp, const ::HIR::S
     }
 }
 
-const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const
+const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name) const
 {
     if( path.m_components.size() == 0) {
         BUG(sp, "get_valitem_by_path received invalid path");
     }
     const ::HIR::Module* mod;
-    if( path.m_crate_name != "" ) {
+    if( !ignore_crate_name && path.m_crate_name != "" ) {
         ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
         mod = &m_ext_crates.at(path.m_crate_name)->m_root_module;
     }

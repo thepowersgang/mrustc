@@ -326,13 +326,13 @@ public:
     
     const ::HIR::SimplePath& get_lang_item_path(const Span& sp, const char* name) const;
     
-    const ::HIR::TypeItem& get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
+    const ::HIR::TypeItem& get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name=false) const;
     const ::HIR::Trait& get_trait_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Struct& get_struct_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Enum& get_enum_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Module& get_mod_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     
-    const ::HIR::ValueItem& get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
+    const ::HIR::ValueItem& get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name=false) const;
     const ::HIR::Function& get_function_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Static& get_static_by_path(const Span& sp, const ::HIR::SimplePath& path) const {
         const auto& ti = this->get_valitem_by_path(sp, path);
