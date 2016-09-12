@@ -1,7 +1,10 @@
 /*
- * Resolve unkown UFCS traits into inherent or trait
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
  *
- * HACK - Will likely be replaced with a proper typeck pass
+ * hir_conv/resolve_ufcs.cpp
+ * - Resolve unkown UFCS traits into inherent or trait
+ * - HACK: Will likely be replaced with a proper typeck pass (no it won't)
  */
 #include "main_bindings.hpp"
 #include <hir/hir.hpp>
@@ -288,9 +291,8 @@ namespace {
 
         void visit_path(::HIR::Path& p, ::HIR::Visitor::PathContext pc) override
         {
-            auto sp = Span();
+            static Span sp;
             
-            DEBUG("p = " << p);
             TU_IFLET(::HIR::Path::Data, p.m_data, UfcsUnknown, e,
                 TRACE_FUNCTION_F("UfcsUnknown - p=" << p);
                 
@@ -327,7 +329,7 @@ namespace {
                 else {
                     // 1. Search for applicable inherent methods (COMES FIRST!)
                     if( m_crate.find_type_impls(*e.type, [&](const auto& t)->const auto& { return t; }, [&](const auto& impl) {
-                        DEBUG("- matched inherent impl " << *e.type);
+                        DEBUG("- matched inherent impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                         // Search for item in this block
                         switch( pc )
                         {
