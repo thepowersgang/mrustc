@@ -409,12 +409,27 @@ const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const 
 
 const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::SimplePath& path) const
 {
-    const auto& ti = this->get_typeitem_by_path(sp, path);
-    TU_IFLET(::HIR::TypeItem, ti, Module, e,
-        return e;
-    )
-    else {
-        BUG(sp, "Module path " << path << " didn't point to a module");
+    if( path.m_components.size() == 0 )
+    { 
+        if( path.m_crate_name != "" )
+        {
+            ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
+            return m_ext_crates.at(path.m_crate_name)->m_root_module;
+        }
+        else
+        {
+            return this->m_root_module;
+        }
+    }
+    else
+    {
+        const auto& ti = this->get_typeitem_by_path(sp, path);
+        TU_IFLET(::HIR::TypeItem, ti, Module, e,
+            return e;
+        )
+        else {
+            BUG(sp, "Module path " << path << " didn't point to a module");
+        } 
     }
 }
 const ::HIR::Trait& ::HIR::Crate::get_trait_by_path(const Span& sp, const ::HIR::SimplePath& path) const
