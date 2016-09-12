@@ -65,6 +65,29 @@ bool ImplRef::type_is_specialisable(const char* name) const
     )
     throw "";
 }
+
+namespace {
+    // Returns a closure to monomorphise including placeholders (if present)
+    ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> get_cb_monomorph_traitimpl(const Span& sp, const ImplRef& ir)
+    {
+        const auto& e = ir.m_data.as_TraitImpl();
+        return [&e,&ir,&sp](const auto& gt)->const auto& {
+            const auto& ge = gt.m_data.as_Generic();
+            assert(ge.binding < 256);
+            assert(ge.binding < e.params.size());
+            if( e.params[ge.binding] ) {
+                return *e.params[ge.binding];
+            }
+            else if( e.params_ph.size() && e.params_ph[ge.binding] != ::HIR::TypeRef() ) {
+                return e.params_ph[ge.binding];
+            }
+            else {
+                BUG(sp, "Param #" << ge.binding << " " << ge.name << " isn't constrained for " << ir);
+            }
+            };
+    }
+}
+
 ::HIR::TypeRef ImplRef::get_impl_type() const
 {
     Span    sp;
@@ -73,10 +96,7 @@ bool ImplRef::type_is_specialisable(const char* name) const
         if( e.impl == nullptr ) {
             BUG(Span(), "nullptr");
         }
-        return monomorphise_type_with(sp, e.impl->m_type, [&e](const auto& t)->const auto& {
-            const auto& ge = t.m_data.as_Generic();
-            return *e.params.at(ge.binding);
-            });
+        return monomorphise_type_with(sp, e.impl->m_type, get_cb_monomorph_traitimpl(sp, *this));
         ),
     (BoundedPtr,
         return e.type->clone();
@@ -95,10 +115,8 @@ bool ImplRef::type_is_specialisable(const char* name) const
         if( e.impl == nullptr ) {
             BUG(Span(), "nullptr");
         }
-        return monomorphise_path_params_with(sp, e.impl->m_trait_args, [&e](const auto& t)->const auto& {
-            const auto& ge = t.m_data.as_Generic();
-            return *e.params.at(ge.binding);
-            }, true);
+        
+        return monomorphise_path_params_with(sp, e.impl->m_trait_args, get_cb_monomorph_traitimpl(sp, *this), true);
         ),
     (BoundedPtr,
         return e.trait_args->clone();
@@ -119,10 +137,7 @@ bool ImplRef::type_is_specialisable(const char* name) const
         }
         if( idx >= e.impl->m_trait_args.m_types.size() )
             return ::HIR::TypeRef();
-        return monomorphise_type_with(sp, e.impl->m_trait_args.m_types[idx], [&e](const auto& t)->const auto& {
-            const auto& ge = t.m_data.as_Generic();
-            return *e.params.at(ge.binding);
-            }, true);
+        return monomorphise_type_with(sp, e.impl->m_trait_args.m_types[idx], get_cb_monomorph_traitimpl(sp, *this), true);
         ),
     (BoundedPtr,
         if( idx >= e.trait_args->m_types.size() )
@@ -138,6 +153,7 @@ bool ImplRef::type_is_specialisable(const char* name) const
     throw "";
     TODO(Span(), "");
 }
+
 ::HIR::TypeRef ImplRef::get_type(const char* name) const
 {
     if( !name[0] )
@@ -151,21 +167,7 @@ bool ImplRef::type_is_specialisable(const char* name) const
             return ::HIR::TypeRef();
         const ::HIR::TypeRef& tpl_ty = it->second.data;
         if( monomorphise_type_needed(tpl_ty) ) {
-            auto cb_monomorph = [&](const auto& gt)->const auto& {
-                const auto& ge = gt.m_data.as_Generic();
-                assert(ge.binding < 256);
-                assert(ge.binding < e.params.size());
-                if( e.params[ge.binding] ) {
-                    return *e.params[ge.binding];
-                }
-                else if( e.params_ph.size() && e.params_ph[ge.binding] != ::HIR::TypeRef() ) {
-                    return e.params_ph[ge.binding];
-                }
-                else {
-                    BUG(Span(), "Param #" << ge.binding << " " << ge.name << " isn't constrained for " << *this);
-                }
-                };
-            return monomorphise_type_with(sp, tpl_ty, cb_monomorph);
+            return monomorphise_type_with(sp, tpl_ty, get_cb_monomorph_traitimpl(sp, *this));
         }
         else {
             return tpl_ty.clone();
