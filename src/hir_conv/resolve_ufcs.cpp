@@ -387,7 +387,7 @@ namespace {
                 }
                 
                 // Couldn't find it
-                //ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << *e.type << " (in " << p << ")");
+                ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << *e.type << " (in " << p << ")");
             )
             else {
                 ::HIR::Visitor::visit_path(p, pc);
