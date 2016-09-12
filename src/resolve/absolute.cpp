@@ -726,6 +726,7 @@ namespace {
     
     void Resolve_Absolute_Path_BindAbsolute__hir_from(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path, const AST::ExternCrate& crate, unsigned int start)
     {
+        TRACE_FUNCTION_FR(path << " start=" << start, path);
         const auto& path_abs = path.m_class.as_Absolute();
         
         const ::HIR::Module* hmod = &crate.m_hir->m_root_module;
@@ -948,7 +949,7 @@ namespace {
 
 void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path)
 {
-    TRACE_FUNCTION_F("path = " << path);
+    TRACE_FUNCTION_FR("path = " << path, path);
     const auto& path_abs = path.m_class.as_Absolute();
     
     if( path_abs.crate != "" ) {
@@ -1094,13 +1095,21 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
     
     // Replaces the path with the one returned by `lookup_in_mod`, ensuring that `use` aliases are eliminated
     DEBUG("Replace " << path << " with " << tmp);
-    tmp.nodes().back().args() = mv$(path.nodes().back().args());
+    auto args = mv$(path.nodes().back().args());
+    if( tmp != path )
+    {
+        // If the paths mismatch (i.e. there was an import involved), pass through resolution again
+        // - This works around cases where the index contains paths that refer to aliases.
+        DEBUG("- Recurse");
+        Resolve_Absolute_Path_BindAbsolute(context, sp, mode, tmp);
+    }
+    tmp.nodes().back().args() = mv$(args);
     path = mv$(tmp);
 }
 
 void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::LookupMode mode,  ::AST::Path& path)
 {
-    TRACE_FUNCTION_F("mode = " << mode << ", path = " << path);
+    TRACE_FUNCTION_FR("mode = " << mode << ", path = " << path, path);
     
     TU_MATCH(::AST::Path::Class, (path.m_class), (e),
     (Invalid,
