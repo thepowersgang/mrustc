@@ -1,3 +1,10 @@
+/*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/from_ast.hpp
+ * - Shared code definitions for constructing the HIR from AST
+ */
 #pragma once
 
 #include <hir/expr_ptr.hpp>
@@ -9,3 +16,5 @@ extern ::HIR::SimplePath    LowerHIR_SimplePath(const Span& sp, const ::AST::Pat
 extern ::HIR::TypeRef LowerHIR_Type(const ::TypeRef& ty);
 extern ::HIR::Pattern LowerHIR_Pattern(const ::AST::Pattern& pat);
 
+extern ::std::string   g_core_crate;
+extern ::HIR::Crate*   g_crate_ptr;

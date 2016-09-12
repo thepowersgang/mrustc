@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/from_ast.cpp
+ * - Constructs the HIR module tree from the AST module tree
  */
 #include "common.hpp"
 #include "hir.hpp"
@@ -14,7 +19,8 @@
 ::HIR::PathParams LowerHIR_PathParams(const Span& sp, const ::AST::PathParams& src_params, bool allow_assoc);
 ::HIR::TraitPath LowerHIR_TraitPath(const Span& sp, const ::AST::Path& path);
 
-::HIR::SimplePath path_Sized = ::HIR::SimplePath("", {"marker", "Sized"});
+::HIR::SimplePath path_Sized;
+::std::string   g_core_crate;
 ::HIR::Crate*   g_crate_ptr = nullptr;
 
 // --------------------------------------------------------------------
@@ -1259,6 +1265,7 @@ public:
 {
     ::HIR::Crate    rv;
     g_crate_ptr = &rv;
+    g_core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core");
     auto& macros = rv.m_exported_macros;
     
     // - Extract macros from root module

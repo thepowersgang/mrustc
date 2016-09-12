@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/from_ast_expr.cpp
+ * - Constructs a HIR expression tree from an AST expression tree
  */
 #include <hir/expr_ptr.hpp>
 #include <hir/expr.hpp>
@@ -104,10 +109,10 @@ struct LowerHIR_ExprNode_Visitor:
         {
         case ::AST::ExprNode_BinOp::RANGE: {
             // NOTE: Not language items
-            auto path_Range     = ::HIR::GenericPath( ::HIR::SimplePath("", {"ops", "Range"}) );
-            auto path_RangeFrom = ::HIR::GenericPath( ::HIR::SimplePath("", {"ops", "RangeFrom"}) );
-            auto path_RangeTo   = ::HIR::GenericPath( ::HIR::SimplePath("", {"ops", "RangeTo"}) );
-            auto path_RangeFull = ::HIR::GenericPath( ::HIR::SimplePath("", {"ops", "RangeFull"}) );
+            auto path_Range     = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"ops", "Range"}) );
+            auto path_RangeFrom = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"ops", "RangeFrom"}) );
+            auto path_RangeTo   = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"ops", "RangeTo"}) );
+            auto path_RangeFull = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"ops", "RangeFull"}) );
             
             ::HIR::ExprNode_StructLiteral::t_values values;
             if( v.m_left )
@@ -134,8 +139,8 @@ struct LowerHIR_ExprNode_Visitor:
             break; }
         case ::AST::ExprNode_BinOp::RANGE_INC: {
             // NOTE: Not language items
-            auto path_RangeInclusive_NonEmpty = ::HIR::GenericPath( ::HIR::SimplePath("", {"ops", "RangeInclusive", "NonEmpty"}) );
-            auto path_RangeToInclusive        = ::HIR::GenericPath( ::HIR::SimplePath("", {"ops", "RangeToInclusive"}) );
+            auto path_RangeInclusive_NonEmpty = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"ops", "RangeInclusive", "NonEmpty"}) );
+            auto path_RangeToInclusive        = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"ops", "RangeToInclusive"}) );
             
             if( v.m_left )
             {
