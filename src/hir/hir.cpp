@@ -52,7 +52,8 @@ namespace {
             {
             case ::HIR::InferClass::None:
             case ::HIR::InferClass::Diverge:
-                return left.m_data.is_Generic();
+                //return left.m_data.is_Generic();
+                return true;
             case ::HIR::InferClass::Integer:
                 TU_IFLET(::HIR::TypeRef::Data, left.m_data, Primitive, le,
                     return is_integer(le);
@@ -70,8 +71,7 @@ namespace {
                 }
                 break;
             }
-            return left.m_data.is_Generic();
-            //return true;
+            throw "";
         }
         if( right.m_data.is_Generic() ) {
             return left.m_data.is_Generic();
@@ -200,18 +200,37 @@ namespace {
 //    return ::HIR::TypeRef( mv$(fcn_ty_data) );
 //}
 
+namespace {
+    bool is_unbounded_infer(const ::HIR::TypeRef& type) {
+        TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Infer, e,
+            return e.ty_class == ::HIR::InferClass::None || e.ty_class == ::HIR::InferClass::Diverge;
+        )
+        else {
+            return false;
+        }
+    }
+}
+
 bool ::HIR::TraitImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
+    // NOTE: Don't return any impls when the type is an unbouned ivar. Wouldn't be able to pick anything anyway
+    if( is_unbounded_infer(type) ) {
+        return false;
+    }
     return matches_type_int(m_params, m_type, type, ty_res, true);
-    // TODO: Using this would be nice, but may be better to handle impl params better
-    //return m_type.compare_with_placeholders(Span(), type, ty_res) != ::HIR::Compare::Unequal;
 }
 bool ::HIR::TypeImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
+    if( is_unbounded_infer(type) ) {
+        return false;
+    }
     return matches_type_int(m_params, m_type, type, ty_res, true);
 }
 bool ::HIR::MarkerImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
+    if( is_unbounded_infer(type) ) {
+        return false;
+    }
     return matches_type_int(m_params, m_type, type, ty_res, true);
 }
 
