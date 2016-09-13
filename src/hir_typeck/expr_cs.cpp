@@ -225,18 +225,14 @@ namespace {
                 };
             ),
         (UfcsUnknown,
+            // TODO: Eventually, the HIR `Resolve UFCS` pass will be removed, leaving this code responsible for locating the item.
             TODO(sp, "Hit a UfcsUnknown (" << path << ") - Is this an error?");
             ),
         (UfcsInherent,
             // TODO: What if this types has ivars?
             // - Locate function (and impl block)
             const ::HIR::TypeImpl* impl_ptr = nullptr;
-            context.m_crate.find_type_impls(*e.type, [&](const auto& ty)->const auto& {
-                    if( ty.m_data.is_Infer() )
-                        return context.get_type(ty);
-                    else
-                        return ty;
-                },
+            context.m_crate.find_type_impls(*e.type, context.m_ivars.callback_resolve_infer(),
                 [&](const auto& impl) {
                     DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                     auto it = impl.m_methods.find(e.item);
@@ -250,6 +246,7 @@ namespace {
                 ERROR(sp, E0000, "Failed to locate function " << path);
             }
             assert(impl_ptr);
+            DEBUG("Found impl" << impl_ptr->m_params.fmt_args() << " " << impl_ptr->m_type);
             fix_param_count(sp, context, path, fcn_ptr->m_params,  e.params);
             cache.m_fcn_params = &fcn_ptr->m_params;
             
@@ -257,15 +254,26 @@ namespace {
             // If the impl block has parameters, figure out what types they map to
             // - The function params are already mapped (from fix_param_count)
             auto& impl_params = cache.m_ty_impl_params;
-            if( impl_ptr->m_params.m_types.size() > 0 ) {
+            if( impl_ptr->m_params.m_types.size() > 0 )
+            {
+                // Default-construct entires in the `impl_params` array
                 impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
+                
+                // TODO: Handle case where the match in `find_type_impls` was an ivar against a compound type
+                // > May require forcing an ivar to be a specific type. And probably custom code here? Or just a different callback to handle unexpandable ivars
+                // > See the code in TraitResolution::find_trait_impls_crate
+                //  - Uses match_test_generics_fuzz and replaces unbound params by placeholders.
+                //  - This may not be what is desired here, as this code should force ivar types.
                 impl_ptr->m_type.match_generics(sp, *e.type, context.m_ivars.callback_resolve_infer(), [&](auto idx, const auto& ty) {
                     assert( idx < impl_params.m_types.size() );
                     impl_params.m_types[idx] = ty.clone();
                     return ::HIR::Compare::Equal;
                     });
-                for(const auto& ty : impl_params.m_types)
-                    assert( !( ty.m_data.is_Infer() && ty.m_data.as_Infer().index == ~0u) );
+                // - Check that all entries were populated by the above function
+                for(const auto& ty : impl_params.m_types) {
+                    //assert( !( ty.m_data.is_Infer() && ty.m_data.as_Infer().index == ~0u) );
+                    assert( ty != ::HIR::TypeRef() );
+                }
             }
             
             // Create monomorphise callback
@@ -289,8 +297,12 @@ namespace {
                         }
                         return context.get_type(fcn_params.m_types[idx]);
                     }
+                    else if( ge.binding < 256*3 ) {
+                        auto idx = ge.binding - 256*2;
+                        TODO(sp, "Placeholder generics - " << idx);
+                    }
                     else {
-                        BUG(sp, "Generic bounding out of total range");
+                        BUG(sp, "Generic bounding out of total range - " << ge.binding);
                     }
                 };
             )
