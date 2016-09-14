@@ -475,13 +475,21 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     }
     const auto& v = (this->m_data.is_Infer() ? resolve_placeholder(*this) : *this);
     const auto& x = (x_in.m_data.is_Infer() || x_in.m_data.is_Generic() ? resolve_placeholder(x_in) : x_in);
+    // If `x` is an ivar - This can be a fuzzy match.
+    // TODO: Can `v` be an ivar (it can, after resolve_placeholder) - and should that cause a fuzzy match?
     TU_IFLET(::HIR::TypeRef::Data, x.m_data, Infer, xe,
+        // - If type inferrence is active (i.e. this ivar has an index), AND both `v` and `x` refer to the same ivar slot
+        if( xe.index != ~0u && v.m_data.is_Infer() && v.m_data.as_Infer().index == xe.index )
+        {
+            // - They're equal (no fuzzyness about it)
+            return Compare::Equal;
+        }
         switch(xe.ty_class)
         {
         case ::HIR::InferClass::None:
         case ::HIR::InferClass::Diverge:
-            // - If right is generic infer, assume it's good
-            //return true;
+            // TODO: Have another callback (optional?) that allows the caller to equate `v` somehow
+            // - Very niche?
             return Compare::Fuzzy;
         case ::HIR::InferClass::Integer:
             TU_IFLET(::HIR::TypeRef::Data, v.m_data, Primitive, te,
