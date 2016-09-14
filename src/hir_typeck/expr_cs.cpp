@@ -259,19 +259,52 @@ namespace {
                 // Default-construct entires in the `impl_params` array
                 impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
                 
-                // TODO: Handle case where the match in `find_type_impls` was an ivar against a compound type
-                // > May require forcing an ivar to be a specific type. And probably custom code here? Or just a different callback to handle unexpandable ivars
-                // > See the code in TraitResolution::find_trait_impls_crate
-                //  - Uses match_test_generics_fuzz and replaces unbound params by placeholders.
-                //  - This may not be what is desired here, as this code should force ivar types.
-                impl_ptr->m_type.match_generics(sp, *e.type, context.m_ivars.callback_resolve_infer(), [&](auto idx, const auto& ty) {
+                auto cmp = impl_ptr->m_type.match_test_generics_fuzz(sp, *e.type, context.m_ivars.callback_resolve_infer(), [&](auto idx, const auto& ty) {
                     assert( idx < impl_params.m_types.size() );
                     impl_params.m_types[idx] = ty.clone();
                     return ::HIR::Compare::Equal;
                     });
+                if( cmp == ::HIR::Compare::Fuzzy )
+                {
+                    // If the match was fuzzy, it could be due to a compound being matched against an ivar
+                    DEBUG("- Fuzzy match, adding ivars and equating");
+                    bool ivar_replaced = false;
+                    for(auto& ty : impl_params.m_types) {
+                        if( ty == ::HIR::TypeRef() ) {
+                            // Allocate a new ivar for the param
+                            ivar_replaced = true;
+                            ty = context.m_ivars.new_ivar_tr();
+                        }
+                    }
+                    
+                    // If there were any params that weren't bound by `match_test_generics_fuzz`
+                    if( ivar_replaced )
+                    {
+                        // Then monomorphise the impl type with the new ivars, and equate to *e.type
+                        auto impl_monomorph_cb = [&](const auto& gt)->const auto& {
+                            const auto& ge = gt.m_data.as_Generic();
+                            if( ge.binding == 0xFFFF ) {
+                                return context.get_type(*e.type);
+                            }
+                            else if( ge.binding < 256 ) {
+                                auto idx = ge.binding;
+                                if( idx >= impl_params.m_types.size() ) {
+                                    BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << impl_params.m_types.size());
+                                }
+                                return context.get_type(impl_params.m_types[idx]);
+                            }
+                            else {
+                                BUG(sp, "Generic bounding out of total range - " << ge.binding);
+                            }
+                            };
+                        auto impl_ty_mono = monomorphise_type_with(sp, impl_ptr->m_type, impl_monomorph_cb, false);
+                        DEBUG("- impl_ty_mono = " << impl_ty_mono);
+                        
+                        context.equate_types(sp, impl_ty_mono, *e.type);
+                    }
+                }
                 // - Check that all entries were populated by the above function
                 for(const auto& ty : impl_params.m_types) {
-                    //assert( !( ty.m_data.is_Infer() && ty.m_data.as_Infer().index == ~0u) );
                     assert( ty != ::HIR::TypeRef() );
                 }
             }
