@@ -991,18 +991,25 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                 args.push_back( at.clone() );
                 cmp &= at.compare_with_placeholders(sp, args_des[i], this->m_ivars.callback_resolve_infer());
             }
-            
-            // NOTE: This is a conditional "true", we know nothing about the move/mut-ness of this closure yet
-            // - Could we?
-            // - Not until after the first stage of typeck
-            
-            DEBUG("Closure Fn* impl - cmp = " << cmp);
-            
-            ::HIR::PathParams   pp;
-            pp.m_types.push_back( ::HIR::TypeRef(mv$(args)) );
-            ::std::map< ::std::string, ::HIR::TypeRef>  types;
-            types.insert( ::std::make_pair( "Output", e.m_rettype->clone() ) );
-            return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), cmp );
+            if( cmp != ::HIR::Compare::Unequal )
+            {
+                // NOTE: This is a conditional "true", we know nothing about the move/mut-ness of this closure yet
+                // - Could we?
+                // - Not until after the first stage of typeck
+                
+                DEBUG("Closure Fn* impl - cmp = " << cmp);
+                
+                ::HIR::PathParams   pp;
+                pp.m_types.push_back( ::HIR::TypeRef(mv$(args)) );
+                ::std::map< ::std::string, ::HIR::TypeRef>  types;
+                types.insert( ::std::make_pair( "Output", e.m_rettype->clone() ) );
+                return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), cmp );
+            }
+            else
+            {
+                DEBUG("Closure Fn* impl - cmp = Compare::Unequal");
+                return false;
+            }
         }
     )
     
