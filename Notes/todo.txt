@@ -1,5 +1,11 @@
 TODO:
-- MIR Validation pass
+- Fix handling of diverging statements at the end of a block with semicolons
+ - `loop { let _: i32 = { break; }; }` should typecheck - but doesn't in mrustc due to implicit `()` added after the break's semicolon
+ - Since there can be any number of statements after the diverging (as long as all are `;` terminated), the correct solution is to have a pre-pass
+   that propagates `!` ivar types.
+ - This should be done with help of a restructured block format - that includes a flag saying "final expression yeilds its value"
+  - If this flag is unset, ! will propagate through (and () will not be applied unless there was no propagation)
+  - If set, typecheck continues as normal
 - Audit TODOs in codebase
 - Method and type monomorphisation
 - Test compile against a no_std program
