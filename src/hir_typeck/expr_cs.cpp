@@ -433,7 +433,8 @@ namespace {
             
             const auto is_diverge = [&](const ::HIR::TypeRef& rty)->bool {
                 const auto& ty = this->context.get_type(rty);
-                //DEBUG("[visit(_Block) is_diverge] " << rty << " = " << ty);
+                // TODO: Search the entire type for `!`? (What about pointers to it? or Option/Result?)
+                // - A correct search will search for unconditional (ignoring enums with a non-! variant) non-rawptr instances of ! in the type
                 return ty.m_data.is_Diverge() || (ty.m_data.is_Infer() && ty.m_data.as_Infer().ty_class == ::HIR::InferClass::Diverge);
                 };
             
@@ -447,13 +448,9 @@ namespace {
                 {
                     auto& snp = node.m_nodes[i];
                     this->context.add_ivars( snp->m_res_type );
-                    // TODO: Ignore? or force to ()? - Depends on inner
-                    // - Blocks (and block-likes) are forced to ()
-                    //  - What if they were '({});'? Then they're left dangling
                     snp->visit(*this);
                     
                     // If this statement yields !, then mark the block as diverging
-                    // - TODO: Search the entire type for `!`? (What about pointers to it? or Option/Result?)
                     if( is_diverge(snp->m_res_type) ) {
                         diverges = true;
                     }
