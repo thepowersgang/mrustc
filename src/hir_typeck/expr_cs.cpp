@@ -431,6 +431,12 @@ namespace {
         {
             TRACE_FUNCTION_F(&node << " { ... }");
             
+            const auto is_diverge = [&](const ::HIR::TypeRef& rty)->bool {
+                const auto& ty = this->context.get_type(rty);
+                //DEBUG("[visit(_Block) is_diverge] " << rty << " = " << ty);
+                return ty.m_data.is_Diverge() || (ty.m_data.is_Infer() && ty.m_data.as_Infer().ty_class == ::HIR::InferClass::Diverge);
+                };
+            
             if( node.m_nodes.size() > 0 )
             {
                 bool diverges = false;
@@ -448,7 +454,7 @@ namespace {
                     
                     // If this statement yields !, then mark the block as diverging
                     // - TODO: Search the entire type for `!`? (What about pointers to it? or Option/Result?)
-                    if( this->context.get_type(snp->m_res_type).m_data.is_Diverge() ) {
+                    if( is_diverge(snp->m_res_type) ) {
                         diverges = true;
                     }
                 }
@@ -469,13 +475,17 @@ namespace {
                     // - Not yielded - so don't equate the return
                     snp->visit(*this);
                     
+                    if( is_diverge(snp->m_res_type) ) {
+                        diverges = true;
+                    }
+                    
                     // If a statement in this block diverges
                     if( diverges ) {
                         DEBUG("Block diverges, yield !");
                         this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
                     }
                     else {
-                        DEBUG("Block doesn't diverge but doesn't yeild a value, yield ()");
+                        DEBUG("Block doesn't diverge but doesn't yield a value, yield ()");
                         this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
                     }
                 }
