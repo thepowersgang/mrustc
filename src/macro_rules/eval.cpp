@@ -14,9 +14,6 @@
 #include "pattern_checks.hpp"
 #include <parse/interpolated_fragment.hpp>
 
-extern AST::ExprNodeP Parse_ExprBlockNode(TokenStream& lex);
-extern AST::ExprNodeP Parse_Stmt(TokenStream& lex);
-
 class ParameterMappings
 {
     TAGGED_UNION_EX(CaptureLayer, (), Vals, (

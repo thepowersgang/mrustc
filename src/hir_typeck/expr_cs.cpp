@@ -433,6 +433,7 @@ namespace {
             
             if( node.m_nodes.size() > 0 )
             {
+                bool diverges = false;
                 this->push_traits( node.m_traits );
                 
                 this->push_inner_coerce(false);
@@ -444,15 +445,48 @@ namespace {
                     // - Blocks (and block-likes) are forced to ()
                     //  - What if they were '({});'? Then they're left dangling
                     snp->visit(*this);
+                    
+                    // If this statement yields !, then mark the block as diverging
+                    // - TODO: Search the entire type for `!`? (What about pointers to it? or Option/Result?)
+                    if( this->context.get_type(snp->m_res_type).m_data.is_Diverge() ) {
+                        diverges = true;
+                    }
                 }
                 this->pop_inner_coerce();
-            
-                auto& snp = node.m_nodes.back();
-                this->context.add_ivars( snp->m_res_type );
-                this->context.equate_types(snp->span(), node.m_res_type, snp->m_res_type);
-                snp->visit(*this);
+                
+                if( node.m_yields_final )
+                {
+                    auto& snp = node.m_nodes.back();
+                    DEBUG("Block yields final value");
+                    this->context.add_ivars( snp->m_res_type );
+                    this->context.equate_types(snp->span(), node.m_res_type, snp->m_res_type);
+                    snp->visit(*this);
+                }
+                else
+                {
+                    auto& snp = node.m_nodes.back();
+                    this->context.add_ivars( snp->m_res_type );
+                    // - Not yielded - so don't equate the return
+                    snp->visit(*this);
+                    
+                    // If a statement in this block diverges
+                    if( diverges ) {
+                        DEBUG("Block diverges, yield !");
+                        this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
+                    }
+                    else {
+                        DEBUG("Block doesn't diverge but doesn't yeild a value, yield ()");
+                        this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
+                    }
+                }
                 
                 this->pop_traits( node.m_traits );
+            }
+            else
+            {
+                // Result should be `()`
+                DEBUG("Block is empty, yield ()");
+                this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
             }
         }
         void visit(::HIR::ExprNode_Return& node) override

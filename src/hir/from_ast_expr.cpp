@@ -30,14 +30,10 @@ struct LowerHIR_ExprNode_Visitor:
         auto rv = new ::HIR::ExprNode_Block(v.span());
         for(const auto& n : v.m_nodes)
         {
-            if( n ) {
-                rv->m_nodes.push_back( LowerHIR_ExprNode_Inner( *n ) );
-            }
-            else {
-                assert(&n == &v.m_nodes.back());
-                rv->m_nodes.push_back( ::HIR::ExprNodeP( new ::HIR::ExprNode_Tuple(Span(), {}) ) );
-            }
+            ASSERT_BUG(v.get_pos(), n, "NULL node encountered in block");
+            rv->m_nodes.push_back( LowerHIR_ExprNode_Inner( *n ) );
         }
+        rv->m_yields_final = v.m_yields_final_value;
         
         if( v.m_local_mod )
         {

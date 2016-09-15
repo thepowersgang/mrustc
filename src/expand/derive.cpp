@@ -243,7 +243,7 @@ class Deriver_Debug:
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "f"), f_type )
                 )
             );
-        fcn.set_code( NEWNODE(Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
+        fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
         
         AST::GenericParams  params = get_params_with_bounds(p, debug_trait, mv$(types_to_bound));
         
@@ -354,7 +354,7 @@ public:
                         //nodes.push_back( this->assert_is_eq(assert_method_path, NEWNODE(NamedValue, AST::Path(name_a))) );
                     }
                     
-                    //code = NEWNODE(Block, mv$(nodes), nullptr);
+                    //code = NEWNODE(Block, mv$(nodes));
                     code = NEWNODE(CallMethod,
                         NEWNODE(NamedValue, AST::Path("f")),
                         AST::PathNode("write_str",{}),
@@ -375,7 +375,7 @@ public:
                     //nodes.push_back( this->assert_is_eq(assert_method_path, NEWNODE(NamedValue, AST::Path(name_a))) );
                 }
                 
-                //code = NEWNODE(Block, mv$(nodes), nullptr);
+                //code = NEWNODE(Block, mv$(nodes) );
                 code = NEWNODE(CallMethod,
                     NEWNODE(NamedValue, AST::Path("f")),
                     AST::PathNode("write_str",{}),
@@ -419,7 +419,7 @@ class Deriver_PartialEq:
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "v"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) )
                 )
             );
-        fcn.set_code( NEWNODE(Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
+        fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
         
         AST::GenericParams  params = get_params_with_bounds(p, trait_path, mv$(types_to_bound));
         
@@ -463,7 +463,7 @@ public:
         )
         nodes.push_back( NEWNODE(Bool, true) );
         
-        return this->make_ret(sp, core_name, p, type, this->get_field_bounds(str), NEWNODE(Block, mv$(nodes), nullptr));
+        return this->make_ret(sp, core_name, p, type, this->get_field_bounds(str), NEWNODE(Block, mv$(nodes)));
     }
     
     AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
@@ -517,7 +517,7 @@ public:
                     nodes.push_back( NEWNODE(Bool, true) );
                     pat_a = AST::Pattern(AST::Pattern::TagNamedTuple(), base_path + v.m_name, mv$(pats_a));
                     pat_b = AST::Pattern(AST::Pattern::TagNamedTuple(), base_path + v.m_name, mv$(pats_b));
-                    code = NEWNODE(Block, mv$(nodes), nullptr);
+                    code = NEWNODE(Block, mv$(nodes));
                 }
                 ),
             (Struct,
@@ -544,7 +544,7 @@ public:
                 nodes.push_back( NEWNODE(Bool, true) );
                 pat_a = AST::Pattern(AST::Pattern::TagStruct(), base_path + v.m_name, mv$(pats_a), true);
                 pat_b = AST::Pattern(AST::Pattern::TagStruct(), base_path + v.m_name, mv$(pats_b), true);
-                code = NEWNODE(Block, mv$(nodes), nullptr);
+                code = NEWNODE(Block, mv$(nodes));
                 )
             )
             
@@ -568,7 +568,7 @@ public:
             arms.push_back(AST::ExprNode_Match_Arm(
                 ::make_vec1( AST::Pattern() ),
                 nullptr,
-                NEWNODE(Block, {}, nullptr)
+                NEWNODE(Bool, false)
                 ));
         }
 
@@ -601,7 +601,7 @@ class Deriver_Eq:
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) )
                 )
             );
-        fcn.set_code( NEWNODE(Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
+        fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
         
         AST::GenericParams  params = get_params_with_bounds(p, trait_path, mv$(types_to_bound));
         
@@ -640,7 +640,7 @@ public:
             )
         )
         
-        return this->make_ret(sp, core_name, p, type, this->get_field_bounds(str), NEWNODE(Block, mv$(nodes), nullptr));
+        return this->make_ret(sp, core_name, p, type, this->get_field_bounds(str), NEWNODE(Block, mv$(nodes)));
     }
     
     AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
@@ -658,13 +658,13 @@ public:
             
             TU_MATCH(::AST::EnumVariantData, (v.m_data), (e),
             (Value,
-                code = NEWNODE(Block, {}, nullptr);
+                code = NEWNODE(Block);
                 pat_a = AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(base_path + v.m_name));
                 ),
             (Tuple,
                 if( e.m_sub_types.size() == 0 )
                 {
-                    code = NEWNODE(Block, {}, nullptr);
+                    code = NEWNODE(Block);
                     pat_a = AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(base_path + v.m_name));
                 }
                 else
@@ -680,7 +680,7 @@ public:
                     }
                     
                     pat_a = AST::Pattern(AST::Pattern::TagNamedTuple(), base_path + v.m_name, mv$(pats_a));
-                    code = NEWNODE(Block, mv$(nodes), nullptr);
+                    code = NEWNODE(Block, mv$(nodes));
                 }
                 ),
             (Struct,
@@ -695,7 +695,7 @@ public:
                 }
                 
                 pat_a = AST::Pattern(AST::Pattern::TagStruct(), base_path + v.m_name, mv$(pats_a), true);
-                code = NEWNODE(Block, mv$(nodes), nullptr);
+                code = NEWNODE(Block, mv$(nodes));
                 )
             )
             
@@ -738,7 +738,7 @@ class Deriver_Clone:
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) )
                 )
             );
-        fcn.set_code( NEWNODE(Block, vec$(mv$(node)), ::std::unique_ptr<AST::Module>()) );
+        fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
         
         AST::GenericParams  params = get_params_with_bounds(p, trait_path, mv$(types_to_bound));
         
@@ -794,7 +794,7 @@ public:
             )
         )
         
-        return this->make_ret(sp, core_name, p, type, this->get_field_bounds(str), NEWNODE(Block, mv$(nodes), nullptr));
+        return this->make_ret(sp, core_name, p, type, this->get_field_bounds(str), NEWNODE(Block, mv$(nodes)));
     }
     
     AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override

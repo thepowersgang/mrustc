@@ -53,6 +53,9 @@ extern AST::Expr   Parse_Expr(TokenStream& lex);
 extern AST::Expr   Parse_ExprBlock(TokenStream& lex);
 extern AST::ExprNodeP   Parse_Expr0(TokenStream& lex);
 extern AST::ExprNodeP   Parse_ExprVal(TokenStream& lex);
+extern AST::ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe=false);
+extern AST::ExprNodeP Parse_Stmt(TokenStream& lex);
+
 
 extern bool Parse_IsTokValue(eTokenType tok_type);
 

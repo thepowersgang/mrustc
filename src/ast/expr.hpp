@@ -44,6 +44,7 @@ public:
     friend ::std::ostream& operator<<(::std::ostream& os, const ExprNode& node);
     static ::std::unique_ptr<ExprNode> from_deserialiser(Deserialiser& d);
 };
+typedef ::std::unique_ptr<AST::ExprNode>    ExprNodeP;
 
 #define NODE_METHODS()  \
     void visit(NodeVisitor& nv) override;\
@@ -54,20 +55,23 @@ struct ExprNode_Block:
     public ExprNode
 {
     bool m_is_unsafe;
+    bool m_yields_final_value;
     ::std::unique_ptr<AST::Module> m_local_mod;
-    ::std::vector< ::std::unique_ptr<ExprNode> >    m_nodes;
+    ::std::vector<ExprNodeP>    m_nodes;
 
-    ExprNode_Block():
-        m_is_unsafe(false)
-    {}
-    ExprNode_Block(::std::vector< ::std::unique_ptr<ExprNode> >&& nodes, ::std::unique_ptr<AST::Module> local_mod):
+    ExprNode_Block(::std::vector<ExprNodeP> nodes={}):
         m_is_unsafe(false),
+        m_yields_final_value(true),
+        m_local_mod(),
+        m_nodes( mv$(nodes) )
+    {}
+    ExprNode_Block(bool is_unsafe, bool yields_final_value, ::std::vector<ExprNodeP> nodes, ::std::unique_ptr<AST::Module> local_mod):
+        m_is_unsafe(is_unsafe),
+        m_yields_final_value(yields_final_value),
         m_local_mod( move(local_mod) ),
         m_nodes( move(nodes) )
     {
     }
-    
-    void set_unsafe() { m_is_unsafe = true; }
     
     NODE_METHODS();
 };
@@ -708,7 +712,6 @@ public:
     friend ::std::ostream& operator<<(::std::ostream& os, const Expr& pat);
 };
 
-typedef ::std::unique_ptr<AST::ExprNode>    ExprNodeP;
 }
 
 #endif

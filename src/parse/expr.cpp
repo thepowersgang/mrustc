@@ -21,9 +21,9 @@ using AST::ExprNodeP;
 static inline ExprNodeP mk_exprnodep(const TokenStream& lex, AST::ExprNode* en){en->set_pos(lex.getPosition()); return ExprNodeP(en); }
 #define NEWNODE(type, ...)  mk_exprnodep(lex, new type(__VA_ARGS__))
 
-ExprNodeP Parse_ExprBlockNode(TokenStream& lex);
+//ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe=false);    // common.hpp
 ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence);
-ExprNodeP Parse_Stmt(TokenStream& lex);
+//ExprNodeP Parse_Stmt(TokenStream& lex);   // common.hpp
 ExprNodeP Parse_Expr0(TokenStream& lex);
 ExprNodeP Parse_IfStmt(TokenStream& lex);
 ExprNodeP Parse_WhileStmt(TokenStream& lex, ::std::string lifetime);
@@ -42,11 +42,12 @@ AST::Expr Parse_ExprBlock(TokenStream& lex)
     return ::AST::Expr( Parse_ExprBlockNode(lex) );
 }
 
-ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
+ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
 {
     TRACE_FUNCTION;
     Token   tok;
 
+    bool yields_final_value = true;
     ::std::vector<ExprNodeP> nodes;
     
     ::std::unique_ptr<AST::Module> local_mod;
@@ -118,14 +119,15 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
             {
                 DEBUG("expect_end == false, end of block");
                 nodes.push_back( NEWNODE(AST::ExprNode_Tuple, ::std::vector<ExprNodeP>()) );
-                // NOTE: Would break, but we're in a switch
+                yields_final_value = false;
+                // NOTE: Would break out of the loop, but we're in a switch
             }
             break;
             }
         }
     }
     
-    return NEWNODE( AST::ExprNode_Block, ::std::move(nodes), mv$(local_mod) );
+    return NEWNODE( AST::ExprNode_Block, is_unsafe, yields_final_value, mv$(nodes), mv$(local_mod) );
 }
 
 /// Parse a single line from a block
@@ -199,11 +201,8 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
             return Parse_IfStmt(lex);
         case TOK_RWORD_MATCH:
             return Parse_Expr_Match(lex);
-        case TOK_RWORD_UNSAFE: {
-            auto rv = Parse_ExprBlockNode(lex);
-            dynamic_cast<AST::ExprNode_Block&>(*rv).set_unsafe();
-            return rv;
-            }
+        case TOK_RWORD_UNSAFE:
+            return Parse_ExprBlockNode(lex, true);
         
         case TOK_RWORD_RETURN:
         case TOK_RWORD_CONTINUE:
@@ -991,11 +990,8 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         return Parse_Expr_Match(lex);
     case TOK_RWORD_IF:
         return Parse_IfStmt(lex);
-    case TOK_RWORD_UNSAFE: {
-        auto rv = Parse_ExprBlockNode(lex);
-        dynamic_cast<AST::ExprNode_Block&>(*rv).set_unsafe();
-        return rv;
-        }
+    case TOK_RWORD_UNSAFE:
+        return Parse_ExprBlockNode(lex, true);
     
     // UFCS
     case TOK_DOUBLE_LT:

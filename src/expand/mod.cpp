@@ -597,12 +597,11 @@ struct CExpandExpr:
                 // `}`
                 for(auto& n : nodes_unsafe)
                     n->set_pos( node.get_pos() );
-                nodes.push_back(::AST::ExprNodeP(new ::AST::ExprNode_Block( mv$(nodes_unsafe), nullptr )));
-                dynamic_cast< ::AST::ExprNode_Block&>(*nodes.back()).m_is_unsafe = true;
+                nodes.push_back(::AST::ExprNodeP(new ::AST::ExprNode_Block( true, true, mv$(nodes_unsafe), nullptr )));
             }
             for(auto& n : nodes)
                 n->set_pos( node.get_pos() );
-            replacement.reset(new ::AST::ExprNode_Block( mv$(nodes), nullptr ));
+            replacement.reset(new ::AST::ExprNode_Block( mv$(nodes) ));
         }
     }
 };

@@ -68,18 +68,21 @@ struct ExprNode_Block:
 {
     bool    m_is_unsafe;
     ::std::vector< ExprNodeP >  m_nodes;
+    bool    m_yields_final;
 
     ::HIR::SimplePath   m_local_mod;
     t_trait_list    m_traits;
     
     ExprNode_Block(Span sp):
         ExprNode(mv$(sp)),
-        m_is_unsafe(false)
+        m_is_unsafe(false),
+        m_yields_final(false)
     {}
     ExprNode_Block(Span sp, bool is_unsafe, ::std::vector<ExprNodeP> nodes):
         ExprNode( mv$(sp) ),
         m_is_unsafe(is_unsafe),
-        m_nodes( mv$(nodes) )
+        m_nodes( mv$(nodes) ),
+        m_yields_final(false)
     {}
     
     NODE_METHODS();
