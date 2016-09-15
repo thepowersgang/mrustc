@@ -47,7 +47,7 @@ void init_debug_list()
     g_debug_disable_map.insert( "Constant Evaluate" );
     
     g_debug_disable_map.insert( "Typecheck Outer");
-    //g_debug_disable_map.insert( "Typecheck Expressions" );
+    g_debug_disable_map.insert( "Typecheck Expressions" );
     
     g_debug_disable_map.insert( "Expand HIR Annotate" );
     g_debug_disable_map.insert( "Expand HIR Closures" );
