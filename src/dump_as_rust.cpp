@@ -282,7 +282,10 @@ public:
             m_os << " ";
         }
 
+        bool is_block = (dynamic_cast<const AST::ExprNode_Block*>(&*tv) != nullptr);
+        if( !is_block ) m_os << "{ ";
         AST::NodeVisitor::visit(tv);
+        if( !is_block ) m_os << " }";
         if(fv.get())
         {
             if( expr_root )
@@ -535,7 +538,7 @@ private:
     
     void print_params(const AST::GenericParams& params);
     void print_bounds(const AST::GenericParams& params);
-    void print_pattern_tuple(const AST::Pattern::TuplePat& v);
+    void print_pattern_tuple(const AST::Pattern::TuplePat& v, bool is_refutable);
     void print_pattern(const AST::Pattern& p, bool is_refutable);
     void print_type(const TypeRef& t);
     
@@ -779,13 +782,19 @@ void RustPrinter::print_bounds(const AST::GenericParams& params)
     }
 }
 
-void RustPrinter::print_pattern_tuple(const AST::Pattern::TuplePat& v)
+void RustPrinter::print_pattern_tuple(const AST::Pattern::TuplePat& v, bool is_refutable)
 {
-    m_os << v.start;
+    for(const auto& sp : v.start) {
+        print_pattern(sp, is_refutable);
+        m_os << ", ";
+    }
     if( v.has_wildcard )
     {
         m_os << ".., ";
-        m_os << v.end;
+        for(const auto& sp : v.end) {
+            print_pattern(sp, is_refutable);
+            m_os << ", ";
+        }
     }
 }
 void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
@@ -830,7 +839,7 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
         ),
     (StructTuple,
         m_os << v.path << "(";
-        this->print_pattern_tuple(v.tup_pat);
+        this->print_pattern_tuple(v.tup_pat, is_refutable);
         m_os << ")";
         ),
     (Struct, {
@@ -845,7 +854,7 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
         }),
     (Tuple,
         m_os << "(";
-        this->print_pattern_tuple(v);
+        this->print_pattern_tuple(v, is_refutable);
         m_os << ")";
         ),
     (Slice,
