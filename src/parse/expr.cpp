@@ -118,7 +118,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
             if( LOOK_AHEAD(lex) == TOK_BRACE_CLOSE && add_silence_if_end )
             {
                 DEBUG("expect_end == false, end of block");
-                nodes.push_back( NEWNODE(AST::ExprNode_Tuple, ::std::vector<ExprNodeP>()) );
+                //nodes.push_back( NEWNODE(AST::ExprNode_Tuple, ::std::vector<ExprNodeP>()) );
                 yields_final_value = false;
                 // NOTE: Would break out of the loop, but we're in a switch
             }

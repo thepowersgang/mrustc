@@ -47,7 +47,7 @@ namespace {
             {
                 n->visit(*this);
             }
-            if( node.m_nodes.size() > 0 )
+            if( node.m_nodes.size() > 0 && node.m_yields_final )
             {
                 check_types_equal(node.span(), node.m_res_type, node.m_nodes.back()->m_res_type);
             }
