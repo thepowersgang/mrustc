@@ -1,8 +1,7 @@
 TODO:
-- Fix method selection such that calling `let _: Foo = bar.into();` works
- - A `From<Bar>` impl for `Foo` isn't found, becuase the code that searches for the `Into` impl doesn't know that the param is `Foo`
- - Could have an edge case where a trait is selected if it's the only possibility (there's no other source of that method name)
- - Correct solution would be to hand parameters to the `find_method` function.
+- Replace `box` desugaring with passthrough to HIR which will replace with operator call after typeck
+ - See https://github.com/rust-lang/rfcs/pull/1426#r48383364
+ - May require a design/notes doc covering the inferrence behavior.
 - Audit TODOs in codebase
 - Method and type monomorphisation
 - Test compile against a no_std program
