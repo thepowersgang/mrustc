@@ -125,6 +125,7 @@ public:
         }),
     (Generic, struct {
         ::std::string   name;
+        // 0xFFFF = Self, 0-255 = Type/Trait, 256-511 = Method, 512-767 = Placeholder
         unsigned int    binding;
         }),
     (TraitObject, struct {
