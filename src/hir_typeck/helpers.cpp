@@ -1170,6 +1170,16 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             return callback( ImplRef(&type, &e.m_trait.m_path.m_params, &e.m_trait.m_type_bounds), cmp );
         }
     )
+
+    // If the type in question is a magic placeholder, return a placeholder impl :)
+    TU_IFLET(::HIR::TypeRef::Data, type.m_data, Generic, e,
+        if( (e.binding >> 8) == 2 )
+        {
+            // TODO: This is probably going to break something in the future.
+            DEBUG("- Magic impl for placeholder type");
+            return callback( ImplRef(&type, &null_params, &null_assoc), ::HIR::Compare::Fuzzy );
+        }
+    )
     
     // 1. Search generic params
     if( find_trait_impls_bound(sp, trait, params, type, callback) )
