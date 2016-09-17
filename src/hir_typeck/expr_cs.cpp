@@ -3329,13 +3329,22 @@ namespace {
         
         // CoerceUnsized trait
         // - Only valid for generic or path destination types
-        if( ty_dst.m_data.is_Generic() || ty_dst.m_data.is_Path() ) {
-            
+        if( ty_dst.m_data.is_Generic() || ty_dst.m_data.is_Path() )
+        {
             const auto& lang_CoerceUnsized = context.m_crate.get_lang_item_path(sp, "coerce_unsized");
+            
             ::HIR::PathParams   pp;
             pp.m_types.push_back( ty_dst.clone() );
+            
+            // PROBLEM: In the desugaring of `box`, it's required that the container type propagate backwards through the coercion point
+            // - However, there's still a coercion point that needs to apply to the contained type.
+            // - `let foo: Box<[i32]> = box [1, 2, 3];`
+            // - Special-casing `Box` here could work (assuming that Box can only coerce to Box, and applying unsizing coercion rules to the inner)
+            
+            //bool fuzzy_match = false;
             bool found = context.m_resolve.find_trait_impls(sp, lang_CoerceUnsized, pp, ty_src, [&](auto impl, auto cmp) {
-                // TODO: Allow fuzzy match if only match
+                // TODO: Allow fuzzy match if it's the only matching possibility
+                DEBUG("[check_coerce] cmp=" << cmp << ", impl=" << impl);
                 return cmp == ::HIR::Compare::Equal;
                 });
             if( found )

@@ -932,7 +932,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     static ::std::map< ::std::string, ::HIR::TypeRef>    null_assoc;
 
     const auto& type = this->m_ivars.get_type(ty);
-    TRACE_FUNCTION_F("trait = " << trait << ", type = " << type);
+    TRACE_FUNCTION_F("trait = " << trait << params  << ", type = " << type);
     
     if( trait == this->m_crate.get_lang_item_path(sp, "sized") ) {
         TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (e),
@@ -1741,7 +1741,6 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
     return this->iterate_bounds([&](const auto& b) {
         TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
             const auto& b_params = e.trait.m_path.m_params;
-            DEBUG("(bound) - " << e.type << " : " << e.trait);
             // TODO: Allow fuzzy equality?
             if( e.type == type )
             {
