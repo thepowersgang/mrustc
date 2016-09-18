@@ -964,6 +964,27 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             return false;
         }
     }
+    
+    // Magical CoerceUnsized impls for various types
+    if( trait == this->m_crate.get_lang_item_path(sp, "coerce_unsized") ) {
+        const auto& dst_ty = params.m_types.at(0);
+        // - `*mut T => *const T`
+        TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Pointer, e,
+            TU_IFLET( ::HIR::TypeRef::Data, dst_ty.m_data, Pointer, de,
+                if( de.type < e.type ) {
+                    auto cmp = e.inner->compare_with_placeholders(sp, *de.inner, this->m_ivars.callback_resolve_infer());
+                    if( cmp != ::HIR::Compare::Unequal )
+                    {
+                        ::HIR::PathParams   pp;
+                        pp.m_types.push_back( dst_ty.clone() );
+                        if( callback( ImplRef(type.clone(), mv$(pp), {}), cmp ) ) {
+                            return true;
+                        }
+                    }
+                }
+            )
+        )
+    }
 
     const auto& trait_fn = this->m_crate.get_lang_item_path(sp, "fn");
     const auto& trait_fn_mut = this->m_crate.get_lang_item_path(sp, "fn_mut");
@@ -1943,7 +1964,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 (TypeLifetime,
                     ),
                 (TraitBound,
-                    DEBUG("Check bound " << be.type << " : " << be.trait);
+                    DEBUG("[find_trait_impls_crate] Check bound " << be.type << " : " << be.trait);
                     auto real_type = monomorphise_type_with(sp, be.type, monomorph, false);
                     auto real_trait = monomorphise_traitpath_with(sp, be.trait, monomorph, false);
                     real_type = this->expand_associated_types(sp, mv$(real_type));
@@ -1954,8 +1975,10 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                         ab.second = this->expand_associated_types(sp, mv$(ab.second));
                     }
                     const auto& real_trait_path = real_trait.m_path;
-                    DEBUG("- " << real_type << " : " << real_trait);
+                    DEBUG("[find_trait_impls_crate] - bound mono " << real_type << " : " << real_trait);
+                    bool found_fuzzy_match = false;
                     auto rv = this->find_trait_impls(sp, real_trait_path.m_path, real_trait_path.m_params, real_type, [&](auto impl, auto impl_cmp) {
+                        auto cmp = impl_cmp;
                         for(const auto& assoc_bound : real_trait.m_type_bounds) {
                             ::HIR::TypeRef  tmp;
                             const ::HIR::TypeRef*   ty_p;
@@ -1986,12 +2009,32 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                                 // TODO: When a fuzzy match is encountered on a conditional bound, returning `false` can lead to an false negative (and a compile error)
                                 // BUT, returning `true` could lead to it being selected. (Is this a problem, should a later validation pass check?)
                                 DEBUG("[find_trait_impls_crate] Fuzzy match assoc bound between " << ty << " and " << assoc_bound.second);
+                                cmp = ::HIR::Compare::Fuzzy;
                                 continue ;
                             }
                         }
-                        return true;
+                        DEBUG("impl_cmp = " << impl_cmp << ", cmp = " << cmp);
+                        if( cmp == ::HIR::Compare::Fuzzy ) {
+                            found_fuzzy_match = true;
+                        }
+                        // If the match isn't a concrete equal, return false (to keep searching)
+                        return (cmp == ::HIR::Compare::Equal);
                         });
-                    if( !rv ) {
+                    if( rv ) {
+                        DEBUG("- Bound " << real_type << " : " << real_trait_path << " matched");
+                    }
+                    else if( found_fuzzy_match ) {
+                        DEBUG("- Bound " << real_type << " : " << real_trait_path << " fuzzed");
+                        match = ::HIR::Compare::Fuzzy;
+                    }
+                    #if 1
+                    // TODO: This causes typeck errors in libcore
+                    else if( real_type.m_data.is_Infer() && real_type.m_data.as_Infer().ty_class == ::HIR::InferClass::None ) {
+                        DEBUG("- Bound " << real_type << " : " << real_trait_path << " full infer type - make result fuzzy");
+                        match = ::HIR::Compare::Fuzzy;
+                    }
+                    #endif
+                    else {
                         DEBUG("- Bound " << real_type << " : " << real_trait_path << " failed");
                         return false;
                     }

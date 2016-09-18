@@ -3413,15 +3413,16 @@ namespace {
             ::HIR::PathParams   pp;
             pp.m_types.push_back( ty_dst.clone() );
             
-            // PROBLEM: In the desugaring of `box`, it's required that the container type propagate backwards through the coercion point
-            // - However, there's still a coercion point that needs to apply to the contained type.
-            // - `let foo: Box<[i32]> = box [1, 2, 3];`
-            // - Special-casing `Box` here could work (assuming that Box can only coerce to Box, and applying unsizing coercion rules to the inner)
+            // PROBLEM: This can false-negative leading to the types being falsely equated.
             
-            //bool fuzzy_match = false;
+            bool fuzzy_match = false;
             bool found = context.m_resolve.find_trait_impls(sp, lang_CoerceUnsized, pp, ty_src, [&](auto impl, auto cmp) {
-                // TODO: Allow fuzzy match if it's the only matching possibility
                 DEBUG("[check_coerce] cmp=" << cmp << ", impl=" << impl);
+                // TODO: Allow fuzzy match if it's the only matching possibility?
+                // - Recorded for now to know if a later pass is a good idea
+                if( cmp == ::HIR::Compare::Fuzzy ) {
+                    fuzzy_match = true;
+                }
                 return cmp == ::HIR::Compare::Equal;
                 });
             if( found )
@@ -3432,12 +3433,74 @@ namespace {
                 node_ptr = NEWNODE( ty_dst.clone(), span, _Unsize,  mv$(node_ptr), ty_dst.clone() );
                 return true;
             }
+            if( fuzzy_match )
+            {
+                const auto& span = sp;
+                // TODO: Apply ivar possibilities between the parameters in `ty_src` and `ty_dst`
+                // - Ideally, this equivalence would be done using the parameter known to be the pointer target
+                if( ty_dst.m_data.is_Path() && ty_src.m_data.is_Path() )
+                {
+                    const auto& dp = ty_dst.m_data.as_Path().path;
+                    const auto& sp = ty_src.m_data.as_Path().path;
+                    if( dp.m_data.is_Generic() && sp.m_data.is_Generic() )
+                    {
+                        const auto& dpe = dp.m_data.as_Generic();
+                        const auto& spe = sp.m_data.as_Generic();
+                        if( dpe.m_path == spe.m_path && dpe.m_params.m_types.size() > 0 )
+                        {
+                            ASSERT_BUG(node_ptr->span(), dpe.m_params.m_types.size() == spe.m_params.m_types.size(),
+                                "Mismatch in type param count - `" << dpe.m_params << "` and `" << spe.m_params << "`");
+                            for(unsigned int i = 0; i < dpe.m_params.m_types.size(); i ++)
+                            {
+                                const auto& dt2 = context.get_type(dpe.m_params.m_types[i]);
+                                const auto& st2 = context.get_type(spe.m_params.m_types[i]);
+                                
+                                // Ideally, this would share code with other sections
+                                TU_IFLET( ::HIR::TypeRef::Data, st2.m_data, Infer, se,
+                                    // TODO: Update for InferClass::Diverge ?
+                                    if( se.ty_class != ::HIR::InferClass::None ) {
+                                        context.equate_types(span, dt2,  st2);
+                                    }
+                                    else {
+                                        TU_IFLET(::HIR::TypeRef::Data, dt2.m_data, Infer, de,
+                                            context.possible_equate_type_to(se.index, dt2);
+                                            context.possible_equate_type_from(de.index, st2);
+                                        )
+                                        else {
+                                            context.possible_equate_type_to(se.index, dt2);
+                                        }
+                                    }
+                                )
+                                else TU_IFLET(::HIR::TypeRef::Data, dt2.m_data, Infer, de,
+                                    // TODO: Update for InferClass::Diverge ?
+                                    if( de.ty_class != ::HIR::InferClass::None ) {
+                                        context.equate_types(span, dt2,  st2);
+                                    }
+                                    else {
+                                        context.possible_equate_type_from(de.index, st2);
+                                    }
+                                )
+                                else {
+                                    // No equivalence added
+                                }
+                            }
+                        }
+                    }
+                }
+                #if 1
+                DEBUG("- CoerceUnsize possible, trying later");
+                return false;
+                #else
+                DEBUG("- CoerceUnsize possible?");
+                #endif
+            }
         }
         
         // 1. Check that the source type can coerce
         TU_MATCH( ::HIR::TypeRef::Data, (ty_src.m_data), (e),
         (Infer,
             // If this ivar is of a primitive, equate (as primitives never coerce)
+            // TODO: InferClass::Diverge
             if( e.ty_class != ::HIR::InferClass::None ) {
                 context.equate_types(sp, ty_dst,  ty_src);
                 return true;
