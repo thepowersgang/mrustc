@@ -48,4 +48,30 @@ IDEAS:
 - Keep until MIR, and lower into call sequence
  - Can use temporaries
  - Downside: Avoids the extra validation other operators get.
+ - Still the best solution.
+
+
+
+
+```rust
+let p = PLACE;
+let mut place = Placer::make_place(p);
+let raw_place = Place::pointer(&mut place);
+let value = EXPR;
+unsafe {
+    std::ptr::write(raw_place, value);
+    InPlace::finalize(place)
+}
+```
+
+```rust
+let mut place = BoxPlace::make_place();
+let raw_place = Place::pointer(&mut place);
+let value = EXPR;
+unsafe {
+    ::std::ptr::write(raw_place, value);
+    Boxed::finalize(place)
+}
+```
+
 

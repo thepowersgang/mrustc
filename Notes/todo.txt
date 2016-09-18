@@ -1,9 +1,6 @@
 TODO:
-- Replace `box` desugaring with passthrough to HIR which will replace with operator call after typeck
- - See https://github.com/rust-lang/rfcs/pull/1426#r48383364
- - May require a design/notes doc covering the inferrence behavior.
+- Fix method selection to be aware of multiple possible methods with the same name
 - Audit TODOs in codebase
-- Method and type monomorphisation
 - Test compile against a no_std program
 - MIR Optimisations
 - HIR Optimisation (remove dead code in `if true/if false` branches)
