@@ -1615,7 +1615,7 @@ namespace {
                 ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
                 ),
             (Borrow,
-                TODO(sp, "Cast to borrow");
+                TODO(sp, "Cast to borrow - coercion point");
                 ),
             (Pointer,
                 TU_MATCH_DEF( ::HIR::TypeRef::Data, (src_ty.m_data), (s_e),
@@ -1653,9 +1653,28 @@ namespace {
                     ),
                 (Borrow,
                     // Check class (must be equal) and type
-                    // TODO: Check class
-                    this->context.equate_types(sp, *e.inner, *s_e.inner);
-                    this->m_completed = true;
+                    if( s_e.type != e.type ) {
+                        ERROR(sp, E0000, "Invalid cast from " << src_ty << " to " << tgt_ty);
+                    }
+                    
+                    // NOTE: &mut T -> *mut U where T: Unsize<U> is allowed
+                    // TODO: Wouldn't this be better served by a coercion point?
+                    TU_IFLET( ::HIR::TypeRef::Data, this->context.get_type(*s_e.inner).m_data, Infer, s_e_i,
+                        // If the type is an ivar, possible equate
+                        this->context.possible_equate_type_to(s_e_i.index, *e.inner);
+                    )
+                    else
+                    {
+                        const auto& lang_Unsize = this->context.m_crate.get_lang_item_path(sp, "unsize");
+                        bool found = this->context.m_resolve.find_trait_impls(sp, lang_Unsize, ::HIR::PathParams(e.inner->clone()), *s_e.inner, [](auto , auto){ return true; });
+                        if( found ) {
+                            TODO(sp, "Unsizing cast");
+                        }
+                        else {
+                            this->context.equate_types(sp, *e.inner, *s_e.inner);
+                        }
+                        this->m_completed = true;
+                    }
                     ),
                 (Pointer,
                     // Allow with no link?
@@ -1667,7 +1686,7 @@ namespace {
                 ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
                 ),
             (Closure,
-                BUG(sp, "");
+                BUG(sp, "Attempting to cast to a closure type - impossible");
                 )
             )
         }
@@ -3704,6 +3723,7 @@ namespace {
                 if( r_e.type != l_e.type ) {
                     ERROR(sp, E0000, "Type mismatch between " << ty_dst << " and " << ty_src << " - Mutability differs");
                 }
+                // TODO: This can unsize as well as convert?
                 context.equate_types(sp, *l_e.inner, *r_e.inner);
                 // Add downcast
                 auto span = node_ptr->span();

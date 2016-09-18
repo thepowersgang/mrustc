@@ -83,6 +83,7 @@ struct PathParams
     ::std::vector<TypeRef>  m_types;
     
     PathParams();
+    PathParams(::HIR::TypeRef );
     PathParams clone() const;
     PathParams(const PathParams&) = delete;
     PathParams& operator=(const PathParams&) = delete;

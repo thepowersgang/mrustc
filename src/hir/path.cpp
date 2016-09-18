@@ -103,6 +103,10 @@ namespace HIR {
 ::HIR::PathParams::PathParams()
 {
 }
+::HIR::PathParams::PathParams(::HIR::TypeRef ty0)
+{
+    m_types.push_back( mv$(ty0) );
+}
 ::HIR::PathParams HIR::PathParams::clone() const
 {
     PathParams  rv;
