@@ -78,6 +78,11 @@ DEF_VISIT(ExprNode_Index, node,
 DEF_VISIT(ExprNode_Deref, node,
     visit_node_ptr(node.m_value);
 )
+DEF_VISIT(ExprNode_Emplace, node,
+    if( node.m_place )
+        visit_node_ptr(node.m_place);
+    visit_node_ptr(node.m_value);
+)
 
 DEF_VISIT(ExprNode_TupleVariant, node,
     visit_generic_path(::HIR::Visitor::PathContext::VALUE, node.m_path);

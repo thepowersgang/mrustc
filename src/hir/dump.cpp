@@ -453,6 +453,18 @@ namespace {
             this->visit_node_ptr(node.m_value);
             m_os << ")";
         }
+        void visit(::HIR::ExprNode_Emplace& node) override
+        {
+            if( node.m_type == ::HIR::ExprNode_Emplace::Type::Noop ) {
+                return node.m_value->visit(*this);
+            }
+            m_os << "(";
+            this->visit_node_ptr(node.m_place);
+            m_os << " <- ";
+            this->visit_node_ptr(node.m_value);
+            m_os << ")";
+            m_os << "/*" << (node.m_type == ::HIR::ExprNode_Emplace::Type::Boxer ? "box" : "place") << "*/";
+        }
         void visit(::HIR::ExprNode_TupleVariant& node) override
         {
             m_os << node.m_path;

@@ -537,6 +537,7 @@ struct CExpandExpr:
 
             replacement.reset(new ::AST::ExprNode_Match( mv$(node.m_value), mv$(arms) ));
         }
+        /*
         else if( node.m_type == ::AST::ExprNode_UniOp::BOX )
         {
             // TODO: Should this be a desugar, or a HIR/MIR operation?
@@ -603,6 +604,7 @@ struct CExpandExpr:
                 n->set_pos( node.get_pos() );
             replacement.reset(new ::AST::ExprNode_Block( mv$(nodes) ));
         }
+        */
     }
 };
 

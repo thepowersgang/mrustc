@@ -333,6 +333,27 @@ namespace {
 
             node.m_value->visit( *this );
         }
+        void visit(::HIR::ExprNode_Emplace& node) override
+        {
+            switch( node.m_type )
+            {
+            case ::HIR::ExprNode_Emplace::Type::Noop:
+                assert( !node.m_place );
+                
+                check_types_equal(node.span(), node.m_res_type, node.m_value->m_res_type);
+                break;
+            case ::HIR::ExprNode_Emplace::Type::Boxer:
+                // TODO: Check trait and associated type
+                break;
+            case ::HIR::ExprNode_Emplace::Type::Placer:
+                // TODO: Check trait
+                break;
+            }
+            
+            if( node.m_place )
+                this->visit_node_ptr(node.m_place);
+            this->visit_node_ptr(node.m_value);
+        }
         void visit(::HIR::ExprNode_TupleVariant& node) override
         {
             TRACE_FUNCTION_F(&node << " " << node.m_path << "(...,) [" << (node.m_is_struct ? "struct" : "enum") << "]");

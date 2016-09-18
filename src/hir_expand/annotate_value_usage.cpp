@@ -237,6 +237,21 @@ namespace {
             }
         }
         
+        void visit(::HIR::ExprNode_Emplace& node) override
+        {
+            if( node.m_type == ::HIR::ExprNode_Emplace::Type::Noop ) {
+                if( node.m_place )
+                    this->visit_node_ptr(node.m_place);
+                this->visit_node_ptr(node.m_value);
+            }
+            else {
+                auto _ = push_usage( ::HIR::ValueUsage::Move );
+                if( node.m_place )
+                    this->visit_node_ptr(node.m_place);
+                this->visit_node_ptr(node.m_value);
+            }
+        }
+        
         void visit(::HIR::ExprNode_Field& node) override
         {
             // If taking this field by value, but the type is Copy - pretend it's a borrow.

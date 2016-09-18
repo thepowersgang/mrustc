@@ -804,6 +804,17 @@ namespace {
 
             node.m_value->visit( *this );
         }
+        void visit(::HIR::ExprNode_Emplace& node) override
+        {
+            auto _ = this->push_inner_coerce_scoped(false);
+            TRACE_FUNCTION_F(&node << " ... <- ... ");
+            this->context.add_ivars( node.m_place->m_res_type );
+            this->context.add_ivars( node.m_value->m_res_type );
+            
+            this->context.add_revisit(node);
+            node.m_place->visit( *this );
+            node.m_value->visit( *this );
+        }
 
         void add_ivars_generic_path(const Span& sp, ::HIR::GenericPath& gp) {
             for(auto& ty : gp.m_params.m_types)
@@ -1759,6 +1770,72 @@ namespace {
                 this->context.equate_types(node.span(), node.m_res_type, *e.inner);
                 )
             )
+            this->m_completed = true;
+        }
+        void visit(::HIR::ExprNode_Emplace& node) override {
+            const auto& sp = node.span();
+            const auto& exp_ty = this->context.get_type(node.m_res_type);
+            const auto& data_ty = node.m_value->m_res_type;
+            auto node_ty = node.m_type;
+            TRACE_FUNCTION_F("_Emplace: exp_ty=" << exp_ty);
+            if( exp_ty.m_data.is_Infer() ) {
+                // If the expected result type is still an ivar, nothing can be done
+                return ;
+            }
+            // Assert that the expected result is a Path::Generic type.
+            if( ! exp_ty.m_data.is_Path() ) {
+                ERROR(sp, E0000, "box/in can only produce GenericPath types, got " << exp_ty);
+            }
+            const auto& path = exp_ty.m_data.as_Path().path;
+            if( ! path.m_data.is_Generic() ) {
+                ERROR(sp, E0000, "box/in can only produce GenericPath types, got " << exp_ty);
+            }
+            const auto& gpath = path.m_data.as_Generic();
+
+            const ::HIR::TypeRef* inner_ty;
+            if( gpath.m_params.m_types.size() > 0 )
+            {
+                // TODO: If there's only one, check if it's a valid coercion target, if not don't bother making the coercion.
+                
+                // Take a copy of the type with all type parameters replaced with new ivars
+                auto newpath = ::HIR::GenericPath(gpath.m_path);
+                for( const auto& t : gpath.m_params.m_types )
+                {
+                    (void)t;
+                    newpath.m_params.m_types.push_back( this->context.m_ivars.new_ivar_tr() );
+                }
+                auto newty = ::HIR::TypeRef::new_path( mv$(newpath), exp_ty.m_data.as_Path().binding.clone() );
+                
+                // Turn this revisit into a coercion point with the new result type
+                // - Mangle this node to be a passthrough to a copy of itself.
+
+                node.m_value = ::HIR::ExprNodeP( new ::HIR::ExprNode_Emplace(node.span(), node.m_type, mv$(node.m_place), mv$(node.m_value)) );
+                node.m_type = ::HIR::ExprNode_Emplace::Type::Noop;
+                node.m_value->m_res_type = mv$(newty);
+                inner_ty = &node.m_value->m_res_type;
+                
+                this->context.equate_types_coerce(sp, exp_ty, node.m_value);
+            }
+            else
+            {
+                inner_ty = &exp_ty;
+            }
+            
+            // Insert a trait bound on the result type to impl `Placer/Boxer`
+            switch( node_ty )
+            {
+            case ::HIR::ExprNode_Emplace::Type::Noop:
+                BUG(sp, "Encountered Noop _Emplace in typecheck");
+            case ::HIR::ExprNode_Emplace::Type::Boxer:
+                //this->context.equate_types_assoc(sp, {}, ::HIR::SimplePath("core", { "ops", "Boxer" }), ::make_vec1(data_ty.clone()), *inner_ty, "");
+                this->context.equate_types_assoc(sp, data_ty, ::HIR::SimplePath("core", { "ops", "Boxed" }), {}, *inner_ty, "Data");
+                break;
+            case ::HIR::ExprNode_Emplace::Type::Placer:
+                // TODO: Search for `Placer<T>`, not `Placer`
+                this->context.equate_types_assoc(sp, {}, ::HIR::SimplePath("core", { "ops", "Placer" }), ::make_vec1(data_ty.clone()), *inner_ty, "");
+                break;
+            }
+            
             this->m_completed = true;
         }
         

@@ -118,6 +118,7 @@ public:
     
     const ::HIR::SimplePath* lang_Box() const { return m_lang_Box; }
     const ::HIR::Crate& crate() const { return m_resolve.m_crate; }
+    const StaticTraitResolve& resolve() const { return m_resolve; }
     
     //::HIR::TypeRef* is_type_owned_box(::HIR::TypeRef& ty) const {
     //}

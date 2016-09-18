@@ -1027,6 +1027,136 @@ namespace {
             m_builder.set_result( node.span(), ::MIR::LValue::make_Deref({ box$(val) }) );
         }
         
+        void visit(::HIR::ExprNode_Emplace& node) override
+        {
+            if( node.m_type == ::HIR::ExprNode_Emplace::Type::Noop ) {
+                return node.m_value->visit(*this);
+            }
+            //auto path_Placer = ::HIR::SimplePath("core", {"ops", "Placer"});
+            auto path_BoxPlace = ::HIR::SimplePath("core", {"ops", "BoxPlace"});
+            auto path_Place = ::HIR::SimplePath("core", {"ops", "Place"});
+            auto path_Boxed = ::HIR::SimplePath("core", {"ops", "Boxed"});
+            //auto path_InPlace = ::HIR::SimplePath("core", {"ops", "InPlace"});
+            
+            const auto& data_ty = node.m_value->m_res_type;
+            
+            // 1. Obtain the type of the `place` variable
+            ::HIR::TypeRef  place_type;
+            switch( node.m_type )
+            {
+            case ::HIR::ExprNode_Emplace::Type::Noop:
+                throw "";
+            case ::HIR::ExprNode_Emplace::Type::Boxer: {
+                place_type = ::HIR::TypeRef::new_path( ::HIR::Path(node.m_res_type.clone(), ::HIR::GenericPath(path_Boxed), "Place", {}), {} );
+                m_builder.resolve().expand_associated_types( node.span(), place_type );
+                break; }
+            case ::HIR::ExprNode_Emplace::Type::Placer:
+                TODO(node.span(), "_Emplace - Placer");
+                break;
+            }
+            
+            // 2. Initialise the place
+            auto place = m_builder.new_temporary( place_type );
+            auto place__panic = m_builder.new_bb_unlinked();
+            auto place__ok = m_builder.new_bb_unlinked();
+            switch( node.m_type )
+            {
+            case ::HIR::ExprNode_Emplace::Type::Noop:
+                throw "";
+            case ::HIR::ExprNode_Emplace::Type::Boxer: {
+                auto fcn_ty_data = ::HIR::FunctionType { false, "", box$( place_type.clone() ), {} };
+                ::HIR::PathParams   trait_params;
+                trait_params.m_types.push_back( data_ty.clone() );
+                auto fcn_path = ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_BoxPlace, mv$(trait_params)), "make_place", {});
+                auto fcn_val = m_builder.new_temporary( ::HIR::TypeRef(mv$(fcn_ty_data)) );
+                m_builder.push_stmt_assign( node.span(), fcn_val.clone(), ::MIR::RValue::make_Constant( ::MIR::Constant(mv$(fcn_path)) ) );
+                m_builder.end_block(::MIR::Terminator::make_Call({
+                    place__ok, place__panic,
+                    place.clone(), mv$(fcn_val),
+                    {}
+                    }));
+                break; }
+            case ::HIR::ExprNode_Emplace::Type::Placer:
+                TODO(node.span(), "_Emplace - Placer");
+                break;
+            }
+            
+            // TODO: Proper panic handling, including scope destruction
+            m_builder.set_cur_block(place__panic);
+            // TODO: Drop `place`
+            m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+            m_builder.set_cur_block(place__ok);
+            
+            // 2. Get `place_raw`
+            auto place_raw__type = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Unique, node.m_value->m_res_type.clone());
+            auto place_raw = m_builder.new_temporary( place_raw__type );
+            auto place_raw__panic = m_builder.new_bb_unlinked();
+            auto place_raw__ok = m_builder.new_bb_unlinked();
+            {
+                auto place_refmut__type = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, place_type.clone());
+                auto place_refmut = m_builder.lvalue_or_temp(node.span(), place_refmut__type,  ::MIR::RValue::make_Borrow({ 0, ::HIR::BorrowType::Unique, place.clone() }));
+                auto fcn_ty_data = ::HIR::FunctionType { false, "", box$( place_raw__type.clone() ), ::make_vec1(mv$(place_refmut__type)) };
+                // <typeof(place) as ops::Place>::pointer
+                auto fcn_path = ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_Place), "pointer", {});
+                auto fcn_val = m_builder.new_temporary( ::HIR::TypeRef(mv$(fcn_ty_data)) );
+                m_builder.push_stmt_assign( node.span(), fcn_val.clone(), ::MIR::RValue::make_Constant( ::MIR::Constant(mv$(fcn_path)) ) );
+                m_builder.end_block(::MIR::Terminator::make_Call({
+                    place_raw__ok, place_raw__panic,
+                    place_raw.clone(), mv$(fcn_val),
+                    ::make_vec1( mv$(place_refmut) )
+                    }));
+            }
+            
+            // TODO: Proper panic handling, including scope destruction
+            m_builder.set_cur_block(place_raw__panic);
+            // TODO: Drop `place`
+            m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+            m_builder.set_cur_block(place_raw__ok);
+            
+            
+            // 3. Get the value and assign it into `place_raw`
+            node.m_value->visit(*this);
+            auto val = m_builder.get_result(node.span());
+            m_builder.push_stmt_assign( node.span(), ::MIR::LValue::make_Deref({ box$(place_raw.clone()) }), mv$(val) );
+            
+            // 3. Return a call to `finalize`
+            ::HIR::Path  finalize_path(::HIR::GenericPath {});
+            switch( node.m_type )
+            {
+            case ::HIR::ExprNode_Emplace::Type::Noop:
+                throw "";
+            case ::HIR::ExprNode_Emplace::Type::Boxer:
+                finalize_path = ::HIR::Path(node.m_res_type.clone(), ::HIR::GenericPath(path_Boxed), "finalize");
+                break;
+            case ::HIR::ExprNode_Emplace::Type::Placer:
+                TODO(node.span(), "_Emplace - Placer");
+                break;
+            }
+            
+            auto res = m_builder.new_temporary( node.m_res_type );
+            auto res__panic = m_builder.new_bb_unlinked();
+            auto res__ok = m_builder.new_bb_unlinked();
+            {
+                auto fcn_ty_data = ::HIR::FunctionType { true, "", box$(node.m_res_type.clone()), ::make_vec1(mv$(place_type)) };
+                auto fcn_val = m_builder.new_temporary( ::HIR::TypeRef(mv$(fcn_ty_data)) );
+                m_builder.push_stmt_assign( node.span(), fcn_val.clone(), ::MIR::RValue::make_Constant( ::MIR::Constant(mv$(finalize_path)) ) );
+                m_builder.end_block(::MIR::Terminator::make_Call({
+                    res__ok, res__panic,
+                    res.clone(), mv$(fcn_val),
+                    ::make_vec1( mv$(place) )
+                    }));
+            }
+            
+            // TODO: Proper panic handling, including scope destruction
+            m_builder.set_cur_block(res__panic);
+            // TODO: Should this drop the value written to the rawptr?
+            // - No, becuase it's likely invalid now. Goodbye!
+            m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+            m_builder.set_cur_block(res__ok);
+            
+            m_builder.set_result( node.span(), mv$(res) );
+        }
+        
         void visit(::HIR::ExprNode_TupleVariant& node) override
         {
             TRACE_FUNCTION_F("_TupleVariant");

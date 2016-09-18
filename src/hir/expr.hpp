@@ -354,6 +354,10 @@ struct ExprNode_Cast:
     
     NODE_METHODS();
 };
+// Magical pointer unsizing operation:
+// - `&[T; n] -> &[T]`
+// - `&T -> &Trait`
+// - `Box<T> -> Box<Trait>`
 struct ExprNode_Unsize:
     public ExprNode
 {
@@ -380,6 +384,7 @@ struct ExprNode_Index:
     
     NODE_METHODS();
 };
+// unary `*`
 struct ExprNode_Deref:
     public ExprNode
 {
@@ -389,6 +394,31 @@ struct ExprNode_Deref:
         ExprNode(mv$(sp)),
         m_value( mv$(val) )
     {}
+    
+    NODE_METHODS();
+};
+/// `box` and `in`/`<-`
+struct ExprNode_Emplace:
+    public ExprNode
+{
+    /// This influences the ops trait used
+    enum class Type {
+        Noop,   // Hack to allow coercion - acts as a no-op node
+        Placer,
+        Boxer,
+    };
+    
+    Type    m_type;
+    ExprNodeP   m_place;
+    ExprNodeP   m_value;
+    
+    ExprNode_Emplace(Span sp, Type ty, ::HIR::ExprNodeP place, ::HIR::ExprNodeP val):
+        ExprNode( mv$(sp) ),
+        m_type(ty),
+        m_place( mv$(place) ),
+        m_value( mv$(val) )
+    {
+    }
     
     NODE_METHODS();
 };
@@ -751,6 +781,7 @@ public:
     NV(ExprNode_Unsize) // Coercion
     NV(ExprNode_Index)
     NV(ExprNode_Deref)
+    NV(ExprNode_Emplace)
     
     NV(ExprNode_TupleVariant);
     NV(ExprNode_CallPath);
@@ -794,6 +825,7 @@ public:
     NV(ExprNode_Unsize)
     NV(ExprNode_Index)
     NV(ExprNode_Deref)
+    NV(ExprNode_Emplace)
     
     NV(ExprNode_TupleVariant);
     NV(ExprNode_CallPath);

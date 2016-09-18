@@ -188,9 +188,16 @@ struct LowerHIR_ExprNode_Visitor:
         ::HIR::ExprNode_UniOp::Op   op;
         switch(v.m_type)
         {
-        case ::AST::ExprNode_UniOp::BOX:
-            BUG(v.get_pos(), "Encounterd box operator (should have been expanded in AST)");
-            break;
+        case ::AST::ExprNode_UniOp::BOX: {
+            // TODO: Emit a call to `<_ as "core"::default::Default>::default()` in place of the nullptr
+            auto path_Default   = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"default", "Default"}) );
+            m_rv.reset(new ::HIR::ExprNode_Emplace(v.span(),
+                ::HIR::ExprNode_Emplace::Type::Boxer,
+                //::HIR::ExprNodeP(new ::HIR::ExprNode_CallPath(v.span(), ::HIR::Path(::HIR::TypeRef(), mv$(path_Default), "default"), {} )),
+                ::HIR::ExprNodeP(new ::HIR::ExprNode_Tuple(v.span(), {})),
+                LowerHIR_ExprNode_Inner(*v.m_value)
+                ));
+            } break;
         case ::AST::ExprNode_UniOp::QMARK:
             BUG(v.get_pos(), "Encounterd question mark operator (should have been expanded in AST)");
             break;

@@ -416,6 +416,9 @@ namespace {
             void visit(::HIR::ExprNode_Deref& node) override {
                 badnode(node);
             }
+            void visit(::HIR::ExprNode_Emplace& node) override {
+                badnode(node);
+            }
             
             void visit(::HIR::ExprNode_TupleVariant& node) override {
                 TODO(node.span(), "ExprNode_TupleVariant");
