@@ -51,6 +51,9 @@ struct ImplRef
     
     bool more_specific_than(const ImplRef& other) const;
     
+    /// HELPER: Returns callback to monomorphise a type using parameters from Data::TraitImpl
+    ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> get_cb_monomorph_traitimpl(const Span& sp) const;
+    
     ::HIR::TypeRef get_impl_type() const;
     ::HIR::PathParams get_trait_params() const;
     

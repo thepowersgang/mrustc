@@ -66,26 +66,24 @@ bool ImplRef::type_is_specialisable(const char* name) const
     throw "";
 }
 
-namespace {
-    // Returns a closure to monomorphise including placeholders (if present)
-    ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> get_cb_monomorph_traitimpl(const Span& sp, const ImplRef& ir)
-    {
-        const auto& e = ir.m_data.as_TraitImpl();
-        return [&e,&ir,&sp](const auto& gt)->const auto& {
-            const auto& ge = gt.m_data.as_Generic();
-            assert(ge.binding < 256);
-            assert(ge.binding < e.params.size());
-            if( e.params[ge.binding] ) {
-                return *e.params[ge.binding];
-            }
-            else if( e.params_ph.size() && e.params_ph[ge.binding] != ::HIR::TypeRef() ) {
-                return e.params_ph[ge.binding];
-            }
-            else {
-                BUG(sp, "Param #" << ge.binding << " " << ge.name << " isn't constrained for " << ir);
-            }
-            };
-    }
+// Returns a closure to monomorphise including placeholders (if present)
+::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
+{
+    const auto& e = this->m_data.as_TraitImpl();
+    return [this,&e,&sp](const auto& gt)->const auto& {
+        const auto& ge = gt.m_data.as_Generic();
+        assert(ge.binding < 256);
+        assert(ge.binding < e.params.size());
+        if( e.params[ge.binding] ) {
+            return *e.params[ge.binding];
+        }
+        else if( e.params_ph.size() && e.params_ph[ge.binding] != ::HIR::TypeRef() ) {
+            return e.params_ph[ge.binding];
+        }
+        else {
+            BUG(sp, "Param #" << ge.binding << " " << ge.name << " isn't constrained for " << *this);
+        }
+        };
 }
 
 ::HIR::TypeRef ImplRef::get_impl_type() const
@@ -96,7 +94,7 @@ namespace {
         if( e.impl == nullptr ) {
             BUG(Span(), "nullptr");
         }
-        return monomorphise_type_with(sp, e.impl->m_type, get_cb_monomorph_traitimpl(sp, *this));
+        return monomorphise_type_with(sp, e.impl->m_type, this->get_cb_monomorph_traitimpl(sp));
         ),
     (BoundedPtr,
         return e.type->clone();
@@ -116,7 +114,7 @@ namespace {
             BUG(Span(), "nullptr");
         }
         
-        return monomorphise_path_params_with(sp, e.impl->m_trait_args, get_cb_monomorph_traitimpl(sp, *this), true);
+        return monomorphise_path_params_with(sp, e.impl->m_trait_args, this->get_cb_monomorph_traitimpl(sp), true);
         ),
     (BoundedPtr,
         return e.trait_args->clone();
@@ -137,7 +135,7 @@ namespace {
         }
         if( idx >= e.impl->m_trait_args.m_types.size() )
             return ::HIR::TypeRef();
-        return monomorphise_type_with(sp, e.impl->m_trait_args.m_types[idx], get_cb_monomorph_traitimpl(sp, *this), true);
+        return monomorphise_type_with(sp, e.impl->m_trait_args.m_types[idx], this->get_cb_monomorph_traitimpl(sp), true);
         ),
     (BoundedPtr,
         if( idx >= e.trait_args->m_types.size() )
@@ -167,7 +165,7 @@ namespace {
             return ::HIR::TypeRef();
         const ::HIR::TypeRef& tpl_ty = it->second.data;
         if( monomorphise_type_needed(tpl_ty) ) {
-            return monomorphise_type_with(sp, tpl_ty, get_cb_monomorph_traitimpl(sp, *this));
+            return monomorphise_type_with(sp, tpl_ty, this->get_cb_monomorph_traitimpl(sp));
         }
         else {
             return tpl_ty.clone();

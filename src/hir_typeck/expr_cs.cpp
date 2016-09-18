@@ -3416,15 +3416,24 @@ namespace {
             // PROBLEM: This can false-negative leading to the types being falsely equated.
             
             bool fuzzy_match = false;
+            ImplRef  best_impl;
             bool found = context.m_resolve.find_trait_impls(sp, lang_CoerceUnsized, pp, ty_src, [&](auto impl, auto cmp) {
                 DEBUG("[check_coerce] cmp=" << cmp << ", impl=" << impl);
                 // TODO: Allow fuzzy match if it's the only matching possibility?
-                // - Recorded for now to know if a later pass is a good idea
+                // - Recorded for now to know if there could be a matching impl later
                 if( cmp == ::HIR::Compare::Fuzzy ) {
                     fuzzy_match = true;
+                    if( impl.more_specific_than(best_impl) ) {
+                        best_impl = mv$(impl);
+                    }
+                    else {
+                        TODO(sp, "Equal specificity impls");
+                    }
                 }
                 return cmp == ::HIR::Compare::Equal;
                 });
+            // TODO: If there was one fuzzy impl, emit an _Unsize and a trait bound.
+            // - Would this break if there's multiple coercion points in a flow (as there is no `T: Unsize<T>` to satisfy the case where the coercion wouldn't apply)
             if( found )
             {
                 DEBUG("- CoerceUnsize " << &*node_ptr << " -> " << ty_dst);
@@ -3435,9 +3444,21 @@ namespace {
             }
             if( fuzzy_match )
             {
-                const auto& span = sp;
-                // TODO: Apply ivar possibilities between the parameters in `ty_src` and `ty_dst`
+                DEBUG("- best_impl = " << best_impl);
+                // TODO: Convert to a bound and emit an _Unsize (which may end up being a no-op)
+                
+                #if 1
+                
+                context.equate_types_assoc(sp, ::HIR::TypeRef(), lang_CoerceUnsized, ::make_vec1(ty_dst.clone()), ty_src, "");
+                node_ptr = NEWNODE( ty_dst.clone(), sp, _Unsize,  mv$(node_ptr), ty_dst.clone() );
+                return true;
+                
+                #else
+                
+                const auto& span = sp;  // new name, because `sp` becomes "source path"
+                // Apply ivar possibilities between the parameters in `ty_src` and `ty_dst`
                 // - Ideally, this equivalence would be done using the parameter known to be the pointer target
+                // TODO: Expand this to perform Unsize impl equating (same as `check_coerce_borrow`)?
                 if( ty_dst.m_data.is_Path() && ty_src.m_data.is_Path() )
                 {
                     const auto& dp = ty_dst.m_data.as_Path().path;
@@ -3487,11 +3508,8 @@ namespace {
                         }
                     }
                 }
-                #if 1
                 DEBUG("- CoerceUnsize possible, trying later");
                 return false;
-                #else
-                DEBUG("- CoerceUnsize possible?");
                 #endif
             }
         }
@@ -3805,45 +3823,77 @@ namespace {
             }
             else
             {
-                BUG(sp, "");
+                BUG(sp, "Associated type rule with `is_operator` set but an incorrect parameter count");
             }
         }
         
-        // HACK: If the LHS is an opqaue UfcsKnown for the same trait and item, equate the inner types
-        #if 0
-        TU_IFLET(::HIR::TypeRef::Data, v.left_ty.m_data, Path, e,
-            if( e.binding.is_Opaque() )
-            {
-                TU_IFLET(::HIR::Path::Data, e.path.m_data, UfcsKnown, pe,
-                    if( pe.trait.m_path == v.trait && pe.item == v.name )
-                    {
-                        #if 0
-                        context.equate_types(sp, *pe.type, v.impl_ty);
-                        #else
-                        TU_IFLET(::HIR::TypeRef::Data, context.get_type(*pe.type).m_data, Infer, e2,
-                            //context.possible_equate_type_from(e2.index, v.impl_ty);
-                            //context.possible_equate_type_to(e2.index, v.impl_ty);
-                            return false;
-                        )
-                        else TU_IFLET(::HIR::TypeRef::Data, context.get_type(v.impl_ty).m_data, Infer, e2,
-                            //context.possible_equate_type_from(e2.index, *pe.type);
-                            //context.possible_equate_type_to(e2.index, *pe.type);
-                            return false;
-                        )
-                        else {
-                            context.equate_types(sp, *pe.type, v.impl_ty);
-                            return true;
-                        }
-                        #endif
-                    }
-                )
+        // HACK! If the trait is `Unsize` then pretend `impl<T> Unsize<T> for T` exists to possibly propagate the type through
+        // - Also applies to CoerceUnsized (which may not get its impl detected because actually `T: !Unsize<T>`)
+        // - This is needed because `check_coerce` will emit coercions where they're not actually needed in some cases.
+        if( v.trait == context.m_crate.get_lang_item_path(sp, "unsize") )
+        {
+            ASSERT_BUG(sp, v.params.m_types.size() == 1, "Incorrect number of parameters for Unsize");
+            const auto& src_ty = context.get_type(v.impl_ty);
+            const auto& dst_ty = context.get_type(v.params.m_types[0]);
+            
+            // - If the two types are equal (for unsizing purposes) then equate them and delete this rule
+            if( context.m_ivars.types_equal( src_ty, dst_ty ) ) {
+                // A type cannot unsize to itself, but CoerceUnsize code leads to these requirements when coercion points chain.
+                return true;
             }
-        )
-        #endif
+            //  > TODO: Detect when the unsize cannot happen and equate the types.
+            // - If either is an ivar, add the other as a possibility
+            TU_IFLET( ::HIR::TypeRef::Data, src_ty.m_data, Infer, se,
+                // TODO: Update for InferClass::Diverge ?
+                if( se.ty_class != ::HIR::InferClass::None ) {
+                    context.equate_types(sp, dst_ty,  src_ty);
+                }
+                else {
+                    TU_IFLET(::HIR::TypeRef::Data, dst_ty.m_data, Infer, de,
+                        context.possible_equate_type_to(se.index, dst_ty);
+                        context.possible_equate_type_from(de.index, src_ty);
+                    )
+                    else {
+                        context.possible_equate_type_to(se.index, dst_ty);
+                    }
+                }
+            )
+            else TU_IFLET(::HIR::TypeRef::Data, dst_ty.m_data, Infer, de,
+                // TODO: Update for InferClass::Diverge ?
+                if( de.ty_class != ::HIR::InferClass::None ) {
+                    context.equate_types(sp, dst_ty,  src_ty);
+                }
+                else {
+                    context.possible_equate_type_from(de.index, src_ty);
+                }
+            )
+            else {
+                // No equivalence added
+            }
+            // - Fall through and search for the impl
+        }
+        if( v.trait == context.m_crate.get_lang_item_path(sp, "coerce_unsized") )
+        {
+            ASSERT_BUG(sp, v.params.m_types.size() == 1, "Incorrect number of parameters for Unsize");
+            const auto& src_ty = context.get_type(v.impl_ty);
+            const auto& dst_ty = context.get_type(v.params.m_types[0]);
+            if( !src_ty.m_data.is_Infer() && !dst_ty.m_data.is_Infer() )
+            {
+                // If the trait is CoerceUnsized and no impl could be found, equate.
+                bool found = context.m_resolve.find_trait_impls(sp, v.trait, v.params,  v.impl_ty, [&](auto, auto) { return true; });
+                if( !found ) {
+                    DEBUG("No impl of CoerceUnsized, assume the types must be equal");
+                    context.equate_types(sp, dst_ty,  src_ty);
+                    return true;
+                }
+                DEBUG("Found at least one impl of CoerceUnsized, running expensive code");
+            }
+        }
         
         // Locate applicable trait impl
         unsigned int count = 0;
         DEBUG("Searching for impl " << v.trait << v.params << " for " << context.m_ivars.fmt_type(v.impl_ty));
+        ImplRef  best_impl;
         bool found = context.m_resolve.find_trait_impls(sp, v.trait, v.params,  v.impl_ty,
             [&](auto impl, auto cmp) {
                 DEBUG("[check_associated] Found cmp=" << cmp << " " << impl);
@@ -3873,12 +3923,13 @@ namespace {
                     return true;
                 }
                 else {
+                    DEBUG("- (possible) " << impl);
+                    
                     if( possible_impl_ty == ::HIR::TypeRef() ) {
                         possible_impl_ty = impl.get_impl_type();
                         possible_params = impl.get_trait_params();
+                        best_impl = mv$(impl);
                     }
-                    
-                    DEBUG("- (possible) " << impl);
                     
                     return false;
                 }
@@ -3894,6 +3945,7 @@ namespace {
             // No applicable impl
             // - TODO: This should really only fire when there isn't an impl. But it currently fires when _
             DEBUG("No impl of " << v.trait << context.m_ivars.fmt(v.params) << " for " << context.m_ivars.fmt_type(v.impl_ty));
+            //bool is_known = !context.get_type(v.impl_ty).m_data.is_Infer();
             bool is_known = !context.m_ivars.type_contains_ivars(v.impl_ty);
             for(const auto& t : v.params.m_types)
                 is_known &= !context.m_ivars.type_contains_ivars(t);
@@ -3914,6 +3966,31 @@ namespace {
             for( unsigned int i = 0; i < possible_params.m_types.size(); i ++ ) {
                 context.equate_types(sp, v.params.m_types[i], possible_params.m_types[i]);
             }
+            // TODO: Obtain the bounds required for this impl and add those as trait bounds to check/equate
+            TU_IFLET( ImplRef::Data, best_impl.m_data, TraitImpl, e,
+                assert(e.impl);
+                for(const auto& bound : e.impl->m_params.m_bounds )
+                {
+                    TU_MATCH_DEF(::HIR::GenericBound, (bound), (be),
+                    (
+                        ),
+                    (TraitBound,
+                        DEBUG("New bound (pre-mono) " << bound);
+                        auto b_ty_mono = monomorphise_type_with(sp, be.type, best_impl.get_cb_monomorph_traitimpl(sp));
+                        auto b_tp_mono = monomorphise_traitpath_with(sp, be.trait, best_impl.get_cb_monomorph_traitimpl(sp), true);
+                        DEBUG("- " << b_ty_mono << " : " << b_tp_mono);
+                        if( b_tp_mono.m_type_bounds.size() > 0 )
+                        {
+                            TODO(sp, "Insert new bound " << b_ty_mono << " : " << b_tp_mono);
+                        }
+                        else
+                        {
+                            context.equate_types_assoc(sp, ::HIR::TypeRef(),  b_tp_mono.m_path.m_path, mv$(b_tp_mono.m_path.m_params.m_types), b_ty_mono, "");
+                        }
+                        )
+                    )
+                }
+            )
             return true;
         }
         else {
@@ -4202,10 +4279,9 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         }
         // 3. Check associated type rules
         DEBUG("--- Associated types");
-        //for(auto it = context.link_assoc.begin(); it != context.link_assoc.end(); ) {
-        //    const auto& rule = *it;
-        for(unsigned int i = 0; i < context.link_assoc.size();  ) {
-            auto& rule = context.link_assoc[i];
+        for(unsigned int i = 0; i < context.link_assoc.size(); ) {
+            // - Move out (and back in later) to avoid holding a bad pointer if the list is updated
+            auto rule = mv$(context.link_assoc[i]);
         
             DEBUG("- " << rule);
             for( auto& ty : rule.params.m_types ) {
@@ -4219,10 +4295,9 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             if( check_associated(context, rule) ) {
                 DEBUG("- Consumed associated type rule - " << rule);
                 context.link_assoc.erase( context.link_assoc.begin() + i );
-                //it = context.link_assoc.erase(it);
             }
             else {
-                //++ it;
+                context.link_assoc[i] = mv$(rule);
                 i ++;
             }
         }
