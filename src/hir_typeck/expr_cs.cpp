@@ -2026,7 +2026,8 @@ namespace {
                 assert( node.m_cache.m_arg_types.size() >= 1);
                 
                 if( node.m_args.size()+1 != node.m_cache.m_arg_types.size() - 1 ) {
-                    ERROR(node.span(), E0000, "Incorrect number of arguments to " << fcn_path);
+                    ERROR(node.span(), E0000, "Incorrect number of arguments to " << node.m_method_path
+                        << " - exp " << node.m_cache.m_arg_types.size()-2 << " got " << node.m_args.size());
                 }
                 DEBUG("- fcn_path=" << node.m_method_path);
                 
