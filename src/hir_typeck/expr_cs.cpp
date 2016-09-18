@@ -1668,7 +1668,9 @@ namespace {
                         const auto& lang_Unsize = this->context.m_crate.get_lang_item_path(sp, "unsize");
                         bool found = this->context.m_resolve.find_trait_impls(sp, lang_Unsize, ::HIR::PathParams(e.inner->clone()), *s_e.inner, [](auto , auto){ return true; });
                         if( found ) {
-                            TODO(sp, "Unsizing cast");
+                            auto ty = ::HIR::TypeRef::new_borrow(e.type, e.inner->clone());
+                            node.m_value = NEWNODE(ty.clone(), sp, _Unsize, mv$(node.m_value), ty.clone());
+                            this->context.equate_types_assoc(sp, ::HIR::TypeRef(), lang_Unsize, ::make_vec1(e.inner->clone()), *s_e.inner, "");
                         }
                         else {
                             this->context.equate_types(sp, *e.inner, *s_e.inner);
