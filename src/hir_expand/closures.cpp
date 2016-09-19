@@ -126,13 +126,38 @@ namespace {
             binding_it = ::std::find(m_captures.begin(), m_captures.end(), node.m_slot);
             if( binding_it != m_captures.end() ) {
                 m_replacement = NEWNODE(node.m_res_type.clone(), Field, node.span(),
-                    NEWNODE(m_closure_type.clone(), Variable, node.span(), "self", 0),
+                    get_self(node.span()),
                     FMT(binding_it - m_captures.begin())
                     );
                 return ;
             }
             
             BUG(node.span(), "Encountered non-captured and unknown-origin variable - " << node.m_name << " #" << node.m_slot);
+        }
+        
+        ::HIR::ExprNodeP get_self(const Span& sp) const
+        {
+            ::HIR::ExprNodeP    self;
+            switch( m_closure_type.m_data.as_Closure().node->m_class )
+            {
+            case ::HIR::ExprNode_Closure::Class::Unknown:
+                // Assume it's NoCapture
+            case ::HIR::ExprNode_Closure::Class::NoCapture:
+            case ::HIR::ExprNode_Closure::Class::Shared:
+                self = NEWNODE(m_closure_type.clone(), Deref, sp,
+                    NEWNODE( ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, m_closure_type.clone()), Variable, sp, "self", 0)
+                    );
+                break;
+            case ::HIR::ExprNode_Closure::Class::Mut:
+                self = NEWNODE(m_closure_type.clone(), Deref, sp,
+                    NEWNODE( ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, m_closure_type.clone()), Variable, sp, "self", 0)
+                    );
+                break;
+            case ::HIR::ExprNode_Closure::Class::Once:
+                self = NEWNODE(m_closure_type.clone(), Variable, sp, "self", 0);
+                break;
+            }
+            return self;
         }
     };
     
@@ -202,6 +227,7 @@ namespace {
     struct H {
         static void fix_fn_params(::HIR::ExprPtr& code, const ::HIR::TypeRef& self_ty, const ::HIR::TypeRef& args_ty)
         {
+            // TODO: The self_ty here is wrong, the borrow needs to be included.
             if( code.m_bindings.size() == 0 ) {
                 // No bindings - Wrapper function
                 // Insert 0 = Self, 1 = Args
@@ -256,7 +282,8 @@ namespace {
                 ::HIR::ExprPtr code
             )
         {
-            fix_fn_params(code, closure_type, args_argent.second);
+            auto ty_of_self = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Unique, closure_type.clone() );
+            fix_fn_params(code, ty_of_self, args_argent.second);
             return ::HIR::TraitImpl {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
@@ -289,7 +316,8 @@ namespace {
                 ::HIR::ExprPtr code
             )
         {
-            fix_fn_params(code, closure_type, args_argent.second);
+            auto ty_of_self = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, closure_type.clone() );
+            fix_fn_params(code, ty_of_self, args_argent.second);
             return ::HIR::TraitImpl {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
