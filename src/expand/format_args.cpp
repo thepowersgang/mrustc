@@ -307,9 +307,6 @@ class CFormatArgsExpander:
         
         ::std::vector<TokenTree> toks;
         {
-            // TODO: Figure out what path to use (::fmt, ::core::fmt, or ::std::fmt)
-
-            
             switch(crate.m_load_std)
             {
             case ::AST::Crate::LOAD_NONE:
@@ -323,15 +320,19 @@ class CFormatArgsExpander:
                 toks.push_back( Token(TOK_IDENT, "std") );
                 break;
             }
+            
+            // ::fmt::Arguments::new_v1
             toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
             toks.push_back( Token(TOK_IDENT, "fmt") );
             toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
             toks.push_back( Token(TOK_IDENT, "Arguments") );
             toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
             toks.push_back( Token(TOK_IDENT, "new_v1") );
+            // (
             toks.push_back( TokenTree(TOK_PAREN_OPEN) );
             {
                 toks.push_back( TokenTree(TOK_AMP) );
+                // Raw string fragments
                 toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
                 for(const auto& frag : fragments ) {
                     toks.push_back( Token(TOK_STRING, frag.leading_text) );
@@ -340,10 +341,13 @@ class CFormatArgsExpander:
                 toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
                 toks.push_back( TokenTree(TOK_COMMA) );
                 
+                // TODO: Fragments to format
+                // - The format stored by mrustc doesn't quite work with how rustc (and fmt::rt::v1) works
                 toks.push_back( TokenTree(TOK_AMP) );
                 toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
                 toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
             }
+            // )
             toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
         }
         
