@@ -25,6 +25,7 @@ Current Features
 
 Short-Term Plans
 ===
+- Parse+Typecheck+MIR all of libstd (including sub-crates)
 - Code generation (including picking the output format)
 
 Medium-Term Goals
