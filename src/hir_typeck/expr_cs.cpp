@@ -3707,11 +3707,13 @@ namespace {
         (Pointer,
             // Pointers coerce from borrows and similar pointers
             TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Borrow, s_e,
-                // TODO: Borrows can coerce to pointers while reducing in strength
-                if( s_e.type != l_e.type ) {
+                // Borrows can coerce to pointers while reducing in strength
+                // - Shared < Unique. If the destination is not weaker or equal to the source, it's an error
+                if( !(l_e.type <= s_e.type) ) {
                     ERROR(sp, E0000, "Type mismatch between " << ty_dst << " and " << ty_src << " - Mutability not compatible");
                 }
-                // TODO: This can unsize as well as convert?
+                
+                // TODO: Can this can unsize as well as convert to raw?
                 context.equate_types(sp, *l_e.inner, *s_e.inner);
                 // Add downcast
                 auto span = node_ptr->span();
