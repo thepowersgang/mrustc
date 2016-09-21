@@ -111,7 +111,21 @@ struct Context
     // - Mark a type as having an unknown coercion (for this round)
     void equate_types_shadow(const Span& sp, const ::HIR::TypeRef& l);
     // - Equate a type to an associated type (if name == "", no equation is done, but trait is searched)
-    void equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name, bool is_op=false);
+    void equate_types_assoc(
+        const Span& sp, const ::HIR::TypeRef& l,
+        const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name,
+        bool is_op=false
+        )
+    {
+        ::HIR::PathParams   pp;
+        pp.m_types = mv$(ty_args);
+        equate_types_assoc(sp, l, trait, mv$(pp), impl_ty, name, is_op);
+    }
+    void equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::HIR::PathParams params, const ::HIR::TypeRef& impl_ty, const char *name, bool is_op);
+    // - Add a trait bound (gets encoded as an associated type bound)
+    void add_trait_bound(const Span& sp, const ::HIR::TypeRef& impl_ty, const ::HIR::SimplePath& trait, ::HIR::PathParams params) {
+        equate_types_assoc(sp, ::HIR::TypeRef(), trait, mv$(params), impl_ty, "", false);
+    }
 
     // - List `t` as a possible type for `ivar_index`
     void possible_equate_type_to(unsigned int ivar_index, const ::HIR::TypeRef& t);
@@ -197,7 +211,7 @@ namespace {
             cache.m_top_params = &trait.m_params;
             
             // Add a bound requiring the Self type impl the trait
-            context.equate_types_assoc(sp, ::HIR::TypeRef(), e.trait.m_path, mv$(e.trait.m_params.clone().m_types), *e.type, "");
+            context.add_trait_bound(sp, *e.type,  e.trait.m_path, e.trait.m_params.clone());
             
             fcn_ptr = &fcn;
             
@@ -278,12 +292,17 @@ namespace {
                 const auto& trait_params = real_trait.m_params;
                 
                 const auto& trait_path = be.trait.m_path.m_path;
-                context.equate_types_assoc(sp, ::HIR::TypeRef(), trait_path, mv$(trait_params.clone().m_types), real_type, "");
+                // If there's no type bounds, emit a trait bound
+                // - Otherwise, the assocated type bounds will serve the same purpose
+                if( be.trait.m_type_bounds.size() == 0 )
+                {
+                    context.add_trait_bound(sp, real_type, trait_path, trait_params.clone());
+                }
                 
-                // TODO: Either - Don't include the above impl bound, or change the below trait to the one that has that type
                 for( const auto& assoc : be.trait.m_type_bounds ) {
                     ::HIR::GenericPath  type_trait_path;
                     ASSERT_BUG(sp, be.trait.m_trait_ptr, "Trait pointer not set in " << be.trait.m_path);
+                    // TODO: Store the source trait for this bound in the the bound list?
                     context.m_resolve.trait_contains_type(sp, real_trait, *be.trait.m_trait_ptr, assoc.first,  type_trait_path);
                     
                     auto other_ty = monomorphise_type_with(sp, assoc.second, cache.m_monomorph_cb, true);
@@ -763,15 +782,19 @@ namespace {
             
             TRACE_FUNCTION_F(&node << " " << ::HIR::ExprNode_UniOp::opname(node.m_op) << "...");
             this->context.add_ivars( node.m_value->m_res_type );
+            const char* item_name = nullptr;
             switch(node.m_op)
             {
             case ::HIR::ExprNode_UniOp::Op::Invert:
-                this->context.equate_types_assoc(node.span(), node.m_res_type,  this->context.m_crate.get_lang_item_path(node.span(), "not"), {}, node.m_value->m_res_type.clone(), "Output", true);
+                item_name = "not";
                 break;
             case ::HIR::ExprNode_UniOp::Op::Negate:
-                this->context.equate_types_assoc(node.span(), node.m_res_type,  this->context.m_crate.get_lang_item_path(node.span(), "neg"), {}, node.m_value->m_res_type.clone(), "Output", true);
+                item_name = "neg";
                 break;
             }
+            assert(item_name);
+            const auto& op_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
+            this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, ::HIR::PathParams {}, node.m_value->m_res_type.clone(), "Output", true);
             node.m_value->visit( *this );
         }
         void visit(::HIR::ExprNode_Borrow& node) override
@@ -1302,7 +1325,7 @@ namespace {
                 ),
             (UfcsKnown,
                 // 1. Add trait bound to be checked.
-                this->context.equate_types_assoc(sp, ::HIR::TypeRef(),  e.trait.m_path, mv$(e.trait.m_params.clone().m_types), e.type->clone(), "");
+                this->context.add_trait_bound(sp, *e.type,  e.trait.m_path, e.trait.m_params.clone());
                 // 2. Locate this item in the trait
                 // - If it's an associated `const`, will have to revisit
                 const auto& trait = this->context.m_crate.get_trait_by_path(sp, e.trait.m_path);
@@ -1692,7 +1715,7 @@ namespace {
                         if( found ) {
                             auto ty = ::HIR::TypeRef::new_borrow(e.type, e.inner->clone());
                             node.m_value = NEWNODE(ty.clone(), sp, _Unsize, mv$(node.m_value), ty.clone());
-                            this->context.equate_types_assoc(sp, ::HIR::TypeRef(), lang_Unsize, ::make_vec1(e.inner->clone()), *s_e.inner, "");
+                            this->context.add_trait_bound(sp, *s_e.inner,  lang_Unsize, ::HIR::PathParams(e.inner->clone()));
                         }
                         else {
                             this->context.equate_types(sp, *e.inner, *s_e.inner);
@@ -3037,10 +3060,8 @@ void Context::equate_types_shadow(const Span& sp, const ::HIR::TypeRef& l)
         )
     )
 }
-void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::std::vector< ::HIR::TypeRef> ty_args, const ::HIR::TypeRef& impl_ty, const char *name, bool is_op)
+void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::HIR::PathParams pp, const ::HIR::TypeRef& impl_ty, const char *name, bool is_op)
 {
-    ::HIR::PathParams   pp;
-    pp.m_types = mv$(ty_args);
     this->link_assoc.push_back(Associated {
         sp,
         l.clone(),
@@ -3493,7 +3514,7 @@ namespace {
                 DEBUG("- best_impl = " << best_impl);
                 // Fuzzy match - Insert a CoerceUnsized bound and emit the _Unsize op
                 // - This could end up being a no-op _Unsize, and there's special logic in check_associated to handle `T: CoerceUnsized<T>` and `T: Unsize<T>`
-                context.equate_types_assoc(sp, ::HIR::TypeRef(), lang_CoerceUnsized, ::make_vec1(ty_dst.clone()), ty_src, "");
+                context.add_trait_bound(sp, ty_src,  lang_CoerceUnsized, ::HIR::PathParams(ty_dst.clone()));
                 node_ptr = NEWNODE( ty_dst.clone(), sp, _Unsize,  mv$(node_ptr), ty_dst.clone() );
                 return true;
             }
@@ -3968,11 +3989,11 @@ namespace {
                         DEBUG("- " << b_ty_mono << " : " << b_tp_mono);
                         if( b_tp_mono.m_type_bounds.size() > 0 )
                         {
-                            TODO(sp, "Insert new bound " << b_ty_mono << " : " << b_tp_mono);
+                            TODO(sp, "Insert associated type bounds from " << b_ty_mono << " : " << b_tp_mono);
                         }
                         else
                         {
-                            context.equate_types_assoc(sp, ::HIR::TypeRef(),  b_tp_mono.m_path.m_path, mv$(b_tp_mono.m_path.m_params.m_types), b_ty_mono, "");
+                            context.add_trait_bound(sp, b_ty_mono,  b_tp_mono.m_path.m_path, mv$(b_tp_mono.m_path.m_params));
                         }
                         )
                     )
