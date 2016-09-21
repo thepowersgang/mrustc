@@ -145,11 +145,12 @@ static void fix_param_count(const Span& sp, Context& context, const ::HIR::Gener
 
 namespace {
     
-    void visit_call_populate_cache_UfcsInherent(Context& context, const Span& sp, ::HIR::Path& path, ::HIR::ExprCallCache& cache, const ::HIR::Function*& fcn_ptr);
+    bool visit_call_populate_cache(Context& context, const Span& sp, ::HIR::Path& path, ::HIR::ExprCallCache& cache) __attribute__((warn_unused_result));
+    bool visit_call_populate_cache_UfcsInherent(Context& context, const Span& sp, ::HIR::Path& path, ::HIR::ExprCallCache& cache, const ::HIR::Function*& fcn_ptr);
     
     /// (HELPER) Populate the cache for nodes that use visit_call
     /// TODO: If the function has multiple mismatched options, tell the caller to try again later?
-    void visit_call_populate_cache(Context& context, const Span& sp, ::HIR::Path& path, ::HIR::ExprCallCache& cache)
+    bool visit_call_populate_cache(Context& context, const Span& sp, ::HIR::Path& path, ::HIR::ExprCallCache& cache)
     {
         TRACE_FUNCTION_FR(path, path);
         assert(cache.m_arg_types.size() == 0);
@@ -232,7 +233,9 @@ namespace {
             ),
         (UfcsInherent,
             // NOTE: This case is kinda long, so it's refactored out into a helper
-            visit_call_populate_cache_UfcsInherent(context, sp, path, cache, fcn_ptr);
+            if( !visit_call_populate_cache_UfcsInherent(context, sp, path, cache, fcn_ptr) ) {
+                return false;
+            }
             )
         )
 
@@ -295,8 +298,10 @@ namespace {
                 )
             )
         }
+        
+        return true;
     }
-    void visit_call_populate_cache_UfcsInherent(Context& context, const Span& sp, ::HIR::Path& path, ::HIR::ExprCallCache& cache, const ::HIR::Function*& fcn_ptr)
+    bool visit_call_populate_cache_UfcsInherent(Context& context, const Span& sp, ::HIR::Path& path, ::HIR::ExprCallCache& cache, const ::HIR::Function*& fcn_ptr)
     {
         auto& e = path.m_data.as_UfcsInherent();
         
@@ -318,8 +323,8 @@ namespace {
             ERROR(sp, E0000, "Failed to locate function " << path);
         }
         if( count > 1 ) {
-            // TODO: Return a status to the caller so it can try in a later pass
-            TODO(sp, "Multiple associated functions for " << path);
+            // Return a status to the caller so it can try again when there may be more information
+            return false;
         }
         assert(impl_ptr);
         DEBUG("Found impl" << impl_ptr->m_params.fmt_args() << " " << impl_ptr->m_type);
@@ -414,6 +419,8 @@ namespace {
                     BUG(sp, "Generic bounding out of total range - " << ge.binding);
                 }
             };
+        
+        return true;
     }
     
     // -----------------------------------------------------------------------
@@ -1054,7 +1061,9 @@ namespace {
             
             // Populate cache
             {
-                visit_call_populate_cache(this->context, node.span(), node.m_path, node.m_cache);
+                if( !visit_call_populate_cache(this->context, node.span(), node.m_path, node.m_cache) ) {
+                    TODO(node.span(), "Emit revisit when _CallPath is ambiguous - " << node.m_path);
+                }
                 assert( node.m_cache.m_arg_types.size() >= 1);
                 
                 if( node.m_args.size() != node.m_cache.m_arg_types.size() - 1 ) {
@@ -2033,7 +2042,10 @@ namespace {
                     //fix_param_count(sp, this->context, node.m_method_path, fcn.m_params, e.params);
                     )
                 )
-                visit_call_populate_cache(this->context, node.span(), node.m_method_path, node.m_cache);
+                if( !visit_call_populate_cache(this->context, node.span(), node.m_method_path, node.m_cache) ) {
+                    DEBUG("- AMBIGUOUS - Trying again later");
+                    return ;
+                }
                 DEBUG("> m_method_path = " << node.m_method_path);
                 
                 assert( node.m_cache.m_arg_types.size() >= 1);
