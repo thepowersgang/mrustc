@@ -2079,14 +2079,15 @@ namespace {
                 }
                 DEBUG("- fcn_path=" << node.m_method_path);
                 
-                // Link arguments
-                // 1+ because it's a method call (#0 is Self)
+                // --- Check and equate self/arguments/return
                 DEBUG("node.m_cache.m_arg_types = " << node.m_cache.m_arg_types);
+                // NOTE: `Self` is equated after autoderef and autoref
                 for(unsigned int i = 0; i < node.m_args.size(); i ++)
                 {
-                    this->context.equate_types_coerce(node.span(), node.m_cache.m_arg_types[1+i], node.m_args[i]);
+                    // 1+ because it's a method call (#0 is Self)
+                    this->context.equate_types_coerce(sp, node.m_cache.m_arg_types[1+i], node.m_args[i]);
                 }
-                this->context.equate_types(node.span(), node.m_res_type,  node.m_cache.m_arg_types.back());
+                this->context.equate_types(sp, node.m_res_type,  node.m_cache.m_arg_types.back());
                 
                 // Add derefs
                 if( deref_count > 0 )
@@ -2141,6 +2142,9 @@ namespace {
                         } break;
                     }
                 }
+                
+                // Equate the type for `self` (to ensure that Self's type params infer correctly)
+                this->context.equate_types(sp, node.m_cache.m_arg_types[0], node.m_value->m_res_type);
                 
                 this->m_completed = true;
             }
