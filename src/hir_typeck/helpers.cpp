@@ -2367,6 +2367,8 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
     else {
         // 2. Search for inherent methods
         bool rv = m_crate.find_type_impls(ty, m_ivars.callback_resolve_infer(), [&](const auto& impl) {
+            // TODO: Should this take into account the actual suitability of this method? Or just that the name exists?
+            // - If this impl matches fuzzily, it may not actually match
             auto it = impl.m_methods.find( method_name );
             if( it == impl.m_methods.end() )
                 return false ;

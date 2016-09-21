@@ -145,14 +145,16 @@ static void fix_param_count(const Span& sp, Context& context, const ::HIR::Gener
 
 namespace {
     
+    void visit_call_populate_cache_UfcsInherent(Context& context, const Span& sp, ::HIR::Path& path, ::HIR::ExprCallCache& cache, const ::HIR::Function*& fcn_ptr);
+    
     /// (HELPER) Populate the cache for nodes that use visit_call
+    /// TODO: If the function has multiple mismatched options, tell the caller to try again later?
     void visit_call_populate_cache(Context& context, const Span& sp, ::HIR::Path& path, ::HIR::ExprCallCache& cache)
     {
         TRACE_FUNCTION_FR(path, path);
         assert(cache.m_arg_types.size() == 0);
         
         const ::HIR::Function*  fcn_ptr = nullptr;
-        ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>    monomorph_cb;
         
         TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
         (Generic,
@@ -163,7 +165,7 @@ namespace {
             
             //const auto& params_def = fcn.m_params;
             const auto& path_params = e.m_params;
-            monomorph_cb = [&](const auto& gt)->const auto& {
+            cache.m_monomorph_cb = [&](const auto& gt)->const auto& {
                     const auto& e = gt.m_data.as_Generic();
                     if( e.name == "Self" || e.binding == 0xFFFF )
                         TODO(sp, "Handle 'Self' when monomorphising");
@@ -200,7 +202,7 @@ namespace {
             
             const auto& trait_params = e.trait.m_params;
             const auto& path_params = e.params;
-            monomorph_cb = [&](const auto& gt)->const auto& {
+            cache.m_monomorph_cb = [&](const auto& gt)->const auto& {
                     const auto& ge = gt.m_data.as_Generic();
                     if( ge.binding == 0xFFFF ) {
                         return *e.type;
@@ -229,127 +231,21 @@ namespace {
             TODO(sp, "Hit a UfcsUnknown (" << path << ") - Is this an error?");
             ),
         (UfcsInherent,
-            // TODO: What if this types has ivars?
-            // - Locate function (and impl block)
-            const ::HIR::TypeImpl* impl_ptr = nullptr;
-            context.m_crate.find_type_impls(*e.type, context.m_ivars.callback_resolve_infer(),
-                [&](const auto& impl) {
-                    DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-                    auto it = impl.m_methods.find(e.item);
-                    if( it == impl.m_methods.end() )
-                        return false;
-                    fcn_ptr = &it->second.data;
-                    impl_ptr = &impl;
-                    return true;
-                });
-            if( !fcn_ptr ) {
-                ERROR(sp, E0000, "Failed to locate function " << path);
-            }
-            assert(impl_ptr);
-            DEBUG("Found impl" << impl_ptr->m_params.fmt_args() << " " << impl_ptr->m_type);
-            fix_param_count(sp, context, path, fcn_ptr->m_params,  e.params);
-            cache.m_fcn_params = &fcn_ptr->m_params;
-            
-            
-            // If the impl block has parameters, figure out what types they map to
-            // - The function params are already mapped (from fix_param_count)
-            auto& impl_params = cache.m_ty_impl_params;
-            if( impl_ptr->m_params.m_types.size() > 0 )
-            {
-                // Default-construct entires in the `impl_params` array
-                impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
-                
-                auto cmp = impl_ptr->m_type.match_test_generics_fuzz(sp, *e.type, context.m_ivars.callback_resolve_infer(), [&](auto idx, const auto& ty) {
-                    assert( idx < impl_params.m_types.size() );
-                    impl_params.m_types[idx] = ty.clone();
-                    return ::HIR::Compare::Equal;
-                    });
-                if( cmp == ::HIR::Compare::Fuzzy )
-                {
-                    // If the match was fuzzy, it could be due to a compound being matched against an ivar
-                    DEBUG("- Fuzzy match, adding ivars and equating");
-                    bool ivar_replaced = false;
-                    for(auto& ty : impl_params.m_types) {
-                        if( ty == ::HIR::TypeRef() ) {
-                            // Allocate a new ivar for the param
-                            ivar_replaced = true;
-                            ty = context.m_ivars.new_ivar_tr();
-                        }
-                    }
-                    
-                    // If there were any params that weren't bound by `match_test_generics_fuzz`
-                    if( ivar_replaced )
-                    {
-                        // Then monomorphise the impl type with the new ivars, and equate to *e.type
-                        auto impl_monomorph_cb = [&](const auto& gt)->const auto& {
-                            const auto& ge = gt.m_data.as_Generic();
-                            if( ge.binding == 0xFFFF ) {
-                                return context.get_type(*e.type);
-                            }
-                            else if( ge.binding < 256 ) {
-                                auto idx = ge.binding;
-                                if( idx >= impl_params.m_types.size() ) {
-                                    BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << impl_params.m_types.size());
-                                }
-                                return context.get_type(impl_params.m_types[idx]);
-                            }
-                            else {
-                                BUG(sp, "Generic bounding out of total range - " << ge.binding);
-                            }
-                            };
-                        auto impl_ty_mono = monomorphise_type_with(sp, impl_ptr->m_type, impl_monomorph_cb, false);
-                        DEBUG("- impl_ty_mono = " << impl_ty_mono);
-                        
-                        context.equate_types(sp, impl_ty_mono, *e.type);
-                    }
-                }
-                // - Check that all entries were populated by the above function
-                for(const auto& ty : impl_params.m_types) {
-                    assert( ty != ::HIR::TypeRef() );
-                }
-            }
-            
-            // Create monomorphise callback
-            const auto& fcn_params = e.params;
-            monomorph_cb = [&](const auto& gt)->const auto& {
-                    const auto& ge = gt.m_data.as_Generic();
-                    if( ge.binding == 0xFFFF ) {
-                        return context.get_type(*e.type);
-                    }
-                    else if( ge.binding < 256 ) {
-                        auto idx = ge.binding;
-                        if( idx >= impl_params.m_types.size() ) {
-                            BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << impl_params.m_types.size());
-                        }
-                        return context.get_type(impl_params.m_types[idx]);
-                    }
-                    else if( ge.binding < 512 ) {
-                        auto idx = ge.binding - 256;
-                        if( idx >= fcn_params.m_types.size() ) {
-                            BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << fcn_params.m_types.size());
-                        }
-                        return context.get_type(fcn_params.m_types[idx]);
-                    }
-                    else if( ge.binding < 256*3 ) {
-                        auto idx = ge.binding - 256*2;
-                        TODO(sp, "Placeholder generics - " << idx);
-                    }
-                    else {
-                        BUG(sp, "Generic bounding out of total range - " << ge.binding);
-                    }
-                };
+            // NOTE: This case is kinda long, so it's refactored out into a helper
+            visit_call_populate_cache_UfcsInherent(context, sp, path, cache, fcn_ptr);
             )
         )
 
         assert( fcn_ptr );
         cache.m_fcn = fcn_ptr;
         const auto& fcn = *fcn_ptr;
-        
+        const auto& monomorph_cb = cache.m_monomorph_cb;
+
         // --- Monomorphise the argument/return types (into current context)
         for(const auto& arg : fcn.m_args) {
             DEBUG("Arg " << arg.first << ": " << arg.second);
             if( monomorphise_type_needed(arg.second) ) {
-                cache.m_arg_types.push_back( /*this->context.expand_associated_types(sp, */monomorphise_type_with(sp, arg.second,  monomorph_cb, false)/*)*/ );
+                cache.m_arg_types.push_back( monomorphise_type_with(sp, arg.second,  monomorph_cb, false) );
             }
             else {
                 cache.m_arg_types.push_back( arg.second.clone() );
@@ -357,15 +253,13 @@ namespace {
         }
         DEBUG("Ret " << fcn.m_return);
         if( monomorphise_type_needed(fcn.m_return) ) {
-            cache.m_arg_types.push_back( /*this->context.expand_associated_types(sp, */monomorphise_type_with(sp, fcn.m_return,  monomorph_cb, false)/*)*/ );
+            cache.m_arg_types.push_back( monomorphise_type_with(sp, fcn.m_return,  monomorph_cb, false) );
         }
         else {
             cache.m_arg_types.push_back( fcn.m_return.clone() );
         }
         
-        cache.m_monomorph_cb = mv$(monomorph_cb);
-        
-        // TODO: Bounds (encoded as associated)
+        // --- Apply bounds by adding them to the associated type ruleset
         for(const auto& bound : cache.m_fcn_params->m_bounds)
         {
             TU_MATCH(::HIR::GenericBound, (bound), (be),
@@ -401,6 +295,125 @@ namespace {
                 )
             )
         }
+    }
+    void visit_call_populate_cache_UfcsInherent(Context& context, const Span& sp, ::HIR::Path& path, ::HIR::ExprCallCache& cache, const ::HIR::Function*& fcn_ptr)
+    {
+        auto& e = path.m_data.as_UfcsInherent();
+        
+        const ::HIR::TypeImpl* impl_ptr = nullptr;
+        // Detect multiple applicable methods and get the caller to try again later if there are multiple
+        unsigned int count = 0;
+        context.m_crate.find_type_impls(*e.type, context.m_ivars.callback_resolve_infer(),
+            [&](const auto& impl) {
+                DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+                auto it = impl.m_methods.find(e.item);
+                if( it == impl.m_methods.end() )
+                    return false;
+                fcn_ptr = &it->second.data;
+                impl_ptr = &impl;
+                count ++;
+                return false;
+            });
+        if( !fcn_ptr ) {
+            ERROR(sp, E0000, "Failed to locate function " << path);
+        }
+        if( count > 1 ) {
+            // TODO: Return a status to the caller so it can try in a later pass
+            TODO(sp, "Multiple associated functions for " << path);
+        }
+        assert(impl_ptr);
+        DEBUG("Found impl" << impl_ptr->m_params.fmt_args() << " " << impl_ptr->m_type);
+        fix_param_count(sp, context, path, fcn_ptr->m_params,  e.params);
+        cache.m_fcn_params = &fcn_ptr->m_params;
+        
+        
+        // If the impl block has parameters, figure out what types they map to
+        // - The function params are already mapped (from fix_param_count)
+        auto& impl_params = cache.m_ty_impl_params;
+        if( impl_ptr->m_params.m_types.size() > 0 )
+        {
+            // Default-construct entires in the `impl_params` array
+            impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
+            
+            auto cmp = impl_ptr->m_type.match_test_generics_fuzz(sp, *e.type, context.m_ivars.callback_resolve_infer(), [&](auto idx, const auto& ty) {
+                assert( idx < impl_params.m_types.size() );
+                impl_params.m_types[idx] = ty.clone();
+                return ::HIR::Compare::Equal;
+                });
+            if( cmp == ::HIR::Compare::Fuzzy )
+            {
+                // If the match was fuzzy, it could be due to a compound being matched against an ivar
+                DEBUG("- Fuzzy match, adding ivars and equating");
+                bool ivar_replaced = false;
+                for(auto& ty : impl_params.m_types) {
+                    if( ty == ::HIR::TypeRef() ) {
+                        // Allocate a new ivar for the param
+                        ivar_replaced = true;
+                        ty = context.m_ivars.new_ivar_tr();
+                    }
+                }
+                
+                // If there were any params that weren't bound by `match_test_generics_fuzz`
+                if( ivar_replaced )
+                {
+                    // Then monomorphise the impl type with the new ivars, and equate to *e.type
+                    auto impl_monomorph_cb = [&](const auto& gt)->const auto& {
+                        const auto& ge = gt.m_data.as_Generic();
+                        if( ge.binding == 0xFFFF ) {
+                            return context.get_type(*e.type);
+                        }
+                        else if( ge.binding < 256 ) {
+                            auto idx = ge.binding;
+                            if( idx >= impl_params.m_types.size() ) {
+                                BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << impl_params.m_types.size());
+                            }
+                            return context.get_type(impl_params.m_types[idx]);
+                        }
+                        else {
+                            BUG(sp, "Generic bounding out of total range - " << ge.binding);
+                        }
+                        };
+                    auto impl_ty_mono = monomorphise_type_with(sp, impl_ptr->m_type, impl_monomorph_cb, false);
+                    DEBUG("- impl_ty_mono = " << impl_ty_mono);
+                    
+                    context.equate_types(sp, impl_ty_mono, *e.type);
+                }
+            }
+            // - Check that all entries were populated by the above function
+            for(const auto& ty : impl_params.m_types) {
+                assert( ty != ::HIR::TypeRef() );
+            }
+        }
+        
+        // Create monomorphise callback
+        const auto& fcn_params = e.params;
+        cache.m_monomorph_cb = [&](const auto& gt)->const auto& {
+                const auto& ge = gt.m_data.as_Generic();
+                if( ge.binding == 0xFFFF ) {
+                    return context.get_type(*e.type);
+                }
+                else if( ge.binding < 256 ) {
+                    auto idx = ge.binding;
+                    if( idx >= impl_params.m_types.size() ) {
+                        BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << impl_params.m_types.size());
+                    }
+                    return context.get_type(impl_params.m_types[idx]);
+                }
+                else if( ge.binding < 512 ) {
+                    auto idx = ge.binding - 256;
+                    if( idx >= fcn_params.m_types.size() ) {
+                        BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << fcn_params.m_types.size());
+                    }
+                    return context.get_type(fcn_params.m_types[idx]);
+                }
+                else if( ge.binding < 256*3 ) {
+                    auto idx = ge.binding - 256*2;
+                    TODO(sp, "Placeholder generics - " << idx);
+                }
+                else {
+                    BUG(sp, "Generic bounding out of total range - " << ge.binding);
+                }
+            };
     }
     
     // -----------------------------------------------------------------------
