@@ -3479,8 +3479,7 @@ namespace {
                 }
                 return cmp == ::HIR::Compare::Equal;
                 });
-            // TODO: If there was one fuzzy impl, emit an _Unsize and a trait bound.
-            // - Would this break if there's multiple coercion points in a flow (as there is no `T: Unsize<T>` to satisfy the case where the coercion wouldn't apply)
+            // - Concretely found - emit the _Unsize op and remove this rule
             if( found )
             {
                 DEBUG("- CoerceUnsize " << &*node_ptr << " -> " << ty_dst);
@@ -3492,72 +3491,11 @@ namespace {
             if( fuzzy_match )
             {
                 DEBUG("- best_impl = " << best_impl);
-                // TODO: Convert to a bound and emit an _Unsize (which may end up being a no-op)
-                
-                #if 1
-                
+                // Fuzzy match - Insert a CoerceUnsized bound and emit the _Unsize op
+                // - This could end up being a no-op _Unsize, and there's special logic in check_associated to handle `T: CoerceUnsized<T>` and `T: Unsize<T>`
                 context.equate_types_assoc(sp, ::HIR::TypeRef(), lang_CoerceUnsized, ::make_vec1(ty_dst.clone()), ty_src, "");
                 node_ptr = NEWNODE( ty_dst.clone(), sp, _Unsize,  mv$(node_ptr), ty_dst.clone() );
                 return true;
-                
-                #else
-                
-                const auto& span = sp;  // new name, because `sp` becomes "source path"
-                // Apply ivar possibilities between the parameters in `ty_src` and `ty_dst`
-                // - Ideally, this equivalence would be done using the parameter known to be the pointer target
-                // TODO: Expand this to perform Unsize impl equating (same as `check_coerce_borrow`)?
-                if( ty_dst.m_data.is_Path() && ty_src.m_data.is_Path() )
-                {
-                    const auto& dp = ty_dst.m_data.as_Path().path;
-                    const auto& sp = ty_src.m_data.as_Path().path;
-                    if( dp.m_data.is_Generic() && sp.m_data.is_Generic() )
-                    {
-                        const auto& dpe = dp.m_data.as_Generic();
-                        const auto& spe = sp.m_data.as_Generic();
-                        if( dpe.m_path == spe.m_path && dpe.m_params.m_types.size() > 0 )
-                        {
-                            ASSERT_BUG(node_ptr->span(), dpe.m_params.m_types.size() == spe.m_params.m_types.size(),
-                                "Mismatch in type param count - `" << dpe.m_params << "` and `" << spe.m_params << "`");
-                            for(unsigned int i = 0; i < dpe.m_params.m_types.size(); i ++)
-                            {
-                                const auto& dt2 = context.get_type(dpe.m_params.m_types[i]);
-                                const auto& st2 = context.get_type(spe.m_params.m_types[i]);
-                                
-                                // Ideally, this would share code with other sections
-                                TU_IFLET( ::HIR::TypeRef::Data, st2.m_data, Infer, se,
-                                    // TODO: Update for InferClass::Diverge ?
-                                    if( se.ty_class != ::HIR::InferClass::None ) {
-                                        context.equate_types(span, dt2,  st2);
-                                    }
-                                    else {
-                                        TU_IFLET(::HIR::TypeRef::Data, dt2.m_data, Infer, de,
-                                            context.possible_equate_type_to(se.index, dt2);
-                                            context.possible_equate_type_from(de.index, st2);
-                                        )
-                                        else {
-                                            context.possible_equate_type_to(se.index, dt2);
-                                        }
-                                    }
-                                )
-                                else TU_IFLET(::HIR::TypeRef::Data, dt2.m_data, Infer, de,
-                                    // TODO: Update for InferClass::Diverge ?
-                                    if( de.ty_class != ::HIR::InferClass::None ) {
-                                        context.equate_types(span, dt2,  st2);
-                                    }
-                                    else {
-                                        context.possible_equate_type_from(de.index, st2);
-                                    }
-                                )
-                                else {
-                                    // No equivalence added
-                                }
-                            }
-                        }
-                    }
-                }
-                DEBUG("- CoerceUnsize possible, trying later");
-                return false;
-                #endif
             }
         }
         
@@ -3747,12 +3685,13 @@ namespace {
             ),
         (Pointer,
             // Pointers coerce from borrows and similar pointers
-            TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Borrow, r_e,
-                if( r_e.type != l_e.type ) {
-                    ERROR(sp, E0000, "Type mismatch between " << ty_dst << " and " << ty_src << " - Mutability differs");
+            TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Borrow, s_e,
+                // TODO: Borrows can coerce to pointers while reducing in strength
+                if( s_e.type != l_e.type ) {
+                    ERROR(sp, E0000, "Type mismatch between " << ty_dst << " and " << ty_src << " - Mutability not compatible");
                 }
                 // TODO: This can unsize as well as convert?
-                context.equate_types(sp, *l_e.inner, *r_e.inner);
+                context.equate_types(sp, *l_e.inner, *s_e.inner);
                 // Add downcast
                 auto span = node_ptr->span();
                 node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), ty_dst.clone() ));
