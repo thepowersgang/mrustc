@@ -31,6 +31,7 @@ int g_debug_indent_level = 0;
 
 void init_debug_list()
 {
+    // TODO: Mutate this map using an environment variable
     g_debug_disable_map.insert( "Parse" );
     g_debug_disable_map.insert( "LoadCrates" );
     g_debug_disable_map.insert( "Expand" );
@@ -61,6 +62,25 @@ void init_debug_list()
     g_debug_disable_map.insert( "Dump MIR" );
     
     g_debug_disable_map.insert( "HIR Serialise" );
+    
+    const char* debug_string = ::std::getenv("MRUSTC_DEBUG");
+    if( debug_string )
+    {
+        while( debug_string[0] )
+        {
+            const char* end = strchr(debug_string, ':');
+            
+            if( end ) {
+                ::std::string   s { debug_string, end };
+                g_debug_disable_map.erase( s );
+                debug_string = end + 1;
+            }
+            else {
+                g_debug_disable_map.erase( debug_string );
+                break;
+            }
+        }
+    }
 }
 bool debug_enabled()
 {
