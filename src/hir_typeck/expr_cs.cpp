@@ -1195,14 +1195,43 @@ namespace {
                 this->context.add_ivars( val->m_res_type );
             }
             
-            if( can_coerce_inner_result() ) {
+            if( can_coerce_inner_result() )
+            {
+                const auto& ty = this->context.get_type(node.m_res_type);
+                TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Tuple, e,
+                    if( e.size() != node.m_vals.size() ) {
+                        ERROR(node.span(), E0000, "Tuple literal node count mismatches with return type");
+                    }
+                )
+                else if( ty.m_data.is_Infer() ) {
+                    ::std::vector< ::HIR::TypeRef>  tuple_tys;
+                    for(const auto& val : node.m_vals ) {
+                        (void)val;
+                        tuple_tys.push_back( this->context.m_ivars.new_ivar_tr() );
+                    }
+                    this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef(mv$(tuple_tys)));
+                }
+                else {
+                    // mismatch
+                    ERROR(node.span(), E0000, "Tuple literal used where a non-tuple expected - " << ty);
+                }
+                const auto& inner_tys = this->context.get_type(node.m_res_type).m_data.as_Tuple();
+                assert( inner_tys.size() == node.m_vals.size() );
+                
+                for(unsigned int i = 0; i < inner_tys.size(); i ++)
+                {
+                    this->context.equate_types_coerce(node.span(), inner_tys[i], node.m_vals[i]);
+                }
             }
-            ::std::vector< ::HIR::TypeRef>  tuple_tys;
-            for(const auto& val : node.m_vals ) {
-                // Can these coerce? Assuming not
-                tuple_tys.push_back( val->m_res_type.clone() );
+            else
+            {
+                // No inner coerce, just equate the return type.
+                ::std::vector< ::HIR::TypeRef>  tuple_tys;
+                for(const auto& val : node.m_vals ) {
+                    tuple_tys.push_back( val->m_res_type.clone() );
+                }
+                this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef(mv$(tuple_tys)));
             }
-            this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef(mv$(tuple_tys)));
             
             for( auto& val : node.m_vals ) {
                 val->visit( *this );
@@ -3060,6 +3089,11 @@ void Context::equate_types_shadow(const Span& sp, const ::HIR::TypeRef& l)
 {
     TU_MATCH_DEF(::HIR::TypeRef::Data, (this->get_type(l).m_data), (e),
     (
+        // TODO: Shadow sub-types too
+        ),
+    (Tuple,
+        for(const auto& sty : e)
+            this->equate_types_shadow(sp, sty);
         ),
     (Borrow,
         TU_MATCH_DEF(::HIR::TypeRef::Data, (this->get_type(*e.inner).m_data), (e2),
