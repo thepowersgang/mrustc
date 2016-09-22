@@ -159,6 +159,50 @@ static void fix_param_count(const Span& sp, Context& context, const ::HIR::Gener
 
 namespace {
     
+    void apply_bounds_as_rules(Context& context, const Span& sp, const ::HIR::GenericParams& params_def, t_cb_generic monomorph_cb)
+    {
+        for(const auto& bound : params_def.m_bounds)
+        {
+            TU_MATCH(::HIR::GenericBound, (bound), (be),
+            (Lifetime,
+                ),
+            (TypeLifetime,
+                ),
+            (TraitBound,
+                auto real_type = monomorphise_type_with(sp, be.type, monomorph_cb);
+                auto real_trait = monomorphise_genericpath_with(sp, be.trait.m_path, monomorph_cb, false);
+                DEBUG("Bound " << be.type << ":  " << be.trait);
+                DEBUG("= (" << real_type << ": " << real_trait << ")");
+                const auto& trait_params = real_trait.m_params;
+                
+                const auto& trait_path = be.trait.m_path.m_path;
+                // If there's no type bounds, emit a trait bound
+                // - Otherwise, the assocated type bounds will serve the same purpose
+                if( be.trait.m_type_bounds.size() == 0 )
+                {
+                    context.add_trait_bound(sp, real_type, trait_path, trait_params.clone());
+                }
+                
+                for( const auto& assoc : be.trait.m_type_bounds ) {
+                    ::HIR::GenericPath  type_trait_path;
+                    ASSERT_BUG(sp, be.trait.m_trait_ptr, "Trait pointer not set in " << be.trait.m_path);
+                    // TODO: Store the source trait for this bound in the the bound list?
+                    context.m_resolve.trait_contains_type(sp, real_trait, *be.trait.m_trait_ptr, assoc.first,  type_trait_path);
+                    
+                    auto other_ty = monomorphise_type_with(sp, assoc.second, monomorph_cb, true);
+                    
+                    context.equate_types_assoc(sp, other_ty,  type_trait_path.m_path, mv$(type_trait_path.m_params.m_types), real_type, assoc.first.c_str());
+                }
+                ),
+            (TypeEquality,
+                auto real_type_left = context.m_resolve.expand_associated_types(sp, monomorphise_type_with(sp, be.type, monomorph_cb));
+                auto real_type_right = context.m_resolve.expand_associated_types(sp, monomorphise_type_with(sp, be.other_type, monomorph_cb));
+                context.equate_types(sp, real_type_left, real_type_right);
+                )
+            )
+        }
+    }
+    
     bool visit_call_populate_cache(Context& context, const Span& sp, ::HIR::Path& path, ::HIR::ExprCallCache& cache) __attribute__((warn_unused_result));
     bool visit_call_populate_cache_UfcsInherent(Context& context, const Span& sp, ::HIR::Path& path, ::HIR::ExprCallCache& cache, const ::HIR::Function*& fcn_ptr);
     
@@ -277,46 +321,7 @@ namespace {
         }
         
         // --- Apply bounds by adding them to the associated type ruleset
-        for(const auto& bound : cache.m_fcn_params->m_bounds)
-        {
-            TU_MATCH(::HIR::GenericBound, (bound), (be),
-            (Lifetime,
-                ),
-            (TypeLifetime,
-                ),
-            (TraitBound,
-                auto real_type = monomorphise_type_with(sp, be.type, cache.m_monomorph_cb);
-                auto real_trait = monomorphise_genericpath_with(sp, be.trait.m_path, cache.m_monomorph_cb, false);
-                DEBUG("Bound " << be.type << ":  " << be.trait);
-                DEBUG("= (" << real_type << ": " << real_trait << ")");
-                const auto& trait_params = real_trait.m_params;
-                
-                const auto& trait_path = be.trait.m_path.m_path;
-                // If there's no type bounds, emit a trait bound
-                // - Otherwise, the assocated type bounds will serve the same purpose
-                if( be.trait.m_type_bounds.size() == 0 )
-                {
-                    context.add_trait_bound(sp, real_type, trait_path, trait_params.clone());
-                }
-                
-                for( const auto& assoc : be.trait.m_type_bounds ) {
-                    ::HIR::GenericPath  type_trait_path;
-                    ASSERT_BUG(sp, be.trait.m_trait_ptr, "Trait pointer not set in " << be.trait.m_path);
-                    // TODO: Store the source trait for this bound in the the bound list?
-                    context.m_resolve.trait_contains_type(sp, real_trait, *be.trait.m_trait_ptr, assoc.first,  type_trait_path);
-                    
-                    auto other_ty = monomorphise_type_with(sp, assoc.second, cache.m_monomorph_cb, true);
-                    
-                    context.equate_types_assoc(sp, other_ty,  type_trait_path.m_path, mv$(type_trait_path.m_params.m_types), real_type, assoc.first.c_str());
-                }
-                ),
-            (TypeEquality,
-                auto real_type_left = context.m_resolve.expand_associated_types(sp, monomorphise_type_with(sp, be.type, cache.m_monomorph_cb));
-                auto real_type_right = context.m_resolve.expand_associated_types(sp, monomorphise_type_with(sp, be.other_type, cache.m_monomorph_cb));
-                context.equate_types(sp, real_type_left, real_type_right);
-                )
-            )
-        }
+        apply_bounds_as_rules(context, sp, *cache.m_fcn_params, cache.m_monomorph_cb);
         
         return true;
     }
@@ -995,6 +1000,7 @@ namespace {
             }
             
             const ::HIR::t_struct_fields* fields_ptr = nullptr;
+            const ::HIR::GenericParams* generics;
             TU_MATCH(::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (e),
             (Unbound, ),
             (Opaque, ),
@@ -1004,9 +1010,11 @@ namespace {
                 auto it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&v)->auto{ return v.first == var_name; });
                 assert(it != enm.m_variants.end());
                 fields_ptr = &it->second.as_Struct();
+                generics = &enm.m_params;
                 ),
             (Struct,
                 fields_ptr = &e->m_data.as_Named();
+                generics = &e->m_params;
                 )
             )
             assert(fields_ptr);
@@ -1053,6 +1061,9 @@ namespace {
                 }
                 this->equate_types_inner_coerce(node.span(), *des_ty,  val.second);
             }
+            
+            // Convert bounds on the type into rules
+            apply_bounds_as_rules(context, node.span(), *generics, monomorph_cb);
             
             auto _ = this->push_inner_coerce_scoped(true);
             for( auto& val : node.m_values ) {
@@ -2448,7 +2459,7 @@ void Context::dump() const {
         DEBUG(v);
     }
     for(const auto& v : to_visit) {
-        DEBUG(&*v << " " << typeid(*v).name());
+        DEBUG(&*v << " " << typeid(*v).name() << " -> " << this->m_ivars.fmt_type(v->m_res_type));
     }
     DEBUG("---");
 }
