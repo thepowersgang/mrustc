@@ -1422,19 +1422,14 @@ namespace {
                 )
                 ),
             (UfcsInherent,
-                // TODO: If ivars are valid within the type of this UFCS, then resolution has to be deferred until iteration
-                // - If they're not valid, then resolution can be done here.
-                ASSERT_BUG(sp, !this->context.m_ivars.type_contains_ivars(*e.type), "Found ivar in UfcsInherent");
+                // TODO: Share code with visit_call_populate_cache
                 
                 // - Locate function (and impl block)
                 const ::HIR::Function* fcn_ptr = nullptr;
                 const ::HIR::TypeImpl* impl_ptr = nullptr;
-                this->context.m_crate.find_type_impls(*e.type, [&](const auto& ty)->const auto& {
-                        if( ty.m_data.is_Infer() )
-                            return this->context.get_type(ty);
-                        else
-                            return ty;
-                    },
+                // TODO: Support mutiple matches here (if there's a fuzzy match) and retry if so
+                unsigned int count = 0;
+                this->context.m_crate.find_type_impls(*e.type, context.m_ivars.callback_resolve_infer(),
                     [&](const auto& impl) {
                         DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                         auto it = impl.m_methods.find(e.item);
@@ -1442,10 +1437,15 @@ namespace {
                             return false;
                         fcn_ptr = &it->second.data;
                         impl_ptr = &impl;
-                        return true;
+                        count += 1;
+                        return false;
+                        //return true;
                     });
                 if( !fcn_ptr ) {
                     ERROR(sp, E0000, "Failed to locate function " << node.m_path);
+                }
+                if( count > 1 ) {
+                    TODO(sp, "Revisit _PathValue when UfcsInherent has multiple options - " << node.m_path);
                 }
                 assert(impl_ptr);
                 fix_param_count(sp, this->context, node.m_path, fcn_ptr->m_params,  e.params);
@@ -1489,6 +1489,8 @@ namespace {
                             BUG(sp, "Generic bounding out of total range");
                         }
                     };
+                
+                // TODO: Impl/method type bounds
                 
                 ::HIR::FunctionType ft {
                     fcn_ptr->m_unsafe, fcn_ptr->m_abi,
