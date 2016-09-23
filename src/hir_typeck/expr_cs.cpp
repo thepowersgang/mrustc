@@ -4068,6 +4068,8 @@ namespace {
         
         if( ivar_ent.types_to.size() == 0 && ivar_ent.types_from.size() == 0 ) {
             // No idea! (or unused)
+            // - Clear the `force_no` flag
+            ivar_ent.force_no = false;
             return ;
         }
         
