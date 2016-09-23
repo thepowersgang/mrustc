@@ -4042,7 +4042,10 @@ namespace {
                         DEBUG("- " << b_ty_mono << " : " << b_tp_mono);
                         if( b_tp_mono.m_type_bounds.size() > 0 )
                         {
-                            TODO(sp, "Insert associated type bounds from " << b_ty_mono << " : " << b_tp_mono);
+                            for(const auto& aty_bound : b_tp_mono.m_type_bounds)
+                            {
+                                context.equate_types_assoc(sp, aty_bound.second,  b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params.clone(), b_ty_mono, aty_bound.first.c_str(), false);
+                            }
                         }
                         else
                         {
