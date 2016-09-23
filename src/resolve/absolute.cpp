@@ -659,6 +659,7 @@ namespace {
     
     void Resolve_Absolute_Path_BindAbsolute__hir_from_import(Context& context, const Span& sp, bool is_value, AST::Path& path, const ::HIR::SimplePath& p)
     {
+        TRACE_FUNCTION_FR("path="<<path<<", p="<<p, path);
         const auto& ext_crate = context.m_crate.m_extern_crates.at(p.m_crate_name);
         const ::HIR::Module* hmod = &ext_crate.m_hir->m_root_module;
         for(unsigned int i = 0; i < p.m_components.size() - 1; i ++)
@@ -720,6 +721,7 @@ namespace {
         rv.nodes().reserve( p.m_components.size() );
         for(const auto& c : p.m_components)
             rv.nodes().push_back( AST::PathNode(c) );
+        rv.nodes().back().args() = mv$( path.nodes().back().args() );
         rv.bind( mv$(pb) );
         path = mv$(rv);
     }
