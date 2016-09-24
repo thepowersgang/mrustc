@@ -1144,6 +1144,9 @@ namespace {
             for( auto& val : node.m_args ) {
                 this->context.add_ivars( val->m_res_type );
             }
+            for( auto& ty : node.m_params.m_types ) {
+                this->context.add_ivars( ty );
+            }
             
             // - Search in-scope trait list for traits that provide a method of this name
             const ::std::string& method_name = node.m_method;
