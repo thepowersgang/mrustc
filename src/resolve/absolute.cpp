@@ -538,7 +538,7 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
         auto inner_path = mv$(path);
         inner_path.m_class.as_UFCS().nodes.push_back( mv$(nodes.front()) );
         nodes.erase( nodes.begin() );
-        path = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(span, mv$(inner_path)), mv$(nodes) );
+        path = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(span, mv$(inner_path)), ::AST::Path(), mv$(nodes) );
     }
     
     const auto& ufcs = path.m_class.as_UFCS();
