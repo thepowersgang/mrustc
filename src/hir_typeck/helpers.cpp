@@ -2350,6 +2350,7 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
     else if( ty.m_data.is_Path() && ty.m_data.as_Path().path.m_data.is_UfcsKnown() )
     {
         const auto& e = ty.m_data.as_Path().path.m_data.as_UfcsKnown();
+        DEBUG("UfcsKnown - Search associated type bounds in trait - " << e.trait);
         // UFCS known - Assuming that it's reached the maximum resolvable level (i.e. a type within is generic), search for trait bounds on the type
         const auto& trait = this->m_crate.get_trait_by_path(sp, e.trait.m_path);
         const auto& assoc_ty = trait.m_types.at( e.item );
@@ -2361,6 +2362,11 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
             if( !this->trait_contains_method(sp, bound.m_path, *bound.m_trait_ptr, method_name, allow_move,  final_trait_path) )
                 continue ;
             DEBUG("- Found trait " << final_trait_path);
+            
+            if( monomorphise_pathparams_needed(final_trait_path.m_params) ) {
+                // `Self` = ty
+                TODO(sp, "Monomorphise trait path " << final_trait_path << " into correct scope");
+            }
             
             // Found the method, return the UFCS path for it
             fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({

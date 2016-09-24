@@ -3528,7 +3528,6 @@ namespace {
             }
         }
         
-        DEBUG("TODO - Borrow Coercion " << context.m_ivars.fmt_type(ty_dst) << " from " << context.m_ivars.fmt_type(ty_src));
         if( ty_dst.compare_with_placeholders(sp, ty_src, context.m_ivars.callback_resolve_infer()) != ::HIR::Compare::Unequal )
         {
             context.equate_types(sp, ty_dst,  ty_src);
@@ -3536,9 +3535,11 @@ namespace {
         }
         
         // Keep trying
+        // TODO: If both types are fully known, then error.
         return false;
     }
-    bool check_coerce(Context& context, const Context::Coercion& v) {
+    bool check_coerce(Context& context, const Context::Coercion& v)
+    {
         ::HIR::ExprNodeP& node_ptr = *v.right_node_ptr;
         const auto& sp = node_ptr->span();
         const auto& ty_dst = context.m_ivars.get_type(v.left_ty);
@@ -3546,6 +3547,7 @@ namespace {
         TRACE_FUNCTION_F(v << " - " << ty_dst << " := " << ty_src);
         
         if( context.m_ivars.types_equal(ty_dst, ty_src) ) {
+            DEBUG("Equal");
             return true;
         }
         
