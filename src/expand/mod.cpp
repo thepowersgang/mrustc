@@ -637,7 +637,7 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
     for( const auto& mi: mod.macro_imports_res() )
         DEBUG("- Imports '" << mi.name << "'");
     
-    if( mod.m_insert_prelude && crate.m_prelude_path != AST::Path() ) {
+    if( is_early && mod.m_insert_prelude && crate.m_prelude_path != AST::Path() ) {
         mod.add_alias(false, ::AST::UseStmt(Span(), crate.m_prelude_path), "", {});
     }
     
