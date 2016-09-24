@@ -35,5 +35,6 @@ Medium-Term Goals
 
 Progress
 ===
-- Compiles: `libcore` and `liballoc` through to emitting serialised HIR+MIR
+- Compiles the following standard library crates through to emitting serialised HIR+MIR
+ - `libcore`, `liballoc`, `librustc_unicode`, and `libcollections`
 
