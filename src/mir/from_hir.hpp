@@ -167,6 +167,7 @@ public:
     void terminate_scope(const Span& sp, ScopeHandle );
     void terminate_scope_early(const Span& sp, const ScopeHandle& );
     void end_split_arm(const Span& sp, const ScopeHandle& , bool reachable);
+    void end_split_arm_early(const Span& sp);
     
     const ScopeHandle& fcn_scope() const {
         return m_fcn_scope;

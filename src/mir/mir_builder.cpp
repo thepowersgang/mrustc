@@ -480,6 +480,25 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
     // TODO: Undo moves from within the other scope
     sd_split.arms.push_back( {} );
 }
+void MirBuilder::end_split_arm_early(const Span& sp)
+{
+    // Terminate all scopes until a split is found.
+    while( ! m_scope_stack.empty() && ! m_scopes.at( m_scope_stack.back() ).data.is_Split() )
+    {
+        auto& scope_def = m_scopes[m_scope_stack.back()];
+        // Fully drop the scope
+        drop_scope_values(scope_def);
+        m_scope_stack.pop_back();
+        complete_scope(scope_def);
+    }
+    
+    if( !m_scope_stack.empty() )
+    {
+        auto& sd = m_scopes[ m_scope_stack.back() ];
+        auto& sd_split = sd.data.as_Split();
+        sd_split.arms.back().has_early_terminated = true;
+    }
+}
 void MirBuilder::complete_scope(ScopeDef& sd)
 {
     sd.complete = true;

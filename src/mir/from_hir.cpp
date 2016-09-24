@@ -378,7 +378,10 @@ namespace {
             
             if( node.m_arms.size() == 0 ) {
                 // Nothing
-                TODO(node.span(), "Handle zero-arm match - can only match over ! or similar");
+                //const auto& ty = node.m_value->m_res_type;
+                // TODO: Ensure that the type is a zero-variant enum or !
+                m_builder.end_split_arm_early(node.span());
+                m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
             }
             else if( node.m_arms.size() == 1 && node.m_arms[0].m_patterns.size() == 1 && ! node.m_arms[0].m_cond ) {
                 // - Shortcut: Single-arm match
