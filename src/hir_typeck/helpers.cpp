@@ -1826,15 +1826,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                 for(const auto& bound : at.m_trait_bounds) {
                     if( bound.m_path.m_path == trait )
                     {
-                        DEBUG("- Found an associated type bound for this trait via another bound");
-                        auto ord = this->compare_pp(sp, bound.m_path.m_params, params);
-                        if( ord == ::HIR::Compare::Unequal )
-                            return false;
-                        if( ord == ::HIR::Compare::Fuzzy ) {
-                            DEBUG("Fuzzy match");
-                        }
-                        
-                        auto tp_mono = monomorphise_traitpath_with(sp, bound, [&](const auto& gt)->const auto& {
+                        auto monomorph_cb = [&](const auto& gt)->const auto& {
                             const auto& ge = gt.m_data.as_Generic();
                             if( ge.binding == 0xFFFF ) {
                                 return *assoc_info->type;
@@ -1844,7 +1836,25 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                                     BUG(sp, "find_trait_impls_bound - Generic #" << ge.binding << " " << ge.name << " out of range");
                                 return assoc_info->trait.m_params.m_types[ge.binding];
                             }
-                            }, false);
+                            };
+                        
+                        DEBUG("- Found an associated type bound for this trait via another bound");
+                        ::HIR::Compare  ord;
+                        if( monomorphise_pathparams_needed(bound.m_path.m_params) ) {
+                            // TODO: Use a compare+callback method instead
+                            auto b_params_mono = monomorphise_path_params_with(sp, bound.m_path.m_params, monomorph_cb, false);
+                            ord = this->compare_pp(sp, b_params_mono, params);
+                        }
+                        else {
+                            ord = this->compare_pp(sp, bound.m_path.m_params, params);
+                        }
+                        if( ord == ::HIR::Compare::Unequal )
+                            return false;
+                        if( ord == ::HIR::Compare::Fuzzy ) {
+                            DEBUG("Fuzzy match");
+                        }
+                        
+                        auto tp_mono = monomorphise_traitpath_with(sp, bound, monomorph_cb, false);
                         // - Expand associated types
                         for(auto& ty : tp_mono.m_type_bounds) {
                             ty.second = this->expand_associated_types(sp, mv$(ty.second));
@@ -2364,8 +2374,24 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
             DEBUG("- Found trait " << final_trait_path);
             
             if( monomorphise_pathparams_needed(final_trait_path.m_params) ) {
-                // `Self` = ty
-                TODO(sp, "Monomorphise trait path " << final_trait_path << " into correct scope");
+                // `Self` = `*e.type`
+                // `/*I:#*/` := `e.trait.m_params`
+                auto monomorph_cb = [&](const auto& gt)->const auto& {
+                    const auto& ge = gt.m_data.as_Generic();
+                    if( ge.binding == 0xFFFF ) {
+                        return *e.type;
+                    }
+                    else if( ge.binding >> 8 == 0 ) {
+                        auto idx = ge.binding & 0xFF;
+                        ASSERT_BUG(sp, idx < e.trait.m_params.m_types.size(), "Type parameter out of range - " << gt);
+                        return e.trait.m_params.m_types[idx];
+                    }
+                    else {
+                        BUG(sp, "Unexpected type parameter - " << ty);
+                    }
+                    };
+                final_trait_path.m_params = monomorphise_path_params_with(sp, final_trait_path.m_params, monomorph_cb, false);
+                DEBUG("- Monomorph to " << final_trait_path);
             }
             
             // Found the method, return the UFCS path for it
