@@ -3132,6 +3132,11 @@ void Context::equate_types_shadow(const Span& sp, const ::HIR::TypeRef& l)
             )
         )
         ),
+    (Closure,
+        for(const auto& aty : e.m_arg_types)
+            this->equate_types_shadow(sp, aty);
+        this->equate_types_shadow(sp, *e.m_rettype);
+        ),
     (Infer,
         this->possible_equate_type_disable(e.index);
         )
