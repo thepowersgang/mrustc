@@ -60,8 +60,13 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
 /// Helper to construct rules from a passed pattern
 struct PatternRulesetBuilder
 {
+    const StaticTraitResolve&   m_resolve;
     ::std::vector<PatternRule>  m_rules;
     PatternRule::field_path_t   m_field_path;
+    
+    PatternRulesetBuilder(const StaticTraitResolve& resolve):
+        m_resolve(resolve)
+    {}
     
     void append_from(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty);
     void push_rule(PatternRule r);
@@ -109,7 +114,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         {
             
             // - Convert HIR pattern into ruleset
-            auto pat_builder = PatternRulesetBuilder {};
+            auto pat_builder = PatternRulesetBuilder { builder.resolve() };
             pat_builder.append_from(node.span(), pat, node.m_value->m_res_type);
             arm_rules.push_back( PatternRuleset { arm_idx, pat_idx, mv$(pat_builder.m_rules) } );
             
@@ -1045,7 +1050,11 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             )
             ),
         (Struct,
-            auto monomorph = [&](const auto& ty) { return monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty); };
+            auto monomorph = [&](const auto& ty) {
+                auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
+                this->m_resolve.expand_associated_types(sp, rv);
+                return rv;
+                };
             const auto& str_data = pbe->m_data;
             TU_MATCHA( (str_data), (sd),
             (Unit,
@@ -1061,15 +1070,24 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 )
                 ),
             (Tuple,
+                m_field_path.push_back(0);
                 TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
                 ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
                 (Any,
-                    TODO(sp, "Match over struct - Tuple + Any");
+                    // - Recurse into type and use the same pattern again
+                    for(const auto& fld : sd)
+                    {
+                        ::HIR::TypeRef  tmp;
+                        const auto& sty_mono = (monomorphise_type_needed(fld.ent) ? tmp = monomorph(fld.ent) : fld.ent);
+                        this->append_from(sp, pat, sty_mono);
+                        m_field_path.back() ++;
+                    }
                     ),
                 (StructTuple,
-                    TODO(sp, "Match over struct - Tuple + StructTuple");
+                    TODO(sp, "Match over struct - TypeRef::Tuple + Pattern::StructTuple");
                     )
                 )
+                m_field_path.pop_back();
                 ),
             (Named,
                 TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
@@ -1093,7 +1111,11 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             )
             ),
         (Enum,
-            auto monomorph = [&](const auto& ty) { return monomorphise_type(sp,  pbe->m_params, e.path.m_data.as_Generic().m_params,  ty); };
+            auto monomorph = [&](const auto& ty) {
+                auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
+                this->m_resolve.expand_associated_types(sp, rv);
+                return rv;
+                };
             TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
             ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
             (Any,
@@ -1106,7 +1128,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 const auto& var_def = pe.binding_ptr->m_variants.at(pe.binding_idx);
                 
                 const auto& fields_def = var_def.second.as_Tuple();
-                PatternRulesetBuilder   sub_builder;
+                PatternRulesetBuilder   sub_builder { this->m_resolve };
                 sub_builder.m_field_path = m_field_path;
                 sub_builder.m_field_path.push_back(0);
                 for( unsigned int i = 0; i < pe.sub_patterns.size(); i ++ )
@@ -1137,7 +1159,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                     tmp[idx] = i;
                 }
                 // 2. Iterate this list and recurse on the patterns
-                PatternRulesetBuilder   sub_builder;
+                PatternRulesetBuilder   sub_builder { this->m_resolve };
                 sub_builder.m_field_path = m_field_path;
                 sub_builder.m_field_path.push_back(0);
                 for( unsigned int i = 0; i < tmp.size(); i ++ )
