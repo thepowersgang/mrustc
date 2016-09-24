@@ -1163,9 +1163,14 @@ namespace {
                     continue ;
                 if( !it->second.is_Function() )
                     continue ;
-                possible_traits.push_back( trait_ref );
-                if( trait_ref.second->m_params.m_types.size() > max_num_params )
-                    max_num_params = trait_ref.second->m_params.m_types.size();
+                
+                if( ::std::count_if( possible_traits.begin(), possible_traits.end(), [&](const auto&x){return x.second == trait_ref.second;}) ) {
+                }
+                else {
+                    possible_traits.push_back( trait_ref );
+                    if( trait_ref.second->m_params.m_types.size() > max_num_params )
+                        max_num_params = trait_ref.second->m_params.m_types.size();
+                }
             }
             //  > Store the possible set of traits for later
             node.m_traits = mv$(possible_traits);
@@ -2142,8 +2147,26 @@ namespace {
                 this->context.equate_types(sp, node.m_res_type,  node.m_cache.m_arg_types.back());
                 
                 // Add derefs
-                if( deref_count > 0 )
+                if( deref_count >= ~3u )
                 {
+                    ::HIR::BorrowType   bt = ::HIR::BorrowType::Shared;
+                    switch(deref_count)
+                    {
+                    case ~1u:   bt = ::HIR::BorrowType::Shared; break;
+                    case ~2u:   bt = ::HIR::BorrowType::Unique; break;
+                    case ~3u:   bt = ::HIR::BorrowType::Owned ; break;
+                    default:
+                        BUG(sp, "Invalid deref return count - " << deref_count);
+                    }
+                    
+                    auto ty = ::HIR::TypeRef::new_borrow(bt, node.m_value->m_res_type.clone());
+                    DEBUG("- Ref " << &*node.m_value << " -> " << ty);
+                    auto span = node.m_value->span();
+                    node.m_value = NEWNODE(mv$(ty), span, _Borrow,  bt, mv$(node.m_value) );
+                }
+                else if( deref_count > 0 )
+                {
+                    assert( deref_count < (1<<16) );    // Just some sanity.
                     DEBUG("- Inserting " << deref_count << " dereferences");
                     // Get dereferencing!
                     auto& node_ptr = node.m_value;

@@ -2259,7 +2259,8 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
             return ~0u;
         }
         
-        if( this->find_method(sp, traits, ivars, ty, method_name,  unconditional_allow_move || (deref_count == 0), fcn_path) ) {
+        auto allowed_receivers = (unconditional_allow_move || (deref_count == 0) ? AllowedReceivers::All : AllowedReceivers::AnyBorrow);
+        if( this->find_method(sp, traits, ivars, ty, method_name,  allowed_receivers, fcn_path) ) {
             DEBUG("FOUND " << deref_count << ", fcn_path = " << fcn_path);
             return deref_count;
         }
@@ -2273,25 +2274,47 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
     TU_IFLET(::HIR::TypeRef::Data, top_ty_r.m_data, Borrow, e,
         const auto& ty = top_ty_r;
         
-        if( find_method(sp, traits, ivars, ty, method_name, true, fcn_path) ) {
+        if( find_method(sp, traits, ivars, ty, method_name, AllowedReceivers::All, fcn_path) ) {
             DEBUG("FOUND " << 0 << ", fcn_path = " << fcn_path);
             return 0;
         }
     )
     
-    // Dereference failed! This is a hard error (hitting _ is checked above and returns ~0)
+    // If there are ivars within the type, don't error (yet)
     if( this->m_ivars.type_contains_ivars(top_ty) )
     {
         return ~0u;
     }
-    else
-    {
-        this->m_ivars.dump();
-        ERROR(sp, E0000, "Could not find method `" << method_name << "` on type `" << top_ty << "`");
+    
+    // TODO: Insert a single reference and try again (only allowing by-value methods), returning a magic value (e.g. ~1u)
+    // - Required for calling `(self[..]: str).into_searcher(haystack)` - Which invokes `<&str as Pattern>::into_searcher(&self[..], haystack)`
+    // - Have to do several tries, each with different borrow classes.
+    auto borrow_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, top_ty.clone());
+    if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
+        DEBUG("FOUND &, fcn_path = " << fcn_path);
+        return ~1u;
     }
+    borrow_ty.m_data.as_Borrow().type = ::HIR::BorrowType::Unique;
+    if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
+        DEBUG("FOUND &mut, fcn_path = " << fcn_path);
+        return ~2u;
+    }
+    borrow_ty.m_data.as_Borrow().type = ::HIR::BorrowType::Owned;
+    if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
+        DEBUG("FOUND &mut, fcn_path = " << fcn_path);
+        return ~2u;
+    }
+    
+    // Dereference failed! This is a hard error (hitting _ is checked above and returns ~0)
+    this->m_ivars.dump();
+    ERROR(sp, E0000, "Could not find method `" << method_name << "` on type `" << top_ty << "`");
 }
 
-bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& ty, const ::std::string& method_name, bool allow_move,  /* Out -> */::HIR::Path& fcn_path) const
+bool TraitResolution::find_method(
+    const Span& sp,
+    const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars,
+    const ::HIR::TypeRef& ty, const ::std::string& method_name, AllowedReceivers ar,
+    /* Out -> */::HIR::Path& fcn_path) const
 {
     TRACE_FUNCTION_F("ty=" << ty << ", name=" << method_name);
     // 1. Search generic bounds for a match
@@ -2310,7 +2333,7 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
                 DEBUG("Bound `" << e.type << " : " << e.trait.m_path << "` - Matches " << ty);
                 ::HIR::GenericPath final_trait_path;
                 assert(e.trait.m_trait_ptr);
-                if( !this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, method_name, allow_move,  final_trait_path) )
+                if( !this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, method_name, ar != AllowedReceivers::AnyBorrow,  final_trait_path) )
                     continue ;
                 DEBUG("- Found trait " << final_trait_path);
                 
@@ -2342,7 +2365,7 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
                     break;
                 case ::HIR::Function::Receiver::Value:
                     // Only accept by-value methods if not dereferencing to them
-                    if( !allow_move ) 
+                    if( ar == AllowedReceivers::AnyBorrow ) 
                         break;
                 default:
                     fcn_path = ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown({
@@ -2372,7 +2395,7 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
         {
             ASSERT_BUG(sp, bound.m_trait_ptr, "Pointer to trait " << bound.m_path << " not set in " << e.trait.m_path);
             ::HIR::GenericPath final_trait_path;
-            if( !this->trait_contains_method(sp, bound.m_path, *bound.m_trait_ptr, method_name, allow_move,  final_trait_path) )
+            if( !this->trait_contains_method(sp, bound.m_path, *bound.m_trait_ptr, method_name, ar != AllowedReceivers::AnyBorrow,  final_trait_path) )
                 continue ;
             DEBUG("- Found trait " << final_trait_path);
             
@@ -2421,9 +2444,12 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
             case ::HIR::Function::Receiver::Free:
                 break;
             case ::HIR::Function::Receiver::Value:
-                if( !allow_move )
+                if( ar == AllowedReceivers::AnyBorrow )
                     break;
+                if( 0 )
             default:
+                if( ar == AllowedReceivers::Value )
+                    break;
                 DEBUG("Matching `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "`"/* << " - " << top_ty*/);
                 fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsInherent({
                     box$(ty.clone()),
@@ -2462,14 +2488,15 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
             case ::HIR::Function::Receiver::Free:
                 break;
             case ::HIR::Function::Receiver::Value:
-                if( !allow_move )
+                if( ar == AllowedReceivers::AnyBorrow )
                     break;
                 if(0)
-            case ::HIR::Function::Receiver::Box:
-                // NOTE: Only allow picking a `self: Box<Self>` method if we've been through a deref.
-                if( allow_move )
-                    break;
             default:
+                if( ar == AllowedReceivers::Value )
+                    break;
+                // NOTE: Only allow picking a `self: Box<Self>` method if we've been through a deref.
+                if( v.m_receiver == ::HIR::Function::Receiver::Box && ar != AllowedReceivers::AnyBorrow )
+                    break;
                 DEBUG("Search for impl of " << *trait_ref.first);
                 
                 // Use the set of ivars we were given to populate the trait parameters

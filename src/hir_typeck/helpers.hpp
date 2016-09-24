@@ -217,9 +217,15 @@ public:
     
     /// Apply an automatic dereference
     const ::HIR::TypeRef* autoderef(const Span& sp, const ::HIR::TypeRef& ty,  ::HIR::TypeRef& tmp_type) const;
-
+    
     bool find_field(const Span& sp, const ::HIR::TypeRef& ty, const ::std::string& name,  /* Out -> */::HIR::TypeRef& field_type) const;
-    bool find_method(const Span& sp, const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& ty, const ::std::string& method_name, bool allow_move,  /* Out -> */::HIR::Path& fcn_path) const;
+
+    enum class AllowedReceivers {
+        All,
+        AnyBorrow,
+        Value,
+    };
+    bool find_method(const Span& sp, const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& ty, const ::std::string& method_name, AllowedReceivers ar,  /* Out -> */::HIR::Path& fcn_path) const;
     
     /// Locates a named method in a trait, and returns the path of the trait that contains it (with fixed parameters)
     bool trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name, bool allow_move,  ::HIR::GenericPath& out_path) const;
