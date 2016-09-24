@@ -901,6 +901,8 @@ void TraitResolution::prep_indexes()
     ASSERT_BUG( sp, left.m_types.size() == right.m_types.size(), "Parameter count mismatch" );
     ::HIR::Compare  ord = ::HIR::Compare::Equal;
     for(unsigned int i = 0; i < left.m_types.size(); i ++) {
+        // TODO: Should allow fuzzy matches using placeholders (match_test_generics_fuzz works for that)
+        // - Better solution is to remove the placeholders in method searching.
         ord &= left.m_types[i].compare_with_placeholders(sp, right.m_types[i], this->m_ivars.callback_resolve_infer());
         if( ord == ::HIR::Compare::Unequal )
             return ord;
@@ -1861,6 +1863,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         t_cb_trait_impl_r callback
         ) const
 {
+    TRACE_FUNCTION_F(trait << FMT_CB(ss, if(params_ptr) { ss << *params_ptr; } else { ss << "<?>"; }) << " for " << type);
     // TODO: Parameter defaults - apply here or in the caller?
     return this->m_crate.find_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
         [&](const auto& impl) {
@@ -2203,7 +2206,7 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
         }
     }
 }
-unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t_trait_list& traits, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const
+unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const
 {
     unsigned int deref_count = 0;
     ::HIR::TypeRef  tmp_type;   // Temporary type used for handling Deref
@@ -2237,7 +2240,7 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
             return ~0u;
         }
         
-        if( this->find_method(sp, traits, ty, method_name,  unconditional_allow_move || (deref_count == 0), fcn_path) ) {
+        if( this->find_method(sp, traits, ivars, ty, method_name,  unconditional_allow_move || (deref_count == 0), fcn_path) ) {
             DEBUG("FOUND " << deref_count << ", fcn_path = " << fcn_path);
             return deref_count;
         }
@@ -2251,7 +2254,7 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
     TU_IFLET(::HIR::TypeRef::Data, top_ty_r.m_data, Borrow, e,
         const auto& ty = top_ty_r;
         
-        if( find_method(sp, traits, ty, method_name, true, fcn_path) ) {
+        if( find_method(sp, traits, ivars, ty, method_name, true, fcn_path) ) {
             DEBUG("FOUND " << 0 << ", fcn_path = " << fcn_path);
             return 0;
         }
@@ -2269,7 +2272,7 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
     }
 }
 
-bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& traits, const ::HIR::TypeRef& ty, const ::std::string& method_name, bool allow_move,  /* Out -> */::HIR::Path& fcn_path) const
+bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& ty, const ::std::string& method_name, bool allow_move,  /* Out -> */::HIR::Path& fcn_path) const
 {
     TRACE_FUNCTION_F("ty=" << ty << ", name=" << method_name);
     // 1. Search generic bounds for a match
@@ -2280,13 +2283,12 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
         for(const auto& b : p->m_bounds)
         {
             TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
-                DEBUG("Bound " << e.type << " : " << e.trait.m_path);
                 // TODO: Do a fuzzy match here?
                 if( e.type != ty )
                     continue ;
                 
                 // - Bound's type matches, check if the bounded trait has the method we're searching for
-                DEBUG("- Matches " << ty);
+                DEBUG("Bound `" << e.type << " : " << e.trait.m_path << "` - Matches " << ty);
                 ::HIR::GenericPath final_trait_path;
                 assert(e.trait.m_trait_ptr);
                 if( !this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, method_name, allow_move,  final_trait_path) )
@@ -2421,26 +2423,35 @@ bool TraitResolution::find_method(const Span& sp, const HIR::t_trait_list& trait
             case ::HIR::Function::Receiver::Value:
                 if( !allow_move )
                     break;
+                if(0)
+            case ::HIR::Function::Receiver::Box:
+                // NOTE: Only allow picking a `self: Box<Self>` method if we've been through a deref.
+                if( allow_move )
+                    break;
             default:
                 DEBUG("Search for impl of " << *trait_ref.first);
                 
-                //::HIR::PathParams   params;
-                //for(const auto& t : trait_ref.second->m_params.m_types) {
-                //    (void)t;
-                //    params.m_types.push_back( m_ivars.new_ivar_tr() );
-                //}
+                // Use the set of ivars we were given to populate the trait parameters
+                unsigned int n_params = trait_ref.second->m_params.m_types.size();
+                assert(n_params <= ivars.size());
+                ::HIR::PathParams   trait_params;
+                trait_params.m_types.reserve( n_params );
+                for(unsigned int i = 0; i < n_params; i++) {
+                    trait_params.m_types.push_back( ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Infer({ ivars[i], ::HIR::InferClass::None }) ) );
+                    ASSERT_BUG(sp, m_ivars.get_type( trait_params.m_types.back() ).m_data.as_Infer().index == ivars[i], "A method selection ivar was bound");
+                }
                 
-                // TODO: Need a "don't care" marker for the PathParams, because we can't create ivars in this method (or class)
-                if( find_trait_impls_crate(sp, *trait_ref.first, nullptr, ty,  [](auto , auto ) { return true; }) ) {
-                    DEBUG("Found trait impl " << *trait_ref.first << " (" /*<< m_ivars.fmt_type(*trait_ref.first)*/  << ") for " << ty << " ("<<m_ivars.fmt_type(ty)<<")");
+                if( find_trait_impls_crate(sp, *trait_ref.first, &trait_params, ty,  [](auto , auto ) { return true; }) ) {
+                    DEBUG("Found trait impl " << *trait_ref.first << trait_params << " for " << ty << " ("<<m_ivars.fmt_type(ty)<<")");
                     fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
                         box$( ty.clone() ),
-                        trait_ref.first->clone(),
+                        ::HIR::GenericPath( *trait_ref.first, mv$(trait_params) ),
                         method_name,
                         {}
                         }) );
                     return true;
                 }
+                break;
             }
         }
     }

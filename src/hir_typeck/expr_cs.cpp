@@ -1151,6 +1151,7 @@ namespace {
             // - Search in-scope trait list for traits that provide a method of this name
             const ::std::string& method_name = node.m_method;
             ::HIR::t_trait_list    possible_traits;
+            unsigned int max_num_params = 0;
             for(const auto& trait_ref : ::reverse(m_traits))
             {
                 if( trait_ref.first == nullptr )
@@ -1163,9 +1164,15 @@ namespace {
                 if( !it->second.is_Function() )
                     continue ;
                 possible_traits.push_back( trait_ref );
+                if( trait_ref.second->m_params.m_types.size() > max_num_params )
+                    max_num_params = trait_ref.second->m_params.m_types.size();
             }
             //  > Store the possible set of traits for later
             node.m_traits = mv$(possible_traits);
+            for(unsigned int i = 0; i < max_num_params; i ++)
+            {
+                node.m_trait_param_ivars.push_back( this->context.m_ivars.new_ivar() );
+            }
             
             // Resolution can't be done until lefthand type is known.
             // > Has to be done during iteraton
@@ -2089,7 +2096,7 @@ namespace {
             
             // Using autoderef, locate this method on the type
             ::HIR::Path   fcn_path { ::HIR::SimplePath() };
-            unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, ty, node.m_method,  fcn_path);
+            unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, ty, node.m_method,  fcn_path);
             if( deref_count != ~0u )
             {
                 DEBUG("- deref_count = " << deref_count << ", fcn_path = " << fcn_path);
@@ -2177,13 +2184,29 @@ namespace {
                         } break;
                     case ::HIR::Function::Receiver::Box: {
                         // - Undo a deref (there must have been one?) and ensure that it leads to a Box<Self>
+                        // NOTE: Doesn't check deref_count, because this could have been calld as `(*somebox).method()`
                         auto* deref_ptr = dynamic_cast< ::HIR::ExprNode_Deref*>(&*node_ptr);
                         ASSERT_BUG(sp, deref_ptr != nullptr, "Calling Box receiver method but no deref happened");
                         node_ptr = mv$(deref_ptr->m_value);
                         DEBUG("- Undo deref " << deref_ptr << " -> " << node_ptr->m_res_type);
-                        // TODO: Triple-check that the input to the above Deref was a Box (lang="owned_box")
-                        //TU_IFLET(::HIR::TypeRef::Data, node_ptr->m_res_type.m_data, Path, e,
-                        //)
+                        
+                        // Triple-check that the input to the above Deref was a Box (lang="owned_box")
+                        const auto& box_ty = this->context.get_type(node_ptr->m_res_type);
+                        TU_IFLET(::HIR::TypeRef::Data, box_ty.m_data, Path, e,
+                            TU_IFLET(::HIR::Path::Data, e.path.m_data, Generic, pe,
+                                if( pe.m_path == this->context.m_crate.get_lang_item_path(sp, "owned_box") ) {
+                                }
+                                else {
+                                    ERROR(sp, E0000, "Calling Box receiver method on non-box - " << box_ty);
+                                }
+                            )
+                            else {
+                                ERROR(sp, E0000, "Calling Box receiver method on non-box - " << box_ty);
+                            }
+                        )
+                        else {
+                            ERROR(sp, E0000, "Calling Box receiver method on non-box - " << box_ty);
+                        }
                         } break;
                     }
                 }

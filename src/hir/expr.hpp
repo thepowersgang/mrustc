@@ -511,8 +511,13 @@ struct ExprNode_CallMethod:
     
     // - Set during typeck to the real path to the method
     ::HIR::Path m_method_path;
+    // - Cache of argument/return types
     ExprCallCache   m_cache;
+    
+    // - List of possible traits (in-scope traits that contain this method)
     t_trait_list    m_traits;
+    // - A pool of ivars to use for searching for trait impls
+    ::std::vector<unsigned int> m_trait_param_ivars;
 
     ExprNode_CallMethod(Span sp, ::HIR::ExprNodeP val, ::std::string method_name, ::HIR::PathParams params, ::std::vector< ::HIR::ExprNodeP> args):
         ExprNode( mv$(sp) ),
