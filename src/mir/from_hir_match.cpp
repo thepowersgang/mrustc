@@ -182,6 +182,32 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     }
     
     // TODO: Sort columns of `arm_rules` to maximise effectiveness
+    ::std::vector<unsigned> column_weights( arm_rules[0].m_rules.size() );
+    for(const auto& arm_rule : arm_rules)
+    {
+        assert( column_weights.size() == arm_rule.m_rules.size() );
+        for(unsigned int i = 0; i < arm_rule.m_rules.size(); i++)
+        {
+            if( !arm_rule.m_rules[i].is_Any() ) {
+                column_weights.at(i) += 1;
+            }
+        }
+    }
+    DEBUG("- Column weights = " << column_weights);
+    // - Sort columns such that the largest (most specific) comes first
+    ::std::vector<unsigned> columns_sorted(column_weights.size());
+    ::std::iota( columns_sorted.begin(), columns_sorted.end(), 0 );
+    ::std::sort( columns_sorted.begin(), columns_sorted.end(), [&](auto a, auto b){ return column_weights[a] > column_weights[b]; } );
+    DEBUG("- Sorted to = " << columns_sorted);
+    for( auto& arm_rule : arm_rules )
+    {
+        assert( columns_sorted.size() == arm_rule.m_rules.size() );
+        ::std::vector<PatternRule>  sorted;
+        sorted.reserve(columns_sorted.size());
+        for(auto idx : columns_sorted)
+            sorted.push_back( mv$(arm_rule.m_rules[idx]) );
+        arm_rule.m_rules = mv$(sorted);
+    }
     
     // TODO: Detect if a rule is ordering-dependent. In this case we currently have to fall back on the simple match code
     // - A way would be to search for `_` rules with non _ rules following. Would false-positive in some cases, but shouldn't false negative
@@ -721,14 +747,24 @@ struct DecisionTreeGen
         return m_rule_blocks.at( rule_index );
     }
     
+    void get_ty_and_val(
+        const Span& sp,
+        const ::HIR::TypeRef& top_ty, const ::MIR::LValue& top_val,
+        const PatternRule::field_path_t& field_path, unsigned int field_path_ofs,
+        /*Out ->*/ ::HIR::TypeRef& out_ty, ::MIR::LValue& out_val
+        );
+
     void generate_tree_code(const Span& sp, const DecisionTreeNode& node, const ::HIR::TypeRef& ty, const ::MIR::LValue& val) {
-        generate_tree_code(sp, node, ty, 0, val, 0,0, [](const auto& n){ DEBUG("final node = " << n); });
+        generate_tree_code(sp, node, ty, 0, val, [&](const auto& n){
+            DEBUG("node = " << n);
+            // - Recurse on this method
+            this->generate_tree_code(sp, n, ty, val);
+            });
     }
     void generate_tree_code(
         const Span& sp,
         const DecisionTreeNode& node,
-        const ::HIR::TypeRef& ty, unsigned int ty_ofs,
-        const ::MIR::LValue& base_val, unsigned int depth, unsigned int base_depth,
+        const ::HIR::TypeRef& ty, unsigned int path_ofs, const ::MIR::LValue& base_val,
         ::std::function<void(const DecisionTreeNode&)> and_then
         );
     
@@ -738,16 +774,28 @@ struct DecisionTreeGen
         const Span& sp,
         const DecisionTreeNode::Branch& default_branch,
         const DecisionTreeNode::Values::Data_Unsigned& branches,
-        const ::HIR::TypeRef& ty,/* unsigned int _ty_ofs,*/
-        const ::MIR::LValue& val,
+        const ::HIR::TypeRef& ty, ::MIR::LValue val,
         ::std::function<void(const DecisionTreeNode&)> and_then
         );
     void generate_branches_Char(
         const Span& sp,
         const DecisionTreeNode::Branch& default_branch,
         const DecisionTreeNode::Values::Data_Unsigned& branches,
-        const ::HIR::TypeRef& ty,/* unsigned int _ty_ofs,*/
-        const ::MIR::LValue& val,
+        const ::HIR::TypeRef& ty, ::MIR::LValue val,
+        ::std::function<void(const DecisionTreeNode&)> and_then
+        );
+    void generate_branches_Bool(
+        const Span& sp,
+        const DecisionTreeNode::Branch& default_branch,
+        const DecisionTreeNode::Values::Data_Bool& branches,
+        const ::HIR::TypeRef& ty, ::MIR::LValue val,
+        ::std::function<void(const DecisionTreeNode&)> and_then
+        );
+    void generate_branches_Borrow_str(
+        const Span& sp,
+        const DecisionTreeNode::Branch& default_branch,
+        const DecisionTreeNode::Values::Data_String& branches,
+        const ::HIR::TypeRef& ty, ::MIR::LValue val,
         ::std::function<void(const DecisionTreeNode&)> and_then
         );
     
@@ -755,8 +803,14 @@ struct DecisionTreeGen
         const Span& sp,
         const DecisionTreeNode::Branch& default_branch,
         const DecisionTreeNode::Values::Data_Variant& branches,
-        const ::HIR::TypeRef& ty,/* unsigned int _ty_ofs,*/
-        const ::MIR::LValue& val, unsigned int depth,
+        const PatternRule::field_path_t& field_path,   // used to know when to stop handling sub-nodes
+        const ::HIR::TypeRef& ty, ::MIR::LValue val,
+        ::std::function<void(const DecisionTreeNode&)> and_then
+        );
+    void generate_tree_code__enum(
+        const Span& sp,
+        const DecisionTreeNode& node, const ::HIR::TypeRef& fake_ty, const ::MIR::LValue& val,
+        const PatternRule::field_path_t& path_prefix,
         ::std::function<void(const DecisionTreeNode&)> and_then
         );
 };
@@ -774,10 +828,10 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
     // _ => {},
     // }
     // ```
+
     // TODO: Sort the columns in `arm_rules` to ensure that the most specific rule is parsed first.
     // - Ordering within a pattern doesn't matter, only the order of arms matters.
     // - This sort could be designed such that the above case would match correctly?
-    
     
     DEBUG("- Generating rule bindings");
     ::std::vector< ::MIR::BasicBlockId> rule_blocks;
@@ -1903,24 +1957,134 @@ void DecisionTreeNode::unify_from(const Branch& b)
 // ----------------------------
 // DecisionTreeGen
 // ----------------------------
+
+void DecisionTreeGen::get_ty_and_val(
+    const Span& sp,
+    const ::HIR::TypeRef& top_ty, const ::MIR::LValue& top_val,
+    const PatternRule::field_path_t& field_path, unsigned int field_path_ofs,
+    /*Out ->*/ ::HIR::TypeRef& out_ty, ::MIR::LValue& out_val
+    )
+{
+    ::MIR::LValue   lval = top_val.clone();
+    ::HIR::TypeRef  tmp_ty;
+    const ::HIR::TypeRef* cur_ty = &top_ty;
+    
+    // TODO: Cache the correspondance of path->type (lval can be inferred)
+    ASSERT_BUG(sp, field_path_ofs <= field_path.size(), "Field path offset " << field_path_ofs << " is larger than the path [" << field_path << "]");
+    for(unsigned int i = field_path_ofs; i < field_path.size(); i ++ )
+    {
+        auto idx = field_path[i];
+        
+        TU_MATCHA( (cur_ty->m_data), (e),
+        (Infer,   BUG(sp, "Ivar for in match type"); ),
+        (Diverge, BUG(sp, "Diverge in match type");  ),
+        (Primitive,
+            BUG(sp, "Destructuring a primitive");
+            ),
+        (Tuple,
+            ASSERT_BUG(sp, idx < e.size(), "Tuple index out of range");
+            lval = ::MIR::LValue::make_Field({ box$(lval), idx });
+            cur_ty = &e[idx];
+            ),
+        (Path,
+            TU_MATCHA( (e.binding), (pbe),
+            (Unbound,
+                BUG(sp, "Encounterd unbound path - " << e.path);
+                ),
+            (Opaque,
+                BUG(sp, "Destructuring an opaque type - " << *cur_ty);
+                ),
+            (Struct,
+                // TODO: Should this do a call to expand_associated_types?
+                auto monomorph = [&](const auto& ty) { return monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty); };
+                TU_MATCHA( (pbe->m_data), (fields),
+                (Unit,
+                    BUG(sp, "Destructuring an unit-like tuple - " << *cur_ty);
+                    ),
+                (Tuple,
+                    assert( idx < fields.size() );
+                    const auto& fld = fields[idx];
+                    if( monomorphise_type_needed(fld.ent) ) {
+                        tmp_ty = monomorph(fld.ent);
+                        cur_ty = &tmp_ty;
+                    }
+                    else {
+                        cur_ty = &fld.ent;
+                    }
+                    lval = ::MIR::LValue::make_Field({ box$(lval), idx });
+                    ),
+                (Named,
+                    assert( idx < fields.size() );
+                    const auto& fld = fields[idx].second;
+                    if( monomorphise_type_needed(fld.ent) ) {
+                        tmp_ty = monomorph(fld.ent);
+                        cur_ty = &tmp_ty;
+                    }
+                    else {
+                        cur_ty = &fld.ent;
+                    }
+                    lval = ::MIR::LValue::make_Field({ box$(lval), idx });
+                    )
+                )
+                ),
+            (Enum,
+                BUG(sp, "Destructuring an enum - " << *cur_ty);
+                )
+            )
+            ),
+        (Generic,
+            BUG(sp, "Destructuring a generic - " << *cur_ty);
+            ),
+        (TraitObject,
+            BUG(sp, "Destructuring a trait object - " << *cur_ty);
+            ),
+        (Array,
+            // TODO: Slice patterns, sequential comparison/sub-match
+            TODO(sp, "Match over array");
+            ),
+        (Slice,
+            BUG(sp, "Hit match over `[T]` - must be `&[T]`");
+            ),
+        (Borrow,
+            ASSERT_BUG(sp, idx == FIELD_DEREF, "Destructure of borrow doesn't correspond to a deref in the path");
+            if( cur_ty == &tmp_ty ) {
+                tmp_ty = mv$(*tmp_ty.m_data.as_Borrow().inner);
+            }
+            else {
+                cur_ty = &*e.inner;
+            }
+            lval = ::MIR::LValue::make_Deref({ box$(lval) });
+            ),
+        (Pointer,
+            ERROR(sp, E0000, "Attempting to match over a pointer");
+            ),
+        (Function,
+            ERROR(sp, E0000, "Attempting to match over a functon pointer");
+            ),
+        (Closure,
+            ERROR(sp, E0000, "Attempting to match over a closure");
+            )
+        )
+    }
+    
+    out_ty = (cur_ty == &tmp_ty ? mv$(tmp_ty) : cur_ty->clone());
+    out_val = mv$(lval);
+}
+
 void DecisionTreeGen::generate_tree_code(
     const Span& sp,
     const DecisionTreeNode& node,
-    const ::HIR::TypeRef& ty, unsigned int ty_ofs,
-    const ::MIR::LValue& base_val, unsigned int depth, unsigned int base_depth,
+    const ::HIR::TypeRef& top_ty, unsigned int field_path_ofs, const ::MIR::LValue& top_val,
     ::std::function<void(const DecisionTreeNode&)> and_then
     )
 {
-    TRACE_FUNCTION_F("ty=" << ty << ", ty_ofs=" << ty_ofs << ", depth="<<depth<<", node=" << node);
+    TRACE_FUNCTION_F("top_ty=" << top_ty << ", field_path_ofs=" << field_path_ofs << ", top_val=" << top_val << ", node=" << node);
     
-    #if 1
-    if( depth > node.m_field_path.size() ) {
-        and_then(node);
-        return ;
-    }
-    #else
-    assert( depth <= node.m_field_path.size() );
-    #endif
+    ::MIR::LValue   val;
+    ::HIR::TypeRef  ty;
+    
+    get_ty_and_val(sp, top_ty, top_val,  node.m_field_path, field_path_ofs,  ty, val);
+    DEBUG("ty = " << ty << ", val = " << val);
     
     TU_MATCHA( (ty.m_data), (e),
     (Infer,   BUG(sp, "Ivar for in match type"); ),
@@ -1928,50 +2092,25 @@ void DecisionTreeGen::generate_tree_code(
     (Primitive,
         switch(e)
         {
-        case ::HIR::CoreType::Bool: {
+        case ::HIR::CoreType::Bool:
             ASSERT_BUG(sp, node.m_branches.is_Bool(), "Tree for bool isn't a _Bool - node="<<node);
-            //this->generate_branches_Bool(sp, node.m_branches.as_Bool(), ty, val, mv$(and_then));
-            const auto& branches = node.m_branches.as_Bool();
-            
-            if( node.m_default.is_Unset() )
-            {
-                if( branches.false_branch.is_Unset() || branches.true_branch.is_Unset() ) {
-                    // Non-exhaustive match - ERROR
-                }
-            }
-            else
-            {
-                if( branches.false_branch.is_Unset() && branches.true_branch.is_Unset() ) {
-                    // Unreachable default (NOTE: Not an error here)
-                }
-            }
-            
-            // Emit an if based on the route taken
-            auto bb_false = m_builder.new_bb_unlinked();
-            auto bb_true  = m_builder.new_bb_unlinked();
-            m_builder.end_block( ::MIR::Terminator::make_If({ node.get_field(base_val, base_depth), bb_true, bb_false }) );
-            
-            // Recurse into sub-patterns
-            const auto& branch_false = ( !branches.false_branch.is_Unset() ? branches.false_branch : node.m_default );
-            const auto& branch_true  = ( !branches. true_branch.is_Unset() ? branches. true_branch : node.m_default );
-            
-            m_builder.set_cur_block(bb_true );
-            this->generate_branch(branch_true , and_then);
-            m_builder.set_cur_block(bb_false);
-            this->generate_branch(branch_false, and_then);
-            
-            } break;
+            this->generate_branches_Bool(sp, node.m_default, node.m_branches.as_Bool(), ty, mv$(val), mv$(and_then));
+            break;
         case ::HIR::CoreType::U8:
         case ::HIR::CoreType::U16:
         case ::HIR::CoreType::U32:
         case ::HIR::CoreType::U64:
         case ::HIR::CoreType::Usize:
             ASSERT_BUG(sp, node.m_branches.is_Unsigned(), "Tree for unsigned isn't a _Unsigned - node="<<node);
-            this->generate_branches_Unsigned(sp, node.m_default, node.m_branches.as_Unsigned(), ty, node.get_field(base_val, base_depth), mv$(and_then));
+            this->generate_branches_Unsigned(sp, node.m_default, node.m_branches.as_Unsigned(), ty, mv$(val), mv$(and_then));
             break;
         case ::HIR::CoreType::Char:
             ASSERT_BUG(sp, node.m_branches.is_Unsigned(), "Tree for char isn't a _Unsigned - node="<<node);
-            this->generate_branches_Char(sp, node.m_default, node.m_branches.as_Unsigned(), ty, node.get_field(base_val, base_depth), mv$(and_then));
+            this->generate_branches_Char(sp, node.m_default, node.m_branches.as_Unsigned(), ty, mv$(val), mv$(and_then));
+            break;
+        case ::HIR::CoreType::Str:
+            ASSERT_BUG(sp, node.m_branches.is_String(), "Tree for &str isn't a _String - node="<<node);
+            this->generate_branches_Borrow_str(sp, node.m_default, node.m_branches.as_String(), ty, mv$(val), mv$(and_then));
             break;
         default:
             TODO(sp, "Primitive - " << ty);
@@ -1979,25 +2118,7 @@ void DecisionTreeGen::generate_tree_code(
         }
         ),
     (Tuple,
-        // Tuple - Recurse on each sub-type (increasing the index)
-        // - If complete, call completion callback
-        if( ty_ofs == e.size() ) {
-            and_then(node);
-        }
-        // - If the node is for this type, recurse
-        else {
-            assert( depth < node.m_field_path.size() );
-            if( node.m_field_path[depth] == ty_ofs ) {
-                generate_tree_code( sp, node,
-                    e[ty_ofs], 0, base_val, depth+1, base_depth,
-                    [&](auto& n){ this->generate_tree_code(sp, n, ty, ty_ofs+1, base_val, depth, base_depth, and_then); }
-                    );
-            }
-            // - Otherwise, go to the next node
-            else {
-                this->generate_tree_code(sp, node, ty, ty_ofs+1, base_val, depth, base_depth, and_then);
-            }
-        }
+        BUG(sp, "Decision node on tuple - node=" << node);
         ),
     (Path,
         // This is either a struct destructure or an enum
@@ -2009,57 +2130,23 @@ void DecisionTreeGen::generate_tree_code(
             and_then(node);
             ),
         (Struct,
-            auto monomorph = [&](const auto& ty) { return monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty); };
+            assert(pbe);
             TU_MATCHA( (pbe->m_data), (fields),
             (Unit,
                 and_then(node);
                 ),
             (Tuple,
-                if( ty_ofs == fields.size() ) {
-                    and_then(node);
-                }
-                else {
-                    assert( depth < node.m_field_path.size() );
-                    if( node.m_field_path[depth] == ty_ofs ) {
-                        const auto& fld = fields[ty_ofs];
-                        ::HIR::TypeRef  tmp;
-                        const auto& fld_ty = (monomorphise_type_needed(fld.ent) ? tmp = monomorph(fld.ent) : fld.ent);
-                        generate_tree_code( sp, node,
-                            fld_ty, 0, base_val, depth+1, base_depth,
-                            [&](auto& n){ this->generate_tree_code(sp, n, ty, ty_ofs+1, base_val, depth, base_depth, and_then); }
-                            );
-                    }
-                    else {
-                        this->generate_tree_code(sp, node, ty, ty_ofs+1, base_val, depth, base_depth, and_then);
-                    }
-                }
+                BUG(sp, "Decision node on tuple struct");
                 ),
             (Named,
-                if( ty_ofs == fields.size() ) {
-                    and_then(node);
-                }
-                else {
-                    assert( depth < node.m_field_path.size() );
-                    if( node.m_field_path[depth] == ty_ofs ) {
-                        const auto& fld = fields[ty_ofs].second;
-                        ::HIR::TypeRef  tmp;
-                        const auto& fld_ty = (monomorphise_type_needed(fld.ent) ? tmp = monomorph(fld.ent) : fld.ent);
-                        generate_tree_code( sp, node,
-                            fld_ty, 0, base_val, depth+1, base_depth,
-                            [&](auto& n){ this->generate_tree_code(sp, n, ty, ty_ofs+1, base_val, depth, base_depth, and_then); }
-                            );
-                    }
-                    else {
-                        this->generate_tree_code(sp, node, ty, ty_ofs+1, base_val, depth, base_depth, and_then);
-                    }
-                }
+                BUG(sp, "Decision node on struct");
                 )
             )
             ),
         (Enum,
             ASSERT_BUG(sp, node.m_branches.is_Variant(), "Tree for enum isn't a Variant - node="<<node);
             assert(pbe);
-            this->generate_branches_Enum(sp, node.m_default, node.m_branches.as_Variant(), ty, node.get_field(base_val, base_depth), depth, mv$(and_then));
+            this->generate_branches_Enum(sp, node.m_default, node.m_branches.as_Variant(), node.m_field_path, ty, mv$(val),  mv$(and_then));
             )
         )
         ),
@@ -2077,52 +2164,11 @@ void DecisionTreeGen::generate_tree_code(
         BUG(sp, "Hit match over `[T]` - must be `&[T]`");
         ),
     (Borrow,
-        if( *e.inner == ::HIR::TypeRef(::HIR::CoreType::Str) ) {
-            // TODO: Chained comparisons with ordering.
-            // - Would this just emit a eBinOp? That implies deep codegen support for strings.
-            // - rustc emits calls to PartialEq::eq for this and for slices. mrustc could use PartialOrd and fall back to PartialEq if unavaliable?
-            //  > Requires crate access here! - A memcmp call is probably better, probably via a binop
-            
-            // NOTE: The below implementation gets the final codegen to call memcmp on the strings by emitting eBinOp::{LT,GT}
-
-            ASSERT_BUG(sp, node.m_branches.is_String(), "Tree for &str isn't a _String - node="<<node);
-            const auto& branches = node.m_branches.as_String();
-            
-            auto default_bb = m_builder.new_bb_unlinked();
-            
-            // 
-            assert( !branches.empty() );
-            for(const auto& branch : branches)
-            {
-                auto have_val = node.get_field(base_val, base_depth);
-                
-                auto next_bb = (&branch == &branches.back() ? default_bb : m_builder.new_bb_unlinked());
-                
-                auto test_val = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Str), ::MIR::Constant(branch.first) );
-                auto cmp_gt_bb = m_builder.new_bb_unlinked();
-                
-                auto lt_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ have_val.clone(), ::MIR::eBinOp::LT, test_val.clone() }) );
-                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(lt_val), default_bb, cmp_gt_bb }) );
-                m_builder.set_cur_block(cmp_gt_bb);
-                
-                auto eq_bb = m_builder.new_bb_unlinked();
-                auto gt_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(have_val), ::MIR::eBinOp::GT, test_val.clone() }) );
-                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(gt_val), next_bb, eq_bb }) );
-                m_builder.set_cur_block(eq_bb);
-                
-                this->generate_branch(branch.second, and_then);
-                
-                m_builder.set_cur_block(next_bb);
-            }
-            this->generate_branch(node.m_default, and_then);
-        }
-        else if( e.inner->m_data.is_Slice() ) {
+        if( e.inner->m_data.is_Slice() ) {
             TODO(sp, "Match over &[T]");
         }
         else {
-            // TODO: Should this check if the index is -1? The assertion doesn't fire in general use, so looks good.
-            ASSERT_BUG( sp,  node.m_field_path[depth] == FIELD_DEREF, "& not matching on deref " << depth << " node=" <<node );
-            generate_tree_code( sp, node, *e.inner, 0, base_val, depth+1, base_depth,  and_then );
+            BUG(sp, "Decision node on non-str/[T] borrow - " << ty);
         }
         ),
     (Pointer,
@@ -2155,8 +2201,7 @@ void DecisionTreeGen::generate_branches_Unsigned(
     const Span& sp,
     const DecisionTreeNode::Branch& default_branch,
     const DecisionTreeNode::Values::Data_Unsigned& branches,
-    const ::HIR::TypeRef& ty,/* unsigned int _ty_ofs,*/
-    const ::MIR::LValue& val,
+    const ::HIR::TypeRef& ty, ::MIR::LValue val,
     ::std::function<void(const DecisionTreeNode&)> and_then
     )
 {
@@ -2198,12 +2243,12 @@ void DecisionTreeGen::generate_branches_Unsigned(
         this->generate_branch(default_branch, and_then);
     }
 }
+
 void DecisionTreeGen::generate_branches_Char(
     const Span& sp,
     const DecisionTreeNode::Branch& default_branch,
     const DecisionTreeNode::Values::Data_Unsigned& branches,
-    const ::HIR::TypeRef& ty,/* unsigned int _ty_ofs,*/
-    const ::MIR::LValue& val,
+    const ::HIR::TypeRef& ty, ::MIR::LValue val,
     ::std::function<void(const DecisionTreeNode&)> and_then
     )
 {
@@ -2245,12 +2290,98 @@ void DecisionTreeGen::generate_branches_Char(
         this->generate_branch(default_branch, and_then);
     }
 }
+void DecisionTreeGen::generate_branches_Bool(
+    const Span& sp,
+    const DecisionTreeNode::Branch& default_branch,
+    const DecisionTreeNode::Values::Data_Bool& branches,
+    const ::HIR::TypeRef& ty, ::MIR::LValue val,
+    ::std::function<void(const DecisionTreeNode&)> and_then
+    )
+{
+    //assert( ty.m_data.is_Boolean() );
+    
+    if( default_branch.is_Unset() )
+    {
+        if( branches.false_branch.is_Unset() || branches.true_branch.is_Unset() ) {
+            // Non-exhaustive match - ERROR
+        }
+    }
+    else
+    {
+        if( branches.false_branch.is_Unset() && branches.true_branch.is_Unset() ) {
+            // Unreachable default (NOTE: Not an error here)
+        }
+    }
+    
+    // Emit an if based on the route taken
+    auto bb_false = m_builder.new_bb_unlinked();
+    auto bb_true  = m_builder.new_bb_unlinked();
+    m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val), bb_true, bb_false }) );
+    
+    // Recurse into sub-patterns
+    const auto& branch_false = ( !branches.false_branch.is_Unset() ? branches.false_branch : default_branch );
+    const auto& branch_true  = ( !branches. true_branch.is_Unset() ? branches. true_branch : default_branch );
+    
+    m_builder.set_cur_block(bb_true );
+    this->generate_branch(branch_true , and_then);
+    m_builder.set_cur_block(bb_false);
+    this->generate_branch(branch_false, and_then);
+}
+
+void DecisionTreeGen::generate_branches_Borrow_str(
+    const Span& sp,
+    const DecisionTreeNode::Branch& default_branch,
+    const DecisionTreeNode::Values::Data_String& branches,
+    const ::HIR::TypeRef& ty, ::MIR::LValue val,
+    ::std::function<void(const DecisionTreeNode&)> and_then
+    )
+{
+    // TODO: Chained comparisons with ordering.
+    // - Would this just emit a eBinOp? That implies deep codegen support for strings.
+    // - rustc emits calls to PartialEq::eq for this and for slices. mrustc could use PartialOrd and fall back to PartialEq if unavaliable?
+    //  > Requires crate access here! - A memcmp call is probably better, probably via a binop
+    // NOTE: The below implementation gets the final codegen to call memcmp on the strings by emitting eBinOp::{LT,GT}
+    
+    
+    // - Remove the wrapping Deref (which must be there)
+    ASSERT_BUG(sp, val.is_Deref(), "Match over str without a deref - " << val);
+    auto tmp = mv$( *val.as_Deref().val );
+    val = mv$(tmp);
+    
+    auto default_bb = m_builder.new_bb_unlinked();
+    
+    assert( !branches.empty() );
+    for(const auto& branch : branches)
+    {
+        auto have_val = val.clone();
+        
+        auto next_bb = (&branch == &branches.back() ? default_bb : m_builder.new_bb_unlinked());
+        
+        auto test_val = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Str), ::MIR::Constant(branch.first) );
+        auto cmp_gt_bb = m_builder.new_bb_unlinked();
+        
+        auto lt_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ have_val.clone(), ::MIR::eBinOp::LT, test_val.clone() }) );
+        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(lt_val), default_bb, cmp_gt_bb }) );
+        m_builder.set_cur_block(cmp_gt_bb);
+        
+        auto eq_bb = m_builder.new_bb_unlinked();
+        auto gt_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(have_val), ::MIR::eBinOp::GT, test_val.clone() }) );
+        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(gt_val), next_bb, eq_bb }) );
+        m_builder.set_cur_block(eq_bb);
+        
+        this->generate_branch(branch.second, and_then);
+        
+        m_builder.set_cur_block(next_bb);
+    }
+    this->generate_branch(default_branch, and_then);
+}
+
 void DecisionTreeGen::generate_branches_Enum(
     const Span& sp,
     const DecisionTreeNode::Branch& default_branch,
     const DecisionTreeNode::Values::Data_Variant& branches,
-    const ::HIR::TypeRef& ty,/* unsigned int _ty_ofs,*/
-    const ::MIR::LValue& val, unsigned int depth,
+    const PatternRule::field_path_t& field_path,
+    const ::HIR::TypeRef& ty, ::MIR::LValue val,
     ::std::function<void(const DecisionTreeNode&)> and_then
     )
 {
@@ -2299,50 +2430,45 @@ void DecisionTreeGen::generate_branches_Enum(
         auto bb = variant_blocks[branch.first];
         const auto& var = variants[branch.first];
         DEBUG(branch.first << " " << var.first << " = " << branch.second);
-        m_builder.set_cur_block( bb );
-        this->generate_branch(branch.second, [&](auto& subnode) {
-            TU_MATCHA( (var.second), (e),
-            (Unit,
-                and_then( subnode );
-                ),
-            (Value,
-                and_then( subnode );
-                ),
-            (Tuple,
-                if( depth < subnode.m_field_path.size() )
-                {
-                    // Make a fake tuple
-                    ::std::vector< ::HIR::TypeRef>  ents;
-                    for( const auto& fld : e )
-                    {
-                        ents.push_back( monomorphise_type(sp,  enum_ref.m_params, enum_path.m_params,  fld.ent) );
-                    }
-                    ::HIR::TypeRef  fake_ty { mv$(ents) };
-                    // NOTE: Depth is increased by the tuple code
-                    this->generate_tree_code(sp, subnode, fake_ty, 0, ::MIR::LValue::make_Downcast({ box$(val.clone()), branch.first }), depth, depth, and_then);
-                }
-                else {
-                    and_then( subnode );
-                }
-                ),
-            (Struct,
-                if( depth < subnode.m_field_path.size() )
-                {
-                    ::std::vector< ::HIR::TypeRef>  ents;
-                    for( const auto& fld : e )
-                    {
-                        ents.push_back( monomorphise_type(sp,  enum_ref.m_params, enum_path.m_params,  fld.second.ent) );
-                    }
-                    ::HIR::TypeRef  fake_ty { mv$(ents) };
-                    // NOTE: Depth is increased by the tuple code
-                    this->generate_tree_code(sp, subnode, fake_ty, 0, ::MIR::LValue::make_Downcast({ box$(val.clone()), branch.first }), depth, depth, and_then);
-                }
-                else {
-                    and_then( subnode );
-                }
-                )
+        
+        auto var_lval = ::MIR::LValue::make_Downcast({ box$(val.clone()), branch.first });
+        
+        ::HIR::TypeRef  fake_ty;
+        
+        TU_MATCHA( (var.second), (e),
+        (Unit,
+            ),
+        (Value,
+            ),
+        (Tuple,
+            // Make a fake tuple
+            ::std::vector< ::HIR::TypeRef>  ents;
+            for( const auto& fld : e )
+            {
+                ents.push_back( monomorphise_type(sp,  enum_ref.m_params, enum_path.m_params,  fld.ent) );
+            }
+            fake_ty = ::HIR::TypeRef( mv$(ents) );
+            ),
+        (Struct,
+            ::std::vector< ::HIR::TypeRef>  ents;
+            for( const auto& fld : e )
+            {
+                ents.push_back( monomorphise_type(sp,  enum_ref.m_params, enum_path.m_params,  fld.second.ent) );
+            }
+            fake_ty = ::HIR::TypeRef( mv$(ents) );
             )
-            });
+        )
+        
+        m_builder.set_cur_block( bb );
+        if( fake_ty == ::HIR::TypeRef() || fake_ty.m_data.as_Tuple().size() == 0 ) {
+            this->generate_branch(branch.second, and_then);
+        }
+        else {
+            this->generate_branch(branch.second, [&](auto& subnode) {
+                // Call special handler to determine when the enum is over
+                this->generate_tree_code__enum(sp, subnode, fake_ty, var_lval, field_path, and_then);
+                });
+        }
     }
     
     DEBUG("_ = " << default_branch);
@@ -2352,3 +2478,49 @@ void DecisionTreeGen::generate_branches_Enum(
         this->generate_branch(default_branch, and_then);
     }
 }
+
+namespace {
+    bool path_starts_with(const PatternRule::field_path_t& test, const PatternRule::field_path_t& prefix)
+    {
+        if( test.size() < prefix.size() )
+        {
+            return false;
+        }
+        else if( ! ::std::equal(prefix.begin(), prefix.end(), test.begin()) )
+        {
+            return false;
+        }
+        else
+        {
+            return true;
+        }
+    }
+}
+
+void DecisionTreeGen::generate_tree_code__enum(
+    const Span& sp,
+    const DecisionTreeNode& node, const ::HIR::TypeRef& fake_ty, const ::MIR::LValue& val,
+    const PatternRule::field_path_t& path_prefix,
+    ::std::function<void(const DecisionTreeNode&)> and_then
+    )
+{
+    if( ! path_starts_with(node.m_field_path, path_prefix) )
+    {
+        and_then(node);
+    }
+    else
+    {
+        this->generate_tree_code(sp, node, fake_ty, path_prefix.size(), val,
+            [&](const auto& next_node) {
+                if( ! path_starts_with(next_node.m_field_path, path_prefix) )
+                {
+                    and_then(next_node);
+                }
+                else
+                {
+                    this->generate_tree_code__enum(sp, node, fake_ty, val, path_prefix, and_then);
+                }
+            });
+    }
+}
+
