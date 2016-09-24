@@ -898,7 +898,7 @@ void TraitResolution::prep_indexes()
 
 ::HIR::Compare TraitResolution::compare_pp(const Span& sp, const ::HIR::PathParams& left, const ::HIR::PathParams& right) const
 {
-    ASSERT_BUG( sp, left.m_types.size() == right.m_types.size(), "Parameter count mismatch" );
+    ASSERT_BUG( sp, left.m_types.size() == right.m_types.size(), "Parameter count mismatch - `"<<left<<"` vs `"<<right<<"`" );
     ::HIR::Compare  ord = ::HIR::Compare::Equal;
     for(unsigned int i = 0; i < left.m_types.size(); i ++) {
         // TODO: Should allow fuzzy matches using placeholders (match_test_generics_fuzz works for that)
@@ -1752,6 +1752,7 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
 }
 bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const
 {
+    TRACE_FUNCTION_F("trait = " << trait << params << " , type = " << type);
     const ::HIR::Path::Data::Data_UfcsKnown* assoc_info = nullptr;
     TU_IFLET(::HIR::TypeRef::Data, type.m_data, Path, e,
         TU_IFLET(::HIR::Path::Data, e.path.m_data, UfcsKnown, pe,
@@ -1809,19 +1810,24 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
             
             // If the input type is an associated type controlled by this trait bound, check for added bounds.
             // TODO: This just checks a single layer, but it's feasable that there could be multiple layers
-            if( assoc_info && e.trait.m_path.m_path == assoc_info->trait.m_path && e.type == *assoc_info->type ) {
+            if( assoc_info && e.trait.m_path.m_path == assoc_info->trait.m_path && e.type == *assoc_info->type )
+            {
                 // Check the trait params
                 auto ord = this->compare_pp(sp, b_params, assoc_info->trait.m_params);
                 if( ord == ::HIR::Compare::Fuzzy ) {
                     TODO(sp, "Handle fuzzy matches searching for associated type bounds");
                 }
+                if( ord == ::HIR::Compare::Unequal ) {
+                    return false;
+                }
                 
                 const auto& trait_ref = *e.trait.m_trait_ptr;
                 const auto& at = trait_ref.m_types.at(assoc_info->item);
                 for(const auto& bound : at.m_trait_bounds) {
-                    if( bound.m_path.m_path == trait ) {
-                        DEBUG("- Found an associated type impl");
-                        auto ord = this->compare_pp(sp, b_params, params);
+                    if( bound.m_path.m_path == trait )
+                    {
+                        DEBUG("- Found an associated type bound for this trait via another bound");
+                        auto ord = this->compare_pp(sp, bound.m_path.m_params, params);
                         if( ord == ::HIR::Compare::Unequal )
                             return false;
                         if( ord == ::HIR::Compare::Fuzzy ) {
