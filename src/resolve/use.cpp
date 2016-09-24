@@ -1,5 +1,9 @@
 /*
- * Absolutise and check all 'use' statements
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * resolve/use.cpp
+ * - Absolutise and check all 'use' statements
  */
 #include <main_bindings.hpp>
 #include <ast/crate.hpp>
@@ -25,6 +29,7 @@ void Resolve_Use(::AST::Crate& crate)
     Resolve_Use_Mod(crate, crate.m_root_module, ::AST::Path("", {}));
 }
 
+// - Convert self::/super:: paths into non-canonical absolute forms
 ::AST::Path Resolve_Use_AbsolutisePath(const Span& span, const ::AST::Path& base_path, ::AST::Path path)
 {
     TU_MATCH(::AST::Path::Class, (path.m_class), (e),
@@ -85,6 +90,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         if( !use_stmt.data.path.m_class.is_Absolute() )
             BUG(span, "Use path is not absolute after absolutisation");
         
+        // TODO: Have Resolve_Use_GetBinding return the actual path
         use_stmt.data.path.bind( Resolve_Use_GetBinding(span, crate, use_stmt.data.path, parent_modules) );
         
         // - If doing a glob, ensure the item type is valid
@@ -231,6 +237,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         }
     }
     
+    // If the desired item is an anon module (starts with #) then parse and index
     if( des_item_name.size() > 0 && des_item_name[0] == '#' ) {
         unsigned int idx = 0;
         if( ::std::sscanf(des_item_name.c_str(), "#%u", &idx) != 1 ) {
@@ -242,6 +249,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         return ::AST::PathBinding::make_Module({mod.anon_mods()[idx]});
     }
     
+    // Seach for the name defined in the module.
     for( const auto& item : mod.items() )
     {
         if( item.data.is_None() )
@@ -304,6 +312,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             if( imp.data.path.binding().is_Unbound() ) {
                 DEBUG(" > Needs resolve");
                 // TODO: Handle possibility of recursion
+                //out_path = imp.data.path;
                 return Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp.data.path), parent_modules, allow);
             }
             else {
@@ -332,6 +341,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                         break;
                     }
                 }
+                //out_path = imp.data.path;
                 return imp.data.path.binding().clone();
             }
         }
@@ -345,6 +355,9 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 // TODO: Handle possibility of recursion
                 binding_ = Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp.data.path), parent_modules);
                 binding = &binding_;
+            }
+            else {
+                //out_path = imp.data.path;
             }
             
             TU_MATCH_DEF(::AST::PathBinding, (*binding), (e),
@@ -489,21 +502,30 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
 
 ::AST::PathBinding Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, slice< const ::AST::Module* > parent_modules, Lookup allow)
 {
+    //::AST::Path rv;
+    
+    // If the path is directly referring to an external crate - call __ext
     if( path.m_class.is_Absolute() && path.m_class.as_Absolute().crate != "" ) {
         const auto& path_abs = path.m_class.as_Absolute();
         
         return Resolve_Use_GetBinding__ext(span, crate, path,  crate.m_extern_crates.at( path_abs.crate ), 0, allow);
     }
+    
     const AST::Module* mod = &crate.m_root_module;
     const auto& nodes = path.nodes();
     for( unsigned int i = 0; i < nodes.size()-1; i ++ )
     {
+        // TODO: If this came from an import, return the real path?
+        
+        //rv = Resolve_Use_CanoniseAndBind_Mod(span, crate, *mod, mv$(rv), nodes[i].name(), parent_modules, Lookup::Type);
+        //const auto& b = rv.binding();
         auto b = Resolve_Use_GetBinding_Mod(span, crate, *mod, nodes[i].name(), parent_modules, Lookup::Type);
         TU_MATCH_DEF(::AST::PathBinding, (b), (e),
         (
             ERROR(span, E0000, "Unexpected item type in import");
             ),
         (Crate,
+            // TODO: Mangle the original path (or return a new path somehow)
             return Resolve_Use_GetBinding__ext(span, crate, path,  *e.crate_, i+1, allow);
             ),
         (Enum,
@@ -533,6 +555,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             if( !e.module_ ) 
             {
                 assert(e.hir);
+                // TODO: Mangle the original path (or return a new path somehow)
                 return Resolve_Use_GetBinding__ext(span, crate, path,  *e.hir, i+1, allow);
             }
             mod = e.module_;

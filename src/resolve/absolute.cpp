@@ -960,6 +960,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
         return ;
     }
     
+    
     const ::AST::Module*    mod = &context.m_crate.m_root_module;
     for(unsigned int i = 0; i < path_abs.nodes.size() - 1; i ++ )
     {
@@ -1002,6 +1003,11 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
             (Trait,
                 assert( e.trait_ || e.hir );
                 auto trait_path = ::AST::Path(name_ref.path);
+                // HACK! If this was an import, recurse on it to fix paths. (Ideally, all index entries should have the canonical path, but don't currently)
+                if( name_ref.is_import ) {
+                    auto lm = Context::LookupMode::Type;
+                    Resolve_Absolute_Path_BindAbsolute(context, sp, lm, trait_path);
+                }
                 if( !n.args().is_empty() ) {
                     trait_path.nodes().back().args() = mv$(n.args());
                 }
@@ -1714,6 +1720,31 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
     }
 }
 
+void Resolve_Absolute_Function(Context& item_context, ::AST::Function& fcn)
+{
+    TRACE_FUNCTION_F("");
+    item_context.push( fcn.params(), GenericSlot::Level::Method );
+    Resolve_Absolute_Generic(item_context,  fcn.params());
+
+    Resolve_Absolute_Type( item_context, fcn.rettype() );
+    for(auto& arg : fcn.args())
+        Resolve_Absolute_Type( item_context, arg.second );
+
+    {
+        auto _h = item_context.enter_rootblock();
+        item_context.push_block();
+        for(auto& arg : fcn.args()) {
+            Resolve_Absolute_Pattern( item_context, false, arg.first );
+        }
+        
+        Resolve_Absolute_Expr( item_context, fcn.code() );
+        
+        item_context.pop_block();
+    }
+
+    item_context.pop( fcn.params() );
+}
+
 void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Impl::ImplItem >& items)
 {
     TRACE_FUNCTION_F("");
@@ -1740,26 +1771,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Im
             ),
         (Function,
             DEBUG("Function - " << i.name);
-            item_context.push( e.params(), GenericSlot::Level::Method );
-            Resolve_Absolute_Generic(item_context,  e.params());
-            
-            Resolve_Absolute_Type( item_context, e.rettype() );
-            for(auto& arg : e.args())
-                Resolve_Absolute_Type( item_context, arg.second );
-            
-            {
-                auto _h = item_context.enter_rootblock();
-                item_context.push_block();
-                for(auto& arg : e.args()) {
-                    Resolve_Absolute_Pattern( item_context, false, arg.first );
-                }
-                
-                Resolve_Absolute_Expr( item_context, e.code() );
-                
-                item_context.pop_block();
-            }
-            
-            item_context.pop( e.params() );
+            Resolve_Absolute_Function(item_context, e);
             ),
         (Static,
             DEBUG("Static - " << i.name);
@@ -1867,26 +1879,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             ),
         (Function,
             DEBUG("Function - " << i.name);
-            item_context.push( e.params(), GenericSlot::Level::Method );
-            Resolve_Absolute_Generic(item_context,  e.params());
-            
-            Resolve_Absolute_Type( item_context, e.rettype() );
-            for(auto& arg : e.args())
-                Resolve_Absolute_Type( item_context, arg.second );
-            
-            {
-                auto _h = item_context.enter_rootblock();
-                item_context.push_block();
-                for(auto& arg : e.args()) {
-                    Resolve_Absolute_Pattern( item_context, false, arg.first );
-                }
-                
-                Resolve_Absolute_Expr( item_context, e.code() );
-                
-                item_context.pop_block();
-            }
-            
-            item_context.pop( e.params() );
+            Resolve_Absolute_Function(item_context, e);
             ),
         (Static,
             DEBUG("Static - " << i.name);

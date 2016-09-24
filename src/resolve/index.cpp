@@ -144,6 +144,8 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
     {
         if( i.name != "" )
         {
+            // TODO: Ensure that the path is canonical?
+            
             const auto& sp = i.data.sp;
             struct H {
                 static void handle_pb(const Span& sp, AST::Module& mod, const AST::Named<AST::UseStmt>& i, const AST::PathBinding& pb, bool allow_collide)
