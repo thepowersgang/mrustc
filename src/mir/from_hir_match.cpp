@@ -1601,6 +1601,14 @@ void DecisionTreeNode::simplify()
     
     TU_MATCHA( (m_branches), (e),
     (Unset,
+        H::simplify_branch(m_default);
+        // Replace `this` with `m_default` if `m_default` is a subtree
+        // - Fixes the edge case for the top of the tree
+        if( m_default.is_Subtree() )
+        {
+            *this = mv$(*m_default.as_Subtree());
+        }
+        return ;
         ),
     (Bool,
         H::simplify_branch(e.false_branch);
