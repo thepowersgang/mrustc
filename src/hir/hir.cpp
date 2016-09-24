@@ -73,13 +73,20 @@ namespace {
             }
             throw "";
         }
+        
+        // A local generic could match anything, leave that up to the caller
+        if( left.m_data.is_Generic() ) {
+            return true;
+        }
+        // A local UfcsKnown can only be becuase it couldn't be expanded earlier, assume it could match
+        if( left.m_data.is_Path() && left.m_data.as_Path().path.m_data.is_UfcsKnown() ) {
+            // True?
+            return true;
+        }
+
+        // If the RHS (provided) is generic, it can only match if it binds to a local type parameter
         if( right.m_data.is_Generic() ) {
             return left.m_data.is_Generic();
-        }
-        
-        if( left.m_data.is_Generic() ) {
-            // True? (TODO: Check bounds?)
-            return true;
         }
         
         if( left.m_data.tag() != right.m_data.tag() ) {

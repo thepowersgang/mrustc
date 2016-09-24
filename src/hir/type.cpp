@@ -524,7 +524,14 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             break;
         }
     )
+    
     if( v.m_data.tag() != x.m_data.tag() ) {
+        // HACK: If the path is Opaque, return a fuzzy match.
+        // - This works around an impl selection bug.
+        if( v.m_data.is_Path() && v.m_data.as_Path().binding.is_Opaque() ) {
+            DEBUG("- Fuzzy match due to opaque");
+            return Compare::Fuzzy;
+        }
         DEBUG("- Tag mismatch " << v << " and " << x);
         return Compare::Unequal;
     }

@@ -1880,7 +1880,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         ) const
 {
     TRACE_FUNCTION_F(trait << FMT_CB(ss, if(params_ptr) { ss << *params_ptr; } else { ss << "<?>"; }) << " for " << type);
-    // TODO: Parameter defaults - apply here or in the caller?
+    
     return this->m_crate.find_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
         [&](const auto& impl) {
             DEBUG("[find_trait_impls_crate] Found impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << " " << impl.m_params.fmt_bounds());
@@ -1899,6 +1899,8 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     return impl_params[idx]->compare_with_placeholders(sp, ty, this->m_ivars.callback_resolve_infer());
                 }
                 };
+            // NOTE: If this type references an associated type, the match will incorrectly fail.
+            // - HACK: match_test_generics_fuzz has been changed to return Fuzzy if there's a tag mismatch and the LHS is an Opaque path
             match &= impl.m_type.match_test_generics_fuzz(sp, type , this->m_ivars.callback_resolve_infer(), cb);
             if( params_ptr )
             {
@@ -1907,14 +1909,14 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 for(unsigned int i = 0; i < impl.m_trait_args.m_types.size(); i ++)
                     match &= impl.m_trait_args.m_types[i].match_test_generics_fuzz(sp, params.m_types[i], this->m_ivars.callback_resolve_infer(), cb);
                 if( match == ::HIR::Compare::Unequal ) {
-                    DEBUG("- Failed to match parameters - " << impl.m_trait_args << "+" << impl.m_type << " != " << params << "+" << type);
+                    DEBUG("[find_trait_impls_crate] - Failed to match parameters - " << impl.m_trait_args << "+" << impl.m_type << " != " << params << "+" << type);
                     return false;
                 }
             }
             else
             {
                 if( match == ::HIR::Compare::Unequal ) {
-                    DEBUG("- Failed to match type - " << impl.m_type << " != " << type);
+                    DEBUG("[find_trait_impls_crate] - Failed to match type - " << impl.m_type << " != " << type);
                     return false;
                 }
             }
@@ -1972,6 +1974,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     };
             auto ty_mono = monomorphise_type_with(sp, impl.m_type, monomorph, false);
             auto args_mono = monomorphise_path_params_with(sp, impl.m_trait_args, monomorph, false);
+            // TODO: Expand associated types in these then ensure that they still match the desired types.
             
             // Check bounds for this impl
             // - If a bound fails, then this can't be a valid impl
