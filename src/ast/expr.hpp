@@ -40,11 +40,9 @@ public:
     MetaItems& attrs() { return m_attrs; }
     
     TypeRef& get_res_type() { return m_res_type; }
-    
-    friend ::std::ostream& operator<<(::std::ostream& os, const ExprNode& node);
     static ::std::unique_ptr<ExprNode> from_deserialiser(Deserialiser& d);
 };
-typedef ::std::unique_ptr<AST::ExprNode>    ExprNodeP;
+typedef ::std::unique_ptr<ExprNode> ExprNodeP;
 
 #define NODE_METHODS()  \
     void visit(NodeVisitor& nv) override;\
@@ -683,33 +681,6 @@ public:
     NT(ExprNode_BinOp);
     NT(ExprNode_UniOp);
     #undef NT
-};
-
-class Expr
-{
-    ::std::shared_ptr<ExprNode> m_node;
-public:
-    Expr(unique_ptr<ExprNode> node):
-        m_node(node.release())
-    {
-    }
-    Expr(ExprNode* node):
-        m_node(node)
-    {
-    }
-    Expr():
-        m_node(nullptr)
-    {
-    }
-
-    bool is_valid() const { return m_node.get() != nullptr; }
-    ExprNode& node() { assert(m_node.get()); return *m_node; }
-    const ExprNode& node() const { assert(m_node.get()); return *m_node; }
-    ::std::shared_ptr<ExprNode> take_node() { assert(m_node.get()); return ::std::move(m_node); }
-    void visit_nodes(NodeVisitor& v);
-    void visit_nodes(NodeVisitor& v) const;
-
-    friend ::std::ostream& operator<<(::std::ostream& os, const Expr& pat);
 };
 
 }

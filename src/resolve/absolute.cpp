@@ -8,6 +8,7 @@
  */
 #include <ast/crate.hpp>
 #include <ast/ast.hpp>
+#include <ast/expr.hpp>
 #include <main_bindings.hpp>
 #include <hir/hir.hpp>
 

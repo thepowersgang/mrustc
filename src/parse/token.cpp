@@ -8,6 +8,7 @@
 #include "interpolated_fragment.hpp"
 #include <ast/types.hpp>
 #include <ast/ast.hpp>
+#include <ast/expr.hpp> // for reasons
 
 Token::~Token()
 {
@@ -93,6 +94,12 @@ Token::Token(const InterpolatedFragment& frag)
         m_type = TOK_INTERPOLATED_META;
         m_data = new AST::MetaItem( reinterpret_cast<const AST::MetaItem*>(frag.m_ptr)->clone() );
         break;
+    case InterpolatedFragment::ITEM: {
+        m_type = TOK_INTERPOLATED_ITEM;
+        const auto& named = *reinterpret_cast<const AST::Named<AST::Item>*>(frag.m_ptr);
+        ::AST::Item item = named.data.clone();
+        m_data = new AST::Named<AST::Item>( named.name, mv$(item), named.is_pub );
+        break; }
     }
 }
 Token::Token(TagTakeIP, InterpolatedFragment frag)
@@ -122,9 +129,15 @@ Token::Token(TagTakeIP, InterpolatedFragment frag)
         m_data = reinterpret_cast<AST::ExprNode*>(frag.m_ptr);
         frag.m_ptr = nullptr;
         break;
+    case InterpolatedFragment::ITEM:
+        m_type = TOK_INTERPOLATED_ITEM;
+        m_data = frag.m_ptr;
+        frag.m_ptr = nullptr;
+        break;
     case InterpolatedFragment::META:
         m_type = TOK_INTERPOLATED_META;
-        m_data = new AST::MetaItem( mv$(*reinterpret_cast<AST::MetaItem*>(frag.m_ptr)) );
+        m_data = frag.m_ptr;
+        frag.m_ptr = nullptr;
         break;
     }
 }
@@ -257,6 +270,7 @@ struct EscapedString {
     case TOK_INTERPOLATED_STMT: return "/*:stmt*/";
     case TOK_INTERPOLATED_BLOCK: return "/*:block*/";
     case TOK_INTERPOLATED_META: return "/*:meta*/";
+    case TOK_INTERPOLATED_ITEM: return "/*:item*/";
     // Value tokens
     case TOK_IDENT:     return m_data.as_String();
     case TOK_MACRO:     return m_data.as_String() + "!";

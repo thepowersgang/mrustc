@@ -13,6 +13,7 @@
 #include <limits.h>
 #include "pattern_checks.hpp"
 #include <parse/interpolated_fragment.hpp>
+#include <ast/expr.hpp>
 
 class ParameterMappings
 {
@@ -499,7 +500,7 @@ void Macro_HandlePatternCap(TTStream& lex, unsigned int index, MacroPatEnt::Type
         bound_tts.insert( index, iterations, InterpolatedFragment( Parse_MetaItem(lex) ) );
         break;
     case MacroPatEnt::PAT_ITEM:
-        TODO(lex.getPosition(), "Parse :item");
+        bound_tts.insert( index, iterations, InterpolatedFragment( Parse_Mod_Item_S(lex, false, "!", lex.parse_state().module->path(), false, AST::MetaItems{}) ) );
         break;
     case MacroPatEnt::PAT_IDENT:
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
@@ -562,7 +563,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, ::std::vector<un
 }
 
 /// Parse the input TokenTree according to the `macro_rules!` patterns and return a token stream of the replacement
-::std::unique_ptr<TokenStream> Macro_InvokeRules(const char *name, const MacroRules& rules, const TokenTree& input)
+::std::unique_ptr<TokenStream> Macro_InvokeRules(const char *name, const MacroRules& rules, const TokenTree& input, AST::Module& mod)
 {
     TRACE_FUNCTION;
     Span    sp;// = input
@@ -579,6 +580,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, ::std::vector<un
     unsigned int    rule_index;
     
     TTStream    lex(input);
+    SET_MODULE(lex, mod);
     while(true)
     {
         // 1. Get concrete patterns for all active rules (i.e. no If* patterns)

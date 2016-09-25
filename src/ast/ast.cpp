@@ -3,6 +3,7 @@
 #include "ast.hpp"
 #include "crate.hpp"
 #include "types.hpp"
+#include "expr.hpp"
 #include "../common.hpp"
 #include <iostream>
 #include "../parse/parseerror.hpp"
@@ -62,6 +63,125 @@ MetaItem MetaItem::clone() const
         )
     )
     throw ::std::runtime_error("MetaItem::clone - Fell off end");
+}
+
+StructItem StructItem::clone() const
+{
+    return StructItem(m_attrs.clone(), m_is_public, m_name, m_type);
+}
+TupleItem TupleItem::clone() const
+{
+    return TupleItem(m_attrs.clone(), m_is_public, m_type);
+}
+
+
+TypeAlias TypeAlias::clone() const
+{
+    return TypeAlias( m_params, m_type );
+}
+Static Static::clone() const
+{
+    return Static( m_class, m_type, m_value.is_valid() ? AST::Expr( m_value.node().clone() ) : AST::Expr() );
+}
+
+Function::Function(Span sp, GenericParams params, TypeRef ret_type, Arglist args):
+    m_span(sp),
+    m_params( move(params) ),
+    m_rettype( move(ret_type) ),
+    m_args( move(args) )
+{
+}
+Function Function::clone() const
+{
+    decltype(m_args)    new_args;
+    for(const auto& arg : m_args)
+        new_args.push_back( ::std::make_pair( arg.first.clone(), arg.second ) );
+    
+    auto rv = Function( m_span, m_params, m_rettype, mv$(new_args) );
+    if( m_code.is_valid() )
+    {
+        rv.m_code = AST::Expr( m_code.node().clone() );
+    }
+    return rv;
+}
+
+void Trait::add_type(::std::string name, TypeRef type) {
+    m_items.push_back( Named<Item>(mv$(name), Item::make_Type({TypeAlias(GenericParams(), mv$(type))}), true) );
+}
+void Trait::add_function(::std::string name, Function fcn) {
+    DEBUG("trait fn " << name);
+    m_items.push_back( Named<Item>(mv$(name), Item::make_Function({mv$(fcn)}), true) );
+}
+void Trait::add_static(::std::string name, Static v) {
+    m_items.push_back( Named<Item>(mv$(name), Item::make_Static({mv$(v)}), true) );
+}
+void Trait::set_is_marker() {
+    m_is_marker = true;
+}
+bool Trait::is_marker() const {
+    return m_is_marker;
+}
+bool Trait::has_named_item(const ::std::string& name, bool& out_is_fcn) const
+{
+    for( const auto& i : m_items )
+    {
+        if( i.name == name ) {
+            out_is_fcn = i.data.is_Function();
+            return true;
+        }
+    }
+    return false;
+}
+
+Trait Trait::clone() const
+{
+    auto rv = Trait(m_params, m_supertraits);
+    for(const auto& item : m_items)
+    {
+        rv.m_items.push_back( Named<Item> { item.name, item.data.clone(), item.is_pub } );
+    }
+    return rv;
+}
+
+Enum Enum::clone() const
+{
+    decltype(m_variants)    new_variants;
+    for(const auto& var : m_variants)
+    {
+        TU_MATCHA( (var.m_data), (e),
+        (Value,
+            new_variants.push_back( EnumVariant(var.m_attrs.clone(), var.m_name, e.m_value.clone()) );
+            ),
+        (Tuple,
+            new_variants.push_back( EnumVariant(var.m_attrs.clone(), var.m_name, e.m_sub_types) );
+            ),
+        (Struct,
+            decltype(e.m_fields)    new_fields;
+            for(const auto& f : e.m_fields)
+                new_fields.push_back( f.clone() );
+            new_variants.push_back( EnumVariant(var.m_attrs.clone(), var.m_name, mv$(new_fields)) );
+            )
+        )
+    }
+    return Enum(m_params, mv$(new_variants));
+}
+Struct Struct::clone() const
+{
+    TU_MATCHA( (m_data), (e),
+    (Tuple,
+        decltype(e.ents)    new_fields;
+        for(const auto& f : e.ents)
+            new_fields.push_back( f.clone() );
+        return Struct(m_params, mv$(new_fields));
+        ),
+    (Struct,
+        decltype(e.ents)    new_fields;
+        for(const auto& f : e.ents)
+            new_fields.push_back( f.clone() );
+        return Struct(m_params, mv$(new_fields));
+        )
+    )
+    throw "";
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const ImplDef& impl)
@@ -282,42 +402,44 @@ Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves
     return Module::ItemRef();
 }
 
-
-Function::Function(Span sp, GenericParams params, TypeRef ret_type, Arglist args):
-    m_span(sp),
-    m_params( move(params) ),
-    m_rettype( move(ret_type) ),
-    m_args( move(args) )
+Item Item::clone() const
 {
+    TU_MATCHA( (*this), (e),
+    (None,
+        return AST::Item(e);
+        ),
+    (MacroInv,
+        TODO(Span(), "Clone on Item::MacroInv");
+        ),
+    (Module,
+        TODO(Span(), "Clone on Item::Module");
+        ),
+    (Crate,
+        return AST::Item(e);
+        ),
+    (Type,
+        return AST::Item(e.clone());
+        ),
+    (Struct,
+        return AST::Item(e.clone());
+        ),
+    (Enum,
+        return AST::Item(e.clone());
+        ),
+    (Trait,
+        return AST::Item(e.clone());
+        ),
+    
+    (Function,
+        return AST::Item(e.clone());
+        ),
+    (Static,
+        return AST::Item(e.clone());
+        )
+    )
+    throw "";
 }
 
-void Trait::add_type(::std::string name, TypeRef type) {
-    m_items.push_back( Named<Item>(mv$(name), Item::make_Type({TypeAlias(GenericParams(), mv$(type))}), true) );
-}
-void Trait::add_function(::std::string name, Function fcn) {
-    DEBUG("trait fn " << name);
-    m_items.push_back( Named<Item>(mv$(name), Item::make_Function({mv$(fcn)}), true) );
-}
-void Trait::add_static(::std::string name, Static v) {
-    m_items.push_back( Named<Item>(mv$(name), Item::make_Static({mv$(v)}), true) );
-}
-void Trait::set_is_marker() {
-    m_is_marker = true;
-}
-bool Trait::is_marker() const {
-    return m_is_marker;
-}
-bool Trait::has_named_item(const ::std::string& name, bool& out_is_fcn) const
-{
-    for( const auto& i : m_items )
-    {
-        if( i.name == name ) {
-            out_is_fcn = i.data.is_Function();
-            return true;
-        }
-    }
-    return false;
-}
 
 
 ::std::ostream& operator<<(::std::ostream& os, const TypeParam& tp)

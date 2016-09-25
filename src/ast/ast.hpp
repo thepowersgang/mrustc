@@ -23,7 +23,7 @@
 
 #include <ast/pattern.hpp>
 #include <ast/attrs.hpp>
-#include <ast/expr.hpp>
+#include <ast/expr_ptr.hpp>
 #include <ast/item.hpp>
 #include <ast/macro.hpp>
 
@@ -70,6 +70,8 @@ struct StructItem
     friend ::std::ostream& operator<<(::std::ostream& os, const StructItem& x) {
         return os << (x.m_is_public ? "pub " : "") << x.m_name << ": " << x.m_type;
     }
+    
+    StructItem clone() const;
 };
 
 struct TupleItem
@@ -92,6 +94,8 @@ struct TupleItem
     friend ::std::ostream& operator<<(::std::ostream& os, const TupleItem& x) {
         return os << (x.m_is_public ? "pub " : "") << x.m_type;
     }
+    
+    TupleItem clone() const;
 };
 
 class TypeAlias
@@ -110,6 +114,8 @@ public:
     
     GenericParams& params() { return m_params; }
     TypeRef& type() { return m_type; }
+    
+    TypeAlias clone() const;
 };
 
 class Static
@@ -141,6 +147,8 @@ public:
     
     TypeRef& type() { return m_type; }
     Expr& value() { return m_value; }
+    
+    Static clone() const;
 };
 
 class Function
@@ -155,6 +163,7 @@ private:
     Expr    m_code;
     TypeRef m_rettype;
     Arglist m_args;
+    // TODO: ABI, const, and unsafe
 public:
     Function()
     {}
@@ -174,6 +183,8 @@ public:
           TypeRef& rettype()       { return m_rettype; }
     const Arglist& args() const { return m_args; }
           Arglist& args()       { return m_args; }
+    
+    Function clone() const;
 };
 
 class Trait
@@ -210,6 +221,8 @@ public:
     bool is_marker() const;
     
     bool has_named_item(const ::std::string& name, bool& out_is_fcn) const;
+    
+    Trait clone() const;
 };
 
 TAGGED_UNION_EX(EnumVariantData, (), Value,
@@ -291,10 +304,11 @@ public:
     {}
     
     const GenericParams& params() const { return m_params; }
+          GenericParams& params()       { return m_params; }
     const ::std::vector<EnumVariant>& variants() const { return m_variants; }
+          ::std::vector<EnumVariant>& variants()       { return m_variants; }
     
-    GenericParams& params() { return m_params; }
-    ::std::vector<EnumVariant>& variants() { return m_variants; }
+    Enum clone() const;
 };
 
 TAGGED_UNION_EX(StructData, (), Struct,
@@ -333,6 +347,7 @@ public:
     
     TypeRef get_field_type(const char *name, const ::std::vector<TypeRef>& args);
     
+    Struct clone() const;
 };
 
 class ImplDef
@@ -634,6 +649,8 @@ TAGGED_UNION_EX(Item, (), None,
     public:
         MetaItems   attrs;
         Span    span;
+        
+        Item clone() const;
     )
     );
 

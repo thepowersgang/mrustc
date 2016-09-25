@@ -11,7 +11,8 @@
  * - Parse_Expr0 : Parse a single expression
  */
 #include "parseerror.hpp"
-#include "../ast/ast.hpp"
+#include <ast/ast.hpp>
+#include <ast/expr.hpp>
 #include "common.hpp"
 #include <iostream>
 #include "tokentree.hpp"

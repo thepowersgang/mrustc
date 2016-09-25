@@ -101,7 +101,7 @@ class CMacroUseHandler:
 
 ::std::unique_ptr<TokenStream>  Macro_Invoke(const char* name, const MacroRules& rules, const TokenTree& tt, AST::Module& mod)
 {
-    return Macro_InvokeRules(name, rules, tt);
+    return Macro_InvokeRules(name, rules, tt, mod);
 }
 
 

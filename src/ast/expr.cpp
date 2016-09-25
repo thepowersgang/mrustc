@@ -5,6 +5,19 @@
 
 namespace AST {
 
+    
+Expr::Expr(unique_ptr<ExprNode> node):
+    m_node(node.release())
+{
+}
+Expr::Expr(ExprNode* node):
+    m_node(node)
+{
+}
+Expr::Expr():
+    m_node(nullptr)
+{
+}
 void Expr::visit_nodes(NodeVisitor& v)
 {
     if( m_node )
@@ -21,6 +34,17 @@ void Expr::visit_nodes(NodeVisitor& v) const
         m_node->visit(v);
     }
 }
+
+Expr Expr::clone() const
+{
+    if( m_node ) {
+        return Expr( m_node->clone() );
+    }
+    else {
+        return Expr();
+    }
+}
+
 ::std::ostream& operator<<(::std::ostream& os, const Expr& pat)
 {
     if( pat.m_node.get() )

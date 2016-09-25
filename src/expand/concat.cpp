@@ -5,6 +5,7 @@
 #include "../parse/parseerror.hpp"
 #include "../parse/tokentree.hpp"
 #include "../parse/lex.hpp"
+#include <ast/expr.hpp>
 
 class CConcatExpander:
     public ExpandProcMacro

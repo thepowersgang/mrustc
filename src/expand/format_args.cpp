@@ -6,6 +6,7 @@
 #include "../parse/tokentree.hpp"
 #include "../parse/lex.hpp"
 #include <ast/crate.hpp>    // for m_load_std
+#include <ast/expr.hpp>    // for ExprNode_*
 
 namespace {
     

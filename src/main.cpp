@@ -160,6 +160,10 @@ int main(int argc, char *argv[])
         return false;
         });
     
+    // TODO: This is for liblibc - should be a command-line option
+    //Cfg_SetFlag("stdbuild");
+
+    
     
     try
     {

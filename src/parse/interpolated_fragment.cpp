@@ -3,6 +3,7 @@
 #include <iostream>
 #include "interpolated_fragment.hpp"
 #include <ast/ast.hpp>
+#include <ast/expr.hpp> // For definition of ExprNode
 
 InterpolatedFragment::~InterpolatedFragment()
 {
@@ -21,6 +22,9 @@ InterpolatedFragment::~InterpolatedFragment()
             break;
         case InterpolatedFragment::META:
             delete reinterpret_cast<AST::MetaItem*>(m_ptr);
+            break;
+        case InterpolatedFragment::ITEM:
+            delete reinterpret_cast<AST::Named<AST::Item>*>(m_ptr);
             break;
         }
     }
@@ -46,6 +50,11 @@ InterpolatedFragment::InterpolatedFragment(InterpolatedFragment::Type type, AST:
 InterpolatedFragment::InterpolatedFragment(AST::MetaItem v):
     m_type( InterpolatedFragment::META ),
     m_ptr( new AST::MetaItem(mv$(v)) )
+{
+}
+InterpolatedFragment::InterpolatedFragment(::AST::Named<::AST::Item> v):
+    m_type( InterpolatedFragment::ITEM ),
+    m_ptr( new ::AST::Named<::AST::Item>( mv$(v) ) )
 {
 }
 InterpolatedFragment::InterpolatedFragment(TokenTree v):
@@ -98,6 +107,9 @@ InterpolatedFragment::InterpolatedFragment(TypeRef v):
 
     case InterpolatedFragment::META:
         os << "meta[" << *reinterpret_cast<AST::MetaItem*>(x.m_ptr) << "]";
+        break;
+    case InterpolatedFragment::ITEM:
+        os << "item[?]";
         break;
     }
     return os;

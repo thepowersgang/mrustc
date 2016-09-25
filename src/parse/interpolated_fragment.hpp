@@ -11,7 +11,10 @@ namespace AST {
     class Path;
     class ExprNode;
     class MetaItem;
+    template<typename T> class Named;
+    class Item;
 };
+
 
 class InterpolatedFragment
 {
@@ -28,6 +31,7 @@ public:
         BLOCK,
         
         META,
+        ITEM,
     } m_type;
     
     // Owned type-pruned pointer
@@ -41,6 +45,7 @@ public:
     InterpolatedFragment(::AST::Path);
     InterpolatedFragment(::TypeRef);
     InterpolatedFragment(::AST::MetaItem );
+    InterpolatedFragment(::AST::Named<AST::Item> );
     ~InterpolatedFragment();
     InterpolatedFragment(Type , ::AST::ExprNode*);
     

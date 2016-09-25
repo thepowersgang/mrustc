@@ -1,9 +1,11 @@
-
+/*
+ */
 #include <synext.hpp>
 #include <parse/tokentree.hpp>
 #include <parse/lex.hpp>
 #include <parse/common.hpp>
 #include "cfg.hpp"
+#include <ast/expr.hpp> // Needed to clear a ExprNodeP
 
 #include <map>
 #include <set>

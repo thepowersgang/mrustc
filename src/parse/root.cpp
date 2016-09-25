@@ -1675,7 +1675,7 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, bool file_controls_
         PUTBACK(tok, lex);
         DEBUG("meta_items = " << meta_items);
 
-        // root-level macros
+        // Root-level macro invocations
         auto ps = lex.start_span();
         if( GET_TOK(tok, lex) == TOK_MACRO )
         {
@@ -1692,6 +1692,7 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, bool file_controls_
         }
     
         // Module visibility
+        // TODO: Move this into Parse_Mod_Item?
         bool    is_public = false;
         if( GET_TOK(tok, lex) == TOK_RWORD_PUB ) {
             is_public = true;
