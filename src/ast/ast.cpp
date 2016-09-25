@@ -131,6 +131,10 @@ MacroInvocation MacroInvocation::clone() const
     return rv;
 }
 
+void Module::add_item( Named<Item> i ) {
+    m_items.push_back( mv$(i) );
+    DEBUG("Item " << m_items.back().data.tag_str() << " - attrs = " << m_items.back().data.attrs);
+}
 void Module::add_item(bool is_pub, ::std::string name, Item it, MetaItems attrs) {
     m_items.push_back( Named<Item>( mv$(name), mv$(it), is_pub ) );
     m_items.back().data.attrs = mv$(attrs);
@@ -142,29 +146,6 @@ void Module::add_ext_crate(bool is_public, ::std::string ext_name, ::std::string
 void Module::add_alias(bool is_public, UseStmt us, ::std::string name, MetaItems attrs) {
     us.attrs = mv$(attrs);
     m_imports.push_back( Named<UseStmt>( mv$(name), mv$(us), is_public) );
-}
-void Module::add_typealias(bool is_public, ::std::string name, TypeAlias alias, MetaItems attrs) {
-    this->add_item( is_public, name, Item::make_Type({mv$(alias)}), mv$(attrs) );
-}
-void Module::add_static(bool is_public, ::std::string name, Static item, MetaItems attrs) {
-    this->add_item( is_public, name, Item::make_Static({mv$(item)}), mv$(attrs) );
-}
-void Module::add_trait(bool is_public, ::std::string name, Trait item, MetaItems attrs) {
-    this->add_item( is_public, name, Item::make_Trait({mv$(item)}), mv$(attrs) );
-}
-void Module::add_struct(bool is_public, ::std::string name, Struct item, MetaItems attrs) {
-    this->add_item( is_public, name, Item::make_Struct({mv$(item)}), mv$(attrs) );
-}
-void Module::add_enum(bool is_public, ::std::string name, Enum item, MetaItems attrs) {
-    this->add_item( is_public, name, Item::make_Enum({mv$(item)}), mv$(attrs) );
-}
-void Module::add_function(bool is_public, ::std::string name, Function item, MetaItems attrs) {
-    DEBUG("mod fn " << name);
-    this->add_item( is_public, name, Item::make_Function({mv$(item)}), mv$(attrs) );
-}
-void Module::add_submod(bool is_public, ::std::string name, Module mod, MetaItems attrs) {
-    DEBUG("mod.m_name = " << name << ", attrs = " << attrs);
-    this->add_item( is_public, mv$(name), Item::make_Module({mv$(mod)}), mv$(attrs) );
 }
 void Module::add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro) {
     m_macros.push_back( Named<MacroRulesPtr>( mv$(name), mv$(macro), is_exported ) );

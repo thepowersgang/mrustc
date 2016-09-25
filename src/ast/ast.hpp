@@ -553,16 +553,10 @@ public:
     /// Create an anon module (for use inside expressions)
     ::std::unique_ptr<AST::Module> add_anon();
     
+    void add_item(Named<Item> item);
     void add_item(bool is_pub, ::std::string name, Item it, MetaItems attrs);
     void add_ext_crate(bool is_public, ::std::string ext_name, ::std::string imp_name, MetaItems attrs);
     void add_alias(bool is_public, UseStmt path, ::std::string name, MetaItems attrs);
-    void add_typealias(bool is_public, ::std::string name, TypeAlias alias, MetaItems attrs);
-    void add_static(bool is_public, ::std::string name, Static item, MetaItems attrs);
-    void add_trait(bool is_public, ::std::string name, Trait item, MetaItems attrs);
-    void add_struct(bool is_public, ::std::string name, Struct item, MetaItems attrs);
-    void add_enum(bool is_public, ::std::string name, Enum inst, MetaItems attrs);
-    void add_function(bool is_public, ::std::string name, Function item, MetaItems attrs);
-    void add_submod(bool is_public, ::std::string name, Module mod, MetaItems attrs);
     
     void add_impl(Impl impl) {
         m_impls.emplace_back( mv$(impl) );

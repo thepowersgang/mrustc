@@ -532,7 +532,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
     }
 }
 
-AST::Trait Parse_TraitDef(TokenStream& lex, AST::Module& mod, const AST::MetaItems& meta_items)
+AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
 {
     TRACE_FUNCTION;
 
@@ -712,7 +712,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, AST::Module& mod, const AST::MetaIte
     return trait;
 }
 
-AST::Enum Parse_EnumDef(TokenStream& lex, AST::Module& mod, const AST::MetaItems& meta_items)
+AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
 {
     TRACE_FUNCTION;
 
@@ -1108,10 +1108,11 @@ void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi, ::
         {
         case TOK_RWORD_FN: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            auto name = mv$(tok.str());
             // parse function as prototype
             // - no self
-            auto i = Parse_FunctionDef(lex, abi, meta_items, false, true);
-            mod.add_function(is_public, tok.str(), mv$(i), mv$(meta_items));
+            auto i = ::AST::Item( Parse_FunctionDef(lex, abi, meta_items, false, true) );
+            mod.add_item( is_public, mv$(name), mv$(i), mv$(meta_items) );
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
             break; }
         case TOK_RWORD_STATIC: {
@@ -1126,9 +1127,8 @@ void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi, ::
             auto type = Parse_Type(lex);
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
             
-            auto static_class = is_mut ? ::AST::Static::MUT : ::AST::Static::STATIC;
-            auto i = ::AST::Static(static_class,  type, ::AST::Expr());
-            mod.add_static(is_public, mv$(name), mv$(i), mv$(meta_items));
+            auto i = ::AST::Item(::AST::Static( (is_mut ? ::AST::Static::MUT : ::AST::Static::STATIC),  type, ::AST::Expr() ));
+            mod.add_item(is_public, mv$(name), mv$(i), mv$(meta_items));
             break; }
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_STATIC});
@@ -1279,66 +1279,18 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
     return ::AST::MacroInvocation( lex.end_span(span_start), mv$(meta_items), mv$(name), mv$(ident), mv$(tt));
 }
 
-void Parse_ExternCrate(TokenStream& lex, AST::Module& mod, bool is_public, AST::MetaItems meta_items)
+// TODO: Extract single-item parsing into a method that returns just the item
+::AST::Named<::AST::Item> Parse_Mod_Item_S(TokenStream& lex, bool file_controls_dir, const ::std::string& file_path, const ::AST::Path& mod_path, bool is_public, AST::MetaItems meta_items)
 {
     Token   tok;
-    ::std::string   path, name;
-    switch( GET_TOK(tok, lex) )
-    {
-    // `extern crate "crate-name" as crate_name;`
-    // NOTE: rustc doesn't allow this, keep in mrustc for for reparse support
-    case TOK_STRING:
-        path = mv$(tok.str());
-        GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
-        GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        name = mv$(tok.str());
-        break;
-    // `extern crate crate_name;`
-    // `extern crate crate_name as other_name;`
-    case TOK_IDENT:
-        name = mv$(tok.str());
-        if(GET_TOK(tok, lex) == TOK_RWORD_AS) {
-            path = mv$(name);
-            
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            name = mv$(tok.str());
-        }
-        else {
-            PUTBACK(tok, lex);
-            path = name;
-        }
-        break;
-    default:
-        throw ParseError::Unexpected(lex, tok, {TOK_STRING, TOK_IDENT});
-    }
-    GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
     
-    DEBUG("- `extern crate` path='" << path << "', name="<<name);
-    mod.add_ext_crate(is_public, mv$(path), mv$(name), mv$(meta_items));
-}
-
-void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::string& file_path, AST::Module& mod, bool is_public, AST::MetaItems meta_items)
-{
-    SET_MODULE(lex, mod);
-    lex.parse_state().parent_attrs = &meta_items;
-    
-    //TRACE_FUNCTION;
-    Token   tok;
-
     auto ps = lex.start_span();
-    #define APPLY_SPAN_ITEM()   mod.items().back().data.span = lex.end_span(ps)
-    // The actual item!
+    
+    ::std::string   item_name;
+    ::AST::Item item_data;
+    
     switch( GET_TOK(tok, lex) )
     {
-    // `use ...`
-    case TOK_RWORD_USE:
-        Parse_Use(lex, [&mod,is_public,&file_path,&meta_items](AST::UseStmt p, std::string s) {
-                DEBUG(file_path << " - use " << p << " as '" << s << "'");
-                mod.add_alias(is_public, mv$(p), s, meta_items.clone());
-            });
-        GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-        break;
-    
     case TOK_RWORD_EXTERN:
         switch( GET_TOK(tok, lex) )
         {
@@ -1351,33 +1303,55 @@ void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::strin
             // `extern "<ABI>" fn ...`
             case TOK_RWORD_FN: {
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                auto i = Parse_FunctionDefWithCode(lex, abi, meta_items, false);
-                mod.add_function(is_public, tok.str(), mv$(i), mv$(meta_items));
-                APPLY_SPAN_ITEM();
+                item_name = tok.str();
+                item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, abi, meta_items, false) );
                 break; }
-            // `extern "<ABI>" { ...`
-            case TOK_BRACE_OPEN:
-                Parse_ExternBlock(lex, mod, mv$(abi), mv$(meta_items));
-                break;
+            // NOTE: Extern blocks aren't items, and get handled in the caller.
             default:
                 throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_BRACE_OPEN});
             }
             break; }
         // `extern fn ...`
-        case TOK_RWORD_FN: {
+        case TOK_RWORD_FN:
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            auto i = Parse_FunctionDefWithCode(lex, "C", meta_items, false);
-            mod.add_function(is_public, tok.str(), mv$(i), mv$(meta_items));
-            APPLY_SPAN_ITEM();
-            break; }
-        // `extern { ...`
-        case TOK_BRACE_OPEN:
-            Parse_ExternBlock(lex, mod, "C", mv$(meta_items));
+            item_name = tok.str();
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, "C", meta_items, false) );
             break;
+        // NOTE: `extern { ...` is handled in caller
+        
         // `extern crate "crate-name" as crate_name;`
         // `extern crate crate_name;`
+        // `extern crate crate_name as other_name;`
         case TOK_RWORD_CRATE:
-            Parse_ExternCrate(lex, mod, is_public, mv$(meta_items));
+            switch( GET_TOK(tok, lex) )
+            {
+            // `extern crate "crate-name" as crate_name;`
+            // NOTE: rustc doesn't allow this, keep in mrustc for for reparse support
+            case TOK_STRING:
+                item_data = ::AST::Item::make_Crate({ tok.str() });
+                GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                item_name = mv$(tok.str());
+                break;
+            // `extern crate crate_name;`
+            // `extern crate crate_name as other_name;`
+            case TOK_IDENT:
+                item_name = mv$(tok.str());
+                if(GET_TOK(tok, lex) == TOK_RWORD_AS) {
+                    item_data = ::AST::Item::make_Crate({ mv$(item_name) });
+                    
+                    GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                    item_name = mv$(tok.str());
+                }
+                else {
+                    PUTBACK(tok, lex);
+                    item_data = ::AST::Item::make_Crate({ item_name });
+                }
+                break;
+            default:
+                throw ParseError::Unexpected(lex, tok, {TOK_STRING, TOK_IDENT});
+            }
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
             break;
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_STRING, TOK_RWORD_FN, TOK_BRACE_OPEN, TOK_RWORD_CRATE});
@@ -1385,44 +1359,41 @@ void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::strin
         break;
     
     // `const NAME`
-    // `const fn`
-    case TOK_RWORD_CONST: {
+    // `const [unsafe] fn`
+    case TOK_RWORD_CONST:
         switch( GET_TOK(tok, lex) )
         {
         case TOK_IDENT: {
-            ::std::string name = tok.str();
+            item_name = tok.str();
 
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             TypeRef type = Parse_Type(lex);
             GET_CHECK_TOK(tok, lex, TOK_EQUAL);
             AST::Expr val = Parse_Expr(lex);
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-            mod.add_static(is_public, name, AST::Static(AST::Static::CONST, type, val), mv$(meta_items));
-            APPLY_SPAN_ITEM();
+            item_data = ::AST::Item( ::AST::Static(AST::Static::CONST, type, val) );
             break; }
-        case TOK_RWORD_UNSAFE: {
+        case TOK_RWORD_UNSAFE:
             GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            item_name = tok.str();
             // TODO: Mark as const and unsafe
             meta_items.push_back( AST::MetaItem("#UNSAFE") );
             meta_items.push_back( AST::MetaItem("#CONST") );
-            auto i = Parse_FunctionDefWithCode(lex, "rust", meta_items, false);
-            mod.add_function(is_public, tok.str(), mv$(i), mv$(meta_items));
-            APPLY_SPAN_ITEM();
-            break; }
-        case TOK_RWORD_FN: {
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, "rust", meta_items, false) );
+            break;
+        case TOK_RWORD_FN:
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            item_name = tok.str();
             // TODO: Mark as const
             meta_items.push_back( AST::MetaItem("#CONST") );
             // - self not allowed, not prototype
-            auto i = Parse_FunctionDefWithCode(lex, "rust", meta_items, false);
-            mod.add_function(is_public, tok.str(), mv$(i), mv$(meta_items));
-            APPLY_SPAN_ITEM();
-            break; }
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, "rust", meta_items, false) );
+            break;
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_IDENT, TOK_RWORD_FN});
         }
-        break; }
+        break;
     // `static NAME`
     // `static mut NAME`
     case TOK_RWORD_STATIC: {
@@ -1432,7 +1403,7 @@ void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::strin
             GET_TOK(tok, lex);
         }
         CHECK_TOK(tok, TOK_IDENT);
-        ::std::string name = tok.str();
+        item_name = tok.str();
 
         GET_CHECK_TOK(tok, lex, TOK_COLON);
         TypeRef type = Parse_Type(lex);
@@ -1442,11 +1413,7 @@ void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::strin
         AST::Expr val = Parse_Expr(lex);
 
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-        mod.add_static(is_public, name,
-            AST::Static((is_mut ? AST::Static::MUT : AST::Static::STATIC), type, val),
-            mv$(meta_items)
-            );
-        APPLY_SPAN_ITEM();
+        item_data = ::AST::Item( ::AST::Static( (is_mut ? AST::Static::MUT : AST::Static::STATIC), type, val) );
         break; }
 
     // `unsafe fn`
@@ -1467,90 +1434,75 @@ void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::strin
             }
             GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            auto i = Parse_FunctionDefWithCode(lex, abi, meta_items, false);
-            mod.add_function(is_public, tok.str(), mv$(i), mv$(meta_items));
-            APPLY_SPAN_ITEM();
+            item_name = mv$( tok.str() );
+            // TODO: Mark as unsafe
+            meta_items.push_back( AST::MetaItem("#UNSAFE") );
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, abi, meta_items, false) );
             break; }
         // `unsafe fn`
-        case TOK_RWORD_FN: {
+        case TOK_RWORD_FN:
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            item_name = mv$( tok.str() );
             // TODO: Mark as unsafe
             meta_items.push_back( AST::MetaItem("#UNSAFE") );
             // - self not allowed, not prototype
-            auto i = Parse_FunctionDefWithCode(lex, "rust", meta_items, false);
-            //i.set_unsafe();
-            mod.add_function(is_public, tok.str(), mv$(i), mv$(meta_items));
-            APPLY_SPAN_ITEM();
-            break; }
-        // `unsafe trait`
-        case TOK_RWORD_TRAIT: {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            ::std::string name = tok.str();
-            // TODO: Mark as unsafe
-            auto i = Parse_TraitDef(lex, mod, meta_items);
-            //i.set_unsafe();
-            mod.add_trait(is_public, name, mv$(i), mv$(meta_items));
-            APPLY_SPAN_ITEM();
-            break; }
-        // `unsafe impl`
-        case TOK_RWORD_IMPL:
-            Parse_Impl(lex, mod, mv$(meta_items), true);
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, "rust", meta_items, false) );
             break;
+        // `unsafe trait`
+        case TOK_RWORD_TRAIT:
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            item_name = tok.str();
+            // TODO: Mark as unsafe
+            meta_items.push_back( AST::MetaItem("#UNSAFE") );
+            item_data = ::AST::Item( Parse_TraitDef(lex, meta_items) );
+            break;
+        // TODO: `unsafe impl` (Doesn't currently exist as an Item)
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_TRAIT, TOK_RWORD_IMPL});
         }
         break;
     // `fn`
-    case TOK_RWORD_FN: {
+    case TOK_RWORD_FN:
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        ::std::string name = tok.str();
+        item_name = tok.str();
         // - self not allowed, not prototype
-        auto i = Parse_FunctionDefWithCode(lex, "rust", meta_items, false);
-        mod.add_function(is_public, name, mv$(i), mv$(meta_items));
-        APPLY_SPAN_ITEM();
-        break; }
-    // `type`
-    case TOK_RWORD_TYPE: {
-        GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        auto name = mv$(tok.str());
-        auto i = Parse_TypeAlias(lex, meta_items);
-        mod.add_typealias(is_public, mv$(name), mv$(i), mv$(meta_items));
-        APPLY_SPAN_ITEM();
-        break; }
-    // `struct`
-    case TOK_RWORD_STRUCT: {
-        GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        auto name = mv$(tok.str());
-        auto i = Parse_Struct(lex, meta_items);
-        mod.add_struct( is_public, name, mv$(i), mv$(meta_items) );
-        APPLY_SPAN_ITEM();
-        break; }
-    // `enum`
-    case TOK_RWORD_ENUM: {
-        GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        ::std::string name = tok.str();
-        auto i = Parse_EnumDef(lex, mod, meta_items);
-        mod.add_enum(is_public, name, mv$(i), mv$(meta_items));
-        APPLY_SPAN_ITEM();
-        break; }
-    // `impl`
-    case TOK_RWORD_IMPL:
-        Parse_Impl(lex, mod, mv$(meta_items));
+        item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, "rust", meta_items, false) );
         break;
-    // `trait`
-    case TOK_RWORD_TRAIT: {
+    // `type`
+    case TOK_RWORD_TYPE:
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        ::std::string name = tok.str();
-        auto i = Parse_TraitDef(lex, mod, meta_items);
-        mod.add_trait(is_public, name, mv$(i), mv$(meta_items));
-        APPLY_SPAN_ITEM();
-        break; }
+        item_name = mv$(tok.str());
+        item_data = ::AST::Item( Parse_TypeAlias(lex, meta_items) );
+        break;
+    // `struct`
+    case TOK_RWORD_STRUCT:
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        item_name = mv$(tok.str());
+        item_data = ::AST::Item( Parse_Struct(lex, meta_items) );
+        break;
+    // `enum`
+    case TOK_RWORD_ENUM:
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        item_name = mv$(tok.str());
+        item_data = ::AST::Item( Parse_EnumDef(lex, meta_items) );
+        break;
+    // `impl`
+    // TODO: Convert `Parse_Impl` to return an item
+    //case TOK_RWORD_IMPL:
+    //    Parse_Impl(lex, mod, mv$(meta_items));
+    //    break;
+    // `trait`
+    case TOK_RWORD_TRAIT:
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        item_name = tok.str();
+        item_data = ::AST::Item( Parse_TraitDef(lex, meta_items) );
+        break;
 
     case TOK_RWORD_MOD: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         auto name = mv$(tok.str());
         DEBUG("Sub module '" << name << "'");
-        AST::Module submod( mod.path() + name );
+        AST::Module submod( mod_path + name );
         
         // Rules for external files (/ path handling):
         // - IF using stdin (path='-') - Disallow and propagate '-' as path
@@ -1632,14 +1584,67 @@ void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::strin
             throw ParseError::Generic("Expected { or ; after module name");
         }
         submod.prescan();
-        mod.add_submod(is_public, mv$(name), mv$(submod), mv$(meta_items));
-        APPLY_SPAN_ITEM();
+        item_name = mv$(name);
+        item_data = ::AST::Item( mv$(submod) );
         break; }
 
     default:
         throw ParseError::Unexpected(lex, tok);
     }
-    #undef APPLY_SPAN_ITEM
+    
+    item_data.attrs = mv$(meta_items);
+    item_data.span = lex.end_span(ps);
+    
+    return ::AST::Named< ::AST::Item> { mv$(item_name), mv$(item_data), is_public };
+}
+
+void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::string& file_path, AST::Module& mod, bool is_public, AST::MetaItems meta_items)
+{
+    SET_MODULE(lex, mod);
+    lex.parse_state().parent_attrs = &meta_items;
+    
+    //TRACE_FUNCTION;
+    Token   tok;
+
+    // `use ...`
+    if( LOOK_AHEAD(lex) == TOK_RWORD_USE )
+    {
+        GET_TOK(tok, lex);
+        Parse_Use(lex, [&mod,is_public,&file_path,&meta_items](AST::UseStmt p, std::string s) {
+                DEBUG(file_path << " - use " << p << " as '" << s << "'");
+                mod.add_alias(is_public, mv$(p), s, meta_items.clone());
+            });
+        GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+    }
+    else if( lex.lookahead(0) == TOK_RWORD_EXTERN && ( (lex.lookahead(1) == TOK_STRING && lex.lookahead(2) == TOK_BRACE_OPEN) || lex.lookahead(1) == TOK_BRACE_OPEN ) )
+    {
+        // `extern "<ABI>" { ...`
+        GET_CHECK_TOK(tok, lex, TOK_RWORD_EXTERN);
+        ::std::string   abi = "C";
+        if( GET_TOK(tok, lex) == TOK_STRING ) {
+            abi = tok.str();
+            GET_TOK(tok, lex);
+        }
+        CHECK_TOK(tok, TOK_BRACE_OPEN);
+
+        Parse_ExternBlock(lex, mod, mv$(abi), mv$(meta_items));
+    }
+    // TODO: Move these two into Parse_Mod_Item_S
+    else if( lex.lookahead(0) == TOK_RWORD_UNSAFE && lex.lookahead(1) == TOK_RWORD_IMPL )
+    {
+        GET_CHECK_TOK(tok, lex, TOK_RWORD_UNSAFE);
+        GET_CHECK_TOK(tok, lex, TOK_RWORD_IMPL);
+        Parse_Impl(lex, mod, mv$(meta_items), true);
+    }
+    else if( lex.lookahead(0) == TOK_RWORD_IMPL )
+    {
+        GET_CHECK_TOK(tok, lex, TOK_RWORD_IMPL);
+        Parse_Impl(lex, mod, mv$(meta_items), true);
+    }
+    else
+    {
+        mod.add_item( Parse_Mod_Item_S(lex, file_controls_dir, file_path, mod.path(), is_public, mv$(meta_items)) );
+    }
 }
 
 void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, bool file_controls_dir, const ::std::string& path)
