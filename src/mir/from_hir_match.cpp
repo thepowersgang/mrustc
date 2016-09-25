@@ -660,6 +660,7 @@ struct DecisionTreeNode
         (Variant, ::std::vector< ::std::pair<unsigned int, Branch> >),
         (Unsigned, ::std::vector< ::std::pair< Range<uint64_t>, Branch> >),
         (Signed, ::std::vector< ::std::pair< Range<int64_t>, Branch> >),
+        (Float, ::std::vector< ::std::pair< Range<double>, Branch> >),
         (String, ::std::vector< ::std::pair< ::std::string, Branch> >)
         );
     
@@ -673,10 +674,6 @@ struct DecisionTreeNode
         is_specialisation(false)/*,
         m_field_path( mv$(field_path) ) // */
     {}
-    
-    static Branch new_branch_subtree(PatternRule::field_path_t path) {
-        return Branch( box$(DecisionTreeNode( mv$(path) )) );
-    }
     
     static Branch clone(const Branch& b);
     static Values clone(const Values& x);
@@ -774,6 +771,13 @@ struct DecisionTreeGen
         const Span& sp,
         const DecisionTreeNode::Branch& default_branch,
         const DecisionTreeNode::Values::Data_Unsigned& branches,
+        const ::HIR::TypeRef& ty, ::MIR::LValue val,
+        ::std::function<void(const DecisionTreeNode&)> and_then
+        );
+    void generate_branches_Float(
+        const Span& sp,
+        const DecisionTreeNode::Branch& default_branch,
+        const DecisionTreeNode::Values::Data_Float& branches,
         const ::HIR::TypeRef& ty, ::MIR::LValue val,
         ::std::function<void(const DecisionTreeNode&)> and_then
         );
@@ -979,6 +983,21 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             )
             throw "";
         }
+        static double get_pattern_value_float(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::Pattern::Value& val) {
+            TU_MATCH_DEF( ::HIR::Pattern::Value, (val), (e),
+            (
+                BUG(sp, "Invalid Value type in " << pat);
+                ),
+            (Float,
+                return e.value;
+                ),
+            (Named,
+                assert(e.binding);
+                return e.binding->m_value_res.as_Float();
+                )
+            )
+            throw "";
+        }
     };
     
     TU_MATCHA( (ty.m_data), (e),
@@ -995,7 +1014,9 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             {
             case ::HIR::CoreType::F32:
             case ::HIR::CoreType::F64: {
-                TODO(sp, "Match over float, is it valid?");
+                double start = H::get_pattern_value_float(sp, pat, pe.start);
+                double end   = H::get_pattern_value_float(sp, pat, pe.end  );
+                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant(start), ::MIR::Constant(end)} ) );
                 } break;
             case ::HIR::CoreType::U8:
             case ::HIR::CoreType::U16:
@@ -1033,9 +1054,9 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             {
             case ::HIR::CoreType::F32:
             case ::HIR::CoreType::F64: {
-                TODO(sp, "Match over float, is it valid?");
-                //double val = pe.val.as_Float().value;
-                //this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
+                // Yes, this is valid.
+                double val = H::get_pattern_value_float(sp, pat, pe.val);
+                this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
                 } break;
             case ::HIR::CoreType::U8:
             case ::HIR::CoreType::U16:
@@ -1347,6 +1368,13 @@ DecisionTreeNode::Values DecisionTreeNode::clone(const DecisionTreeNode::Values&
             rv.push_back( ::std::make_pair(v.first, clone(v.second)) );
         return Values( mv$(rv) );
         ),
+    (Float,
+        Values::Data_Float rv;
+        rv.reserve(e.size());
+        for(const auto& v : e)
+            rv.push_back( ::std::make_pair(v.first, clone(v.second)) );
+        return Values( mv$(rv) );
+        ),
     (String,
         Values::Data_String rv;
         rv.reserve(e.size());
@@ -1363,6 +1391,69 @@ DecisionTreeNode DecisionTreeNode::clone() const {
     rv.m_branches = clone(m_branches);
     rv.m_default = clone(m_default);
     return rv;
+}
+
+// Helpers for `populate_tree_from_rule`
+namespace
+{
+    DecisionTreeNode::Branch new_branch_subtree(PatternRule::field_path_t path)
+    {
+        return DecisionTreeNode::Branch( box$(DecisionTreeNode( mv$(path) )) );
+    }
+    
+    // Common code for numerics (Int, Uint, and Float)
+    template<typename T>
+    static void from_rule_valuerange(
+        const Span& sp,
+        ::std::vector< ::std::pair< DecisionTreeNode::Range<T>, DecisionTreeNode::Branch> >& be, T ve_start, T ve_end,
+        const char* name, const PatternRule::field_path_t& field_path, ::std::function<void(DecisionTreeNode::Branch&)> and_then
+        )
+    {
+        // Find the first entry that sorts after this range
+        auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first >= ve_start || v.first.contains(ve_end); });
+        // If the end of the list was reached, OR the located entry sorts after the end of this range
+        if( it == be.end() || it->first >= ve_end ) {
+            it = be.insert( it, ::std::make_pair( DecisionTreeNode::Range<T> { ve_start,ve_end }, new_branch_subtree(field_path) ) );
+        }
+        else if( it->first.start == ve_start && it->first.end == ve_end ) {
+            // Equal, add sub-pattern
+        }
+        else {
+            // Collide or overlap!
+            // - Overlap should split around the collision and merge into it (if this is less-specific).
+            ASSERT_BUG(sp, ve_start < ve_end, "Range pattern with one value");
+            ASSERT_BUG(sp, it->first.start == it->first.end, "Attempting to override a range pattern with another range");
+            
+            // TODO: This breaks miserably if the new range overlaps with two other ranges
+            
+            // Insert half of ve before, and the other half after? OR Create a sub-pattern specializing.
+            if( ve_start == it->first.start ) {
+                // Add single range after
+                it ++;
+                it = be.insert(it, ::std::make_pair( DecisionTreeNode::Range<T> { ve_start + 1, ve_end }, new_branch_subtree(field_path) ) );
+            }
+            else if( ve_end == it->first.start ) {
+                // Add single range before
+                it = be.insert(it, ::std::make_pair( DecisionTreeNode::Range<T> { ve_start, ve_end - 1 }, new_branch_subtree(field_path) ) );
+            }
+            else {
+                // Add two ranges
+                auto end1 = it->first.start - 1;
+                auto start2 = it->first.end + 1;
+                it = be.insert(it, ::std::make_pair( DecisionTreeNode::Range<T> { ve_start, end1 }, new_branch_subtree(field_path) ) );
+                auto& branch_1 = it->second;
+                it ++;
+                it ++;   // Skip the original entry
+                it = be.insert(it, ::std::make_pair( DecisionTreeNode::Range<T> { start2, ve_end }, new_branch_subtree(field_path) ) );
+                auto& branch_2 = it->second;
+                
+                and_then(branch_1);
+                and_then(branch_2);
+                return ;
+            }
+        }
+        and_then(it->second);
+    }
 }
 void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule* first_rule, unsigned int rule_count, ::std::function<void(Branch&)> and_then)
 {
@@ -1488,13 +1579,15 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
             TODO(sp, "Value patterns - Int");
             ),
         (Uint,
+            // TODO: De-duplicate this code between Uint and Float
             if( m_branches.is_Unset() ) {
                 m_branches = Values::make_Unsigned({});
             }
             else if( !m_branches.is_Unsigned() ) {
-                BUG(sp, "Mismatched rules");
+                BUG(sp, "Mismatched rules - have Unsigned, but have seen " << m_branches.tag_str());
             }
             auto& be = m_branches.as_Unsigned();
+            
             auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.end >= ve; });
             if( it == be.end() || it->first.start > ve ) {
                 it = be.insert( it, ::std::make_pair( Range<uint64_t> { ve,ve }, new_branch_subtree(rule.field_path) ) );
@@ -1519,7 +1612,36 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
             }
             ),
         (Float,
-            TODO(sp, "Value patterns - Float");
+            if( m_branches.is_Unset() ) {
+                m_branches = Values::make_Float({});
+            }
+            else if( !m_branches.is_Float() ) {
+                BUG(sp, "Mismatched rules - have Float, but have seen " << m_branches.tag_str());
+            }
+            auto& be = m_branches.as_Float();
+            
+            auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.end >= ve; });
+            if( it == be.end() || it->first.start > ve ) {
+                it = be.insert( it, ::std::make_pair( Range<double> { ve,ve }, new_branch_subtree(rule.field_path) ) );
+            }
+            else if( it->first.start == ve && it->first.end == ve ) {
+                // Equal, continue and add sub-pat
+            }
+            else {
+                // Collide or overlap!
+                TODO(sp, "Value patterns - Float - Overlapping - " << it->first.start << " <= " << ve << " <= " << it->first.end);
+            }
+            auto& branch = it->second;
+            if( rule_count > 1 )
+            {
+                assert( branch.as_Subtree() );
+                auto& subtree = *branch.as_Subtree();
+                subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+            }
+            else
+            {
+                and_then(branch);
+            }
             ),
         (Bool,
             throw "";
@@ -1561,84 +1683,56 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
         )
         ),
     (ValueRange,
+        
         ASSERT_BUG(sp, e.first.tag() == e.last.tag(), "");
         TU_MATCHA( (e.first, e.last), (ve_start, ve_end),
         (Int,
             TODO(sp, "ValueRange patterns - Int");
             ),
         (Uint,
+            // TODO: Share code between the three numeric groups
             if( m_branches.is_Unset() ) {
                 m_branches = Values::make_Unsigned({});
             }
             else if( !m_branches.is_Unsigned() ) {
-                BUG(sp, "Mismatched rules");
+                BUG(sp, "Mismatched rules - have Unsigned, seen " << m_branches.tag_str());
             }
             auto& be = m_branches.as_Unsigned();
-            // Find the first entry that sorts after this range
-            auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first >= ve_start || v.first.contains(ve_end); });
-            // If the end of the list was reached, OR the located entry sorts after the end of this range
-            if( it == be.end() || it->first >= ve_end ) {
-                it = be.insert( it, ::std::make_pair( Range<uint64_t> { ve_start,ve_end }, new_branch_subtree(rule.field_path) ) );
-            }
-            else if( it->first.start == ve_start && it->first.end == ve_end ) {
-                // Equal, add sub-pattern
-            }
-            else {
-                // Collide or overlap!
-                // - Overlap should split around the collision and merge into it (if this is less-specific).
-                ASSERT_BUG(sp, ve_start < ve_end, "Range pattern with one value");
-                ASSERT_BUG(sp, it->first.start == it->first.end, "Attempting to override a range pattern with another range");
-                
-                // TODO: This breaks miserably if the new range overlaps with two other ranges
-                
-                // Insert half of ve before, and the other half after? OR Create a sub-pattern specializing.
-                if( ve_start == it->first.start ) {
-                    // Add single range after
-                    it ++;
-                    it = be.insert(it, ::std::make_pair( Range<uint64_t> { ve_start + 1, ve_end }, new_branch_subtree(rule.field_path) ) );
-                }
-                else if( ve_end == it->first.start ) {
-                    // Add single range before
-                    it = be.insert(it, ::std::make_pair( Range<uint64_t> { ve_start, ve_end - 1 }, new_branch_subtree(rule.field_path) ) );
-                }
-                else {
-                    // Add two ranges
-                    auto end1 = it->first.start - 1;
-                    auto start2 = it->first.end + 1;
-                    it = be.insert(it, ::std::make_pair( Range<uint64_t> { ve_start, end1 }, new_branch_subtree(rule.field_path) ) );
-                    auto& branch_1 = it->second;
-                    it ++;
-                    it ++;   // Skip the original entry
-                    it = be.insert(it, ::std::make_pair( Range<uint64_t> { start2, ve_end }, new_branch_subtree(rule.field_path) ) );
-                    auto& branch_2 = it->second;
-                    
+            from_rule_valuerange(sp, be, ve_start, ve_end, "Unsigned", rule.field_path,
+                [&](auto& branch) {
                     if( rule_count > 1 )
                     {
-                        branch_1.as_Subtree()->populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-                        branch_2.as_Subtree()->populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+                        assert( branch.as_Subtree() );
+                        auto& subtree = *branch.as_Subtree();
+                        subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
                     }
                     else
                     {
-                        and_then(branch_1);
-                        and_then(branch_2);
+                        and_then(branch);
                     }
-                    return ;
-                }
-            }
-            auto& branch = it->second;
-            if( rule_count > 1 )
-            {
-                assert( branch.as_Subtree() );
-                auto& subtree = *branch.as_Subtree();
-                subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-            }
-            else
-            {
-                and_then(branch);
-            }
+                });
             ),
         (Float,
-            TODO(sp, "ValueRange patterns - Float");
+            if( m_branches.is_Unset() ) {
+                m_branches = Values::make_Float({});
+            }
+            else if( !m_branches.is_Float() ) {
+                BUG(sp, "Mismatched rules - have Float, seen " << m_branches.tag_str());
+            }
+            auto& be = m_branches.as_Float();
+            from_rule_valuerange(sp, be, ve_start, ve_end, "Float", rule.field_path,
+                [&](auto& branch) {
+                    if( rule_count > 1 )
+                    {
+                        assert( branch.as_Subtree() );
+                        auto& subtree = *branch.as_Subtree();
+                        subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+                    }
+                    else
+                    {
+                        and_then(branch);
+                    }
+                });
             ),
         (Bool,
             throw "";
@@ -1705,6 +1799,11 @@ void DecisionTreeNode::simplify()
             H::simplify_branch(branch.second);
         }
         ),
+    (Float,
+        for(auto& branch : e) {
+            H::simplify_branch(branch.second);
+        }
+        ),
     (String,
         for(auto& branch : e) {
             H::simplify_branch(branch.second);
@@ -1751,6 +1850,11 @@ void DecisionTreeNode::propagate_default()
             H::handle_branch(branch.second, m_default);
         }
         ),
+    (Float,
+        for(auto& branch : e) {
+            H::handle_branch(branch.second, m_default);
+        }
+        ),
     (String,
         for(auto& branch : e) {
             H::handle_branch(branch.second, m_default);
@@ -1780,6 +1884,11 @@ void DecisionTreeNode::propagate_default()
                 }
                 ),
             (Signed,
+                for(auto& branch : e) {
+                    be->unify_from(branch.second);
+                }
+                ),
+            (Float,
                 for(auto& branch : e) {
                     be->unify_from(branch.second);
                 }
@@ -1846,6 +1955,24 @@ void DecisionTreeNode::unify_from(const Branch& b)
             }
             ),
         (Signed,
+            for(const auto& srcv : src)
+            {
+                // Find the first entry with an end greater than or equal to the start of this entry
+                auto it = ::std::find_if( dst.begin(), dst.end(), [&](const auto& x){ return x.first.end >= srcv.first.start; });
+                // Not found? Insert a new branch
+                if( it == dst.end() ) {
+                    it = dst.insert(it, ::std::make_pair( srcv.first, clone(srcv.second) ));
+                }
+                // If the found entry doesn't overlap (the start of `*it` is after the end of `srcv`)
+                else if( it->first.start > srcv.first.end ) {
+                    it = dst.insert(it, ::std::make_pair( srcv.first, clone(srcv.second) ));
+                }
+                else {
+                    // NOTE: Overlapping doesn't get handled here
+                }
+            }
+            ),
+        (Float,
             for(const auto& srcv : src)
             {
                 // Find the first entry with an end greater than or equal to the start of this entry
@@ -1930,6 +2057,19 @@ void DecisionTreeNode::unify_from(const Branch& b)
         ),
     (Signed,
         os << "S ";
+        for(const auto& branch : e) {
+            const auto& range = branch.first;
+            if( range.start == range.end ) {
+                os << range.start;
+            }
+            else {
+                os << range.start << "..." << range.end;
+            }
+            os << " = " << branch.second << ", ";
+        }
+        ),
+    (Float,
+        os << "F ";
         for(const auto& branch : e) {
             const auto& range = branch.first;
             if( range.start == range.end ) {
@@ -2112,6 +2252,11 @@ void DecisionTreeGen::generate_tree_code(
             ASSERT_BUG(sp, node.m_branches.is_String(), "Tree for &str isn't a _String - node="<<node);
             this->generate_branches_Borrow_str(sp, node.m_default, node.m_branches.as_String(), ty, mv$(val), mv$(and_then));
             break;
+        case ::HIR::CoreType::F32:
+        case ::HIR::CoreType::F64:
+            ASSERT_BUG(sp, node.m_branches.is_Float(), "Tree for float isn't a _Float - node="<<node);
+            this->generate_branches_Float(sp, node.m_default, node.m_branches.as_Float(), ty, mv$(val), mv$(and_then));
+            break;
         default:
             TODO(sp, "Primitive - " << ty);
             break;
@@ -2238,6 +2383,50 @@ void DecisionTreeGen::generate_branches_Unsigned(
     if( default_branch.is_Unset() ) {
         // TODO: Emit error if non-exhaustive
         m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+    }
+    else {
+        this->generate_branch(default_branch, and_then);
+    }
+}
+
+void DecisionTreeGen::generate_branches_Float(
+    const Span& sp,
+    const DecisionTreeNode::Branch& default_branch,
+    const DecisionTreeNode::Values::Data_Float& branches,
+    const ::HIR::TypeRef& ty, ::MIR::LValue val,
+    ::std::function<void(const DecisionTreeNode&)> and_then
+    )
+{
+    auto default_block = m_builder.new_bb_unlinked();
+    
+    for( const auto& branch : branches )
+    {
+        auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
+        
+        auto val_start = m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(branch.first.start));
+        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(branch.first.end)));
+        
+        auto cmp_gt_block = m_builder.new_bb_unlinked();
+        auto val_cmp_lt = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
+            val.clone(), ::MIR::eBinOp::LT, mv$(val_start)
+            }) );
+        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_lt), default_block, cmp_gt_block }) );
+        m_builder.set_cur_block( cmp_gt_block );
+        auto success_block = m_builder.new_bb_unlinked();
+        auto val_cmp_gt = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
+            val.clone(), ::MIR::eBinOp::GT, mv$(val_end)
+            }) );
+        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_gt), next_block, success_block }) );
+        
+        m_builder.set_cur_block( success_block );
+        this->generate_branch(branch.second, and_then);
+        
+        m_builder.set_cur_block( next_block );
+    }
+    assert( m_builder.block_active() );
+    
+    if( default_branch.is_Unset() ) {
+        ERROR(sp, E0000, "Match over floating point with no `_` arm");
     }
     else {
         this->generate_branch(default_branch, and_then);
