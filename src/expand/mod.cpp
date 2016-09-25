@@ -309,7 +309,9 @@ struct CExpandExpr:
             {
                 SET_MODULE( (*ttl), mod );
                 // Reparse as expression / item
-                auto newexpr = Parse_Expr0(*ttl);
+                bool    add_silence_if_end = false;
+                auto newexpr = Parse_ExprBlockLine(*ttl, &add_silence_if_end);
+                // TODO: use add_silence_if_end - Applies if this node is the last node in the block.
                 // Then call visit on it again
                 DEBUG("--- Visiting new node");
                 this->visit(newexpr);

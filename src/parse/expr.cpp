@@ -23,7 +23,7 @@ static inline ExprNodeP mk_exprnodep(const TokenStream& lex, AST::ExprNode* en){
 #define NEWNODE(type, ...)  mk_exprnodep(lex, new type(__VA_ARGS__))
 
 //ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe=false);    // common.hpp
-ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence);
+//ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence);
 ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool *add_silence);
 //ExprNodeP Parse_Stmt(TokenStream& lex);   // common.hpp
 ExprNodeP Parse_Expr0(TokenStream& lex);
@@ -256,7 +256,11 @@ ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool *add_silence)
     // If this expression statement wasn't followed by a semicolon, then it's yielding its value out of the block.
     // - I.e. The block should be ending
     if( GET_TOK(tok, lex) != TOK_SEMICOLON ) {
-        CHECK_TOK(tok, TOK_BRACE_CLOSE);
+        // - Allow TOK_EOF for macro expansion.
+        if( tok.type() == TOK_EOF )
+            ;
+        else
+            CHECK_TOK(tok, TOK_BRACE_CLOSE);
         PUTBACK(tok, lex);
     }
     else {
