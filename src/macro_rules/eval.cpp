@@ -502,8 +502,7 @@ void Macro_HandlePatternCap(TTStream& lex, unsigned int index, MacroPatEnt::Type
     case MacroPatEnt::PAT_ITEM: {
         assert( lex.parse_state().module );
         const auto& cur_mod = *lex.parse_state().module;
-        // TODO: Pass the filename for `cur_mod` and if it controls its dir
-        bound_tts.insert( index, iterations, InterpolatedFragment( Parse_Mod_Item_S(lex, cur_mod.m_file_info, cur_mod.path(), false, AST::MetaItems{}) ) );
+        bound_tts.insert( index, iterations, InterpolatedFragment( Parse_Mod_Item_S(lex, cur_mod.m_file_info, cur_mod.path(), AST::MetaItems{}) ) );
         } break;
     case MacroPatEnt::PAT_IDENT:
         GET_CHECK_TOK(tok, lex, TOK_IDENT);

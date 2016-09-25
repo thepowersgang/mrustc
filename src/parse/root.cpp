@@ -1280,7 +1280,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
 }
 
 // TODO: Extract single-item parsing into a method that returns just the item
-::AST::Named<::AST::Item> Parse_Mod_Item_S(TokenStream& lex, const AST::Module::FileInfo& mod_fileinfo, const ::AST::Path& mod_path, bool is_public, AST::MetaItems meta_items)
+::AST::Named<::AST::Item> Parse_Mod_Item_S(TokenStream& lex, const AST::Module::FileInfo& mod_fileinfo, const ::AST::Path& mod_path, AST::MetaItems meta_items)
 {
     Token   tok;
     
@@ -1288,9 +1288,20 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
     
     ::std::string   item_name;
     ::AST::Item item_data;
+
+    bool    is_public = false;
+    if( GET_TOK(tok, lex) == TOK_RWORD_PUB ) {
+        is_public = true;
+    }
+    else {
+        PUTBACK(tok, lex);
+    }
     
     switch( GET_TOK(tok, lex) )
     {
+    case TOK_RWORD_USE:
+        TODO(lex.getPosition(), "Encode a single use statement as a single Item");
+    
     case TOK_RWORD_EXTERN:
         switch( GET_TOK(tok, lex) )
         {
@@ -1457,6 +1468,8 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
             item_data = ::AST::Item( Parse_TraitDef(lex, meta_items) );
             break;
         // TODO: `unsafe impl` (Doesn't currently exist as an Item)
+        case TOK_RWORD_IMPL:
+            TODO(lex.getPosition(), "Encode impl blocks as in AST::Item");
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_TRAIT, TOK_RWORD_IMPL});
         }
@@ -1487,10 +1500,9 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         item_data = ::AST::Item( Parse_EnumDef(lex, meta_items) );
         break;
     // `impl`
-    // TODO: Convert `Parse_Impl` to return an item
-    //case TOK_RWORD_IMPL:
-    //    Parse_Impl(lex, mod, mv$(meta_items));
-    //    break;
+    case TOK_RWORD_IMPL:
+        // TODO: Convert `Parse_Impl` to return an item
+        TODO(lex.getPosition(), "Encode impl blocks as in AST::Item");
     // `trait`
     case TOK_RWORD_TRAIT:
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
@@ -1604,7 +1616,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
     return ::AST::Named< ::AST::Item> { mv$(item_name), mv$(item_data), is_public };
 }
 
-void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, bool is_public, AST::MetaItems meta_items)
+void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_items)
 {
     SET_MODULE(lex, mod);
     lex.parse_state().parent_attrs = &meta_items;
@@ -1613,9 +1625,14 @@ void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, bool is_public, AST::Met
     Token   tok;
 
     // `use ...`
-    if( LOOK_AHEAD(lex) == TOK_RWORD_USE )
+    if( LOOK_AHEAD(lex) == TOK_RWORD_USE || (lex.lookahead(0) == TOK_RWORD_PUB && lex.lookahead(1) == TOK_RWORD_USE) )
     {
-        GET_TOK(tok, lex);
+        bool    is_public = false;
+        if( GET_TOK(tok, lex) == TOK_RWORD_PUB ) {
+            is_public = true;
+            GET_TOK(tok, lex);
+        }
+        
         Parse_Use(lex, [&mod,is_public,&meta_items](AST::UseStmt p, std::string s) {
                 DEBUG(mod.path() << " - use " << p << " as '" << s << "'");
                 mod.add_alias(is_public, mv$(p), s, meta_items.clone());
@@ -1649,7 +1666,7 @@ void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, bool is_public, AST::Met
     }
     else
     {
-        mod.add_item( Parse_Mod_Item_S(lex, mod.m_file_info, mod.path(), is_public, mv$(meta_items)) );
+        mod.add_item( Parse_Mod_Item_S(lex, mod.m_file_info, mod.path(), mv$(meta_items)) );
     }
 }
 
@@ -1696,18 +1713,8 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod)
         else {
             PUTBACK(tok, lex);
         }
-    
-        // Module visibility
-        // TODO: Move this into Parse_Mod_Item?
-        bool    is_public = false;
-        if( GET_TOK(tok, lex) == TOK_RWORD_PUB ) {
-            is_public = true;
-        }
-        else {
-            PUTBACK(tok, lex);
-        }
 
-        Parse_Mod_Item(lex, mod, is_public, mv$(meta_items));
+        Parse_Mod_Item(lex, mod, mv$(meta_items));
     }
 }
 
