@@ -108,6 +108,27 @@ bool is_token_stmt(eTokenType tt) {
     }
 }
 
+bool is_token_item(eTokenType tt) {
+    switch( tt )
+    {
+    case TOK_RWORD_PUB:
+    case TOK_RWORD_UNSAFE:
+    case TOK_RWORD_TYPE:
+    case TOK_RWORD_CONST:
+    case TOK_RWORD_STATIC:
+    case TOK_RWORD_FN:
+    case TOK_RWORD_STRUCT:
+    case TOK_RWORD_ENUM:
+    case TOK_RWORD_TRAIT:
+    case TOK_RWORD_MOD:
+    //case TOK_RWORD_IMPL:
+    // TODO: more?
+        return true;
+    default:
+        return false;
+    }
+}
+
 MacroRulesPtr::~MacroRulesPtr()
 {
     if(m_ptr)
@@ -133,6 +154,7 @@ void operator%(Serialiser& s, MacroPatEnt::Type c) {
     _(PAT_PATH);
     _(PAT_BLOCK);
     _(PAT_META);
+    _(PAT_ITEM);
     _(PAT_IDENT);
     #undef _
     }
@@ -154,6 +176,7 @@ void operator%(::Deserialiser& s, MacroPatEnt::Type& c) {
     _(PAT_BLOCK);
     _(PAT_META);
     _(PAT_IDENT);
+    _(PAT_ITEM);
     else
         throw ::std::runtime_error( FMT("No conversion for '" << n << "'") );
     #undef _
@@ -185,6 +208,7 @@ SERIALISE_TYPE_S(MacroPatEnt, {
         case MacroPatEnt::PAT_STMT:  os << "stmt";  break;
         case MacroPatEnt::PAT_BLOCK: os << "block"; break;
         case MacroPatEnt::PAT_META:  os << "meta"; break;
+        case MacroPatEnt::PAT_ITEM:  os << "item"; break;
         }
         break;
     }
@@ -205,6 +229,7 @@ SERIALISE_TYPE_S(MacroPatEnt, {
     case MacroPatEnt::PAT_STMT:  os << "PAT_STMT";  break;
     case MacroPatEnt::PAT_BLOCK: os << "PAT_BLOCK"; break;
     case MacroPatEnt::PAT_META:  os << "PAT_META"; break;
+    case MacroPatEnt::PAT_ITEM:  os << "PAT_ITEM"; break;
     }
     return os;
 }

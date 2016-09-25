@@ -70,14 +70,18 @@ public:
                     ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_PATH) );
                 else if( type == "expr" )
                     ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_EXPR) );
+                else if( type == "stmt" )
+                    ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_STMT) );
                 else if( type == "ty" )
                     ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_TYPE) );
                 else if( type == "meta" )
                     ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_META) );
                 else if( type == "block" )
                     ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_BLOCK) );
+                else if( type == "item" )
+                    ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_ITEM) );
                 else
-                    throw ParseError::Generic(lex, FMT("Unknown fragment type '" << type << "'"));
+                    ERROR(lex.getPosition(), E0000, "Unknown fragment type '" << type << "'");
                 break; }
             case TOK_PAREN_OPEN: {
                 auto subpat = Parse_MacroRules_Pat(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, names);
@@ -393,6 +397,19 @@ bool patterns_are_same(const Span& sp, const MacroPatEnt& left, const MacroPatEn
                 ERROR(sp, E0000, "Incompatible macro fragments");
             return false;
         case MacroPatEnt::PAT_META:
+            return true;
+        default:
+            ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
+        }
+    // Matches items
+    case MacroPatEnt::PAT_ITEM:
+        switch(left.type)
+        {
+        case MacroPatEnt::PAT_TOKEN:
+            if( is_token_item(left.tok.type()) )
+                ERROR(sp, E0000, "Incompatible macro fragments");
+            return false;
+        case MacroPatEnt::PAT_ITEM:
             return true;
         default:
             ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);

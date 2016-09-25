@@ -65,6 +65,7 @@ struct MacroPatEnt:
         PAT_STMT,
         PAT_BLOCK,
         PAT_META,
+        PAT_ITEM,   // :item
     } type;
 
     MacroPatEnt():

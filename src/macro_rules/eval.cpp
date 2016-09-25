@@ -433,6 +433,8 @@ bool Macro_TryPatternCap(/*const*/ TTStream& lex, MacroPatEnt::Type type)
         return is_token_pat( LOOK_AHEAD(lex) );
     case MacroPatEnt::PAT_META:
         return LOOK_AHEAD(lex) == TOK_IDENT || LOOK_AHEAD(lex) == TOK_INTERPOLATED_META;
+    case MacroPatEnt::PAT_ITEM:
+        return is_token_item( LOOK_AHEAD(lex) );
     }
     BUG(lex.getPosition(), "");
 }
@@ -495,6 +497,9 @@ void Macro_HandlePatternCap(TTStream& lex, unsigned int index, MacroPatEnt::Type
         break;
     case MacroPatEnt::PAT_META:
         bound_tts.insert( index, iterations, InterpolatedFragment( Parse_MetaItem(lex) ) );
+        break;
+    case MacroPatEnt::PAT_ITEM:
+        TODO(lex.getPosition(), "Parse :item");
         break;
     case MacroPatEnt::PAT_IDENT:
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
