@@ -145,7 +145,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             Resolve_Use_Mod(crate, i.data.as_Module(), path + i.name);
         }
     }
-    // - Handle anon modules by iterating code (allowing correct item mappings)
+    // - NOTE: Handle anon modules by iterating code (allowing correct item mappings)
 
     struct NV:
         public AST::NodeVisitorDef
@@ -173,11 +173,33 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         }
     } expr_iter(crate, mod);
     
-    // TODO: Check that all code blocks are covered by these two
+    // TODO: Check that all code blocks are covered by these
     for(auto& i : mod.items())
     {
         TU_MATCH_DEF( AST::Item, (i.data), (e),
         (
+            ),
+        (Trait,
+            for(auto& ti : e.items())
+            {
+                TU_MATCH_DEF( AST::Item, (ti.data), (e),
+                (
+                    BUG(Span(), "Unexpected item in trait - " << ti.data.tag_str());
+                    ),
+                (Type,
+                    ),
+                (Function,
+                    if(e.code().is_valid()) {
+                        e.code().node().visit( expr_iter );
+                    }
+                    ),
+                (Static,
+                    if( e.value().is_valid() ) {
+                        e.value().node().visit( expr_iter );
+                    }
+                    )
+                )
+            }
             ),
         (Function,
             if( e.code().is_valid() ) {
