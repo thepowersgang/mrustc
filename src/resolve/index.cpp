@@ -96,6 +96,9 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
             ),
         (MacroInv,
             ),
+        (Use,
+            // Skip for now
+            ),
         // - Types/modules only
         (Module,
             p.bind( ::AST::PathBinding::make_Module({&e}) );
@@ -140,16 +143,20 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
     
     bool has_pub_wildcard = false;
     // Named imports
-    for( const auto& i : mod.imports() )
+    for( const auto& i : mod.items() )
     {
+        if( ! i.data.is_Use() )
+            continue ;
+        const auto& i_data = i.data.as_Use();
         if( i.name != "" )
         {
             // TODO: Ensure that the path is canonical?
             
-            const auto& sp = i.data.sp;
+            const auto& sp = i_data.sp;
             struct H {
-                static void handle_pb(const Span& sp, AST::Module& mod, const AST::Named<AST::UseStmt>& i, const AST::PathBinding& pb, bool allow_collide)
+                static void handle_pb(const Span& sp, AST::Module& mod, const AST::Named<AST::Item>& i, const AST::PathBinding& pb, bool allow_collide)
                 {
+                    const auto& i_data = i.data.as_Use();
                     TU_MATCH(::AST::PathBinding, (pb), (e),
                     (Unbound,
                         ),
@@ -166,44 +173,44 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                         BUG(sp, "Import was bound to struct method");
                         ),
                     
-                    (Crate ,  _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path, !allow_collide); ),
-                    (Module,  _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i.data.path, !allow_collide); ),
-                    (Enum,     _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide); ),
-                    (Trait,    _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide); ),
-                    (TypeAlias,_add_item_type(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide); ),
+                    (Crate ,  _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i_data.path, !allow_collide); ),
+                    (Module,  _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i_data.path, !allow_collide); ),
+                    (Enum,     _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); ),
+                    (Trait,    _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); ),
+                    (TypeAlias,_add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); ),
                     
                     (Struct,
-                        _add_item_type(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide);
+                        _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
                         // - If the struct is a tuple-like struct, it presents in the value namespace
                         assert(e.struct_ || e.hir);
                         if( e.struct_ ) {
                             if( e.struct_->m_data.is_Tuple() ) {
-                                _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide);
+                                _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
                             }
                         }
                         else {
                             if( ! e.hir->m_data.is_Named() ) {
-                                _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide);
+                                _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
                             }
                         }
                         ),
-                    (Static  , _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide); ),
-                    (Function, _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide); ),
-                    (EnumVar , _add_item_value(sp, mod, i.name, i.is_pub,  i.data.path, !allow_collide); )
+                    (Static  , _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); ),
+                    (Function, _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); ),
+                    (EnumVar , _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); )
                     )
                 }
             };
-            if( i.data.path.binding().is_Unbound() ) {
-                BUG(sp, "Import left unbound ("<<i.data.path<<")");
+            if( i_data.path.binding().is_Unbound() ) {
+                BUG(sp, "Import left unbound ("<<i_data.path<<")");
             }
             else {
-                H::handle_pb(sp, mod, i, i.data.path.binding(), false);
+                H::handle_pb(sp, mod, i, i_data.path.binding(), false);
             }
-            if( i.data.alt_binding.is_Unbound() ) {
+            if( i_data.alt_binding.is_Unbound() ) {
                 // Doesn't matter
             }
             else {
-                H::handle_pb(sp, mod, i, i.data.alt_binding, true);
+                H::handle_pb(sp, mod, i, i_data.alt_binding, true);
             }
         }
         else
@@ -238,18 +245,22 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
 {
     TRACE_FUNCTION_F("mod = " << mod.path());
     // Glob/wildcard imports
-    for( const auto& i : mod.imports() )
+    for( const auto& i : mod.items() )
     {
+        if( ! i.data.is_Use() )
+            continue ;
+        const auto& i_data = i.data.as_Use();
+        
         if( i.name == "" && i.is_pub == handle_pub )
         {
-            const auto& sp = i.data.sp;
-            const auto& b = i.data.path.binding();
+            const auto& sp = i_data.sp;
+            const auto& b = i_data.path.binding();
             TU_MATCH_DEF(::AST::PathBinding, (b), (e),
             (
                 BUG(sp, "Glob import of invalid type encountered");
                 ),
             (Unbound,
-                BUG(sp, "Import left unbound ("<<i.data.path<<")");
+                BUG(sp, "Import left unbound ("<<i_data.path<<")");
                 ),
             (Variable,
                 BUG(sp, "Import was bound to variable");
@@ -268,10 +279,10 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
                 TODO(sp, "Glob import of crate");
                 ),
             (Module,
-                DEBUG("Glob mod " << i.data.path);
+                DEBUG("Glob mod " << i_data.path);
                 if( !e.module_ )
                 {
-                    ASSERT_BUG(sp, e.hir, "Glob import where HIR module pointer not set - " << i.data.path);
+                    ASSERT_BUG(sp, e.hir, "Glob import where HIR module pointer not set - " << i_data.path);
                     const auto& hmod = *e.hir;
                     for(const auto& it : hmod.m_mod_items) {
                         const auto& ve = *it.second;
@@ -281,7 +292,7 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
                                 p = hir_to_ast( ve.ent.as_Import() );
                             }
                             else {
-                                p = i.data.path + it.first;
+                                p = i_data.path + it.first;
                             }
                             TU_MATCHA( (ve.ent), (e),
                             (Import,
@@ -332,7 +343,7 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
                                     vep = &hmod->m_value_items.at( spath.m_components.back() )->ent;
                             }
                             else {
-                                p = i.data.path + it.first;
+                                p = i_data.path + it.first;
                             }
                             if( vep )
                             {
@@ -387,11 +398,11 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
                 }
                 ),
             (Enum,
-                ASSERT_BUG(sp, e.enum_, "Glob import but enum pointer not set - " << i.data.path);
-                DEBUG("Glob enum " << i.data.path);
+                ASSERT_BUG(sp, e.enum_, "Glob import but enum pointer not set - " << i_data.path);
+                DEBUG("Glob enum " << i_data.path);
                 unsigned int idx = 0;
                 for( const auto& ev : e.enum_->variants() ) {
-                    ::AST::Path p = i.data.path + ev.m_name;
+                    ::AST::Path p = i_data.path + ev.m_name;
                     p.bind( ::AST::PathBinding::make_EnumVar({e.enum_, idx}) );
                     if( ev.m_data.is_Struct() ) {
                         _add_item_type ( sp, mod, ev.m_name, i.is_pub, mv$(p), false );

@@ -436,7 +436,6 @@ private:
 struct UseStmt
 {
     Span    sp;
-    ::AST::MetaItems    attrs;
     ::AST::Path path;
     ::AST::PathBinding  alt_binding;
     
@@ -448,82 +447,19 @@ struct UseStmt
     {
     }
     
+    UseStmt clone() const;
+    
     friend ::std::ostream& operator<<(::std::ostream& os, const UseStmt& x);
 };
 
 /// Representation of a parsed (and being converted) function
 class Module
 {
-public:
-    class ItemRef
-    {
-    public:
-        enum Type
-        {
-            TAG_None,
-            TAG_Module,
-            TAG_Crate,
-            TAG_TypeAlias,
-            TAG_Function,
-            TAG_Trait,
-            TAG_Struct,
-            TAG_Enum,
-            TAG_Static,
-            TAG_Use,
-        };
-    private:    
-        Type    m_type;
-        const void* m_ref;
-    public:
-        ItemRef(): m_type(TAG_None) {}
-        
-        Type tag() const { return m_type; }
-        bool is_None() const { return m_type == TAG_None; }
-        const Type& as_None() const { return m_type; }  // HACK: Returns &Type in place of &void
-        #define _(ty,ident) \
-            ItemRef(const ty& ref): m_type(TAG_##ident), m_ref(&ref) {} \
-            bool is_##ident() const { return m_type == TAG_##ident; } \
-            const ty& as_##ident() const { assert(m_type == TAG_##ident); return *(const ty*)m_ref; }
-        _(AST::Module, Module)
-        _(::std::string, Crate)
-        _(AST::TypeAlias, TypeAlias)
-        _(AST::Function, Function)
-        _(AST::Trait, Trait)
-        _(AST::Struct, Struct)
-        _(AST::Enum, Enum)
-        _(AST::Static, Static)
-        _(AST::Named<UseStmt>, Use)
-        #undef _
-        friend ::std::ostream& operator<<(::std::ostream& os, const ItemRef& x) {
-            switch(x.m_type)
-            {
-            #define _(ident)    case TAG_##ident:  return os << "ItemRef(" #ident ")";
-            _(None)
-            _(Module)
-            _(Crate)
-            _(TypeAlias)
-            _(Function)
-            _(Trait)
-            _(Struct)
-            _(Enum)
-            _(Static)
-            _(Use)
-            #undef _
-            }
-            throw "";
-        }
-    };
-    
-private:
-    typedef ::std::vector< Named<UseStmt> > itemlist_use_t;
-    
     ::AST::Path m_my_path;
 
     // Module-level items
     /// General items
     ::std::vector<Named<Item>>  m_items;
-    /// `use` imports (public and private)
-    itemlist_use_t  m_imports;
     /// Macro invocations
     ::std::vector<MacroInvocation>    m_macro_invocations;
     
@@ -607,13 +543,9 @@ public:
     }
 
     const ::AST::Path& path() const { return m_my_path; }
-    ItemRef find_item(const ::std::string& needle, bool allow_leaves = true, bool ignore_private_wildcard = true) const;
 
           ::std::vector<Named<Item>>& items()       { return m_items; }
     const ::std::vector<Named<Item>>& items() const { return m_items; }
-    
-          itemlist_use_t& imports()       { return m_imports; }
-    const itemlist_use_t& imports() const { return m_imports; }
     
           ::std::vector<Impl>&  impls()       { return m_impls; }
     const ::std::vector<Impl>&  impls() const { return m_impls; }
@@ -639,6 +571,7 @@ TAGGED_UNION_EX(Item, (), None,
     (
     (None, struct {} ),
     (MacroInv, MacroInvocation),
+    (Use, UseStmt),
     (Module, Module),
     (Crate, struct {
         ::std::string   name;

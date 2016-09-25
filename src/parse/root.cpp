@@ -1300,7 +1300,22 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
     switch( GET_TOK(tok, lex) )
     {
     case TOK_RWORD_USE:
+        #if 0
         TODO(lex.getPosition(), "Encode a single use statement as a single Item");
+        #else
+        // NOTE: The only problem here is with things like `use foo::{a, b, c}` - all others are a single statement.
+        // - These are caught by the condition in the closure
+        Parse_Use(lex, [&](AST::UseStmt p, std::string s) {
+                DEBUG(mod_path << " - use " << p << " as '" << s << "'");
+                if( !item_data.is_None() )
+                    TODO(lex.getPosition(), "Encode multi-item use statements as a single Item");
+                item_data = ::AST::Item(mv$(p));
+                item_name = mv$(s);
+            });
+        assert( !item_data.is_None() );
+        GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+        break;
+        #endif
     
     case TOK_RWORD_EXTERN:
         switch( GET_TOK(tok, lex) )
@@ -1639,6 +1654,7 @@ void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_item
             });
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
     }
+    //else if( LOOKAHEAD2(lex, TOK_RWORD_EXTERN, TOK_BRACE_OPEN) || LOOKAHEAD3(lex, TOK_RWORD_EXTERN, TOK_STRING, TOK_BRACE_OPEN) )
     else if( lex.lookahead(0) == TOK_RWORD_EXTERN && ( (lex.lookahead(1) == TOK_STRING && lex.lookahead(2) == TOK_BRACE_OPEN) || lex.lookahead(1) == TOK_BRACE_OPEN ) )
     {
         // `extern "<ABI>" { ...`
@@ -1652,17 +1668,18 @@ void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_item
 
         Parse_ExternBlock(lex, mod, mv$(abi), mv$(meta_items));
     }
+    // `unsafe impl`
     // TODO: Move these two into Parse_Mod_Item_S
-    else if( lex.lookahead(0) == TOK_RWORD_UNSAFE && lex.lookahead(1) == TOK_RWORD_IMPL )
+    //else if( LOOKAHEAD1(lex, TOK_RWORD_IMPL) || LOOKAHEAD2(lex, TOK_RWORD_UNSAFE, TOK_RWORD_IMPL) )
+    else if( lex.lookahead(0) == TOK_RWORD_IMPL || (lex.lookahead(0) == TOK_RWORD_UNSAFE && lex.lookahead(1) == TOK_RWORD_IMPL) )
     {
-        GET_CHECK_TOK(tok, lex, TOK_RWORD_UNSAFE);
+        bool is_unsafe = false;
+        if( lex.lookahead(0) == TOK_RWORD_UNSAFE ) {
+            GET_CHECK_TOK(tok, lex, TOK_RWORD_UNSAFE);
+            is_unsafe = true;
+        }
         GET_CHECK_TOK(tok, lex, TOK_RWORD_IMPL);
-        Parse_Impl(lex, mod, mv$(meta_items), true);
-    }
-    else if( lex.lookahead(0) == TOK_RWORD_IMPL )
-    {
-        GET_CHECK_TOK(tok, lex, TOK_RWORD_IMPL);
-        Parse_Impl(lex, mod, mv$(meta_items), true);
+        Parse_Impl(lex, mod, mv$(meta_items), is_unsafe);
     }
     else
     {

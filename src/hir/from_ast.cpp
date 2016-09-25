@@ -1036,6 +1036,9 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
         (MacroInv,
             BUG(Span(), "Stray macro invocation in " << path);
             ),
+        (Use,
+            // Ignore - The index is used to add `Import`s
+            ),
         (Module,
             _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Module(e, mv$(item_path)) );
             ),

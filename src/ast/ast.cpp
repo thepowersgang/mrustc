@@ -243,6 +243,11 @@ MacroInvocation MacroInvocation::clone() const
 }
 
 
+UseStmt UseStmt::clone() const
+{
+    return UseStmt(sp, path);
+}
+
 ::std::unique_ptr<AST::Module> Module::add_anon() {
     auto rv = box$( Module(m_my_path + FMT("#" << m_anon_modules.size())) );
     
@@ -264,8 +269,7 @@ void Module::add_ext_crate(bool is_public, ::std::string ext_name, ::std::string
     this->add_item( is_public, imp_name, Item::make_Crate({mv$(ext_name)}), mv$(attrs) );
 }
 void Module::add_alias(bool is_public, UseStmt us, ::std::string name, MetaItems attrs) {
-    us.attrs = mv$(attrs);
-    m_imports.push_back( Named<UseStmt>( mv$(name), mv$(us), is_public) );
+    this->add_item( is_public, mv$(name), Item(mv$(us)), mv$(attrs) ); 
 }
 void Module::add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro) {
     m_macros.push_back( Named<MacroRulesPtr>( mv$(name), mv$(macro), is_exported ) );
@@ -282,126 +286,6 @@ void Module::prescan()
     //}
 }
 
-template<typename T>
-typename ::std::vector<Named<T> >::const_iterator find_named(const ::std::vector<Named<T> >& vec, const ::std::string& name)
-{
-    return ::std::find_if(vec.begin(), vec.end(), [&name](const Named<T>& x) {
-        //DEBUG("find_named - x.name = " << x.name);
-        return x.name == name && !x.data.is_None();
-    });
-}
-
-Module::ItemRef Module::find_item(const ::std::string& needle, bool allow_leaves, bool ignore_private_wildcard) const
-{
-    TRACE_FUNCTION_F("path = " << m_my_path << ", needle = " << needle);
-    
-    {
-        auto it = find_named(this->items(), needle);
-        if( it != this->items().end() ) {
-            TU_MATCH(::AST::Item, (it->data), (e),
-            (None,
-                throw ::std::runtime_error("BUG: Hit a None item");
-                ),
-            (MacroInv,
-                throw ::std::runtime_error("BUG: Hit a macro invocation");
-                ),
-            (Module, return ItemRef(e); ),
-            (Crate, return ItemRef(e.name); ),
-            (Type,  return ItemRef(e); ),
-            (Struct, return ItemRef(e); ),
-            (Enum,  return ItemRef(e); ),
-            (Trait, return ItemRef(e); ),
-            (Function,
-                if( allow_leaves )
-                    return ItemRef(e);
-                else
-                    DEBUG("Skipping function, leaves not allowed");
-                ),
-            (Static,
-                if( allow_leaves )
-                    return ItemRef(e);
-                else
-                    DEBUG("Skipping function, leaves not allowed");
-                )
-            )
-            DEBUG("Item not checked at this level, try re-export list");
-        }
-    }
-
-    // - Re-exports
-    //  > Comes last, as it's a potentially expensive operation
-    {
-        for( const auto& imp : this->imports() )
-        {
-            //DEBUG("imp: '" << imp.name << "' = " << imp.data);
-            if( !imp.is_pub && ignore_private_wildcard )
-            {
-                // not public, ignore
-                //DEBUG("Private import, '" << imp.name << "' = " << imp.data);
-            }
-            else if( imp.name == needle )
-            {
-                DEBUG("Match " << needle << " = " << imp.data);
-                return ItemRef(imp);
-            }
-            else if( imp.name == "" )
-            {
-                // Loop avoidance, don't check this
-                //if( &imp.data == this )
-                //    continue ;
-                //
-                const auto& binding = imp.data.path.binding();
-                if( binding.is_Unbound() )
-                {
-                    // not yet bound, so run resolution (recursion)
-                    DEBUG("Recursively resolving pub wildcard use " << imp.data);
-                    //imp.data.resolve(root_crate);
-                    throw ParseError::Todo("AST::Module::find_item() - Wildcard `use` not bound, call resolve here?");
-                }
-                
-                TU_MATCH_DEF(AST::PathBinding, (binding), (info),
-                // - any other type - error
-                (
-                    DEBUG("ERROR: Import of invalid class : " << imp.data.path);
-                    throw ParseError::Generic("Wildcard import of non-module/enum");
-                    ),
-                (Unbound,
-                    throw ParseError::BugCheck("Wildcard import path not bound");
-                    ),
-                // - If it's a module, recurse
-                (Module,
-                    auto rv = info.module_->find_item(needle);
-                    if( !rv.is_None() ) {
-                        // Don't return RV, return the import (so caller can rewrite path if need be)
-                        return ItemRef(imp);
-                        //return rv;
-                    }
-                    ),
-                // - If it's an enum, search for this name and then pass to resolve
-                (Enum,
-                    auto& vars = info.enum_->variants();
-                    // Damnit C++ "let it = vars.find(|a| a.name == needle);"
-                    auto it = ::std::find_if(vars.begin(), vars.end(),
-                        [&needle](const EnumVariant& ev) { return ev.m_name == needle; });
-                    if( it != vars.end() ) {
-                        DEBUG("Found enum variant " << it->m_name);
-                        return ItemRef(imp);
-                        //throw ParseError::Todo("Handle lookup_path_in_module for wildcard imports - enum");
-                    }
-                    )
-                )
-            }
-            else
-            {
-                // Can't match, ignore
-            }
-        }
-        
-    }
-    
-    return Module::ItemRef();
-}
-
 Item Item::clone() const
 {
     TU_MATCHA( (*this), (e),
@@ -410,6 +294,9 @@ Item Item::clone() const
         ),
     (MacroInv,
         TODO(Span(), "Clone on Item::MacroInv");
+        ),
+    (Use,
+        return AST::Item(e.clone());
         ),
     (Module,
         TODO(Span(), "Clone on Item::Module");

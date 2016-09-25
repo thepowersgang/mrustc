@@ -83,20 +83,24 @@ void Resolve_Use(::AST::Crate& crate)
 void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path path, slice< const ::AST::Module* > parent_modules)
 {
     TRACE_FUNCTION_F("path = " << path << ", mod.path() = " << mod.path());
-    for(auto& use_stmt : mod.imports())
+    for(auto& use_stmt : mod.items())
     {
-        const Span& span = use_stmt.data.sp;
-        use_stmt.data.path = Resolve_Use_AbsolutisePath(span, path, mv$(use_stmt.data.path));
-        if( !use_stmt.data.path.m_class.is_Absolute() )
+        if( ! use_stmt.data.is_Use() )
+            continue ;
+        auto& use_stmt_data = use_stmt.data.as_Use();
+        
+        const Span& span = use_stmt_data.sp;
+        use_stmt_data.path = Resolve_Use_AbsolutisePath(span, path, mv$(use_stmt_data.path));
+        if( !use_stmt_data.path.m_class.is_Absolute() )
             BUG(span, "Use path is not absolute after absolutisation");
         
         // TODO: Have Resolve_Use_GetBinding return the actual path
-        use_stmt.data.path.bind( Resolve_Use_GetBinding(span, crate, use_stmt.data.path, parent_modules) );
+        use_stmt_data.path.bind( Resolve_Use_GetBinding(span, crate, use_stmt_data.path, parent_modules) );
         
         // - If doing a glob, ensure the item type is valid
         if( use_stmt.name == "" )
         {
-            TU_MATCH_DEF(::AST::PathBinding, (use_stmt.data.path.binding()), (e),
+            TU_MATCH_DEF(::AST::PathBinding, (use_stmt_data.path.binding()), (e),
             (
                 ERROR(span, E0000, "Wildcard import of invalid item type");
                 ),
@@ -111,7 +115,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             // TODO: Handle case where a use can resolve to two different items (one value, one type/namespace)
             // - Easiest way is with an extra binding slot
             Lookup  allow = Lookup::Any;
-            switch( use_stmt.data.path.binding().tag() )
+            switch( use_stmt_data.path.binding().tag() )
             {
             case ::AST::PathBinding::TAG_Crate:
             case ::AST::PathBinding::TAG_Module:
@@ -134,7 +138,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 break;
             }
             ASSERT_BUG(span, allow != Lookup::Any, "");
-            use_stmt.data.alt_binding = Resolve_Use_GetBinding(span, crate, use_stmt.data.path, parent_modules, allow);
+            use_stmt_data.alt_binding = Resolve_Use_GetBinding(span, crate, use_stmt_data.path, parent_modules, allow);
         }
     }
     
@@ -243,22 +247,6 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         Lookup allow
     )
 {
-    // HACK - Catch the possibiliy of a name clash (not sure if this is really an error)
-    {
-        bool found = false;
-        for( const auto& item : mod.items() )
-        {
-            if( item.data.is_None() )
-                continue ;
-            if( item.name == des_item_name ) {
-                if( found ) {
-                    TODO(span, "Duplicate name found resolving use statement searching in module " << mod.path());
-                }
-                found = true;
-            }
-        }
-    }
-    
     // If the desired item is an anon module (starts with #) then parse and index
     if( des_item_name.size() > 0 && des_item_name[0] == '#' ) {
         unsigned int idx = 0;
@@ -284,6 +272,9 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 ),
             (MacroInv,
                 BUG(span, "Hit MacroInv in use resolution");
+                ),
+            (Use,
+                continue; // Skip for now
                 ),
             (Crate,
                 if( allow != Lookup::Value )
@@ -326,21 +317,24 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     }
     
     // Imports
-    for( const auto& imp : mod.imports() )
+    for( const auto& imp : mod.items() )
     {
-        const Span& sp2 = imp.data.sp;
+        if( ! imp.data.is_Use() )
+            continue ;
+        const auto& imp_data = imp.data.as_Use();
+        const Span& sp2 = imp_data.sp;
         if( imp.name == des_item_name ) {
-            DEBUG("- Named import " << imp.name << " = " << imp.data);
-            if( imp.data.path.binding().is_Unbound() ) {
+            DEBUG("- Named import " << imp.name << " = " << imp_data);
+            if( imp_data.path.binding().is_Unbound() ) {
                 DEBUG(" > Needs resolve");
                 // TODO: Handle possibility of recursion
-                //out_path = imp.data.path;
-                return Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp.data.path), parent_modules, allow);
+                //out_path = imp_data.path;
+                return Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_data.path), parent_modules, allow);
             }
             else {
                 if( allow != Lookup::Any && allow != Lookup::AnyOpt )
                 {
-                    switch( imp.data.path.binding().tag() )
+                    switch( imp_data.path.binding().tag() )
                     {
                     case ::AST::PathBinding::TAG_Crate:
                     case ::AST::PathBinding::TAG_Module:
@@ -363,23 +357,23 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                         break;
                     }
                 }
-                //out_path = imp.data.path;
-                return imp.data.path.binding().clone();
+                //out_path = imp_data.path;
+                return imp_data.path.binding().clone();
             }
         }
         if( imp.is_pub && imp.name == "" ) {
-            DEBUG("- Search glob of " << imp.data.path);
+            DEBUG("- Search glob of " << imp_data.path);
             // INEFFICIENT! Resolves and throws away the result (because we can't/shouldn't mutate here)
             ::AST::PathBinding  binding_;
-            const auto* binding = &imp.data.path.binding();
+            const auto* binding = &imp_data.path.binding();
             if( binding->is_Unbound() ) {
-                DEBUG("Temp resolving wildcard " << imp.data);
+                DEBUG("Temp resolving wildcard " << imp_data);
                 // TODO: Handle possibility of recursion
-                binding_ = Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp.data.path), parent_modules);
+                binding_ = Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_data.path), parent_modules);
                 binding = &binding_;
             }
             else {
-                //out_path = imp.data.path;
+                //out_path = imp_data.path;
             }
             
             TU_MATCH_DEF(::AST::PathBinding, (*binding), (e),

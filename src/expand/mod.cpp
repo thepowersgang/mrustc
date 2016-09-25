@@ -680,24 +680,6 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
         }
     }
     
-    // 2. Use statements
-    for( auto it = mod.imports().begin(); it != mod.imports().end(); )
-    {
-        auto& i = *it;
-        auto attrs = mv$(i.data.attrs);
-        Expand_Attrs(attrs, stage_pre (is_early), [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, i.data); });
-        Expand_Attrs(attrs, stage_post(is_early), [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, i.data); });
-        if( i.data.attrs.m_items.size() == 0 )
-            i.data.attrs = mv$(attrs);
-        
-        if( i.data.path == AST::Path() ) {
-            it = mod.imports().erase(it);
-        }
-        else {
-            ++ it;
-        }
-    }
-    
     // 3. General items
     DEBUG("Items");
     for( auto& i : mod.items() )
@@ -714,6 +696,9 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             ),
         (MacroInv,
             TODO(Span(), "Macro invocation in item list");
+            ),
+        (Use,
+            // No inner expand.
             ),
         (Module,
             LList<const AST::Module*>   sub_modstack(&modstack, &e);
