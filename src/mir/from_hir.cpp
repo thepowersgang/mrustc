@@ -1357,17 +1357,38 @@ namespace {
                         }) );
                     ),
                 (Function,
+                    // TODO: Why not use the result type?
+                    auto monomorph_cb = [&](const auto& gt)->const auto& {
+                        const auto& e = gt.m_data.as_Generic();
+                        if( e.binding == 0xFFFF ) {
+                            BUG(sp, "Reference to Self in free function - " << gt);
+                        }
+                        else if( (e.binding >> 8) == 0 ) {
+                            BUG(sp, "Reference to impl-level param in free function - " << gt);
+                        }
+                        else if( (e.binding >> 8) == 1 ) {
+                            auto idx = e.binding & 0xFF;
+                            if( idx >= pe.m_params.m_types.size() ) {
+                                BUG(sp, "Generic param out of input range - " << gt << " >= " << pe.m_params.m_types.size());
+                            }
+                            return pe.m_params.m_types[idx];
+                        }
+                        else {
+                            BUG(sp, "Unknown param in free function - " << gt);
+                        }
+                        };
+                    
                     // TODO: Obtain function type for this function (i.e. a type that is specifically for this function)
                     auto fcn_ty_data = ::HIR::FunctionType {
                         e.m_unsafe,
                         e.m_abi,
-                        box$( monomorphise_type(sp, e.m_params, pe.m_params,  e.m_return) ),
+                        box$( monomorphise_type_with(sp, e.m_return, monomorph_cb) ),
                         {}
                         };
                     fcn_ty_data.m_arg_types.reserve( e.m_args.size() );
                     for(const auto& arg : e.m_args)
                     {
-                        fcn_ty_data.m_arg_types.push_back( monomorphise_type(sp, e.m_params, pe.m_params,  arg.second) );
+                        fcn_ty_data.m_arg_types.push_back( monomorphise_type_with(sp, arg.second, monomorph_cb) );
                     }
                     auto tmp = m_builder.new_temporary( ::HIR::TypeRef( mv$(fcn_ty_data) ) );
                     m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
