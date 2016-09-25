@@ -208,6 +208,7 @@ class MacroPatternStream
     ::std::vector<unsigned int> m_loop_iterations;
     
     ::std::vector<SimplePatEnt> m_stack;
+    unsigned int    m_skip_count;
 public:
     MacroPatternStream(const ::std::vector<MacroPatEnt>& pattern):
         m_pattern(&pattern),
@@ -240,6 +241,8 @@ SimplePatEnt MacroPatternStream::next()
         return rv;
     }
     
+    m_skip_count = 0;
+    
     /*
     if( m_break_if_not && ! m_condition_fired ) {
         // Break out of the current loop then continue downwards.
@@ -247,6 +250,7 @@ SimplePatEnt MacroPatternStream::next()
     */
     
     const MacroPatEnt*  parent_pat = nullptr;
+    decltype(m_pattern) parent_ents = nullptr;
     const auto* ents = m_pattern;
     for(unsigned int i = 0; i < m_pos.size() - 1; i ++)
     {
@@ -255,6 +259,7 @@ SimplePatEnt MacroPatternStream::next()
         assert( idx < ents->size() );
         assert( (*ents)[idx].type == MacroPatEnt::PAT_LOOP );
         parent_pat = &(*ents)[idx];
+        parent_ents = ents;
         ents = &parent_pat->subpats;
     }
     
@@ -305,6 +310,22 @@ SimplePatEnt MacroPatternStream::next()
                 return emit_loop_start(*parent_pat);
             }
             else {
+                // TODO: What if the next token after the end of the loop is the separator?
+                // - Need to consume a bunch before deciding to commit to a path
+                auto i = m_pos[ m_pos.size() - 2 ] + 1;
+                if( i < parent_ents->size() )
+                {
+                    DEBUG("sep = " << parent_pat->tok << ", next = " << parent_ents->at(i) << ", start = " << ents->at(0));
+                    if( parent_ents->at(i).type == MacroPatEnt::PAT_TOKEN && parent_pat->tok == parent_ents->at(i).tok && ents->at(0).type == MacroPatEnt::PAT_TOKEN )
+                    {
+                        DEBUG("MAGIC: Reverse conditions for case where sep==next");
+                        //  > Mark to skip the next token after the end of the loop
+                        m_skip_count = 1;
+                        // - Yeild `EXPECT sep` and `IF NOT start BREAK`
+                        m_stack.push_back( SimplePatEnt::make_IfTok({ false, ents->at(0).tok.clone() }) );
+                        return SimplePatEnt::make_ExpectTok( parent_pat->tok.clone() );
+                    }
+                }
                 // - Yeild `IF NOT sep BREAK` and `EXPECT sep`
                 m_stack.push_back( SimplePatEnt::make_ExpectTok( parent_pat->tok.clone() ) );
                 return SimplePatEnt::make_IfTok({ false, parent_pat->tok.clone() });
@@ -339,6 +360,7 @@ SimplePatEnt MacroPatternStream::emit_loop_start(const MacroPatEnt& pat)
 
 void MacroPatternStream::if_succeeded()
 {
+    DEBUG("- Break out of loop, m_skip_count = " << m_skip_count);
     // Break out of an active loop (pop level and increment parent level)
     assert( m_pos.size() >= 1 );
     // - This should never be called when on the top level
@@ -348,7 +370,7 @@ void MacroPatternStream::if_succeeded()
     m_stack.clear();
     
     m_pos.pop_back();
-    m_pos.back() += 1;
+    m_pos.back() += 1 + m_skip_count;
     
     m_loop_iterations.pop_back();
 }
@@ -595,7 +617,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, ::std::vector<un
             {
                 pat = arm.second.next();
                 TU_IFLET( SimplePatEnt, pat, IfPat, e,
-                    DEBUG("IfPat(" << e.is_equal << " ?" << e.type << ")");
+                    DEBUG("IfPat(" << (e.is_equal ? "==" : "!=") << " ?" << e.type << ")");
                     if( Macro_TryPatternCap(lex, e.type) == e.is_equal )
                     {
                         DEBUG("- Succeeded");
@@ -603,7 +625,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, ::std::vector<un
                     }
                 )
                 else TU_IFLET( SimplePatEnt, pat, IfTok, e,
-                    DEBUG("IfTok(" << e.is_equal << " ?" << e.tok << ")");
+                    DEBUG("IfTok(" << (e.is_equal ? "==" : "!=") << " ?" << e.tok << ")");
                     auto tok = lex.getToken();
                     if( (tok == e.tok) == e.is_equal )
                     {
@@ -630,8 +652,8 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, ::std::vector<un
             (IfPat, BUG(sp, "IfTok unexpected here");),
             (IfTok, BUG(sp, "IfTok unexpected here");),
             (ExpectTok,
-                DEBUG(i << " ExpectTok(" << e << ")");
                 auto tok = lex.getToken();
+                DEBUG(i << " ExpectTok(" << e << ") == " << tok);
                 fail = !(tok == e);
                 lex.putback( mv$(tok) );
                 ),
