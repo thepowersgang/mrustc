@@ -89,26 +89,19 @@ output/%.ast: samples/%.rs $(BIN)
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 
 RUSTCSRC := ./rustc-nightly/
-output/libcore.hir: $(RUSTCSRC)src/libcore/lib.rs $(BIN)
+
+output/lib%.hir: $(RUSTCSRC)src/lib%/lib.rs $(BIN)
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
-output/liballoc.hir: $(RUSTCSRC)src/liballoc/lib.rs output/libcore.hir $(BIN)
-	@echo "--- [MRUSTC] $@"
-	@mkdir -p output/
-	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
-output/libcollections.hir: $(RUSTCSRC)src/libcollections/lib.rs $(patsubst %,output/lib%.hir,core alloc rustc_unicode) $(BIN)
-	@echo "--- [MRUSTC] $@"
-	@mkdir -p output/
-	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
-output/librustc_unicode.hir: $(RUSTCSRC)src/librustc_unicode/lib.rs output/libcore.hir $(BIN)
-	@echo "--- [MRUSTC] $@"
-	@mkdir -p output/
-	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
-output/libstd.hir: $(RUSTCSRC)src/libstd/lib.rs $(patsubst %,output/lib%.hir,core collections) $(BIN)
-	@echo "--- [MRUSTC] $@"
-	@mkdir -p output/
-	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
+	# HACK: Work around gdb returning success even if the program crashed
+	@test -e $@
+
+output/liballoc.hir: output/libcore.hir
+output/librustc_unicode.hir: output/libcore.hir
+output/libcollections.hir: output/libcore.hir output/liballoc.hir output/librustc_unicode.hir
+output/librand.hir: output/libcore.hir
+output/libstd.hir: output/libcore.hir output/libcollections.hir output/librand.hir
 
 .PHONY: UPDATE
 UPDATE:
