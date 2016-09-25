@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/pattern.hpp
+ * - HIR Representation of patterns
  */
 #pragma once
 
@@ -49,6 +54,10 @@ struct Pattern
         (Integer, struct {
             enum ::HIR::CoreType type;  // Str == _
             uint64_t value; // Signed numbers are encoded as 2's complement
+            }),
+        (Float, struct {
+            enum ::HIR::CoreType type;  // Str == _
+            double value;
             }),
         (String, ::std::string),
         (Named, struct {

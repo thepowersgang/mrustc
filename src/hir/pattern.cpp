@@ -1,10 +1,20 @@
-
+/*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/pattern.cpp
+ * - HIR Representation of patterns
+ */
 #include "pattern.hpp"
 
 namespace HIR {
     ::std::ostream& operator<<(::std::ostream& os, const Pattern::Value& x) {
         TU_MATCH(Pattern::Value, (x), (e),
         (Integer,
+            // TODO: Print with type (and signed-ness)
+            os << e.value;
+            ),
+        (Float,
             // TODO: Print with type
             os << e.value;
             ),
@@ -146,6 +156,9 @@ namespace {
         TU_MATCH(::HIR::Pattern::Value, (val), (e),
         (Integer,
             return ::HIR::Pattern::Value::make_Integer(e);
+            ),
+        (Float,
+            return ::HIR::Pattern::Value::make_Float(e);
             ),
         (String,
             return ::HIR::Pattern::Value::make_String(e);

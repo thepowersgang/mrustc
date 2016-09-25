@@ -387,6 +387,8 @@ void ::HIR::Visitor::visit_pattern_val(::HIR::Pattern::Value& val)
     TU_MATCH(::HIR::Pattern::Value, (val), (e),
     (Integer,
         ),
+    (Float,
+        ),
     (String,
         ),
     (Named,

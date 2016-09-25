@@ -361,6 +361,16 @@
                     BUG(sp, "Unknown type for integer literal in pattern - " << ct );
                 }
             }
+            static ::HIR::CoreType get_float_type(const Span& sp, const ::eCoreType ct) {
+                switch(ct)
+                {
+                case CORETYPE_ANY:  return ::HIR::CoreType::Str;
+                case CORETYPE_F32:  return ::HIR::CoreType::F32;
+                case CORETYPE_F64:  return ::HIR::CoreType::F64;
+                default:
+                    BUG(sp, "Unknown type for float literal in pattern - " << ct );
+                }
+            }
             static ::HIR::Pattern::Value lowerhir_pattern_value(const Span& sp, const ::AST::Pattern::Value& v) {
                 TU_MATCH(::AST::Pattern::Value, (v), (e),
                 (Invalid,
@@ -373,11 +383,10 @@
                         });
                     ),
                 (Float,
-                    TODO(sp, "Floating point patterns");
-                    //return ::HIR::Pattern::Value::make_Float({
-                    //    H::get_int_type(sp, e.type),
-                    //    e.value
-                    //    });
+                    return ::HIR::Pattern::Value::make_Float({
+                        H::get_float_type(sp, e.type),
+                        e.value
+                        });
                     ),
                 (String,
                     return ::HIR::Pattern::Value::make_String(e);

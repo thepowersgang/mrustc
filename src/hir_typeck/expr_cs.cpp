@@ -2798,6 +2798,13 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         static void handle_value(Context& context, const Span& sp, const ::HIR::TypeRef& type, const ::HIR::Pattern::Value& val) {
             TU_MATCH(::HIR::Pattern::Value, (val), (v),
             (Integer,
+                // TODO: Apply an ivar bound? (Require that this ivar be an integer?)
+                if( v.type != ::HIR::CoreType::Str ) {
+                    context.equate_types(sp, type, ::HIR::TypeRef(v.type));
+                }
+                ),
+            (Float,
+                // TODO: Apply an ivar bound? (Require that this ivar be a float?)
                 if( v.type != ::HIR::CoreType::Str ) {
                     context.equate_types(sp, type, ::HIR::TypeRef(v.type));
                 }
