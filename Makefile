@@ -105,6 +105,10 @@ output/librustc_unicode.hir: $(RUSTCSRC)src/librustc_unicode/lib.rs output/libco
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
+output/libstd.hir: $(RUSTCSRC)src/libstd/lib.rs $(patsubst %,output/lib%.hir,core collections) $(BIN)
+	@echo "--- [MRUSTC] $@"
+	@mkdir -p output/
+	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 
 .PHONY: UPDATE
 UPDATE:
@@ -126,7 +130,7 @@ output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(BIN)
 	touch $@
 
 .PHONY: test test_rustos
-test: output/libcore.hir output/liballoc.hir output/libcollections.hir $(BIN)
+test: output/libcore.hir output/liballoc.hir output/libcollections.hir output/libstd.hir $(BIN)
 
 test_rustos: $(addprefix output/rust_os/,libkernel.rlib)
 
