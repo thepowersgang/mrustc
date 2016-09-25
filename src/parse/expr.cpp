@@ -93,7 +93,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
             if( !local_mod ) {
                 local_mod = lex.parse_state().get_current_mod().add_anon();
             }
-            Parse_Mod_Item(lex, false,"!", *local_mod, false, mv$(item_attrs));
+            Parse_Mod_Item(lex, *local_mod, false, mv$(item_attrs));
             break;
         // 'unsafe' - Check if the next token isn't a `{`, if so it's an item. Otherwise, fall through
         case TOK_RWORD_UNSAFE:
@@ -103,7 +103,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
                 if( !local_mod ) {
                     local_mod = lex.parse_state().get_current_mod().add_anon();
                 }
-                Parse_Mod_Item(lex, false,"!", *local_mod, false, mv$(item_attrs));
+                Parse_Mod_Item(lex, *local_mod, false, mv$(item_attrs));
                 break;
             }
             // fall

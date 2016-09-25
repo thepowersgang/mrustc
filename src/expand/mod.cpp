@@ -673,7 +673,7 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             {
                 // Re-parse tt
                 assert(ttl.get());
-                Parse_ModRoot_Items(*ttl, mod, false, "-");
+                Parse_ModRoot_Items(*ttl, mod);
                 // - Any new macro invocations ends up at the end of the list and handled
             }
             

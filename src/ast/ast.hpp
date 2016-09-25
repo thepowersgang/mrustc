@@ -513,6 +513,7 @@ public:
             throw "";
         }
     };
+    
 private:
     typedef ::std::vector< Named<UseStmt> > itemlist_use_t;
     
@@ -539,6 +540,14 @@ private:
     ::std::vector< Named<MacroRulesPtr> >  m_macros;
 
 public:
+    struct FileInfo
+    {
+        bool    controls_dir = false;
+        ::std::string   path = "!";
+    };
+    
+    FileInfo    m_file_info;
+    
     bool    m_insert_prelude = true;    // Set to false by `#[no_prelude]` handler
     char    m_index_populated = 0;  // 0 = no, 1 = partial, 2 = complete
     struct IndexEnt {

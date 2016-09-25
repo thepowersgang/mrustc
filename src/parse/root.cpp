@@ -34,7 +34,7 @@ Spanned<T> get_spanned(TokenStream& lex, ::std::function<T()> f) {
 }
 
 AST::MetaItem   Parse_MetaItem(TokenStream& lex);
-void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs, bool file_controls_dir, const ::std::string& path);
+void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs);
 
 ::std::vector< ::std::string> Parse_HRB(TokenStream& lex)
 {
@@ -1280,7 +1280,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
 }
 
 // TODO: Extract single-item parsing into a method that returns just the item
-::AST::Named<::AST::Item> Parse_Mod_Item_S(TokenStream& lex, bool file_controls_dir, const ::std::string& file_path, const ::AST::Path& mod_path, bool is_public, AST::MetaItems meta_items)
+::AST::Named<::AST::Item> Parse_Mod_Item_S(TokenStream& lex, const AST::Module::FileInfo& mod_fileinfo, const ::AST::Path& mod_path, bool is_public, AST::MetaItems meta_items)
 {
     Token   tok;
     
@@ -1511,73 +1511,79 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         // - else, disallow and set flag
         ::std::string path_attr = (meta_items.has("path") ? meta_items.get("path")->string() : "");
         
+        //submod.m_file_info = get_submod_file(lex.end_span(ps), mod_fileinfo,  name, path_attr, LOOK_AHEAD(lex) == TOK_SEMICOLON);
+        
         ::std::string   sub_path;
         bool    sub_file_controls_dir = true;
-        if( file_path == "-" ) {
+        if( mod_fileinfo.path == "-" ) {
             if( path_attr.size() ) {
-                throw ParseError::Generic(lex, "Attempt to set path when reading stdin");
+                ERROR(lex.getPosition(), E0000, "Cannot load module from file when reading stdin");
             }
             sub_path = "-";
         }
         else if( path_attr.size() > 0 )
         {
-            sub_path = dirname(file_path) + path_attr;
+            sub_path = dirname(mod_fileinfo.path) + path_attr;
         }
-        else if( file_controls_dir )
+        else if( mod_fileinfo.controls_dir )
         {
-            sub_path = dirname(file_path) + name;
+            sub_path = dirname(mod_fileinfo.path) + name;
         }
         else
         {
-            sub_path = file_path;
+            sub_path = mod_fileinfo.path;
             sub_file_controls_dir = false;
         }
         DEBUG("Mod '" << name << "', sub_path = " << sub_path);
         
+        submod.m_file_info.path = sub_path;
+        submod.m_file_info.controls_dir = sub_file_controls_dir;
+        
         switch( GET_TOK(tok, lex) )
         {
-        case TOK_BRACE_OPEN: {
-            Parse_ModRoot(lex, submod, meta_items, sub_file_controls_dir, sub_path+"/");
+        case TOK_BRACE_OPEN:
+            submod.m_file_info.path = sub_path + "/";
+            Parse_ModRoot(lex, submod, meta_items);
             GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
-            break; }
+            break;
         case TOK_SEMICOLON:
             if( sub_path == "-" ) {
-                throw ParseError::Generic(lex, "Cannot load module from file when reading stdin");
+                ERROR(lex.getPosition(), E0000, "Cannot load module from file when reading stdin");
             }
-            else if( path_attr.size() == 0 && ! file_controls_dir )
+            else if( path_attr.size() == 0 && ! mod_fileinfo.controls_dir )
             {
-                throw ParseError::Generic(lex, "Can't load from files outside of mod.rs or crate root");
+                ERROR(lex.getPosition(), E0000, "Can't load from files outside of mod.rs or crate root");
             }
             else
             {
                 ::std::string newpath_dir  = sub_path + "/";
                 ::std::string newpath_file = path_attr.size() > 0 ? sub_path : sub_path + ".rs";
+                DEBUG("newpath_dir = '" << newpath_dir << "', newpath_file = '" << newpath_file << "'");
                 ::std::ifstream ifs_dir (newpath_dir + "mod.rs");
                 ::std::ifstream ifs_file(newpath_file);
                 if( ifs_dir.is_open() && ifs_file.is_open() )
                 {
                     // Collision
-                    throw ParseError::Generic(lex, "Both modname.rs and modname/mod.rs exist");
+                    ERROR(lex.getPosition(), E0000, "Both modname.rs and modname/mod.rs exist");
                 }
                 else if( ifs_dir.is_open() )
                 {
                     // Load from dir
-                    Lexer sub_lex(newpath_dir + "mod.rs");
-                    Parse_ModRoot(sub_lex, submod, meta_items, sub_file_controls_dir, newpath_dir);
-                    GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
+                    submod.m_file_info.path = newpath_dir + "mod.rs";
                 }
                 else if( ifs_file.is_open() )
                 {
-                    // Load from file
-                    Lexer sub_lex(newpath_file);
-                    Parse_ModRoot(sub_lex, submod, meta_items, sub_file_controls_dir, newpath_file);
-                    GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
+                    submod.m_file_info.path = newpath_file;
                 }
                 else
                 {
                     // Can't find file
-                    throw ParseError::Generic(lex, FMT("Can't find file for '" << name << "' in '" << file_path << "'") );
+                    ERROR(lex.getPosition(), E0000, "Can't find file for '" << name << "' in '" << mod_fileinfo.path << "'");
                 }
+                DEBUG("- path = " << submod.m_file_info.path);
+                Lexer sub_lex(submod.m_file_info.path);
+                Parse_ModRoot(sub_lex, submod, meta_items);
+                GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
             }
             break;
         default:
@@ -1598,7 +1604,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
     return ::AST::Named< ::AST::Item> { mv$(item_name), mv$(item_data), is_public };
 }
 
-void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::string& file_path, AST::Module& mod, bool is_public, AST::MetaItems meta_items)
+void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, bool is_public, AST::MetaItems meta_items)
 {
     SET_MODULE(lex, mod);
     lex.parse_state().parent_attrs = &meta_items;
@@ -1610,8 +1616,8 @@ void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::strin
     if( LOOK_AHEAD(lex) == TOK_RWORD_USE )
     {
         GET_TOK(tok, lex);
-        Parse_Use(lex, [&mod,is_public,&file_path,&meta_items](AST::UseStmt p, std::string s) {
-                DEBUG(file_path << " - use " << p << " as '" << s << "'");
+        Parse_Use(lex, [&mod,is_public,&meta_items](AST::UseStmt p, std::string s) {
+                DEBUG(mod.path() << " - use " << p << " as '" << s << "'");
                 mod.add_alias(is_public, mv$(p), s, meta_items.clone());
             });
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
@@ -1643,11 +1649,11 @@ void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::strin
     }
     else
     {
-        mod.add_item( Parse_Mod_Item_S(lex, file_controls_dir, file_path, mod.path(), is_public, mv$(meta_items)) );
+        mod.add_item( Parse_Mod_Item_S(lex, mod.m_file_info, mod.path(), is_public, mv$(meta_items)) );
     }
 }
 
-void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, bool file_controls_dir, const ::std::string& path)
+void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod)
 {
     Token   tok;
 
@@ -1701,11 +1707,11 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, bool file_controls_
             PUTBACK(tok, lex);
         }
 
-        Parse_Mod_Item(lex, file_controls_dir,path,  mod, is_public, mv$(meta_items));
+        Parse_Mod_Item(lex, mod, is_public, mv$(meta_items));
     }
 }
 
-void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs, bool file_controls_dir, const ::std::string& path)
+void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs)
 {
     TRACE_FUNCTION;
 
@@ -1721,7 +1727,7 @@ void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs
     }
     PUTBACK(tok, lex);
 
-    Parse_ModRoot_Items(lex, mod, file_controls_dir, path);
+    Parse_ModRoot_Items(lex, mod);
 }
 
 AST::Crate Parse_Crate(::std::string mainfile)
@@ -1732,10 +1738,13 @@ AST::Crate Parse_Crate(::std::string mainfile)
     
     size_t p = mainfile.find_last_of('/');
     ::std::string mainpath = (p != ::std::string::npos ? ::std::string(mainfile.begin(), mainfile.begin()+p+1) : "./");
-     
+    
     AST::Crate  crate;
+    
+    crate.root_module().m_file_info.path = mainpath;
+    crate.root_module().m_file_info.controls_dir = true;
 
-    Parse_ModRoot(lex, crate.root_module(), crate.m_attrs, true, mainpath);
+    Parse_ModRoot(lex, crate.root_module(), crate.m_attrs);
     
     return crate;
 }

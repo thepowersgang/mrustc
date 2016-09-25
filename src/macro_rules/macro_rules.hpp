@@ -22,6 +22,7 @@ class MacroExpander;
 TAGGED_UNION_EX(MacroExpansionEnt, (: public Serialisable), Token, (
     // TODO: have a "raw" stream instead of just tokens
     (Token, Token),
+    // TODO: Have a flag on `NamedValue` that indicates that it is the only/last usage of this particular value (at this level)
     // NOTE: This is a 2:30 bitfield - with the high range indicating $crate
     (NamedValue, unsigned int),
     (Loop, struct {

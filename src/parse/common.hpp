@@ -45,9 +45,9 @@ extern TypeRef     Parse_Type(TokenStream& lex, bool allow_trait_list = true);
 extern AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable);
 
 extern void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl);
-extern void Parse_Mod_Item(TokenStream& lex, bool file_controls_dir, const ::std::string& file_path, AST::Module& mod, bool is_public, AST::MetaItems meta_items);
-extern ::AST::Named<::AST::Item> Parse_Mod_Item_S(TokenStream& lex, bool file_controls_dir, const ::std::string& file_path, const ::AST::Path& mod_path, bool is_public, AST::MetaItems meta_items);
-extern void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod, bool file_controls_dir, const ::std::string& path);
+extern void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, bool is_public, AST::MetaItems meta_items);
+extern ::AST::Named<::AST::Item> Parse_Mod_Item_S(TokenStream& lex, const AST::Module::FileInfo& mod_fileinfo, const ::AST::Path& mod_path, bool is_public, AST::MetaItems meta_items);
+extern void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod);
 
 
 extern AST::Expr   Parse_Expr(TokenStream& lex);
