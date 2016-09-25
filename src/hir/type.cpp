@@ -2,6 +2,7 @@
  */
 #include "type.hpp"
 #include <span.hpp>
+#include "expr.hpp"
 
 namespace HIR {
 
@@ -692,13 +693,22 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return ::HIR::TypeRef( Data::make_TraitObject( mv$(rv) ) );
         ),
     (Array,
+        unsigned int size_val = e.size_val;
         if( e.size_val == ~0u ) {
-            BUG(Span(), "Attempting to clone array with unknown size - " << *this);
+            // TODO: Need to invoke const eval here? Or support cloning expressions? Or run consteval earlier.
+            if( const auto* ptr = dynamic_cast<const ::HIR::ExprNode_Literal*>(&*e.size) )
+            {
+                size_val = ptr->m_data.as_Integer().m_value;
+            }
+            else
+            {
+                BUG(Span(), "Attempting to clone array with unknown size - " << *this);
+            }
         }
         return ::HIR::TypeRef( Data::make_Array({
             box$( e.inner->clone() ),
             ::HIR::ExprPtr(),
-            e.size_val
+            size_val
             }) );
         ),
     (Slice,

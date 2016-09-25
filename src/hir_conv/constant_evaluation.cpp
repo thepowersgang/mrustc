@@ -421,7 +421,16 @@ namespace {
             }
             
             void visit(::HIR::ExprNode_TupleVariant& node) override {
-                TODO(node.span(), "ExprNode_TupleVariant");
+                if( ! node.m_is_struct ) {
+                    TODO(node.span(), "_TupleVariant - Enum");
+                }
+                ::std::vector< ::HIR::Literal>  vals;
+                for(const auto& vn : node.m_args ) {
+                    vn->visit(*this);
+                    assert( !m_rv.is_Invalid() );
+                    vals.push_back( mv$(m_rv) );
+                }
+                m_rv = ::HIR::Literal::make_List(mv$(vals));
             }
             void visit(::HIR::ExprNode_CallPath& node) override {
                 TRACE_FUNCTION_FR("_CallPath - " << node.m_path, m_rv);
@@ -583,7 +592,23 @@ namespace {
                 m_rv = ::HIR::Literal::make_List(mv$(vals));
             }
             void visit(::HIR::ExprNode_ArraySized& node) override {
-                TODO(node.span(), "ExprNode_ArraySized");
+                node.m_size->visit(*this);
+                assert( m_rv.is_Integer() );
+                unsigned int count = static_cast<unsigned int>(m_rv.as_Integer());
+                
+                ::std::vector< ::HIR::Literal>  vals;
+                vals.reserve( count );
+                if( count > 0 )
+                {
+                    node.m_val->visit(*this);
+                    assert( !m_rv.is_Invalid() );
+                    for(unsigned int i = 0; i < count-1; i ++)
+                    {
+                        vals.push_back( clone_literal(m_rv) );
+                    }
+                    vals.push_back( mv$(m_rv) );
+                }
+                m_rv = ::HIR::Literal::make_List(mv$(vals));
             }
             
             void visit(::HIR::ExprNode_Closure& node) override {
@@ -851,11 +876,14 @@ namespace {
         {
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
                 ::HIR::Visitor::visit_type(*e.inner);
-                assert(e.size.get() != nullptr);
-                auto val = evaluate_constant(e.size->span(), m_crate, NewvalState { m_new_values, *m_mod_path, FMT("ty_" << &ty << "$") }, e.size);
-                if( !val.is_Integer() )
-                    ERROR(e.size->span(), E0000, "Array size isn't an integer");
-                e.size_val = val.as_Integer();
+                if( e.size_val == ~0u )
+                {
+                    assert(e.size.get() != nullptr);
+                    auto val = evaluate_constant(e.size->span(), m_crate, NewvalState { m_new_values, *m_mod_path, FMT("ty_" << &ty << "$") }, e.size);
+                    if( !val.is_Integer() )
+                        ERROR(e.size->span(), E0000, "Array size isn't an integer");
+                    e.size_val = val.as_Integer();
+                }
                 DEBUG("Array " << ty << " - size = " << e.size_val);
             )
             else {
@@ -867,12 +895,14 @@ namespace {
             visit_type(item.m_type);
             item.m_value_res = evaluate_constant(item.m_value->span(), m_crate, NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$") }, item.m_value, {});
             DEBUG("constant: " << item.m_type <<  " = " << item.m_value_res);
+            visit_expr(item.m_value);
         }
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override
         {
             visit_type(item.m_type);
             item.m_value_res = evaluate_constant(item.m_value->span(), m_crate, NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$") }, item.m_value, {});
             DEBUG("static: " << item.m_type <<  " = " << item.m_value_res);
+            visit_expr(item.m_value);
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
             for(auto& var : item.m_variants)
