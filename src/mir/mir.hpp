@@ -32,6 +32,7 @@ TAGGED_UNION_EX(LValue, (), Variable, (
     (Static, ::HIR::Path),
     // Function return
     (Return, struct{}),
+    // Field access (tuple, struct, tuple struct, enum field, ...)
     (Field, struct {
         ::std::unique_ptr<LValue>   val;
         unsigned int    field_index;
@@ -45,6 +46,7 @@ TAGGED_UNION_EX(LValue, (), Variable, (
         ::std::unique_ptr<LValue>   val;
         ::std::unique_ptr<LValue>   idx;
         }),
+    // Interpret an enum as a particular variant
     (Downcast, struct {
         ::std::unique_ptr<LValue>   val;
         unsigned int    variant_index;
