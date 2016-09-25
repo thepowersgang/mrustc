@@ -15,6 +15,7 @@
 #include "common.hpp"
 #include <iostream>
 #include "tokentree.hpp"
+#include "interpolated_fragment.hpp"
 
 using AST::ExprNode;
 using AST::ExprNodeP;
@@ -23,6 +24,7 @@ static inline ExprNodeP mk_exprnodep(const TokenStream& lex, AST::ExprNode* en){
 
 //ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe=false);    // common.hpp
 ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence);
+ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool *add_silence);
 //ExprNodeP Parse_Stmt(TokenStream& lex);   // common.hpp
 ExprNodeP Parse_Expr0(TokenStream& lex);
 ExprNodeP Parse_IfStmt(TokenStream& lex);
@@ -138,6 +140,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
 ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
 {
     Token tok;
+    ExprNodeP   ret;
     
     if( GET_TOK(tok, lex) == TOK_LIFETIME )
     {
@@ -153,13 +156,13 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
             return Parse_WhileStmt(lex, lifetime);
         case TOK_RWORD_FOR:
             return Parse_ForStmt(lex, lifetime);
-        case TOK_RWORD_IF:
-            return Parse_IfStmt(lex);
-        case TOK_RWORD_MATCH:
-            return Parse_Expr_Match(lex);
-        case TOK_BRACE_OPEN:
-            PUTBACK(tok, lex);
-            return Parse_ExprBlockNode(lex);
+        //case TOK_RWORD_IF:
+        //    return Parse_IfStmt(lex);
+        //case TOK_RWORD_MATCH:
+        //    return Parse_Expr_Match(lex);
+        //case TOK_BRACE_OPEN:
+        //    PUTBACK(tok, lex);
+        //    return Parse_ExprBlockNode(lex);
     
         default:
             throw ParseError::Unexpected(lex, tok);
@@ -171,9 +174,6 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
         {
         case TOK_SEMICOLON:
             return NEWNODE(AST::ExprNode_Tuple, ::std::vector<AST::ExprNodeP>());
-        case TOK_BRACE_OPEN:
-            PUTBACK(tok, lex);
-            return Parse_ExprBlockNode(lex);
         
         // let binding
         case TOK_RWORD_LET: {
@@ -190,20 +190,37 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
             return NEWNODE( AST::ExprNode_LetBinding, ::std::move(pat), ::std::move(type), ::std::move(val) );
             }
         
-        // blocks that don't need semicolons
+        // Blocks that don't need semicolons
+        // NOTE: If these are followed by a small set of tokens (`.` and `?`) then they are actually the start of an expression
+        // HACK: Parse here, but if the next token is one of the set store in a TOK_INTERPOLATED_EXPR and invoke the statement parser
         case TOK_RWORD_LOOP:
-            return NEWNODE( AST::ExprNode_Loop, "", Parse_ExprBlockNode(lex) );
+            ret = NEWNODE( AST::ExprNode_Loop, "", Parse_ExprBlockNode(lex) );
+            if(0)
         case TOK_RWORD_WHILE:
-            return Parse_WhileStmt(lex, "");
+            ret = Parse_WhileStmt(lex, "");
+            if(0)
         case TOK_RWORD_FOR:
-            return Parse_ForStmt(lex, "");
+            ret = Parse_ForStmt(lex, "");
+            if(0)
         case TOK_RWORD_IF:
-            return Parse_IfStmt(lex);
+            ret = Parse_IfStmt(lex);
+            if(0)
         case TOK_RWORD_MATCH:
-            return Parse_Expr_Match(lex);
+            ret = Parse_Expr_Match(lex);
+            if(0)
         case TOK_RWORD_UNSAFE:
-            return Parse_ExprBlockNode(lex, true);
+            ret = Parse_ExprBlockNode(lex, true);
+            if(0)
+        case TOK_BRACE_OPEN:
+            { PUTBACK(tok, lex); ret = Parse_ExprBlockNode(lex); }
+            
+            if( lex.lookahead(0) == TOK_DOT || lex.lookahead(0) == TOK_QMARK ) {
+                lex.putback( Token(Token::TagTakeIP(), InterpolatedFragment(InterpolatedFragment::EXPR, ret.release())) );
+                return Parse_ExprBlockLine_Stmt(lex, add_silence);
+            }
+            return ret;
         
+        // Flow control
         case TOK_RWORD_RETURN:
         case TOK_RWORD_CONTINUE:
         case TOK_RWORD_BREAK: {
@@ -225,23 +242,29 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
                 return Parse_ExprMacro(lex, tok);
             }
         // Fall through to the statement code
-        default: {
+        default:
             PUTBACK(tok, lex);
-            auto ret = Parse_Stmt(lex);
-            // If this expression statement wasn't followed by a semicolon, then it's yielding its value out of the block.
-            // - I.e. The block should be ending
-            if( GET_TOK(tok, lex) != TOK_SEMICOLON ) {
-                CHECK_TOK(tok, TOK_BRACE_CLOSE);
-                PUTBACK(tok, lex);
-            }
-            else {
-                *add_silence = true;
-            }
-            return ret;
-            }
+            return Parse_ExprBlockLine_Stmt(lex, add_silence);
         }
     }
 }
+
+ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool *add_silence)
+{
+    Token tok;
+    auto ret = Parse_Stmt(lex);
+    // If this expression statement wasn't followed by a semicolon, then it's yielding its value out of the block.
+    // - I.e. The block should be ending
+    if( GET_TOK(tok, lex) != TOK_SEMICOLON ) {
+        CHECK_TOK(tok, TOK_BRACE_CLOSE);
+        PUTBACK(tok, lex);
+    }
+    else {
+        *add_silence = true;
+    }
+    return ret;
+}
+
 /// While loop (either as a statement, or as part of an expression)
 ExprNodeP Parse_WhileStmt(TokenStream& lex, ::std::string lifetime)
 {

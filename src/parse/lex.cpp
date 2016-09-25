@@ -814,7 +814,17 @@ uint32_t Lexer::parseEscape(char enclosing)
     auto ch = this->getc();
     switch(ch.v)
     {
-    case 'x':
+    case 'x': {
+        ch = this->getc();
+        if( !ch.isxdigit() )
+            throw ParseError::Generic(*this, FMT("Found invalid character '\\x" << ::std::hex << ch.v << "' in \\u sequence" ) );
+        char tmp[3] = {static_cast<char>(ch.v), 0, 0};
+        ch = this->getc();
+        if( !ch.isxdigit() )
+            throw ParseError::Generic(*this, FMT("Found invalid character '\\x" << ::std::hex << ch.v << "' in \\u sequence" ) );
+        tmp[1] = static_cast<char>(ch.v);
+        return ::std::strtol(tmp, NULL, 16);
+        } break;
     case 'u': {
         // Unicode (up to six hex digits)
         uint32_t    val = 0;

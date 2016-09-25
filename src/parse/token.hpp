@@ -103,7 +103,9 @@ public:
     Token(enum eTokenType type, ::std::string str);
     Token(uint64_t val, enum eCoreType datatype);
     Token(double val, enum eCoreType datatype);
-    Token(InterpolatedFragment& );
+    Token(const InterpolatedFragment& );
+    struct TagTakeIP {};
+    Token(TagTakeIP, InterpolatedFragment );
 
     enum eTokenType type() const { return m_type; }
     const ::std::string& str() const { return m_data.as_String(); }

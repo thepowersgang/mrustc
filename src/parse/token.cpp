@@ -63,38 +63,68 @@ Token::Token(double val, enum eCoreType datatype):
     m_data( Data::make_Float({datatype, val}) )
 {
 }
-Token::Token(InterpolatedFragment& frag)
+Token::Token(const InterpolatedFragment& frag)
 {
     switch(frag.m_type)
     {
     case InterpolatedFragment::TT:  throw "";
     case InterpolatedFragment::TYPE:
         m_type = TOK_INTERPOLATED_TYPE;
-        m_data = new TypeRef( *reinterpret_cast<TypeRef*>(frag.m_ptr) );
+        m_data = new TypeRef( *reinterpret_cast<const TypeRef*>(frag.m_ptr) );
         break;
     case InterpolatedFragment::PAT:
         m_type = TOK_INTERPOLATED_PATTERN;
-        m_data = new AST::Pattern( reinterpret_cast<AST::Pattern*>(frag.m_ptr)->clone() );
+        m_data = new AST::Pattern( reinterpret_cast<const AST::Pattern*>(frag.m_ptr)->clone() );
         break;
     case InterpolatedFragment::PATH:
         m_type = TOK_INTERPOLATED_PATH;
-        m_data = new AST::Path( *reinterpret_cast<AST::Path*>(frag.m_ptr) );
+        m_data = new AST::Path( *reinterpret_cast<const AST::Path*>(frag.m_ptr) );
         break;
     case InterpolatedFragment::EXPR:
-        m_type = TOK_INTERPOLATED_EXPR;
-        m_data = reinterpret_cast<AST::ExprNode*>(frag.m_ptr)->clone().release();
-        break;
+        m_type = TOK_INTERPOLATED_EXPR; if(0)
     case InterpolatedFragment::STMT:
-        m_type = TOK_INTERPOLATED_STMT;
-        m_data = reinterpret_cast<AST::ExprNode*>(frag.m_ptr)->clone().release();
-        break;
+        m_type = TOK_INTERPOLATED_STMT; if(0)
     case InterpolatedFragment::BLOCK:
         m_type = TOK_INTERPOLATED_BLOCK;
-        m_data = reinterpret_cast<AST::ExprNode*>(frag.m_ptr)->clone().release();
+        
+        m_data = reinterpret_cast<const AST::ExprNode*>(frag.m_ptr)->clone().release();
         break;
     case InterpolatedFragment::META:
         m_type = TOK_INTERPOLATED_META;
-        m_data = new AST::MetaItem( reinterpret_cast<AST::MetaItem*>(frag.m_ptr)->clone() );
+        m_data = new AST::MetaItem( reinterpret_cast<const AST::MetaItem*>(frag.m_ptr)->clone() );
+        break;
+    }
+}
+Token::Token(TagTakeIP, InterpolatedFragment frag)
+{
+    switch(frag.m_type)
+    {
+    case InterpolatedFragment::TT:  throw "";
+    case InterpolatedFragment::TYPE:
+        m_type = TOK_INTERPOLATED_TYPE;
+        m_data = new TypeRef( mv$(*reinterpret_cast<TypeRef*>(frag.m_ptr)) );
+        break;
+    case InterpolatedFragment::PAT:
+        m_type = TOK_INTERPOLATED_PATTERN;
+        m_data = new AST::Pattern( mv$(*reinterpret_cast<AST::Pattern*>(frag.m_ptr)) );
+        break;
+    case InterpolatedFragment::PATH:
+        m_type = TOK_INTERPOLATED_PATH;
+        m_data = new AST::Path( mv$(*reinterpret_cast<AST::Path*>(frag.m_ptr)) );
+        break;
+    case InterpolatedFragment::EXPR:
+        m_type = TOK_INTERPOLATED_EXPR; if(0)
+    case InterpolatedFragment::STMT:
+        m_type = TOK_INTERPOLATED_STMT; if(0)
+    case InterpolatedFragment::BLOCK:
+        m_type = TOK_INTERPOLATED_BLOCK;
+        
+        m_data = reinterpret_cast<AST::ExprNode*>(frag.m_ptr);
+        frag.m_ptr = nullptr;
+        break;
+    case InterpolatedFragment::META:
+        m_type = TOK_INTERPOLATED_META;
+        m_data = new AST::MetaItem( mv$(*reinterpret_cast<AST::MetaItem*>(frag.m_ptr)) );
         break;
     }
 }

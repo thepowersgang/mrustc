@@ -30,6 +30,7 @@ public:
         META,
     } m_type;
     
+    // Owned type-pruned pointer
     void*   m_ptr;
     
     InterpolatedFragment(InterpolatedFragment&& );
