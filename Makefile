@@ -94,14 +94,21 @@ output/lib%.hir: $(RUSTCSRC)src/lib%/lib.rs $(BIN)
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
-	# HACK: Work around gdb returning success even if the program crashed
+#	# HACK: Work around gdb returning success even if the program crashed
+	@test -e $@
+output/lib%.hir: $(RUSTCSRC)src/lib%/src/lib.rs $(BIN)
+	@echo "--- [MRUSTC] $@"
+	@mkdir -p output/
+	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
+#	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
 
 output/liballoc.hir: output/libcore.hir
 output/librustc_unicode.hir: output/libcore.hir
 output/libcollections.hir: output/libcore.hir output/liballoc.hir output/librustc_unicode.hir
 output/librand.hir: output/libcore.hir
-output/libstd.hir: output/libcore.hir output/libcollections.hir output/librand.hir
+output/liblibc.hir: output/libcore.hir
+output/libstd.hir: output/libcore.hir output/libcollections.hir output/librand.hir output/liblibc.hir
 
 .PHONY: UPDATE
 UPDATE:

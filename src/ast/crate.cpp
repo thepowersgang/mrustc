@@ -59,6 +59,7 @@ void Crate::load_externs()
     
     // Check for no_std or no_core, and load libstd/libcore
     // - Duplicates some of the logic in "Expand", but also helps keep crate loading separate to most of expand
+    // NOTE: Not all crates are loaded here, any crates loaded by macro invocations will be done during expand.
     bool no_std  = false;
     bool no_core = false;
     
@@ -68,6 +69,16 @@ void Crate::load_externs()
             no_std = true;
         if( a.name() == "no_core" )
             no_core = true;
+        if( a.name() == "cfg_attr" && a.items().size() == 2 ) {
+            if( check_cfg(this->m_attrs.m_span, a.items().at(0)) )
+            {
+                const auto& a2 = a.items().at(1);
+                if( a2.name() == "no_std" )
+                    no_std = true;
+                if( a2.name() == "no_core" )
+                    no_core = true;
+            }
+        }
     }
 
     if( no_core ) {
