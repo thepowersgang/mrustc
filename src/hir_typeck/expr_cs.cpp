@@ -1327,15 +1327,36 @@ namespace {
                     const auto& f = this->context.m_crate.get_function_by_path(sp, e.m_path);
                     fix_param_count(sp, this->context, e, f.m_params, e.m_params);
                     
+                    const auto& params = e.m_params;
+                    auto monomorph_cb = [&](const auto& gt)->const auto& {
+                        const auto& e = gt.m_data.as_Generic();
+                        if( e.binding == 0xFFFF ) {
+                            BUG(sp, "Reference to Self in free function - " << gt);
+                        }
+                        else if( (e.binding >> 8) == 0 ) {
+                            BUG(sp, "Reference to impl-level param in free function - " << gt);
+                        }
+                        else if( (e.binding >> 8) == 1 ) {
+                            auto idx = e.binding & 0xFF;
+                            if( idx >= params.m_types.size() ) {
+                                BUG(sp, "Generic param out of input range - " << gt << " >= " << params.m_types.size());
+                            }
+                            return params.m_types[idx];
+                        }
+                        else {
+                            BUG(sp, "Unknown param in free function - " << gt);
+                        }
+                        };
+                    
                     ::HIR::FunctionType ft {
                         f.m_unsafe,
                         f.m_abi,
-                        box$( monomorphise_type(sp, f.m_params, e.m_params, f.m_return) ),
+                        box$( monomorphise_type_with(sp, f.m_return, monomorph_cb) ),
                         {}
                         };
                     for( const auto& arg : f.m_args )
                     {
-                        ft.m_arg_types.push_back( monomorphise_type(sp, f.m_params, e.m_params, arg.second) );
+                        ft.m_arg_types.push_back( monomorphise_type_with(sp, arg.second, monomorph_cb) );
                     }
                     
                     auto ty = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function(mv$(ft)) );

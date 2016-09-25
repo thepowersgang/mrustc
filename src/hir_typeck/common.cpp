@@ -238,20 +238,30 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
     return rv;
 }
 
+// TODO: Rework this function to support all three classes not just impl-level
+// NOTE: This is _just_ for impl-level parameters
 ::HIR::TypeRef monomorphise_type(const Span& sp, const ::HIR::GenericParams& params_def, const ::HIR::PathParams& params,  const ::HIR::TypeRef& tpl)
 {
     DEBUG("tpl = " << tpl);
     ASSERT_BUG(sp, params.m_types.size() == params_def.m_types.size(), "Parameter count mismatch - exp " << params_def.m_types.size() << ", got " << params.m_types.size());
     return monomorphise_type_with(sp, tpl, [&](const auto& gt)->const auto& {
         const auto& e = gt.m_data.as_Generic();
-        if( e.name == "Self" )
-            TODO(sp, "Handle 'Self' when monomorphising");
-        //if( e.binding >= params_def.m_types.size() ) {
-        //}
-        if( e.binding >= params.m_types.size() ) {
-            BUG(sp, "Generic param out of input range - " << e.binding << " '"<<e.name<<"' >= " << params.m_types.size());
+        if( e.binding == 0xFFFF ) {
+            TODO(sp, "Handle 'Self' in `monomorphise_type`");
         }
-        return params.m_types[e.binding];
+        else if( (e.binding >> 8) == 0 ) {
+            auto idx = e.binding & 0xFF;
+            if( idx >= params.m_types.size() ) {
+                BUG(sp, "Generic param out of input range - " << gt << " >= " << params.m_types.size());
+            }
+            return params.m_types[idx];
+        }
+        else if( (e.binding >> 8) == 1 ) {
+            TODO(sp, "Handle fn-level params in `monomorphise_type` - " << gt);
+        }
+        else {
+            BUG(sp, "Unknown param in `monomorphise_type` - " << gt);
+        }
         }, false);
 }
 
