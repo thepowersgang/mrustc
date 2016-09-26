@@ -1219,8 +1219,20 @@ TokenTree Parse_TT(TokenStream& lex, bool unwrapped)
     case TOK_BRACE_OPEN:
         closer = TOK_BRACE_CLOSE;
         break;
+    // HACK! mrustc parses #[ and #![ as composite tokens
+    // TODO: Split these into their component tokens.
+    case TOK_ATTR_OPEN:
+    case TOK_CATTR_OPEN:
+        if( unwrapped )
+            throw ParseError::Unexpected(lex, tok);
+        closer = TOK_SQUARE_CLOSE;
+        break;
+
     case TOK_EOF:
     case TOK_NULL:
+    case TOK_PAREN_CLOSE:
+    case TOK_SQUARE_CLOSE:
+    case TOK_BRACE_CLOSE:
         throw ParseError::Unexpected(lex, tok);
     default:
         return TokenTree( mv$(tok) );

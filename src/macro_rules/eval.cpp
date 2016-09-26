@@ -125,6 +125,9 @@ class MacroPatternStream
     
     ::std::vector<SimplePatEnt> m_stack;
     unsigned int    m_skip_count;
+
+    bool m_break_if_not = false;
+    bool m_condition_fired = false;
 public:
     MacroPatternStream(const ::std::vector<MacroPatEnt>& pattern):
         m_pattern(&pattern),
@@ -143,6 +146,14 @@ public:
     
 private:
     SimplePatEnt emit_loop_start(const MacroPatEnt& pat);
+    
+    SimplePatEnt emit_seq(SimplePatEnt v1, SimplePatEnt v2) {
+        assert( m_stack.empty() );
+        m_stack.push_back( mv$(v2) );
+        return v1;
+    }
+    
+    void break_loop();
 };
 
 // === Prototypes ===
@@ -179,7 +190,7 @@ void ParameterMappings::insert(unsigned int name_index, const ::std::vector<unsi
             }
             else {
                 if( e.size() > iter ) {
-                    DEBUG("ERROR: Iterations ran backwards?");
+                    DEBUG("ERROR: Iterations ran backwards? - " << e.size() << " > " << iter);
                 }
             }
             layer = &e[iter];
@@ -240,6 +251,10 @@ unsigned int ParameterMappings::count_in(const ::std::vector<unsigned int>& iter
             return 0;
             ),
         (Nested,
+            if( iter >= e.size() ) {
+                DEBUG("Counting value for an iteration index it doesn't have - " << iter << " >= " << e.size());
+                return 0;
+            }
             layer = &e[iter];
             )
         )
@@ -284,13 +299,14 @@ SimplePatEnt MacroPatternStream::next()
         return rv;
     }
     
-    m_skip_count = 0;
-    
-    /*
     if( m_break_if_not && ! m_condition_fired ) {
         // Break out of the current loop then continue downwards.
+        break_loop();
     }
-    */
+    
+    m_skip_count = 0;
+    m_break_if_not = false;
+    m_condition_fired = false;
     
     const MacroPatEnt*  parent_pat = nullptr;
     decltype(m_pattern) parent_ents = nullptr;
@@ -364,14 +380,18 @@ SimplePatEnt MacroPatternStream::next()
                         DEBUG("MAGIC: Reverse conditions for case where sep==next");
                         //  > Mark to skip the next token after the end of the loop
                         m_skip_count = 1;
-                        // - Yeild `EXPECT sep` and `IF NOT start BREAK`
-                        m_stack.push_back( SimplePatEnt::make_IfTok({ false, ents->at(0).tok.clone() }) );
-                        return SimplePatEnt::make_ExpectTok( parent_pat->tok.clone() );
+                        // - Yeild `EXPECT sep` then `IF NOT start BREAK`
+                        return emit_seq(
+                            SimplePatEnt::make_ExpectTok( parent_pat->tok.clone() ),
+                            SimplePatEnt::make_IfTok({ false, ents->at(0).tok.clone() })
+                            );
                     }
                 }
                 // - Yeild `IF NOT sep BREAK` and `EXPECT sep`
-                m_stack.push_back( SimplePatEnt::make_ExpectTok( parent_pat->tok.clone() ) );
-                return SimplePatEnt::make_IfTok({ false, parent_pat->tok.clone() });
+                return emit_seq(
+                    SimplePatEnt::make_IfTok({ false, parent_pat->tok.clone() }),
+                    SimplePatEnt::make_ExpectTok( parent_pat->tok.clone() )
+                    );
             }
         }
         else
@@ -386,22 +406,74 @@ SimplePatEnt MacroPatternStream::next()
 SimplePatEnt MacroPatternStream::emit_loop_start(const MacroPatEnt& pat)
 {
     // Find the next non-loop pattern to control if this loop should be entered
+    ::std::vector<const MacroPatEnt*> m_entry_pats;
+    
+    const auto* parent_subpats = &pat.subpats;
     const auto* entry_pat = &pat.subpats.at(0);
     while( entry_pat->type == MacroPatEnt::PAT_LOOP ) {
+        if( entry_pat->name == "*" ) {
+            if( parent_subpats->size() > 1 ) {
+                if( parent_subpats->at(1).type == MacroPatEnt::PAT_LOOP ) {
+                    // TODO: Recurse here
+                    // This case is either: Direct recurse, or recurse+next pattern (index 2 instead of 1)
+                    DEBUG("TODO TODO: Handle case where an optional loop is folled by another loop.");
+                }
+                else {
+                    m_entry_pats.push_back( &parent_subpats->at(1) );
+                }
+            }
+            else {
+                // Only entry, no second condtiion present
+            }
+        }
+        else {
+            // Always entered, so entry condition is the inner
+        }
+        parent_subpats = &entry_pat->subpats;
         entry_pat = &entry_pat->subpats.at(0);
     }
     // - TODO: What if there's multiple tokens that can be used to enter the loop?
     //  > `$( $(#[...])* foo)*` should enter based on `#` and `foo`
     //  > Requires returning multiple controllers and requiring that at least one succeed
-
-    // Emit an if based on it
-    if( entry_pat->type == MacroPatEnt::PAT_TOKEN )
-        return SimplePatEnt::make_IfTok({ false, entry_pat->tok.clone() });
+    
+    struct H {
+        static SimplePatEnt get_if(bool flag, const MacroPatEnt& mpe) {
+            if( mpe.type == MacroPatEnt::PAT_TOKEN )
+                return SimplePatEnt::make_IfTok({ flag, mpe.tok.clone() });
+            else
+                return SimplePatEnt::make_IfPat({ flag, mpe.type });
+        }
+    };
+    
+    if( m_entry_pats.size() > 0 )
+    {
+        DEBUG("Multiple entry possibilities, reversing condition");
+        m_break_if_not = true;
+        for(auto pat_ptr : m_entry_pats)
+        {
+            m_stack.push_back( H::get_if(true, *pat_ptr) );
+        }
+        return H::get_if(true, *entry_pat);
+    }
     else
-        return SimplePatEnt::make_IfPat({ false, entry_pat->type });
+    {
+        // Emit an if based on it
+        return H::get_if(false, *entry_pat);
+    }
 }
 
 void MacroPatternStream::if_succeeded()
+{
+    if( m_break_if_not )
+    {
+        m_condition_fired = true;
+    }
+    else
+    {
+        break_loop();
+    }
+}
+void MacroPatternStream::break_loop()
 {
     DEBUG("- Break out of loop, m_skip_count = " << m_skip_count);
     // Break out of an active loop (pop level and increment parent level)
@@ -503,7 +575,16 @@ bool Macro_TryPatternCap(TokenStream& lex, MacroPatEnt::Type type)
     case MacroPatEnt::PAT_IDENT:
         return LOOK_AHEAD(lex) == TOK_IDENT;
     case MacroPatEnt::PAT_TT:
-        return LOOK_AHEAD(lex) != TOK_EOF;
+        switch(LOOK_AHEAD(lex))
+        {
+        case TOK_EOF:
+        case TOK_PAREN_CLOSE:
+        case TOK_BRACE_CLOSE:
+        case TOK_SQUARE_CLOSE:
+            return false;
+        default:
+            return true;
+        }
     case MacroPatEnt::PAT_PATH:
         return is_token_path( LOOK_AHEAD(lex) );
     case MacroPatEnt::PAT_TYPE:
@@ -737,7 +818,8 @@ bool Macro_HandlePattern(TokenStream& lex, const MacroPatEnt& pat, ::std::vector
         }
         
         if( arm_pats.size() == 0 ) {
-            ERROR(sp, E0000, "No rules expected " << lex.getToken());
+            auto tok = lex.getToken();
+            ERROR(tok.get_pos(), E0000, "No rules expected " << tok);
         }
         // 3. Check that all remaining arms are the same pattern.
         for(unsigned int i = 1; i < arm_pats.size(); i ++)
@@ -832,6 +914,7 @@ void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std:
     
     while(const auto* ent_ptr = state.next_ent())
     {
+        DEBUG(*ent_ptr);
         TU_IFLET(MacroExpansionEnt, (*ent_ptr), NamedValue, e,
             if( e >> 30 ) {
             }
