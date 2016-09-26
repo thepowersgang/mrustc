@@ -155,6 +155,25 @@ class CCfgHandler:
             impl.type() = ::TypeRef();
         }
     }
+    
+    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::StructItem& si) const override {
+        DEBUG("#[cfg] struct item - " << mi);
+        if( !check_cfg(sp, mi) ) {
+            si.m_name = "";
+        }
+    }
+    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::TupleItem& i) const override {
+        DEBUG("#[cfg] tuple item - " << mi);
+        if( !check_cfg(sp, mi) ) {
+            i.m_type = ::TypeRef();
+        }
+    }
+    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::EnumVariant& i) const override {
+        DEBUG("#[cfg] enum variant - " << mi);
+        if( !check_cfg(sp, mi) ) {
+            i.m_name = "";
+        }
+    }
 };
 
 STATIC_MACRO("cfg", CCfgExpander);
