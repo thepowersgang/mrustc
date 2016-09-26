@@ -256,14 +256,18 @@ UseStmt UseStmt::clone() const
     return rv;
 }
 
-void Module::add_item( Named<Item> i ) {
-    m_items.push_back( mv$(i) );
-    DEBUG("Item " << m_items.back().data.tag_str() << " - attrs = " << m_items.back().data.attrs);
+void Module::add_item( Named<Item> named_item ) {
+    m_items.push_back( mv$(named_item) );
+    const auto& i = m_items.back();
+    if( i.name == "" ) {
+    }
+    else {
+        DEBUG(m_my_path << "::" << i.name << " = " << i.data.tag_str() << ", attrs = " << i.data.attrs);
+    }
 }
 void Module::add_item(bool is_pub, ::std::string name, Item it, MetaItems attrs) {
-    m_items.push_back( Named<Item>( mv$(name), mv$(it), is_pub ) );
-    m_items.back().data.attrs = mv$(attrs);
-    DEBUG("Item " << ::AST::Item::tag_to_str( m_items.back().data.tag() ) << " - attrs = " << m_items.back().data.attrs);
+    it.attrs = mv$(attrs);
+    add_item( Named<Item>( mv$(name), mv$(it), is_pub ) );
 }
 void Module::add_ext_crate(bool is_public, ::std::string ext_name, ::std::string imp_name, MetaItems attrs) {
     this->add_item( is_public, imp_name, Item::make_Crate({mv$(ext_name)}), mv$(attrs) );

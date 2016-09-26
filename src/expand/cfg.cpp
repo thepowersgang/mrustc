@@ -129,7 +129,7 @@ class CCfgHandler:
         }
     }
     void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
-        DEBUG("#[cfg] item - " << mi);
+        TRACE_FUNCTION_FR("#[cfg] item - " << mi, (i.is_None() ? "Deleted" : ""));
         if( check_cfg(sp, mi) ) {
             // Leave
         }
