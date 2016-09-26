@@ -17,37 +17,21 @@
 
 class ParameterMappings
 {
-    TAGGED_UNION_EX(CaptureLayer, (), Vals, (
-        (Vals, ::std::vector<InterpolatedFragment>),
-        (Nested, ::std::vector<CaptureLayer>)
-    ),
-    (),
-    (),
-    (
-    public:
-        CaptureLayer& next_layer_or_self(unsigned int idx) {
-            TU_IFLET(CaptureLayer, (*this), Nested, e,
-                return e.at(idx);
-            )
-            else {
-                return *this;
-            }
-        }
-        friend ::std::ostream& operator<<(::std::ostream& os, const CaptureLayer& x) {
-            TU_MATCH(CaptureLayer, (x), (e),
-            (Vals,
-                os << "[" << e << "]";
-                ),
-            (Nested,
-                os << "{" << e << "}";
-                )
-            )
-            return os;
-        }
-    )
-    );
+    /// A particular captured fragment
+    struct CapturedVal
+    {
+        unsigned int    num_uses;   // Number of times this var will be used
+        unsigned int    num_used;   // Number of times it has been used
+        InterpolatedFragment    frag;
+    };
     
-    /// Represents the value 
+    /// A single layer of the capture set
+    TAGGED_UNION(CaptureLayer, Vals,
+        (Vals, ::std::vector<CapturedVal>),
+        (Nested, ::std::vector<CaptureLayer>)
+        );
+    
+    /// Represents the fragments captured for a name
     struct CapturedVar
     {
         CaptureLayer    top_layer;
@@ -78,103 +62,35 @@ public:
         return m_layer_count+1;
     }
     
-    void insert(unsigned int name_index, const ::std::vector<unsigned int>& iterations, InterpolatedFragment data) {
-        if( name_index >= m_mappings.size() ) {
-            m_mappings.resize( name_index + 1 );
-        }
-        auto* layer = &m_mappings[name_index].top_layer;
-        if( iterations.size() > 0 )
-        {
-            for(unsigned int i = 0; i < iterations.size()-1; i ++ )
-            {
-                auto iter = iterations[i];
-                
-                if( layer->is_Vals() ) {
-                    assert( layer->as_Vals().size() == 0 );
-                    *layer = CaptureLayer::make_Nested({});
-                }
-                auto& e = layer->as_Nested();
-                while( e.size() < iter ) {
-                    DEBUG("- Skipped iteration " << e.size());
-                    e.push_back( CaptureLayer::make_Nested({}) );
-                }
-                
-                if(e.size() == iter) {
-                    e.push_back( CaptureLayer::make_Vals({}) );
-                }
-                else {
-                    if( e.size() > iter ) {
-                        DEBUG("ERROR: Iterations ran backwards?");
-                    }
-                }
-                layer = &e[iter];
-            }
-            ASSERT_BUG(Span(), layer->as_Vals().size() == iterations.back(), "Capture count mismatch with iteration index - iterations=[" << iterations << "]");
-            layer->as_Vals().push_back( mv$(data) );
-        }
-        else {
-            assert(layer->as_Vals().size() == 0);
-            layer->as_Vals().push_back( mv$(data) );
-        }
-    }
+    void insert(unsigned int name_index, const ::std::vector<unsigned int>& iterations, InterpolatedFragment data);
     
-    InterpolatedFragment* get(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
-    {
-        DEBUG("(iterations=[" << iterations << "], name_idx=" << name_idx << ")");
-        auto& e = m_mappings.at(name_idx);
-        //DEBUG("- e = " << e);
-        auto* layer = &e.top_layer;
-        
-        // - If the top layer is a 1-sized set of values, unconditionally return
-        TU_IFLET(CaptureLayer, (*layer), Vals, e,
-            if( e.size() == 1 ) {
-                return &e[0];
-            }
-        )
-        
-        for(const auto iter : iterations)
-        {
-            TU_MATCH(CaptureLayer, (*layer), (e),
-            (Vals,
-                return &e[iter];
-                ),
-            (Nested,
-                layer = &e[iter];
-                )
-            )
-        }
-
-        ERROR(Span(), E0000, "Variable #" << name_idx << " is still repeating at this level (" << iterations.size() << ")");
+    InterpolatedFragment* get(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
+    unsigned int count_in(const ::std::vector<unsigned int>& iterations, unsigned int name_idx) const;
+    
+    /// Increment the number of times a particular fragment will be used
+    void inc_count(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
+    /// Decrement the number of times a particular fragment is used (returns true if there are still usages remaining)
+    bool dec_count(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
+    
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const CapturedVal& x) {
+        os << x.frag;
+        return os;
     }
-    unsigned int count_in(const ::std::vector<unsigned int>& iterations, unsigned int name_idx) const
-    {
-        DEBUG("(iterations=[" << iterations << "], name_idx=" << name_idx << ")");
-        if( name_idx >= m_mappings.size() ) {
-            return 0;
-        }
-        auto& e = m_mappings.at(name_idx);
-        auto* layer = &e.top_layer;
-        for(const auto iter : iterations)
-        {
-            TU_MATCH(CaptureLayer, (*layer), (e),
-            (Vals,
-                return 0;
-                ),
-            (Nested,
-                layer = &e[iter];
-                )
-            )
-        }
-        TU_MATCH(CaptureLayer, (*layer), (e),
+    friend ::std::ostream& operator<<(::std::ostream& os, const CaptureLayer& x) {
+        TU_MATCH(CaptureLayer, (x), (e),
         (Vals,
-            return e.size();
+            os << "[" << e << "]";
             ),
         (Nested,
-            return e.size();
+            os << "{" << e << "}";
             )
         )
-        return 0;
+        return os;
     }
+    
+private:
+    CapturedVal& get_cap(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
 };
 
 /// Simple pattern entry for macro_rules! arm patterns
@@ -228,6 +144,133 @@ public:
 private:
     SimplePatEnt emit_loop_start(const MacroPatEnt& pat);
 };
+
+// === Prototypes ===
+void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std::vector<MacroExpansionEnt>& contents);
+
+// ------------------------------------
+// ParameterMappings
+// ------------------------------------
+
+void ParameterMappings::insert(unsigned int name_index, const ::std::vector<unsigned int>& iterations, InterpolatedFragment data)
+{
+    if( name_index >= m_mappings.size() ) {
+        m_mappings.resize( name_index + 1 );
+    }
+    auto* layer = &m_mappings[name_index].top_layer;
+    if( iterations.size() > 0 )
+    {
+        for(unsigned int i = 0; i < iterations.size()-1; i ++ )
+        {
+            auto iter = iterations[i];
+            
+            if( layer->is_Vals() ) {
+                assert( layer->as_Vals().size() == 0 );
+                *layer = CaptureLayer::make_Nested({});
+            }
+            auto& e = layer->as_Nested();
+            while( e.size() < iter ) {
+                DEBUG("- Skipped iteration " << e.size());
+                e.push_back( CaptureLayer::make_Nested({}) );
+            }
+            
+            if(e.size() == iter) {
+                e.push_back( CaptureLayer::make_Vals({}) );
+            }
+            else {
+                if( e.size() > iter ) {
+                    DEBUG("ERROR: Iterations ran backwards?");
+                }
+            }
+            layer = &e[iter];
+        }
+        ASSERT_BUG(Span(), layer->as_Vals().size() == iterations.back(), "Capture count mismatch with iteration index - iterations=[" << iterations << "]");
+    }
+    else {
+        assert(layer->as_Vals().size() == 0);
+    }
+    layer->as_Vals().push_back( CapturedVal { 0,0, mv$(data) } );
+}
+
+ParameterMappings::CapturedVal& ParameterMappings::get_cap(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
+{
+    DEBUG("(iterations=[" << iterations << "], name_idx=" << name_idx << ")");
+    auto& e = m_mappings.at(name_idx);
+    //DEBUG("- e = " << e);
+    auto* layer = &e.top_layer;
+    
+    // - If the top layer is a 1-sized set of values, unconditionally return it
+    TU_IFLET(CaptureLayer, (*layer), Vals, e,
+        if( e.size() == 1 ) {
+            return e[0];
+        }
+    )
+    
+    for(const auto iter : iterations)
+    {
+        TU_MATCH(CaptureLayer, (*layer), (e),
+        (Vals,
+            return e[iter];
+            ),
+        (Nested,
+            layer = &e[iter];
+            )
+        )
+    }
+
+    ERROR(Span(), E0000, "Variable #" << name_idx << " is still repeating at this level (" << iterations.size() << ")");
+}
+
+InterpolatedFragment* ParameterMappings::get(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
+{
+    return &get_cap(iterations, name_idx).frag;
+}
+unsigned int ParameterMappings::count_in(const ::std::vector<unsigned int>& iterations, unsigned int name_idx) const
+{
+    DEBUG("(iterations=[" << iterations << "], name_idx=" << name_idx << ")");
+    if( name_idx >= m_mappings.size() ) {
+        return 0;
+    }
+    auto& e = m_mappings.at(name_idx);
+    auto* layer = &e.top_layer;
+    for(const auto iter : iterations)
+    {
+        TU_MATCH(CaptureLayer, (*layer), (e),
+        (Vals,
+            return 0;
+            ),
+        (Nested,
+            layer = &e[iter];
+            )
+        )
+    }
+    TU_MATCH(CaptureLayer, (*layer), (e),
+    (Vals,
+        return e.size();
+        ),
+    (Nested,
+        return e.size();
+        )
+    )
+    return 0;
+}
+void ParameterMappings::inc_count(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
+{
+    auto& cap = get_cap(iterations, name_idx);
+    assert(cap.num_used == 0);
+    cap.num_uses += 1;
+}
+bool ParameterMappings::dec_count(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
+{
+    auto& cap = get_cap(iterations, name_idx);
+    assert(cap.num_used < cap.num_uses);
+    cap.num_used += 1;
+    return (cap.num_used < cap.num_uses);
+}
+
+// ------------------------------------
+// MacroPatternStream
+// ------------------------------------
 
 SimplePatEnt MacroPatternStream::next()
 {
@@ -376,6 +419,7 @@ void MacroPatternStream::if_succeeded()
 }
 
 // ----------------------------------------------------------------
+/// State for MacroExpander and Macro_InvokeRules_CountSubstUses
 class MacroExpandState
 {
     const ::std::vector<MacroExpansionEnt>&  m_root_contents;
@@ -417,9 +461,6 @@ private:
 class MacroExpander:
     public TokenStream
 {
-public:
-
-private:
     const RcString  m_macro_filename;
 
     const ::std::string m_crate_name;
@@ -777,6 +818,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, ::std::vector<un
     
     // TODO: Run expander (or something similar) in a dummy mode to figure out how many times each capture is used
     // - This will allow the expander to avoid a clone (which could be the only clone)
+    Macro_InvokeRules_CountSubstUses(bound_tts, rule.m_contents);
     
     TokenStream* ret_ptr = new MacroExpander(name, rule.m_contents, mv$(bound_tts), rules.m_source_crate);
     
@@ -794,7 +836,7 @@ void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std:
             }
             else {
                 // Increment a counter in `bound_tts`
-                //bound_tts.inc_count(m_state.iterations(), e);
+                bound_tts.inc_count(state.iterations(), e);
             }
         )
     }
@@ -852,6 +894,7 @@ Token MacroExpander::realGetToken()
                 auto* frag = m_mappings.get(m_state.iterations(), e);
                 ASSERT_BUG(this->getPosition(), frag, "Cannot find '" << e << "' for " << m_state.iterations());
                 
+                bool can_steal = ( m_mappings.dec_count(m_state.iterations(), e) == false );
                 DEBUG("Insert replacement #" << e << " = " << *frag);
                 if( frag->m_type == InterpolatedFragment::TT )
                 {
@@ -860,8 +903,15 @@ Token MacroExpander::realGetToken()
                 }
                 else
                 {
-                    // TODO: Figure out if this is the only use of this particular InterpolatedFragment and avoid cloning
-                    return Token( *frag );
+                    if( can_steal )
+                    {
+                        return Token(Token::TagTakeIP(), mv$(*frag) );
+                    }
+                    else
+                    {
+                        // Clones
+                        return Token( *frag );
+                    }
                 }
             }
             ),
