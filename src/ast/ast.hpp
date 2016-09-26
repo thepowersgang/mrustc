@@ -517,6 +517,7 @@ public:
     void add_item(bool is_pub, ::std::string name, Item it, MetaItems attrs);
     void add_ext_crate(bool is_public, ::std::string ext_name, ::std::string imp_name, MetaItems attrs);
     void add_alias(bool is_public, UseStmt path, ::std::string name, MetaItems attrs);
+    void add_macro_invocation(MacroInvocation item);
     
     void add_impl(Impl impl) {
         m_impls.emplace_back( mv$(impl) );
@@ -527,9 +528,6 @@ public:
     void add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro);
     void add_macro_import(::std::string name, const MacroRules& mr) {
         m_macro_import_res.push_back( NamedNS<const MacroRules*>( mv$(name), &mr, false ) );
-    }
-    void add_macro_invocation(MacroInvocation item) {
-        m_macro_invocations.push_back( mv$(item) );
     }
     
     

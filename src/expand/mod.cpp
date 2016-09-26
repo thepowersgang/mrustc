@@ -614,8 +614,10 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
     
     // 3. General items
     DEBUG("Items");
-    for( auto& i : mod.items() )
+    for( unsigned int idx = 0; idx < mod.items().size(); idx ++ )
     {
+        auto& i = mod.items()[idx];
+        
         DEBUG("- " << i.name << " (" << ::AST::Item::tag_to_str(i.data.tag()) << ") :: " << i.data.attrs);
         ::AST::Path path = modpath + i.name;
         
@@ -627,7 +629,33 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             // Skip, nothing
             ),
         (MacroInv,
-            TODO(i.data.span, "Macro invocation in item list");
+            // Move out of the module to avoid invalidation if a new macro invocation is added
+            auto mi_owned = mv$(e);
+            
+            auto& attrs = mi_owned.attrs();
+            Expand_Attrs(attrs, stage_pre(is_early),  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mi_owned); });
+            
+            auto ttl = Expand_Macro(is_early, crate, modstack, mod, mi_owned);
+
+            if( ! ttl.get() )
+            {
+                Expand_Attrs(attrs, stage_post(is_early),  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mi_owned); });
+                // - Return ownership to the list
+                if( mi_owned.name() == "" ) {
+                    mod.items()[idx].data = AST::Item();
+                }
+                else {
+                    mod.items()[idx].data = AST::Item( mv$(mi_owned) );
+                }
+            }
+            else
+            {
+                // Re-parse tt
+                assert(ttl.get());
+                Parse_ModRoot_Items(*ttl, mod);
+                // - Any new macro invocations ends up at the end of the list and handled
+                mod.items()[idx].data = AST::Item();
+            }
             ),
         (Use,
             // No inner expand.
@@ -749,8 +777,11 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
         )
         
         Expand_Attrs(attrs, stage_post(is_early),  crate, path, mod, i.data);
-        if( i.data.attrs.m_items.size() == 0 )
-            i.data.attrs = mv$(attrs);
+        
+        // TODO: When would this _not_ be empty?
+        auto& i2 = mod.items()[idx];
+        if( i2.data.attrs.m_items.size() == 0 )
+            i2.data.attrs = mv$(attrs);
     }
     
     // IGNORE m_anon_modules, handled as part of expressions

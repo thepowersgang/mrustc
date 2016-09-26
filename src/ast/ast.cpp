@@ -271,6 +271,9 @@ void Module::add_ext_crate(bool is_public, ::std::string ext_name, ::std::string
 void Module::add_alias(bool is_public, UseStmt us, ::std::string name, MetaItems attrs) {
     this->add_item( is_public, mv$(name), Item(mv$(us)), mv$(attrs) ); 
 }
+void Module::add_macro_invocation(MacroInvocation item) {
+    this->add_item( false, "", Item( mv$(item) ), ::AST::MetaItems {} );
+}
 void Module::add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro) {
     m_macros.push_back( Named<MacroRulesPtr>( mv$(name), mv$(macro), is_exported ) );
 }
