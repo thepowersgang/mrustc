@@ -26,6 +26,9 @@ Spanned<T> get_spanned(TokenStream& lex, ::std::function<T()> f) {
 }
 #define GET_SPANNED(type, lex, val) get_spanned< type >(lex, [&](){ return val; })
 
+// Check the next two tokens
+#define LOOKAHEAD2(lex, tok1, tok2) ((lex).lookahead(0) == (tok1) && (lex).lookahead(1) == (tok2))
+
 ::std::string dirname(::std::string input) {
     while( input.size() > 0 && input.back() != '/' ) {
         input.pop_back();
@@ -1289,6 +1292,14 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         return tok.take_frag_item();
     }
     
+    while( LOOK_AHEAD(lex) == TOK_ATTR_OPEN /* || LOOKAHEAD2(lex, TOK_HASH, TOK_SQUARE_OPEN) */ )
+    {
+        // Attributes!
+        GET_CHECK_TOK(tok, lex, TOK_ATTR_OPEN);
+        meta_items.push_back( Parse_MetaItem(lex) );
+        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+    }
+    
     auto ps = lex.start_span();
     
     ::std::string   item_name;
@@ -1338,6 +1349,8 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
                 item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, abi, meta_items, false) );
                 break; }
             // NOTE: Extern blocks aren't items, and get handled in the caller.
+            case TOK_BRACE_OPEN:
+                TODO(lex.getPosition(), "Parse `extern \"abi\" {` as an item");
             default:
                 throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_BRACE_OPEN});
             }
@@ -1348,7 +1361,10 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
             item_name = tok.str();
             item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, "C", meta_items, false) );
             break;
+        
         // NOTE: `extern { ...` is handled in caller
+        case TOK_BRACE_OPEN:
+            TODO(lex.getPosition(), "Parse `extern {` as an item");
         
         // `extern crate "crate-name" as crate_name;`
         // `extern crate crate_name;`
