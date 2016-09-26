@@ -68,14 +68,28 @@ bool is_token_expr(eTokenType tt) {
         return true;
     switch( tt )
     {
+    // Leading unary operators
     case TOK_AMP:   // Borrow
     case TOK_STAR:  // Deref
-    case TOK_PAREN_OPEN:    // Parenthesised
-    case TOK_SQUARE_OPEN:   // Array
-    case TOK_MACRO:
     case TOK_DASH:  // Negate
     case TOK_EXCLAM:    // Invert
     case TOK_RWORD_BOX: // Box
+    // Composite values
+    case TOK_MACRO:
+    case TOK_PAREN_OPEN:    // Parenthesised
+    case TOK_SQUARE_OPEN:   // Array
+    
+    // Flow
+    case TOK_RWORD_RETURN:
+    case TOK_RWORD_BREAK:
+    case TOK_RWORD_CONTINUE:
+    
+    // Blocks
+    case TOK_RWORD_IF:
+    case TOK_RWORD_FOR:
+    case TOK_RWORD_WHILE:
+    case TOK_RWORD_LOOP:
+    case TOK_RWORD_UNSAFE:
     
     // Closures
     case TOK_RWORD_MOVE:
@@ -88,6 +102,7 @@ bool is_token_expr(eTokenType tt) {
     case TOK_STRING:
     case TOK_RWORD_TRUE:
     case TOK_RWORD_FALSE:
+    
     case TOK_INTERPOLATED_EXPR:
         return true;
     default:

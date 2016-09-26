@@ -27,6 +27,7 @@ static inline ExprNodeP mk_exprnodep(const TokenStream& lex, AST::ExprNode* en){
 //ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence);
 ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool *add_silence);
 //ExprNodeP Parse_Stmt(TokenStream& lex);   // common.hpp
+ExprNodeP Parse_Stmt_Let(TokenStream& lex);
 ExprNodeP Parse_Expr0(TokenStream& lex);
 ExprNodeP Parse_IfStmt(TokenStream& lex);
 ExprNodeP Parse_WhileStmt(TokenStream& lex, ::std::string lifetime);
@@ -177,19 +178,10 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
             return NEWNODE(AST::ExprNode_Tuple, ::std::vector<AST::ExprNodeP>());
         
         // let binding
-        case TOK_RWORD_LET: {
-            AST::Pattern pat = Parse_Pattern(lex, false);   // irrefutable
-            TypeRef type;
-            if( GET_TOK(tok, lex) == TOK_COLON ) {
-                type = Parse_Type(lex);
-                GET_TOK(tok, lex);
-            }
-            ExprNodeP val;
-            if( tok.type() == TOK_EQUAL ) {
-                val = Parse_Expr0(lex);
-            }
-            return NEWNODE( AST::ExprNode_LetBinding, ::std::move(pat), ::std::move(type), ::std::move(val) );
-            }
+        case TOK_RWORD_LET:
+            ret = Parse_Stmt_Let(lex);
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+            return ret;
         
         // Blocks that don't need semicolons
         // NOTE: If these are followed by a small set of tokens (`.` and `?`) then they are actually the start of an expression
@@ -432,6 +424,11 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
     
     switch(GET_TOK(tok, lex))
     {
+    case TOK_INTERPOLATED_STMT:
+        return tok.take_frag_node();
+    // Duplicated here for the :stmt pattern fragment.
+    case TOK_RWORD_LET:
+        return Parse_Stmt_Let(lex);
     case TOK_RWORD_RETURN: {
         ExprNodeP   val;
         switch(LOOK_AHEAD(lex))
@@ -489,6 +486,25 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
         PUTBACK(tok, lex);
         return Parse_Expr0(lex);
     }
+}
+
+ExprNodeP Parse_Stmt_Let(TokenStream& lex)
+{
+    Token   tok;
+    AST::Pattern pat = Parse_Pattern(lex, false);   // irrefutable
+    TypeRef type;
+    if( GET_TOK(tok, lex) == TOK_COLON ) {
+        type = Parse_Type(lex);
+        GET_TOK(tok, lex);
+    }
+    ExprNodeP val;
+    if( tok.type() == TOK_EQUAL ) {
+        val = Parse_Expr0(lex);
+    }
+    else {
+        PUTBACK(tok, lex);
+    }
+    return NEWNODE( AST::ExprNode_LetBinding, ::std::move(pat), ::std::move(type), ::std::move(val) );
 }
 
 ::std::vector<ExprNodeP> Parse_ParenList(TokenStream& lex)
