@@ -539,74 +539,6 @@ struct CExpandExpr:
 
             replacement.reset(new ::AST::ExprNode_Match( mv$(node.m_value), mv$(arms) ));
         }
-        /*
-        else if( node.m_type == ::AST::ExprNode_UniOp::BOX )
-        {
-            // TODO: Should this be a desugar, or a HIR/MIR operation?
-            // - The only avaliable language item is `exchange_malloc`
-            // TODO: These should be language items (but are not)
-            auto core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core");
-            auto path_Place    = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("Place")});
-            auto path_BoxPlace = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("BoxPlace")});
-            auto path_Boxed    = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("Boxed")});
-            auto path_ptr_write= ::AST::Path(core_crate, {::AST::PathNode("intrinsics"), ::AST::PathNode("move_val_init")});
-            ::std::vector< ::AST::ExprNodeP>    nodes;
-            // `let mut place = BoxPlace::make_place();`
-            nodes.push_back(::AST::ExprNodeP(new ::AST::ExprNode_LetBinding(
-                ::AST::Pattern(AST::Pattern::TagBind(), "place#box", ::AST::PatternBinding::Type::MOVE, true),
-                ::TypeRef(),
-                ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                    ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(), ::AST::Path(path_BoxPlace), {::AST::PathNode("make_place")}),
-                    {}
-                    ))
-                )));
-            // `let raw_place = Place::pointer(&mut place);`
-            nodes.push_back(::AST::ExprNodeP(new ::AST::ExprNode_LetBinding(
-                ::AST::Pattern(AST::Pattern::TagBind(), "raw_place#box", ::AST::PatternBinding::Type::MOVE, false),
-                ::TypeRef(),
-                ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                    ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(), ::AST::Path(path_Place), {::AST::PathNode("pointer")}),
-                    ::make_vec1(
-                        ::AST::ExprNodeP(new ::AST::ExprNode_UniOp(::AST::ExprNode_UniOp::REFMUT,
-                            ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue( ::AST::Path("place#box") ))
-                            ))
-                        )
-                    ))
-                )));
-            // `let value = EXPR;`
-            nodes.push_back(::AST::ExprNodeP(new ::AST::ExprNode_LetBinding(
-                ::AST::Pattern(AST::Pattern::TagBind(), "value#box", ::AST::PatternBinding::Type::MOVE, false),
-                ::TypeRef(),
-                mv$( node.m_value )
-                )));
-            // `unsafe {`
-            {
-                ::std::vector< ::AST::ExprNodeP>    nodes_unsafe;
-                // `::std::ptr::write(raw_place, value);`
-                nodes_unsafe.push_back(::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                    ::AST::Path(path_ptr_write),
-                    ::make_vec2(
-                        ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue( ::AST::Path("raw_place#box") )),
-                        ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue( ::AST::Path("value#box") ))
-                        )
-                    )));
-                // `Boxed::finalize(place)`
-                nodes_unsafe.push_back(::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                    ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(), ::AST::Path(path_Boxed), {::AST::PathNode("finalize")}),
-                    ::make_vec1(
-                        ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue( ::AST::Path("place#box") ))
-                        )
-                    )));
-                // `}`
-                for(auto& n : nodes_unsafe)
-                    n->set_pos( node.get_pos() );
-                nodes.push_back(::AST::ExprNodeP(new ::AST::ExprNode_Block( true, true, mv$(nodes_unsafe), nullptr )));
-            }
-            for(auto& n : nodes)
-                n->set_pos( node.get_pos() );
-            replacement.reset(new ::AST::ExprNode_Block( mv$(nodes) ));
-        }
-        */
     }
 };
 
@@ -695,7 +627,7 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             // Skip, nothing
             ),
         (MacroInv,
-            TODO(Span(), "Macro invocation in item list");
+            TODO(i.data.span, "Macro invocation in item list");
             ),
         (Use,
             // No inner expand.
