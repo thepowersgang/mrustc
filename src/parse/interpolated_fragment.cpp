@@ -96,21 +96,22 @@ InterpolatedFragment::InterpolatedFragment(TypeRef v):
         break;
 
     case InterpolatedFragment::EXPR:
-        os << "expr[" << *reinterpret_cast<AST::ExprNode*>(x.m_ptr) << "]";
+        os << "expr[" << *reinterpret_cast<const AST::ExprNode*>(x.m_ptr) << "]";
         break;
     case InterpolatedFragment::STMT:
-        os << "stmt[" << *reinterpret_cast<AST::ExprNode*>(x.m_ptr) << "]";
+        os << "stmt[" << *reinterpret_cast<const AST::ExprNode*>(x.m_ptr) << "]";
         break;
     case InterpolatedFragment::BLOCK:
-        os << "block[" << *reinterpret_cast<AST::ExprNode*>(x.m_ptr) << "]";
+        os << "block[" << *reinterpret_cast<const AST::ExprNode*>(x.m_ptr) << "]";
         break;
 
     case InterpolatedFragment::META:
-        os << "meta[" << *reinterpret_cast<AST::MetaItem*>(x.m_ptr) << "]";
+        os << "meta[" << *reinterpret_cast<const AST::MetaItem*>(x.m_ptr) << "]";
         break;
-    case InterpolatedFragment::ITEM:
-        os << "item[?]";
-        break;
+    case InterpolatedFragment::ITEM: {
+        const auto& named_item = *reinterpret_cast<const AST::Named<AST::Item>*>(x.m_ptr);
+        os << "item[" << named_item.data.tag_str() << "(" << named_item.name << ")]";
+        } break;
     }
     return os;
 }

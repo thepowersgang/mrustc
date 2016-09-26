@@ -531,6 +531,10 @@ SERIALISE_TYPE(Token::, "Token", {
     case TOK_INTERPOLATED_META:
         os << ":" << *reinterpret_cast<AST::MetaItem*>(tok.m_data.as_Fragment());
         break;
+    case TOK_INTERPOLATED_ITEM: {
+        const auto& named_item = *reinterpret_cast<const AST::Named<AST::Item>*>(tok.m_data.as_Fragment());
+        os << ":" << named_item.data.tag_str() << "(" << named_item.name << ")";
+        } break;
     default:
         break;
     }
