@@ -964,10 +964,16 @@ const MacroExpansionEnt* MacroExpandState::next_ent()
                 unsigned int num_repeats = 0;
                 for(const auto idx : e.variables) {
                     unsigned int this_repeats = m_mappings.count_in(m_iterations, idx);
+                    // If a variable doesn't have data, don't loop
+                    if( this_repeats == 0 ) {
+                        num_repeats = 0;
+                        break;
+                    }
+                    // TODO: Ideally, all variables would have the same repeat count.
                     if( this_repeats > num_repeats )
                         num_repeats = this_repeats;
                 }
-                DEBUG("Looping " << num_repeats << " times");
+                DEBUG("Looping " << num_repeats << " times based on {" << e.variables << "}");
                 // 2. If it's going to repeat, start the loop
                 if( num_repeats > 0 )
                 {
