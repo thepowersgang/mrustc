@@ -56,7 +56,7 @@ void _add_item(const Span& sp, AST::Module& mod, IndexName location, const ::std
     
     bool was_import = (ir != mod.path() + name);
     if( was_import ) {
-        DEBUG("### Import " << name << " = " << ir); 
+        DEBUG("### Import " << location << " item " << name << " = " << ir); 
     }
     else {
         DEBUG("Add " << location << " item '" << name << "': " << ir);
@@ -241,9 +241,101 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
     }
 }
 
+void Resolve_Index_Module_Wildcard__glob_in_hir_mod(const Span& sp, const AST::Crate& crate, AST::Module& dst_mod,  const ::HIR::Module& hmod, const ::AST::Path& path, bool is_pub)
+{
+    for(const auto& it : hmod.m_mod_items) {
+        const auto& ve = *it.second;
+        if( ve.is_public ) {
+            AST::Path   p;
+            if( ve.ent.is_Import() ) {
+                p = hir_to_ast( ve.ent.as_Import() );
+            }
+            else {
+                p = path + it.first;
+            }
+            TU_MATCHA( (ve.ent), (e),
+            (Import,
+                //throw "";
+                ),
+            (Module,
+                p.bind( ::AST::PathBinding::make_Module({nullptr, &e}) );
+                ),
+            (Trait,
+                p.bind( ::AST::PathBinding::make_Trait({nullptr, &e}) );
+                ),
+            (Struct,
+                p.bind( ::AST::PathBinding::make_Struct({nullptr, &e}) );
+                ),
+            (Enum,
+                p.bind( ::AST::PathBinding::make_Enum({nullptr}) );
+                ),
+            (TypeAlias,
+                p.bind( ::AST::PathBinding::make_TypeAlias({nullptr}) );
+                )
+            )
+            _add_item_type( sp, dst_mod, it.first, is_pub, mv$(p), false );
+        }
+    }
+    for(const auto& it : hmod.m_value_items) {
+        const auto& ve = *it.second;
+        if( ve.is_public ) {
+            AST::Path   p;
+            const auto* vep = &ve.ent;
+            if( ve.ent.is_Import() ) {
+                const auto& spath = ve.ent.as_Import();
+                p = hir_to_ast( spath );
+                
+                const auto* hmod = &crate.m_extern_crates.at(spath.m_crate_name).m_hir->m_root_module;
+                for(unsigned int i = 0; i < spath.m_components.size()-1; i ++) {
+                    const auto& it = hmod->m_mod_items.at( spath.m_components[i] );
+                    if(it->ent.is_Enum()) {
+                        ASSERT_BUG(sp, i + 1 == spath.m_components.size() - 1, "");
+                        p.bind( ::AST::PathBinding::make_EnumVar({nullptr, 0}) );
+                        vep = nullptr;
+                        hmod = nullptr;
+                        break ;
+                    }
+                    ASSERT_BUG(sp, it->ent.is_Module(), "");
+                    hmod = &it->ent.as_Module();
+                }
+                if( hmod )
+                    vep = &hmod->m_value_items.at( spath.m_components.back() )->ent;
+            }
+            else {
+                p = path + it.first;
+            }
+            if( vep )
+            {
+                TU_MATCHA( (*vep), (e),
+                (Import,
+                    throw "";
+                    ),
+                (Constant,
+                    p.bind( ::AST::PathBinding::make_Static({nullptr}) );
+                    ),
+                (Static,
+                    p.bind( ::AST::PathBinding::make_Static({nullptr}) );
+                    ),
+                // TODO: What if these refer to an enum variant?
+                (StructConstant,
+                    p.bind( ::AST::PathBinding::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct() }) );
+                    ),
+                (StructConstructor,
+                    p.bind( ::AST::PathBinding::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct() }) );
+                    ),
+                (Function,
+                    p.bind( ::AST::PathBinding::make_Function({nullptr}) );
+                    )
+                )
+            }
+            _add_item_value( sp, dst_mod, it.first, is_pub, mv$(p), false );
+        }
+    }
+}
+
 void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool handle_pub)
 {
-    TRACE_FUNCTION_F("mod = " << mod.path());
+    TRACE_FUNCTION_F("mod = " << mod.path() << ", handle_pub=" << handle_pub);
     // Glob/wildcard imports
     for( const auto& i : mod.items() )
     {
@@ -284,94 +376,7 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
                 {
                     ASSERT_BUG(sp, e.hir, "Glob import where HIR module pointer not set - " << i_data.path);
                     const auto& hmod = *e.hir;
-                    for(const auto& it : hmod.m_mod_items) {
-                        const auto& ve = *it.second;
-                        if( ve.is_public ) {
-                            AST::Path   p;
-                            if( ve.ent.is_Import() ) {
-                                p = hir_to_ast( ve.ent.as_Import() );
-                            }
-                            else {
-                                p = i_data.path + it.first;
-                            }
-                            TU_MATCHA( (ve.ent), (e),
-                            (Import,
-                                //throw "";
-                                ),
-                            (Module,
-                                p.bind( ::AST::PathBinding::make_Module({nullptr, &e}) );
-                                ),
-                            (Trait,
-                                p.bind( ::AST::PathBinding::make_Trait({nullptr, &e}) );
-                                ),
-                            (Struct,
-                                p.bind( ::AST::PathBinding::make_Struct({nullptr, &e}) );
-                                ),
-                            (Enum,
-                                p.bind( ::AST::PathBinding::make_Enum({nullptr}) );
-                                ),
-                            (TypeAlias,
-                                p.bind( ::AST::PathBinding::make_TypeAlias({nullptr}) );
-                                )
-                            )
-                            _add_item_type( sp, mod, it.first, i.is_pub, mv$(p), false );
-                        }
-                    }
-                    for(const auto& it : hmod.m_value_items) {
-                        const auto& ve = *it.second;
-                        if( ve.is_public ) {
-                            AST::Path   p;
-                            const auto* vep = &ve.ent;
-                            if( ve.ent.is_Import() ) {
-                                const auto& spath = ve.ent.as_Import();
-                                p = hir_to_ast( spath );
-                                
-                                const auto* hmod = &crate.m_extern_crates.at(spath.m_crate_name).m_hir->m_root_module;
-                                for(unsigned int i = 0; i < spath.m_components.size()-1; i ++) {
-                                    const auto& it = hmod->m_mod_items.at( spath.m_components[i] );
-                                    if(it->ent.is_Enum()) {
-                                        ASSERT_BUG(sp, i + 1 == spath.m_components.size() - 1, "");
-                                        p.bind( ::AST::PathBinding::make_EnumVar({nullptr, 0}) );
-                                        vep = nullptr;
-                                        hmod = nullptr;
-                                        break ;
-                                    }
-                                    ASSERT_BUG(sp, it->ent.is_Module(), "");
-                                    hmod = &it->ent.as_Module();
-                                }
-                                if( hmod )
-                                    vep = &hmod->m_value_items.at( spath.m_components.back() )->ent;
-                            }
-                            else {
-                                p = i_data.path + it.first;
-                            }
-                            if( vep )
-                            {
-                                TU_MATCHA( (*vep), (e),
-                                (Import,
-                                    throw "";
-                                    ),
-                                (Constant,
-                                    p.bind( ::AST::PathBinding::make_Static({nullptr}) );
-                                    ),
-                                (Static,
-                                    p.bind( ::AST::PathBinding::make_Static({nullptr}) );
-                                    ),
-                                // TODO: What if these refer to an enum variant?
-                                (StructConstant,
-                                    p.bind( ::AST::PathBinding::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct() }) );
-                                    ),
-                                (StructConstructor,
-                                    p.bind( ::AST::PathBinding::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct() }) );
-                                    ),
-                                (Function,
-                                    p.bind( ::AST::PathBinding::make_Function({nullptr}) );
-                                    )
-                                )
-                            }
-                            _add_item_value( sp, mod, it.first, i.is_pub, mv$(p), false );
-                        }
-                    }
+                    Resolve_Index_Module_Wildcard__glob_in_hir_mod(sp, crate, mod, hmod, i_data.path, i.is_pub);
                 }
                 else
                 {
@@ -379,20 +384,26 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
                         ERROR(sp, E0000, "Glob import of self");
                     }
                     // 1. Begin indexing of this module if it is not already indexed
+                    assert( e.module_->m_index_populated != 0 );
                     if( e.module_->m_index_populated == 1 )
                     {
                         // TODO: Handle wildcard import of a module with a public wildcard import
-                        TODO(sp, "Handle wildcard import of module with a wildcard (" << e.module_->path() << " by " << mod.path() << ")");
-                        //Resolve_Index_Module( *e.module_ );
+                        // TODO XXX: Huge chance of infinite recursion here (if the code recursively references)
+                        Resolve_Index_Module_Wildcard(crate, *const_cast<AST::Module*>(e.module_), true);
+                    }
+                    for(const auto& vi : e.module_->m_namespace_items) {
+                        if( vi.second.is_pub ) {
+                            _add_item( sp, mod, IndexName::Namespace, vi.first, i.is_pub, vi.second.path, false );
+                        }
                     }
                     for(const auto& vi : e.module_->m_type_items) {
                         if( vi.second.is_pub ) {
-                            _add_item_type( sp, mod, vi.first, i.is_pub, vi.second.path, false );
+                            _add_item( sp, mod, IndexName::Type, vi.first, i.is_pub, vi.second.path, false );
                         }
                     }
                     for(const auto& vi : e.module_->m_value_items) {
                         if( vi.second.is_pub ) {
-                            _add_item_value( sp, mod, vi.first, i.is_pub, vi.second.path, false );
+                            _add_item( sp, mod, IndexName::Value, vi.first, i.is_pub, vi.second.path, false );
                         }
                     }
                 }
