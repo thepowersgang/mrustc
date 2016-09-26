@@ -1,5 +1,4 @@
 TODO:
-- Fix method selection to be aware of multiple possible methods with the same name
 - Audit TODOs in codebase
 - Test compile against a no_std program
 - MIR Optimisations
