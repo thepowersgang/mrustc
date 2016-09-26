@@ -123,6 +123,7 @@ bool is_token_item(eTokenType tt) {
     case TOK_RWORD_MOD:
     //case TOK_RWORD_IMPL:
     // TODO: more?
+    case TOK_INTERPOLATED_ITEM:
         return true;
     default:
         return false;

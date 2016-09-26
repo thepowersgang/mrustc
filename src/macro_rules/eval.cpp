@@ -827,6 +827,7 @@ bool Macro_HandlePattern(TokenStream& lex, const MacroPatEnt& pat, ::std::vector
 
 void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std::vector<MacroExpansionEnt>& contents)
 {
+    TRACE_FUNCTION;
     MacroExpandState    state(contents, bound_tts);
     
     while(const auto* ent_ptr = state.next_ent())

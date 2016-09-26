@@ -1284,6 +1284,11 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
 {
     Token   tok;
     
+    if( LOOK_AHEAD(lex) == TOK_INTERPOLATED_ITEM ) {
+        GET_TOK(tok, lex);
+        return tok.take_frag_item();
+    }
+    
     auto ps = lex.start_span();
     
     ::std::string   item_name;

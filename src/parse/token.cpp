@@ -205,6 +205,15 @@ Token Token::clone() const
     m_data.as_Fragment() = nullptr;
     return ::std::unique_ptr<AST::ExprNode>( reinterpret_cast<AST::ExprNode*>( ptr ) );
 }
+::AST::Named<AST::Item> Token::take_frag_item()
+{
+    assert( m_type == TOK_INTERPOLATED_ITEM );
+    auto ptr = reinterpret_cast<AST::Named<AST::Item>*>(m_data.as_Fragment());
+    m_data.as_Fragment() = nullptr;
+    auto rv = mv$( *ptr );
+    delete ptr;
+    return mv$(rv);
+}
 
 const char* Token::typestr(enum eTokenType type)
 {

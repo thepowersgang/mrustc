@@ -42,6 +42,9 @@ namespace AST {
     class Path;
     class ExprNode;
     class MetaItem;
+    class Item;
+    template<typename T>
+    class Named;
 };
 
 class InterpolatedFragment;
@@ -118,6 +121,7 @@ public:
     AST::Pattern& frag_pattern() { assert(m_type == TOK_INTERPOLATED_PATTERN); return *reinterpret_cast<AST::Pattern*>( m_data.as_Fragment() ); }
     AST::MetaItem& frag_meta() { assert(m_type == TOK_INTERPOLATED_META); return *reinterpret_cast<AST::MetaItem*>( m_data.as_Fragment() ); }
     ::std::unique_ptr<AST::ExprNode> take_frag_node();
+    ::AST::Named<AST::Item> take_frag_item();
     
     bool operator==(const Token& r) const {
         if(type() != r.type())
