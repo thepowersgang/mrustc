@@ -143,6 +143,7 @@ int main(int argc, char *argv[])
     
     // Set up cfg values
     // TODO: Target spec
+    Cfg_SetFlag("unix");
     Cfg_SetFlag("linux");
     Cfg_SetValue("target_pointer_width", "64");
     Cfg_SetValue("target_endian", "little");
