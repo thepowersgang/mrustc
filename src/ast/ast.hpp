@@ -25,7 +25,7 @@
 #include <ast/attrs.hpp>
 #include <ast/expr_ptr.hpp>
 #include <ast/item.hpp>
-#include <ast/macro.hpp>
+#include <ast/macro.hpp>    // MacroInvocation
 
 #include "generics.hpp"
 

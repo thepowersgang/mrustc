@@ -1031,7 +1031,7 @@ Token TTStreamO::realGetToken()
     {
         // If current index is above TT size, go up
         unsigned int& idx = m_stack.back().first;
-        const TokenTree& tree = *( m_stack.back().second ? m_stack.back().second : &m_input_tt );
+        TokenTree& tree = *( m_stack.back().second ? m_stack.back().second : &m_input_tt );
 
         if(idx == 0 && tree.is_token()) {
             idx ++;
@@ -1041,11 +1041,11 @@ Token TTStreamO::realGetToken()
 
         if(idx < tree.size())
         {
-            const TokenTree&    subtree = tree[idx];
+            TokenTree& subtree = tree[idx];
             idx ++;
             if( subtree.size() == 0 ) {
                 m_last_pos = subtree.tok().get_pos();
-                return subtree.tok();
+                return mv$( subtree.tok() );
             }
             else {
                 m_stack.push_back( ::std::make_pair(0, &subtree ) );

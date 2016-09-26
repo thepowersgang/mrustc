@@ -469,7 +469,7 @@ class MacroExpander:
     MacroExpandState    m_state;
     
     Token   m_next_token;   // used for inserting a single token into the stream
-    ::std::unique_ptr<TTStream>  m_ttstream;
+    ::std::unique_ptr<TTStreamO> m_ttstream;
     
 public:
     MacroExpander(const MacroExpander& x) = delete;
@@ -490,7 +490,7 @@ void Macro_InitDefaults()
 {
 }
 
-bool Macro_TryPatternCap(/*const*/ TTStream& lex, MacroPatEnt::Type type)
+bool Macro_TryPatternCap(TokenStream& lex, MacroPatEnt::Type type)
 {
     switch(type)
     {
@@ -521,7 +521,7 @@ bool Macro_TryPatternCap(/*const*/ TTStream& lex, MacroPatEnt::Type type)
     }
     BUG(lex.getPosition(), "");
 }
-bool Macro_TryPattern(TTStream& lex, const MacroPatEnt& pat)
+bool Macro_TryPattern(TokenStream& lex, const MacroPatEnt& pat)
 {
     DEBUG("pat = " << pat);
     Token   tok;
@@ -542,7 +542,7 @@ bool Macro_TryPattern(TTStream& lex, const MacroPatEnt& pat)
     }
 }
 
-void Macro_HandlePatternCap(TTStream& lex, unsigned int index, MacroPatEnt::Type type, const ::std::vector<unsigned int>& iterations, ParameterMappings& bound_tts)
+void Macro_HandlePatternCap(TokenStream& lex, unsigned int index, MacroPatEnt::Type type, const ::std::vector<unsigned int>& iterations, ParameterMappings& bound_tts)
 {
     Token   tok;
     switch(type)
@@ -592,7 +592,7 @@ void Macro_HandlePatternCap(TTStream& lex, unsigned int index, MacroPatEnt::Type
         break;
     }
 }
-bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, ::std::vector<unsigned int>& iterations, ParameterMappings& bound_tts)
+bool Macro_HandlePattern(TokenStream& lex, const MacroPatEnt& pat, ::std::vector<unsigned int>& iterations, ParameterMappings& bound_tts)
 {
     TRACE_FUNCTION_F("iterations = " << iterations);
     Token   tok;
@@ -647,7 +647,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, ::std::vector<un
 }
 
 /// Parse the input TokenTree according to the `macro_rules!` patterns and return a token stream of the replacement
-::std::unique_ptr<TokenStream> Macro_InvokeRules(const char *name, const MacroRules& rules, const TokenTree& input, AST::Module& mod)
+::std::unique_ptr<TokenStream> Macro_InvokeRules(const char *name, const MacroRules& rules, TokenTree input, AST::Module& mod)
 {
     TRACE_FUNCTION;
     Span    sp;// = input
@@ -663,7 +663,7 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, ::std::vector<un
     ParameterMappings   bound_tts;
     unsigned int    rule_index;
     
-    TTStream    lex(input);
+    TTStreamO   lex( mv$(input) );
     SET_MODULE(lex, mod);
     while(true)
     {
@@ -898,7 +898,14 @@ Token MacroExpander::realGetToken()
                 DEBUG("Insert replacement #" << e << " = " << *frag);
                 if( frag->m_type == InterpolatedFragment::TT )
                 {
-                    m_ttstream.reset( new TTStream( frag->as_tt() ) );
+                    if( can_steal )
+                    {
+                        m_ttstream.reset( new TTStreamO( mv$(frag->as_tt()) ) );
+                    }
+                    else
+                    {
+                        m_ttstream.reset( new TTStreamO( frag->as_tt().clone() ) );
+                    }
                     return m_ttstream->getToken();
                 }
                 else

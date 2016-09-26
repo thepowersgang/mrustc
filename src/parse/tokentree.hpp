@@ -29,12 +29,10 @@ public:
     unsigned int size() const {
         return m_subtrees.size();
     }
-    const TokenTree& operator[](unsigned int idx) const {
-        return m_subtrees[idx];
-    }
-    const Token& tok() const {
-        return m_tok;
-    }
+    const TokenTree& operator[](unsigned int idx) const { return m_subtrees[idx]; }
+          TokenTree& operator[](unsigned int idx)       { return m_subtrees[idx]; }
+    const Token& tok() const { return m_tok; }
+          Token& tok()       { return m_tok; }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const TokenTree& tt) {
         if( tt.m_subtrees.size() == 0 )
@@ -74,8 +72,8 @@ class TTStreamO:
     public TokenStream
 {
     Position    m_last_pos;
-    TokenTree	m_input_tt;
-    ::std::vector< ::std::pair<unsigned int, const TokenTree*> > m_stack;
+    TokenTree   m_input_tt;
+    ::std::vector< ::std::pair<unsigned int, TokenTree*> > m_stack;
 public:
     TTStreamO(TokenTree input_tt);
     TTStreamO(TTStreamO&& x) = default;

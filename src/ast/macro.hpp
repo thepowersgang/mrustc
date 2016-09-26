@@ -51,6 +51,7 @@ public:
 
     const ::std::string& input_ident() const { return m_ident; }
     const TokenTree& input_tt() const { return m_input; }
+          TokenTree& input_tt()       { return m_input; }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const MacroInvocation& x) {
         os << x.m_attrs;

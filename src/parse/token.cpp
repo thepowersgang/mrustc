@@ -185,8 +185,12 @@ Token Token::clone() const
         case TOK_INTERPOLATED_META:
             rv.m_data = new AST::MetaItem( reinterpret_cast<AST::MetaItem*>(e)->clone() );
             break;
+        case TOK_INTERPOLATED_ITEM:
+            TODO(m_pos, "clone interpolated item");
+            //rv.m_data = new AST::Named( AST::Item( reinterpret_cast<AST::MetaItem*>(e)->clone() ) );
+            break;
         default:
-            assert(!"Token::clone() - fragment with invalid token type");
+            BUG(m_pos, "Fragment with invalid token type (" << *this << ")");
             break;
         }
         )

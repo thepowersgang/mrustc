@@ -76,7 +76,7 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
 
 ::std::unique_ptr<TokenStream> Expand_Macro(
     bool is_early, const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod,
-    Span mi_span, const ::std::string& name, const ::std::string& input_ident, const TokenTree& input_tt
+    Span mi_span, const ::std::string& name, const ::std::string& input_ident, TokenTree& input_tt
     )
 {
     if( name == "" ) {
@@ -105,7 +105,7 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
                 if( input_ident != "" )
                     ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
                 
-                auto e = Macro_Invoke(name.c_str(), *mr.data, input_tt, mod);
+                auto e = Macro_Invoke(name.c_str(), *mr.data, mv$(input_tt), mod);
                 return e;
             }
         }
@@ -117,7 +117,7 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
                 if( input_ident != "" )
                     ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
                 
-                auto e = Macro_Invoke(name.c_str(), *mri.data, input_tt, mod);
+                auto e = Macro_Invoke(name.c_str(), *mri.data, mv$(input_tt), mod);
                 return e;
             }
         }
@@ -131,7 +131,7 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
     // Leave valid and return an empty expression
     return ::std::unique_ptr<TokenStream>();
 }
-::std::unique_ptr<TokenStream> Expand_Macro(bool is_early, const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, const ::AST::MacroInvocation& mi)
+::std::unique_ptr<TokenStream> Expand_Macro(bool is_early, const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::MacroInvocation& mi)
 {
     return Expand_Macro(is_early, crate, modstack, mod,  mi.span(), mi.name(), mi.input_ident(), mi.input_tt());
 }
