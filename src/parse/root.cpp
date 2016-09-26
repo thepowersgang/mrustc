@@ -1364,7 +1364,13 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         
         // NOTE: `extern { ...` is handled in caller
         case TOK_BRACE_OPEN:
-            TODO(lex.getPosition(), "Parse `extern {` as an item");
+            if( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
+            {
+                // TODO: Parse extern blocks into individual items (that are split up in HIR)
+                TODO(lex.getPosition(), "Parse `extern {` as an item");
+            }
+            // HACK: Return nothing
+            break;
         
         // `extern crate "crate-name" as crate_name;`
         // `extern crate crate_name;`
