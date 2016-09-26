@@ -1278,6 +1278,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
     else {
         PUTBACK(tok, lex);
     }
+    DEBUG("name=" << name << ", ident=" << ident);
     TokenTree tt = Parse_TT(lex, true);
     return ::AST::MacroInvocation( lex.end_span(span_start), mv$(meta_items), mv$(name), mv$(ident), mv$(tt));
 }

@@ -157,6 +157,7 @@ private:
 };
 
 // === Prototypes ===
+unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree input, AST::Module& mod,  ParameterMappings& bound_tts);
 void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std::vector<MacroExpansionEnt>& contents);
 
 // ------------------------------------
@@ -730,9 +731,35 @@ bool Macro_HandlePattern(TokenStream& lex, const MacroPatEnt& pat, ::std::vector
 /// Parse the input TokenTree according to the `macro_rules!` patterns and return a token stream of the replacement
 ::std::unique_ptr<TokenStream> Macro_InvokeRules(const char *name, const MacroRules& rules, TokenTree input, AST::Module& mod)
 {
-    TRACE_FUNCTION;
-    Span    sp;// = input
+    TRACE_FUNCTION_F(name);
     
+    ParameterMappings   bound_tts;
+    unsigned int    rule_index = Macro_InvokeRules_MatchPattern(rules, mv$(input), mod,  bound_tts);
+    
+    const auto& rule = rules.m_rules.at(rule_index);
+    
+    DEBUG( rule.m_contents.size() << " rule contents with " << bound_tts.mappings().size() << " bound values - " << name );
+    assert( rule.m_param_names.size() >= bound_tts.mappings().size() );
+    for( unsigned int i = 0; i < bound_tts.mappings().size(); i ++ )
+    {
+        DEBUG(" - " << rule.m_param_names.at(i) << " = [" << bound_tts.mappings()[i] << "]");
+    }
+    //bound_tts.dump();
+    
+    // Run through the expansion counting the number of times each fragment is used
+    Macro_InvokeRules_CountSubstUses(bound_tts, rule.m_contents);
+    
+    TokenStream* ret_ptr = new MacroExpander(name, rule.m_contents, mv$(bound_tts), rules.m_source_crate);
+    
+    return ::std::unique_ptr<TokenStream>( ret_ptr );
+}
+
+unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree input, AST::Module& mod,  ParameterMappings& bound_tts)
+{
+    TRACE_FUNCTION;
+    Span    sp;// = input.span();
+    
+    unsigned int    rule_index;
     // - List of active rules (rules that haven't yet failed)
     ::std::vector< ::std::pair<unsigned, MacroPatternStream> > active_arms;
     active_arms.reserve( rules.m_rules.size() );
@@ -740,9 +767,6 @@ bool Macro_HandlePattern(TokenStream& lex, const MacroPatEnt& pat, ::std::vector
     {
         active_arms.push_back( ::std::make_pair(i, MacroPatternStream(rules.m_rules[i].m_pattern)) );
     }
-    
-    ParameterMappings   bound_tts;
-    unsigned int    rule_index;
     
     TTStreamO   lex( mv$(input) );
     SET_MODULE(lex, mod);
@@ -887,24 +911,7 @@ bool Macro_HandlePattern(TokenStream& lex, const MacroPatEnt& pat, ::std::vector
         // Keep looping - breakout is handled by an if above
     }
     
-    
-    const auto& rule = rules.m_rules.at(rule_index);
-    
-    DEBUG( rule.m_contents.size() << " rule contents with " << bound_tts.mappings().size() << " bound values - " << name );
-    assert( rule.m_param_names.size() >= bound_tts.mappings().size() );
-    for( unsigned int i = 0; i < bound_tts.mappings().size(); i ++ )
-    {
-        DEBUG(" - " << rule.m_param_names.at(i) << " = [" << bound_tts.mappings()[i] << "]");
-    }
-    //bound_tts.dump();
-    
-    // TODO: Run expander (or something similar) in a dummy mode to figure out how many times each capture is used
-    // - This will allow the expander to avoid a clone (which could be the only clone)
-    Macro_InvokeRules_CountSubstUses(bound_tts, rule.m_contents);
-    
-    TokenStream* ret_ptr = new MacroExpander(name, rule.m_contents, mv$(bound_tts), rules.m_source_crate);
-    
-    return ::std::unique_ptr<TokenStream>( ret_ptr );
+    return rule_index;
 }
 
 void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std::vector<MacroExpansionEnt>& contents)

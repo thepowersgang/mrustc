@@ -180,6 +180,9 @@ int main(int argc, char *argv[])
         CompilePhaseV("LoadCrates", [&]() {
             crate.load_externs();
             });
+        //CompilePhaseV("Temp output - Parsed", [&]() {
+        //    Dump_Rust( FMT(params.outfile << "_0_pp.rs").c_str(), crate );
+        //    });
     
         // Iterate all items in the AST, applying syntax extensions
         CompilePhaseV("Expand", [&]() {
@@ -188,7 +191,7 @@ int main(int argc, char *argv[])
 
         // XXX: Dump crate before resolve
         CompilePhaseV("Temp output - Parsed", [&]() {
-            Dump_Rust( FMT(params.outfile << "_0_pp.rs").c_str(), crate );
+            Dump_Rust( FMT(params.outfile << "_0a_exp.rs").c_str(), crate );
             });
 
         if( params.last_stage == ProgramParams::STAGE_EXPAND ) {
