@@ -418,6 +418,7 @@ bool patterns_are_same(const Span& sp, const MacroPatEnt& left, const MacroPatEn
     throw "";
 }
 
+// TODO: Also count the number of times each variable is used?
 void enumerate_names(const ::std::vector<MacroPatEnt>& pats, ::std::vector< ::std::string>& names) {
     for( const auto& pat : pats )
     {

@@ -146,7 +146,7 @@ public:
 
         ERROR(Span(), E0000, "Variable #" << name_idx << " is still repeating at this level (" << iterations.size() << ")");
     }
-    unsigned int count_in(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
+    unsigned int count_in(const ::std::vector<unsigned int>& iterations, unsigned int name_idx) const
     {
         DEBUG("(iterations=[" << iterations << "], name_idx=" << name_idx << ")");
         if( name_idx >= m_mappings.size() ) {
@@ -376,18 +376,10 @@ void MacroPatternStream::if_succeeded()
 }
 
 // ----------------------------------------------------------------
-class MacroExpander:
-    public TokenStream
+class MacroExpandState
 {
-public:
-
-private:
-    const RcString  m_macro_filename;
-
-    const ::std::string m_crate_name;
     const ::std::vector<MacroExpansionEnt>&  m_root_contents;
-    ParameterMappings m_mappings;
-    
+    const ParameterMappings& m_mappings;
 
     struct t_offset {
         unsigned read_pos;
@@ -400,7 +392,41 @@ private:
     
     /// Cached pointer to the current layer
     const ::std::vector<MacroExpansionEnt>*  m_cur_ents;  // For faster lookup.
+    
+public:
+    MacroExpandState(const ::std::vector<MacroExpansionEnt>& contents, const ParameterMappings& mappings):
+        m_root_contents(contents),
+        m_mappings(mappings),
+        m_offsets({ {0,0,0} }),
+        m_cur_ents(&m_root_contents)
+    {
+    }
+    
+    // Returns a pointer to the next entry to expand, or nullptr if the end is reached
+    // - NOTE: When a Loop entry is returned, the separator token should be emitted
+    const MacroExpansionEnt* next_ent();
+    
+    const ::std::vector<unsigned int>   iterations() const { return m_iterations; }
+    unsigned int top_pos() const { return m_offsets[0].read_pos; }
 
+private:
+    const MacroExpansionEnt& getCurLayerEnt() const;
+    const ::std::vector<MacroExpansionEnt>* getCurLayer() const;
+};
+// ----------------------------------------------------------------
+class MacroExpander:
+    public TokenStream
+{
+public:
+
+private:
+    const RcString  m_macro_filename;
+
+    const ::std::string m_crate_name;
+    
+    ParameterMappings m_mappings;
+    MacroExpandState    m_state;
+    
     Token   m_next_token;   // used for inserting a single token into the stream
     ::std::unique_ptr<TTStream>  m_ttstream;
     
@@ -410,20 +436,13 @@ public:
     MacroExpander(const ::std::string& macro_name, const ::std::vector<MacroExpansionEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
         m_macro_filename( FMT("Macro:" << macro_name) ),
         m_crate_name( mv$(crate_name) ),
-        m_root_contents(contents),
         m_mappings( mv$(mappings) ),
-        m_offsets({ {0,0,0} }),
-        m_cur_ents(&m_root_contents)
+        m_state( contents, m_mappings )
     {
-        prep_counts();
     }
 
     virtual Position getPosition() const override;
     virtual Token realGetToken() override;
-private:
-    const MacroExpansionEnt& getCurLayerEnt() const;
-    const ::std::vector<MacroExpansionEnt>* getCurLayer() const;
-    void prep_counts();
 };
 
 void Macro_InitDefaults()
@@ -756,15 +775,35 @@ bool Macro_HandlePattern(TTStream& lex, const MacroPatEnt& pat, ::std::vector<un
     }
     //bound_tts.dump();
     
+    // TODO: Run expander (or something similar) in a dummy mode to figure out how many times each capture is used
+    // - This will allow the expander to avoid a clone (which could be the only clone)
+    
     TokenStream* ret_ptr = new MacroExpander(name, rule.m_contents, mv$(bound_tts), rules.m_source_crate);
     
     return ::std::unique_ptr<TokenStream>( ret_ptr );
 }
 
+void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std::vector<MacroExpansionEnt>& contents)
+{
+    MacroExpandState    state(contents, bound_tts);
+    
+    while(const auto* ent_ptr = state.next_ent())
+    {
+        TU_IFLET(MacroExpansionEnt, (*ent_ptr), NamedValue, e,
+            if( e >> 30 ) {
+            }
+            else {
+                // Increment a counter in `bound_tts`
+                //bound_tts.inc_count(m_state.iterations(), e);
+            }
+        )
+    }
+}
 
 Position MacroExpander::getPosition() const
 {
-    return Position(m_macro_filename, 0, m_offsets[0].read_pos);
+    // TODO: Return a far better span - invocaion location?
+    return Position(m_macro_filename, 0, m_state.top_pos());
 }
 Token MacroExpander::realGetToken()
 {
@@ -772,19 +811,75 @@ Token MacroExpander::realGetToken()
     if( m_next_token.type() != TOK_NULL )
     {
         DEBUG("m_next_token = " << m_next_token);
-        return ::std::move(m_next_token);
+        return mv$(m_next_token);
     }
     // Then try m_ttstream
     if( m_ttstream.get() )
     {
-        DEBUG("TTStream set");
+        DEBUG("TTStream present");
         Token rv = m_ttstream->getToken();
         if( rv.type() != TOK_EOF )
             return rv;
         m_ttstream.reset();
     }
-    //DEBUG("ofs " << m_offsets << " < " << m_root_contents.size());
     
+    // Loop to handle case where $crate expands to nothing
+    while( const auto* next_ent_ptr = m_state.next_ent() )
+    {
+        const auto& ent = *next_ent_ptr;
+        TU_MATCH( MacroExpansionEnt, (ent), (e),
+        (Token,
+            return e;
+            ),
+        (NamedValue,
+            if( e >> 30 ) {
+                switch( e & 0x3FFFFFFF )
+                {
+                // - XXX: Hack for $crate special name
+                case 0:
+                    DEBUG("Crate name hack");
+                    if( m_crate_name != "" )
+                    {
+                        m_next_token = Token(TOK_STRING, m_crate_name);
+                        return Token(TOK_DOUBLE_COLON);
+                    }
+                    break;
+                default:
+                    BUG(Span(), "Unknown macro metavar");
+                }
+            }
+            else {
+                auto* frag = m_mappings.get(m_state.iterations(), e);
+                ASSERT_BUG(this->getPosition(), frag, "Cannot find '" << e << "' for " << m_state.iterations());
+                
+                DEBUG("Insert replacement #" << e << " = " << *frag);
+                if( frag->m_type == InterpolatedFragment::TT )
+                {
+                    m_ttstream.reset( new TTStream( frag->as_tt() ) );
+                    return m_ttstream->getToken();
+                }
+                else
+                {
+                    // TODO: Figure out if this is the only use of this particular InterpolatedFragment and avoid cloning
+                    return Token( *frag );
+                }
+            }
+            ),
+        (Loop,
+            //assert( e.joiner.tok() != TOK_NULL );
+            return e.joiner;
+            )
+        )
+    }
+    
+    DEBUG("EOF");
+    return Token(TOK_EOF);
+}
+
+const MacroExpansionEnt* MacroExpandState::next_ent()
+{
+    //DEBUG("ofs " << m_offsets << " < " << m_root_contents.size());
+
     // Check offset of lowest layer
     while(m_offsets.size() > 0)
     {
@@ -801,45 +896,10 @@ Token MacroExpander::realGetToken()
             const auto& ent = ents[idx];
             TU_MATCH( MacroExpansionEnt, (ent), (e),
             (Token,
-                return e;
+                return &ent;
                 ),
             (NamedValue,
-                if( e >> 30 ) {
-                    switch( e & 0x3FFFFFFF )
-                    {
-                    // - XXX: Hack for $crate special name
-                    case 0:
-                        DEBUG("Crate name hack");
-                        if( m_crate_name != "" )
-                        {
-                            m_next_token = Token(TOK_STRING, m_crate_name);
-                            return Token(TOK_DOUBLE_COLON);
-                        }
-                        break;
-                    default:
-                        BUG(Span(), "Unknown macro metavar");
-                    }
-                }
-                else {
-                    auto* frag = m_mappings.get(m_iterations, e);
-                    if( !frag )
-                    {
-                        throw ParseError::Generic(*this, FMT("Cannot find '" << e << "' for " << m_iterations));
-                    }
-                    else
-                    {
-                        DEBUG("Insert replacement #" << e << " = " << *frag);
-                        if( frag->m_type == InterpolatedFragment::TT )
-                        {
-                            m_ttstream.reset( new TTStream( frag->as_tt() ) );
-                            return m_ttstream->getToken();
-                        }
-                        else
-                        {
-                            return Token( *frag );
-                        }
-                    }
-                }
+                return &ent;
                 ),
             (Loop,
                 // 1. Get number of times this will repeat (based on the next iteration count)
@@ -850,6 +910,7 @@ Token MacroExpander::realGetToken()
                         num_repeats = this_repeats;
                 }
                 DEBUG("Looping " << num_repeats << " times");
+                // 2. If it's going to repeat, start the loop
                 if( num_repeats > 0 )
                 {
                     m_offsets.push_back( {0, 0, num_repeats} );
@@ -877,7 +938,7 @@ Token MacroExpander::realGetToken()
                 auto& loop_layer = getCurLayerEnt();
                 if( loop_layer.as_Loop().joiner.type() != TOK_NULL ) {
                     DEBUG("- Separator token = " << loop_layer.as_Loop().joiner);
-                    return loop_layer.as_Loop().joiner;
+                    return &loop_layer;
                 }
                 // Fall through and restart layer
             }
@@ -901,15 +962,10 @@ Token MacroExpander::realGetToken()
         }
     } // while( m_offsets NONEMPTY )
     
-    DEBUG("EOF");
-    return Token(TOK_EOF);
+    return nullptr;
 }
 
-/// Count the number of names at each layer
-void MacroExpander::prep_counts()
-{
-}
-const MacroExpansionEnt& MacroExpander::getCurLayerEnt() const
+const MacroExpansionEnt& MacroExpandState::getCurLayerEnt() const
 {
     assert( m_offsets.size() > 1 );
     
@@ -923,7 +979,7 @@ const MacroExpansionEnt& MacroExpander::getCurLayerEnt() const
     return (*ents)[m_offsets[m_offsets.size()-2].read_pos-1];
     
 }
-const ::std::vector<MacroExpansionEnt>* MacroExpander::getCurLayer() const
+const ::std::vector<MacroExpansionEnt>* MacroExpandState::getCurLayer() const
 {
     assert( m_offsets.size() > 0 );
     const auto* ents = &m_root_contents;
