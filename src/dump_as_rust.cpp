@@ -536,6 +536,7 @@ private:
         m_os << ")";
     }
     
+    void print_attrs(const AST::MetaItems& attrs);
     void print_params(const AST::GenericParams& params);
     void print_bounds(const AST::GenericParams& params);
     void print_pattern_tuple(const AST::Pattern::TuplePat& v, bool is_refutable);
@@ -552,6 +553,14 @@ void Dump_Rust(const char *Filename, const AST::Crate& crate)
     ::std::ofstream os(Filename);
     RustPrinter printer(os);
     printer.handle_module(crate.root_module());
+}
+
+void RustPrinter::print_attrs(const AST::MetaItems& attrs)
+{
+    for(const auto& a : attrs.m_items)
+    {
+        m_os << indent() << "#[" << a << "]\n";
+    }
 }
 
 void RustPrinter::handle_module(const AST::Module& mod)
@@ -606,12 +615,12 @@ void RustPrinter::handle_module(const AST::Module& mod)
             m_os << "\n";
             need_nl = false;
         }
+        print_attrs(item.data.attrs);
         m_os << indent() << (item.is_pub ? "pub " : "") << "type " << item.name;
         print_params(e.params());
         m_os << " = " << e.type();
         print_bounds(e.params());
         m_os << ";\n";
-        m_os << "\n";
     }
     need_nl = true;
     
@@ -621,6 +630,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         const auto& e = item.data.as_Struct();
         
         m_os << "\n";
+        print_attrs(item.data.attrs);
         m_os << indent() << (item.is_pub ? "pub " : "") << "struct " << item.name;
         handle_struct(e);
     }
@@ -631,6 +641,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         const auto& e = item.data.as_Enum();
         
         m_os << "\n";
+        print_attrs(item.data.attrs);
         m_os << indent() << (item.is_pub ? "pub " : "") << "enum " << item.name;
         handle_enum(e);
     }
@@ -641,6 +652,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         const auto& e = item.data.as_Trait();
         
         m_os << "\n";
+        print_attrs(item.data.attrs);
         m_os << indent() << (item.is_pub ? "pub " : "") << "trait " << item.name;
         handle_trait(e);
     }
@@ -654,6 +666,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
             m_os << "\n";
             need_nl = false;
         }
+        print_attrs(item.data.attrs);
         m_os << indent() << (item.is_pub ? "pub " : "");
         switch( e.s_class() )
         {
@@ -672,6 +685,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         const auto& e = item.data.as_Function();
         
         m_os << "\n";
+        print_attrs(item.data.attrs);
         handle_function(item.is_pub, item.name, e);
     }
 
@@ -1001,7 +1015,6 @@ void RustPrinter::handle_trait(const AST::Trait& s)
 
 void RustPrinter::handle_function(bool is_pub, const ::std::string& name, const AST::Function& f)
 {
-    m_os << "\n";
     m_os << indent();
     m_os << (is_pub ? "pub " : "");
     // TODO: Unsafe
