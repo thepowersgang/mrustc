@@ -404,20 +404,19 @@ AST::Function Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, AST
     return ret;
 }
 
-AST::TypeAlias Parse_TypeAlias(TokenStream& lex, AST::MetaItems& meta_items)
+AST::TypeAlias Parse_TypeAlias(TokenStream& lex)
 {
     TRACE_FUNCTION;
 
     Token   tok;
 
     // Params
-    tok = lex.getToken();
     AST::GenericParams params;
-    if( tok.type() == TOK_LT )
+    if( GET_TOK(tok, lex) == TOK_LT )
     {
         params = Parse_GenericParams(lex);
         GET_CHECK_TOK(tok, lex, TOK_GT);
-        tok = lex.getToken();
+        GET_TOK(tok, lex);
     }
     
     if( tok.type() == TOK_RWORD_WHERE )
@@ -1286,12 +1285,8 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
 // TODO: Extract single-item parsing into a method that returns just the item
 ::AST::Named<::AST::Item> Parse_Mod_Item_S(TokenStream& lex, const AST::Module::FileInfo& mod_fileinfo, const ::AST::Path& mod_path, AST::MetaItems meta_items)
 {
+    TRACE_FUNCTION_F("mod_path="<<mod_path<<", meta_items="<<meta_items);
     Token   tok;
-    
-    if( LOOK_AHEAD(lex) == TOK_INTERPOLATED_ITEM ) {
-        GET_TOK(tok, lex);
-        return tok.take_frag_item();
-    }
     
     while( LOOK_AHEAD(lex) == TOK_ATTR_OPEN /* || LOOKAHEAD2(lex, TOK_HASH, TOK_SQUARE_OPEN) */ )
     {
@@ -1301,11 +1296,20 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
     }
     
+    if( LOOK_AHEAD(lex) == TOK_INTERPOLATED_ITEM ) {
+        GET_TOK(tok, lex);
+        auto rv = tok.take_frag_item();
+        // Transfer new attributes onto the item
+        for(auto& mi : meta_items.m_items)
+            rv.data.attrs.m_items.push_back( mv$(mi) );
+        return rv;
+    }
+    
     auto ps = lex.start_span();
     
     ::std::string   item_name;
     ::AST::Item item_data;
-
+    
     bool    is_public = false;
     if( GET_TOK(tok, lex) == TOK_RWORD_PUB ) {
         is_public = true;
@@ -1528,7 +1532,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
     case TOK_RWORD_TYPE:
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         item_name = mv$(tok.str());
-        item_data = ::AST::Item( Parse_TypeAlias(lex, meta_items) );
+        item_data = ::AST::Item( Parse_TypeAlias(lex) );
         break;
     // `struct`
     case TOK_RWORD_STRUCT:
