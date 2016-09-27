@@ -101,6 +101,7 @@ bool is_token_expr(eTokenType tt) {
     case TOK_INTEGER:
     case TOK_FLOAT:
     case TOK_STRING:
+    case TOK_BYTESTRING:
     case TOK_RWORD_TRUE:
     case TOK_RWORD_FALSE:
     
