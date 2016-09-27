@@ -412,6 +412,7 @@ namespace {
                 serialise(pe.tok);
             }
             else if( pe.type == ::MacroPatEnt::PAT_LOOP ) {
+                serialise(pe.tok);
                 serialise_vec(pe.subpats);
             }
         }

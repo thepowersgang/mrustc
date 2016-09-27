@@ -302,6 +302,7 @@ namespace {
                 rv.tok = deserialise_token();
                 break;
             case ::MacroPatEnt::PAT_LOOP:
+                rv.tok = deserialise_token();
                 rv.subpats = deserialise_vec_c< ::MacroPatEnt>([&](){ return deserialise_macropatent(); });
                 break;
             case ::MacroPatEnt::PAT_TT: // :tt
