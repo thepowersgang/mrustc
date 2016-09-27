@@ -16,7 +16,8 @@ public:
     
     void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
         if( crate.m_crate_type != AST::Crate::Type::Unknown ) {
-            ERROR(sp, E0000, "Multiple #![crate_type] attributes");
+            //ERROR(sp, E0000, "Multiple #![crate_type] attributes");
+            return ;
         }
         if( !mi.has_string() ) {
             ERROR(sp, E0000, "#![crate_type] requires a string argument");
