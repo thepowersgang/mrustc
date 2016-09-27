@@ -895,13 +895,50 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
             }
             ),
         (ExpectPat,
-            // NOTE: This is going to fail somewhere, but need to determine what to do when it does
+            struct H {
+                static bool is_prefix(const ::std::vector<unsigned>& needle, const ::std::vector<unsigned>& haystack) {
+                    if( needle.size() > haystack.size() ) {
+                        return false;
+                    }
+                    else {
+                        for(unsigned int i = 0; i < needle.size(); i ++) {
+                            if(needle[i] != haystack[i])
+                                return false;
+                        }
+                        return true;
+                    }
+                }
+            };
+            
+            // Use the shortest (and ensure that it's a prefix to the others) and let the capture code move caps around when needed
+            const auto* longest = &active_arms[0].second.get_loop_iters();
+            const auto* shortest = longest;
             for( unsigned int i = 1; i < active_arms.size(); i ++ ) {
-                if( active_arms[0].second.get_loop_iters() != active_arms[i].second.get_loop_iters() ) {
-                    TODO(sp, "ExpectPat with mismatched loop iterations");
+                const auto& iters2 = active_arms[i].second.get_loop_iters();
+                // If this arm has a deeper tree,
+                if( iters2.size() > longest->size() ) {
+                    // The existing longest must be a prefix to this
+                    if( !H::is_prefix(*longest, iters2) ) {
+                        TODO(sp, "Handle ExpectPat where iteration counts aren't prefixes - [" << *longest << "] vs [" << iters2 << "]");
+                    }
+                    longest = &iters2;
+                }
+                else {
+                    // Keep track of the shortest
+                    if( iters2.size() < shortest->size() ) {
+                        shortest = &iters2;
+                    }
+                    
+                    // This must be a prefix to the longest
+                    if( !H::is_prefix(iters2, *longest) ) {
+                        TODO(sp, "Handle ExpectPat where iteration counts aren't prefixes - [" << *longest << "] vs [" << iters2 << "]");
+                    }
                 }
             }
-            Macro_HandlePatternCap(lex, e.idx, e.type,  active_arms[0].second.get_loop_iters(),  bound_tts);
+            
+            // Use the shallowest iteration state
+            // TODO: All other should be on the first iteration.
+            Macro_HandlePatternCap(lex, e.idx, e.type,  *shortest,  bound_tts);
             ),
         (End,
             BUG(sp, "SimplePatEnt::End unexpected here");
