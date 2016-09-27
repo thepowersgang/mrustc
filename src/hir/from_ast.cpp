@@ -1038,7 +1038,11 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             BUG(sp, "Stray macro invocation in " << path);
             ),
         (ExternBlock,
-            TODO(sp, "Expand ExternBlock");
+            if( e.items().size() > 0 )
+            {
+                TODO(sp, "Expand ExternBlock");
+            }
+            // TODO: Insert a record of the `link` attribute
             ),
         (Impl,
             TODO(sp, "Expand Item::Impl");

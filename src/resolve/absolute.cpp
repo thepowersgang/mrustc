@@ -1901,6 +1901,8 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
                 (
                     BUG(i2.data.span, "Unexpected item in ExternBlock - " << i2.data.tag_str());
                     ),
+                (None,
+                    ),
                 (Function,
                     Resolve_Absolute_Function(item_context, e2);
                     ),

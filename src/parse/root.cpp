@@ -1077,7 +1077,7 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
     impl.items().back().data->attrs = mv$(item_attrs);    // Empty for functions
 }
 
-void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi, ::AST::MetaItems block_attrs)
+AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::MetaItems& block_attrs)
 {
     TRACE_FUNCTION;
     Token   tok;
@@ -1088,7 +1088,8 @@ void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi, ::
         GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
     }
     PUTBACK(tok, lex);
-    // TODO: Use `block_attrs`
+    
+    AST::ExternBlock    rv { mv$(abi) };
     
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
@@ -1100,6 +1101,8 @@ void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi, ::
             GET_TOK(tok, lex);
         }
         SET_ATTRS(lex, meta_items);
+        
+        auto ps = lex.start_span();
         
         bool is_public = false;
         if( tok.type() == TOK_RWORD_PUB ) {
@@ -1114,8 +1117,12 @@ void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi, ::
             // parse function as prototype
             // - no self
             auto i = ::AST::Item( Parse_FunctionDef(lex, abi, meta_items, false, true) );
-            mod.add_item( is_public, mv$(name), mv$(i), mv$(meta_items) );
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+            
+            i.attrs = mv$(meta_items);
+            i.span = lex.end_span(ps);
+            
+            rv.add_item( AST::Named<AST::Item> { mv$(name), mv$(i), is_public } );
             break; }
         case TOK_RWORD_STATIC: {
             bool is_mut = false;
@@ -1130,12 +1137,16 @@ void Parse_ExternBlock(TokenStream& lex, AST::Module& mod, ::std::string abi, ::
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
             
             auto i = ::AST::Item(::AST::Static( (is_mut ? ::AST::Static::MUT : ::AST::Static::STATIC),  type, ::AST::Expr() ));
-            mod.add_item(is_public, mv$(name), mv$(i), mv$(meta_items));
+            i.attrs = mv$(meta_items);
+            i.span = lex.end_span(ps);
+            rv.add_item( AST::Named<AST::Item> { mv$(name), mv$(i), is_public } );
             break; }
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_STATIC});
         }
     }
+    
+    return rv;
 }
 
 void Parse_Use_Wildcard(Span sp, AST::Path base_path, ::std::function<void(AST::UseStmt, ::std::string)> fcn)
@@ -1355,7 +1366,9 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
                 break; }
             // NOTE: Extern blocks aren't items, and get handled in the caller.
             case TOK_BRACE_OPEN:
-                TODO(lex.getPosition(), "Parse `extern \"abi\" {` as an item");
+                item_name = "";
+                item_data = ::AST::Item( Parse_ExternBlock(lex, mv$(abi), meta_items) );
+                break;
             default:
                 throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_BRACE_OPEN});
             }
@@ -1369,12 +1382,8 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         
         // NOTE: `extern { ...` is handled in caller
         case TOK_BRACE_OPEN:
-            if( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
-            {
-                // TODO: Parse extern blocks into individual items (that are split up in HIR)
-                TODO(lex.getPosition(), "Parse `extern {` as an item");
-            }
-            // HACK: Return nothing
+            item_name = "";
+            item_data = ::AST::Item( Parse_ExternBlock(lex, "", meta_items) );
             break;
         
         // `extern crate "crate-name" as crate_name;`
@@ -1685,20 +1694,6 @@ void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_item
                 mod.add_alias(is_public, mv$(p), s, meta_items.clone());
             });
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-    }
-    //else if( LOOKAHEAD2(lex, TOK_RWORD_EXTERN, TOK_BRACE_OPEN) || LOOKAHEAD3(lex, TOK_RWORD_EXTERN, TOK_STRING, TOK_BRACE_OPEN) )
-    else if( lex.lookahead(0) == TOK_RWORD_EXTERN && ( (lex.lookahead(1) == TOK_STRING && lex.lookahead(2) == TOK_BRACE_OPEN) || lex.lookahead(1) == TOK_BRACE_OPEN ) )
-    {
-        // `extern "<ABI>" { ...`
-        GET_CHECK_TOK(tok, lex, TOK_RWORD_EXTERN);
-        ::std::string   abi = "C";
-        if( GET_TOK(tok, lex) == TOK_STRING ) {
-            abi = tok.str();
-            GET_TOK(tok, lex);
-        }
-        CHECK_TOK(tok, TOK_BRACE_OPEN);
-
-        Parse_ExternBlock(lex, mod, mv$(abi), mv$(meta_items));
     }
     // `unsafe impl`
     // TODO: Move these two into Parse_Mod_Item_S

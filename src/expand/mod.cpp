@@ -757,6 +757,12 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             ),
         (ExternBlock,
             // TODO: Run expand on inner items?
+            // HACK: Just convert inner items into outer items
+            auto items = mv$( e.items() );
+            for(auto& i2 : items)
+            {
+                mod.items().push_back( mv$(i2) );
+            }
             ),
         (Impl,
             Expand_Impl(is_early, crate, modstack, modpath, mod,  e);

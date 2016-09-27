@@ -248,7 +248,7 @@ UseStmt UseStmt::clone() const
     return UseStmt(sp, path);
 }
 
-void ExternBlock::add_fcn(Named<Item> named_item)
+void ExternBlock::add_item(Named<Item> named_item)
 {
     ASSERT_BUG(named_item.data.span, named_item.data.is_Function() || named_item.data.is_Static(), "Incorrect item type for ExternBlock");
     m_items.push_back( mv$(named_item) );

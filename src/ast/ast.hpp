@@ -463,7 +463,7 @@ public:
     
     const ::std::string& abi() const { return m_abi; }
     
-    void add_fcn(Named<Item> named_item);
+    void add_item(Named<Item> named_item);
     
     // NOTE: Only Function and Static are valid.
           ::std::vector<Named<Item>>& items()       { return m_items; }

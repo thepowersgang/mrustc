@@ -138,7 +138,9 @@ bool is_token_item(eTokenType tt) {
     case TOK_RWORD_ENUM:
     case TOK_RWORD_TRAIT:
     case TOK_RWORD_MOD:
-    //case TOK_RWORD_IMPL:
+    case TOK_RWORD_USE:
+    case TOK_RWORD_EXTERN:
+    case TOK_RWORD_IMPL:
     // TODO: more?
     case TOK_INTERPOLATED_ITEM:
         return true;
