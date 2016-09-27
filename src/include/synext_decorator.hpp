@@ -34,10 +34,8 @@ namespace AST {
 
 enum class AttrStage
 {
-    EarlyPre,
-    EarlyPost,
-    LatePre,
-    LatePost,
+    Pre,
+    Post,
 };
 
 class ExpandDecorator

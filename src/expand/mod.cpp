@@ -14,9 +14,9 @@
 ::std::map< ::std::string, ::std::unique_ptr<ExpandProcMacro> >  g_macros;
 
 void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::std::function<void(const ExpandDecorator& d,const ::AST::MetaItem& a)> f);
-void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod);
-void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Expr& node);
-void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::shared_ptr<AST::ExprNode>& node);
+void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod);
+void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Expr& node);
+void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::shared_ptr<AST::ExprNode>& node);
 
 void Register_Synext_Decorator(::std::string name, ::std::unique_ptr<ExpandDecorator> handler) {
     g_decorators[name] = mv$(handler);
@@ -29,15 +29,6 @@ void Register_Synext_Macro(::std::string name, ::std::unique_ptr<ExpandProcMacro
 void ExpandDecorator::unexpected(const Span& sp, const AST::MetaItem& mi, const char* loc_str) const
 {
     ERROR(sp, E0000, "Unexpected attribute " << mi.name() << " on " << loc_str);
-}
-
-namespace {
-    AttrStage stage_pre(bool is_early) {
-        return (is_early ? AttrStage::EarlyPre : AttrStage::LatePre);
-    }
-    AttrStage stage_post(bool is_early) {
-        return (is_early ? AttrStage::EarlyPost : AttrStage::LatePost);
-    }
 }
 
 void Expand_Attr(const Span& sp, const ::AST::MetaItem& a, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::MetaItem& a)> f)
@@ -75,7 +66,7 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
 }
 
 ::std::unique_ptr<TokenStream> Expand_Macro(
-    bool is_early, const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod,
+    const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod,
     Span mi_span, const ::std::string& name, const ::std::string& input_ident, TokenTree& input_tt
     )
 {
@@ -85,7 +76,7 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
     
     for( const auto& m : g_macros )
     {
-        if( name == m.first && m.second->expand_early() == is_early )
+        if( name == m.first )
         {
             auto e = m.second->expand(mi_span, crate, input_ident, input_tt, mod);
             return e;
@@ -123,66 +114,61 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
         }
     }
     
-    if( ! is_early ) {
-        // Error - Unknown macro name
-        ERROR(mi_span, E0000, "Unknown macro '" << name << "'");
-    }
-    
-    // Leave valid and return an empty expression
-    return ::std::unique_ptr<TokenStream>();
+    // Error - Unknown macro name
+    ERROR(mi_span, E0000, "Unknown macro '" << name << "'");
 }
-::std::unique_ptr<TokenStream> Expand_Macro(bool is_early, const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::MacroInvocation& mi)
+::std::unique_ptr<TokenStream> Expand_Macro(const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::MacroInvocation& mi)
 {
-    return Expand_Macro(is_early, crate, modstack, mod,  mi.span(), mi.name(), mi.input_ident(), mi.input_tt());
+    return Expand_Macro(crate, modstack, mod,  mi.span(), mi.name(), mi.input_ident(), mi.input_tt());
 }
 
-void Expand_Pattern(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::Pattern& pat)
+void Expand_Pattern(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::Pattern& pat)
 {
     TU_MATCH(::AST::Pattern::Data, (pat.data()), (e),
     (MaybeBind,
         ),
     (Macro,
-        auto tt = Expand_Macro(is_early, crate, modstack, mod,  *e.inv);
+        auto tt = Expand_Macro(crate, modstack, mod,  *e.inv);
         TODO(e.inv->span(), "Expand macro invocation in pattern");
         ),
     (Any,
         ),
     (Box,
-        Expand_Pattern(is_early, crate, modstack, mod,  *e.sub);
+        Expand_Pattern(crate, modstack, mod,  *e.sub);
         ),
     (Ref,
-        Expand_Pattern(is_early, crate, modstack, mod,  *e.sub);
+        Expand_Pattern(crate, modstack, mod,  *e.sub);
         ),
     (Value,
-        //Expand_Expr(is_early, crate, modstack, e.start);
-        //Expand_Expr(is_early, crate, modstack, e.end);
+        //Expand_Expr(crate, modstack, e.start);
+        //Expand_Expr(crate, modstack, e.end);
         ),
     (Tuple,
         for(auto& sp : e.start)
-            Expand_Pattern(is_early, crate, modstack, mod, sp);
+            Expand_Pattern(crate, modstack, mod, sp);
         for(auto& sp : e.end)
-            Expand_Pattern(is_early, crate, modstack, mod, sp);
+            Expand_Pattern(crate, modstack, mod, sp);
         ),
     (StructTuple,
         for(auto& sp : e.tup_pat.start)
-            Expand_Pattern(is_early, crate, modstack, mod, sp);
+            Expand_Pattern(crate, modstack, mod, sp);
         for(auto& sp : e.tup_pat.end)
-            Expand_Pattern(is_early, crate, modstack, mod, sp);
+            Expand_Pattern(crate, modstack, mod, sp);
         ),
     (Struct,
         for(auto& sp : e.sub_patterns)
-            Expand_Pattern(is_early, crate, modstack, mod, sp.second);
+            Expand_Pattern(crate, modstack, mod, sp.second);
         ),
     (Slice,
         for(auto& sp : e.leading)
-            Expand_Pattern(is_early, crate, modstack, mod, sp);
+            Expand_Pattern(crate, modstack, mod, sp);
         for(auto& sp : e.trailing)
-            Expand_Pattern(is_early, crate, modstack, mod, sp);
+            Expand_Pattern(crate, modstack, mod, sp);
         )
     )
 }
 
-void Expand_Type(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::TypeRef& ty)
+void Expand_Type(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::TypeRef& ty)
 {
     TU_MATCH(::TypeData, (ty.m_data), (e),
     (None,
@@ -194,31 +180,31 @@ void Expand_Type(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
     (Bang,
         ),
     (Macro,
-        auto tt = Expand_Macro(is_early, crate, modstack, mod,  e.inv);
+        auto tt = Expand_Macro(crate, modstack, mod,  e.inv);
         TODO(e.inv.span(), "Expand macro invocation in type");
         ),
     (Primitive,
         ),
     (Function,
         Type_Function& tf = e.info;
-        Expand_Type(is_early, crate, modstack, mod,  *tf.m_rettype);
+        Expand_Type(crate, modstack, mod,  *tf.m_rettype);
         for(auto& st : tf.m_arg_types)
-            Expand_Type(is_early, crate, modstack, mod,  st);
+            Expand_Type(crate, modstack, mod,  st);
         ),
     (Tuple,
         for(auto& st : e.inner_types)
-            Expand_Type(is_early, crate, modstack, mod,  st);
+            Expand_Type(crate, modstack, mod,  st);
         ),
     (Borrow,
-        Expand_Type(is_early, crate, modstack, mod,  *e.inner);
+        Expand_Type(crate, modstack, mod,  *e.inner);
         ),
     (Pointer,
-        Expand_Type(is_early, crate, modstack, mod,  *e.inner);
+        Expand_Type(crate, modstack, mod,  *e.inner);
         ),
     (Array,
-        Expand_Type(is_early, crate, modstack, mod,  *e.inner);
+        Expand_Type(crate, modstack, mod,  *e.inner);
         if( e.size ) {
-            Expand_Expr(is_early, crate, modstack,  e.size);
+            Expand_Expr(crate, modstack,  e.size);
         }
         ),
     (Generic,
@@ -233,15 +219,13 @@ void Expand_Type(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
 struct CExpandExpr:
     public ::AST::NodeVisitor
 {
-    bool is_early;
     ::AST::Crate&    crate;
     LList<const AST::Module*>   modstack;
     ::std::unique_ptr<::AST::ExprNode> replacement;
     
     AST::ExprNode_Block*    current_block = nullptr;
     
-    CExpandExpr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> ms):
-        is_early(is_early),
+    CExpandExpr(::AST::Crate& crate, LList<const AST::Module*> ms):
         crate(crate),
         modstack(ms)
     {
@@ -253,7 +237,7 @@ struct CExpandExpr:
     
     void visit(::std::unique_ptr<AST::ExprNode>& cnode) {
         if(cnode.get())
-            Expand_Attrs(cnode->attrs(), stage_pre(is_early),  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, cnode); });
+            Expand_Attrs(cnode->attrs(), AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, cnode); });
         if(cnode.get())
         {
             cnode->visit(*this);
@@ -269,7 +253,7 @@ struct CExpandExpr:
         }
         
         if(cnode.get())
-            Expand_Attrs(cnode->attrs(), stage_post(is_early),  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, cnode); });
+            Expand_Attrs(cnode->attrs(), AttrStage::Post,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, cnode); });
         assert( ! this->replacement );
     }
     void visit_nodelete(const ::AST::ExprNode& parent, ::std::unique_ptr<AST::ExprNode>& cnode) {
@@ -305,7 +289,7 @@ struct CExpandExpr:
         
         auto& mod = this->cur_mod();
         auto ttl = Expand_Macro(
-            is_early, crate, modstack, mod,
+            crate, modstack, mod,
             Span(node.get_pos()),
             node.m_name, node.m_ident, node.m_tokens
             );
@@ -342,7 +326,7 @@ struct CExpandExpr:
     
     void visit(::AST::ExprNode_Block& node) override {
         if( node.m_local_mod ) {
-            Expand_Mod(is_early, crate, modstack, node.m_local_mod->path(), *node.m_local_mod);
+            Expand_Mod(crate, modstack, node.m_local_mod->path(), *node.m_local_mod);
         }
         auto saved = this->current_block;
         this->current_block = &node;
@@ -353,8 +337,8 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_value);
     }
     void visit(::AST::ExprNode_LetBinding& node) override {
-        Expand_Type(is_early, crate, modstack, this->cur_mod(),  node.m_type);
-        Expand_Pattern(is_early, crate, modstack, this->cur_mod(),  node.m_pat);
+        Expand_Type(crate, modstack, this->cur_mod(),  node.m_type);
+        Expand_Pattern(crate, modstack, this->cur_mod(),  node.m_pat);
         this->visit_nodelete(node, node.m_value);
     }
     void visit(::AST::ExprNode_Assign& node) override {
@@ -375,7 +359,7 @@ struct CExpandExpr:
     void visit(::AST::ExprNode_Loop& node) override {
         this->visit_nodelete(node, node.m_cond);
         this->visit_nodelete(node, node.m_code);
-        Expand_Pattern(is_early, crate, modstack, this->cur_mod(),  node.m_pattern);
+        Expand_Pattern(crate, modstack, this->cur_mod(),  node.m_pattern);
         if(node.m_type == ::AST::ExprNode_Loop::FOR)
         {
             auto core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core");
@@ -438,15 +422,15 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_val);
         for(auto& arm : node.m_arms)
         {
-            Expand_Attrs(arm.m_attrs, stage_pre (is_early),  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate,  arm); });
+            Expand_Attrs(arm.m_attrs, AttrStage::Pre ,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate,  arm); });
             if( arm.m_patterns.size() == 0 )
                 continue ;
             for(auto& pat : arm.m_patterns) {
-                Expand_Pattern(is_early, crate, modstack, this->cur_mod(),  pat);
+                Expand_Pattern(crate, modstack, this->cur_mod(),  pat);
             }
             this->visit_nodelete(node, arm.m_cond);
             this->visit_nodelete(node, arm.m_code);
-            Expand_Attrs(arm.m_attrs, stage_post(is_early),  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate,  arm); });
+            Expand_Attrs(arm.m_attrs, AttrStage::Post,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate,  arm); });
         }
         // Prune deleted arms
         for(auto it = node.m_arms.begin(); it != node.m_arms.end(); ) {
@@ -462,7 +446,7 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_false);
     }
     void visit(::AST::ExprNode_IfLet& node) override {
-        Expand_Pattern(is_early, crate, modstack, this->cur_mod(),  node.m_pattern);
+        Expand_Pattern(crate, modstack, this->cur_mod(),  node.m_pattern);
         this->visit_nodelete(node, node.m_value);
         this->visit_nodelete(node, node.m_true);
         this->visit_nodelete(node, node.m_false);
@@ -474,10 +458,10 @@ struct CExpandExpr:
     void visit(::AST::ExprNode_ByteString& node) override { }
     void visit(::AST::ExprNode_Closure& node) override {
         for(auto& arg : node.m_args) {
-            Expand_Pattern(is_early, crate, modstack, this->cur_mod(),  arg.first);
-            Expand_Type(is_early, crate, modstack, this->cur_mod(),  arg.second);
+            Expand_Pattern(crate, modstack, this->cur_mod(),  arg.first);
+            Expand_Type(crate, modstack, this->cur_mod(),  arg.second);
         }
-        Expand_Type(is_early, crate, modstack, this->cur_mod(),  node.m_return);
+        Expand_Type(crate, modstack, this->cur_mod(),  node.m_return);
         this->visit_nodelete(node, node.m_code);
     }
     void visit(::AST::ExprNode_StructLiteral& node) override {
@@ -508,7 +492,7 @@ struct CExpandExpr:
     }
     void visit(::AST::ExprNode_Cast& node) override {
         this->visit_nodelete(node, node.m_value);
-        Expand_Type(is_early, crate, modstack, this->cur_mod(),  node.m_type);
+        Expand_Type(crate, modstack, this->cur_mod(),  node.m_type);
     }
     void visit(::AST::ExprNode_BinOp& node) override {
         this->visit_nodelete(node, node.m_left);
@@ -562,22 +546,22 @@ struct CExpandExpr:
     }
 };
 
-void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::unique_ptr<AST::ExprNode>& node)
+void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::unique_ptr<AST::ExprNode>& node)
 {
-    auto visitor = CExpandExpr(is_early, crate, modstack);
+    auto visitor = CExpandExpr(crate, modstack);
     visitor.visit(node);
 }
-void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::shared_ptr<AST::ExprNode>& node)
+void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::shared_ptr<AST::ExprNode>& node)
 {
-    auto visitor = CExpandExpr(is_early, crate, modstack);
+    auto visitor = CExpandExpr(crate, modstack);
     node->visit(visitor);
     if( visitor.replacement ) {
         node.reset( visitor.replacement.release() );
     }
 }
-void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Expr& node)
+void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Expr& node)
 {
-    auto visitor = CExpandExpr(is_early, crate, modstack);
+    auto visitor = CExpandExpr(crate, modstack);
     node.visit_nodes(visitor);
     if( visitor.replacement ) {
         node = AST::Expr( mv$(visitor.replacement) );
@@ -586,20 +570,19 @@ void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
 
 void Expand_BareExpr(const ::AST::Crate& crate, const AST::Module& mod, ::std::unique_ptr<AST::ExprNode>& node)
 {
-    Expand_Expr(true , const_cast< ::AST::Crate&>(crate), LList<const AST::Module*>(nullptr, &mod), node);
-    Expand_Expr(false, const_cast< ::AST::Crate&>(crate), LList<const AST::Module*>(nullptr, &mod), node);
+    Expand_Expr(const_cast< ::AST::Crate&>(crate), LList<const AST::Module*>(nullptr, &mod), node);
 }
 
-void Expand_Impl(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, ::AST::Impl& impl)
+void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, ::AST::Impl& impl)
 {
-    Expand_Attrs(impl.def().attrs(), stage_pre(is_early),  crate, mod, impl.def());
+    Expand_Attrs(impl.def().attrs(), AttrStage::Pre,  crate, mod, impl.def());
     if( impl.def().type().is_wildcard() ) {
         DEBUG("Deleted");
         return ;
     }
     
-    Expand_Type(is_early, crate, modstack, mod,  impl.def().type());
-    //Expand_Type(is_early, crate, modstack, mod,  impl.def().trait());
+    Expand_Type(crate, modstack, mod,  impl.def().type());
+    //Expand_Type(crate, modstack, mod,  impl.def().trait());
     
     // - Macro invocation
     for(unsigned int i = 0; i < impl.m_macro_invocations.size(); i ++ )
@@ -611,7 +594,7 @@ void Expand_Impl(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
         // Move out of the module to avoid invalidation if a new macro invocation is added
         auto mi_owned = mv$(mi);
         
-        auto ttl = Expand_Macro(is_early, crate, modstack, mod, mi_owned);
+        auto ttl = Expand_Macro(crate, modstack, mod, mi_owned);
 
         if( ! ttl.get() )
         {
@@ -641,7 +624,7 @@ void Expand_Impl(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
         //::AST::Path path = modpath + i.name;
         
         auto attrs = mv$(i.data->attrs);
-        Expand_Attrs(attrs, stage_pre(is_early),  crate, AST::Path(), mod, *i.data);
+        Expand_Attrs(attrs, AttrStage::Pre,  crate, AST::Path(), mod, *i.data);
         
         TU_MATCH_DEF(AST::Item, (*i.data), (e),
         (
@@ -650,49 +633,49 @@ void Expand_Impl(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
         (None, ),
         (Function,
             for(auto& arg : e.args()) {
-                Expand_Pattern(is_early, crate, modstack, mod,  arg.first);
-                Expand_Type(is_early, crate, modstack, mod,  arg.second);
+                Expand_Pattern(crate, modstack, mod,  arg.first);
+                Expand_Type(crate, modstack, mod,  arg.second);
             }
-            Expand_Type(is_early, crate, modstack, mod,  e.rettype());
-            Expand_Expr(is_early, crate, modstack, e.code());
+            Expand_Type(crate, modstack, mod,  e.rettype());
+            Expand_Expr(crate, modstack, e.code());
             ),
         (Static,
-            Expand_Expr(is_early, crate, modstack, e.value());
+            Expand_Expr(crate, modstack, e.value());
             ),
         (Type,
-            Expand_Type(is_early, crate, modstack, mod,  e.type());
+            Expand_Type(crate, modstack, mod,  e.type());
             )
         )
         
-        Expand_Attrs(attrs, stage_post(is_early),  crate, AST::Path(), mod, *i.data);
+        Expand_Attrs(attrs, AttrStage::Post,  crate, AST::Path(), mod, *i.data);
         if( i.data->attrs.m_items.size() == 0 )
             i.data->attrs = mv$(attrs);
     }
 
-    Expand_Attrs(impl.def().attrs(), stage_post(is_early),  crate, mod, impl.def());
+    Expand_Attrs(impl.def().attrs(), AttrStage::Post,  crate, mod, impl.def());
 }
-void Expand_ImplDef(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, ::AST::ImplDef& impl_def)
+void Expand_ImplDef(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, ::AST::ImplDef& impl_def)
 {
-    Expand_Attrs(impl_def.attrs(), stage_pre(is_early),  crate, mod, impl_def);
+    Expand_Attrs(impl_def.attrs(), AttrStage::Pre,  crate, mod, impl_def);
     if( impl_def.type().is_wildcard() ) {
         DEBUG("Deleted");
         return ;
     }
     
-    Expand_Type(is_early, crate, modstack, mod,  impl_def.type());
-    //Expand_Type(is_early, crate, modstack, mod,  impl_def.trait());
+    Expand_Type(crate, modstack, mod,  impl_def.type());
+    //Expand_Type(crate, modstack, mod,  impl_def.trait());
 
-    Expand_Attrs(impl_def.attrs(), stage_post(is_early),  crate, mod, impl_def);
+    Expand_Attrs(impl_def.attrs(), AttrStage::Post,  crate, mod, impl_def);
 }
 
-void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod)
+void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod)
 {
-    TRACE_FUNCTION_F("is_early = " << is_early << ", modpath = " << modpath);
+    TRACE_FUNCTION_F("modpath = " << modpath);
     
     for( const auto& mi: mod.macro_imports_res() )
         DEBUG("- Imports '" << mi.name << "'");
     
-    if( is_early && mod.m_insert_prelude && crate.m_prelude_path != AST::Path() ) {
+    if( mod.m_insert_prelude && crate.m_prelude_path != AST::Path() ) {
         mod.add_alias(false, ::AST::UseStmt(Span(), crate.m_prelude_path), "", {});
     }
     
@@ -712,13 +695,13 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             auto mi_owned = mv$(mi);
             
             auto& attrs = mi_owned.attrs();
-            Expand_Attrs(attrs, stage_pre(is_early),  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mi_owned); });
+            Expand_Attrs(attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mi_owned); });
             
-            auto ttl = Expand_Macro(is_early, crate, modstack, mod, mi_owned);
+            auto ttl = Expand_Macro(crate, modstack, mod, mi_owned);
 
             if( ! ttl.get() )
             {
-                Expand_Attrs(attrs, stage_post(is_early),  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mi_owned); });
+                Expand_Attrs(attrs, AttrStage::Post,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mi_owned); });
                 // - Return ownership to the list
                 mod.macro_invs()[i] = mv$(mi_owned);
             }
@@ -743,7 +726,7 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
         ::AST::Path path = modpath + i.name;
         
         auto attrs = mv$(i.data.attrs);
-        Expand_Attrs(attrs, stage_pre(is_early),  crate, path, mod, i.data);
+        Expand_Attrs(attrs, AttrStage::Pre,  crate, path, mod, i.data);
         
         TU_MATCH(::AST::Item, (i.data), (e),
         (None,
@@ -754,13 +737,13 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             auto mi_owned = mv$(e);
             
             auto& attrs = mi_owned.attrs();
-            Expand_Attrs(attrs, stage_pre(is_early),  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mi_owned); });
+            Expand_Attrs(attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mi_owned); });
             
-            auto ttl = Expand_Macro(is_early, crate, modstack, mod, mi_owned);
+            auto ttl = Expand_Macro(crate, modstack, mod, mi_owned);
 
             if( ! ttl.get() )
             {
-                Expand_Attrs(attrs, stage_post(is_early),  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mi_owned); });
+                Expand_Attrs(attrs, AttrStage::Post,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mi_owned); });
                 // - Return ownership to the list
                 if( mi_owned.name() == "" ) {
                     mod.items()[idx].data = AST::Item();
@@ -791,14 +774,14 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             }
             ),
         (Impl,
-            Expand_Impl(is_early, crate, modstack, modpath, mod,  e);
+            Expand_Impl(crate, modstack, modpath, mod,  e);
             ),
         (NegImpl,
-            Expand_ImplDef(is_early, crate, modstack, modpath, mod,  e);
+            Expand_ImplDef(crate, modstack, modpath, mod,  e);
             ),
         (Module,
             LList<const AST::Module*>   sub_modstack(&modstack, &e);
-            Expand_Mod(is_early, crate, sub_modstack, path, e);
+            Expand_Mod(crate, sub_modstack, path, e);
             ),
         (Crate,
             // Can't recurse into an `extern crate`
@@ -809,9 +792,9 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             (Struct,
                 for(auto it = sd.ents.begin(); it != sd.ents.end(); ) {
                     auto& si = *it;
-                    Expand_Attrs(si.m_attrs, stage_pre (is_early), [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
-                    Expand_Type(is_early, crate, modstack, mod,  si.m_type);
-                    Expand_Attrs(si.m_attrs, stage_post(is_early), [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
+                    Expand_Attrs(si.m_attrs, AttrStage::Pre, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
+                    Expand_Type(crate, modstack, mod,  si.m_type);
+                    Expand_Attrs(si.m_attrs, AttrStage::Post, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
 
                     if( si.m_name == "" )
                         it = sd.ents.erase(it);
@@ -822,9 +805,9 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             (Tuple,
                 for(auto it = sd.ents.begin(); it != sd.ents.end(); ) {
                     auto& si = *it;
-                    Expand_Attrs(si.m_attrs, stage_pre (is_early), [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
-                    Expand_Type(is_early, crate, modstack, mod,  si.m_type);
-                    Expand_Attrs(si.m_attrs, stage_post(is_early), [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
+                    Expand_Attrs(si.m_attrs, AttrStage::Pre, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
+                    Expand_Type(crate, modstack, mod,  si.m_type);
+                    Expand_Attrs(si.m_attrs, AttrStage::Post, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
 
                     if( ! si.m_type.is_valid() )
                         it = sd.ents.erase(it);
@@ -836,22 +819,22 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             ),
         (Enum,
             for(auto& var : e.variants()) {
-                Expand_Attrs(var.m_attrs, stage_pre (is_early),  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, var); });
+                Expand_Attrs(var.m_attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, var); });
                 TU_MATCH(::AST::EnumVariantData, (var.m_data), (e),
                 (Value,
-                    Expand_Expr(is_early, crate, modstack,  e.m_value);
+                    Expand_Expr(crate, modstack,  e.m_value);
                     ),
                 (Tuple,
                     for(auto& ty : e.m_sub_types) {
-                        Expand_Type(is_early, crate, modstack, mod,  ty);
+                        Expand_Type(crate, modstack, mod,  ty);
                     }
                     ),
                 (Struct,
                     for(auto it = e.m_fields.begin(); it != e.m_fields.end(); ) {
                         auto& si = *it;
-                        Expand_Attrs(si.m_attrs, stage_pre (is_early), [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
-                        Expand_Type(is_early, crate, modstack, mod,  si.m_type);
-                        Expand_Attrs(si.m_attrs, stage_post(is_early), [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
+                        Expand_Attrs(si.m_attrs, AttrStage::Pre, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
+                        Expand_Type(crate, modstack, mod,  si.m_type);
+                        Expand_Attrs(si.m_attrs, AttrStage::Post, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
 
                         if( si.m_name == "" )
                             it = e.m_fields.erase(it);
@@ -860,14 +843,14 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
                     }
                     )
                 )
-                Expand_Attrs(var.m_attrs, stage_post(is_early),  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, var); });
+                Expand_Attrs(var.m_attrs, AttrStage::Post,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, var); });
             }
             ),
         (Trait,
             for(auto& ti : e.items())
             {
                 auto attrs = mv$(ti.data.attrs);
-                Expand_Attrs(attrs, stage_pre(is_early),  crate, AST::Path(), mod, ti.data);
+                Expand_Attrs(attrs, AttrStage::Pre,  crate, AST::Path(), mod, ti.data);
                 
                 TU_MATCH_DEF(AST::Item, (ti.data), (e),
                 (
@@ -876,43 +859,43 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
                 (None, ),
                 (Function,
                     for(auto& arg : e.args()) {
-                        Expand_Pattern(is_early, crate, modstack, mod,  arg.first);
-                        Expand_Type(is_early, crate, modstack, mod,  arg.second);
+                        Expand_Pattern(crate, modstack, mod,  arg.first);
+                        Expand_Type(crate, modstack, mod,  arg.second);
                     }
-                    Expand_Type(is_early, crate, modstack, mod,  e.rettype());
-                    Expand_Expr(is_early, crate, modstack, e.code());
+                    Expand_Type(crate, modstack, mod,  e.rettype());
+                    Expand_Expr(crate, modstack, e.code());
                     ),
                 (Static,
-                    Expand_Expr(is_early, crate, modstack, e.value());
+                    Expand_Expr(crate, modstack, e.value());
                     ),
                 (Type,
-                    Expand_Type(is_early, crate, modstack, mod,  e.type());
+                    Expand_Type(crate, modstack, mod,  e.type());
                     )
                 )
                 
-                Expand_Attrs(attrs, stage_post(is_early),  crate, AST::Path(), mod, ti.data);
+                Expand_Attrs(attrs, AttrStage::Post,  crate, AST::Path(), mod, ti.data);
                 if( ti.data.attrs.m_items.size() == 0 )
                     ti.data.attrs = mv$(attrs);
             }
             ),
         (Type,
-            Expand_Type(is_early, crate, modstack, mod,  e.type());
+            Expand_Type(crate, modstack, mod,  e.type());
             ),
         
         (Function,
             for(auto& arg : e.args()) {
-                Expand_Pattern(is_early, crate, modstack, mod,  arg.first);
-                Expand_Type(is_early, crate, modstack, mod,  arg.second);
+                Expand_Pattern(crate, modstack, mod,  arg.first);
+                Expand_Type(crate, modstack, mod,  arg.second);
             }
-            Expand_Type(is_early, crate, modstack, mod,  e.rettype());
-            Expand_Expr(is_early, crate, modstack, e.code());
+            Expand_Type(crate, modstack, mod,  e.rettype());
+            Expand_Expr(crate, modstack, e.code());
             ),
         (Static,
-            Expand_Expr(is_early, crate, modstack, e.value());
+            Expand_Expr(crate, modstack, e.value());
             )
         )
         
-        Expand_Attrs(attrs, stage_post(is_early),  crate, path, mod, i.data);
+        Expand_Attrs(attrs, AttrStage::Post,  crate, path, mod, i.data);
         
         // TODO: When would this _not_ be empty?
         auto& i2 = mod.items()[idx];
@@ -926,7 +909,7 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
     for( auto it = mod.impls().begin(); it != mod.impls().end(); )
     {
         DEBUG("- " << *it);
-        Expand_Impl(is_early, crate, modstack, modpath, mod,  *it);
+        Expand_Impl(crate, modstack, modpath, mod,  *it);
         
         if( it->def().type().is_wildcard() ) {
             DEBUG("- Deleted");
@@ -941,7 +924,7 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
     {
         DEBUG("- " << *it);
         
-        Expand_ImplDef(is_early, crate, modstack, modpath, mod,  *it);
+        Expand_ImplDef(crate, modstack, modpath, mod,  *it);
         
         if( it->type().is_wildcard() ) {
             DEBUG("- Deleted");
@@ -959,7 +942,7 @@ void Expand(::AST::Crate& crate)
     auto modstack = LList<const ::AST::Module*>(nullptr, &crate.m_root_module);
     
     // 1. Crate attributes
-    Expand_Attrs(crate.m_attrs, AttrStage::EarlyPre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate); });
+    Expand_Attrs(crate.m_attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate); });
     
     // Insert magic for libstd/libcore
     // NOTE: The actual crates are loaded in "LoadCrates" using magic in AST::Crate::load_externs
@@ -989,15 +972,14 @@ void Expand(::AST::Crate& crate)
     for( auto& a : crate.m_attrs.m_items )
     {
         for( auto& d : g_decorators ) {
-            if( d.first == a.name() && d.second->stage() == AttrStage::EarlyPre ) {
+            if( d.first == a.name() && d.second->stage() == AttrStage::Pre ) {
                 //d.second->handle(a, crate, ::AST::Path(), crate.m_root_module, crate.m_root_module);
             }
         }
     }
     
     // 3. Module tree
-    Expand_Mod(true , crate, modstack, ::AST::Path("",{}), crate.m_root_module);
-    Expand_Mod(false, crate, modstack, ::AST::Path("",{}), crate.m_root_module);
+    Expand_Mod(crate, modstack, ::AST::Path("",{}), crate.m_root_module);
     
     // Post-process
     #if 0

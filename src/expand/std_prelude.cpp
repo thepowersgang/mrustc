@@ -7,7 +7,7 @@ class Decorator_NoStd:
     public ExpandDecorator
 {
 public:
-    AttrStage stage() const override { return AttrStage::EarlyPre; }
+    AttrStage stage() const override { return AttrStage::Pre; }
     
     void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
         if( crate.m_load_std != AST::Crate::LOAD_STD ) {
@@ -20,7 +20,7 @@ class Decorator_NoCore:
     public ExpandDecorator
 {
 public:
-    AttrStage stage() const override { return AttrStage::EarlyPre; }
+    AttrStage stage() const override { return AttrStage::Pre; }
     
     void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
         if( crate.m_load_std != AST::Crate::LOAD_STD ) {
@@ -33,14 +33,14 @@ public:
 //    public ExpandDecorator
 //{
 //public:
-//    AttrStage stage() const override { return AttrStage::EarlyPre; }
+//    AttrStage stage() const override { return AttrStage::Pre; }
 //};
 
 class Decorator_NoPrelude:
     public ExpandDecorator
 {
 public:
-    AttrStage stage() const override { return AttrStage::EarlyPre; }
+    AttrStage stage() const override { return AttrStage::Pre; }
     
     void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
         if( i.is_Module() ) {

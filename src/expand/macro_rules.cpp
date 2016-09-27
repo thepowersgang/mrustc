@@ -10,8 +10,6 @@
 class CMacroRulesExpander:
     public ExpandProcMacro
 {
-    bool    expand_early() const override { return true; }
-    
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
         if( ident == "" )
@@ -29,7 +27,7 @@ class CMacroRulesExpander:
 class CMacroUseHandler:
     public ExpandDecorator
 {
-    AttrStage stage() const override { return AttrStage::EarlyPost; }
+    AttrStage stage() const override { return AttrStage::Post; }
     
     void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {

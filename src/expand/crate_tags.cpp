@@ -12,7 +12,7 @@ class Decorator_CrateType:
     public ExpandDecorator
 {
 public:
-    AttrStage stage() const override { return AttrStage::EarlyPre; }
+    AttrStage stage() const override { return AttrStage::Pre; }
     
     void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
         if( crate.m_crate_type != AST::Crate::Type::Unknown ) {
@@ -36,7 +36,7 @@ class Decorator_CrateName:
     public ExpandDecorator
 {
 public:
-    AttrStage stage() const override { return AttrStage::EarlyPre; }
+    AttrStage stage() const override { return AttrStage::Pre; }
     
     void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
         if( crate.m_crate_name != "" ) {

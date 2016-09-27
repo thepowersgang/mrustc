@@ -22,8 +22,6 @@ class TokenStream;
 class ExpandProcMacro
 {
 public:
-    virtual bool    expand_early() const = 0;
-    
     virtual ::std::unique_ptr<TokenStream>  expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) = 0;
 };
 

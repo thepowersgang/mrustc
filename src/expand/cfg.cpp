@@ -82,8 +82,6 @@ bool check_cfg(Span sp, const ::AST::MetaItem& mi) {
 class CCfgExpander:
     public ExpandProcMacro
 {
-    bool    expand_early() const override { return true; }
-    
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
         if( ident != "" ) {
@@ -107,7 +105,7 @@ class CCfgExpander:
 class CCfgHandler:
     public ExpandDecorator
 {
-    AttrStage   stage() const override { return AttrStage::EarlyPre; }
+    AttrStage   stage() const override { return AttrStage::Pre; }
     
     
     void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, AST::MacroInvocation& mac) const override {
