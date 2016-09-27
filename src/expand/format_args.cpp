@@ -1,6 +1,7 @@
 /*
  */
 #include <synext_macro.hpp>
+#include <synext.hpp>   // for Expand_BareExpr
 #include "../parse/common.hpp"
 #include "../parse/parseerror.hpp"
 #include "../parse/tokentree.hpp"
@@ -265,7 +266,14 @@ class CFormatArgsExpander:
             ERROR(sp, E0000, "format_args! doesn't take an ident");
         
         auto n = Parse_ExprVal(lex);
-        auto format_string = dynamic_cast<AST::ExprNode_String&>(*n).m_value;
+        ASSERT_BUG(sp, n, "No expression returned");
+        Expand_BareExpr(crate, mod, n);
+
+        auto* format_string_np = dynamic_cast<AST::ExprNode_String*>(&*n);
+        if( !format_string_np ) {
+            ERROR(sp, E0000, "format_args! requires a string literal - got " << *n);
+        }
+        const auto& format_string = format_string_np->m_value;
         
         ::std::map< ::std::string, unsigned int>   named_args_index;
         ::std::vector<TokenTree>    named_args;

@@ -248,7 +248,7 @@ struct CExpandExpr:
     }
     
     ::AST::Module& cur_mod() {
-        return *(::AST::Module*)(modstack.m_item);
+        return *const_cast< ::AST::Module*>(modstack.m_item);
     }
     
     void visit(::std::unique_ptr<AST::ExprNode>& cnode) {
@@ -582,6 +582,12 @@ void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
     if( visitor.replacement ) {
         node = AST::Expr( mv$(visitor.replacement) );
     }
+}
+
+void Expand_BareExpr(const ::AST::Crate& crate, const AST::Module& mod, ::std::unique_ptr<AST::ExprNode>& node)
+{
+    Expand_Expr(true , const_cast< ::AST::Crate&>(crate), LList<const AST::Module*>(nullptr, &mod), node);
+    Expand_Expr(false, const_cast< ::AST::Crate&>(crate), LList<const AST::Module*>(nullptr, &mod), node);
 }
 
 void Expand_Impl(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, ::AST::Impl& impl)

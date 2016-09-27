@@ -24,8 +24,7 @@ class CConcatExpander:
         do {
             auto v = Parse_Expr0(lex);
             DEBUG("concat - v=" << *v);
-            Expand_Expr(true , *const_cast<AST::Crate*>(&crate), LList<const AST::Module*>(nullptr, &mod), v);
-            Expand_Expr(false, *const_cast<AST::Crate*>(&crate), LList<const AST::Module*>(nullptr, &mod), v);
+            Expand_BareExpr(crate, mod,  v);
             DEBUG("concat[pe] - v=" << *v);
             if( auto* vp = dynamic_cast<AST::ExprNode_String*>(v.get()) )
             {
