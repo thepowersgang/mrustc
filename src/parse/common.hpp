@@ -56,6 +56,7 @@ extern AST::ExprNodeP   Parse_Expr0(TokenStream& lex);
 extern AST::ExprNodeP   Parse_ExprVal(TokenStream& lex);
 extern AST::ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe=false);
 extern AST::ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence);
+extern AST::ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::unique_ptr<AST::Module>& local_mod, bool& add_silence_if_end);
 extern AST::ExprNodeP Parse_Stmt(TokenStream& lex);
 
 

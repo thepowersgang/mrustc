@@ -238,6 +238,8 @@ struct CExpandExpr:
     LList<const AST::Module*>   modstack;
     ::std::unique_ptr<::AST::ExprNode> replacement;
     
+    AST::ExprNode_Block*    current_block = nullptr;
+    
     CExpandExpr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> ms):
         is_early(is_early),
         crate(crate),
@@ -297,6 +299,10 @@ struct CExpandExpr:
     void visit(::AST::ExprNode_Macro& node) override
     {
         TRACE_FUNCTION_F("ExprNode_Macro - name = " << node.m_name);
+        if( node.m_name == "" ) {
+            return ;
+        }
+        
         auto& mod = this->cur_mod();
         auto ttl = Expand_Macro(
             is_early, crate, modstack, mod,
@@ -310,13 +316,24 @@ struct CExpandExpr:
                 SET_MODULE( (*ttl), mod );
                 // Reparse as expression / item
                 bool    add_silence_if_end = false;
-                auto newexpr = Parse_ExprBlockLine(*ttl, &add_silence_if_end);
-                // TODO: use add_silence_if_end - Applies if this node is the last node in the block.
-                // Then call visit on it again
-                DEBUG("--- Visiting new node");
-                this->visit(newexpr);
-                // And schedule it to replace the previous
-                replacement = mv$(newexpr);
+                ::std::unique_ptr< AST::Module> tmp_local_mod;
+                auto& local_mod_ptr = (this->current_block ? this->current_block->m_local_mod : tmp_local_mod);
+                auto newexpr = Parse_ExprBlockLine_WithItems(*ttl, local_mod_ptr, add_silence_if_end);
+                if( newexpr )
+                {
+                    // TODO: use add_silence_if_end - Applies if this node is the last node in the block.
+
+                    // Then call visit on it again
+                    DEBUG("--- Visiting new node");
+                    this->visit(newexpr);
+                    // And schedule it to replace the previous
+                    replacement = mv$(newexpr);
+                }
+                else
+                {
+                    // TODO: Delete this node somehow? Or just leave it for later.
+                }
+                ASSERT_BUG(node.get_pos(), !tmp_local_mod, "TODO: Handle edge case where a macro expansion outside of a _Block creates an item");
             }
             DEBUG("ExprNode_Macro - replacement = " << replacement.get());
             node.m_name = "";
@@ -327,7 +344,10 @@ struct CExpandExpr:
         if( node.m_local_mod ) {
             Expand_Mod(is_early, crate, modstack, node.m_local_mod->path(), *node.m_local_mod);
         }
+        auto saved = this->current_block;
+        this->current_block = &node;
         this->visit_vector(node.m_nodes);
+        this->current_block = saved;
     }
     void visit(::AST::ExprNode_Flow& node) override {
         this->visit_nodelete(node, node.m_value);

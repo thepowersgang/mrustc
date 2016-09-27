@@ -24,6 +24,7 @@ static inline ExprNodeP mk_exprnodep(const TokenStream& lex, AST::ExprNode* en){
 #define NEWNODE(type, ...)  mk_exprnodep(lex, new type(__VA_ARGS__))
 
 //ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe=false);    // common.hpp
+//ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::unique_ptr<AST::Module>& local_mod, bool& add_silence_if_end);
 //ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence);
 ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool *add_silence);
 //ExprNodeP Parse_Stmt(TokenStream& lex);   // common.hpp
@@ -58,80 +59,103 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
     
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
     
-    while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
+    while( LOOK_AHEAD(lex) != TOK_BRACE_CLOSE )
     {
         DEBUG("tok = " << tok);
-        AST::MetaItems  item_attrs;
-        while( tok.type() == TOK_ATTR_OPEN )
-        {
-            item_attrs.push_back( Parse_MetaItem(lex) );
-            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-            GET_TOK(tok, lex);
-        }
         
-        switch(tok.type())
+        // NOTE: Doc comments can appear within a function and apply to the function
+        // TODO: Use these attributes
+        while( GET_TOK(tok, lex) == TOK_CATTR_OPEN )
         {
-        case TOK_CATTR_OPEN:
-            // TODO: Handle `#![` by having a pointer to the parent item (e.g. function)'s attribute list.
             /*node_attrs.push_back(*/ Parse_MetaItem(lex) /*)*/;
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-            break;
-        // Items:
-        case TOK_RWORD_PUB:
-            ERROR(lex.getPosition(), E0000, "`pub` is useless within expression modules");
-        case TOK_RWORD_TYPE:
-        case TOK_RWORD_USE:
-        case TOK_RWORD_EXTERN:
-        case TOK_RWORD_CONST:
-        case TOK_RWORD_STATIC:
-        case TOK_RWORD_STRUCT:
-        case TOK_RWORD_ENUM:
-        case TOK_RWORD_TRAIT:
-        case TOK_RWORD_IMPL:
-        case TOK_RWORD_FN:
-        case TOK_RWORD_MOD:
+        }
+        PUTBACK(tok, lex);
+        
+        bool    add_silence_if_end = false;
+        auto rv = Parse_ExprBlockLine_WithItems(lex, local_mod, add_silence_if_end);
+        if( rv )
+        {
+            // Set to TRUE if there was no semicolon after a statement
+            if( LOOK_AHEAD(lex) == TOK_BRACE_CLOSE && add_silence_if_end )
+            {
+                DEBUG("expect_end == false, end of block");
+                yields_final_value = false;
+                // Since the next token is TOK_BRACE_CLOSE, the loop will terminate
+            }
+            nodes.push_back( mv$(rv) );
+        }
+        else {
+            assert( !add_silence_if_end );
+        }
+    }
+    GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
+    
+    return NEWNODE( AST::ExprNode_Block, is_unsafe, yields_final_value, mv$(nodes), mv$(local_mod) );
+}
+
+/// Parse a single line in a block, handling items added to the local module
+///
+/// - If an item was parsed, this returns an empty ExprNodeP
+ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::unique_ptr<AST::Module>& local_mod, bool& add_silence_if_end)
+{
+    Token   tok;
+
+    AST::MetaItems  item_attrs;
+    while( GET_TOK(tok, lex) == TOK_ATTR_OPEN )
+    {
+        item_attrs.push_back( Parse_MetaItem(lex) );
+        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+    }
+    
+    switch(tok.type())
+    {
+    // Items:
+    case TOK_RWORD_PUB:
+        ERROR(lex.getPosition(), E0000, "`pub` is useless within expression modules");
+    case TOK_RWORD_TYPE:
+    case TOK_RWORD_USE:
+    case TOK_RWORD_EXTERN:
+    case TOK_RWORD_CONST:
+    case TOK_RWORD_STATIC:
+    case TOK_RWORD_STRUCT:
+    case TOK_RWORD_ENUM:
+    case TOK_RWORD_TRAIT:
+    case TOK_RWORD_IMPL:
+    case TOK_RWORD_FN:
+    case TOK_RWORD_MOD:
+        PUTBACK(tok, lex);
+        if( !local_mod ) {
+            local_mod = lex.parse_state().get_current_mod().add_anon();
+        }
+        Parse_Mod_Item(lex, *local_mod, mv$(item_attrs));
+        return ExprNodeP();
+    // 'unsafe' - Check if the next token isn't a `{`, if so it's an item. Otherwise, fall through
+    case TOK_RWORD_UNSAFE:
+        if( LOOK_AHEAD(lex) != TOK_BRACE_OPEN )
+        {
             PUTBACK(tok, lex);
             if( !local_mod ) {
                 local_mod = lex.parse_state().get_current_mod().add_anon();
             }
             Parse_Mod_Item(lex, *local_mod, mv$(item_attrs));
-            break;
-        // 'unsafe' - Check if the next token isn't a `{`, if so it's an item. Otherwise, fall through
-        case TOK_RWORD_UNSAFE:
-            if( LOOK_AHEAD(lex) != TOK_BRACE_OPEN )
-            {
-                PUTBACK(tok, lex);
-                if( !local_mod ) {
-                    local_mod = lex.parse_state().get_current_mod().add_anon();
-                }
-                Parse_Mod_Item(lex, *local_mod, mv$(item_attrs));
-                break;
-            }
-            // fall
-        default: {
-            PUTBACK(tok, lex);
-            bool    add_silence_if_end = false;
-            nodes.push_back(Parse_ExprBlockLine(lex, &add_silence_if_end));
-            if( nodes.back() ) {
-                nodes.back()->set_attrs( mv$(item_attrs) );
-            }
-            else {
-                // TODO: Error if attribute on void expression?
-            }
-            // Set to TRUE if there was no semicolon after a statement
-            if( LOOK_AHEAD(lex) == TOK_BRACE_CLOSE && add_silence_if_end )
-            {
-                DEBUG("expect_end == false, end of block");
-                //nodes.push_back( NEWNODE(AST::ExprNode_Tuple, ::std::vector<ExprNodeP>()) );
-                yields_final_value = false;
-                // NOTE: Would break out of the loop, but we're in a switch
-            }
-            break;
-            }
+            return ExprNodeP();
         }
+        // fall
+    default: {
+        PUTBACK(tok, lex);
+        auto rv = Parse_ExprBlockLine(lex, &add_silence_if_end);
+        if( rv ) {
+            rv->set_attrs( mv$(item_attrs) );
+        }
+        else if( item_attrs.m_items.size() > 0 ) {
+            // TODO: Is this an error? - Attributes on a expression that didn't yeild a node.
+        }
+        else {
+        }
+        return rv;
+        } break;
     }
-    
-    return NEWNODE( AST::ExprNode_Block, is_unsafe, yields_final_value, mv$(nodes), mv$(local_mod) );
 }
 
 /// Parse a single line from a block
