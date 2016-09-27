@@ -148,11 +148,15 @@ public:
         // collections
         else if( name == "str" ) {}
         else if( name == "slice" ) {}
+        // std - interestingly
+        else if( name == "f32" ) {}
+        else if( name == "f64" ) {}
         else {
             ERROR(sp, E0000, "Unknown lang item '" << name << "' on impl");
         }
         
         // TODO: Somehow annotate these impls to allow them to provide inherents?
+        // - mrustc is lazy and inefficient, so these don't matter :)
     }
 };
 
