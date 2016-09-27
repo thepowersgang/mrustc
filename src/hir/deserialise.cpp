@@ -313,6 +313,7 @@ namespace {
             case ::MacroPatEnt::PAT_STMT:
             case ::MacroPatEnt::PAT_BLOCK:
             case ::MacroPatEnt::PAT_META:
+            case ::MacroPatEnt::PAT_ITEM:
                 break;
             default:
                 throw "";
