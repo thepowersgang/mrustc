@@ -1029,12 +1029,22 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
 
     for( const auto& item : ast_mod.items() )
     {
+        const auto& sp = item.data.span;
         auto item_path = ::HIR::ItemPath(path, item.name.c_str());
         TU_MATCH(::AST::Item, (item.data), (e),
         (None,
             ),
         (MacroInv,
-            BUG(Span(), "Stray macro invocation in " << path);
+            BUG(sp, "Stray macro invocation in " << path);
+            ),
+        (ExternBlock,
+            TODO(sp, "Expand ExternBlock");
+            ),
+        (Impl,
+            TODO(sp, "Expand Item::Impl");
+            ),
+        (NegImpl,
+            TODO(sp, "Expand Item::NegImpl");
             ),
         (Use,
             // Ignore - The index is used to add `Import`s

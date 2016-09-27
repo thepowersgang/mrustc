@@ -452,6 +452,26 @@ struct UseStmt
     friend ::std::ostream& operator<<(::std::ostream& os, const UseStmt& x);
 };
 
+class ExternBlock
+{
+    ::std::string   m_abi;
+    ::std::vector< Named<Item>> m_items;
+public:
+    ExternBlock(::std::string abi):
+        m_abi( mv$(abi) )
+    {}
+    
+    const ::std::string& abi() const { return m_abi; }
+    
+    void add_fcn(Named<Item> named_item);
+    
+    // NOTE: Only Function and Static are valid.
+          ::std::vector<Named<Item>>& items()       { return m_items; }
+    const ::std::vector<Named<Item>>& items() const { return m_items; }
+    
+    ExternBlock clone() const;
+};
+
 /// Representation of a parsed (and being converted) function
 class Module
 {
@@ -564,12 +584,17 @@ private:
     void resolve_macro_import(const Crate& crate, const ::std::string& modname, const ::std::string& macro_name);
 };
 
-
 TAGGED_UNION_EX(Item, (), None,
     (
     (None, struct {} ),
     (MacroInv, MacroInvocation),
     (Use, UseStmt),
+    
+    // Nameless items
+    (ExternBlock, ExternBlock),
+    (Impl, Impl),
+    (NegImpl, ImplDef),
+    
     (Module, Module),
     (Crate, struct {
         ::std::string   name;

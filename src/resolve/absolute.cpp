@@ -517,6 +517,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable, ::AST::Pat
 void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod);
 void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod );
 
+void Resolve_Absolute_Function(Context& item_context, ::AST::Function& fcn);
 
 void Resolve_Absolute_PathParams(/*const*/ Context& context, const Span& sp, ::AST::PathParams& args)
 {
@@ -1677,6 +1678,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
     )
 }
 
+// - For traits
 void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST::Item >& items)
 {
     TRACE_FUNCTION_F("");
@@ -1684,8 +1686,11 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
     {
         TU_MATCH(AST::Item, (i.data), (e),
         (None, ),
-        (MacroInv, BUG(i.data.span, "Resolve_Absolute_ImplItems - MacroInv");),
-        (Use, BUG(i.data.span, "Resolve_Absolute_ImplItems - Use");),
+        (MacroInv,    BUG(i.data.span, "Resolve_Absolute_ImplItems - MacroInv");),
+        (ExternBlock, BUG(i.data.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
+        (Impl,        BUG(i.data.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
+        (NegImpl,     BUG(i.data.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
+        (Use,    BUG(i.data.span, "Resolve_Absolute_ImplItems - Use");),
         (Module, BUG(i.data.span, "Resolve_Absolute_ImplItems - Module");),
         (Crate , BUG(i.data.span, "Resolve_Absolute_ImplItems - Crate");),
         (Enum  , BUG(i.data.span, "Resolve_Absolute_ImplItems - Enum");),
@@ -1733,6 +1738,48 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
     }
 }
 
+// - For impl blocks
+void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Impl::ImplItem >& items)
+{
+    TRACE_FUNCTION_F("");
+    for(auto& i : items)
+    {
+        TU_MATCH(AST::Item, (*i.data), (e),
+        (None, ),
+        (MacroInv, BUG(i.data->span, "Resolve_Absolute_ImplItems - MacroInv");),
+
+        (Impl  , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (NegImpl, BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (ExternBlock, BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Use   , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Module, BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Crate , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Enum  , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Trait , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Struct, BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Type,
+            DEBUG("Type - " << i.name);
+            assert( e.params().ty_params().size() == 0 );
+            assert( e.params().lft_params().size() == 0 );
+            item_context.push( e.params(), GenericSlot::Level::Method, true );
+            Resolve_Absolute_Generic(item_context,  e.params());
+            
+            Resolve_Absolute_Type( item_context, e.type() );
+            
+            item_context.pop( e.params(), true );
+            ),
+        (Function,
+            DEBUG("Function - " << i.name);
+            Resolve_Absolute_Function(item_context, e);
+            ),
+        (Static,
+            DEBUG("Static - " << i.name);
+            TODO(i.data->span, "Resolve_Absolute_ImplItems - Static");
+            )
+        )
+    }
+}
+
 void Resolve_Absolute_Function(Context& item_context, ::AST::Function& fcn)
 {
     TRACE_FUNCTION_F("");
@@ -1757,42 +1804,78 @@ void Resolve_Absolute_Function(Context& item_context, ::AST::Function& fcn)
 
     item_context.pop( fcn.params() );
 }
-
-void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Impl::ImplItem >& items)
+void Resolve_Absolute_Static(Context& item_context, ::AST::Static& e)
 {
-    TRACE_FUNCTION_F("");
-    for(auto& i : items)
+    Resolve_Absolute_Type( item_context, e.type() );
+    auto _h = item_context.enter_rootblock();
+    Resolve_Absolute_Expr( item_context, e.value() );
+}
+
+void Resolve_Absolute_Struct(Context& item_context, ::AST::Struct& e)
+{
+    item_context.push( e.params(), GenericSlot::Level::Top );
+    Resolve_Absolute_Generic(item_context,  e.params());
+    
+    TU_MATCH(::AST::StructData, (e.m_data), (s),
+    (Tuple,
+        for(auto& field : s.ents) {
+            Resolve_Absolute_Type(item_context,  field.m_type);
+        }
+        ),
+    (Struct,
+        for(auto& field : s.ents) {
+            Resolve_Absolute_Type(item_context,  field.m_type);
+        }
+        )
+    )
+    
+    item_context.pop( e.params() );
+}
+void Resolve_Absolute_Trait(Context& item_context, ::AST::Trait& e)
+{
+    item_context.push( e.params(), GenericSlot::Level::Top, true );
+    Resolve_Absolute_Generic(item_context,  e.params());
+    
+    for(auto& st : e.supertraits()) {
+        if( !st.ent.is_valid() ) {
+            DEBUG("- ST 'static");
+        }
+        else {
+            DEBUG("- ST " << st.ent);
+            Resolve_Absolute_Path(item_context, st.sp, Context::LookupMode::Type,  st.ent);
+        }
+    }
+    
+    Resolve_Absolute_ImplItems(item_context, e.items());
+    
+    item_context.pop( e.params(), true );
+}
+void Resolve_Absolute_Enum(Context& item_context, ::AST::Enum& e)
+{
+    item_context.push( e.params(), GenericSlot::Level::Top );
+    Resolve_Absolute_Generic(item_context,  e.params());
+    
+    for(auto& variant : e.variants())
     {
-        TU_MATCH(AST::Item, (*i.data), (e),
-        (None, ),
-        (MacroInv, BUG(i.data->span, "Resolve_Absolute_ImplItems - MacroInv");),
-        (Use   , BUG(i.data->span, "Resolve_Absolute_ImplItems - Use");),
-        (Module, BUG(i.data->span, "Resolve_Absolute_ImplItems - Module");),
-        (Crate , BUG(i.data->span, "Resolve_Absolute_ImplItems - Crate");),
-        (Enum  , BUG(i.data->span, "Resolve_Absolute_ImplItems - Enum");),
-        (Trait , BUG(i.data->span, "Resolve_Absolute_ImplItems - Trait");),
-        (Struct, BUG(i.data->span, "Resolve_Absolute_ImplItems - Struct");),
-        (Type,
-            DEBUG("Type - " << i.name);
-            assert( e.params().ty_params().size() == 0 );
-            assert( e.params().lft_params().size() == 0 );
-            item_context.push( e.params(), GenericSlot::Level::Method, true );
-            Resolve_Absolute_Generic(item_context,  e.params());
-            
-            Resolve_Absolute_Type( item_context, e.type() );
-            
-            item_context.pop( e.params(), true );
+        TU_MATCH(::AST::EnumVariantData, (variant.m_data), (s),
+        (Value,
+            auto _h = item_context.enter_rootblock();
+            Resolve_Absolute_Expr(item_context,  s.m_value);
             ),
-        (Function,
-            DEBUG("Function - " << i.name);
-            Resolve_Absolute_Function(item_context, e);
+        (Tuple,
+            for(auto& field : s.m_sub_types) {
+                Resolve_Absolute_Type(item_context,  field);
+            }
             ),
-        (Static,
-            DEBUG("Static - " << i.name);
-            TODO(i.data->span, "Resolve_Absolute_ImplItems - Static");
+        (Struct,
+            for(auto& field : s.m_fields) {
+                Resolve_Absolute_Type(item_context,  field.m_type);
+            }
             )
         )
     }
+    
+    item_context.pop( e.params() );
 }
 
 void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod) {
@@ -1811,6 +1894,28 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             ),
         (Use,
             ),
+        (ExternBlock,
+            for(auto& i2 : e.items())
+            {
+                TU_MATCH_DEF(AST::Item, (i2.data), (e2),
+                (
+                    BUG(i2.data.span, "Unexpected item in ExternBlock - " << i2.data.tag_str());
+                    ),
+                (Function,
+                    Resolve_Absolute_Function(item_context, e2);
+                    ),
+                (Static,
+                    Resolve_Absolute_Static(item_context, e2);
+                    )
+                )
+            }
+            ),
+        (Impl,
+            TODO(i.data.span, "Impl");
+            ),
+        (NegImpl,
+            TODO(i.data.span, "NegImpl");
+            ),
         (Module,
             DEBUG("Module - " << i.name);
             Resolve_Absolute_Mod(item_context.m_crate, e);
@@ -1820,49 +1925,11 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             ),
         (Enum,
             DEBUG("Enum - " << i.name);
-            item_context.push( e.params(), GenericSlot::Level::Top );
-            Resolve_Absolute_Generic(item_context,  e.params());
-            
-            for(auto& variant : e.variants())
-            {
-                TU_MATCH(::AST::EnumVariantData, (variant.m_data), (s),
-                (Value,
-                    auto _h = item_context.enter_rootblock();
-                    Resolve_Absolute_Expr(item_context,  s.m_value);
-                    ),
-                (Tuple,
-                    for(auto& field : s.m_sub_types) {
-                        Resolve_Absolute_Type(item_context,  field);
-                    }
-                    ),
-                (Struct,
-                    for(auto& field : s.m_fields) {
-                        Resolve_Absolute_Type(item_context,  field.m_type);
-                    }
-                    )
-                )
-            }
-            
-            item_context.pop( e.params() );
+            Resolve_Absolute_Enum(item_context, e);
             ),
         (Trait,
             DEBUG("Trait - " << i.name);
-            item_context.push( e.params(), GenericSlot::Level::Top, true );
-            Resolve_Absolute_Generic(item_context,  e.params());
-            
-            for(auto& st : e.supertraits()) {
-                if( !st.ent.is_valid() ) {
-                    DEBUG("- ST 'static");
-                }
-                else {
-                    DEBUG("- ST " << st.ent);
-                    Resolve_Absolute_Path(item_context, st.sp, Context::LookupMode::Type,  st.ent);
-                }
-            }
-            
-            Resolve_Absolute_ImplItems(item_context, e.items());
-            
-            item_context.pop( e.params(), true );
+            Resolve_Absolute_Trait(item_context, e);
             ),
         (Type,
             DEBUG("Type - " << i.name);
@@ -1875,23 +1942,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             ),
         (Struct,
             DEBUG("Struct - " << i.name);
-            item_context.push( e.params(), GenericSlot::Level::Top );
-            Resolve_Absolute_Generic(item_context,  e.params());
-            
-            TU_MATCH(::AST::StructData, (e.m_data), (s),
-            (Tuple,
-                for(auto& field : s.ents) {
-                    Resolve_Absolute_Type(item_context,  field.m_type);
-                }
-                ),
-            (Struct,
-                for(auto& field : s.ents) {
-                    Resolve_Absolute_Type(item_context,  field.m_type);
-                }
-                )
-            )
-            
-            item_context.pop( e.params() );
+            Resolve_Absolute_Struct(item_context, e);
             ),
         (Function,
             DEBUG("Function - " << i.name);
@@ -1899,9 +1950,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             ),
         (Static,
             DEBUG("Static - " << i.name);
-            Resolve_Absolute_Type( item_context, e.type() );
-            auto _h = item_context.enter_rootblock();
-            Resolve_Absolute_Expr( item_context, e.value() );
+            Resolve_Absolute_Static(item_context, e);
             )
         )
     }

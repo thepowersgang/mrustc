@@ -248,6 +248,16 @@ UseStmt UseStmt::clone() const
     return UseStmt(sp, path);
 }
 
+void ExternBlock::add_fcn(Named<Item> named_item)
+{
+    ASSERT_BUG(named_item.data.span, named_item.data.is_Function() || named_item.data.is_Static(), "Incorrect item type for ExternBlock");
+    m_items.push_back( mv$(named_item) );
+}
+ExternBlock ExternBlock::clone() const
+{
+    TODO(Span(), "Clone an extern block");
+}
+
 ::std::unique_ptr<AST::Module> Module::add_anon() {
     auto rv = box$( Module(m_my_path + FMT("#" << m_anon_modules.size())) );
     
@@ -300,13 +310,22 @@ Item Item::clone() const
         return AST::Item(e);
         ),
     (MacroInv,
-        TODO(Span(), "Clone on Item::MacroInv");
+        TODO(this->span, "Clone on Item::MacroInv");
         ),
     (Use,
         return AST::Item(e.clone());
         ),
+    (ExternBlock,
+        TODO(this->span, "Clone on Item::" << this->tag_str());
+        ),
+    (Impl,
+        TODO(this->span, "Clone on Item::Impl");
+        ),
+    (NegImpl,
+        TODO(this->span, "Clone on Item::NegImpl");
+        ),
     (Module,
-        TODO(Span(), "Clone on Item::Module");
+        TODO(this->span, "Clone on Item::Module");
         ),
     (Crate,
         return AST::Item(e);

@@ -276,6 +276,15 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             (Use,
                 continue; // Skip for now
                 ),
+            (Impl,
+                BUG(span, "Hit Impl in use resolution");
+                ),
+            (NegImpl,
+                BUG(span, "Hit NegImpl in use resolution");
+                ),
+            (ExternBlock,
+                BUG(span, "Hit Extern in use resolution");
+                ),
             (Crate,
                 if( allow != Lookup::Value )
                     return ::AST::PathBinding::make_Crate({ &crate.m_extern_crates.at(e.name) });

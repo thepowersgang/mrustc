@@ -96,6 +96,14 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
             ),
         (MacroInv,
             ),
+        // Unnamed
+        (ExternBlock,
+            ),
+        (Impl,
+            ),
+        (NegImpl,
+            ),
+        
         (Use,
             // Skip for now
             ),

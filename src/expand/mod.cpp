@@ -564,6 +564,101 @@ void Expand_Expr(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> m
     }
 }
 
+void Expand_Impl(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, ::AST::Impl& impl)
+{
+    Expand_Attrs(impl.def().attrs(), stage_pre(is_early),  crate, mod, impl.def());
+    if( impl.def().type().is_wildcard() ) {
+        DEBUG("Deleted");
+        return ;
+    }
+    
+    Expand_Type(is_early, crate, modstack, mod,  impl.def().type());
+    //Expand_Type(is_early, crate, modstack, mod,  impl.def().trait());
+    
+    // - Macro invocation
+    for(unsigned int i = 0; i < impl.m_macro_invocations.size(); i ++ )
+    {
+        auto& mi = impl.m_macro_invocations[i];
+        DEBUG("> Macro invoke '"<<mi.name()<<"'");
+        if( mi.name() != "" )
+        {
+        // Move out of the module to avoid invalidation if a new macro invocation is added
+        auto mi_owned = mv$(mi);
+        
+        auto ttl = Expand_Macro(is_early, crate, modstack, mod, mi_owned);
+
+        if( ! ttl.get() )
+        {
+            // - Return ownership to the list
+            mod.macro_invs()[i] = mv$(mi_owned);
+        }
+        else
+        {
+            // Re-parse tt
+            assert(ttl.get());
+            while( ttl->lookahead(0) != TOK_EOF )
+            {
+                Parse_Impl_Item(*ttl, impl);
+            }
+            // - Any new macro invocations ends up at the end of the list and handled
+        }
+        }
+    }
+    
+    DEBUG("> Items");
+    for( auto& i : impl.items() )
+    {
+        DEBUG("  - " << i.name << " :: " << i.data->attrs);
+        
+        // TODO: Make a path from the impl definition? Requires having the impl def resolved to be correct
+        // - Does it? the namespace is essentially the same. There may be issues with wherever the path is used though
+        //::AST::Path path = modpath + i.name;
+        
+        auto attrs = mv$(i.data->attrs);
+        Expand_Attrs(attrs, stage_pre(is_early),  crate, AST::Path(), mod, *i.data);
+        
+        TU_MATCH_DEF(AST::Item, (*i.data), (e),
+        (
+            throw ::std::runtime_error("BUG: Unknown item type in impl block");
+            ),
+        (None, ),
+        (Function,
+            for(auto& arg : e.args()) {
+                Expand_Pattern(is_early, crate, modstack, mod,  arg.first);
+                Expand_Type(is_early, crate, modstack, mod,  arg.second);
+            }
+            Expand_Type(is_early, crate, modstack, mod,  e.rettype());
+            Expand_Expr(is_early, crate, modstack, e.code());
+            ),
+        (Static,
+            Expand_Expr(is_early, crate, modstack, e.value());
+            ),
+        (Type,
+            Expand_Type(is_early, crate, modstack, mod,  e.type());
+            )
+        )
+        
+        Expand_Attrs(attrs, stage_post(is_early),  crate, AST::Path(), mod, *i.data);
+        if( i.data->attrs.m_items.size() == 0 )
+            i.data->attrs = mv$(attrs);
+    }
+
+    Expand_Attrs(impl.def().attrs(), stage_post(is_early),  crate, mod, impl.def());
+}
+void Expand_ImplDef(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, ::AST::ImplDef& impl_def)
+{
+    Expand_Attrs(impl_def.attrs(), stage_pre(is_early),  crate, mod, impl_def);
+    if( impl_def.type().is_wildcard() ) {
+        DEBUG("Deleted");
+        return ;
+    }
+    
+    Expand_Type(is_early, crate, modstack, mod,  impl_def.type());
+    //Expand_Type(is_early, crate, modstack, mod,  impl_def.trait());
+
+    Expand_Attrs(impl_def.attrs(), stage_post(is_early),  crate, mod, impl_def);
+}
+
 void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod)
 {
     TRACE_FUNCTION_F("is_early = " << is_early << ", modpath = " << modpath);
@@ -659,6 +754,15 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
             ),
         (Use,
             // No inner expand.
+            ),
+        (ExternBlock,
+            // TODO: Run expand on inner items?
+            ),
+        (Impl,
+            Expand_Impl(is_early, crate, modstack, modpath, mod,  e);
+            ),
+        (NegImpl,
+            Expand_ImplDef(is_early, crate, modstack, modpath, mod,  e);
             ),
         (Module,
             LList<const AST::Module*>   sub_modstack(&modstack, &e);
@@ -787,94 +891,30 @@ void Expand_Mod(bool is_early, ::AST::Crate& crate, LList<const AST::Module*> mo
     // IGNORE m_anon_modules, handled as part of expressions
     
     DEBUG("Impls");
-    for( auto& impl : mod.impls() )
-    {
-        DEBUG("- " << impl);
-        
-        Expand_Attrs(impl.def().attrs(), stage_pre(is_early),  crate, mod, impl.def());
-        if( impl.def().type().is_wildcard() ) {
-            DEBUG("Deleted");
-            continue ;
-        }
-        
-        Expand_Type(is_early, crate, modstack, mod,  impl.def().type());
-        //Expand_Type(is_early, crate, modstack, mod,  impl.def().trait());
-        
-        // - Macro invocation
-        for(unsigned int i = 0; i < impl.m_macro_invocations.size(); i ++ )
-        {
-            auto& mi = impl.m_macro_invocations[i];
-            DEBUG("> Macro invoke '"<<mi.name()<<"'");
-            if( mi.name() != "" )
-            {
-            // Move out of the module to avoid invalidation if a new macro invocation is added
-            auto mi_owned = mv$(mi);
-            
-            auto ttl = Expand_Macro(is_early, crate, modstack, mod, mi_owned);
-
-            if( ! ttl.get() )
-            {
-                // - Return ownership to the list
-                mod.macro_invs()[i] = mv$(mi_owned);
-            }
-            else
-            {
-                // Re-parse tt
-                assert(ttl.get());
-                while( ttl->lookahead(0) != TOK_EOF )
-                {
-                    Parse_Impl_Item(*ttl, impl);
-                }
-                // - Any new macro invocations ends up at the end of the list and handled
-            }
-            }
-        }
-        
-        DEBUG("> Items");
-        for( auto& i : impl.items() )
-        {
-            DEBUG("  - " << i.name << " :: " << i.data->attrs);
-            
-            // TODO: Make a path from the impl definition? Requires having the impl def resolved to be correct
-            // - Does it? the namespace is essentially the same. There may be issues with wherever the path is used though
-            //::AST::Path path = modpath + i.name;
-            
-            auto attrs = mv$(i.data->attrs);
-            Expand_Attrs(attrs, stage_pre(is_early),  crate, AST::Path(), mod, *i.data);
-            
-            TU_MATCH_DEF(AST::Item, (*i.data), (e),
-            (
-                throw ::std::runtime_error("BUG: Unknown item type in impl block");
-                ),
-            (None, ),
-            (Function,
-                for(auto& arg : e.args()) {
-                    Expand_Pattern(is_early, crate, modstack, mod,  arg.first);
-                    Expand_Type(is_early, crate, modstack, mod,  arg.second);
-                }
-                Expand_Type(is_early, crate, modstack, mod,  e.rettype());
-                Expand_Expr(is_early, crate, modstack, e.code());
-                ),
-            (Static,
-                Expand_Expr(is_early, crate, modstack, e.value());
-                ),
-            (Type,
-                Expand_Type(is_early, crate, modstack, mod,  e.type());
-                )
-            )
-            
-            Expand_Attrs(attrs, stage_post(is_early),  crate, AST::Path(), mod, *i.data);
-            if( i.data->attrs.m_items.size() == 0 )
-                i.data->attrs = mv$(attrs);
-        }
-
-        Expand_Attrs(impl.def().attrs(), stage_post(is_early),  crate, mod, impl.def());
-    }
-    
     for( auto it = mod.impls().begin(); it != mod.impls().end(); )
     {
-        if( it->def().type().is_wildcard() )
+        DEBUG("- " << *it);
+        Expand_Impl(is_early, crate, modstack, modpath, mod,  *it);
+        
+        if( it->def().type().is_wildcard() ) {
+            DEBUG("- Deleted");
             it = mod.impls().erase( it );
+        }
+        else
+            ++ it;
+    }
+    
+    DEBUG("Negative Impls");
+    for( auto it = mod.neg_impls().begin(); it != mod.neg_impls().end(); )
+    {
+        DEBUG("- " << *it);
+        
+        Expand_ImplDef(is_early, crate, modstack, modpath, mod,  *it);
+        
+        if( it->type().is_wildcard() ) {
+            DEBUG("- Deleted");
+            it = mod.neg_impls().erase( it );
+        }
         else
             ++ it;
     }
