@@ -93,12 +93,14 @@ RUSTCSRC := ./rustc-nightly/
 output/lib%.hir: $(RUSTCSRC)src/lib%/lib.rs $(BIN)
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
+	@rm -f $@
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
 output/lib%.hir: $(RUSTCSRC)src/lib%/src/lib.rs $(BIN)
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
+	@rm -f $@
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
