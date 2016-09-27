@@ -731,7 +731,7 @@ bool Macro_HandlePattern(TokenStream& lex, const MacroPatEnt& pat, ::std::vector
 /// Parse the input TokenTree according to the `macro_rules!` patterns and return a token stream of the replacement
 ::std::unique_ptr<TokenStream> Macro_InvokeRules(const char *name, const MacroRules& rules, TokenTree input, AST::Module& mod)
 {
-    TRACE_FUNCTION_F(name);
+    TRACE_FUNCTION_F("'" << name << "', " << input);
     
     ParameterMappings   bound_tts;
     unsigned int    rule_index = Macro_InvokeRules_MatchPattern(rules, mv$(input), mod,  bound_tts);
@@ -1052,14 +1052,16 @@ const MacroExpansionEnt* MacroExpandState::next_ent()
             (Loop,
                 // 1. Get number of times this will repeat (based on the next iteration count)
                 unsigned int num_repeats = 0;
-                for(const auto idx : e.variables) {
-                    unsigned int this_repeats = m_mappings.count_in(m_iterations, idx);
-                    // If a variable doesn't have data, don't loop
-                    if( this_repeats == 0 ) {
+                // TODO: Have a flag for each of these that indicates if it's a definitive controller? (I.e. if zero, don't loop)
+                for(const auto& var : e.variables) {
+                    unsigned int this_repeats = m_mappings.count_in(m_iterations, var.first);
+                    // If a variable doesn't have data and it's a required controller, don't loop
+                    if( this_repeats == 0 && var.second ) {
                         num_repeats = 0;
                         break;
                     }
                     // TODO: Ideally, all variables would have the same repeat count.
+                    // Options: 0 (optional), 1 (higher), N (all equal)
                     if( this_repeats > num_repeats )
                         num_repeats = this_repeats;
                 }

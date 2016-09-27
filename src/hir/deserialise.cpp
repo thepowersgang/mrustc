@@ -338,10 +338,13 @@ namespace {
             case 2: {
                 auto entries = deserialise_vec_c< ::MacroExpansionEnt>( [&](){ return deserialise_macroexpansionent(); } );
                 auto joiner = deserialise_token();
-                ::std::set<unsigned int>    variables;
+                ::std::map<unsigned int, bool>    variables;
                 size_t n = read_count();
-                while(n--)
-                    variables.insert( static_cast<unsigned int>(read_count()) );
+                while(n--) {
+                    auto idx = static_cast<unsigned int>(read_count());
+                    bool flag = read_bool();
+                    variables.insert( ::std::make_pair(idx, flag) );
+                }
                 return ::MacroExpansionEnt::make_Loop({
                     mv$(entries), mv$(joiner), mv$(variables)
                     });

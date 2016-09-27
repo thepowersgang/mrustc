@@ -31,7 +31,8 @@ TAGGED_UNION_EX(MacroExpansionEnt, (: public Serialisable), Token, (
         /// Token used to join iterations
         Token   joiner;
         /// List of variables within this loop that control its iteration count
-        ::std::set< unsigned int>    variables;
+        /// Boolean is true if the variable will be unconditionally expanded
+        ::std::map< unsigned int, bool>    variables;
         })
     ),
     (),

@@ -128,7 +128,7 @@ public:
     TokenStream& lex,
     enum eTokenType open, enum eTokenType close,
     const ::std::vector< ::std::string>& var_names,
-    ::std::set<unsigned int>* var_set_ptr=nullptr
+    ::std::map<unsigned int,bool>* var_set_ptr=nullptr
     )
 {
     TRACE_FUNCTION;
@@ -166,14 +166,9 @@ public:
             // `$(`
             if( tok.type() == TOK_PAREN_OPEN )
             {   
-                ::std::set<unsigned int> var_set;
+                ::std::map<unsigned int, bool> var_set;
                 auto content = Parse_MacroRules_Cont(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, var_names, &var_set);
                 // ^^ The above will eat the PAREN_CLOSE
-                
-                if( var_set_ptr ) {
-                    for(const auto& v : var_set)
-                        var_set_ptr->insert( v );
-                }
                 
                 GET_TOK(tok, lex);
                 enum eTokenType joiner = TOK_NULL;
@@ -182,12 +177,21 @@ public:
                     joiner = tok.type();
                     GET_TOK(tok, lex);
                 }
+                bool is_optional = (tok.type() == TOK_STAR);
+                if( var_set_ptr ) {
+                    for(const auto& v : var_set) {
+                        // If `is_optional`: Loop may not be expanded, so var_not_opt=false
+                        // Else, inherit
+                        bool var_not_opt = (is_optional ? false : v.second);
+                        var_set_ptr->insert( ::std::make_pair(v.first, var_not_opt) ).first->second |= var_not_opt;
+                    }
+                }
                 DEBUG("joiner = " << Token(joiner) << ", content = " << content);
                 switch(tok.type())
                 {
-                case TOK_STAR:
                 case TOK_PLUS:
-                    // TODO: Ensure that +/* match up
+                case TOK_STAR:
+                    // TODO: Ensure that +/* match up?
                     ret.push_back( MacroExpansionEnt({mv$(content), joiner, mv$(var_set)}) );
                     break;
                 default:
@@ -202,7 +206,7 @@ public:
                 if( idx == var_names.size() )
                     ERROR(lex.getPosition(), E0000, "Macro variable $" << tok.str() << " not found");
                 if( var_set_ptr ) {
-                    var_set_ptr->insert( idx );
+                    var_set_ptr->insert( ::std::make_pair(idx,true) );
                 }
                 ret.push_back( MacroExpansionEnt(idx) );
             }

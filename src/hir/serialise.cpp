@@ -435,10 +435,12 @@ namespace {
                 write_tag(2);
                 serialise_vec(e.entries);
                 serialise(e.joiner);
-                // ::std::set<unsigned int>
+                // ::std::map<unsigned int,bool>
                 write_count(e.variables.size());
-                for(const auto& var : e.variables)
-                    write_count(var);
+                for(const auto& var : e.variables) {
+                    write_count(var.first);
+                    write_bool(var.second);
+                }
                 )
             )
         }
