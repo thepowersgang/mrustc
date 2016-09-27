@@ -89,7 +89,7 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
     for( const auto& i : mod.items() )
     {
         ::AST::Path p = mod.path() + i.name;
-        DEBUG("- p = " << p << " : " << ::AST::Item::tag_to_str(i.data.tag()));
+        //DEBUG("- p = " << p << " : " << ::AST::Item::tag_to_str(i.data.tag()));
         
         TU_MATCH(AST::Item, (i.data), (e),
         (None,
@@ -336,6 +336,10 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(const Span& sp, const AST::C
 void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool handle_pub)
 {
     TRACE_FUNCTION_F("mod = " << mod.path() << ", handle_pub=" << handle_pub);
+    //if( mod.m_index_populated == 2 ) {
+    //    DEBUG("- Index pre-populated")
+    //    return ;
+    //}
     // Glob/wildcard imports
     for( const auto& i : mod.items() )
     {
@@ -390,6 +394,8 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
                         // TODO: Handle wildcard import of a module with a public wildcard import
                         // TODO XXX: Huge chance of infinite recursion here (if the code recursively references)
                         Resolve_Index_Module_Wildcard(crate, *const_cast<AST::Module*>(e.module_), true);
+                        assert(e.module_->m_index_populated == 2);
+                        DEBUG("- Globbing in " << i_data.path);
                     }
                     for(const auto& vi : e.module_->m_namespace_items) {
                         if( vi.second.is_pub ) {
@@ -520,13 +526,15 @@ void Resolve_Index_Module_Normalise_Path_ext(const ::AST::Crate& crate, const Sp
     
     ERROR(sp, E0000,  "Couldn't find final node of path " << path);
 }
-void Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& sp, ::AST::Path& path)
+
+// Returns true if a change was made
+bool Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& sp, ::AST::Path& path, IndexName loc)
 {
     const auto& info = path.m_class.as_Absolute();
     if( info.crate != "" )
     {
         Resolve_Index_Module_Normalise_Path_ext(crate, sp, path,  crate.m_extern_crates.at(info.crate), 0);
-        return ;
+        return false;
     }
     
     const ::AST::Module* mod = &crate.m_root_module;
@@ -546,7 +554,7 @@ void Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
                 new_path.nodes().push_back( mv$(info.nodes[j]) );
             new_path.bind( path.binding().clone() );
             path = mv$(new_path);
-            return Resolve_Index_Module_Normalise_Path(crate, sp, path);
+            return Resolve_Index_Module_Normalise_Path(crate, sp, path, loc);
         }
         else {
             TU_MATCH_DEF(::AST::PathBinding, (ie.path.binding()), (e),
@@ -558,11 +566,11 @@ void Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
                 ),
             (Crate,
                 Resolve_Index_Module_Normalise_Path_ext(crate, sp, path, *e.crate_, i+1);
-                return ;
+                return false;
                 ),
             (Enum,
                 // NOTE: Just assuming that if an Enum is hit, it's sane
-                return ;
+                return false;
                 )
             )
         }
@@ -570,20 +578,40 @@ void Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
     
     const auto& node = info.nodes.back();
     
-    auto it = mod->m_namespace_items.find( node.name() );
-    if( it == mod->m_namespace_items.end() )
-        it = mod->m_value_items.find( node.name() );
-    if( it == mod->m_value_items.end() )
+    
+    // TODO: Use get_mod_index instead.
+    const ::AST::Module::IndexEnt* ie_p = nullptr;
+    switch(loc)
+    {
+    case IndexName::Namespace: {
+        auto it = mod->m_namespace_items.find( node.name() );
+        if( it != mod->m_namespace_items.end() )
+            ie_p = &it->second;
+        } break;
+    case IndexName::Value: {
+        auto it = mod->m_value_items.find( node.name() );
+        if( it != mod->m_value_items.end() )
+            ie_p = &it->second;
+        } break;
+    case IndexName::Type: {
+        auto it = mod->m_type_items.find( node.name() );
+        if( it != mod->m_type_items.end() )
+            ie_p = &it->second;
+        } break;
+    }
+    if( !ie_p )
         ERROR(sp, E0000,  "Couldn't find final node of path " << path);
-    const auto& ie = it->second;
+    const auto& ie = *ie_p;
     
     if( ie.is_import ) {
         // TODO: Prevent infinite recursion if the user does something dumb
         path = ::AST::Path(ie.path);
-        Resolve_Index_Module_Normalise_Path(crate, sp, path);
+        Resolve_Index_Module_Normalise_Path(crate, sp, path, loc);
+        return true;
     }
     else {
         // All good
+        return false;
     }
 }
 void Resolve_Index_Module_Normalise(const ::AST::Crate& crate, const Span& mod_span, ::AST::Module& mod)
@@ -596,14 +624,18 @@ void Resolve_Index_Module_Normalise(const ::AST::Crate& crate, const Span& mod_s
         )
     }
     
+    DEBUG("Index for " << mod.path());
     for( auto& ent : mod.m_namespace_items ) {
-        Resolve_Index_Module_Normalise_Path(crate, mod_span, ent.second.path);
+        Resolve_Index_Module_Normalise_Path(crate, mod_span, ent.second.path, IndexName::Namespace);
+        DEBUG("NS " << ent.first << " = " << ent.second.path);
     }
     for( auto& ent : mod.m_type_items ) {
-        Resolve_Index_Module_Normalise_Path(crate, mod_span, ent.second.path);
+        Resolve_Index_Module_Normalise_Path(crate, mod_span, ent.second.path, IndexName::Type);
+        DEBUG("Ty " << ent.first << " = " << ent.second.path);
     }
     for( auto& ent : mod.m_value_items ) {
-        Resolve_Index_Module_Normalise_Path(crate, mod_span, ent.second.path);
+        Resolve_Index_Module_Normalise_Path(crate, mod_span, ent.second.path, IndexName::Value);
+        DEBUG("Val " << ent.first << " = " << ent.second.path);
     }
 }
 

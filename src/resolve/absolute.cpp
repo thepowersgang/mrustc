@@ -248,6 +248,17 @@ struct Context
         Pattern,
         Variable,
     };
+    static const char* lookup_mode_msg(LookupMode mode) {
+        switch(mode)
+        {
+        case LookupMode::Namespace: return "path component";
+        case LookupMode::Type:      return "type name";
+        case LookupMode::Pattern:   return "pattern name";
+        case LookupMode::Constant:  return "constant name";
+        case LookupMode::Variable:  return "variable name";
+        }
+        return "";
+    }
     AST::Path lookup_mod(const Span& sp, const ::std::string& name) const {
         return this->lookup(sp, name, LookupMode::Namespace);
     }
@@ -1098,7 +1109,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
     // Set binding to binding of node in last module
     ::AST::Path tmp;
     if( ! Context::lookup_in_mod(*mod, path_abs.nodes.back().name(), mode,  tmp) ) {
-        ERROR(sp, E0000, "Couldn't find path component '" << path_abs.nodes.back().name() << "' of " << path);
+        ERROR(sp, E0000, "Couldn't find " << Context::lookup_mode_msg(mode) << " '" << path_abs.nodes.back().name() << "' of " << path);
     }
     assert( ! tmp.binding().is_Unbound() );
     
@@ -1952,6 +1963,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
     
     // - Run through the indexed items and fix up those paths
     static Span sp;
+    DEBUG("mod = " << mod.path());
     for(auto& i : mod.m_namespace_items) {
         if( i.second.is_import ) {
             Resolve_Absolute_Path(item_context, sp, Context::LookupMode::Namespace, i.second.path);
