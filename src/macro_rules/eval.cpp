@@ -367,6 +367,7 @@ SimplePatEnt MacroPatternStream::next()
             if( parent_pat->tok == TOK_NULL ) {
                 // Loop separator is TOK_NULL - get the first token of the loop and use it.
                 // - This shares the code that controls if a loop is entered
+                DEBUG("No separator");
                 return emit_loop_start(*parent_pat);
             }
             else {
@@ -389,6 +390,7 @@ SimplePatEnt MacroPatternStream::next()
                     }
                 }
                 // - Yeild `IF NOT sep BREAK` and `EXPECT sep`
+                DEBUG("Separator = " << parent_pat->tok);
                 return emit_seq(
                     SimplePatEnt::make_IfTok({ false, parent_pat->tok.clone() }),
                     SimplePatEnt::make_ExpectTok( parent_pat->tok.clone() )
@@ -772,17 +774,19 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
     SET_MODULE(lex, mod);
     while(true)
     {
+        DEBUG("--- ---");
         // 1. Get concrete patterns for all active rules (i.e. no If* patterns)
         ::std::vector<SimplePatEnt> arm_pats;
         for(auto& arm : active_arms)
         {
+            auto idx = arm.first;
             SimplePatEnt pat;
             // Consume all If* rules 
             do
             {
                 pat = arm.second.next();
                 TU_IFLET( SimplePatEnt, pat, IfPat, e,
-                    DEBUG("IfPat(" << (e.is_equal ? "==" : "!=") << " ?" << e.type << ")");
+                    DEBUG(idx << " IfPat(" << (e.is_equal ? "==" : "!=") << " ?" << e.type << ")");
                     if( Macro_TryPatternCap(lex, e.type) == e.is_equal )
                     {
                         DEBUG("- Succeeded");
@@ -790,7 +794,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                     }
                 )
                 else TU_IFLET( SimplePatEnt, pat, IfTok, e,
-                    DEBUG("IfTok(" << (e.is_equal ? "==" : "!=") << " ?" << e.tok << ")");
+                    DEBUG(idx << " IfTok(" << (e.is_equal ? "==" : "!=") << " ?" << e.tok << ")");
                     auto tok = lex.getToken();
                     if( (tok == e.tok) == e.is_equal )
                     {
@@ -803,13 +807,28 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                     break;
                 }
             } while( pat.is_IfPat() || pat.is_IfTok() );
+            
+            TU_MATCH( SimplePatEnt, (pat), (e),
+            (IfPat, BUG(sp, "IfTok unexpected here");),
+            (IfTok, BUG(sp, "IfTok unexpected here");),
+            (ExpectTok,
+                DEBUG(idx << " ExpectTok(" << e << ")");
+                ),
+            (ExpectPat,
+                DEBUG(idx << " ExpectPat(" << e.type << " => $" << e.idx << ")");
+                ),
+            (End,
+                DEBUG(idx << " End");
+                )
+            )
             arm_pats.push_back( mv$(pat) );
         }
         assert( arm_pats.size() == active_arms.size() );
         
         // 2. Prune imposible arms
-        for(unsigned int i = 0; i < arm_pats.size(); )
+        for(unsigned int i = 0, j = 0; i < arm_pats.size(); )
         {
+            auto idx = active_arms[i].first;
             const auto& pat = arm_pats[i];
             bool fail = false;
             
@@ -818,16 +837,16 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
             (IfTok, BUG(sp, "IfTok unexpected here");),
             (ExpectTok,
                 auto tok = lex.getToken();
-                DEBUG(i << " ExpectTok(" << e << ") == " << tok);
+                DEBUG(j<<"="<<idx << " ExpectTok(" << e << ") == " << tok);
                 fail = !(tok == e);
                 lex.putback( mv$(tok) );
                 ),
             (ExpectPat,
-                DEBUG(i << " ExpectPat(" << e.type << " => $" << e.idx << ")");
+                DEBUG(j<<"="<<idx << " ExpectPat(" << e.type << " => $" << e.idx << ")");
                 fail = !Macro_TryPatternCap(lex, e.type);
                 ),
             (End,
-                DEBUG(i << " End");
+                DEBUG(j<<"="<<idx << " End");
                 fail = !(lex.lookahead(0) == TOK_EOF);
                 )
             )
@@ -839,6 +858,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
             else {
                 i ++;
             }
+            j ++;
         }
         
         if( arm_pats.size() == 0 ) {
