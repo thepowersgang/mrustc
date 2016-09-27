@@ -85,6 +85,7 @@ bool is_token_expr(eTokenType tt) {
     case TOK_RWORD_CONTINUE:
     
     // Blocks
+    case TOK_BRACE_OPEN:
     case TOK_RWORD_IF:
     case TOK_RWORD_FOR:
     case TOK_RWORD_WHILE:
