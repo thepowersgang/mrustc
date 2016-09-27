@@ -332,6 +332,11 @@ struct CExpandExpr:
         this->current_block = &node;
         this->visit_vector(node.m_nodes);
         this->current_block = saved;
+
+        // HACK! Run Expand_Mod twice on local modules.
+        if( node.m_local_mod ) {
+            Expand_Mod(crate, modstack, node.m_local_mod->path(), *node.m_local_mod);
+        }
     }
     void visit(::AST::ExprNode_Flow& node) override {
         this->visit_nodelete(node, node.m_value);

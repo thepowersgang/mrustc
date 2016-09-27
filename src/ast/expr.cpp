@@ -385,7 +385,7 @@ NV(ExprNode_Block, {
 })
 NV(ExprNode_Macro,
 {
-    BUG(node.get_pos(), "Hit unexpanded macro in expression");
+    BUG(node.get_pos(), "Hit unexpanded macro in expression - " << node);
 })
 NV(ExprNode_Flow,
 {

@@ -103,7 +103,11 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
 
     auto rv = crate.m_lang_items.insert( ::std::make_pair( name, ::AST::Path(path) ) );
     if( !rv.second ) {
-        ERROR(sp, E0000, "Duplicate definition of language item '" << name << "' - " << rv.first->second << " and " << path);
+        const auto& other_path = rv.first->second;
+        if( path != other_path ) {
+            // HACK: Anon modules get visited twice, so can lead to duplicate annotations
+            ERROR(sp, E0000, "Duplicate definition of language item '" << name << "' - " << other_path << " and " << path);
+        }
     }
 }
 
