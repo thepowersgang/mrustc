@@ -110,7 +110,7 @@ output/librustc_unicode.hir: output/libcore.hir
 output/libcollections.hir: output/libcore.hir output/liballoc.hir output/librustc_unicode.hir
 output/librand.hir: output/libcore.hir
 output/liblibc.hir: output/libcore.hir
-output/libstd.hir: output/libcore.hir output/libcollections.hir output/librand.hir output/liblibc.hir
+output/libstd.hir: output/libcore.hir output/libcollections.hir output/librand.hir output/liblibc.hir output/libunwind.hir
 
 .PHONY: UPDATE
 UPDATE:
