@@ -94,6 +94,8 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "exchange_free" ) { }
     else if( name == "box_free" ) { }
     else if( name == "owned_box" ) { }
+    // - start
+    else if( name == "start" ) { }
     
     else {
         ERROR(sp, E0000, "Unknown language item '" << name << "'");
@@ -101,7 +103,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
 
     auto rv = crate.m_lang_items.insert( ::std::make_pair( name, ::AST::Path(path) ) );
     if( !rv.second ) {
-        ERROR(sp, E0000, "Duplicate definition of language item '" << name << "'");
+        ERROR(sp, E0000, "Duplicate definition of language item '" << name << "' - " << rv.first->second << " and " << path);
     }
 }
 
