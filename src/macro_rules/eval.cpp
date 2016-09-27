@@ -1052,8 +1052,8 @@ const MacroExpansionEnt* MacroExpandState::next_ent()
             (Loop,
                 // 1. Get number of times this will repeat (based on the next iteration count)
                 unsigned int num_repeats = 0;
-                // TODO: Have a flag for each of these that indicates if it's a definitive controller? (I.e. if zero, don't loop)
-                for(const auto& var : e.variables) {
+                for(const auto& var : e.variables)
+                {
                     unsigned int this_repeats = m_mappings.count_in(m_iterations, var.first);
                     // If a variable doesn't have data and it's a required controller, don't loop
                     if( this_repeats == 0 && var.second ) {
