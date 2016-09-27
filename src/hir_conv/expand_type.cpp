@@ -52,9 +52,26 @@ public:
         ::HIR::Visitor::visit_type(ty);
         
         TU_IFLET(::HIR::TypeRef::Data, (ty.m_data), Path, (e),
-            auto new_type = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e.path);
+            ::HIR::TypeRef  new_type = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e.path);
+            // Keep trying to expand down the chain
+            unsigned int num_exp = 1;
+            const unsigned int MAX_RECURSIVE_TYPE_EXPANSIONS = 100;
+            while(num_exp < MAX_RECURSIVE_TYPE_EXPANSIONS)
+            {
+                TU_IFLET(::HIR::TypeRef::Data, (new_type.m_data), Path, (e),
+                    auto nt = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e.path);
+                    if( nt == ::HIR::TypeRef() )
+                        break;
+                    num_exp ++;
+                    new_type = mv$(nt);
+                )
+                else {
+                    break;
+                }
+            }
+            ASSERT_BUG(Span(), num_exp < MAX_RECURSIVE_TYPE_EXPANSIONS, "Recursion limit hit expanding " << ty << " (currently on " << new_type << ")");
             if( ! new_type.m_data.is_Infer() ) {
-                DEBUG("Replacing " << ty << " with " << new_type);
+                DEBUG("Replacing " << ty << " with " << new_type << " (" << num_exp << " expansions)");
                 ty = mv$(new_type);
             }
         )
