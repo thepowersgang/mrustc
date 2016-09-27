@@ -777,7 +777,19 @@ namespace {
                 BUG(node.span(), "Invalid cast to " << ty_out);
                 ),
             (Pointer,
-                if( ty_in.m_data.is_Primitive() && ty_in.m_data.as_Primitive() == ::HIR::CoreType::Usize ) {
+                if( ty_in.m_data.is_Primitive() ) {
+                    const auto& ie = ty_in.m_data.as_Primitive();
+                    switch(ie)
+                    {
+                    case ::HIR::CoreType::Bool:
+                    case ::HIR::CoreType::Char:
+                    case ::HIR::CoreType::Str:
+                    case ::HIR::CoreType::F32:
+                    case ::HIR::CoreType::F64:
+                        BUG(node.span(), "Cannot cast to pointer from " << ty_in);
+                    default:
+                        break;
+                    }
                     // TODO: Only valid if T: Sized in *{const/mut/move} T
                 }
                 else TU_IFLET( ::HIR::TypeRef::Data, ty_in.m_data, Borrow, se,

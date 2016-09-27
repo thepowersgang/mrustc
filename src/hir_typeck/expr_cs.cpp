@@ -1754,10 +1754,18 @@ namespace {
                     }
                     ),
                 (Primitive,
-                    if( s_e != ::HIR::CoreType::Usize ) {
+                    switch(s_e)
+                    {
+                    case ::HIR::CoreType::Bool:
+                    case ::HIR::CoreType::Char:
+                    case ::HIR::CoreType::Str:
+                    case ::HIR::CoreType::F32:
+                    case ::HIR::CoreType::F64:
                         ERROR(sp, E0000, "Invalid cast to pointer from " << src_ty);
+                    default:
+                        break;
                     }
-                    // TODO: Can't be to a fat pointer though.
+                    // NOTE: Can't be to a fat pointer though - This is checked by the later pass (once all types are known and thus sized-ness is known)
                     this->m_completed = true;
                     ),
                 (Infer,

@@ -255,11 +255,25 @@ namespace {
                     ),
                 (Pointer,
                     // TODO: Sized check - can't cast to a fat pointer from a thin one
+                    //if( ! this->m_resolve.type_is_sized(*de.inner) ) {
+                    //    ERROR(sp, E0000, "Invalid cast to fat pointer " << dst_ty << " from " << src_ty);
+                    //}
                     ),
                 (Primitive,
-                    if( se != ::HIR::CoreType::Usize ) {
+                    switch(se)
+                    {
+                    case ::HIR::CoreType::Bool:
+                    case ::HIR::CoreType::Char:
+                    case ::HIR::CoreType::Str:
+                    case ::HIR::CoreType::F32:
+                    case ::HIR::CoreType::F64:
                         ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
+                    default:
+                        break;
                     }
+                    //if( ! this->m_resolve.type_is_sized(*de.inner) ) {
+                    //    ERROR(sp, E0000, "Invalid cast to fat pointer " << dst_ty << " from " << src_ty);
+                    //}
                     ),
                 (Function,
                     if( *de.inner != ::HIR::TypeRef::new_unit() ) {
