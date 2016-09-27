@@ -50,6 +50,7 @@ OBJ +=  expand/format_args.o expand/asm.o
 OBJ +=  expand/concat.o expand/stringify.o expand/file_line.o
 OBJ +=  expand/derive.o expand/lang_item.o
 OBJ +=  expand/std_prelude.o expand/crate_tags.o
+OBJ +=  expand/include.o
 OBJ += macro_rules/mod.o macro_rules/eval.o macro_rules/parse.o
 OBJ += resolve/use.o resolve/index.o resolve/absolute.o
 OBJ += hir/from_ast.o hir/from_ast_expr.o
