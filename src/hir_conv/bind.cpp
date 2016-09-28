@@ -210,7 +210,7 @@ namespace {
                         // Unit-like struct match or a constant
                         TU_MATCH_DEF( ::HIR::ValueItem, (it->second->ent), (e2),
                         (
-                            ERROR(sp, E0000, "Value pattern pointing to unexpected type")
+                            ERROR(sp, E0000, "Value pattern " << pat << " pointing to unexpected item type - " << it->second->ent.tag_str())
                             ),
                         (Constant,
                             // Store reference to this item for later use

@@ -1682,9 +1682,9 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         if( allow_refutable ) {
             auto name = mv$( e.name );
             // Attempt to resolve the name in the current namespace, and if it fails, it's a binding
-            auto p = context.lookup_opt( name, Context::LookupMode::Constant );
+            auto p = context.lookup_opt( name, Context::LookupMode::Pattern );
             if( p.is_valid() ) {
-                Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::Constant, p);
+                Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::Pattern, p);
                 pat = ::AST::Pattern(::AST::Pattern::TagValue(), ::AST::Pattern::Value::make_Named(mv$(p)));
                 DEBUG("MaybeBind resolved to " << pat);
             }
