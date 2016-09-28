@@ -241,6 +241,7 @@ unsigned int ParameterMappings::count_in(const ::std::vector<unsigned int>& iter
 {
     DEBUG("(iterations=[" << iterations << "], name_idx=" << name_idx << ")");
     if( name_idx >= m_mappings.size() ) {
+        DEBUG("- Missing");
         return 0;
     }
     auto& e = m_mappings.at(name_idx);
@@ -249,7 +250,8 @@ unsigned int ParameterMappings::count_in(const ::std::vector<unsigned int>& iter
     {
         TU_MATCH(CaptureLayer, (*layer), (e),
         (Vals,
-            return 0;
+            // TODO: Returning zero here isn't correct, maybe 1 will be?
+            return 1;
             ),
         (Nested,
             if( iter >= e.size() ) {
@@ -744,7 +746,7 @@ bool Macro_HandlePattern(TokenStream& lex, const MacroPatEnt& pat, ::std::vector
     assert( rule.m_param_names.size() >= bound_tts.mappings().size() );
     for( unsigned int i = 0; i < bound_tts.mappings().size(); i ++ )
     {
-        DEBUG(" - " << rule.m_param_names.at(i) << " = [" << bound_tts.mappings()[i] << "]");
+        DEBUG("- #" << i << " " << rule.m_param_names.at(i) << " = [" << bound_tts.mappings()[i] << "]");
     }
     //bound_tts.dump();
     
@@ -1112,6 +1114,7 @@ const MacroExpansionEnt* MacroExpandState::next_ent()
                 for(const auto& var : e.variables)
                 {
                     unsigned int this_repeats = m_mappings.count_in(m_iterations, var.first);
+                    DEBUG("= " << this_repeats);
                     // If a variable doesn't have data and it's a required controller, don't loop
                     if( this_repeats == 0 && var.second ) {
                         num_repeats = 0;
