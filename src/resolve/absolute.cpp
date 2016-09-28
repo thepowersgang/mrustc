@@ -1098,7 +1098,16 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                 ),
             (Module,
                 if( name_ref.is_import ) {
-                    TODO(sp, "Replace path component with new path - " << path << "[.."<<i<<"] with " << name_ref.path);
+                    //TODO(sp, "Replace path component with new path - " << path << "[.."<<i+1<<"] with " << name_ref.path);
+                    auto newpath = name_ref.path;
+                    for(unsigned int j = i+1; j < path_abs.nodes.size(); j ++)
+                    {
+                        newpath.nodes().push_back( mv$(path_abs.nodes[j]) );
+                    }
+                    DEBUG("- Module import, " << path << " => " << newpath);
+                    path = mv$(newpath);
+                    Resolve_Absolute_Path_BindAbsolute(context, sp, mode, path);
+                    return ;
                 }
                 else {
                     mod = e.module_;
