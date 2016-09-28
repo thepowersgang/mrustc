@@ -1021,10 +1021,14 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
     
     for( unsigned int i = 0; i < ast_mod.anon_mods().size(); i ++ )
     {
-        auto& submod = *ast_mod.anon_mods()[i];
-        ::std::string name = FMT("#" << i);
-        auto item_path = ::HIR::ItemPath(path, name.c_str());
-        _add_mod_ns_item( mod,  mv$(name), false, ::HIR::TypeItem::make_Module( LowerHIR_Module(submod, item_path, mod.m_traits) ) );
+        const auto& submod_ptr = ast_mod.anon_mods()[i];
+        if( submod_ptr )
+        {
+            auto& submod = *submod_ptr;
+            ::std::string name = FMT("#" << i);
+            auto item_path = ::HIR::ItemPath(path, name.c_str());
+            _add_mod_ns_item( mod,  mv$(name), false, ::HIR::TypeItem::make_Module( LowerHIR_Module(submod, item_path, mod.m_traits) ) );
+        }
     }
 
     for( const auto& item : ast_mod.items() )
@@ -1132,7 +1136,9 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
     }
     for( const auto& submod_ptr : ast_mod.anon_mods() )
     {
-        LowerHIR_Module_Impls(*submod_ptr,  hir_crate);
+        if( submod_ptr ) {
+            LowerHIR_Module_Impls(*submod_ptr,  hir_crate);
+        }
     }
     
     // 
