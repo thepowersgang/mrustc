@@ -90,15 +90,16 @@ output/%.ast: samples/%.rs $(BIN)
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 
 RUSTCSRC := ./rustc-nightly/
+RUSTC_SRC_DL := $(RUSTCSRC)/dl-version
 
-output/lib%.hir: $(RUSTCSRC)src/lib%/lib.rs $(BIN)
+output/lib%.hir: $(RUSTCSRC)src/lib%/lib.rs $(RUSTCSRC) $(BIN)
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
-output/lib%.hir: $(RUSTCSRC)src/lib%/src/lib.rs $(BIN)
+output/lib%.hir: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(BIN)
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
@@ -113,10 +114,17 @@ output/librand.hir: output/libcore.hir
 output/liblibc.hir: output/libcore.hir
 output/libstd.hir: output/libcore.hir output/libcollections.hir output/librand.hir output/liblibc.hir output/libunwind.hir
 
-.PHONY: UPDATE
-UPDATE:
-	wget -c https://static.rust-lang.org/dist/rustc-nightly-src.tar.gz
-	tar -xf rustc-nightly-src.tar.gz
+$(RUSTCSRC): rust-nightly-date
+	@export DL_RUST_DATE=$$(cat rust-nightly-date); \
+	export DISK_RUST_DATE=$$([ -f $(RUSTC_SRC_DL) ] && cat $(RUSTC_SRC_DL)); \
+	if [ "$$DL_RUST_DATE" != "$$DISK_RUST_DATE" ]; then \
+		echo "Rust version on disk is '$${DISK_RUST_DATE}'. Downloading $${DL_RUST_DATE}."; \
+		rm rustc-nightly-src.tar.gz; \
+		rm -rf rustc-nightly; \
+		wget https://static.rust-lang.org/dist/$${DL_RUST_DATE}/rustc-nightly-src.tar.gz; \
+		tar -xf rustc-nightly-src.tar.gz; \
+		echo "$$DL_RUST_DATE" > $(RUSTC_SRC_DL); \
+	fi
 
 .PHONY: rust_tests
 RUST_TESTS_DIR := $(RUSTCSRC)src/test/
@@ -127,7 +135,7 @@ rust_tests-run-pass: $(call DEF_RUST_TESTS,run-pass)
 rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
 rust_tests-compile-fail: $(call DEF_RUST_TESTS,compile-fail)
 
-output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(BIN)
+output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN)
 	@mkdir -p $(dir $@)
 	$(BIN) $< -o $@ --stop-after parse > $@.txt 2>&1
 	touch $@
