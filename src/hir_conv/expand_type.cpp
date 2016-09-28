@@ -5,6 +5,7 @@
 #include <hir/hir.hpp>
 #include <hir/expr.hpp>
 #include <hir/visitor.hpp>
+#include <hir_typeck/common.hpp>    // monomorphise_type_with
 
 ::HIR::TypeRef ConvertHIR_ExpandAliases_GetExpansion(const ::HIR::Crate& crate, const ::HIR::Path& path)
 {
@@ -17,10 +18,29 @@
             // Anything else - leave it be
             ),
         (TypeAlias,
-            if( e2.m_params.m_types.size() > 0 ) {
-                TODO(Span(), "Replace type params in type alias");
+            if( e.m_params.m_types.size() != e2.m_params.m_types.size() ) {
+                ERROR(sp, E0000, "Mismatched parameter count in " << path);
             }
-            return e2.m_type.clone();
+            if( e2.m_params.m_types.size() > 0 ) {
+                // TODO: Better `monomorphise_type`
+                return monomorphise_type_with(sp, e2.m_type, [&](const auto& gt)->const auto& {
+                    const auto& ge = gt.m_data.as_Generic();
+                    if( ge.binding == 0xFFFF ) {
+                        BUG(sp, "Self encountered in expansion for " << path << " - " << e2.m_type);
+                    }
+                    else if( (ge.binding >> 8) == 0 ) {
+                        auto idx = ge.binding & 0xFF;
+                        ASSERT_BUG(sp, idx < e.m_params.m_types.size(), "");
+                        return e.m_params.m_types[idx];
+                    }
+                    else {
+                        BUG(sp, "Bad index " << ge.binding << " encountered in expansion for " << path << " - " << e2.m_type);
+                    }
+                    });
+            }
+            else {
+                return e2.m_type.clone();
+            }
             )
         )
         ),
