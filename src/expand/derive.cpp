@@ -965,7 +965,10 @@ public:
     {
         TU_MATCH_DEF(::AST::Item, (i), (e),
         (
-            TODO(sp, "Handle #[derive] for other item types");
+            TODO(sp, "Handle #[derive] for other item types - " << i.tag_str());
+            ),
+        (None,
+            //
             ),
         (Enum,
             derive_item(sp, crate, mod, attr, path, e);
