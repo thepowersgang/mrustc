@@ -722,10 +722,27 @@ namespace {
             auto it = hmod->m_value_items.find(name);
             if( it == hmod->m_value_items.end() )
                 ERROR(sp, E0000, "Couldn't find final component of " << p);
-            if( it->second->ent.is_Import() ) {
-                // Wait? is this valid?
+            TU_MATCH(::HIR::ValueItem, (it->second->ent), (e),
+            (Import,
+                // Wait? is this even valid?
                 TODO(sp, "HIR Import item pointed to an import");
-            }
+                ),
+            (Constant,
+                pb = ::AST::PathBinding::make_Static({nullptr, nullptr});
+                ),
+            (Static,
+                pb = ::AST::PathBinding::make_Static({nullptr, &e});
+                ),
+            (StructConstant,
+                pb = ::AST::PathBinding::make_Struct({nullptr, &ext_crate.m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct()});
+                ),
+            (Function,
+                pb = ::AST::PathBinding::make_Function({nullptr/*, &e*/});
+                ),
+            (StructConstructor,
+                pb = ::AST::PathBinding::make_Struct({nullptr, &ext_crate.m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct()});
+                )
+            )
         }
         else
         {
@@ -744,10 +761,13 @@ namespace {
                 pb = ::AST::PathBinding::make_Trait({nullptr, &e});
                 ),
             (TypeAlias,
+                pb = ::AST::PathBinding::make_TypeAlias({nullptr/*, &e*/});
                 ),
             (Struct,
+                pb = ::AST::PathBinding::make_Struct({nullptr, &e});
                 ),
             (Enum,
+                pb = ::AST::PathBinding::make_Enum({nullptr, &e});
                 )
             )
         }
