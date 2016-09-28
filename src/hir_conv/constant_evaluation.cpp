@@ -448,7 +448,7 @@ namespace {
                 {
                     const auto& pattern = fcn.m_args[i].first;
                     node.m_args[i]->visit(*this);
-                    args.push_back( mv$(args) );
+                    args.push_back( mv$(m_rv) );
                     TU_IFLET(::HIR::Pattern::Data, pattern.m_data, Any, e,
                         // Good
                     )
@@ -459,7 +459,7 @@ namespace {
                 
                 // Call by invoking evaluate_constant on the function
                 {
-                    TRACE_FUNCTION_F("Call const fn " << node.m_path);
+                    TRACE_FUNCTION_F("Call const fn " << node.m_path << " args={ " << args << " }");
                     m_rv = evaluate_constant(node.span(), m_crate, m_newval_state,  fcn.m_code, mv$(args));
                 }
             }
@@ -753,7 +753,8 @@ namespace {
                     TODO(sp, "RValue::Borrow");
                     ),
                 (Cast,
-                    TODO(sp, "RValue::Cast");
+                    auto inval = read_lval(e.val);
+                    TODO(sp, "RValue::Cast to " << e.type << ", val = " << inval);
                     ),
                 (BinOp,
                     TODO(sp, "RValue::BinOp");
@@ -820,7 +821,7 @@ namespace {
                 
                 // Call by invoking evaluate_constant on the function
                 {
-                    TRACE_FUNCTION_F("Call const fn " << fcnp);
+                    TRACE_FUNCTION_F("Call const fn " << fcnp << " args={ " << call_args << " }");
                     dst = evaluate_constant(sp, crate, newval_state,  fcn.m_code, mv$(call_args));
                 }
                 
