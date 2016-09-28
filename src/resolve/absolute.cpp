@@ -687,6 +687,27 @@ namespace {
             (
                 TODO(sp, "Unknown item type in path - " << i << " " << p << " - " << it->second->ent.tag_str());
                 ),
+            (Enum,
+                if( i != p.m_components.size() - 2 ) {
+                    ERROR(sp, E0000, "Enum as path component in unexpected location - " << p);
+                }
+                const auto& varname = p.m_components.back();
+                auto it = ::std::find_if( e.m_variants.begin(), e.m_variants.end(), [&](const auto&x){return x.first == varname;} );
+                ASSERT_BUG(sp, it != e.m_variants.end(), "Extern crate import path points to non-present variant - " << p);
+                unsigned int var_idx = it - e.m_variants.begin();
+                auto pb = ::AST::PathBinding::make_EnumVar({nullptr, var_idx, &e});
+                
+                // Construct output path (with same set of parameters)
+                AST::Path   rv( p.m_crate_name, {} );
+                rv.nodes().reserve( p.m_components.size() );
+                for(const auto& c : p.m_components)
+                    rv.nodes().push_back( AST::PathNode(c) );
+                rv.nodes().back().args() = mv$( path.nodes().back().args() );
+                rv.bind( mv$(pb) );
+                path = mv$(rv);
+                
+                return ;
+                ),
             (Module,
                 hmod = &e;
                 )
@@ -731,6 +752,7 @@ namespace {
             )
         }
         
+        // Construct output path (with same set of parameters)
         AST::Path   rv( p.m_crate_name, {} );
         rv.nodes().reserve( p.m_components.size() );
         for(const auto& c : p.m_components)
