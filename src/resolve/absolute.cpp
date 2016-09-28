@@ -509,6 +509,7 @@ struct Context
 
 
 
+void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path);
 void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::LookupMode mode,  ::AST::Path& path);
 void Resolve_Absolute_Type(Context& context,  TypeRef& type);
 void Resolve_Absolute_Expr(Context& context,  ::AST::Expr& expr);
@@ -754,7 +755,16 @@ namespace {
             
             TU_MATCH(::HIR::TypeItem, (it->second->ent), (e),
             (Import,
-                TODO(sp, "Bind via extern use - " << path);
+                // - Update path then restart
+                auto newpath = AST::Path(e.m_crate_name, {});
+                for(const auto& n : e.m_components)
+                    newpath.nodes().push_back( AST::PathNode(n) );
+                for(unsigned int j = i + 1; j < path.nodes().size(); j ++)
+                    newpath.nodes().push_back( mv$(path.nodes()[j]) );
+                path = mv$(newpath);
+                // TODO: Recursion limit
+                Resolve_Absolute_Path_BindAbsolute(context, sp, mode, path);
+                return ;
                 ),
             (Module,
                 hmod = &e;
@@ -1067,7 +1077,15 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                 ),
             (Enum,
                 if( name_ref.is_import ) {
-                    TODO(sp, "Replace path component with new path - " << path << "[.."<<i<<"] with " << name_ref.path);
+                    auto newpath = name_ref.path;
+                    for(unsigned int j = i+1; j < path_abs.nodes.size(); j ++)
+                    {
+                        newpath.nodes().push_back( mv$(path_abs.nodes[j]) );
+                    }
+                    path = mv$(newpath);
+                    //TOOD: Recursion limit
+                    Resolve_Absolute_Path_BindAbsolute(context, sp, mode, path);
+                    return ;
                 }
                 else {
                     assert( e.enum_ );
