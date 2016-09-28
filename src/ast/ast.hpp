@@ -525,7 +525,7 @@ public:
     }
     
     bool is_anon() const {
-        return m_my_path.nodes().back().name()[0] == '#';
+        return m_my_path.nodes().size() > 0 && m_my_path.nodes().back().name()[0] == '#';
     }
     
     /// Create an anon module (for use inside expressions)

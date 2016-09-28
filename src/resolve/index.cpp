@@ -55,22 +55,31 @@ void _add_item(const Span& sp, AST::Module& mod, IndexName location, const ::std
     auto& list = get_mod_index(mod, location);
     
     bool was_import = (ir != mod.path() + name);
-    if( was_import ) {
-        DEBUG("### Import " << location << " item " << name << " = " << ir); 
-    }
-    else {
-        DEBUG("Add " << location << " item '" << name << "': " << ir);
-    }
-    if( false == list.insert(::std::make_pair(name, ::AST::Module::IndexEnt { is_pub, was_import, mv$(ir) } )).second )
+    if( list.count(name) > 0 )
     {
         if( error_on_collision ) 
         {
             ERROR(sp, E0000, "Duplicate definition of name '" << name << "' in " << location << " scope (" << mod.path() << ")");
         }
+        else if( list.at(name).path == ir )
+        {
+            // Ignore, re-import of the same thing
+        }
         else
         {
-            DEBUG("Name collision in " << mod.path() << " - '" << name << "', ignored");
+            DEBUG(location << " name collision - '" << name << "' = " << ir << ", ignored (mod=" << mod.path() << ")");
         }
+    }
+    else
+    {
+        if( was_import ) {
+            DEBUG("### Import " << location << " item " << name << " = " << ir);
+        }
+        else {
+            DEBUG("### Add " << location << " item '" << name << "': " << ir);
+        }
+        auto rec = list.insert(::std::make_pair(name, ::AST::Module::IndexEnt { is_pub, was_import, mv$(ir) } ));
+        assert(rec.second);
     }
 }
 void _add_item_type(const Span& sp, AST::Module& mod, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
@@ -350,6 +359,7 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
     //    DEBUG("- Index pre-populated")
     //    return ;
     //}
+
     // Glob/wildcard imports
     for( const auto& i : mod.items() )
     {

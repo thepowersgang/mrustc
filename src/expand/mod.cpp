@@ -681,8 +681,12 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
     for( const auto& mi: mod.macro_imports_res() )
         DEBUG("- Imports '" << mi.name << "'");
     
-    if( mod.m_insert_prelude && crate.m_prelude_path != AST::Path() ) {
-        mod.add_alias(false, ::AST::UseStmt(Span(), crate.m_prelude_path), "", {});
+    // Insert prelude if: Enabled for this module, present for the crate, and this module is not an anon
+    if( crate.m_prelude_path != AST::Path() )
+    {
+        if( mod.m_insert_prelude && ! mod.is_anon() ) {
+            mod.add_alias(false, ::AST::UseStmt(Span(), crate.m_prelude_path), "", {});
+        }
     }
     
     // TODO: Have the AST representation of a module include the definition order,
