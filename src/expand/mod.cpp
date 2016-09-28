@@ -302,6 +302,7 @@ struct CExpandExpr:
                 bool    add_silence_if_end = false;
                 ::std::shared_ptr< AST::Module> tmp_local_mod;
                 auto& local_mod_ptr = (this->current_block ? this->current_block->m_local_mod : tmp_local_mod);
+                DEBUG("-- Parsing as expression line (legacy)");
                 auto newexpr = Parse_ExprBlockLine_WithItems(*ttl, local_mod_ptr, add_silence_if_end);
                 if( newexpr )
                 {
@@ -593,29 +594,29 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
     for(unsigned int i = 0; i < impl.m_macro_invocations.size(); i ++ )
     {
         auto& mi = impl.m_macro_invocations[i];
-        DEBUG("> Macro invoke '"<<mi.name()<<"'");
         if( mi.name() != "" )
         {
-        // Move out of the module to avoid invalidation if a new macro invocation is added
-        auto mi_owned = mv$(mi);
-        
-        auto ttl = Expand_Macro(crate, modstack, mod, mi_owned);
+            TRACE_FUNCTION_F("Macro invoke " << mi.name());
+            // Move out of the module to avoid invalidation if a new macro invocation is added
+            auto mi_owned = mv$(mi);
+            
+            auto ttl = Expand_Macro(crate, modstack, mod, mi_owned);
 
-        if( ! ttl.get() )
-        {
-            // - Return ownership to the list
-            mod.macro_invs()[i] = mv$(mi_owned);
-        }
-        else
-        {
-            // Re-parse tt
-            assert(ttl.get());
-            while( ttl->lookahead(0) != TOK_EOF )
+            if( ! ttl.get() )
             {
-                Parse_Impl_Item(*ttl, impl);
+                // - Return ownership to the list
+                mod.macro_invs()[i] = mv$(mi_owned);
             }
-            // - Any new macro invocations ends up at the end of the list and handled
-        }
+            else
+            {
+                // Re-parse tt
+                assert(ttl.get());
+                while( ttl->lookahead(0) != TOK_EOF )
+                {
+                    Parse_Impl_Item(*ttl, impl);
+                }
+                // - Any new macro invocations ends up at the end of the list and handled
+            }
         }
     }
     
@@ -692,10 +693,10 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
     for(unsigned int i = 0; i < mod.macro_invs().size(); i ++ )
     {
         auto& mi = mod.macro_invs()[i];
-        DEBUG("> Macro invoke " << mi);
         
         if( mi.name() != "" )
         {
+            TRACE_FUNCTION_F("Macro invoke " << mi.name());
             // Move out of the module to avoid invalidation if a new macro invocation is added
             auto mi_owned = mv$(mi);
             
@@ -714,6 +715,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             {
                 // Re-parse tt
                 assert(ttl.get());
+                DEBUG("-- Parsing as mod items (legacy)");
                 Parse_ModRoot_Items(*ttl, mod);
                 // - Any new macro invocations ends up at the end of the list and handled
             }
@@ -741,6 +743,8 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             // Move out of the module to avoid invalidation if a new macro invocation is added
             auto mi_owned = mv$(e);
             
+            TRACE_FUNCTION_F("Macro invoke " << mi_owned.name());
+            
             auto& attrs = mi_owned.attrs();
             Expand_Attrs(attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mi_owned); });
             
@@ -761,6 +765,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             {
                 // Re-parse tt
                 assert(ttl.get());
+                DEBUG("-- Parsing as mod items");
                 Parse_ModRoot_Items(*ttl, mod);
                 // - Any new macro invocations ends up at the end of the list and handled
                 mod.items()[idx].data = AST::Item();
