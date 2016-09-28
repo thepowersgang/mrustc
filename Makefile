@@ -141,7 +141,7 @@ output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN)
 	touch $@
 
 .PHONY: test test_rustos
-test: output/libcore.hir output/liballoc.hir output/libcollections.hir output/libstd.hir $(BIN)
+test: $(RUSTCSRC) output/libcore.hir output/liballoc.hir output/libcollections.hir output/libstd.hir $(BIN)
 
 test_rustos: $(addprefix output/rust_os/,libkernel.rlib)
 
