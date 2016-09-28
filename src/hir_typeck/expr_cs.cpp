@@ -1999,8 +1999,17 @@ namespace {
         }
         void visit(::HIR::ExprNode_CallValue& node) override {
             const auto& sp = node.span();
-            const auto& ty = this->context.get_type(node.m_value->m_res_type);
-            TRACE_FUNCTION_F("CallValue: ty=" << ty);
+            const auto& ty_o = this->context.get_type(node.m_value->m_res_type);
+            TRACE_FUNCTION_F("CallValue: ty=" << ty_o);
+            
+            unsigned int deref_count = 0;
+            const auto* ty_p = &ty_o;
+            while(ty_p->m_data.is_Borrow())
+            {
+                deref_count ++;
+                ty_p = &this->context.get_type(*ty_p->m_data.as_Borrow().inner);
+            }
+            const auto& ty = *ty_p;
             
             TU_MATCH_DEF(decltype(ty.m_data), (ty.m_data), (e),
             (
@@ -2099,8 +2108,9 @@ namespace {
                 node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
                 ),
             (Borrow,
-                // TODO: Locate trait impl via borrow
-                TODO(sp, "CallValue on an &-ptr");
+                // - Check inner (recursively)
+                //  > use upper
+                TODO(sp, "CallValue on an &-ptr - " << ty);
                 return ;
                 ),
             (Infer,
@@ -2108,6 +2118,12 @@ namespace {
                 return ;
                 )
             )
+            
+            if( deref_count > 0 )
+            {
+                TODO(sp, "Insert autoderef for CallValue (" << deref_count << " needed) - " << ty << " and " << ty_o);
+            }
+            
             assert( node.m_arg_types.size() == node.m_args.size() + 1 );
             for(unsigned int i = 0; i < node.m_args.size(); i ++)
             {
