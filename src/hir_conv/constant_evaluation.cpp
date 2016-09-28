@@ -771,6 +771,7 @@ namespace {
                         uint64_t mask;
                         switch(te)
                         {
+                        // Integers mask down
                         case ::HIR::CoreType::I8:
                         case ::HIR::CoreType::U8:
                             mask = 0xFF;
@@ -799,6 +800,15 @@ namespace {
                             break;
                         default:
                             TODO(sp, "RValue::Cast to " << e.type << ", val = " << inval);
+                        }
+                        ),
+                    // Allow casting any integer value to a pointer (TODO: Ensure that the pointer is sized?)
+                    (Pointer,
+                        TU_IFLET( ::HIR::Literal, inval, Integer, i,
+                            val = ::HIR::Literal(i);
+                        )
+                        else {
+                            BUG(sp, "Invalid cast of " << inval.tag_str() << " to " << e.type);
                         }
                         )
                     )
