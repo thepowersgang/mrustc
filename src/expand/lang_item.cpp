@@ -87,7 +87,9 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     // Functions
     else if( name == "panic" ) { }
     else if( name == "panic_bounds_check" ) { }
-    else if( name == "panic_fmt" ) { }
+    else if( name == "panic_fmt" ) {
+        
+    }
     else if( name == "str_eq" ) { }
     // - builtin `box` support
     else if( name == "exchange_malloc" ) { }
@@ -123,7 +125,12 @@ public:
             TODO(sp, "Unknown item type with #[lang=\""<<attr<<"\"] attached at " << path);
             ),
         (Function,
-            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_FN);
+            if( e.code().is_valid() ) {
+                handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_FN);
+            }
+            else {
+                //handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_EXTERN_FN);
+            }
             ),
         (Struct,
             handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_STRUCT);
