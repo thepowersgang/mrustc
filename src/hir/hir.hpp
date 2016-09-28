@@ -49,6 +49,12 @@ TAGGED_UNION(Literal, Invalid,
     (Invalid, struct {}),
     // List = Array, Tuple, struct literal
     (List, ::std::vector<Literal>), // TODO: Have a variant for repetition lists
+    // Variant = Enum variant
+    (Variant, struct {
+        unsigned int    idx;
+        ::std::vector<Literal>  vals;
+        }),
+    // Literal values
     (Integer, uint64_t),
     (Float, double),
     (BorrowOf, ::HIR::Path),

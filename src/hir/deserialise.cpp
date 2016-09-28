@@ -910,6 +910,10 @@ namespace {
         {
         #define _(x, ...)    case ::HIR::Literal::TAG_##x:   return ::HIR::Literal::make_##x(__VA_ARGS__);
         _(List,   deserialise_vec< ::HIR::Literal>() )
+        _(Variant, {
+            static_cast<unsigned int>(read_count()),
+            deserialise_vec< ::HIR::Literal>()
+            })
         _(Integer, read_u64() )
         _(Float,   read_double() )
         _(BorrowOf, deserialise_path() )

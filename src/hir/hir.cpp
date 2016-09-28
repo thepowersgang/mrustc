@@ -15,6 +15,12 @@ namespace HIR {
                 os << " " << val << ",";
             os << " ]";
             ),
+        (Variant,
+            os << "#" << e.idx << ":[";
+            for(const auto& val : e.vals)
+                os << " " << val << ",";
+            os << " ]";
+            ),
         (Integer,
             os << e;
             ),

@@ -41,6 +41,13 @@ namespace {
             }
             return ::HIR::Literal( mv$(vals) );
             ),
+        (Variant,
+            ::std::vector< ::HIR::Literal>  vals;
+            for(const auto& val : e.vals) {
+                vals.push_back( clone_literal(val) );
+            }
+            return ::HIR::Literal::make_Variant({ e.idx, mv$(vals) });
+            ),
         (Integer,
             return ::HIR::Literal(e);
             ),
@@ -411,16 +418,37 @@ namespace {
             }
             
             void visit(::HIR::ExprNode_TupleVariant& node) override {
-                if( ! node.m_is_struct ) {
-                    TODO(node.span(), "_TupleVariant - Enum");
-                }
+                
                 ::std::vector< ::HIR::Literal>  vals;
                 for(const auto& vn : node.m_args ) {
                     vn->visit(*this);
                     assert( !m_rv.is_Invalid() );
                     vals.push_back( mv$(m_rv) );
                 }
-                m_rv = ::HIR::Literal::make_List(mv$(vals));
+                
+                if( node.m_is_struct )
+                {
+                    const auto& ent = m_crate.get_typeitem_by_path(node.span(), node.m_path.m_path);
+                    ASSERT_BUG(node.span(), ent.is_Struct(), "_TupleVariant with m_is_struct set pointing to " << ent.tag_str());
+                    //const auto& str = ent.as_Struct();
+                    
+                    m_rv = ::HIR::Literal::make_List(mv$(vals));
+                }
+                else
+                {
+                    const auto& varname = node.m_path.m_path.m_components.back();
+                    auto tmp_path = node.m_path.m_path;
+                    tmp_path.m_components.pop_back();
+                    const auto& ent = m_crate.get_typeitem_by_path(node.span(), tmp_path);
+                    ASSERT_BUG(node.span(), ent.is_Enum(), "_TupleVariant with m_is_struct clear pointing to " << ent.tag_str());
+                    const auto& enm = ent.as_Enum();
+                    
+                    auto it = ::std::find_if( enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&x){ return x.first == varname; } );
+                    ASSERT_BUG(node.span(), it != enm.m_variants.end(), "_TupleVariant points to unknown variant - " << node.m_path);
+                    unsigned int var_idx = it - enm.m_variants.begin();
+
+                    m_rv = ::HIR::Literal::make_Variant({var_idx, mv$(vals)});
+                }
             }
             void visit(::HIR::ExprNode_CallPath& node) override {
                 TRACE_FUNCTION_FR("_CallPath - " << node.m_path, m_rv);
@@ -488,9 +516,11 @@ namespace {
                 
                 const auto& rv = m_crate.get_typeitem_by_path(node.span(), node.m_path.m_path);
                 TU_IFLET( ::HIR::TypeItem, rv, Struct, e,
+                    ASSERT_BUG(node.span(), node.m_is_struct, "_UnitLiteral with m_is_struct clear pointing to a struct");
                     m_rv = ::HIR::Literal::make_List({});
                 )
                 else TU_IFLET( ::HIR::TypeItem, rv, Enum, e,
+                    ASSERT_BUG(node.span(), !node.m_is_struct, "_UnitLiteral with m_is_struct set pointing to an enum");
                     TODO(node.span(), "Handle Enum _UnitVairant - " << node.m_path);
                 )
                 else {
@@ -544,6 +574,7 @@ namespace {
                 
                 const auto& ent = m_crate.get_typeitem_by_path(node.span(), node.m_path.m_path);
                 TU_IFLET( ::HIR::TypeItem, ent, Struct, str,
+                    ASSERT_BUG(node.span(), node.m_is_struct, "_StructLiteral with m_is_struct clear pointing to a struct");
                     const auto& fields = str.m_data.as_Named();
                     
                     ::std::vector< ::HIR::Literal>  vals;
@@ -576,6 +607,7 @@ namespace {
                     m_rv = ::HIR::Literal::make_List(mv$(vals));
                 )
                 else TU_IFLET( ::HIR::TypeItem, ent, Enum, enm,
+                    ASSERT_BUG(node.span(), !node.m_is_struct, "_StructLiteral with m_is_struct set pointing to an enum");
                     TODO(node.span(), "Handle Enum _UnitVariant - " << node.m_path);
                 )
                 else {

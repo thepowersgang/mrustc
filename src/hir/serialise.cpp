@@ -466,6 +466,10 @@ namespace {
             (List,
                 serialise_vec(e);
                 ),
+            (Variant,
+                write_count(e.idx);
+                serialise_vec(e.vals);
+                ),
             (Integer,
                 write_u64(e);
                 ),
