@@ -754,7 +754,45 @@ namespace {
                     ),
                 (Cast,
                     auto inval = read_lval(e.val);
-                    TODO(sp, "RValue::Cast to " << e.type << ", val = " << inval);
+                    TU_MATCH_DEF(::HIR::TypeRef::Data, (e.type.m_data), (te),
+                    (
+                        TODO(sp, "RValue::Cast to " << e.type << ", val = " << inval);
+                        ),
+                    (Primitive,
+                        uint64_t mask;
+                        switch(te)
+                        {
+                        case ::HIR::CoreType::I8:
+                        case ::HIR::CoreType::U8:
+                            mask = 0xFF;
+                            if(0)
+                        case ::HIR::CoreType::I16:
+                        case ::HIR::CoreType::U16:
+                            mask = 0xFFFF;
+                            if(0)
+                        case ::HIR::CoreType::I32:
+                        case ::HIR::CoreType::U32:
+                            mask = 0xFFFFFFFF;
+                            if(0)
+                        case ::HIR::CoreType::I64:
+                        case ::HIR::CoreType::U64:
+                            mask = 0xFFFFFFFFFFFFFFFF;
+                        
+                            TU_IFLET( ::HIR::Literal, inval, Integer, i,
+                                val = ::HIR::Literal(i & mask);
+                            )
+                            else TU_IFLET( ::HIR::Literal, inval, Float, i,
+                                val = ::HIR::Literal( static_cast<uint64_t>(i) & mask);
+                            )
+                            else {
+                                BUG(sp, "Invalid cast of " << inval.tag_str() << " to " << e.type);
+                            }
+                            break;
+                        default:
+                            TODO(sp, "RValue::Cast to " << e.type << ", val = " << inval);
+                        }
+                        )
+                    )
                     ),
                 (BinOp,
                     TODO(sp, "RValue::BinOp");
