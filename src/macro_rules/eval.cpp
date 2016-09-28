@@ -166,6 +166,7 @@ void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std:
 
 void ParameterMappings::insert(unsigned int name_index, const ::std::vector<unsigned int>& iterations, InterpolatedFragment data)
 {
+    DEBUG("index="<<name_index << ", iterations=[" << iterations << "], data="<<data);
     if( name_index >= m_mappings.size() ) {
         m_mappings.resize( name_index + 1 );
     }
@@ -216,16 +217,21 @@ ParameterMappings::CapturedVal& ParameterMappings::get_cap(const ::std::vector<u
         if( e.size() == 1 ) {
             return e[0];
         }
+        if( e.size() == 0 ) {
+            BUG(Span(), "Attempting to get binding for empty capture - #" << name_idx);
+        }
     )
     
     for(const auto iter : iterations)
     {
         TU_MATCH(CaptureLayer, (*layer), (e),
         (Vals,
-            return e[iter];
+            ASSERT_BUG(Span(), iter < e.size(), "Iteration index " << iter << " outside of range " << e.size() << " (values)");
+            return e.at(iter);
             ),
         (Nested,
-            layer = &e[iter];
+            ASSERT_BUG(Span(), iter < e.size(), "Iteration index " << iter << " outside of range " << e.size() << " (nest)");
+            layer = &e.at(iter);
             )
         )
     }
@@ -245,6 +251,10 @@ unsigned int ParameterMappings::count_in(const ::std::vector<unsigned int>& iter
         return 0;
     }
     auto& e = m_mappings.at(name_idx);
+    if( e.top_layer.is_Vals() && e.top_layer.as_Vals().size() == 0 ) {
+        DEBUG("- Not populated");
+        return 0;
+    }
     auto* layer = &e.top_layer;
     for(const auto iter : iterations)
     {
