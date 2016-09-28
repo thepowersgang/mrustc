@@ -194,16 +194,6 @@ namespace {
             TODO(sp, "Could not find function for " << path << " - " << rv.tag_str());
         }
     }
-    const ::HIR::Struct& get_struct(const Span& sp, const ::HIR::Crate& crate, const ::HIR::SimplePath& path)
-    {
-        auto rv = get_ent_fullpath(sp, crate, path, EntNS::Type);
-        TU_IFLET( EntPtr, rv, Struct, e,
-            return *e;
-        )
-        else {
-            TODO(sp, "Could not find struct for " << path << " - " << rv.tag_str());
-        }
-    }
     
     ::HIR::Literal evaluate_constant_hir(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::HIR::ExprNode& expr, ::std::vector< ::HIR::Literal> args)
     {
@@ -495,7 +485,17 @@ namespace {
                 )
             }
             void visit(::HIR::ExprNode_UnitVariant& node) override {
-                TODO(node.span(), "Unit varant/struct constructors in constant context");
+                
+                const auto& rv = m_crate.get_typeitem_by_path(node.span(), node.m_path.m_path);
+                TU_IFLET( ::HIR::TypeItem, rv, Struct, e,
+                    m_rv = ::HIR::Literal::make_List({});
+                )
+                else TU_IFLET( ::HIR::TypeItem, rv, Enum, e,
+                    TODO(node.span(), "Handle Enum _UnitVairant - " << node.m_path);
+                )
+                else {
+                    BUG(node.span(), "Could not find struct/enum for " << node.m_path << " - " << rv.tag_str());
+                }
             }
             void visit(::HIR::ExprNode_PathValue& node) override {
                 TRACE_FUNCTION_FR("_PathValue - " << node.m_path, m_rv);
@@ -541,37 +541,46 @@ namespace {
             
             void visit(::HIR::ExprNode_StructLiteral& node) override {
                 TRACE_FUNCTION_FR("_StructLiteral - " << node.m_path, m_rv);
-                const auto& str = get_struct(node.span(), m_crate, node.m_path.m_path);
-                const auto& fields = str.m_data.as_Named();
                 
-                ::std::vector< ::HIR::Literal>  vals;
-                if( node.m_base_value ) {
-                    node.m_base_value->visit(*this);
-                    auto base_val = mv$(m_rv);
-                    if( !base_val.is_List() || base_val.as_List().size() != fields.size() ) {
-                        BUG(node.span(), "Struct literal base value had an incorrect field count");
+                const auto& ent = m_crate.get_typeitem_by_path(node.span(), node.m_path.m_path);
+                TU_IFLET( ::HIR::TypeItem, ent, Struct, str,
+                    const auto& fields = str.m_data.as_Named();
+                    
+                    ::std::vector< ::HIR::Literal>  vals;
+                    if( node.m_base_value ) {
+                        node.m_base_value->visit(*this);
+                        auto base_val = mv$(m_rv);
+                        if( !base_val.is_List() || base_val.as_List().size() != fields.size() ) {
+                            BUG(node.span(), "Struct literal base value had an incorrect field count");
+                        }
+                        vals = mv$(base_val.as_List());
                     }
-                    vals = mv$(base_val.as_List());
-                }
-                else {
-                    vals.resize( fields.size() );
-                }
-                for( const auto& val_set : node.m_values ) {
-                    unsigned int idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& v) { return v.first == val_set.first; } ) - fields.begin();
-                    if( idx == fields.size() ) {
-                        ERROR(node.span(), E0000, "Field name " << val_set.first << " isn't a member of " << node.m_path);
+                    else {
+                        vals.resize( fields.size() );
                     }
-                    val_set.second->visit(*this);
-                    vals[idx] = mv$(m_rv);
-                }
-                for( unsigned int i = 0; i < vals.size(); i ++ ) {
-                    const auto& val = vals[i];
-                    if( val.is_Invalid() ) {
-                        ERROR(node.span(), E0000, "Field " << fields[i].first << " wasn't set");
+                    for( const auto& val_set : node.m_values ) {
+                        unsigned int idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& v) { return v.first == val_set.first; } ) - fields.begin();
+                        if( idx == fields.size() ) {
+                            ERROR(node.span(), E0000, "Field name " << val_set.first << " isn't a member of " << node.m_path);
+                        }
+                        val_set.second->visit(*this);
+                        vals[idx] = mv$(m_rv);
                     }
-                }
+                    for( unsigned int i = 0; i < vals.size(); i ++ ) {
+                        const auto& val = vals[i];
+                        if( val.is_Invalid() ) {
+                            ERROR(node.span(), E0000, "Field " << fields[i].first << " wasn't set");
+                        }
+                    }
 
-                m_rv = ::HIR::Literal::make_List(mv$(vals));
+                    m_rv = ::HIR::Literal::make_List(mv$(vals));
+                )
+                else TU_IFLET( ::HIR::TypeItem, ent, Enum, enm,
+                    TODO(node.span(), "Handle Enum _UnitVariant - " << node.m_path);
+                )
+                else {
+                    BUG(node.span(), "Could not find struct/enum for " << node.m_path << " - " << ent.tag_str());
+                }
             }
             void visit(::HIR::ExprNode_Tuple& node) override {
                 ::std::vector< ::HIR::Literal>  vals;
