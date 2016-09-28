@@ -1670,7 +1670,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         ),
     (Value,
         if( ! allow_refutable )
-            BUG(pat.span(), "Resolve_Absolute_Pattern - Enountered refutable pattern where only irrefutable allowed");
+            BUG(pat.span(), "Resolve_Absolute_Pattern - Encountered refutable pattern where only irrefutable allowed - " << pat);
         Resolve_Absolute_PatternValue(context, pat.span(), e.start);
         Resolve_Absolute_PatternValue(context, pat.span(), e.end);
         ),
@@ -1693,8 +1693,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
             Resolve_Absolute_Pattern(context, allow_refutable,  sp.second);
         ),
     (Slice,
-        if( !allow_refutable )
-            BUG(pat.span(), "Resolve_Absolute_Pattern - Enountered refutable pattern where only irrefutable allowed");
+        // NOTE: Can be irrefutable (if the type is array)
         for(auto& sp : e.leading)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
         if( e.extra_bind != "" && e.extra_bind != "_" ) {
