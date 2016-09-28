@@ -54,7 +54,7 @@ struct ExprNode_Block:
 {
     bool m_is_unsafe;
     bool m_yields_final_value;
-    ::std::unique_ptr<AST::Module> m_local_mod;
+    ::std::shared_ptr<AST::Module> m_local_mod;
     ::std::vector<ExprNodeP>    m_nodes;
 
     ExprNode_Block(::std::vector<ExprNodeP> nodes={}):
@@ -63,7 +63,7 @@ struct ExprNode_Block:
         m_local_mod(),
         m_nodes( mv$(nodes) )
     {}
-    ExprNode_Block(bool is_unsafe, bool yields_final_value, ::std::vector<ExprNodeP> nodes, ::std::unique_ptr<AST::Module> local_mod):
+    ExprNode_Block(bool is_unsafe, bool yields_final_value, ::std::vector<ExprNodeP> nodes, ::std::shared_ptr<AST::Module> local_mod):
         m_is_unsafe(is_unsafe),
         m_yields_final_value(yields_final_value),
         m_local_mod( move(local_mod) ),

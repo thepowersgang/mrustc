@@ -1657,7 +1657,6 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         default:
             throw ParseError::Generic("Expected { or ; after module name");
         }
-        submod.prescan();
         item_name = mv$(name);
         item_data = ::AST::Item( mv$(submod) );
         break; }

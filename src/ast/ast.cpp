@@ -258,10 +258,11 @@ ExternBlock ExternBlock::clone() const
     TODO(Span(), "Clone an extern block");
 }
 
-::std::unique_ptr<AST::Module> Module::add_anon() {
-    auto rv = box$( Module(m_my_path + FMT("#" << m_anon_modules.size())) );
+::std::shared_ptr<AST::Module> Module::add_anon() {
+    auto rv = ::std::shared_ptr<AST::Module>( new Module(m_my_path + FMT("#" << m_anon_modules.size())) );
+    DEBUG("New anon " << rv->m_my_path);
     
-    m_anon_modules.push_back( rv.get() );
+    m_anon_modules.push_back( rv );
     
     return rv;
 }
@@ -290,17 +291,6 @@ void Module::add_macro_invocation(MacroInvocation item) {
 }
 void Module::add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro) {
     m_macros.push_back( Named<MacroRulesPtr>( mv$(name), mv$(macro), is_exported ) );
-}
-
-void Module::prescan()
-{
-    //TRACE_FUNCTION;
-    //DEBUG("- '"<<m_name<<"'"); 
-    //
-    //for( auto& sm_p : m_submods )
-    //{
-    //    sm_p.first.prescan();
-    //}
 }
 
 Item Item::clone() const

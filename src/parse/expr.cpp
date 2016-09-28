@@ -24,7 +24,7 @@ static inline ExprNodeP mk_exprnodep(const TokenStream& lex, AST::ExprNode* en){
 #define NEWNODE(type, ...)  mk_exprnodep(lex, new type(__VA_ARGS__))
 
 //ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe=false);    // common.hpp
-//ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::unique_ptr<AST::Module>& local_mod, bool& add_silence_if_end);
+//ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST::Module>& local_mod, bool& add_silence_if_end);
 //ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence);
 ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool *add_silence);
 //ExprNodeP Parse_Stmt(TokenStream& lex);   // common.hpp
@@ -55,7 +55,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
     bool yields_final_value = true;
     ::std::vector<ExprNodeP> nodes;
     
-    ::std::unique_ptr<AST::Module> local_mod;
+    ::std::shared_ptr<AST::Module> local_mod;
     
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
     
@@ -97,7 +97,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
 /// Parse a single line in a block, handling items added to the local module
 ///
 /// - If an item was parsed, this returns an empty ExprNodeP
-ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::unique_ptr<AST::Module>& local_mod, bool& add_silence_if_end)
+ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST::Module>& local_mod, bool& add_silence_if_end)
 {
     Token   tok;
 

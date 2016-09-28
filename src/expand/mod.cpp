@@ -300,7 +300,7 @@ struct CExpandExpr:
                 SET_MODULE( (*ttl), mod );
                 // Reparse as expression / item
                 bool    add_silence_if_end = false;
-                ::std::unique_ptr< AST::Module> tmp_local_mod;
+                ::std::shared_ptr< AST::Module> tmp_local_mod;
                 auto& local_mod_ptr = (this->current_block ? this->current_block->m_local_mod : tmp_local_mod);
                 auto newexpr = Parse_ExprBlockLine_WithItems(*ttl, local_mod_ptr, add_silence_if_end);
                 if( newexpr )
@@ -942,6 +942,26 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
     for( const auto& mi: mod.macro_imports_res() )
         DEBUG("- Imports '" << mi.name << "'");
 }
+void Expand_Mod_IndexAnon(::AST::Crate& crate, ::AST::Module& mod)
+{
+    TRACE_FUNCTION_F("mod=" << mod.path());
+    
+    for(auto& i : mod.items())
+    {
+        DEBUG("- " << i.data.tag_str() << " '" << i.name << "'");
+        TU_IFLET(::AST::Item, (i.data), Module, e,
+            Expand_Mod_IndexAnon(crate, e);
+        )
+    }
+    
+    for( auto& mp : mod.anon_mods() )
+    {
+        if( mp.unique() ) {
+            DEBUG("- " << mp->path() << " dropped due to node destruction");
+            mp.reset();
+        }
+    }
+}
 void Expand(::AST::Crate& crate)
 {
     auto modstack = LList<const ::AST::Module*>(nullptr, &crate.m_root_module);
@@ -987,6 +1007,7 @@ void Expand(::AST::Crate& crate)
     Expand_Mod(crate, modstack, ::AST::Path("",{}), crate.m_root_module);
     
     // Post-process
+    Expand_Mod_IndexAnon(crate, crate.m_root_module);
     #if 0
     for( auto& a : crate.m_attrs.m_items )
     {

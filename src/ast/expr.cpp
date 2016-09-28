@@ -374,14 +374,14 @@ NODE(ExprNode_UniOp, {
 
 
 #define NV(type, actions)\
-    void NodeVisitorDef::visit(type& node) { DEBUG("DEF - "#type); actions }
+    void NodeVisitorDef::visit(type& node) { /*DEBUG("DEF - "#type);*/ actions }
 //  void NodeVisitorDef::visit(const type& node) { DEBUG("DEF - "#type" (const)"); actions }
 
 NV(ExprNode_Block, {
-    INDENT();
+    //INDENT();
     for( auto& child : node.m_nodes )
         visit(child);
-    UNINDENT();
+    //UNINDENT();
 })
 NV(ExprNode_Macro,
 {

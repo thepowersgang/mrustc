@@ -245,7 +245,9 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
     }
     for(auto& mp : mod.anon_mods())
     {
-        Resolve_Index_Module_Base(crate, *mp);
+        if( mp ) {
+            Resolve_Index_Module_Base(crate, *mp);
+        }
     }
 }
 
@@ -459,7 +461,9 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
     }
     for(auto& mp : mod.anon_mods())
     {
-        Resolve_Index_Module_Wildcard(crate, *mp, handle_pub);
+        if( mp ) {
+            Resolve_Index_Module_Wildcard(crate, *mp, handle_pub);
+        }
     }
 }
 

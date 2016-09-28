@@ -994,7 +994,8 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
             ss >> c;
             ss >> idx;
             assert( idx < mod->anon_mods().size() );
-            mod = mod->anon_mods()[idx];
+            assert( mod->anon_mods()[idx] );
+            mod = mod->anon_mods()[idx].get();
         }
         else
         {

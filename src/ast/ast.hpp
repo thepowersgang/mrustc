@@ -490,7 +490,7 @@ class Module
     
 
     // --- Runtime caches and state ---
-    ::std::vector<Module*>  m_anon_modules;
+    ::std::vector< ::std::shared_ptr<Module> >  m_anon_modules;
 
     ::std::vector< NamedNS<const MacroRules*> > m_macro_import_res; // Vec of imported macros (not serialised)
     ::std::vector< Named<MacroRulesPtr> >  m_macros;
@@ -511,7 +511,8 @@ public:
         bool is_import; // Set if this item has a path that isn't `mod->path() + name`
         ::AST::Path path;
     };
-    // TODO: Add "namespace" list (separate to types)
+    
+    // TODO: Document difference between namespace and Type
     ::std::unordered_map< ::std::string, IndexEnt >    m_namespace_items;
     ::std::unordered_map< ::std::string, IndexEnt >    m_type_items;
     ::std::unordered_map< ::std::string, IndexEnt >    m_value_items;
@@ -527,11 +528,8 @@ public:
         return m_my_path.nodes().back().name()[0] == '#';
     }
     
-    // Called when module is loaded from a serialised format
-    void prescan();
-    
     /// Create an anon module (for use inside expressions)
-    ::std::unique_ptr<AST::Module> add_anon();
+    ::std::shared_ptr<AST::Module> add_anon();
     
     void add_item(Named<Item> item);
     void add_item(bool is_pub, ::std::string name, Item it, MetaItems attrs);
@@ -552,14 +550,6 @@ public:
     
     
 
-    unsigned int add_anon_module(Module* mod_ptr) {
-        auto it = ::std::find(m_anon_modules.begin(), m_anon_modules.end(), mod_ptr);
-        if( it != m_anon_modules.end() )
-            return it - m_anon_modules.begin();
-        m_anon_modules.push_back(mod_ptr);
-        return m_anon_modules.size()-1;
-    }
-
     const ::AST::Path& path() const { return m_my_path; }
 
           ::std::vector<Named<Item>>& items()       { return m_items; }
@@ -571,8 +561,8 @@ public:
           ::std::vector<ImplDef>&   neg_impls()       { return m_neg_impls; }
     const ::std::vector<ImplDef>&   neg_impls() const { return m_neg_impls; }
 
-          ::std::vector<Module*>&   anon_mods()       { return m_anon_modules; }
-    const ::std::vector<Module*>&   anon_mods() const { return m_anon_modules; }
+          ::std::vector< ::std::shared_ptr<Module> >&   anon_mods()       { return m_anon_modules; }
+    const ::std::vector< ::std::shared_ptr<Module> >&   anon_mods() const { return m_anon_modules; }
     
 
     ::std::vector<MacroInvocation>& macro_invs() { return m_macro_invocations; }

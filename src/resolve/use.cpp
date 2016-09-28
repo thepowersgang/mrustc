@@ -256,7 +256,8 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         if( idx >= mod.anon_mods().size() ) {
             BUG(span, "Invalid anon path segment '" << des_item_name << "'");
         }
-        return ::AST::PathBinding::make_Module({mod.anon_mods()[idx]});
+        assert( mod.anon_mods()[idx] );
+        return ::AST::PathBinding::make_Module({&*mod.anon_mods()[idx]});
     }
     
     // Seach for the name defined in the module.
