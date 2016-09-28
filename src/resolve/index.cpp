@@ -468,7 +468,7 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
 }
 
 
-void Resolve_Index_Module_Normalise_Path_ext(const ::AST::Crate& crate, const Span& sp, ::AST::Path& path,  const ::AST::ExternCrate& ext, unsigned int start)
+void Resolve_Index_Module_Normalise_Path_ext(const ::AST::Crate& crate, const Span& sp, ::AST::Path& path, IndexName loc,  const ::AST::ExternCrate& ext, unsigned int start)
 {
     const auto& info = path.m_class.as_Absolute();
     const ::HIR::Module* hmod = &ext.m_hir->m_root_module;
@@ -513,27 +513,35 @@ void Resolve_Index_Module_Normalise_Path_ext(const ::AST::Crate& crate, const Sp
     }
     const auto& lastnode = info.nodes.back();
     
-    auto it_m = hmod->m_mod_items.find( lastnode.name() );
-    if( it_m != hmod->m_mod_items.end() )
+    switch(loc)
     {
-        TU_IFLET( ::HIR::TypeItem, it_m->second->ent, Import, e,
-            // Replace the path with this path (maintaining binding)
-            auto binding = path.binding().clone();
-            path = hir_to_ast(e);
-            path.bind( mv$(binding) );
-        )
-        return ;
-    }
-    auto it_v = hmod->m_value_items.find( lastnode.name() );
-    if( it_v != hmod->m_value_items.end() )
-    {
-        TU_IFLET( ::HIR::ValueItem, it_v->second->ent, Import, e,
-            // Replace the path with this path (maintaining binding)
-            auto binding = path.binding().clone();
-            path = hir_to_ast(e);
-            path.bind( mv$(binding) );
-        )
-        return ;
+    case IndexName::Type:
+    case IndexName::Namespace: {
+        auto it_m = hmod->m_mod_items.find( lastnode.name() );
+        if( it_m != hmod->m_mod_items.end() )
+        {
+            TU_IFLET( ::HIR::TypeItem, it_m->second->ent, Import, e,
+                // Replace the path with this path (maintaining binding)
+                auto binding = path.binding().clone();
+                path = hir_to_ast(e);
+                path.bind( mv$(binding) );
+            )
+            return ;
+        }
+        } break;
+    case IndexName::Value: {
+        auto it_v = hmod->m_value_items.find( lastnode.name() );
+        if( it_v != hmod->m_value_items.end() )
+        {
+            TU_IFLET( ::HIR::ValueItem, it_v->second->ent, Import, e,
+                // Replace the path with this path (maintaining binding)
+                auto binding = path.binding().clone();
+                path = hir_to_ast(e);
+                path.bind( mv$(binding) );
+            )
+            return ;
+        }
+        } break;
     }
     
     ERROR(sp, E0000,  "Couldn't find final node of path " << path);
@@ -545,7 +553,7 @@ bool Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
     const auto& info = path.m_class.as_Absolute();
     if( info.crate != "" )
     {
-        Resolve_Index_Module_Normalise_Path_ext(crate, sp, path,  crate.m_extern_crates.at(info.crate), 0);
+        Resolve_Index_Module_Normalise_Path_ext(crate, sp, path, loc,  crate.m_extern_crates.at(info.crate), 0);
         return false;
     }
     
@@ -577,7 +585,7 @@ bool Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
                 mod = e.module_;
                 ),
             (Crate,
-                Resolve_Index_Module_Normalise_Path_ext(crate, sp, path, *e.crate_, i+1);
+                Resolve_Index_Module_Normalise_Path_ext(crate, sp, path, loc, *e.crate_, i+1);
                 return false;
                 ),
             (Enum,
