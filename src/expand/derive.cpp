@@ -237,6 +237,7 @@ class Deriver_Debug:
         AST::Function fcn(
             sp,
             AST::GenericParams(),
+            "rust", false, false, false,
             ret_type,
             vec$(
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) ),
@@ -413,6 +414,7 @@ class Deriver_PartialEq:
         AST::Function fcn(
             sp,
             AST::GenericParams(),
+            "rust", false, false, false,
             TypeRef(sp, CORETYPE_BOOL),
             vec$(
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) ),
@@ -596,6 +598,7 @@ class Deriver_Eq:
         AST::Function fcn(
             sp,
             AST::GenericParams(),
+            "rust", false, false, false,
             TypeRef(TypeRef::TagUnit(), sp),
             vec$(
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) )
@@ -733,6 +736,7 @@ class Deriver_Clone:
         AST::Function fcn(
             sp,
             AST::GenericParams(),
+            "rust", false, false, false,
             TypeRef("Self", 0xFFFF),
             vec$(
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) )

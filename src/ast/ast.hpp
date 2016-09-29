@@ -163,7 +163,12 @@ private:
     Expr    m_code;
     TypeRef m_rettype;
     Arglist m_args;
+    
     // TODO: ABI, const, and unsafe
+    ::std::string   m_abi;
+    bool    m_is_const;
+    bool    m_is_unsafe;
+    bool    m_is_variadic;  // extern only
 public:
     Function()
     {}
@@ -171,9 +176,15 @@ public:
     Function& operator=(const Function&) = delete;
     Function(Function&&) = default;
     Function& operator=(Function&&) = default;
-    Function(Span sp, GenericParams params, TypeRef ret_type, Arglist args);
+    
+    Function(Span sp, GenericParams params, ::std::string abi, bool is_unsafe, bool is_const, bool is_variadic, TypeRef ret_type, Arglist args);
     
     void set_code(Expr code) { m_code = ::std::move(code); }
+    
+    const ::std::string& abi() const { return m_abi; };
+    bool is_const() const { return m_is_const; }
+    bool is_unsafe() const { return m_is_unsafe; }
+    bool is_variadic() const { return m_is_variadic; }
     
     const GenericParams& params() const { return m_params; }
           GenericParams& params()       { return m_params; }

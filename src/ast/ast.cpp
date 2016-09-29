@@ -84,11 +84,15 @@ Static Static::clone() const
     return Static( m_class, m_type, m_value.is_valid() ? AST::Expr( m_value.node().clone() ) : AST::Expr() );
 }
 
-Function::Function(Span sp, GenericParams params, TypeRef ret_type, Arglist args):
+Function::Function(Span sp, GenericParams params, ::std::string abi, bool is_unsafe, bool is_const, bool is_variadic, TypeRef ret_type, Arglist args):
     m_span(sp),
     m_params( move(params) ),
     m_rettype( move(ret_type) ),
-    m_args( move(args) )
+    m_args( move(args) ),
+    m_abi( mv$(abi) ),
+    m_is_const(is_const),
+    m_is_unsafe(is_unsafe),
+    m_is_variadic(is_variadic)
 {
 }
 Function Function::clone() const
@@ -97,7 +101,7 @@ Function Function::clone() const
     for(const auto& arg : m_args)
         new_args.push_back( ::std::make_pair( arg.first.clone(), arg.second ) );
     
-    auto rv = Function( m_span, m_params, m_rettype, mv$(new_args) );
+    auto rv = Function( m_span, m_params, m_abi, m_is_unsafe, m_is_const, m_is_variadic, m_rettype, mv$(new_args) );
     if( m_code.is_valid() )
     {
         rv.m_code = AST::Expr( m_code.node().clone() );
