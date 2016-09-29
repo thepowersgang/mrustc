@@ -1099,15 +1099,21 @@ namespace {
                     TODO(node.span(), "Emit revisit when _CallPath is ambiguous - " << node.m_path);
                 }
                 assert( node.m_cache.m_arg_types.size() >= 1);
+                unsigned int exp_argc = node.m_cache.m_arg_types.size() - 1;
                 
-                if( node.m_args.size() != node.m_cache.m_arg_types.size() - 1 ) {
-                    ERROR(node.span(), E0000, "Incorrect number of arguments to " << node.m_path
-                        << " - exp " << node.m_cache.m_arg_types.size()-1 << " got " << node.m_args.size());
+                if( node.m_args.size() != exp_argc ) {
+                    if( node.m_cache.m_fcn->m_variadic && node.m_args.size() > exp_argc ) {
+                    }
+                    else {
+                        ERROR(node.span(), E0000, "Incorrect number of arguments to " << node.m_path
+                            << " - exp " << exp_argc << " got " << node.m_args.size());
+                    }
                 }
             }
             
             // Link arguments
-            for(unsigned int i = 0; i < node.m_args.size(); i ++)
+            // - NOTE: Uses the cache for the count because vaargs aren't checked (they're checked for suitability in expr_check.cpp)
+            for(unsigned int i = 0; i < node.m_cache.m_arg_types.size() - 1; i ++)
             {
                 this->context.equate_types_coerce(node.span(), node.m_cache.m_arg_types[i], node.m_args[i]);
             }
