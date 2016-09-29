@@ -1998,7 +1998,7 @@ namespace {
             no_revisit(node);
         }
         void visit(::HIR::ExprNode_CallValue& node) override {
-            const auto& sp = node.span();
+            //const auto& sp = node.span();
             const auto& ty_o = this->context.get_type(node.m_value->m_res_type);
             TRACE_FUNCTION_F("CallValue: ty=" << ty_o);
             
@@ -2120,7 +2120,12 @@ namespace {
             
             if( deref_count > 0 )
             {
-                TODO(sp, "Insert autoderef for CallValue (" << deref_count << " needed) - " << *ty_p << " and " << ty_o);
+                ty_p = &ty_o;
+                while(deref_count-- > 0)
+                {
+                    ty_p = &this->context.get_type(*ty_p->m_data.as_Borrow().inner);
+                    node.m_value = this->context.create_autoderef( mv$(node.m_value), ty_p->clone() );
+                }
             }
             
             assert( node.m_arg_types.size() == node.m_args.size() + 1 );
