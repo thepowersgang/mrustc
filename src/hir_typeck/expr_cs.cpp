@@ -2024,6 +2024,12 @@ namespace {
             const auto& ty_o = this->context.get_type(node.m_value->m_res_type);
             TRACE_FUNCTION_F("CallValue: ty=" << ty_o);
             
+            // - Shadow (prevent ivar guessing) every parameter
+            this->context.equate_types_shadow(node.span(), node.m_res_type);
+            for( const auto& arg_node : node.m_args ) {
+                this->context.equate_types_shadow(node.span(), arg_node->m_res_type);
+            }
+            
             if( ty_o.m_data.is_Infer() ) {
                 // - Don't even bother
                 return ;
@@ -2118,12 +2124,22 @@ namespace {
                         if( !ty.m_data.is_Generic() )
                         {
                             bool found = this->context.m_resolve.find_trait_impls_crate(node.span(), lang_FnOnce, trait_pp, ty, [&](auto impl, auto cmp) {
-                                TODO(node.span(), "Use impl of FnOnce - " << impl << " matching " << this->context.m_ivars.fmt_type(ty));
-                                return false;
+                                if( cmp == ::HIR::Compare::Fuzzy )
+                                    TODO(node.span(), "Handle fuzzy match - " << impl);
+                                
+                                auto tup = impl.get_trait_ty_param(0);
+                                if( !tup.m_data.is_Tuple() )
+                                    ERROR(node.span(), E0000, "FnOnce expects a tuple argument, got " << tup);
+                                fcn_args_tup = mv$(tup);
+                                fcn_ret = impl.get_type("Output");
+                                ASSERT_BUG(node.span(), fcn_ret != ::HIR::TypeRef(), "Impl didn't have a type for Output - " << impl);
+                                return true;
                                 });
                             if( found ) {
-                                // TODO: Fill cache.
-                                TODO(node.span(), "Use found impl of FnOnce");
+                                // Fill cache and leave the TU_MATCH
+                                node.m_arg_types = mv$( fcn_args_tup.m_data.as_Tuple() );
+                                node.m_arg_types.push_back( mv$(fcn_ret) );
+                                node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Unknown;
                                 break ; // leaves TU_MATCH
                             }
                         }
@@ -2137,7 +2153,7 @@ namespace {
                         }
                         
                         // Didn't find anything. Error?
-                        ERROR(node.span(), E0000, "Unable to find an implementation of Fn* for " << this->context.m_ivars.fmt_type(ty));
+                        ERROR(node.span(), E0000, "Unable to find an implementation of Fn*"<<trait_pp<<" for " << this->context.m_ivars.fmt_type(ty));
                     }
                     
                     node.m_arg_types = mv$( fcn_args_tup.m_data.as_Tuple() );
@@ -2167,7 +2183,8 @@ namespace {
                 ty_p = &ty_o;
                 while(deref_count-- > 0)
                 {
-                    ty_p = &this->context.get_type(*ty_p->m_data.as_Borrow().inner);
+                    ty_p = this->context.m_resolve.autoderef(node.span(), *ty_p, tmp_type);
+                    assert(ty_p);
                     node.m_value = this->context.create_autoderef( mv$(node.m_value), ty_p->clone() );
                 }
             }
