@@ -2003,125 +2003,124 @@ namespace {
             TRACE_FUNCTION_F("CallValue: ty=" << ty_o);
             
             unsigned int deref_count = 0;
+            bool keep_deref = false;
             const auto* ty_p = &ty_o;
-            while(ty_p->m_data.is_Borrow())
+            do
             {
-                deref_count ++;
-                ty_p = &this->context.get_type(*ty_p->m_data.as_Borrow().inner);
-            }
-            const auto& ty = *ty_p;
-            
-            TU_MATCH_DEF(decltype(ty.m_data), (ty.m_data), (e),
-            (
-                // Search for FnOnce impl
-                const auto& lang_FnOnce = this->context.m_crate.get_lang_item_path(node.span(), "fn_once");
-                const auto& lang_FnMut  = this->context.m_crate.get_lang_item_path(node.span(), "fn_mut");
-                const auto& lang_Fn     = this->context.m_crate.get_lang_item_path(node.span(), "fn");
-                
-                ::HIR::TypeRef  fcn_args_tup;
-                ::HIR::TypeRef  fcn_ret;
-                
-                // 1. Create a param set with a single tuple (of all argument types)
-                ::HIR::PathParams   trait_pp;
-                {
-                    ::std::vector< ::HIR::TypeRef>  arg_types;
-                    for(const auto& arg : node.m_args) {
-                        arg_types.push_back( this->context.get_type(arg->m_res_type).clone() );
-                    }
-                    trait_pp.m_types.push_back( ::HIR::TypeRef( mv$(arg_types) ) );
-                }
-                
-                // 2. Locate an impl of FnOnce (exists for all other Fn* traits)
-                auto was_bounded = this->context.m_resolve.find_trait_impls_bound(node.span(), lang_FnOnce, trait_pp, ty, [&](auto impl, auto cmp) {
-                        auto tup = impl.get_trait_ty_param(0);
-                        if( !tup.m_data.is_Tuple() )
-                            ERROR(node.span(), E0000, "FnOnce expects a tuple argument, got " << tup);
-                        fcn_args_tup = mv$(tup);
-                        return true;
-                        });
-                if( was_bounded )
-                {
-                    // RV must be in a bound
-                    fcn_ret = ::HIR::TypeRef( ::HIR::Path(::HIR::Path::Data::make_UfcsKnown({
-                        box$( ty.clone() ),
-                        ::HIR::GenericPath(lang_FnOnce),
-                        "Output",
-                        {}
-                        })) );
-                    fcn_ret.m_data.as_Path().path.m_data.as_UfcsKnown().trait.m_params.m_types.push_back( fcn_args_tup.clone() );
+                keep_deref = false;
+                const auto& ty = *ty_p;
+                TU_MATCH_DEF(decltype(ty.m_data), (ty.m_data), (e),
+                (
+                    // Search for FnOnce impl
+                    const auto& lang_FnOnce = this->context.m_crate.get_lang_item_path(node.span(), "fn_once");
+                    const auto& lang_FnMut  = this->context.m_crate.get_lang_item_path(node.span(), "fn_mut");
+                    const auto& lang_Fn     = this->context.m_crate.get_lang_item_path(node.span(), "fn");
                     
-                    // 3. Locate the most permissive implemented Fn* trait (Fn first, then FnMut, then assume just FnOnce)
-                    // NOTE: Borrowing is added by the expansion to CallPath
-                    if( this->context.m_resolve.find_trait_impls_bound(node.span(), lang_Fn, trait_pp, ty, [&](auto , auto cmp) {
-                        return true;
-                        //return cmp == ::HIR::Compare::Equal;
-                        })
-                        )
+                    ::HIR::TypeRef  fcn_args_tup;
+                    ::HIR::TypeRef  fcn_ret;
+                    
+                    // 1. Create a param set with a single tuple (of all argument types)
+                    ::HIR::PathParams   trait_pp;
                     {
-                        DEBUG("-- Using Fn");
-                        node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
+                        ::std::vector< ::HIR::TypeRef>  arg_types;
+                        for(const auto& arg : node.m_args) {
+                            arg_types.push_back( this->context.get_type(arg->m_res_type).clone() );
+                        }
+                        trait_pp.m_types.push_back( ::HIR::TypeRef( mv$(arg_types) ) );
                     }
-                    else if( this->context.m_resolve.find_trait_impls_bound(node.span(), lang_FnMut, trait_pp, ty, [&](auto , auto cmp) {
-                        return true;
-                        //return cmp == ::HIR::Compare::Equal;
-                        })
-                        )
+                    
+                    // 2. Locate an impl of FnOnce (exists for all other Fn* traits)
+                    auto was_bounded = this->context.m_resolve.find_trait_impls_bound(node.span(), lang_FnOnce, trait_pp, ty, [&](auto impl, auto cmp) {
+                            auto tup = impl.get_trait_ty_param(0);
+                            if( !tup.m_data.is_Tuple() )
+                                ERROR(node.span(), E0000, "FnOnce expects a tuple argument, got " << tup);
+                            fcn_args_tup = mv$(tup);
+                            return true;
+                            });
+                    if( was_bounded )
                     {
-                        DEBUG("-- Using FnMut");
-                        node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnMut;
+                        // RV must be in a bound
+                        fcn_ret = ::HIR::TypeRef( ::HIR::Path(::HIR::Path::Data::make_UfcsKnown({
+                            box$( ty.clone() ),
+                            ::HIR::GenericPath(lang_FnOnce),
+                            "Output",
+                            {}
+                            })) );
+                        fcn_ret.m_data.as_Path().path.m_data.as_UfcsKnown().trait.m_params.m_types.push_back( fcn_args_tup.clone() );
+                        
+                        // 3. Locate the most permissive implemented Fn* trait (Fn first, then FnMut, then assume just FnOnce)
+                        // NOTE: Borrowing is added by the expansion to CallPath
+                        if( this->context.m_resolve.find_trait_impls_bound(node.span(), lang_Fn, trait_pp, ty, [&](auto , auto cmp) {
+                            return true;
+                            //return cmp == ::HIR::Compare::Equal;
+                            })
+                            )
+                        {
+                            DEBUG("-- Using Fn");
+                            node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
+                        }
+                        else if( this->context.m_resolve.find_trait_impls_bound(node.span(), lang_FnMut, trait_pp, ty, [&](auto , auto cmp) {
+                            return true;
+                            //return cmp == ::HIR::Compare::Equal;
+                            })
+                            )
+                        {
+                            DEBUG("-- Using FnMut");
+                            node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnMut;
+                        }
+                        else
+                        {
+                            DEBUG("-- Using FnOnce (default)");
+                            node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnOnce;
+                        }
+                    }
+                    else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Borrow, e,
+                        deref_count ++;
+                        ty_p = &this->context.get_type(*e.inner);
+                        keep_deref = true;
+                        continue ;
+                    )
+                    else if( !ty.m_data.is_Generic() )
+                    {
+                        bool found = this->context.m_resolve.find_trait_impls_crate(node.span(), lang_FnOnce, trait_pp, ty, [&](auto impl, auto cmp) {
+                            TODO(node.span(), "Use impl of FnOnce - " << impl);
+                            return false;
+                            });
+                        if( found ) {
+                        }
+                        TODO(node.span(), "Search crate for implementations of FnOnce for " << ty);
                     }
                     else
                     {
-                        DEBUG("-- Using FnOnce (default)");
-                        node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnOnce;
+                        // Didn't find anything. Error?
+                        ERROR(node.span(), E0000, "Unable to find an implementation of Fn* for " << ty);
                     }
-                }
-                else if( !ty.m_data.is_Generic() )
-                {
-                    bool found = this->context.m_resolve.find_trait_impls_crate(node.span(), lang_FnOnce, trait_pp, ty, [&](auto impl, auto cmp) {
-                        TODO(node.span(), "Use impl of FnOnce - " << impl);
-                        return false;
-                        });
-                    if( found ) {
-                    }
-                    TODO(node.span(), "Search crate for implementations of FnOnce for " << ty);
-                }
-                else
-                {
-                    // Didn't find anything. Error?
-                    ERROR(node.span(), E0000, "Unable to find an implementation of Fn* for " << ty);
-                }
-                
-                node.m_arg_types = mv$( fcn_args_tup.m_data.as_Tuple() );
-                node.m_arg_types.push_back( mv$(fcn_ret) );
-                ),
-            (Closure,
-                for( const auto& arg : e.m_arg_types )
-                    node.m_arg_types.push_back( arg.clone() );
-                node.m_arg_types.push_back( e.m_rettype->clone() );
-                node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Unknown;
-                ),
-            (Function,
-                for( const auto& arg : e.m_arg_types )
-                    node.m_arg_types.push_back( arg.clone() );
-                node.m_arg_types.push_back( e.m_rettype->clone() );
-                node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
-                ),
-            (Borrow,
-                // - Check inner (recursively)
-                //  > use upper
-                TODO(sp, "CallValue on an &-ptr - " << ty);
-                return ;
-                ),
-            (Infer,
-                // No idea yet
-                return ;
+                    
+                    node.m_arg_types = mv$( fcn_args_tup.m_data.as_Tuple() );
+                    node.m_arg_types.push_back( mv$(fcn_ret) );
+                    ),
+                (Closure,
+                    for( const auto& arg : e.m_arg_types )
+                        node.m_arg_types.push_back( arg.clone() );
+                    node.m_arg_types.push_back( e.m_rettype->clone() );
+                    node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Unknown;
+                    ),
+                (Function,
+                    for( const auto& arg : e.m_arg_types )
+                        node.m_arg_types.push_back( arg.clone() );
+                    node.m_arg_types.push_back( e.m_rettype->clone() );
+                    node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
+                    ),
+                (Infer,
+                    // No idea yet
+                    return ;
+                    )
                 )
-            )
+            } while( keep_deref );
             
             if( deref_count > 0 )
             {
-                TODO(sp, "Insert autoderef for CallValue (" << deref_count << " needed) - " << ty << " and " << ty_o);
+                TODO(sp, "Insert autoderef for CallValue (" << deref_count << " needed) - " << *ty_p << " and " << ty_o);
             }
             
             assert( node.m_arg_types.size() == node.m_args.size() + 1 );
