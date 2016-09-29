@@ -190,7 +190,7 @@ struct Trait
     ::std::string   m_lifetime;
     ::std::vector< ::HIR::TraitPath >  m_parent_traits;
     
-    bool    m_is_marker;
+    bool    m_is_marker;    // aka OIBIT
     
     ::std::unordered_map< ::std::string, AssociatedType >   m_types;
     ::std::unordered_map< ::std::string, TraitValueItem >   m_values;
@@ -361,6 +361,7 @@ public:
     }
     
     bool find_trait_impls(const ::HIR::SimplePath& path, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TraitImpl&)> callback) const;
+    bool find_auto_trait_impls(const ::HIR::SimplePath& path, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::MarkerImpl&)> callback) const;
     bool find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback) const;
 };
 

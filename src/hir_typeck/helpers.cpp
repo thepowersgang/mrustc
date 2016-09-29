@@ -1881,6 +1881,50 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
 {
     TRACE_FUNCTION_F(trait << FMT_CB(ss, if(params_ptr) { ss << *params_ptr; } else { ss << "<?>"; }) << " for " << type);
     
+    // Handle auto traits (aka OIBITs)
+    if( m_crate.get_trait_by_path(sp, trait).m_is_marker )
+    {
+        // NOTE: Expected behavior is for Ivars to return false
+        // TODO: Should they return Compare::Fuzzy instead?
+        if( type.m_data.is_Infer() ) {
+            return false;
+        }
+        
+        // - Search for positive impls for this type
+        bool positive_found = this->m_crate.find_auto_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
+            [&](const auto& impl) {
+                // Skip any negative impls on this pass
+                if( impl.is_positive != true )
+                    return false;
+                TODO(sp, "Matching positive impl " << trait << " for " << type);
+            });
+        if( positive_found ) {
+            // A positive impl was found, so return true (callback should have been called)
+            return true;
+        }
+        
+        // - Search for negative impls for this type
+        bool negative_found = this->m_crate.find_auto_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
+            [&](const auto& impl) {
+                // Skip any positive impls
+                if( impl.is_positive != false )
+                    return false;
+                TODO(sp, "Matching negative impl !" << trait << " for " << type);
+            });
+        if( negative_found ) {
+            // A negative impl _was_ found, so return false
+            return false;
+        }
+        
+        // - If the type is a path (struct/enum/...), search for impls for all contained types.
+        TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Path, e,
+        )
+        // Otherwise, there's no negative so it must be positive
+        else {
+            return true;
+        }
+    }
+    
     return this->m_crate.find_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
         [&](const auto& impl) {
             DEBUG("[find_trait_impls_crate] Found impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << " " << impl.m_params.fmt_bounds());
