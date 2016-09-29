@@ -261,7 +261,7 @@ namespace {
                         make_vec2(
                             ::std::make_pair(::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} }, ::HIR::TypeRef("Self", 0xFFFF)),
                             mv$( args_argent )
-                            ),
+                            ), false,
                         ret_ty.clone(),
                         mv$(code)
                         } }
@@ -297,7 +297,7 @@ namespace {
                                 ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Unique, ::HIR::TypeRef("Self", 0xFFFF) )
                                 ),
                             mv$( args_argent )
-                            ),
+                            ), false,
                         ret_ty.clone(),
                         mv$(code)
                         } }
@@ -331,7 +331,7 @@ namespace {
                                 ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef("Self", 0xFFFF) )
                                 ),
                             mv$(args_argent)
-                            ),
+                            ), false,
                         ret_ty.clone(),
                         mv$(code)
                         } }

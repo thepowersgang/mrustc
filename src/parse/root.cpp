@@ -1027,7 +1027,7 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
     case TOK_RWORD_CONST:
         {
             GET_TOK(tok, lex);
-            if( tok.type() != TOK_RWORD_FN && tok.type() != TOK_RWORD_UNSAFE )
+            if( tok.type() != TOK_RWORD_FN && tok.type() != TOK_RWORD_UNSAFE && !fn_is_unsafe )
             {
                 CHECK_TOK(tok, TOK_IDENT);
                 auto name = mv$(tok.str());

@@ -987,9 +987,9 @@ namespace {
     // TODO: ABI and unsafety/constness
     return ::HIR::Function {
         receiver,
-        "rust", false, false,
+        f.abi(), f.is_unsafe(), f.is_const(),
         LowerHIR_GenericParams(f.params(), nullptr),    // TODO: If this is a method, then it can add the Self: Sized bound
-        mv$(args),
+        mv$(args), f.is_variadic(),
         LowerHIR_Type( f.rettype() ),
         LowerHIR_Expr( f.code() )
         };

@@ -108,6 +108,7 @@ public:
     GenericParams   m_params;
     
     args_t  m_args;
+    bool    m_variadic;
     TypeRef m_return;
     
     ExprPtr m_code;

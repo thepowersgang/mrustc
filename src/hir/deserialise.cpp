@@ -550,6 +550,7 @@ namespace {
                 read_bool(),
                 deserialise_genericparams(),
                 deserialise_fcnargs(),
+                read_bool(),
                 deserialise_type(),
                 deserialise_exprptr()
                 };
