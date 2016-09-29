@@ -967,6 +967,28 @@ bool TraitResolution::find_trait_impls(const Span& sp,
         }
     }
     
+    // Magic Unsize impls to trait objects
+    if( trait == this->m_crate.get_lang_item_path(sp, "unsize") ) {
+        ASSERT_BUG(sp, params.m_types.size() == 1, "");
+        TU_IFLET( ::HIR::TypeRef::Data, this->m_ivars.get_type(params.m_types[0]).m_data, TraitObject, e,
+            // TODO: Magic impl if T: ThisTrait
+            bool good;
+            ::HIR::Compare  total_cmp = ::HIR::Compare::Equal;
+            good = find_trait_impls(sp, e.m_trait.m_path.m_path, e.m_trait.m_path.m_params, ty, [&](const auto& , auto cmp){return cmp == ::HIR::Compare::Equal;} );
+            for(const auto& marker : e.m_markers)
+            {
+                if(!good)   break;
+                good |= find_trait_impls(sp, marker.m_path, marker.m_params, ty, [&](const auto& , auto cmp){return cmp == ::HIR::Compare::Equal;} );
+            }
+            if( good ) {
+                return callback( ImplRef(type.clone(), params.clone(), {}), total_cmp );
+            }
+            else {
+                return false;
+            }
+        )
+    }
+    
     // Magical CoerceUnsized impls for various types
     if( trait == this->m_crate.get_lang_item_path(sp, "coerce_unsized") ) {
         const auto& dst_ty = params.m_types.at(0);
