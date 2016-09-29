@@ -1706,6 +1706,12 @@ namespace {
             const auto& sp = node.span();
             const auto& tgt_ty = this->context.get_type(node.m_res_type);
             const auto& src_ty = this->context.get_type(node.m_value->m_res_type);
+            
+            if( this->context.m_ivars.types_equal(src_ty, tgt_ty) ) {
+                this->m_completed = true;
+                return ;
+            }
+            
             TU_MATCH( ::HIR::TypeRef::Data, (tgt_ty.m_data), (e),
             (Infer,
                 // Can't know anything
@@ -1816,7 +1822,16 @@ namespace {
                 )
                 ),
             (Function,
-                ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
+                // NOTE: Valid if it's causing a fn item -> fn pointer coercion
+                TU_MATCH_DEF( ::HIR::TypeRef::Data, (src_ty.m_data), (s_e),
+                (
+                    ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty) << " to " << this->context.m_ivars.fmt_type(src_ty));
+                    ),
+                (Function,
+                    // Check that the ABI and unsafety is correct
+                    ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty) << " to " << this->context.m_ivars.fmt_type(src_ty));
+                    )
+                )
                 ),
             (Closure,
                 BUG(sp, "Attempting to cast to a closure type - impossible");
