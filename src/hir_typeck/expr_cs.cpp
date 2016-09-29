@@ -1128,8 +1128,10 @@ namespace {
         {
             TRACE_FUNCTION_F(&node << " ...(...)");
             this->context.add_ivars( node.m_value->m_res_type );
+            // Add ivars to node result types and create fresh ivars for coercion targets
             for( auto& val : node.m_args ) {
                 this->context.add_ivars( val->m_res_type );
+                node.m_arg_ivars.push_back( this->context.m_ivars.new_ivar_tr() );
             }
             
             // Nothing can be done until type is known
@@ -1140,7 +1142,10 @@ namespace {
                 node.m_value->visit( *this );
             }
             auto _ = this->push_inner_coerce_scoped(true);
-            for( auto& val : node.m_args ) {
+            for(unsigned int i = 0; i < node.m_args.size(); i ++ )
+            {
+                auto& val = node.m_args[i];
+                this->context.equate_types_coerce(val->span(), node.m_arg_ivars[i],  val);
                 val->visit( *this );
             }
         }
@@ -2026,8 +2031,8 @@ namespace {
             
             // - Shadow (prevent ivar guessing) every parameter
             this->context.equate_types_shadow(node.span(), node.m_res_type);
-            for( const auto& arg_node : node.m_args ) {
-                this->context.equate_types_shadow(node.span(), arg_node->m_res_type);
+            for( const auto& arg_ty : node.m_arg_ivars ) {
+                this->context.equate_types_shadow(node.span(), arg_ty);
             }
             
             if( ty_o.m_data.is_Infer() ) {
@@ -2039,8 +2044,8 @@ namespace {
             ::HIR::PathParams   trait_pp;
             {
                 ::std::vector< ::HIR::TypeRef>  arg_types;
-                for(const auto& arg : node.m_args) {
-                    arg_types.push_back( this->context.get_type(arg->m_res_type).clone() );
+                for(const auto& arg_ty : node.m_arg_ivars) {
+                    arg_types.push_back( this->context.get_type(arg_ty).clone() );
                 }
                 trait_pp.m_types.push_back( ::HIR::TypeRef( mv$(arg_types) ) );
             }
@@ -2192,7 +2197,7 @@ namespace {
             assert( node.m_arg_types.size() == node.m_args.size() + 1 );
             for(unsigned int i = 0; i < node.m_args.size(); i ++)
             {
-                this->context.equate_types_coerce(node.span(), node.m_arg_types[i], node.m_args[i]);
+                this->context.equate_types(node.span(), node.m_arg_types[i], node.m_arg_ivars[i]);
             }
             this->context.equate_types(node.span(), node.m_res_type, node.m_arg_types.back());
             this->m_completed = true;

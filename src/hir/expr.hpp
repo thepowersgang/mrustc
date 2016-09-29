@@ -478,7 +478,10 @@ struct ExprNode_CallValue:
 {
     ::HIR::ExprNodeP m_value;
     ::std::vector<ExprNodeP> m_args;
-
+    
+    // - Argument types used as coercion targets
+    ::std::vector< ::HIR::TypeRef>  m_arg_ivars;
+    
     // - Cache for typeck
     ::std::vector< ::HIR::TypeRef>  m_arg_types;
     
