@@ -2024,13 +2024,33 @@ namespace {
             const auto& ty_o = this->context.get_type(node.m_value->m_res_type);
             TRACE_FUNCTION_F("CallValue: ty=" << ty_o);
             
-            unsigned int deref_count = 0;
-            bool keep_deref = false;
-            const auto* ty_p = &ty_o;
-            do
+            if( ty_o.m_data.is_Infer() ) {
+                // - Don't even bother
+                return ;
+            }
+            
+            // 1. Create a param set with a single tuple (of all argument types)
+            ::HIR::PathParams   trait_pp;
             {
-                keep_deref = false;
+                ::std::vector< ::HIR::TypeRef>  arg_types;
+                for(const auto& arg : node.m_args) {
+                    arg_types.push_back( this->context.get_type(arg->m_res_type).clone() );
+                }
+                trait_pp.m_types.push_back( ::HIR::TypeRef( mv$(arg_types) ) );
+            }
+            
+            unsigned int deref_count = 0;
+            ::HIR::TypeRef  tmp_type;   // for autoderef
+            const auto* ty_p = &ty_o;
+            
+            bool keep_looping = false;
+            do  // } while( keep_looping );
+            {
+                // Reset at the start of each loop
+                keep_looping = false;
+                
                 const auto& ty = *ty_p;
+                DEBUG("- ty = " << ty);
                 TU_MATCH_DEF(decltype(ty.m_data), (ty.m_data), (e),
                 (
                     // Search for FnOnce impl
@@ -2040,16 +2060,6 @@ namespace {
                     
                     ::HIR::TypeRef  fcn_args_tup;
                     ::HIR::TypeRef  fcn_ret;
-                    
-                    // 1. Create a param set with a single tuple (of all argument types)
-                    ::HIR::PathParams   trait_pp;
-                    {
-                        ::std::vector< ::HIR::TypeRef>  arg_types;
-                        for(const auto& arg : node.m_args) {
-                            arg_types.push_back( this->context.get_type(arg->m_res_type).clone() );
-                        }
-                        trait_pp.m_types.push_back( ::HIR::TypeRef( mv$(arg_types) ) );
-                    }
                     
                     // 2. Locate an impl of FnOnce (exists for all other Fn* traits)
                     auto was_bounded = this->context.m_resolve.find_trait_impls_bound(node.span(), lang_FnOnce, trait_pp, ty, [&](auto impl, auto cmp) {
@@ -2099,23 +2109,35 @@ namespace {
                     else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Borrow, e,
                         deref_count ++;
                         ty_p = &this->context.get_type(*e.inner);
-                        keep_deref = true;
+                        DEBUG("Deref " << ty << " -> " << *ty_p);
+                        keep_looping = true;
                         continue ;
                     )
-                    else if( !ty.m_data.is_Generic() )
-                    {
-                        bool found = this->context.m_resolve.find_trait_impls_crate(node.span(), lang_FnOnce, trait_pp, ty, [&](auto impl, auto cmp) {
-                            TODO(node.span(), "Use impl of FnOnce - " << impl);
-                            return false;
-                            });
-                        if( found ) {
-                        }
-                        TODO(node.span(), "Search crate for implementations of FnOnce for " << ty);
-                    }
                     else
                     {
+                        if( !ty.m_data.is_Generic() )
+                        {
+                            bool found = this->context.m_resolve.find_trait_impls_crate(node.span(), lang_FnOnce, trait_pp, ty, [&](auto impl, auto cmp) {
+                                TODO(node.span(), "Use impl of FnOnce - " << impl << " matching " << this->context.m_ivars.fmt_type(ty));
+                                return false;
+                                });
+                            if( found ) {
+                                // TODO: Fill cache.
+                                TODO(node.span(), "Use found impl of FnOnce");
+                                break ; // leaves TU_MATCH
+                            }
+                        }
+                        if( const auto* next_ty_p = this->context.m_resolve.autoderef(node.span(), ty, tmp_type) )
+                        {
+                            DEBUG("Deref (autoderef) " << ty << " -> " << *next_ty_p);
+                            deref_count ++;
+                            ty_p = next_ty_p;
+                            keep_looping = true;
+                            continue ;
+                        }
+                        
                         // Didn't find anything. Error?
-                        ERROR(node.span(), E0000, "Unable to find an implementation of Fn* for " << ty);
+                        ERROR(node.span(), E0000, "Unable to find an implementation of Fn* for " << this->context.m_ivars.fmt_type(ty));
                     }
                     
                     node.m_arg_types = mv$( fcn_args_tup.m_data.as_Tuple() );
@@ -2138,7 +2160,7 @@ namespace {
                     return ;
                     )
                 )
-            } while( keep_deref );
+            } while( keep_looping );
             
             if( deref_count > 0 )
             {
