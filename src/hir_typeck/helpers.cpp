@@ -1891,12 +1891,13 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         }
         
         // - Search for positive impls for this type
+        DEBUG("- Search positive impls");
         bool positive_found = this->m_crate.find_auto_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
             [&](const auto& impl) {
                 // Skip any negative impls on this pass
                 if( impl.is_positive != true )
                     return false;
-                TODO(sp, "Matching positive impl " << trait << " for " << type);
+                TODO(sp, "[find_trait_impls_crate] Matching positive impl " << trait << " for " << type);
             });
         if( positive_found ) {
             // A positive impl was found, so return true (callback should have been called)
@@ -1904,12 +1905,13 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         }
         
         // - Search for negative impls for this type
+        DEBUG("- Search negative impls");
         bool negative_found = this->m_crate.find_auto_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
             [&](const auto& impl) {
                 // Skip any positive impls
                 if( impl.is_positive != false )
                     return false;
-                TODO(sp, "Matching negative impl !" << trait << " for " << type);
+                TODO(sp, "[find_trait_impls_crate] Matching negative impl !" << trait << " for " << type);
             });
         if( negative_found ) {
             // A negative impl _was_ found, so return false
@@ -1918,6 +1920,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         
         // - If the type is a path (struct/enum/...), search for impls for all contained types.
         TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Path, e,
+            TODO(sp, "Destrucure search path types for auto trai impl");
         )
         // Otherwise, there's no negative so it must be positive
         else {
