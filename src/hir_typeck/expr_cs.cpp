@@ -1101,7 +1101,8 @@ namespace {
                 assert( node.m_cache.m_arg_types.size() >= 1);
                 
                 if( node.m_args.size() != node.m_cache.m_arg_types.size() - 1 ) {
-                    ERROR(node.span(), E0000, "Incorrect number of arguments to " << node.m_path);
+                    ERROR(node.span(), E0000, "Incorrect number of arguments to " << node.m_path
+                        << " - exp " << node.m_cache.m_arg_types.size()-1 << " got " << node.m_args.size());
                 }
             }
             
