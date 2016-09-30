@@ -1954,11 +1954,24 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             TU_MATCH( ::HIR::Path::Data, (e.path.m_data), (pe),
             (Generic,
                 ::HIR::TypeRef  tmp;
+                auto monomorph_cb = [&](const auto& gt)->const auto& {
+                    const auto& ge = gt.m_data.as_Generic();
+                    if( ge.binding == 0xFFFF ) {
+                        BUG(sp, "Self type in struct/enum generics");
+                    }
+                    else if( ge.binding >> 8 == 0 ) {
+                        auto idx = ge.binding & 0xFF;
+                        ASSERT_BUG(sp, idx < pe.m_params.m_types.size(), "Type parameter out of range - " << gt);
+                        return pe.m_params.m_types[idx];
+                    }
+                    else {
+                        BUG(sp, "Unexpected type parameter - " << gt << " in content of " << type);
+                    }
+                    };
                 // HELPER: Get a possibily monomorphised version of the input type (stored in `tmp` if needed)
                 auto monomorph_get = [&](const auto& ty)->const auto& {
                     if( monomorphise_type_needed(ty) ) {
-                        TODO(sp, "Monomorph inner type " << ty << " of " << type);
-                        //return (tmp = monomorphise_type_with(sp, ty,  monomorph_cb));
+                        return (tmp = monomorphise_type_with(sp, ty,  monomorph_cb));
                     }
                     else {
                         return ty;
