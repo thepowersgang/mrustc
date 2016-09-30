@@ -573,34 +573,71 @@ struct LowerHIR_ExprNode_Visitor:
             (Struct,
                 ASSERT_BUG(v.span(), e.struct_ || e.hir, "PathValue bound to a struct but pointer not set - " << v.m_path);
                 // Check the form and emit a PathValue if not a unit
+                bool is_tuple_constructor = false;
                 if( e.struct_ )
                 {
                     if( e.struct_->m_data.is_Struct() ) {
                         ERROR(v.span(), E0000, "Named value referring to a struct that isn't tuple-like or unit-like - " << v.m_path);
                     }
-                    else if( e.struct_->m_data.as_Tuple().ents.size() > 0 ) {
-                        m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::STRUCT_CONSTR ) );
-                    }
-                    else {
-                        m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(Span(v.get_pos()), v.m_path), true ) );
-                    }
+                    is_tuple_constructor = e.struct_->m_data.as_Tuple().ents.size() > 0;
                 }
                 else
                 {
                     const auto& str = *e.hir;
                     if( str.m_data.is_Unit() ) {
-                        m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(Span(v.get_pos()), v.m_path), true ) );
+                        is_tuple_constructor = false;
                     }
                     else if( str.m_data.is_Tuple() ) {
-                        m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::STRUCT_CONSTR ) );
+                        is_tuple_constructor = true;
                     }
                     else {
                         ERROR(v.span(), E0000, "Named value referring to a struct that isn't tuple-like or unit-like - " << v.m_path);
                     }
                 }
+                if( is_tuple_constructor ) {
+                    m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::STRUCT_CONSTR ) );
+                }
+                else {
+                    m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(Span(v.get_pos()), v.m_path), true ) );
+                }
                 ),
             (EnumVar,
-                m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(Span(v.get_pos()), v.m_path), false ) );
+                ASSERT_BUG(v.span(), e.enum_ || e.hir, "PathValue bound to an enum but pointer not set - " << v.m_path);
+                const auto& var_name = v.m_path.nodes().back().name();
+                bool is_tuple_constructor = false;
+                unsigned int var_idx;
+                if( e.enum_ )
+                {
+                    const auto& enm = *e.enum_;
+                    auto it = ::std::find_if(enm.variants().begin(), enm.variants().end(), [&](const auto& x){ return x.m_name == var_name; });
+                    assert(it != enm.variants().end());
+                    
+                    var_idx = static_cast<unsigned int>(it - enm.variants().begin());
+                    if( it->m_data.is_Struct() ) {
+                        ERROR(v.span(), E0000, "Named value referring to an enum that isn't tuple-like or unit-like - " << v.m_path);
+                    }
+                    is_tuple_constructor = it->m_data.is_Tuple() && it->m_data.as_Tuple().m_sub_types.size() > 0;
+                }
+                else
+                {
+                    const auto& enm = *e.hir;
+                    auto it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x){ return x.first == var_name; });
+                    assert(it != enm.m_variants.end());
+                    
+                    var_idx = static_cast<unsigned int>(it - enm.m_variants.begin());
+                    if( it->second.is_Struct() ) {
+                        ERROR(v.span(), E0000, "Named value referring to an enum that isn't tuple-like or unit-like - " << v.m_path);
+                    }
+                    is_tuple_constructor = it->second.is_Tuple();
+                }
+                (void)var_idx;  // TODO: Save time later by saving this.
+                if( is_tuple_constructor ) {
+                    TODO(v.span(), "Yield _PathValue when a tuple-like enum variant path is used as a value");
+                    //m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::ENUM_VAR_CONSTR ) );
+                }
+                else {
+                    m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(Span(v.get_pos()), v.m_path), false ) );
+                }
                 ),
             (Function,
                 m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::FUNCTION ) );
