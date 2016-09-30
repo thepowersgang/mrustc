@@ -1,3 +1,11 @@
+# MRustC - Rust Compiler
+# - By John Hodge (Mutabah/thePowersGang)
+# 
+# Makefile
+# 
+# - Compiles mrustc
+# - Downloads rustc source to test against
+# - Attempts to compile rust's libstd
 
 EXESUF ?=
 CXX ?= g++
@@ -143,12 +151,23 @@ output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN)
 .PHONY: test test_rustos
 test: $(RUSTCSRC) output/libcore.hir output/liballoc.hir output/libcollections.hir output/libstd.hir $(BIN)
 
-test_rustos: $(addprefix output/rust_os/,libkernel.rlib)
 
-output/rust_os/libkernel.rlib: ../rust_os/Kernel/Core/main.rs $(BIN)
+#
+# TEST: Attempt to compile rust_os (Tifflin) from ../rust_os
+#
+test_rustos: $(addprefix output/rust_os/,libkernel.hir)
+
+output/rust_os/libkernel.hir: ../rust_os/Kernel/Core/main.rs output/libstack_dst.hir $(BIN)
 	@mkdir -p $(dir $@)
 	$(BIN) $< -o $@ 2>&1 | tee $@.txt | tail -n 30
+output/libstack_dst.hir: ../rust_os/externals/crates.io/stack_dst/src/lib.rs $(BIN)
+	@mkdir -p $(dir $@)
+	$(BIN) $< -o $@ --cfg feature=no_std 2>&1 | tee $@.txt | tail -n 30
 
+
+# -------------------------------
+# Compile rules for mrustc itself
+# -------------------------------
 $(BIN): $(OBJ)
 	@mkdir -p $(dir $@)
 	@echo [CXX] -o $@
@@ -159,7 +178,7 @@ $(OBJDIR)%.o: src/%.cpp
 	@echo [CXX] -o $@
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) $(CPPFLAGS) -MMD -MP -MF $@.dep
 
-src/main.cpp:	$(PCHS:%=src/%.gch)
+src/main.cpp: $(PCHS:%=src/%.gch)
 
 %.hpp.gch: %.hpp
 	@echo [CXX] -o $@
