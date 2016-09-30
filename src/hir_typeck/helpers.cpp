@@ -1940,12 +1940,46 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             return false;
         }
         
+        static ::std::map< ::std::string, ::HIR::TypeRef>    null_assoc;
         // - If the type is a path (struct/enum/...), search for impls for all contained types.
         TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Path, e,
-            TODO(sp, "Destrucure search path types for auto trai impl");
+            TU_MATCH( ::HIR::Path::Data, (e.path.m_data), (pe),
+            (Generic,
+                TODO(sp, "Destrucure search path types for auto trait impl - " << pe);
+                ),
+            (UfcsUnknown,
+                BUG(sp, "UfcsUnknown in typeck - " << type);
+                ),
+            (UfcsKnown,
+                TODO(sp, "Check trait bounds for bound on " << type);
+                ),
+            (UfcsInherent,
+                TODO(sp, "Auto trait lookup on UFCS Inherent type");
+                )
+            )
+        )
+        else TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Tuple, e,
+            ::HIR::Compare  res = ::HIR::Compare::Equal;
+            for(const auto& sty : e)
+            {
+                ::HIR::Compare  l_res = ::HIR::Compare::Unequal;
+                this->find_trait_impls(sp, trait, *params_ptr, sty, [&](auto, auto cmp){ l_res = cmp; return (cmp == ::HIR::Compare::Equal); });
+                if( l_res == ::HIR::Compare::Unequal )
+                    return false;
+                res &= l_res;
+            }
+            return callback( ImplRef(&type, params_ptr, &null_assoc), res );
+        )
+        else TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Array, e,
+            ::HIR::Compare  res = ::HIR::Compare::Unequal;
+            this->find_trait_impls(sp, trait, *params_ptr, *e.inner, [&](auto, auto cmp){ res = cmp; return (cmp == ::HIR::Compare::Equal); });
+            if( res == ::HIR::Compare::Unequal )
+                return false;
+            return callback( ImplRef(&type, params_ptr, &null_assoc), res );
         )
         // Otherwise, there's no negative so it must be positive
         else {
+            // TODO: Callback.
             return true;
         }
     }
