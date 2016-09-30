@@ -23,7 +23,7 @@ public:
             ERROR(sp, E0000, "#![crate_type] requires a string argument");
         }
         const auto& name = mi.string();
-        if( name == "rlib" ) {
+        if( name == "rlib" || name == "lib" ) {
             crate.m_crate_type = AST::Crate::Type::RustLib;
         }
         else {
