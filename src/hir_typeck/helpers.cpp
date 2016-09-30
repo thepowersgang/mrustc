@@ -1940,12 +1940,104 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             return false;
         }
         
+        // HELPER: Search for an impl of this trait for an inner type, and return the match type
+        auto type_impls_trait = [&](const auto& inner_ty) -> ::HIR::Compare {
+            auto l_res = ::HIR::Compare::Unequal;
+            this->find_trait_impls(sp, trait, *params_ptr, inner_ty, [&](auto, auto cmp){ l_res = cmp; return (cmp == ::HIR::Compare::Equal); });
+            DEBUG("[type_impls_auto_trait] " << inner_ty << " - " << l_res);
+            return l_res;
+            };
+        
         static ::std::map< ::std::string, ::HIR::TypeRef>    null_assoc;
         // - If the type is a path (struct/enum/...), search for impls for all contained types.
         TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Path, e,
             TU_MATCH( ::HIR::Path::Data, (e.path.m_data), (pe),
             (Generic,
-                TODO(sp, "Destrucure search path types for auto trait impl - " << pe);
+                ::HIR::TypeRef  tmp;
+                // HELPER: Get a possibily monomorphised version of the input type (stored in `tmp` if needed)
+                auto monomorph_get = [&](const auto& ty)->const auto& {
+                    if( monomorphise_type_needed(ty) ) {
+                        TODO(sp, "Monomorph inner type " << ty << " of " << type);
+                        //return (tmp = monomorphise_type_with(sp, ty,  monomorph_cb));
+                    }
+                    else {
+                        return ty;
+                    }
+                    };
+                
+                ::HIR::Compare  res = ::HIR::Compare::Equal;
+                TU_MATCH( ::HIR::TypeRef::TypePathBinding, (e.binding), (tpb),
+                (Opaque,
+                    BUG(sp, "Opaque binding on generic path - " << type);
+                    ),
+                (Unbound,
+                    BUG(sp, "Unbound binding on generic path - " << type);
+                    ),
+                (Struct,
+                    const auto& str = *tpb;
+                    
+                    // TODO: Somehow store a ruleset for auto traits on the type
+                    // - Map of trait->does_impl for local fields?
+                    // - Problems occur with type parameters
+                    TU_MATCH( ::HIR::Struct::Data, (str.m_data), (se),
+                    (Unit,
+                        ),
+                    (Tuple,
+                        for(const auto& fld : se)
+                        {
+                            const auto& fld_ty_mono = monomorph_get(fld.ent);
+                            res &= type_impls_trait(fld_ty_mono);
+                            if( res == ::HIR::Compare::Unequal )
+                                return false;
+                        }
+                        ),
+                    (Named,
+                        for(const auto& fld : se)
+                        {
+                            const auto& fld_ty_mono = monomorph_get(fld.second.ent);
+                            
+                            res &= type_impls_trait(fld_ty_mono);
+                            if( res == ::HIR::Compare::Unequal )
+                                return false;
+                        }
+                        )
+                    )
+                    ),
+                (Enum,
+                    const auto& enm = *tpb;
+                    
+                    for(const auto& var : enm.m_variants)
+                    {
+                        TU_MATCH(::HIR::Enum::Variant, (var.second), (ve),
+                        (Unit,
+                            ),
+                        (Value,
+                            ),
+                        (Tuple,
+                            for(const auto& fld : ve)
+                            {
+                                const auto& fld_ty_mono = monomorph_get(fld.ent);
+                                res &= type_impls_trait(fld_ty_mono);
+                                if( res == ::HIR::Compare::Unequal )
+                                    return false;
+                            }
+                            ),
+                        (Struct,
+                            for(const auto& fld : ve)
+                            {
+                                const auto& fld_ty_mono = monomorph_get(fld.second.ent);
+                                
+                                res &= type_impls_trait(fld_ty_mono);
+                                if( res == ::HIR::Compare::Unequal )
+                                    return false;
+                            }
+                            )
+                        )
+                    }
+                    )
+                )
+                DEBUG("- Nothing failed, calling callback");
+                return callback( ImplRef(&type, params_ptr, &null_assoc), res );
                 ),
             (UfcsUnknown,
                 BUG(sp, "UfcsUnknown in typeck - " << type);
@@ -1962,25 +2054,21 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             ::HIR::Compare  res = ::HIR::Compare::Equal;
             for(const auto& sty : e)
             {
-                ::HIR::Compare  l_res = ::HIR::Compare::Unequal;
-                this->find_trait_impls(sp, trait, *params_ptr, sty, [&](auto, auto cmp){ l_res = cmp; return (cmp == ::HIR::Compare::Equal); });
-                if( l_res == ::HIR::Compare::Unequal )
+                res &= type_impls_trait(sty);
+                if( res == ::HIR::Compare::Unequal )
                     return false;
-                res &= l_res;
             }
             return callback( ImplRef(&type, params_ptr, &null_assoc), res );
         )
         else TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Array, e,
-            ::HIR::Compare  res = ::HIR::Compare::Unequal;
-            this->find_trait_impls(sp, trait, *params_ptr, *e.inner, [&](auto, auto cmp){ res = cmp; return (cmp == ::HIR::Compare::Equal); });
+            auto res = type_impls_trait(*e.inner);
             if( res == ::HIR::Compare::Unequal )
                 return false;
             return callback( ImplRef(&type, params_ptr, &null_assoc), res );
         )
         // Otherwise, there's no negative so it must be positive
         else {
-            // TODO: Callback.
-            return true;
+            return callback( ImplRef(&type, params_ptr, &null_assoc), ::HIR::Compare::Equal );
         }
     }
     
