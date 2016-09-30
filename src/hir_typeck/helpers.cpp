@@ -1914,14 +1914,42 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         
         // - Search for positive impls for this type
         DEBUG("- Search positive impls");
-        bool positive_found = this->m_crate.find_auto_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
+        bool positive_found = false;
+        this->m_crate.find_auto_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
             [&](const auto& impl) {
                 // Skip any negative impls on this pass
                 if( impl.is_positive != true )
                     return false;
-                // TODO: Perform parameter and bound checks.
-                TODO(sp, "[find_trait_impls_crate] Matching positive "
-                    << "- impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << impl.m_params.fmt_bounds());
+                
+                DEBUG("[find_trait_impls_crate] - Auto Pos Found impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << " " << impl.m_params.fmt_bounds());
+                
+                // Compare with `params`
+                ::std::vector< const ::HIR::TypeRef*> impl_params;
+                ::std::vector< ::HIR::TypeRef>  placeholders;
+                auto match = this->ftic_check_params(sp, trait,  params_ptr, type,  impl.m_params, impl.m_trait_args, impl.m_type,  impl_params, placeholders);
+                if( match == ::HIR::Compare::Unequal ) {
+                    // If any bound failed, return false (continue searching)
+                    return false;
+                }
+                
+                auto monomorph = [&](const auto& gt)->const auto& {
+                        const auto& ge = gt.m_data.as_Generic();
+                        ASSERT_BUG(sp, ge.binding >> 8 != 2, "");
+                        assert( ge.binding < impl_params.size() );
+                        if( !impl_params[ge.binding] ) {
+                            return placeholders[ge.binding];
+                        }
+                        return *impl_params[ge.binding];
+                        };
+                // TODO: Ensure that there are no-longer any magic params?
+                
+                auto ty_mono = monomorphise_type_with(sp, impl.m_type, monomorph, false);
+                auto args_mono = monomorphise_path_params_with(sp, impl.m_trait_args, monomorph, false);
+                // NOTE: Auto traits can't have items, so no associated types
+                
+                positive_found = true;
+                DEBUG("[find_trait_impls_crate] Auto Positive callback(args=" << args_mono << ")");
+                return callback(ImplRef(mv$(ty_mono), mv$(args_mono), {}), match);
             });
         if( positive_found ) {
             // A positive impl was found, so return true (callback should have been called)
@@ -2099,6 +2127,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 return false;
             }
 
+            #if 0
             auto monomorph = [&](const auto& gt)->const auto& {
                     const auto& ge = gt.m_data.as_Generic();
                     ASSERT_BUG(sp, ge.binding >> 8 != 2, "");
@@ -2123,6 +2152,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             // TODO: Ensure that there are no-longer any magic params?
             
             DEBUG("[find_trait_impls_crate] callback(args=" << args_mono << ", assoc={" << types << "})");
+            #endif
             return callback(ImplRef(mv$(impl_params), trait, impl, mv$(placeholders)), match);
         }
         );
