@@ -113,6 +113,8 @@ struct ProgramParams
     ::std::string   outfile;
     const char *crate_path = ".";
     
+    ::std::set< ::std::string> features;
+    
     ProgramParams(int argc, char *argv[]);
 };
 
@@ -158,8 +160,8 @@ int main(int argc, char *argv[])
     Cfg_SetValueCb("target_feature", [](const ::std::string& s) {
         return false;
         });
-    Cfg_SetValueCb("feature", [](const ::std::string& s) {
-        return false;
+    Cfg_SetValueCb("feature", [&params](const ::std::string& s) {
+        return params.features.count(s) != 0;
         });
     
     // TODO: This is for liblibc - should be a command-line option
@@ -412,14 +414,35 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         {
             if( strcmp(arg, "--crate-path") == 0 ) {
                 if( i == argc - 1 ) {
-                    // TODO: BAIL!
+                    ::std::cerr << "Flag --crate-path requires an argument" << ::std::endl;
                     exit(1);
                 }
                 this->crate_path = argv[++i];
             }
+            else if( strcmp(arg, "--cfg") == 0 ) {
+                if( i == argc - 1 ) {
+                    ::std::cerr << "Flag --cfg requires an argument" << ::std::endl;
+                    exit(1);
+                }
+                char* opt_and_val = argv[++i];
+                if( char* p = strchr(opt_and_val, '=') ) {
+                    *p = '\0';
+                    const char* opt = opt_and_val;
+                    const char* val = p + 1;
+                    if( ::std::strcmp(opt, "feature") == 0 ) {
+                        this->features.insert( ::std::string(val) );
+                    }
+                    else {
+                        Cfg_SetValue(opt, val);
+                    }
+                }
+                else {
+                    Cfg_SetFlag(opt_and_val);
+                }
+            }
             else if( strcmp(arg, "--stop-after") == 0 ) {
                 if( i == argc - 1 ) {
-                    // TODO: BAIL!
+                    ::std::cerr << "Flag --stop-after requires an argument" << ::std::endl;
                     exit(1);
                 }
                 
