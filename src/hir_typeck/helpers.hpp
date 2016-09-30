@@ -208,6 +208,14 @@ public:
     /// Search for a trait implementation in the crate (allows nullptr to ignore params)
     bool find_trait_impls_crate(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams* params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const;
     
+private:
+    ::HIR::Compare ftic_check_params(const Span& sp, const ::HIR::SimplePath& trait,
+        const ::HIR::PathParams* params, const ::HIR::TypeRef& type,
+        const ::HIR::GenericParams& impl_params_def, const ::HIR::PathParams& impl_trait_args, const ::HIR::TypeRef& impl_ty,
+        /*Out->*/ ::std::vector< const ::HIR::TypeRef*>& impl_params, ::std::vector< ::HIR::TypeRef>& placeholders
+        ) const ;
+public:
+    
     /// Locate the named method by applying auto-dereferencing.
     /// \return Number of times deref was applied (or ~0 if _ was hit)
     unsigned int autoderef_find_method(const Span& sp, const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const;

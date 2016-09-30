@@ -1919,7 +1919,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 // Skip any negative impls on this pass
                 if( impl.is_positive != true )
                     return false;
-                TODO(sp, "[find_trait_impls_crate] Matching positive impl " << trait << " for " << type);
+                // TODO: Perform parameter and bound checks.
+                TODO(sp, "[find_trait_impls_crate] Matching positive "
+                    << "- impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << impl.m_params.fmt_bounds());
             });
         if( positive_found ) {
             // A positive impl was found, so return true (callback should have been called)
@@ -2089,187 +2091,27 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         [&](const auto& impl) {
             DEBUG("[find_trait_impls_crate] Found impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << " " << impl.m_params.fmt_bounds());
             // Compare with `params`
-            auto    match = ::HIR::Compare::Equal;
             ::std::vector< const ::HIR::TypeRef*> impl_params;
-            impl_params.resize( impl.m_params.m_types.size() );
-            auto cb = [&](auto idx, const auto& ty) {
-                DEBUG("[find_trait_impls_crate] Param " << idx << " = " << ty);
-                assert( idx < impl_params.size() );
-                if( ! impl_params[idx] ) {
-                    impl_params[idx] = &ty;
-                    return ::HIR::Compare::Equal;
-                }
-                else {
-                    return impl_params[idx]->compare_with_placeholders(sp, ty, this->m_ivars.callback_resolve_infer());
-                }
-                };
-            // NOTE: If this type references an associated type, the match will incorrectly fail.
-            // - HACK: match_test_generics_fuzz has been changed to return Fuzzy if there's a tag mismatch and the LHS is an Opaque path
-            match &= impl.m_type.match_test_generics_fuzz(sp, type , this->m_ivars.callback_resolve_infer(), cb);
-            if( params_ptr )
-            {
-                const auto& params = *params_ptr;
-                ASSERT_BUG(sp, impl.m_trait_args.m_types.size() == params.m_types.size(), "Param count mismatch between `" << impl.m_trait_args << "` and `" << params << "` for " << trait );
-                for(unsigned int i = 0; i < impl.m_trait_args.m_types.size(); i ++)
-                    match &= impl.m_trait_args.m_types[i].match_test_generics_fuzz(sp, params.m_types[i], this->m_ivars.callback_resolve_infer(), cb);
-                if( match == ::HIR::Compare::Unequal ) {
-                    DEBUG("[find_trait_impls_crate] - Failed to match parameters - " << impl.m_trait_args << "+" << impl.m_type << " != " << params << "+" << type);
-                    return false;
-                }
-            }
-            else
-            {
-                if( match == ::HIR::Compare::Unequal ) {
-                    DEBUG("[find_trait_impls_crate] - Failed to match type - " << impl.m_type << " != " << type);
-                    return false;
-                }
-            }
-            
-            // TODO: Some impl blocks have type params used as part of type bounds.
-            // - A rough idea is to have monomorph return a third class of generic for params that are not yet bound.
-            //  - compare_with_placeholders gets called on both ivars and generics, so that can be used to replace it once known.
             ::std::vector< ::HIR::TypeRef>  placeholders;
-            for(unsigned int i = 0; i < impl_params.size(); i ++ ) {
-                if( !impl_params[i] ) {
-                    if( placeholders.size() == 0 )
-                        placeholders.resize(impl_params.size());
-                    placeholders[i] = ::HIR::TypeRef("impl_?", 2*256 + i);
-                }
+            auto match = this->ftic_check_params(sp, trait,  params_ptr, type,  impl.m_params, impl.m_trait_args, impl.m_type,  impl_params, placeholders);
+            if( match == ::HIR::Compare::Unequal ) {
+                // If any bound failed, return false (continue searching)
+                return false;
             }
-            auto cb_infer = [&](const auto& ty)->const auto& {
-                if( ty.m_data.is_Infer() ) 
-                    return this->m_ivars.get_type(ty);
-                else if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding >> 8 == 2 ) { // Generic group 2 = Placeholders
-                    unsigned int i = ty.m_data.as_Generic().binding % 256;
-                    TODO(sp, "Obtain placeholder " << i);
-                }
-                else
-                    return ty;
-                };
-            auto cb_match = [&](unsigned int idx, const auto& ty) {
-                if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding == idx )
-                    return ::HIR::Compare::Equal;
-                if( idx >> 8 == 2 ) {
-                    auto i = idx % 256;
-                    ASSERT_BUG(sp, !impl_params[i], "Placeholder to populated type returned");
-                    auto& ph = placeholders[i];
-                    if( ph.m_data.is_Generic() && ph.m_data.as_Generic().binding == idx ) {
-                        DEBUG("Bind placeholder " << i << " to " << ty);
-                        ph = ty.clone();
-                        return ::HIR::Compare::Equal;
-                    }
-                    else {
-                        TODO(sp, "Compare placeholder " << i << " " << ph << " == " << ty);
-                    }
-                }
-                else {
-                    return ::HIR::Compare::Unequal;
-                }
-                };
+
             auto monomorph = [&](const auto& gt)->const auto& {
                     const auto& ge = gt.m_data.as_Generic();
                     ASSERT_BUG(sp, ge.binding >> 8 != 2, "");
                     assert( ge.binding < impl_params.size() );
                     if( !impl_params[ge.binding] ) {
-                        //BUG(sp, "Param " << ge.binding << " for `impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << "` wasn't constrained");
                         return placeholders[ge.binding];
                     }
                     return *impl_params[ge.binding];
                     };
+            
             auto ty_mono = monomorphise_type_with(sp, impl.m_type, monomorph, false);
             auto args_mono = monomorphise_path_params_with(sp, impl.m_trait_args, monomorph, false);
             // TODO: Expand associated types in these then ensure that they still match the desired types.
-            
-            // Check bounds for this impl
-            // - If a bound fails, then this can't be a valid impl
-            for(const auto& bound : impl.m_params.m_bounds)
-            {
-                TU_MATCH(::HIR::GenericBound, (bound), (be),
-                (Lifetime,
-                    ),
-                (TypeLifetime,
-                    ),
-                (TraitBound,
-                    DEBUG("[find_trait_impls_crate] Check bound " << be.type << " : " << be.trait);
-                    auto real_type = monomorphise_type_with(sp, be.type, monomorph, false);
-                    auto real_trait = monomorphise_traitpath_with(sp, be.trait, monomorph, false);
-                    real_type = this->expand_associated_types(sp, mv$(real_type));
-                    for(auto& p : real_trait.m_path.m_params.m_types) {
-                        p = this->expand_associated_types(sp, mv$(p));
-                    }
-                    for(auto& ab : real_trait.m_type_bounds) {
-                        ab.second = this->expand_associated_types(sp, mv$(ab.second));
-                    }
-                    const auto& real_trait_path = real_trait.m_path;
-                    DEBUG("[find_trait_impls_crate] - bound mono " << real_type << " : " << real_trait);
-                    bool found_fuzzy_match = false;
-                    auto rv = this->find_trait_impls(sp, real_trait_path.m_path, real_trait_path.m_params, real_type, [&](auto impl, auto impl_cmp) {
-                        auto cmp = impl_cmp;
-                        for(const auto& assoc_bound : real_trait.m_type_bounds) {
-                            ::HIR::TypeRef  tmp;
-                            const ::HIR::TypeRef*   ty_p;
-                            
-                            tmp = impl.get_type(assoc_bound.first.c_str());
-                            if( tmp == ::HIR::TypeRef() ) {
-                                // This bound isn't from this particular trait, go the slow way of using expand_associated_types
-                                tmp = this->expand_associated_types(sp, ::HIR::TypeRef(
-                                    ::HIR::Path(::HIR::Path::Data::Data_UfcsKnown { box$(real_type.clone()), real_trait_path.clone(), assoc_bound.first, {} }))
-                                    );
-                                ty_p = &tmp;
-                            }
-                            else {
-                                ty_p = &this->m_ivars.get_type(tmp);
-                            }
-                            const auto& ty = *ty_p;
-                            DEBUG("[find_trait_impls_crate] - Compare " << ty << " and " << assoc_bound.second << ", matching generics");
-                            auto cmp = assoc_bound.second .match_test_generics_fuzz(sp, ty, cb_infer, cb_match);
-                            switch(cmp)
-                            {
-                            case ::HIR::Compare::Equal:
-                                DEBUG("Equal");
-                                continue;
-                            case ::HIR::Compare::Unequal:
-                                DEBUG("Assoc failure - " << ty << " != " << assoc_bound.second);
-                                return false;
-                            case ::HIR::Compare::Fuzzy:
-                                // TODO: When a fuzzy match is encountered on a conditional bound, returning `false` can lead to an false negative (and a compile error)
-                                // BUT, returning `true` could lead to it being selected. (Is this a problem, should a later validation pass check?)
-                                DEBUG("[find_trait_impls_crate] Fuzzy match assoc bound between " << ty << " and " << assoc_bound.second);
-                                cmp = ::HIR::Compare::Fuzzy;
-                                continue ;
-                            }
-                        }
-                        DEBUG("impl_cmp = " << impl_cmp << ", cmp = " << cmp);
-                        if( cmp == ::HIR::Compare::Fuzzy ) {
-                            found_fuzzy_match = true;
-                        }
-                        // If the match isn't a concrete equal, return false (to keep searching)
-                        return (cmp == ::HIR::Compare::Equal);
-                        });
-                    if( rv ) {
-                        DEBUG("- Bound " << real_type << " : " << real_trait_path << " matched");
-                    }
-                    else if( found_fuzzy_match ) {
-                        DEBUG("- Bound " << real_type << " : " << real_trait_path << " fuzzed");
-                        match = ::HIR::Compare::Fuzzy;
-                    }
-                    #if 1
-                    // TODO: This causes typeck errors in libcore
-                    else if( real_type.m_data.is_Infer() && real_type.m_data.as_Infer().ty_class == ::HIR::InferClass::None ) {
-                        DEBUG("- Bound " << real_type << " : " << real_trait_path << " full infer type - make result fuzzy");
-                        match = ::HIR::Compare::Fuzzy;
-                    }
-                    #endif
-                    else {
-                        DEBUG("- Bound " << real_type << " : " << real_trait_path << " failed");
-                        return false;
-                    }
-                    ),
-                (TypeEquality,
-                    TODO(sp, "Check bound " << be.type << " = " << be.other_type);
-                    )
-                )
-            }
             
             DEBUG("- Making associated type output map - " << impl.m_types.size() << " entries");
             ::std::map< ::std::string, ::HIR::TypeRef>  types;
@@ -2278,16 +2120,195 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 DEBUG(" > " << aty.first << " = monomorph(" << aty.second.data << ")");
                 types.insert( ::std::make_pair(aty.first,  this->expand_associated_types(sp, monomorphise_type_with(sp, aty.second.data, monomorph))) );
             }
-            // TODO: Ensure that there are no-longer any magic params
+            // TODO: Ensure that there are no-longer any magic params?
             
             DEBUG("[find_trait_impls_crate] callback(args=" << args_mono << ", assoc={" << types << "})");
-            //if( match == ::HIR::Compare::Fuzzy ) {
-            //    TODO(sp, "- Pass on fuzzy match status");
-            //}
             return callback(ImplRef(mv$(impl_params), trait, impl, mv$(placeholders)), match);
-            //return callback(ty_mono, args_mono, types/*, (match == ::HIR::Compare::Fuzzy)*/);
         }
         );
+}
+::HIR::Compare TraitResolution::ftic_check_params(const Span& sp, const ::HIR::SimplePath& trait,
+    const ::HIR::PathParams* params_ptr, const ::HIR::TypeRef& type,
+    const ::HIR::GenericParams& impl_params_def, const ::HIR::PathParams& impl_trait_args, const ::HIR::TypeRef& impl_ty,
+    /*Out->*/ ::std::vector< const ::HIR::TypeRef*>& impl_params, ::std::vector< ::HIR::TypeRef>& placeholders
+    ) const
+{
+    impl_params.resize( impl_params_def.m_types.size() );
+    auto cb = [&](auto idx, const auto& ty) {
+        DEBUG("[find_trait_impls_crate] Param " << idx << " = " << ty);
+        assert( idx < impl_params.size() );
+        if( ! impl_params[idx] ) {
+            impl_params[idx] = &ty;
+            return ::HIR::Compare::Equal;
+        }
+        else {
+            return impl_params[idx]->compare_with_placeholders(sp, ty, this->m_ivars.callback_resolve_infer());
+        }
+        };
+
+    // NOTE: If this type references an associated type, the match will incorrectly fail.
+    // - HACK: match_test_generics_fuzz has been changed to return Fuzzy if there's a tag mismatch and the LHS is an Opaque path
+    auto    match = ::HIR::Compare::Equal;
+    match &= impl_ty.match_test_generics_fuzz(sp, type , this->m_ivars.callback_resolve_infer(), cb);
+    if( params_ptr )
+    {
+        const auto& params = *params_ptr;
+        ASSERT_BUG(sp, impl_trait_args.m_types.size() == params.m_types.size(), "Param count mismatch between `" << impl_trait_args << "` and `" << params << "` for " << trait );
+        for(unsigned int i = 0; i < impl_trait_args.m_types.size(); i ++)
+            match &= impl_trait_args.m_types[i].match_test_generics_fuzz(sp, params.m_types[i], this->m_ivars.callback_resolve_infer(), cb);
+        if( match == ::HIR::Compare::Unequal ) {
+            DEBUG("[find_trait_impls_crate] - Failed to match parameters - " << impl_trait_args << "+" << impl_ty << " != " << params << "+" << type);
+            return ::HIR::Compare::Unequal;
+        }
+    }
+    else
+    {
+        if( match == ::HIR::Compare::Unequal ) {
+            DEBUG("[find_trait_impls_crate] - Failed to match type - " << impl_ty << " != " << type);
+            return ::HIR::Compare::Unequal;
+        }
+    }
+    
+    // TODO: Some impl blocks have type params used as part of type bounds.
+    // - A rough idea is to have monomorph return a third class of generic for params that are not yet bound.
+    //  - compare_with_placeholders gets called on both ivars and generics, so that can be used to replace it once known.
+    for(unsigned int i = 0; i < impl_params.size(); i ++ ) {
+        if( !impl_params[i] ) {
+            if( placeholders.size() == 0 )
+                placeholders.resize(impl_params.size());
+            placeholders[i] = ::HIR::TypeRef("impl_?", 2*256 + i);
+        }
+    }
+    auto cb_infer = [&](const auto& ty)->const auto& {
+        if( ty.m_data.is_Infer() ) 
+            return this->m_ivars.get_type(ty);
+        else if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding >> 8 == 2 ) { // Generic group 2 = Placeholders
+            unsigned int i = ty.m_data.as_Generic().binding % 256;
+            TODO(sp, "Obtain placeholder " << i);
+        }
+        else
+            return ty;
+        };
+    auto cb_match = [&](unsigned int idx, const auto& ty) {
+        if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding == idx )
+            return ::HIR::Compare::Equal;
+        if( idx >> 8 == 2 ) {
+            auto i = idx % 256;
+            ASSERT_BUG(sp, !impl_params[i], "Placeholder to populated type returned");
+            auto& ph = placeholders[i];
+            if( ph.m_data.is_Generic() && ph.m_data.as_Generic().binding == idx ) {
+                DEBUG("Bind placeholder " << i << " to " << ty);
+                ph = ty.clone();
+                return ::HIR::Compare::Equal;
+            }
+            else {
+                TODO(sp, "Compare placeholder " << i << " " << ph << " == " << ty);
+            }
+        }
+        else {
+            return ::HIR::Compare::Unequal;
+        }
+        };
+    auto monomorph = [&](const auto& gt)->const auto& {
+            const auto& ge = gt.m_data.as_Generic();
+            ASSERT_BUG(sp, ge.binding >> 8 != 2, "");
+            assert( ge.binding < impl_params.size() );
+            if( !impl_params[ge.binding] ) {
+                //BUG(sp, "Param " << ge.binding << " for `impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << "` wasn't constrained");
+                return placeholders[ge.binding];
+            }
+            return *impl_params[ge.binding];
+            };
+    
+    // Check bounds for this impl
+    // - If a bound fails, then this can't be a valid impl
+    for(const auto& bound : impl_params_def.m_bounds)
+    {
+        TU_MATCH(::HIR::GenericBound, (bound), (be),
+        (Lifetime,
+            ),
+        (TypeLifetime,
+            ),
+        (TraitBound,
+            DEBUG("[find_trait_impls_crate] Check bound " << be.type << " : " << be.trait);
+            auto real_type = monomorphise_type_with(sp, be.type, monomorph, false);
+            auto real_trait = monomorphise_traitpath_with(sp, be.trait, monomorph, false);
+            real_type = this->expand_associated_types(sp, mv$(real_type));
+            for(auto& p : real_trait.m_path.m_params.m_types) {
+                p = this->expand_associated_types(sp, mv$(p));
+            }
+            for(auto& ab : real_trait.m_type_bounds) {
+                ab.second = this->expand_associated_types(sp, mv$(ab.second));
+            }
+            const auto& real_trait_path = real_trait.m_path;
+            DEBUG("[find_trait_impls_crate] - bound mono " << real_type << " : " << real_trait);
+            bool found_fuzzy_match = false;
+            auto rv = this->find_trait_impls(sp, real_trait_path.m_path, real_trait_path.m_params, real_type, [&](auto impl, auto impl_cmp) {
+                auto cmp = impl_cmp;
+                for(const auto& assoc_bound : real_trait.m_type_bounds) {
+                    ::HIR::TypeRef  tmp;
+                    const ::HIR::TypeRef*   ty_p;
+                    
+                    tmp = impl.get_type(assoc_bound.first.c_str());
+                    if( tmp == ::HIR::TypeRef() ) {
+                        // This bound isn't from this particular trait, go the slow way of using expand_associated_types
+                        tmp = this->expand_associated_types(sp, ::HIR::TypeRef(
+                            ::HIR::Path(::HIR::Path::Data::Data_UfcsKnown { box$(real_type.clone()), real_trait_path.clone(), assoc_bound.first, {} }))
+                            );
+                        ty_p = &tmp;
+                    }
+                    else {
+                        ty_p = &this->m_ivars.get_type(tmp);
+                    }
+                    const auto& ty = *ty_p;
+                    DEBUG("[find_trait_impls_crate] - Compare " << ty << " and " << assoc_bound.second << ", matching generics");
+                    auto cmp = assoc_bound.second .match_test_generics_fuzz(sp, ty, cb_infer, cb_match);
+                    switch(cmp)
+                    {
+                    case ::HIR::Compare::Equal:
+                        DEBUG("Equal");
+                        continue;
+                    case ::HIR::Compare::Unequal:
+                        DEBUG("Assoc failure - " << ty << " != " << assoc_bound.second);
+                        return false;
+                    case ::HIR::Compare::Fuzzy:
+                        // TODO: When a fuzzy match is encountered on a conditional bound, returning `false` can lead to an false negative (and a compile error)
+                        // BUT, returning `true` could lead to it being selected. (Is this a problem, should a later validation pass check?)
+                        DEBUG("[find_trait_impls_crate] Fuzzy match assoc bound between " << ty << " and " << assoc_bound.second);
+                        cmp = ::HIR::Compare::Fuzzy;
+                        continue ;
+                    }
+                }
+                DEBUG("impl_cmp = " << impl_cmp << ", cmp = " << cmp);
+                if( cmp == ::HIR::Compare::Fuzzy ) {
+                    found_fuzzy_match = true;
+                }
+                // If the match isn't a concrete equal, return false (to keep searching)
+                return (cmp == ::HIR::Compare::Equal);
+                });
+            if( rv ) {
+                DEBUG("- Bound " << real_type << " : " << real_trait_path << " matched");
+            }
+            else if( found_fuzzy_match ) {
+                DEBUG("- Bound " << real_type << " : " << real_trait_path << " fuzzed");
+                match = ::HIR::Compare::Fuzzy;
+            }
+            else if( real_type.m_data.is_Infer() && real_type.m_data.as_Infer().ty_class == ::HIR::InferClass::None ) {
+                DEBUG("- Bound " << real_type << " : " << real_trait_path << " full infer type - make result fuzzy");
+                match = ::HIR::Compare::Fuzzy;
+            }
+            else {
+                DEBUG("- Bound " << real_type << " : " << real_trait_path << " failed");
+                return ::HIR::Compare::Unequal;
+            }
+            ),
+        (TypeEquality,
+            TODO(sp, "Check bound " << be.type << " = " << be.other_type);
+            )
+        )
+    }
+    
+    return match;
 }
 
 bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name, bool allow_move,  ::HIR::GenericPath& out_path) const
