@@ -4066,6 +4066,13 @@ namespace {
             }
         }
         
+        // If the output type is present, prevent it from being guessed
+        // - This generates an exact equation.
+        if( v.left_ty != ::HIR::TypeRef() )
+        {
+            context.equate_types_shadow(sp, v.left_ty);
+        }
+        
         // HACK! If the trait is `Unsize` then pretend `impl<T> Unsize<T> for T` exists to possibly propagate the type through
         // - Also applies to CoerceUnsized (which may not get its impl detected because actually `T: !Unsize<T>`)
         // - This is needed because `check_coerce` will emit coercions where they're not actually needed in some cases.
@@ -4562,15 +4569,27 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             }
         }
         
-        // Check the possible equations
-        DEBUG("--- IVar possibilities");
-        unsigned int i = 0;
-        for(auto& ivar_ent : context.possible_ivar_vals)
+        // If nothing changed this pass, apply ivar possibilities
+        // - This essentially forces coercions not to happen.
+        if( ! context.m_ivars.peek_changed() )
         {
-            check_ivar_poss(context, i, ivar_ent);
-            i ++ ;
+            // Check the possible equations
+            DEBUG("--- IVar possibilities");
+            unsigned int i = 0;
+            for(auto& ivar_ent : context.possible_ivar_vals)
+            {
+                check_ivar_poss(context, i, ivar_ent);
+                i ++ ;
+            }
         }
-        
+        else
+        {
+            // Clear ivar possibilities for next pass
+            for(auto& ivar_ent : context.possible_ivar_vals)
+            {
+                ivar_ent = Context::IVarPossible {};
+            }
+        }
 
         // Finally. If nothing changed, apply ivar defaults
         if( !context.m_ivars.peek_changed() )
