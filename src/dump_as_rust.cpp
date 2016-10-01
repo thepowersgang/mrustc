@@ -816,7 +816,9 @@ void RustPrinter::print_pattern_tuple(const AST::Pattern::TuplePat& v, bool is_r
 void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
 {
     if( p.binding().is_valid() ) {
-        m_os << p.binding().m_name;
+        if( p.binding().m_mutable )
+            m_os << "mut ";
+        m_os << p.binding().m_name << "/*"<<p.binding().m_slot<<"*/";
         // If binding is irrefutable, and would be binding against a wildcard, just emit the name
         if( !is_refutable && p.data().is_Any() )
         {
