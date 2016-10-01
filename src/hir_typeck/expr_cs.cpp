@@ -3769,14 +3769,38 @@ namespace {
             return true;
         }
         
+        const auto& lang_CoerceUnsized = context.m_crate.get_lang_item_path(sp, "coerce_unsized");
+        
+        struct H {
+            // Check if a path type has or could have a CoerceUnsized impl
+            static bool type_has_coerce_path(const ::HIR::TypeRef& ty) {
+                TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, e,
+                    TU_MATCHA( (e.binding), (pbe),
+                    (Unbound,
+                        ),
+                    (Opaque,
+                        // Assume true (could store something in the generic block)
+                        return true;
+                        ),
+                    (Struct,
+                        return pbe->m_markings.can_coerce;
+                        ),
+                    (Enum,
+                        return pbe->m_markings.can_coerce;
+                        )
+                    )
+                )
+                return false;
+            }
+        };
+        
         // CoerceUnsized trait
         // - Only valid for generic or path destination types
-        if( ty_dst.m_data.is_Generic() || ty_dst.m_data.is_Path() )
+        if( ty_dst.m_data.is_Generic() || H::type_has_coerce_path(ty_dst) )
         {
-            const auto& lang_CoerceUnsized = context.m_crate.get_lang_item_path(sp, "coerce_unsized");
+            // `CoerceUnsized<U> for T` means `T -> U`
             
-            ::HIR::PathParams   pp;
-            pp.m_types.push_back( ty_dst.clone() );
+            ::HIR::PathParams   pp { ty_dst.clone() };
             
             // PROBLEM: This can false-negative leading to the types being falsely equated.
             
@@ -3800,7 +3824,7 @@ namespace {
             // - Concretely found - emit the _Unsize op and remove this rule
             if( found )
             {
-                DEBUG("- CoerceUnsize " << &*node_ptr << " -> " << ty_dst);
+                DEBUG("- NEWNODE _Unsize " << &*node_ptr << " -> " << ty_dst);
                 
                 auto span = node_ptr->span();
                 node_ptr = NEWNODE( ty_dst.clone(), span, _Unsize,  mv$(node_ptr), ty_dst.clone() );
@@ -3811,7 +3835,7 @@ namespace {
                 DEBUG("- best_impl = " << best_impl);
                 // Fuzzy match - Insert a CoerceUnsized bound and emit the _Unsize op
                 // - This could end up being a no-op _Unsize, and there's special logic in check_associated to handle `T: CoerceUnsized<T>` and `T: Unsize<T>`
-                context.add_trait_bound(sp, ty_src,  lang_CoerceUnsized, ::HIR::PathParams(ty_dst.clone()));
+                context.add_trait_bound(sp, ty_src,  lang_CoerceUnsized, mv$(pp));
                 node_ptr = NEWNODE( ty_dst.clone(), sp, _Unsize,  mv$(node_ptr), ty_dst.clone() );
                 return true;
             }
@@ -3845,7 +3869,12 @@ namespace {
             return true;
             ),
         (Path,
-            if( ! e.binding.is_Unbound() ) {
+            // If there is an impl of CoerceUnsized<_> for this, don't equate (just return and wait for a while)
+            if( H::type_has_coerce_path(ty_src) ) {
+                // TODO: Is unconditionally returning here a good thing?
+                //return false;
+            }
+            else {
                 // TODO: Use the CoerceUnsized trait here
                 context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
                 return true;
@@ -4144,6 +4173,7 @@ namespace {
         // HACK! If the trait is `Unsize` then pretend `impl<T> Unsize<T> for T` exists to possibly propagate the type through
         // - Also applies to CoerceUnsized (which may not get its impl detected because actually `T: !Unsize<T>`)
         // - This is needed because `check_coerce` will emit coercions where they're not actually needed in some cases.
+        // `Unsize<U> for T` means `T -> U`
         if( v.trait == context.m_crate.get_lang_item_path(sp, "unsize") )
         {
             ASSERT_BUG(sp, v.params.m_types.size() == 1, "Incorrect number of parameters for Unsize");
@@ -4188,6 +4218,7 @@ namespace {
         }
         if( v.trait == context.m_crate.get_lang_item_path(sp, "coerce_unsized") )
         {
+            // `CoerceUnsized<U> for T` means when T is found an U is expected, a coerce can happen
             ASSERT_BUG(sp, v.params.m_types.size() == 1, "Incorrect number of parameters for Unsize");
             const auto& src_ty = context.get_type(v.impl_ty);
             const auto& dst_ty = context.get_type(v.params.m_types[0]);
@@ -4196,7 +4227,7 @@ namespace {
                 // If the trait is CoerceUnsized and no impl could be found, equate.
                 bool found = context.m_resolve.find_trait_impls(sp, v.trait, v.params,  v.impl_ty, [&](auto, auto) { return true; });
                 if( !found ) {
-                    DEBUG("No impl of CoerceUnsized, assume the types must be equal");
+                    DEBUG("No impl of CoerceUnsized"<<v.params<<" for " << v.impl_ty << ", assume the types must be equal");
                     context.equate_types(sp, dst_ty,  src_ty);
                     return true;
                 }
@@ -4271,6 +4302,11 @@ namespace {
         else if( count == 1 ) {
             DEBUG("Only one impl " << v.trait << context.m_ivars.fmt(possible_params) << " for " << context.m_ivars.fmt_type(possible_impl_ty)
                 << " - params=" << possible_params << ", ty=" << possible_impl_ty << ", out=" << output_type);
+            // TODO: If there are any magic params in the impl, don't use it yet.
+            if( best_impl.has_magic_params() ) {
+                return false;
+            }
+
             // Only one possible impl
             if( v.name != "" ) {
                 context.equate_types(sp, v.left_ty, output_type);

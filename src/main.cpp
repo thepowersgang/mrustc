@@ -249,6 +249,7 @@ int main(int argc, char *argv[])
         CompilePhaseV("Resolve Type Aliases", [&]() {
             ConvertHIR_ExpandAliases(*hir_crate);
             });
+        // Set up bindings and other useful information.
         CompilePhaseV("Resolve Bind", [&]() {
             ConvertHIR_Bind(*hir_crate);
             });

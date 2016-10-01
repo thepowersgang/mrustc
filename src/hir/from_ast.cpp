@@ -1313,6 +1313,7 @@ public:
     }
     
     auto sp = Span();
+    // - Store the lang item paths so conversion code can use them.
     for( const auto& lang_item_path : crate.m_lang_items )
     {
         rv.m_lang_items.insert( ::std::make_pair(lang_item_path.first, LowerHIR_SimplePath(sp, lang_item_path.second)) );

@@ -128,6 +128,23 @@ struct TypeAlias
 typedef ::std::vector< VisEnt<::HIR::TypeRef> > t_tuple_fields;
 typedef ::std::vector< ::std::pair< ::std::string, VisEnt<::HIR::TypeRef> > >   t_struct_fields;
 
+/// Cache of the state of various language traits on an enum/struct
+struct TraitMarkings
+{
+    /// There is at least one CoerceUnsized impl for this type
+    bool    can_coerce = false;
+    
+    /// Indicates that there is at least one Deref impl
+    bool    has_a_deref = false;
+    
+    /// Type is always unsized (i.e. contains an unsized type)
+    bool    is_always_unsized = false;
+    /// Type is always sized (i.e. cannot contain any unsized types)
+    bool    is_always_sized = false;
+    /// `true` if there is a Copy impl
+    bool    is_copy = false;
+};
+
 class Enum
 {
 public:
@@ -150,6 +167,8 @@ public:
     GenericParams   m_params;
     Repr    m_repr;
     ::std::vector< ::std::pair< ::std::string, Variant > >    m_variants;
+    
+    TraitMarkings   m_markings;
 };
 class Struct
 {
@@ -170,6 +189,8 @@ public:
     GenericParams   m_params;
     Repr    m_repr;
     Data    m_data;
+    
+    TraitMarkings   m_markings;
 };
 
 struct AssociatedType
@@ -332,6 +353,7 @@ public:
     void post_load_update(const ::std::string& loaded_name);
     
     const ::HIR::SimplePath& get_lang_item_path(const Span& sp, const char* name) const;
+    const ::HIR::SimplePath& get_lang_item_path_opt(const char* name) const;
     
     const ::HIR::TypeItem& get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name=false) const;
     const ::HIR::Trait& get_trait_by_path(const Span& sp, const ::HIR::SimplePath& path) const;

@@ -397,10 +397,18 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
 
 const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path(const Span& sp, const char* name) const
 {
-    // TODO: have map stored in crate populated by (or from) the #[lang] attribute handler
     auto it = this->m_lang_items.find( name );
     if( it == this->m_lang_items.end() ) {
         ERROR(sp, E0000, "Undefined language item '" << name << "' required");
+    }
+    return it->second;
+}
+const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path_opt(const char* name) const
+{
+    static ::HIR::SimplePath    empty_path;
+    auto it = this->m_lang_items.find( name );
+    if( it == this->m_lang_items.end() ) {
+        return empty_path;
     }
     return it->second;
 }
