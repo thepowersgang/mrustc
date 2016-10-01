@@ -1610,13 +1610,18 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
         }
         void visit(AST::ExprNode_Closure& node) override {
             DEBUG("ExprNode_Closure");
+            
             Resolve_Absolute_Type(this->context,  node.m_return);
+            
+            this->context.push_block();
             for( auto& arg : node.m_args ) {
                 Resolve_Absolute_Type(this->context,  arg.second);
                 Resolve_Absolute_Pattern(this->context, false,  arg.first);
             }
             
             node.m_code->visit(*this);
+            
+            this->context.pop_block();
         }
     } expr_iter(context);
 
