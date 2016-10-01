@@ -477,7 +477,6 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     const auto& v = (this->m_data.is_Infer() ? resolve_placeholder(*this) : *this);
     const auto& x = (x_in.m_data.is_Infer() || x_in.m_data.is_Generic() ? resolve_placeholder(x_in) : x_in);
     // If `x` is an ivar - This can be a fuzzy match.
-    // TODO: Can `v` be an ivar (it can, after resolve_placeholder) - and should that cause a fuzzy match?
     TU_IFLET(::HIR::TypeRef::Data, x.m_data, Infer, xe,
         // - If type inferrence is active (i.e. this ivar has an index), AND both `v` and `x` refer to the same ivar slot
         if( xe.index != ~0u && v.m_data.is_Infer() && v.m_data.as_Infer().index == xe.index )
@@ -517,6 +516,49 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                 case ::HIR::CoreType::F64:
                     return Compare::Fuzzy;
                     //return true;
+                default:
+                    DEBUG("- Fuzz fail");
+                    return Compare::Unequal;
+                }
+            )
+            break;
+        }
+    )
+    
+    TU_IFLET(::HIR::TypeRef::Data, v.m_data, Infer, te,
+        // TODO: Restrict this block with a flag so it panics if an ivar is seen when not expected
+        ASSERT_BUG(sp, te.index != ~0u, "Encountered ivar for `this` - " << v);
+        
+        switch(te.ty_class)
+        {
+        case ::HIR::InferClass::None:
+        case ::HIR::InferClass::Diverge:
+            // TODO: Have another callback (optional?) that allows the caller to equate `v` somehow
+            // - Very niche?
+            return Compare::Fuzzy;
+        case ::HIR::InferClass::Integer:
+            TU_IFLET(::HIR::TypeRef::Data, x.m_data, Primitive, xe,
+                switch(xe)
+                {
+                case ::HIR::CoreType::I8:    case ::HIR::CoreType::U8:
+                case ::HIR::CoreType::I16:   case ::HIR::CoreType::U16:
+                case ::HIR::CoreType::I32:   case ::HIR::CoreType::U32:
+                case ::HIR::CoreType::I64:   case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::Isize: case ::HIR::CoreType::Usize:
+                    return Compare::Fuzzy;
+                default:
+                    DEBUG("- Fuzz fail");
+                    return Compare::Unequal;
+                }
+            )
+            break;
+        case ::HIR::InferClass::Float:
+            TU_IFLET(::HIR::TypeRef::Data, x.m_data, Primitive, xe,
+                switch(xe)
+                {
+                case ::HIR::CoreType::F32:
+                case ::HIR::CoreType::F64:
+                    return Compare::Fuzzy;
                 default:
                     DEBUG("- Fuzz fail");
                     return Compare::Unequal;
