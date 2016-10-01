@@ -295,7 +295,6 @@ struct LowerHIR_ExprNode_Visitor:
                 v.m_label,
                 LowerHIR_ExprNode_Inner(*v.m_code)
                 ) );
-            assert( m_rv->m_res_type.m_data.is_Tuple() );
             break;
         case ::AST::ExprNode_Loop::WHILE: {
             ::std::vector< ::HIR::ExprNodeP>    code;
@@ -311,7 +310,6 @@ struct LowerHIR_ExprNode_Visitor:
                 v.m_label,
                 ::HIR::ExprNodeP(new ::HIR::ExprNode_Block( v.span(), false, mv$(code)))
                 ) );
-            assert( m_rv->m_res_type.m_data.is_Tuple() );
             break; }
         case ::AST::ExprNode_Loop::WHILELET: {
             ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
@@ -336,7 +334,6 @@ struct LowerHIR_ExprNode_Visitor:
                     mv$(arms)
                     ))
                 ) );
-            assert( m_rv->m_res_type.m_data.is_Tuple() );
             break; }
         case ::AST::ExprNode_Loop::FOR:
             // NOTE: This should already be desugared (as a pass before resolve)

@@ -107,7 +107,8 @@ struct ExprNode_Loop:
     ::HIR::ExprNodeP    m_code;
     
     ExprNode_Loop(Span sp, ::std::string label, ::HIR::ExprNodeP code):
-        ExprNode(mv$(sp), ::HIR::TypeRef::new_unit()),
+        //ExprNode(mv$(sp), ::HIR::TypeRef::new_unit()),
+        ExprNode(mv$(sp), ::HIR::TypeRef()),
         m_label( mv$(label) ),
         m_code( mv$(code) )
     {}

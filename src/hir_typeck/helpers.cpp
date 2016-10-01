@@ -2292,6 +2292,8 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     }
                     const auto& ty = *ty_p;
                     DEBUG("[find_trait_impls_crate] - Compare " << ty << " and " << assoc_bound.second << ", matching generics");
+                    // `ty` = Monomorphised actual type (< `be.type` as `be.trait` >::`assoc_bound.first`)
+                    // `assoc_bound.second` = Desired type (monomorphised too)
                     auto cmp = assoc_bound.second .match_test_generics_fuzz(sp, ty, cb_infer, cb_match);
                     switch(cmp)
                     {
@@ -2299,7 +2301,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                         DEBUG("Equal");
                         continue;
                     case ::HIR::Compare::Unequal:
-                        DEBUG("Assoc failure - " << ty << " != " << assoc_bound.second);
+                        DEBUG("Assoc " << assoc_bound.first << " failure - " << ty << " != " << assoc_bound.second);
                         return false;
                     case ::HIR::Compare::Fuzzy:
                         // TODO: When a fuzzy match is encountered on a conditional bound, returning `false` can lead to an false negative (and a compile error)
