@@ -1177,6 +1177,31 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             }
         }
         
+        // - Check if the desired trait is a supertrait of this.
+        // NOTE: `params` (aka des_params) is not used (TODO)
+        bool rv = false;
+        bool is_supertrait = this->find_named_trait_in_trait(sp, trait,params, *e.m_trait.m_trait_ptr, e.m_trait.m_path.m_path,e.m_trait.m_path.m_params, type,
+            [&](const auto& i_ty, const auto& i_params, const auto& i_assoc) {
+                // The above is just the monomorphised params and associated set. Comparison is still needed.
+                auto cmp = this->compare_pp(sp, i_params, params);
+                if( cmp != ::HIR::Compare::Unequal ) {
+                    // Invoke callback with a proper ImplRef
+                    ::std::map< ::std::string, ::HIR::TypeRef> assoc_clone;
+                    for(const auto& e : i_assoc)
+                        assoc_clone.insert( ::std::make_pair(e.first, e.second.clone()) );
+                    auto ir = ImplRef(i_ty.clone(), i_params.clone(), mv$(assoc_clone));
+                    DEBUG("- ir = " << ir);
+                    rv = callback(mv$(ir), cmp);
+                    return true;
+                }
+                return false;
+            });
+        if( is_supertrait )
+        {
+            return rv;
+        }
+        
+        // Trait objects can unsize to a subset of their traits.
         if( trait == m_crate.get_lang_item_path(sp, "unsize") )
         {
             ASSERT_BUG(sp, params.m_types.size() == 1, "");
@@ -1761,6 +1786,7 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
 
         DEBUG(pt << " => " << pt_mono);
         if( pt.m_path.m_path == des ) {
+            // TODO: What if there's two bounds of the same trait with different params?
             callback( target_type, pt_mono.m_path.m_params, pt_mono.m_type_bounds );
             return true;
         }
