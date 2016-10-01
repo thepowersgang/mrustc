@@ -1393,6 +1393,28 @@ namespace {
                     auto ty = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function(mv$(ft)) );
                     this->context.equate_types(sp, node.m_res_type, ty);
                     } break;
+                case ::HIR::ExprNode_PathValue::ENUM_VAR_CONSTR: {
+                    const auto& var_name = e.m_path.m_components.back();
+                    auto enum_path = e.m_path;
+                    enum_path.m_components.pop_back();
+                    const auto& enm = this->context.m_crate.get_enum_by_path(sp, enum_path);
+                    const auto& var = *::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&x){ return x.first == var_name; });
+                    const auto& var_data = var.second.as_Tuple();
+                    
+                    ::HIR::FunctionType ft {
+                        false,
+                        "rust",
+                        box$( ::HIR::TypeRef( ::HIR::GenericPath(mv$(enum_path), e.m_params.clone()), ::HIR::TypeRef::TypePathBinding::make_Enum(&enm) ) ),
+                        {}
+                        };
+                    for( const auto& arg : var_data )
+                    {
+                        ft.m_arg_types.push_back( monomorphise_type(sp, enm.m_params, e.m_params, arg.ent) );
+                    }
+                    
+                    auto ty = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function(mv$(ft)) );
+                    this->context.equate_types(sp, node.m_res_type, ty);
+                    } break;
                 case ::HIR::ExprNode_PathValue::STATIC: {
                     const auto& v = this->context.m_crate.get_static_by_path(sp, e.m_path);
                     DEBUG("static v.m_type = " << v.m_type);

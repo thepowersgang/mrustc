@@ -872,6 +872,8 @@ namespace {
                     break;
                 case ::HIR::ExprNode_PathValue::STRUCT_CONSTR: {
                     } break;
+                case ::HIR::ExprNode_PathValue::ENUM_VAR_CONSTR: {
+                    } break;
                 case ::HIR::ExprNode_PathValue::STATIC: {
                     } break;
                 case ::HIR::ExprNode_PathValue::CONSTANT: {

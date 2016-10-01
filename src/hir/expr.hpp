@@ -636,6 +636,7 @@ struct ExprNode_PathValue:
         UNKNOWN,
         FUNCTION,
         STRUCT_CONSTR,
+        ENUM_VAR_CONSTR,
         STATIC,
         CONSTANT,
     };

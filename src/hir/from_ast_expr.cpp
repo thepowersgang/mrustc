@@ -632,8 +632,7 @@ struct LowerHIR_ExprNode_Visitor:
                 }
                 (void)var_idx;  // TODO: Save time later by saving this.
                 if( is_tuple_constructor ) {
-                    TODO(v.span(), "Yield _PathValue when a tuple-like enum variant path is used as a value");
-                    //m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::ENUM_VAR_CONSTR ) );
+                    m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::ENUM_VAR_CONSTR ) );
                 }
                 else {
                     m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(Span(v.get_pos()), v.m_path), false ) );
