@@ -1583,6 +1583,7 @@ namespace {
                     vals.push_back( ::MIR::LValue::make_Variable(cap_idx) );
                 }
                 else {
+                    // TODO: Get correct borrow type (based on annotations stored in the node)
                     auto borrow_ty = ::HIR::BorrowType::Shared;
                     auto lval = m_builder.lvalue_or_temp( node.span(),
                         ::HIR::TypeRef::new_borrow(borrow_ty, m_variable_types[cap_idx].clone()),

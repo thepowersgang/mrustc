@@ -494,6 +494,7 @@ namespace {
             // - Types of captured variables (to be monomorphised)
             ::std::vector< ::HIR::VisEnt< ::HIR::TypeRef> > capture_types;
             for(const auto binding_idx : node.m_var_captures) {
+                // TODO: By-borrow captures (check the value usage type)
                 auto ty_mono = monomorphise_type_with(sp, m_variable_types.at(binding_idx).clone(), monomorph_cb);
                 // - Fix type to replace closure types with known paths
                 ExprVisitor_Fixup::fix_type(m_resolve.m_crate, ty_mono);
