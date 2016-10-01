@@ -936,7 +936,17 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     const auto& type = this->m_ivars.get_type(ty);
     TRACE_FUNCTION_F("trait = " << trait << params  << ", type = " << type);
     
-    if( trait == this->m_crate.get_lang_item_path(sp, "sized") ) {
+    const auto& lang_Sized = this->m_crate.get_lang_item_path(sp, "sized");
+    const auto& lang_Copy = this->m_crate.get_lang_item_path(sp, "copy");
+    const auto& lang_Unsize = this->m_crate.get_lang_item_path(sp, "unsize");
+    const auto& lang_CoerceUnsized = this->m_crate.get_lang_item_path(sp, "coerce_unsized");
+    const auto& trait_fn = this->m_crate.get_lang_item_path(sp, "fn");
+    const auto& trait_fn_mut = this->m_crate.get_lang_item_path(sp, "fn_mut");
+    const auto& trait_fn_once = this->m_crate.get_lang_item_path(sp, "fn_once");
+    const auto& trait_index = this->m_crate.get_lang_item_path(sp, "index");
+    const auto& trait_indexmut = this->m_crate.get_lang_item_path(sp, "index_mut");
+    
+    if( trait == lang_Sized ) {
         TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (e),
         (
             // Any unknown - it's sized
@@ -958,7 +968,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
         return callback( ImplRef(&type, &null_params, &null_assoc), ::HIR::Compare::Equal );
     }
     
-    if( trait == this->m_crate.get_lang_item_path(sp, "copy") ) {
+    if( trait == lang_Copy ) {
         if( this->type_is_copy(sp, type) ) {
             return callback( ImplRef(&type, &null_params, &null_assoc), ::HIR::Compare::Equal );
         }
@@ -968,9 +978,10 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     }
     
     // Magic Unsize impls to trait objects
-    if( trait == this->m_crate.get_lang_item_path(sp, "unsize") ) {
-        ASSERT_BUG(sp, params.m_types.size() == 1, "");
-        TU_IFLET( ::HIR::TypeRef::Data, this->m_ivars.get_type(params.m_types[0]).m_data, TraitObject, e,
+    if( trait == lang_Unsize ) {
+        ASSERT_BUG(sp, params.m_types.size() == 1, "Unsize trait requires a single type param");
+        const auto& dst_ty = this->m_ivars.get_type(params.m_types[0]);
+        TU_IFLET( ::HIR::TypeRef::Data, dst_ty.m_data, TraitObject, e,
             // TODO: Magic impl if T: ThisTrait
             bool good;
             ::HIR::Compare  total_cmp = ::HIR::Compare::Equal;
@@ -990,7 +1001,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     }
     
     // Magical CoerceUnsized impls for various types
-    if( trait == this->m_crate.get_lang_item_path(sp, "coerce_unsized") ) {
+    if( trait == lang_CoerceUnsized ) {
         const auto& dst_ty = params.m_types.at(0);
         // - `*mut T => *const T`
         TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Pointer, e,
@@ -1009,10 +1020,6 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             )
         )
     }
-
-    const auto& trait_fn = this->m_crate.get_lang_item_path(sp, "fn");
-    const auto& trait_fn_mut = this->m_crate.get_lang_item_path(sp, "fn_mut");
-    const auto& trait_fn_once = this->m_crate.get_lang_item_path(sp, "fn_once");
     
     // Magic impls of the Fn* traits for closure types
     TU_IFLET(::HIR::TypeRef::Data, type.m_data, Closure, e,
@@ -1095,9 +1102,6 @@ bool TraitResolution::find_trait_impls(const Span& sp,
         // Continue
     )
     
-    const auto& trait_index = this->m_crate.get_lang_item_path(sp, "index");
-    const auto& trait_indexmut = this->m_crate.get_lang_item_path(sp, "index_mut");
-    
     // Magic index impls for Arrays
     // NOTE: The index impl for [T] is in libcore.
     TU_IFLET(::HIR::TypeRef::Data, type.m_data, Array, e,
@@ -1139,7 +1143,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
         }
         
         // Unsize impl for arrays
-        if( trait == m_crate.get_lang_item_path(sp, "unsize") )
+        if( trait == lang_Unsize )
         {
             ASSERT_BUG(sp, params.m_types.size() == 1, "");
             const auto& dst_ty = m_ivars.get_type( params.m_types[0] );
@@ -1202,7 +1206,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
         }
         
         // Trait objects can unsize to a subset of their traits.
-        if( trait == m_crate.get_lang_item_path(sp, "unsize") )
+        if( trait == lang_Unsize )
         {
             ASSERT_BUG(sp, params.m_types.size() == 1, "");
             const auto& dst_ty = m_ivars.get_type( params.m_types[0] );
