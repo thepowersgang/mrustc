@@ -1678,6 +1678,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     // 2. Crate-level impls
     // TODO: Search for the actual trait containing this associated type
     ::HIR::GenericPath  trait_path;
+    //if( !this->trait_contains_type(sp, pe.trait, this->m_crate.get_trait_by_path(sp, pe.trait.m_path), *pe.type, pe.item, trait_path) )
     if( !this->trait_contains_type(sp, pe.trait, this->m_crate.get_trait_by_path(sp, pe.trait.m_path), pe.item, trait_path) )
         BUG(sp, "Cannot find associated type " << pe.item << " anywhere in trait " << pe.trait);
     //pe.trait = mv$(trait_path);
@@ -2373,7 +2374,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
     return match;
 }
 
-bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name, bool allow_move,  ::HIR::GenericPath& out_path) const
+bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const ::std::string& name, bool allow_move,  ::HIR::GenericPath& out_path) const
 {
     auto it = trait_ptr.m_values.find(name);
     if( it != trait_ptr.m_values.end() ) {
@@ -2398,11 +2399,19 @@ bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::Generic
     for(const auto& st : trait_ptr.m_parent_traits)
     {
         auto& st_ptr = this->m_crate.get_trait_by_path(sp, st.m_path.m_path);
-        if( trait_contains_method(sp, st.m_path, st_ptr, name, allow_move,  out_path) ) {
+        if( trait_contains_method(sp, st.m_path, st_ptr, self, name, allow_move,  out_path) ) {
             out_path.m_params = monomorphise_path_params_with(sp, mv$(out_path.m_params), [&](const auto& gt)->const auto& {
                 const auto& ge = gt.m_data.as_Generic();
-                assert(ge.binding < 256);
-                assert(ge.binding < trait_path.m_params.m_types.size());
+                if( ge.binding == 0xFFFF ) {
+                    return self;
+                }
+                else if( (ge.binding >> 8) == 0 ) {
+                    auto idx = ge.binding & 0xFF;
+                    assert(idx < trait_path.m_params.m_types.size());
+                }
+                else {
+                    BUG(sp, "Unexpected type parameter " << gt);
+                }
                 return trait_path.m_params.m_types[ge.binding];
                 }, false);
             return true;
@@ -2620,9 +2629,11 @@ bool TraitResolution::find_method(
                 DEBUG("Bound `" << e.type << " : " << e.trait.m_path << "` - Matches " << ty);
                 ::HIR::GenericPath final_trait_path;
                 assert(e.trait.m_trait_ptr);
-                if( !this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, method_name, ar != AllowedReceivers::AnyBorrow,  final_trait_path) )
+                if( !this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, ty, method_name, ar != AllowedReceivers::AnyBorrow,  final_trait_path) )
                     continue ;
                 DEBUG("- Found trait " << final_trait_path);
+                // TODO: Re-monomorphise final trait using `ty`?
+                // - Could collide with legitimate uses of `Self`
                 
                 // Found the method, return the UFCS path for it
                 fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
@@ -2682,7 +2693,7 @@ bool TraitResolution::find_method(
         {
             ASSERT_BUG(sp, bound.m_trait_ptr, "Pointer to trait " << bound.m_path << " not set in " << e.trait.m_path);
             ::HIR::GenericPath final_trait_path;
-            if( !this->trait_contains_method(sp, bound.m_path, *bound.m_trait_ptr, method_name, ar != AllowedReceivers::AnyBorrow,  final_trait_path) )
+            if( !this->trait_contains_method(sp, bound.m_path, *bound.m_trait_ptr, ::HIR::TypeRef("Self", 0xFFFF), method_name, ar != AllowedReceivers::AnyBorrow,  final_trait_path) )
                 continue ;
             DEBUG("- Found trait " << final_trait_path);
             
