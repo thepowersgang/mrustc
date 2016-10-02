@@ -4302,7 +4302,7 @@ namespace {
         else if( count == 1 ) {
             DEBUG("Only one impl " << v.trait << context.m_ivars.fmt(possible_params) << " for " << context.m_ivars.fmt_type(possible_impl_ty)
                 << " - params=" << possible_params << ", ty=" << possible_impl_ty << ", out=" << output_type);
-            // TODO: If there are any magic params in the impl, don't use it yet.
+            // - If there are any magic params in the impl, don't use it yet.
             if( best_impl.has_magic_params() ) {
                 return false;
             }
@@ -4316,7 +4316,7 @@ namespace {
             for( unsigned int i = 0; i < possible_params.m_types.size(); i ++ ) {
                 context.equate_types(sp, v.params.m_types[i], possible_params.m_types[i]);
             }
-            // TODO: Obtain the bounds required for this impl and add those as trait bounds to check/equate
+            // - Obtain the bounds required for this impl and add those as trait bounds to check/equate
             TU_IFLET( ImplRef::Data, best_impl.m_data, TraitImpl, e,
                 assert(e.impl);
                 for(const auto& bound : e.impl->m_params.m_bounds )
