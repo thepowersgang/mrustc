@@ -43,6 +43,15 @@ template<typename T>
     rv.push_back( mv$(v2) );
     return rv;
 }
+template<typename T>
+::std::vector<T> make_vec3(T v1, T v2, T v3) {
+    ::std::vector<T>    rv;
+    rv.reserve(3);
+    rv.push_back( mv$(v1) );
+    rv.push_back( mv$(v2) );
+    rv.push_back( mv$(v3) );
+    return rv;
+}
 
 enum Ordering
 {
