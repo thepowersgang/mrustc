@@ -387,7 +387,7 @@ public:
             )
             
             ::std::vector< AST::Pattern>    pats;
-            pats.push_back( AST::Pattern(AST::Pattern::TagReference(), mv$(pat_a)) );
+            pats.push_back( AST::Pattern(AST::Pattern::TagReference(), false, mv$(pat_a)) );
             
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),
@@ -553,8 +553,8 @@ public:
             ::std::vector< AST::Pattern>    pats;
             {
                 ::std::vector< AST::Pattern>    tuple_pats;
-                tuple_pats.push_back( AST::Pattern(AST::Pattern::TagReference(), mv$(pat_a)) );
-                tuple_pats.push_back( AST::Pattern(AST::Pattern::TagReference(), mv$(pat_b)) );
+                tuple_pats.push_back( AST::Pattern(AST::Pattern::TagReference(), false, mv$(pat_a)) );
+                tuple_pats.push_back( AST::Pattern(AST::Pattern::TagReference(), false, mv$(pat_b)) );
                 pats.push_back( AST::Pattern(AST::Pattern::TagTuple(), mv$(tuple_pats)) );
             }
             
@@ -703,7 +703,7 @@ public:
             )
             
             ::std::vector< AST::Pattern>    pats;
-            pats.push_back( AST::Pattern(AST::Pattern::TagReference(), mv$(pat_a)) );
+            pats.push_back( AST::Pattern(AST::Pattern::TagReference(), false, mv$(pat_a)) );
             
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),
@@ -858,7 +858,7 @@ public:
             )
             
             ::std::vector< AST::Pattern>    pats;
-            pats.push_back( AST::Pattern(AST::Pattern::TagReference(), mv$(pat_a)) );
+            pats.push_back( AST::Pattern(AST::Pattern::TagReference(), false, mv$(pat_a)) );
             
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),

@@ -182,14 +182,16 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
         return AST::Pattern( AST::Pattern::TagBox(), Parse_Pattern(lex, is_refutable) );
     case TOK_DOUBLE_AMP:
         lex.putback(TOK_AMP);
-    case TOK_AMP:
+    case TOK_AMP: {
         DEBUG("Ref");
         // NOTE: Falls back into "Pattern" not "PatternReal" to handle MaybeBind again
+        bool is_mut = false;
         if( GET_TOK(tok, lex) == TOK_RWORD_MUT )
-            // TODO: Actually use mutability
-            return AST::Pattern( AST::Pattern::TagReference(), Parse_Pattern(lex, is_refutable) );
-        PUTBACK(tok, lex);
-        return AST::Pattern( AST::Pattern::TagReference(), Parse_Pattern(lex, is_refutable) );
+            is_mut = true;
+        else
+            PUTBACK(tok, lex);
+        return AST::Pattern( AST::Pattern::TagReference(), is_mut, Parse_Pattern(lex, is_refutable) );
+        }
     case TOK_RWORD_SELF:
     case TOK_RWORD_SUPER:
     case TOK_IDENT:

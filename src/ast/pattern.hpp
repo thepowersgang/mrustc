@@ -124,9 +124,9 @@ public:
     
     
     struct TagReference {};
-    Pattern(TagReference, Pattern sub_pattern):
+    Pattern(TagReference, bool is_mutable, Pattern sub_pattern):
         m_data( Data::make_Ref( /*Data::Data_Ref */ {
-            false, unique_ptr<Pattern>(new Pattern(::std::move(sub_pattern)))
+            is_mutable, unique_ptr<Pattern>(new Pattern(::std::move(sub_pattern)))
             }) )
     {
     }
