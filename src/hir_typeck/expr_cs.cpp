@@ -22,6 +22,13 @@ namespace {
 // PLAN: Build up a set of conditions that are easier to solve
 struct Context
 {
+    class Revisitor
+    {
+    public:
+        virtual void fmt(::std::ostream& os) const = 0;
+        virtual bool revisit(Context& context) = 0;
+    };
+    
     struct Binding
     {
         ::std::string   name;
@@ -83,6 +90,8 @@ struct Context
     ::std::vector<Associated> link_assoc;
     /// Nodes that need revisiting (e.g. method calls when the receiver isn't known)
     ::std::vector< ::HIR::ExprNode*>    to_visit;
+    /// Callback-based revisits (e.g. for slice patterns handling slices/arrays)
+    ::std::vector< ::std::unique_ptr<Revisitor> >   adv_revisits;
     
     ::std::vector< IVarPossible>    possible_ivar_vals;
     
@@ -96,7 +105,7 @@ struct Context
     
     bool take_changed() { return m_ivars.take_changed(); }
     bool has_rules() const {
-        return link_coerce.size() > 0 || link_assoc.size() > 0 || to_visit.size() > 0;
+        return !(link_coerce.empty() && link_assoc.empty() && to_visit.empty() && adv_revisits.empty());
     }
     
     inline void add_ivars(::HIR::TypeRef& ty) {
@@ -142,6 +151,7 @@ struct Context
     
     // - Add a revisit entry
     void add_revisit(::HIR::ExprNode& node);
+    void add_revisit_adv(::std::unique_ptr<Revisitor> ent);
 
     const ::HIR::TypeRef& get_type(const ::HIR::TypeRef& ty) const { return m_ivars.get_type(ty); }
         
@@ -2710,7 +2720,7 @@ void Context::dump() const {
     }
     DEBUG("--- Ivars");
     m_ivars.dump();
-    DEBUG("--- CS Context - " << link_coerce.size() << " Coercions, " << link_assoc.size() << " associated, " << to_visit.size() << " nodes");
+    DEBUG("--- CS Context - " << link_coerce.size() << " Coercions, " << link_assoc.size() << " associated, " << to_visit.size() << " nodes, " << adv_revisits.size() << " callbacks");
     for(const auto& v : link_coerce) {
         DEBUG(v);
     }
@@ -2719,6 +2729,9 @@ void Context::dump() const {
     }
     for(const auto& v : to_visit) {
         DEBUG(&*v << " " << typeid(*v).name() << " -> " << this->m_ivars.fmt_type(v->m_res_type));
+    }
+    for(const auto& v : adv_revisits) {
+        DEBUG(FMT_CB(ss, v->fmt(ss);));
     }
     DEBUG("---");
 }
@@ -3077,31 +3090,113 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             for(auto& sub : e.sub_patterns)
                 this->add_binding(sp, sub, *te.inner );
         )
-        else {
+        else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, te,
+            for(auto& sub : e.sub_patterns)
+                this->add_binding(sp, sub, *te.inner );
+        )
+        else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Infer, te,
             auto inner = this->m_ivars.new_ivar_tr();
             for(auto& sub : e.sub_patterns)
                 this->add_binding(sp, sub, inner);
-            this->equate_types(sp, type, ::HIR::TypeRef::new_slice(mv$(inner)));
+            
+            struct SlicePatRevisit:
+                public Revisitor
+            {
+                Span    sp;
+                ::HIR::TypeRef  inner;
+                ::HIR::TypeRef  type;
+                unsigned int size;
+                
+                SlicePatRevisit(Span sp, ::HIR::TypeRef inner, ::HIR::TypeRef type, unsigned int size):
+                    sp(mv$(sp)), inner(mv$(inner)), type(mv$(type)), size(size)
+                {}
+                
+                void fmt(::std::ostream& os) const override { os << "SlicePatRevisit { " << inner << ", " << type << ", " << size; }
+                bool revisit(Context& context) override {
+                    const auto& ty = context.get_type(type);
+                    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Slice, te,
+                        context.equate_types(sp, *te.inner, inner);
+                        return true;
+                    )
+                    else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, te,
+                        if( te.size_val != size ) {
+                            ERROR(sp, E0000, "Slice pattern on an array if differing size");
+                        }
+                        context.equate_types(sp, *te.inner, inner);
+                        return true;
+                    )
+                    else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Infer, te,
+                        return false;
+                    )
+                    else {
+                        ERROR(sp, E0000, "Slice pattern on non-array/-slice - " << ty);
+                    }
+                }
+            };
+            this->add_revisit_adv( box$(( SlicePatRevisit { sp, mv$(inner), ty.clone(), static_cast<unsigned int>(e.sub_patterns.size()) } )) );
+        )
+        else {
+            ERROR(sp, E0000, "Slice pattern on non-array/-slice - " << ty);
         }
         ),
     (SplitSlice,
         ::HIR::TypeRef  inner;
+        unsigned int min_len = e.leading.size() + e.trailing.size();
         const auto& ty = this->get_type(type);
         TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Slice, te,
             inner = te.inner->clone();
+            if( e.extra_bind.is_valid() ) {
+                this->add_var( e.extra_bind.m_slot, e.extra_bind.m_name, ty.clone() );
+            }
         )
-        else {
+        else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, te,
+            inner = te.inner->clone();
+            if( te.size_val < min_len ) {
+                ERROR(sp, E0000, "Slice pattern on an array smaller than the pattern");
+            }
+            unsigned extra_len = te.size_val - min_len;
+            
+            if( e.extra_bind.is_valid() ) {
+                this->add_var( e.extra_bind.m_slot, e.extra_bind.m_name, ::HIR::TypeRef::new_array(inner.clone(), extra_len) );
+            }
+        )
+        else if( ty.m_data.is_Infer() ) {
             inner = this->m_ivars.new_ivar_tr();
-            this->equate_types(sp, type, ::HIR::TypeRef::new_slice(inner.clone()));
+            ::HIR::TypeRef  var_ty;
+            if( e.extra_bind.is_valid() ) {
+                var_ty = this->m_ivars.new_ivar_tr();
+                this->add_var( e.extra_bind.m_slot, e.extra_bind.m_name, var_ty.clone() );
+            }
+            
+            struct SplitSlicePatRevisit:
+                public Revisitor
+            {
+                Span    sp;
+                ::HIR::TypeRef  inner;
+                ::HIR::TypeRef  type;
+                ::HIR::TypeRef  var_ty;
+                unsigned int min_size;
+                
+                SplitSlicePatRevisit(Span sp, ::HIR::TypeRef inner, ::HIR::TypeRef type, ::HIR::TypeRef var_ty, unsigned int size):
+                    sp(mv$(sp)), inner(mv$(inner)), type(mv$(type)), var_ty(mv$(var_ty)), min_size(size)
+                {}
+                
+                void fmt(::std::ostream& os) const override { os << "SplitSlice inner=" << inner << ", outer=" << type << ", binding="<<var_ty<<", " << min_size; }
+                bool revisit(Context& context) override {
+                    TODO(sp, "SplitSlicePatRevisit");
+                }
+            };
+            // Callback
+            this->add_revisit_adv( box$(( SplitSlicePatRevisit { sp, inner.clone(), ty.clone(), mv$(var_ty), min_len } )) );
+        }
+        else {
+            ERROR(sp, E0000, "Slice pattern on non-array/-slice - " << ty);
         }
 
         for(auto& sub : e.leading)
             this->add_binding( sp, sub, inner );
         for(auto& sub : e.trailing)
             this->add_binding( sp, sub, inner );
-        if( e.extra_bind.is_valid() ) {
-            this->add_var( e.extra_bind.m_slot, e.extra_bind.m_name, ty.clone() );
-        }
         ),
     
     // - Enums/Structs
@@ -3368,6 +3463,9 @@ void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const
 }
 void Context::add_revisit(::HIR::ExprNode& node) {
     this->to_visit.push_back( &node );
+}
+void Context::add_revisit_adv(::std::unique_ptr<Revisitor> ent_ptr) {
+    this->adv_revisits.push_back( mv$(ent_ptr) );
 }
 
 void Context::possible_equate_type_to(unsigned int ivar_index, const ::HIR::TypeRef& t) {
@@ -4663,6 +4761,16 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             if( visitor.node_completed() ) {
                 DEBUG("- Completed " << &node << " - " << typeid(node).name());
                 it = context.to_visit.erase(it);
+            }
+            else {
+                ++ it;
+            }
+        }
+        for( auto it = context.adv_revisits.begin(); it != context.adv_revisits.end(); )
+        {
+            auto& ent = **it;
+            if( ent.revisit(context) ) {
+                it = context.adv_revisits.erase(it);
             }
             else {
                 ++ it;
