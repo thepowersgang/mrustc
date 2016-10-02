@@ -373,40 +373,35 @@ namespace {
             {
                 // If the match was fuzzy, it could be due to a compound being matched against an ivar
                 DEBUG("- Fuzzy match, adding ivars and equating");
-                bool ivar_replaced = false;
                 for(auto& ty : impl_params.m_types) {
                     if( ty == ::HIR::TypeRef() ) {
                         // Allocate a new ivar for the param
-                        ivar_replaced = true;
                         ty = context.m_ivars.new_ivar_tr();
                     }
                 }
                 
-                // If there were any params that weren't bound by `match_test_generics_fuzz`
-                if( ivar_replaced )
-                {
-                    // Then monomorphise the impl type with the new ivars, and equate to *e.type
-                    auto impl_monomorph_cb = [&](const auto& gt)->const auto& {
-                        const auto& ge = gt.m_data.as_Generic();
-                        if( ge.binding == 0xFFFF ) {
-                            return context.get_type(*e.type);
+                
+                // Monomorphise the impl type with the new ivars, and equate to *e.type
+                auto impl_monomorph_cb = [&](const auto& gt)->const auto& {
+                    const auto& ge = gt.m_data.as_Generic();
+                    if( ge.binding == 0xFFFF ) {
+                        return context.get_type(*e.type);
+                    }
+                    else if( ge.binding < 256 ) {
+                        auto idx = ge.binding;
+                        if( idx >= impl_params.m_types.size() ) {
+                            BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << impl_params.m_types.size());
                         }
-                        else if( ge.binding < 256 ) {
-                            auto idx = ge.binding;
-                            if( idx >= impl_params.m_types.size() ) {
-                                BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << impl_params.m_types.size());
-                            }
-                            return context.get_type(impl_params.m_types[idx]);
-                        }
-                        else {
-                            BUG(sp, "Generic bounding out of total range - " << ge.binding);
-                        }
-                        };
-                    auto impl_ty_mono = monomorphise_type_with(sp, impl_ptr->m_type, impl_monomorph_cb, false);
-                    DEBUG("- impl_ty_mono = " << impl_ty_mono);
-                    
-                    context.equate_types(sp, impl_ty_mono, *e.type);
-                }
+                        return context.get_type(impl_params.m_types[idx]);
+                    }
+                    else {
+                        BUG(sp, "Generic bounding out of total range - " << ge.binding);
+                    }
+                    };
+                auto impl_ty_mono = monomorphise_type_with(sp, impl_ptr->m_type, impl_monomorph_cb, false);
+                DEBUG("- impl_ty_mono = " << impl_ty_mono);
+                
+                context.equate_types(sp, impl_ty_mono, *e.type);
             }
             // - Check that all entries were populated by the above function
             for(const auto& ty : impl_params.m_types) {
@@ -1461,11 +1456,14 @@ namespace {
                 BUG(sp, "Encountered UfcsUnknown");
                 ),
             (UfcsKnown,
+                const auto& trait = this->context.m_crate.get_trait_by_path(sp, e.trait.m_path);
+                fix_param_count(sp, this->context, e.trait, trait.m_params,  e.trait.m_params);
+                
                 // 1. Add trait bound to be checked.
                 this->context.add_trait_bound(sp, *e.type,  e.trait.m_path, e.trait.m_params.clone());
+                
                 // 2. Locate this item in the trait
                 // - If it's an associated `const`, will have to revisit
-                const auto& trait = this->context.m_crate.get_trait_by_path(sp, e.trait.m_path);
                 auto it = trait.m_values.find( e.item );
                 if( it == trait.m_values.end() ) {
                     ERROR(sp, E0000, "`" << e.item << "` is not a value member of trait " << e.trait.m_path);
@@ -1487,22 +1485,20 @@ namespace {
                             if( ge.binding == 0xFFFF ) {
                                 return this->context.get_type(*e.type);
                             }
-                            else if( ge.binding < 256 ) {
+                            else if( (ge.binding >> 8) == 0 ) {
                                 auto idx = ge.binding;
-                                if( idx >= trait_params.m_types.size() ) {
-                                    BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << trait_params.m_types.size());
-                                }
+                                ASSERT_BUG(sp, idx < trait_params.m_types.size(), "Generic param out of input range - " << gt << " >= " << trait_params.m_types.size());
                                 return this->context.get_type(trait_params.m_types[idx]);
                             }
-                            else if( ge.binding < 512 ) {
-                                auto idx = ge.binding - 256;
+                            else if( (ge.binding >> 8) == 1 ) {
+                                auto idx = ge.binding & 0xFF;
                                 if( idx >= fcn_params.m_types.size() ) {
-                                    BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << fcn_params.m_types.size());
+                                    BUG(sp, "Generic param out of input range - " << gt << " >= " << fcn_params.m_types.size());
                                 }
                                 return this->context.get_type(fcn_params.m_types[idx]);
                             }
                             else {
-                                BUG(sp, "Generic bounding out of total range");
+                                BUG(sp, "Generic bounding out of total range - " << gt);
                             }
                         };
                     ::HIR::FunctionType ft {
