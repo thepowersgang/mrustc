@@ -1152,7 +1152,8 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                 auto cmp = e.inner->compare_with_placeholders(sp, *e2.inner, m_ivars.callback_resolve_infer());
                 if( cmp != ::HIR::Compare::Unequal ) {
                     ::HIR::PathParams   pp;
-                    pp.m_types.push_back( e.inner->clone() );
+                    // - <[`array_inner`]> so it can be matched with the param by the caller
+                    pp.m_types.push_back( ::HIR::TypeRef::new_slice(e.inner->clone()) );
                     return callback( ImplRef(type.clone(), mv$(pp), {}), cmp );
                 }
             )
