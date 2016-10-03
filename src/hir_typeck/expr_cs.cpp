@@ -3772,17 +3772,39 @@ namespace {
             ),
         (TraitObject,
             const auto& trait = e.m_trait.m_path;
+            ImplRef best_impl;
+            unsigned int count = 0;
             // Check for trait impl
             bool found = context.m_resolve.find_trait_impls(sp, trait.m_path, trait.m_params, ty_src, [&](auto impl, auto cmp) {
                 DEBUG("TraitObject coerce from - cmp="<<cmp<<", " << impl);
+                count ++;
+                best_impl = mv$(impl);
                 return cmp == ::HIR::Compare::Equal;
                 });
-            if( !found ) {
+            if( count == 0 ) {
+                // TODO: Get a better idea of when there won't ever be an applicable impl
                 if( !context.m_ivars.type_contains_ivars(ty_src) ) {
-                    // TODO: Error
                     ERROR(sp, E0000, "The trait " << e.m_trait << " is not implemented for " << ty_src);
                 }
+                DEBUG("No impl, but there may eventaully be one");
                 return false;
+            }
+            if( !found )
+            {
+                if(count > 1)
+                {
+                    DEBUG("Defer as there are multiple applicable impls");
+                    return false;
+                }
+                
+                // TODO: Get a better way of equating these that doesn't require getting copies of the impl's types
+                context.equate_types(sp, ty_src, best_impl.get_impl_type());
+                auto args = best_impl.get_trait_params();
+                assert(trait.m_params.m_types.size() == args.m_types.size());
+                for(unsigned int i = 0; i < trait.m_params.m_types.size(); i ++)
+                {
+                    context.equate_types(sp, trait.m_params.m_types[i], args.m_types[i]);
+                }
             }
             
             for(const auto& marker : e.m_markers)
@@ -3791,9 +3813,10 @@ namespace {
                     DEBUG("TraitObject coerce from - cmp="<<cmp<<", " << impl);
                     return cmp == ::HIR::Compare::Equal;
                     });
+                // TODO: Allow fuzz and equate same as above?
                 if( !found ) {
+                    // TODO: Get a better idea of when there won't ever be an applicable impl
                     if( !context.m_ivars.type_contains_ivars(ty_src) ) {
-                        // TODO: Error
                         ERROR(sp, E0000, "The trait " << marker << " is not implemented for " << ty_src);
                     }
                     return false;
