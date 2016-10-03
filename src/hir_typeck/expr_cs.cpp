@@ -2013,8 +2013,21 @@ namespace {
             const auto& data_ty = node.m_value->m_res_type;
             auto node_ty = node.m_type;
             TRACE_FUNCTION_F("_Emplace: exp_ty=" << exp_ty);
+            
             if( exp_ty.m_data.is_Infer() ) {
                 // If the expected result type is still an ivar, nothing can be done
+
+                // HACK: Add a possibility of the result type being ``Box<`data_ty`>``
+                // - This only happens if the `owned_box` lang item is present
+                const auto& lang_Boxed = this->context.m_crate.get_lang_item_path_opt("owned_box");
+                if( ! lang_Boxed.m_components.empty() )
+                {
+                    // NOTE: `owned_box` shouldn't point to anything but a struct
+                    const auto& str = this->context.m_crate.get_struct_by_path(sp, lang_Boxed);
+                    // TODO: Store this type to avoid having to construct it every pass
+                    auto boxed_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(lang_Boxed, {data_ty.clone()}), &str );
+                    this->context.possible_equate_type_from( exp_ty.m_data.as_Infer().index, boxed_ty );
+                }
                 return ;
             }
             // Assert that the expected result is a Path::Generic type.
