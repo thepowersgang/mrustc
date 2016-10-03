@@ -4106,26 +4106,30 @@ namespace {
         (Borrow,
             TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Borrow, r_e,
                 // If using `&mut T` where `&const T` is expected - insert a reborrow (&*)
+                // TODO: &move reboorrowing rules?
+                //if( l_e.type < r_e.type ) {
                 if( l_e.type == ::HIR::BorrowType::Shared && r_e.type == ::HIR::BorrowType::Unique ) {
-                    context.equate_types(sp, *l_e.inner, *r_e.inner);
                     
                     // Add cast down
                     auto span = node_ptr->span();
+                    // > Goes from `ty_src` -> `*ty_src` -> `&`l_e.type` `&ty_src`
+                    const auto& inner_ty = *r_e.inner;
+                    auto dst_bt = l_e.type;
+                    auto new_type = ::HIR::TypeRef::new_borrow(dst_bt, inner_ty.clone());
                     // *<inner>
-                    DEBUG("- Deref -> " << *l_e.inner);
-                    node_ptr = NEWNODE( l_e.inner->clone(), span, _Deref,  mv$(node_ptr) );
+                    DEBUG("- Deref -> " << inner_ty);
+                    node_ptr = NEWNODE( inner_ty.clone(), span, _Deref,  mv$(node_ptr) );
                     context.m_ivars.get_type(node_ptr->m_res_type);
                     // &*<inner>
-                    node_ptr = NEWNODE( ty_dst.clone(), span, _Borrow,  ::HIR::BorrowType::Shared, mv$(node_ptr) );
+                    DEBUG("- Borrow -> " << new_type);
+                    node_ptr = NEWNODE( mv$(new_type) , span, _Borrow,  dst_bt, mv$(node_ptr) );
                     context.m_ivars.get_type(node_ptr->m_res_type);
                     
                     context.m_ivars.mark_change();
-                    return true;
+                    
+                    // Continue on with coercion (now that node_ptr is updated)
                 }
-                // TODO: &move reboorrowing rules?
-                
-                if( l_e.type != r_e.type ) {
-                    // TODO: This could be allowed if left == Shared && right == Unique (reborrowing)
+                else if( l_e.type != r_e.type ) {
                     ERROR(sp, E0000, "Type mismatch between " << ty_dst << " and " << ty_src << " - Borrow classes differ");
                 }
                 
