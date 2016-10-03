@@ -1430,6 +1430,7 @@ namespace {
                     auto enum_path = e.m_path;
                     enum_path.m_components.pop_back();
                     const auto& enm = this->context.m_crate.get_enum_by_path(sp, enum_path);
+                    fix_param_count(sp, this->context, e, enm.m_params, e.m_params);
                     const auto& var = *::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&x){ return x.first == var_name; });
                     const auto& var_data = var.second.as_Tuple();
                     
