@@ -575,6 +575,11 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             DEBUG("- Fuzzy match due to opaque");
             return Compare::Fuzzy;
         }
+        // HACK: If the RHS is a placeholder generic, allow it.
+        if( x.m_data.is_Generic() && (x.m_data.as_Generic().binding >> 8) == 2 ) {
+            DEBUG("- Fuzzy match due to placeholder");
+            return Compare::Fuzzy;
+        }
         DEBUG("- Tag mismatch " << v << " and " << x);
         return Compare::Unequal;
     }

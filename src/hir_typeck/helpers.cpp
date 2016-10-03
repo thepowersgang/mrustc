@@ -2208,6 +2208,17 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         }
         };
 
+    //auto cb_res = [&](const auto& ty)->const auto& {
+    //    if( ty.m_data.is_Infer() ) {
+    //        return this->m_ivars.get_type(ty);
+    //    }
+    //    //else if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding >> 8 == 2 ) {
+    //    //    return ::HIR::TypeRef();
+    //    //}
+    //    else {
+    //        return ty;
+    //    }
+    //    };
     // NOTE: If this type references an associated type, the match will incorrectly fail.
     // - HACK: match_test_generics_fuzz has been changed to return Fuzzy if there's a tag mismatch and the LHS is an Opaque path
     auto    match = ::HIR::Compare::Equal;
