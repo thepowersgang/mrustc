@@ -204,16 +204,12 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
         if(GET_TOK(tok, lex) == TOK_INTEGER)
         {
             auto dt = tok.datatype();
-            if(dt == CORETYPE_ANY)
-                dt = CORETYPE_I32;
+            // TODO: Ensure that the type is ANY or a signed integer
             return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Integer({dt, -tok.intval()}) );
         }
         else if( tok.type() == TOK_FLOAT )
         {
-            auto dt = tok.datatype();
-            if(dt == CORETYPE_ANY)
-                dt = CORETYPE_F32;
-            return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Float({dt, -tok.floatval()}) );
+            return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Float({tok.datatype(), -tok.floatval()}) );
         }
         else
         {
