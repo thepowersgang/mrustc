@@ -449,6 +449,9 @@ namespace {
                 }
             };
         
+        // Add trait bounds for all impl and function bounds
+        apply_bounds_as_rules(context, sp, impl_ptr->m_params, cache.m_monomorph_cb);
+        
         return true;
     }
     
@@ -2018,9 +2021,9 @@ namespace {
                 // If the expected result type is still an ivar, nothing can be done
 
                 // HACK: Add a possibility of the result type being ``Box<`data_ty`>``
-                // - This only happens if the `owned_box` lang item is present
+                // - This only happens if the `owned_box` lang item is present and this node is a `box` operation
                 const auto& lang_Boxed = this->context.m_crate.get_lang_item_path_opt("owned_box");
-                if( ! lang_Boxed.m_components.empty() )
+                if( ! lang_Boxed.m_components.empty() && node_ty == ::HIR::ExprNode_Emplace::Type::Boxer )
                 {
                     // NOTE: `owned_box` shouldn't point to anything but a struct
                     const auto& str = this->context.m_crate.get_struct_by_path(sp, lang_Boxed);
