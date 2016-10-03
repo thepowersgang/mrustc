@@ -230,8 +230,7 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
     case TOK_STRING:
         return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_String( mv$(tok.str()) ) );
     case TOK_BYTESTRING:
-        // TODO: Differentiate byte and UTF-8 strings
-        return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_String( mv$(tok.str()) ) );
+        return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_ByteString({ mv$(tok.str()) }) );
     case TOK_PAREN_OPEN:
         return AST::Pattern( AST::Pattern::TagTuple(), Parse_PatternTuple(lex, is_refutable) );
     case TOK_SQUARE_OPEN:

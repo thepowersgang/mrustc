@@ -3004,6 +3004,9 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             (String,
                 context.equate_types(sp, type, ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef(::HIR::CoreType::Str) ));
                 ),
+            (ByteString,
+                context.equate_types(sp, type, ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_slice(::HIR::CoreType::U8) ));
+                ),
             (Named,
                 // TODO: Get type of the value and equate it
                 )

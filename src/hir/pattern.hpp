@@ -60,6 +60,7 @@ struct Pattern
             double value;
             }),
         (String, ::std::string),
+        (ByteString, struct { ::std::string v; }),
         (Named, struct {
             Path    path;
             const ::HIR::Constant*  binding;

@@ -57,6 +57,7 @@ public:
             double value;
             }),
         (String, ::std::string),
+        (ByteString, struct { ::std::string v; }),
         (Named, Path)
         );
 

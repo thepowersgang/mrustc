@@ -21,6 +21,9 @@ namespace HIR {
         (String,
             os << "\"" << e << "\"";
             ),
+        (ByteString,
+            os << "b\"" << e.v << "\"";
+            ),
         (Named,
             os << e.path;
             )
@@ -162,6 +165,9 @@ namespace {
             ),
         (String,
             return ::HIR::Pattern::Value::make_String(e);
+            ),
+        (ByteString,
+            return ::HIR::Pattern::Value(e);
             ),
         (Named,
             return ::HIR::Pattern::Value::make_Named({ e.path.clone(), e.binding });

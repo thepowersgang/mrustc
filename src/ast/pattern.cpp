@@ -51,6 +51,9 @@ namespace AST {
     (String,
         os << "\"" << e << "\"";
         ),
+    (ByteString,
+        os << "b\"" << e.v << "\"";
+        ),
     (Named,
         os << e;
         )
@@ -184,6 +187,7 @@ AST::Pattern AST::Pattern::clone() const
             (Integer, return Value(e);),
             (Float, return Value(e);),
             (String, return Value(e);),
+            (ByteString, return Value(e);),
             (Named, return Value::make_Named( AST::Path(e) );)
             )
             throw "";

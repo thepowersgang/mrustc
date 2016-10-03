@@ -391,6 +391,9 @@
                 (String,
                     return ::HIR::Pattern::Value::make_String(e);
                     ),
+                (ByteString,
+                    return ::HIR::Pattern::Value::make_ByteString({e.v});
+                    ),
                 (Named,
                     return ::HIR::Pattern::Value::make_Named( {LowerHIR_Path(sp, e), nullptr} );
                     )

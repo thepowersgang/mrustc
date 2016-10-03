@@ -1294,6 +1294,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             this->append_from( sp, *pe.sub, *e.inner );
             ),
         (Value,
+            // TODO: Check type? Also handle named values and byte strings.
             if( pe.val.is_String() ) {
                 const auto& s = pe.val.as_String();
                 this->push_rule( PatternRule::make_Value(s) );

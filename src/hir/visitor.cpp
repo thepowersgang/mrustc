@@ -391,6 +391,8 @@ void ::HIR::Visitor::visit_pattern_val(::HIR::Pattern::Value& val)
         ),
     (String,
         ),
+    (ByteString,
+        ),
     (Named,
         this->visit_path(e.path, ::HIR::Visitor::PathContext::VALUE);
         )
