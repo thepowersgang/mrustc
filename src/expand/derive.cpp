@@ -1315,8 +1315,6 @@ public:
     
     AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
     {
-        const AST::Path    assert_method_path = this->get_trait_path(core_name) + "assert_receiver_is_total_eq";
-
         AST::Path base_path = type.m_data.as_Path().path;
         base_path.nodes().back().args() = ::AST::PathParams();
         ::std::vector<AST::ExprNode_Match_Arm>   arms;
@@ -1415,6 +1413,83 @@ public:
     }
 } g_derive_copy;
 
+class Deriver_Default:
+    public Deriver
+{
+    AST::Path get_trait_path(const ::std::string& core_name) const {
+        return AST::Path(core_name, { AST::PathNode("default", {}), AST::PathNode("Default", {}) });
+    }
+    AST::Path get_method_path(const ::std::string& core_name) const {
+        return AST::Path(AST::Path::TagUfcs(), ::TypeRef(), get_trait_path(core_name), { AST::PathNode("default", {}) } );
+    }
+    
+    AST::Impl make_ret(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, ::std::vector<TypeRef> types_to_bound, AST::ExprNodeP node) const
+    {
+        const AST::Path    trait_path = this->get_trait_path(core_name);
+        
+        AST::Function fcn(
+            sp,
+            AST::GenericParams(),
+            "rust", false, false, false,
+            TypeRef("Self", 0xFFFF),
+            {}
+            );
+        fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
+        
+        AST::GenericParams  params = get_params_with_bounds(p, trait_path, mv$(types_to_bound));
+        
+        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
+        rv.add_function(false, false, "default", mv$(fcn));
+        return mv$(rv);
+    }
+    AST::ExprNodeP default_call(const ::std::string& core_name) const {
+        return NEWNODE(CallPath,
+            this->get_method_path(core_name),
+            {}
+            );
+    }
+    
+public:
+    AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
+    {
+        const AST::Path& ty_path = type.m_data.as_Path().path;
+        ::std::vector<AST::ExprNodeP>   nodes;
+        
+        TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Struct,
+            ::std::vector< ::std::pair< ::std::string, AST::ExprNodeP> >    vals;
+            for( const auto& fld : e.ents )
+            {
+                vals.push_back( ::std::make_pair(fld.m_name, this->default_call(core_name)) );
+            }
+            nodes.push_back( NEWNODE(StructLiteral, ty_path, nullptr, mv$(vals)) );
+            ),
+        (Tuple,
+            if( e.ents.size() == 0 )
+            {
+                nodes.push_back( NEWNODE(NamedValue, AST::Path(ty_path)) );
+            }
+            else
+            {
+                ::std::vector<AST::ExprNodeP>   vals;
+                for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
+                {
+                    vals.push_back( this->default_call(core_name) );
+                }
+                nodes.push_back( NEWNODE(CallPath, AST::Path(ty_path), mv$(vals)) );
+            }
+            )
+        )
+        
+        return this->make_ret(sp, core_name, p, type, this->get_field_bounds(str), NEWNODE(Block, mv$(nodes)));
+    }
+    
+    AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
+    {
+        ERROR(sp, E0000, "Default cannot be derived for enums");
+    }
+} g_derive_default;
+
 // --------------------------------------------------------------------
 // Select and dispatch the correct derive() handler
 // --------------------------------------------------------------------
@@ -1434,6 +1509,8 @@ static const Deriver* find_impl(const ::std::string& trait_name)
         return &g_derive_clone;
     else if( trait_name == "Copy" )
         return &g_derive_copy;
+    else if( trait_name == "Default" )
+        return &g_derive_default;
     else
         return nullptr;
 }
