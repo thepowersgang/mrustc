@@ -512,6 +512,7 @@ struct CExpandExpr:
             auto path_Ok  = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Ok")});
             auto path_Err = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Err")});
             auto path_From = ::AST::Path(core_crate, {::AST::PathNode("convert"), ::AST::PathNode("From")});
+            path_From.nodes().back().args().m_types.push_back( ::TypeRef() );
             
             // Desugars into
             // ```

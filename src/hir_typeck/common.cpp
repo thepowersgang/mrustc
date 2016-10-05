@@ -47,7 +47,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
 {
     TU_MATCH(::HIR::TypeRef::Data, (tpl.m_data), (e),
     (Infer,
-        assert(!"ERROR: _ type found in monomorphisation target");
+        BUG(Span(), "_ type found in monomorphisation target - " << tpl);
         ),
     (Diverge,
         return false;

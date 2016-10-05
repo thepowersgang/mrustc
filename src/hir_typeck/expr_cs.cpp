@@ -74,10 +74,19 @@ struct Context
     struct IVarPossible
     {
         bool force_no = false;
-        // TODO: If an ivar is eliminated (i.e. has its type dropped) while its pointer is here - things will break
-        //::std::vector<const ::HIR::TypeRef*>    types;
-        ::std::vector<::HIR::TypeRef>    types_to;
-        ::std::vector<::HIR::TypeRef>    types_from;
+        ::std::vector<::HIR::TypeRef>   types_to;
+        ::std::vector<::HIR::TypeRef>   types_from;
+        //::std::vector<::HIR::TypeRef>   types_default;
+        
+        void reset() {
+            force_no = false;
+            types_to.clear();
+            types_from.clear();
+            //types_default.clear();
+        }
+        bool has_rules() const {
+            return !types_to.empty() || !types_from.empty() /* || !types_default.empty()*/;
+        }
     };
     
     const ::HIR::Crate& m_crate;
@@ -137,8 +146,12 @@ struct Context
     }
 
     // - List `t` as a possible type for `ivar_index`
+    /// Possible type that this ivar can coerce to
     void possible_equate_type_to(unsigned int ivar_index, const ::HIR::TypeRef& t);
+    /// Possible type that this ivar can coerce from
     void possible_equate_type_from(unsigned int ivar_index, const ::HIR::TypeRef& t);
+    /// Default type
+    //void possible_equate_type_def(unsigned int ivar_index, const ::HIR::TypeRef& t);
     // Mark an ivar as having an unknown possibility
     void possible_equate_type_disable(unsigned int ivar_index);
     void possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t, bool is_to);
@@ -164,8 +177,8 @@ private:
     }
 };
 
-static void fix_param_count(const Span& sp, Context& context, const ::HIR::Path& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params);
-static void fix_param_count(const Span& sp, Context& context, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params);
+static void fix_param_count(const Span& sp, Context& context, const ::HIR::TypeRef& self_ty, bool use_defaults, const ::HIR::Path& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params);
+static void fix_param_count(const Span& sp, Context& context, const ::HIR::TypeRef& self_ty, bool use_defaults, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params);
 
 namespace {
     
@@ -228,7 +241,7 @@ namespace {
         TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
         (Generic,
             const auto& fcn = context.m_crate.get_function_by_path(sp, e.m_path);
-            fix_param_count(sp, context, path, fcn.m_params,  e.m_params);
+            fix_param_count(sp, context, ::HIR::TypeRef(), false, path, fcn.m_params,  e.m_params);
             fcn_ptr = &fcn;
             cache.m_fcn_params = &fcn.m_params;
             
@@ -255,12 +268,12 @@ namespace {
             ),
         (UfcsKnown,
             const auto& trait = context.m_crate.get_trait_by_path(sp, e.trait.m_path);
-            fix_param_count(sp, context, path, trait.m_params, e.trait.m_params);
+            fix_param_count(sp, context, *e.type, true, path, trait.m_params, e.trait.m_params);
             if( trait.m_values.count(e.item) == 0 ) {
                 BUG(sp, "Method '" << e.item << "' of trait " << e.trait.m_path << " doesn't exist");
             }
             const auto& fcn = trait.m_values.at(e.item).as_Function();
-            fix_param_count(sp, context, path, fcn.m_params,  e.params);
+            fix_param_count(sp, context, *e.type, false, path, fcn.m_params,  e.params);
             cache.m_fcn_params = &fcn.m_params;
             cache.m_top_params = &trait.m_params;
             
@@ -362,7 +375,7 @@ namespace {
         }
         assert(impl_ptr);
         DEBUG("Found impl" << impl_ptr->m_params.fmt_args() << " " << impl_ptr->m_type);
-        fix_param_count(sp, context, path, fcn_ptr->m_params,  e.params);
+        fix_param_count(sp, context, *e.type, false, path, fcn_ptr->m_params,  e.params);
         cache.m_fcn_params = &fcn_ptr->m_params;
         
         
@@ -930,7 +943,7 @@ namespace {
             if( is_struct )
             {
                 const auto& str = this->context.m_crate.get_struct_by_path(sp, gp.m_path);
-                fix_param_count(sp, this->context, gp, str.m_params, gp.m_params);
+                fix_param_count(sp, this->context, ::HIR::TypeRef(), false, gp, str.m_params, gp.m_params);
                 
                 return ::HIR::TypeRef::new_path( gp.clone(), ::HIR::TypeRef::TypePathBinding::make_Struct(&str) );
             }
@@ -940,7 +953,7 @@ namespace {
                 s_path.m_components.pop_back();
                 
                 const auto& enm = this->context.m_crate.get_enum_by_path(sp, s_path);
-                fix_param_count(sp, this->context, gp, enm.m_params, gp.m_params);
+                fix_param_count(sp, this->context, ::HIR::TypeRef(), false, gp, enm.m_params, gp.m_params);
                 
                 return ::HIR::TypeRef::new_path( ::HIR::GenericPath(mv$(s_path), gp.m_params.clone()), ::HIR::TypeRef::TypePathBinding::make_Enum(&enm) );
             }
@@ -1372,7 +1385,7 @@ namespace {
                     BUG(sp, "_PathValue with target=UNKNOWN and a Generic path - " << e.m_path);
                 case ::HIR::ExprNode_PathValue::FUNCTION: {
                     const auto& f = this->context.m_crate.get_function_by_path(sp, e.m_path);
-                    fix_param_count(sp, this->context, e, f.m_params, e.m_params);
+                    fix_param_count(sp, this->context, ::HIR::TypeRef(), false, e, f.m_params, e.m_params);
                     
                     const auto& params = e.m_params;
                     auto monomorph_cb = [&](const auto& gt)->const auto& {
@@ -1412,7 +1425,7 @@ namespace {
                 case ::HIR::ExprNode_PathValue::STRUCT_CONSTR: {
                     const auto& s = this->context.m_crate.get_struct_by_path(sp, e.m_path);
                     const auto& se = s.m_data.as_Tuple();
-                    fix_param_count(sp, this->context, e, s.m_params, e.m_params);
+                    fix_param_count(sp, this->context, ::HIR::TypeRef(), false, e, s.m_params, e.m_params);
                     
                     ::HIR::FunctionType ft {
                         false,
@@ -1433,7 +1446,7 @@ namespace {
                     auto enum_path = e.m_path;
                     enum_path.m_components.pop_back();
                     const auto& enm = this->context.m_crate.get_enum_by_path(sp, enum_path);
-                    fix_param_count(sp, this->context, e, enm.m_params, e.m_params);
+                    fix_param_count(sp, this->context, ::HIR::TypeRef(), false, e, enm.m_params, e.m_params);
                     const auto& var = *::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&x){ return x.first == var_name; });
                     const auto& var_data = var.second.as_Tuple();
                     
@@ -1471,7 +1484,7 @@ namespace {
                 ),
             (UfcsKnown,
                 const auto& trait = this->context.m_crate.get_trait_by_path(sp, e.trait.m_path);
-                fix_param_count(sp, this->context, e.trait, trait.m_params,  e.trait.m_params);
+                fix_param_count(sp, this->context, *e.type, true, e.trait, trait.m_params,  e.trait.m_params);
                 
                 // 1. Add trait bound to be checked.
                 this->context.add_trait_bound(sp, *e.type,  e.trait.m_path, e.trait.m_params.clone());
@@ -1490,7 +1503,7 @@ namespace {
                     TODO(sp, "Monomorpise associated static type - " << ie.m_type);
                     ),
                 (Function,
-                    fix_param_count(sp, this->context, node.m_path, ie.m_params,  e.params);
+                    fix_param_count(sp, this->context, *e.type, false, node.m_path, ie.m_params,  e.params);
                     
                     const auto& fcn_params = e.params;
                     const auto& trait_params = e.trait.m_params;
@@ -1555,7 +1568,7 @@ namespace {
                     TODO(sp, "Revisit _PathValue when UfcsInherent has multiple options - " << node.m_path);
                 }
                 assert(impl_ptr);
-                fix_param_count(sp, this->context, node.m_path, fcn_ptr->m_params,  e.params);
+                fix_param_count(sp, this->context, *e.type, false, node.m_path, fcn_ptr->m_params,  e.params);
                 
                 // If the impl block has parameters, figure out what types they map to
                 // - The function params are already mapped (from fix_param_count)
@@ -3513,6 +3526,9 @@ void Context::possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef
     //list.push_back( &t );
     list.push_back( t.clone() );
 }
+// TODO: This could eventually be used to direct inferrence
+//void Context::possible_equate_type_def(unsigned int ivar_index, const ::HIR::TypeRef& t) {
+//}
 void Context::possible_equate_type_disable(unsigned int ivar_index) {
     DEBUG(ivar_index << " ?= ??");
     {
@@ -3567,41 +3583,55 @@ const ::HIR::TypeRef& Context::get_var(const Span& sp, unsigned int idx) const {
 
 
 template<typename T>
-void fix_param_count_(const Span& sp, Context& context, const T& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params)
+void fix_param_count_(const Span& sp, Context& context, const ::HIR::TypeRef& self_ty, bool use_defaults, const T& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params)
 {
     if( params.m_types.size() == param_defs.m_types.size() ) {
         // Nothing to do, all good
         return ;
     }
     
-    if( params.m_types.size() == 0 ) {
-        for(const auto& typ : param_defs.m_types) {
-            (void)typ;
-            params.m_types.push_back( ::HIR::TypeRef() );
-            context.add_ivars( params.m_types.back() );
-        }
-    }
-    else if( params.m_types.size() > param_defs.m_types.size() ) {
+    if( params.m_types.size() > param_defs.m_types.size() ) {
         ERROR(sp, E0000, "Too many type parameters passed to " << path);
     }
     else {
         while( params.m_types.size() < param_defs.m_types.size() ) {
             const auto& typ = param_defs.m_types[params.m_types.size()];
-            if( typ.m_default.m_data.is_Infer() ) {
-                ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
+            if( use_defaults )
+            {
+                if( typ.m_default.m_data.is_Infer() ) {
+                    ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
+                }
+                else if( monomorphise_type_needed(typ.m_default) ) {
+                    auto cb = [&](const auto& ty)->const auto& {
+                        const auto& ge = ty.m_data.as_Generic();
+                        if( ge.binding == 0xFFFF ) {
+                            ASSERT_BUG(sp, self_ty != ::HIR::TypeRef(), "Self not allowed in this context");
+                            return self_ty;
+                        }
+                        else {
+                            TODO(sp, "Monomorphise default param - " << typ.m_default << " - " << ty);
+                        }
+                        };
+                    auto ty = monomorphise_type_with(sp, typ.m_default, cb);
+                    params.m_types.push_back( mv$(ty) );
+                }
+                else {
+                    params.m_types.push_back( typ.m_default.clone() );
+                }
             }
-            else {
-                // TODO: What if this contains a generic param? (is that valid? Self maybe, what about others?)
-                params.m_types.push_back( typ.m_default.clone() );
+            else
+            {
+                params.m_types.push_back( context.m_ivars.new_ivar_tr() );
+                // TODO: It's possible that the default could be added using `context.possible_equate_type_def` to give inferrence a fallback
             }
         }
     }
 }
-void fix_param_count(const Span& sp, Context& context, const ::HIR::Path& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params) {
-    fix_param_count_(sp, context, path, param_defs, params);
+void fix_param_count(const Span& sp, Context& context, const ::HIR::TypeRef& self_ty, bool use_defaults, const ::HIR::Path& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params) {
+    fix_param_count_(sp, context, self_ty, use_defaults, path, param_defs, params);
 }
-void fix_param_count(const Span& sp, Context& context, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params) {
-    fix_param_count_(sp, context, path, param_defs, params);
+void fix_param_count(const Span& sp, Context& context, const ::HIR::TypeRef& self_ty, bool use_defaults, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params) {
+    fix_param_count_(sp, context, self_ty, use_defaults, path, param_defs, params);
 }
 
 namespace {
@@ -4501,7 +4531,7 @@ namespace {
         static Span _span;
         const auto& sp = _span;
         
-        if( ivar_ent.types_to.size() == 0 && ivar_ent.types_from.size() == 0 ) {
+        if( ! ivar_ent.has_rules() ) {
             // No idea! (or unused)
             // - Clear the `force_no` flag
             ivar_ent.force_no = false;
@@ -4514,12 +4544,7 @@ namespace {
         
         if( !ty_l.m_data.is_Infer() ) {
             DEBUG("- IVar " << i << " had possibilities, but was known to be " << ty_l);
-            ivar_ent = Context::IVarPossible();
-            return ;
-        }
-        
-        if( ivar_ent.force_no == true ) {
-            DEBUG("- IVar " << ty_l << " is forced unknown");
+            // Completely clear by reinitialising
             ivar_ent = Context::IVarPossible();
             return ;
         }
@@ -4672,60 +4697,74 @@ namespace {
             }
         };
         
-        TRACE_FUNCTION_F(i);
         
-        // TODO: Some cases lead to two possibilities that compare different (due to inferrence) but are actually the same.
-        // - The above dedup should probably be aware of the way the types are used (for coercions).
-        
-        if( ivar_ent.types_to.size() > 1 ) {
-            H::dedup_type_list(context, ivar_ent.types_to);
+        if( ivar_ent.force_no == true )
+        {
+            DEBUG("- IVar " << ty_l << " is forced unknown");
         }
-        if( ivar_ent.types_from.size() > 1 ) {
-            H::dedup_type_list(context, ivar_ent.types_from);
-        }
-        
-        // Prefer cases where this type is being created from a known type
-        if( ivar_ent.types_from.size() == 1 ) {
-            //const ::HIR::TypeRef& ty_r = *ivar_ent.types_from[0];
-            const ::HIR::TypeRef& ty_r = ivar_ent.types_from[0];
-            // Only one possibility
-            DEBUG("- IVar " << ty_l << " = " << ty_r << " (from)");
-            context.equate_types(sp, ty_l, ty_r);
-        }
-        else if( ivar_ent.types_to.size() == 1 ) {
-            //const ::HIR::TypeRef& ty_r = *ivar_ent.types_to[0];
-            const ::HIR::TypeRef& ty_r = ivar_ent.types_to[0];
-            // Only one possibility
-            DEBUG("- IVar " << ty_l << " = " << ty_r << " (to)");
-            context.equate_types(sp, ty_l, ty_r);
-        }
-        else {
-            DEBUG("- IVar " << ty_l << " not concretely known {" << ivar_ent.types_from << "} and {" << ivar_ent.types_to << "}" );
+        else
+        {
+            TRACE_FUNCTION_F(i);
             
-            // If one side is completely unknown, pick the most liberal of the other side
-            if( ivar_ent.types_to.size() == 0 && ivar_ent.types_from.size() > 0 )
-            {
-                // Search for the lowest-level source type (e.g. &[T])
-                const auto* lowest_type = H::find_lowest_type(context, ivar_ent.types_from);
-                if( lowest_type )
+            // TODO: Some cases lead to two possibilities that compare different (due to inferrence) but are actually the same.
+            // - The above dedup should probably be aware of the way the types are used (for coercions).
+            
+            if( ivar_ent.types_to.size() > 1 ) {
+                H::dedup_type_list(context, ivar_ent.types_to);
+            }
+            if( ivar_ent.types_from.size() > 1 ) {
+                H::dedup_type_list(context, ivar_ent.types_from);
+            }
+            
+            #if 0
+            // If there is a default type compatible with all possibilities, use that.
+            if( ivar_ent.types_default.size() > 0 ) {
+                // TODO: Should multiple options be valid?
+                ASSERT_BUG(Span(), ivar_ent.types_def.size() == 1, "TODO: Multiple default types for an ivar - " << ivar_ent.types_def);
+            }
+            #endif
+            
+            // Prefer cases where this type is being created from a known type
+            if( ivar_ent.types_from.size() == 1 ) {
+                //const ::HIR::TypeRef& ty_r = *ivar_ent.types_from[0];
+                const ::HIR::TypeRef& ty_r = ivar_ent.types_from[0];
+                // Only one possibility
+                DEBUG("- IVar " << ty_l << " = " << ty_r << " (from)");
+                context.equate_types(sp, ty_l, ty_r);
+            }
+            else if( ivar_ent.types_to.size() == 1 ) {
+                //const ::HIR::TypeRef& ty_r = *ivar_ent.types_to[0];
+                const ::HIR::TypeRef& ty_r = ivar_ent.types_to[0];
+                // Only one possibility
+                DEBUG("- IVar " << ty_l << " = " << ty_r << " (to)");
+                context.equate_types(sp, ty_l, ty_r);
+            }
+            else {
+                DEBUG("- IVar " << ty_l << " not concretely known {" << ivar_ent.types_from << "} and {" << ivar_ent.types_to << "}" );
+                
+                // If one side is completely unknown, pick the most liberal of the other side
+                if( ivar_ent.types_to.size() == 0 && ivar_ent.types_from.size() > 0 )
                 {
-                    const ::HIR::TypeRef& ty_r = *lowest_type;
-                    DEBUG("- IVar " << ty_l << " = " << ty_r << " (from, lowest)");
-                    context.equate_types(sp, ty_l, ty_r);
+                    // Search for the lowest-level source type (e.g. &[T])
+                    const auto* lowest_type = H::find_lowest_type(context, ivar_ent.types_from);
+                    if( lowest_type )
+                    {
+                        const ::HIR::TypeRef& ty_r = *lowest_type;
+                        DEBUG("- IVar " << ty_l << " = " << ty_r << " (from, lowest)");
+                        context.equate_types(sp, ty_l, ty_r);
+                    }
+                }
+                else if( ivar_ent.types_to.size() > 0 && ivar_ent.types_from.size() == 0 )
+                {
+                    // TODO: Get highest-level target type
+                }
+                else
+                {
                 }
             }
-            else if( ivar_ent.types_to.size() > 0 && ivar_ent.types_from.size() == 0 )
-            {
-                // TODO: Get highest-level target type
-            }
-            else
-            {
-            }
         }
         
-        ivar_ent.force_no = false;
-        ivar_ent.types_to.clear();
-        ivar_ent.types_from.clear();
+        ivar_ent.reset();
     }
 }
 

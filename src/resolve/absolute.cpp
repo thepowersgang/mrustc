@@ -818,6 +818,13 @@ namespace {
                 if( !n.args().is_empty() ) {
                     trait_path.nodes().back().args() = mv$(n.args());
                 }
+                else {
+                    for(const auto& typ : e.m_params.m_types)
+                    {
+                        (void)typ;
+                        trait_path.nodes().back().args().m_types.push_back( ::TypeRef() );
+                    }
+                }
                 trait_path.bind( ::AST::PathBinding::make_Trait({nullptr, &e}) );
                 
                 ::AST::Path new_path;
@@ -1076,6 +1083,22 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                 }
                 if( !n.args().is_empty() ) {
                     trait_path.nodes().back().args() = mv$(n.args());
+                }
+                else {
+                    if( e.trait_ ) {
+                        for(const auto& typ : e.trait_->params().ty_params())
+                        {
+                            (void)typ;
+                            trait_path.nodes().back().args().m_types.push_back( ::TypeRef() );
+                        }
+                    }
+                    else {
+                        for(const auto& typ : e.hir->m_params.m_types)
+                        {
+                            (void)typ;
+                            trait_path.nodes().back().args().m_types.push_back( ::TypeRef() );
+                        }
+                    }
                 }
                 // TODO: If the named item can't be found in the trait, fall back to it being a type binding
                 // - What if this item is from a nested trait?
