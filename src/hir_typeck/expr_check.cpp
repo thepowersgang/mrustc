@@ -243,6 +243,12 @@ namespace {
             
             const auto& src_ty = node.m_value->m_res_type;
             const auto& dst_ty = node.m_res_type;
+            
+            if( dst_ty == src_ty ) {
+                // Would be nice to delete it, but this is a readonly pass
+                return ;
+            }
+            
             // Check castability
             TU_MATCH_DEF(::HIR::TypeRef::Data, (dst_ty.m_data), (de),
             (
