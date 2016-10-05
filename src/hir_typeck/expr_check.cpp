@@ -672,9 +672,13 @@ namespace {
             DEBUG("= " << cache.m_arg_types.back());
             
             // Check types
-            for(unsigned int i = 0; i < node.m_args.size(); i ++) {
+            for(unsigned int i = 0; i < fcn.m_args.size(); i ++) {
                 DEBUG("CHECK ARG " << i << " " << node.m_cache.m_arg_types[i] << " == " << node.m_args[i]->m_res_type);
                 check_types_equal(node.span(), node.m_cache.m_arg_types[i], node.m_args[i]->m_res_type);
+            }
+            for(unsigned int i = fcn.m_args.size(); i < node.m_args.size(); i ++) {
+                DEBUG("CHECK ARG " << i << " *  == " << node.m_args[i]->m_res_type);
+                // TODO: Check that the types here are valid.
             }
             DEBUG("CHECK RV " << node.m_res_type << " == " << node.m_cache.m_arg_types.back());
             check_types_equal(node.span(), node.m_res_type,  node.m_cache.m_arg_types.back());
