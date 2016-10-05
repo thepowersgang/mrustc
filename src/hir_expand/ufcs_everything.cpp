@@ -627,19 +627,23 @@ namespace {
             (
                 BUG(sp, "Deref on unexpected type - " << ty_val);
                 ),
+            (Generic,
+                ),
             (Path,
                 TU_IFLET( ::HIR::Path::Data, e.path.m_data, Generic, pe,
                     // Box<T> ("owned_box") is magical!
                     if( pe.m_path == m_lang_Box ) {
-                        //TODO(sp, "Deref on Box");
+                        // Leave as is - MIR handles this
                         return ;
                     }
                 )
                 ),
             (Pointer,
+                // Leave as is (primitive operation)
                 return ;
                 ),
             (Borrow,
+                // Leave as is (primitive operation)
                 return ;
                 )
             )
@@ -647,6 +651,7 @@ namespace {
             const char* langitem = nullptr;
             const char* method = nullptr;
             ::HIR::BorrowType   bt;
+            // - Uses the value's usage beacuse for T: Copy node.m_value->m_usage is Borrow, but node.m_usage is Move
             switch( node.m_value->m_usage )
             {
             case ::HIR::ValueUsage::Unknown:
