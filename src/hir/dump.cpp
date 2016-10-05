@@ -273,6 +273,20 @@ namespace {
         virtual void visit_expr(::HIR::ExprPtr& exp);
         #endif
         
+        bool node_is_leaf(const ::HIR::ExprNode& node) {
+            if( NODE_IS(&node, _PathValue) )
+                return true;
+            if( NODE_IS(&node, _Variable) )
+                return true;
+            if( NODE_IS(&node, _Literal) )
+                return true;
+            if( NODE_IS(&node, _CallPath) )
+                return true;
+            if( NODE_IS(&node, _Deref) )
+                return true;
+            return false;
+        }
+        
         void visit(::HIR::ExprNode_Block& node) override
         {
             if( node.m_nodes.size() == 0 ) {
@@ -420,10 +434,11 @@ namespace {
             case ::HIR::BorrowType::Unique: m_os << "mut "; break;
             case ::HIR::BorrowType::Owned : m_os << "move "; break;
             }
-            // TODO: Avoid parens
-            m_os << "(";
+
+            bool skip_parens = this->node_is_leaf(*node.m_value) || NODE_IS(node.m_value, _Deref);
+            if( !skip_parens )  m_os << "(";
             this->visit_node_ptr(node.m_value);
-            m_os << ")";
+            if( !skip_parens )  m_os << ")";
         }
         void visit(::HIR::ExprNode_Cast& node) override
         {
@@ -448,10 +463,11 @@ namespace {
         void visit(::HIR::ExprNode_Deref& node) override
         {
             m_os << "*";
-            // TODO: Avoid parens
-            m_os << "(";
+            
+            bool skip_parens = this->node_is_leaf(*node.m_value);
+            if( !skip_parens )  m_os << "(";
             this->visit_node_ptr(node.m_value);
-            m_os << ")";
+            if( !skip_parens )  m_os << ")";
         }
         void visit(::HIR::ExprNode_Emplace& node) override
         {
