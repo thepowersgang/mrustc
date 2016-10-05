@@ -129,6 +129,7 @@ namespace {
                     get_self(node.span()),
                     FMT(binding_it - m_captures.begin())
                     );
+                m_replacement->m_usage = node.m_usage;
                 return ;
             }
             
