@@ -126,6 +126,52 @@ bool StaticTraitResolve::find_impl(
             return found_cb( ImplRef(type.clone(), trait_params->clone(), mv$(assoc)) );
         }
     )
+    
+    // ----
+    // TraitObject traits and supertraits
+    // ----
+    TU_IFLET( ::HIR::TypeRef::Data, type.m_data, TraitObject, e,
+        if( trait_path == e.m_trait.m_path.m_path )
+        {
+            if( !trait_params || e.m_trait.m_path.m_params == *trait_params )
+            {
+                return found_cb( ImplRef(&type, &e.m_trait.m_path.m_params, &e.m_trait.m_type_bounds) );
+            }
+        }
+        // Markers too
+        for( const auto& mt : e.m_markers )
+        {
+            if( trait_path == mt.m_path ) {
+                if( !trait_params || mt.m_params == *trait_params )
+                {
+                    static ::std::map< ::std::string, ::HIR::TypeRef>  types;
+                    return found_cb( ImplRef(&type, &mt.m_params, &types) );
+                }
+            }
+        }
+        
+        // - Check if the desired trait is a supertrait of this.
+        // TODO: What if `trait_params` is nullptr?
+        bool rv = false;
+        bool is_supertrait = trait_params && this->find_named_trait_in_trait(sp, trait_path,*trait_params, *e.m_trait.m_trait_ptr, e.m_trait.m_path.m_path,e.m_trait.m_path.m_params, type,
+            [&](const auto& i_params, const auto& i_assoc) {
+                // Invoke callback with a proper ImplRef
+                ::std::map< ::std::string, ::HIR::TypeRef> assoc_clone;
+                for(const auto& e : i_assoc)
+                    assoc_clone.insert( ::std::make_pair(e.first, e.second.clone()) );
+                // HACK! Just add all the associated type bounds (only inserted if not already present)
+                for(const auto& e2 : e.m_trait.m_type_bounds)
+                    assoc_clone.insert( ::std::make_pair(e2.first, e2.second.clone()) );
+                auto ir = ImplRef(type.clone(), i_params.clone(), mv$(assoc_clone));
+                DEBUG("- ir = " << ir);
+                rv = found_cb( mv$(ir) );
+                return false;
+            });
+        if( is_supertrait )
+        {
+            return rv;
+        }
+    )
     // --- / ---
     
     bool ret;
@@ -758,7 +804,7 @@ bool StaticTraitResolve::find_named_trait_in_trait(const Span& sp,
             }, false);
 
         DEBUG(pt << " => " << pt_mono);
-        if( pt.m_path.m_path == des ) {
+        if( pt.m_path.m_path == des && pt_mono.m_path.m_params == des_params ) {
             callback( pt_mono.m_path.m_params, mv$(pt_mono.m_type_bounds) );
             return true;
         }
