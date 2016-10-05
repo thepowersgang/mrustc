@@ -1490,6 +1490,159 @@ public:
     }
 } g_derive_default;
 
+class Deriver_Hash:
+    public Deriver
+{
+    AST::Path get_trait_path(const ::std::string& core_name) const {
+        return AST::Path(core_name, { AST::PathNode("hash", {}), AST::PathNode("Hash", {}) });
+    }
+    AST::Path get_trait_path_Hasher(const ::std::string& core_name) const {
+        return AST::Path(core_name, { AST::PathNode("hash", {}), AST::PathNode("Hasher", {}) });
+    }
+    AST::Path get_method_path(const ::std::string& core_name) const {
+        return get_trait_path(core_name) + "hash";
+    }
+    
+    AST::Impl make_ret(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, ::std::vector<TypeRef> types_to_bound, AST::ExprNodeP node) const
+    {
+        const AST::Path    trait_path = this->get_trait_path(core_name);
+        
+        AST::Function fcn(
+            sp,
+            AST::GenericParams(),
+            "rust", false, false, false,
+            TypeRef(TypeRef::TagUnit(), sp),
+            vec$(
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) ),
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "state"), TypeRef(TypeRef::TagReference(), sp, true, TypeRef("H", 0x100|0)) )
+                )
+            );
+        fcn.params().add_ty_param( AST::TypeParam("H") );
+        fcn.params().add_bound( AST::GenericBound::make_IsTrait({
+            TypeRef("H", 0x100|0),
+            {},
+            this->get_trait_path_Hasher(core_name)
+            }) );
+        fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
+        
+        AST::GenericParams  params = get_params_with_bounds(p, trait_path, mv$(types_to_bound));
+        
+        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
+        rv.add_function(false, false, "hash", mv$(fcn));
+        return mv$(rv);
+    }
+    AST::ExprNodeP hash_val_ref(const ::std::string& core_name, AST::ExprNodeP val) const {
+        return this->hash_val_direct(core_name, NEWNODE(UniOp, AST::ExprNode_UniOp::REF, mv$(val)) );
+    }
+    AST::ExprNodeP hash_val_direct(const ::std::string& core_name, AST::ExprNodeP val) const {
+        return NEWNODE(CallPath,
+            this->get_method_path(core_name),
+            vec$( mv$(val), NEWNODE(NamedValue, AST::Path("state")) )
+            );
+    }
+    AST::ExprNodeP field(const ::std::string& name) const {
+        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), name);
+    }
+    
+public:
+    AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
+    {
+        ::std::vector<AST::ExprNodeP>   nodes;
+        
+        TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Struct,
+            for( const auto& fld : e.ents )
+            {
+                nodes.push_back( this->hash_val_ref(core_name, this->field(fld.m_name)) );
+            }
+            ),
+        (Tuple,
+            for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
+            {
+                nodes.push_back( this->hash_val_ref(core_name, this->field(FMT(idx))) );
+            }
+            )
+        )
+        
+        return this->make_ret(sp, core_name, p, type, this->get_field_bounds(str), NEWNODE(Block, mv$(nodes)));
+    }
+    
+    AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
+    {
+        AST::Path base_path = type.m_data.as_Path().path;
+        base_path.nodes().back().args() = ::AST::PathParams();
+        ::std::vector<AST::ExprNode_Match_Arm>   arms;
+        
+        for(unsigned int var_idx = 0; var_idx < enm.variants().size(); var_idx ++)
+        {
+            const auto& v = enm.variants()[var_idx];
+            AST::ExprNodeP  code;
+            AST::Pattern    pat_a;
+            
+            auto var_idx_hash = this->hash_val_ref( core_name, NEWNODE(Integer, var_idx, CORETYPE_UINT) );
+            
+            TU_MATCH(::AST::EnumVariantData, (v.m_data), (e),
+            (Value,
+                code = mv$(var_idx_hash);
+                pat_a = AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(base_path + v.m_name));
+                ),
+            (Tuple,
+                if( e.m_sub_types.size() == 0 )
+                {
+                    code = mv$(var_idx_hash);
+                    pat_a = AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(base_path + v.m_name));
+                }
+                else
+                {
+                    ::std::vector<AST::Pattern>    pats_a;
+                    ::std::vector<AST::ExprNodeP>   nodes;
+                    nodes.push_back( mv$(var_idx_hash) );
+                    
+                    for( unsigned int idx = 0; idx < e.m_sub_types.size(); idx ++ )
+                    {
+                        auto name_a = FMT("a" << idx);
+                        pats_a.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF) );
+                        nodes.push_back( this->hash_val_direct(core_name, NEWNODE(NamedValue, AST::Path(name_a))) );
+                    }
+                    
+                    pat_a = AST::Pattern(AST::Pattern::TagNamedTuple(), base_path + v.m_name, mv$(pats_a));
+                    code = NEWNODE(Block, mv$(nodes));
+                }
+                ),
+            (Struct,
+                ::std::vector< ::std::pair<std::string, AST::Pattern> > pats_a;
+                ::std::vector< AST::ExprNodeP >   nodes;
+                nodes.push_back( mv$(var_idx_hash) );
+                
+                for( const auto& fld : e.m_fields )
+                {
+                    auto name_a = FMT("a" << fld.m_name);
+                    pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF)) );
+                    nodes.push_back( this->hash_val_direct(core_name, NEWNODE(NamedValue, AST::Path(name_a))) );
+                }
+                
+                pat_a = AST::Pattern(AST::Pattern::TagStruct(), base_path + v.m_name, mv$(pats_a), true);
+                code = NEWNODE(Block, mv$(nodes));
+                )
+            )
+            
+            ::std::vector< AST::Pattern>    pats;
+            pats.push_back( AST::Pattern(AST::Pattern::TagReference(), false, mv$(pat_a)) );
+            
+            arms.push_back(AST::ExprNode_Match_Arm(
+                mv$(pats),
+                nullptr,
+                mv$(code)
+                ));
+        }
+
+        return this->make_ret(sp, core_name, p, type, this->get_field_bounds(enm), NEWNODE(Match,
+            NEWNODE(NamedValue, AST::Path("self")),
+            mv$(arms)
+            ));
+    }
+} g_derive_hash;
+
 // --------------------------------------------------------------------
 // Select and dispatch the correct derive() handler
 // --------------------------------------------------------------------
@@ -1511,6 +1664,8 @@ static const Deriver* find_impl(const ::std::string& trait_name)
         return &g_derive_copy;
     else if( trait_name == "Default" )
         return &g_derive_default;
+    else if( trait_name == "Hash" )
+        return &g_derive_hash;
     else
         return nullptr;
 }
@@ -1549,7 +1704,7 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
     }
     
     if( fail ) {
-        //ERROR(sp, E0000, "Failed to apply #[derive] - Missing handlers for " << missing_handlers);
+        ERROR(sp, E0000, "Failed to apply #[derive] - Missing handlers for " << missing_handlers);
     }
 }
 
