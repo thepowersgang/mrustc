@@ -289,14 +289,13 @@ int main(int argc, char *argv[])
         CompilePhaseV("Expand HIR Reborrows", [&]() {
             HIR_Expand_Reborrows(*hir_crate);
             });
-        // - Ensure that typeck worked (including Fn trait call insertion etc)
-        CompilePhaseV("Typecheck Expressions (validate)", [&]() {
-            Typecheck_Expressions_Validate(*hir_crate);
-            });
-
         CompilePhaseV("Dump HIR", [&]() {
             ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
             HIR_Dump( os, *hir_crate );
+            });
+        // - Ensure that typeck worked (including Fn trait call insertion etc)
+        CompilePhaseV("Typecheck Expressions (validate)", [&]() {
+            Typecheck_Expressions_Validate(*hir_crate);
             });
         
         if( params.last_stage == ProgramParams::STAGE_TYPECK ) {
