@@ -200,12 +200,13 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
     Token   tok;
     
     ::std::string   abi = "";
+    bool    is_unsafe = false;
     
     GET_TOK(tok, lex);
     
     if( tok.type() == TOK_RWORD_UNSAFE )
     {
-        // TODO: Unsafe functions in types
+        is_unsafe = true;
         GET_TOK(tok, lex);
     }
     if( tok.type() == TOK_RWORD_EXTERN )
@@ -223,12 +224,13 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
     CHECK_TOK(tok, TOK_RWORD_FN);
 
     ::std::vector<TypeRef>  args;
+    bool is_variadic = false;
     GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
     while( LOOK_AHEAD(lex) != TOK_PAREN_CLOSE )
     {
         if( LOOK_AHEAD(lex) == TOK_TRIPLE_DOT ) {
             GET_TOK(tok, lex);
-            // TODO: Mark function as vardic
+            is_variadic = true;
             break; 
         }
         // Handle `ident: `
@@ -253,7 +255,7 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
         PUTBACK(tok, lex);
     }
     
-    return TypeRef(TypeRef::TagFunction(), lex.end_span(ps), ::std::move(abi), ::std::move(args), ::std::move(ret_type));
+    return TypeRef(TypeRef::TagFunction(), lex.end_span(ps), is_unsafe, mv$(abi), mv$(args), is_variadic, mv$(ret_type));
 }
 
 TypeRef Parse_Type_Path(TokenStream& lex, ::std::vector<::std::string> hrls, bool allow_trait_list)

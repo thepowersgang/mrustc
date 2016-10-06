@@ -735,7 +735,7 @@
             e.info.is_unsafe,
             e.info.m_abi,
             box$( LowerHIR_Type(*e.info.m_rettype) ),
-            mv$(args)
+            mv$(args)   // TODO: e.info.is_variadic
             };
         if( f.m_abi == "" )
             f.m_abi = "rust";

@@ -776,10 +776,12 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return ::HIR::TypeRef( Data::make_Pointer({e.type, box$(e.inner->clone())}) );
         ),
     (Function,
-        FunctionType    ft;
-        ft.is_unsafe = e.is_unsafe;
-        ft.m_abi = e.m_abi;
-        ft.m_rettype = box$( e.m_rettype->clone() );
+        FunctionType    ft {
+            e.is_unsafe,
+            e.m_abi,
+            box$( e.m_rettype->clone() ),
+            {}
+            };
         for(const auto& a : e.m_arg_types)
             ft.m_arg_types.push_back( a.clone() );
         return ::HIR::TypeRef(Data::make_Function( mv$(ft) ));

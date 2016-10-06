@@ -41,13 +41,15 @@ struct Type_Function
     ::std::string   m_abi;
     ::std::unique_ptr<TypeRef>  m_rettype;
     ::std::vector<TypeRef>  m_arg_types;
+    bool is_variadic;
 
     Type_Function() {}
-    Type_Function(bool is_unsafe, ::std::string abi, ::std::unique_ptr<TypeRef> ret, ::std::vector<TypeRef> args):
+    Type_Function(bool is_unsafe, ::std::string abi, ::std::unique_ptr<TypeRef> ret, ::std::vector<TypeRef> args, bool is_variadic):
         is_unsafe(is_unsafe),
         m_abi(mv$(abi)),
         m_rettype(mv$(ret)),
-        m_arg_types(mv$(args))
+        m_arg_types(mv$(args)),
+        is_variadic(is_variadic)
     {}
     Type_Function(Type_Function&& other) = default;
     Type_Function(const Type_Function& other);
@@ -166,9 +168,9 @@ public:
         m_data(TypeData::make_Tuple({::std::move(inner_types)}))
     {}
     struct TagFunction {};
-    TypeRef(TagFunction, Span sp, ::std::string abi, ::std::vector<TypeRef> args, TypeRef ret):
+    TypeRef(TagFunction, Span sp, bool is_unsafe, ::std::string abi, ::std::vector<TypeRef> args, bool is_variadic, TypeRef ret):
         m_span(mv$(sp)),
-        m_data(TypeData::make_Function({ Type_Function( false, abi, box$(ret), mv$(args) ) }))
+        m_data(TypeData::make_Function({ Type_Function( is_unsafe, abi, box$(ret), mv$(args), is_variadic ) }))
     {}
     
     struct TagReference {};
