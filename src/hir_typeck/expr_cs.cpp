@@ -2586,11 +2586,40 @@ namespace {
         }
         
         void visit_pattern(::HIR::Pattern& pat) override {
+            static Span sp;
             TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (e),
             (
                 ),
+            (Value,
+                TU_IFLET( ::HIR::Pattern::Value, (e.val), Named, ve,
+                    this->check_type_resolved_path(sp, ve.path);
+                )
+                ),
+            (Range,
+                TU_IFLET( ::HIR::Pattern::Value, e.start, Named, ve,
+                    this->check_type_resolved_path(sp, ve.path);
+                )
+                TU_IFLET( ::HIR::Pattern::Value, e.end, Named, ve,
+                    this->check_type_resolved_path(sp, ve.path);
+                )
+                ),
             (StructValue,
-                // TODO: Clean
+                this->check_type_resolved_genericpath(sp, e.path);
+                ),
+            (StructTuple,
+                this->check_type_resolved_genericpath(sp, e.path);
+                ),
+            (Struct,
+                this->check_type_resolved_genericpath(sp, e.path);
+                ),
+            (EnumValue,
+                this->check_type_resolved_genericpath(sp, e.path);
+                ),
+            (EnumTuple,
+                this->check_type_resolved_genericpath(sp, e.path);
+                ),
+            (EnumStruct,
+                this->check_type_resolved_genericpath(sp, e.path);
                 )
             )
             ::HIR::ExprVisitorDef::visit_pattern(pat);
@@ -2681,6 +2710,10 @@ namespace {
                 )
             )
         }
+        void check_type_resolved_genericpath(const Span& sp, ::HIR::GenericPath& path) const {
+            auto tmp = ::HIR::TypeRef(path.clone());
+            check_type_resolved_pp(sp, path.m_params, tmp);
+        }
         void check_type_resolved(const Span& sp, ::HIR::TypeRef& ty, const ::HIR::TypeRef& top_type) const {
             TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
             (Infer,
@@ -2706,6 +2739,8 @@ namespace {
                 ),
             (TraitObject,
                 check_type_resolved_pp(sp, e.m_trait.m_path.m_params, top_type);
+                for(auto& at : e.m_trait.m_type_bounds)
+                    check_type_resolved(sp, at.second, top_type);
                 for(auto& marker : e.m_markers) {
                     check_type_resolved_pp(sp, marker.m_params, top_type);
                 }
@@ -3011,8 +3046,8 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             this->add_var( pb.m_slot, pb.m_name, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, type.clone()) );
             break;
         }
-        // TODO: Can there be bindings within a bound pattern?
-        //return ;
+        
+        // TODO: Bindings aren't allowed within another binding
     }
     
     
@@ -3248,21 +3283,9 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         assert( str.m_data.is_Tuple() );
         const auto& sd = str.m_data.as_Tuple();
         
-        const auto& ty = this->get_type(type);
-        const auto* params_ptr = &e.path.m_params;
-        TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, te,
-            if( ! te.binding.is_Struct() || te.binding.as_Struct() != &str ) {
-                ERROR(sp, E0000, "Type mismatch in struct pattern - " << ty << " is not " << e.path);
-            }
-            // NOTE: Must be Generic for the above to have passed
-            params_ptr = &te.path.m_data.as_Generic().m_params;
-        )
-        else {
-            this->equate_types( sp, type, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)) );
-        }
-        
+        const auto& params = e.path.m_params;
         assert(e.binding);
-        const auto& params = *params_ptr;
+        this->equate_types( sp, type, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)) );
         
         for( unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
         {
@@ -3279,9 +3302,8 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         ),
     (Struct,
         this->add_ivars_params( e.path.m_params );
-        if( type.m_data.is_Infer() ) {
-            this->equate_types( sp, type, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)) );
-        }
+        this->equate_types( sp, type, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)) );
+        
         const auto& ty = this->get_type(type).clone();
         assert(e.binding);
         const auto& str = *e.binding;
@@ -3320,11 +3342,9 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         ),
     (EnumValue,
         this->add_ivars_params( e.path.m_params );
-        if( type.m_data.is_Infer() ) {
+        {
             auto path = e.path.clone();
             path.m_path.m_components.pop_back();
-            //::std::cout << "HHHH ExprCS: path=" << path << ", pat=" << pat << ::std::endl;
-
             this->equate_types( sp, type, ::HIR::TypeRef::new_path(mv$(path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
         }
         const auto& ty = this->get_type(type);
@@ -3349,7 +3369,7 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         ),
     (EnumTuple,
         this->add_ivars_params( e.path.m_params );
-        if( type.m_data.is_Infer() ) {
+        {
             auto path = e.path.clone();
             path.m_path.m_components.pop_back();
 
@@ -3395,7 +3415,7 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         ),
     (EnumStruct,
         this->add_ivars_params( e.path.m_params );
-        if( type.m_data.is_Infer() ) {
+        {
             auto path = e.path.clone();
             path.m_path.m_components.pop_back();
 
