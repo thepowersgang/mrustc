@@ -181,32 +181,41 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         arm_code.push_back( mv$(ac) );
     }
     
-    // TODO: Sort columns of `arm_rules` to maximise effectiveness
-    ::std::vector<unsigned> column_weights( arm_rules[0].m_rules.size() );
-    for(const auto& arm_rule : arm_rules)
+    if( arm_rules[0].m_rules.size() > 1 )
     {
-        assert( column_weights.size() == arm_rule.m_rules.size() );
-        for(unsigned int i = 0; i < arm_rule.m_rules.size(); i++)
+        // TODO: Sort columns of `arm_rules` to maximise effectiveness
+        ::std::vector<unsigned> column_weights( arm_rules[0].m_rules.size() );
+        for(const auto& arm_rule : arm_rules)
         {
-            if( !arm_rule.m_rules[i].is_Any() ) {
-                column_weights.at(i) += 1;
+            assert( column_weights.size() == arm_rule.m_rules.size() );
+            for(unsigned int i = 0; i < arm_rule.m_rules.size(); i++)
+            {
+                if( !arm_rule.m_rules[i].is_Any() ) {
+                    column_weights.at(i) += 1;
+                }
             }
         }
+        
+        DEBUG("- Column weights = [" << column_weights << "]");
+        // - Sort columns such that the largest (most specific) comes first
+        ::std::vector<unsigned> columns_sorted(column_weights.size());
+        ::std::iota( columns_sorted.begin(), columns_sorted.end(), 0 );
+        ::std::sort( columns_sorted.begin(), columns_sorted.end(), [&](auto a, auto b){ return column_weights[a] > column_weights[b]; } );
+        DEBUG("- Sorted to = [" << columns_sorted << "]");
+        for( auto& arm_rule : arm_rules )
+        {
+            assert( columns_sorted.size() == arm_rule.m_rules.size() );
+            ::std::vector<PatternRule>  sorted;
+            sorted.reserve(columns_sorted.size());
+            for(auto idx : columns_sorted)
+                sorted.push_back( mv$(arm_rule.m_rules[idx]) );
+            arm_rule.m_rules = mv$(sorted);
+        }
     }
-    DEBUG("- Column weights = " << column_weights);
-    // - Sort columns such that the largest (most specific) comes first
-    ::std::vector<unsigned> columns_sorted(column_weights.size());
-    ::std::iota( columns_sorted.begin(), columns_sorted.end(), 0 );
-    ::std::sort( columns_sorted.begin(), columns_sorted.end(), [&](auto a, auto b){ return column_weights[a] > column_weights[b]; } );
-    DEBUG("- Sorted to = " << columns_sorted);
-    for( auto& arm_rule : arm_rules )
+    
+    for(const auto& arm_rule : arm_rules)
     {
-        assert( columns_sorted.size() == arm_rule.m_rules.size() );
-        ::std::vector<PatternRule>  sorted;
-        sorted.reserve(columns_sorted.size());
-        for(auto idx : columns_sorted)
-            sorted.push_back( mv$(arm_rule.m_rules[idx]) );
-        arm_rule.m_rules = mv$(sorted);
+        DEBUG("> (" << arm_rule.arm_idx << ", " << arm_rule.pat_idx << ") - " << arm_rule.m_rules);
     }
     
     // TODO: Detect if a rule is ordering-dependent. In this case we currently have to fall back on the simple match code
