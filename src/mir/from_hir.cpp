@@ -1348,6 +1348,23 @@ namespace {
             TRACE_FUNCTION_F("_PathValue - " << node.m_path);
             TU_MATCH( ::HIR::Path::Data, (node.m_path.m_data), (pe),
             (Generic,
+                if( node.m_target == ::HIR::ExprNode_PathValue::ENUM_VAR_CONSTR ) {
+                    auto enum_path = pe.m_path;
+                    enum_path.m_components.pop_back();
+                    const auto& var_name = pe.m_path.m_components.back();
+                    
+                    const auto& enm = m_builder.crate().get_enum_by_path(sp, enum_path);
+                    auto var_it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x){ return x.first == var_name; });
+                    ASSERT_BUG(sp, var_it != enm.m_variants.end(), "Variant " << pe.m_path << " isn't present");
+                    const auto& var = var_it->second;
+                    ASSERT_BUG(sp, var.is_Tuple(), "Variant " << pe.m_path << " isn't a tuple variant");
+                    
+                    // TODO: Ideally, the creation of the wrapper function would happen somewhere before this?
+                    auto tmp = m_builder.new_temporary( node.m_res_type );
+                    m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
+                    m_builder.set_result( sp, mv$(tmp) );
+                    return ;
+                }
                 const auto& vi = m_builder.crate().get_valitem_by_path(node.span(), pe.m_path);
                 TU_MATCHA( (vi), (e),
                 (Import,
@@ -1370,6 +1387,7 @@ namespace {
                     ),
                 (Function,
                     // TODO: Why not use the result type?
+                    //auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, nullptr, &pe.m_params);
                     auto monomorph_cb = [&](const auto& gt)->const auto& {
                         const auto& e = gt.m_data.as_Generic();
                         if( e.binding == 0xFFFF ) {
