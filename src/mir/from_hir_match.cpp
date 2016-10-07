@@ -557,7 +557,21 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
         ),
     (Array,
         if( !rule.is_Any() ) {
-            TODO(sp, "Match over Array");
+            unsigned int total = 0;
+            for( unsigned int i = 0; i < te.size_val; i ++ ) {
+                unsigned int cnt = MIR_LowerHIR_Match_Simple__GeneratePattern(
+                    builder, sp,
+                    rules, num_rules, *te.inner,
+                    ::MIR::LValue::make_Field({ box$(match_val.clone()), i }),
+                    fail_bb
+                    );
+                total += cnt;
+                rules += cnt;
+                num_rules -= cnt;
+                if( num_rules == 0 )
+                    return total;
+            }
+            return total;
         }
         return 1;
         ),
