@@ -1273,10 +1273,31 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         }
         ),
     (Array,
-        // TODO: Slice patterns, sequential comparison/sub-match
-        TODO(sp, "Match over array");
+        // Sequential match just like tuples.
+        m_field_path.push_back(0);
+        TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
+        ( BUG(sp, "Matching array with invalid pattern - " << pat); ),
+        (Any,
+            for(unsigned int i = 0; i < e.size_val; i ++) {
+                this->append_from(sp, pat, *e.inner);
+                m_field_path.back() ++;
+            }
+            ),
+        (Slice,
+            assert(e.size_val == pe.sub_patterns.size());
+            for(unsigned int i = 0; i < e.size_val; i ++) {
+                this->append_from(sp, pe.sub_patterns[i], *e.inner);
+                m_field_path.back() ++;
+            }
+            ),
+        (SplitSlice,
+            TODO(sp, "Match over array with SplitSlice pattern - " << pat);
+            )
+        )
+        m_field_path.pop_back();
         ),
     (Slice,
+        // TODO: Slice patterns, sequential comparison/sub-match
         if( pat.m_data.is_Any() ) {
         }
         else {
@@ -1292,6 +1313,18 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             ),
         (Ref,
             this->append_from( sp, *pe.sub, *e.inner );
+            ),
+        (Slice,
+            if( e.inner->m_data.is_Slice() )
+            {
+                TODO(sp, "Match &[T] with Slice - " << pat);
+            }
+            ),
+        (SplitSlice,
+            if( e.inner->m_data.is_Slice() )
+            {
+                TODO(sp, "Match &[T] with SplitSlice - " << pat);
+            }
             ),
         (Value,
             // TODO: Check type? Also handle named values and byte strings.
