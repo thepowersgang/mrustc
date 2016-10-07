@@ -704,7 +704,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             BUG(sp, "Matching over [T] with invalid pattern - " << pat);
             ),
         (Any,
-            // Value, don't add anything
+            this->push_rule( PatternRule::make_Any({}) );
             ),
         (Slice,
             // Sub-patterns
@@ -1271,10 +1271,14 @@ struct DecisionTreeNode
         (Unsigned, ::std::vector< ::std::pair< Range<uint64_t>, Branch> >),
         (Signed, ::std::vector< ::std::pair< Range<int64_t>, Branch> >),
         (Float, ::std::vector< ::std::pair< Range<double>, Branch> >),
-        (String, ::std::vector< ::std::pair< ::std::string, Branch> >)
+        (String, ::std::vector< ::std::pair< ::std::string, Branch> >),
+        (Slice, struct {
+            ::std::vector< ::std::pair< unsigned int, Branch> > fixed_arms;
+            //::std::vector< ::std::pair< unsigned int, Branch> > variable_arms;
+            })
         );
     
-    // TODO: Arm specialisation
+    // TODO: Arm specialisation?
     bool is_specialisation;
     PatternRule::field_path_t   m_field_path;
     Values  m_branches;
@@ -1543,6 +1547,13 @@ DecisionTreeNode::Values DecisionTreeNode::clone(const DecisionTreeNode::Values&
         for(const auto& v : e)
             rv.push_back( ::std::make_pair(v.first, clone(v.second)) );
         return Values( mv$(rv) );
+        ),
+    (Slice,
+        Values::Data_Slice rv;
+        rv.fixed_arms.reserve(e.fixed_arms.size());
+        for(const auto& v : e.fixed_arms)
+            rv.fixed_arms.push_back( ::std::make_pair(v.first, clone(v.second)) );
+        return Values( mv$(rv) );
         )
     )
     throw "";
@@ -1731,10 +1742,49 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
         }
         }),
     (Slice,
-        //auto& be = GET_BRANCHES(m_branches, Slice);
-        // TODO: How to encode slice patterns in the DT? Length check then sub-patterns.
-        // - SplitSlice throws a spanner in the works, and means that using the length isn't feasable in the long run
-        TODO(sp, "Slice rules - " << rule);
+        auto& be = GET_BRANCHES(m_branches, Slice);
+        
+        auto it = ::std::find_if( be.fixed_arms.begin(), be.fixed_arms.end(), [&](const auto& x){ return x.first >= e.len; } );
+        if( it == be.fixed_arms.end() || it->first != e.len ) {
+            it = be.fixed_arms.insert(it, ::std::make_pair(e.len, new_branch_subtree(rule.field_path)));
+        }
+        else {
+            if( it->second.is_Terminal() ) {
+                BUG(sp, "Duplicate terminal rule - " << it->second.as_Terminal());
+            }
+            assert( !it->second.is_Unset() );
+        }
+        assert( it->second.is_Subtree() );
+        auto& subtree = *it->second.as_Subtree();
+        
+        if( e.sub_rules.size() > 0 && rule_count > 1 )
+        {
+            subtree.populate_tree_from_rule(sp, e.sub_rules.data(), e.sub_rules.size(), [&](auto& branch){
+                TU_MATCH_DEF(Branch, (branch), (be),
+                (
+                    BUG(sp, "Duplicate terminator");
+                    ),
+                (Unset,
+                    branch = new_branch_subtree(rule.field_path);
+                    ),
+                (Subtree,
+                    )
+                )
+                branch.as_Subtree()->populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+                });
+        }
+        else if( e.sub_rules.size() > 0)
+        {
+            subtree.populate_tree_from_rule(sp, e.sub_rules.data(), e.sub_rules.size(), and_then);
+        }
+        else if( rule_count > 1 )
+        {
+            subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+        }
+        else
+        {
+            and_then(it->second);
+        }
         ),
     (Bool,
         auto& be = GET_BRANCHES(m_branches, Bool);
@@ -1957,6 +2007,11 @@ void DecisionTreeNode::simplify()
         for(auto& branch : e) {
             H::simplify_branch(branch.second);
         }
+        ),
+    (Slice,
+        for(auto& branch : e.fixed_arms) {
+            H::simplify_branch(branch.second);
+        }
         )
     )
     
@@ -2008,6 +2063,11 @@ void DecisionTreeNode::propagate_default()
         for(auto& branch : e) {
             H::handle_branch(branch.second, m_default);
         }
+        ),
+    (Slice,
+        for(auto& branch : e.fixed_arms) {
+            H::handle_branch(branch.second, m_default);
+        }
         )
     )
     TU_IFLET(Branch, m_default, Subtree, be,
@@ -2044,6 +2104,11 @@ void DecisionTreeNode::propagate_default()
                 ),
             (String,
                 for(auto& branch : e) {
+                    be->unify_from(branch.second);
+                }
+                ),
+            (Slice,
+                for(auto& branch : e.fixed_arms) {
                     be->unify_from(branch.second);
                 }
                 )
@@ -2150,6 +2215,18 @@ void DecisionTreeNode::unify_from(const Branch& b)
                 else {
                 }
             }
+            ),
+        (Slice,
+            for(const auto& srcv : src.fixed_arms)
+            {
+                auto it = ::std::find_if( dst.fixed_arms.begin(), dst.fixed_arms.end(), [&](const auto& x){ return x.first >= srcv.first; });
+                // Not found? Insert a new branch
+                if( it == dst.fixed_arms.end() ) {
+                    it = dst.fixed_arms.insert(it, ::std::make_pair( srcv.first, clone(srcv.second) ));
+                }
+                else {
+                }
+            }
             )
         )
         if( m_default.is_Unset() ) {
@@ -2233,6 +2310,12 @@ void DecisionTreeNode::unify_from(const Branch& b)
     (String,
         for(const auto& branch : e) {
             os << "\"" << branch.first << "\"" << " = " << branch.second << ", ";
+        }
+        ),
+    (Slice,
+        os << "len ";
+        for(const auto& branch : e.fixed_arms) {
+            os << "=" << branch.first << " = " << branch.second << ", ";
         }
         )
     )
@@ -2463,11 +2546,15 @@ void DecisionTreeGen::generate_tree_code(
         TODO(sp, "Match over array");
         ),
     (Slice,
-        BUG(sp, "Hit match over `[T]` - must be `&[T]`");
+        // TODO: Slice patterns, sequential comparison/sub-match
+        TODO(sp, "Match over `[T]`");
+        
+        //ASSERT_BUG(sp, node.m_branches.is_Slice(), "Tree for [T] isn't a _Slice - node="<<node);
+        //this->generate_branches_Slice(sp, node.m_default, node.m_branches.as_Slice(), ty, mv$(val), mv$(and_then));
         ),
     (Borrow,
-        if( e.inner->m_data.is_Slice() ) {
-            TODO(sp, "Match over &[T]");
+        if( e.inner == ::HIR::CoreType::Str ) {
+            TODO(sp, "Match over &str");
         }
         else {
             BUG(sp, "Decision node on non-str/[T] borrow - " << ty);
