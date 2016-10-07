@@ -767,6 +767,13 @@ struct DecisionTreeGen
     
     void generate_branch(const DecisionTreeNode::Branch& branch, ::std::function<void(const DecisionTreeNode&)> cb);
     
+    void generate_branches_Signed(
+        const Span& sp,
+        const DecisionTreeNode::Branch& default_branch,
+        const DecisionTreeNode::Values::Data_Signed& branches,
+        const ::HIR::TypeRef& ty, ::MIR::LValue val,
+        ::std::function<void(const DecisionTreeNode&)> and_then
+        );
     void generate_branches_Unsigned(
         const Span& sp,
         const DecisionTreeNode::Branch& default_branch,
@@ -2297,6 +2304,14 @@ void DecisionTreeGen::generate_tree_code(
             ASSERT_BUG(sp, node.m_branches.is_Unsigned(), "Tree for unsigned isn't a _Unsigned - node="<<node);
             this->generate_branches_Unsigned(sp, node.m_default, node.m_branches.as_Unsigned(), ty, mv$(val), mv$(and_then));
             break;
+        case ::HIR::CoreType::I8:
+        case ::HIR::CoreType::I16:
+        case ::HIR::CoreType::I32:
+        case ::HIR::CoreType::I64:
+        case ::HIR::CoreType::Isize:
+            ASSERT_BUG(sp, node.m_branches.is_Signed(), "Tree for unsigned isn't a _Signed - node="<<node);
+            this->generate_branches_Signed(sp, node.m_default, node.m_branches.as_Signed(), ty, mv$(val), mv$(and_then));
+            break;
         case ::HIR::CoreType::Char:
             ASSERT_BUG(sp, node.m_branches.is_Unsigned(), "Tree for char isn't a _Unsigned - node="<<node);
             this->generate_branches_Char(sp, node.m_default, node.m_branches.as_Unsigned(), ty, mv$(val), mv$(and_then));
@@ -2392,6 +2407,53 @@ void DecisionTreeGen::generate_branch(const DecisionTreeNode::Branch& branch, ::
         const auto& subnode = *branch.as_Subtree();
         
         cb(subnode);
+    }
+}
+
+void DecisionTreeGen::generate_branches_Signed(
+    const Span& sp,
+    const DecisionTreeNode::Branch& default_branch,
+    const DecisionTreeNode::Values::Data_Signed& branches,
+    const ::HIR::TypeRef& ty, ::MIR::LValue val,
+    ::std::function<void(const DecisionTreeNode&)> and_then
+    )
+{
+    auto default_block = m_builder.new_bb_unlinked();
+    
+    // TODO: Convert into an integer switch w/ offset instead of chained comparisons
+    
+    for( const auto& branch : branches )
+    {
+        auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
+        
+        auto val_start = m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(branch.first.start));
+        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(branch.first.end)));
+        
+        auto cmp_gt_block = m_builder.new_bb_unlinked();
+        auto val_cmp_lt = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
+            val.clone(), ::MIR::eBinOp::LT, mv$(val_start)
+            }) );
+        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_lt), default_block, cmp_gt_block }) );
+        m_builder.set_cur_block( cmp_gt_block );
+        auto success_block = m_builder.new_bb_unlinked();
+        auto val_cmp_gt = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
+            val.clone(), ::MIR::eBinOp::GT, mv$(val_end)
+            }) );
+        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_gt), next_block, success_block }) );
+        
+        m_builder.set_cur_block( success_block );
+        this->generate_branch(branch.second, and_then);
+        
+        m_builder.set_cur_block( next_block );
+    }
+    assert( m_builder.block_active() );
+    
+    if( default_branch.is_Unset() ) {
+        // TODO: Emit error if non-exhaustive
+        m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+    }
+    else {
+        this->generate_branch(default_branch, and_then);
     }
 }
 
