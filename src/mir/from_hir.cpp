@@ -767,14 +767,19 @@ namespace {
         {
             TRACE_FUNCTION_F("_Cast");
             this->visit_node_ptr(node.m_value);
-            auto val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
             
             const auto& ty_out = node.m_res_type;
             const auto& ty_in = node.m_value->m_res_type;
             
+            if( ty_out == ty_in ) {
+                return ;
+            }
+            
+            auto val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
+            
             TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_out.m_data), (de),
             (
-                BUG(node.span(), "Invalid cast to " << ty_out);
+                BUG(node.span(), "Invalid cast to " << ty_out << " from " << ty_in);
                 ),
             (Pointer,
                 if( ty_in.m_data.is_Primitive() ) {
