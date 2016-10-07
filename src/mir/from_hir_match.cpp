@@ -185,9 +185,10 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         arm_code.push_back( mv$(ac) );
     }
     
+    // Sort columns of `arm_rules` to maximise effectiveness
     if( arm_rules[0].m_rules.size() > 1 )
     {
-        // TODO: Sort columns of `arm_rules` to maximise effectiveness
+        // TODO: Should columns be sorted within equal sub-arms too?
         ::std::vector<unsigned> column_weights( arm_rules[0].m_rules.size() );
         for(const auto& arm_rule : arm_rules)
         {
@@ -235,6 +236,554 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     builder.set_cur_block( next_block );
     builder.set_result( node.span(), mv$(result_val) );
     builder.terminate_scope( node.span(), mv$(match_scope) );
+}
+
+// --------------------------------------------------------------------
+// Common Code - Pattern Rules
+// --------------------------------------------------------------------
+::std::ostream& operator<<(::std::ostream& os, const PatternRule& x)
+{
+    os <<"{";
+    for(const auto idx : x.field_path)
+        os << "." << static_cast<unsigned int>(idx);
+    os << "}=";
+    TU_MATCHA( (x), (e),
+    (Any,
+        os << "_";
+        ),
+    // Enum variant
+    (Variant,
+        os << e.idx << " [" << e.sub_rules << "]";
+        ),
+    // Enum variant
+    (Slice,
+        os << "len=" << e.len << " [" << e.sub_rules << "]";
+        ),
+    // Boolean (different to Constant because of how restricted it is)
+    (Bool,
+        os << (e ? "true" : "false");
+        ),
+    // General value
+    (Value,
+        os << e;
+        ),
+    (ValueRange,
+        os << e.first << " ... " << e.last;
+        )
+    )
+    return os;
+}
+
+::Ordering PatternRuleset::rule_is_before(const PatternRule& l, const PatternRule& r)
+{
+    if( l.tag() != r.tag() ) {
+        // Any comes last, don't care about rest
+        if( l.tag() < r.tag() )
+            return ::OrdGreater;
+        else
+            return ::OrdLess;
+    }
+    
+    TU_MATCHA( (l,r), (le,re),
+    (Any,
+        return ::OrdEqual;
+        ),
+    (Variant,
+        if( le.idx != re.idx )
+            return ::ord(le.idx, re.idx);
+        assert( le.sub_rules.size() == re.sub_rules.size() );
+        for(unsigned int i = 0; i < le.sub_rules.size(); i ++)
+        {
+            auto cmp = rule_is_before(le.sub_rules[i], re.sub_rules[i]);
+            if( cmp != ::OrdEqual )
+                return cmp;
+        }
+        return ::OrdEqual;
+        ),
+    (Slice,
+        if( le.len != re.len )
+            return ::ord(le.len, re.len);
+        // Wait? Why would the rule count be the same?
+        assert( le.sub_rules.size() == re.sub_rules.size() );
+        for(unsigned int i = 0; i < le.sub_rules.size(); i ++)
+        {
+            auto cmp = rule_is_before(le.sub_rules[i], re.sub_rules[i]);
+            if( cmp != ::OrdEqual )
+                return cmp;
+        }
+        return ::OrdEqual;
+        ),
+    (Bool,
+        return ::ord( le, re );
+        ),
+    (Value,
+        TODO(Span(), "Order PatternRule::Value");
+        ),
+    (ValueRange,
+        TODO(Span(), "Order PatternRule::ValueRange");
+        )
+    )
+    throw "";
+}
+
+bool PatternRuleset::is_before(const PatternRuleset& other) const
+{
+    assert( m_rules.size() == other.m_rules.size() );
+    for(unsigned int i = 0; i < m_rules.size(); i ++)
+    {
+        const auto& l = m_rules[i];
+        const auto& r = other.m_rules[i];
+        auto cmp = rule_is_before(l, r);
+        if( cmp != ::OrdEqual )
+            return cmp == ::OrdLess;
+    }
+    return false;
+}
+
+
+void PatternRulesetBuilder::push_rule(PatternRule r)
+{
+    m_rules.push_back( mv$(r) );
+    m_rules.back().field_path = m_field_path;
+}
+
+void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty)
+{
+    TRACE_FUNCTION_F("pat="<<pat<<", ty="<<ty<<",   m_field_path.size()=" <<m_field_path.size() << " " << (m_field_path.empty() ? 0 : m_field_path.back()) );
+    struct H {
+        static uint64_t get_pattern_value_int(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::Pattern::Value& val) {
+            TU_MATCH_DEF( ::HIR::Pattern::Value, (val), (e),
+            (
+                BUG(sp, "Invalid Value type in " << pat);
+                ),
+            (Integer,
+                return e.value;
+                ),
+            (Named,
+                assert(e.binding);
+                return e.binding->m_value_res.as_Integer();
+                )
+            )
+            throw "";
+        }
+        static double get_pattern_value_float(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::Pattern::Value& val) {
+            TU_MATCH_DEF( ::HIR::Pattern::Value, (val), (e),
+            (
+                BUG(sp, "Invalid Value type in " << pat);
+                ),
+            (Float,
+                return e.value;
+                ),
+            (Named,
+                assert(e.binding);
+                return e.binding->m_value_res.as_Float();
+                )
+            )
+            throw "";
+        }
+    };
+    
+    TU_MATCHA( (ty.m_data), (e),
+    (Infer,   BUG(sp, "Ivar for in match type"); ),
+    (Diverge, BUG(sp, "Diverge in match type");  ),
+    (Primitive,
+        TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
+        ( BUG(sp, "Matching primitive with invalid pattern - " << pat); ),
+        (Any,
+            this->push_rule( PatternRule::make_Any({}) );
+            ),
+        (Range,
+            switch(e)
+            {
+            case ::HIR::CoreType::F32:
+            case ::HIR::CoreType::F64: {
+                double start = H::get_pattern_value_float(sp, pat, pe.start);
+                double end   = H::get_pattern_value_float(sp, pat, pe.end  );
+                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant(start), ::MIR::Constant(end)} ) );
+                } break;
+            case ::HIR::CoreType::U8:
+            case ::HIR::CoreType::U16:
+            case ::HIR::CoreType::U32:
+            case ::HIR::CoreType::U64:
+            case ::HIR::CoreType::Usize: {
+                uint64_t start = H::get_pattern_value_int(sp, pat, pe.start);
+                uint64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
+                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant(start), ::MIR::Constant(end)} ) );
+                } break;
+            case ::HIR::CoreType::I8:
+            case ::HIR::CoreType::I16:
+            case ::HIR::CoreType::I32:
+            case ::HIR::CoreType::I64:
+            case ::HIR::CoreType::Isize: {
+                int64_t start = H::get_pattern_value_int(sp, pat, pe.start);
+                int64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
+                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant(start), ::MIR::Constant(end)} ) );
+                } break;
+            case ::HIR::CoreType::Bool:
+                BUG(sp, "Can't range match on Bool");
+                break;
+            case ::HIR::CoreType::Char: {
+                uint64_t start = H::get_pattern_value_int(sp, pat, pe.start);
+                uint64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
+                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant(start), ::MIR::Constant(end)} ) );
+                } break;
+            case ::HIR::CoreType::Str:
+                BUG(sp, "Hit match over `str` - must be `&str`");
+                break;
+            }
+            ),
+        (Value,
+            switch(e)
+            {
+            case ::HIR::CoreType::F32:
+            case ::HIR::CoreType::F64: {
+                // Yes, this is valid.
+                double val = H::get_pattern_value_float(sp, pat, pe.val);
+                this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
+                } break;
+            case ::HIR::CoreType::U8:
+            case ::HIR::CoreType::U16:
+            case ::HIR::CoreType::U32:
+            case ::HIR::CoreType::U64:
+            case ::HIR::CoreType::Usize: {
+                uint64_t val = H::get_pattern_value_int(sp, pat, pe.val);
+                this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
+                } break;
+            case ::HIR::CoreType::I8:
+            case ::HIR::CoreType::I16:
+            case ::HIR::CoreType::I32:
+            case ::HIR::CoreType::I64:
+            case ::HIR::CoreType::Isize: {
+                int64_t val = H::get_pattern_value_int(sp, pat, pe.val);
+                this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
+                } break;
+            case ::HIR::CoreType::Bool:
+                // TODO: Support values from `const` too
+                this->push_rule( PatternRule::make_Bool( pe.val.as_Integer().value != 0 ) );
+                break;
+            case ::HIR::CoreType::Char: {
+                // Char is just another name for 'u32'... but with a restricted range
+                uint64_t val = H::get_pattern_value_int(sp, pat, pe.val);
+                this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
+                } break;
+            case ::HIR::CoreType::Str:
+                BUG(sp, "Hit match over `str` - must be `&str`");
+                break;
+            }
+            )
+        )
+        ),
+    (Tuple,
+        m_field_path.push_back(0);
+        TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
+        ( BUG(sp, "Matching tuple with invalid pattern - " << pat); ),
+        (Any,
+            for(const auto& sty : e) {
+                this->append_from(sp, pat, sty);
+                m_field_path.back() ++;
+            }
+            ),
+        (Tuple,
+            assert(e.size() == pe.sub_patterns.size());
+            for(unsigned int i = 0; i < e.size(); i ++) {
+                this->append_from(sp, pe.sub_patterns[i], e[i]);
+                m_field_path.back() ++;
+            }
+            )
+        )
+        m_field_path.pop_back();
+        ),
+    (Path,
+        // This is either a struct destructure or an enum
+        TU_MATCHA( (e.binding), (pbe),
+        (Unbound,
+            BUG(sp, "Encounterd unbound path - " << e.path);
+            ),
+        (Opaque,
+            TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+            ( BUG(sp, "Matching opaque type with invalid pattern - " << pat); ),
+            (Any,
+                this->push_rule( PatternRule::make_Any({}) );
+                )
+            )
+            ),
+        (Struct,
+            auto monomorph = [&](const auto& ty) {
+                auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
+                this->m_resolve.expand_associated_types(sp, rv);
+                return rv;
+                };
+            const auto& str_data = pbe->m_data;
+            TU_MATCHA( (str_data), (sd),
+            (Unit,
+                TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+                ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
+                (Any,
+                    // Nothing.
+                    //this->push_rule( PatternRule::make_Any({}) );
+                    ),
+                (Value,
+                    //TODO(sp, "Match over struct - Unit + Value");
+                    )
+                )
+                ),
+            (Tuple,
+                m_field_path.push_back(0);
+                TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+                ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
+                (Any,
+                    // - Recurse into type and use the same pattern again
+                    for(const auto& fld : sd)
+                    {
+                        ::HIR::TypeRef  tmp;
+                        const auto& sty_mono = (monomorphise_type_needed(fld.ent) ? tmp = monomorph(fld.ent) : fld.ent);
+                        this->append_from(sp, pat, sty_mono);
+                        m_field_path.back() ++;
+                    }
+                    ),
+                (StructTuple,
+                    TODO(sp, "Match over struct - TypeRef::Tuple + Pattern::StructTuple");
+                    )
+                )
+                m_field_path.pop_back();
+                ),
+            (Named,
+                TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+                ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
+                (Any,
+                    m_field_path.push_back(0);
+                    for(const auto& fld : sd)
+                    {
+                        ::HIR::TypeRef  tmp;
+                        const auto& sty_mono = (monomorphise_type_needed(fld.second.ent) ? tmp = monomorph(fld.second.ent) : fld.second.ent);
+                        this->append_from(sp, pat, sty_mono);
+                        m_field_path.back() ++;
+                    }
+                    m_field_path.pop_back();
+                    ),
+                (Struct,
+                    m_field_path.push_back(0);
+                    // NOTE: Sort field patterns to ensure that patterns are in order between arms
+                    for(const auto& fld : sd)
+                    {
+                        ::HIR::TypeRef  tmp;
+                        const auto& sty_mono = (monomorphise_type_needed(fld.second.ent) ? tmp = monomorph(fld.second.ent) : fld.second.ent);
+                        
+                        auto it = ::std::find_if( pe.sub_patterns.begin(), pe.sub_patterns.end(), [&](const auto& x){ return x.first == fld.first; } );
+                        if( it == pe.sub_patterns.end() )
+                        {
+                            ::HIR::Pattern  any_pat {};
+                            this->append_from(sp, any_pat, sty_mono);
+                        }
+                        else
+                        {
+                            this->append_from(sp, it->second, sty_mono);
+                        }
+                        m_field_path.back() ++;
+                    }
+                    m_field_path.pop_back();
+                    )
+                )
+                )
+            )
+            ),
+        (Enum,
+            auto monomorph = [&](const auto& ty) {
+                auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
+                this->m_resolve.expand_associated_types(sp, rv);
+                return rv;
+                };
+            TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+            ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
+            (Any,
+                this->push_rule( PatternRule::make_Any({}) );
+                ),
+            (EnumValue,
+                this->push_rule( PatternRule::make_Variant( {pe.binding_idx, {} } ) );
+                ),
+            (EnumTuple,
+                const auto& var_def = pe.binding_ptr->m_variants.at(pe.binding_idx);
+                
+                const auto& fields_def = var_def.second.as_Tuple();
+                PatternRulesetBuilder   sub_builder { this->m_resolve };
+                sub_builder.m_field_path = m_field_path;
+                sub_builder.m_field_path.push_back(0);
+                for( unsigned int i = 0; i < pe.sub_patterns.size(); i ++ )
+                {
+                    sub_builder.m_field_path.back() = i;
+                    const auto& subpat = pe.sub_patterns[i];
+                    const auto& ty_tpl = fields_def[i].ent;
+                    
+                    ::HIR::TypeRef  tmp;
+                    const auto& subty = (monomorphise_type_needed(ty_tpl) ? tmp = monomorph(ty_tpl) : ty_tpl);
+                    
+                    sub_builder.append_from( sp, subpat, subty );
+                }
+                this->push_rule( PatternRule::make_Variant({ pe.binding_idx, mv$(sub_builder.m_rules) }) );
+                ),
+            (EnumStruct,
+                const auto& var_def = pe.binding_ptr->m_variants.at(pe.binding_idx);
+                const auto& fields_def = var_def.second.as_Struct();
+                // 1. Create a vector of pattern indexes for each field in the variant.
+                ::std::vector<unsigned int> tmp;
+                tmp.resize( fields_def.size(), ~0u );
+                for( unsigned int i = 0; i < pe.sub_patterns.size(); i ++ )
+                {
+                    const auto& fld_pat = pe.sub_patterns[i];
+                    unsigned idx = ::std::find_if( fields_def.begin(), fields_def.end(), [&](const auto& x){ return x.first == fld_pat.first; } ) - fields_def.begin();
+                    assert(idx < tmp.size());
+                    assert(tmp[idx] == ~0u);
+                    tmp[idx] = i;
+                }
+                // 2. Iterate this list and recurse on the patterns
+                PatternRulesetBuilder   sub_builder { this->m_resolve };
+                sub_builder.m_field_path = m_field_path;
+                sub_builder.m_field_path.push_back(0);
+                for( unsigned int i = 0; i < tmp.size(); i ++ )
+                {
+                    sub_builder.m_field_path.back() = i;
+                    
+                    auto subty = monomorph(fields_def[i].second.ent);
+                    if( tmp[i] == ~0u ) {
+                        sub_builder.append_from( sp, ::HIR::Pattern(), subty );
+                    }
+                    else {
+                        const auto& subpat = pe.sub_patterns[ tmp[i] ].second;
+                        sub_builder.append_from( sp, subpat, subty );
+                    }
+                }
+                this->push_rule( PatternRule::make_Variant({ pe.binding_idx, mv$(sub_builder.m_rules) }) );
+                )
+            )
+            )
+        )
+        ),
+    (Generic,
+        // Generics don't destructure, so the only valid pattern is `_`
+        TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+        ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
+        (Any,
+            this->push_rule( PatternRule::make_Any({}) );
+            )
+        )
+        ),
+    (TraitObject,
+        if( pat.m_data.is_Any() ) {
+        }
+        else {
+            ERROR(sp, E0000, "Attempting to match over a trait object");
+        }
+        ),
+    (Array,
+        // Sequential match just like tuples.
+        m_field_path.push_back(0);
+        TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
+        ( BUG(sp, "Matching array with invalid pattern - " << pat); ),
+        (Any,
+            for(unsigned int i = 0; i < e.size_val; i ++) {
+                this->append_from(sp, pat, *e.inner);
+                m_field_path.back() ++;
+            }
+            ),
+        (Slice,
+            assert(e.size_val == pe.sub_patterns.size());
+            for(unsigned int i = 0; i < e.size_val; i ++) {
+                this->append_from(sp, pe.sub_patterns[i], *e.inner);
+                m_field_path.back() ++;
+            }
+            ),
+        (SplitSlice,
+            TODO(sp, "Match over array with SplitSlice pattern - " << pat);
+            )
+        )
+        m_field_path.pop_back();
+        ),
+    (Slice,
+        TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
+        (
+            BUG(sp, "Matching over [T] with invalid pattern - " << pat);
+            ),
+        (Any,
+            // Value, don't add anything
+            ),
+        (Slice,
+            // Sub-patterns
+            PatternRulesetBuilder   sub_builder { this->m_resolve };
+            sub_builder.m_field_path = m_field_path;
+            sub_builder.m_field_path.push_back(0);
+            for(const auto& subpat : pe.sub_patterns)
+            {
+                sub_builder.append_from( sp, subpat, *e.inner );
+                sub_builder.m_field_path.back() ++;
+            }
+            
+            // Encodes length check and sub-pattern rules
+            this->push_rule( PatternRule::make_Slice({ static_cast<unsigned int>(pe.sub_patterns.size()), mv$(sub_builder.m_rules) }) );
+            ),
+        (SplitSlice,
+            // 1. Length minimum check
+            // 2. Sub-patterns (handling trailing)
+            TODO(sp, "Match [T] with SplitSlice - " << pat);
+            )
+        )
+        ),
+    (Borrow,
+        TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+        ( BUG(sp, "Matching borrow invalid pattern - " << pat); ),
+        (Any,
+            m_field_path.push_back( FIELD_DEREF );
+            this->append_from( sp, pat, *e.inner );
+            m_field_path.pop_back();
+            ),
+        (Ref,
+            m_field_path.push_back( FIELD_DEREF );
+            this->append_from( sp, *pe.sub, *e.inner );
+            m_field_path.pop_back();
+            ),
+        (Value,
+            // TODO: Check type?
+            if( pe.val.is_String() ) {
+                const auto& s = pe.val.as_String();
+                this->push_rule( PatternRule::make_Value(s) );
+            }
+            else if( pe.val.is_ByteString() ) {
+                const auto& s = pe.val.as_ByteString().v;
+                ::std::vector<uint8_t>  data;
+                data.reserve(s.size());
+                for(auto c : s)
+                    data.push_back(c);
+                
+                this->push_rule( PatternRule::make_Value( mv$(data) ) );
+            }
+            // TODO: Handle named values
+            else {
+                BUG(sp, "Matching borrow invalid pattern - " << pat);
+            }
+            )
+        )
+        ),
+    (Pointer,
+        if( pat.m_data.is_Any() ) {
+        }
+        else {
+            ERROR(sp, E0000, "Attempting to match over a pointer");
+        }
+        ),
+    (Function,
+        if( pat.m_data.is_Any() ) {
+        }
+        else {
+            ERROR(sp, E0000, "Attempting to match over a functon pointer");
+        }
+        ),
+    (Closure,
+        if( pat.m_data.is_Any() ) {
+        }
+        else {
+            ERROR(sp, E0000, "Attempting to match over a closure");
+        }
+        )
+    )
 }
 
 // --------------------------------------------------------------------
@@ -943,552 +1492,6 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
     ASSERT_BUG(node.span(), !builder.block_active(), "Decision tree didn't terminate the final block");
 }
 
-::std::ostream& operator<<(::std::ostream& os, const PatternRule& x)
-{
-    os <<"{";
-    for(const auto idx : x.field_path)
-        os << "." << static_cast<unsigned int>(idx);
-    os << "}=";
-    TU_MATCHA( (x), (e),
-    (Any,
-        os << "_";
-        ),
-    // Enum variant
-    (Variant,
-        os << e.idx << " [" << e.sub_rules << "]";
-        ),
-    // Enum variant
-    (Slice,
-        os << "len=" << e.len << " [" << e.sub_rules << "]";
-        ),
-    // Boolean (different to Constant because of how restricted it is)
-    (Bool,
-        os << (e ? "true" : "false");
-        ),
-    // General value
-    (Value,
-        os << e;
-        ),
-    (ValueRange,
-        os << e.first << " ... " << e.last;
-        )
-    )
-    return os;
-}
-
-::Ordering PatternRuleset::rule_is_before(const PatternRule& l, const PatternRule& r)
-{
-    if( l.tag() != r.tag() ) {
-        // Any comes last, don't care about rest
-        if( l.tag() < r.tag() )
-            return ::OrdGreater;
-        else
-            return ::OrdLess;
-    }
-    
-    TU_MATCHA( (l,r), (le,re),
-    (Any,
-        return ::OrdEqual;
-        ),
-    (Variant,
-        if( le.idx != re.idx )
-            return ::ord(le.idx, re.idx);
-        assert( le.sub_rules.size() == re.sub_rules.size() );
-        for(unsigned int i = 0; i < le.sub_rules.size(); i ++)
-        {
-            auto cmp = rule_is_before(le.sub_rules[i], re.sub_rules[i]);
-            if( cmp != ::OrdEqual )
-                return cmp;
-        }
-        return ::OrdEqual;
-        ),
-    (Slice,
-        if( le.len != re.len )
-            return ::ord(le.len, re.len);
-        // Wait? Why would the rule count be the same?
-        assert( le.sub_rules.size() == re.sub_rules.size() );
-        for(unsigned int i = 0; i < le.sub_rules.size(); i ++)
-        {
-            auto cmp = rule_is_before(le.sub_rules[i], re.sub_rules[i]);
-            if( cmp != ::OrdEqual )
-                return cmp;
-        }
-        return ::OrdEqual;
-        ),
-    (Bool,
-        return ::ord( le, re );
-        ),
-    (Value,
-        TODO(Span(), "Order PatternRule::Value");
-        ),
-    (ValueRange,
-        TODO(Span(), "Order PatternRule::ValueRange");
-        )
-    )
-    throw "";
-}
-
-bool PatternRuleset::is_before(const PatternRuleset& other) const
-{
-    assert( m_rules.size() == other.m_rules.size() );
-    for(unsigned int i = 0; i < m_rules.size(); i ++)
-    {
-        const auto& l = m_rules[i];
-        const auto& r = other.m_rules[i];
-        auto cmp = rule_is_before(l, r);
-        if( cmp != ::OrdEqual )
-            return cmp == ::OrdLess;
-    }
-    return false;
-}
-
-
-void PatternRulesetBuilder::push_rule(PatternRule r)
-{
-    m_rules.push_back( mv$(r) );
-    m_rules.back().field_path = m_field_path;
-}
-
-void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty)
-{
-    TRACE_FUNCTION_F("pat="<<pat<<", ty="<<ty<<",   m_field_path.size()=" <<m_field_path.size() << " " << (m_field_path.empty() ? 0 : m_field_path.back()) );
-    struct H {
-        static uint64_t get_pattern_value_int(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::Pattern::Value& val) {
-            TU_MATCH_DEF( ::HIR::Pattern::Value, (val), (e),
-            (
-                BUG(sp, "Invalid Value type in " << pat);
-                ),
-            (Integer,
-                return e.value;
-                ),
-            (Named,
-                assert(e.binding);
-                return e.binding->m_value_res.as_Integer();
-                )
-            )
-            throw "";
-        }
-        static double get_pattern_value_float(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::Pattern::Value& val) {
-            TU_MATCH_DEF( ::HIR::Pattern::Value, (val), (e),
-            (
-                BUG(sp, "Invalid Value type in " << pat);
-                ),
-            (Float,
-                return e.value;
-                ),
-            (Named,
-                assert(e.binding);
-                return e.binding->m_value_res.as_Float();
-                )
-            )
-            throw "";
-        }
-    };
-    
-    TU_MATCHA( (ty.m_data), (e),
-    (Infer,   BUG(sp, "Ivar for in match type"); ),
-    (Diverge, BUG(sp, "Diverge in match type");  ),
-    (Primitive,
-        TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
-        ( BUG(sp, "Matching primitive with invalid pattern - " << pat); ),
-        (Any,
-            this->push_rule( PatternRule::make_Any({}) );
-            ),
-        (Range,
-            switch(e)
-            {
-            case ::HIR::CoreType::F32:
-            case ::HIR::CoreType::F64: {
-                double start = H::get_pattern_value_float(sp, pat, pe.start);
-                double end   = H::get_pattern_value_float(sp, pat, pe.end  );
-                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant(start), ::MIR::Constant(end)} ) );
-                } break;
-            case ::HIR::CoreType::U8:
-            case ::HIR::CoreType::U16:
-            case ::HIR::CoreType::U32:
-            case ::HIR::CoreType::U64:
-            case ::HIR::CoreType::Usize: {
-                uint64_t start = H::get_pattern_value_int(sp, pat, pe.start);
-                uint64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
-                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant(start), ::MIR::Constant(end)} ) );
-                } break;
-            case ::HIR::CoreType::I8:
-            case ::HIR::CoreType::I16:
-            case ::HIR::CoreType::I32:
-            case ::HIR::CoreType::I64:
-            case ::HIR::CoreType::Isize: {
-                int64_t start = H::get_pattern_value_int(sp, pat, pe.start);
-                int64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
-                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant(start), ::MIR::Constant(end)} ) );
-                } break;
-            case ::HIR::CoreType::Bool:
-                BUG(sp, "Can't range match on Bool");
-                break;
-            case ::HIR::CoreType::Char: {
-                uint64_t start = H::get_pattern_value_int(sp, pat, pe.start);
-                uint64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
-                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant(start), ::MIR::Constant(end)} ) );
-                } break;
-            case ::HIR::CoreType::Str:
-                BUG(sp, "Hit match over `str` - must be `&str`");
-                break;
-            }
-            ),
-        (Value,
-            switch(e)
-            {
-            case ::HIR::CoreType::F32:
-            case ::HIR::CoreType::F64: {
-                // Yes, this is valid.
-                double val = H::get_pattern_value_float(sp, pat, pe.val);
-                this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
-                } break;
-            case ::HIR::CoreType::U8:
-            case ::HIR::CoreType::U16:
-            case ::HIR::CoreType::U32:
-            case ::HIR::CoreType::U64:
-            case ::HIR::CoreType::Usize: {
-                uint64_t val = H::get_pattern_value_int(sp, pat, pe.val);
-                this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
-                } break;
-            case ::HIR::CoreType::I8:
-            case ::HIR::CoreType::I16:
-            case ::HIR::CoreType::I32:
-            case ::HIR::CoreType::I64:
-            case ::HIR::CoreType::Isize: {
-                int64_t val = H::get_pattern_value_int(sp, pat, pe.val);
-                this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
-                } break;
-            case ::HIR::CoreType::Bool:
-                // TODO: Support values from `const` too
-                this->push_rule( PatternRule::make_Bool( pe.val.as_Integer().value != 0 ) );
-                break;
-            case ::HIR::CoreType::Char: {
-                // Char is just another name for 'u32'... but with a restricted range
-                uint64_t val = H::get_pattern_value_int(sp, pat, pe.val);
-                this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
-                } break;
-            case ::HIR::CoreType::Str:
-                BUG(sp, "Hit match over `str` - must be `&str`");
-                break;
-            }
-            )
-        )
-        ),
-    (Tuple,
-        m_field_path.push_back(0);
-        TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
-        ( BUG(sp, "Matching tuple with invalid pattern - " << pat); ),
-        (Any,
-            for(const auto& sty : e) {
-                this->append_from(sp, pat, sty);
-                m_field_path.back() ++;
-            }
-            ),
-        (Tuple,
-            assert(e.size() == pe.sub_patterns.size());
-            for(unsigned int i = 0; i < e.size(); i ++) {
-                this->append_from(sp, pe.sub_patterns[i], e[i]);
-                m_field_path.back() ++;
-            }
-            )
-        )
-        m_field_path.pop_back();
-        ),
-    (Path,
-        // This is either a struct destructure or an enum
-        TU_MATCHA( (e.binding), (pbe),
-        (Unbound,
-            BUG(sp, "Encounterd unbound path - " << e.path);
-            ),
-        (Opaque,
-            TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
-            ( BUG(sp, "Matching opaque type with invalid pattern - " << pat); ),
-            (Any,
-                this->push_rule( PatternRule::make_Any({}) );
-                )
-            )
-            ),
-        (Struct,
-            auto monomorph = [&](const auto& ty) {
-                auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
-                this->m_resolve.expand_associated_types(sp, rv);
-                return rv;
-                };
-            const auto& str_data = pbe->m_data;
-            TU_MATCHA( (str_data), (sd),
-            (Unit,
-                TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
-                ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
-                (Any,
-                    // Nothing.
-                    //this->push_rule( PatternRule::make_Any({}) );
-                    ),
-                (Value,
-                    //TODO(sp, "Match over struct - Unit + Value");
-                    )
-                )
-                ),
-            (Tuple,
-                m_field_path.push_back(0);
-                TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
-                ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
-                (Any,
-                    // - Recurse into type and use the same pattern again
-                    for(const auto& fld : sd)
-                    {
-                        ::HIR::TypeRef  tmp;
-                        const auto& sty_mono = (monomorphise_type_needed(fld.ent) ? tmp = monomorph(fld.ent) : fld.ent);
-                        this->append_from(sp, pat, sty_mono);
-                        m_field_path.back() ++;
-                    }
-                    ),
-                (StructTuple,
-                    TODO(sp, "Match over struct - TypeRef::Tuple + Pattern::StructTuple");
-                    )
-                )
-                m_field_path.pop_back();
-                ),
-            (Named,
-                TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
-                ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
-                (Any,
-                    m_field_path.push_back(0);
-                    for(const auto& fld : sd)
-                    {
-                        ::HIR::TypeRef  tmp;
-                        const auto& sty_mono = (monomorphise_type_needed(fld.second.ent) ? tmp = monomorph(fld.second.ent) : fld.second.ent);
-                        this->append_from(sp, pat, sty_mono);
-                        m_field_path.back() ++;
-                    }
-                    m_field_path.pop_back();
-                    ),
-                (Struct,
-                    m_field_path.push_back(0);
-                    // NOTE: Sort field patterns to ensure that patterns are in order between arms
-                    for(const auto& fld : sd)
-                    {
-                        ::HIR::TypeRef  tmp;
-                        const auto& sty_mono = (monomorphise_type_needed(fld.second.ent) ? tmp = monomorph(fld.second.ent) : fld.second.ent);
-                        
-                        auto it = ::std::find_if( pe.sub_patterns.begin(), pe.sub_patterns.end(), [&](const auto& x){ return x.first == fld.first; } );
-                        if( it == pe.sub_patterns.end() )
-                        {
-                            ::HIR::Pattern  any_pat {};
-                            this->append_from(sp, any_pat, sty_mono);
-                        }
-                        else
-                        {
-                            this->append_from(sp, it->second, sty_mono);
-                        }
-                        m_field_path.back() ++;
-                    }
-                    m_field_path.pop_back();
-                    )
-                )
-                )
-            )
-            ),
-        (Enum,
-            auto monomorph = [&](const auto& ty) {
-                auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
-                this->m_resolve.expand_associated_types(sp, rv);
-                return rv;
-                };
-            TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
-            ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
-            (Any,
-                this->push_rule( PatternRule::make_Any({}) );
-                ),
-            (EnumValue,
-                this->push_rule( PatternRule::make_Variant( {pe.binding_idx, {} } ) );
-                ),
-            (EnumTuple,
-                const auto& var_def = pe.binding_ptr->m_variants.at(pe.binding_idx);
-                
-                const auto& fields_def = var_def.second.as_Tuple();
-                PatternRulesetBuilder   sub_builder { this->m_resolve };
-                sub_builder.m_field_path = m_field_path;
-                sub_builder.m_field_path.push_back(0);
-                for( unsigned int i = 0; i < pe.sub_patterns.size(); i ++ )
-                {
-                    sub_builder.m_field_path.back() = i;
-                    const auto& subpat = pe.sub_patterns[i];
-                    const auto& ty_tpl = fields_def[i].ent;
-                    
-                    ::HIR::TypeRef  tmp;
-                    const auto& subty = (monomorphise_type_needed(ty_tpl) ? tmp = monomorph(ty_tpl) : ty_tpl);
-                    
-                    sub_builder.append_from( sp, subpat, subty );
-                }
-                this->push_rule( PatternRule::make_Variant({ pe.binding_idx, mv$(sub_builder.m_rules) }) );
-                ),
-            (EnumStruct,
-                const auto& var_def = pe.binding_ptr->m_variants.at(pe.binding_idx);
-                const auto& fields_def = var_def.second.as_Struct();
-                // 1. Create a vector of pattern indexes for each field in the variant.
-                ::std::vector<unsigned int> tmp;
-                tmp.resize( fields_def.size(), ~0u );
-                for( unsigned int i = 0; i < pe.sub_patterns.size(); i ++ )
-                {
-                    const auto& fld_pat = pe.sub_patterns[i];
-                    unsigned idx = ::std::find_if( fields_def.begin(), fields_def.end(), [&](const auto& x){ return x.first == fld_pat.first; } ) - fields_def.begin();
-                    assert(idx < tmp.size());
-                    assert(tmp[idx] == ~0u);
-                    tmp[idx] = i;
-                }
-                // 2. Iterate this list and recurse on the patterns
-                PatternRulesetBuilder   sub_builder { this->m_resolve };
-                sub_builder.m_field_path = m_field_path;
-                sub_builder.m_field_path.push_back(0);
-                for( unsigned int i = 0; i < tmp.size(); i ++ )
-                {
-                    sub_builder.m_field_path.back() = i;
-                    
-                    auto subty = monomorph(fields_def[i].second.ent);
-                    if( tmp[i] == ~0u ) {
-                        sub_builder.append_from( sp, ::HIR::Pattern(), subty );
-                    }
-                    else {
-                        const auto& subpat = pe.sub_patterns[ tmp[i] ].second;
-                        sub_builder.append_from( sp, subpat, subty );
-                    }
-                }
-                this->push_rule( PatternRule::make_Variant({ pe.binding_idx, mv$(sub_builder.m_rules) }) );
-                )
-            )
-            )
-        )
-        ),
-    (Generic,
-        // Generics don't destructure, so the only valid pattern is `_`
-        TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
-        ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
-        (Any,
-            this->push_rule( PatternRule::make_Any({}) );
-            )
-        )
-        ),
-    (TraitObject,
-        if( pat.m_data.is_Any() ) {
-        }
-        else {
-            ERROR(sp, E0000, "Attempting to match over a trait object");
-        }
-        ),
-    (Array,
-        // Sequential match just like tuples.
-        m_field_path.push_back(0);
-        TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
-        ( BUG(sp, "Matching array with invalid pattern - " << pat); ),
-        (Any,
-            for(unsigned int i = 0; i < e.size_val; i ++) {
-                this->append_from(sp, pat, *e.inner);
-                m_field_path.back() ++;
-            }
-            ),
-        (Slice,
-            assert(e.size_val == pe.sub_patterns.size());
-            for(unsigned int i = 0; i < e.size_val; i ++) {
-                this->append_from(sp, pe.sub_patterns[i], *e.inner);
-                m_field_path.back() ++;
-            }
-            ),
-        (SplitSlice,
-            TODO(sp, "Match over array with SplitSlice pattern - " << pat);
-            )
-        )
-        m_field_path.pop_back();
-        ),
-    (Slice,
-        TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
-        (
-            BUG(sp, "Matching over [T] with invalid pattern - " << pat);
-            ),
-        (Any,
-            // Value, don't add anything
-            ),
-        (Slice,
-            // Sub-patterns
-            PatternRulesetBuilder   sub_builder { this->m_resolve };
-            sub_builder.m_field_path = m_field_path;
-            sub_builder.m_field_path.push_back(0);
-            for(const auto& subpat : pe.sub_patterns)
-            {
-                sub_builder.append_from( sp, subpat, *e.inner );
-                sub_builder.m_field_path.back() ++;
-            }
-            
-            // Encodes length check and sub-pattern rules
-            this->push_rule( PatternRule::make_Slice({ static_cast<unsigned int>(pe.sub_patterns.size()), mv$(sub_builder.m_rules) }) );
-            ),
-        (SplitSlice,
-            // 1. Length minimum check
-            // 2. Sub-patterns (handling trailing)
-            TODO(sp, "Match [T] with SplitSlice - " << pat);
-            )
-        )
-        ),
-    (Borrow,
-        TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
-        ( BUG(sp, "Matching borrow invalid pattern - " << pat); ),
-        (Any,
-            m_field_path.push_back( FIELD_DEREF );
-            this->append_from( sp, pat, *e.inner );
-            m_field_path.pop_back();
-            ),
-        (Ref,
-            m_field_path.push_back( FIELD_DEREF );
-            this->append_from( sp, *pe.sub, *e.inner );
-            m_field_path.pop_back();
-            ),
-        (Value,
-            // TODO: Check type?
-            if( pe.val.is_String() ) {
-                const auto& s = pe.val.as_String();
-                this->push_rule( PatternRule::make_Value(s) );
-            }
-            else if( pe.val.is_ByteString() ) {
-                const auto& s = pe.val.as_ByteString().v;
-                ::std::vector<uint8_t>  data;
-                data.reserve(s.size());
-                for(auto c : s)
-                    data.push_back(c);
-                
-                this->push_rule( PatternRule::make_Value( mv$(data) ) );
-            }
-            // TODO: Handle named values
-            else {
-                BUG(sp, "Matching borrow invalid pattern - " << pat);
-            }
-            )
-        )
-        ),
-    (Pointer,
-        if( pat.m_data.is_Any() ) {
-        }
-        else {
-            ERROR(sp, E0000, "Attempting to match over a pointer");
-        }
-        ),
-    (Function,
-        if( pat.m_data.is_Any() ) {
-        }
-        else {
-            ERROR(sp, E0000, "Attempting to match over a functon pointer");
-        }
-        ),
-    (Closure,
-        if( pat.m_data.is_Any() ) {
-        }
-        else {
-            ERROR(sp, E0000, "Attempting to match over a closure");
-        }
-        )
-    )
-}
-
-
 // ----------------------------
 // DecisionTreeNode
 // ----------------------------
@@ -1729,8 +1732,8 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
         }),
     (Slice,
         //auto& be = GET_BRANCHES(m_branches, Slice);
-        // TODO: How to encode slice patterns in the DT?
-        // - SplitSlice throws a spanner in the works, and means that using the length isn't feasable
+        // TODO: How to encode slice patterns in the DT? Length check then sub-patterns.
+        // - SplitSlice throws a spanner in the works, and means that using the length isn't feasable in the long run
         TODO(sp, "Slice rules - " << rule);
         ),
     (Bool,
