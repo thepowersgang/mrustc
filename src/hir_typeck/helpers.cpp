@@ -1799,7 +1799,7 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
         t_cb_trait_impl callback
     ) const
 {
-    TRACE_FUNCTION_F(des << " from " << trait_path << pp);
+    TRACE_FUNCTION_F(des << des_params << " from " << trait_path << pp);
     if( pp.m_types.size() != trait_ptr.m_params.m_types.size() ) {
         BUG(sp, "Incorrect number of parameters for trait");
     }
@@ -1819,8 +1819,12 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
 
         DEBUG(pt << " => " << pt_mono);
         if( pt.m_path.m_path == des ) {
-            // TODO: What if there's two bounds of the same trait with different params?
-            callback( target_type, pt_mono.m_path.m_params, pt_mono.m_type_bounds );
+            // NOTE: Doesn't quite work...
+            //auto cmp = this->compare_pp(sp, pt_mono.m_path.m_params, des_params);
+            //if( cmp != ::HIR::Compare::Unequal )
+            //{
+                callback( target_type, pt_mono.m_path.m_params, pt_mono.m_type_bounds );
+            //}
             return true;
         }
         
