@@ -9,6 +9,7 @@
 #include <hir/path.hpp>
 
 bool monomorphise_type_needed(const ::HIR::TypeRef& tpl);
+::HIR::TypeRef monomorphise_type_with_inner(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer);
 
 bool monomorphise_pathparams_needed(const ::HIR::PathParams& tpl)
 {
@@ -110,7 +111,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
 {
     ::HIR::PathParams   rv;
     for( const auto& ty : tpl.m_types) 
-        rv.m_types.push_back( monomorphise_type_with(sp, ty, callback, allow_infer) );
+        rv.m_types.push_back( monomorphise_type_with_inner(sp, ty, callback, allow_infer) );
     return rv;
 }
 ::HIR::GenericPath monomorphise_genericpath_with(const Span& sp, const ::HIR::GenericPath& tpl, t_cb_generic callback, bool allow_infer)
@@ -127,14 +128,13 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         };
     
     for(const auto& assoc : tpl.m_type_bounds)
-        rv.m_type_bounds.insert(::std::make_pair( assoc.first, monomorphise_type_with(sp, assoc.second, callback, allow_infer) ));
+        rv.m_type_bounds.insert(::std::make_pair( assoc.first, monomorphise_type_with_inner(sp, assoc.second, callback, allow_infer) ));
     
     return rv;
 }
-::HIR::TypeRef monomorphise_type_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer)
+::HIR::TypeRef monomorphise_type_with_inner(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer)
 {
     ::HIR::TypeRef  rv;
-    TRACE_FUNCTION_FR("tpl = " << tpl, rv);
     TU_MATCH(::HIR::TypeRef::Data, (tpl.m_data), (e),
     (Infer,
         if( allow_infer ) {
@@ -160,7 +160,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
             ),
         (UfcsKnown,
             rv = ::HIR::TypeRef( ::HIR::Path::Data::make_UfcsKnown({
-                box$( monomorphise_type_with(sp, *e2.type, callback, allow_infer) ),
+                box$( monomorphise_type_with_inner(sp, *e2.type, callback, allow_infer) ),
                 monomorphise_genericpath_with(sp, e2.trait, callback, allow_infer),
                 e2.item,
                 monomorphise_path_params_with(sp, e2.params, callback, allow_infer)
@@ -168,7 +168,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
             ),
         (UfcsUnknown,
             rv = ::HIR::TypeRef( ::HIR::Path::Data::make_UfcsUnknown({
-                box$( monomorphise_type_with(sp, *e2.type, callback, allow_infer) ),
+                box$( monomorphise_type_with_inner(sp, *e2.type, callback, allow_infer) ),
                 e2.item,
                 monomorphise_path_params_with(sp, e2.params, callback, allow_infer)
                 }) );
@@ -180,6 +180,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         ),
     (Generic,
         rv = callback(tpl).clone();
+        DEBUG(tpl << " => " << rv);
         ),
     (TraitObject,
         ::HIR::TypeRef::Data::Data_TraitObject  to;
@@ -196,45 +197,52 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
             BUG(sp, "Attempting to clone array with unknown size - " << tpl);
         }
         rv = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Array({
-            box$( monomorphise_type_with(sp, *e.inner, callback) ),
+            box$( monomorphise_type_with_inner(sp, *e.inner, callback, allow_infer) ),
             ::HIR::ExprPtr(),
             e.size_val
             }) );
         ),
     (Slice,
-        rv = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Slice({ box$(monomorphise_type_with(sp, *e.inner, callback)) }) );
+        rv = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Slice({ box$(monomorphise_type_with_inner(sp, *e.inner, callback, allow_infer)) }) );
         ),
     (Tuple,
         ::std::vector< ::HIR::TypeRef>  types;
         for(const auto& ty : e) {
-            types.push_back( monomorphise_type_with(sp, ty, callback) );
+            types.push_back( monomorphise_type_with_inner(sp, ty, callback, allow_infer) );
         }
         rv = ::HIR::TypeRef( mv$(types) );
         ),
     (Borrow,
-        rv = ::HIR::TypeRef::new_borrow(e.type, monomorphise_type_with(sp, *e.inner, callback));
+        rv = ::HIR::TypeRef::new_borrow(e.type, monomorphise_type_with_inner(sp, *e.inner, callback, allow_infer));
         ),
     (Pointer,
-        rv = ::HIR::TypeRef::new_pointer(e.type, monomorphise_type_with(sp, *e.inner, callback));
+        rv = ::HIR::TypeRef::new_pointer(e.type, monomorphise_type_with_inner(sp, *e.inner, callback, allow_infer));
         ),
     (Function,
         ::HIR::FunctionType ft;
         ft.is_unsafe = e.is_unsafe;
         ft.m_abi = e.m_abi;
-        ft.m_rettype = box$( monomorphise_type_with(sp, *e.m_rettype, callback) );
+        ft.m_rettype = box$( monomorphise_type_with_inner(sp, *e.m_rettype, callback, allow_infer) );
         for( const auto& arg : e.m_arg_types )
-            ft.m_arg_types.push_back( monomorphise_type_with(sp, arg, callback) );
+            ft.m_arg_types.push_back( monomorphise_type_with_inner(sp, arg, callback, allow_infer) );
         rv = ::HIR::TypeRef( mv$(ft) );
         ),
     (Closure,
         ::HIR::TypeRef::Data::Data_Closure  oe;
         oe.node = e.node;
-        oe.m_rettype = box$( monomorphise_type_with(sp, *e.m_rettype, callback) );
+        oe.m_rettype = box$( monomorphise_type_with_inner(sp, *e.m_rettype, callback, allow_infer) );
         for(const auto& a : e.m_arg_types)
-            oe.m_arg_types.push_back( monomorphise_type_with(sp, a, callback) );
+            oe.m_arg_types.push_back( monomorphise_type_with_inner(sp, a, callback, allow_infer) );
         rv = ::HIR::TypeRef(::HIR::TypeRef::Data::make_Closure( mv$(oe) ));
         )
     )
+    return rv;
+}
+::HIR::TypeRef monomorphise_type_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer)
+{
+    ::HIR::TypeRef  rv;
+    TRACE_FUNCTION_FR("tpl = " << tpl, rv);
+    rv = monomorphise_type_with_inner(sp, tpl, callback, allow_infer);
     return rv;
 }
 
