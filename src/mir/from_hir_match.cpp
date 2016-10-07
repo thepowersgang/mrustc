@@ -259,7 +259,11 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
             auto next_pattern_bb = (!is_last_pat ? builder.new_bb_unlinked() : next_arm_bb);
             
             // 1. Check
-            MIR_LowerHIR_Match_Simple__GeneratePattern(builder, arm.m_code->span(), pat_rule.m_rules.data(), pat_rule.m_rules.size(), node.m_value->m_res_type, match_val, next_pattern_bb);
+            // - If the ruleset is empty, this is a _ arm over a value
+            if( pat_rule.m_rules.size() > 0 )
+            {
+                MIR_LowerHIR_Match_Simple__GeneratePattern(builder, arm.m_code->span(), pat_rule.m_rules.data(), pat_rule.m_rules.size(), node.m_value->m_res_type, match_val, next_pattern_bb);
+            }
             builder.end_block( ::MIR::Terminator::make_Goto(arm_code.destructures[i]) );
             builder.set_cur_block( arm_code.destructures[i] );
             
@@ -577,7 +581,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
         ),
     (Slice,
         if( !rule.is_Any() ) {
-            TODO(sp, "Match over Slice");
+            TODO(sp, "Match over Slice - " << rule);
         }
         return 1;
         ),
@@ -602,6 +606,30 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
         return 1;
         ),
     (Borrow,
+        if( rule.is_Value() ) {
+            const auto& v = rule.as_Value();
+            if( v.is_StaticString() || v.is_Bytes() )
+            {
+                ::MIR::Constant cloned_val;
+                if( v.is_StaticString() ) {
+                    ASSERT_BUG(sp, *te.inner == ::HIR::TypeRef(::HIR::CoreType::Str), "StaticString pattern on non &str");
+                    cloned_val = ::MIR::Constant( v.as_StaticString() );
+                }
+                else {
+                    ASSERT_BUG(sp, *te.inner == ::HIR::TypeRef::new_slice(::HIR::CoreType::U8), "Bytes pattern on non-&[u8]");
+                    cloned_val = ::MIR::Constant( v.as_Bytes() );
+                }
+                
+                auto succ_bb = builder.new_bb_unlinked();
+                
+                auto test_lval = builder.lvalue_or_temp(sp, *te.inner, ::MIR::RValue(mv$(cloned_val)));
+                auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
+                builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
+                builder.set_cur_block(succ_bb);
+                return 1;
+            }
+        }
+        
         if( !rule.is_Any() ) {
             return MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp, rules, num_rules, *te.inner, match_val, fail_bb);
         }
@@ -1361,25 +1389,32 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         }
         ),
     (Borrow,
-        m_field_path.push_back( FIELD_DEREF );
         TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
         ( BUG(sp, "Matching borrow invalid pattern - " << pat); ),
         (Any,
+            m_field_path.push_back( FIELD_DEREF );
             this->append_from( sp, pat, *e.inner );
+            m_field_path.pop_back();
             ),
         (Ref,
+            m_field_path.push_back( FIELD_DEREF );
             this->append_from( sp, *pe.sub, *e.inner );
+            m_field_path.pop_back();
             ),
         (Slice,
-            if( e.inner->m_data.is_Slice() )
-            {
+            if( e.inner->m_data.is_Slice() ) {
                 TODO(sp, "Match &[T] with Slice - " << pat);
+            }
+            else {
+                BUG(sp, "Matching borrow invalid pattern - " << pat);
             }
             ),
         (SplitSlice,
-            if( e.inner->m_data.is_Slice() )
-            {
+            if( e.inner->m_data.is_Slice() ) {
                 TODO(sp, "Match &[T] with SplitSlice - " << pat);
+            }
+            else {
+                BUG(sp, "Matching borrow invalid pattern - " << pat);
             }
             ),
         (Value,
@@ -1388,12 +1423,20 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 const auto& s = pe.val.as_String();
                 this->push_rule( PatternRule::make_Value(s) );
             }
+            else if( pe.val.is_ByteString() ) {
+                const auto& s = pe.val.as_ByteString().v;
+                ::std::vector<uint8_t>  data;
+                data.reserve(s.size());
+                for(auto c : s)
+                    data.push_back(c);
+                
+                this->push_rule( PatternRule::make_Value( mv$(data) ) );
+            }
             else {
                 BUG(sp, "Matching borrow invalid pattern - " << pat);
             }
             )
         )
-        m_field_path.pop_back();
         ),
     (Pointer,
         if( pat.m_data.is_Any() ) {

@@ -24,7 +24,12 @@ namespace MIR {
             os << (e ? "true" : "false");
             ),
         (Bytes,
-            os << "[" << e << "]";
+            os << "[";
+            os << ::std::hex;
+            for(auto v : e)
+                os << static_cast<unsigned int>(v) << " ";
+            os << ::std::dec;
+            os << "]";
             ),
         (StaticString,
             os << "\"" << e << "\"";
