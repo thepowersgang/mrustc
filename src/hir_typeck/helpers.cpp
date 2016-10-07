@@ -1535,6 +1535,33 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 return ;
             }
         }
+        
+        // - Check if the desired trait is a supertrait of this.
+        // NOTE: `params` (aka des_params) is not used (TODO)
+        bool is_supertrait = this->find_named_trait_in_trait(sp, pe.trait.m_path,pe.trait.m_params, *te.m_trait.m_trait_ptr, data_trait.m_path,data_trait.m_params, *pe.type,
+            [&](const auto& i_ty, const auto& i_params, const auto& i_assoc) {
+                // The above is just the monomorphised params and associated set. Comparison is still needed.
+                auto cmp = this->compare_pp(sp, i_params, pe.trait.m_params);
+                if( cmp != ::HIR::Compare::Unequal ) {
+                    auto it = i_assoc.find( pe.item );
+                    if( it != i_assoc.end() ) {
+                        input = it->second.clone();
+                        return true;
+                    }
+                    // NOTE: (currently) there can only be one trait with this name, so if we found this trait and the item is present - good.
+                    it = te.m_trait.m_type_bounds.find( pe.item );
+                    if( it != te.m_trait.m_type_bounds.end() ) {
+                        input = it->second.clone();
+                        return true;
+                    }
+                    return false;
+                }
+                return false;
+            });
+        if( is_supertrait )
+        {
+            return ;
+        }
     )
     
     // 1. Bounds
