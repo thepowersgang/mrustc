@@ -1256,6 +1256,45 @@ bool TraitResolution::find_trait_impls(const Span& sp,
         }
     )
     
+    // If this type is an opaque UfcsKnown - check bounds
+    TU_IFLET(::HIR::TypeRef::Data, type.m_data, Path, e,
+        if( e.binding.is_Opaque() )
+        {
+            ASSERT_BUG(sp, e.path.m_data.is_UfcsKnown(), "Opaque bound type wasn't UfcsKnown - " << type);
+            const auto& pe = e.path.m_data.as_UfcsKnown();
+            
+            // If this associated type has a bound of the desired trait, return it.
+            const auto& trait_ref = m_crate.get_trait_by_path(sp, pe.trait.m_path);
+            ASSERT_BUG(sp, trait_ref.m_types.count( pe.item ) != 0, "Trait " << pe.trait.m_path << " doesn't contain an associated type " << pe.item);
+            const auto& aty_def = trait_ref.m_types.find(pe.item)->second;
+            
+            for(const auto& bound : aty_def.m_trait_bounds)
+            {
+                if( bound.m_path.m_path == trait )
+                {
+                    auto cmp = ::HIR::Compare::Equal;
+                    if( monomorphise_pathparams_needed(bound.m_path.m_params) )
+                    {
+                        auto monomorph_cb = monomorphise_type_get_cb(sp, &*pe.type, &pe.trait.m_params, nullptr, nullptr);
+                        auto b_params_mono = monomorphise_path_params_with(sp, bound.m_path.m_params, monomorph_cb, false);
+                        cmp = this->compare_pp(sp, b_params_mono, params);
+                        
+                        // TODO: bound.m_type_bounds
+                        //if( callback( ImplRef(&type, mv$(b_params_mono), {}), cmp ) )
+                        if( callback( ImplRef(type.clone(), mv$(b_params_mono), {}), cmp ) )
+                            return true;
+                    }
+                    else
+                    {
+                        // TODO: bound.m_type_bounds
+                        if( callback( ImplRef(&type, &bound.m_path.m_params, &null_assoc), cmp ) )
+                            return true;
+                    }
+                }
+            }
+        }
+    )
+    
     // 1. Search generic params
     if( find_trait_impls_bound(sp, trait, params, type, callback) )
         return true;
@@ -1714,6 +1753,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     DEBUG("Searching for impl");
     bool    can_fuzz = true;
     unsigned int    count = 0;
+    bool is_specialisable = false;
     ImplRef best_impl;
     rv = this->find_trait_impls_crate(sp, trait_path.m_path, trait_path.m_params, *pe.type, [&](auto impl, auto qual) {
         DEBUG("[expand_associated_types__UfcsKnown] Found " << impl << " qual=" << qual);
@@ -1739,6 +1779,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             if( impl.type_is_specialisable(pe.item.c_str()) ) {
                 // Check if this is more specific
                 if( impl.more_specific_than( best_impl ) ) {
+                    is_specialisable = true;
                     best_impl = mv$(impl);
                 }
                 return false;
@@ -1758,6 +1799,10 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     if( !rv && best_impl.is_valid() ) {
         if( can_fuzz && count > 1 ) {
             // Fuzzy match with multiple choices - can't know yet
+        }
+        else if( is_specialisable ) {
+            e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+            return ;
         }
         else {
             auto ty = best_impl.get_type( pe.item.c_str() );

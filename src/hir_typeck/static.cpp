@@ -735,6 +735,7 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
         this->expand_associated_types(sp, input);
         return;
     }
+    /*
     if( best_impl.is_valid() ) {
         auto nt = best_impl.get_type( e2.item.c_str() );
         DEBUG("Converted UfcsKnown (best specialisation) - " << e.path << " = " << nt);
@@ -743,6 +744,7 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
         this->expand_associated_types(sp, input);
         return;
     }
+    */
     
     // If the type is a generic or an opaque associated, we can't know.
     // - If the trait contains any of the above, it's unknowable

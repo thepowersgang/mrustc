@@ -28,4 +28,36 @@ extern ::HIR::TraitPath monomorphise_traitpath_with(const Span& sp, const ::HIR:
 extern ::HIR::TypeRef monomorphise_type_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer=true);
 extern ::HIR::TypeRef monomorphise_type(const Span& sp, const ::HIR::GenericParams& params_def, const ::HIR::PathParams& params,  const ::HIR::TypeRef& tpl);
 
+static inline t_cb_generic monomorphise_type_get_cb(const Span& sp, const ::HIR::TypeRef* self_ty, const ::HIR::PathParams* params_i, const ::HIR::PathParams* params_m, const ::HIR::PathParams* params_p=nullptr)
+{
+    return [=](const auto& gt)->const auto& {
+        const auto& ge = gt.m_data.as_Generic();
+        if( ge.binding == 0xFFFF ) {
+            ASSERT_BUG(sp, self_ty, "Self wasn't expected here");
+            return *self_ty;
+        }
+        else if( (ge.binding >> 8) == 0 ) {
+            auto idx = ge.binding & 0xFF;
+            ASSERT_BUG(sp, params_i, "Impl-level params were not expected - " << gt);
+            ASSERT_BUG(sp, idx < params_i->m_types.size(), "Parameter out of range " << gt << " >= " << params_i->m_types.size());
+            return params_i->m_types[idx];
+        }
+        else if( (ge.binding >> 8) == 1 ) {
+            auto idx = ge.binding & 0xFF;
+            ASSERT_BUG(sp, params_m, "Method-level params were not expected - " << gt);
+            ASSERT_BUG(sp, idx < params_m->m_types.size(), "Parameter out of range " << gt << " >= " << params_m->m_types.size());
+            return params_m->m_types[idx];
+        }
+        else if( (ge.binding >> 8) == 2 ) {
+            auto idx = ge.binding & 0xFF;
+            ASSERT_BUG(sp, params_p, "Placeholder params were not expected - " << gt);
+            ASSERT_BUG(sp, idx < params_p->m_types.size(), "Parameter out of range " << gt << " >= " << params_p->m_types.size());
+            return params_p->m_types[idx];
+        }
+        else {
+            BUG(sp, "Invalid generic type - " << gt);
+        }
+        };
+}
+
 extern void check_type_class_primitive(const Span& sp, const ::HIR::TypeRef& type, ::HIR::InferClass ic, ::HIR::CoreType ct);

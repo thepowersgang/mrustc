@@ -456,6 +456,25 @@ namespace {
             assert(fields_ptr);
             const ::HIR::t_struct_fields& fields = *fields_ptr;
             
+            #if 1
+            const auto& ty_params = node.m_path.m_params.m_types;
+            auto monomorph_cb = [&](const auto& gt)->const auto& {
+                const auto& ge = gt.m_data.as_Generic();
+                if( ge.binding == 0xFFFF ) {
+                    return ty;
+                }
+                else if( ge.binding < 256 ) {
+                    if( ge.binding >= ty_params.size() ) {
+                        BUG(node.span(), "Type parameter index out of range (#" << ge.binding << " " << ge.name << ")");
+                    }
+                    return ty_params[ge.binding];
+                }
+                else {
+                    BUG(node.span(), "Method-level parameter on struct (#" << ge.binding << " " << ge.name << ")");
+                }
+                };
+            #endif
+            
             // Bind fields with type params (coercable)
             for( auto& val : node.m_values)
             {
@@ -466,11 +485,13 @@ namespace {
                 auto& des_ty_cache = node.m_value_types[it - fields.begin()];
                 const auto* des_ty = &des_ty_r;
                 
-                DEBUG(name << " : " << des_ty_r);
                 if( monomorphise_type_needed(des_ty_r) ) {
                     assert( des_ty_cache != ::HIR::TypeRef() );
+                    des_ty_cache = monomorphise_type_with(node.span(), des_ty_r, monomorph_cb);
+                    m_resolve.expand_associated_types(node.span(), des_ty_cache);
                     des_ty = &des_ty_cache;
                 }
+                DEBUG("." << name << " : " << *des_ty);
                 check_types_equal(*des_ty, val.second);
             }
             
