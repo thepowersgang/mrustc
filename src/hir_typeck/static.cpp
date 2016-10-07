@@ -390,6 +390,7 @@ bool StaticTraitResolve::find_impl__check_crate(
         (TraitBound,
             DEBUG("[find_impl] Trait bound " << e.type << " : " << e.trait);
             auto b_ty_mono = monomorphise_type_with(sp, e.type, cb_monomorph);
+            this->expand_associated_types(sp, b_ty_mono);
             auto b_tp_mono = monomorphise_traitpath_with(sp, e.trait, cb_monomorph, false);
             for(auto& ty : b_tp_mono.m_path.m_params.m_types) {
                 this->expand_associated_types(sp, ty);
@@ -466,7 +467,9 @@ void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef&
     TRACE_FUNCTION_F(input);
     TU_MATCH(::HIR::TypeRef::Data, (input.m_data), (e),
     (Infer,
-        BUG(sp, "Encountered inferrence variable in static context");
+        //if( m_treat_ivars_as_bugs ) {
+        //    BUG(sp, "Encountered inferrence variable in static context");
+        //}
         ),
     (Diverge,
         ),
