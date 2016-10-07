@@ -494,6 +494,9 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     
                     for(unsigned int i = 0; i < ve.size(); i ++)
                     {
+                        if( subrule_count == 0 )
+                            break ;
+                        
                         ::HIR::TypeRef  ent_ty_tmp;
                         const auto& ent_ty = (monomorphise_type_needed(ve[i].ent) ? ent_ty_tmp = monomorph(ve[i].ent) : ve[i].ent);
                         unsigned int cnt = MIR_LowerHIR_Match_Simple__GeneratePattern(
@@ -513,6 +516,9 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     
                     for(unsigned int i = 0; i < ve.size(); i ++)
                     {
+                        if( subrule_count == 0 )
+                            break ;
+                        
                         const auto& tpl_ty = ve[i].second.ent;
                         ::HIR::TypeRef  ent_ty_tmp;
                         const auto& ent_ty = (monomorphise_type_needed(tpl_ty) ? ent_ty_tmp = monomorph(tpl_ty) : tpl_ty);
@@ -1334,6 +1340,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
     (Slice,
         // TODO: Slice patterns, sequential comparison/sub-match
         if( pat.m_data.is_Any() ) {
+            // Value, don't add anything
         }
         else {
             BUG(sp, "Hit match over `[T]` - must be `&[T]`");
