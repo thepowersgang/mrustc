@@ -1144,10 +1144,10 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
                 (Any,
                     // Nothing.
-                    this->push_rule( PatternRule::make_Any({}) );
+                    //this->push_rule( PatternRule::make_Any({}) );
                     ),
                 (Value,
-                    TODO(sp, "Match over struct - Unit + Value");
+                    //TODO(sp, "Match over struct - Unit + Value");
                     )
                 )
                 ),
@@ -1186,7 +1186,26 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                     m_field_path.pop_back();
                     ),
                 (Struct,
-                    TODO(sp, "Match over struct - Named + Struct");
+                    m_field_path.push_back(0);
+                    // NOTE: Sort field patterns to ensure that patterns are in order between arms
+                    for(const auto& fld : sd)
+                    {
+                        ::HIR::TypeRef  tmp;
+                        const auto& sty_mono = (monomorphise_type_needed(fld.second.ent) ? tmp = monomorph(fld.second.ent) : fld.second.ent);
+                        
+                        auto it = ::std::find_if( pe.sub_patterns.begin(), pe.sub_patterns.end(), [&](const auto& x){ return x.first == fld.first; } );
+                        if( it == pe.sub_patterns.end() )
+                        {
+                            ::HIR::Pattern  any_pat {};
+                            this->append_from(sp, any_pat, sty_mono);
+                        }
+                        else
+                        {
+                            this->append_from(sp, it->second, sty_mono);
+                        }
+                        m_field_path.back() ++;
+                    }
+                    m_field_path.pop_back();
                     )
                 )
                 )
