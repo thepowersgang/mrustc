@@ -684,6 +684,12 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
             (
                 BUG(sp, "Field access on unexpected type - " << ty);
                 ),
+            (Array,
+                cb( *te.inner );
+                ),
+            (Slice,
+                cb( *te.inner );
+                ),
             (Path,
                 ASSERT_BUG(sp, te.binding.is_Struct(), "Field on non-Struct - " << ty);
                 const auto& str = *te.binding.as_Struct();

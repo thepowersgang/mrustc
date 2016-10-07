@@ -107,10 +107,23 @@ namespace {
                 }
                 ),
             (Slice,
-                TODO(sp, "Destructure using " << pat);
+                for(const auto& subpat : e.sub_patterns)
+                {
+                    define_vars_from(sp, subpat);
+                }
                 ),
             (SplitSlice,
-                TODO(sp, "Destructure using " << pat);
+                for(const auto& subpat : e.leading)
+                {
+                    define_vars_from(sp, subpat);
+                }
+                if( e.extra_bind.is_valid() ) {
+                    m_builder.define_variable( e.extra_bind.m_slot );
+                }
+                for(const auto& subpat : e.trailing)
+                {
+                    define_vars_from(sp, subpat);
+                }
                 )
             )
         }
@@ -155,7 +168,7 @@ namespace {
             (Any,
                 ),
             (Box,
-                TODO(sp, "Destructure using " << pat);
+                TODO(sp, "Destructure using Box - " << pat);
                 ),
             (Ref,
                 destructure_from_ex(sp, *e.sub, ::MIR::LValue::make_Deref({ box$( mv$(lval) ) }), allow_refutable);
@@ -217,12 +230,52 @@ namespace {
                 }
                 ),
             (Slice,
-                ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
-                TODO(sp, "Destructure using " << pat);
+                // These are only refutable if T is [T]
+                bool ty_is_array = false;
+                m_builder.with_val_type(sp, lval, [&ty_is_array](const auto& ty){
+                    ty_is_array = ty.m_data.is_Array();
+                    });
+                if( ty_is_array )
+                {
+                    // TODO: Assert array size
+                    for(unsigned int i = 0; i < e.sub_patterns.size(); i ++)
+                    {
+                        const auto& subpat = e.sub_patterns[i];
+                        destructure_from_ex(sp, subpat, ::MIR::LValue::make_Field({ box$(lval.clone()), i }), allow_refutable );
+                    }
+                }
+                else
+                {
+                    ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
+                    TODO(sp, "Destructure slice using " << pat);
+                }
                 ),
             (SplitSlice,
-                ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
-                TODO(sp, "Destructure using " << pat);
+                // These are only refutable if T is [T]
+                bool ty_is_array = false;
+                m_builder.with_val_type(sp, lval, [&ty_is_array](const auto& ty){
+                    ty_is_array = ty.m_data.is_Array();
+                    });
+                if( ty_is_array )
+                {
+                    // TODO: Assert array size
+                    //for(unsigned int i = 0; i < e.leading.size(); i ++)
+                    //{
+                    //    auto idx = 0 + i;
+                    //    destructure_from_ex(sp, e.leading[i], ::MIR::LValue::make_Index({ box$( lval.clone() ), box$(lval_idx) }), allow_refutable );
+                    //}
+                    //for(unsigned int i = 0; i < e.trailing.size(); i ++)
+                    //{
+                    //    auto idx = 0 + i;
+                    //    destructure_from_ex(sp, e.leading[i], ::MIR::LValue::make_Index({ box$( lval.clone() ), box$(lval_idx) }), allow_refutable );
+                    //}
+                    TODO(sp, "Destructure array using SplitSlice - " << pat);
+                }
+                else
+                {
+                    ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
+                    TODO(sp, "Destructure slice using SplitSlice - " << pat);
+                }
                 )
             )
         }

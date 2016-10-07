@@ -33,6 +33,7 @@ TAGGED_UNION_EX(LValue, (), Variable, (
     // Function return
     (Return, struct{}),
     // Field access (tuple, struct, tuple struct, enum field, ...)
+    // NOTE: Also used to index an array/slice by a compile-time known index (e.g. in destructuring)
     (Field, struct {
         ::std::unique_ptr<LValue>   val;
         unsigned int    field_index;
@@ -42,6 +43,7 @@ TAGGED_UNION_EX(LValue, (), Variable, (
         ::std::unique_ptr<LValue>   val;
         }),
     // Index an array or slice (typeof(val) == [T; n] or [T])
+    // NOTE: This is not bounds checked!
     (Index, struct {
         ::std::unique_ptr<LValue>   val;
         ::std::unique_ptr<LValue>   idx;

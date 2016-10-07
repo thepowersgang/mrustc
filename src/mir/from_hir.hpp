@@ -186,6 +186,7 @@ private:
     void drop_scope_values(const ScopeDef& sd);
     void complete_scope(ScopeDef& sd);
     
+public:
     void with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::function<void(const ::HIR::TypeRef&)> cb);
     bool lvalue_is_copy(const Span& sp, const ::MIR::LValue& lv);
 };
