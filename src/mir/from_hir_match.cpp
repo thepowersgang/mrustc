@@ -1488,6 +1488,27 @@ namespace
         }
         and_then(it->second);
     }
+    
+    template<typename T>
+    static void from_rule_value(
+        const Span& sp,
+        ::std::vector< ::std::pair< DecisionTreeNode::Range<T>, DecisionTreeNode::Branch> >& be, T ve,
+        const char* name, const PatternRule::field_path_t& field_path, ::std::function<void(DecisionTreeNode::Branch&)> and_then
+        )
+    {
+        auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.end >= ve; });
+        if( it == be.end() || it->first.start > ve ) {
+            it = be.insert( it, ::std::make_pair( DecisionTreeNode::Range<T> { ve,ve }, new_branch_subtree(field_path) ) );
+        }
+        else if( it->first.start == ve && it->first.end == ve ) {
+            // Equal, continue and add sub-pat
+        }
+        else {
+            // Collide or overlap!
+            TODO(sp, "Value patterns - " << name << " - Overlapping - " << it->first.start << " <= " << ve << " <= " << it->first.end);
+        }
+        and_then( it->second );
+    }
 }
 void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule* first_rule, unsigned int rule_count, ::std::function<void(Branch&)> and_then)
 {
@@ -1610,10 +1631,29 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
     (Value,
         TU_MATCHA( (e), (ve),
         (Int,
-            TODO(sp, "Value patterns - Int");
+            // TODO: De-duplicate this code between Uint and Float
+            if( m_branches.is_Unset() ) {
+                m_branches = Values::make_Signed({});
+            }
+            else if( !m_branches.is_Signed() ) {
+                BUG(sp, "Mismatched rules - have Signed, but have seen " << m_branches.tag_str());
+            }
+            auto& be = m_branches.as_Signed();
+            
+            from_rule_value(sp, be, ve, "Signed", rule.field_path,
+                [&](auto& branch) {
+                    if( rule_count > 1 ) {
+                        assert( branch.as_Subtree() );
+                        auto& subtree = *branch.as_Subtree();
+                        subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+                    }
+                    else
+                    {
+                        and_then(branch);
+                    }
+                });
             ),
         (Uint,
-            // TODO: De-duplicate this code between Uint and Float
             if( m_branches.is_Unset() ) {
                 m_branches = Values::make_Unsigned({});
             }
@@ -1622,28 +1662,18 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
             }
             auto& be = m_branches.as_Unsigned();
             
-            auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.end >= ve; });
-            if( it == be.end() || it->first.start > ve ) {
-                it = be.insert( it, ::std::make_pair( Range<uint64_t> { ve,ve }, new_branch_subtree(rule.field_path) ) );
-            }
-            else if( it->first.start == ve && it->first.end == ve ) {
-                // Equal, continue and add sub-pat
-            }
-            else {
-                // Collide or overlap!
-                TODO(sp, "Value patterns - Uint - Overlapping - " << it->first.start << " <= " << ve << " <= " << it->first.end);
-            }
-            auto& branch = it->second;
-            if( rule_count > 1 )
-            {
-                assert( branch.as_Subtree() );
-                auto& subtree = *branch.as_Subtree();
-                subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-            }
-            else
-            {
-                and_then(branch);
-            }
+            from_rule_value(sp, be, ve, "Unsigned", rule.field_path,
+                [&](auto& branch) {
+                    if( rule_count > 1 ) {
+                        assert( branch.as_Subtree() );
+                        auto& subtree = *branch.as_Subtree();
+                        subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+                    }
+                    else
+                    {
+                        and_then(branch);
+                    }
+                });
             ),
         (Float,
             if( m_branches.is_Unset() ) {
@@ -1654,28 +1684,17 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
             }
             auto& be = m_branches.as_Float();
             
-            auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.end >= ve; });
-            if( it == be.end() || it->first.start > ve ) {
-                it = be.insert( it, ::std::make_pair( Range<double> { ve,ve }, new_branch_subtree(rule.field_path) ) );
-            }
-            else if( it->first.start == ve && it->first.end == ve ) {
-                // Equal, continue and add sub-pat
-            }
-            else {
-                // Collide or overlap!
-                TODO(sp, "Value patterns - Float - Overlapping - " << it->first.start << " <= " << ve << " <= " << it->first.end);
-            }
-            auto& branch = it->second;
-            if( rule_count > 1 )
-            {
-                assert( branch.as_Subtree() );
-                auto& subtree = *branch.as_Subtree();
-                subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-            }
-            else
-            {
-                and_then(branch);
-            }
+            from_rule_value(sp, be, ve, "Float", rule.field_path,
+                [&](auto& branch) {
+                    if( rule_count > 1 ) {
+                        assert( branch.as_Subtree() );
+                        auto& subtree = *branch.as_Subtree();
+                        subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+                    }
+                    else {
+                        and_then(branch);
+                    }
+                });
             ),
         (Bool,
             throw "";
