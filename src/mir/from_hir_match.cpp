@@ -18,6 +18,10 @@ TAGGED_UNION_EX(PatternRule, (), Any,(
     (Any, struct {}),
     // Enum variant
     (Variant, struct { unsigned int idx; ::std::vector<PatternRule> sub_rules; }),
+    // Slice (includes desired length)
+    (Slice, struct { unsigned int len; ::std::vector<PatternRule> sub_rules; }),
+    // TODO: SplitSlice encoding - how are the tail patterns to be encoded?
+    //(SplitSlice, struct { unsigned int len; ::std::vector<PatternRule> sub_rules; }),
     // Boolean (different to Constant because of how restricted it is)
     (Bool, bool),
     // General value
@@ -953,6 +957,10 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
     (Variant,
         os << e.idx << " [" << e.sub_rules << "]";
         ),
+    // Enum variant
+    (Slice,
+        os << "len=" << e.len << " [" << e.sub_rules << "]";
+        ),
     // Boolean (different to Constant because of how restricted it is)
     (Bool,
         os << (e ? "true" : "false");
@@ -985,6 +993,19 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
     (Variant,
         if( le.idx != re.idx )
             return ::ord(le.idx, re.idx);
+        assert( le.sub_rules.size() == re.sub_rules.size() );
+        for(unsigned int i = 0; i < le.sub_rules.size(); i ++)
+        {
+            auto cmp = rule_is_before(le.sub_rules[i], re.sub_rules[i]);
+            if( cmp != ::OrdEqual )
+                return cmp;
+        }
+        return ::OrdEqual;
+        ),
+    (Slice,
+        if( le.len != re.len )
+            return ::ord(le.len, re.len);
+        // Wait? Why would the rule count be the same?
         assert( le.sub_rules.size() == re.sub_rules.size() );
         for(unsigned int i = 0; i < le.sub_rules.size(); i ++)
         {
@@ -1380,13 +1401,33 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         m_field_path.pop_back();
         ),
     (Slice,
-        // TODO: Slice patterns, sequential comparison/sub-match
-        if( pat.m_data.is_Any() ) {
+        TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
+        (
+            BUG(sp, "Matching over [T] with invalid pattern - " << pat);
+            ),
+        (Any,
             // Value, don't add anything
-        }
-        else {
-            BUG(sp, "Hit match over `[T]` - must be `&[T]`");
-        }
+            ),
+        (Slice,
+            // Sub-patterns
+            PatternRulesetBuilder   sub_builder { this->m_resolve };
+            sub_builder.m_field_path = m_field_path;
+            sub_builder.m_field_path.push_back(0);
+            for(const auto& subpat : pe.sub_patterns)
+            {
+                sub_builder.append_from( sp, subpat, *e.inner );
+                sub_builder.m_field_path.back() ++;
+            }
+            
+            // Encodes length check and sub-pattern rules
+            this->push_rule( PatternRule::make_Slice({ static_cast<unsigned int>(pe.sub_patterns.size()), mv$(sub_builder.m_rules) }) );
+            ),
+        (SplitSlice,
+            // 1. Length minimum check
+            // 2. Sub-patterns (handling trailing)
+            TODO(sp, "Match [T] with SplitSlice - " << pat);
+            )
+        )
         ),
     (Borrow,
         TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
@@ -1401,24 +1442,8 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             this->append_from( sp, *pe.sub, *e.inner );
             m_field_path.pop_back();
             ),
-        (Slice,
-            if( e.inner->m_data.is_Slice() ) {
-                TODO(sp, "Match &[T] with Slice - " << pat);
-            }
-            else {
-                BUG(sp, "Matching borrow invalid pattern - " << pat);
-            }
-            ),
-        (SplitSlice,
-            if( e.inner->m_data.is_Slice() ) {
-                TODO(sp, "Match &[T] with SplitSlice - " << pat);
-            }
-            else {
-                BUG(sp, "Matching borrow invalid pattern - " << pat);
-            }
-            ),
         (Value,
-            // TODO: Check type? Also handle named values and byte strings.
+            // TODO: Check type?
             if( pe.val.is_String() ) {
                 const auto& s = pe.val.as_String();
                 this->push_rule( PatternRule::make_Value(s) );
@@ -1432,6 +1457,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 
                 this->push_rule( PatternRule::make_Value( mv$(data) ) );
             }
+            // TODO: Handle named values
             else {
                 BUG(sp, "Matching borrow invalid pattern - " << pat);
             }
@@ -1621,6 +1647,15 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
         assert( m_field_path == rule.field_path );
     }
     
+    #define GET_BRANCHES(fld, var)  (({if( fld.is_Unset() ) {\
+            fld = Values::make_##var({}); \
+        } \
+        else if( !fld.is_##var() ) { \
+            BUG(sp, "Mismatched rules - have " #var ", but have seen " << fld.tag_str()); \
+        }}), \
+        fld.as_##var())
+
+    
     TU_MATCHA( (rule), (e),
     (Any, {
         if( m_default.is_Unset() ) {
@@ -1646,13 +1681,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
         }
         }),
     (Variant, {
-        if( m_branches.is_Unset() ) {
-            m_branches = Values::make_Variant({});
-        }
-        if( !m_branches.is_Variant() ) {
-            BUG(sp, "Mismatched rules");
-        }
-        auto& be = m_branches.as_Variant();
+        auto& be = GET_BRANCHES(m_branches, Variant);
         
         auto it = ::std::find_if( be.begin(), be.end(), [&](const auto& x){ return x.first >= e.idx; });
         // If this variant isn't yet processed, add a new subtree for it
@@ -1698,14 +1727,14 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
             and_then(it->second);
         }
         }),
+    (Slice,
+        //auto& be = GET_BRANCHES(m_branches, Slice);
+        // TODO: How to encode slice patterns in the DT?
+        // - SplitSlice throws a spanner in the works, and means that using the length isn't feasable
+        TODO(sp, "Slice rules - " << rule);
+        ),
     (Bool,
-        if( m_branches.is_Unset() ) {
-            m_branches = Values::make_Bool({});
-        }
-        else if( !m_branches.is_Bool() ) {
-            BUG(sp, "Mismatched rules");
-        }
-        auto& be = m_branches.as_Bool();
+        auto& be = GET_BRANCHES(m_branches, Bool);
         
         auto& branch = (e ? be.true_branch : be.false_branch);
         if( branch.is_Unset() ) {
@@ -1730,15 +1759,9 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
     (Value,
         TU_MATCHA( (e), (ve),
         (Int,
-            // TODO: De-duplicate this code between Uint and Float
-            if( m_branches.is_Unset() ) {
-                m_branches = Values::make_Signed({});
-            }
-            else if( !m_branches.is_Signed() ) {
-                BUG(sp, "Mismatched rules - have Signed, but have seen " << m_branches.tag_str());
-            }
-            auto& be = m_branches.as_Signed();
+            auto& be = GET_BRANCHES(m_branches, Signed);
             
+            // TODO: De-duplicate this code between Uint and Float
             from_rule_value(sp, be, ve, "Signed", rule.field_path,
                 [&](auto& branch) {
                     if( rule_count > 1 ) {
@@ -1753,13 +1776,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
                 });
             ),
         (Uint,
-            if( m_branches.is_Unset() ) {
-                m_branches = Values::make_Unsigned({});
-            }
-            else if( !m_branches.is_Unsigned() ) {
-                BUG(sp, "Mismatched rules - have Unsigned, but have seen " << m_branches.tag_str());
-            }
-            auto& be = m_branches.as_Unsigned();
+            auto& be = GET_BRANCHES(m_branches, Unsigned);
             
             from_rule_value(sp, be, ve, "Unsigned", rule.field_path,
                 [&](auto& branch) {
@@ -1775,13 +1792,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
                 });
             ),
         (Float,
-            if( m_branches.is_Unset() ) {
-                m_branches = Values::make_Float({});
-            }
-            else if( !m_branches.is_Float() ) {
-                BUG(sp, "Mismatched rules - have Float, but have seen " << m_branches.tag_str());
-            }
-            auto& be = m_branches.as_Float();
+            auto& be = GET_BRANCHES(m_branches, Float);
             
             from_rule_value(sp, be, ve, "Float", rule.field_path,
                 [&](auto& branch) {
@@ -1802,13 +1813,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
             TODO(sp, "Value patterns - Bytes");
             ),
         (StaticString,
-            if( m_branches.is_Unset() ) {
-                m_branches = Values::make_String({});
-            }
-            else if( !m_branches.is_String() ) {
-                BUG(sp, "Mismatched rules");
-            }
-            auto& be = m_branches.as_String();
+            auto& be = GET_BRANCHES(m_branches, String);
             
             auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first >= ve; });
             if( it == be.end() || it->first != ve ) {
@@ -1839,17 +1844,12 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
         ASSERT_BUG(sp, e.first.tag() == e.last.tag(), "");
         TU_MATCHA( (e.first, e.last), (ve_start, ve_end),
         (Int,
+            //auto& be = GET_BRANCHES(m_branches, Signed);
             TODO(sp, "ValueRange patterns - Int");
             ),
         (Uint,
             // TODO: Share code between the three numeric groups
-            if( m_branches.is_Unset() ) {
-                m_branches = Values::make_Unsigned({});
-            }
-            else if( !m_branches.is_Unsigned() ) {
-                BUG(sp, "Mismatched rules - have Unsigned, seen " << m_branches.tag_str());
-            }
-            auto& be = m_branches.as_Unsigned();
+            auto& be = GET_BRANCHES(m_branches, Unsigned);
             from_rule_valuerange(sp, be, ve_start, ve_end, "Unsigned", rule.field_path,
                 [&](auto& branch) {
                     if( rule_count > 1 )
@@ -1865,13 +1865,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
                 });
             ),
         (Float,
-            if( m_branches.is_Unset() ) {
-                m_branches = Values::make_Float({});
-            }
-            else if( !m_branches.is_Float() ) {
-                BUG(sp, "Mismatched rules - have Float, seen " << m_branches.tag_str());
-            }
-            auto& be = m_branches.as_Float();
+            auto& be = GET_BRANCHES(m_branches, Float);
             from_rule_valuerange(sp, be, ve_start, ve_end, "Float", rule.field_path,
                 [&](auto& branch) {
                     if( rule_count > 1 )

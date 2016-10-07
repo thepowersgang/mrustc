@@ -247,7 +247,13 @@ namespace {
                 else
                 {
                     ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
-                    TODO(sp, "Destructure slice using " << pat);
+                    
+                    // TODO: Emit code to triple-check the size? Or just assume that match did that correctly.
+                    for(unsigned int i = 0; i < e.sub_patterns.size(); i ++)
+                    {
+                        const auto& subpat = e.sub_patterns[i];
+                        destructure_from_ex(sp, subpat, ::MIR::LValue::make_Field({ box$(lval.clone()), i }), allow_refutable );
+                    }
                 }
                 ),
             (SplitSlice,
