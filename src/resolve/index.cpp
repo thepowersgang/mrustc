@@ -304,6 +304,7 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(const Span& sp, const AST::C
                 const auto& spath = ve.ent.as_Import();
                 p = hir_to_ast( spath );
                 
+                ASSERT_BUG(sp, crate.m_extern_crates.count(spath.m_crate_name) == 1, "Crate " << spath.m_crate_name << " is not loaded");
                 const auto* hmod = &crate.m_extern_crates.at(spath.m_crate_name).m_hir->m_root_module;
                 for(unsigned int i = 0; i < spath.m_components.size()-1; i ++) {
                     const auto& it = hmod->m_mod_items.at( spath.m_components[i] );

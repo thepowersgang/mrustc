@@ -1042,6 +1042,15 @@ namespace {
         rv.m_exported_macros = deserialise_strumap< ::MacroRulesPtr>();
         rv.m_lang_items = deserialise_strumap< ::HIR::SimplePath>();
         
+        {
+            size_t n = read_count();
+            for(size_t i = 0; i < n; i ++)
+            {
+                auto ext_crate_name = read_string();
+                rv.m_ext_crates.insert( ::std::make_pair(ext_crate_name, ::HIR::CratePtr{}) );
+            }
+        }
+        
         return rv;
     }
 }

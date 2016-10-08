@@ -99,7 +99,17 @@ void Crate::load_extern_crate(Span sp, const ::std::string& name)
     if( !::std::ifstream(path).good() ) {
         ERROR(sp, E0000, "Unable to locate crate '" << name << "'");
     }
-    m_extern_crates.insert(::std::make_pair( name, ExternCrate { name, path } ));
+    auto res = m_extern_crates.insert(::std::make_pair( name, ExternCrate { name, path } ));
+    auto crate_ext_list = mv$( res.first->second.m_hir->m_ext_crates );
+    
+    // Load referenced crates
+    for( const auto& ext : crate_ext_list )
+    {
+        if( m_extern_crates.count(ext.first) == 0 )
+        {
+            this->load_extern_crate(sp, ext.first);
+        }
+    }
 }
 
 ExternCrate::ExternCrate(const ::std::string& name, const ::std::string& path):
@@ -109,8 +119,6 @@ ExternCrate::ExternCrate(const ::std::string& name, const ::std::string& path):
     m_hir = HIR_Deserialise(path, name);
     
     m_hir->post_load_update(name);
-    
-    // TODO: Load referenced crates
 }
 
 void ExternCrate::with_all_macros(::std::function<void(const ::std::string& , const MacroRules&)> cb) const

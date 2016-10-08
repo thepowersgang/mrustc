@@ -319,6 +319,10 @@ namespace {
             
             serialise_strmap(crate.m_exported_macros);
             serialise_strmap(crate.m_lang_items);
+            
+            write_count(crate.m_ext_crates.size());
+            for(const auto& ext : crate.m_ext_crates)
+                write_string(ext.first);
         }
         void serialise_module(const ::HIR::Module& mod)
         {
