@@ -1432,6 +1432,14 @@ struct DecisionTreeGen
         const ::HIR::TypeRef& ty, ::MIR::LValue val,
         ::std::function<void(const DecisionTreeNode&)> and_then
         );
+    void generate_branches_Slice(
+        const Span& sp,
+        const DecisionTreeNode::Branch& default_branch,
+        const DecisionTreeNode::Values::Data_Slice& branches,
+        const PatternRule::field_path_t& field_path,
+        const ::HIR::TypeRef& ty, ::MIR::LValue val,
+        ::std::function<void(const DecisionTreeNode&)> and_then
+        );
     void generate_tree_code__enum(
         const Span& sp,
         const DecisionTreeNode& node, const ::HIR::TypeRef& fake_ty, const ::MIR::LValue& val,
@@ -2411,11 +2419,11 @@ void DecisionTreeGen::get_ty_and_val(
             BUG(sp, "Destructuring a trait object - " << *cur_ty);
             ),
         (Array,
-            // TODO: Slice patterns, sequential comparison/sub-match
-            TODO(sp, "Match over array");
+            assert(idx < e.size_val);
+            cur_ty = &*e.inner;
             ),
         (Slice,
-            BUG(sp, "Hit match over `[T]` - must be `&[T]`");
+            cur_ty = &*e.inner;
             ),
         (Borrow,
             ASSERT_BUG(sp, idx == FIELD_DEREF, "Destructure of borrow doesn't correspond to a deref in the path");
@@ -2546,14 +2554,11 @@ void DecisionTreeGen::generate_tree_code(
         TODO(sp, "Match over array");
         ),
     (Slice,
-        // TODO: Slice patterns, sequential comparison/sub-match
-        TODO(sp, "Match over `[T]`");
-        
-        //ASSERT_BUG(sp, node.m_branches.is_Slice(), "Tree for [T] isn't a _Slice - node="<<node);
-        //this->generate_branches_Slice(sp, node.m_default, node.m_branches.as_Slice(), ty, mv$(val), mv$(and_then));
+        ASSERT_BUG(sp, node.m_branches.is_Slice(), "Tree for [T] isn't a _Slice - node="<<node);
+        this->generate_branches_Slice(sp, node.m_default, node.m_branches.as_Slice(), node.m_field_path, ty, mv$(val), mv$(and_then));
         ),
     (Borrow,
-        if( e.inner == ::HIR::CoreType::Str ) {
+        if( *e.inner == ::HIR::CoreType::Str ) {
             TODO(sp, "Match over &str");
         }
         else {
@@ -2955,6 +2960,82 @@ void DecisionTreeGen::generate_branches_Enum(
     if( !default_branch.is_Unset() )
     {
         m_builder.set_cur_block(any_block);
+        this->generate_branch(default_branch, and_then);
+    }
+}
+
+void DecisionTreeGen::generate_branches_Slice(
+    const Span& sp,
+    const DecisionTreeNode::Branch& default_branch,
+    const DecisionTreeNode::Values::Data_Slice& branches,
+    const PatternRule::field_path_t& field_path,
+    const ::HIR::TypeRef& ty, ::MIR::LValue val,
+    ::std::function<void(const DecisionTreeNode&)> and_then
+    )
+{
+    if( default_branch.is_Unset() ) {
+        ERROR(sp, E0000, "Non-exhaustive match over " << ty);
+    }
+    
+    auto any_block = m_builder.new_bb_unlinked();
+    
+    // TODO: Select one of three ways of picking the arm:
+    // - Integer switch (unimplemented)
+    // - Binary search
+    // - Sequential comparisons
+    
+    auto val_len = m_builder.lvalue_or_temp(sp, ty, ::MIR::RValue::make_DstMeta({ val.clone() }));
+    
+    // TODO: Binary search instead.
+    for( const auto& branch : branches.fixed_arms )
+    {
+        auto val_des = m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(static_cast<uint64_t>(branch.first)));
+        
+        // Special case - final just does equality
+        if( &branch == &branches.fixed_arms.back() )
+        {
+            auto val_cmp_eq = m_builder.lvalue_or_temp( sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
+                val_len.clone(), ::MIR::eBinOp::EQ, mv$(val_des)
+                }) );
+            
+            auto success_block = m_builder.new_bb_unlinked();
+            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_eq), any_block, success_block }) );
+            
+            m_builder.set_cur_block( success_block );
+            this->generate_branch(branch.second, and_then);
+            
+            m_builder.set_cur_block( any_block );
+        }
+        // TODO: Special case for zero (which can't have a LT)
+        else
+        {
+            auto next_block = m_builder.new_bb_unlinked();
+            
+            auto cmp_gt_block = m_builder.new_bb_unlinked();
+            auto val_cmp_lt = m_builder.lvalue_or_temp( sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
+                val_len.clone(), ::MIR::eBinOp::LT, val_des.clone()
+                }) );
+            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_lt), any_block, cmp_gt_block }) );
+            m_builder.set_cur_block( cmp_gt_block );
+            auto success_block = m_builder.new_bb_unlinked();
+            auto val_cmp_gt = m_builder.lvalue_or_temp( sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
+                val_len.clone(), ::MIR::eBinOp::GT, mv$(val_des)
+                }) );
+            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_gt), next_block, success_block }) );
+            
+            m_builder.set_cur_block( success_block );
+            this->generate_branch(branch.second, and_then);
+            
+            m_builder.set_cur_block( next_block );
+        }
+    }
+    assert( m_builder.block_active() );
+    
+    if( default_branch.is_Unset() ) {
+        // TODO: Emit error if non-exhaustive
+        m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+    }
+    else {
         this->generate_branch(default_branch, and_then);
     }
 }
