@@ -11,7 +11,6 @@ The short-term goal is to compile pre-borrowchecked rust code into some intermed
 
 Current Features
 ===
-- Successfully parses libcore and rustc's run-pass tests
 - Attribute and macro expansion
 - Resolves all paths to absolute forms
 - Converts name-resolved AST into a more compact "HIR" (simplified module and expression tree)
@@ -25,16 +24,18 @@ Current Features
 
 Short-Term Plans
 ===
-- Parse+Typecheck+MIR all of libstd (including sub-crates)
+- Parse and Typecheck all run-pass tests
+- Configure travis CI
 - Code generation (including picking the output format)
 
 Medium-Term Goals
 ===
+- MIR optimisations
 - Propagate lifetime annotations so that MIR can include a borrow checker
 
 
 Progress
 ===
 - Compiles the following standard library crates through to emitting serialised HIR+MIR
- - `libcore`, `liballoc`, `librustc_unicode`, `libcollections`, and `liblibc`
+ - `libcore`, `liballoc`, `librustc_unicode`, `libcollections`, `liblibc`, AND `libstd`
 
