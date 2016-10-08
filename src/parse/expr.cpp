@@ -71,6 +71,8 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
         }
         PUTBACK(tok, lex);
+        if( LOOK_AHEAD(lex) == TOK_BRACE_CLOSE )
+            break;
         
         bool    add_silence_if_end = false;
         auto rv = Parse_ExprBlockLine_WithItems(lex, local_mod, add_silence_if_end);
@@ -112,7 +114,7 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
     {
     // Items:
     case TOK_RWORD_PUB:
-        ERROR(lex.getPosition(), E0000, "`pub` is useless within expression modules");
+        // NOTE: Allowed, but doesn't do much
     case TOK_RWORD_TYPE:
     case TOK_RWORD_USE:
     case TOK_RWORD_EXTERN:
