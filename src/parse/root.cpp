@@ -1049,7 +1049,7 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
             }
             fn_is_const = true;
         }
-        if( 0 )
+        if( tok.type() == TOK_RWORD_EXTERN )
         // FALL
     case TOK_RWORD_EXTERN:
         {
