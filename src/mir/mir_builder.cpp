@@ -403,7 +403,7 @@ ScopeHandle MirBuilder::new_scope_loop(const Span& sp)
     DEBUG("START (loop) scope " << idx);
     return ScopeHandle { *this, idx };
 }
-void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope)
+void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope, bool emit_cleanup/*=true*/)
 {
     DEBUG("DONE scope " << scope.idx);
     // 1. Check that this is the current scope (at the top of the stack)
@@ -419,8 +419,11 @@ void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope)
     auto& scope_def = m_scopes.at(scope.idx);
     ASSERT_BUG( sp, scope_def.complete == false, "Terminating scope which is already terminated" );
     
-    // 2. Emit drops for all non-moved variables (share with below)
-    drop_scope_values(scope_def);
+    if( emit_cleanup )
+    {
+        // 2. Emit drops for all non-moved variables (share with below)
+        drop_scope_values(scope_def);
+    }
     
     // 3. Pop scope (last because `drop_scope_values` uses the stack)
     m_scope_stack.pop_back();
@@ -445,7 +448,7 @@ void MirBuilder::terminate_scope_early(const Span& sp, const ScopeHandle& scope)
         auto& scope_def = m_scopes.at( idx );
         
         // If a conditional block is hit, prevent full termination of the rest
-        if( scope_def.data.is_Split() )
+        if( scope_def.data.is_Split() || scope_def.data.is_Loop() )
             is_conditional = true;
         
         if( !is_conditional ) {

@@ -325,6 +325,8 @@ namespace {
                     auto stmt_scope = m_builder.new_scope_temp(sp);
                     this->visit_node_ptr(subnode);
                     if( m_builder.has_result() || m_builder.block_active() ) {
+                        ASSERT_BUG(sp, m_builder.block_active(), "Result yielded, but no active block");
+                        ASSERT_BUG(sp, m_builder.has_result(), "Active block but no result yeilded");
                         // PROBLEM:
                         res = m_builder.get_result(sp);
                         m_builder.terminate_scope(sp, mv$(stmt_scope));
@@ -377,7 +379,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Loop& node) override
         {
-            TRACE_FUNCTION_F("_Loop");
+            TRACE_FUNCTION_FR("_Loop", "_Loop");
             auto loop_body_scope = m_builder.new_scope_loop(node.span());
             auto loop_block = m_builder.new_bb_linked();
             auto loop_next = m_builder.new_bb_unlinked();
@@ -390,22 +392,44 @@ namespace {
             // If there's a stray result, drop it
             if( m_builder.has_result() ) {
                 assert( m_builder.block_active() );
+                // TODO: Properly drop this? Or just discard it?
+                m_builder.get_result(node.span());
             }
             // Terminate block with a jump back to the start
             // - Also inserts the jump if this didn't uncondtionally diverge
             if( m_builder.block_active() )
             {
-                // TODO: Insert drop of all scopes within the current scope
+                DEBUG("- Reached end, loop back");
+                // Insert drop of all scopes within the current scope
                 m_builder.terminate_scope( node.span(), mv$(loop_scope) );
                 m_builder.end_block( ::MIR::Terminator::make_Goto(loop_block) );
-                
-                // - 
+            }
+            else
+            {
+                // Terminate scope without emitting cleanup (cleanup was handled by `break`)
+                m_builder.terminate_scope( node.span(), mv$(loop_scope), false );
+            }
+            
+            if( ! node.m_diverges )
+            {
+                DEBUG("- Doesn't diverge");
                 m_builder.set_cur_block(loop_next);
+                m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({{}}));
+            }
+            else
+            {
+                DEBUG("- Diverges");
+                assert( !m_builder.has_result() );
+                
+                m_builder.set_cur_block(loop_next);
+                m_builder.end_split_arm_early(node.span());
+                assert( !m_builder.has_result() );
+                m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
             }
         }
         void visit(::HIR::ExprNode_LoopControl& node) override
         {
-            TRACE_FUNCTION_F("_LoopControl");
+            TRACE_FUNCTION_F("_LoopControl \"" << node.m_label << "\"");
             if( m_loop_stack.size() == 0 ) {
                 BUG(node.span(), "Loop control outside of a loop");
             }
@@ -431,7 +455,7 @@ namespace {
         
         void visit(::HIR::ExprNode_Match& node) override
         {
-            TRACE_FUNCTION_F("_Match");
+            TRACE_FUNCTION_FR("_Match", "_Match");
             this->visit_node_ptr(node.m_value);
             auto match_val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
             
@@ -462,7 +486,7 @@ namespace {
         
         void visit(::HIR::ExprNode_If& node) override
         {
-            TRACE_FUNCTION_F("_If");
+            TRACE_FUNCTION_FR("_If", "_If");
             
             this->visit_node_ptr(node.m_cond);
             auto decision_val = m_builder.get_result_in_lvalue(node.m_cond->span(), node.m_cond->m_res_type);

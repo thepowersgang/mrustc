@@ -105,6 +105,7 @@ struct ExprNode_Loop:
 {
     ::std::string   m_label;
     ::HIR::ExprNodeP    m_code;
+    bool    m_diverges = false;
     
     ExprNode_Loop(Span sp, ::std::string label, ::HIR::ExprNodeP code):
         //ExprNode(mv$(sp), ::HIR::TypeRef::new_unit()),

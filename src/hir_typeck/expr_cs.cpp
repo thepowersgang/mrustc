@@ -482,7 +482,7 @@ namespace {
         
         ::std::vector<bool> inner_coerce_enabled_stack;
         
-        ::std::vector<const ::HIR::ExprNode_Loop*>  loop_blocks;    // Used for `break` type markings
+        ::std::vector< ::HIR::ExprNode_Loop*>  loop_blocks;    // Used for `break` type markings
         
         // TEMP: List of in-scope traits for buildup
         ::HIR::t_trait_list m_traits;
@@ -579,12 +579,11 @@ namespace {
         void visit(::HIR::ExprNode_Loop& node) override
         {
             auto _ = this->push_inner_coerce_scoped(false);
-            TRACE_FUNCTION_F(&node << " loop { ... }");
+            TRACE_FUNCTION_F(&node << " loop ('" << node.m_label << ") { ... }");
             // Push this node to a stack so `break` statements can update the yeilded value
             this->loop_blocks.push_back( &node );
+            node.m_diverges = true;    // Set to `false` if a break is hit
             
-            // TODO: This only yields unit if it terminates - otherwise it's !
-            // - There's an RFC proposal (that's on track to be accepted) that allows `break value;`
             // NOTE: This doesn't set the ivar to !, but marks it as a ! ivar (similar to the int/float markers)
             this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
             
@@ -593,6 +592,10 @@ namespace {
             node.m_code->visit( *this );
             
             this->loop_blocks.pop_back( );
+            
+            if( node.m_diverges ) {
+                DEBUG("Loop diverged");
+            }
         }
         void visit(::HIR::ExprNode_LoopControl& node) override
         {
@@ -603,20 +606,28 @@ namespace {
                 if( this->loop_blocks.empty() ) {
                     ERROR(node.span(), E0000, "Break statement with no acive loop");
                 }
+                
+                // NOTE: There's an RFC proposal (that's on track to be accepted) that allows `break value;`
+                auto break_type = ::HIR::TypeRef::new_unit();
+                
+                ::HIR::ExprNode_Loop*   loop_node_ptr;
                 if( node.m_label != "" )
                 {
                     auto it = ::std::find_if(this->loop_blocks.rbegin(), this->loop_blocks.rend(), [&](const auto& np){ return np->m_label == node.m_label; });
                     if( it == this->loop_blocks.rend() ) {
                         ERROR(node.span(), E0000, "Could not find loop '" << node.m_label << " for break");
                     }
-                    const auto& loop_node = **it;
-                    this->context.equate_types(node.span(), loop_node.m_res_type, ::HIR::TypeRef::new_unit());
+                    loop_node_ptr = &**it;
                 }
                 else
                 {
-                    const auto& loop_node = *this->loop_blocks.back();
-                    this->context.equate_types(node.span(), loop_node.m_res_type, ::HIR::TypeRef::new_unit());
+                    loop_node_ptr = this->loop_blocks.back();
                 }
+
+                DEBUG("Break out of loop " << loop_node_ptr);
+                auto& loop_node = *loop_node_ptr;
+                loop_node.m_diverges = false;
+                this->context.equate_types(node.span(), loop_node.m_res_type, break_type);
             }
         }
         

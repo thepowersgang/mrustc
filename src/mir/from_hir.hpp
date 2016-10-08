@@ -164,7 +164,7 @@ public:
     ScopeHandle new_scope_temp(const Span& sp);
     ScopeHandle new_scope_split(const Span& sp);
     ScopeHandle new_scope_loop(const Span& sp);
-    void terminate_scope(const Span& sp, ScopeHandle );
+    void terminate_scope(const Span& sp, ScopeHandle , bool cleanup=true);
     void terminate_scope_early(const Span& sp, const ScopeHandle& );
     void end_split_arm(const Span& sp, const ScopeHandle& , bool reachable);
     void end_split_arm_early(const Span& sp);
