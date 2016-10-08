@@ -143,13 +143,16 @@ rust_tests-run-pass: $(call DEF_RUST_TESTS,run-pass)
 rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
 rust_tests-compile-fail: $(call DEF_RUST_TESTS,compile-fail)
 
+output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs output/libstd.hir $(BIN)
+	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
+
 output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN)
 	@mkdir -p $(dir $@)
 	$(BIN) $< -o $@ --stop-after parse > $@.txt 2>&1
 	touch $@
 
 .PHONY: test test_rustos
-test: $(RUSTCSRC) output/libcore.hir output/liballoc.hir output/libcollections.hir output/libstd.hir $(BIN)
+test: $(RUSTCSRC) output/libcore.hir output/liballoc.hir output/libcollections.hir output/libstd.hir output/rust/test_run-pass_hello $(BIN)
 
 
 #
