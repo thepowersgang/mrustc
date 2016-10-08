@@ -315,20 +315,10 @@ namespace {
                 }
                 const auto& src_ty = *se.inner;
                 const auto& dst_ty = *de.inner;
-                // Check unsizability (including trait impls)
-                // TODO: Unsize trait?
-                TU_MATCH_DEF(::HIR::TypeRef::Data, (dst_ty.m_data), (e),
-                (
-                    ERROR(sp, E0000, "Invalid unsizing operation to " << dst_ty << " from " << src_ty);
-                    ),
-                (TraitObject,
-                    // TODO: Ensure that the source type impls all the required traits
-                    // - Must be sized unless it's a superset TraitObject
-                    ),
-                (Slice,
-                    // TODO: Ensure that the source is an array (or impls Unsize)
-                    )
-                )
+                
+                const auto& lang_Unsize = this->get_lang_item_path(node.span(), "unsize");
+                // _ == < `src_ty` as Unsize< `dst_ty` >::""
+                check_associated_type(sp, ::HIR::TypeRef(), lang_Unsize, ::make_vec1( dst_ty.clone() ), src_ty, "");
             }
             else if( src_ty.m_data.is_Borrow() || dst_ty.m_data.is_Borrow() )
             {
@@ -337,7 +327,7 @@ namespace {
             else
             {
                 const auto& lang_CoerceUnsized = this->get_lang_item_path(node.span(), "coerce_unsized");
-                // _ == < `src_ty` as CoerceUnsize< `dst_ty` >::""
+                // _ == < `src_ty` as CoerceUnsized< `dst_ty` >::""
                 check_associated_type(sp, ::HIR::TypeRef(), lang_CoerceUnsized, ::make_vec1( dst_ty.clone() ), src_ty, "");
             }
             

@@ -989,13 +989,18 @@ namespace {
                 const auto& ty_in = *ie.inner;
                 TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_out.m_data), (e),
                 (
-                    TODO(node.span(), "MIR _Unsize to " << ty_out);
+                    const auto& lang_Unsize = m_builder.crate().get_lang_item_path(node.span(), "unsize");
+                    if( m_builder.resolve().find_impl( node.span(), lang_Unsize, ::HIR::PathParams(ty_out.clone()), ty_in.clone(), [](auto ){ return true; }) )
+                    {
+                        // - HACK: Emit a cast operation on the pointers. Leave it up to monomorph to 'fix' it
+                        m_builder.set_result( node.span(), ::MIR::RValue::make_Cast({ mv$(ptr_lval), node.m_res_type.clone() }) );
+                    }
+                    else
+                    {
+                        // Probably an error.
+                        TODO(node.span(), "MIR _Unsize to " << ty_out);
+                    }
                     ),
-                // TODO: Unsize custom types containing a ?Size generic - See the Unsize trait
-                //(Path,
-                //    ),
-                //(Generic,
-                //    ),
                 (Slice,
                     if( ty_in.m_data.is_Array() )
                     {

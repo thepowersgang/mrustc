@@ -162,10 +162,10 @@ test_rustos: $(addprefix output/rust_os/,libkernel.hir)
 
 output/rust_os/libkernel.hir: ../rust_os/Kernel/Core/main.rs output/libstack_dst.hir $(BIN)
 	@mkdir -p $(dir $@)
-	$(BIN) $< -o $@ 2>&1 | tee $@.txt | tail -n 30
+	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 output/libstack_dst.hir: ../rust_os/externals/crates.io/stack_dst/src/lib.rs $(BIN)
 	@mkdir -p $(dir $@)
-	$(BIN) $< -o $@ --cfg feature=no_std 2>&1 | tee $@.txt | tail -n 30
+	$(DBG) $(BIN) $< -o $@ --cfg feature=no_std $(PIPECMD)
 
 
 # -------------------------------
