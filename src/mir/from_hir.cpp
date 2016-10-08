@@ -930,7 +930,8 @@ namespace {
                             BUG(node.span(), "Cannot cast to " << ty_out << " from " << ty_in);
                         }
                     )
-                    else if( de == ::HIR::CoreType::Usize && ty_in.m_data.is_Pointer() ) {
+                    // NOTE: Valid for all integer types
+                    else if( ty_in.m_data.is_Pointer() ) {
                         // TODO: Only valid for T: Sized?
                     }
                     else if( de == ::HIR::CoreType::Usize && ty_in.m_data.is_Function() ) {
