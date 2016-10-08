@@ -647,6 +647,7 @@ bool Parse_IsTokValue(eTokenType tok_type)
     case TOK_RWORD_BOX:
     case TOK_RWORD_IN:
     case TOK_PAREN_OPEN:
+    case TOK_SQUARE_OPEN:
     
     case TOK_MACRO:
     
