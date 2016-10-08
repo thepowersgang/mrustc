@@ -644,8 +644,10 @@ namespace {
             }
             else {
                 m_os << node.m_obj_path << "( ";
-                for(const auto& cap : node.m_var_captures)
-                    m_os << "_#" << cap << ", ";
+                for(/*const*/ auto& cap : node.m_captures) {
+                    this->visit_node_ptr(cap);
+                    m_os << ", ";
+                }
                 m_os << ")";
             }
         }

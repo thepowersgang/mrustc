@@ -1657,23 +1657,12 @@ namespace {
         {
             TRACE_FUNCTION_F("_Closure - " << node.m_obj_path);
             
-            // Emit construction of the closure.
             ::std::vector< ::MIR::LValue>   vals;
-            for( const auto cap_idx : node.m_var_captures )
+            vals.reserve( node.m_captures.size() );
+            for(auto& arg : node.m_captures)
             {
-                ASSERT_BUG(node.span(), cap_idx < m_variable_types.size(), "Capture #" << cap_idx << " not in variable set (" << m_variable_types.size() << " total)");
-                if( node.m_is_move ) {
-                    vals.push_back( ::MIR::LValue::make_Variable(cap_idx) );
-                }
-                else {
-                    // TODO: Get correct borrow type (based on annotations stored in the node)
-                    auto borrow_ty = ::HIR::BorrowType::Shared;
-                    auto lval = m_builder.lvalue_or_temp( node.span(),
-                        ::HIR::TypeRef::new_borrow(borrow_ty, m_variable_types[cap_idx].clone()),
-                        ::MIR::RValue::make_Borrow({ 0, borrow_ty, ::MIR::LValue::make_Variable(cap_idx) })
-                        );
-                    vals.push_back( mv$(lval) );
-                }
+                this->visit_node_ptr(arg);
+                vals.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
             }
             
             m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
