@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * expand/format_args.cpp
+ * - format_args! syntax extension handling
  */
 #include <synext_macro.hpp>
 #include <synext.hpp>   // for Expand_BareExpr
@@ -11,6 +16,7 @@
 
 namespace {
     
+    /// Options for a formatting fragment
     struct FmtArgs
     {
         enum class Align {
@@ -37,20 +43,37 @@ namespace {
         
         bool prec_is_arg = false;
         unsigned int prec = 0;
+        
+        bool operator==(const FmtArgs& x) const { return ::std::memcmp(this, &x, sizeof(*this)) == 0; }
+        bool operator!=(const FmtArgs& x) const { return ::std::memcmp(this, &x, sizeof(*this)) != 0; }
     };
     
+    /// A single formatting fragment
     struct FmtFrag
     {
+        /// Literal text preceding the fragment
         ::std::string   leading_text;
         
+        /// Argument index used
         unsigned int    arg_index;
         
+        /// Trait to use for formatting
         const char* trait_name;
+        
         // TODO: Support case where this hasn't been edited (telling the formatter that it has nothing to apply)
+        /// Options
         FmtArgs     args;
     };
 
-    ::std::tuple< ::std::vector<FmtFrag>, ::std::string> parse_format_string(const Span& sp, const ::std::string& format_string, const ::std::map< ::std::string,unsigned int>& named, unsigned int n_free)
+    /// Parse a format string into a sequence of fragments.
+    /// 
+    /// Returns a list of fragments, and the remaining free text after the last format sequence
+    ::std::tuple< ::std::vector<FmtFrag>, ::std::string> parse_format_string(
+        const Span& sp,
+        const ::std::string& format_string,
+        const ::std::map< ::std::string,unsigned int>& named,
+        unsigned int n_free
+        )
     {
         unsigned int n_named = named.size();
         unsigned int next_free = 0;
@@ -67,13 +90,17 @@ namespace {
                     s ++;
                     if( *s != '}' )
                         ERROR(sp, E0000, "'}' must be escaped as '}}' in format strings");
-                    // - fall with *s == '}'
+                    cur_literal += '}';
                 }
-                cur_literal += *s;
+                else
+                {
+                    cur_literal += *s;
+                }
             }
             else
             {
                 s ++;
+                // Escaped '{' as "{{"
                 if( *s == '{' ) {
                     cur_literal += '{';
                     continue ;
@@ -252,6 +279,30 @@ namespace {
     }
 }
 
+namespace {
+    void push_path(::std::vector<TokenTree>& toks, const AST::Crate& crate, ::std::initializer_list<const char*> il)
+    {
+        switch(crate.m_load_std)
+        {
+        case ::AST::Crate::LOAD_NONE:
+            break;
+        case ::AST::Crate::LOAD_CORE:
+            toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
+            toks.push_back( Token(TOK_STRING, "core") );
+            break;
+        case ::AST::Crate::LOAD_STD:
+            toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
+            toks.push_back( Token(TOK_IDENT, "std") );
+            break;
+        }
+        for(auto ent : il)
+        {
+            toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
+            toks.push_back( Token(TOK_IDENT, ent) );
+        }
+    }
+}
+
 class CFormatArgsExpander:
     public ExpandProcMacro
 {
@@ -304,47 +355,81 @@ class CFormatArgsExpander:
             }
         }
         
+        // TODO: This should expand to a `match (a, b, c) { (ref _0, ref _1, ref _2) => ... }` to ensure that the values live long enough?
+        
         // - Parse the format string
         ::std::vector< FmtFrag> fragments;
         ::std::string   tail;
         ::std::tie( fragments, tail ) = parse_format_string(sp, format_string,  named_args_index, free_args.size());
         
-        // TODO: Properly expand format_args! (requires mangling to fit ::core::fmt::rt::v1)
-        // - For now, just emits the text with no corresponding format fragments
+        bool is_simple = true;
+        for(unsigned int i = 0; i < fragments.size(); i ++)
+        {
+            if( fragments[i].arg_index != i )
+                is_simple = false;
+            if( fragments[i].args != FmtArgs {} )
+                is_simple = false;
+        }
         
         ::std::vector<TokenTree> toks;
+        if( is_simple )
         {
-            switch(crate.m_load_std)
-            {
-            case ::AST::Crate::LOAD_NONE:
-                break;
-            case ::AST::Crate::LOAD_CORE:
-                toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-                toks.push_back( Token(TOK_STRING, "core") );
-                break;
-            case ::AST::Crate::LOAD_STD:
-                toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-                toks.push_back( Token(TOK_IDENT, "std") );
-                break;
-            }
-            
             // ::fmt::Arguments::new_v1
-            toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-            toks.push_back( Token(TOK_IDENT, "fmt") );
-            toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-            toks.push_back( Token(TOK_IDENT, "Arguments") );
-            toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-            toks.push_back( Token(TOK_IDENT, "new_v1") );
+            push_path(toks, crate, {"fmt", "Arguments", "new_v1"});
             // (
             toks.push_back( TokenTree(TOK_PAREN_OPEN) );
             {
                 toks.push_back( TokenTree(TOK_AMP) );
                 // Raw string fragments
+                // - Contains N+1 entries, where N is the number of fragments
                 toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
                 for(const auto& frag : fragments ) {
                     toks.push_back( Token(TOK_STRING, frag.leading_text) );
                     toks.push_back( TokenTree(TOK_COMMA) );
                 }
+                toks.push_back( Token(TOK_STRING, tail) );
+                toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
+                
+                toks.push_back( TokenTree(TOK_COMMA) );
+                
+                toks.push_back( TokenTree(TOK_AMP) );
+                toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
+                for(const auto& frag : fragments )
+                {
+                    push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
+                    toks.push_back( Token(TOK_PAREN_OPEN) );
+                    toks.push_back( Token(TOK_AMP) );
+                    toks.push_back( Token(TOK_PAREN_OPEN) );
+                    toks.push_back( mv$(free_args[frag.arg_index]) );
+                    toks.push_back( Token(TOK_PAREN_CLOSE) );
+                    toks.push_back( TokenTree(TOK_COMMA) );
+                    push_path(toks, crate, {"fmt", frag.trait_name, "fmt"});
+                    toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
+                    toks.push_back( TokenTree(TOK_COMMA) );
+                }
+                toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
+            }
+            // )
+            toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
+        }
+        else    // if(is_simple)
+        {
+            // Use new_v1_formatted
+            // - requires creating more entries in the `args` list to cover multiple formatters for one value
+            //push_path(toks, crate,  {"fmt", "Arguments", "new_v1_formatted"});
+            push_path(toks, crate,  {"fmt", "Arguments", "new_v1"});
+            // (
+            toks.push_back( TokenTree(TOK_PAREN_OPEN) );
+            {
+                toks.push_back( TokenTree(TOK_AMP) );
+                // Raw string fragments
+                // - Contains N+1 entries, where N is the number of fragments
+                toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
+                for(const auto& frag : fragments ) {
+                    toks.push_back( Token(TOK_STRING, frag.leading_text) );
+                    toks.push_back( TokenTree(TOK_COMMA) );
+                }
+                toks.push_back( Token(TOK_STRING, tail) );
                 toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
                 toks.push_back( TokenTree(TOK_COMMA) );
                 
@@ -352,11 +437,13 @@ class CFormatArgsExpander:
                 // - The format stored by mrustc doesn't quite work with how rustc (and fmt::rt::v1) works
                 toks.push_back( TokenTree(TOK_AMP) );
                 toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
+                //for(const auto& frag : fragments ) {
+                //}
                 toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
             }
             // )
             toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
-        }
+        }   // if(is_simple) else
         
         return box$( TTStreamO(TokenTree(mv$(toks))) );
     }
