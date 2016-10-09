@@ -109,8 +109,12 @@ class CMacroExportHandler:
             if( mac.name() != "macro_rules" ) {
                 ERROR(sp, E0000, "#[macro_export] is only valid on macro_rules!");
             }
+            const auto& name = mac.input_ident();
             
-            //TODO(sp, "macro_export on Item MacroInv");
+            // Tag the macro in the module for crate export
+            auto it = ::std::find_if( mod.macros().begin(), mod.macros().end(), [&](const auto& x){ return x.name == name; } );
+            ASSERT_BUG(sp, it != mod.macros().end(), "Macro '" << name << "' not defined in this module");
+            it->data->m_exported = true;
         }
         else {
             ERROR(sp, E0000, "Use of #[macro_export] on non-macro - " << i.tag_str());
@@ -125,6 +129,8 @@ class CMacroReexportHandler:
     void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
         if( i.is_Crate() ) {
+            // TODO: Need to look up this crate in the crate list, then import all of the macros listed with the "export" flag set
+            // - For now, all externally loaded macros are exported (weakly) so things work...
         }
         else {
             ERROR(sp, E0000, "Use of #[macro_reexport] on non-crate - " << i.tag_str());

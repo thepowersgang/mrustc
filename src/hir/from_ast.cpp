@@ -1315,9 +1315,9 @@ public:
         //}
     }
     for( /*const*/ auto& mac : crate.m_root_module.macros() ) {
-        //if( mac.data.export ) {
-        macros.insert( ::std::make_pair( mac.name, mv$(mac.data) ) );
-        //}
+        if( mac.data->m_exported ) {
+            macros.insert( ::std::make_pair( mac.name, mv$(mac.data) ) );
+        }
     }
     
     auto sp = Span();

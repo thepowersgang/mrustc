@@ -135,9 +135,12 @@ class MacroRules:
     public Serialisable
 {
 public:
-    bool m_exported;
+    /// Marks if this macro should be exported from the defining crate
+    bool m_exported = false;
     
-    ::std::string   m_source_crate; // Populated on load, used for $crate
+    /// Crate that defined this macro
+    /// - Populated on deserialise if not already set
+    ::std::string   m_source_crate;
     
     /// Expansion rules
     ::std::vector<MacroRulesArm>  m_rules;
