@@ -95,7 +95,7 @@ namespace {
         {
             if( node.m_value )
             {
-                auto _ = this->push_usage( this->get_usage_for_pattern(node.m_pattern, node.m_type) );
+                auto _ = this->push_usage( this->get_usage_for_pattern(node.span(), node.m_pattern, node.m_type) );
                 this->visit_node_ptr( node.m_value );
             }
         }
@@ -116,7 +116,7 @@ namespace {
                 for( const auto& arm : node.m_arms )
                 {
                     for( const auto& pat : arm.m_patterns ) 
-                        vu = ::std::max( vu, this->get_usage_for_pattern(pat, val_ty) );
+                        vu = ::std::max( vu, this->get_usage_for_pattern(node.span(), pat, val_ty) );
                 }
                 auto _ = this->push_usage( vu );
                 this->visit_node_ptr( node.m_value );
@@ -346,10 +346,131 @@ namespace {
         }
         
     private:
-        ::HIR::ValueUsage get_usage_for_pattern( const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty ) const
+        ::HIR::ValueUsage get_usage_for_pattern(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty) const
         {
-            // TODO: Detect if a by-value binding exists for a non-Copy type
-            return ::HIR::ValueUsage::Move;
+            if( pat.m_binding.is_valid() ) {
+                switch( pat.m_binding.m_type )
+                {
+                case ::HIR::PatternBinding::Type::Move:
+                    if( m_resolve.type_is_copy(sp, ty) )
+                        return ::HIR::ValueUsage::Borrow;
+                    else
+                        return ::HIR::ValueUsage::Move;
+                case ::HIR::PatternBinding::Type::MutRef:
+                    return ::HIR::ValueUsage::Mutate;
+                case ::HIR::PatternBinding::Type::Ref:
+                    return ::HIR::ValueUsage::Borrow;
+                }
+                throw "";
+            }
+            
+            TU_MATCHA( (pat.m_data), (pe),
+            (Any,
+                return ::HIR::ValueUsage::Borrow;
+                ),
+            (Box,
+                TODO(sp, "Box");
+                //return get_usage_for_pattern(sp, *pe.inner, [&](const auto&){ if(tmp == ::HIR::TypeRef()) tmp = m_resolve.deref_type(sp, get_ty()); return tmp; });
+                ),
+            (Ref,
+                return get_usage_for_pattern(sp, *pe.sub, *ty.m_data.as_Borrow().inner);
+                ),
+            (Tuple,
+                const auto& subtys = ty.m_data.as_Tuple();
+                assert(pe.sub_patterns.size() == subtys.size());
+                auto rv = ::HIR::ValueUsage::Borrow;
+                for(unsigned int i = 0; i < subtys.size(); i ++)
+                    rv = ::std::max(rv, get_usage_for_pattern(sp, pe.sub_patterns[i], subtys[i]));
+                return rv;
+                ),
+            (SplitTuple,
+                BUG(sp, "SplitTuple unexpected here.");
+                ),
+            (StructValue,
+                return ::HIR::ValueUsage::Borrow;
+                ),
+            (StructTuple,
+                // TODO: Avoid monomorphising all the time.
+                const auto& str = *pe.binding;
+                const auto& flds = str.m_data.as_Tuple();
+                assert(pe.sub_patterns.size() == flds.size());
+                auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
+                
+                auto rv = ::HIR::ValueUsage::Borrow;
+                for(unsigned int i = 0; i < flds.size(); i ++) {
+                    auto sty = monomorphise_type_with(sp, flds[i].ent, monomorph_cb);
+                    rv = ::std::max(rv, get_usage_for_pattern(sp, pe.sub_patterns[i], sty));
+                }
+                return rv;
+                ),
+            (Struct,
+                const auto& str = *pe.binding;
+                const auto& flds = str.m_data.as_Named();
+                auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
+                
+                auto rv = ::HIR::ValueUsage::Borrow;
+                for(const auto& fld_pat : pe.sub_patterns)
+                {
+                    auto fld_it = ::std::find_if(flds.begin(), flds.end(), [&](const auto& x){return x.first == fld_pat.first;});
+                    ASSERT_BUG(sp, fld_it != flds.end(), "");
+                    
+                    auto sty = monomorphise_type_with(sp, fld_it->second.ent, monomorph_cb);
+                    rv = ::std::max(rv, get_usage_for_pattern(sp, fld_pat.second, sty));
+                }
+                return rv;
+                ),
+            (Value,
+                return ::HIR::ValueUsage::Borrow;
+                ),
+            (Range,
+                return ::HIR::ValueUsage::Borrow;
+                ),
+            (EnumValue,
+                return ::HIR::ValueUsage::Borrow;
+                ),
+            (EnumTuple,
+                const auto& enm = *pe.binding_ptr;
+                const auto& var = enm.m_variants.at(pe.binding_idx);
+                const auto& flds = var.second.as_Tuple();
+                assert(pe.sub_patterns.size() == flds.size());
+                auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
+                
+                auto rv = ::HIR::ValueUsage::Borrow;
+                for(unsigned int i = 0; i < flds.size(); i ++) {
+                    auto sty = monomorphise_type_with(sp, flds[i].ent, monomorph_cb);
+                    rv = ::std::max(rv, get_usage_for_pattern(sp, pe.sub_patterns[i], sty));
+                }
+                return rv;
+                ),
+            (EnumStruct,
+                const auto& enm = *pe.binding_ptr;
+                const auto& var = enm.m_variants.at(pe.binding_idx);
+                const auto& flds = var.second.as_Struct();
+                auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
+                
+                auto rv = ::HIR::ValueUsage::Borrow;
+                for(const auto& fld_pat : pe.sub_patterns)
+                {
+                    auto fld_it = ::std::find_if(flds.begin(), flds.end(), [&](const auto& x){return x.first == fld_pat.first;});
+                    ASSERT_BUG(sp, fld_it != flds.end(), "");
+                    
+                    auto sty = monomorphise_type_with(sp, fld_it->second.ent, monomorph_cb);
+                    rv = ::std::max(rv, get_usage_for_pattern(sp, fld_pat.second, sty));
+                }
+                return rv;
+                ),
+            (Slice,
+                const auto& inner_ty = (ty.m_data.is_Array() ? *ty.m_data.as_Array().inner : *ty.m_data.as_Slice().inner);
+                auto rv = ::HIR::ValueUsage::Borrow;
+                for(const auto& pat : pe.sub_patterns)
+                    rv = ::std::max(rv, get_usage_for_pattern(sp, pat, inner_ty));
+                return rv;
+                ),
+            (SplitSlice,
+                TODO(sp, "SplitSlice - " << pat);
+                )
+            )
+            throw "";
         }
     };
 
