@@ -85,7 +85,6 @@ void init_debug_list()
 }
 bool debug_enabled()
 {
-    // TODO: Have an explicit enable list?
     if( g_debug_disable_map.count(g_cur_phase) != 0 ) {
         return false;
     }
@@ -323,6 +322,7 @@ int main(int argc, char *argv[])
         }
         
         // Optimise the MIR
+        // TODO: MIR Optimisation
 
         //CompilePhaseV("Dump MIR", [&]() {
         //    ::std::ofstream os (FMT(params.outfile << "_4_mir_opt.rs"));
@@ -347,7 +347,7 @@ int main(int argc, char *argv[])
                 HIR_Serialise(params.outfile, *hir_crate);
                 });
             // Generate a .o
-            //HIR_Codegen(params.outfile + ".o", *hir_crate);
+            //HIR_Codegen_Lib(params.outfile + ".o", *hir_crate);
             // Link into a .rlib
             break;
         case ::AST::Crate::Type::RustDylib:
@@ -359,6 +359,7 @@ int main(int argc, char *argv[])
             break;
         case ::AST::Crate::Type::Executable:
             // Generate a binary
+            //HIR_Codegen_Main(params.outfile + ".o", *hir_crate);
             break;
         }
     }
