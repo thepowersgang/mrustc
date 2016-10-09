@@ -147,14 +147,23 @@ rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
 output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs output/libstd.hir $(BIN)
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 
-output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN)
+output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir output/libtest.hir
 	@mkdir -p $(dir $@)
 	$(BIN) $< -o $@ --stop-after resolve > $@.txt 2>&1
 	touch $@
 
-.PHONY: test test_rustos
-test: $(RUSTCSRC) output/libcore.hir output/liballoc.hir output/libcollections.hir output/libstd.hir output/rust/test_run-pass_hello $(BIN)
+output/rust/run-pass/allocator-default.o: output/liballoc_jemalloc.hir output/liballocator_dummy.hir
 
+output/liballocator_dummy.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/allocator-dummy.rs
+	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
+
+output/libtest.hir: output/libgetopts.hir
+
+.PHONY: test test_rustos
+#
+# TEST: Rust standard library and the "hello, world" run-pass test
+#
+test: $(RUSTCSRC) output/libcore.hir output/liballoc.hir output/libcollections.hir output/libstd.hir output/rust/test_run-pass_hello $(BIN)
 
 #
 # TEST: Attempt to compile rust_os (Tifflin) from ../rust_os
