@@ -418,6 +418,33 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     }
 }
 
+namespace {
+    const ::HIR::Module* get_hir_mod_by_path(const Span& sp, const ::AST::Crate& crate, const ::HIR::SimplePath& path)
+    {
+        const auto* hmod = &crate.m_extern_crates.at( path.m_crate_name ).m_hir->m_root_module;
+        for(const auto& node : path.m_components)
+        {
+            auto it = hmod->m_mod_items.find(node);
+            if( it == hmod->m_mod_items.end() )
+                BUG(sp, "");
+            TU_IFLET( ::HIR::TypeItem, (it->second->ent), Module, mod,
+                hmod = &mod;
+            )
+            else TU_IFLET( ::HIR::TypeItem, (it->second->ent), Import, import_path,
+                hmod = get_hir_mod_by_path(sp, crate, import_path);
+                if( !hmod )
+                    BUG(sp, "");
+            )
+            else {
+                if( &node == &path.m_components.back() )
+                    return nullptr;
+                BUG(sp, "");
+            }
+        }
+        return hmod;
+    }
+}
+
 ::AST::PathBinding Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const ::HIR::Module& hmodr, unsigned int start,  Lookup allow)
 {
     const auto& nodes = path.nodes();
@@ -434,7 +461,9 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             ERROR(span, E0000, "Unexpected item type in import " << path << " @ " << i << " - " << it->second->ent.tag_str());
             ),
         (Import,
-            TODO(span, "Recursive import " << nodes[i].name() << " = " << e << " in path " << path);
+            hmod = get_hir_mod_by_path(span, crate, e);
+            if( !hmod )
+                BUG(span, "Path component " << nodes[i].name() << " pointed to non-module");
             ),
         (Module,
             hmod = &e;
