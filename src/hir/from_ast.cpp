@@ -1309,14 +1309,29 @@ public:
     auto& macros = rv.m_exported_macros;
     
     // - Extract macros from root module
-    for( auto& mac : crate.m_root_module.macro_imports_res() ) {
-        //if( mac.data->export ) {
-        macros.insert( ::std::make_pair( mac.name, MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mac.data)) )) ) );
-        //}
-    }
     for( /*const*/ auto& mac : crate.m_root_module.macros() ) {
         if( mac.data->m_exported ) {
-            macros.insert( ::std::make_pair( mac.name, mv$(mac.data) ) );
+            auto res = macros.insert( ::std::make_pair( mac.name, mv$(mac.data) ) );
+            if( res.second )
+                DEBUG("- Define " << mac.name << "!");
+        }
+        else {
+            DEBUG("- Non-exported " << mac.name << "!");
+        }
+    }
+    for( auto& mac : crate.m_root_module.macro_imports_res() ) {
+        if( mac.data->m_exported && mac.name != "" ) {
+            auto v = ::std::make_pair( mac.name, MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mac.data)) )) );
+            auto it = macros.find(mac.name);
+            if( it == macros.end() )
+            {
+                auto res = macros.insert( mv$(v) );
+                DEBUG("- Import " << mac.name << "! (from \"" << res.first->second->m_source_crate << "\")");
+            }
+            else {
+                DEBUG("- Replace " << mac.name << "! (from \"" << it->second->m_source_crate << "\") with one from \"" << v.second->m_source_crate << "\"");
+                it->second = mv$( v.second );
+            }
         }
     }
     

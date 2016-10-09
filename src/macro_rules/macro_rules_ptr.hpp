@@ -13,7 +13,7 @@ class MacroRulesPtr
 {
     MacroRules* m_ptr;
 public:
-    MacroRulesPtr() {}
+    MacroRulesPtr(): m_ptr(nullptr) {}
     MacroRulesPtr(MacroRules* p): m_ptr(p) {}
     MacroRulesPtr(MacroRulesPtr&& x):
         m_ptr(x.m_ptr)

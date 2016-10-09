@@ -100,6 +100,7 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
                 return e;
             }
         }
+        // TODO: Shouldn't this use the _last_ located macro? Allowing later (local) defininitions to override it?
         for( const auto& mri : mac_mod.macro_imports_res() )
         {
             //DEBUG("- " << mri.name);

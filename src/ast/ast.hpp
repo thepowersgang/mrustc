@@ -549,9 +549,7 @@ public:
         m_neg_impls.emplace_back( mv$(impl) );
     }
     void add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro);
-    void add_macro_import(::std::string name, const MacroRules& mr) {
-        m_macro_import_res.push_back( NamedNS<const MacroRules*>( mv$(name), &mr, false ) );
-    }
+    void add_macro_import(::std::string name, const MacroRules& mr);
     
     
 

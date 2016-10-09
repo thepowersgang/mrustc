@@ -1,4 +1,14 @@
-
+/*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * expand/macro_rules.cpp
+ * - Top-level handling of macro_rules! macros
+ *  > macro_rules! dispatch handler
+ *  > #[macro_use]
+ *  > #[macro_export]
+ *  > #[macro_reexport]
+ */
 #include <synext.hpp>
 #include "../ast/expr.hpp"
 #include "../ast/ast.hpp"
@@ -6,6 +16,7 @@
 #include <ast/crate.hpp>
 #include "macro_rules.hpp"
 #include <macro_rules/macro_rules.hpp>
+#include <hir/hir.hpp>  // for HIR::Crate
 
 class CMacroRulesExpander:
     public ExpandProcMacro
@@ -115,6 +126,7 @@ class CMacroExportHandler:
             auto it = ::std::find_if( mod.macros().begin(), mod.macros().end(), [&](const auto& x){ return x.name == name; } );
             ASSERT_BUG(sp, it != mod.macros().end(), "Macro '" << name << "' not defined in this module");
             it->data->m_exported = true;
+            DEBUG("- Export macro " << name << "!");
         }
         else {
             ERROR(sp, E0000, "Use of #[macro_export] on non-macro - " << i.tag_str());
@@ -128,12 +140,27 @@ class CMacroReexportHandler:
     AttrStage stage() const override { return AttrStage::Post; }
     void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
-        if( i.is_Crate() ) {
-            // TODO: Need to look up this crate in the crate list, then import all of the macros listed with the "export" flag set
-            // - For now, all externally loaded macros are exported (weakly) so things work...
-        }
-        else {
+        if( !i.is_Crate() ) {
             ERROR(sp, E0000, "Use of #[macro_reexport] on non-crate - " << i.tag_str());
+        }
+
+        const auto& crate_name = i.as_Crate().name;
+        auto& ext_crate = *crate.m_extern_crates.at(crate_name).m_hir;
+        
+        if( mi.has_sub_items() )
+        {
+            for( const auto& si : mi.items() )
+            {
+                const auto& name = si.name();
+                auto it = ext_crate.m_exported_macros.find(name);
+                if( it == ext_crate.m_exported_macros.end() )
+                    ERROR(sp, E0000, "Could not find macro " << name << "! in crate " << crate_name);
+                it->second->m_exported = true;
+            }
+        }
+        else
+        {
+            ERROR(sp, E0000, "#[macro_reexport] requires a list of macros");
         }
     }
 };

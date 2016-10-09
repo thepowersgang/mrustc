@@ -286,7 +286,8 @@ namespace {
         ::MacroRules deserialise_macrorules()
         {
             ::MacroRules    rv;
-            rv.m_exported = true;
+            // NOTE: This is set after loading.
+            //rv.m_exported = true;
             rv.m_rules = deserialise_vec_c< ::MacroRulesArm>( [&](){ return deserialise_macrorulesarm(); });
             rv.m_source_crate = read_string();
             if(rv.m_source_crate == "")

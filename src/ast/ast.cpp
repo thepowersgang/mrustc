@@ -299,6 +299,9 @@ void Module::add_macro_invocation(MacroInvocation item) {
 void Module::add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro) {
     m_macros.push_back( Named<MacroRulesPtr>( mv$(name), mv$(macro), is_exported ) );
 }
+void Module::add_macro_import(::std::string name, const MacroRules& mr) {
+    m_macro_import_res.push_back( NamedNS<const MacroRules*>( mv$(name), &mr, false ) );
+}
 
 Item Item::clone() const
 {
