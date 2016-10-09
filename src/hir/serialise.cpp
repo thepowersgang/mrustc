@@ -407,6 +407,7 @@ namespace {
         {
             //m_exported: IGNORE, should be set
             serialise_vec(mac.m_rules);
+            write_string(mac.m_source_crate);
         }
         void serialise(const ::MacroPatEnt& pe) {
             write_string(pe.name);
