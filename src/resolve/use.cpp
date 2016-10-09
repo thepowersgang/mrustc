@@ -50,7 +50,7 @@ void Resolve_Use(::AST::Crate& crate)
         ),
     (Self,
         // EVIL HACK: If the current module is an anon module, refer to the parent
-        if( base_path.nodes().back().name()[0] == '#' ) {
+        if( base_path.nodes().size() > 0 && base_path.nodes().back().name()[0] == '#' ) {
             AST::Path   np("", {});
             for( unsigned int i = 0; i < base_path.nodes().size() - 1; i ++ )
                 np.nodes().push_back( base_path.nodes()[i] );
@@ -431,7 +431,10 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         }
         TU_MATCH_DEF( ::HIR::TypeItem, (it->second->ent), (e),
         (
-            ERROR(span, E0000, "Unexpected item type in import");
+            ERROR(span, E0000, "Unexpected item type in import " << path << " @ " << i << " - " << it->second->ent.tag_str());
+            ),
+        (Import,
+            TODO(span, "Recursive import " << nodes[i].name() << " = " << e << " in path " << path);
             ),
         (Module,
             hmod = &e;
