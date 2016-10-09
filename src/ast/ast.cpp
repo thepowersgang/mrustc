@@ -206,6 +206,9 @@ void Impl::add_static(bool is_public, bool is_specialisable, ::std::string name,
 {
     m_items.push_back( ImplItem { is_public, is_specialisable, mv$(name), box$( Item::make_Static(mv$(v)) ) } );
 }
+void Impl::add_macro_invocation(MacroInvocation item) {
+    m_items.push_back( ImplItem { false, false, "", box$( Item::make_MacroInv(mv$(item)) ) } );
+}
 
 bool Impl::has_named_item(const ::std::string& name) const
 {
@@ -243,7 +246,7 @@ bool Impl::has_named_item(const ::std::string& name) const
 
 MacroInvocation MacroInvocation::clone() const
 {
-    return MacroInvocation(m_span, m_attrs.clone(), m_macro_name, m_ident, m_input.clone());
+    return MacroInvocation(m_span, m_macro_name, m_ident, m_input.clone());
 }
 
 

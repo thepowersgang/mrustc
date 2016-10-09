@@ -591,7 +591,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
         
         auto ps = lex.start_span();
         if( tok.type() == TOK_MACRO ) {
-            auto inv = Parse_MacroInvocation( ps, AST::MetaItems(), mv$(tok.str()), lex );
+            auto inv = Parse_MacroInvocation( ps, mv$(tok.str()), lex );
             // - Silently consume ';' after the macro
             if( GET_TOK(tok, lex) != TOK_SEMICOLON )
                 PUTBACK(tok, lex);
@@ -963,7 +963,7 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
         auto ps = lex.start_span();
         if( tok.type() == TOK_MACRO )
         {
-            impl.add_macro_invocation( Parse_MacroInvocation( ps, AST::MetaItems(), mv$(tok.str()), lex ) );
+            impl.add_macro_invocation( Parse_MacroInvocation( ps, mv$(tok.str()), lex ) );
             // - Silently consume ';' after the macro
             if( GET_TOK(tok, lex) != TOK_SEMICOLON )
                 PUTBACK(tok, lex);
@@ -1281,7 +1281,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
 }
 
 
-::AST::MacroInvocation Parse_MacroInvocation(ProtoSpan span_start, ::AST::MetaItems meta_items, ::std::string name, TokenStream& lex)
+::AST::MacroInvocation Parse_MacroInvocation(ProtoSpan span_start, ::std::string name, TokenStream& lex)
 {
     Token   tok;
     ::std::string   ident;
@@ -1293,7 +1293,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
     }
     DEBUG("name=" << name << ", ident=" << ident);
     TokenTree tt = Parse_TT(lex, true);
-    return ::AST::MacroInvocation( lex.end_span(span_start), mv$(meta_items), mv$(name), mv$(ident), mv$(tt));
+    return ::AST::MacroInvocation( lex.end_span(span_start), mv$(name), mv$(ident), mv$(tt));
 }
 
 // TODO: Extract single-item parsing into a method that returns just the item
@@ -1318,11 +1318,29 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
             rv.data.attrs.m_items.push_back( mv$(mi) );
         return rv;
     }
-    
+
     auto ps = lex.start_span();
     
     ::std::string   item_name;
     ::AST::Item item_data;
+    
+    if( LOOK_AHEAD(lex) == TOK_MACRO ) {
+        GET_TOK(tok, lex);
+        
+        ::std::string   name = mv$(tok.str());
+        bool is_braced = (LOOK_AHEAD(lex) == TOK_BRACE_OPEN || LOOKAHEAD2(lex, TOK_IDENT, TOK_BRACE_OPEN));
+        item_data = ::AST::Item( Parse_MacroInvocation( ps, mv$(name), lex ) );
+        
+        if( !is_braced ) {
+            // - Consume the ';' after the macro
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+        }
+        
+        item_data.attrs = mv$(meta_items);
+        item_data.span = lex.end_span(ps);
+        
+        return ::AST::Named< ::AST::Item> { "", mv$(item_data), false };
+    }
     
     bool    is_public = false;
     if( GET_TOK(tok, lex) == TOK_RWORD_PUB ) {
@@ -1734,22 +1752,6 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod)
         }
         PUTBACK(tok, lex);
         DEBUG("meta_items = " << meta_items);
-
-        // Root-level macro invocations
-        auto ps = lex.start_span();
-        if( GET_TOK(tok, lex) == TOK_MACRO )
-        {
-            ::std::string   name = mv$(tok.str());
-            mod.add_macro_invocation( Parse_MacroInvocation( ps, mv$(meta_items), mv$(name), lex ) );
-            // - Silently consume ';' after the macro
-            // TODO: Check the tt next token before parsing to tell if this is needed
-            if( GET_TOK(tok, lex) != TOK_SEMICOLON )
-                PUTBACK(tok, lex);
-            continue ;
-        }
-        else {
-            PUTBACK(tok, lex);
-        }
 
         Parse_Mod_Item(lex, mod, mv$(meta_items));
     }

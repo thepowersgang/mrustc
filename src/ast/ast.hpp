@@ -416,8 +416,6 @@ private:
     //NamedList<Static>    m_statics;
     
 public:
-    ::std::vector<MacroInvocation>    m_macro_invocations;
-    
     Impl() {}
     Impl(Impl&&) /*noexcept*/ = default;
     Impl(ImplDef def):
@@ -428,9 +426,7 @@ public:
     void add_function(bool is_public, bool is_specialisable, ::std::string name, Function fcn);
     void add_type(bool is_public, bool is_specialisable, ::std::string name, TypeRef type);
     void add_static(bool is_public, bool is_specialisable, ::std::string name, Static v);
-    void add_macro_invocation( MacroInvocation inv ) {
-        m_macro_invocations.push_back( mv$(inv) );
-    }
+    void add_macro_invocation( MacroInvocation inv );
     
     const ImplDef& def() const { return m_def; }
           ImplDef& def()       { return m_def; }
@@ -491,8 +487,6 @@ class Module
     // Module-level items
     /// General items
     ::std::vector<Named<Item>>  m_items;
-    /// Macro invocations
-    ::std::vector<MacroInvocation>    m_macro_invocations;
     
     /// Impl blocks
     ::std::vector<Impl> m_impls;
@@ -576,7 +570,6 @@ public:
     const ::std::vector< ::std::shared_ptr<Module> >&   anon_mods() const { return m_anon_modules; }
     
 
-    ::std::vector<MacroInvocation>& macro_invs() { return m_macro_invocations; }
           NamedList<MacroRulesPtr>&    macros()        { return m_macros; }
     const NamedList<MacroRulesPtr>&    macros()  const { return m_macros; }
     const ::std::vector<NamedNS<const MacroRules*> >  macro_imports_res() const { return m_macro_import_res; }

@@ -1843,7 +1843,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Im
     {
         TU_MATCH(AST::Item, (*i.data), (e),
         (None, ),
-        (MacroInv, BUG(i.data->span, "Resolve_Absolute_ImplItems - MacroInv");),
+        (MacroInv, ),
 
         (Impl  , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (NegImpl, BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),

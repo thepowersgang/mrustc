@@ -37,7 +37,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
     case TOK_INTERPOLATED_TYPE:
         return mv$(tok.frag_type());
     case TOK_MACRO:
-        return TypeRef(TypeRef::TagMacro(), Parse_MacroInvocation(ps, AST::MetaItems(), mv$(tok.str()), lex));
+        return TypeRef(TypeRef::TagMacro(), Parse_MacroInvocation(ps, mv$(tok.str()), lex));
     // '!' - Only ever used as part of function prototypes, but is kinda a type... not allowed here though
     case TOK_EXCLAM:
         return TypeRef( Span(tok.get_pos()), TypeData::make_Bang({}) );

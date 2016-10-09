@@ -591,39 +591,10 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
     Expand_Type(crate, modstack, mod,  impl.def().type());
     //Expand_Type(crate, modstack, mod,  impl.def().trait());
     
-    // - Macro invocation
-    for(unsigned int i = 0; i < impl.m_macro_invocations.size(); i ++ )
-    {
-        auto& mi = impl.m_macro_invocations[i];
-        if( mi.name() != "" )
-        {
-            TRACE_FUNCTION_F("Macro invoke " << mi.name());
-            // Move out of the module to avoid invalidation if a new macro invocation is added
-            auto mi_owned = mv$(mi);
-            
-            auto ttl = Expand_Macro(crate, modstack, mod, mi_owned);
-
-            if( ! ttl.get() )
-            {
-                // - Return ownership to the list
-                mod.macro_invs()[i] = mv$(mi_owned);
-            }
-            else
-            {
-                // Re-parse tt
-                assert(ttl.get());
-                while( ttl->lookahead(0) != TOK_EOF )
-                {
-                    Parse_Impl_Item(*ttl, impl);
-                }
-                // - Any new macro invocations ends up at the end of the list and handled
-            }
-        }
-    }
-    
     DEBUG("> Items");
-    for( auto& i : impl.items() )
+    for( unsigned int idx = 0; idx < impl.items().size(); idx ++ )
     {
+        auto& i = impl.items()[idx];
         DEBUG("  - " << i.name << " :: " << i.data->attrs);
         
         // TODO: Make a path from the impl definition? Requires having the impl def resolved to be correct
@@ -638,6 +609,28 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
             throw ::std::runtime_error("BUG: Unknown item type in impl block");
             ),
         (None, ),
+        (MacroInv,
+            if( e.name() != "" )
+            {
+                TRACE_FUNCTION_F("Macro invoke " << e.name());
+                // Move out of the module to avoid invalidation if a new macro invocation is added
+                auto mi_owned = mv$(e);
+                
+                auto ttl = Expand_Macro(crate, modstack, mod, mi_owned);
+
+                if( ttl.get() )
+                {
+                    // Re-parse tt
+                    while( ttl->lookahead(0) != TOK_EOF )
+                    {
+                        Parse_Impl_Item(*ttl, impl);
+                    }
+                    // - Any new macro invocations ends up at the end of the list and handled
+                }
+                // Move back in (using the index, as the old pointr may be invalid)
+                impl.items()[idx].data->as_MacroInv() = mv$(mi_owned);
+            }
+            ),
         (Function,
             for(auto& arg : e.args()) {
                 Expand_Pattern(crate, modstack, mod,  arg.first);
@@ -654,9 +647,14 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
             )
         )
         
-        Expand_Attrs(attrs, AttrStage::Post,  crate, AST::Path(), mod, *i.data);
-        if( i.data->attrs.m_items.size() == 0 )
-            i.data->attrs = mv$(attrs);
+        // Run post-expansion decorators and restore attributes
+        {
+            auto& i = impl.items()[idx];
+            Expand_Attrs(attrs, AttrStage::Post,  crate, AST::Path(), mod, *i.data);
+            // TODO: How would this be populated? It got moved out?
+            if( i.data->attrs.m_items.size() == 0 )
+                i.data->attrs = mv$(attrs);
+        }
     }
 
     Expand_Attrs(impl.def().attrs(), AttrStage::Post,  crate, mod, impl.def());
@@ -690,45 +688,6 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
         }
     }
     
-    // TODO: Have the AST representation of a module include the definition order,
-    //  mixing macro invocations, general items, use statements, and `impl`s
-    
-    // 1. Macros first
-    //for( auto& mi : mod.macro_invs() )
-    for(unsigned int i = 0; i < mod.macro_invs().size(); i ++ )
-    {
-        auto& mi = mod.macro_invs()[i];
-        
-        if( mi.name() != "" )
-        {
-            TRACE_FUNCTION_F("Macro invoke " << mi.name());
-            // Move out of the module to avoid invalidation if a new macro invocation is added
-            auto mi_owned = mv$(mi);
-            
-            auto& attrs = mi_owned.attrs();
-            Expand_Attrs(attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mi_owned); });
-            
-            auto ttl = Expand_Macro(crate, modstack, mod, mi_owned);
-
-            if( ! ttl.get() )
-            {
-                Expand_Attrs(attrs, AttrStage::Post,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mi_owned); });
-                // - Return ownership to the list
-                mod.macro_invs()[i] = mv$(mi_owned);
-            }
-            else
-            {
-                // Re-parse tt
-                assert(ttl.get());
-                DEBUG("-- Parsing as mod items (legacy)");
-                Parse_ModRoot_Items(*ttl, mod);
-                // - Any new macro invocations ends up at the end of the list and handled
-            }
-            
-        }
-    }
-    
-    // 3. General items
     DEBUG("Items");
     for( unsigned int idx = 0; idx < mod.items().size(); idx ++ )
     {
@@ -750,31 +709,17 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             
             TRACE_FUNCTION_F("Macro invoke " << mi_owned.name());
             
-            auto& attrs = mi_owned.attrs();
-            Expand_Attrs(attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mi_owned); });
-            
             auto ttl = Expand_Macro(crate, modstack, mod, mi_owned);
+            assert( mi_owned.name() != "");
 
-            if( ! ttl.get() )
-            {
-                Expand_Attrs(attrs, AttrStage::Post,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mi_owned); });
-                // - Return ownership to the list
-                if( mi_owned.name() == "" ) {
-                    mod.items()[idx].data = AST::Item();
-                }
-                else {
-                    mod.items()[idx].data = AST::Item( mv$(mi_owned) );
-                }
-            }
-            else
+            if( ttl.get() )
             {
                 // Re-parse tt
                 assert(ttl.get());
                 DEBUG("-- Parsing as mod items");
                 Parse_ModRoot_Items(*ttl, mod);
-                // - Any new macro invocations ends up at the end of the list and handled
-                mod.items()[idx].data = AST::Item();
             }
+            mod.items()[idx].data.as_MacroInv() = mv$(mi_owned);
             ),
         (Use,
             // No inner expand.

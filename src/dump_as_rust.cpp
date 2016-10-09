@@ -712,6 +712,9 @@ void RustPrinter::handle_module(const AST::Module& mod)
             (None,
                 // Ignore, it's been deleted by #[cfg]
                 ),
+            (MacroInv,
+                // TODO: Dump macro invocations
+                ),
             (Type,
                 m_os << indent() << "type " << it.name << " = " << e.type() << ";\n";
                 ),

@@ -108,24 +108,6 @@ class CCfgHandler:
     AttrStage   stage() const override { return AttrStage::Pre; }
     
     
-    void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, AST::MacroInvocation& mac) const override {
-        DEBUG("#[cfg] mac! - " << mi);
-        if( check_cfg(sp, mi) ) {
-            // Leave as is
-        }
-        else {
-            mac.clear();
-        }
-    }
-    void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, AST::UseStmt& use) const override {
-        DEBUG("#[cfg] use - " << mi);
-        if( check_cfg(sp, mi) ) {
-            // Leave as is
-        }
-        else {
-            use.path = AST::Path();
-        }
-    }
     void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
         TRACE_FUNCTION_FR("#[cfg] item - " << mi, (i.is_None() ? "Deleted" : ""));
         if( check_cfg(sp, mi) ) {

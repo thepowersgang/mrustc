@@ -40,7 +40,7 @@ extern AST::PathParams Parse_Path_GenericList(TokenStream& lex);
 
 
 extern AST::MetaItem   Parse_MetaItem(TokenStream& lex);
-extern ::AST::MacroInvocation Parse_MacroInvocation(ProtoSpan ps, ::AST::MetaItems meta_items, ::std::string name, TokenStream& lex);
+extern ::AST::MacroInvocation Parse_MacroInvocation(ProtoSpan ps, ::std::string name, TokenStream& lex);
 extern TypeRef     Parse_Type(TokenStream& lex, bool allow_trait_list = true);
 extern AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable);
 

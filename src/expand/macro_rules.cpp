@@ -97,6 +97,41 @@ class CMacroUseHandler:
     
 };
 
+class CMacroExportHandler:
+    public ExpandDecorator
+{
+    AttrStage stage() const override { return AttrStage::Post; }
+    
+    void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    {
+        if( i.is_MacroInv() ) {
+            const auto& mac = i.as_MacroInv();
+            if( mac.name() != "macro_rules" ) {
+                ERROR(sp, E0000, "#[macro_export] is only valid on macro_rules!");
+            }
+            
+            //TODO(sp, "macro_export on Item MacroInv");
+        }
+        else {
+            ERROR(sp, E0000, "Use of #[macro_export] on non-macro - " << i.tag_str());
+        }
+    }
+};
+
+class CMacroReexportHandler:
+    public ExpandDecorator
+{
+    AttrStage stage() const override { return AttrStage::Post; }
+    void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    {
+        if( i.is_Crate() ) {
+        }
+        else {
+            ERROR(sp, E0000, "Use of #[macro_reexport] on non-crate - " << i.tag_str());
+        }
+    }
+};
+
 ::std::unique_ptr<TokenStream>  Macro_Invoke(const char* name, const MacroRules& rules, TokenTree tt, AST::Module& mod)
 {
     return Macro_InvokeRules(name, rules, mv$(tt), mod);
@@ -105,4 +140,6 @@ class CMacroUseHandler:
 
 STATIC_MACRO("macro_rules", CMacroRulesExpander);
 STATIC_DECORATOR("macro_use", CMacroUseHandler);
+STATIC_DECORATOR("macro_export", CMacroExportHandler);
+STATIC_DECORATOR("macro_reexport", CMacroReexportHandler);
 
