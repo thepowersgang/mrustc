@@ -465,6 +465,10 @@ bool StaticTraitResolve::find_impl__check_crate(
 void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef& input) const
 {
     TRACE_FUNCTION_F(input);
+    this->expand_associated_types_inner(sp, input);
+}
+void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::TypeRef& input) const
+{
     TU_MATCH(::HIR::TypeRef::Data, (input.m_data), (e),
     (Infer,
         //if( m_treat_ivars_as_bugs ) {
@@ -479,7 +483,7 @@ void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef&
         TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
         (Generic,
             for(auto& arg : e2.m_params.m_types)
-                this->expand_associated_types(sp, arg);
+                this->expand_associated_types_inner(sp, arg);
             ),
         (UfcsInherent,
             TODO(sp, "Path - UfcsInherent - " << e.path);
@@ -502,21 +506,21 @@ void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef&
         // Recurse?
         ),
     (Array,
-        expand_associated_types(sp, *e.inner);
+        expand_associated_types_inner(sp, *e.inner);
         ),
     (Slice,
-        expand_associated_types(sp, *e.inner);
+        expand_associated_types_inner(sp, *e.inner);
         ),
     (Tuple,
         for(auto& sub : e) {
-            expand_associated_types(sp, sub);
+            expand_associated_types_inner(sp, sub);
         }
         ),
     (Borrow,
-        expand_associated_types(sp, *e.inner);
+        expand_associated_types_inner(sp, *e.inner);
         ),
     (Pointer,
-        expand_associated_types(sp, *e.inner);
+        expand_associated_types_inner(sp, *e.inner);
         ),
     (Function,
         // Recurse?
@@ -531,9 +535,9 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
     auto& e = input.m_data.as_Path();
     auto& e2 = e.path.m_data.as_UfcsKnown();
     
-    this->expand_associated_types(sp, *e2.type);
+    this->expand_associated_types_inner(sp, *e2.type);
     for(auto& arg : e2.trait.m_params.m_types)
-        this->expand_associated_types(sp, arg);
+        this->expand_associated_types_inner(sp, arg);
     
     DEBUG("Locating associated type for " << e.path);
     
@@ -656,7 +660,7 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
             
             this->replace_equalities(input);
         }
-        this->expand_associated_types(sp, input);
+        this->expand_associated_types_inner(sp, input);
         return;
     }
 
