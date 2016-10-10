@@ -739,6 +739,12 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
         this->expand_associated_types(sp, input);
         return;
     }
+    if( best_impl.is_valid() ) {
+        e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+        this->replace_equalities(input);
+        DEBUG("- Couldn't find a non-specialised impl of " << trait_path << " for " << *e2.type << " - treating as opaque");
+        return ;
+    }
     
     ERROR(sp, E0000, "Cannot find an implementation of " << trait_path << " for " << *e2.type);
 }
