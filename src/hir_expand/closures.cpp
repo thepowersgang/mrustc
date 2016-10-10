@@ -616,13 +616,13 @@ namespace {
             DEBUG("args_ty = " << args_ty << ", ret_type = " << ret_type);
             
             ::HIR::ExprPtr body_code { mv$(node.m_code) };
+            body_code.m_bindings = mv$(local_types);
             
             {
                 DEBUG("-- Fixing types in body code");
                 ExprVisitor_Fixup   fixup { m_resolve.m_crate, monomorph_cb };
                 fixup.visit_root( body_code );
             }
-            body_code.m_bindings = mv$(local_types);
             
             // ---
             // 3. Create trait impls
