@@ -157,7 +157,7 @@ output/rust/run-pass/allocator-default.o: output/liballoc_jemalloc.hir output/li
 output/liballocator_dummy.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/allocator-dummy.rs
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 
-output/libtest.hir: output/libgetopts.hir
+output/libtest.hir: output/libgetopts.hir output/libterm.hir
 
 .PHONY: test test_rustos
 #
