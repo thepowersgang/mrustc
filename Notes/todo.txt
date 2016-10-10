@@ -1,6 +1,7 @@
 TODO:
+- Get all run-pass and run-fail tests passing resolve
+ - Requires getting libtest to compile
 - Audit TODOs in codebase
-- Test compile against a no_std program
 - MIR Optimisations
 - HIR Optimisation (remove dead code in `if true/if false` branches)
 - Convert enum variants to point to structs for the data type
