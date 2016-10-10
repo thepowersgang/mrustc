@@ -209,6 +209,7 @@ public:
     bool find_trait_impls_crate(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams* params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const;
     
 private:
+    ::HIR::Compare check_auto_trait_impl_destructure(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams* params_ptr, const ::HIR::TypeRef& type) const;
     ::HIR::Compare ftic_check_params(const Span& sp, const ::HIR::SimplePath& trait,
         const ::HIR::PathParams* params, const ::HIR::TypeRef& type,
         const ::HIR::GenericParams& impl_params_def, const ::HIR::PathParams& impl_trait_args, const ::HIR::TypeRef& impl_ty,
