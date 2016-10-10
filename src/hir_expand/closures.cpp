@@ -203,7 +203,8 @@ namespace {
         
         static void fix_type(const ::HIR::Crate& crate, t_cb_generic monomorph_cb, ::HIR::TypeRef& ty) {
             TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Closure, e,
-                auto path = monomorphise_genericpath_with(Span(), e.node->m_obj_path, monomorph_cb, false);
+                DEBUG("Closure: " << e.node->m_obj_path_base);
+                auto path = monomorphise_genericpath_with(Span(), e.node->m_obj_path_base, monomorph_cb, false);
                 const auto& str = crate.get_struct_by_path( Span(), path.m_path );
                 DEBUG(ty << " -> " << path);
                 ty = ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypeRef::TypePathBinding::make_Struct(&str) );
@@ -216,6 +217,7 @@ namespace {
             
             root->visit(*this);
             
+            DEBUG("Locals");
             for(auto& ty : root.m_bindings)
                 visit_type(ty);
         }
@@ -592,6 +594,7 @@ namespace {
             
             // Mark the object pathname in the closure.
             node.m_obj_path = ::HIR::GenericPath( closure_struct_path, mv$(constructor_path_params) );
+            node.m_obj_path_base = node.m_obj_path.clone();
             node.m_captures = mv$(capture_nodes);
             //node.m_res_type = ::HIR::TypeRef( node.m_obj_path.clone() );
             DEBUG("-- Object name: " << node.m_obj_path);
@@ -613,12 +616,13 @@ namespace {
             DEBUG("args_ty = " << args_ty << ", ret_type = " << ret_type);
             
             ::HIR::ExprPtr body_code { mv$(node.m_code) };
-            body_code.m_bindings = mv$(local_types);
             
             {
+                DEBUG("-- Fixing types in body code");
                 ExprVisitor_Fixup   fixup { m_resolve.m_crate, monomorph_cb };
                 fixup.visit_root( body_code );
             }
+            body_code.m_bindings = mv$(local_types);
             
             // ---
             // 3. Create trait impls
