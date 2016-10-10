@@ -1312,7 +1312,7 @@ public:
     virtual Position getPosition() const override { return m_input.getPosition(); }
     virtual Token realGetToken() override {
         Token tok = m_input.getToken();
-        m_output.push_back( TokenTree(tok) );
+        m_output.push_back( TokenTree(tok.clone()) );
         return tok;
     }
 

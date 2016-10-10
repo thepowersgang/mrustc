@@ -1036,7 +1036,7 @@ Token TTStreamO::realGetToken()
         if(idx == 0 && tree.is_token()) {
             idx ++;
             m_last_pos = tree.tok().get_pos();
-            return tree.tok();
+            return mv$(tree.tok());
         }
 
         if(idx < tree.size())

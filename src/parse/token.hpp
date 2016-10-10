@@ -86,20 +86,7 @@ public:
     {
         t.m_type = TOK_NULL;
     }
-    Token(const Token& t):
-        m_type(t.m_type),
-        m_data( Data::make_None({}) ),
-        m_pos( t.m_pos )
-    {
-        assert( t.m_data.tag() != Data::TAGDEAD );
-        TU_MATCH(Data, (t.m_data), (e),
-        (None,  ),
-        (String,    m_data = Data::make_String(e); ),
-        (Integer,   m_data = Data::make_Integer(e);),
-        (Float, m_data = Data::make_Float(e);),
-        (Fragment, assert(!"Copied fragment");)
-        )
-    }
+    Token(const Token& t);
     Token clone() const;
     
     Token(enum eTokenType type);

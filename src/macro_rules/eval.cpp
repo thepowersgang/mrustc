@@ -1029,11 +1029,11 @@ Token MacroExpander::realGetToken()
     while( const auto* next_ent_ptr = m_state.next_ent() )
     {
         const auto& ent = *next_ent_ptr;
-        TU_MATCH( MacroExpansionEnt, (ent), (e),
-        (Token,
+        TU_IFLET(MacroExpansionEnt, ent, Token, e,
             return e;
-            ),
-        (NamedValue,
+        )
+        else if( ent.is_NamedValue() ) {
+            const auto& e = ent.as_NamedValue();
             if( e >> 30 ) {
                 switch( e & 0x3FFFFFFF )
                 {
@@ -1081,12 +1081,14 @@ Token MacroExpander::realGetToken()
                     }
                 }
             }
-            ),
-        (Loop,
+        }
+        else TU_IFLET(MacroExpansionEnt, ent, Loop, e,
             //assert( e.joiner.tok() != TOK_NULL );
             return e.joiner;
-            )
         )
+        else {
+            throw "";
+        }
     }
     
     DEBUG("EOF");
