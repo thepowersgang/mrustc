@@ -158,6 +158,7 @@ output/liballocator_dummy.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/allocator-dum
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 
 output/libtest.hir: output/libgetopts.hir output/libterm.hir
+output/libgetopts.hir: output/libstd.hir
 
 .PHONY: test test_rustos
 #
