@@ -1807,11 +1807,6 @@ namespace {
                 return ;
             }
             
-            // TODO: Check if this is actually a coercion.
-            if( tgt_ty.m_data.is_Path() || tgt_ty.m_data.is_Generic() ) {
-                ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty) << " from " << this->context.m_ivars.fmt_type(src_ty));
-            }
-            
             TU_MATCH( ::HIR::TypeRef::Data, (tgt_ty.m_data), (e),
             (Infer,
                 // Can't know anything
@@ -1826,10 +1821,29 @@ namespace {
                 this->m_completed = true;
                 ),
             (Path,
-                BUG(sp, "_Cast Path");
+                TU_MATCHA( (e.binding), (be),
+                (Unbound,
+                    BUG(sp, "Encountered unbound type in _Cast Path - " << tgt_ty);
+                    ),
+                (Opaque,
+                    // TODO: Bounds search
+                    TODO(sp, "Cast Path::Opaque with CoerceUnsized - " << tgt_ty);
+                    ),
+                (Struct,
+                    if( !be->m_markings.can_coerce )
+                        ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
+                    ),
+                (Enum,
+                    if( !be->m_markings.can_coerce )
+                        ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
+                    )
+                )
+                this->context.equate_types_coerce(sp, tgt_ty, node.m_value);
+                this->m_completed = true;
+                return ;
                 ),
             (Generic,
-                BUG(sp, "_Cast Generic");
+                TODO(sp, "_Cast Generic");
                 ),
             (TraitObject,
                 ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
