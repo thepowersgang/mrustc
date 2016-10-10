@@ -99,6 +99,8 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     // - start
     else if( name == "start" ) { }
     
+    else if( name == "eh_personality" ) { }
+    
     else {
         ERROR(sp, E0000, "Unknown language item '" << name << "'");
     }
@@ -122,7 +124,10 @@ public:
     {
         TU_MATCH_DEF(::AST::Item, (i), (e),
         (
-            TODO(sp, "Unknown item type with #[lang=\""<<attr<<"\"] attached at " << path);
+            TODO(sp, "Unknown item type " << i.tag_str() << " with #["<<attr<<"] attached at " << path);
+            ),
+        (None,
+            // NOTE: Can happen when #[cfg] removed this
             ),
         (Function,
             if( e.code().is_valid() ) {
