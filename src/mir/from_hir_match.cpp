@@ -1256,11 +1256,27 @@ struct DecisionTreeNode
             return (start > x);
         }
         
+        bool operator==(const Range<T>& x) const {
+            return start == x.start && end == x.end;
+        }
+        bool operator!=(const Range<T>& x) const {
+            return start != x.start || end != x.end;
+        }
+        
         bool contains(const T& x) const {
             return (start <= x && x <= end);
         }
         bool overlaps(const Range<T>& x) const {
             return (x.start <= start && start <= x.end) || (x.start <= end && end <= x.end);
+        }
+        
+        friend ::std::ostream& operator<<(::std::ostream& os, const Range<T>& x) {
+            if( x.start == x.end ) {
+                return os << x.start;
+            }
+            else {
+                return os << x.start << " ... " << x.end;
+            }
         }
     };
     
@@ -1680,27 +1696,26 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
     
     TU_MATCHA( (rule), (e),
     (Any, {
-        if( m_default.is_Unset() ) {
-            if( rule_count == 1 ) {
-                and_then(m_default);
-            }
-            else {
+        if( rule_count == 1 )
+        {
+            ASSERT_BUG(sp, !m_default.is_Terminal(), "Duplicate terminal rule");
+            and_then(m_default);
+        }
+        else
+        {
+            if( m_default.is_Unset() ) {
                 m_default = new_branch_subtree(rule.field_path);
                 m_default.as_Subtree()->populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
             }
-        }
-        else TU_IFLET( Branch, m_default, Subtree, be,
-            if( rule_count == 1 ) {
-                and_then( m_default );
-            }
-            else {
+            else TU_IFLET( Branch, m_default, Subtree, be,
                 be->populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+            )
+            else {
+                // NOTE: All lists processed as part of the same tree should be the same length
+                BUG(sp, "Duplicate terminal rule");
             }
-        )
-        else {
-            // NOTE: All lists processed as part of the same tree should be the same length
-            BUG(sp, "Duplicate terminal rule");
         }
+        // TODO: Should this also recurse into branches?
         }),
     (Variant, {
         auto& be = GET_BRANCHES(m_branches, Variant);
@@ -2028,14 +2043,17 @@ void DecisionTreeNode::simplify()
 
 void DecisionTreeNode::propagate_default()
 {
+    TRACE_FUNCTION_FR(*this, *this);
     struct H {
         static void handle_branch(Branch& b, const Branch& def) {
             TU_IFLET(Branch, b, Subtree, be,
                 be->propagate_default();
-                if( be->m_default.is_Unset() ) {
+                if( !def.is_Unset() )
+                {
+                    DEBUG("Unify " << *be << " with " << def);
                     be->unify_from(def);
+                    be->propagate_default();
                 }
-                be->propagate_default();
             )
         }
     };
@@ -2044,40 +2062,49 @@ void DecisionTreeNode::propagate_default()
     (Unset,
         ),
     (Bool,
+        DEBUG("- false");
         H::handle_branch(e.false_branch, m_default);
+        DEBUG("- true");
         H::handle_branch(e.true_branch, m_default);
         ),
     (Variant,
         for(auto& branch : e) {
+            DEBUG("- V" << branch.first);
             H::handle_branch(branch.second, m_default);
         }
         ),
     (Unsigned,
         for(auto& branch : e) {
+            DEBUG("- U " << branch.first);
             H::handle_branch(branch.second, m_default);
         }
         ),
     (Signed,
         for(auto& branch : e) {
+            DEBUG("- S " << branch.first);
             H::handle_branch(branch.second, m_default);
         }
         ),
     (Float,
         for(auto& branch : e) {
+            DEBUG("- " << branch.first);
             H::handle_branch(branch.second, m_default);
         }
         ),
     (String,
         for(auto& branch : e) {
+            DEBUG("- '" << branch.first << "'");
             H::handle_branch(branch.second, m_default);
         }
         ),
     (Slice,
         for(auto& branch : e.fixed_arms) {
+            DEBUG("- [_;" << branch.first << "]");
             H::handle_branch(branch.second, m_default);
         }
         )
     )
+    DEBUG("- default");
     TU_IFLET(Branch, m_default, Subtree, be,
         be->propagate_default();
         
@@ -2124,121 +2151,160 @@ void DecisionTreeNode::propagate_default()
         }
     )
 }
+
+namespace {
+    static void unify_branch(DecisionTreeNode::Branch& dst, const DecisionTreeNode::Branch& src) {
+        if( dst.is_Unset() ) {
+            dst = DecisionTreeNode::clone(src);
+        }
+        else if( dst.is_Subtree() ) {
+            dst.as_Subtree()->unify_from(src);
+        }
+        else {
+            // Terminal, no unify
+        }
+    }
+    
+    template<typename T>
+    void unify_from_vals_range(::std::vector< ::std::pair<T, DecisionTreeNode::Branch>>& dst, const ::std::vector< ::std::pair<T, DecisionTreeNode::Branch>>& src)
+    {
+        for(const auto& srcv : src)
+        {
+            // Find the first entry with an end greater than or equal to the start of this entry
+            auto it = ::std::find_if( dst.begin(), dst.end(), [&](const auto& x){ return x.first.end >= srcv.first.start; });
+            // Not found? Insert a new branch
+            if( it == dst.end() ) {
+                it = dst.insert(it, ::std::make_pair(srcv.first, DecisionTreeNode::clone(srcv.second)));
+            }
+            // If the found entry doesn't overlap (the start of `*it` is after the end of `srcv`)
+            else if( it->first.start > srcv.first.end ) {
+                it = dst.insert(it, ::std::make_pair(srcv.first, DecisionTreeNode::clone(srcv.second)));
+            }
+            else if( it->first == srcv.first ) {
+                unify_branch( it->second, srcv.second );
+            }
+            else {
+                // NOTE: Overlapping doesn't get handled here
+            }
+        }
+    }
+    
+    template<typename T>
+    void unify_from_vals_pt(::std::vector< ::std::pair<T, DecisionTreeNode::Branch>>& dst, const ::std::vector< ::std::pair<T, DecisionTreeNode::Branch>>& src)
+    {
+        // Insert items not already present, merge present items
+        for(const auto& srcv : src)
+        {
+            auto it = ::std::find_if( dst.begin(), dst.end(), [&](const auto& x){ return x.first >= srcv.first; });
+            // Not found? Insert a new branch
+            if( it == dst.end() || it->first != srcv.first ) {
+                it = dst.insert(it, ::std::make_pair(srcv.first, DecisionTreeNode::clone(srcv.second)));
+            }
+            else {
+                unify_branch( it->second, srcv.second );
+            }
+        }
+    }
+}
+
 void DecisionTreeNode::unify_from(const Branch& b)
 {
-    TU_MATCHA( (b), (be),
+    TRACE_FUNCTION_FR(*this << " with " << b, *this);
+    
+    assert( b.is_Terminal() || b.is_Subtree() );
+    
+    if( m_default.is_Unset() ) {
+        if( b.is_Terminal() ) {
+            m_default = clone(b);
+        }
+        else {
+            m_default = clone(b.as_Subtree()->m_default);
+        }
+    }
+    
+    TU_MATCHA( (m_branches), (dst),
     (Unset,
-        ),
-    (Terminal,
-        if( m_default.is_Unset() ) {
-            m_default = Branch(be);
+        if( b.is_Subtree() ) {
+            assert( b.as_Subtree()->m_branches.is_Unset() );
+        }
+        else {
+            // Huh? Terminal matching against an unset branch?
         }
         ),
-    (Subtree,
-        assert( be->m_branches.tag() == m_branches.tag() );
-        TU_MATCHA( (be->m_branches, m_branches), (src, dst),
-        (Unset,
-            ),
-        (Bool,
-            if( dst.false_branch.is_Unset() ) {
-                dst.false_branch = clone(src.false_branch);
-            }
-            if( dst.true_branch.is_Unset() ) {
-                dst.true_branch = clone(src.false_branch);
-            }
-            ),
-        (Variant,
-            // Insert items not already present
-            for(const auto& srcv : src)
+    (Bool,
+        auto* src = (b.is_Subtree() ? &b.as_Subtree()->m_branches.as_Bool() : nullptr);
+        
+        unify_branch( dst.false_branch, (src ? src->false_branch : b) );
+        unify_branch( dst.true_branch , (src ? src->true_branch : b) );
+        ),
+    (Variant,
+        if( b.is_Subtree() )
+        {
+            unify_from_vals_pt(dst, b.as_Subtree()->m_branches.as_Variant());
+        }
+        else
+        {
+            // Unify all with terminal branch
+            for(auto& dstv : dst)
             {
-                auto it = ::std::find_if( dst.begin(), dst.end(), [&](const auto& x){ return x.first >= srcv.first; });
-                // Not found? Insert a new branch
-                if( it == dst.end() || it->first != srcv.first ) {
-                    it = dst.insert(it, ::std::make_pair(srcv.first, clone(srcv.second)));
-                }
+                unify_branch(dstv.second, b);
             }
-            ),
-        (Unsigned,
-            for(const auto& srcv : src)
+        }
+        ),
+    (Unsigned,
+        if( b.is_Subtree() ) {
+            unify_from_vals_range(dst, b.as_Subtree()->m_branches.as_Unsigned());
+        }
+        else {
+            for(auto& dstv : dst)
             {
-                // Find the first entry with an end greater than or equal to the start of this entry
-                auto it = ::std::find_if( dst.begin(), dst.end(), [&](const auto& x){ return x.first.end >= srcv.first.start; });
-                // Not found? Insert a new branch
-                if( it == dst.end() ) {
-                    it = dst.insert(it, ::std::make_pair(srcv.first, clone(srcv.second)));
-                }
-                // If the found entry doesn't overlap (the start of `*it` is after the end of `srcv`)
-                else if( it->first.start > srcv.first.end ) {
-                    it = dst.insert(it, ::std::make_pair(srcv.first, clone(srcv.second)));
-                }
-                else {
-                    // NOTE: Overlapping doesn't get handled here
-                }
+                unify_branch(dstv.second, b);
             }
-            ),
-        (Signed,
-            for(const auto& srcv : src)
+        }
+        ),
+    (Signed,
+        if( b.is_Subtree() ) {
+            unify_from_vals_range(dst, b.as_Subtree()->m_branches.as_Signed());
+        }
+        else {
+            for(auto& dstv : dst)
             {
-                // Find the first entry with an end greater than or equal to the start of this entry
-                auto it = ::std::find_if( dst.begin(), dst.end(), [&](const auto& x){ return x.first.end >= srcv.first.start; });
-                // Not found? Insert a new branch
-                if( it == dst.end() ) {
-                    it = dst.insert(it, ::std::make_pair( srcv.first, clone(srcv.second) ));
-                }
-                // If the found entry doesn't overlap (the start of `*it` is after the end of `srcv`)
-                else if( it->first.start > srcv.first.end ) {
-                    it = dst.insert(it, ::std::make_pair( srcv.first, clone(srcv.second) ));
-                }
-                else {
-                    // NOTE: Overlapping doesn't get handled here
-                }
+                unify_branch(dstv.second, b);
             }
-            ),
-        (Float,
-            for(const auto& srcv : src)
-            {
-                // Find the first entry with an end greater than or equal to the start of this entry
-                auto it = ::std::find_if( dst.begin(), dst.end(), [&](const auto& x){ return x.first.end >= srcv.first.start; });
-                // Not found? Insert a new branch
-                if( it == dst.end() ) {
-                    it = dst.insert(it, ::std::make_pair( srcv.first, clone(srcv.second) ));
-                }
-                // If the found entry doesn't overlap (the start of `*it` is after the end of `srcv`)
-                else if( it->first.start > srcv.first.end ) {
-                    it = dst.insert(it, ::std::make_pair( srcv.first, clone(srcv.second) ));
-                }
-                else {
-                    // NOTE: Overlapping doesn't get handled here
-                }
+        }
+        ),
+    (Float,
+        if( b.is_Subtree() ) {
+            unify_from_vals_range(dst, b.as_Subtree()->m_branches.as_Float());
+        }
+        else {
+            for(auto& dstv : dst) {
+                unify_branch(dstv.second, b);
             }
-            ),
-        (String,
-            for(const auto& srcv : src)
-            {
-                auto it = ::std::find_if( dst.begin(), dst.end(), [&](const auto& x){ return x.first >= srcv.first; });
-                // Not found? Insert a new branch
-                if( it == dst.end() ) {
-                    it = dst.insert(it, ::std::make_pair( srcv.first, clone(srcv.second) ));
-                }
-                else {
-                }
+        }
+    ),
+    (String,
+        if( b.is_Subtree() ) {
+            unify_from_vals_pt(dst, b.as_Subtree()->m_branches.as_String());
+        }
+        else {
+            for(auto& dstv : dst) {
+                unify_branch( dstv.second, b );
             }
-            ),
-        (Slice,
-            for(const auto& srcv : src.fixed_arms)
-            {
-                auto it = ::std::find_if( dst.fixed_arms.begin(), dst.fixed_arms.end(), [&](const auto& x){ return x.first >= srcv.first; });
-                // Not found? Insert a new branch
-                if( it == dst.fixed_arms.end() ) {
-                    it = dst.fixed_arms.insert(it, ::std::make_pair( srcv.first, clone(srcv.second) ));
-                }
-                else {
-                }
+        }
+        ),
+    (Slice,
+        if( b.is_Subtree() )
+        {
+            const auto& src = b.as_Subtree()->m_branches.as_Slice();
+            
+            unify_from_vals_pt(dst.fixed_arms, src.fixed_arms);
+        }
+        else
+        {
+            for(auto& dstv : dst.fixed_arms) {
+                unify_branch( dstv.second, b );
             }
-            )
-        )
-        if( m_default.is_Unset() ) {
-            m_default = clone(be->m_default);
         }
         )
     )
