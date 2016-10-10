@@ -2194,6 +2194,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     for(const auto& fld : se)
                     {
                         const auto& fld_ty_mono = monomorph_get(fld.ent);
+                        DEBUG("Struct::Tuple " << fld_ty_mono);
                         res &= type_impls_trait(fld_ty_mono);
                         if( res == ::HIR::Compare::Unequal )
                             return ::HIR::Compare::Unequal;
@@ -2203,6 +2204,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     for(const auto& fld : se)
                     {
                         const auto& fld_ty_mono = monomorph_get(fld.second.ent);
+                        DEBUG("Struct::Named '" << fld.first << "' " << fld_ty_mono);
                         
                         res &= type_impls_trait(fld_ty_mono);
                         if( res == ::HIR::Compare::Unequal )
@@ -2225,6 +2227,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                         for(const auto& fld : ve)
                         {
                             const auto& fld_ty_mono = monomorph_get(fld.ent);
+                            DEBUG("Enum '" << var.first << "'::Tuple " << fld_ty_mono);
                             res &= type_impls_trait(fld_ty_mono);
                             if( res == ::HIR::Compare::Unequal )
                                 return ::HIR::Compare::Unequal;
@@ -2234,6 +2237,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                         for(const auto& fld : ve)
                         {
                             const auto& fld_ty_mono = monomorph_get(fld.second.ent);
+                            DEBUG("Enum '" << var.first << "'::Struct '" << fld.first << "' " << fld_ty_mono);
                             
                             res &= type_impls_trait(fld_ty_mono);
                             if( res == ::HIR::Compare::Unequal )

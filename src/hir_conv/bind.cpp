@@ -339,10 +339,9 @@ namespace {
         }
         void visit_type(::HIR::TypeRef& ty) override
         {
+            //TRACE_FUNCTION_F(ty);
             static Span _sp = Span();
             const Span& sp = _sp;
-
-            ::HIR::Visitor::visit_type(ty);
             
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, e,
                 TU_MATCH( ::HIR::Path::Data, (e.path.m_data), (pe),
@@ -355,10 +354,12 @@ namespace {
                     (Struct,
                         fix_param_count(sp, pe, e3.m_params,  pe.m_params);
                         e.binding = ::HIR::TypeRef::TypePathBinding::make_Struct(&e3);
+                        DEBUG("- " << ty);
                         ),
                     (Enum,
                         fix_param_count(sp, pe, e3.m_params,  pe.m_params);
                         e.binding = ::HIR::TypeRef::TypePathBinding::make_Enum(&e3);
+                        DEBUG("- " << ty);
                         ),
                     (Trait,
                         ty.m_data = ::HIR::TypeRef::Data::make_TraitObject({ ::HIR::TraitPath { mv$(pe), {}, {} }, {}, {} });
@@ -390,8 +391,9 @@ namespace {
                     }
                     )
                 )
-                DEBUG(ty);
             )
+            
+            ::HIR::Visitor::visit_type(ty);
         }
         
         void visit_expr(::HIR::ExprPtr& expr) override
