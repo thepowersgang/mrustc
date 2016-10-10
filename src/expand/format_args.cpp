@@ -11,6 +11,7 @@
 #include "../parse/parseerror.hpp"
 #include "../parse/tokentree.hpp"
 #include "../parse/lex.hpp"
+#include "../parse/interpolated_fragment.hpp"
 #include <ast/crate.hpp>    // for m_load_std
 #include <ast/expr.hpp>    // for ExprNode_*
 
@@ -339,7 +340,7 @@ class CFormatArgsExpander:
                 
                 GET_CHECK_TOK(tok, lex, TOK_EQUAL);
                 
-                auto expr_tt = Parse_TT_Expr(lex);
+                auto expr_tt = TokenTree(Token( InterpolatedFragment(InterpolatedFragment::EXPR, Parse_Expr0(lex).release()) ));
                 
                 auto ins_rv = named_args_index.insert( ::std::make_pair(mv$(name), named_args.size()) );
                 if( ins_rv.second == false ) {
@@ -350,7 +351,7 @@ class CFormatArgsExpander:
             // - Free parameters
             else
             {
-                auto expr_tt = Parse_TT_Expr(lex);
+                auto expr_tt = TokenTree(Token( InterpolatedFragment(InterpolatedFragment::EXPR, Parse_Expr0(lex).release()) ));
                 free_args.push_back( mv$(expr_tt) );
             }
         }
@@ -399,10 +400,10 @@ class CFormatArgsExpander:
                     push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
                     toks.push_back( Token(TOK_PAREN_OPEN) );
                     toks.push_back( Token(TOK_AMP) );
-                    toks.push_back( Token(TOK_PAREN_OPEN) );
                     toks.push_back( mv$(free_args[frag.arg_index]) );
-                    toks.push_back( Token(TOK_PAREN_CLOSE) );
+                    
                     toks.push_back( TokenTree(TOK_COMMA) );
+                    
                     push_path(toks, crate, {"fmt", frag.trait_name, "fmt"});
                     toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
                     toks.push_back( TokenTree(TOK_COMMA) );
