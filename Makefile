@@ -157,7 +157,7 @@ output/rust/run-pass/allocator-default.o: output/liballoc_jemalloc.hir output/li
 output/liballocator_dummy.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/allocator-dummy.rs
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 
-output/libtest.hir: output/libgetopts.hir output/libterm.hir
+output/libtest.hir: $(patsubst %,output/lib%.hir, std getopts term panic_unwind)
 output/libgetopts.hir: output/libstd.hir
 
 .PHONY: test test_rustos
