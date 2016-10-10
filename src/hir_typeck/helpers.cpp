@@ -522,7 +522,7 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
             (Infer,
                 // Check for right having a ty_class
                 if( e.ty_class != ::HIR::InferClass::None && e.ty_class != l_e.ty_class ) {
-                    ERROR(sp, E0000, "Unifying types with mismatching literal classes");
+                    ERROR(sp, E0000, "Unifying types with mismatching literal classes - " << type << " := " << *root_ivar.type);
                 }
                 )
             )
@@ -588,7 +588,7 @@ void HMTypeInferrence::ivar_unify(unsigned int left_slot, unsigned int right_slo
         auto& root_ivar = this->get_pointed_ivar(right_slot);
         
         TU_IFLET(::HIR::TypeRef::Data, root_ivar.type->m_data, Infer, re,
-            if(re.ty_class != ::HIR::InferClass::None) {
+            if(re.ty_class != ::HIR::InferClass::None && re.ty_class != ::HIR::InferClass::Diverge) {
                 TU_MATCH_DEF(::HIR::TypeRef::Data, (left_ivar.type->m_data), (le),
                 (
                     ERROR(sp, E0000, "Type unificiation of literal with invalid type - " << *left_ivar.type);
@@ -596,7 +596,7 @@ void HMTypeInferrence::ivar_unify(unsigned int left_slot, unsigned int right_slo
                 (Infer,
                     if( le.ty_class != ::HIR::InferClass::None && le.ty_class != re.ty_class )
                     {
-                        ERROR(sp, E0000, "Unifying types with mismatching literal classes");
+                        ERROR(sp, E0000, "Unifying types with mismatching literal classes - " << *left_ivar.type << " := " << *root_ivar.type);
                     }
                     le.ty_class = re.ty_class;
                     ),
