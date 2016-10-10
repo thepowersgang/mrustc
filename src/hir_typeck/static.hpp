@@ -44,6 +44,9 @@ private:
     void prep_indexes();
     
 public:
+    bool has_self() const {
+        return m_impl_generics ? true : false;
+    }
     const ::HIR::GenericParams& impl_generics() const {
         static ::HIR::GenericParams empty;
         return m_impl_generics ? *m_impl_generics : empty;

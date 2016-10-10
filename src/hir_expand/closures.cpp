@@ -45,6 +45,7 @@ namespace {
         return rv;
     }
     
+    /// Mutate the contents of a closure to update captures, variables, and types
     class ExprVisitor_Mutate:
         public ::HIR::ExprVisitorDef
     {
@@ -93,6 +94,7 @@ namespace {
         void visit_type(::HIR::TypeRef& ty) override {
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
                 auto n = m_monomorph_cb(ty).clone();
+                DEBUG(ty << " -> " << n);
                 ty = mv$(n);
             )
             else {
@@ -115,9 +117,11 @@ namespace {
         }
         void visit(::HIR::ExprNode_Closure& node) override
         {
-            // Do nothing, inner closures should just be value references now
             assert( ! node.m_code );
             
+            // Fix params in path
+            visit_generic_path( ::HIR::Visitor::PathContext::VALUE, node.m_obj_path );
+            // Visit captures
             for(auto& subnode : node.m_captures)
             {
                 visit_node_ptr(subnode);
@@ -189,22 +193,27 @@ namespace {
         public ::HIR::ExprVisitorDef
     {
         const ::HIR::Crate& m_crate;
+        t_cb_generic    m_monomorph_cb;
     public:
-        ExprVisitor_Fixup(const ::HIR::Crate& crate):
-            m_crate(crate)
+        ExprVisitor_Fixup(const ::HIR::Crate& crate, t_cb_generic monomorph_cb):
+            m_crate(crate),
+            m_monomorph_cb( mv$(monomorph_cb) )
         {
         }
         
-        static void fix_type(const ::HIR::Crate& crate, ::HIR::TypeRef& ty) {
+        static void fix_type(const ::HIR::Crate& crate, t_cb_generic monomorph_cb, ::HIR::TypeRef& ty) {
             TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Closure, e,
-                auto path = e.node->m_obj_path.clone();
+                auto path = monomorphise_genericpath_with(Span(), e.node->m_obj_path, monomorph_cb, false);
                 const auto& str = crate.get_struct_by_path( Span(), path.m_path );
+                DEBUG(ty << " -> " << path);
                 ty = ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypeRef::TypePathBinding::make_Struct(&str) );
             )
         }
         
         void visit_root(::HIR::ExprPtr& root)
         {
+            TRACE_FUNCTION;
+            
             root->visit(*this);
             
             for(auto& ty : root.m_bindings)
@@ -242,7 +251,7 @@ namespace {
         
         void visit_type(::HIR::TypeRef& ty) override
         {
-            fix_type(m_crate, ty);
+            fix_type(m_crate, m_monomorph_cb, ty);
             ::HIR::ExprVisitorDef::visit_type(ty);
         }
     };
@@ -447,9 +456,12 @@ namespace {
             ::HIR::GenericParams    params;
             ::HIR::PathParams   constructor_path_params;
             ::HIR::PathParams   impl_path_params;
-            // - 0xFFFF "Self" -> 0 "Super"
-            constructor_path_params.m_types.push_back( ::HIR::TypeRef("Self", 0xFFFF) );
-            params.m_types.push_back( ::HIR::TypeParamDef { "Super", {}, false } );  // TODO: Determine if parent Self is Sized (or even present?)
+            // - 0xFFFF "Self" -> 0 "Super" (if present)
+            if( m_resolve.has_self() )
+            {
+                constructor_path_params.m_types.push_back( ::HIR::TypeRef("Self", 0xFFFF) );
+                params.m_types.push_back( ::HIR::TypeParamDef { "Super", {}, false } );  // TODO: Determine if parent Self is Sized
+            }
             // - Top-level params come first
             unsigned ofs_impl = params.m_types.size();
             for(const auto& ty_def : m_resolve.impl_generics().m_types) {
@@ -566,7 +578,7 @@ namespace {
                 }
                 
                 // - Fix type to replace closure types with known paths
-                ExprVisitor_Fixup::fix_type(m_resolve.m_crate, ty_mono);
+                ExprVisitor_Fixup::fix_type(m_resolve.m_crate, monomorph_cb, ty_mono);
                 capture_types.push_back( ::HIR::VisEnt< ::HIR::TypeRef> { false, mv$(ty_mono) } );
             }
             auto closure_struct_path = m_new_type(
@@ -604,7 +616,7 @@ namespace {
             body_code.m_bindings = mv$(local_types);
             
             {
-                ExprVisitor_Fixup   fixup { m_resolve.m_crate };
+                ExprVisitor_Fixup   fixup { m_resolve.m_crate, monomorph_cb };
                 fixup.visit_root( body_code );
             }
             
@@ -989,7 +1001,7 @@ namespace {
                 }
                 
                 {
-                    ExprVisitor_Fixup   fixup(m_resolve.m_crate);
+                    ExprVisitor_Fixup   fixup(m_resolve.m_crate, [](const auto& x)->const auto&{ return x; });
                     fixup.visit_root( item.m_code );
                 }
             }
