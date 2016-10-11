@@ -821,6 +821,17 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
     if( p.binding().is_valid() ) {
         if( p.binding().m_mutable )
             m_os << "mut ";
+        switch(p.binding().m_type)
+        {
+        case ::AST::PatternBinding::Type::MOVE:
+            break;
+        case ::AST::PatternBinding::Type::REF:
+            m_os << "ref ";
+            break;
+        case ::AST::PatternBinding::Type::MUTREF:
+            m_os << "ref mut ";
+            break;
+        }
         m_os << p.binding().m_name << "/*"<<p.binding().m_slot<<"*/";
         // If binding is irrefutable, and would be binding against a wildcard, just emit the name
         if( !is_refutable && p.data().is_Any() )
