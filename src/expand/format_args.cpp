@@ -46,7 +46,42 @@ namespace {
         unsigned int prec = 0;
         
         bool operator==(const FmtArgs& x) const { return ::std::memcmp(this, &x, sizeof(*this)) == 0; }
-        bool operator!=(const FmtArgs& x) const { return ::std::memcmp(this, &x, sizeof(*this)) != 0; }
+        bool operator!=(const FmtArgs& x) const {
+            #define CMP(f)  if(f != x.f)    return true
+            CMP(align);
+            CMP(align_char);
+            CMP(sign);
+            CMP(alternate);
+            CMP(zero_pad);
+            CMP(width_is_arg);
+            CMP(width);
+            CMP(prec_is_arg);
+            CMP(prec);
+            return false;
+        }
+        friend ::std::ostream& operator<<(::std::ostream& os, const FmtArgs& x) {
+            os << "Align(";
+            switch(x.align) {
+            case Align::Unspec: os << "-"; break;
+            case Align::Left:   os << "<"; break;
+            case Align::Center: os << "^"; break;
+            case Align::Right:  os << ">"; break;
+            }
+            os << "'" << x.align_char << "'";
+            os << ")";
+            os << "Sign(";
+            switch(x.sign) {
+            case Sign::Unspec:  os << " ";  break;
+            case Sign::Plus:    os << "+";  break;
+            case Sign::Minus:   os << "-";  break;
+            }
+            if(x.alternate) os << "#";
+            if(x.zero_pad) os << "0";
+            os << ")";
+            os << "Width(" << (x.width_is_arg ? "$" : "") << x.width << ")";
+            os << "Prec(" << (x.prec_is_arg ? "$" : "") << x.prec << ")";
+            return os;
+        }
     };
     
     /// A single formatting fragment
@@ -402,7 +437,7 @@ class CFormatArgsExpander:
             }
             // TODO: This false fires a lot.
             if( fragments[i].args != FmtArgs {} ) {
-                DEBUG(i << " Args changed");
+                DEBUG(i << " Args changed - " << fragments[i].args << " != " << FmtArgs {});
                 is_simple = false;
             }
         }
@@ -436,7 +471,34 @@ class CFormatArgsExpander:
         toks.push_back( TokenTree(TOK_FATARROW) );
         toks.push_back( TokenTree(TOK_BRACE_OPEN) );
         
-        // TODO: Save fragments into a static
+        // Save fragments into a static
+        // `static FRAGMENTS: [&'static str; N] = [...];`
+        // - Contains N+1 entries, where N is the number of fragments
+        {
+            toks.push_back( TokenTree(TOK_RWORD_STATIC) );
+            toks.push_back( Token(TOK_IDENT, "FRAGMENTS") );
+            toks.push_back( TokenTree(TOK_COLON) );
+            
+            toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
+            toks.push_back( Token(TOK_AMP) );
+            toks.push_back( Token(TOK_LIFETIME, "static") );
+            toks.push_back( Token(TOK_IDENT, "str") );
+            toks.push_back( Token(TOK_SEMICOLON) );
+            toks.push_back( Token(fragments.size() + 1, CORETYPE_UINT) );
+            toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
+            
+            toks.push_back( Token(TOK_EQUAL) );
+            
+            toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
+            for(const auto& frag : fragments ) {
+                toks.push_back( Token(TOK_STRING, frag.leading_text) );
+                toks.push_back( TokenTree(TOK_COMMA) );
+            }
+            toks.push_back( Token(TOK_STRING, tail) );
+            toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
+            
+            toks.push_back( Token(TOK_SEMICOLON) );
+        }
         
         if( is_simple )
         {
@@ -446,16 +508,7 @@ class CFormatArgsExpander:
             toks.push_back( TokenTree(TOK_PAREN_OPEN) );
             {
                 toks.push_back( TokenTree(TOK_AMP) );
-                // Raw string fragments
-                // - Contains N+1 entries, where N is the number of fragments
-                toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
-                for(const auto& frag : fragments ) {
-                    toks.push_back( Token(TOK_STRING, frag.leading_text) );
-                    toks.push_back( TokenTree(TOK_COMMA) );
-                }
-                toks.push_back( Token(TOK_STRING, tail) );
-                toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
-                
+                toks.push_back( Token(TOK_IDENT, "FRAGMENTS") );
                 toks.push_back( TokenTree(TOK_COMMA) );
                 
                 toks.push_back( TokenTree(TOK_AMP) );
@@ -487,15 +540,7 @@ class CFormatArgsExpander:
             toks.push_back( TokenTree(TOK_PAREN_OPEN) );
             {
                 toks.push_back( TokenTree(TOK_AMP) );
-                // Raw string fragments
-                // - Contains N+1 entries, where N is the number of fragments
-                toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
-                for(const auto& frag : fragments ) {
-                    toks.push_back( Token(TOK_STRING, frag.leading_text) );
-                    toks.push_back( TokenTree(TOK_COMMA) );
-                }
-                toks.push_back( Token(TOK_STRING, tail) );
-                toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
+                toks.push_back( Token(TOK_IDENT, "FRAGMENTS") );
                 toks.push_back( TokenTree(TOK_COMMA) );
                 
                 // TODO: Fragments to format
