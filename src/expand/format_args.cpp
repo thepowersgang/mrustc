@@ -66,6 +66,22 @@ namespace {
         FmtArgs     args;
     };
 
+    
+    class string_view {
+        const char* s;
+        const char* e;
+    public:
+        string_view(const char* s, const char* e):
+            s(s), e(e)
+        {}
+        
+        friend ::std::ostream& operator<<(::std::ostream& os, const string_view& x) {
+            for(const char* p = x.s; p != x.e; p++)
+                os << *p;
+            return os;
+        }
+    };
+    
     /// Parse a format string into a sequence of fragments.
     /// 
     /// Returns a list of fragments, and the remaining free text after the last format sequence
@@ -88,9 +104,7 @@ namespace {
             if( *s != '{' )
             {
                 if( *s == '}' ) {
-                    s ++;
-                    if( *s != '}' )
-                        ERROR(sp, E0000, "'}' must be escaped as '}}' in format strings");
+                    // Doesn't need escaping
                     cur_literal += '}';
                 }
                 else
@@ -107,6 +121,11 @@ namespace {
                     continue ;
                 }
                 
+                const char* s2 = s;
+                while(*s2 && *s2 != '}')
+                    s2 ++;
+                auto fmt_frag_str = string_view { s, s2 };
+                
                 unsigned int index = ~0u;
                 const char* trait_name;
                 FmtArgs args;
@@ -114,7 +133,20 @@ namespace {
                 // Formatting parameter
                 if( *s != ':' && *s != '}' ) {
                     // Parse either an integer or an identifer
-                    TODO(sp, "Parse named/positional formatting fragment at \"" << s);
+                    if( isdigit(*s) ) {
+                        TODO(sp, "Parse positional formatting fragment at \"" << fmt_frag_str << "\"");
+                    }
+                    else {
+                        const char* start = s;
+                        while( isalnum(*s) || *s == '_' || (*s < 0 || *s > 127) ) {
+                            s ++;
+                        }
+                        ::std::string   ident { start, s };
+                        auto it = named.find(ident);
+                        if( it == named.end() )
+                            ERROR(sp, E0000, "Named argument '"<<ident<<"' not found");
+                        index = n_free + it->second;
+                    }
                 }
                 else {
                     // Leave (for now)
@@ -356,8 +388,6 @@ class CFormatArgsExpander:
             }
         }
         
-        // TODO: This should expand to a `match (a, b, c) { (ref _0, ref _1, ref _2) => ... }` to ensure that the values live long enough?
-        
         // - Parse the format string
         ::std::vector< FmtFrag> fragments;
         ::std::string   tail;
@@ -373,6 +403,38 @@ class CFormatArgsExpander:
         }
         
         ::std::vector<TokenTree> toks;
+        // TODO: This should expand to a `match (a, b, c) { (ref _0, ref _1, ref _2) => ... }` to ensure that the values live long enough?
+        // - Also avoids name collisions
+        #if 0
+        toks.push_back( TokenTree(TOK_RWORD_MATCH) );
+        toks.push_back( TokenTree(TOK_PAREN_OPEN) );
+        for(auto& arg : free_args)
+        {
+            toks.push_back( mv$(arg) );
+            toks.push_back( TokenTree(TOK_COMMA) );
+        }
+        for(auto& arg : named_args)
+        {
+            toks.push_back( mv$(arg) );
+            toks.push_back( TokenTree(TOK_COMMA) );
+        }
+        toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
+        toks.push_back( TokenTree(TOK_BRACE_OPEN) );
+        toks.push_back( TokenTree(TOK_PAREN_OPEN) );
+        for(unsigned int i = 0; i < free_args.size() + named_args.size(); i ++ )
+        {
+            toks.push_back( TokenTree(TOK_RWORD_REF) );
+            toks.push_back( Token(TOK_IDENT, FMT("a" << i)) );
+            toks.push_back( TokenTree(TOK_COMMA) );
+        }
+        toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
+        toks.push_back( TokenTree(TOK_FATARROW) );
+        toks.push_back( TokenTree(TOK_BRACE_OPEN) );
+        #endif
+        
+        
+        // TODO: Save fragments into a static
+        
         if( is_simple )
         {
             // ::fmt::Arguments::new_v1
