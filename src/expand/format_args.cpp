@@ -396,25 +396,31 @@ class CFormatArgsExpander:
         bool is_simple = true;
         for(unsigned int i = 0; i < fragments.size(); i ++)
         {
-            if( fragments[i].arg_index != i )
+            if( fragments[i].arg_index != i ) {
+                DEBUG(i << "Ordering mismach");
                 is_simple = false;
-            if( fragments[i].args != FmtArgs {} )
+            }
+            // TODO: This false fires a lot.
+            if( fragments[i].args != FmtArgs {} ) {
+                DEBUG(i << " Args changed");
                 is_simple = false;
+            }
         }
         
         ::std::vector<TokenTree> toks;
-        // TODO: This should expand to a `match (a, b, c) { (ref _0, ref _1, ref _2) => ... }` to ensure that the values live long enough?
+        // This should expand to a `match (a, b, c) { (ref _0, ref _1, ref _2) => ... }` to ensure that the values live long enough?
         // - Also avoids name collisions
-        #if 0
         toks.push_back( TokenTree(TOK_RWORD_MATCH) );
         toks.push_back( TokenTree(TOK_PAREN_OPEN) );
         for(auto& arg : free_args)
         {
+            toks.push_back( TokenTree(TOK_AMP) );
             toks.push_back( mv$(arg) );
             toks.push_back( TokenTree(TOK_COMMA) );
         }
         for(auto& arg : named_args)
         {
+            toks.push_back( TokenTree(TOK_AMP) );
             toks.push_back( mv$(arg) );
             toks.push_back( TokenTree(TOK_COMMA) );
         }
@@ -423,15 +429,12 @@ class CFormatArgsExpander:
         toks.push_back( TokenTree(TOK_PAREN_OPEN) );
         for(unsigned int i = 0; i < free_args.size() + named_args.size(); i ++ )
         {
-            toks.push_back( TokenTree(TOK_RWORD_REF) );
             toks.push_back( Token(TOK_IDENT, FMT("a" << i)) );
             toks.push_back( TokenTree(TOK_COMMA) );
         }
         toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
         toks.push_back( TokenTree(TOK_FATARROW) );
         toks.push_back( TokenTree(TOK_BRACE_OPEN) );
-        #endif
-        
         
         // TODO: Save fragments into a static
         
@@ -461,8 +464,7 @@ class CFormatArgsExpander:
                 {
                     push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
                     toks.push_back( Token(TOK_PAREN_OPEN) );
-                    toks.push_back( Token(TOK_AMP) );
-                    toks.push_back( mv$(free_args[frag.arg_index]) );
+                    toks.push_back( Token(TOK_IDENT, FMT("a" << frag.arg_index)) );
                     
                     toks.push_back( TokenTree(TOK_COMMA) );
                     
@@ -507,6 +509,9 @@ class CFormatArgsExpander:
             // )
             toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
         }   // if(is_simple) else
+        
+        toks.push_back( TokenTree(TOK_BRACE_CLOSE) );
+        toks.push_back( TokenTree(TOK_BRACE_CLOSE) );
         
         return box$( TTStreamO(TokenTree(mv$(toks))) );
     }
