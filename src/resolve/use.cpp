@@ -141,15 +141,6 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             use_stmt_data.alt_binding = Resolve_Use_GetBinding(span, crate, use_stmt_data.path, parent_modules, allow);
         }
     }
-    
-    for(auto& i : mod.items())
-    {
-        if( i.data.is_Module() )
-        {
-            Resolve_Use_Mod(crate, i.data.as_Module(), path + i.name);
-        }
-    }
-    // - NOTE: Handle anon modules by iterating code (allowing correct item mappings)
 
     struct NV:
         public AST::NodeVisitorDef
@@ -178,10 +169,17 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     } expr_iter(crate, mod);
     
     // TODO: Check that all code blocks are covered by these
+    // - NOTE: Handle anon modules by iterating code (allowing correct item mappings)
     for(auto& i : mod.items())
     {
         TU_MATCH_DEF( AST::Item, (i.data), (e),
         (
+            ),
+        (Module,
+            Resolve_Use_Mod(crate, i.data.as_Module(), path + i.name);
+            ),
+        (Impl,
+            TODO(Span(), "Recurse into Impl");
             ),
         (Trait,
             for(auto& ti : e.items())

@@ -916,6 +916,9 @@ void Expand_Mod_IndexAnon(::AST::Crate& crate, ::AST::Module& mod)
             DEBUG("- " << mp->path() << " dropped due to node destruction");
             mp.reset();
         }
+        else {
+            Expand_Mod_IndexAnon(crate, *mp);
+        }
     }
 }
 void Expand(::AST::Crate& crate)

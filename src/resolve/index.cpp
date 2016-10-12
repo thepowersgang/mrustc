@@ -218,7 +218,7 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                 }
             };
             if( i_data.path.binding().is_Unbound() ) {
-                BUG(sp, "Import left unbound ("<<i_data.path<<")");
+                BUG(sp, "`use " << i_data.path << "` left unbound in module " << mod.path());
             }
             else {
                 H::handle_pb(sp, mod, i, i_data.path.binding(), false);
