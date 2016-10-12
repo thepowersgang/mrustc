@@ -925,7 +925,7 @@ namespace {
             ::HIR::SimplePath   root_mod_path("",{});
             m_cur_mod_path = &root_mod_path;
             m_new_type = [&](auto s)->auto {
-                auto name = FMT("closure_" << closure_count);
+                auto name = FMT("closure_I_" << closure_count);
                 closure_count += 1;
                 auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { false, ::HIR::TypeItem( mv$(s) ) } ));
                 crate.m_root_module.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
