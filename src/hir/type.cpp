@@ -688,7 +688,20 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return te.inner->match_test_generics_fuzz( sp, *xe.inner, resolve_placeholder, callback );
         ),
     (Function,
-        TODO(sp, "Function");
+        if( te.is_unsafe != xe.is_unsafe )
+            return Compare::Unequal;
+        if( te.m_abi != xe.m_abi )
+            return Compare::Unequal;
+        if( te.m_arg_types.size() != xe.m_arg_types.size() )
+            return Compare::Unequal;
+        auto rv = Compare::Equal;
+        for( unsigned int i = 0; i < te.m_arg_types.size(); i ++ ) {
+            rv &= te.m_arg_types[i] .match_test_generics_fuzz( sp, xe.m_arg_types[i], resolve_placeholder, callback );
+            if( rv == Compare::Unequal )
+                return rv;
+        }
+        rv &= te.m_rettype->match_test_generics_fuzz( sp, *xe.m_rettype, resolve_placeholder, callback );
+        return rv;
         ),
     (Closure,
         if( te.node != xe.node )
