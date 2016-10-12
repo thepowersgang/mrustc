@@ -400,7 +400,21 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 }
                 ),
             (Enum,
-                TODO(span, "Look up wildcard in enum");
+                assert(e.enum_ || e.hir);
+                if( e.enum_ ) {
+                    const auto& enm = *e.enum_;
+                    unsigned int i = 0;
+                    for(const auto& var : enm.variants())
+                    {
+                        if( var.m_name == des_item_name ) {
+                            return ::AST::PathBinding::make_EnumVar({ &enm, i });
+                        }
+                        i ++;
+                    }
+                }
+                else {
+                    TODO(span, "Look up '" << des_item_name << "' in wildcard of enum - HIR");
+                }
                 )
             )
         }
