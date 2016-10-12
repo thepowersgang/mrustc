@@ -1440,7 +1440,7 @@ namespace {
                     
                     ::HIR::FunctionType ft {
                         false,
-                        "rust",
+                        ABI_RUST,
                         box$( ::HIR::TypeRef( node.m_path.clone(), ::HIR::TypeRef::TypePathBinding::make_Struct(&s) ) ),
                         {}
                         };
@@ -1463,7 +1463,7 @@ namespace {
                     
                     ::HIR::FunctionType ft {
                         false,
-                        "rust",
+                        ABI_RUST,
                         box$( ::HIR::TypeRef( ::HIR::GenericPath(mv$(enum_path), e.m_params.clone()), ::HIR::TypeRef::TypePathBinding::make_Enum(&enm) ) ),
                         {}
                         };

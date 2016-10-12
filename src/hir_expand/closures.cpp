@@ -290,7 +290,7 @@ namespace {
                 make_map1(
                     ::std::string("call_once"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
                         ::HIR::Function::Receiver::Value,
-                        "rust", false, false,
+                        ABI_RUST, false, false,
                         {},
                         make_vec2(
                             ::std::make_pair(::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} }, ::HIR::TypeRef("Self", 0xFFFF)),
@@ -323,7 +323,7 @@ namespace {
                 make_map1(
                     ::std::string("call_mut"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
                         ::HIR::Function::Receiver::BorrowUnique,
-                        "rust", false, false,
+                        ABI_RUST, false, false,
                         {},
                         make_vec2(
                             ::std::make_pair(
@@ -357,7 +357,7 @@ namespace {
                 make_map1(
                     ::std::string("call"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
                         ::HIR::Function::Receiver::BorrowShared,
-                        "rust", false, false,
+                        ABI_RUST, false, false,
                         {},
                         make_vec2(
                             ::std::make_pair(

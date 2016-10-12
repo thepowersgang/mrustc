@@ -338,7 +338,7 @@ Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
         ORD(*te.inner, *xe.inner);
         ORD(te.size_val, xe.size_val);
         if( te.size_val == ~0u )
-            assert(!"TOD: Compre array types with non-resolved sizes");
+            TODO(Span(), "Compre array types with non-resolved sizes");
         return OrdEqual;
         ),
     (Slice,

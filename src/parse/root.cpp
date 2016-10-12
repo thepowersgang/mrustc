@@ -14,6 +14,7 @@
 #include "parseerror.hpp"
 #include "common.hpp"
 #include <cassert>
+#include <hir/hir.hpp>  // ABI_RUST - TODO: Move elsewhere?
 
 template<typename T>
 Spanned<T> get_spanned(TokenStream& lex, ::std::function<T()> f) {
@@ -610,7 +611,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
         
         bool fn_is_const = false;
         bool fn_is_unsafe = false;
-        ::std::string   abi = "rust";
+        ::std::string   abi = ABI_RUST;
         switch(tok.type())
         {
         case TOK_RWORD_STATIC: {
@@ -1008,7 +1009,7 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         GET_TOK(tok, lex);
     }
     
-    ::std::string   abi = "rust";
+    ::std::string   abi = ABI_RUST;
     bool fn_is_unsafe = false;
     bool fn_is_const = false;
     switch(tok.type())
@@ -1465,13 +1466,13 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
             GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.str();
-            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, "rust", false,  true,true/*unsafe,const*/) );
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, ABI_RUST, false,  true,true/*unsafe,const*/) );
             break;
         case TOK_RWORD_FN:
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.str();
             // - self not allowed, not prototype
-            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, "rust", false,  false,true/*unsafe,const*/) );
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, ABI_RUST, false,  false,true/*unsafe,const*/) );
             break;
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_IDENT, TOK_RWORD_FN});
@@ -1525,7 +1526,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = mv$( tok.str() );
             // - self not allowed, not prototype
-            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, "rust", false,  true,false/*unsafe,const*/) );
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, ABI_RUST, false,  true,false/*unsafe,const*/) );
             break;
         // `unsafe trait`
         case TOK_RWORD_TRAIT:
@@ -1547,7 +1548,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         item_name = tok.str();
         // - self not allowed, not prototype
-        item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, "rust", false,  false,false/*unsafe,const*/) );
+        item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, ABI_RUST, false,  false,false/*unsafe,const*/) );
         break;
     // `type`
     case TOK_RWORD_TYPE:

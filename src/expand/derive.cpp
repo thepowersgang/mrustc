@@ -10,6 +10,7 @@
 #include "../ast/ast.hpp"
 #include "../ast/expr.hpp"
 #include "../ast/crate.hpp"
+#include <hir/hir.hpp>  // ABI_RUST
 
 template<typename T>
 static inline ::std::vector<T> vec$(T v1) {
@@ -243,7 +244,7 @@ class Deriver_Debug:
         AST::Function fcn(
             sp,
             AST::GenericParams(),
-            "rust", false, false, false,
+            ABI_RUST, false, false, false,
             ret_type,
             vec$(
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) ),
@@ -420,7 +421,7 @@ class Deriver_PartialEq:
         AST::Function fcn(
             sp,
             AST::GenericParams(),
-            "rust", false, false, false,
+            ABI_RUST, false, false, false,
             TypeRef(sp, CORETYPE_BOOL),
             vec$(
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) ),
@@ -606,7 +607,7 @@ class Deriver_PartialOrd:
         AST::Function fcn(
             sp,
             AST::GenericParams(),
-            "rust", false, false, false,
+            ABI_RUST, false, false, false,
             TypeRef(sp, path_option_ordering),
             vec$(
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) ),
@@ -861,7 +862,7 @@ class Deriver_Eq:
         AST::Function fcn(
             sp,
             AST::GenericParams(),
-            "rust", false, false, false,
+            ABI_RUST, false, false, false,
             TypeRef(TypeRef::TagUnit(), sp),
             vec$(
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) )
@@ -1003,7 +1004,7 @@ class Deriver_Ord:
         AST::Function fcn(
             sp,
             AST::GenericParams(),
-            "rust", false, false, false,
+            ABI_RUST, false, false, false,
             TypeRef(sp, path_ordering),
             vec$(
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) ),
@@ -1248,7 +1249,7 @@ class Deriver_Clone:
         AST::Function fcn(
             sp,
             AST::GenericParams(),
-            "rust", false, false, false,
+            ABI_RUST, false, false, false,
             TypeRef("Self", 0xFFFF),
             vec$(
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) )
@@ -1430,7 +1431,7 @@ class Deriver_Default:
         AST::Function fcn(
             sp,
             AST::GenericParams(),
-            "rust", false, false, false,
+            ABI_RUST, false, false, false,
             TypeRef("Self", 0xFFFF),
             {}
             );
@@ -1510,7 +1511,7 @@ class Deriver_Hash:
         AST::Function fcn(
             sp,
             AST::GenericParams(),
-            "rust", false, false, false,
+            ABI_RUST, false, false, false,
             TypeRef(TypeRef::TagUnit(), sp),
             vec$(
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) ),

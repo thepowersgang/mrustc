@@ -99,7 +99,7 @@ namespace {
                 m_os << "const ";
             if( item.m_unsafe )
                 m_os << "unsafe ";
-            if( item.m_abi != "rust" )
+            if( item.m_abi != ABI_RUST )
                 m_os << "extern \"" << item.m_abi << "\" ";
             m_os << "fn ";
             if( m_short_item_name )

@@ -1078,7 +1078,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             }
             
             // NOTE: unsafe or non-rust ABI functions aren't valid
-            if( e.m_abi != "rust" || e.is_unsafe ) {
+            if( e.m_abi != ABI_RUST || e.is_unsafe ) {
                 DEBUG("- No magic impl, wrong ABI or unsafe in " << type);
                 return false;
             }

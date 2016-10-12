@@ -25,6 +25,8 @@
 #include <hir/generic_params.hpp>
 #include <hir/crate_ptr.hpp>
 
+#define ABI_RUST    "Rust"
+
 namespace HIR {
 
 class Crate;

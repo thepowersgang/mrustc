@@ -160,8 +160,16 @@ namespace {
             return matches_type_int(params, *le.inner, *re.inner, ty_res, expand_generic);
             ),
         (Function,
-            DEBUG("TODO: Compare " << left << " and " << right);
-            return false;
+            if( le.is_unsafe != re.is_unsafe )
+                return false;
+            if( le.m_abi != re.m_abi )
+                return false;
+            if( le.m_arg_types.size() != re.m_arg_types.size() )
+                return false;
+            for( unsigned int i = 0; i < le.m_arg_types.size(); i ++ )
+                if( !matches_type_int(params, le.m_arg_types[i], re.m_arg_types[i], ty_res, expand_generic) )
+                    return false;
+            return matches_type_int(params, *le.m_rettype, *re.m_rettype, ty_res, expand_generic);
             ),
         (Closure,
             return le.node == re.node;

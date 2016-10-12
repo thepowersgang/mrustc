@@ -738,7 +738,7 @@
             mv$(args)   // TODO: e.info.is_variadic
             };
         if( f.m_abi == "" )
-            f.m_abi = "rust";
+            f.m_abi = ABI_RUST;
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function( mv$(f) ) );
         ),
     (Generic,
