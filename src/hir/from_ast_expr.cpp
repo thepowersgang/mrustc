@@ -467,10 +467,20 @@ struct LowerHIR_ExprNode_Visitor:
                 case CORETYPE_CHAR: return ::HIR::CoreType::Char;
                 
                 default:
-                    BUG(sp, "Unknown type for integer literal - " << ct);
+                    BUG(sp, "Unknown type for integer literal - " << coretype_name(ct));
                 }
             }
         };
+        if( v.m_datatype == CORETYPE_F32 || v.m_datatype == CORETYPE_F64 ) {
+            DEBUG("Integer annotated as float, create float node");
+            m_rv.reset( new ::HIR::ExprNode_Literal( v.span(),
+                ::HIR::ExprNode_Literal::Data::make_Float({
+                    (v.m_datatype == CORETYPE_F32 ? ::HIR::CoreType::F32 : ::HIR::CoreType::F64),
+                    static_cast<double>(v.m_value)
+                    })
+                ) );
+            return ;
+        }
         m_rv.reset( new ::HIR::ExprNode_Literal( v.span(),
             ::HIR::ExprNode_Literal::Data::make_Integer({
                 H::get_type( Span(v.get_pos()), v.m_datatype ),
