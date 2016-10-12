@@ -435,7 +435,6 @@ class CFormatArgsExpander:
                 DEBUG(i << "Ordering mismach");
                 is_simple = false;
             }
-            // TODO: This false fires a lot.
             if( fragments[i].args != FmtArgs {} ) {
                 DEBUG(i << " Args changed - " << fragments[i].args << " != " << FmtArgs {});
                 is_simple = false;
@@ -542,6 +541,8 @@ class CFormatArgsExpander:
                 toks.push_back( TokenTree(TOK_AMP) );
                 toks.push_back( Token(TOK_IDENT, "FRAGMENTS") );
                 toks.push_back( TokenTree(TOK_COMMA) );
+                
+                // 1. Generate a set of arguments+formatters
                 
                 // TODO: Fragments to format
                 // - The format stored by mrustc doesn't quite work with how rustc (and fmt::rt::v1) works
