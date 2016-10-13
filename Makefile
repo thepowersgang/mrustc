@@ -153,9 +153,20 @@ output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir outp
 	touch $@
 
 output/rust/run-pass/allocator-default.o: output/liballoc_jemalloc.hir output/liballocator_dummy.hir
+output/rust/run-pass/allocator-system.o: output/liballoc_system.hir
+output/rust/run-pass/anon-extern-mod-cross-crate-2.o: output/libanonexternmod.hir
+output/rust/run-pass/anon_trait_static_method_exe.o: output/libanon_trait_static_method_lib.hir
+output/rust/run-pass/associated-const-cross-crate-defaults.o: output/libassociated_const_cc_lib.hir
+
+output/libanonexternmod.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/anon-extern-mod-cross-crate-1.rs
+	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
 
 output/liballocator_dummy.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/allocator-dummy.rs
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
+output/libanon_trait_static_method_lib.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/anon_trait_static_method_lib.rs
+	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
+output/libassociated_const_cc_lib.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/associated-const-cc-lib.rs
+	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
 
 output/libtest.hir: $(patsubst %,output/lib%.hir, std getopts term panic_unwind)
 output/libgetopts.hir: output/libstd.hir

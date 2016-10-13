@@ -113,6 +113,8 @@ struct ProgramParams
     ::std::string   outfile;
     const char *crate_path = ".";
     
+    ::AST::Crate::Type  crate_type = ::AST::Crate::Type::Unknown;
+    
     ::std::set< ::std::string> features;
     
     ProgramParams(int argc, char *argv[]);
@@ -225,7 +227,10 @@ int main(int argc, char *argv[])
         }
         
         // Extract the crate type and name from the crate attributes
-        auto crate_type = crate.m_crate_type;
+        auto crate_type = params.crate_type;
+        if( crate_type == ::AST::Crate::Type::Unknown ) {
+            crate_type = crate.m_crate_type;
+        }
         if( crate_type == ::AST::Crate::Type::Unknown ) {
             // Assume to be executable
             crate_type = ::AST::Crate::Type::Executable;
@@ -421,6 +426,21 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     exit(1);
                 }
                 this->crate_path = argv[++i];
+            }
+            else if( strcmp(arg, "--crate-type") == 0 ) {
+                if( i == argc - 1 ) {
+                    ::std::cerr << "Flag --crate-type requires an argument" << ::std::endl;
+                    exit(1);
+                }
+                const char* type_str = argv[++i];
+                
+                if( strcmp(type_str, "rlib") == 0 ) {
+                    this->crate_type = ::AST::Crate::Type::RustLib;
+                }
+                else {
+                    ::std::cerr << "Unknown value for --crate-type" << ::std::endl;
+                    exit(1);
+                }
             }
             else if( strcmp(arg, "--cfg") == 0 ) {
                 if( i == argc - 1 ) {
