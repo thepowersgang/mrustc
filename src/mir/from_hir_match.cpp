@@ -728,17 +728,14 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         )
         ),
     (Borrow,
+        m_field_path.push_back( FIELD_DEREF );
         TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
         ( BUG(sp, "Matching borrow invalid pattern - " << pat); ),
         (Any,
-            m_field_path.push_back( FIELD_DEREF );
             this->append_from( sp, pat, *e.inner );
-            m_field_path.pop_back();
             ),
         (Ref,
-            m_field_path.push_back( FIELD_DEREF );
             this->append_from( sp, *pe.sub, *e.inner );
-            m_field_path.pop_back();
             ),
         (Value,
             // TODO: Check type?
@@ -761,6 +758,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             }
             )
         )
+        m_field_path.pop_back();
         ),
     (Pointer,
         if( pat.m_data.is_Any() ) {
@@ -1682,7 +1680,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
         m_field_path = rule.field_path;
     }
     else {
-        assert( m_field_path == rule.field_path );
+        ASSERT_BUG(sp, m_field_path == rule.field_path, "Patterns with mismatched field paths");// - " << m_field_path << " != " << rule.field_path);
     }
     
     #define GET_BRANCHES(fld, var)  (({if( fld.is_Unset() ) {\
@@ -2893,7 +2891,6 @@ void DecisionTreeGen::generate_branches_Borrow_str(
     //  > Requires crate access here! - A memcmp call is probably better, probably via a binop
     // NOTE: The below implementation gets the final codegen to call memcmp on the strings by emitting eBinOp::{LT,GT}
     
-    
     // - Remove the wrapping Deref (which must be there)
     ASSERT_BUG(sp, val.is_Deref(), "Match over str without a deref - " << val);
     auto tmp = mv$( *val.as_Deref().val );
@@ -3042,6 +3039,11 @@ void DecisionTreeGen::generate_branches_Slice(
     if( default_branch.is_Unset() ) {
         ERROR(sp, E0000, "Non-exhaustive match over " << ty);
     }
+    
+    // NOTE: Un-deref the slice
+    ASSERT_BUG(sp, val.is_Deref(), "slice matches must be passed a deref");
+    auto tmp = mv$( *val.as_Deref().val );
+    val = mv$(tmp);
     
     auto any_block = m_builder.new_bb_unlinked();
     
