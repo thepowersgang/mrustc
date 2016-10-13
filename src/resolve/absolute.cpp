@@ -1829,7 +1829,8 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
             ),
         (Static,
             DEBUG("Static - " << i.name);
-            TODO(i.data.span, "Resolve_Absolute_ImplItems - Static");
+            Resolve_Absolute_Type( item_context, e.type() );
+            Resolve_Absolute_Expr( item_context, e.value() );
             )
         )
     }
@@ -1871,7 +1872,8 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Im
             ),
         (Static,
             DEBUG("Static - " << i.name);
-            TODO(i.data->span, "Resolve_Absolute_ImplItems - Static");
+            Resolve_Absolute_Type( item_context, e.type() );
+            Resolve_Absolute_Expr( item_context, e.value() );
             )
         )
     }

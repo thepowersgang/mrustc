@@ -1176,7 +1176,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                     ::HIR::ItemPath    item_path(path, item.name.c_str());
                     TU_MATCH_DEF(::AST::Item, (*item.data), (e),
                     (
-                        ERROR(item.data->span, E0000, "Unexpected item type in trait impl");
+                        BUG(item.data->span, "Unexpected item type in trait impl - " << item.data->tag_str());
                         ),
                     (None,
                         ),
@@ -1235,7 +1235,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                 ::HIR::ItemPath    item_path(path, item.name.c_str());
                 TU_MATCH_DEF(::AST::Item, (*item.data), (e),
                 (
-                    ERROR(item.data->span, E0000, "Unexpected item type in inherent impl");
+                    BUG(item.data->span, "Unexpected item type in inherent impl - " << item.data->tag_str());
                     ),
                 (None,
                     ),
