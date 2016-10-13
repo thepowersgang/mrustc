@@ -715,6 +715,18 @@ void RustPrinter::handle_module(const AST::Module& mod)
             (MacroInv,
                 // TODO: Dump macro invocations
                 ),
+            (Static,
+                m_os << indent();
+                switch(e.s_class())
+                {
+                case ::AST::Static::CONST:  m_os << "const ";   break;
+                case ::AST::Static::STATIC: m_os << "static ";  break;
+                case ::AST::Static::MUT:    m_os << "static mut ";  break;
+                }
+                m_os << it.name << ": " << e.type() << " = ";
+                e.value().visit_nodes(*this);
+                m_os << ";\n";
+                ),
             (Type,
                 m_os << indent() << "type " << it.name << " = " << e.type() << ";\n";
                 ),
