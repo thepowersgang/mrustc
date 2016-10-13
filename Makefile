@@ -115,13 +115,18 @@ output/lib%.hir: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(BIN)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
 
+fcn_extcrate = $(patsubst %,output/lib%.hir,$1)
+
 output/liballoc.hir: output/libcore.hir
 output/librustc_unicode.hir: output/libcore.hir
 output/libcollections.hir: output/libcore.hir output/liballoc.hir output/librustc_unicode.hir
 output/librand.hir: output/libcore.hir
 output/liblibc.hir: output/libcore.hir
-output/libstd.hir: output/libcore.hir output/libcollections.hir output/librand.hir output/liblibc.hir output/libunwind.hir
-output/libunwind.hir: output/libcore.hir output/liblibc.hir
+output/libstd.hir: $(call, fcn_extcrate, core collections rand libc unwind)
+output/libunwind.hir: $(call, fcn_extcrate, core libc)
+
+output/libtest.hir: $(call,fcn_extcrate, std getopts term panic_unwind)
+output/libgetopts.hir: output/libstd.hir
 
 $(RUSTCSRC): rust-nightly-date
 	@export DL_RUST_DATE=$$(cat rust-nightly-date); \
@@ -168,9 +173,6 @@ output/libanon_trait_static_method_lib.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/
 	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
 output/libassociated_const_cc_lib.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/associated-const-cc-lib.rs
 	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
-
-output/libtest.hir: $(patsubst %,output/lib%.hir, std getopts term panic_unwind)
-output/libgetopts.hir: output/libstd.hir
 
 .PHONY: test test_rustos
 #
