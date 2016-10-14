@@ -1182,7 +1182,9 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                         ),
                     (MacroInv,
                         ),
-                    // TODO: Associated constants
+                    (Static,
+                        TODO(item.data->span, "Associated statics/constants in trait impl");
+                        ),
                     (Type,
                         DEBUG("- type " << item.name);
                         types.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> { item.is_specialisable, LowerHIR_Type(e.type()) }) );
@@ -1240,6 +1242,9 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                 (None,
                     ),
                 (MacroInv,
+                    ),
+                (Static,
+                    TODO(item.data->span, "Associated statics/constants in inherent impl");
                     ),
                 (Function,
                     methods.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> { item.is_pub, item.is_specialisable, LowerHIR_Function(item_path, e, type) } ) );
