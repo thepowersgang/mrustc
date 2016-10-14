@@ -577,6 +577,13 @@ void Macro_InitDefaults()
 {
 }
 
+namespace {
+    bool is_reserved_word(eTokenType tok)
+    {
+        return tok >= TOK_RWORD_PUB;
+    }
+}
+
 bool Macro_TryPatternCap(TokenStream& lex, MacroPatEnt::Type type)
 {
     switch(type)
@@ -588,7 +595,7 @@ bool Macro_TryPatternCap(TokenStream& lex, MacroPatEnt::Type type)
     case MacroPatEnt::PAT_BLOCK:
         return LOOK_AHEAD(lex) == TOK_BRACE_OPEN || LOOK_AHEAD(lex) == TOK_INTERPOLATED_BLOCK;
     case MacroPatEnt::PAT_IDENT:
-        return LOOK_AHEAD(lex) == TOK_IDENT;
+        return LOOK_AHEAD(lex) == TOK_IDENT || is_reserved_word(LOOK_AHEAD(lex));
     case MacroPatEnt::PAT_TT:
         switch(LOOK_AHEAD(lex))
         {
@@ -683,7 +690,12 @@ void Macro_HandlePatternCap(TokenStream& lex, unsigned int index, MacroPatEnt::T
         bound_tts.insert( index, iterations, InterpolatedFragment( Parse_Mod_Item_S(lex, cur_mod.m_file_info, cur_mod.path(), AST::MetaItems{}) ) );
         } break;
     case MacroPatEnt::PAT_IDENT:
-        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        // TODO: Any reserved word is also valid as an ident
+        GET_TOK(tok, lex);
+        if( tok.type() == TOK_IDENT || is_reserved_word(tok.type()) )
+            ;
+        else
+            CHECK_TOK(tok, TOK_IDENT);
         bound_tts.insert( index, iterations, InterpolatedFragment( TokenTree(tok) ) );
         break;
     }

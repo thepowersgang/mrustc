@@ -85,6 +85,7 @@ _(TOK_CARET_EQUAL)
 _(TOK_BACKTICK)
 
 // Reserved Words
+// NOTE: ORDERING MATTERS! _PUB must be the first, and no non-rword tokens should follow
 _(TOK_RWORD_PUB)
 _(TOK_RWORD_PRIV)
 _(TOK_RWORD_MUT)
