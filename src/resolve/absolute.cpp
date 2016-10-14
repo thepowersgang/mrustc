@@ -1069,6 +1069,10 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
             (
                 ERROR(sp, E0000, "Encountered non-namespace item '" << n.name() << "' ("<<name_ref.path<<") in path " << path);
                 ),
+            (TypeAlias,
+                path = split_replace_into_ufcs_path(sp, mv$(path), i,  name_ref.path);
+                return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
+                ),
             (Crate,
                 Resolve_Absolute_Path_BindAbsolute__hir_from(context, sp, mode, path,  *e.crate_, i+1);
                 return ;
