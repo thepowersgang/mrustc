@@ -1183,7 +1183,12 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                     (MacroInv,
                         ),
                     (Static,
-                        TODO(item.data->span, "Associated statics/constants in trait impl");
+                        if( e.s_class() == ::AST::Static::CONST ) {
+                            constants.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::ExprPtr> { item.is_specialisable, LowerHIR_Expr(e.value()) }) );
+                        }
+                        else {
+                            TODO(item.data->span, "Associated statics in trait impl");
+                        }
                         ),
                     (Type,
                         DEBUG("- type " << item.name);
@@ -1230,7 +1235,9 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
             // Inherent impls
             auto type = LowerHIR_Type(impl.def().type());
             ::HIR::ItemPath    path(type);
+            
             ::std::map< ::std::string, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> > methods;
+            ::std::map< ::std::string, ::HIR::TypeImpl::VisImplEnt< ::HIR::ExprPtr> > constants;
             
             for(const auto& item : impl.items())
             {
@@ -1244,7 +1251,13 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                 (MacroInv,
                     ),
                 (Static,
-                    TODO(item.data->span, "Associated statics/constants in inherent impl");
+                    if( e.s_class() == ::AST::Static::CONST ) {
+                        constants.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::ExprPtr> { item.is_pub, item.is_specialisable, LowerHIR_Expr(e.value()) }) );
+                        TODO(item.data->span, "Associated constants in inherent impl");
+                    }
+                    else {
+                        TODO(item.data->span, "Associated statics in inherent impl");
+                    }
                     ),
                 (Function,
                     methods.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> { item.is_pub, item.is_specialisable, LowerHIR_Function(item_path, e, type) } ) );
