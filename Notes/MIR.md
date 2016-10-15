@@ -1,6 +1,7 @@
 % Mid-level intermediate representation
 
-See https://github.com/rust-lang/rfcs/blob/master/text/1211-mir.md
+Based of the rustc MIR RFC, not the actual rustc implementation -
+See [RFC #1211](https://github.com/rust-lang/rfcs/blob/master/text/1211-mir.md)
 
 
 Overview
@@ -45,6 +46,9 @@ RValues (usable values)
 - `fatptr(LVALUE, LVALUE)` - Construct a fat pointer from a pair of lvalues
 - `CONSTANT` - Subset of RValues that are known at compile-time
 
+Terminators
+-----------
+- TODO
 
 Generation Notes
 ================
@@ -82,3 +86,9 @@ Optimisiation
 - Useless assignments
 - Basic-block chaining
 - De-duplication
+
+
+TODO
+====
+- Create a variant of the `CALL` terminator that takes a path instead of a LValue
+- Create a `CallPath` RValue for calling functions that never diverge (e.g. some intrinsics)
