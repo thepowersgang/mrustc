@@ -346,6 +346,13 @@ namespace {
                 write_bool(v.second.is_specialisable);
                 serialise(v.second.data);
             }
+            write_count(impl.m_constants.size());
+            for(const auto& v : impl.m_constants) {
+                write_string(v.first);
+                write_bool(v.second.is_pub);
+                write_bool(v.second.is_specialisable);
+                serialise(v.second.data);
+            }
             // m_src_module doesn't matter after typeck
         }
         void serialise_traitimpl(const ::HIR::TraitImpl& impl)
@@ -466,7 +473,7 @@ namespace {
             write_tag(lit.tag());
             TU_MATCHA( (lit), (e),
             (Invalid,
-                BUG(Span(), "Literal::Invalid in HIR");
+                //BUG(Span(), "Literal::Invalid encountered in HIR");
                 ),
             (List,
                 serialise_vec(e);

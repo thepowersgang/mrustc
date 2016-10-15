@@ -994,10 +994,12 @@ namespace {
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override
         {
             visit_type(item.m_type);
-            assert(item.m_value);
-            item.m_value_res = evaluate_constant(item.m_value->span(), m_crate, NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$") }, item.m_value, {});
-            DEBUG("constant: " << item.m_type <<  " = " << item.m_value_res);
-            visit_expr(item.m_value);
+            if( item.m_value )
+            {
+                item.m_value_res = evaluate_constant(item.m_value->span(), m_crate, NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$") }, item.m_value, {});
+                DEBUG("constant: " << item.m_type <<  " = " << item.m_value_res);
+                visit_expr(item.m_value);
+            }
         }
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override
         {

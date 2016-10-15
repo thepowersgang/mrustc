@@ -1168,7 +1168,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                 DEBUG(path);
                 
                 ::std::map< ::std::string, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> > methods;
-                ::std::map< ::std::string, ::HIR::TraitImpl::ImplEnt< ::HIR::ExprPtr> > constants;
+                ::std::map< ::std::string, ::HIR::TraitImpl::ImplEnt< ::HIR::Constant> > constants;
                 ::std::map< ::std::string, ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> > types;
                 
                 for(const auto& item : impl.items())
@@ -1184,7 +1184,11 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                         ),
                     (Static,
                         if( e.s_class() == ::AST::Static::CONST ) {
-                            constants.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::ExprPtr> { item.is_specialisable, LowerHIR_Expr(e.value()) }) );
+                            constants.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::Constant> { item.is_specialisable, ::HIR::Constant {
+                                ::HIR::GenericParams {},
+                                LowerHIR_Type( e.type() ),
+                                LowerHIR_Expr( e.value() )
+                                } }) );
                         }
                         else {
                             TODO(item.data->span, "Associated statics in trait impl");
@@ -1237,7 +1241,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
             ::HIR::ItemPath    path(type);
             
             ::std::map< ::std::string, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> > methods;
-            ::std::map< ::std::string, ::HIR::TypeImpl::VisImplEnt< ::HIR::ExprPtr> > constants;
+            ::std::map< ::std::string, ::HIR::TypeImpl::VisImplEnt< ::HIR::Constant> > constants;
             
             for(const auto& item : impl.items())
             {
@@ -1252,8 +1256,11 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                     ),
                 (Static,
                     if( e.s_class() == ::AST::Static::CONST ) {
-                        constants.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::ExprPtr> { item.is_pub, item.is_specialisable, LowerHIR_Expr(e.value()) }) );
-                        TODO(item.data->span, "Associated constants in inherent impl");
+                        constants.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::Constant> { item.is_pub, item.is_specialisable, ::HIR::Constant {
+                            ::HIR::GenericParams {},
+                            LowerHIR_Type( e.type() ),
+                            LowerHIR_Expr( e.value() )
+                            } }) );
                     }
                     else {
                         TODO(item.data->span, "Associated statics in inherent impl");
@@ -1269,6 +1276,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                 mv$(params),
                 mv$(type),
                 mv$(methods),
+                mv$(constants),
                 
                 LowerHIR_SimplePath(Span(), ast_mod.path())
                 } );

@@ -228,6 +228,14 @@ namespace {
                     read_bool(), read_bool(), deserialise_function()
                     } ) );
             }
+            size_t const_count = read_count();
+            for(size_t i = 0; i < const_count; i ++)
+            {
+                auto name = read_string();
+                rv.m_constants.insert( ::std::make_pair( mv$(name), ::HIR::TypeImpl::VisImplEnt< ::HIR::Constant> {
+                    read_bool(), read_bool(), deserialise_constant()
+                    } ) );
+            }
             // m_src_module doesn't matter after typeck
             return rv;
         }
@@ -253,8 +261,8 @@ namespace {
             for(size_t i = 0; i < const_count; i ++)
             {
                 auto name = read_string();
-                rv.m_constants.insert( ::std::make_pair( mv$(name), ::HIR::TraitImpl::ImplEnt< ::HIR::ExprPtr> {
-                    read_bool(), deserialise_exprptr()
+                rv.m_constants.insert( ::std::make_pair( mv$(name), ::HIR::TraitImpl::ImplEnt< ::HIR::Constant> {
+                    read_bool(), deserialise_constant()
                     } ) );
             }
             size_t type_count = read_count();
@@ -914,6 +922,7 @@ namespace {
         switch( read_tag() )
         {
         #define _(x, ...)    case ::HIR::Literal::TAG_##x:   return ::HIR::Literal::make_##x(__VA_ARGS__);
+        _(Invalid, {})
         _(List,   deserialise_vec< ::HIR::Literal>() )
         _(Variant, {
             static_cast<unsigned int>(read_count()),

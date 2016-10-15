@@ -97,6 +97,10 @@ void ::HIR::Visitor::visit_type_impl(::HIR::TypeImpl& impl)
         DEBUG("method " << method.first);
         this->visit_function(p + method.first, method.second.data);
     }
+    for(auto& ent : impl.m_constants) {
+        DEBUG("const " << ent.first);
+        this->visit_constant(p + ent.first, ent.second.data);
+    }
 }
 void ::HIR::Visitor::visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl)
 {
@@ -117,7 +121,7 @@ void ::HIR::Visitor::visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR
     }
     for(auto& ent : impl.m_constants) {
         DEBUG("const " << ent.first);
-        this->visit_expr(ent.second.data);
+        this->visit_constant(p + ent.first, ent.second.data);
     }
     for(auto& ent : impl.m_types) {
         DEBUG("type " << ent.first);

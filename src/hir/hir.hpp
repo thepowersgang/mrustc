@@ -278,7 +278,8 @@ public:
     ::HIR::GenericParams    m_params;
     ::HIR::TypeRef  m_type;
     
-    ::std::map< ::std::string, VisImplEnt< ::HIR::Function> > m_methods;
+    ::std::map< ::std::string, VisImplEnt< ::HIR::Function> >   m_methods;
+    ::std::map< ::std::string, VisImplEnt< ::HIR::Constant> >   m_constants;
 
     ::HIR::SimplePath   m_src_module;
     
@@ -302,7 +303,7 @@ public:
     ::HIR::TypeRef  m_type;
     
     ::std::map< ::std::string, ImplEnt< ::HIR::Function> > m_methods;
-    ::std::map< ::std::string, ImplEnt< ::HIR::ExprPtr> > m_constants;
+    ::std::map< ::std::string, ImplEnt< ::HIR::Constant> > m_constants;
     ::std::map< ::std::string, ImplEnt< ::HIR::TypeRef> > m_types;
     
     ::HIR::SimplePath   m_src_module;
