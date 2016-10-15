@@ -115,17 +115,17 @@ output/lib%.hir: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(BIN)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
 
-fcn_extcrate = $(patsubst %,output/lib%.hir,$1)
+fcn_extcrate = $(patsubst %,output/lib%.hir,$(1))
 
 output/liballoc.hir: output/libcore.hir
 output/librustc_unicode.hir: output/libcore.hir
 output/libcollections.hir: output/libcore.hir output/liballoc.hir output/librustc_unicode.hir
 output/librand.hir: output/libcore.hir
 output/liblibc.hir: output/libcore.hir
-output/libstd.hir: $(call, fcn_extcrate, core collections rand libc unwind)
-output/libunwind.hir: $(call, fcn_extcrate, core libc)
+output/libstd.hir: $(call fcn_extcrate, core collections rand libc unwind)
+output/libunwind.hir: $(call fcn_extcrate, core libc)
 
-output/libtest.hir: $(call,fcn_extcrate, std getopts term panic_unwind)
+output/libtest.hir: $(call fcn_extcrate, std getopts term panic_unwind)
 output/libgetopts.hir: output/libstd.hir
 
 $(RUSTCSRC): rust-nightly-date
@@ -158,20 +158,19 @@ output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir outp
 	$(BIN) $< -o $@ --stop-after resolve > $@.txt 2>&1
 	touch $@
 
-output/rust/run-pass/allocator-default.o: output/liballoc_jemalloc.hir output/liballocator_dummy.hir
+output/rust/run-pass/allocator-default.o: output/libstd.hir output/liballoc_jemalloc.hir output/liballocator_dummy.hir
 output/rust/run-pass/allocator-system.o: output/liballoc_system.hir
 output/rust/run-pass/anon-extern-mod-cross-crate-2.o: output/libanonexternmod.hir
 output/rust/run-pass/anon_trait_static_method_exe.o: output/libanon_trait_static_method_lib.hir
 output/rust/run-pass/associated-const-cross-crate-defaults.o: output/libassociated_const_cc_lib.hir
 
-output/libanonexternmod.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/anon-extern-mod-cross-crate-1.rs
-	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
-
-output/liballocator_dummy.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/allocator-dummy.rs
+output/liballocator_dummy.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/allocator-dummy.rs output/libstd.hir
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
-output/libanon_trait_static_method_lib.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/anon_trait_static_method_lib.rs
+output/libanonexternmod.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/anon-extern-mod-cross-crate-1.rs output/libstd.hir
 	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
-output/libassociated_const_cc_lib.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/associated-const-cc-lib.rs
+output/libanon_trait_static_method_lib.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/anon_trait_static_method_lib.rs output/libstd.hir
+	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
+output/libassociated_const_cc_lib.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/associated-const-cc-lib.rs output/libstd.hir
 	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
 
 .PHONY: test test_rustos
