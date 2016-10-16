@@ -164,6 +164,7 @@ output/rust/run-pass/anon-extern-mod-cross-crate-2.o: output/libanonexternmod.hi
 output/rust/run-pass/anon_trait_static_method_exe.o: output/libanon_trait_static_method_lib.hir
 output/rust/run-pass/associated-const-cross-crate-defaults.o: output/libassociated_const_cc_lib.hir
 output/rust/run-pass/associated-const-match-patterns.o: output/libempty_struct.hir
+output/rust/run-pass/associated-types-cc.o: output/libassociated_types_cc_lib.hir
 
 output/liballocator_dummy.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/allocator-dummy.rs output/libstd.hir
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
@@ -174,6 +175,8 @@ output/libanon_trait_static_method_lib.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/
 output/libassociated_const_cc_lib.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/associated-const-cc-lib.rs output/libstd.hir
 	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
 output/libempty_struct.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/empty-struct.rs output/libstd.hir
+	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
+output/libassociated_types_cc_lib.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/associated-types-cc-lib.rs output/libstd.hir
 	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
 
 .PHONY: test test_rustos
