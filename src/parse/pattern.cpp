@@ -195,6 +195,8 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
     case TOK_RWORD_SELF:
     case TOK_RWORD_SUPER:
     case TOK_IDENT:
+    case TOK_LT:
+    case TOK_DOUBLE_LT:
         PUTBACK(tok, lex);
         return Parse_PatternReal_Path( lex, Parse_Path(lex, PATH_GENERIC_EXPR), is_refutable );
     case TOK_DOUBLE_COLON:
