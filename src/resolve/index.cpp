@@ -436,20 +436,42 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
                 }
                 ),
             (Enum,
-                ASSERT_BUG(sp, e.enum_, "Glob import but enum pointer not set - " << i_data.path);
-                DEBUG("Glob enum " << i_data.path);
-                unsigned int idx = 0;
-                for( const auto& ev : e.enum_->variants() ) {
-                    ::AST::Path p = i_data.path + ev.m_name;
-                    p.bind( ::AST::PathBinding::make_EnumVar({e.enum_, idx}) );
-                    if( ev.m_data.is_Struct() ) {
-                        _add_item_type ( sp, mod, ev.m_name, i.is_pub, mv$(p), false );
+                ASSERT_BUG(sp, e.enum_ || e.hir, "Glob import but enum pointer not set - " << i_data.path);
+                if( e.enum_ )
+                {
+                    DEBUG("Glob enum " << i_data.path << " (AST)");
+                    unsigned int idx = 0;
+                    for( const auto& ev : e.enum_->variants() ) {
+                        ::AST::Path p = i_data.path + ev.m_name;
+                        p.bind( ::AST::PathBinding::make_EnumVar({e.enum_, idx}) );
+                        if( ev.m_data.is_Struct() ) {
+                            _add_item_type ( sp, mod, ev.m_name, i.is_pub, mv$(p), false );
+                        }
+                        else {
+                            _add_item_value( sp, mod, ev.m_name, i.is_pub, mv$(p), false );
+                        }
+                        
+                        idx += 1;
                     }
-                    else {
-                        _add_item_value( sp, mod, ev.m_name, i.is_pub, mv$(p), false );
+                }
+                else
+                {
+                    DEBUG("Glob enum " << i_data.path << " (HIR)");
+                    unsigned int idx = 0;
+                    for( const auto& ev : e.hir->m_variants )
+                    {
+                        ::AST::Path p = i_data.path + ev.first;
+                        p.bind( ::AST::PathBinding::make_EnumVar({nullptr, idx, e.hir}) );
+
+                        if( ev.second.is_Struct() ) {
+                            _add_item_type ( sp, mod, ev.first, i.is_pub, mv$(p), false );
+                        }
+                        else {
+                            _add_item_value( sp, mod, ev.first, i.is_pub, mv$(p), false );
+                        }
+                        
+                        idx += 1;
                     }
-                    
-                    idx += 1;
                 }
                 )
             )

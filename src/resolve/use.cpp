@@ -96,6 +96,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         
         // TODO: Have Resolve_Use_GetBinding return the actual path
         use_stmt_data.path.bind( Resolve_Use_GetBinding(span, crate, use_stmt_data.path, parent_modules) );
+        DEBUG("'" << use_stmt.name << "' = " << use_stmt_data.path);
         
         // - If doing a glob, ensure the item type is valid
         if( use_stmt.name == "" )
@@ -139,6 +140,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             }
             ASSERT_BUG(span, allow != Lookup::Any, "");
             use_stmt_data.alt_binding = Resolve_Use_GetBinding(span, crate, use_stmt_data.path, parent_modules, allow);
+            DEBUG("- Alt Binding: " << use_stmt_data.alt_binding);
         }
     }
 
@@ -491,7 +493,7 @@ namespace {
             if( it2 == e.m_variants.end() ) {
                 ERROR(span, E0000, "Unable to find variant " << path);
             }
-            return ::AST::PathBinding::make_EnumVar({ nullptr, static_cast<unsigned int>(it2 - e.m_variants.begin()) });
+            return ::AST::PathBinding::make_EnumVar({ nullptr, static_cast<unsigned int>(it2 - e.m_variants.begin()), &e });
             )
         )
     }
@@ -517,7 +519,7 @@ namespace {
                 return ::AST::PathBinding::make_TypeAlias({nullptr});
                 ),
             (Enum,
-                return ::AST::PathBinding::make_Enum({nullptr});
+                return ::AST::PathBinding::make_Enum({nullptr, &e});
                 ),
             (Struct,
                 return ::AST::PathBinding::make_Struct({nullptr, &e});
