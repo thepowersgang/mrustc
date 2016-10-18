@@ -103,9 +103,11 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         {
             TU_MATCH_DEF(::AST::PathBinding, (use_stmt_data.path.binding()), (e),
             (
-                ERROR(span, E0000, "Wildcard import of invalid item type");
+                ERROR(span, E0000, "Wildcard import of invalid item type - " << use_stmt_data.path);
                 ),
             (Enum,
+                ),
+            (Crate,
                 ),
             (Module,
                 )
