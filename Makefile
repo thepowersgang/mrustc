@@ -12,7 +12,7 @@ CXX ?= g++
 V ?= @
 
 LINKFLAGS := -g
-LIBS :=
+LIBS := -lboost_iostreams
 CXXFLAGS := -g -Wall
 # - Only turn on -Werror when running as `tpg` (i.e. me)
 ifeq ($(shell whoami),tpg)
@@ -78,7 +78,7 @@ OBJ += mir/mir.o mir/mir_ptr.o
 OBJ +=  mir/dump.o
 OBJ +=  mir/from_hir.o mir/from_hir_match.o mir/mir_builder.o
 OBJ +=  mir/check.o
-OBJ += hir/serialise.o hir/deserialise.o
+OBJ += hir/serialise.o hir/deserialise.o hir/serialise_lowlevel.o
 
 PCHS := ast/ast.hpp
 
