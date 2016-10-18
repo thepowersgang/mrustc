@@ -109,8 +109,9 @@ struct ProgramParams
         STAGE_ALL,
     } last_stage = STAGE_ALL;
 
-    const char *infile = NULL;
+    ::std::string   infile;
     ::std::string   outfile;
+    ::std::string   output_dir = "";
     const char *crate_path = ".";
     
     ::AST::Crate::Type  crate_type = ::AST::Crate::Type::Unknown;
@@ -186,14 +187,68 @@ int main(int argc, char *argv[])
         CompilePhaseV("LoadCrates", [&]() {
             crate.load_externs();
             });
-        //CompilePhaseV("Temp output - Parsed", [&]() {
-        //    Dump_Rust( FMT(params.outfile << "_0_pp.rs").c_str(), crate );
-        //    });
     
         // Iterate all items in the AST, applying syntax extensions
         CompilePhaseV("Expand", [&]() {
             Expand(crate);
             });
+        
+        // Extract the crate type and name from the crate attributes
+        auto crate_type = params.crate_type;
+        if( crate_type == ::AST::Crate::Type::Unknown ) {
+            crate_type = crate.m_crate_type;
+        }
+        if( crate_type == ::AST::Crate::Type::Unknown ) {
+            // Assume to be executable
+            crate_type = ::AST::Crate::Type::Executable;
+        }
+        crate.m_crate_type = crate_type;
+        auto crate_name = crate.m_crate_name;
+        if( crate_name == "" ) {
+            auto s = params.infile.find_last_of('/');
+            if( s == ::std::string::npos )
+                s = 0;
+            else
+                s += 1;
+            auto e = params.infile.find_first_of('.', s);
+            if( e == ::std::string::npos )
+                e = params.infile.size() - s;
+            
+            crate_name = ::std::string(params.infile.begin() + s, params.infile.begin() + e);
+            for(auto& b : crate_name)
+            {
+                switch(b)
+                {
+                case '0' ... '9':
+                case 'A' ... 'Z':
+                case 'a' ... 'z':
+                case '_':
+                    break;
+                case '-':
+                    b = '_';
+                    break;
+                default:
+                    break;
+                }
+            }
+            crate.m_crate_name = crate_name;
+        }
+        
+        if( params.outfile == "" ) {
+            switch( crate.m_crate_type )
+            {
+            case ::AST::Crate::Type::RustLib:
+                params.outfile = FMT(params.output_dir << "lib" << crate.m_crate_name << ".hir");
+                break;
+            case ::AST::Crate::Type::Executable:
+                params.outfile = FMT(params.output_dir << crate.m_crate_name);
+                break;
+            default:
+                params.outfile = FMT(params.output_dir << crate.m_crate_name << ".o");
+                break;
+            }
+            DEBUG("params.outfile = " << params.outfile);
+        }
 
         // XXX: Dump crate before resolve
         CompilePhaseV("Temp output - Parsed", [&]() {
@@ -224,20 +279,6 @@ int main(int argc, char *argv[])
 
         if( params.last_stage == ProgramParams::STAGE_RESOLVE ) {
             return 0;
-        }
-        
-        // Extract the crate type and name from the crate attributes
-        auto crate_type = params.crate_type;
-        if( crate_type == ::AST::Crate::Type::Unknown ) {
-            crate_type = crate.m_crate_type;
-        }
-        if( crate_type == ::AST::Crate::Type::Unknown ) {
-            // Assume to be executable
-            crate_type = ::AST::Crate::Type::Executable;
-        }
-        auto crate_name = crate.m_crate_name;
-        if( crate_name == "" ) {
-            // TODO: Take the crate name from the input filename
         }
         
         // --------------------------------------
@@ -396,7 +437,12 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         
         if( arg[0] != '-' )
         {
+            if( this->infile != "" )
+                ;
             this->infile = arg;
+            
+            if( this->infile == "" )
+                ;
         }
         else if( arg[1] != '-' )
         {
@@ -426,6 +472,17 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     exit(1);
                 }
                 this->crate_path = argv[++i];
+            }
+            else if( strcmp(arg, "--out-dir") == 0 ) {
+                if( i == argc - 1 ) {
+                    ::std::cerr << "Flag " << arg << " requires an argument" << ::std::endl;
+                    exit(1);
+                }
+                this->output_dir = argv[++i];
+                if( this->output_dir == "" )
+                    ;
+                if( this->output_dir.back() != '/' )
+                    this->output_dir += '/';
             }
             else if( strcmp(arg, "--crate-type") == 0 ) {
                 if( i == argc - 1 ) {
@@ -484,11 +541,6 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 exit(1);
             }
         }
-    }
-    
-    if( this->outfile == "" )
-    {
-        this->outfile = (::std::string)this->infile + ".o";
     }
 }
 
