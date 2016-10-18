@@ -5,6 +5,7 @@
  * hir/serialise.cpp
  * - HIR (De)Serialisation for crate metadata
  */
+#define DISABLE_DEBUG   //  Disable debug for this function - too hot
 #include "hir.hpp"
 #include "main_bindings.hpp"
 #include <serialiser_texttree.hpp>
