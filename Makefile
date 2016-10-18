@@ -165,6 +165,8 @@ output/rust/run-pass/anon_trait_static_method_exe.o: output/libanon_trait_static
 output/rust/run-pass/associated-const-cross-crate-defaults.o: output/libassociated_const_cc_lib.hir
 output/rust/run-pass/associated-const-match-patterns.o: output/libempty_struct.hir
 output/rust/run-pass/associated-types-cc.o: output/libassociated_types_cc_lib.hir
+output/rust/run-pass/augmented-assignments-feature-gate-cross.o: output/libaugmented_assignments.hir
+output/rust/run-pass/blind-item-mixed-crate-use-item.o: output/libblind_item_mixed_crate_use_item_foo.hir output/libblind_item_mixed_crate_use_item_foo2.hir
 
 output/liballocator_dummy.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/allocator-dummy.rs output/libstd.hir
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
@@ -177,6 +179,12 @@ output/libassociated_const_cc_lib.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/assoc
 output/libempty_struct.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/empty-struct.rs output/libstd.hir
 	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
 output/libassociated_types_cc_lib.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/associated-types-cc-lib.rs output/libstd.hir
+	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
+output/libaugmented_assignments.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/augmented_assignments.rs output/libstd.hir
+	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
+output/libblind_item_mixed_crate_use_item_foo.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/blind-item-mixed-crate-use-item-foo.rs output/libstd.hir
+	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
+output/libblind_item_mixed_crate_use_item_foo2.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/blind-item-mixed-crate-use-item-foo2.rs output/libstd.hir
 	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
 
 .PHONY: test test_rustos
