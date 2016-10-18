@@ -6,6 +6,7 @@
 #include <parse/common.hpp>
 #include "cfg.hpp"
 #include <ast/expr.hpp> // Needed to clear a ExprNodeP
+#include <ast/crate.hpp>
 
 #include <map>
 #include <set>
@@ -108,6 +109,15 @@ class CCfgHandler:
     AttrStage   stage() const override { return AttrStage::Pre; }
     
     
+    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
+        DEBUG("#[cfg] crate - " << mi);
+        // Ignore, as #[cfg] on a crate is handled in expand/mod.cpp
+        if( check_cfg(sp, mi) ) {
+        }
+        else {
+            crate.m_root_module.items().clear();
+        }
+    }
     void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
         TRACE_FUNCTION_FR("#[cfg] item - " << mi, (i.is_None() ? "Deleted" : ""));
         if( check_cfg(sp, mi) ) {
