@@ -122,6 +122,7 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
             _add_item(i.data.span, mod, IndexName::Namespace, i.name, i.is_pub,  mv$(p));
             ),
         (Crate,
+            ASSERT_BUG(i.data.span, crate.m_extern_crates.count(e.name) > 0, "Referenced crate '" << e.name << "' isn't loaded");
             p.bind( ::AST::PathBinding::make_Crate({ &crate.m_extern_crates.at(e.name) }) );
             _add_item(i.data.span, mod, IndexName::Namespace, i.name, i.is_pub,  mv$(p));
             ),

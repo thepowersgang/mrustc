@@ -29,6 +29,10 @@ namespace {
                 }
             )
         }
+        // TODO: What about if an anon mod has been #[cfg]-d out?
+        for(const auto& anon : mod.anon_mods() ) {
+            iterate_module(*anon, fcn);
+        }
     }
 }
 
