@@ -92,3 +92,4 @@ TODO
 ====
 - Create a variant of the `CALL` terminator that takes a path instead of a LValue
 - Create a `CallPath` RValue for calling functions that never diverge (e.g. some intrinsics)
+ - OR: Have a new RValue and Terminator - `CallIntrinsic`?
