@@ -155,37 +155,21 @@ output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs output/libst
 
 output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir output/libtest.hir
 	@mkdir -p $(dir $@)
-	$(BIN) $< -o $@ --stop-after resolve > $@.txt 2>&1
-	touch $@
+	@echo "--- TEST $(patsubst output/rust/%.o,%,$@)"
+	@$(BIN) $< -o $@ --stop-after resolve > $@.txt 2>&1
+	@touch $@
 
 output/rust/run-pass/allocator-default.o: output/libstd.hir output/liballoc_jemalloc.hir output/liballocator_dummy.hir
 output/rust/run-pass/allocator-system.o: output/liballoc_system.hir
-output/rust/run-pass/anon-extern-mod-cross-crate-2.o: output/libanonexternmod.hir
-output/rust/run-pass/anon_trait_static_method_exe.o: output/libanon_trait_static_method_lib.hir
-output/rust/run-pass/associated-const-cross-crate-defaults.o: output/libassociated_const_cc_lib.hir
-output/rust/run-pass/associated-const-match-patterns.o: output/libempty_struct.hir
-output/rust/run-pass/associated-types-cc.o: output/libassociated_types_cc_lib.hir
-output/rust/run-pass/augmented-assignments-feature-gate-cross.o: output/libaugmented_assignments.hir
-output/rust/run-pass/blind-item-mixed-crate-use-item.o: output/libblind_item_mixed_crate_use_item_foo.hir output/libblind_item_mixed_crate_use_item_foo2.hir
 
-output/liballocator_dummy.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/allocator-dummy.rs output/libstd.hir
-	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
-output/libanonexternmod.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/anon-extern-mod-cross-crate-1.rs output/libstd.hir
-	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
-output/libanon_trait_static_method_lib.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/anon_trait_static_method_lib.rs output/libstd.hir
-	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
-output/libassociated_const_cc_lib.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/associated-const-cc-lib.rs output/libstd.hir
-	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
-output/libempty_struct.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/empty-struct.rs output/libstd.hir
-	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
-output/libassociated_types_cc_lib.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/associated-types-cc-lib.rs output/libstd.hir
-	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
-output/libaugmented_assignments.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/augmented_assignments.rs output/libstd.hir
-	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
-output/libblind_item_mixed_crate_use_item_foo.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/blind-item-mixed-crate-use-item-foo.rs output/libstd.hir
-	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
-output/libblind_item_mixed_crate_use_item_foo2.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/blind-item-mixed-crate-use-item-foo2.rs output/libstd.hir
-	$(DBG) $(BIN) $< --crate-type rlib -o $@ $(PIPECMD)
+test_deps_run-pass.mk: Makefile $(wildcard $(RUST_TESTS_DIR)run_pass/*.rs)
+	@echo "--- Generating test dependencies: $@"
+	@grep 'aux-build:' rustc-nightly/src/test/run-pass/*.rs | awk -F : '{a=gensub(/.+run-pass\/(.*)\.rs$$/, "\\1", "g", $$1); b=gensub(/(.*)\.rs/,"\\1","g",$$3); print "output/rust/run-pass/" a ".o: " "output/test_deps/lib" b ".hir" }' > $@.tmp
+	@grep 'aux-build:' rustc-nightly/src/test/run-pass/*.rs | awk -F : '{ print $$3 }' | sort | uniq | awk '{ b=gensub(/(.*)\.rs/,"\\1","g",$$1); print "output/test_deps/lib" b ".hir: $$(RUST_TESTS_DIR)run-pass/auxiliary/" $$1 " output/libstd.hir" ; print "\t@mkdir -p $$(dir $$@)" ; print "\t@echo \"--- [MRUSTC] $$@\"" ; print "\t@$$(DBG) $$(BIN) $$< --crate-type rlib -o $$@ > $$@.txt 2>&1" }' >> $@.tmp
+	@mv $@.tmp $@
+
+-include test_deps_run-pass.mk
+
 
 .PHONY: test test_rustos
 #
