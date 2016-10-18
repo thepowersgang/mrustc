@@ -99,10 +99,20 @@ void Crate::load_extern_crate(Span sp, const ::std::string& name)
 {
     DEBUG("Loading crate '" << name << "'");
     // TODO: Search a list of load paths for the crate
-    ::std::string   path = "output/lib"+name+".hir";
+
+    ::std::vector< ::std::string> paths { "output/", "output/test_deps/" };
+    ::std::string   path;
+    for(const auto& p : paths){
+        path = p + "lib" + name + ".hir";
+        
+        if( ::std::ifstream(path).good() ) {
+            break ;
+        }
+    }
     if( !::std::ifstream(path).good() ) {
         ERROR(sp, E0000, "Unable to locate crate '" << name << "'");
     }
+    
     auto res = m_extern_crates.insert(::std::make_pair( name, ExternCrate { name, path } ));
     auto crate_ext_list = mv$( res.first->second.m_hir->m_ext_crates );
     
