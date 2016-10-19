@@ -537,6 +537,8 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     this->last_stage = STAGE_PARSE;
                 else if( strcmp(arg, "resolve") == 0 )
                     this->last_stage = STAGE_RESOLVE;
+                else if( strcmp(arg, "mir") == 0 )
+                    this->last_stage = STAGE_MIR;
                 else {
                     ::std::cerr << "Unknown argument to --stop-after : '" << arg << "'" << ::std::endl;
                     exit(1);

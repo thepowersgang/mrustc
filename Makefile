@@ -160,7 +160,7 @@ output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs output/libst
 output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir output/libtest.hir
 	@mkdir -p $(dir $@)
 	@echo "--- TEST $(patsubst output/rust/%.o,%,$@)"
-	@$(BIN) $< -o $@ --stop-after resolve > $@.txt 2>&1
+	@$(BIN) $< -o $@ --stop-after mir > $@.txt 2>&1
 	@touch $@
 
 output/rust/run-pass/allocator-default.o: output/libstd.hir output/liballoc_jemalloc.hir
