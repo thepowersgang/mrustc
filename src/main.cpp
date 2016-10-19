@@ -26,6 +26,7 @@
 #include "expand/cfg.hpp"
 
 int g_debug_indent_level = 0;
+bool g_debug_enabled = true;
 ::std::string g_cur_phase;
 ::std::set< ::std::string>    g_debug_disable_map;
 
@@ -83,14 +84,17 @@ void init_debug_list()
         }
     }
 }
-bool debug_enabled()
-{
+bool debug_enabled_update() {
     if( g_debug_disable_map.count(g_cur_phase) != 0 ) {
         return false;
     }
     else {
         return true;
     }
+}
+bool debug_enabled()
+{
+    return g_debug_enabled;
 }
 ::std::ostream& debug_output(int indent, const char* function)
 {
@@ -125,10 +129,12 @@ template <typename Rv, typename Fcn>
 Rv CompilePhase(const char *name, Fcn f) {
     ::std::cout << name << ": V V V" << ::std::endl;
     g_cur_phase = name;
+    g_debug_enabled = debug_enabled_update();
     auto start = clock();
     auto rv = f();
     auto end = clock();
     g_cur_phase = "";
+    g_debug_enabled = debug_enabled_update();
     
     ::std::cout <<"(" << ::std::fixed << ::std::setprecision(2) << static_cast<double>(end - start) / static_cast<double>(CLOCKS_PER_SEC) << " s) ";
     ::std::cout << name << ": DONE";
