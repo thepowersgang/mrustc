@@ -127,6 +127,9 @@ class Reader
 {
     ::std::ifstream m_backing;
     ::boost::iostreams::filtering_istream  m_is;
+    
+    ::std::vector<uint8_t>  m_buffer;
+    unsigned int    m_buffer_ofs;
 public:
     Reader(const ::std::string& path);
     Reader(const Writer&) = delete;
