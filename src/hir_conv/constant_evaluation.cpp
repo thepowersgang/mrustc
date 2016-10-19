@@ -221,7 +221,7 @@ namespace {
             {}
             
             void badnode(const ::HIR::ExprNode& node) const {
-                ERROR(node.span(), E0000, "Node not allowed in constant expression");
+                ERROR(node.span(), E0000, "Node " << typeid(node).name() << " not allowed in constant expression");
             }
             
             void visit(::HIR::ExprNode_Block& node) override {
@@ -262,7 +262,7 @@ namespace {
                 auto right = mv$(m_rv);
                 
                 if( left.tag() != right.tag() ) {
-                    ERROR(node.span(), E0000, "ExprNode_BinOp - Sides mismatched");
+                    ERROR(node.span(), E0000, "ExprNode_BinOp - Types mismatched - " << left.tag_str() << " != " << right.tag_str());
                 }
                 
                 switch(node.m_op)
@@ -408,7 +408,22 @@ namespace {
                 //DEBUG("ExprNode_Unsize - val = " << val << " as " << node.m_type);
             }
             void visit(::HIR::ExprNode_Index& node) override {
-                badnode(node);
+                // Index
+                node.m_index->visit(*this);
+                if( !m_rv.is_Integer() )
+                    ERROR(node.span(), E0000, "Array index isn't an integer - got " << m_rv.tag_str());
+                auto idx = m_rv.as_Integer();
+                
+                // Value
+                node.m_value->visit(*this);
+                if( !m_rv.is_List() )
+                    ERROR(node.span(), E0000, "Indexed value isn't a list - got " << m_rv.tag_str());
+                auto v = mv$( m_rv.as_List() );
+                
+                // -> Perform
+                if( idx >= v.size() )
+                    ERROR(node.span(), E0000, "Constant array index " << idx << " out of range " << v.size());
+                m_rv = mv$(v[idx]);
             }
             void visit(::HIR::ExprNode_Deref& node) override {
                 badnode(node);
