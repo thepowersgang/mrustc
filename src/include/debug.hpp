@@ -17,10 +17,10 @@ extern int g_debug_indent_level;
 #else
 # define INDENT()    do { } while(0)
 # define UNINDENT()    do {} while(0)
-# define DEBUG(ss)   do{ (void)(::NullSink() << ss); } while(0)
+# define DEBUG(ss)   do{ if(false) (void)(::NullSink() << ss); } while(0)
 # define TRACE_FUNCTION  do{} while(0)
-# define TRACE_FUNCTION_F(ss)  do{ (void)(::NullSink() << ss); } while(0)
-# define TRACE_FUNCTION_FR(ss,ss2)  do{ (void)(::NullSink() << ss); } while(0)
+# define TRACE_FUNCTION_F(ss)  do{ if(false) (void)(::NullSink() << ss); } while(0)
+# define TRACE_FUNCTION_FR(ss,ss2)  do{ if(false) (void)(::NullSink() << ss); if(false) (void)(::NullSink() << ss2); } while(0)
 #endif
 
 extern bool debug_enabled();
