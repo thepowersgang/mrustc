@@ -6,6 +6,10 @@
 # - Compiles mrustc
 # - Downloads rustc source to test against
 # - Attempts to compile rust's libstd
+#
+# DEPENDENCIES
+# - boost_iostreams (with zlib)
+#   TODO: Replace this dependency with raw zlib.
 
 EXESUF ?=
 CXX ?= g++
@@ -188,7 +192,7 @@ test_rustos: $(addprefix output/rust_os/,libkernel.hir)
 
 output/rust_os/libkernel.hir: ../rust_os/Kernel/Core/main.rs output/libstack_dst.hir $(BIN)
 	@mkdir -p $(dir $@)
-	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
+	$(DBG) $(BIN) $< -o $@ --cfg arch=amd64 $(PIPECMD)
 output/libstack_dst.hir: ../rust_os/externals/crates.io/stack_dst/src/lib.rs $(BIN)
 	@mkdir -p $(dir $@)
 	$(DBG) $(BIN) $< -o $@ --cfg feature=no_std $(PIPECMD)
