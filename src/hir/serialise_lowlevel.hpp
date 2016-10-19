@@ -123,13 +123,24 @@ public:
 };
 
 
+class ReadBuffer
+{
+    ::std::vector<uint8_t>  m_backing;
+    unsigned int    m_ofs;
+public:
+    ReadBuffer(size_t size);
+    
+    size_t capacity() const { return m_backing.capacity(); }
+    size_t read(void* dst, size_t len);
+    void populate(::std::istream& is);
+};
+
 class Reader
 {
     ::std::ifstream m_backing;
     ::boost::iostreams::filtering_istream  m_is;
     
-    ::std::vector<uint8_t>  m_buffer;
-    unsigned int    m_buffer_ofs;
+    ReadBuffer  m_buffer;
 public:
     Reader(const ::std::string& path);
     Reader(const Writer&) = delete;
