@@ -998,6 +998,8 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                 return false;
             }
         )
+        
+        // [T;N] -> [T] is handled down with array indexing
     }
     
     // Magical CoerceUnsized impls for various types
@@ -1102,7 +1104,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
         // Continue
     )
     
-    // Magic index impls for Arrays
+    // Magic index and unsize impls for Arrays
     // NOTE: The index impl for [T] is in libcore.
     TU_IFLET(::HIR::TypeRef::Data, type.m_data, Array, e,
         if( trait == trait_index || trait == trait_indexmut ) {

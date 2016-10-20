@@ -843,6 +843,17 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                     return Compare::Unequal;
                 }
             )
+            else TU_IFLET(::HIR::TypeRef::Data, right.m_data, Infer, le,
+                switch(le.ty_class)
+                {
+                case ::HIR::InferClass::None:
+                case ::HIR::InferClass::Diverge:
+                case ::HIR::InferClass::Integer:
+                    return Compare::Fuzzy;
+                case ::HIR::InferClass::Float:
+                    return Compare::Unequal;
+                }
+            )
             else {
                 return Compare::Unequal;
             }
@@ -854,6 +865,17 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                 case ::HIR::CoreType::F64:
                     return Compare::Fuzzy;
                 default:
+                    return Compare::Unequal;
+                }
+            )
+            else TU_IFLET(::HIR::TypeRef::Data, right.m_data, Infer, le,
+                switch(le.ty_class)
+                {
+                case ::HIR::InferClass::None:
+                case ::HIR::InferClass::Diverge:
+                case ::HIR::InferClass::Float:
+                    return Compare::Fuzzy;
+                case ::HIR::InferClass::Integer:
                     return Compare::Unequal;
                 }
             )
