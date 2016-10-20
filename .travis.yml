@@ -12,8 +12,7 @@ matrix:
             - ubuntu-toolchain-r-test
           packages:
             - g++-6
-            - libboost-dev
-            - libboost-iostreams-dev
+            - zlib1g-dev
       env:
         - MATRIX_EVAL="CC=gcc-6 && CXX=g++-6"
     - os: linux
@@ -23,8 +22,7 @@ matrix:
             - ubuntu-toolchain-r-test
           packages:
             - g++-5
-            - libboost-dev
-            - libboost-iostreams-dev
+            - zlib1g-dev
       env:
          - MATRIX_EVAL="CC=gcc-5 && CXX=g++-5"
 
@@ -35,5 +33,5 @@ before_script:
 
 script:
  - make
-# - make test
- - make rust_tests-run-pass
+ - make test
+# - make rust_tests-run-pass RUST_TESTS_FINAL_STAGE=parse
