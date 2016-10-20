@@ -1533,7 +1533,7 @@ namespace {
                 ASSERT_BUG(sp, it != tr.m_values.end(), "Cannot find trait item for " << node.m_path);
                 TU_MATCHA( (it->second), (e),
                 (Constant,
-                    TODO(sp, "Associated constants - " << node.m_path);
+                    m_builder.set_result( sp, ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
                     ),
                 (Static,
                     TODO(sp, "Associated statics (non-rustc) - " << node.m_path);
