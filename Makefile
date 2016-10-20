@@ -8,7 +8,8 @@
 # - Attempts to compile rust's libstd
 #
 # DEPENDENCIES
-# - zlib
+# - zlib (-dev)
+# - curl (bin, for downloading libstd source)
 
 EXESUF ?=
 CXX ?= g++
@@ -142,7 +143,7 @@ $(RUSTCSRC): rust-nightly-date
 		echo "Rust version on disk is '$${DISK_RUST_DATE}'. Downloading $${DL_RUST_DATE}."; \
 		rm -f rustc-nightly-src.tar.gz; \
 		rm -rf rustc-nightly; \
-		wget https://static.rust-lang.org/dist/$${DL_RUST_DATE}/rustc-nightly-src.tar.gz; \
+		curl -s https://static.rust-lang.org/dist/$${DL_RUST_DATE}/rustc-nightly-src.tar.gz -o rustc-nightly-src.tar.gz; \
 		tar -xf rustc-nightly-src.tar.gz; \
 		echo "$$DL_RUST_DATE" > $(RUSTC_SRC_DL); \
 	fi
