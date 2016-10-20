@@ -9,6 +9,7 @@
 
 #include <boost/iostreams/filtering_stream.hpp>
 #include <fstream>
+#include <vector>
 
 namespace HIR {
 namespace serialise {
