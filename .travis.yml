@@ -1,9 +1,4 @@
 language: cpp
-addons:
-  apt:
-    packages:
-    - libboost-dev
-    - libboost-iostreams-dev
 install: make
 
 sudo: false
@@ -17,6 +12,8 @@ matrix:
             - ubuntu-toolchain-r-test
           packages:
             - g++-6
+            - libboost-dev
+            - libboost-iostreams-dev
       env:
         - MATRIX_EVAL="CC=gcc-6 && CXX=g++-6"
     - os: linux
@@ -26,6 +23,8 @@ matrix:
             - ubuntu-toolchain-r-test
           packages:
             - g++-5
+            - libboost-dev
+            - libboost-iostreams-dev
       env:
          - MATRIX_EVAL="CC=gcc-5 && CXX=g++-5"
 
