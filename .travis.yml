@@ -1,5 +1,10 @@
 language: cpp
-install: make libboost-dev libboost-iostreams-dev
+addons:
+  apt:
+    packages:
+    - libboost-dev
+    - libboost-iostreams-dev
+install: make
 
 sudo: false
 
