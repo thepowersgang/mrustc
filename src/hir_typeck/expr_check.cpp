@@ -914,7 +914,10 @@ namespace {
                 }
                 TU_MATCH( ::HIR::TraitValueItem, (it->second), (ie),
                 (Constant,
-                    TODO(sp, "Monomorpise associated constant type - " << ie.m_type);
+                    auto cb = monomorphise_type_get_cb(sp, &*e.type, &e.trait.m_params, nullptr);
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = ( monomorphise_type_needed(ie.m_type) ? tmp = monomorphise_type_with(sp, ie.m_type, cb) : ie.m_type );
+                    check_types_equal(sp, node.m_res_type, ty);
                     ),
                 (Static,
                     TODO(sp, "Monomorpise associated static type - " << ie.m_type);
