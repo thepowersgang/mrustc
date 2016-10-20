@@ -27,9 +27,6 @@ matrix:
 
 before_install:
  - eval "${MATRIX_EVAL}"
-before_script:
- # Trigger a download of the rustc source
- - make ./rustc-nightly/
 
 script:
  - make
