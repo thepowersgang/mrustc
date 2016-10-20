@@ -8,15 +8,14 @@
 # - Attempts to compile rust's libstd
 #
 # DEPENDENCIES
-# - boost_iostreams (with zlib)
-#   TODO: Replace this dependency with raw zlib.
+# - zlib
 
 EXESUF ?=
 CXX ?= g++
 V ?= @
 
 LINKFLAGS := -g
-LIBS := -lboost_iostreams
+LIBS := -lz
 CXXFLAGS := -g -Wall
 # - Only turn on -Werror when running as `tpg` (i.e. me)
 ifeq ($(shell whoami),tpg)

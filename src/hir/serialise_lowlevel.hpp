@@ -7,21 +7,25 @@
  */
 #pragma once
 
-#include <boost/iostreams/filtering_stream.hpp>
-#include <fstream>
 #include <vector>
+#include <string>
+#include <stddef.h>
+#include <assert.h>
 
 namespace HIR {
 namespace serialise {
 
+class WriterInner;
+class ReaderInner;
+
 class Writer
 {
-    ::std::ofstream m_backing;
-    ::boost::iostreams::filtering_ostream  m_os;
+    WriterInner*    m_inner;
 public:
     Writer(const ::std::string& path);
     Writer(const Writer&) = delete;
     Writer(Writer&&) = delete;
+    ~Writer();
     
     void write(const void* data, size_t count);
     
@@ -133,19 +137,18 @@ public:
     
     size_t capacity() const { return m_backing.capacity(); }
     size_t read(void* dst, size_t len);
-    void populate(::std::istream& is);
+    void populate(ReaderInner& is);
 };
 
 class Reader
 {
-    ::std::ifstream m_backing;
-    ::boost::iostreams::filtering_istream  m_is;
-    
+    ReaderInner*    m_inner;
     ReadBuffer  m_buffer;
 public:
     Reader(const ::std::string& path);
     Reader(const Writer&) = delete;
     Reader(Writer&&) = delete;
+    ~Reader();
 
     void read(void* dst, size_t count);
     

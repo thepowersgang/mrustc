@@ -872,6 +872,7 @@ namespace {
                 deserialise_mir_lvalue()
                 });
         default:
+            ::std::cerr << "Bad tag for a MIR Statement" << ::std::endl;
             throw "";
         }
     }
