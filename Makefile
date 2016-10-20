@@ -140,7 +140,7 @@ $(RUSTCSRC): rust-nightly-date
 	export DISK_RUST_DATE=$$([ -f $(RUSTC_SRC_DL) ] && cat $(RUSTC_SRC_DL)); \
 	if [ "$$DL_RUST_DATE" != "$$DISK_RUST_DATE" ]; then \
 		echo "Rust version on disk is '$${DISK_RUST_DATE}'. Downloading $${DL_RUST_DATE}."; \
-		rm rustc-nightly-src.tar.gz; \
+		rm -f rustc-nightly-src.tar.gz; \
 		rm -rf rustc-nightly; \
 		wget https://static.rust-lang.org/dist/$${DL_RUST_DATE}/rustc-nightly-src.tar.gz; \
 		tar -xf rustc-nightly-src.tar.gz; \
