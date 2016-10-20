@@ -1,5 +1,4 @@
 language: cpp
-install: make
 
 sudo: false
 
@@ -29,7 +28,8 @@ matrix:
 before_install:
  - eval "${MATRIX_EVAL}"
 before_script:
- - make UPDATE
+ # Trigger a download of the rustc source
+ - make ./rustc-nightly/
 
 script:
  - make
