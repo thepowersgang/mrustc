@@ -9,9 +9,11 @@ matrix:
         apt:
           sources:
             - ubuntu-toolchain-r-test
+            - debian-sid
           packages:
             - g++-6
             - zlib1g-dev
+            - libssl1.0.0
       env:
         - MATRIX_EVAL="CC=gcc-6 && CXX=g++-6"
     - os: linux
@@ -19,9 +21,11 @@ matrix:
         apt:
           sources:
             - ubuntu-toolchain-r-test
+            - debian-sid
           packages:
             - g++-5
             - zlib1g-dev
+            - libssl1.0.0
       env:
          - MATRIX_EVAL="CC=gcc-5 && CXX=g++-5"
 
