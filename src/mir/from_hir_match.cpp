@@ -73,6 +73,7 @@ struct PatternRulesetBuilder
         m_resolve(resolve)
     {}
     
+    void append_from_lit(const Span& sp, const ::HIR::Literal& lit, const ::HIR::TypeRef& ty);
     void append_from(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty);
     void push_rule(PatternRule r);
 };
@@ -348,6 +349,206 @@ void PatternRulesetBuilder::push_rule(PatternRule r)
     m_rules.back().field_path = m_field_path;
 }
 
+void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal& lit, const ::HIR::TypeRef& ty)
+{
+    TRACE_FUNCTION_F("lit="<<lit<<", ty="<<ty<<",   m_field_path.size()=" <<m_field_path.size() << " " << (m_field_path.empty() ? 0 : m_field_path.back()) );
+
+    TU_MATCHA( (ty.m_data), (e),
+    (Infer,   BUG(sp, "Ivar for in match type"); ),
+    (Diverge, BUG(sp, "Diverge in match type");  ),
+    (Primitive,
+        switch(e)
+        {
+        case ::HIR::CoreType::F32:
+        case ::HIR::CoreType::F64: {
+            // Yes, this is valid.
+            ASSERT_BUG(sp, lit.is_Float(), "Matching floating point type with non-float literal - " << lit);
+            double val = lit.as_Float();
+            this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
+            } break;
+        case ::HIR::CoreType::U8:
+        case ::HIR::CoreType::U16:
+        case ::HIR::CoreType::U32:
+        case ::HIR::CoreType::U64:
+        case ::HIR::CoreType::Usize: {
+            ASSERT_BUG(sp, lit.is_Integer(), "Matching integer type with non-integer literal - " << lit);
+            uint64_t val = lit.as_Integer();
+            this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
+            } break;
+        case ::HIR::CoreType::I8:
+        case ::HIR::CoreType::I16:
+        case ::HIR::CoreType::I32:
+        case ::HIR::CoreType::I64:
+        case ::HIR::CoreType::Isize: {
+            ASSERT_BUG(sp, lit.is_Integer(), "Matching integer type with non-integer literal - " << lit);
+            int64_t val = static_cast<int64_t>( lit.as_Integer() );
+            this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
+            } break;
+        case ::HIR::CoreType::Bool:
+            ASSERT_BUG(sp, lit.is_Integer(), "Matching boolean with non-integer literal - " << lit);
+            this->push_rule( PatternRule::make_Bool( lit.as_Integer() != 0 ) );
+            break;
+        case ::HIR::CoreType::Char: {
+            // Char is just another name for 'u32'... but with a restricted range
+            ASSERT_BUG(sp, lit.is_Integer(), "Matching char with non-integer literal - " << lit);
+            uint64_t val = lit.as_Integer();
+            this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
+            } break;
+        case ::HIR::CoreType::Str:
+            BUG(sp, "Hit match over `str` - must be `&str`");
+            break;
+        }
+        ),
+    (Tuple,
+        m_field_path.push_back(0);
+        ASSERT_BUG(sp, lit.is_List(), "Matching tuple with non-list literal - " << lit);
+        const auto& list = lit.as_List();
+        ASSERT_BUG(sp, e.size() == list.size(), "Matching tuple with mismatched literal size - " << e.size() << " != " << list.size());
+        for(unsigned int i = 0; i < e.size(); i ++) {
+            this->append_from_lit(sp, list[i], e[i]);
+            m_field_path.back() ++;
+        }
+        m_field_path.pop_back();
+        ),
+    (Path,
+        ASSERT_BUG(sp, lit.is_List(), "Matching struct non-list literal - " << lit);
+        const auto& list = lit.as_List();
+        // This is either a struct destructure or an enum
+        TU_MATCHA( (e.binding), (pbe),
+        (Unbound,
+            BUG(sp, "Encounterd unbound path - " << e.path);
+            ),
+        (Opaque,
+            TODO(sp, "Can an opaque path type be matched with a literal?");
+            //ASSERT_BUG(sp, lit.as_List().size() == 0 , "Matching unit struct with non-empty list - " << lit);
+            this->push_rule( PatternRule::make_Any({}) );
+            ),
+        (Struct,
+            auto monomorph = [&](const auto& ty) {
+                auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
+                this->m_resolve.expand_associated_types(sp, rv);
+                return rv;
+                };
+            const auto& str_data = pbe->m_data;
+            TU_MATCHA( (str_data), (sd),
+            (Unit,
+                ASSERT_BUG(sp, list.size() == 0 , "Matching unit struct with non-empty list - " << lit);
+                // No rule
+                ),
+            (Tuple,
+                ASSERT_BUG(sp, sd.size() == list.size(), "");
+                m_field_path.push_back(0);
+                for(unsigned int i = 0; i < sd.size(); i ++ )
+                {
+                    ::HIR::TypeRef  tmp;
+                    const auto& sty_mono = (monomorphise_type_needed(sd[i].ent) ? tmp = monomorph(sd[i].ent) : sd[i].ent);
+                    
+                    this->append_from_lit(sp, list[i], sty_mono);
+                    m_field_path.back() ++;
+                }
+                m_field_path.pop_back();
+                ),
+            (Named,
+                ASSERT_BUG(sp, sd.size() == list.size(), "");
+                m_field_path.push_back(0);
+                for( unsigned int i = 0; i < sd.size(); i ++ )
+                {
+                    const auto& fld_ty = sd[i].second.ent;
+                    ::HIR::TypeRef  tmp;
+                    const auto& sty_mono = (monomorphise_type_needed(fld_ty) ? tmp = monomorph(fld_ty) : fld_ty);
+                    
+                    this->append_from_lit(sp, list[i], sty_mono);
+                    m_field_path.back() ++;
+                }
+                )
+            )
+            ),
+        (Enum,
+            ASSERT_BUG(sp, lit.is_Variant(), "Matching struct non-list literal - " << lit);
+            auto var_idx = lit.as_Variant().idx;
+            const auto& list = lit.as_Variant().vals;
+            auto monomorph = [&](const auto& ty) {
+                auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
+                this->m_resolve.expand_associated_types(sp, rv);
+                return rv;
+                };
+            
+            ASSERT_BUG(sp, var_idx < pbe->m_variants.size(), "Literal refers to a variant out of range");
+            const auto& var_def = pbe->m_variants.at(var_idx);
+            const auto& fields_def = var_def.second.as_Tuple();
+            
+            ASSERT_BUG(sp, fields_def.size() == list.size(), "");
+
+            PatternRulesetBuilder   sub_builder { this->m_resolve };
+            sub_builder.m_field_path = m_field_path;
+            sub_builder.m_field_path.push_back(0);
+            for( unsigned int i = 0; i < list.size(); i ++ )
+            {
+                sub_builder.m_field_path.back() = i;
+                const auto& val = list[i];
+                const auto& ty_tpl = fields_def[i].ent;
+                    
+                ::HIR::TypeRef  tmp;
+                const auto& subty = (monomorphise_type_needed(ty_tpl) ? tmp = monomorph(ty_tpl) : ty_tpl);
+                    
+                sub_builder.append_from_lit( sp, val, subty );
+            }
+            this->push_rule( PatternRule::make_Variant({ var_idx, mv$(sub_builder.m_rules) }) );
+            )
+        )
+        ),
+    (Generic,
+        // Generics don't destructure, so the only valid pattern is `_`
+        TODO(sp, "Match generic with literal?");
+        this->push_rule( PatternRule::make_Any({}) );
+        ),
+    (TraitObject,
+        TODO(sp, "Match trait object with literal?");
+        ),
+    (Array,
+        ASSERT_BUG(sp, lit.is_List(), "Matching array with non-list literal - " << lit);
+        const auto& list = lit.as_List();
+        ASSERT_BUG(sp, e.size_val == list.size(), "Matching array with mismatched literal size - " << e.size_val << " != " << list.size());
+        
+        // Sequential match just like tuples.
+        m_field_path.push_back(0);
+        for(unsigned int i = 0; i < e.size_val; i ++) {
+            this->append_from_lit(sp, list[i], *e.inner);
+            m_field_path.back() ++;
+        }
+        m_field_path.pop_back();
+        ),
+    (Slice,
+        ASSERT_BUG(sp, lit.is_List(), "Matching array with non-list literal - " << lit);
+        const auto& list = lit.as_List();
+        
+        PatternRulesetBuilder   sub_builder { this->m_resolve };
+        sub_builder.m_field_path = m_field_path;
+        sub_builder.m_field_path.push_back(0);
+        for(const auto& val : list)
+        {
+            sub_builder.append_from_lit( sp, val, *e.inner );
+            sub_builder.m_field_path.back() ++;
+        }
+        // Encodes length check and sub-pattern rules
+        this->push_rule( PatternRule::make_Slice({ static_cast<unsigned int>(list.size()), mv$(sub_builder.m_rules) }) );
+        ),
+    (Borrow,
+        m_field_path.push_back( FIELD_DEREF );
+        TODO(sp, "Match literal Borrow");
+        m_field_path.pop_back();
+        ),
+    (Pointer,
+        TODO(sp, "Match literal with pointer?");
+        ),
+    (Function,
+        ERROR(sp, E0000, "Attempting to match over a functon pointer");
+        ),
+    (Closure,
+        ERROR(sp, E0000, "Attempting to match over a closure");
+        )
+    )
+}
 void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty)
 {
     TRACE_FUNCTION_F("pat="<<pat<<", ty="<<ty<<",   m_field_path.size()=" <<m_field_path.size() << " " << (m_field_path.empty() ? 0 : m_field_path.back()) );
@@ -383,6 +584,24 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             throw "";
         }
     };
+    
+    // TODO: Outer handling for Value::Named patterns
+    // - Convert them into either a pattern, or just a variant of this function that operates on ::HIR::Literal
+    //  > It does need a way of handling unknown-value constants (e.g. <GenericT as Foo>::CONST)
+    //  > Those should lead to a simple match? Or just a custom rule type that indicates that they're checked early
+    TU_IFLET( ::HIR::Pattern::Data, pat.m_data, Value, pe,
+        TU_IFLET( ::HIR::Pattern::Value, pe.val, Named, pve,
+            if( pve.binding )
+            {
+                this->append_from_lit(sp, pve.binding->m_value_res, ty);
+                return ;
+            }
+            else
+            {
+                TODO(sp, "Match with an unbound constant - " << pve.path);
+            }
+        )
+    )
     
     TU_MATCHA( (ty.m_data), (e),
     (Infer,   BUG(sp, "Ivar for in match type"); ),
@@ -598,6 +817,13 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
             (Any,
                 this->push_rule( PatternRule::make_Any({}) );
+                ),
+            (Value,
+                if( ! pe.val.is_Named() )
+                    BUG(sp, "Match not allowed, " << ty << " with " << pat);
+                // TODO: If the value of this constant isn't known at this point (i.e. it won't be until monomorphisation)
+                //       emit a special type of rule.
+                TODO(sp, "Match enum with const - " << pat);
                 ),
             (EnumValue,
                 this->push_rule( PatternRule::make_Variant( {pe.binding_idx, {} } ) );
