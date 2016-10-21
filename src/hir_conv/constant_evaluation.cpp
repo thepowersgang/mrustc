@@ -64,7 +64,7 @@ namespace {
         throw "";
     }
     
-    TAGGED_UNION(EntPtr, Function,
+    TAGGED_UNION(EntPtr, NotFound,
         (NotFound, struct{}),
         (Function, const ::HIR::Function*),
         (Constant, const ::HIR::Constant*),
@@ -162,18 +162,29 @@ namespace {
             ),
         (UfcsInherent,
             // Easy (ish)
-            EntPtr rv {};
+            EntPtr rv;
             crate.find_type_impls(*e.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
                 switch( ns )
                 {
-                case EntNS::Value: {
-                    auto fit = impl.m_methods.find(e.item);
-                    if( fit != impl.m_methods.end() )
+                case EntNS::Value:
                     {
-                        rv = EntPtr { &fit->second.data };
-                        return true;
+                        auto fit = impl.m_methods.find(e.item);
+                        if( fit != impl.m_methods.end() )
+                        {
+                            DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+                            rv = EntPtr { &fit->second.data };
+                            return true;
+                        }
                     }
-                    } break;
+                    {
+                        auto it = impl.m_constants.find(e.item);
+                        if( it != impl.m_constants.end() )
+                        {
+                            rv = EntPtr { &it->second.data };
+                            return true;
+                        }
+                    }
+                    break;
                 case EntNS::Type:
                     break;
                 }
@@ -560,8 +571,7 @@ namespace {
                     BUG(node.span(), "Path value with unsupported value type - " << ep.tag_str());
                     ),
                 (Function,
-                    // TODO: Associated functions
-                    // TODO: Should be a more complex path
+                    // TODO: Should be a more complex path to support associated paths
                     ASSERT_BUG(node.span(), node.m_path.m_data.is_Generic(), "Function path not Path::Generic - " << node.m_path);
                     m_rv = ::HIR::Literal(node.m_path.m_data.as_Generic().m_path);
                     ),
