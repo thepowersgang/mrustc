@@ -101,6 +101,7 @@ namespace {
                 
                 void visit(::HIR::ExprNode_Let& node) override
                 {
+                    upper_visitor.visit_pattern(node.m_pattern);
                     upper_visitor.visit_type(node.m_type);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
@@ -124,6 +125,16 @@ namespace {
                 void visit(::HIR::ExprNode_PathValue& node) override
                 {
                     upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::VALUE);
+                    ::HIR::ExprVisitorDef::visit(node);
+                }
+                
+                void visit(::HIR::ExprNode_Match& node) override
+                {
+                    for(auto& arm : node.m_arms)
+                    {
+                        for(auto& pat : arm.m_patterns)
+                            upper_visitor.visit_pattern(pat);
+                    }
                     ::HIR::ExprVisitorDef::visit(node);
                 }
                 
