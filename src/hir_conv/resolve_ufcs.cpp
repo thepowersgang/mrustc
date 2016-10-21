@@ -336,7 +336,11 @@ namespace {
                         switch( pc )
                         {
                         case ::HIR::Visitor::PathContext::VALUE:
-                            if( impl.m_methods.find(e.item) == impl.m_methods.end() ) {
+                            if( impl.m_methods.find(e.item) != impl.m_methods.end() ) {
+                            }
+                            else if( impl.m_constants.find(e.item) != impl.m_constants.end() ) {
+                            }
+                            else {
                                 return false;
                             }
                             // Found it, just keep going (don't care about details here)

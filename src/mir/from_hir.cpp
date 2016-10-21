@@ -1553,15 +1553,22 @@ namespace {
                 auto rv = m_builder.crate().find_type_impls(*pe.type, [&](const auto& ty)->const auto& { return ty; },
                     [&](const auto& impl) {
                         DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-                        auto it = impl.m_methods.find(pe.item);
-                        if( it != impl.m_methods.end() ) {
-                            // Function!
-                            auto tmp = m_builder.new_temporary( node.m_res_type );
-                            m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
-                            m_builder.set_result( sp, mv$(tmp) );
-                            return true;
+                        // Associated functions
+                        {
+                            auto it = impl.m_methods.find(pe.item);
+                            if( it != impl.m_methods.end() ) {
+                                m_builder.set_result( sp, ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
+                                return true;
+                            }
                         }
-                        // Associated consts (unimpl)
+                        // Associated consts
+                        {
+                            auto it = impl.m_constants.find(pe.item);
+                            if( it != impl.m_constants.end() ) {
+                                m_builder.set_result( sp, ::MIR::Constant::make_Const({node.m_path.clone()}) );
+                                return true;
+                            }
+                        }
                         // Associated static (undef)
                         return false;
                     });

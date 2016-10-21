@@ -560,10 +560,13 @@ namespace {
                     BUG(node.span(), "Path value with unsupported value type - " << ep.tag_str());
                     ),
                 (Function,
+                    // TODO: Associated functions
                     // TODO: Should be a more complex path
+                    ASSERT_BUG(node.span(), node.m_path.m_data.is_Generic(), "Function path not Path::Generic - " << node.m_path);
                     m_rv = ::HIR::Literal(node.m_path.m_data.as_Generic().m_path);
                     ),
                 (Constant,
+                    // TODO: Associated constants
                     const auto& c = *e;
                     if( c.m_value_res.is_Invalid() ) {
                         const_cast<HIR::ExprNode&>(*c.m_value).visit(*this);

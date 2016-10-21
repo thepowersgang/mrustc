@@ -1560,29 +1560,50 @@ namespace {
                 
                 // - Locate function (and impl block)
                 const ::HIR::Function* fcn_ptr = nullptr;
+                const ::HIR::Constant* const_ptr = nullptr;
                 const ::HIR::TypeImpl* impl_ptr = nullptr;
                 // TODO: Support mutiple matches here (if there's a fuzzy match) and retry if so
                 unsigned int count = 0;
                 this->context.m_crate.find_type_impls(*e.type, context.m_ivars.callback_resolve_infer(),
                     [&](const auto& impl) {
                         DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-                        auto it = impl.m_methods.find(e.item);
-                        if( it == impl.m_methods.end() )
-                            return false;
-                        fcn_ptr = &it->second.data;
-                        impl_ptr = &impl;
-                        count += 1;
+                        {
+                            auto it = impl.m_methods.find(e.item);
+                            if( it != impl.m_methods.end() ) {
+                                fcn_ptr = &it->second.data;
+                                impl_ptr = &impl;
+                                count += 1;
+                                return false;
+                                //return true;
+                            }
+                        }
+                        {
+                            auto it = impl.m_constants.find(e.item);
+                            if( it != impl.m_constants.end() ) {
+                                const_ptr = &it->second.data;
+                                impl_ptr = &impl;
+                                count += 1;
+                                return false;
+                            }
+                        }
                         return false;
-                        //return true;
                     });
-                if( !fcn_ptr ) {
-                    ERROR(sp, E0000, "Failed to locate function " << node.m_path);
+                if( count == 0 ) {
+                    ERROR(sp, E0000, "Failed to locate associated value " << node.m_path);
                 }
                 if( count > 1 ) {
                     TODO(sp, "Revisit _PathValue when UfcsInherent has multiple options - " << node.m_path);
                 }
+                
+                assert(fcn_ptr || const_ptr);
                 assert(impl_ptr);
-                fix_param_count(sp, this->context, *e.type, false, node.m_path, fcn_ptr->m_params,  e.params);
+            
+                if( fcn_ptr ) {
+                    fix_param_count(sp, this->context, *e.type, false, node.m_path, fcn_ptr->m_params,  e.params);
+                }
+                else {
+                    fix_param_count(sp, this->context, *e.type, false, node.m_path, const_ptr->m_params,  e.params);
+                }
                 
                 // If the impl block has parameters, figure out what types they map to
                 // - The function params are already mapped (from fix_param_count)
@@ -1597,45 +1618,58 @@ namespace {
                     for(const auto& ty : impl_params.m_types)
                         assert( !( ty.m_data.is_Infer() && ty.m_data.as_Infer().index == ~0u) );
                 }
+                    
                 
-                // Create monomorphise callback
-                const auto& fcn_params = e.params;
-                auto monomorph_cb = [&](const auto& gt)->const auto& {
-                        const auto& ge = gt.m_data.as_Generic();
-                        if( ge.binding == 0xFFFF ) {
-                            return this->context.get_type(*e.type);
-                        }
-                        else if( ge.binding < 256 ) {
-                            auto idx = ge.binding;
-                            if( idx >= impl_params.m_types.size() ) {
-                                BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << impl_params.m_types.size());
+                if( fcn_ptr )
+                {
+                    // Create monomorphise callback
+                    const auto& fcn_params = e.params;
+                    auto monomorph_cb = [&](const auto& gt)->const auto& {
+                            const auto& ge = gt.m_data.as_Generic();
+                            if( ge.binding == 0xFFFF ) {
+                                return this->context.get_type(*e.type);
                             }
-                            return this->context.get_type(impl_params.m_types[idx]);
-                        }
-                        else if( ge.binding < 512 ) {
-                            auto idx = ge.binding - 256;
-                            if( idx >= fcn_params.m_types.size() ) {
-                                BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << fcn_params.m_types.size());
+                            else if( ge.binding < 256 ) {
+                                auto idx = ge.binding;
+                                if( idx >= impl_params.m_types.size() ) {
+                                    BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << impl_params.m_types.size());
+                                }
+                                return this->context.get_type(impl_params.m_types[idx]);
                             }
-                            return this->context.get_type(fcn_params.m_types[idx]);
-                        }
-                        else {
-                            BUG(sp, "Generic bounding out of total range");
-                        }
-                    };
-                
-                // TODO: Impl/method type bounds
-                
-                ::HIR::FunctionType ft {
-                    fcn_ptr->m_unsafe, fcn_ptr->m_abi,
-                    box$( monomorphise_type_with(sp, fcn_ptr->m_return,  monomorph_cb) ),
-                    {}
-                    };
-                for(const auto& arg : fcn_ptr->m_args)
-                    ft.m_arg_types.push_back( monomorphise_type_with(sp, arg.second,  monomorph_cb) );
-                auto ty = ::HIR::TypeRef(mv$(ft));
-                
-                this->context.equate_types(node.span(), node.m_res_type, ty);
+                            else if( ge.binding < 512 ) {
+                                auto idx = ge.binding - 256;
+                                if( idx >= fcn_params.m_types.size() ) {
+                                    BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << fcn_params.m_types.size());
+                                }
+                                return this->context.get_type(fcn_params.m_types[idx]);
+                            }
+                            else {
+                                BUG(sp, "Generic bounding out of total range");
+                            }
+                        };
+                    
+                    // TODO: Impl/method type bounds
+                    
+                    ::HIR::FunctionType ft {
+                        fcn_ptr->m_unsafe, fcn_ptr->m_abi,
+                        box$( monomorphise_type_with(sp, fcn_ptr->m_return,  monomorph_cb) ),
+                        {}
+                        };
+                    for(const auto& arg : fcn_ptr->m_args)
+                        ft.m_arg_types.push_back( monomorphise_type_with(sp, arg.second,  monomorph_cb) );
+                    auto ty = ::HIR::TypeRef(mv$(ft));
+                    
+                    this->context.equate_types(node.span(), node.m_res_type, ty);
+                }
+                else    // !fcn_ptr, ergo const_ptr
+                {
+                    auto monomorph_cb = monomorphise_type_get_cb(sp, &*e.type, &impl_params,  &e.params);
+                    
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = ( monomorphise_type_needed(const_ptr->m_type) ? tmp = monomorphise_type_with(sp, const_ptr->m_type, monomorph_cb) : const_ptr->m_type );
+                    
+                    this->context.equate_types(node.span(), node.m_res_type, ty);
+                }
                 )
             )
         }
