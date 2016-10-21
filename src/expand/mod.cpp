@@ -28,7 +28,7 @@ void Register_Synext_Macro(::std::string name, ::std::unique_ptr<ExpandProcMacro
 
 void ExpandDecorator::unexpected(const Span& sp, const AST::MetaItem& mi, const char* loc_str) const
 {
-    ERROR(sp, E0000, "Unexpected attribute " << mi.name() << " on " << loc_str);
+    WARNING(sp, W0000, "Unexpected attribute " << mi.name() << " on " << loc_str);
 }
 
 void Expand_Attr(const Span& sp, const ::AST::MetaItem& a, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::MetaItem& a)> f)
