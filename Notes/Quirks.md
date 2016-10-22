@@ -34,4 +34,10 @@ Modules with the same name as primtiive types have interesting lookup quirks
  - Otherwise, treat it as `<u32 as ?>::some_name`
 
 
+UFCS "inherent" paths can resolve to trait items
+================================================
+_Unconfirmed_
+`<Foo>::SOMECONST` can either refer to `impl Foo { const SOMECONST... }  or `impl Trait for Foo { const SOMECONST ... }`
+
+
 
