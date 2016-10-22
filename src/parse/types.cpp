@@ -95,7 +95,9 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
     case TOK_DOUBLE_COLON:
         PUTBACK(tok, lex);
         return Parse_Type_Path(lex, {}, allow_trait_list);
+    // 'self' - This relative path
     // 'super' - Parent relative path
+    case TOK_RWORD_SELF:
     case TOK_RWORD_SUPER:
         PUTBACK(tok, lex);
         return Parse_Type_Path(lex, {}, allow_trait_list);
