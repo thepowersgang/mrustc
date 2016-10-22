@@ -976,10 +976,15 @@ namespace {
         {
             TRACE_FUNCTION_F("_Unsize");
             this->visit_node_ptr(node.m_value);
-            auto ptr_lval = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
             
             const auto& ty_out = node.m_res_type;
             const auto& ty_in = node.m_value->m_res_type;
+            
+            if( ty_out == ty_in ) {
+                return ;
+            }
+            
+            auto ptr_lval = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
             
             if( ty_out.m_data.is_Borrow() && ty_in.m_data.is_Borrow() )
             {
