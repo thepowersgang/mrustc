@@ -178,9 +178,12 @@ void Parse_WhereClause(TokenStream& lex, AST::GenericParams& params)
         {
             auto lhs = mv$(tok.str());
             GET_CHECK_TOK(tok, lex, TOK_COLON);
-            GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
-            auto rhs = mv$(tok.str());
-            params.add_bound( AST::GenericBound::make_Lifetime({lhs, rhs}) );
+            do {
+                GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
+                auto rhs = mv$(tok.str());
+                params.add_bound( AST::GenericBound::make_Lifetime({lhs, rhs}) );
+            } while( GET_TOK(tok, lex) == TOK_PLUS );
+            PUTBACK(tok, lex);
         }
         // Higher-ranked types/lifetimes
         else if( tok.type() == TOK_RWORD_FOR )
