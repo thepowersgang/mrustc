@@ -9,15 +9,10 @@ addons:
   packages:
     - g++-6
     - zlib1g-dev
- env:
-  - MATRIX_EVAL="CC=gcc-6 && CXX=g++-6"
-
-before_install:
- - eval "${MATRIX_EVAL}"
 
 install:
   # Build mrustc
- - make
+ - CC=gcc-6 && CXX=g++-6 make
 #  # Build libstd (and hello world). Also downloads the source
 # - make test
 #  # Create the test dependencies testlibstd (and hello world). Also downloads the source
