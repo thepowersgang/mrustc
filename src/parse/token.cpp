@@ -556,6 +556,6 @@ SERIALISE_TYPE(Token::, "Token", {
 }
 ::std::ostream& operator<<(::std::ostream& os, const Position& p)
 {
-    return os << p.filename << ":" << p.line;
+    return os << ::std::dec << p.filename << ":" << p.line;
 }
 
