@@ -886,10 +886,59 @@ namespace {
                     )
                     ),
                 (BinOp,
-                    TODO(sp, "RValue::BinOp");
+                    auto inval_l = read_lval(e.val_l);
+                    auto inval_r = read_lval(e.val_r);
+                    ASSERT_BUG(sp, inval_l.tag() == inval_r.tag(), "Mismatched literal types in binop - " << inval_l << " and " << inval_r);
+                    TU_MATCH_DEF( ::HIR::Literal, (inval_l, inval_r), (l, r),
+                    (
+                        TODO(sp, "RValue::BinOp - " << sa.src << ", val = " << inval_l << " , " << inval_r);
+                        ),
+                    (Integer,
+                        switch(e.op)
+                        {
+                        case ::MIR::eBinOp::ADD:    val = ::HIR::Literal( l + r );  break;
+                        case ::MIR::eBinOp::SUB:    val = ::HIR::Literal( l - r );  break;
+                        case ::MIR::eBinOp::MUL:    val = ::HIR::Literal( l * r );  break;
+                        case ::MIR::eBinOp::DIV:    val = ::HIR::Literal( l / r );  break;
+                        case ::MIR::eBinOp::MOD:    val = ::HIR::Literal( l % r );  break;
+                        case ::MIR::eBinOp::ADD_OV:
+                        case ::MIR::eBinOp::SUB_OV:
+                        case ::MIR::eBinOp::MUL_OV:
+                        case ::MIR::eBinOp::DIV_OV:
+                            TODO(sp, "RValue::BinOp - " << sa.src << ", val = " << inval_l << " , " << inval_r);
+                        
+                        case ::MIR::eBinOp::BIT_OR : val = ::HIR::Literal( l | r );  break;
+                        case ::MIR::eBinOp::BIT_AND: val = ::HIR::Literal( l & r );  break;
+                        case ::MIR::eBinOp::BIT_XOR: val = ::HIR::Literal( l ^ r );  break;
+                        case ::MIR::eBinOp::BIT_SHL: val = ::HIR::Literal( l << r );  break;
+                        case ::MIR::eBinOp::BIT_SHR: val = ::HIR::Literal( l >> r );  break;
+                        // TODO: GT/LT are incorrect for signed integers
+                        case ::MIR::eBinOp::EQ: val = ::HIR::Literal( static_cast<uint64_t>(l == r) );  break;
+                        case ::MIR::eBinOp::NE: val = ::HIR::Literal( static_cast<uint64_t>(l != r) );  break;
+                        case ::MIR::eBinOp::GT: val = ::HIR::Literal( static_cast<uint64_t>(l >  r) );  break;
+                        case ::MIR::eBinOp::GE: val = ::HIR::Literal( static_cast<uint64_t>(l >= r) );  break;
+                        case ::MIR::eBinOp::LT: val = ::HIR::Literal( static_cast<uint64_t>(l <  r) );  break;
+                        case ::MIR::eBinOp::LE: val = ::HIR::Literal( static_cast<uint64_t>(l <= r) );  break;
+                        }
+                        )
+                    )
                     ),
                 (UniOp,
-                    TODO(sp, "RValue::UniOp");
+                    auto inval = read_lval(e.val);
+                    TU_IFLET( ::HIR::Literal, inval, Integer, i,
+                        switch( e.op )
+                        {
+                        case ::MIR::eUniOp::INV:
+                            val = ::HIR::Literal( ~i );
+                        break;
+                        case ::MIR::eUniOp::NEG:
+                            val = ::HIR::Literal( -i );
+                            break;
+                        }
+                    )
+                    else {
+                        BUG(sp, "Invalid invert of " << inval.tag_str());
+                    }
                     ),
                 (DstMeta,
                     TODO(sp, "RValue::DstMeta");
