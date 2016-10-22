@@ -4585,14 +4585,24 @@ namespace {
             //bool is_known = !context.m_ivars.type_contains_ivars(v.impl_ty);
             //for(const auto& t : v.params.m_types)
             //    is_known &= !context.m_ivars.type_contains_ivars(t);
-            if( is_known ) {
+            if( !is_known )
+            {
+                // There's still an ivar (or an unbound UFCS), keep trying
+                return false;
+            }
+            else if( v.trait == context.m_crate.get_lang_item_path(sp, "unsize") )
+            {
+                ASSERT_BUG(sp, v.params.m_types.size() == 1, "Incorrect number of parameters for Unsize");
+                const auto& src_ty = context.get_type(v.impl_ty);
+                const auto& dst_ty = context.get_type(v.params.m_types[0]);
+                
+                context.equate_types(sp, dst_ty, src_ty);
+                return true;
+            }
+            else
+            {
                 ERROR(sp, E0000, "Failed to find an impl of " << v.trait << context.m_ivars.fmt(v.params) << " for " << context.m_ivars.fmt_type(v.impl_ty));
             }
-            
-            //if( v.trait == context.m_crate.get_lang_item_path(sp, "unsize") )
-            //{
-            //}
-            return false;
         }
         else if( count == 1 ) {
             DEBUG("Only one impl " << v.trait << context.m_ivars.fmt(possible_params) << " for " << context.m_ivars.fmt_type(possible_impl_ty)
