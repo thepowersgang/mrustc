@@ -277,7 +277,8 @@ namespace {
             if( this->locate_item_in_trait(pc, trait,  pd) ) {
                 const auto& type = *e.type;
                 
-                return this->m_resolve.find_impl(sp,  trait_path.m_path, nullptr, type, [&](const auto& impl){
+                // TODO: This is VERY arbitary and possibly nowhere near what rustc does.
+                this->m_resolve.find_impl(sp,  trait_path.m_path, nullptr, type, [&](const auto& impl){
                     auto pp = impl.get_trait_params();
                     // Replace all placeholder parameters (group 2) with ivars (empty types)
                     pp = monomorphise_path_params_with(sp, pp, [&](const auto& gt)->const auto& {
@@ -288,15 +289,33 @@ namespace {
                         }
                         return gt;
                         }, true);
-                    pd = get_ufcs_known(mv$(e), ::HIR::GenericPath(trait_path.m_path, mv$(pp)), trait);
-                    // TODO: What if there's multiple suitable impls for this?
-                    // - Need to be aware in which context this is being called: outer or expression
-                    //  > Expression should end up with all trait parameters as `_` (and let inferrence deal with it)
-                    //  > Outer should error if there's multiple applicable impls (and get params from the impl)
-                    // Doesn't appear to break anything... yet.
+                    // If this has already found an option...
+                    TU_IFLET( ::HIR::Path::Data, pd, UfcsKnown, e,
+                        // Compare all path params, and set different params to _
+                        assert( pp.m_types.size() == e.trait.m_params.m_types.size() );
+                        for(unsigned int i = 0; i < pp.m_types.size(); i ++ )
+                        {
+                            auto& e_ty = e.trait.m_params.m_types[i];
+                            const auto& this_ty = pp.m_types[i];
+                            if( e_ty == ::HIR::TypeRef() ) {
+                                // Already _, leave as is
+                            }
+                            else if( e_ty != this_ty ) {
+                                e_ty = ::HIR::TypeRef();
+                            }
+                            else {
+                                // Equal, good
+                            }
+                        }
+                    )
+                    else {
+                        // Otherwise, set to the current result.
+                        pd = get_ufcs_known(mv$(e), ::HIR::GenericPath(trait_path.m_path, mv$(pp)), trait);
+                    }
                     DEBUG("FOUND impl from " << impl);
-                    return true;
+                    return false;
                     });
+                return pd.is_UfcsKnown();
             }
             else {
                 DEBUG("- Item " << e.item << " not in trait " << trait_path.m_path);
