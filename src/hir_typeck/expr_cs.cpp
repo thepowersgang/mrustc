@@ -2238,8 +2238,10 @@ namespace {
                             fcn_args_tup = mv$(tup);
                             
                             fcn_ret = impl.get_type("Output");
+                            DEBUG("[visit:_CallValue] fcn_args_tup=" << fcn_args_tup << ", fcn_ret=" << fcn_ret);
                             return cmp == ::HIR::Compare::Equal;
                             });
+                    DEBUG("Found " << count << " impls of FnOnce");
                     if( count > 1 ) {
                         return ;
                     }
@@ -2258,6 +2260,8 @@ namespace {
                         {
                             DEBUG("-- Using Fn");
                             node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
+                            
+                            this->context.equate_types_assoc(node.span(),  node.m_res_type,  lang_Fn, ::make_vec1( fcn_args_tup.clone() ), ty, "Output");
                         }
                         else if( this->context.m_resolve.find_trait_impls(node.span(), lang_FnMut, trait_pp, ty, [&](auto impl, auto cmp) {
                             // TODO: Take the value of `cmp` into account
@@ -2269,11 +2273,15 @@ namespace {
                         {
                             DEBUG("-- Using FnMut");
                             node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnMut;
+                            
+                            this->context.equate_types_assoc(node.span(),  node.m_res_type,  lang_FnMut, ::make_vec1( fcn_args_tup.clone() ), ty, "Output");
                         }
                         else
                         {
                             DEBUG("-- Using FnOnce (default)");
                             node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnOnce;
+                            
+                            this->context.equate_types_assoc(node.span(),  node.m_res_type,  lang_FnOnce, ::make_vec1( fcn_args_tup.clone() ), ty, "Output");
                         }
                         
                         // If the return type wasn't found in the impls, emit it as a UFCS

@@ -1175,6 +1175,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
         if( trait == e.m_trait.m_path.m_path ) {
             auto cmp = compare_pp(sp, e.m_trait.m_path.m_params, params);
             if( cmp != ::HIR::Compare::Unequal ) {
+                DEBUG("TraitObject impl params" << e.m_trait.m_path.m_params);
                 return callback( ImplRef(&type, &e.m_trait.m_path.m_params, &e.m_trait.m_type_bounds), cmp );
             }
         }
@@ -2307,7 +2308,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
 {
     impl_params.resize( impl_params_def.m_types.size() );
     auto cb = [&](auto idx, const auto& ty) {
-        DEBUG("[find_trait_impls_crate] Param " << idx << " = " << ty);
+        DEBUG("[ftic_check_params] Param " << idx << " = " << ty);
         assert( idx < impl_params.size() );
         if( ! impl_params[idx] ) {
             impl_params[idx] = &ty;
@@ -2413,7 +2414,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         (TypeLifetime,
             ),
         (TraitBound,
-            DEBUG("[find_trait_impls_crate] Check bound " << be.type << " : " << be.trait);
+            DEBUG("Check bound " << be.type << " : " << be.trait);
             auto real_type = monomorphise_type_with(sp, be.type, monomorph, false);
             auto real_trait = monomorphise_traitpath_with(sp, be.trait, monomorph, false);
             real_type = this->expand_associated_types(sp, mv$(real_type));
@@ -2424,7 +2425,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 ab.second = this->expand_associated_types(sp, mv$(ab.second));
             }
             const auto& real_trait_path = real_trait.m_path;
-            DEBUG("[find_trait_impls_crate] - bound mono " << real_type << " : " << real_trait);
+            DEBUG("- bound mono " << real_type << " : " << real_trait);
             bool found_fuzzy_match = false;
             if( real_type.m_data.is_Path() && real_type.m_data.as_Path().binding.is_Unbound() ) {
                 DEBUG("- Bounded type is unbound UFCS, assuming fuzzy match");
@@ -2468,7 +2469,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                         continue ;
                     }
                 }
-                DEBUG("impl_cmp = " << impl_cmp << ", cmp = " << cmp);
+                DEBUG("[ftic_check_params] impl_cmp = " << impl_cmp << ", cmp = " << cmp);
                 if( cmp == ::HIR::Compare::Fuzzy ) {
                     found_fuzzy_match = true;
                 }
