@@ -765,8 +765,7 @@ bool Macro_HandlePattern(TokenStream& lex, const MacroPatEnt& pat, ::std::vector
     const auto& rule = rules.m_rules.at(rule_index);
     
     DEBUG( rule.m_contents.size() << " rule contents with " << bound_tts.mappings().size() << " bound values - " << name );
-    assert( rule.m_param_names.size() >= bound_tts.mappings().size() );
-    for( unsigned int i = 0; i < bound_tts.mappings().size(); i ++ )
+    for( unsigned int i = 0; i < ::std::min( bound_tts.mappings().size(), rule.m_param_names.size() ); i ++ )
     {
         DEBUG("- #" << i << " " << rule.m_param_names.at(i) << " = [" << bound_tts.mappings()[i] << "]");
     }
@@ -785,7 +784,6 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
     TRACE_FUNCTION;
     Span    sp;// = input.span();
     
-    unsigned int    rule_index;
     // - List of active rules (rules that haven't yet failed)
     ::std::vector< ::std::pair<unsigned, MacroPatternStream> > active_arms;
     active_arms.reserve( rules.m_rules.size() );
@@ -889,13 +887,36 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
             auto tok = lex.getToken();
             ERROR(tok.get_pos(), E0000, "No rules expected " << tok);
         }
+        
+        
         // 3. Check that all remaining arms are the same pattern.
+        unsigned int active_pat_idx = 0;
         for(unsigned int i = 1; i < arm_pats.size(); i ++)
         {
-            if( arm_pats[0].tag() != arm_pats[i].tag() ) {
-                ERROR(lex.getPosition(), E0000, "Incompatible macro arms - " << arm_pats[0].tag_str() << " vs " << arm_pats[i].tag_str());
+            const auto& active_pat = arm_pats[active_pat_idx];
+            const auto& this_pat = arm_pats[i];
+            // - TODO: You can end up with e.g. TOK_IDENT and :ident
+            //  > In the above case, both the token and the patern consume the same number of input tokens, this is not always the case
+            if( active_pat.is_ExpectTok() && this_pat.is_ExpectPat() ) {
+                const auto& active_pat_tok = active_pat.as_ExpectTok();
+                const auto& this_pat_cap = this_pat.as_ExpectPat();
+                // :ident + TOK_IDENT = use the :ident
+                if( this_pat_cap.type == MacroPatEnt::PAT_IDENT ) {
+                    if( active_pat_tok.type() == TOK_IDENT ) {
+                        active_pat_idx = i;
+                        continue ;
+                    }
+                }
             }
-            TU_MATCH( SimplePatEnt, (arm_pats[0], arm_pats[i]), (e1, e2),
+            //else if( active_pat.is_ExpectPat() && this_pat.is_ExpectTok() ) {
+            //    const auto& active_pat_cap = active_pat.as_ExpectPat();
+            //    const auto& this_pat_tok = this_pat.as_ExpectTok();
+            //}
+            
+            if( active_pat.tag() != arm_pats[i].tag() ) {
+                ERROR(lex.getPosition(), E0000, "Incompatible macro arms - SimplePatEnt::" << active_pat.tag_str() << " vs SimplePatEnt::" << arm_pats[i].tag_str());
+            }
+            TU_MATCH( SimplePatEnt, (active_pat, arm_pats[i]), (e1, e2),
             (IfPat, BUG(sp, "IfPat unexpected here");),
             (IfTok, BUG(sp, "IfTok unexpected here");),
             (ExpectTok,
@@ -917,19 +938,17 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                 )
             )
         }
+        
         // 4. Apply patterns.
-
-        // - Check for an end rule outside of the match so it can break correctly.
-        if( arm_pats[0].is_End() ) {
+        TU_MATCH( SimplePatEnt, (arm_pats[active_pat_idx]), (e),
+        (End,
             auto tok = lex.getToken();
             if( tok.type() != TOK_EOF ) {
                 ERROR(lex.getPosition(), E0000, "Unexpected " << tok << ", expected TOK_EOF");
             }
             // NOTE: There can be multiple arms active, take the first.
-            rule_index = active_arms[0].first;
-            break ;
-        }
-        TU_MATCH( SimplePatEnt, (arm_pats[0]), (e),
+            return active_arms[0].first;
+            ),
         (IfPat, BUG(sp, "IfPat unexpected here");),
         (IfTok, BUG(sp, "IfTok unexpected here");),
         (ExpectTok,
@@ -983,16 +1002,11 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
             // Use the shallowest iteration state
             // TODO: All other should be on the first iteration.
             Macro_HandlePatternCap(lex, e.idx, e.type,  *shortest,  bound_tts);
-            ),
-        (End,
-            BUG(sp, "SimplePatEnt::End unexpected here");
             )
         )
         
-        // Keep looping - breakout is handled by an if above
+        // Keep looping - breakout is handled in 'End' above
     }
-    
-    return rule_index;
 }
 
 void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std::vector<MacroExpansionEnt>& contents)

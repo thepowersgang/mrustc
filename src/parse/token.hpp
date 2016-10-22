@@ -122,7 +122,7 @@ public:
         )
         throw "";
     }
-    bool operator!=(const Token& r) { return !(*this == r); }
+    bool operator!=(const Token& r) const { return !(*this == r); }
 
     ::std::string to_str() const;
     
