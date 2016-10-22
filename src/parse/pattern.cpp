@@ -144,6 +144,11 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
 AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable)
 {
     Token   tok;
+    if( LOOK_AHEAD(lex) == TOK_INTERPOLATED_PATTERN )
+    {
+        GET_TOK(tok, lex);
+        return mv$(tok.frag_pattern());
+    }
     AST::Pattern    ret = Parse_PatternReal1(lex, is_refutable);
     if( GET_TOK(tok, lex) == TOK_TRIPLE_DOT )
     {
