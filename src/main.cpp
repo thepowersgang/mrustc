@@ -535,6 +535,8 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 arg = argv[++i];
                 if( strcmp(arg, "parse") == 0 )
                     this->last_stage = STAGE_PARSE;
+                else if( strcmp(arg, "expand") == 0 )
+                    this->last_stage = STAGE_EXPAND;
                 else if( strcmp(arg, "resolve") == 0 )
                     this->last_stage = STAGE_RESOLVE;
                 else if( strcmp(arg, "mir") == 0 )

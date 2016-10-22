@@ -28,7 +28,14 @@ matrix:
 before_install:
  - eval "${MATRIX_EVAL}"
 
-script:
+install:
+  # Build mrustc
  - make
+  # Build libstd (and hello world). Also downloads the source
  - make test
-# - make rust_tests-run-pass RUST_TESTS_FINAL_STAGE=parse
+  # Create the test dependencies testlibstd (and hello world). Also downloads the source
+ - make test_deps_run-pass.mk
+
+# Tests! (check that they parse, and keep going)
+script:
+ - make rust_tests-run-pass RUST_TESTS_FINAL_STAGE=expand -k
