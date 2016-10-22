@@ -411,8 +411,6 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
         m_field_path.pop_back();
         ),
     (Path,
-        ASSERT_BUG(sp, lit.is_List(), "Matching struct non-list literal - " << lit);
-        const auto& list = lit.as_List();
         // This is either a struct destructure or an enum
         TU_MATCHA( (e.binding), (pbe),
         (Unbound,
@@ -424,6 +422,9 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
             this->push_rule( PatternRule::make_Any({}) );
             ),
         (Struct,
+            ASSERT_BUG(sp, lit.is_List(), "Matching struct non-list literal - " << ty << " with " << lit);
+            const auto& list = lit.as_List();
+            
             auto monomorph = [&](const auto& ty) {
                 auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
                 this->m_resolve.expand_associated_types(sp, rv);
@@ -464,7 +465,7 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
             )
             ),
         (Enum,
-            ASSERT_BUG(sp, lit.is_Variant(), "Matching struct non-list literal - " << lit);
+            ASSERT_BUG(sp, lit.is_Variant(), "Matching enum non-variant literal - " << lit);
             auto var_idx = lit.as_Variant().idx;
             const auto& list = lit.as_Variant().vals;
             auto monomorph = [&](const auto& ty) {
@@ -475,24 +476,48 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
             
             ASSERT_BUG(sp, var_idx < pbe->m_variants.size(), "Literal refers to a variant out of range");
             const auto& var_def = pbe->m_variants.at(var_idx);
-            const auto& fields_def = var_def.second.as_Tuple();
             
-            ASSERT_BUG(sp, fields_def.size() == list.size(), "");
-
             PatternRulesetBuilder   sub_builder { this->m_resolve };
             sub_builder.m_field_path = m_field_path;
             sub_builder.m_field_path.push_back(0);
-            for( unsigned int i = 0; i < list.size(); i ++ )
-            {
-                sub_builder.m_field_path.back() = i;
-                const auto& val = list[i];
-                const auto& ty_tpl = fields_def[i].ent;
-                    
-                ::HIR::TypeRef  tmp;
-                const auto& subty = (monomorphise_type_needed(ty_tpl) ? tmp = monomorph(ty_tpl) : ty_tpl);
-                    
-                sub_builder.append_from_lit( sp, val, subty );
-            }
+            
+            TU_MATCH( ::HIR::Enum::Variant, (var_def.second), (fields_def),
+            (Unit,
+                ),
+            (Value,
+                ),
+            (Tuple,
+                ASSERT_BUG(sp, fields_def.size() == list.size(), "");
+
+                for( unsigned int i = 0; i < list.size(); i ++ )
+                {
+                    sub_builder.m_field_path.back() = i;
+                    const auto& val = list[i];
+                    const auto& ty_tpl = fields_def[i].ent;
+                        
+                    ::HIR::TypeRef  tmp;
+                    const auto& subty = (monomorphise_type_needed(ty_tpl) ? tmp = monomorph(ty_tpl) : ty_tpl);
+                        
+                    sub_builder.append_from_lit( sp, val, subty );
+                }
+                ),
+            (Struct,
+                ASSERT_BUG(sp, fields_def.size() == list.size(), "");
+
+                for( unsigned int i = 0; i < list.size(); i ++ )
+                {
+                    sub_builder.m_field_path.back() = i;
+                    const auto& val = list[i];
+                    const auto& ty_tpl = fields_def[i].second.ent;
+                        
+                    ::HIR::TypeRef  tmp;
+                    const auto& subty = (monomorphise_type_needed(ty_tpl) ? tmp = monomorph(ty_tpl) : ty_tpl);
+                        
+                    sub_builder.append_from_lit( sp, val, subty );
+                }
+                )
+            )
+            
             this->push_rule( PatternRule::make_Variant({ var_idx, mv$(sub_builder.m_rules) }) );
             )
         )
