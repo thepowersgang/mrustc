@@ -1,29 +1,16 @@
 language: cpp
 
 sudo: false
-
-matrix:
-  include:
-    - os: linux
-      addons:
-        apt:
-          sources:
-            - ubuntu-toolchain-r-test
-          packages:
-            - g++-6
-            - zlib1g-dev
-      env:
-        - MATRIX_EVAL="CC=gcc-6 && CXX=g++-6"
-    - os: linux
-      addons:
-        apt:
-          sources:
-            - ubuntu-toolchain-r-test
-          packages:
-            - g++-5
-            - zlib1g-dev
-      env:
-         - MATRIX_EVAL="CC=gcc-5 && CXX=g++-5"
+os: linux
+addons:
+ apt:
+  sources:
+    - ubuntu-toolchain-r-test
+  packages:
+    - g++-6
+    - zlib1g-dev
+ env:
+  - MATRIX_EVAL="CC=gcc-6 && CXX=g++-6"
 
 before_install:
  - eval "${MATRIX_EVAL}"
@@ -31,11 +18,12 @@ before_install:
 install:
   # Build mrustc
  - make
-  # Build libstd (and hello world). Also downloads the source
- - make test
-  # Create the test dependencies testlibstd (and hello world). Also downloads the source
- - make test_deps_run-pass.mk
+#  # Build libstd (and hello world). Also downloads the source
+# - make test
+#  # Create the test dependencies testlibstd (and hello world). Also downloads the source
+# - make test_deps_run-pass.mk
 
 # Tests! (check that they parse, and keep going)
 script:
- - make rust_tests-run-pass RUST_TESTS_FINAL_STAGE=expand -k
+ - make test
+# - make rust_tests-run-pass RUST_TESTS_FINAL_STAGE=expand -k
