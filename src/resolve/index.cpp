@@ -404,11 +404,12 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
                     const auto& hmod = *e.hir;
                     Resolve_Index_Module_Wildcard__glob_in_hir_mod(sp, crate, mod, hmod, i_data.path, i.is_pub);
                 }
+                else if( e.module_ == &mod ) {
+                    // NOTE: Happens in libcore's prelude due to `#[prelude_import] use prelude::v1::*;
+                    //ERROR(sp, E0000, "Glob import of self");
+                }
                 else
                 {
-                    if( e.module_ == &mod ) {
-                        ERROR(sp, E0000, "Glob import of self");
-                    }
                     // 1. Begin indexing of this module if it is not already indexed
                     assert( e.module_->m_index_populated != 0 );
                     if( e.module_->m_index_populated == 1 )

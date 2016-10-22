@@ -52,11 +52,29 @@ public:
     }
 };
 
+class Decorator_PreludeImport:
+    public ExpandDecorator
+{
+public:
+    AttrStage stage() const override { return AttrStage::Post; }
+    
+    void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
+        if( i.is_Use() ) {
+            const auto& p = i.as_Use().path;
+            // TODO: Ensure that this statement is a glob (has a name of "")
+            crate.m_prelude_path = AST::Path(p);
+        }
+        else {
+            ERROR(sp, E0000, "Invalid use of #[no_prelude] on non-module");
+        }
+    }
+};
 
 
 STATIC_DECORATOR("no_std", Decorator_NoStd)
 STATIC_DECORATOR("no_core", Decorator_NoCore)
-//STATIC_DECORATOR("prelude", Decorator_Prelude)
+//STATIC_DECORATOR("prelude", Decorator_Prelude)    // mrustc
+STATIC_DECORATOR("prelude_import", Decorator_PreludeImport)   // rustc
 
 STATIC_DECORATOR("no_prelude", Decorator_NoPrelude)
 
