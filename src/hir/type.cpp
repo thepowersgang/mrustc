@@ -932,6 +932,12 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     // - See `(Generic,` below
     
     if( left.m_data.tag() != right.m_data.tag() ) {
+        if( left.m_data.is_Path() && left.m_data.as_Path().binding.is_Unbound() ) {
+            return Compare::Fuzzy;
+        }
+        if( right.m_data.is_Path() && right.m_data.as_Path().binding.is_Unbound() ) {
+            return Compare::Fuzzy;
+        }
         return Compare::Unequal;
     }
     TU_MATCH(::HIR::TypeRef::Data, (left.m_data, right.m_data), (le, re),

@@ -4533,11 +4533,13 @@ namespace {
                     auto out_ty_o = impl.get_type(v.name.c_str());
                     if( out_ty_o == ::HIR::TypeRef() )
                     {
+                        //BUG(sp, "Getting associated type '" << v.name << "' which isn't in " << v.trait << " (" << ty << ")");
                         out_ty_o = ::HIR::TypeRef( ::HIR::Path(::HIR::Path( v.impl_ty.clone(), ::HIR::GenericPath(v.trait, v.params.clone()), v.name, ::HIR::PathParams() )) );
                     }
                     out_ty_o = context.m_resolve.expand_associated_types(sp, mv$(out_ty_o));
-                    //BUG(sp, "Getting associated type '" << v.name << "' which isn't in " << v.trait << " (" << ty << ")");
-                    
+
+                    // TODO: if this is an unbound UfcsUnknown, treat as a fuzzy match.
+                    // - Shouldn't compare_with_placeholders do that?
                     const auto& out_ty = out_ty_o;
                 
                     // - If we're looking for an associated type, allow it to eliminate impossible impls
