@@ -138,6 +138,7 @@ output/libunwind.hir: $(call fcn_extcrate, core libc)
 output/libtest.hir: $(call fcn_extcrate, std getopts term panic_unwind)
 output/libgetopts.hir: output/libstd.hir
 
+output/libserialize.hir: $(call fcn_extcrate, std log)
 output/librbml.hir: $(call fcn_extcrate, std serialize)
 output/librustc.hir: $(call fcn_extcrate, std arena flate fmt_macros graphviz rbml)
 
