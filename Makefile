@@ -15,6 +15,8 @@ EXESUF ?=
 CXX ?= g++
 V ?= @
 
+.SUFFIXES:
+
 # - Final stage for tests run as part of the rust_tests target.
 #  VALID OPTIONS: parse, expand, mir, ALL
 RUST_TESTS_FINAL_STAGE ?= mir
@@ -135,6 +137,17 @@ output/libunwind.hir: $(call fcn_extcrate, core libc)
 
 output/libtest.hir: $(call fcn_extcrate, std getopts term panic_unwind)
 output/libgetopts.hir: output/libstd.hir
+
+output/librbml.hir: $(call fcn_extcrate, std serialize)
+output/librustc.hir: $(call fcn_extcrate, std arena flate fmt_macros graphviz rbml)
+
+output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc.hir
+	@echo "--- [MRUSTC] $@"
+	@mkdir -p output/
+	@rm -f $@
+	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
+#	# HACK: Work around gdb returning success even if the program crashed
+	@test -e $@
 
 $(RUSTCSRC): rust-nightly-date
 	@export DL_RUST_DATE=$$(cat rust-nightly-date); \
