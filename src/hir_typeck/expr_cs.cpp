@@ -4491,7 +4491,25 @@ namespace {
             ASSERT_BUG(sp, v.params.m_types.size() == 1, "Incorrect number of parameters for Unsize");
             const auto& src_ty = context.get_type(v.impl_ty);
             const auto& dst_ty = context.get_type(v.params.m_types[0]);
-            if( !src_ty.m_data.is_Infer() && !dst_ty.m_data.is_Infer() )
+            if( src_ty.m_data.is_Infer() && dst_ty.m_data.is_Infer() )
+            {
+                // Both infer, nothing to do?
+            }
+            else if( src_ty.m_data.is_Infer() )
+            {
+                // Source can possibly equate to dst_ty
+                context.possible_equate_type_to(src_ty.m_data.as_Infer().index, dst_ty);
+                DEBUG("- Src Infer, add possibility");
+                return false;
+            }
+            else if( dst_ty.m_data.is_Infer() )
+            {
+                // Destination can possibly equate from src_ty
+                context.possible_equate_type_to(dst_ty.m_data.as_Infer().index, src_ty);
+                DEBUG("- Dst Infer, add possibility");
+                return false;
+            }
+            else
             {
                 // If the trait is CoerceUnsized and no impl could be found, equate.
                 bool found = context.m_resolve.find_trait_impls(sp, v.trait, v.params,  v.impl_ty, [&](auto, auto) { return true; });
