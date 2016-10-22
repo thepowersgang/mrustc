@@ -4445,6 +4445,8 @@ namespace {
         // `Unsize<U> for T` means `T -> U`
         if( v.trait == context.m_crate.get_lang_item_path(sp, "unsize") )
         {
+            // TODO: Detect if this was a compiler-generated bound, or was actually in the code.
+
             ASSERT_BUG(sp, v.params.m_types.size() == 1, "Incorrect number of parameters for Unsize");
             const auto& src_ty = context.get_type(v.impl_ty);
             const auto& dst_ty = context.get_type(v.params.m_types[0]);
@@ -4487,6 +4489,8 @@ namespace {
         }
         if( v.trait == context.m_crate.get_lang_item_path(sp, "coerce_unsized") )
         {
+            // TODO: Detect if this was a compiler-generated bound, or was actually in the code.
+
             // `CoerceUnsized<U> for T` means when T is found an U is expected, a coerce can happen
             ASSERT_BUG(sp, v.params.m_types.size() == 1, "Incorrect number of parameters for Unsize");
             const auto& src_ty = context.get_type(v.impl_ty);
@@ -4592,6 +4596,8 @@ namespace {
             }
             else if( v.trait == context.m_crate.get_lang_item_path(sp, "unsize") )
             {
+                // TODO: Detect if this was a compiler-generated bound, or was actually in the code.
+                
                 ASSERT_BUG(sp, v.params.m_types.size() == 1, "Incorrect number of parameters for Unsize");
                 const auto& src_ty = context.get_type(v.impl_ty);
                 const auto& dst_ty = context.get_type(v.params.m_types[0]);
