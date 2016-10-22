@@ -132,7 +132,7 @@ output/librustc_unicode.hir: output/libcore.hir
 output/libcollections.hir: output/libcore.hir output/liballoc.hir output/librustc_unicode.hir
 output/librand.hir: output/libcore.hir
 output/liblibc.hir: output/libcore.hir
-output/libstd.hir: $(call fcn_extcrate, core collections rand libc unwind)
+output/libstd.hir: $(call fcn_extcrate, core collections rand libc unwind compiler_builtins)
 output/libunwind.hir: $(call fcn_extcrate, core libc)
 
 output/libtest.hir: $(call fcn_extcrate, std getopts term panic_unwind)
