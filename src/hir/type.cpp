@@ -575,6 +575,11 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             DEBUG("- Fuzzy match due to opaque");
             return Compare::Fuzzy;
         }
+        // HACK: If RHS is unbound, fuzz it
+        if( x.m_data.is_Path() && x.m_data.as_Path().binding.is_Unbound() ) {
+            DEBUG("- Fuzzy match due to unbound");
+            return Compare::Fuzzy;
+        }
         // HACK: If the RHS is a placeholder generic, allow it.
         if( x.m_data.is_Generic() && (x.m_data.as_Generic().binding >> 8) == 2 ) {
             DEBUG("- Fuzzy match due to placeholder");
@@ -854,6 +859,9 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                     return Compare::Unequal;
                 }
             )
+            else TU_IFLET(::HIR::TypeRef::Data, right.m_data, Path, oe,
+                return oe.binding.is_Unbound() ? Compare::Fuzzy : Compare::Unequal;
+            )
             else {
                 return Compare::Unequal;
             }
@@ -878,6 +886,9 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                 case ::HIR::InferClass::Integer:
                     return Compare::Unequal;
                 }
+            )
+            else TU_IFLET(::HIR::TypeRef::Data, right.m_data, Path, oe,
+                return oe.binding.is_Unbound() ? Compare::Fuzzy : Compare::Unequal;
             )
             else {
                 return Compare::Unequal;
@@ -907,6 +918,9 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                     return Compare::Unequal;
                 }
             )
+            else TU_IFLET(::HIR::TypeRef::Data, left.m_data, Path, oe,
+                return oe.binding.is_Unbound() ? Compare::Fuzzy : Compare::Unequal;
+            )
             else {
                 return Compare::Unequal;
             }
@@ -920,6 +934,9 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                 default:
                     return Compare::Unequal;
                 }
+            )
+            else TU_IFLET(::HIR::TypeRef::Data, left.m_data, Path, oe,
+                return oe.binding.is_Unbound() ? Compare::Fuzzy : Compare::Unequal;
             )
             else {
                 return Compare::Unequal;
@@ -938,6 +955,12 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         if( right.m_data.is_Path() && right.m_data.as_Path().binding.is_Unbound() ) {
             return Compare::Fuzzy;
         }
+        if( left.m_data.is_Generic() && (left.m_data.as_Generic().binding >> 8) == 2 ) {
+            return Compare::Fuzzy;
+        }
+        if( right.m_data.is_Generic() && (right.m_data.as_Generic().binding >> 8) == 2 ) {
+            return Compare::Fuzzy;
+        }
         return Compare::Unequal;
     }
     TU_MATCH(::HIR::TypeRef::Data, (left.m_data, right.m_data), (le, re),
@@ -952,8 +975,13 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return le.path.compare_with_placeholders( sp, re.path, resolve_placeholder );
         ),
     (Generic,
-        if( le.binding != re.binding )
+        if( le.binding != re.binding ) {
+            if( (le.binding >> 8) == 2 )
+                return Compare::Fuzzy;
+            if( (re.binding >> 8) == 2 )
+                return Compare::Fuzzy;
             return Compare::Unequal;
+        }
         return Compare::Equal;
         ),
     (TraitObject,

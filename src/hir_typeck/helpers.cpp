@@ -1897,30 +1897,40 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
             assoc_info = &pe;
         )
     )
+
+    if( m_ivars.get_type(type).m_data.is_Infer() )
+        return false;
     
     // TODO: A bound can imply something via its associated types. How deep can this go?
     // E.g. `T: IntoIterator<Item=&u8>` implies `<T as IntoIterator>::IntoIter : Iterator<Item=&u8>`
     return this->iterate_bounds([&](const auto& b) {
         TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
             const auto& b_params = e.trait.m_path.m_params;
-            // TODO: Allow fuzzy equality?
-            if( e.type == type )
-            {
-                if( e.trait.m_path.m_path == trait ) {
-                    // Check against `params`
-                    DEBUG("Checking " << params << " vs " << b_params);
-                    auto ord = this->compare_pp(sp, b_params, params);
-                    if( ord == ::HIR::Compare::Unequal )
-                        return false;
-                    if( ord == ::HIR::Compare::Fuzzy ) {
-                        DEBUG("Fuzzy match");
-                    }
-                    // Hand off to the closure, and return true if it does
-                    // TODO: The type bounds are only the types that are specified.
-                    if( callback( ImplRef(&e.type, &e.trait.m_path.m_params, &e.trait.m_type_bounds), ord) ) {
-                        return true;
-                    }
+            
+            auto cmp = e.type .compare_with_placeholders(sp, type, m_ivars.callback_resolve_infer());
+            if( cmp == ::HIR::Compare::Unequal )
+                return false;
+            
+            if( e.trait.m_path.m_path == trait ) {
+                // Check against `params`
+                DEBUG("Checking " << params << " vs " << b_params);
+                auto ord = cmp;
+                ord &= this->compare_pp(sp, b_params, params);
+                if( ord == ::HIR::Compare::Unequal )
+                    return false;
+                if( ord == ::HIR::Compare::Fuzzy ) {
+                    DEBUG("Fuzzy match");
                 }
+                // Hand off to the closure, and return true if it does
+                // TODO: The type bounds are only the types that are specified.
+                if( callback( ImplRef(&e.type, &e.trait.m_path.m_params, &e.trait.m_type_bounds), ord) ) {
+                    return true;
+                }
+            }
+            
+            // TODO: Allow fuzzy equality?
+            if( cmp == ::HIR::Compare::Equal )
+            {
                 // HACK: The wrapping closure takes associated types from this bound and applies them to the returned set
                 // - XXX: This is actually wrong (false-positive) in many cases. FIXME
                 bool rv = this->find_named_trait_in_trait(sp,
@@ -2416,6 +2426,10 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             const auto& real_trait_path = real_trait.m_path;
             DEBUG("[find_trait_impls_crate] - bound mono " << real_type << " : " << real_trait);
             bool found_fuzzy_match = false;
+            if( real_type.m_data.is_Path() && real_type.m_data.as_Path().binding.is_Unbound() ) {
+                DEBUG("- Bounded type is unbound UFCS, assuming fuzzy match");
+                found_fuzzy_match = true;
+            }
             auto rv = this->find_trait_impls(sp, real_trait_path.m_path, real_trait_path.m_params, real_type, [&](auto impl, auto impl_cmp) {
                 auto cmp = impl_cmp;
                 for(const auto& assoc_bound : real_trait.m_type_bounds) {

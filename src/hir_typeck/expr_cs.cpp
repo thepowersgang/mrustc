@@ -4579,13 +4579,19 @@ namespace {
             // No applicable impl
             // - TODO: This should really only fire when there isn't an impl. But it currently fires when _
             DEBUG("No impl of " << v.trait << context.m_ivars.fmt(v.params) << " for " << context.m_ivars.fmt_type(v.impl_ty));
-            //bool is_known = !context.get_type(v.impl_ty).m_data.is_Infer();
-            bool is_known = !context.m_ivars.type_contains_ivars(v.impl_ty);
-            for(const auto& t : v.params.m_types)
-                is_known &= !context.m_ivars.type_contains_ivars(t);
+
+            const auto& ty = context.get_type(v.impl_ty);
+            bool is_known = !ty.m_data.is_Infer() && !(ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Unbound());
+            //bool is_known = !context.m_ivars.type_contains_ivars(v.impl_ty);
+            //for(const auto& t : v.params.m_types)
+            //    is_known &= !context.m_ivars.type_contains_ivars(t);
             if( is_known ) {
                 ERROR(sp, E0000, "Failed to find an impl of " << v.trait << context.m_ivars.fmt(v.params) << " for " << context.m_ivars.fmt_type(v.impl_ty));
             }
+            
+            //if( v.trait == context.m_crate.get_lang_item_path(sp, "unsize") )
+            //{
+            //}
             return false;
         }
         else if( count == 1 ) {

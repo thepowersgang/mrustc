@@ -312,6 +312,10 @@ int main(int argc, char *argv[])
             ConvertHIR_ConstantEvaluate(*hir_crate);
             });
         
+        CompilePhaseV("Dump HIR", [&]() {
+            ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
+            HIR_Dump( os, *hir_crate );
+            });
         
         // === Type checking ===
         // - This can recurse and call the MIR lower to evaluate constants
