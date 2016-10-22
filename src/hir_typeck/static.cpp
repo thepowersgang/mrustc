@@ -338,7 +338,7 @@ bool StaticTraitResolve::find_impl__check_crate(
     }
     if( match != ::HIR::Compare::Equal ) {
         DEBUG(" > Type mismatch");
-        // TODO: Support fuzzy matches for some edge cases
+        // TODO: Support fuzzy matches for some edge cases. E.g. in parts of outer typecheck?
         return false;
     }
     

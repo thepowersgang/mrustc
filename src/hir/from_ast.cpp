@@ -13,6 +13,7 @@
 #include "from_ast.hpp"
 #include "visitor.hpp"
 #include <macro_rules/macro_rules.hpp>
+#include <hir/item_path.hpp>
 
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::ItemPath path, ::std::vector< ::HIR::SimplePath> traits = {});
 ::HIR::Function LowerHIR_Function(::HIR::ItemPath path, const ::AST::Function& f, const ::HIR::TypeRef& self_type);
@@ -724,7 +725,8 @@
                 v.m_trait = LowerHIR_TraitPath(ty.span(), t);
             }
         }
-        ASSERT_BUG(ty.span(), v.m_trait.m_path.m_path.m_components.size() > 0, "TraitObject type didn't contain a data trait - " << ty);
+        // TODO: This is possible - &Send is for some reason a valid trait object
+        //ASSERT_BUG(ty.span(), v.m_trait.m_path.m_path != ::HIR::SimplePath(), "TraitObject type didn't contain a data trait - " << ty);
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_TraitObject( mv$(v) ) );
         ),
     (Function,
@@ -1164,7 +1166,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
             {
                 auto type = LowerHIR_Type(impl.def().type());
                 
-                ::HIR::ItemPath    path(type, trait_name);
+                ::HIR::ItemPath    path(type, trait_name, trait_args);
                 DEBUG(path);
                 
                 ::std::map< ::std::string, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> > methods;

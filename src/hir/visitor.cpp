@@ -1,4 +1,10 @@
-
+/*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/visitor.cpp
+ * - HIR Visitor default implementation
+ */
 #include <hir/hir.hpp>
 #include <hir/visitor.hpp>
 
@@ -104,7 +110,7 @@ void ::HIR::Visitor::visit_type_impl(::HIR::TypeImpl& impl)
 }
 void ::HIR::Visitor::visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl)
 {
-    ::HIR::ItemPath    p( impl.m_type, trait_path );
+    ::HIR::ItemPath    p( impl.m_type, trait_path, impl.m_trait_args );
     TRACE_FUNCTION_F(p);
     this->visit_params(impl.m_params);
     // - HACK: Create a generic path to visit (so that proper checks are performed)
@@ -282,7 +288,9 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
     (Generic,
         ),
     (TraitObject,
-        this->visit_trait_path(e.m_trait);
+        if( e.m_trait.m_path != ::HIR::SimplePath() ) {
+            this->visit_trait_path(e.m_trait);
+        }
         for(auto& trait : e.m_markers) {
             this->visit_generic_path(trait, ::HIR::Visitor::PathContext::TYPE);
         }

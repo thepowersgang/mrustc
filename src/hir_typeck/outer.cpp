@@ -219,6 +219,7 @@ namespace {
                 (TraitBound,
                     // TODO: Check for an implementation of this trait
                     DEBUG("TODO: Check bound " << e.type << " : " << e.trait.m_path);
+                    //DEBUG("- " << monomorph_type_with(sp, e.type, monomorph_cb) << " : " << monomorphise_traitpath_with(sp, e.trait, monomorph_cb));
                     ),
                 (TypeEquality,
                     // TODO: Check that two types are equal in this case
