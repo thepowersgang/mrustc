@@ -836,6 +836,7 @@ namespace {
                     auto inval = read_lval(e.val);
                     TU_MATCH_DEF(::HIR::TypeRef::Data, (e.type.m_data), (te),
                     (
+                        // NOTE: Can be an unsizing!
                         TODO(sp, "RValue::Cast to " << e.type << ", val = " << inval);
                         ),
                     (Primitive,
