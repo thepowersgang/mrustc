@@ -409,6 +409,66 @@ namespace {
             }
         }
         
+        void visit_pattern(::HIR::Pattern& pat) override
+        {
+            static Span _sp = Span();
+            const Span& sp = _sp;
+
+            ::HIR::Visitor::visit_pattern(pat);
+            
+            TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (e),
+            (
+                ),
+            (Value,
+                this->visit_pattern_Value(sp, pat, e.val);
+                ),
+            (Range,
+                this->visit_pattern_Value(sp, pat, e.start);
+                this->visit_pattern_Value(sp, pat, e.end);
+                )
+            )
+        }
+        void visit_pattern_Value(const Span& sp, const ::HIR::Pattern& pat, ::HIR::Pattern::Value& val)
+        {
+            TU_IFLET( ::HIR::Pattern::Value, val, Named, ve,
+                TRACE_FUNCTION_F(ve.path);
+                TU_MATCH( ::HIR::Path::Data, (ve.path.m_data), (pe),
+                (Generic,
+                    // Already done
+                    ),
+                (UfcsUnknown,
+                    BUG(sp, "UfcsUnknown still in pattern value - " << pat);
+                    ),
+                (UfcsInherent,
+                    bool rv = m_crate.find_type_impls(*pe.type, [&](const auto& t)->const auto& { return t; }, [&](const auto& impl) {
+                        DEBUG("- matched inherent impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+                        // Search for item in this block
+                        auto it = impl.m_constants.find(pe.item);
+                        if( it != impl.m_constants.end() ) {
+                            ve.binding = &it->second.data;
+                            return true;
+                        }
+                        return false;
+                        });
+                    if( !rv ) {
+                        ERROR(sp, E0000, "Constant " << ve.path << " couldn't be found");
+                    }
+                    ),
+                (UfcsKnown,
+                    bool rv = this->m_resolve.find_impl(sp,  pe.trait.m_path, &pe.trait.m_params, *pe.type, [&](const auto& impl) {
+                        if( !impl.m_data.is_TraitImpl() ) {
+                            return true;
+                        }
+                        ve.binding = &impl.m_data.as_TraitImpl().impl->m_constants.at( pe.item ).data;
+                        return true;
+                        });
+                    if( !rv ) {
+                        ERROR(sp, E0000, "Constant " << ve.path << " couldn't be found");
+                    }
+                    )
+                )
+            )
+        }
         
         const ::HIR::Trait& find_trait(const ::HIR::SimplePath& path) const
         {

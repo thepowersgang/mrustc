@@ -152,8 +152,7 @@ namespace {
             bool is_single_value = pat.m_data.is_Value();
             
             TU_IFLET( ::HIR::Pattern::Value, val, Named, ve,
-                TU_MATCH( ::HIR::Path::Data, (ve.path.m_data), (pe),
-                (Generic,
+                TU_IFLET( ::HIR::Path::Data, ve.path.m_data, Generic, pe,
                     const ::HIR::Enum* enm = nullptr;
                     const auto& path = pe.m_path;
                     const ::HIR::Module*  mod;
@@ -242,17 +241,10 @@ namespace {
                             )
                         )
                     }
-                    ),
-                (UfcsInherent,
-                    TODO(sp, "Pattern value UfcsInherent - " << ve.path);
-                    ),
-                (UfcsKnown,
-                    TODO(sp, "Pattern value UfcsKnown - " << ve.path);
-                    ),
-                (UfcsUnknown,
-                    BUG(sp, "Pattern value UfcUnkown - " << ve.path);
-                    )
                 )
+                else {
+                    // NOTE: Defer until Resolve UFCS (saves duplicating logic)
+                }
             )
         }
         
