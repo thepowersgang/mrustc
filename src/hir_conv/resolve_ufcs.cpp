@@ -278,7 +278,22 @@ namespace {
                 const auto& type = *e.type;
                 
                 return this->m_resolve.find_impl(sp,  trait_path.m_path, nullptr, type, [&](const auto& impl){
-                    pd = get_ufcs_known(mv$(e), make_generic_path(trait_path.m_path, trait), trait);
+                    auto pp = impl.get_trait_params();
+                    // Replace all placeholder parameters (group 2) with ivars (empty types)
+                    pp = monomorphise_path_params_with(sp, pp, [&](const auto& gt)->const auto& {
+                        const auto& ge = gt.m_data.as_Generic();
+                        if( (ge.binding >> 8) == 2 ) {
+                            static ::HIR::TypeRef   empty_type;
+                            return empty_type;
+                        }
+                        return gt;
+                        }, true);
+                    pd = get_ufcs_known(mv$(e), ::HIR::GenericPath(trait_path.m_path, mv$(pp)), trait);
+                    // TODO: What if there's multiple suitable impls for this?
+                    // - Need to be aware in which context this is being called: outer or expression
+                    //  > Expression should end up with all trait parameters as `_` (and let inferrence deal with it)
+                    //  > Outer should error if there's multiple applicable impls (and get params from the impl)
+                    // Doesn't appear to break anything... yet.
                     DEBUG("FOUND impl from " << impl);
                     return true;
                     });
