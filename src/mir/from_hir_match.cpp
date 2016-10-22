@@ -2170,8 +2170,20 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
         ASSERT_BUG(sp, e.first.tag() == e.last.tag(), "");
         TU_MATCHA( (e.first, e.last), (ve_start, ve_end),
         (Int,
-            //auto& be = GET_BRANCHES(m_branches, Signed);
-            TODO(sp, "ValueRange patterns - Int");
+            auto& be = GET_BRANCHES(m_branches, Signed);
+            from_rule_valuerange(sp, be, ve_start, ve_end, "Signed", rule.field_path,
+                [&](auto& branch) {
+                    if( rule_count > 1 )
+                    {
+                        assert( branch.as_Subtree() );
+                        auto& subtree = *branch.as_Subtree();
+                        subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+                    }
+                    else
+                    {
+                        and_then(branch);
+                    }
+                });
             ),
         (Uint,
             // TODO: Share code between the three numeric groups
