@@ -985,11 +985,17 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             // TODO: Magic impl if T: ThisTrait
             bool good;
             ::HIR::Compare  total_cmp = ::HIR::Compare::Equal;
-            good = find_trait_impls(sp, e.m_trait.m_path.m_path, e.m_trait.m_path.m_params, ty, [&](const auto& , auto cmp){return cmp == ::HIR::Compare::Equal;} );
+            if( e.m_trait.m_path.m_path == ::HIR::SimplePath() ) {
+                ASSERT_BUG(sp, e.m_markers.size() > 0, "TraitObject with no traits - " << dst_ty);
+                good = true;
+            }
+            else {
+                good = find_trait_impls(sp, e.m_trait.m_path.m_path, e.m_trait.m_path.m_params, ty, [&](const auto& , auto cmp){return cmp == ::HIR::Compare::Equal;} );
+            }
             for(const auto& marker : e.m_markers)
             {
                 if(!good)   break;
-                good |= find_trait_impls(sp, marker.m_path, marker.m_params, ty, [&](const auto& , auto cmp){return cmp == ::HIR::Compare::Equal;} );
+                good &= find_trait_impls(sp, marker.m_path, marker.m_params, ty, [&](const auto& , auto cmp){return cmp == ::HIR::Compare::Equal;} );
             }
             if( good ) {
                 return callback( ImplRef(type.clone(), params.clone(), {}), total_cmp );
