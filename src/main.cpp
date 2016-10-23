@@ -372,18 +372,13 @@ int main(int argc, char *argv[])
         CompilePhaseV("MIR Validate", [&]() {
             MIR_CheckCrate(*hir_crate);
             });
-
-        if( params.last_stage == ProgramParams::STAGE_MIR ) {
-            return 0;
-        }
         
         // Optimise the MIR
         // TODO: MIR Optimisation
 
-        //CompilePhaseV("Dump MIR", [&]() {
-        //    ::std::ofstream os (FMT(params.outfile << "_4_mir_opt.rs"));
-        //    MIR_Dump( os, *hir_crate );
-        //    });
+        if( params.last_stage == ProgramParams::STAGE_MIR ) {
+            return 0;
+        }
         
         // TODO: Pass to mark items that are
         // - Signature Exportable (public)
