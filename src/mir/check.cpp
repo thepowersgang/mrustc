@@ -384,6 +384,79 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         ),
                     (Constant,
                         // TODO: Check constant types.
+                        ::HIR::TypeRef  tmp;
+                        const auto& dst_ty = state.get_lvalue_type(tmp, a.dst);
+                        TU_MATCH( ::MIR::Constant, (e), (c),
+                        (Int,
+                            bool good = false;
+                            if( dst_ty.m_data.is_Primitive() ) {
+                                switch( dst_ty.m_data.as_Primitive() ) {
+                                case ::HIR::CoreType::I8:
+                                case ::HIR::CoreType::I16:
+                                case ::HIR::CoreType::I32:
+                                case ::HIR::CoreType::I64:
+                                case ::HIR::CoreType::Isize:
+                                    good = true;
+                                    break;
+                                default:
+                                    break;
+                                }
+                            }
+                            if( !good ) {
+                                MIR_BUG(state,  "Type mismatch, destination is " << dst_ty << ", source is a signed integer");
+                            }
+                            ),
+                        (Uint,
+                            bool good = false;
+                            if( dst_ty.m_data.is_Primitive() ) {
+                                switch( dst_ty.m_data.as_Primitive() ) {
+                                case ::HIR::CoreType::U8:
+                                case ::HIR::CoreType::U16:
+                                case ::HIR::CoreType::U32:
+                                case ::HIR::CoreType::U64:
+                                case ::HIR::CoreType::Usize:
+                                    good = true;
+                                    break;
+                                default:
+                                    break;
+                                }
+                            }
+                            if( !good ) {
+                                MIR_BUG(state,  "Type mismatch, destination is " << dst_ty << ", source is an unsigned integer");
+                            }
+                            ),
+                        (Float,
+                            bool good = false;
+                            if( !dst_ty.m_data.is_Primitive() ) {
+                                switch( dst_ty.m_data.as_Primitive() ) {
+                                case ::HIR::CoreType::F32:
+                                case ::HIR::CoreType::F64:
+                                    good = true;
+                                    break;
+                                default:
+                                    break;
+                                }
+                            }
+                            if( !good ) {
+                                MIR_BUG(state,  "Type mismatch, destination is " << dst_ty << ", source is a floating point value");
+                            }
+                            ),
+                        (Bool,
+                            check_type( ::HIR::TypeRef(::HIR::CoreType::Bool) );
+                            ),
+                        (Bytes,
+                            // TODO: Check result
+                            ),
+                        (StaticString,
+                            check_type( ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::CoreType::Str) );
+                            ),
+                        (Const,
+                            // TODO: Check result type against type of const
+                            ),
+                        (ItemAddr,
+                            // TODO: Check result type against pointer to item type
+                            )
+                        )
                         ),
                     (SizedArray,
                         // TODO: Check that return type is an array
