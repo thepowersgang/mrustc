@@ -3169,7 +3169,7 @@ void DecisionTreeGen::generate_branches_Borrow_str(
         
         auto next_bb = (&branch == &branches.back() ? default_bb : m_builder.new_bb_unlinked());
         
-        auto test_val = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Str), ::MIR::Constant(branch.first) );
+        auto test_val = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::CoreType::Str), ::MIR::Constant(branch.first) );
         auto cmp_gt_bb = m_builder.new_bb_unlinked();
         
         auto lt_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ have_val.clone(), ::MIR::eBinOp::LT, test_val.clone() }) );
