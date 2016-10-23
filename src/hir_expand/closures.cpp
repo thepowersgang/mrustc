@@ -284,7 +284,8 @@ namespace {
                 ::HIR::ExprPtr code
             )
         {
-            fix_fn_params(code, closure_type, args_argent.second);
+            auto ty_of_self = closure_type.clone();
+            fix_fn_params(code, ty_of_self, args_argent.second);
             return ::HIR::TraitImpl {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
@@ -293,7 +294,10 @@ namespace {
                         ABI_RUST, false, false,
                         {},
                         make_vec2(
-                            ::std::make_pair(::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} }, ::HIR::TypeRef("Self", 0xFFFF)),
+                            ::std::make_pair(
+                                ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} },
+                                mv$(ty_of_self)
+                                ),
                             mv$( args_argent )
                             ), false,
                         ret_ty.clone(),
@@ -328,7 +332,7 @@ namespace {
                         make_vec2(
                             ::std::make_pair(
                                 ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} },
-                                ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Unique, ::HIR::TypeRef("Self", 0xFFFF) )
+                                mv$(ty_of_self)
                                 ),
                             mv$( args_argent )
                             ), false,
@@ -362,7 +366,7 @@ namespace {
                         make_vec2(
                             ::std::make_pair(
                                 ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} },
-                                ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef("Self", 0xFFFF) )
+                                mv$(ty_of_self)
                                 ),
                             mv$(args_argent)
                             ), false,
