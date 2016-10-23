@@ -20,7 +20,7 @@ class NodeVisitor;
 
 class ExprNode
 {
-    TypeRef m_res_type;
+    TypeRef m_res_type = TypeRef(Span());
     MetaItems   m_attrs;
     Position    m_pos;
 public:
@@ -81,7 +81,6 @@ struct ExprNode_Macro:
     ::std::string   m_ident;
     ::TokenTree m_tokens;
     
-    ExprNode_Macro() {}
     ExprNode_Macro(::std::string name, ::std::string ident, ::TokenTree&& tokens):
         m_name(name),
         m_ident(ident),
@@ -103,7 +102,6 @@ struct ExprNode_Flow:
     ::std::string   m_target;
     unique_ptr<ExprNode>    m_value;
 
-    ExprNode_Flow() {}
     ExprNode_Flow(Type type, ::std::string target, unique_ptr<ExprNode>&& value):
         m_type(type),
         m_target( move(target) ),
@@ -120,7 +118,6 @@ struct ExprNode_LetBinding:
     TypeRef m_type;
     unique_ptr<ExprNode>    m_value;
 
-    ExprNode_LetBinding() {}
     ExprNode_LetBinding(Pattern pat, TypeRef type, unique_ptr<ExprNode>&& value):
         m_pat( move(pat) ),
         m_type( move(type) ),
@@ -159,7 +156,6 @@ struct ExprNode_CallPath:
     Path    m_path;
     ::std::vector<unique_ptr<ExprNode>> m_args;
 
-    ExprNode_CallPath() {}
     ExprNode_CallPath(Path&& path, ::std::vector<unique_ptr<ExprNode>>&& args):
         m_path( move(path) ),
         m_args( move(args) )
@@ -175,7 +171,6 @@ struct ExprNode_CallMethod:
     PathNode    m_method;
     ::std::vector<unique_ptr<ExprNode>> m_args;
 
-    ExprNode_CallMethod() {}
     ExprNode_CallMethod(unique_ptr<ExprNode> obj, PathNode method, ::std::vector<unique_ptr<ExprNode>> args):
         m_val( move(obj) ),
         m_method( move(method) ),
@@ -192,7 +187,6 @@ struct ExprNode_CallObject:
     unique_ptr<ExprNode>    m_val;
     ::std::vector<unique_ptr<ExprNode>> m_args;
 
-    ExprNode_CallObject() {}
     ExprNode_CallObject(unique_ptr<ExprNode>&& val, ::std::vector< unique_ptr<ExprNode> >&& args):
         m_val( move(val) ),
         m_args( move(args) )
@@ -261,7 +255,6 @@ struct ExprNode_Match:
     unique_ptr<ExprNode>    m_val;
     ::std::vector<ExprNode_Match_Arm>  m_arms;
 
-    ExprNode_Match() {}
     ExprNode_Match(unique_ptr<ExprNode> val, ::std::vector<ExprNode_Match_Arm> arms):
         m_val( ::std::move(val) ),
         m_arms( ::std::move(arms) )
@@ -277,7 +270,6 @@ struct ExprNode_If:
     unique_ptr<ExprNode>    m_true;
     unique_ptr<ExprNode>    m_false;
 
-    ExprNode_If() {}
     ExprNode_If(unique_ptr<ExprNode>&& cond, unique_ptr<ExprNode>&& true_code, unique_ptr<ExprNode>&& false_code):
         m_cond( ::std::move(cond) ),
         m_true( ::std::move(true_code) ),
@@ -294,7 +286,6 @@ struct ExprNode_IfLet:
     unique_ptr<ExprNode>    m_true;
     unique_ptr<ExprNode>    m_false;
 
-    ExprNode_IfLet() {}
     ExprNode_IfLet(AST::Pattern pattern, unique_ptr<ExprNode>&& cond, unique_ptr<ExprNode>&& true_code, unique_ptr<ExprNode>&& false_code):
         m_pattern( ::std::move(pattern) ),
         m_value( ::std::move(cond) ),
@@ -311,7 +302,6 @@ struct ExprNode_Integer:
     enum eCoreType  m_datatype;
     uint64_t    m_value;
 
-    ExprNode_Integer() {}
     ExprNode_Integer(uint64_t value, enum eCoreType datatype):
         m_datatype(datatype),
         m_value(value)
@@ -327,7 +317,6 @@ struct ExprNode_Float:
     enum eCoreType  m_datatype;
     double  m_value;
 
-    ExprNode_Float() {}
     ExprNode_Float(double value, enum eCoreType datatype):
         m_datatype(datatype),
         m_value(value)
@@ -342,7 +331,6 @@ struct ExprNode_Bool:
 {
     bool    m_value;
 
-    ExprNode_Bool() {}
     ExprNode_Bool(bool value):
         m_value(value)
     {
@@ -356,7 +344,6 @@ struct ExprNode_String:
 {
     ::std::string   m_value;
     
-    ExprNode_String() {}
     ExprNode_String(::std::string value):
         m_value( ::std::move(value) )
     {}
@@ -369,7 +356,6 @@ struct ExprNode_ByteString:
 {
     ::std::string   m_value;
     
-    ExprNode_ByteString() {}
     ExprNode_ByteString(::std::string value):
         m_value( ::std::move(value) )
     {}
@@ -387,7 +373,6 @@ struct ExprNode_Closure:
     TypeRef m_return;
     unique_ptr<ExprNode>    m_code;
     
-    ExprNode_Closure() {}
     ExprNode_Closure(args_t args, TypeRef rv, unique_ptr<ExprNode> code):
         m_args( ::std::move(args) ),
         m_return( ::std::move(rv) ),
@@ -405,7 +390,6 @@ struct ExprNode_StructLiteral:
     unique_ptr<ExprNode>    m_base_value;
     t_values    m_values;
 
-    ExprNode_StructLiteral() {}
     ExprNode_StructLiteral(Path path, unique_ptr<ExprNode>&& base_value, t_values&& values ):
         m_path( move(path) ),
         m_base_value( move(base_value) ),
@@ -421,7 +405,6 @@ struct ExprNode_Array:
     unique_ptr<ExprNode>    m_size; // if non-NULL, it's a sized array
     ::std::vector< unique_ptr<ExprNode> >   m_values;
     
-    ExprNode_Array() {}
     ExprNode_Array(::std::vector< unique_ptr<ExprNode> > vals):
         m_values( ::std::move(vals) )
     {}
@@ -439,7 +422,6 @@ struct ExprNode_Tuple:
 {
     ::std::vector< unique_ptr<ExprNode> >   m_values;
     
-    ExprNode_Tuple() {}
     ExprNode_Tuple(::std::vector< unique_ptr<ExprNode> > vals):
         m_values( ::std::move(vals) )
     {}
@@ -452,7 +434,6 @@ struct ExprNode_NamedValue:
 {
     Path    m_path;
 
-    ExprNode_NamedValue() {}
     ExprNode_NamedValue(Path&& path):
         m_path( ::std::move(path) )
     {
@@ -466,7 +447,6 @@ struct ExprNode_Field:
     ::std::unique_ptr<ExprNode> m_obj;
     ::std::string   m_name;
 
-    ExprNode_Field() {}
     ExprNode_Field(::std::unique_ptr<ExprNode>&& obj, ::std::string name):
         m_obj( ::std::move(obj) ),
         m_name( ::std::move(name) )
@@ -480,7 +460,6 @@ struct ExprNode_Index:
     ::std::unique_ptr<ExprNode> m_obj;
     ::std::unique_ptr<ExprNode> m_idx;
     
-    ExprNode_Index() {}
     ExprNode_Index(::std::unique_ptr<ExprNode> obj, ::std::unique_ptr<ExprNode> idx):
         m_obj( ::std::move(obj) ),
         m_idx( ::std::move(idx) )
@@ -495,7 +474,6 @@ struct ExprNode_Deref:
 {
     ::std::unique_ptr<ExprNode>    m_value;
     
-    ExprNode_Deref() {}
     ExprNode_Deref(::std::unique_ptr<ExprNode> value):
         m_value( ::std::move(value) )
     {
@@ -511,7 +489,6 @@ struct ExprNode_Cast:
     unique_ptr<ExprNode>    m_value;
     TypeRef m_type;
 
-    ExprNode_Cast() {}
     ExprNode_Cast(unique_ptr<ExprNode>&& value, TypeRef&& dst_type):
         m_value( move(value) ),
         m_type( move(dst_type) )
@@ -557,7 +534,6 @@ struct ExprNode_BinOp:
     ::std::unique_ptr<ExprNode> m_left;
     ::std::unique_ptr<ExprNode> m_right;
 
-    ExprNode_BinOp() {}
     ExprNode_BinOp(Type type, ::std::unique_ptr<ExprNode> left, ::std::unique_ptr<ExprNode> right):
         m_type(type),
         m_left( ::std::move(left) ),
@@ -583,7 +559,6 @@ struct ExprNode_UniOp:
     enum Type   m_type;
     ::std::unique_ptr<ExprNode> m_value;
 
-    ExprNode_UniOp() {}
     ExprNode_UniOp(Type type, ::std::unique_ptr<ExprNode> value):
         m_type(type),
         m_value( ::std::move(value) )

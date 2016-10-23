@@ -37,9 +37,9 @@ struct Deriver
     virtual AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const = 0;
     
     
-    AST::GenericParams get_params_with_bounds(const AST::GenericParams& p, const AST::Path& trait_path, ::std::vector<TypeRef> additional_bounded_types) const
+    AST::GenericParams get_params_with_bounds(const Span& sp, const AST::GenericParams& p, const AST::Path& trait_path, ::std::vector<TypeRef> additional_bounded_types) const
     {
-        AST::GenericParams  params = p;
+        AST::GenericParams  params = p.clone();
         
         // TODO: Get bounds based on generic (or similar) types used within the type.
         // - How would this code (that runs before resolve) know what's a generic and what's a local type?
@@ -49,7 +49,7 @@ struct Deriver
         for(const auto& arg : params.ty_params())
         {
             params.add_bound( ::AST::GenericBound::make_IsTrait({
-                TypeRef(arg.name(), i), {}, trait_path
+                TypeRef(sp, arg.name(), i), {}, trait_path
                 }) );
             i ++;
         }
@@ -247,13 +247,13 @@ class Deriver_Debug:
             ABI_RUST, false, false, false,
             ret_type,
             vec$(
-                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) ),
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef(sp, "Self", 0xFFFF)) ),
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "f"), f_type )
                 )
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
         
-        AST::GenericParams  params = get_params_with_bounds(p, debug_trait, mv$(types_to_bound));
+        AST::GenericParams  params = get_params_with_bounds(sp, p, debug_trait, mv$(types_to_bound));
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, debug_trait), type ) );
         rv.add_function(false, false, "fmt", mv$(fcn));
@@ -424,13 +424,13 @@ class Deriver_PartialEq:
             ABI_RUST, false, false, false,
             TypeRef(sp, CORETYPE_BOOL),
             vec$(
-                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) ),
-                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "v"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) )
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef(sp, "Self", 0xFFFF)) ),
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "v"   ), TypeRef(TypeRef::TagReference(), sp, false, TypeRef(sp, "Self", 0xFFFF)) )
                 )
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
         
-        AST::GenericParams  params = get_params_with_bounds(p, trait_path, mv$(types_to_bound));
+        AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         rv.add_function(false, false, "eq", mv$(fcn));
@@ -610,13 +610,13 @@ class Deriver_PartialOrd:
             ABI_RUST, false, false, false,
             TypeRef(sp, path_option_ordering),
             vec$(
-                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) ),
-                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "v"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) )
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef(sp, "Self", 0xFFFF)) ),
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "v"   ), TypeRef(TypeRef::TagReference(), sp, false, TypeRef(sp, "Self", 0xFFFF)) )
                 )
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
         
-        AST::GenericParams  params = get_params_with_bounds(p, trait_path, mv$(types_to_bound));
+        AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         rv.add_function(false, false, "partial_cmp", mv$(fcn));
@@ -865,12 +865,12 @@ class Deriver_Eq:
             ABI_RUST, false, false, false,
             TypeRef(TypeRef::TagUnit(), sp),
             vec$(
-                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) )
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef(sp, "Self", 0xFFFF)) )
                 )
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
         
-        AST::GenericParams  params = get_params_with_bounds(p, trait_path, mv$(types_to_bound));
+        AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         rv.add_function(false, false, "assert_receiver_is_total_eq", mv$(fcn));
@@ -1007,13 +1007,13 @@ class Deriver_Ord:
             ABI_RUST, false, false, false,
             TypeRef(sp, path_ordering),
             vec$(
-                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) ),
-                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "v"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) )
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef(sp, "Self", 0xFFFF)) ),
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "v"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef(sp, "Self", 0xFFFF)) )
                 )
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
         
-        AST::GenericParams  params = get_params_with_bounds(p, trait_path, mv$(types_to_bound));
+        AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         rv.add_function(false, false, "cmp", mv$(fcn));
@@ -1250,14 +1250,14 @@ class Deriver_Clone:
             sp,
             AST::GenericParams(),
             ABI_RUST, false, false, false,
-            TypeRef("Self", 0xFFFF),
+            TypeRef(sp, "Self", 0xFFFF),
             vec$(
-                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) )
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef(sp, "Self", 0xFFFF)) )
                 )
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
         
-        AST::GenericParams  params = get_params_with_bounds(p, trait_path, mv$(types_to_bound));
+        AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         rv.add_function(false, false, "clone", mv$(fcn));
@@ -1396,7 +1396,7 @@ class Deriver_Copy:
     {
         const AST::Path    trait_path = this->get_trait_path(core_name);
         
-        AST::GenericParams params = get_params_with_bounds(p, trait_path, mv$(types_to_bound));
+        AST::GenericParams params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         return mv$(rv);
@@ -1421,7 +1421,7 @@ class Deriver_Default:
         return AST::Path(core_name, { AST::PathNode("default", {}), AST::PathNode("Default", {}) });
     }
     AST::Path get_method_path(const ::std::string& core_name) const {
-        return AST::Path(AST::Path::TagUfcs(), ::TypeRef(), get_trait_path(core_name), { AST::PathNode("default", {}) } );
+        return AST::Path(AST::Path::TagUfcs(), ::TypeRef(Span()), get_trait_path(core_name), { AST::PathNode("default", {}) } );
     }
     
     AST::Impl make_ret(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, ::std::vector<TypeRef> types_to_bound, AST::ExprNodeP node) const
@@ -1432,12 +1432,12 @@ class Deriver_Default:
             sp,
             AST::GenericParams(),
             ABI_RUST, false, false, false,
-            TypeRef("Self", 0xFFFF),
+            TypeRef(sp, "Self", 0xFFFF),
             {}
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
         
-        AST::GenericParams  params = get_params_with_bounds(p, trait_path, mv$(types_to_bound));
+        AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         rv.add_function(false, false, "default", mv$(fcn));
@@ -1514,19 +1514,19 @@ class Deriver_Hash:
             ABI_RUST, false, false, false,
             TypeRef(TypeRef::TagUnit(), sp),
             vec$(
-                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef("Self", 0xFFFF)) ),
-                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "state"), TypeRef(TypeRef::TagReference(), sp, true, TypeRef("H", 0x100|0)) )
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef(sp, "Self", 0xFFFF)) ),
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "state"), TypeRef(TypeRef::TagReference(), sp, true, TypeRef(sp, "H", 0x100|0)) )
                 )
             );
         fcn.params().add_ty_param( AST::TypeParam("H") );
         fcn.params().add_bound( AST::GenericBound::make_IsTrait({
-            TypeRef("H", 0x100|0),
+            TypeRef(sp, "H", 0x100|0),
             {},
             this->get_trait_path_Hasher(core_name)
             }) );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
         
-        AST::GenericParams  params = get_params_with_bounds(p, trait_path, mv$(types_to_bound));
+        AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
         
         AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
         rv.add_function(false, false, "hash", mv$(fcn));
@@ -1686,7 +1686,7 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
     TypeRef type(sp, path);
     auto& types_args = type.path().nodes().back().args();
     for( const auto& param : params.ty_params() ) {
-        types_args.m_types.push_back( TypeRef(TypeRef::TagArg(), param.name()) );
+        types_args.m_types.push_back( TypeRef(TypeRef::TagArg(), sp, param.name()) );
     }
     
     ::std::vector< ::std::string>   missing_handlers;

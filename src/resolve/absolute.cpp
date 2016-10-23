@@ -156,7 +156,7 @@ struct Context
                     return e->clone();
                 }
                 else {
-                    return ::TypeRef("Self", 0xFFFF);
+                    return ::TypeRef(Span(), "Self", 0xFFFF);
                 }
                 )
             )
@@ -822,7 +822,7 @@ namespace {
                     for(const auto& typ : e.m_params.m_types)
                     {
                         (void)typ;
-                        trait_path.nodes().back().args().m_types.push_back( ::TypeRef() );
+                        trait_path.nodes().back().args().m_types.push_back( ::TypeRef(sp) );
                     }
                 }
                 trait_path.bind( ::AST::PathBinding::make_Trait({nullptr, &e}) );
@@ -848,7 +848,7 @@ namespace {
                     new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(trait_path)));
                 }
                 else {
-                    new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(), mv$(trait_path));
+                    new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp), mv$(trait_path));
                 }
                 for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
                     new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
@@ -1093,14 +1093,14 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                         for(const auto& typ : e.trait_->params().ty_params())
                         {
                             (void)typ;
-                            trait_path.nodes().back().args().m_types.push_back( ::TypeRef() );
+                            trait_path.nodes().back().args().m_types.push_back( ::TypeRef(sp) );
                         }
                     }
                     else {
                         for(const auto& typ : e.hir->m_params.m_types)
                         {
                             (void)typ;
-                            trait_path.nodes().back().args().m_types.push_back( ::TypeRef() );
+                            trait_path.nodes().back().args().m_types.push_back( ::TypeRef(sp) );
                         }
                     }
                 }
@@ -1136,7 +1136,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                     new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(trait_path)));
                 }
                 else {
-                    new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(), mv$(trait_path));
+                    new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp), mv$(trait_path));
                 }
                 for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
                     new_path.nodes().push_back( mv$(path_abs.nodes[j]) );

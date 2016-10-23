@@ -134,7 +134,8 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
             ret.add_lft_param( param_name );
         else
             ret.add_ty_param( AST::TypeParam( param_name ) );
-            
+        auto param_ty = TypeRef(lex.getPosition(), param_name);
+        
         if( GET_TOK(tok, lex) == TOK_COLON )
         {
             if( is_lifetime )
@@ -146,7 +147,7 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
             }
             else
             {
-                Parse_TypeBound(lex, ret, TypeRef(TypeRef::TagArg(), param_name));
+                Parse_TypeBound(lex, ret, param_ty);
                 GET_TOK(tok, lex);
             }
         }
@@ -278,14 +279,16 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
                 lifetime = tok.str();
                 GET_TOK(tok, lex);
             }
+            auto ty_sp = lex.end_span(ps);
+            
             if( tok.type() == TOK_RWORD_MUT )
             {
                 GET_CHECK_TOK(tok, lex, TOK_RWORD_SELF);
-                args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), lex.end_span(ps), true, TypeRef("Self", 0xFFFF))) );
+                args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), ty_sp, true, TypeRef(ty_sp, "Self", 0xFFFF))) );
             }
             else
             {
-                args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), lex.end_span(ps), false, TypeRef("Self", 0xFFFF))) );
+                args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), ty_sp, false, TypeRef(ty_sp, "Self", 0xFFFF))) );
             }
             DEBUG("TODO: UFCS / self lifetimes");
             if( allow_self == false )
@@ -310,14 +313,13 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
             GET_TOK(tok, lex);
             if( allow_self == false )
                 throw ParseError::Generic(lex, "Self binding not expected");
-            TypeRef ty;
+            TypeRef ty = TypeRef( lex.getPosition(), "Self", 0xFFFF );
             if( GET_TOK(tok, lex) == TOK_COLON ) {
                 // Typed mut self
                 ty = Parse_Type(lex);
             }
             else {
                 PUTBACK(tok, lex);
-                ty = TypeRef("Self", 0xFFFF);
             }
             args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), ty) );
             GET_TOK(tok, lex);
@@ -328,14 +330,13 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
         // By-value method
         if( allow_self == false )
             throw ParseError::Generic(lex, "Self binding not expected");
-        TypeRef ty;
+        TypeRef ty = TypeRef( lex.getPosition(), "Self", 0xFFFF );
         if( GET_TOK(tok, lex) == TOK_COLON ) {
             // Typed mut self
             ty = Parse_Type(lex);
         }
         else {
             PUTBACK(tok, lex);
-            ty = TypeRef("Self", 0xFFFF);
         }
         args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), ty) );
         GET_TOK(tok, lex);
@@ -658,14 +659,14 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
             if( GET_TOK(tok, lex) == TOK_COLON )
             {
                 // Bounded associated type
-                Parse_TypeBound(lex, atype_params, TypeRef("Self", 0xFFFF));
+                Parse_TypeBound(lex, atype_params, TypeRef(lex.getPosition(), "Self", 0xFFFF));
                 GET_TOK(tok, lex);
             }
             if( tok.type() == TOK_RWORD_WHERE ) {
                 throw ParseError::Todo(lex, "Where clause on associated type");
             }
             
-            TypeRef default_type;
+            TypeRef default_type = TypeRef( lex.getPosition() );
             if( tok.type() == TOK_EQUAL ) {
                 default_type = Parse_Type(lex);
                 GET_TOK(tok, lex);
@@ -889,14 +890,14 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
     // 2. Either a trait name (with type params), or the type to impl
     
     Spanned<AST::Path>   trait_path;
-    TypeRef impl_type;
-    // - Handle negative impls, which must be a trait
+    
+    // - Handle negative impls specially, which must be a trait
     // "impl !Trait for Type {}"
     if( GET_TOK(tok, lex) == TOK_EXCLAM )
     {
         trait_path = GET_SPANNED(::AST::Path, lex, Parse_Path(lex, PATH_GENERIC_TYPE));
         GET_CHECK_TOK(tok, lex, TOK_RWORD_FOR);
-        impl_type = Parse_Type(lex, true);
+        auto impl_type = Parse_Type(lex, true);
         
         if( GET_TOK(tok, lex) == TOK_RWORD_WHERE )
         {
@@ -910,36 +911,35 @@ void Parse_Impl(TokenStream& lex, AST::Module& mod, AST::MetaItems attrs, bool i
         mod.add_neg_impl( AST::ImplDef(lex.end_span(ps), AST::MetaItems(), mv$(params), mv$(trait_path), mv$(impl_type) ) );
         return ;
     }
-    else
+    
+    // - Don't care which at this stage
+    PUTBACK(tok, lex);
+    
+    auto impl_type = Parse_Type(lex, true);
+    
+    if( GET_TOK(tok, lex) == TOK_RWORD_FOR )
     {
-        // - Don't care which at this stage
-        PUTBACK(tok, lex);
-        
-        impl_type = Parse_Type(lex, true);
-        
-        if( GET_TOK(tok, lex) == TOK_RWORD_FOR )
+        // Trickery! All traits parse as valid types, so this works.
+        if( !impl_type.is_path() )
+            throw ParseError::Generic(lex, "Trait was not a path");
+        trait_path = Spanned< AST::Path> {
+            impl_type.span(),
+            mv$(impl_type.path())
+            };
+        // Implementing a trait for another type, get the target type
+        if( GET_TOK(tok, lex) == TOK_DOUBLE_DOT )
         {
-            if( !impl_type.is_path() )
-                throw ParseError::Generic(lex, "Trait was not a path");
-            trait_path = Spanned< AST::Path> {
-                impl_type.span(),
-                mv$(impl_type.path())
-                };
-            // Implementing a trait for another type, get the target type
-            if( GET_TOK(tok, lex) == TOK_DOUBLE_DOT )
-            {
-                // Default impl
-                impl_type = TypeRef(TypeRef::TagInvalid(), lex.getPosition());
-            }
-            else
-            {
-                PUTBACK(tok, lex);
-                impl_type = Parse_Type(lex, true);
-            }
+            // Default impl
+            impl_type = TypeRef(TypeRef::TagInvalid(), lex.getPosition());
         }
-        else {
+        else
+        {
             PUTBACK(tok, lex);
+            impl_type = Parse_Type(lex, true);
         }
+    }
+    else {
+        PUTBACK(tok, lex);
     }
     
     // Where clause

@@ -11,9 +11,10 @@ class TypeParam
     ::std::string   m_name;
     TypeRef m_default;
 public:
-    TypeParam(): m_name("") {}
+    //TypeParam(): m_name("") {}
     TypeParam(::std::string name):
-        m_name( ::std::move(name) )
+        m_name( ::std::move(name) ),
+        m_default( Span() )
     {}
     void setDefault(TypeRef type) {
         assert(m_default.is_wildcard());
@@ -92,25 +93,18 @@ class GenericParams
     ::std::vector<GenericBound>    m_bounds;
 public:
     GenericParams() {}
-    GenericParams(GenericParams&& x) noexcept:
-        m_type_params( mv$(x.m_type_params) ),
-        m_lifetime_params( mv$(x.m_lifetime_params) ),
-        m_bounds( mv$(x.m_bounds) )
-    {}
-    GenericParams& operator=(GenericParams&& x) {
-        m_type_params = mv$(x.m_type_params);
-        m_lifetime_params = mv$(x.m_lifetime_params);
-        m_bounds = mv$(x.m_bounds);
-        return *this;
-    }
-    GenericParams(const GenericParams& x):
-        m_type_params(x.m_type_params),
-        m_lifetime_params(x.m_lifetime_params),
-        m_bounds()
-    {
-        m_bounds.reserve( x.m_bounds.size() );
-        for(auto& e: x.m_bounds)
-            m_bounds.push_back( e.clone() );
+    GenericParams(GenericParams&& x) noexcept = default;
+    GenericParams& operator=(GenericParams&& x) = default;
+    GenericParams(const GenericParams& x) = delete;
+    
+    GenericParams clone() const {
+        GenericParams   rv;
+        rv.m_type_params = m_type_params;   // Copy-constructable
+        rv.m_lifetime_params = m_lifetime_params;
+        rv.m_bounds.reserve( m_bounds.size() );
+        for(auto& e: m_bounds)
+            rv.m_bounds.push_back( e.clone() );
+        return rv;
     }
     
     const ::std::vector<TypeParam>& ty_params() const { return m_type_params; }

@@ -55,9 +55,7 @@ struct StructItem
     ::std::string   m_name;
     TypeRef m_type;
     
-    StructItem()
-    {
-    }
+    //StructItem() {}
     
     StructItem(::AST::MetaItems attrs, bool is_pub, ::std::string name, TypeRef ty):
         m_attrs( mv$(attrs) ),
@@ -80,9 +78,7 @@ struct TupleItem
     bool    m_is_public;
     TypeRef m_type;
     
-    TupleItem()
-    {
-    }
+    //TupleItem() {}
     
     TupleItem(::AST::MetaItems attrs, bool is_pub, TypeRef ty):
         m_attrs( mv$(attrs) ),
@@ -103,7 +99,7 @@ class TypeAlias
     GenericParams  m_params;
     TypeRef m_type;
 public:
-    TypeAlias() {}
+    //TypeAlias() {}
     TypeAlias(GenericParams params, TypeRef type):
         m_params( move(params) ),
         m_type( move(type) )
@@ -132,9 +128,9 @@ private:
     TypeRef m_type;
     Expr    m_value;
 public:
-    Static():
-        m_class(CONST)
-    {}
+    //Static():
+    //    m_class(CONST)
+    //{}
     Static(Class s_class, TypeRef type, Expr value):
         m_class(s_class),
         m_type( move(type) ),
@@ -170,13 +166,12 @@ private:
     bool    m_is_unsafe;
     bool    m_is_variadic;  // extern only
 public:
-    Function()
-    {}
     Function(const Function&) = delete;
     Function& operator=(const Function&) = delete;
     Function(Function&&) = default;
     Function& operator=(Function&&) = default;
     
+    //Function() {}
     Function(Span sp, GenericParams params, ::std::string abi, bool is_unsafe, bool is_const, bool is_variadic, TypeRef ret_type, Arglist args);
     
     void set_code(Expr code) { m_code = ::std::move(code); }
@@ -369,7 +364,7 @@ class ImplDef
     Spanned<Path>   m_trait;
     TypeRef m_type;
 public:
-    ImplDef() {}
+    //ImplDef() {}
     ImplDef(ImplDef&&) /*noexcept*/ = default;
     ImplDef(Span sp, MetaItems attrs, GenericParams params, Spanned<Path> trait_type, TypeRef impl_type):
         m_span( mv$(sp) ),
@@ -416,7 +411,7 @@ private:
     //NamedList<Static>    m_statics;
     
 public:
-    Impl() {}
+    //Impl() {}
     Impl(Impl&&) /*noexcept*/ = default;
     Impl(ImplDef def):
         m_def( mv$(def) )

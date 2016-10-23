@@ -518,7 +518,7 @@ ExprNodeP Parse_Stmt_Let(TokenStream& lex)
 {
     Token   tok;
     AST::Pattern pat = Parse_Pattern(lex, false);   // irrefutable
-    TypeRef type;
+    TypeRef type { lex.getPosition() };
     if( GET_TOK(tok, lex) == TOK_COLON ) {
         type = Parse_Type(lex);
         GET_TOK(tok, lex);
@@ -997,7 +997,7 @@ ExprNodeP Parse_ExprVal_Closure(TokenStream& lex, bool is_move)
         // Irrefutable pattern
         AST::Pattern    pat = Parse_Pattern(lex, false);
     
-        TypeRef type;
+        TypeRef type { lex.getPosition() };
         if( GET_TOK(tok, lex) == TOK_COLON )
             type = Parse_Type(lex);
         else
@@ -1010,7 +1010,7 @@ ExprNodeP Parse_ExprVal_Closure(TokenStream& lex, bool is_move)
     }
     CHECK_TOK(tok, TOK_PIPE);
     
-    TypeRef rt;
+    auto rt = TypeRef(lex.getPosition());
     if( GET_TOK(tok, lex) == TOK_THINARROW ) {
     
         if( GET_TOK(tok, lex) == TOK_EXCLAM ) {

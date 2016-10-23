@@ -142,7 +142,7 @@ class CCfgHandler:
             // Leave
         }
         else {
-            impl.type() = ::TypeRef();
+            impl.type() = ::TypeRef(sp);
         }
     }
     
@@ -155,7 +155,7 @@ class CCfgHandler:
     void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::TupleItem& i) const override {
         DEBUG("#[cfg] tuple item - " << mi);
         if( !check_cfg(sp, mi) ) {
-            i.m_type = ::TypeRef();
+            i.m_type = ::TypeRef(sp);
         }
     }
     void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::EnumVariant& i) const override {

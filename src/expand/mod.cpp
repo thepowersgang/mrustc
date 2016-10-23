@@ -402,7 +402,7 @@ struct CExpandExpr:
             
             replacement.reset(new ::AST::ExprNode_Match(
                 ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                    ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(), path_IntoIterator, { ::AST::PathNode("into_iter") } ),
+                    ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(node.span()), path_IntoIterator, { ::AST::PathNode("into_iter") } ),
                     ::make_vec1( mv$(node.m_cond) )
                     )),
                 ::make_vec1(::AST::ExprNode_Match_Arm(
@@ -412,7 +412,7 @@ struct CExpandExpr:
                         node.m_label,
                         ::AST::ExprNodeP(new ::AST::ExprNode_Match(
                             ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                                ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(), path_Iterator, { ::AST::PathNode("next") } ),
+                                ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(node.span()), path_Iterator, { ::AST::PathNode("next") } ),
                                 ::make_vec1( ::AST::ExprNodeP(new ::AST::ExprNode_UniOp(
                                     ::AST::ExprNode_UniOp::REFMUT,
                                     ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue( ::AST::Path("it") ))
@@ -513,7 +513,7 @@ struct CExpandExpr:
             auto path_Ok  = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Ok")});
             auto path_Err = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Err")});
             auto path_From = ::AST::Path(core_crate, {::AST::PathNode("convert"), ::AST::PathNode("From")});
-            path_From.nodes().back().args().m_types.push_back( ::TypeRef() );
+            path_From.nodes().back().args().m_types.push_back( ::TypeRef(node.span()) );
             
             // Desugars into
             // ```
@@ -541,7 +541,7 @@ struct CExpandExpr:
                         ::AST::Path(path_Err),
                         ::make_vec1(
                             ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                                ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(), mv$(path_From), { ::AST::PathNode("from") }),
+                                ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(node.span()), mv$(path_From), { ::AST::PathNode("from") }),
                                 ::make_vec1( ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path(::AST::Path::TagLocal(), "e") ) ) )
                                 ))
                             )

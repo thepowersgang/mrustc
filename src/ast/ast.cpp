@@ -77,7 +77,7 @@ TupleItem TupleItem::clone() const
 
 TypeAlias TypeAlias::clone() const
 {
-    return TypeAlias( m_params, m_type );
+    return TypeAlias( m_params.clone(), m_type );
 }
 Static Static::clone() const
 {
@@ -101,7 +101,7 @@ Function Function::clone() const
     for(const auto& arg : m_args)
         new_args.push_back( ::std::make_pair( arg.first.clone(), arg.second ) );
     
-    auto rv = Function( m_span, m_params, m_abi, m_is_unsafe, m_is_const, m_is_variadic, m_rettype, mv$(new_args) );
+    auto rv = Function( m_span, m_params.clone(), m_abi, m_is_unsafe, m_is_const, m_is_variadic, m_rettype, mv$(new_args) );
     if( m_code.is_valid() )
     {
         rv.m_code = AST::Expr( m_code.node().clone() );
@@ -139,7 +139,7 @@ bool Trait::has_named_item(const ::std::string& name, bool& out_is_fcn) const
 
 Trait Trait::clone() const
 {
-    auto rv = Trait(m_params, m_supertraits);
+    auto rv = Trait(m_params.clone(), m_supertraits);
     for(const auto& item : m_items)
     {
         rv.m_items.push_back( Named<Item> { item.name, item.data.clone(), item.is_pub } );
@@ -167,7 +167,7 @@ Enum Enum::clone() const
             )
         )
     }
-    return Enum(m_params, mv$(new_variants));
+    return Enum(m_params.clone(), mv$(new_variants));
 }
 Struct Struct::clone() const
 {
@@ -176,13 +176,13 @@ Struct Struct::clone() const
         decltype(e.ents)    new_fields;
         for(const auto& f : e.ents)
             new_fields.push_back( f.clone() );
-        return Struct(m_params, mv$(new_fields));
+        return Struct(m_params.clone(), mv$(new_fields));
         ),
     (Struct,
         decltype(e.ents)    new_fields;
         for(const auto& f : e.ents)
             new_fields.push_back( f.clone() );
-        return Struct(m_params, mv$(new_fields));
+        return Struct(m_params.clone(), mv$(new_fields));
         )
     )
     throw "";

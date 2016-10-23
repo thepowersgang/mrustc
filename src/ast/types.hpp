@@ -96,6 +96,10 @@ TAGGED_UNION(TypeData, None,
     (TraitObject, struct {
         ::std::vector<::std::string>    hrls;
         ::std::vector<AST::Path> traits;
+    //    }),
+    //(ImplTrait, struct {
+    //    ::std::vector<::std::string>    hrls;
+    //    ::std::vector<AST::Path> traits;
         })
     );
 
@@ -125,7 +129,7 @@ public:
         return *this;
     }
     
-    TypeRef(Span sp = Span()):
+    TypeRef(Span sp):
         m_span( mv$(sp) ),
         m_data( TypeData::make_Any({}) )
     {}
@@ -195,11 +199,12 @@ public:
     {}
 
     struct TagArg {};
-    TypeRef(TagArg, ::std::string name, unsigned int binding = ~0u):
+    TypeRef(TagArg, Span sp, ::std::string name, unsigned int binding = ~0u):
+        m_span( mv$(sp) ),
         m_data(TypeData::make_Generic({ name, binding }))
     {}
-    TypeRef(::std::string name, unsigned int binding = ~0u):
-        TypeRef(TagArg(), ::std::move(name), binding)
+    TypeRef(Span sp, ::std::string name, unsigned int binding = ~0u):
+        TypeRef(TagArg(), mv$(sp), mv$(name), binding)
     {}
 
     struct TagPath {};
@@ -242,12 +247,6 @@ public:
         return TypeRef(*this);
     }
 
-    //::option<const TypeData::Tuple&> as_tuple() const {
-    //    switch(m_data.tag())
-    //    {
-    //    }
-    //}
-
     const TypeRef& inner_type() const {
         TU_MATCH_DEF(TypeData, (m_data), (e),
         ( throw ::std::runtime_error("Called inner_type on non-wrapper"); ),
@@ -264,11 +263,6 @@ public:
         (Array,   return *e.inner; )
         )
     }
-    //::std::vector<TypeRef>& sub_types() { return m_inner_types; }
-    //const ::std::vector<TypeRef>& sub_types() const { return m_inner_types; }
-    
-    //void add_trait(TypeRef trait) { assert(is_wildcard()); m_inner_types.push_back( ::std::move(trait) ); }
-    //const ::std::vector<TypeRef>& traits() const { assert(is_wildcard()); return m_inner_types; }   
 
     Ordering ord(const TypeRef& x) const;
     bool operator==(const TypeRef& x) const { return ord(x) == OrdEqual; }
