@@ -446,7 +446,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             check_type( ::HIR::TypeRef(::HIR::CoreType::Bool) );
                             ),
                         (Bytes,
-                            // TODO: Check result
+                            // TODO: Check result (could be either &[u8; N] or &[u8])
                             ),
                         (StaticString,
                             check_type( ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::CoreType::Str) );
