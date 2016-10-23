@@ -20,7 +20,6 @@ class NodeVisitor;
 
 class ExprNode
 {
-    TypeRef m_res_type = TypeRef(Span());
     MetaItems   m_attrs;
     Position    m_pos;
 public:
@@ -39,7 +38,6 @@ public:
     }
     MetaItems& attrs() { return m_attrs; }
     
-    TypeRef& get_res_type() { return m_res_type; }
     static ::std::unique_ptr<ExprNode> from_deserialiser(Deserialiser& d);
 };
 typedef ::std::unique_ptr<ExprNode> ExprNodeP;
@@ -497,6 +495,21 @@ struct ExprNode_Cast:
     NODE_METHODS();
 };
 
+// Type annotation (': _')
+struct ExprNode_TypeAnnotation:
+    public ExprNode
+{
+    unique_ptr<ExprNode>    m_value;
+    TypeRef m_type;
+
+    ExprNode_TypeAnnotation(unique_ptr<ExprNode>&& value, TypeRef&& dst_type):
+        m_value( move(value) ),
+        m_type( move(dst_type) )
+    {
+    }
+    NODE_METHODS();
+};
+
 // Binary operation
 struct ExprNode_BinOp:
     public ExprNode
@@ -610,6 +623,7 @@ public:
     NT(ExprNode_Index);
     NT(ExprNode_Deref);
     NT(ExprNode_Cast);
+    NT(ExprNode_TypeAnnotation);
     NT(ExprNode_BinOp);
     NT(ExprNode_UniOp);
     #undef NT
@@ -653,6 +667,7 @@ public:
     NT(ExprNode_Index);
     NT(ExprNode_Deref);
     NT(ExprNode_Cast);
+    NT(ExprNode_TypeAnnotation);
     NT(ExprNode_BinOp);
     NT(ExprNode_UniOp);
     #undef NT

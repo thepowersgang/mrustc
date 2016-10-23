@@ -218,8 +218,15 @@ struct LowerHIR_ExprNode_Visitor:
             break;
         }
     }
-    virtual void visit(::AST::ExprNode_Cast & v) override {
+    virtual void visit(::AST::ExprNode_Cast& v) override {
         m_rv.reset( new ::HIR::ExprNode_Cast( v.span(),
+            LowerHIR_ExprNode_Inner( *v.m_value ),
+            LowerHIR_Type(v.m_type)
+            ) );
+    }
+    virtual void visit(::AST::ExprNode_TypeAnnotation& v) override {
+        // TODO: A proper node?
+        m_rv.reset( new ::HIR::ExprNode_Unsize( v.span(),
             LowerHIR_ExprNode_Inner( *v.m_value ),
             LowerHIR_Type(v.m_type)
             ) );

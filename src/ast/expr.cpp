@@ -325,6 +325,11 @@ NODE(ExprNode_Cast, {
 },{
     return NEWNODE(ExprNode_Cast, m_value->clone(), TypeRef(m_type));
 })
+NODE(ExprNode_TypeAnnotation, {
+    os << "(" << *m_value << ": " << m_type << ")";
+},{
+    return NEWNODE(ExprNode_TypeAnnotation, m_value->clone(), TypeRef(m_type));
+})
 
 NODE(ExprNode_BinOp, {
     os << "(" << *m_left << " ";
@@ -508,6 +513,10 @@ NV(ExprNode_Deref,
     visit(node.m_value);
 })
 NV(ExprNode_Cast,
+{
+    visit(node.m_value);
+})
+NV(ExprNode_TypeAnnotation,
 {
     visit(node.m_value);
 })

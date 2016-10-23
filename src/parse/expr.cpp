@@ -811,7 +811,7 @@ ExprNodeP Parse_Expr12(TokenStream& lex)
     auto rv = Parse_Expr13(lex);
     if(GET_TOK(tok, lex) == TOK_COLON)
     {
-        rv->get_res_type() = Parse_Type(lex);
+        rv = NEWNODE( AST::ExprNode_TypeAnnotation, mv$(rv), Parse_Type(lex) );
     }
     else
     {

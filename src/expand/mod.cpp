@@ -501,6 +501,10 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_value);
         Expand_Type(crate, modstack, this->cur_mod(),  node.m_type);
     }
+    void visit(::AST::ExprNode_TypeAnnotation& node) override {
+        this->visit_nodelete(node, node.m_value);
+        Expand_Type(crate, modstack, this->cur_mod(),  node.m_type);
+    }
     void visit(::AST::ExprNode_BinOp& node) override {
         this->visit_nodelete(node, node.m_left);
         this->visit_nodelete(node, node.m_right);
