@@ -85,7 +85,11 @@ namespace {
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " (mod=" << impl.m_src_module << ")");
             auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
             auto _g = m_resolve.set_impl_generics(impl.m_params);
+            
+            // The implemented trait is always in scope
+            m_traits.push_back( ::std::make_pair( &trait_path, &m_crate.get_trait_by_path(Span(), trait_path)) );
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
+            m_traits.pop_back( );
         }
 
         void visit_expr(::HIR::ExprPtr& expr) override
@@ -335,7 +339,76 @@ namespace {
             }
             return false;
         }
-
+        
+        bool resolve_UfcsUnknown_inherent(const ::HIR::Path& p, ::HIR::Visitor::PathContext pc, ::HIR::Path::Data& pd)
+        {
+            auto& e = pd.as_UfcsUnknown();
+            return m_crate.find_type_impls(*e.type, [&](const auto& t)->const auto& { return t; }, [&](const auto& impl) {
+                DEBUG("- matched inherent impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+                // Search for item in this block
+                switch( pc )
+                {
+                case ::HIR::Visitor::PathContext::VALUE:
+                    if( impl.m_methods.find(e.item) != impl.m_methods.end() ) {
+                    }
+                    else if( impl.m_constants.find(e.item) != impl.m_constants.end() ) {
+                    }
+                    else {
+                        return false;
+                    }
+                    // Found it, just keep going (don't care about details here)
+                    break;
+                case ::HIR::Visitor::PathContext::TRAIT:
+                case ::HIR::Visitor::PathContext::TYPE:
+                    return false;
+                }
+                
+                auto new_data = ::HIR::Path::Data::make_UfcsInherent({ mv$(e.type), mv$(e.item), mv$(e.params)} );
+                pd = mv$(new_data);
+                DEBUG("- Resolved, replace with " << p);
+                return true;
+                });
+        }
+        
+        bool resolve_UfcsUnknown_trait(const ::HIR::Path& p, ::HIR::Visitor::PathContext pc, ::HIR::Path::Data& pd)
+        {
+            auto& e = pd.as_UfcsUnknown();
+            for( const auto& trait_info : m_traits )
+            {
+                const auto& trait = *trait_info.second;
+                
+                DEBUG( *trait_info.first << " " << e.item);
+                switch(pc)
+                {
+                case ::HIR::Visitor::PathContext::VALUE:
+                    if( trait.m_values.find(e.item) == trait.m_values.end() )
+                        continue ;
+                    break;
+                case ::HIR::Visitor::PathContext::TRAIT:
+                case ::HIR::Visitor::PathContext::TYPE:
+                    if( trait.m_types.find(e.item) == trait.m_types.end() )
+                        continue ;
+                    break;
+                }
+                DEBUG("- Trying trait " << *trait_info.first);
+                
+                auto trait_path = ::HIR::GenericPath( *trait_info.first );
+                for(unsigned int i = 0; i < trait.m_params.m_types.size(); i ++ ) {
+                    trait_path.m_params.m_types.push_back( ::HIR::TypeRef() );
+                }
+                
+                // TODO: If there's only one trait with this name, assume it's the correct one.
+                
+                // TODO: Search supertraits
+                // TODO: Should impls be searched first, or item names?
+                // - Item names add complexity, but impls are slower
+                if( this->locate_in_trait_impl_and_set(pc, mv$(trait_path), trait,  pd) ) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
         void visit_path(::HIR::Path& p, ::HIR::Visitor::PathContext pc) override
         {
             static Span sp;
@@ -370,70 +443,21 @@ namespace {
                             return ;
                         }
                     }
-                    ERROR(sp, E0000, "Failed to find bound with '" << e.item << "' for " << *e.type);
-                    return ;
+                    //ERROR(sp, E0000, "Failed to find bound with '" << e.item << "' for " << *e.type);
+                    //return ;
                 )
-                else {
-                    // 1. Search for applicable inherent methods (COMES FIRST!)
-                    if( m_crate.find_type_impls(*e.type, [&](const auto& t)->const auto& { return t; }, [&](const auto& impl) {
-                        DEBUG("- matched inherent impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-                        // Search for item in this block
-                        switch( pc )
-                        {
-                        case ::HIR::Visitor::PathContext::VALUE:
-                            if( impl.m_methods.find(e.item) != impl.m_methods.end() ) {
-                            }
-                            else if( impl.m_constants.find(e.item) != impl.m_constants.end() ) {
-                            }
-                            else {
-                                return false;
-                            }
-                            // Found it, just keep going (don't care about details here)
-                            break;
-                        case ::HIR::Visitor::PathContext::TRAIT:
-                        case ::HIR::Visitor::PathContext::TYPE:
-                            return false;
-                        }
-                        
-                        auto new_data = ::HIR::Path::Data::make_UfcsInherent({ mv$(e.type), mv$(e.item), mv$(e.params)} );
-                        p.m_data = mv$(new_data);
-                        DEBUG("- Resolved, replace with " << p);
-                        return true;
-                        }) ) {
-                        return ;
-                    }
-                    // 2. Search all impls of in-scope traits for this method on this type
-                    for( const auto& trait_info : m_traits )
-                    {
-                        const auto& trait = *trait_info.second;
-                        
-                        switch(pc)
-                        {
-                        case ::HIR::Visitor::PathContext::VALUE:
-                            if( trait.m_values.find(e.item) == trait.m_values.end() )
-                                continue ;
-                            break;
-                        case ::HIR::Visitor::PathContext::TRAIT:
-                        case ::HIR::Visitor::PathContext::TYPE:
-                            if( trait.m_types.find(e.item) == trait.m_types.end() )
-                                continue ;
-                            break;
-                        }
-                        DEBUG("- Trying trait " << *trait_info.first);
-                        
-                        auto trait_path = ::HIR::GenericPath( *trait_info.first );
-                        for(unsigned int i = 0; i < trait.m_params.m_types.size(); i ++ ) {
-                            trait_path.m_params.m_types.push_back( ::HIR::TypeRef() );
-                        }
-                        
-                        // TODO: Search supertraits
-                        // TODO: Should impls be searched first, or item names?
-                        // - Item names add complexity, but impls are slower
-                        if( this->locate_in_trait_impl_and_set(pc, mv$(trait_path), trait,  p.m_data) ) {
-                            return ;
-                        }
-                    }
+
+                // TODO: Control ordering with a flag in UfcsUnknown
+                // 1. Search for applicable inherent methods (COMES FIRST!)
+                if( this->resolve_UfcsUnknown_inherent(p, pc, p.m_data) ) {
+                    return ;
                 }
+                assert(p.m_data.is_UfcsUnknown());
+                // 2. Search all impls of in-scope traits for this method on this type
+                if( this->resolve_UfcsUnknown_trait(p, pc, p.m_data) ) {
+                    return ;
+                }
+                assert(p.m_data.is_UfcsUnknown());
                 
                 // Couldn't find it
                 ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << *e.type << " (in " << p << ")");
