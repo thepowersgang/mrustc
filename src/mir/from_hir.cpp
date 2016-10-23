@@ -348,7 +348,12 @@ namespace {
                 
                 // Result from last node (if it didn't diverge)
                 if( res_valid ) {
-                    m_builder.set_result( node.span(), mv$(res) );
+                    if( node.m_yields_final ) {
+                        m_builder.set_result( node.span(), mv$(res) );
+                    }
+                    else {
+                        m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
+                    }
                 }
             }
             else
