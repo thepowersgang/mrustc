@@ -1885,6 +1885,9 @@ namespace {
             (TraitObject,
                 ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
                 ),
+            (ErasedType,
+                ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
+                ),
             (Array,
                 ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
                 ),
@@ -2820,6 +2823,9 @@ namespace {
                     check_type_resolved_pp(sp, marker.m_params, top_type);
                 }
                 ),
+            (ErasedType,
+                check_type_resolved_path(sp, e.m_origin, top_type);
+                ),
             (Array,
                 this->check_type_resolved(sp, *e.inner, top_type);
                 ),
@@ -3042,6 +3048,9 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
                     equality_typeparams(l_p.m_params, r_p.m_params);
                 }
                 // NOTE: Lifetime is ignored
+                ),
+            (ErasedType,
+                TODO(sp, "ErasedType");
                 ),
             (Array,
                 this->equate_types(sp, *l_e.inner, *r_e.inner);
@@ -4163,6 +4172,10 @@ namespace {
             context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
             return true;
             ),
+        (ErasedType,
+            context.equate_types(sp, ty_dst,  ty_src);
+            return true;
+            ),
         (Array,
             // Raw [T; n] doesn't coerce, only borrows do
             context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
@@ -4238,6 +4251,10 @@ namespace {
             ),
         (TraitObject,
             // TODO: Can bare trait objects coerce?
+            context.equate_types(sp, ty_dst,  ty_src);
+            return true;
+            ),
+        (ErasedType,
             context.equate_types(sp, ty_dst,  ty_src);
             return true;
             ),

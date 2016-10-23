@@ -531,6 +531,9 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
     (TraitObject,
         TODO(sp, "Match trait object with literal?");
         ),
+    (ErasedType,
+        TODO(sp, "Match erased type with literal?");
+        ),
     (Array,
         ASSERT_BUG(sp, lit.is_List(), "Matching array with non-list literal - " << lit);
         const auto& list = lit.as_List();
@@ -925,6 +928,13 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         }
         else {
             ERROR(sp, E0000, "Attempting to match over a trait object");
+        }
+        ),
+    (ErasedType,
+        if( pat.m_data.is_Any() ) {
+        }
+        else {
+            ERROR(sp, E0000, "Attempting to match over an erased type");
         }
         ),
     (Array,
@@ -1360,6 +1370,12 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
     (TraitObject,
         if( !rule.is_Any() ) {
             BUG(sp, "Attempting to match a trait object");
+        }
+        return 1;
+        ),
+    (ErasedType,
+        if( !rule.is_Any() ) {
+            BUG(sp, "Attempting to match an erased type");
         }
         return 1;
         ),
@@ -2747,6 +2763,9 @@ void DecisionTreeGen::get_ty_and_val(
         (TraitObject,
             BUG(sp, "Destructuring a trait object - " << *cur_ty);
             ),
+        (ErasedType,
+            BUG(sp, "Destructuring an erased type - " << *cur_ty);
+            ),
         (Array,
             assert(idx < e.size_val);
             cur_ty = &*e.inner;
@@ -2879,6 +2898,9 @@ void DecisionTreeGen::generate_tree_code(
         ),
     (TraitObject,
         ERROR(sp, E0000, "Attempting to match over a trait object");
+        ),
+    (ErasedType,
+        ERROR(sp, E0000, "Attempting to match over an erased type");
         ),
     (Array,
         // TODO: Slice patterns, sequential comparison/sub-match

@@ -103,6 +103,17 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
             os << "+ '" << e.m_lifetime.name;
         os << ")";
         ),
+    (ErasedType,
+        os << "impl ";
+        for(const auto& tr : e.m_traits) {
+            if( &tr != &e.m_traits[0] )
+                os << "+";
+            os << tr;
+        }
+        if( e.m_lifetime.name != "" )
+            os << "+ '" << e.m_lifetime.name;
+        os << "/*" << e.m_origin << "*/";
+        ),
     (Array,
         os << "[" << *e.inner << "; ";
         if( e.size_val != ~0u )
@@ -225,6 +236,9 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
         }
         return te.m_lifetime == xe.m_lifetime;
         ),
+    (ErasedType,
+        return te.m_origin == xe.m_origin;
+        ),
     (Array,
         if( *te.inner != *xe.inner )
             return false;
@@ -299,28 +313,7 @@ Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
         return ::ord( static_cast<unsigned>(te), static_cast<unsigned>(xe) );
         ),
     (Path,
-        ORD( (unsigned)te.path.m_data.tag(), (unsigned)xe.path.m_data.tag() );
-        TU_MATCH(::HIR::Path::Data, (te.path.m_data, xe.path.m_data), (tpe, xpe),
-        (Generic,
-            return ::ord(tpe, xpe);
-            ),
-        (UfcsInherent,
-            ORD(*tpe.type, *xpe.type);
-            ORD(tpe.item, xpe.item);
-            return ::ord(tpe.params, xpe.params);
-            ),
-        (UfcsKnown,
-            ORD(*tpe.type, *xpe.type);
-            ORD(tpe.trait, xpe.trait);
-            ORD(tpe.item, xpe.item);
-            return ::ord(tpe.params, xpe.params);
-            ),
-        (UfcsUnknown,
-            ORD(*tpe.type, *xpe.type);
-            ORD(tpe.item, xpe.item);
-            return ::ord(tpe.params, xpe.params);
-            )
-        )
+        return ::ord( te.path, xe.path );
         ),
     (Generic,
         ORD(te.name, xe.name);
@@ -333,6 +326,11 @@ Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
         ORD(te.m_markers, xe.m_markers);
         return OrdEqual;
         //return ::ord(te.m_lifetime, xe.m_lifetime);
+        ),
+    (ErasedType,
+        ORD(te.m_origin, xe.m_origin);
+        ORD(te.m_traits, xe.m_traits);
+        return OrdEqual;
         ),
     (Array,
         ORD(*te.inner, *xe.inner);
@@ -412,6 +410,9 @@ bool ::HIR::TypeRef::contains_generics() const
         ),
     (TraitObject,
         TODO(Span(), "TraitObject");
+        ),
+    (ErasedType,
+        TODO(Span(), "ErasedType");
         ),
     (Array,
         return te.inner->contains_generics();
@@ -664,6 +665,9 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         }
         return cmp;
         ),
+    (ErasedType,
+        TODO(sp, "ErasedType - match_test_generics_fuzz - " << v << " -- " << x);
+        ),
     (Array,
         return te.inner->match_test_generics_fuzz( sp, *xe.inner, resolve_placeholder, callback );
         ),
@@ -756,6 +760,17 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             rv.m_markers.push_back( trait.clone() );
         rv.m_lifetime = e.m_lifetime;
         return ::HIR::TypeRef( Data::make_TraitObject( mv$(rv) ) );
+        ),
+    (ErasedType,
+        ::std::vector< ::HIR::TraitPath>    traits;
+        traits.reserve( e.m_traits.size() );
+        for(const auto& trait : e.m_traits)
+            traits.push_back( trait.clone() );
+        return ::HIR::TypeRef( Data::make_ErasedType({
+            e.m_origin.clone(),
+            mv$(traits),
+            e.m_lifetime
+            }) );
         ),
     (Array,
         unsigned int size_val = e.size_val;
@@ -999,6 +1014,9 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                 rv = Compare::Fuzzy;
         }
         return rv;
+        ),
+    (ErasedType,
+        TODO(sp, "ErasedType");
         ),
     (Array,
         if( le.size_val != re.size_val )

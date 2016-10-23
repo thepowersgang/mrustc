@@ -250,6 +250,12 @@ void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
             this->visit_generic_path(::HIR::Visitor::PathContext::TYPE, trait);
         }
         ),
+    (ErasedType,
+        this->visit_path(::HIR::Visitor::PathContext::TYPE, e.m_origin);
+        for(auto& trait : e.m_traits) {
+            this->visit_trait_path(trait);
+        }
+        ),
     (Array,
         this->visit_type( *e.inner );
         //this->visit_expr( e.size );

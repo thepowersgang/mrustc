@@ -706,6 +706,7 @@
         if( e.hrls.size() > 0 )
             TODO(ty.span(), "TraitObjects with HRLS - " << ty);
         ::HIR::TypeRef::Data::Data_TraitObject  v;
+        // TODO: Lifetime
         for(const auto& t : e.traits)
         {
             DEBUG("t = " << t);
@@ -728,6 +729,24 @@
         // TODO: This is possible - &Send is for some reason a valid trait object
         //ASSERT_BUG(ty.span(), v.m_trait.m_path.m_path != ::HIR::SimplePath(), "TraitObject type didn't contain a data trait - " << ty);
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_TraitObject( mv$(v) ) );
+        ),
+    (ErasedType,
+        if( e.hrls.size() > 0 )
+            TODO(ty.span(), "ErasedType with HRLS - " << ty);
+        ASSERT_BUG(ty.span(), e.traits.size() > 0, "ErasedType with no traits");
+        
+        ::std::vector< ::HIR::TraitPath>    traits;
+        for(const auto& t : e.traits)
+        {
+            DEBUG("t = " << t);
+            traits.push_back( LowerHIR_TraitPath(ty.span(), t) );
+        }
+        // Leave `m_origin` until the bind pass
+        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_ErasedType(::HIR::TypeRef::Data::Data_ErasedType {
+            ::HIR::Path(::HIR::SimplePath()),
+            mv$(traits),
+            ::HIR::LifetimeRef()    // TODO: Lifetime ref
+            } ) );
         ),
     (Function,
         ::std::vector< ::HIR::TypeRef>  args;

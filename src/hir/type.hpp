@@ -133,6 +133,11 @@ public:
         ::std::vector< ::HIR::GenericPath > m_markers;
         ::HIR::LifetimeRef  m_lifetime;
         }),
+    (ErasedType, struct {
+        ::HIR::Path m_origin;
+        ::std::vector< ::HIR::TraitPath>    m_traits;
+        ::HIR::LifetimeRef  m_lifetime;
+        }),
     (Array, struct {
         ::std::unique_ptr<TypeRef>  inner;
         ::HIR::ExprPtr size;

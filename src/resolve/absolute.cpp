@@ -1500,6 +1500,13 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
             Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, trait);
         }
         //context.pop_lifetimes();
+        ),
+    (ErasedType,
+        //context.push_lifetimes( e.hrls );
+        for(auto& trait : e.traits) {
+            Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, trait);
+        }
+        //context.pop_lifetimes();
         )
     )
 }

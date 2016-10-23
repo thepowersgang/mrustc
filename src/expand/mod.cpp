@@ -213,6 +213,9 @@ void Expand_Type(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
     (Path,
         ),
     (TraitObject,
+        ),
+    (ErasedType,
+        // TODO: Visit paths.
         )
     )
 }

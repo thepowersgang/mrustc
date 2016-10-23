@@ -96,10 +96,10 @@ TAGGED_UNION(TypeData, None,
     (TraitObject, struct {
         ::std::vector<::std::string>    hrls;
         ::std::vector<AST::Path> traits;
-    //    }),
-    //(ImplTrait, struct {
-    //    ::std::vector<::std::string>    hrls;
-    //    ::std::vector<AST::Path> traits;
+        }),
+    (ErasedType, struct {
+        ::std::vector<::std::string>    hrls;
+        ::std::vector<AST::Path> traits;
         })
     );
 
@@ -112,18 +112,10 @@ public:
     
     virtual ~TypeRef();
     
-    TypeRef(TypeRef&& other) noexcept:
-        m_data( mv$(other.m_data) )
-    {
-        m_span = mv$(other.m_span);
-    }
+    TypeRef(TypeRef&& other) noexcept = default;
+    TypeRef& operator=(TypeRef&& other) = default;
     
     TypeRef(const TypeRef& other);
-    TypeRef& operator=(TypeRef&& other) {
-        m_data = mv$( other.m_data );
-        m_span = mv$( other.m_span );
-        return *this;
-    }
     TypeRef& operator=(const TypeRef& other) {
         m_data = TypeRef(other).m_data;
         return *this;

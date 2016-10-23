@@ -109,6 +109,9 @@ void HMTypeInferrence::check_for_loops()
                     this->check_pathparams(ivars, marker.m_params);
                 }
                 ),
+            (ErasedType,
+                TODO(Span(), "ErasedType");
+                ),
             (Tuple,
                 for(const auto& st : e) {
                     this->check_ty(ivars, st);
@@ -291,6 +294,18 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
         }
         os << ")";
         ),
+    (ErasedType,
+        // TODO: Print correctly (with print_type calls)
+        os << "impl ";
+        for(const auto& tr : e.m_traits) {
+            if( &tr != &e.m_traits[0] )
+                os << "+";
+            os << tr;
+        }
+        if( e.m_lifetime.name != "" )
+            os << "+ '" << e.m_lifetime.name;
+        os << "/*" << e.m_origin << "*/";
+        ),
     (Tuple,
         os << "(";
         for(const auto& st : e) {
@@ -353,6 +368,9 @@ void HMTypeInferrence::expand_ivars(::HIR::TypeRef& type)
         this->expand_ivars_params(e.m_trait.m_path.m_params);
         for(auto& marker : e.m_markers)
             this->expand_ivars_params(marker.m_params);
+        ),
+    (ErasedType,
+        TODO(Span(), "ErasedType");
         ),
     (Array,
         this->expand_ivars(*e.inner);
@@ -430,6 +448,9 @@ void HMTypeInferrence::add_ivars(::HIR::TypeRef& type)
         this->add_ivars_params(e.m_trait.m_path.m_params);
         for(auto& marker : e.m_markers)
             this->add_ivars_params(marker.m_params);
+        ),
+    (ErasedType,
+        BUG(Span(), "ErasedType getting ivars added");
         ),
     (Array,
         add_ivars(*e.inner);
@@ -701,6 +722,9 @@ bool HMTypeInferrence::type_contains_ivars(const ::HIR::TypeRef& ty) const {
                 return true;
         return pathparams_contain_ivars(e.m_trait.m_path.m_params);
         ),
+    (ErasedType,
+        TODO(Span(), "ErasedType");
+        ),
     (Tuple,
         for(const auto& st : e)
             if( type_contains_ivars(st) )
@@ -812,6 +836,9 @@ bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRe
         if( le.m_trait.m_path.m_path != re.m_trait.m_path.m_path )
             return false;
         return pathparams_equal(le.m_trait.m_path.m_params, re.m_trait.m_path.m_params);
+        ),
+    (ErasedType,
+        TODO(Span(), "ErasedType");
         ),
     (Tuple,
         return type_list_equal(*this, le, re);
@@ -1363,6 +1390,29 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
             }
             return false;
         }
+        static bool check_path(const TraitResolution& r, const ::HIR::Path& p) {
+            TU_MATCH(::HIR::Path::Data, (p.m_data), (e2),
+            (Generic,
+                return H::check_pathparams(r, e2.m_params);
+                ),
+            (UfcsInherent,
+                TODO(Span(), "Path - UfcsInherent - " << p);
+                ),
+            (UfcsKnown,
+                if( r.has_associated_type(*e2.type) )
+                    return true;
+                if( H::check_pathparams(r, e2.trait.m_params) )
+                    return true;
+                if( H::check_pathparams(r, e2.params) )
+                    return true;
+                return false;
+                ),
+            (UfcsUnknown,
+                BUG(Span(), "Encountered UfcsUnknown - " << p);
+                )
+            )
+            throw "";
+        }
     };
     //TRACE_FUNCTION_F(input);
     TU_MATCH(::HIR::TypeRef::Data, (input.m_data), (e),
@@ -1380,23 +1430,10 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
         return false;
         ),
     (Path,
-        TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
-        (Generic,
-            return H::check_pathparams(*this, e2.m_params);
-            ),
-        (UfcsInherent,
-            TODO(Span(), "Path - UfcsInherent - " << e.path);
-            ),
-        (UfcsKnown,
-            // - Only try resolving if the binding isn't known
-            if( !e.binding.is_Unbound() )
-                return false;
+        // Unbounded UfcsKnown returns true (bound is false)
+        if( e.path.m_data.is_UfcsKnown() && e.binding.is_Unbound() )
             return true;
-            ),
-        (UfcsUnknown,
-            BUG(Span(), "Encountered UfcsUnknown");
-            )
-        )
+        return H::check_path(*this, e.path);
         ),
     (Generic,
         return false;
@@ -1407,6 +1444,15 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
             return true;
         for(const auto& m : e.m_markers) {
             if( H::check_pathparams(*this, m.m_params) )
+                return true;
+        }
+        return false;
+        ),
+    (ErasedType,
+        if( H::check_path(*this, e.m_origin) )
+            return true;
+        for(const auto& m : e.m_traits) {
+            if( H::check_pathparams(*this, m.m_path.m_params) )
                 return true;
         }
         return false;
@@ -1486,6 +1532,9 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
     (Generic,
         ),
     (TraitObject,
+        // Recurse?
+        ),
+    (ErasedType,
         // Recurse?
         ),
     (Array,

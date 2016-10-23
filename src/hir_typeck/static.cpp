@@ -517,6 +517,9 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
     (TraitObject,
         // Recurse?
         ),
+    (ErasedType,
+        // Recurse?
+        ),
     (Array,
         expand_associated_types_inner(sp, *e.inner);
         ),
@@ -906,8 +909,11 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
         return false;
         ),
     (TraitObject,
-        // [T] isn't Sized, so isn't Copy ether
+        // (Trait) isn't Sized, so isn't Copy ether
         return false;
+        ),
+    (ErasedType,
+        TODO(Span(), "ErasedType - It's Copy if Copy is a trait in it");
         ),
     (Tuple,
         for(const auto& ty : e)

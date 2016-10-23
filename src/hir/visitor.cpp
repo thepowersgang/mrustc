@@ -295,6 +295,12 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
             this->visit_generic_path(trait, ::HIR::Visitor::PathContext::TYPE);
         }
         ),
+    (ErasedType,
+        this->visit_path(e.m_origin, ::HIR::Visitor::PathContext::TYPE);
+        for(auto& trait : e.m_traits) {
+            this->visit_trait_path(trait);
+        }
+        ),
     (Array,
         this->visit_type( *e.inner );
         this->visit_expr( e.size );

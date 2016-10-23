@@ -118,6 +118,7 @@ TypeRef::TypeRef(const TypeRef& other)
     _COPY(Generic)
     _COPY(Path)
     _COPY(TraitObject)
+    _COPY(ErasedType)
     #undef _COPY
     #undef _CLONE
     }
@@ -171,6 +172,9 @@ Ordering TypeRef::ord(const TypeRef& x) const
         return ent.path.ord( x_ent.path );
         ),
     (TraitObject,
+        return ::ord(ent.traits, x_ent.traits);
+        ),
+    (ErasedType,
         return ::ord(ent.traits, x_ent.traits);
         )
     )
@@ -248,6 +252,15 @@ Ordering TypeRef::ord(const TypeRef& x) const
             os << it;
         }
         os << ")";
+        )
+    _(ErasedType,
+        os << "impl ";
+        for( const auto& it : ent.traits ) {
+            if( &it != &ent.traits.front() )
+                os << "+";
+            os << it;
+        }
+        os << "";
         )
     }
     #undef _

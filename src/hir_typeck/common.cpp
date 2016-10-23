@@ -70,6 +70,14 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
                 return true;
         return false;
         ),
+    (ErasedType,
+        if( monomorphise_path_needed(e.m_origin) )
+            return true;
+        for(const auto& trait : e.m_traits)
+            if( monomorphise_traitpath_needed(trait) )
+                return true;
+        return false;
+        ),
     (Array,
         return monomorphise_type_needed(*e.inner);
         ),
@@ -132,6 +140,33 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
     
     return rv;
 }
+::HIR::Path monomorphise_path_with(const Span& sp, const ::HIR::Path& tpl, t_cb_generic callback, bool allow_infer)
+{
+    TU_MATCH(::HIR::Path::Data, (tpl.m_data), (e2),
+    (Generic,
+        return ::HIR::Path( monomorphise_genericpath_with(sp, e2, callback, allow_infer) );
+        ),
+    (UfcsKnown,
+        return ::HIR::Path::Data::make_UfcsKnown({
+            box$( monomorphise_type_with_inner(sp, *e2.type, callback, allow_infer) ),
+            monomorphise_genericpath_with(sp, e2.trait, callback, allow_infer),
+            e2.item,
+            monomorphise_path_params_with(sp, e2.params, callback, allow_infer)
+            });
+        ),
+    (UfcsUnknown,
+        return ::HIR::Path::Data::make_UfcsUnknown({
+            box$( monomorphise_type_with_inner(sp, *e2.type, callback, allow_infer) ),
+            e2.item,
+            monomorphise_path_params_with(sp, e2.params, callback, allow_infer)
+            });
+        ),
+    (UfcsInherent,
+        TODO(sp, "UfcsInherent - " << tpl);
+        )
+    )
+    throw "";
+}
 ::HIR::TypeRef monomorphise_type_with_inner(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer)
 {
     ::HIR::TypeRef  rv;
@@ -151,32 +186,14 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         rv = ::HIR::TypeRef(e);
         ),
     (Path,
-        TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
-        (Generic,
-            rv = ::HIR::TypeRef( ::HIR::TypeRef::Data::Data_Path {
-                    monomorphise_genericpath_with(sp, e2, callback, allow_infer),
-                    e.binding.clone()
-                    } );
-            ),
-        (UfcsKnown,
-            rv = ::HIR::TypeRef( ::HIR::Path::Data::make_UfcsKnown({
-                box$( monomorphise_type_with_inner(sp, *e2.type, callback, allow_infer) ),
-                monomorphise_genericpath_with(sp, e2.trait, callback, allow_infer),
-                e2.item,
-                monomorphise_path_params_with(sp, e2.params, callback, allow_infer)
-                }) );
-            ),
-        (UfcsUnknown,
-            rv = ::HIR::TypeRef( ::HIR::Path::Data::make_UfcsUnknown({
-                box$( monomorphise_type_with_inner(sp, *e2.type, callback, allow_infer) ),
-                e2.item,
-                monomorphise_path_params_with(sp, e2.params, callback, allow_infer)
-                }) );
-            ),
-        (UfcsInherent,
-            TODO(sp, "UfcsInherent - " << tpl);
-            )
-        )
+        rv = ::HIR::TypeRef( ::HIR::TypeRef::Data::Data_Path {
+            monomorphise_path_with(sp, e.path, callback, allow_infer),
+            e.binding.clone()
+            } );
+        // If the input binding was Opaque, clear it back to Unbound
+        if( e.binding.is_Opaque() ) {
+            rv.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding();
+        }
         ),
     (Generic,
         rv = callback(tpl).clone();
@@ -191,6 +208,20 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         }
         to.m_lifetime = e.m_lifetime;
         rv = ::HIR::TypeRef( mv$(to) );
+        ),
+    (ErasedType,
+        auto origin = monomorphise_path_with(sp, e.m_origin, callback, allow_infer);
+        
+        ::std::vector< ::HIR::TraitPath>    traits;
+        traits.reserve( e.m_traits.size() );
+        for(const auto& trait : e.m_traits)
+            traits.push_back( monomorphise_traitpath_with(sp, trait, callback, allow_infer) );
+        
+        rv = ::HIR::TypeRef( ::HIR::TypeRef::Data::Data_ErasedType {
+            mv$(origin),
+            mv$(traits),
+            e.m_lifetime
+            } );
         ),
     (Array,
         if( e.size_val == ~0u ) {

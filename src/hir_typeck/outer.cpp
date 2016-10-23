@@ -166,6 +166,9 @@ namespace {
                 // NOTE: Can't mention Self anywhere
                 TODO(sp, "update_self_type - TraitObject");
                 ),
+            (ErasedType,
+                TODO(sp, "update_self_type - ErasedType");
+                ),
             (Tuple,
                 for(auto& sty : e)
                     update_self_type(sp, sty);

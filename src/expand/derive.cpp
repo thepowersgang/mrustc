@@ -198,6 +198,9 @@ struct Deriver
             ),
         (TraitObject,
             // TODO: Should this be recursed?
+            ),
+        (ErasedType,
+            // TODO: Should this be recursed?
             )
         )
     }

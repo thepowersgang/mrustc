@@ -356,3 +356,34 @@ namespace {
     throw "";
 }
 
+Ordering HIR::Path::ord(const ::HIR::Path& x) const
+{
+    ORD( (unsigned)m_data.tag(), (unsigned)x.m_data.tag() );
+    TU_MATCH(::HIR::Path::Data, (this->m_data, x.m_data), (tpe, xpe),
+    (Generic,
+        return ::ord(tpe, xpe);
+        ),
+    (UfcsInherent,
+        ORD(*tpe.type, *xpe.type);
+        ORD(tpe.item, xpe.item);
+        return ::ord(tpe.params, xpe.params);
+        ),
+    (UfcsKnown,
+        ORD(*tpe.type, *xpe.type);
+        ORD(tpe.trait, xpe.trait);
+        ORD(tpe.item, xpe.item);
+        return ::ord(tpe.params, xpe.params);
+        ),
+    (UfcsUnknown,
+        ORD(*tpe.type, *xpe.type);
+        ORD(tpe.item, xpe.item);
+        return ::ord(tpe.params, xpe.params);
+        )
+    )
+    throw "";
+}
+
+bool ::HIR::Path::operator==(const Path& x) const {
+    return this->ord(x) == ::OrdEqual;
+}
+

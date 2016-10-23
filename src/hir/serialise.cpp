@@ -89,6 +89,9 @@ namespace {
                     serialise_genericpath(m);
                 //write_string(e.lifetime); // TODO: Need a better type
                 ),
+            (ErasedType,
+                TODO(Span(), "ErasedType");
+                ),
             (Array,
                 assert(e.size_val != ~0u);
                 serialise_type(*e.inner);

@@ -195,6 +195,11 @@ public:
     Path clone() const;
     Compare compare_with_placeholders(const Span& sp, const Path& x, t_cb_resolve_type resolve_placeholder) const;
     
+    Ordering ord(const Path& x) const;
+    
+    bool operator==(const Path& x) const;
+    bool operator!=(const Path& x) const { return !(*this == x); }
+    
     friend ::std::ostream& operator<<(::std::ostream& os, const Path& x);
 };
 

@@ -131,6 +131,9 @@ namespace {
             }
             return true;
             ),
+        (ErasedType,
+            throw "Unexpected ErasedType in matches_type_int";
+            ),
         (Array,
             if( ! matches_type_int(params, *le.inner, *re.inner, ty_res, expand_generic) )
                 return false;
@@ -300,6 +303,9 @@ namespace {
             ),
         (TraitObject,
             TODO(sp, "TraitObject - " << left);
+            ),
+        (ErasedType,
+            TODO(sp, "ErasedType - " << left);
             ),
         (Function,
             TU_IFLET(::HIR::TypeRef::Data, right.m_data, Function, re,
