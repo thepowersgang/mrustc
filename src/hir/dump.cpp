@@ -306,6 +306,9 @@ namespace {
                     if( &sn != &node.m_nodes.back() ) {
                         m_os << ";\n";
                     }
+                    else if( !node.m_yields_final ) {
+                        m_os << ";\n";
+                    }
                     else {
                         m_os << "\n";
                     }
@@ -389,6 +392,9 @@ namespace {
             {
                 m_os << " else ";
                 if( NODE_IS(node.m_false, _Block) ) {
+                    this->visit_node_ptr(node.m_false);
+                }
+                else if( NODE_IS(node.m_false, _If) ) {
                     this->visit_node_ptr(node.m_false);
                 }
                 else {

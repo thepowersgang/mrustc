@@ -63,6 +63,8 @@ public:
             else
                 AST::NodeVisitor::visit(child);
         }
+        if( !n.m_yields_final_value )
+            m_os << ";";
         m_os << "\n";
         dec_indent();
         m_os << indent() << "}";

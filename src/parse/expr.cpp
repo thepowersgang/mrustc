@@ -26,7 +26,7 @@ static inline ExprNodeP mk_exprnodep(const TokenStream& lex, AST::ExprNode* en){
 //ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe=false);    // common.hpp
 //ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST::Module>& local_mod, bool& add_silence_if_end);
 //ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence);
-ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool *add_silence);
+ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool& has_semicolon);
 //ExprNodeP Parse_Stmt(TokenStream& lex);   // common.hpp
 ExprNodeP Parse_Stmt_Let(TokenStream& lex);
 ExprNodeP Parse_Expr0(TokenStream& lex);
@@ -81,7 +81,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
             // Set to TRUE if there was no semicolon after a statement
             if( LOOK_AHEAD(lex) == TOK_BRACE_CLOSE && add_silence_if_end )
             {
-                DEBUG("expect_end == false, end of block");
+                DEBUG("End of block, and add_silence_if_end == true - doesn't yeild");
                 yields_final_value = false;
                 // Since the next token is TOK_BRACE_CLOSE, the loop will terminate
             }
@@ -235,7 +235,7 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
             
             if( lex.lookahead(0) == TOK_DOT || lex.lookahead(0) == TOK_QMARK ) {
                 lex.putback( Token(Token::TagTakeIP(), InterpolatedFragment(InterpolatedFragment::EXPR, ret.release())) );
-                return Parse_ExprBlockLine_Stmt(lex, add_silence);
+                return Parse_ExprBlockLine_Stmt(lex, *add_silence);
             }
             return ret;
         
@@ -263,12 +263,12 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
         // Fall through to the statement code
         default:
             PUTBACK(tok, lex);
-            return Parse_ExprBlockLine_Stmt(lex, add_silence);
+            return Parse_ExprBlockLine_Stmt(lex, *add_silence);
         }
     }
 }
 
-ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool *add_silence)
+ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool& has_semicolon)
 {
     Token tok;
     auto ret = Parse_Stmt(lex);
@@ -283,7 +283,7 @@ ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool *add_silence)
         PUTBACK(tok, lex);
     }
     else {
-        *add_silence = true;
+        has_semicolon = true;
     }
     return ret;
 }
