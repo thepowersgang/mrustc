@@ -415,6 +415,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                                 case ::HIR::CoreType::U32:
                                 case ::HIR::CoreType::U64:
                                 case ::HIR::CoreType::Usize:
+                                case ::HIR::CoreType::Char:
                                     good = true;
                                     break;
                                 default:
@@ -427,7 +428,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             ),
                         (Float,
                             bool good = false;
-                            if( !dst_ty.m_data.is_Primitive() ) {
+                            if( dst_ty.m_data.is_Primitive() ) {
                                 switch( dst_ty.m_data.as_Primitive() ) {
                                 case ::HIR::CoreType::F32:
                                 case ::HIR::CoreType::F64:
@@ -599,11 +600,15 @@ namespace {
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
             auto _ = this->m_resolve.set_item_generics(item.m_params);
+            
+            // TODO: Use a different type depding on repr()
+            auto enum_type = ::HIR::TypeRef(::HIR::CoreType::Isize);
+            
             for(auto& var : item.m_variants)
             {
                 TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
                     // TODO: Get the repr type
-                    MIR_Validate(m_resolve, p + var.first, *e.expr.m_mir, {}, ::HIR::TypeRef(::HIR::CoreType::Usize));
+                    MIR_Validate(m_resolve, p + var.first, *e.expr.m_mir, {}, enum_type);
                 )
             }
         }
