@@ -415,42 +415,54 @@ bool StaticTraitResolve::find_impl__check_crate(
                     ::HIR::GenericPath  aty_src_trait;
                     trait_contains_type(sp, b_tp_mono.m_path, *e.trait.m_trait_ptr, aty_name, aty_src_trait);
                     
-                    auto rv = this->find_impl(sp, aty_src_trait.m_path, aty_src_trait.m_params, b_ty_mono, [&](const auto& impl) {
-                        ::HIR::TypeRef have = impl.get_type(aty_name.c_str());
-                        
-                        //auto cmp = have .match_test_generics_fuzz(sp, exp, cb_ident, cb_match);
-                        auto cmp = exp .match_test_generics_fuzz(sp, have, cb_ident, cb_match);
-                        ASSERT_BUG(sp, cmp == ::HIR::Compare::Equal, "Assoc ty " << aty_name << " mismatch, " << have << " != des " << exp);
-                        return true;
-                        });
+                    bool rv = false;
+                    if( b_ty_mono.m_data.is_Generic() && (b_ty_mono.m_data.as_Generic().binding >> 8) == 2 ) {
+                        rv = true;
+                    }
+                    else {
+                        rv = this->find_impl(sp, aty_src_trait.m_path, aty_src_trait.m_params, b_ty_mono, [&](const auto& impl) {
+                            ::HIR::TypeRef have = impl.get_type(aty_name.c_str());
+                            
+                            //auto cmp = have .match_test_generics_fuzz(sp, exp, cb_ident, cb_match);
+                            auto cmp = exp .match_test_generics_fuzz(sp, have, cb_ident, cb_match);
+                            ASSERT_BUG(sp, cmp == ::HIR::Compare::Equal, "Assoc ty " << aty_name << " mismatch, " << have << " != des " << exp);
+                            return true;
+                            });
+                    }
                     if( !rv ) {
-                        DEBUG("> Fail - " << b_ty_mono << ": " << aty_src_trait);
+                        DEBUG("> Fail (assoc) - " << b_ty_mono << " : " << aty_src_trait);
                         return false;
                     }
                 }
             }
             
-            auto rv = this->find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const auto& impl) {
-                
-                #if 0
-                for(const auto& assoc_bound : b_tp_mono.m_type_bounds) {
-                    const char* name = assoc_bound.first.c_str();
-                    const ::HIR::TypeRef& exp = assoc_bound.second;
-                    ::HIR::TypeRef have = impl.get_type(name);
-                    // TODO: Returning `_` means unset associated type, should that still be compared?
-                    if( have != ::HIR::TypeRef() )
-                    {
-                        auto cmp = have .match_test_generics_fuzz(sp, exp, cb_ident, cb_match);
-                        ASSERT_BUG(sp, cmp == ::HIR::Compare::Equal, "Assoc ty " << name << " mismatch, " << have << " != des " << exp);
+            bool rv = false;
+            if( b_ty_mono.m_data.is_Generic() && (b_ty_mono.m_data.as_Generic().binding >> 8) == 2 ) {
+                rv = true;
+            }
+            else {
+                rv = this->find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const auto& impl) {
+                    
+                    #if 0
+                    for(const auto& assoc_bound : b_tp_mono.m_type_bounds) {
+                        const char* name = assoc_bound.first.c_str();
+                        const ::HIR::TypeRef& exp = assoc_bound.second;
+                        ::HIR::TypeRef have = impl.get_type(name);
+                        // TODO: Returning `_` means unset associated type, should that still be compared?
+                        if( have != ::HIR::TypeRef() )
+                        {
+                            auto cmp = have .match_test_generics_fuzz(sp, exp, cb_ident, cb_match);
+                            ASSERT_BUG(sp, cmp == ::HIR::Compare::Equal, "Assoc ty " << name << " mismatch, " << have << " != des " << exp);
+                        }
+                        else
+                        {
+                            DEBUG("Assoc `" << name << "` unbound, can't compare with " << exp);
+                        }
                     }
-                    else
-                    {
-                        DEBUG("Assoc `" << name << "` unbound, can't compare with " << exp);
-                    }
-                }
-                #endif
-                return true;
-                });
+                    #endif
+                    return true;
+                    });
+            }
             if( !rv ) {
                 DEBUG("> Fail - " << b_ty_mono << ": " << b_tp_mono);
                 return false;
