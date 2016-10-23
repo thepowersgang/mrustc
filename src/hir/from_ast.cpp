@@ -703,8 +703,8 @@
         }
         ),
     (TraitObject,
-        if( e.hrls.size() > 0 )
-            TODO(ty.span(), "TraitObjects with HRLS - " << ty);
+        //if( e.hrls.size() > 0 )
+        //    TODO(ty.span(), "TraitObjects with HRLS - " << ty);
         ::HIR::TypeRef::Data::Data_TraitObject  v;
         // TODO: Lifetime
         for(const auto& t : e.traits)
@@ -726,13 +726,11 @@
                 v.m_trait = LowerHIR_TraitPath(ty.span(), t);
             }
         }
-        // TODO: This is possible - &Send is for some reason a valid trait object
-        //ASSERT_BUG(ty.span(), v.m_trait.m_path.m_path != ::HIR::SimplePath(), "TraitObject type didn't contain a data trait - " << ty);
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_TraitObject( mv$(v) ) );
         ),
     (ErasedType,
-        if( e.hrls.size() > 0 )
-            TODO(ty.span(), "ErasedType with HRLS - " << ty);
+        //if( e.hrls.size() > 0 )
+        //    TODO(ty.span(), "ErasedType with HRLS - " << ty);
         ASSERT_BUG(ty.span(), e.traits.size() > 0, "ErasedType with no traits");
         
         ::std::vector< ::HIR::TraitPath>    traits;
