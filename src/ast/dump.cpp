@@ -2,12 +2,12 @@
  * MRustC - Mutabah's Rust Compiler
  * - By John Hodge (Mutabah/thePowersGang)
  * 
- * dump_as_rust.cpp
+ * ast/dump.cpp
  * - Dumps the AST of a crate as rust code (annotated)
  */
-#include "ast/crate.hpp"
-#include "ast/ast.hpp"
-#include "ast/expr.hpp"
+#include <ast/crate.hpp>
+#include <ast/ast.hpp>
+#include <ast/expr.hpp>
 #include <main_bindings.hpp>
 
 #include <cpp_unpack.h>
