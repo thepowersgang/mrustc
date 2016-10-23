@@ -2750,9 +2750,11 @@ void DecisionTreeGen::get_ty_and_val(
         (Array,
             assert(idx < e.size_val);
             cur_ty = &*e.inner;
+            lval = ::MIR::LValue::make_Field({ box$(lval), idx });
             ),
         (Slice,
             cur_ty = &*e.inner;
+            lval = ::MIR::LValue::make_Field({ box$(lval), idx });
             ),
         (Borrow,
             ASSERT_BUG(sp, idx == FIELD_DEREF, "Destructure of borrow doesn't correspond to a deref in the path");
@@ -3317,12 +3319,12 @@ void DecisionTreeGen::generate_branches_Slice(
     // - Binary search
     // - Sequential comparisons
     
-    auto val_len = m_builder.lvalue_or_temp(sp, ty, ::MIR::RValue::make_DstMeta({ val.clone() }));
+    auto val_len = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ val.clone() }));
     
     // TODO: Binary search instead.
     for( const auto& branch : branches.fixed_arms )
     {
-        auto val_des = m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(static_cast<uint64_t>(branch.first)));
+        auto val_des = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::Constant(static_cast<uint64_t>(branch.first)));
         
         // Special case - final just does equality
         if( &branch == &branches.fixed_arms.back() )
