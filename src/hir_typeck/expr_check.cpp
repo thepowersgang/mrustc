@@ -1002,9 +1002,10 @@ namespace {
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
                 this->visit_type( *e.inner );
                 DEBUG("Array size " << ty);
-                t_args  tmp;
                 if( e.size ) {
-                    ExprVisitor_Validate    ev(m_resolve, {}, ::HIR::TypeRef(::HIR::CoreType::Usize));
+                    t_args  tmp;
+                    auto ty_usize = ::HIR::TypeRef(::HIR::CoreType::Usize);
+                    ExprVisitor_Validate    ev(m_resolve, tmp, ty_usize);
                     ev.visit_root( *e.size );
                 }
             )
