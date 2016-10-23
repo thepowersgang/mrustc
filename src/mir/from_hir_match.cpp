@@ -227,6 +227,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     
     // TODO: Detect if a rule is ordering-dependent. In this case we currently have to fall back on the simple match code
     // - A way would be to search for `_` rules with non _ rules following. Would false-positive in some cases, but shouldn't false negative
+    // TODO: Merge equal rulesets if there's one with no condition.
 
     if( fall_back_on_simple ) {
         MIR_LowerHIR_Match_Simple( builder, conv, node, mv$(match_val), mv$(arm_rules), mv$(arm_code), first_cmp_block );
@@ -1425,7 +1426,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 
                 auto succ_bb = builder.new_bb_unlinked();
                 
-                auto test_lval = builder.lvalue_or_temp(sp, *te.inner, ::MIR::RValue(mv$(cloned_val)));
+                auto test_lval = builder.lvalue_or_temp(sp, ty.clone(), ::MIR::RValue(mv$(cloned_val)));
                 auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
                 builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
                 builder.set_cur_block(succ_bb);
