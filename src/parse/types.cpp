@@ -15,6 +15,7 @@
 TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list);
 TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls = {});
 TypeRef Parse_Type_Path(TokenStream& lex, ::std::vector<::std::string> hrls, bool allow_trait_list);
+TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list);
 
 // === CODE ===
 TypeRef Parse_Type(TokenStream& lex, bool allow_trait_list)
@@ -53,6 +54,9 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
     case TOK_RWORD_FN:
         PUTBACK(tok, lex);
         return Parse_Type_Fn(lex);
+    
+    case TOK_RWORD_IMPL:
+        return Parse_Type_ErasedType(lex, allow_trait_list);
     
     // '<' - An associated type cast
     case TOK_LT:
@@ -292,5 +296,26 @@ TypeRef Parse_Type_Path(TokenStream& lex, ::std::vector<::std::string> hrls, boo
             return TypeRef(TypeRef::TagPath(), lex.end_span(ps), traits.at(0));
         }
     }
+}
+TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list)
+{
+    Token   tok;
+
+    auto ps = lex.start_span();
+    ::std::vector<AST::Path> traits;
+    ::std::vector< ::std::string>   lifetimes;
+    do {
+        if( LOOK_AHEAD(lex) == TOK_LIFETIME ) {
+            GET_TOK(tok, lex);
+            lifetimes.push_back( tok.str() );
+        }
+        else
+            traits.push_back( Parse_Path(lex, PATH_GENERIC_TYPE) );
+    } while( GET_TOK(tok, lex) == TOK_PLUS );
+    PUTBACK(tok, lex);
+    
+    if( lifetimes.size() )
+        DEBUG("TODO: Lifetime bounds on erased types");
+    return TypeRef(lex.end_span(ps), TypeData::make_TraitObject({ {}, mv$(traits) }));
 }
 
