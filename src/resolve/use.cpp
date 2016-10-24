@@ -82,7 +82,7 @@ void Resolve_Use(::AST::Crate& crate)
 
 void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path path, slice< const ::AST::Module* > parent_modules)
 {
-    TRACE_FUNCTION_F("path = " << path << ", mod.path() = " << mod.path());
+    //TRACE_FUNCTION_F("path = " << path << ", mod.path() = " << mod.path());
     for(auto& use_stmt : mod.items())
     {
         if( ! use_stmt.data.is_Use() )
@@ -376,9 +376,20 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             const auto* binding = &imp_data.path.binding();
             if( binding->is_Unbound() ) {
                 DEBUG("Temp resolving wildcard " << imp_data);
-                // TODO: Handle possibility of recursion
-                binding_ = Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_data.path), parent_modules);
-                binding = &binding_;
+                // Handle possibility of recursion
+                static ::std::vector<const ::AST::UseStmt*>    resolve_stack_ptrs;
+                if( ::std::find(resolve_stack_ptrs.begin(), resolve_stack_ptrs.end(), &imp_data) == resolve_stack_ptrs.end() )
+                {
+                    resolve_stack_ptrs.push_back( &imp_data );
+                    binding_ = Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_data.path), parent_modules);
+                    // *waves hand* I'm not evil.
+                    const_cast< ::AST::PathBinding&>( imp_data.path.binding() ) = binding_.clone();
+                    binding = &binding_;
+                    resolve_stack_ptrs.pop_back();
+                }
+                else {
+                    continue ;
+                }
             }
             else {
                 //out_path = imp_data.path;
@@ -386,12 +397,12 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             
             TU_MATCH_DEF(::AST::PathBinding, (*binding), (e),
             (
-                BUG(sp2, "Wildcard import expanded to an invalid item class");
+                BUG(sp2, "Wildcard import expanded to an invalid item class - " << binding->tag_str());
                 ),
             (Module,
                 auto allow_inner = (allow == Lookup::Any ? Lookup::AnyOpt : allow);
                 assert(e.module_);
-                // TODO: Prevent infinite recursion
+                // TODO: Prevent infinite recursion?
                 auto rv = Resolve_Use_GetBinding_Mod(span, crate, *e.module_, des_item_name, {}, allow_inner);
                 if( ! rv.is_Unbound() ) {
                     return mv$(rv);
@@ -572,6 +583,7 @@ namespace {
 
 ::AST::PathBinding Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, slice< const ::AST::Module* > parent_modules, Lookup allow)
 {
+    TRACE_FUNCTION_F(path);
     //::AST::Path rv;
     
     // If the path is directly referring to an external crate - call __ext
