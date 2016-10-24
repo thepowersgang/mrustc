@@ -707,7 +707,9 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
         auto attrs = mv$(i.data.attrs);
         Expand_Attrs(attrs, AttrStage::Pre,  crate, path, mod, i.data);
         
-        TU_MATCH(::AST::Item, (i.data), (e),
+        auto dat = mv$(i.data);
+        
+        TU_MATCH(::AST::Item, (dat), (e),
         (None,
             // Skip, nothing
             ),
@@ -727,7 +729,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 DEBUG("-- Parsing as mod items");
                 Parse_ModRoot_Items(*ttl, mod);
             }
-            mod.items()[idx].data.as_MacroInv() = mv$(mi_owned);
+            dat.as_MacroInv() = mv$(mi_owned);
             ),
         (Use,
             // No inner expand.
@@ -743,9 +745,15 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             ),
         (Impl,
             Expand_Impl(crate, modstack, modpath, mod,  e);
+            if( e.def().type().is_wildcard() ) {
+                dat = AST::Item();
+            }
             ),
         (NegImpl,
             Expand_ImplDef(crate, modstack, modpath, mod,  e);
+            if( e.type().is_wildcard() ) {
+                dat = AST::Item();
+            }
             ),
         (Module,
             LList<const AST::Module*>   sub_modstack(&modstack, &e);
@@ -862,47 +870,21 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             Expand_Expr(crate, modstack, e.value());
             )
         )
+        Expand_Attrs(attrs, AttrStage::Post,  crate, path, mod, dat);
         
-        Expand_Attrs(attrs, AttrStage::Post,  crate, path, mod, i.data);
-        
-        // TODO: When would this _not_ be empty?
-        auto& i2 = mod.items()[idx];
-        if( i2.data.attrs.m_items.size() == 0 )
-            i2.data.attrs = mv$(attrs);
+        {
+            
+            auto& i = mod.items()[idx];
+            if( i.data.tag() == ::AST::Item::TAGDEAD ) {
+                i.data = mv$(dat);
+            }
+            // TODO: When would this _not_ be empty?
+            if( i.data.attrs.m_items.size() == 0 )
+                i.data.attrs = mv$(attrs);
+        }
     }
     
     // IGNORE m_anon_modules, handled as part of expressions
-    
-    /*
-    DEBUG("Impls");
-    for( auto it = mod.impls().begin(); it != mod.impls().end(); )
-    {
-        DEBUG("- " << *it);
-        Expand_Impl(crate, modstack, modpath, mod,  *it);
-        
-        if( it->def().type().is_wildcard() ) {
-            DEBUG("- Deleted");
-            it = mod.impls().erase( it );
-        }
-        else
-            ++ it;
-    }
-    
-    DEBUG("Negative Impls");
-    for( auto it = mod.neg_impls().begin(); it != mod.neg_impls().end(); )
-    {
-        DEBUG("- " << *it);
-        
-        Expand_ImplDef(crate, modstack, modpath, mod,  *it);
-        
-        if( it->type().is_wildcard() ) {
-            DEBUG("- Deleted");
-            it = mod.neg_impls().erase( it );
-        }
-        else
-            ++ it;
-    }
-    */
     
     for( const auto& mi: mod.macro_imports_res() )
         DEBUG("- Imports '" << mi.name << "'");
