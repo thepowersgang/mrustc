@@ -383,22 +383,21 @@ SimplePatEnt MacroPatternStream::next()
                 return emit_loop_start(*parent_pat);
             }
             else {
-                // TODO: What if the next token after the end of the loop is the separator?
-                // - Need to consume a bunch before deciding to commit to a path
+                // If the next token is the same as the separator emit: Expect(separator), ShouldEnter
+
                 auto i = m_pos[ m_pos.size() - 2 ] + 1;
                 if( i < parent_ents->size() )
                 {
                     DEBUG("sep = " << parent_pat->tok << ", next = " << parent_ents->at(i) << ", start = " << ents->at(0));
-                    if( parent_ents->at(i).type == MacroPatEnt::PAT_TOKEN && parent_pat->tok == parent_ents->at(i).tok && ents->at(0).type == MacroPatEnt::PAT_TOKEN )
+                    if( parent_ents->at(i).type == MacroPatEnt::PAT_TOKEN && parent_pat->tok == parent_ents->at(i).tok )
                     {
                         DEBUG("MAGIC: Reverse conditions for case where sep==next");
                         //  > Mark to skip the next token after the end of the loop
                         m_skip_count = 1;
-                        // - Yeild `EXPECT sep` then `IF NOT start BREAK`
-                        return emit_seq(
-                            SimplePatEnt::make_ExpectTok( parent_pat->tok.clone() ),
-                            SimplePatEnt::make_IfTok({ false, ents->at(0).tok.clone() })
-                            );
+                        // - Yeild `EXPECT sep` then the entry condition of this loop
+                        auto pat = emit_loop_start(*parent_pat);
+                        m_stack.push_back( mv$(pat) );
+                        return SimplePatEnt::make_ExpectTok( parent_pat->tok.clone() );
                     }
                 }
                 // - Yeild `IF NOT sep BREAK` and `EXPECT sep`
@@ -416,6 +415,39 @@ SimplePatEnt MacroPatternStream::next()
         }
     }
 }
+
+namespace {
+    void get_loop_entry_pats(const MacroPatEnt& pat,  ::std::vector<const MacroPatEnt*>& entry_pats)
+    {
+        assert( pat.type == MacroPatEnt::PAT_LOOP );
+        
+        // If this pattern is a loop, get the entry concrete patterns for it
+        // - Otherwise, just 
+        unsigned int i = 0;
+        while( i < pat.subpats.size() && pat.subpats[i].type == MacroPatEnt::PAT_LOOP )
+        {
+            const auto& cur_pat = pat.subpats[i];
+            bool is_optional = (cur_pat.name == "*");
+            
+            get_loop_entry_pats(cur_pat, entry_pats);
+            
+            if( !is_optional )
+            {
+                // Non-optional loop, MUST be entered, so return after recursing
+                return ;
+            }
+            // Optional, so continue the loop.
+            i ++;
+        }
+        
+        // First non-loop pattern
+        if( i < pat.subpats.size() )
+        {
+            entry_pats.push_back( &pat.subpats[i] );
+        }
+    }
+} // namespace
+
 /// Returns (and primes m_stack) the rules to control the start of a loop
 /// This code emits rules to break out of the loop if the entry conditions are not met
 SimplePatEnt MacroPatternStream::emit_loop_start(const MacroPatEnt& pat)
@@ -423,33 +455,8 @@ SimplePatEnt MacroPatternStream::emit_loop_start(const MacroPatEnt& pat)
     // Find the next non-loop pattern to control if this loop should be entered
     ::std::vector<const MacroPatEnt*> m_entry_pats;
     
-    const auto* parent_subpats = &pat.subpats;
-    const auto* entry_pat = &pat.subpats.at(0);
-    while( entry_pat->type == MacroPatEnt::PAT_LOOP ) {
-        if( entry_pat->name == "*" ) {
-            if( parent_subpats->size() > 1 ) {
-                if( parent_subpats->at(1).type == MacroPatEnt::PAT_LOOP ) {
-                    // TODO: Recurse here
-                    // This case is either: Direct recurse, or recurse+next pattern (index 2 instead of 1)
-                    DEBUG("TODO TODO: Handle case where an optional loop is folled by another loop.");
-                }
-                else {
-                    m_entry_pats.push_back( &parent_subpats->at(1) );
-                }
-            }
-            else {
-                // Only entry, no second condtiion present
-            }
-        }
-        else {
-            // Always entered, so entry condition is the inner
-        }
-        parent_subpats = &entry_pat->subpats;
-        entry_pat = &entry_pat->subpats.at(0);
-    }
-    // - TODO: What if there's multiple tokens that can be used to enter the loop?
-    //  > `$( $(#[...])* foo)*` should enter based on `#` and `foo`
-    //  > Requires returning multiple controllers and requiring that at least one succeed
+    get_loop_entry_pats(pat, m_entry_pats);
+    DEBUG("m_entry_pats = [" << FMT_CB(ss, for(const auto* p : m_entry_pats) { ss << *p << ","; }) << "]");
     
     struct H {
         static SimplePatEnt get_if(bool flag, const MacroPatEnt& mpe) {
@@ -460,6 +467,8 @@ SimplePatEnt MacroPatternStream::emit_loop_start(const MacroPatEnt& pat)
         }
     };
     
+    const auto* entry_pat = m_entry_pats.back();
+    m_entry_pats.pop_back();
     if( m_entry_pats.size() > 0 )
     {
         DEBUG("Multiple entry possibilities, reversing condition");
