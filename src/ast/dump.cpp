@@ -696,8 +696,11 @@ void RustPrinter::handle_module(const AST::Module& mod)
         handle_function(item.is_pub, item.name, e);
     }
 
-    for( const auto& i : mod.impls() )
+    for( const auto& item : mod.items() )
     {
+        if( !item.data.is_Impl() )    continue ;
+        const auto& i = item.data.as_Impl();
+        
         m_os << "\n";
         m_os << indent() << "impl";
         print_params(i.def().params());

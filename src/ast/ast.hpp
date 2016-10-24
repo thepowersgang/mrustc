@@ -482,12 +482,6 @@ class Module
     // Module-level items
     /// General items
     ::std::vector<Named<Item>>  m_items;
-    
-    /// Impl blocks
-    ::std::vector<Impl> m_impls;
-    /// Negative impl blocks
-    ::std::vector<ImplDef> m_neg_impls;
-    
 
     // --- Runtime caches and state ---
     ::std::vector< ::std::shared_ptr<Module> >  m_anon_modules;
@@ -537,12 +531,6 @@ public:
     void add_alias(bool is_public, UseStmt path, ::std::string name, MetaItems attrs);
     void add_macro_invocation(MacroInvocation item);
     
-    void add_impl(Impl impl) {
-        m_impls.emplace_back( mv$(impl) );
-    }
-    void add_neg_impl(ImplDef impl) {
-        m_neg_impls.emplace_back( mv$(impl) );
-    }
     void add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro);
     void add_macro_import(::std::string name, const MacroRules& mr);
     
@@ -553,12 +541,6 @@ public:
           ::std::vector<Named<Item>>& items()       { return m_items; }
     const ::std::vector<Named<Item>>& items() const { return m_items; }
     
-          ::std::vector<Impl>&  impls()       { return m_impls; }
-    const ::std::vector<Impl>&  impls() const { return m_impls; }
-    
-          ::std::vector<ImplDef>&   neg_impls()       { return m_neg_impls; }
-    const ::std::vector<ImplDef>&   neg_impls() const { return m_neg_impls; }
-
           ::std::vector< ::std::shared_ptr<Module> >&   anon_mods()       { return m_anon_modules; }
     const ::std::vector< ::std::shared_ptr<Module> >&   anon_mods() const { return m_anon_modules; }
     

@@ -1704,7 +1704,7 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
             continue ;
         }
         
-        mod.add_impl( dp->handle_item(sp, (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core"), params, type, item) );
+        mod.add_item(false, "", dp->handle_item(sp, (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core"), params, type, item), {} );
     }
     
     if( fail ) {

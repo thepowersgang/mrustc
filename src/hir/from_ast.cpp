@@ -1072,10 +1072,10 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             // TODO: Insert a record of the `link` attribute
             ),
         (Impl,
-            TODO(sp, "Expand Item::Impl");
+            //TODO(sp, "Expand Item::Impl");
             ),
         (NegImpl,
-            TODO(sp, "Expand Item::NegImpl");
+            //TODO(sp, "Expand Item::NegImpl");
             ),
         (Use,
             // Ignore - The index is used to add `Import`s
@@ -1165,8 +1165,10 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
     }
     
     // 
-    for( const auto& impl : ast_mod.impls() )
+    for( const auto& i : ast_mod.items() )
     {
+        if( !i.data.is_Impl() ) continue;
+        const auto& impl = i.data.as_Impl();
         auto params = LowerHIR_GenericParams(impl.def().params(), nullptr);
         
         if( impl.def().trait().ent.is_valid() )
@@ -1301,8 +1303,11 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                 } );
         }
     }
-    for( const auto& impl : ast_mod.neg_impls() )
+    for( const auto& i : ast_mod.items() )
     {
+        if( !i.data.is_NegImpl() ) continue;
+        const auto& impl = i.data.as_NegImpl();
+        
         auto params = LowerHIR_GenericParams(impl.params(), nullptr);
         auto type = LowerHIR_Type(impl.type());
         auto trait = LowerHIR_GenericPath(impl.trait().sp, impl.trait().ent);

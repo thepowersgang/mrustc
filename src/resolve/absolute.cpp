@@ -2023,10 +2023,56 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             }
             ),
         (Impl,
-            TODO(i.data.span, "Impl");
+            auto& def = e.def();
+            DEBUG("impl " << def.trait().ent << " for " << def.type());
+            if( !def.type().is_valid() )
+            {
+                DEBUG("---- MARKER IMPL for " << def.trait().ent);
+                item_context.push(def.params(), GenericSlot::Level::Top);
+                Resolve_Absolute_Generic(item_context,  def.params());
+                assert( def.trait().ent.is_valid() );
+                Resolve_Absolute_Path(item_context, def.trait().sp, Context::LookupMode::Type, def.trait().ent);
+                
+                if( e.items().size() != 0 ) {
+                    ERROR(def.span(), E0000, "impl Trait for .. with methods");
+                }
+                
+                item_context.pop(def.params());
+                
+                const_cast< ::AST::Trait*>(def.trait().ent.binding().as_Trait().trait_)->set_is_marker();
+            }
+            else
+            {
+                item_context.push_self( def.type() );
+                item_context.push(def.params(), GenericSlot::Level::Top);
+                Resolve_Absolute_Generic(item_context,  def.params());
+                
+                Resolve_Absolute_Type(item_context, def.type());
+                if( def.trait().ent.is_valid() ) {
+                    Resolve_Absolute_Path(item_context, def.trait().sp, Context::LookupMode::Type, def.trait().ent);
+                }
+                
+                Resolve_Absolute_ImplItems(item_context,  e.items());
+                
+                item_context.pop(def.params());
+                item_context.pop_self( def.type() );
+            }
             ),
         (NegImpl,
-            TODO(i.data.span, "NegImpl");
+            auto& impl_def = e;
+            item_context.push_self( impl_def.type() );
+            item_context.push(impl_def.params(), GenericSlot::Level::Top);
+            Resolve_Absolute_Generic(item_context,  impl_def.params());
+            
+            Resolve_Absolute_Type(item_context, impl_def.type());
+            if( !impl_def.trait().ent.is_valid() )
+                BUG(impl_def.span(), "Encountered negative impl with no trait");
+            Resolve_Absolute_Path(item_context, impl_def.trait().sp, Context::LookupMode::Type, impl_def.trait().ent);
+            
+            // No items
+            
+            item_context.pop(impl_def.params());
+            item_context.pop_self( impl_def.type() );
             ),
         (Module,
             DEBUG("Module - " << i.name);
@@ -2065,61 +2111,6 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             Resolve_Absolute_Static(item_context, e);
             )
         )
-    }
-    
-    for(auto& impl : mod.impls())
-    {
-        auto& def = impl.def();
-        DEBUG("impl " << def.trait().ent << " for " << def.type());
-        if( !def.type().is_valid() )
-        {
-            DEBUG("---- MARKER IMPL for " << def.trait().ent);
-            item_context.push(def.params(), GenericSlot::Level::Top);
-            Resolve_Absolute_Generic(item_context,  def.params());
-            assert( def.trait().ent.is_valid() );
-            Resolve_Absolute_Path(item_context, def.trait().sp, Context::LookupMode::Type, def.trait().ent);
-            
-            if( impl.items().size() != 0 ) {
-                ERROR(def.span(), E0000, "impl Trait for .. with methods");
-            }
-            
-            item_context.pop(def.params());
-            
-            const_cast< ::AST::Trait*>(def.trait().ent.binding().as_Trait().trait_)->set_is_marker();
-        }
-        else
-        {
-            item_context.push_self( impl.def().type() );
-            item_context.push(impl.def().params(), GenericSlot::Level::Top);
-            Resolve_Absolute_Generic(item_context,  impl.def().params());
-            
-            Resolve_Absolute_Type(item_context, impl.def().type());
-            if( def.trait().ent.is_valid() ) {
-                Resolve_Absolute_Path(item_context, def.trait().sp, Context::LookupMode::Type, def.trait().ent);
-            }
-            
-            Resolve_Absolute_ImplItems(item_context,  impl.items());
-            
-            item_context.pop(def.params());
-            item_context.pop_self( def.type() );
-        }
-    }
-    
-    for(auto& impl_def : mod.neg_impls())
-    {
-        item_context.push_self( impl_def.type() );
-        item_context.push(impl_def.params(), GenericSlot::Level::Top);
-        Resolve_Absolute_Generic(item_context,  impl_def.params());
-        
-        Resolve_Absolute_Type(item_context, impl_def.type());
-        if( !impl_def.trait().ent.is_valid() )
-            BUG(impl_def.span(), "Encountered negative impl with no trait");
-        Resolve_Absolute_Path(item_context, impl_def.trait().sp, Context::LookupMode::Type, impl_def.trait().ent);
-        
-        // No items
-        
-        item_context.pop(impl_def.params());
-        item_context.pop_self( impl_def.type() );
     }
     
     // - Run through the indexed items and fix up those paths

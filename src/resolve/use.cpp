@@ -183,7 +183,23 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             Resolve_Use_Mod(crate, i.data.as_Module(), path + i.name);
             ),
         (Impl,
-            TODO(Span(), "Recurse into Impl");
+            for(auto& i : e.items())
+            {
+                TU_MATCH_DEF( AST::Item, (*i.data), (e),
+                (
+                    ),
+                (Function,
+                    if( e.code().is_valid() ) {
+                        e.code().node().visit( expr_iter );
+                    }
+                    ),
+                (Static,
+                    if( e.value().is_valid() ) {
+                        e.value().node().visit( expr_iter );
+                    }
+                    )
+                )
+            }
             ),
         (Trait,
             for(auto& ti : e.items())
@@ -218,26 +234,6 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             }
             )
         )
-    }
-    for(auto& im : mod.impls())
-    {
-        for(auto& i : im.items())
-        {
-            TU_MATCH_DEF( AST::Item, (*i.data), (e),
-            (
-                ),
-            (Function,
-                if( e.code().is_valid() ) {
-                    e.code().node().visit( expr_iter );
-                }
-                ),
-            (Static,
-                if( e.value().is_valid() ) {
-                    e.value().node().visit( expr_iter );
-                }
-                )
-            )
-        }
     }
 }
 

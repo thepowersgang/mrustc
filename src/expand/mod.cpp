@@ -873,6 +873,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
     
     // IGNORE m_anon_modules, handled as part of expressions
     
+    /*
     DEBUG("Impls");
     for( auto it = mod.impls().begin(); it != mod.impls().end(); )
     {
@@ -901,6 +902,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
         else
             ++ it;
     }
+    */
     
     for( const auto& mi: mod.macro_imports_res() )
         DEBUG("- Imports '" << mi.name << "'");
