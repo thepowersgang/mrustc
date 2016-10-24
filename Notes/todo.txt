@@ -1,10 +1,18 @@
 TODO:
+- Fix macro_rules! to allow librustc_llvm to compile (bitflags quirk)
+ - Problem: Two near-identical arms and chosing to recurse in both
 - Get all run-pass and run-fail tests passing resolve
- - Requires getting libtest to compile
+ - Lots of fixes to do here
 - Audit TODOs in codebase
 - MIR Optimisations
+ - Assignment elision (e.g. remove intermediate temporaries assigned to RETURN)
+ - Dead code eliminiation
+ - BB Unificiation
 - HIR Optimisation (remove dead code in `if true/if false` branches)
+- Basic codegen
 - Convert enum variants to point to structs for the data type
 - Clean up Span code to correctly handle nested spans
 - Clean up AST
-- Explit arg patterns and arg types up for cleaner serialisation
+ - Almost done, just a few little niggles left
+- Split arg patterns and arg types up for cleaner serialisation
+ - Tried this, wasn't too clean. Just leaving as-is

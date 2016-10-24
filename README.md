@@ -25,11 +25,11 @@ Current Features
 Short-Term Plans
 ===
 - Parse and Typecheck all run-pass tests
-- Configure travis CI
 - Code generation (including picking the output format)
 
 Medium-Term Goals
 ===
+- Compile rustc
 - MIR optimisations
 - Propagate lifetime annotations so that MIR can include a borrow checker
 
