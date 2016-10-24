@@ -9,10 +9,11 @@
 #include "mir.hpp"
 
 
-::MIR::FunctionPointer::~FunctionPointer()
+void ::MIR::FunctionPointer::reset()
 {
     if( this->ptr ) {
-        delete this->ptr, this->ptr = nullptr;
+        delete this->ptr;
+        this->ptr = nullptr;
     }
 }
 

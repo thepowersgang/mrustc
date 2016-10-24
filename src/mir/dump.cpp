@@ -150,6 +150,8 @@ namespace {
             for(unsigned int i = 0; i < fcn.blocks.size(); i ++)
             {
                 const auto& block = fcn.blocks[i];
+                DEBUG("BB" << i);
+                
                 m_os << indent() << "bb" << i << ": {\n";
                 inc_indent();
                 for(const auto& stmt : block.statements)
@@ -158,9 +160,11 @@ namespace {
                     
                     TU_MATCHA( (stmt), (e),
                     (Assign,
+                        DEBUG("- Assign " << e.dst << " = " << e.src);
                         m_os << FMT_M(e.dst) << " = " << FMT_M(e.src) << ";\n";
                         ),
                     (Drop,
+                        DEBUG("- DROP " << e.slot);
                         m_os << "drop(" << FMT_M(e.slot) << ");\n";
                         )
                     )

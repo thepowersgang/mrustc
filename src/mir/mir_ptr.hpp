@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * mir/mir_ptr.hpp
+ * - Pointer to a blob of MIR
  */
 #pragma once
 
@@ -13,7 +18,19 @@ class FunctionPointer
 public:
     FunctionPointer(): ptr(nullptr) {}
     FunctionPointer(::MIR::Function* p): ptr(p) {}
-    ~FunctionPointer();
+    FunctionPointer(FunctionPointer&& x): ptr(x.ptr) { x.ptr = nullptr; }
+    
+    ~FunctionPointer() {
+        reset();
+    }
+    FunctionPointer& operator=(FunctionPointer&& x) {
+        reset();
+        ptr = x.ptr;
+        x.ptr = nullptr;
+        return *this;
+    }
+    
+    void reset();
     
     ::MIR::Function& operator->() { return *ptr; }
     ::MIR::Function& operator*() { return *ptr; }
