@@ -67,7 +67,12 @@ void Resolve_Use(::AST::Crate& crate)
         if( e.count > base_path.nodes().size() ) {
             ERROR(span, E0000, "Too many `super` components");
         }
-        for( unsigned int i = 0; i < base_path.nodes().size() - e.count; i ++ )
+        // TODO: Do this in a cleaner manner.
+        unsigned int n_anon = 0;
+        // Skip any anon modules in the way (i.e. if the current module is an anon, go to the parent)
+        while( base_path.nodes().size() > n_anon && base_path.nodes()[ base_path.nodes().size()-1-n_anon ].name()[0] == '#' )
+            n_anon ++;
+        for( unsigned int i = 0; i < base_path.nodes().size() - e.count - n_anon; i ++ )
             np.nodes().push_back( base_path.nodes()[i] );
         np += path;
         return np;

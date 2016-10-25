@@ -1361,7 +1361,10 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         // - Determine how many components of the `self` path to use
         const auto& mp_nodes = context.m_mod.path().nodes();
         assert( e.count >= 1 );
+        // TODO: The first super should ignore any anon modules.
         unsigned int start_len = e.count > mp_nodes.size() ? 0 : mp_nodes.size() - e.count;
+        while( start_len > 0 && mp_nodes[start_len-1].name()[0] == '#' )
+            start_len --;
         
         // - Create a new path
         ::AST::Path np("", {});
@@ -1371,8 +1374,6 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
             np_nodes.push_back( mp_nodes[i] );
         for(auto& en : e.nodes)
             np_nodes.push_back( mv$(en) );
-        
-        // TODO: Resolve to the actual item?
         
         if( !path.is_trivial() )
             Resolve_Absolute_PathNodes(context, sp,  np_nodes);
