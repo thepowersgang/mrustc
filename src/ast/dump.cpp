@@ -330,9 +330,12 @@ public:
         m_expr_root = false;
         switch(n.m_datatype)
         {
-        case CORETYPE_INVAL:    break;
+        case CORETYPE_INVAL:
+            m_os << "0x" << ::std::hex << n.m_value << ::std::dec << "_/*INVAL*/";
+            break;
         case CORETYPE_BOOL:
         case CORETYPE_STR:
+            m_os << "0x" << ::std::hex << n.m_value << ::std::dec << "_/*bool/str*/";
             break;
         case CORETYPE_CHAR:
             m_os << "'\\u{" << ::std::hex << n.m_value << ::std::dec << "}'";
@@ -477,9 +480,14 @@ public:
     }
     virtual void visit(AST::ExprNode_BinOp& n) override {
         m_expr_root = false;
-        WRAPIF(n.m_left
-            , AST::ExprNode_Cast, AST::ExprNode_BinOp
-            );
+        if( IS(*n.m_left, AST::ExprNode_BinOp) && dynamic_cast<AST::ExprNode_BinOp&>(*n.m_left).m_type == n.m_type ) {
+            AST::NodeVisitor::visit(n.m_left);
+        }
+        else {
+            WRAPIF(n.m_left
+                , AST::ExprNode_Cast, AST::ExprNode_BinOp
+                );
+        }
         m_os << " ";
         switch(n.m_type)
         {
@@ -506,8 +514,9 @@ public:
         case AST::ExprNode_BinOp::PLACE_IN: m_os << "<-"; break;
         }
         m_os << " ";
-        if( IS(*n.m_right, AST::ExprNode_BinOp) )
+        if( IS(*n.m_right, AST::ExprNode_BinOp) && dynamic_cast<AST::ExprNode_BinOp&>(*n.m_right).m_type != n.m_type ) {
             paren_wrap(n.m_right);
+        }
         else
             AST::NodeVisitor::visit(n.m_right);
     }
