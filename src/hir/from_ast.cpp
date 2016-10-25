@@ -827,21 +827,23 @@ namespace {
     {
         TU_MATCH(::AST::EnumVariantData, (var.m_data), (e),
         (Value,
-            variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Value({
-                LowerHIR_Expr(e.m_value),
-                ::HIR::Literal {}
-                }) ) );
-            ),
-        (Tuple,
-            if( e.m_sub_types.size() == 0 ) {
+            if( e.m_value.is_valid() )
+            {
+                variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Value({
+                    LowerHIR_Expr(e.m_value),
+                    ::HIR::Literal {}
+                    }) ) );
+            }
+            else
+            {
                 variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Unit({})) );
             }
-            else {
-                ::HIR::Enum::Variant::Data_Tuple    types;
-                for(const auto& st : e.m_sub_types)
-                    types.push_back( new_visent(true, LowerHIR_Type(st)) );
-                variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Tuple(mv$(types))) );
-            }
+            ),
+        (Tuple,
+            ::HIR::Enum::Variant::Data_Tuple    types;
+            for(const auto& st : e.m_sub_types)
+                types.push_back( new_visent(true, LowerHIR_Type(st)) );
+            variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Tuple(mv$(types))) );
             ),
         (Struct,
             ::HIR::Enum::Variant::Data_Struct ents;

@@ -824,7 +824,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
         }
         else
         {
-            variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), ::std::vector<TypeRef>()) );
+            variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), ::AST::Expr()) );
         }
         
         if( tok.type() != TOK_COMMA )
