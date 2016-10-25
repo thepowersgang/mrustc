@@ -450,6 +450,7 @@ void operator%(::Deserialiser& s, enum eCoreType& t) {
     ::std::string   n;
     s.item(n);
     t = coretype_fromstring(n);
+    ASSERT_BUG(Span(), t != CORETYPE_INVAL, "Invalid coretype '" << n << "'");
 }
 SERIALISE_TYPE(Token::, "Token", {
     s % m_type;

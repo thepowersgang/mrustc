@@ -18,6 +18,7 @@ static const struct {
     enum eCoreType  type;
 } CORETYPES[] = {
     // NOTE: Sorted
+    {"_", CORETYPE_ANY},
     {"bool", CORETYPE_BOOL},
     {"char", CORETYPE_CHAR},
     {"f32", CORETYPE_F32},
@@ -52,7 +53,7 @@ enum eCoreType coretype_fromstring(const ::std::string& name)
 const char* coretype_name(const eCoreType ct ) {
     switch(ct)
     {
-    case CORETYPE_INVAL:return "-";
+    case CORETYPE_INVAL:return "INVAL";
     case CORETYPE_ANY:  return "_";
     case CORETYPE_CHAR: return "char";
     case CORETYPE_STR:  return "str";

@@ -214,12 +214,12 @@ NODE(ExprNode_IfLet, {
 })
 
 NODE(ExprNode_Integer, {
-    os << m_value;
+    os << m_value << "_" << m_datatype;
 },{
     return NEWNODE(ExprNode_Integer, m_value, m_datatype);
 })
 NODE(ExprNode_Float, {
-    os << m_value;
+    os << m_value << "_" << m_datatype;
 },{
     return NEWNODE(ExprNode_Float, m_value, m_datatype);
 })
