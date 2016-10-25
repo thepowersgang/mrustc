@@ -2661,6 +2661,9 @@ bool TraitResolution::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) con
     (Slice,
         return false;
         ),
+    (Function,
+        return true;
+        ),
     (Array,
         return type_is_copy(sp, *e.inner);
         )
