@@ -399,11 +399,16 @@ int main(int argc, char *argv[])
                 });
             // Generate a .o
             //HIR_Codegen_Lib(params.outfile + ".o", *hir_crate);
-            // Link into a .rlib
+            // Link metatdata and object into a .rlib
             break;
         case ::AST::Crate::Type::RustDylib:
             // Save a loadable HIR dump
+            CompilePhaseV("HIR Serialise", [&]() {
+                //HIR_Serialise(params.outfile + ".meta", *hir_crate);
+                HIR_Serialise(params.outfile, *hir_crate);
+                });
             // Generate a .so/.dll
+            // TODO: Codegen and include the metadata in a non-loadable segment
             break;
         case ::AST::Crate::Type::CDylib:
             // Generate a .so/.dll
