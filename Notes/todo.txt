@@ -15,4 +15,4 @@ TODO:
 - Clean up AST
  - Almost done, just a few little niggles left
 - Split arg patterns and arg types up for cleaner serialisation
- - Tried this, wasn't too clean. Just leaving as-is
+ - Could be a good idea to do as part of changing HIR::TraitImpl to only contain the impl data
