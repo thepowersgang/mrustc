@@ -1778,7 +1778,6 @@ public:
                 {
                     auto name_a = FMT("a" << fld.m_name);
                     pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF)) );
-                    nodes.push_back( this->enc_val_direct(NEWNODE(NamedValue, AST::Path(name_a))) );
                     
                     nodes.push_back( NEWNODE(CallPath, this->get_trait_path_Encoder() + "emit_struct_variant_field",
                         vec$(
@@ -1826,6 +1825,216 @@ public:
     }
 } g_derive_rustc_encodable;
 
+class Deriver_RustcDecodable:
+    public Deriver
+{
+    // NOTE: This emits paths like `::rustc_serialize::Encodable` - rustc and crates.io have subtly different crate names
+    AST::Path get_trait_path() const {
+        return AST::Path("", { AST::PathNode("rustc_serialize", {}), AST::PathNode("Decodable", {}) });
+    }
+    AST::Path get_trait_path_Decoder() const {
+        return AST::Path("", { AST::PathNode("rustc_serialize", {}), AST::PathNode("Decoder", {}) });
+    }
+    AST::Path get_method_path() const {
+        return get_trait_path() + "decode";
+    }
+    
+    AST::Impl make_ret(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, ::std::vector<TypeRef> types_to_bound, AST::ExprNodeP node) const
+    {
+        const AST::Path    trait_path = this->get_trait_path();
+        
+        AST::Function fcn(
+            sp,
+            AST::GenericParams(),
+            ABI_RUST, false, false, false,
+            TypeRef(TypeRef::TagUnit(), sp),
+            vec$(
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef(sp, "Self", 0xFFFF)) ),
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "d"), TypeRef(TypeRef::TagReference(), sp, true, TypeRef(sp, "D", 0x100|0)) )
+                )
+            );
+        fcn.params().add_ty_param( AST::TypeParam("D") );
+        fcn.params().add_bound( AST::GenericBound::make_IsTrait({
+            TypeRef(sp, "D", 0x100|0),
+            {},
+            this->get_trait_path_Decoder()
+            }) );
+        fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
+        
+        AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
+        
+        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type ) );
+        rv.add_function(false, false, "decode", mv$(fcn));
+        return mv$(rv);
+    }
+    AST::ExprNodeP dec_val() const {
+        return NEWNODE(UniOp,
+            ::AST::ExprNode_UniOp::QMARK,
+            NEWNODE(CallPath, this->get_method_path(),  vec$( NEWNODE(NamedValue, AST::Path("d")) ))
+            );
+    }
+    AST::ExprNodeP field(const ::std::string& name) const {
+        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), name);
+    }
+    
+    AST::ExprNodeP dec_closure(Span sp, AST::ExprNodeP code) const {
+        return NEWNODE(Closure,
+            vec$( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "d"), ::TypeRef(sp) ) ), ::TypeRef(sp),
+            mv$(code)
+            );
+    }
+    AST::ExprNodeP get_val_ok(const ::std::string& core_name) const {
+        return NEWNODE(CallPath, AST::Path(core_name, {AST::PathNode("result",{}), AST::PathNode("Result",{}), AST::PathNode("Ok",{})}), vec$( NEWNODE(Tuple, {})) );
+    }
+    
+public:
+    AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
+    {
+        AST::Path base_path = type.m_data.as_Path().path;
+        const ::std::string& struct_name = type.m_data.as_Path().path.nodes().back().name();
+        
+        AST::ExprNodeP  node_v;
+        TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Struct,
+            ::std::vector< ::std::pair< ::std::string, AST::ExprNodeP > >   vals;
+            for( const auto& fld : e.ents )
+            {
+                vals.push_back(::std::make_pair(fld.m_name, NEWNODE(CallPath,
+                    this->get_trait_path_Decoder() + "read_struct_field",
+                    vec$( NEWNODE(NamedValue, AST::Path("d")), NEWNODE(String, fld.m_name), this->dec_closure( sp, this->dec_val() ) )
+                    ) ));
+            }
+            node_v = NEWNODE(StructLiteral, base_path, nullptr, mv$(vals));
+            ),
+        (Tuple,
+            ::std::vector<AST::ExprNodeP>   vals;
+            for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
+            {
+                vals.push_back( NEWNODE(CallPath,
+                    this->get_trait_path_Decoder() + "read_tuple_struct_arg",
+                    vec$( NEWNODE(NamedValue, AST::Path("d")), NEWNODE(Integer, idx, CORETYPE_UINT), this->dec_closure(sp, this->dec_val()) )
+                    ) );
+            }
+            node_v = NEWNODE(CallPath, mv$(base_path), mv$(vals));
+            )
+        )
+
+        auto closure = this->dec_closure( sp, mv$(node_v) );
+        
+        auto args = vec$( NEWNODE(NamedValue, AST::Path("d")), NEWNODE(String, struct_name), AST::ExprNodeP(), mv$(closure) );
+        
+        ::AST::ExprNodeP    node;
+        TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Struct,
+            assert( !args[2] );
+            args[2] = NEWNODE(Integer, e.ents.size(), CORETYPE_UINT);
+            node = NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_struct", mv$(args) );
+            ),
+        (Tuple,
+            assert( !args[2] );
+            args[2] = NEWNODE(Integer, e.ents.size(), CORETYPE_UINT);
+            node = NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_tuple_struct", mv$(args) );
+            )
+        )
+        
+        return this->make_ret(sp, core_name, p, type, this->get_field_bounds(str), mv$(node));
+    }
+    
+    AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
+    {
+        AST::Path base_path = type.m_data.as_Path().path;
+        base_path.nodes().back().args() = ::AST::PathParams();
+        ::std::vector<AST::ExprNode_Match_Arm>   arms;
+        
+        // 1. Variant names
+        
+        // 2. Decoding arms
+        for(unsigned int var_idx = 0; var_idx < enm.variants().size(); var_idx ++)
+        {
+            const auto& v = enm.variants()[var_idx];
+            AST::ExprNodeP  code;
+            AST::Pattern    pat_a;
+            
+            pat_a = AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Integer({CORETYPE_UINT, var_idx}));
+            TU_MATCH(::AST::EnumVariantData, (v.m_data), (e),
+            (Value,
+                code = NEWNODE(NamedValue, base_path + v.m_name);
+                ),
+            (Tuple,
+                ::std::vector<AST::ExprNodeP>   args;
+                
+                for( unsigned int idx = 0; idx < e.m_sub_types.size(); idx ++ )
+                {
+                    auto name_a = FMT("a" << idx);
+                    args.push_back( NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_enum_variant_arg",
+                        vec$(
+                            NEWNODE(NamedValue, AST::Path("d")),
+                            NEWNODE(Integer, idx, CORETYPE_UINT),
+                            this->dec_closure(sp, this->dec_val())
+                            )
+                        ) );
+                }
+                code = NEWNODE(CallPath, base_path + v.m_name, mv$(args));
+                ),
+            (Struct,
+                ::std::vector< ::std::pair< ::std::string, AST::ExprNodeP > >   vals;
+                
+                unsigned int idx = 0;
+                for( const auto& fld : e.m_fields )
+                {
+                    auto name_a = FMT("a" << fld.m_name);
+                    
+                    vals.push_back(::std::make_pair(fld.m_name, NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_struct_variant_field",
+                        vec$(
+                            NEWNODE(NamedValue, AST::Path("d")),
+                            NEWNODE(String, fld.m_name),
+                            NEWNODE(Integer, idx, CORETYPE_UINT),
+                            this->dec_closure(sp, this->dec_val())
+                            )
+                        ) ));
+                    idx ++;
+                }
+                
+                code = NEWNODE(StructLiteral, base_path + v.m_name, nullptr, mv$(vals) );
+                )
+            )
+            
+            ::std::vector< AST::Pattern>    pats;
+            pats.push_back( AST::Pattern(AST::Pattern::TagReference(), false, mv$(pat_a)) );
+            
+            arms.push_back(AST::ExprNode_Match_Arm(
+                mv$(pats),
+                nullptr,
+                mv$(code)
+                ));
+        }
+        
+        auto node_match = NEWNODE(Match, NEWNODE(NamedValue, AST::Path("self")), mv$(arms));
+        auto node_var_closure = NEWNODE(Closure,
+            vec$(
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "d"), ::TypeRef(sp) ),
+                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "idx"), ::TypeRef(sp) )
+                ),
+            ::TypeRef(sp),
+            mv$(node_match)
+            );
+        auto node_rev = NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_enum_variant",
+            vec$(
+                NEWNODE(NamedValue, AST::Path("d")),
+                NEWNODE(UniOp, ::AST::ExprNode_UniOp::REF, NEWNODE(NamedValue, AST::Path("VAR_NAMES"))),
+                mv$( node_var_closure )
+                )
+            );
+        
+        const ::std::string& enum_name = type.m_data.as_Path().path.nodes().back().name();
+        auto node = NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_enum",
+            vec$( NEWNODE(NamedValue, AST::Path("d")), NEWNODE(String, enum_name), this->dec_closure(sp, mv$(node_rev)) )
+            );
+
+        return this->make_ret(sp, core_name, p, type, this->get_field_bounds(enm), mv$(node));
+    }
+} g_derive_rustc_decodable;
+
 
 // --------------------------------------------------------------------
 // Select and dispatch the correct derive() handler
@@ -1852,6 +2061,8 @@ static const Deriver* find_impl(const ::std::string& trait_name)
         return &g_derive_hash;
     else if( trait_name == "RustcEncodable" )
         return &g_derive_rustc_encodable;
+    else if( trait_name == "RustcDecodable" )
+        return &g_derive_rustc_decodable;
     else
         return nullptr;
 }
