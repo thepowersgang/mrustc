@@ -1207,6 +1207,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                         ),
                     (Static,
                         if( e.s_class() == ::AST::Static::CONST ) {
+                            // TODO: Check signature against the trait?
                             constants.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::Constant> { item.is_specialisable, ::HIR::Constant {
                                 ::HIR::GenericParams {},
                                 LowerHIR_Type( e.type() ),

@@ -297,8 +297,6 @@ class Deriver_Debug:
 public:
     AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
-        // TODO: be correct herhe and use "core" as the crate name
-        // - Requires handling the crate_name crate attribute correctly
         const ::std::string& name = type.path().nodes().back().name();
         
         // Generate code for Debug
@@ -503,7 +501,6 @@ public:
         base_path.nodes().back().args() = ::AST::PathParams();
         ::std::vector<AST::ExprNode_Match_Arm>   arms;
         
-        // TODO: PartialEq for enums
         for(const auto& v : enm.variants())
         {
             AST::ExprNodeP  code;
@@ -640,7 +637,6 @@ class Deriver_PartialOrd:
     {
         return NEWNODE(Match,
             NEWNODE(CallPath, this->get_path(core_name, "cmp", "PartialOrd", "partial_cmp"),
-                // TODO: Ref
                 ::make_vec2(
                     NEWNODE(UniOp, AST::ExprNode_UniOp::REF, mv$(v1)),
                     NEWNODE(UniOp, AST::ExprNode_UniOp::REF, mv$(v2))
