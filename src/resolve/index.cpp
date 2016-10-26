@@ -394,7 +394,9 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
                 ),
             
             (Crate,
-                TODO(sp, "Glob import of crate");
+                DEBUG("Glob crate " << i_data.path);
+                const auto& hmod = e.crate_->m_hir->m_root_module;
+                Resolve_Index_Module_Wildcard__glob_in_hir_mod(sp, crate, mod, hmod, i_data.path, i.is_pub);
                 ),
             (Module,
                 DEBUG("Glob mod " << i_data.path);
