@@ -22,6 +22,7 @@ enum class Lookup
 ::AST::Path Resolve_Use_AbsolutisePath(const ::AST::Path& base_path, ::AST::Path path);
 void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path path, slice< const ::AST::Module* > parent_modules={});
 ::AST::PathBinding Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, slice< const ::AST::Module* > parent_modules, Lookup allow=Lookup::Any);
+::AST::PathBinding Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const ::HIR::Module& hmodr, unsigned int start,  Lookup allow);
 
 
 void Resolve_Use(::AST::Crate& crate)
@@ -404,6 +405,14 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             (
                 BUG(sp2, "Wildcard import expanded to an invalid item class - " << binding->tag_str());
                 ),
+            (Crate,
+                assert(e.crate_);
+                const ::HIR::Module& hmod = e.crate_->m_hir->m_root_module;
+                auto rv = Resolve_Use_GetBinding__ext(sp2, crate, AST::Path("", { AST::PathNode(des_item_name,{}) }), hmod, 0, allow);
+                if( ! rv.is_Unbound() ) {
+                    return mv$(rv);
+                }
+                ),
             (Module,
                 auto allow_inner = (allow == Lookup::Any ? Lookup::AnyOpt : allow);
                 assert(e.module_);
@@ -489,9 +498,10 @@ namespace {
             ERROR(span, E0000, "Unexpected item type in import " << path << " @ " << i << " - " << it->second->ent.tag_str());
             ),
         (Import,
+            // TODO: Enum imports.
             hmod = get_hir_mod_by_path(span, crate, e);
             if( !hmod )
-                BUG(span, "Path component " << nodes[i].name() << " pointed to non-module");
+                BUG(span, "Path component " << nodes[i].name() << " pointed to non-module (" << path << ")");
             ),
         (Module,
             hmod = &e;
