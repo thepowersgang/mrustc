@@ -97,12 +97,12 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         // - Fall through to path handling
     // '::' - Absolute path
     case TOK_DOUBLE_COLON:
-        PUTBACK(tok, lex);
-        return Parse_Type_Path(lex, {}, allow_trait_list);
     // 'self' - This relative path
-    // 'super' - Parent relative path
     case TOK_RWORD_SELF:
+    // 'super' - Parent relative path
     case TOK_RWORD_SUPER:
+    // ':path' fragment
+    case TOK_INTERPOLATED_PATH:
         PUTBACK(tok, lex);
         return Parse_Type_Path(lex, {}, allow_trait_list);
 
