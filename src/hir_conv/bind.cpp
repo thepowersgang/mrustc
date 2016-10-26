@@ -351,6 +351,9 @@ namespace {
                     (
                         ERROR(sp, E0000, "Unexpected item type returned for " << pe.m_path << " - " << item.tag_str());
                         ),
+                    (TypeAlias,
+                        BUG(sp, "TypeAlias encountered after `Resolve Type Aliases` - " << ty);
+                        ),
                     (Struct,
                         fix_param_count(sp, pe, e3.m_params,  pe.m_params);
                         e.binding = ::HIR::TypeRef::TypePathBinding::make_Struct(&e3);

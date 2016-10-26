@@ -321,6 +321,17 @@
                     })
                 };
             ),
+        (TypeAlias,
+            return ::HIR::Pattern {
+                mv$(binding),
+                ::HIR::Pattern::Data::make_Struct({
+                    LowerHIR_GenericPath(pat.span(), e.path),
+                    nullptr,
+                    mv$(sub_patterns),
+                    e.is_exhaustive
+                    })
+                };
+            ),
         (Struct,
             return ::HIR::Pattern {
                 mv$(binding),
