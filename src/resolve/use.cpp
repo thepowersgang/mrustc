@@ -456,7 +456,9 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
 }
 
 namespace {
-    const ::HIR::Module* get_hir_mod_by_path(const Span& sp, const ::AST::Crate& crate, const ::HIR::SimplePath& path)
+    const ::HIR::Module* get_hir_mod_by_path(const Span& sp, const ::AST::Crate& crate, const ::HIR::SimplePath& path);
+    
+    const void* get_hir_modenum_by_path(const Span& sp, const ::AST::Crate& crate, const ::HIR::SimplePath& path, bool& is_enum)
     {
         const auto* hmod = &crate.m_extern_crates.at( path.m_crate_name ).m_hir->m_root_module;
         for(const auto& node : path.m_components)
@@ -472,13 +474,29 @@ namespace {
                 if( !hmod )
                     BUG(sp, "");
             )
+            else TU_IFLET( ::HIR::TypeItem, (it->second->ent), Enum, enm,
+                if( &node == &path.m_components.back() ) {
+                    is_enum = true;
+                    return &enm;
+                }
+                BUG(sp, "");
+            )
             else {
                 if( &node == &path.m_components.back() )
                     return nullptr;
                 BUG(sp, "");
             }
         }
+        is_enum = false;
         return hmod;
+    }
+    const ::HIR::Module* get_hir_mod_by_path(const Span& sp, const ::AST::Crate& crate, const ::HIR::SimplePath& path)
+    {
+        bool is_enum = false;
+        auto rv = get_hir_modenum_by_path(sp, crate, path, is_enum);
+        if( !rv )   return nullptr;
+        ASSERT_BUG(sp, !is_enum, "");
+        return reinterpret_cast< const ::HIR::Module*>(rv);
     }
 }
 
@@ -498,10 +516,27 @@ namespace {
             ERROR(span, E0000, "Unexpected item type in import " << path << " @ " << i << " - " << it->second->ent.tag_str());
             ),
         (Import,
-            // TODO: Enum imports.
-            hmod = get_hir_mod_by_path(span, crate, e);
-            if( !hmod )
+            bool is_enum = false;
+            auto ptr = get_hir_modenum_by_path(span, crate, e, is_enum);
+            if( !ptr )
                 BUG(span, "Path component " << nodes[i].name() << " pointed to non-module (" << path << ")");
+            if( is_enum ) {
+                const auto& enm = *reinterpret_cast<const ::HIR::Enum*>(ptr);
+                i += 1;
+                if( i != nodes.size() - 1 ) {
+                    ERROR(span, E0000, "Encountered enum at unexpected location in import");
+                }
+                const auto& name = nodes[i].name();
+                
+                auto it2 = ::std::find_if( enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x){ return x.first == name; } );
+                if( it2 == enm.m_variants.end() ) {
+                    ERROR(span, E0000, "Unable to find variant " << path);
+                }
+                return ::AST::PathBinding::make_EnumVar({ nullptr, static_cast<unsigned int>(it2 - enm.m_variants.begin()), &enm });
+            }
+            else {
+                hmod = reinterpret_cast<const ::HIR::Module*>(ptr);
+            }
             ),
         (Module,
             hmod = &e;
