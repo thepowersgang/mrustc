@@ -897,122 +897,124 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
             ERROR(tok.get_pos(), E0000, "No rules expected " << tok);
         }
         
-        
-        // 3. Check that all remaining arms are the same pattern.
-        unsigned int active_pat_idx = 0;
-        for(unsigned int i = 1; i < arm_pats.size(); i ++)
+        // 3. If there is a token pattern in the list, take that arm (and any other token arms)
+        const SimplePatEnt* tok_pat = nullptr;
+        for( const auto& pat : arm_pats )
         {
-            const auto& active_pat = arm_pats[active_pat_idx];
-            const auto& this_pat = arm_pats[i];
-            // - TODO: You can end up with e.g. TOK_IDENT and :ident
-            //  > In the above case, both the token and the patern consume the same number of input tokens, this is not always the case
-            if( active_pat.is_ExpectTok() && this_pat.is_ExpectPat() ) {
-                const auto& active_pat_tok = active_pat.as_ExpectTok();
-                const auto& this_pat_cap = this_pat.as_ExpectPat();
-                // :ident + TOK_IDENT = use the :ident
-                if( this_pat_cap.type == MacroPatEnt::PAT_IDENT ) {
-                    if( active_pat_tok.type() == TOK_IDENT ) {
-                        active_pat_idx = i;
-                        continue ;
-                    }
+            TU_IFLET(SimplePatEnt, pat, ExpectTok, e,
+                if( tok_pat ) {
+                    if( e != tok_pat->as_ExpectTok() )
+                        ERROR(lex.getPosition(), E0000, "Incompatible macro arms - " << tok_pat->as_ExpectTok() << " vs " << e);
                 }
-            }
-            //else if( active_pat.is_ExpectPat() && this_pat.is_ExpectTok() ) {
-            //    const auto& active_pat_cap = active_pat.as_ExpectPat();
-            //    const auto& this_pat_tok = this_pat.as_ExpectTok();
-            //}
-            
-            if( active_pat.tag() != arm_pats[i].tag() ) {
-                ERROR(lex.getPosition(), E0000, "Incompatible macro arms - SimplePatEnt::" << active_pat.tag_str() << " vs SimplePatEnt::" << arm_pats[i].tag_str());
-            }
-            TU_MATCH( SimplePatEnt, (active_pat, arm_pats[i]), (e1, e2),
-            (IfPat, BUG(sp, "IfPat unexpected here");),
-            (IfTok, BUG(sp, "IfTok unexpected here");),
-            (ExpectTok,
-                // NOTE: This should never fail.
-                if( e1 != e2 ) {
-                    ERROR(lex.getPosition(), E0000, "Incompatible macro arms - mismatched token expectation " << e1 << " vs " << e2);
+                else {
+                    tok_pat = &pat;
                 }
-                ),
-            (ExpectPat,
-                // Can fail, as :expr and :stmt overlap in their trigger set
-                if( e1.type != e2.type ) {
-                    ERROR(lex.getPosition(), E0000, "Incompatible macro arms - mismatched patterns");
-                }
-                if( e1.idx != e2.idx ) {
-                    ERROR(lex.getPosition(), E0000, "Incompatible macro arms - mismatched pattern bindings " << e1.idx << " and " << e2.idx);
-                }
-                ),
-            (End,
-                )
             )
         }
         
-        // 4. Apply patterns.
-        TU_MATCH( SimplePatEnt, (arm_pats[active_pat_idx]), (e),
-        (End,
+        if( tok_pat )
+        {
             auto tok = lex.getToken();
-            if( tok.type() != TOK_EOF ) {
-                ERROR(lex.getPosition(), E0000, "Unexpected " << tok << ", expected TOK_EOF");
-            }
-            // NOTE: There can be multiple arms active, take the first.
-            return active_arms[0].first;
-            ),
-        (IfPat, BUG(sp, "IfPat unexpected here");),
-        (IfTok, BUG(sp, "IfTok unexpected here");),
-        (ExpectTok,
-            auto tok = lex.getToken();
+            const auto& e = tok_pat->as_ExpectTok();
+            // NOTE: This should never fail.
             if( tok != e ) {
                 ERROR(lex.getPosition(), E0000, "Unexpected " << tok << ", expected " << e);
             }
-            ),
-        (ExpectPat,
-            struct H {
-                static bool is_prefix(const ::std::vector<unsigned>& needle, const ::std::vector<unsigned>& haystack) {
-                    if( needle.size() > haystack.size() ) {
-                        return false;
-                    }
-                    else {
-                        for(unsigned int i = 0; i < needle.size(); i ++) {
-                            if(needle[i] != haystack[i])
-                                return false;
-                        }
-                        return true;
-                    }
+        }
+        else
+        {
+            // 3. Check that all remaining arms are the same pattern.
+            const auto& active_pat = arm_pats[0];
+            for(unsigned int i = 1; i < arm_pats.size(); i ++)
+            {
+                if( active_pat.tag() != arm_pats[i].tag() ) {
+                    ERROR(lex.getPosition(), E0000, "Incompatible macro arms "
+                        << "- " << active_arms[0].first << " SimplePatEnt::" << active_pat.tag_str()
+                        << " vs " << active_arms[i].first <<  " SimplePatEnt::" << arm_pats[i].tag_str()
+                        );
                 }
-            };
-            
-            // Use the shortest (and ensure that it's a prefix to the others) and let the capture code move caps around when needed
-            const auto* longest = &active_arms[0].second.get_loop_iters();
-            const auto* shortest = longest;
-            for( unsigned int i = 1; i < active_arms.size(); i ++ ) {
-                const auto& iters2 = active_arms[i].second.get_loop_iters();
-                // If this arm has a deeper tree,
-                if( iters2.size() > longest->size() ) {
-                    // The existing longest must be a prefix to this
-                    if( !H::is_prefix(*longest, iters2) ) {
-                        TODO(sp, "Handle ExpectPat where iteration counts aren't prefixes - [" << *longest << "] vs [" << iters2 << "]");
+                TU_MATCH( SimplePatEnt, (active_pat, arm_pats[i]), (e1, e2),
+                (IfPat, BUG(sp, "IfPat unexpected here");),
+                (IfTok, BUG(sp, "IfTok unexpected here");),
+                (ExpectTok,
+                    BUG(sp, "ExpectTok unexpected here");
+                    ),
+                (ExpectPat,
+                    // Can fail, as :expr and :stmt overlap in their trigger set
+                    if( e1.type != e2.type ) {
+                        ERROR(lex.getPosition(), E0000, "Incompatible macro arms - mismatched patterns");
                     }
-                    longest = &iters2;
-                }
-                else {
-                    // Keep track of the shortest
-                    if( iters2.size() < shortest->size() ) {
-                        shortest = &iters2;
+                    if( e1.idx != e2.idx ) {
+                        ERROR(lex.getPosition(), E0000, "Incompatible macro arms - mismatched pattern bindings " << e1.idx << " and " << e2.idx);
                     }
-                    
-                    // This must be a prefix to the longest
-                    if( !H::is_prefix(iters2, *longest) ) {
-                        TODO(sp, "Handle ExpectPat where iteration counts aren't prefixes - [" << *longest << "] vs [" << iters2 << "]");
-                    }
-                }
+                    ),
+                (End,
+                    )
+                )
             }
             
-            // Use the shallowest iteration state
-            // TODO: All other should be on the first iteration.
-            Macro_HandlePatternCap(lex, e.idx, e.type,  *shortest,  bound_tts);
+            // 4. Apply patterns.
+            TU_MATCH( SimplePatEnt, (arm_pats[0]), (e),
+            (End,
+                auto tok = lex.getToken();
+                if( tok.type() != TOK_EOF ) {
+                    ERROR(lex.getPosition(), E0000, "Unexpected " << tok << ", expected TOK_EOF");
+                }
+                // NOTE: There can be multiple arms active, take the first.
+                return active_arms[0].first;
+                ),
+            (IfPat, BUG(sp, "IfPat unexpected here");),
+            (IfTok, BUG(sp, "IfTok unexpected here");),
+            (ExpectTok,
+                ),
+            (ExpectPat,
+                struct H {
+                    static bool is_prefix(const ::std::vector<unsigned>& needle, const ::std::vector<unsigned>& haystack) {
+                        if( needle.size() > haystack.size() ) {
+                            return false;
+                        }
+                        else {
+                            for(unsigned int i = 0; i < needle.size(); i ++) {
+                                if(needle[i] != haystack[i])
+                                    return false;
+                            }
+                            return true;
+                        }
+                    }
+                };
+                
+                // Use the shortest (and ensure that it's a prefix to the others) and let the capture code move caps around when needed
+                const auto* longest = &active_arms[0].second.get_loop_iters();
+                const auto* shortest = longest;
+                for( unsigned int i = 1; i < active_arms.size(); i ++ ) {
+                    const auto& iters2 = active_arms[i].second.get_loop_iters();
+                    // If this arm has a deeper tree,
+                    if( iters2.size() > longest->size() ) {
+                        // The existing longest must be a prefix to this
+                        if( !H::is_prefix(*longest, iters2) ) {
+                            TODO(sp, "Handle ExpectPat where iteration counts aren't prefixes - [" << *longest << "] vs [" << iters2 << "]");
+                        }
+                        longest = &iters2;
+                    }
+                    else {
+                        // Keep track of the shortest
+                        if( iters2.size() < shortest->size() ) {
+                            shortest = &iters2;
+                        }
+                        
+                        // This must be a prefix to the longest
+                        if( !H::is_prefix(iters2, *longest) ) {
+                            TODO(sp, "Handle ExpectPat where iteration counts aren't prefixes - [" << *longest << "] vs [" << iters2 << "]");
+                        }
+                    }
+                }
+                
+                // Use the shallowest iteration state
+                // TODO: All other should be on the first iteration.
+                Macro_HandlePatternCap(lex, e.idx, e.type,  *shortest,  bound_tts);
+                )
             )
-        )
+        }
         
         // Keep looping - breakout is handled in 'End' above
     }
