@@ -1952,15 +1952,14 @@ public:
         ::std::vector<AST::ExprNode_Match_Arm>   arms;
         
         // 1. Variant names
+        ::std::vector< AST::ExprNodeP>  var_name_strs;
         
         // 2. Decoding arms
         for(unsigned int var_idx = 0; var_idx < enm.variants().size(); var_idx ++)
         {
             const auto& v = enm.variants()[var_idx];
             AST::ExprNodeP  code;
-            AST::Pattern    pat_a;
             
-            pat_a = AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Integer({CORETYPE_UINT, var_idx}));
             TU_MATCH(::AST::EnumVariantData, (v.m_data), (e),
             (Value,
                 code = NEWNODE(NamedValue, base_path + v.m_name);
@@ -2005,13 +2004,14 @@ public:
             )
             
             ::std::vector< AST::Pattern>    pats;
-            pats.push_back( AST::Pattern(AST::Pattern::TagReference(), false, mv$(pat_a)) );
+            pats.push_back( AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Integer({CORETYPE_UINT, var_idx})) );
             
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),
                 nullptr,
                 mv$(code)
                 ));
+            var_name_strs.push_back( NEWNODE(String, v.m_name) );
         }
         
         auto node_match = NEWNODE(Match, NEWNODE(NamedValue, AST::Path("self")), mv$(arms));
@@ -2023,15 +2023,16 @@ public:
             ::TypeRef(sp),
             mv$(node_match)
             );
+        const ::std::string& enum_name = type.m_data.as_Path().path.nodes().back().name();
+        
         auto node_rev = NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_enum_variant",
             vec$(
                 NEWNODE(NamedValue, AST::Path("d")),
-                NEWNODE(UniOp, ::AST::ExprNode_UniOp::REF, NEWNODE(NamedValue, AST::Path("VAR_NAMES"))),
+                NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(Array, mv$(var_name_strs))),
                 mv$( node_var_closure )
                 )
             );
         
-        const ::std::string& enum_name = type.m_data.as_Path().path.nodes().back().name();
         auto node = NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_enum",
             vec$( NEWNODE(NamedValue, AST::Path("d")), NEWNODE(String, enum_name), this->dec_closure(sp, mv$(node_rev)) )
             );
