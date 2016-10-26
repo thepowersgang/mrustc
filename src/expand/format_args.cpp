@@ -156,10 +156,11 @@ namespace {
                     continue ;
                 }
                 
-                const char* s2 = s;
-                while(*s2 && *s2 != '}')
-                    s2 ++;
-                auto fmt_frag_str = string_view { s, s2 };
+                // Debugging: A view of the formatting fragment
+                //const char* s2 = s;
+                //while(*s2 && *s2 != '}')
+                //    s2 ++;
+                //auto fmt_frag_str = string_view { s, s2 };
                 
                 unsigned int index = ~0u;
                 const char* trait_name;
@@ -169,7 +170,15 @@ namespace {
                 if( *s != ':' && *s != '}' ) {
                     // Parse either an integer or an identifer
                     if( isdigit(*s) ) {
-                        TODO(sp, "Parse positional formatting fragment at \"" << fmt_frag_str << "\"");
+                        unsigned int arg_idx = 0;
+                        do {
+                            arg_idx *= 10;
+                            arg_idx += *s - '0';
+                            s ++;
+                        } while(isdigit(*s));
+                        if( arg_idx >= n_free )
+                            ERROR(sp, E0000, "Positional argument " << arg_idx << " out of range");
+                        index = arg_idx;
                     }
                     else {
                         const char* start = s;
