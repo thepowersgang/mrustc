@@ -88,7 +88,8 @@ void Resolve_Use(::AST::Crate& crate)
 
 void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path path, slice< const ::AST::Module* > parent_modules)
 {
-    //TRACE_FUNCTION_F("path = " << path << ", mod.path() = " << mod.path());
+    TRACE_FUNCTION_F("path = " << path);
+    
     for(auto& use_stmt : mod.items())
     {
         if( ! use_stmt.data.is_Use() )
@@ -143,8 +144,8 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             case ::AST::PathBinding::TAG_Function:
                 allow = Lookup::Type;
                 break;
-            default:
-                break;
+            // DEAD, Unbound, ...
+            default:    break;
             }
             ASSERT_BUG(span, allow != Lookup::Any, "");
             use_stmt_data.alt_binding = Resolve_Use_GetBinding(span, crate, use_stmt_data.path, parent_modules, allow);
@@ -271,6 +272,8 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             continue ;
         
         if( item.name == des_item_name ) {
+            //if( allow != Lookup::Any )
+            //    DEBUG(mod.path() << " " << des_item_name << " " << item.data.tag_str());
             TU_MATCH(::AST::Item, (item.data), (e),
             (None,
                 // IMPOSSIBLE - Handled above
@@ -326,7 +329,6 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                     return ::AST::PathBinding::make_Module({&e});
                 )
             )
-            break ;
         }
     }
     

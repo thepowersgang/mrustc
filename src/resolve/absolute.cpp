@@ -420,7 +420,7 @@ struct Context
         }
         
         // Top-level module
-        DEBUG("- Top module");
+        DEBUG("- Top module (" << m_mod.path() << ")");
         ::AST::Path rv;
         if( this->lookup_in_mod(m_mod, name, mode,  rv) ) {
             return rv;
