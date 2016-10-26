@@ -1619,11 +1619,15 @@ class Deriver_RustcEncodable:
     {
         const AST::Path    trait_path = this->get_trait_path();
         
+        AST::Path result_path = AST::Path(core_name, { AST::PathNode("result", {}), AST::PathNode("Result", {}) });
+        result_path.nodes()[1].args().m_types.push_back( TypeRef(TypeRef::TagUnit(), sp) );
+        result_path.nodes()[1].args().m_types.push_back(TypeRef( sp, AST::Path(AST::Path::TagUfcs(), TypeRef(sp, "S", 0x100|0), this->get_trait_path_Encoder(), { AST::PathNode("Error",{}) }) ));
+        
         AST::Function fcn(
             sp,
             AST::GenericParams(),
             ABI_RUST, false, false, false,
-            TypeRef(TypeRef::TagUnit(), sp),
+            TypeRef(sp, mv$(result_path)),
             vec$(
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef(sp, "Self", 0xFFFF)) ),
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "s"), TypeRef(TypeRef::TagReference(), sp, true, TypeRef(sp, "S", 0x100|0)) )
@@ -1644,10 +1648,7 @@ class Deriver_RustcEncodable:
         return mv$(rv);
     }
     AST::ExprNodeP enc_val_direct(AST::ExprNodeP val) const {
-        return NEWNODE(UniOp,
-            ::AST::ExprNode_UniOp::QMARK,
-            NEWNODE(CallPath, this->get_method_path(),  vec$( mv$(val), NEWNODE(NamedValue, AST::Path("s")) ))
-            );
+        return NEWNODE(CallPath, this->get_method_path(),  vec$( mv$(val), NEWNODE(NamedValue, AST::Path("s")) ));
     }
     AST::ExprNodeP enc_val_ref(AST::ExprNodeP val) const {
         return this->enc_val_direct(NEWNODE(UniOp, AST::ExprNode_UniOp::REF, mv$(val)) );
@@ -1674,12 +1675,14 @@ public:
         ::std::vector<AST::ExprNodeP>   nodes;
         TU_MATCH(AST::StructData, (str.m_data), (e),
         (Struct,
+            unsigned int idx = 0;
             for( const auto& fld : e.ents )
             {
                 nodes.push_back( NEWNODE(CallPath,
                     this->get_trait_path_Encoder() + "emit_struct_field",
-                    vec$( NEWNODE(NamedValue, AST::Path("s")), NEWNODE(String, fld.m_name), this->enc_closure( sp, this->enc_val_ref(this->field(fld.m_name)) ) )
+                    vec$( NEWNODE(NamedValue, AST::Path("s")), NEWNODE(String, fld.m_name), NEWNODE(Integer, idx, CORETYPE_UINT), this->enc_closure( sp, this->enc_val_ref(this->field(fld.m_name)) ) )
                     ) );
+                idx ++;
             }
             ),
         (Tuple,
@@ -1843,11 +1846,15 @@ class Deriver_RustcDecodable:
     {
         const AST::Path    trait_path = this->get_trait_path();
         
+        AST::Path result_path = AST::Path(core_name, { AST::PathNode("result", {}), AST::PathNode("Result", {}) });
+        result_path.nodes()[1].args().m_types.push_back( TypeRef(sp, "Self", 0xFFFF) );
+        result_path.nodes()[1].args().m_types.push_back( TypeRef(sp, AST::Path(AST::Path::TagUfcs(), TypeRef(sp, "D", 0x100|0), this->get_trait_path_Decoder(), { AST::PathNode("Error",{}) })) );
+        
         AST::Function fcn(
             sp,
             AST::GenericParams(),
             ABI_RUST, false, false, false,
-            TypeRef(TypeRef::TagUnit(), sp),
+            TypeRef(sp, result_path),
             vec$(
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef(sp, "Self", 0xFFFF)) ),
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "d"), TypeRef(TypeRef::TagReference(), sp, true, TypeRef(sp, "D", 0x100|0)) )
@@ -1868,10 +1875,7 @@ class Deriver_RustcDecodable:
         return mv$(rv);
     }
     AST::ExprNodeP dec_val() const {
-        return NEWNODE(UniOp,
-            ::AST::ExprNode_UniOp::QMARK,
-            NEWNODE(CallPath, this->get_method_path(),  vec$( NEWNODE(NamedValue, AST::Path("d")) ))
-            );
+        return NEWNODE(CallPath, this->get_method_path(),  vec$( NEWNODE(NamedValue, AST::Path("d")) ));
     }
     AST::ExprNodeP field(const ::std::string& name) const {
         return NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), name);
@@ -1883,8 +1887,11 @@ class Deriver_RustcDecodable:
             mv$(code)
             );
     }
-    AST::ExprNodeP get_val_ok(const ::std::string& core_name) const {
-        return NEWNODE(CallPath, AST::Path(core_name, {AST::PathNode("result",{}), AST::PathNode("Result",{}), AST::PathNode("Ok",{})}), vec$( NEWNODE(Tuple, {})) );
+    AST::ExprNodeP get_val_ok(const ::std::string& core_name, AST::ExprNodeP inner) const {
+        return NEWNODE(CallPath, AST::Path(core_name, {AST::PathNode("result",{}), AST::PathNode("Result",{}), AST::PathNode("Ok",{})}), vec$( mv$(inner) ) );
+    }
+    AST::ExprNodeP get_val_ok_unit(const ::std::string& core_name) const {
+        return get_val_ok(core_name, NEWNODE(Tuple, {}));
     }
     
 public:
@@ -1897,12 +1904,14 @@ public:
         TU_MATCH(AST::StructData, (str.m_data), (e),
         (Struct,
             ::std::vector< ::std::pair< ::std::string, AST::ExprNodeP > >   vals;
+            unsigned int idx = 0;
             for( const auto& fld : e.ents )
             {
-                vals.push_back(::std::make_pair(fld.m_name, NEWNODE(CallPath,
+                vals.push_back(::std::make_pair(fld.m_name, NEWNODE(UniOp, ::AST::ExprNode_UniOp::QMARK, NEWNODE(CallPath,
                     this->get_trait_path_Decoder() + "read_struct_field",
-                    vec$( NEWNODE(NamedValue, AST::Path("d")), NEWNODE(String, fld.m_name), this->dec_closure( sp, this->dec_val() ) )
-                    ) ));
+                    vec$( NEWNODE(NamedValue, AST::Path("d")), NEWNODE(String, fld.m_name), NEWNODE(Integer, idx, CORETYPE_UINT), this->dec_closure( sp, this->dec_val() ) )
+                    )) ));
+                idx ++;
             }
             node_v = NEWNODE(StructLiteral, base_path, nullptr, mv$(vals));
             ),
@@ -1910,16 +1919,16 @@ public:
             ::std::vector<AST::ExprNodeP>   vals;
             for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
             {
-                vals.push_back( NEWNODE(CallPath,
+                vals.push_back( NEWNODE(UniOp, ::AST::ExprNode_UniOp::QMARK, NEWNODE(CallPath,
                     this->get_trait_path_Decoder() + "read_tuple_struct_arg",
                     vec$( NEWNODE(NamedValue, AST::Path("d")), NEWNODE(Integer, idx, CORETYPE_UINT), this->dec_closure(sp, this->dec_val()) )
-                    ) );
+                    )) );
             }
             node_v = NEWNODE(CallPath, mv$(base_path), mv$(vals));
             )
         )
 
-        auto closure = this->dec_closure( sp, mv$(node_v) );
+        auto closure = this->dec_closure( sp, this->get_val_ok(core_name, mv$(node_v)) );
         
         auto args = vec$( NEWNODE(NamedValue, AST::Path("d")), NEWNODE(String, struct_name), AST::ExprNodeP(), mv$(closure) );
         
@@ -1966,13 +1975,13 @@ public:
                 for( unsigned int idx = 0; idx < e.m_sub_types.size(); idx ++ )
                 {
                     auto name_a = FMT("a" << idx);
-                    args.push_back( NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_enum_variant_arg",
+                    args.push_back( NEWNODE(UniOp, ::AST::ExprNode_UniOp::QMARK, NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_enum_variant_arg",
                         vec$(
                             NEWNODE(NamedValue, AST::Path("d")),
                             NEWNODE(Integer, idx, CORETYPE_UINT),
                             this->dec_closure(sp, this->dec_val())
                             )
-                        ) );
+                        )) );
                 }
                 code = NEWNODE(CallPath, base_path + v.m_name, mv$(args));
                 ),
@@ -1984,14 +1993,14 @@ public:
                 {
                     auto name_a = FMT("a" << fld.m_name);
                     
-                    vals.push_back(::std::make_pair(fld.m_name, NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_struct_variant_field",
+                    vals.push_back(::std::make_pair(fld.m_name, NEWNODE(UniOp, ::AST::ExprNode_UniOp::QMARK, NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_struct_variant_field",
                         vec$(
                             NEWNODE(NamedValue, AST::Path("d")),
                             NEWNODE(String, fld.m_name),
                             NEWNODE(Integer, idx, CORETYPE_UINT),
                             this->dec_closure(sp, this->dec_val())
                             )
-                        ) ));
+                        ) )));
                     idx ++;
                 }
                 
