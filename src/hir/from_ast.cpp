@@ -308,7 +308,7 @@
         
         TU_MATCH_DEF(::AST::PathBinding, (e.path.binding()), (pb),
         (
-            BUG(pat.span(), "Encountered Struct pattern not pointing to a enum variant or a struct");
+            BUG(pat.span(), "Encountered Struct pattern not pointing to a enum variant or a struct - " << e.path);
             ),
         (EnumVar,
             return ::HIR::Pattern {
@@ -963,7 +963,8 @@ namespace {
 {
     static Span sp;
     
-    DEBUG(p);
+    TRACE_FUNCTION_F(p);
+    
     ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef > >    args;
     for(const auto& arg : f.args())
         args.push_back( ::std::make_pair( LowerHIR_Pattern(arg.first), LowerHIR_Type(arg.second) ) );
@@ -1152,6 +1153,8 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
 
 void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crate)
 {
+    DEBUG(ast_mod.path());
+    
     // Sub-modules
     for( const auto& item : ast_mod.items() )
     {
@@ -1172,6 +1175,8 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
         if( !i.data.is_Impl() ) continue;
         const auto& impl = i.data.as_Impl();
         auto params = LowerHIR_GenericParams(impl.def().params(), nullptr);
+        
+        TRACE_FUNCTION_F("IMPL " << impl.def());
         
         if( impl.def().trait().ent.is_valid() )
         {
