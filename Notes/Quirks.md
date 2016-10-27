@@ -15,7 +15,7 @@ fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 Method call on a statement-like match
 
 
-The `ident` fragment matches reserved words
+The `ident` fragment matches ?some reserved words
 ===
 
 Typically used for replacing `self` in macros.
@@ -40,4 +40,7 @@ _Unconfirmed_
 `<Foo>::SOMECONST` can either refer to `impl Foo { const SOMECONST... }  or `impl Trait for Foo { const SOMECONST ... }`
 
 
-
+Blocks that don't yield a value can mark as diverged if ?any statement diverges
+=============
+- This includes any function call (or method call)
+- TODO: Is this just the last statement? or all statements

@@ -1,18 +1,21 @@
 TODO:
-- Fix macro_rules! to allow librustc_llvm to compile (bitflags quirk)
- - Problem: Two near-identical arms and chosing to recurse in both
+- Implement asm! macro fully
 - Get all run-pass and run-fail tests passing resolve
  - Lots of fixes to do here
+ - Including a quirk in lookup for `<Foo>::Bar` searching traits
+- "Compile" rustc
 - Audit TODOs in codebase
 - MIR Optimisations
  - Assignment elision (e.g. remove intermediate temporaries assigned to RETURN)
  - Dead code eliminiation
  - BB Unificiation
 - HIR Optimisation (remove dead code in `if true/if false` branches)
-- Basic codegen
+- Basic codegen such that `hello.rs` runs
 - Convert enum variants to point to structs for the data type
+ - This may have to wait for a rustc RFC? (or can hide the structs for now)
 - Clean up Span code to correctly handle nested spans
 - Clean up AST
  - Almost done, just a few little niggles left
 - Split arg patterns and arg types up for cleaner serialisation
  - Could be a good idea to do as part of changing HIR::TraitImpl to only contain the impl data
+ - May not be too useful due to argument monomorphisation.
