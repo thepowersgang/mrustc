@@ -240,7 +240,7 @@ public:
     bool trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const ::std::string& name, bool allow_move,  ::HIR::GenericPath& out_path) const;
     bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
 
-    bool type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const;
+    ::HIR::Compare type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const;
 private:
     void expand_associated_types_inplace(const Span& sp, ::HIR::TypeRef& input, LList<const ::HIR::TypeRef*> stack) const;
     void expand_associated_types_inplace__UfcsKnown(const Span& sp, ::HIR::TypeRef& input, LList<const ::HIR::TypeRef*> stack) const;

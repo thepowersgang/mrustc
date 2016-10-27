@@ -996,8 +996,9 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     }
     
     if( trait == lang_Copy ) {
-        if( this->type_is_copy(sp, type) ) {
-            return callback( ImplRef(&type, &null_params, &null_assoc), ::HIR::Compare::Equal );
+        auto cmp = this->type_is_copy(sp, type);
+        if( cmp != ::HIR::Compare::Unequal ) {
+            return callback( ImplRef(&type, &null_params, &null_assoc), cmp );
         }
         else {
             return false;
@@ -2167,6 +2168,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             auto match = this->ftic_check_params(sp, trait,  params_ptr, type,  impl.m_params, impl.m_trait_args, impl.m_type,  impl_params, placeholders);
             if( match == ::HIR::Compare::Unequal ) {
                 // If any bound failed, return false (continue searching)
+                DEBUG("[find_trait_impls_crate] - Params mismatch");
                 return false;
             }
 
@@ -2621,14 +2623,46 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
     return false;
 }
 
-bool TraitResolution::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const
+::HIR::Compare TraitResolution::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const
 {
     const auto& type = this->m_ivars.get_type(ty);
     TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (e),
     (
         const auto& lang_Copy = this->m_crate.get_lang_item_path(sp, "copy");
         // NOTE: Don't use find_trait_impls, because that calls this
-        return find_trait_impls_crate(sp, lang_Copy, ::HIR::PathParams{}, ty,  [&](auto , auto c){ return c == ::HIR::Compare::Equal; });
+        bool is_fuzzy = false;
+        bool has_eq = find_trait_impls_crate(sp, lang_Copy, ::HIR::PathParams{}, ty,  [&](auto , auto c){
+            switch(c)
+            {
+            case ::HIR::Compare::Equal: return true;
+            case ::HIR::Compare::Fuzzy:
+                is_fuzzy = true;
+                return false;
+            case ::HIR::Compare::Unequal:
+                return false;
+            }
+            throw "";
+            });
+        if( has_eq ) {
+            return ::HIR::Compare::Equal;
+        }
+        else if( is_fuzzy ) {
+            return ::HIR::Compare::Fuzzy;
+        }
+        else {
+            return ::HIR::Compare::Unequal;
+        }
+        ),
+    (Infer,
+        switch(e.ty_class)
+        {
+        case ::HIR::InferClass::Integer:
+        case ::HIR::InferClass::Float:
+            return ::HIR::Compare::Equal;
+        default:
+            DEBUG("Fuzzy Copy impl for ivar?");
+            return ::HIR::Compare::Fuzzy;
+        }
         ),
     (Generic,
         const auto& lang_Copy = this->m_crate.get_lang_item_path(sp, "copy");
@@ -2639,30 +2673,30 @@ bool TraitResolution::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) con
                 }
             )
             return false;
-            });
+            }) ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal ;
         ),
     (Primitive,
         if( e == ::HIR::CoreType::Str )
-            return false;
-        return true;
+            return ::HIR::Compare::Unequal;
+        return ::HIR::Compare::Equal;
         ),
     (Borrow,
-        return e.type == ::HIR::BorrowType::Shared;
+        return e.type == ::HIR::BorrowType::Shared ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal ;
         ),
     (Pointer,
-        return true;
+        return ::HIR::Compare::Equal;
         ),
     (Tuple,
+        auto rv = ::HIR::Compare::Equal;
         for(const auto& sty : e)
-            if( !type_is_copy(sp, sty) )
-                return false;
-        return true;
+            rv &= type_is_copy(sp, sty);
+        return rv;
         ),
     (Slice,
-        return false;
+        return ::HIR::Compare::Unequal;
         ),
     (Function,
-        return true;
+        return ::HIR::Compare::Equal;
         ),
     (Array,
         return type_is_copy(sp, *e.inner);
@@ -2714,7 +2748,8 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
         if( e.type == ::HIR::BorrowType::Owned ) {
             // Can move, because we have &move
         }
-        else if( this->type_is_copy(sp, *e.inner) ) {
+        // TODO: What if this returns Fuzzy?
+        else if( this->type_is_copy(sp, *e.inner) == ::HIR::Compare::Equal ) {
             // Can move, because it's Copy
         }
         else {
