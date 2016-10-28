@@ -15,6 +15,7 @@
 #include "common.hpp"
 #include <cassert>
 #include <hir/hir.hpp>  // ABI_RUST - TODO: Move elsewhere?
+#include <expand/cfg.hpp>   // check_cfg - for `mod nonexistant;`
 
 template<typename T>
 Spanned<T> get_spanned(TokenStream& lex, ::std::function<T()> f) {
@@ -48,7 +49,7 @@ void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs
     ::std::vector< ::std::string>   lifetimes;
     GET_CHECK_TOK(tok, lex, TOK_LT);
     do {
-	GET_TOK(tok, lex);
+        GET_TOK(tok, lex);
 
         ::AST::MetaItems attrs;
         while(tok.type() == TOK_ATTR_OPEN)
@@ -1622,6 +1623,19 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         submod.m_file_info.path = sub_path;
         submod.m_file_info.controls_dir = sub_file_controls_dir;
         
+        // Check #[cfg] and don't load if it fails
+        struct H {
+            static bool check_item_cfg(const ::AST::MetaItems& attrs)
+            {
+                for(const auto& at : attrs.m_items) {
+                    if( at.name() == "cfg" && !check_cfg(attrs.m_span, at) ) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+        };
+        
         switch( GET_TOK(tok, lex) )
         {
         case TOK_BRACE_OPEN:
@@ -1636,6 +1650,12 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
             else if( path_attr.size() == 0 && ! mod_fileinfo.controls_dir )
             {
                 ERROR(lex.getPosition(), E0000, "Can't load from files outside of mod.rs or crate root");
+            }
+            else if( !H::check_item_cfg(meta_items) ) {
+                // Ignore - emit Item::None
+                item_name = mv$(name);
+                item_data = ::AST::Item( );
+                break ;
             }
             else
             {
