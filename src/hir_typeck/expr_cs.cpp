@@ -127,6 +127,7 @@ struct Context
     // - Equate two types, allowing inferrence
     void equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR::ExprNodeP& node_ptr);
     // - Mark a type as having an unknown coercion (for this round)
+    // TODO: Include the direction for the shadow, allowing guesses from the other direction.
     void equate_types_shadow(const Span& sp, const ::HIR::TypeRef& l);
     // - Equate a type to an associated type (if name == "", no equation is done, but trait is searched)
     void equate_types_assoc(
