@@ -48,7 +48,18 @@ void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs
     ::std::vector< ::std::string>   lifetimes;
     GET_CHECK_TOK(tok, lex, TOK_LT);
     do {
-        switch(GET_TOK(tok, lex))
+	GET_TOK(tok, lex);
+
+        ::AST::MetaItems attrs;
+        while(tok.type() == TOK_ATTR_OPEN)
+        {
+            attrs.push_back( Parse_MetaItem(lex) );
+            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+            GET_TOK(tok, lex);
+        }
+        (void)attrs;    // TODO: Attributes on generic params
+
+        switch(tok.type())
         {
         case TOK_LIFETIME:
             lifetimes.push_back(tok.str());
@@ -68,6 +79,7 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
     
     do
     {
+        ::std::vector< ::std::string>   hrls;
         if(GET_TOK(tok, lex) == TOK_LIFETIME) {
             ret.add_bound(AST::GenericBound::make_TypeLifetime( {
                 checked_type.clone(), tok.str()
@@ -81,22 +93,12 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
         else {
             if( tok.type() == TOK_RWORD_FOR )
             {
-                GET_CHECK_TOK(tok, lex, TOK_LT);
-                do {
-                    switch(GET_TOK(tok, lex))
-                    {
-                    case TOK_LIFETIME:
-                        lifetimes.push_back(tok.str());
-                        break;    
-                    default:
-                        throw ParseError::Unexpected(lex, tok, Token(TOK_LIFETIME));
-                    }
-                } while( GET_TOK(tok, lex) == TOK_COMMA );
-                CHECK_TOK(tok, TOK_GT);
+                hrls = Parse_HRB(lex);
             }
             else {
                 PUTBACK(tok, lex);
             }
+            (void)hrls; // TODO: HRLs
             
             ret.add_bound( AST::GenericBound::make_IsTrait({
                 checked_type.clone(), mv$(lifetimes), Parse_Path(lex, PATH_GENERIC_TYPE)
@@ -114,48 +116,52 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
     AST::GenericParams ret;
     Token tok;
     do {
-        bool is_lifetime = false;
         if( GET_TOK(tok, lex) == TOK_GT ) {
             break ;
         }
-        switch( tok.type() )
-        {
-        case TOK_IDENT:
-            break;
-        case TOK_LIFETIME:
-            is_lifetime = true;
-            break;
-        default:
-            // Oopsie!
-            throw ParseError::Unexpected(lex, tok);
-        }
-        ::std::string param_name = tok.str();
-        if( is_lifetime )
-            ret.add_lft_param( param_name );
-        else
-            ret.add_ty_param( AST::TypeParam( param_name ) );
-        auto param_ty = TypeRef(lex.getPosition(), param_name);
         
-        if( GET_TOK(tok, lex) == TOK_COLON )
+        ::AST::MetaItems attrs;
+        while(tok.type() == TOK_ATTR_OPEN)
         {
-            if( is_lifetime )
+            attrs.push_back( Parse_MetaItem(lex) );
+            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+            GET_TOK(tok, lex);
+        }
+        (void)attrs;    // TODO: Attributes on generic params
+        
+        if( tok.type() == TOK_IDENT )
+        {
+            ::std::string param_name = tok.str();
+            ret.add_ty_param( AST::TypeParam( param_name ) );
+            
+            auto param_ty = TypeRef(lex.getPosition(), param_name);
+            if( GET_TOK(tok, lex) == TOK_COLON )
+            {
+                Parse_TypeBound(lex, ret, param_ty);
+                GET_TOK(tok, lex);
+            }
+            
+            if( tok.type() == TOK_EQUAL )
+            {
+                ret.ty_params().back().setDefault( Parse_Type(lex) );
+                GET_TOK(tok, lex);
+            }
+        }
+        else if( tok.type() == TOK_LIFETIME )
+        {
+            ::std::string param_name = tok.str();
+            ret.add_lft_param( param_name );
+            if( GET_TOK(tok, lex) == TOK_COLON )
             {
                 do {
                     GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
                     ret.add_bound(AST::GenericBound::make_Lifetime( {param_name, tok.str()} ));
                 } while( GET_TOK(tok, lex) == TOK_PLUS );
             }
-            else
-            {
-                Parse_TypeBound(lex, ret, param_ty);
-                GET_TOK(tok, lex);
-            }
         }
-        
-        if( !is_lifetime && tok.type() == TOK_EQUAL )
+        else
         {
-            ret.ty_params().back().setDefault( Parse_Type(lex) );
-            GET_TOK(tok, lex);
+            throw ParseError::Unexpected(lex, tok, {TOK_IDENT, TOK_LIFETIME});
         }
     } while( tok.type() == TOK_COMMA );
     PUTBACK(tok, lex);

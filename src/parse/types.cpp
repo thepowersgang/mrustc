@@ -67,13 +67,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         }
     // 
     case TOK_RWORD_FOR: {
-        GET_CHECK_TOK(tok, lex, TOK_LT);
-        ::std::vector<::std::string>    hrls;
-        do {
-            GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
-            hrls.push_back( mv$(tok.str()) );
-        } while( GET_TOK(tok, lex) == TOK_COMMA );
-        CHECK_TOK(tok, TOK_GT);
+        auto hrls = Parse_HRB(lex);
         switch(LOOK_AHEAD(lex))
         {
         case TOK_RWORD_UNSAFE:
