@@ -252,6 +252,9 @@ struct LowerHIR_ExprNode_Visitor:
                     mv$( args )
                     ) );
                 ),
+            (TypeAlias,
+                TODO(v.span(), "CallPath -> TupleVariant TypeAlias");
+                ),
             (EnumVar,
                 m_rv.reset( new ::HIR::ExprNode_TupleVariant( v.span(),
                     LowerHIR_GenericPath(v.span(), v.m_path), false,
@@ -539,7 +542,7 @@ struct LowerHIR_ExprNode_Visitor:
             values.push_back( ::std::make_pair(val.first, LowerHIR_ExprNode_Inner(*val.second)) );
         m_rv.reset( new ::HIR::ExprNode_StructLiteral( v.span(),
             LowerHIR_GenericPath(v.get_pos(), v.m_path),
-            v.m_path.binding().is_Struct(),
+            ! v.m_path.binding().is_EnumVar(),
             LowerHIR_ExprNode_Inner_Opt(v.m_base_value.get()),
             mv$(values)
             ) );

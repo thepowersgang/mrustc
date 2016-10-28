@@ -105,7 +105,7 @@ public:
     }
     
     
-    ::HIR::GenericPath expand_alias_pattern(const Span& sp, const ::HIR::GenericPath& path)
+    ::HIR::GenericPath expand_alias_gp(const Span& sp, const ::HIR::GenericPath& path)
     {
         const unsigned int MAX_RECURSIVE_TYPE_EXPANSIONS = 100;
         
@@ -118,10 +118,10 @@ public:
             if( ty == ::HIR::TypeRef() )
                 break ;
             if( !ty.m_data.is_Path() )
-                ERROR(sp, E0000, "Type alias referenced in pattern doesn't point to a path");
+                ERROR(sp, E0000, "Type alias referenced in generic path doesn't point to a path");
             auto& ty_p = ty.m_data.as_Path().path;
             if( !ty_p.m_data.is_Generic() )
-                ERROR(sp, E0000, "Type alias referenced in pattern doesn't point to a generic path");
+                ERROR(sp, E0000, "Type alias referenced in generic path doesn't point to a generic path");
             rv = mv$( ty_p.m_data.as_Generic() );
             
             this->visit_generic_path(rv, ::HIR::Visitor::PathContext::TYPE);
@@ -141,7 +141,7 @@ public:
         (
             ),
         (StructValue,
-            auto new_path = expand_alias_pattern(sp, e.path);
+            auto new_path = expand_alias_gp(sp, e.path);
             if( new_path.m_path.m_components.size() != 0 )
             {
                 DEBUG("Replacing " << e.path << " with " << new_path);
@@ -149,7 +149,7 @@ public:
             }
             ),
         (StructTuple,
-            auto new_path = expand_alias_pattern(sp, e.path);
+            auto new_path = expand_alias_gp(sp, e.path);
             if( new_path.m_path.m_components.size() != 0 )
             {
                 DEBUG("Replacing " << e.path << " with " << new_path);
@@ -157,7 +157,7 @@ public:
             }
             ),
         (Struct,
-            auto new_path = expand_alias_pattern(sp, e.path);
+            auto new_path = expand_alias_gp(sp, e.path);
             if( new_path.m_path.m_components.size() != 0 )
             {
                 DEBUG("Replacing " << e.path << " with " << new_path);
@@ -208,6 +208,21 @@ public:
                     upper_visitor.visit_pattern(arg.first);
                     upper_visitor.visit_type(arg.second);
                 }
+                ::HIR::ExprVisitorDef::visit(node);
+            }
+            
+            void visit(::HIR::ExprNode_StructLiteral& node) override
+            {
+                if( node.m_is_struct )
+                {
+                    auto new_path = upper_visitor.expand_alias_gp(node.span(), node.m_path);
+                    if( new_path.m_path.m_components.size() != 0 )
+                    {
+                        DEBUG("Replacing " << node.m_path << " with " << new_path);
+                        node.m_path = mv$(new_path);
+                    }
+                }
+                
                 ::HIR::ExprVisitorDef::visit(node);
             }
             
