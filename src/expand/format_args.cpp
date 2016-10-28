@@ -408,6 +408,11 @@ class CFormatArgsExpander:
         // - Parse the arguments
         while( GET_TOK(tok, lex) == TOK_COMMA )
         {
+            if( lex.lookahead(0) == TOK_EOF ) {
+                GET_TOK(tok, lex);
+                break;
+            }
+            
             // - Named parameters
             if( lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_EQUAL )
             {
@@ -431,6 +436,7 @@ class CFormatArgsExpander:
                 free_args.push_back( mv$(expr_tt) );
             }
         }
+        CHECK_TOK(tok, TOK_EOF);
         
         // - Parse the format string
         ::std::vector< FmtFrag> fragments;
