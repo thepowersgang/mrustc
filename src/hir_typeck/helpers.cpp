@@ -2510,7 +2510,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                         DEBUG("Equal");
                         continue;
                     case ::HIR::Compare::Unequal:
-                        DEBUG("Assoc " << assoc_bound.first << " failure - " << ty << " != " << assoc_bound.second);
+                        DEBUG("Assoc `" << assoc_bound.first << "` didn't match - " << ty << " != " << assoc_bound.second);
                         return false;
                     case ::HIR::Compare::Fuzzy:
                         // TODO: When a fuzzy match is encountered on a conditional bound, returning `false` can lead to an false negative (and a compile error)

@@ -599,41 +599,50 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return Compare::Equal;
         ),
     (Path,
+        ::HIR::Compare  rv = Compare::Unequal;
         if( te.path.m_data.tag() != xe.path.m_data.tag() ) {
-            return Compare::Unequal;
+            rv = Compare::Unequal;
         }
-        TU_MATCH(::HIR::Path::Data, (te.path.m_data, xe.path.m_data), (tpe, xpe),
-        (Generic,
-            if( tpe.m_path != xpe.m_path ) {
-                return Compare::Unequal;
-            }
-            return match_generics_pp(sp, tpe.m_params, xpe.m_params, resolve_placeholder, callback);
-            ),
-        (UfcsKnown,
-            auto cmp = tpe.type->match_test_generics_fuzz( sp, *xpe.type, resolve_placeholder, callback );
-            if( tpe.trait.m_path != xpe.trait.m_path )
-                return Compare::Unequal;
-            cmp &= match_generics_pp(sp, tpe.trait.m_params, xpe.trait.m_params, resolve_placeholder, callback);
-            if( tpe.item != xpe.item )
-                return Compare::Unequal;
-            cmp &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, callback);
-            return cmp;
-            ),
-        (UfcsUnknown,
-            auto cmp = tpe.type->match_test_generics_fuzz( sp, *xpe.type, resolve_placeholder, callback );
-            if( tpe.item != xpe.item )
-                return Compare::Unequal;
-            cmp &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, callback);
-            return cmp;
-            ),
-        (UfcsInherent,
-            auto cmp = tpe.type->match_test_generics_fuzz( sp, *xpe.type, resolve_placeholder, callback );
-            if( tpe.item != xpe.item )
-                return Compare::Unequal;
-            cmp &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, callback);
-            return cmp;
+        else {
+            TU_MATCH(::HIR::Path::Data, (te.path.m_data, xe.path.m_data), (tpe, xpe),
+            (Generic,
+                if( tpe.m_path != xpe.m_path ) {
+                    rv = Compare::Unequal;
+                }
+                else {
+                    rv = match_generics_pp(sp, tpe.m_params, xpe.m_params, resolve_placeholder, callback);
+                }
+                ),
+            (UfcsKnown,
+                rv = tpe.type->match_test_generics_fuzz( sp, *xpe.type, resolve_placeholder, callback );
+                if( tpe.trait.m_path != xpe.trait.m_path )
+                    rv = Compare::Unequal;
+                rv &= match_generics_pp(sp, tpe.trait.m_params, xpe.trait.m_params, resolve_placeholder, callback);
+                if( tpe.item != xpe.item )
+                    rv = Compare::Unequal;
+                rv &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, callback);
+                ),
+            (UfcsUnknown,
+                rv = tpe.type->match_test_generics_fuzz( sp, *xpe.type, resolve_placeholder, callback );
+                if( tpe.item != xpe.item )
+                    rv = Compare::Unequal;
+                rv &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, callback);
+                ),
+            (UfcsInherent,
+                rv = tpe.type->match_test_generics_fuzz( sp, *xpe.type, resolve_placeholder, callback );
+                if( tpe.item != xpe.item )
+                    rv = Compare::Unequal;
+                rv &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, callback);
+                )
             )
-        )
+        }
+        
+        if( rv == ::HIR::Compare::Unequal ) {
+            if( te.binding.is_Unbound() || xe.binding.is_Unbound() ) {
+                rv = ::HIR::Compare::Fuzzy;
+            }
+        }
+        return rv;
         ),
     (TraitObject,
         if( te.m_trait.m_path.m_path != xe.m_trait.m_path.m_path ) {
@@ -987,7 +996,13 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return (le == re ? Compare::Equal : Compare::Unequal);
         ),
     (Path,
-        return le.path.compare_with_placeholders( sp, re.path, resolve_placeholder );
+        auto rv = le.path.compare_with_placeholders( sp, re.path, resolve_placeholder );
+        if( rv == ::HIR::Compare::Unequal ) {
+            if( le.binding.is_Unbound() || re.binding.is_Unbound() ) {
+                rv = ::HIR::Compare::Fuzzy;
+            }
+        }
+        return rv;
         ),
     (Generic,
         if( le.binding != re.binding ) {
