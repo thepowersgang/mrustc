@@ -12,6 +12,35 @@
 #include <parse/lex.hpp>
 #include <ast/expr.hpp>
 
+namespace {
+    ::std::string get_path_relative_to(const ::std::string& base_path, ::std::string path)
+    {
+        if( base_path.size() == 0 ) {
+            return path;
+        }
+        else if( base_path[base_path.size()-1] == '/' ) {
+            return base_path + path;
+        }
+        else {
+            
+            auto slash = base_path.find_last_of('/');
+            if( slash == ::std::string::npos )
+            {
+                return path;
+            }
+            else
+            {
+                slash += 1;
+                ::std::string   rv;
+                rv.reserve( slash + path.size() );
+                rv.append( base_path.begin(), base_path.begin() + slash );
+                rv.append( path.begin(), path.end() );
+                return rv;
+            }
+        }
+    }
+};
+
 class CIncludeExpander:
     public ExpandProcMacro
 {
@@ -23,23 +52,18 @@ class CIncludeExpander:
         Token   tok;
         auto lex = TTStream(tt);
         
+        // TODO: Parse+expand
         GET_CHECK_TOK(tok, lex, TOK_STRING);
         auto path = mv$(tok.str());
         GET_CHECK_TOK(tok, lex, TOK_EOF);
         
-        auto base_path = mod.m_file_info.path;
-        
-        ::std::string file_path;
-        if( base_path[base_path.size()-1] == '/' ) {
-            file_path = base_path + path;
-        }
-        else {
-            TODO(sp, "Open '" << path << "' relative to '" << base_path << "'");
-        }
+        ::std::string file_path = get_path_relative_to(mod.m_file_info.path, mv$(path));
         
         return box$( Lexer(file_path) );
     }
 };
+
+// TODO: include_str! and include_bytes!
 
 STATIC_MACRO("include", CIncludeExpander);
 
