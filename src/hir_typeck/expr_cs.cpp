@@ -539,12 +539,36 @@ namespace {
                     // - Not yielded - so don't equate the return
                     snp->visit(*this);
                     
-                    if( is_diverge(snp->m_res_type) ) {
-                        diverges = true;
+                    // NOTE: If the final statement in the block diverges, mark this as diverging
+                    bool defer = false;
+                    if( !diverges )
+                    {
+                        TU_IFLET(::HIR::TypeRef::Data, this->context.get_type(snp->m_res_type).m_data, Infer, e,
+                            switch(e.ty_class)
+                            {
+                            case ::HIR::InferClass::Integer:
+                            case ::HIR::InferClass::Float:
+                                diverges = false;
+                                break;
+                            default:
+                                defer = true;
+                                break;
+                            }
+                        )
+                        else if( is_diverge(snp->m_res_type) ) {
+                            diverges = true;
+                        }
+                        else {
+                            diverges = false;
+                        }
                     }
                     
                     // If a statement in this block diverges
-                    if( diverges ) {
+                    if( defer ) {
+                        DEBUG("Block final node returns _, derfer diverge check");
+                        this->context.add_revisit(node);
+                    }
+                    else if( diverges ) {
                         DEBUG("Block diverges, yield !");
                         this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
                     }
@@ -1801,7 +1825,45 @@ namespace {
         }
 
         void visit(::HIR::ExprNode_Block& node) override {
-            no_revisit(node);
+            
+            const auto is_diverge = [&](const ::HIR::TypeRef& rty)->bool {
+                const auto& ty = this->context.get_type(rty);
+                // TODO: Search the entire type for `!`? (What about pointers to it? or Option/Result?)
+                // - A correct search will search for unconditional (ignoring enums with a non-! variant) non-rawptr instances of ! in the type
+                return ty.m_data.is_Diverge() || (ty.m_data.is_Infer() && ty.m_data.as_Infer().ty_class == ::HIR::InferClass::Diverge);
+                };
+            
+            const auto& last_ty = this->context.get_type( node.m_nodes.back()->m_res_type );
+            
+            bool diverges = false;
+            // NOTE: If the final statement in the block diverges, mark this as diverging
+            TU_IFLET(::HIR::TypeRef::Data, last_ty.m_data, Infer, e,
+                switch(e.ty_class)
+                {
+                case ::HIR::InferClass::Integer:
+                case ::HIR::InferClass::Float:
+                    diverges = false;
+                    break;
+                default:
+                    return ;
+                }
+            )
+            else if( is_diverge(last_ty) ) {
+                diverges = true;
+            }
+            else {
+                diverges = false;
+            }
+            // If a statement in this block diverges
+            if( diverges ) {
+                DEBUG("Block diverges, yield !");
+                this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
+            }
+            else {
+                DEBUG("Block doesn't diverge but doesn't yield a value, yield ()");
+                this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
+            }
+            this->m_completed = true;
         }
         void visit(::HIR::ExprNode_Return& node) override {
             no_revisit(node);
