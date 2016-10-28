@@ -466,6 +466,14 @@ namespace {
         // Add trait bounds for all impl and function bounds
         apply_bounds_as_rules(context, sp, impl_ptr->m_params, cache.m_monomorph_cb);
         
+        // Equate `Self` and `impl_ptr->m_type` (after monomorph)
+        {
+            ::HIR::TypeRef tmp;
+            const auto& impl_ty_m = (monomorphise_type_needed(impl_ptr->m_type) ? tmp = monomorphise_type_with(sp, impl_ptr->m_type, cache.m_monomorph_cb) : impl_ptr->m_type);
+            
+            context.equate_types(sp, *e.type, impl_ty_m);
+        }
+        
         return true;
     }
     
