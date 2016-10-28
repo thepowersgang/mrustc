@@ -649,6 +649,7 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
             ),
         (Static,
             Expand_Expr(crate, modstack, e.value());
+            Expand_Type(crate, modstack, mod,  e.type());
             ),
         (Type,
             Expand_Type(crate, modstack, mod,  e.type());
@@ -843,6 +844,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                     ),
                 (Static,
                     Expand_Expr(crate, modstack, e.value());
+                    Expand_Type(crate, modstack, mod,  e.type());
                     ),
                 (Type,
                     Expand_Type(crate, modstack, mod,  e.type());
@@ -868,6 +870,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             ),
         (Static,
             Expand_Expr(crate, modstack, e.value());
+            Expand_Type(crate, modstack, mod,  e.type());
             )
         )
         Expand_Attrs(attrs, AttrStage::Post,  crate, path, mod, dat);
