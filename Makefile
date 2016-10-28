@@ -214,9 +214,14 @@ test: $(RUSTCSRC) output/libcore.hir output/liballoc.hir output/libcollections.h
 #
 test_rustos: $(addprefix output/rust_os/,libkernel.hir)
 
+RUSTOS_ENV := RUST_VERSION="mrustc 0.1"
+RUSTOS_ENV += TK_GITSPEC="unknown"
+RUSTOS_ENV += TK_VERSION="0.1"
+RUSTOS_ENV += TK_BUILD="mrustc:0"
+
 output/rust_os/libkernel.hir: ../rust_os/Kernel/Core/main.rs output/libcore.hir output/libstack_dst.hir $(BIN)
 	@mkdir -p $(dir $@)
-	$(DBG) $(BIN) $< -o $@ --cfg arch=amd64 $(PIPECMD)
+	$(RUSTOS_ENV) $(DBG) $(BIN) $< -o $@ --cfg arch=amd64 $(PIPECMD)
 output/libstack_dst.hir: ../rust_os/externals/crates.io/stack_dst/src/lib.rs $(BIN)
 	@mkdir -p $(dir $@)
 	$(DBG) $(BIN) $< -o $@ --cfg feature=no_std $(PIPECMD)
