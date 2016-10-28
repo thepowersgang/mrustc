@@ -3625,27 +3625,22 @@ void Context::equate_types_shadow(const Span& sp, const ::HIR::TypeRef& l)
     (
         // TODO: Shadow sub-types too
         ),
+    (Path,
+        TU_MATCH_DEF( ::HIR::Path::Data, (e.path.m_data), (pe),
+        (
+            ),
+        (Generic,
+            for(const auto& sty : pe.m_params.m_types)
+                this->equate_types_shadow(sp, sty);
+            )
+        )
+        ),
     (Tuple,
         for(const auto& sty : e)
             this->equate_types_shadow(sp, sty);
         ),
     (Borrow,
-        // TODO: Should this just recurse?
-        #if 1
         this->equate_types_shadow(sp, *e.inner);
-        #else
-        TU_MATCH_DEF(::HIR::TypeRef::Data, (this->get_type(*e.inner).m_data), (e2),
-        (
-            ),
-        (Tuple,
-            for(const auto& sty : e2)
-                this->equate_types_shadow(sp, sty);
-            ),
-        (Infer,
-            this->possible_equate_type_disable(e2.index);
-            )
-        )
-        #endif
         ),
     (Closure,
         for(const auto& aty : e.m_arg_types)
