@@ -7,16 +7,18 @@
 #include <hir/visitor.hpp>
 #include <hir_typeck/common.hpp>    // monomorphise_type_with
 
-::HIR::TypeRef ConvertHIR_ExpandAliases_GetExpansion_GP(const Span& sp, const ::HIR::Crate& crate, const ::HIR::GenericPath& path)
+::HIR::TypeRef ConvertHIR_ExpandAliases_GetExpansion_GP(const Span& sp, const ::HIR::Crate& crate, const ::HIR::GenericPath& path, bool is_expr)
 {
+    ::HIR::TypeRef  empty_type;
+    
     const auto& ti = crate.get_typeitem_by_path(sp, path.m_path);
     TU_MATCH_DEF( ::HIR::TypeItem, (ti), (e2),
     (
         // Anything else - leave it be
         ),
     (TypeAlias,
-        if( path.m_params.m_types.size() != e2.m_params.m_types.size() ) {
-            ERROR(sp, E0000, "Mismatched parameter count in " << path);
+        if( !is_expr && path.m_params.m_types.size() != e2.m_params.m_types.size() ) {
+            ERROR(sp, E0000, "Mismatched parameter count in " << path << ", expected " << e2.m_params.m_types.size() << " got " << path.m_params.m_types.size());
         }
         if( e2.m_params.m_types.size() > 0 ) {
             // TODO: Better `monomorphise_type`
@@ -27,8 +29,12 @@
                 }
                 else if( (ge.binding >> 8) == 0 ) {
                     auto idx = ge.binding & 0xFF;
-                    ASSERT_BUG(sp, idx < path.m_params.m_types.size(), "");
-                    return path.m_params.m_types[idx];
+                    if( idx < path.m_params.m_types.size() )
+                        return path.m_params.m_types[idx];
+                    else if( is_expr )
+                        return empty_type;
+                    else
+                        BUG(sp, "Referenced parameter missing from input");
                 }
                 else {
                     BUG(sp, "Bad index " << ge.binding << " encountered in expansion for " << path << " - " << e2.m_type);
@@ -43,12 +49,12 @@
     return ::HIR::TypeRef();
 }
 
-::HIR::TypeRef ConvertHIR_ExpandAliases_GetExpansion(const ::HIR::Crate& crate, const ::HIR::Path& path)
+::HIR::TypeRef ConvertHIR_ExpandAliases_GetExpansion(const ::HIR::Crate& crate, const ::HIR::Path& path, bool is_expr)
 {
     static Span sp;
     TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
     (Generic,
-        return ConvertHIR_ExpandAliases_GetExpansion_GP(sp, crate, e);
+        return ConvertHIR_ExpandAliases_GetExpansion_GP(sp, crate, e, is_expr);
         ),
     (UfcsInherent,
         DEBUG("TODO: Locate impl blocks for types - path=" << path);
@@ -67,6 +73,7 @@ class Expander:
     public ::HIR::Visitor
 {
     const ::HIR::Crate& m_crate;
+    bool m_in_expr = false;
 
 public:
     Expander(const ::HIR::Crate& crate):
@@ -78,7 +85,7 @@ public:
         ::HIR::Visitor::visit_type(ty);
         
         TU_IFLET(::HIR::TypeRef::Data, (ty.m_data), Path, (e),
-            ::HIR::TypeRef  new_type = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e.path);
+            ::HIR::TypeRef  new_type = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e.path, m_in_expr);
             // Keep trying to expand down the chain
             unsigned int num_exp = 1;
             const unsigned int MAX_RECURSIVE_TYPE_EXPANSIONS = 100;
@@ -86,7 +93,7 @@ public:
             {
                 TU_IFLET(::HIR::TypeRef::Data, (new_type.m_data), Path, (e),
                     ::HIR::Visitor::visit_type(new_type);
-                    auto nt = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e.path);
+                    auto nt = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e.path, m_in_expr);
                     if( nt == ::HIR::TypeRef() )
                         break;
                     num_exp ++;
@@ -114,7 +121,7 @@ public:
         
         unsigned int num_exp = 0;
         do {
-            auto ty = ConvertHIR_ExpandAliases_GetExpansion_GP(sp, m_crate, *cur);
+            auto ty = ConvertHIR_ExpandAliases_GetExpansion_GP(sp, m_crate, *cur, m_in_expr);
             if( ty == ::HIR::TypeRef() )
                 break ;
             if( !ty.m_data.is_Path() )
@@ -239,8 +246,13 @@ public:
         
         if( expr.get() != nullptr )
         {
+            auto old = m_in_expr;
+            m_in_expr = true;
+            
             Visitor v { *this };
             (*expr).visit(v);
+            
+            m_in_expr = old;
         }
     }
 };
