@@ -1388,7 +1388,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
     (UFCS,
         DEBUG("- UFCS");
         Resolve_Absolute_Type(context, *e.type);
-        if( e.trait ) {
+        if( e.trait && *e.trait != ::AST::Path() ) {
             Resolve_Absolute_Path(context, sp, Context::LookupMode::Type, *e.trait);
         }
         

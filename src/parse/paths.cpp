@@ -45,7 +45,7 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
     case TOK_DOUBLE_LT:
         lex.putback( Token(TOK_LT) );
     case TOK_LT: {
-        TypeRef ty = Parse_Type(lex, false);    // Don't allow un-parenthesied trait objects
+        TypeRef ty = Parse_Type(lex, true);  // Allow trait objects without parens
         if( GET_TOK(tok, lex) == TOK_RWORD_AS ) {
             ::AST::Path trait;
             if( GET_TOK(tok, lex) == TOK_DOUBLE_COLON ) {
@@ -64,7 +64,9 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
             GET_CHECK_TOK(tok, lex, TOK_GT);
             // TODO: Terminating the "path" here is sometimes valid?
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-            return AST::Path(AST::Path::TagUfcs(), ty, Parse_PathNodes(lex, generic_mode));
+            // NOTE: <Foo>::BAR is actually `<Foo as _>::BAR` (in mrustc parleance)
+            //return AST::Path(AST::Path::TagUfcs(), ty, Parse_PathNodes(lex, generic_mode));
+            return AST::Path(AST::Path::TagUfcs(), ty, AST::Path(), Parse_PathNodes(lex, generic_mode));
         }
         throw ""; }
     

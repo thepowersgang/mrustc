@@ -1066,23 +1066,10 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     
     // UFCS
     case TOK_DOUBLE_LT:
-        PUTBACK(TOK_LT, lex);
-    case TOK_LT: {
-        TypeRef ty = Parse_Type(lex);
-        if( GET_TOK(tok, lex) == TOK_RWORD_AS ) {
-            auto trait = Parse_Path(lex, PATH_GENERIC_TYPE);
-            GET_CHECK_TOK(tok, lex, TOK_GT);
-            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-            path = AST::Path(AST::Path::TagUfcs(), ty, trait, Parse_PathNodes(lex, PATH_GENERIC_EXPR));
-        }
-        else {
-            PUTBACK(tok, lex);
-            GET_CHECK_TOK(tok, lex, TOK_GT);
-            // TODO: Terminating the "path" here is sometimes valid
-            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-            path = AST::Path(AST::Path::TagUfcs(), ty, Parse_PathNodes(lex, PATH_GENERIC_EXPR));
-        }
-        }
+    case TOK_LT:
+        PUTBACK(tok, lex);
+        path = Parse_Path(lex, PATH_GENERIC_EXPR);
+        // Skip down to method
         if(0)
     case TOK_RWORD_SELF:
         {
@@ -1116,6 +1103,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         if(0)
     case TOK_DOUBLE_COLON:
         path = Parse_Path(lex, true, PATH_GENERIC_EXPR);
+        // SKIP TARGET
         switch( GET_TOK(tok, lex) )
         {
         case TOK_PAREN_OPEN:
