@@ -251,7 +251,7 @@ namespace {
                             TODO(sp, "Self when monomorphising trait args");
                         }
                         else if( ge.binding < 256 ) {
-                            assert(ge.binding < trait_path.m_params.m_types.size());
+                            ASSERT_BUG(sp, ge.binding < trait_path.m_params.m_types.size(), "Binding out of range in " << ty << " for trait path " << trait_path);
                             return trait_path.m_params.m_types[ge.binding];
                         }
                         else {
