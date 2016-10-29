@@ -193,10 +193,41 @@ namespace {
             return rv;
             ),
         (UfcsKnown,
-            TODO(sp, "get_ent_fullpath(path = " << path << ")");
+            EntPtr rv;
+            crate.find_trait_impls(e.trait.m_path, *e.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
+                // Hacky selection of impl.
+                // - TODO: Specialisation
+                // - TODO: Inference? (requires full typeck)
+                switch( ns )
+                {
+                case EntNS::Value:
+                    {
+                        auto fit = impl.m_methods.find(e.item);
+                        if( fit != impl.m_methods.end() )
+                        {
+                            DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+                            rv = EntPtr { &fit->second.data };
+                            return true;
+                        }
+                    }
+                    {
+                        auto it = impl.m_constants.find(e.item);
+                        if( it != impl.m_constants.end() )
+                        {
+                            rv = EntPtr { &it->second.data };
+                            return true;
+                        }
+                    }
+                    break;
+                case EntNS::Type:
+                    break;
+                }
+                return false;
+                });
+            return rv;
             ),
         (UfcsUnknown,
-            // TODO - Since this isn't known, can it be searched properly?
+            // TODO: Are these valid at this point in compilation?
             TODO(sp, "get_ent_fullpath(path = " << path << ")");
             )
         )
