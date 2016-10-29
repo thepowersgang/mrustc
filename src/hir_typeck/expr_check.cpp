@@ -1006,7 +1006,7 @@ namespace {
                     t_args  tmp;
                     auto ty_usize = ::HIR::TypeRef(::HIR::CoreType::Usize);
                     ExprVisitor_Validate    ev(m_resolve, tmp, ty_usize);
-                    ev.visit_root( *e.size );
+                    ev.visit_root( **e.size );
                 }
             )
             else {

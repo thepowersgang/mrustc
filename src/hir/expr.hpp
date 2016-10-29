@@ -604,11 +604,7 @@ struct ExprNode_Literal:
         (ByteString,
             m_res_type = ::HIR::TypeRef::Data::make_Borrow({
                 ::HIR::BorrowType::Shared,
-                box$( ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Array({
-                    box$( ::HIR::TypeRef(::HIR::TypeRef::Data::make_Primitive(::HIR::CoreType::U8)) ),
-                    ::HIR::ExprPtr(),
-                    e.size()
-                    }) ) )
+                box$( ::HIR::TypeRef::new_array( ::HIR::CoreType::U8, e.size() ) )
                 });
             )
         )

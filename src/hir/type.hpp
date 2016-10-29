@@ -1,4 +1,10 @@
-
+/*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/type.hpp
+ * - HIR Type representation
+ */
 #ifndef _HIR_TYPE_HPP_
 #define _HIR_TYPE_HPP_
 #pragma once
@@ -140,7 +146,7 @@ public:
         }),
     (Array, struct {
         ::std::unique_ptr<TypeRef>  inner;
-        ::HIR::ExprPtr size;
+        ::std::shared_ptr<::HIR::ExprPtr> size;
         size_t  size_val;
         }),
     (Slice, struct {
@@ -209,10 +215,10 @@ public:
     }
     static TypeRef new_array(TypeRef inner, unsigned int size) {
         assert(size != ~0u);
-        return TypeRef(Data::make_Array({box$(mv$(inner)), ::HIR::ExprPtr(), size}));
+        return TypeRef(Data::make_Array({box$(mv$(inner)), nullptr, size}));
     }
     static TypeRef new_array(TypeRef inner, ::HIR::ExprPtr size_expr) {
-        return TypeRef(Data::make_Array({box$(mv$(inner)), mv$(size_expr), ~0u}));
+        return TypeRef(Data::make_Array({box$(mv$(inner)), ::std::shared_ptr< ::HIR::ExprPtr>( new ::HIR::ExprPtr(mv$(size_expr)) ), ~0u}));
     }
     static TypeRef new_path(::HIR::Path path, TypePathBinding binding) {
         return TypeRef(Data::make_Path({ mv$(path), mv$(binding) }));

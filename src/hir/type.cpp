@@ -1,8 +1,13 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/type.cpp
+ * - HIR Type helper code
  */
 #include "type.hpp"
 #include <span.hpp>
-#include "expr.hpp"
+#include "expr.hpp" // Hack for cloning array types
 
 namespace HIR {
 
@@ -784,21 +789,19 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     (Array,
         unsigned int size_val = e.size_val;
         if( e.size_val == ~0u ) {
+            assert( e.size );
+            assert( *e.size );
             // TODO: Need to invoke const eval here? Or support cloning expressions? Or run consteval earlier.
-            if( const auto* ptr = dynamic_cast<const ::HIR::ExprNode_Literal*>(&*e.size) )
+            if( const auto* ptr = dynamic_cast<const ::HIR::ExprNode_Literal*>(&**e.size) )
             {
                 size_val = ptr->m_data.as_Integer().m_value;
             }
             else
             {
-                BUG(Span(), "Attempting to clone array with unknown size - " << *this);
+                return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Array({ box$(e.inner->clone()), e.size, ~0u }) );
             }
         }
-        return ::HIR::TypeRef( Data::make_Array({
-            box$( e.inner->clone() ),
-            ::HIR::ExprPtr(),
-            size_val
-            }) );
+        return ::HIR::TypeRef::new_array( e.inner->clone(), size_val );
         ),
     (Slice,
         return ::HIR::TypeRef( Data::make_Slice({

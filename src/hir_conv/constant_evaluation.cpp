@@ -1088,10 +1088,12 @@ namespace {
                 ::HIR::Visitor::visit_type(*e.inner);
                 if( e.size_val == ~0u )
                 {
-                    assert(e.size.get() != nullptr);
-                    auto val = evaluate_constant(e.size->span(), m_crate, NewvalState { m_new_values, *m_mod_path, FMT("ty_" << &ty << "$") }, e.size);
+                    assert(e.size);
+                    assert(*e.size);
+                    const auto& expr_ptr = *e.size;
+                    auto val = evaluate_constant(expr_ptr->span(), m_crate, NewvalState { m_new_values, *m_mod_path, FMT("ty_" << &ty << "$") }, expr_ptr);
                     if( !val.is_Integer() )
-                        ERROR(e.size->span(), E0000, "Array size isn't an integer");
+                        ERROR(expr_ptr->span(), E0000, "Array size isn't an integer");
                     e.size_val = val.as_Integer();
                 }
                 DEBUG("Array " << ty << " - size = " << e.size_val);

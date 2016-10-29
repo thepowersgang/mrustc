@@ -81,7 +81,7 @@ namespace {
                 DEBUG("Array size " << ty);
                 t_args  tmp;
                 if( e.size ) {
-                    Typecheck_Code( m_ms, tmp, ::HIR::TypeRef(::HIR::CoreType::Usize), e.size );
+                    Typecheck_Code( m_ms, tmp, ::HIR::TypeRef(::HIR::CoreType::Usize), *e.size );
                 }
             )
             else {

@@ -757,7 +757,7 @@ namespace {
                 DEBUG("Array size " << ty);
                 if( e.size ) {
                     ExprVisitor_Mutate  ev(m_crate);
-                    ev.visit_node_ptr( e.size );
+                    ev.visit_node_ptr( *e.size );
                 }
             )
             else {

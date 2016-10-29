@@ -568,7 +568,7 @@ namespace {
                 this->visit_type( *e.inner );
                 DEBUG("Array size " << ty);
                 if( e.size ) {
-                    MIR_Validate(m_resolve, ::HIR::ItemPath(), *e.size.m_mir, {}, ::HIR::TypeRef(::HIR::CoreType::Usize));
+                    MIR_Validate(m_resolve, ::HIR::ItemPath(), *e.size->m_mir, {}, ::HIR::TypeRef(::HIR::CoreType::Usize));
                 }
             )
             else {

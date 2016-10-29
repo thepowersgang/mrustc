@@ -1773,8 +1773,8 @@ namespace {
                 this->visit_type( *e.inner );
                 DEBUG("Array size " << ty);
                 if( e.size ) {
-                    auto fcn = LowerMIR(m_resolve, e.size, {});
-                    e.size.m_mir = mv$(fcn);
+                    auto fcn = LowerMIR(m_resolve, *e.size, {});
+                    e.size->m_mir = mv$(fcn);
                 }
             )
             else {

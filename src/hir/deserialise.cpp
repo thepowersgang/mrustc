@@ -604,7 +604,7 @@ namespace {
             })
         _(Array, {
             deserialise_ptr< ::HIR::TypeRef>(),
-            ::HIR::ExprPtr(),
+            nullptr,
             m_in.read_u64c()
             })
         _(Slice, {

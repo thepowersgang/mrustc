@@ -303,7 +303,8 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
         ),
     (Array,
         this->visit_type( *e.inner );
-        this->visit_expr( e.size );
+        if( e.size )
+            this->visit_expr( *e.size );
         ),
     (Slice,
         this->visit_type( *e.inner );

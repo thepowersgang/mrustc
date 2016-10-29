@@ -1,4 +1,11 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/hir.cpp
+ * - Processed module tree (High-level Intermediate Representation)
+ *
+ * HIR type helper code
  */
 #include "hir.hpp"
 
