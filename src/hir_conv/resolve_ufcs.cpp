@@ -86,6 +86,8 @@ namespace {
             auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
             auto _g = m_resolve.set_impl_generics(impl.m_params);
             
+            // TODO: Push a bound that `Self: ThisTrait`
+            
             // The implemented trait is always in scope
             m_traits.push_back( ::std::make_pair( &trait_path, &m_crate.get_trait_by_path(Span(), trait_path)) );
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
@@ -248,22 +250,39 @@ namespace {
                     auto monomorph_cb = [&](const auto& ty)->const auto& {
                         const auto& ge = ty.m_data.as_Generic();
                         if( ge.binding == 0xFFFF ) {
-                            TODO(sp, "Self when monomorphising trait args");
+                            // TODO: This has to be the _exact_ same type, including future ivars.
+                            return *pd.as_UfcsUnknown().type;
                         }
-                        else if( ge.binding < 256 ) {
-                            ASSERT_BUG(sp, ge.binding < trait_path.m_params.m_types.size(), "Binding out of range in " << ty << " for trait path " << trait_path);
-                            return trait_path.m_params.m_types[ge.binding];
+                        else if( (ge.binding >> 8) == 0 ) {
+                            auto idx = ge.binding & 0xFF;
+                            ASSERT_BUG(sp, idx < trait.m_params.m_types.size(), "");
+                            if( idx < trait_path.m_params.m_types.size() )
+                                return trait_path.m_params.m_types[idx];
+                            // If the param is omitted, but has a default, use the default.
+                            else if( trait.m_params.m_types[idx].m_default != ::HIR::TypeRef() ) {
+                                const auto& def = trait.m_params.m_types[idx].m_default;
+                                if( ! monomorphise_type_needed(def) )
+                                    return def;
+                                if( def == ::HIR::TypeRef("Self", 0xFFFF) )
+                                    // TODO: This has to be the _exact_ same type, including future ivars.
+                                    return *pd.as_UfcsUnknown().type;
+                                TODO(sp, "Monomorphise default arg " << def << " for trait path " << trait_path);
+                            }
+                            else
+                                BUG(sp, "Binding out of range in " << ty << " for trait path " << trait_path);
                         }
                         else {
                             ERROR(sp, E0000, "Unexpected generic binding " << ty);
                         }
                         };
+                    DEBUG("- Monomorph " << par_trait_path_tpl);
                     par_trait_path_tmp = ::HIR::GenericPath(
                         par_trait_path_tpl.m_path,
                         monomorphise_path_params_with(sp, par_trait_path_tpl.m_params, monomorph_cb, false /*no infer*/)
                         );
                     par_trait_path_ptr = &par_trait_path_tmp;
                 }
+                DEBUG("- Check " << *par_trait_path_ptr);
                 const auto& par_trait_path = *par_trait_path_ptr;
                 //const auto& par_trait_ent = *trait.m_parent_trait_ptrs[i];
                 const auto& par_trait_ent = this->find_trait(par_trait_path.m_path);
