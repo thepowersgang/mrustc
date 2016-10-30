@@ -565,8 +565,14 @@ namespace {
             const auto* item_ptr = &it->second->ent;
             if( item_ptr->is_Import() ) {
                 const auto& e = item_ptr->as_Import();
-                // This doesn't need to recurse - it can just do a single layer (as no Import should refer to another)
                 const auto& ec = crate.m_extern_crates.at( e.path.m_crate_name );
+                // This doesn't need to recurse - it can just do a single layer (as no Import should refer to another)
+                if( e.is_variant ) {
+                    auto p = e.path;
+                    p.m_components.pop_back();
+                    const auto& enm = ec.m_hir->get_typeitem_by_path(span, p, true).as_Enum();
+                    return ::AST::PathBinding::make_EnumVar({ nullptr, e.idx, &enm });
+                }
                 item_ptr = &ec.m_hir->get_typeitem_by_path(span, e.path, true);    // ignore_crate_name=true
             }
             TU_MATCHA( (*item_ptr), (e),
@@ -600,6 +606,12 @@ namespace {
                 const auto& e = item_ptr->as_Import();
                 // This doesn't need to recurse - it can just do a single layer (as no Import should refer to another)
                 const auto& ec = crate.m_extern_crates.at( e.path.m_crate_name );
+                if( e.is_variant ) {
+                    auto p = e.path;
+                    p.m_components.pop_back();
+                    const auto& enm = ec.m_hir->get_typeitem_by_path(span, p, true).as_Enum();
+                    return ::AST::PathBinding::make_EnumVar({ nullptr, e.idx, &enm });
+                }
                 item_ptr = &ec.m_hir->get_valitem_by_path(span, e.path, true);    // ignore_crate_name=true
             }
             TU_MATCHA( (*item_ptr), (e),
