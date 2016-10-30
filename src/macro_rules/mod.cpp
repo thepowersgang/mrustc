@@ -32,6 +32,7 @@ bool is_token_pat(eTokenType tt) {
     case TOK_PAREN_OPEN:
     case TOK_SQUARE_OPEN:
     
+    case TOK_UNDERSCORE:
     case TOK_AMP:
     case TOK_RWORD_BOX:
     case TOK_RWORD_REF:
