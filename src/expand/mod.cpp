@@ -19,7 +19,7 @@
 ::std::map< ::std::string, ::std::unique_ptr<ExpandProcMacro> >  g_macros;
 
 void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::std::function<void(const ExpandDecorator& d,const ::AST::MetaItem& a)> f);
-void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod);
+void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, unsigned int first_item = 0);
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Expr& node);
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::shared_ptr<AST::ExprNode>& node);
 
@@ -352,9 +352,12 @@ struct CExpandExpr:
     }
     
     void visit(::AST::ExprNode_Block& node) override {
+        unsigned int mod_item_count = 0;
         if( node.m_local_mod ) {
             Expand_Mod(crate, modstack, node.m_local_mod->path(), *node.m_local_mod);
+            mod_item_count = node.m_local_mod->items().size();
         }
+        
         auto saved = this->current_block;
         this->current_block = &node;
         this->visit_vector(node.m_nodes);
@@ -362,7 +365,7 @@ struct CExpandExpr:
 
         // HACK! Run Expand_Mod twice on local modules.
         if( node.m_local_mod ) {
-            Expand_Mod(crate, modstack, node.m_local_mod->path(), *node.m_local_mod);
+            Expand_Mod(crate, modstack, node.m_local_mod->path(), *node.m_local_mod, mod_item_count);
         }
     }
     void visit(::AST::ExprNode_Flow& node) override {
@@ -704,7 +707,7 @@ void Expand_ImplDef(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
     Expand_Attrs(impl_def.attrs(), AttrStage::Post,  crate, mod, impl_def);
 }
 
-void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod)
+void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, unsigned int first_item)
 {
     TRACE_FUNCTION_F("modpath = " << modpath);
     
@@ -720,7 +723,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
     }
     
     DEBUG("Items");
-    for( unsigned int idx = 0; idx < mod.items().size(); idx ++ )
+    for( unsigned int idx = first_item; idx < mod.items().size(); idx ++ )
     {
         auto& i = mod.items()[idx];
         
@@ -911,8 +914,8 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
     
     // IGNORE m_anon_modules, handled as part of expressions
     
-    for( const auto& mi: mod.macro_imports_res() )
-        DEBUG("- Imports '" << mi.name << "'");
+    //for( const auto& mi: mod.macro_imports_res() )
+    //    DEBUG("- Imports '" << mi.name << "'");
 }
 void Expand_Mod_IndexAnon(::AST::Crate& crate, ::AST::Module& mod)
 {
