@@ -114,7 +114,7 @@ NODE(ExprNode_Flow, {
     }
     os << " " << *m_value;
 },{
-    return NEWNODE(ExprNode_Flow, m_type, m_target, m_value->clone());
+    return NEWNODE(ExprNode_Flow, m_type, m_target, m_value ? m_value->clone() : nullptr);
 })
 
 
