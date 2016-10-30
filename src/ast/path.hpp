@@ -106,6 +106,18 @@ struct PathParams
     ::std::vector< TypeRef >    m_types;
     ::std::vector< ::std::pair< ::std::string, TypeRef> >   m_assoc;
     
+    PathParams(PathParams&& x) = default;
+    PathParams(const PathParams& x);
+    PathParams() {}
+    PathParams(::std::vector<::std::string> lfts, ::std::vector<TypeRef> tys, ::std::vector<::std::pair<::std::string,TypeRef>> a):
+        m_lifetimes(mv$(lfts)),
+        m_types(mv$(tys)),
+        m_assoc(mv$(a))
+    {}
+    
+    PathParams& operator=(PathParams&& x) = default;
+    PathParams& operator=(const PathParams& x) = delete;
+    
     bool is_empty() const {
         return m_lifetimes.empty() && m_types.empty() && m_assoc.empty();
     }
@@ -174,7 +186,7 @@ public:
     Path():
         m_class()
     {}
-    Path(Path&&) noexcept = default;
+    Path(Path&&) = default;
     Path& operator=(AST::Path&& x) {
         m_class = mv$(x.m_class);
         m_binding = mv$(x.m_binding);
@@ -183,6 +195,7 @@ public:
     }
     
     Path(const Path& x);
+    Path& operator=(const AST::Path&) = delete;
     
     // ABSOLUTE
     Path(::std::string crate, ::std::vector<PathNode> nodes):
@@ -211,7 +224,7 @@ public:
     // SELF
     struct TagSelf {};
     Path(TagSelf, ::std::vector<PathNode> nodes):
-        m_class( Class::make_Self({ nodes }) )
+        m_class( Class::make_Self({ mv$(nodes) }) )
     {}
     // SUPER
     struct TagSuper {};
@@ -231,9 +244,9 @@ public:
         return m_class.tag();
     }
     
-    Path operator+(PathNode&& pn) const {
+    Path operator+(PathNode pn) const {
         Path tmp = Path(*this);
-        tmp.nodes().push_back( pn );
+        tmp.nodes().push_back( mv$(pn) );
         return tmp;
     }
     Path operator+(const ::std::string& s) const {
@@ -249,7 +262,7 @@ public:
     void append(PathNode node) {
         if( m_class.is_Invalid() )
             m_class = Class::make_Relative({});
-        nodes().push_back(node);
+        nodes().push_back( mv$(node) );
         m_binding = PathBinding();
     }
     

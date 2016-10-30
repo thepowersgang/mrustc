@@ -532,7 +532,7 @@ ExprNodeP Parse_Stmt_Let(TokenStream& lex)
     else {
         PUTBACK(tok, lex);
     }
-    return NEWNODE( AST::ExprNode_LetBinding, ::std::move(pat), ::std::move(type), ::std::move(val) );
+    return NEWNODE( AST::ExprNode_LetBinding, ::std::move(pat), mv$(type), ::std::move(val) );
 }
 
 ::std::vector<ExprNodeP> Parse_ParenList(TokenStream& lex)

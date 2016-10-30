@@ -121,7 +121,7 @@ NODE(ExprNode_Flow, {
 NODE(ExprNode_LetBinding, {
     os << "let " << m_pat << ": " << m_type << " = " << *m_value;
 },{
-    return NEWNODE(ExprNode_LetBinding, m_pat.clone(), TypeRef(m_type), OPT_CLONE(m_value));
+    return NEWNODE(ExprNode_LetBinding, m_pat.clone(), m_type.clone(), OPT_CLONE(m_value));
 })
 
 NODE(ExprNode_Assign, {
@@ -244,9 +244,9 @@ NODE(ExprNode_Closure, {
 },{
     ExprNode_Closure::args_t    args;
     for(const auto& a : m_args) {
-        args.push_back( ::std::make_pair(a.first.clone(), TypeRef(a.second)) );
+        args.push_back( ::std::make_pair(a.first.clone(), a.second.clone()) );
     }
-    return NEWNODE(ExprNode_Closure, mv$(args), TypeRef(m_return), m_code->clone());
+    return NEWNODE(ExprNode_Closure, mv$(args), m_return.clone(), m_code->clone());
 });
 
 NODE(ExprNode_StructLiteral, {
@@ -323,12 +323,12 @@ NODE(ExprNode_Deref, {
 NODE(ExprNode_Cast, {
     os << "(" << *m_value << " as " << m_type << ")";
 },{
-    return NEWNODE(ExprNode_Cast, m_value->clone(), TypeRef(m_type));
+    return NEWNODE(ExprNode_Cast, m_value->clone(), m_type.clone());
 })
 NODE(ExprNode_TypeAnnotation, {
     os << "(" << *m_value << ": " << m_type << ")";
 },{
-    return NEWNODE(ExprNode_TypeAnnotation, m_value->clone(), TypeRef(m_type));
+    return NEWNODE(ExprNode_TypeAnnotation, m_value->clone(), m_type.clone());
 })
 
 NODE(ExprNode_BinOp, {

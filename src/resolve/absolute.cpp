@@ -379,7 +379,7 @@ struct Context
             (ConcreteSelf,
                 DEBUG("- ConcreteSelf");
                 if( ( mode == LookupMode::Type || mode == LookupMode::Namespace ) && name == "Self" ) {
-                    return ::AST::Path( ::AST::Path::TagUfcs(), *e, ::AST::Path(), ::std::vector< ::AST::PathNode>() );
+                    return ::AST::Path( ::AST::Path::TagUfcs(), e->clone(), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
                 }
                 ),
             (VarBlock,
@@ -657,8 +657,8 @@ namespace {
     }
     AST::Path split_replace_into_ufcs_path(const Span& sp, AST::Path path, unsigned int i, const AST::Path& ty_path_tpl)
     {
-        const auto& path_abs = path.m_class.as_Absolute();
-        const auto& n = path_abs.nodes[i];
+        auto& path_abs = path.m_class.as_Absolute();
+        auto& n = path_abs.nodes[i];
         
         auto type_path = ::AST::Path(ty_path_tpl);
         if( ! n.args().is_empty() ) {
@@ -785,12 +785,12 @@ namespace {
     void Resolve_Absolute_Path_BindAbsolute__hir_from(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path, const AST::ExternCrate& crate, unsigned int start)
     {
         TRACE_FUNCTION_FR(path << " start=" << start, path);
-        const auto& path_abs = path.m_class.as_Absolute();
+        auto& path_abs = path.m_class.as_Absolute();
         
         const ::HIR::Module* hmod = &crate.m_hir->m_root_module;
         for(unsigned int i = start; i < path_abs.nodes.size() - 1; i ++ )
         {
-            const auto& n = path_abs.nodes[i];
+            auto& n = path_abs.nodes[i];
             auto it = hmod->m_mod_items.find(n.name());
             if( it == hmod->m_mod_items.end() )
                 ERROR(sp, E0000, "Couldn't find path component '" << n.name() << "' of " << path);
@@ -1016,7 +1016,7 @@ namespace {
 void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path)
 {
     TRACE_FUNCTION_FR("path = " << path, path);
-    const auto& path_abs = path.m_class.as_Absolute();
+    auto& path_abs = path.m_class.as_Absolute();
     
     if( path_abs.crate != "" ) {
         // TODO: Handle items from other crates (back-converting HIR paths)
@@ -1028,7 +1028,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
     const ::AST::Module*    mod = &context.m_crate.m_root_module;
     for(unsigned int i = 0; i < path_abs.nodes.size() - 1; i ++ )
     {
-        const auto& n = path_abs.nodes[i];
+        auto& n = path_abs.nodes[i];
 
         if( n.name()[0] == '#' ) {
             if( ! n.args().is_empty() ) {

@@ -71,7 +71,7 @@ Token::Token(const InterpolatedFragment& frag)
     case InterpolatedFragment::TT:  throw "";
     case InterpolatedFragment::TYPE:
         m_type = TOK_INTERPOLATED_TYPE;
-        m_data = new TypeRef( *reinterpret_cast<const TypeRef*>(frag.m_ptr) );
+        m_data = new TypeRef( reinterpret_cast<const TypeRef*>(frag.m_ptr)->clone() );
         break;
     case InterpolatedFragment::PAT:
         m_type = TOK_INTERPOLATED_PATTERN;
@@ -179,7 +179,7 @@ Token Token::clone() const
         switch(m_type)
         {
         case TOK_INTERPOLATED_TYPE:
-            rv.m_data = new TypeRef( *reinterpret_cast<TypeRef*>(e) );
+            rv.m_data = new TypeRef( reinterpret_cast<TypeRef*>(e)->clone() );
             break;
         case TOK_INTERPOLATED_PATTERN:
             rv.m_data = new AST::Pattern( reinterpret_cast<AST::Pattern*>(e)->clone() );

@@ -57,7 +57,7 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
             }
             GET_CHECK_TOK(tok, lex, TOK_GT);
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-            return AST::Path(AST::Path::TagUfcs(), ty, trait, Parse_PathNodes(lex, generic_mode));
+            return AST::Path(AST::Path::TagUfcs(), mv$(ty), mv$(trait), Parse_PathNodes(lex, generic_mode));
         }
         else {
             PUTBACK(tok, lex);
@@ -65,8 +65,8 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
             // TODO: Terminating the "path" here is sometimes valid?
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
             // NOTE: <Foo>::BAR is actually `<Foo as _>::BAR` (in mrustc parleance)
-            //return AST::Path(AST::Path::TagUfcs(), ty, Parse_PathNodes(lex, generic_mode));
-            return AST::Path(AST::Path::TagUfcs(), ty, AST::Path(), Parse_PathNodes(lex, generic_mode));
+            //return AST::Path(AST::Path::TagUfcs(), mv$(ty), Parse_PathNodes(lex, generic_mode));
+            return AST::Path(AST::Path::TagUfcs(), mv$(ty), AST::Path(), Parse_PathNodes(lex, generic_mode));
         }
         throw ""; }
     
@@ -161,8 +161,8 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                 // Encode into path, by converting Fn(A,B)->C into Fn<(A,B),Ret=C>
                 params = ::AST::PathParams {
                     {},
-                    ::std::vector<TypeRef> { TypeRef(TypeRef::TagTuple(), lex.end_span(ps), ::std::move(args)) },
-                    { ::std::make_pair( ::std::string("Output"), mv$(ret_type) ) }
+                    ::make_vec1( TypeRef(TypeRef::TagTuple(), lex.end_span(ps), mv$(args)) ),
+                    ::make_vec1( ::std::make_pair( ::std::string("Output"), mv$(ret_type) ) )
                     };
                 
                 GET_TOK(tok, lex);

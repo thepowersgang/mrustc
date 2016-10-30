@@ -11,6 +11,12 @@ class TypeParam
     ::std::string   m_name;
     TypeRef m_default;
 public:
+    TypeParam(TypeParam&& x) = default;
+    TypeParam& operator=(TypeParam&& x) = default;
+    TypeParam(const TypeParam& x):
+        m_name(x.m_name),
+        m_default(x.m_default.clone())
+    {}
     //TypeParam(): m_name("") {}
     TypeParam(::std::string name):
         m_name( ::std::move(name) ),
@@ -73,11 +79,11 @@ TAGGED_UNION_EX( GenericBound, (), Lifetime,
         GenericBound clone() const {
             TU_MATCH(GenericBound, ( (*this) ), (ent),
             (Lifetime,     return make_Lifetime({ent.test, ent.bound});     ),
-            (TypeLifetime, return make_TypeLifetime({ent.type, ent.bound}); ),
-            (IsTrait,    return make_IsTrait({ent.type, ent.hrls, ent.trait}); ),
-            (MaybeTrait, return make_MaybeTrait({ent.type, ent.trait}); ),
-            (NotTrait,   return make_NotTrait({ent.type, ent.trait}); ),
-            (Equality,   return make_Equality({ent.type, ent.replacement}); )
+            (TypeLifetime, return make_TypeLifetime({ent.type.clone(), ent.bound}); ),
+            (IsTrait,    return make_IsTrait({ent.type.clone(), ent.hrls, ent.trait}); ),
+            (MaybeTrait, return make_MaybeTrait({ent.type.clone(), ent.trait}); ),
+            (NotTrait,   return make_NotTrait({ent.type.clone(), ent.trait}); ),
+            (Equality,   return make_Equality({ent.type.clone(), ent.replacement.clone()}); )
             )
             return GenericBound();
         }
@@ -93,13 +99,13 @@ class GenericParams
     ::std::vector<GenericBound>    m_bounds;
 public:
     GenericParams() {}
-    GenericParams(GenericParams&& x) noexcept = default;
+    GenericParams(GenericParams&& x) = default;
     GenericParams& operator=(GenericParams&& x) = default;
     GenericParams(const GenericParams& x) = delete;
     
     GenericParams clone() const {
         GenericParams   rv;
-        rv.m_type_params = m_type_params;   // Copy-constructable
+        rv.m_type_params = ::std::vector<TypeParam>( m_type_params );   // Copy-constructable
         rv.m_lifetime_params = m_lifetime_params;
         rv.m_bounds.reserve( m_bounds.size() );
         for(auto& e: m_bounds)

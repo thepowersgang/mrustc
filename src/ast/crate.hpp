@@ -13,10 +13,6 @@ class ExternCrate;
 class Crate
 {
 public:
-    ::std::map< TypeRef, ::std::vector<Impl*> >  m_impl_map;
-    ::std::vector<Impl*>    m_impl_index;
-    ::std::vector<const ImplDef*> m_neg_impl_index;
-
     ::AST::MetaItems    m_attrs;
     
     ::std::map< ::std::string, ::AST::Path> m_lang_items;

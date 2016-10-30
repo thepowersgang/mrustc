@@ -110,16 +110,23 @@ class TypeRef
 public:
     TypeData    m_data;
     
-    virtual ~TypeRef();
+    ~TypeRef();
     
-    TypeRef(TypeRef&& other) noexcept = default;
+    TypeRef(TypeRef&& other) = default;
     TypeRef& operator=(TypeRef&& other) = default;
     
-    TypeRef(const TypeRef& other);
+    #if 1
+    TypeRef(const TypeRef& other) = delete;
+    TypeRef& operator=(const TypeRef& other) = delete;
+    #else
+    TypeRef(const TypeRef& other): m_span(other.m_span) {
+        *this = other.clone();
+    }
     TypeRef& operator=(const TypeRef& other) {
-        m_data = TypeRef(other).m_data;
+        m_data = mv$(other.clone().m_data);
         return *this;
     }
+    #endif
     
     TypeRef(Span sp):
         m_span( mv$(sp) ),
@@ -235,9 +242,7 @@ public:
     bool is_pointer() const { return m_data.is_Pointer(); }
     bool is_tuple() const { return m_data.is_Tuple(); }
     
-    TypeRef clone() const {
-        return TypeRef(*this);
-    }
+    TypeRef clone() const;
 
     const TypeRef& inner_type() const {
         TU_MATCH_DEF(TypeData, (m_data), (e),

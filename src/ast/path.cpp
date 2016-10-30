@@ -76,6 +76,17 @@ PathBinding PathBinding::clone() const
     os << ">";
     return os;
 }
+PathParams::PathParams(const PathParams& x):
+    m_lifetimes( x.m_lifetimes )
+{
+    m_types.reserve( x.m_types.size() );
+    for(const auto& t : x.m_types)
+        m_types.push_back(t.clone());
+    
+    m_assoc.reserve( x.m_assoc.size() );
+    for(const auto& t : x.m_assoc)
+        m_assoc.push_back( ::std::make_pair(t.first, t.second.clone()) );
+}
 Ordering PathParams::ord(const PathParams& x) const
 {
     Ordering rv;
@@ -162,51 +173,14 @@ AST::Path::Path(const Path& x):
         ),
     (UFCS,
         if( ent.trait )
-            m_class = Class::make_UFCS({ box$(TypeRef(*ent.type)), ::std::unique_ptr<Path>(new Path(*ent.trait)), ent.nodes });
+            m_class = Class::make_UFCS({ box$(ent.type->clone()), ::std::unique_ptr<Path>(new Path(*ent.trait)), ent.nodes });
         else
-            m_class = Class::make_UFCS({ box$(TypeRef(*ent.type)), nullptr, ent.nodes });
+            m_class = Class::make_UFCS({ box$(ent.type->clone()), nullptr, ent.nodes });
         )
     )
     
     memcpy(&m_binding, &x.m_binding, sizeof(PathBinding));
-    //DEBUG("clone, x = " << x << ", this = " << *this );
 }
-
-/*
-void Path::check_param_counts(const GenericParams& params, bool expect_params, PathNode& node)
-{
-    if( !expect_params )
-    {
-        if( node.args().size() )
-            throw CompileError::BugCheck(FMT("Unexpected parameters in path " << *this));
-    }
-    else if( node.args().size() != params.ty_params().size() )
-    {
-        DEBUG("Count mismatch");
-        if( node.args().size() > params.ty_params().size() )
-        {
-            // Too many, definitely an error
-            throw CompileError::Generic(FMT("Too many type parameters passed in path " << *this));
-        }
-        else
-        {
-            // Too few, allow defaulting
-            while( node.args().size() < params.ty_params().size() )
-            {
-                unsigned int i = node.args().size();
-                const auto& p = params.ty_params()[i];
-                DEBUG("Extra #" << i << ", p = " << p);
-                // XXX: Currently, the default is just inserted (_ where not specified)
-                // - Erroring failed on transmute, and other omitted for inferrence instnaces
-                if( true || p.get_default() != TypeRef() )
-                    node.args().push_back( p.get_default() );
-                else
-                    throw CompileError::Generic(FMT("Not enough type parameters passed in path " << *this));
-            }
-        }
-    }
-}
-*/
 
 void Path::bind_variable(unsigned int slot)
 {
@@ -232,27 +206,11 @@ void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std
     if( idx == ent.variants().size() )
         throw ParseError::Generic("Enum variant not found");
     
-    //if( args.size() > 0 )
-    //{
-    //    if( args.size() != ent.params().size() )
-    //        throw ParseError::Generic("Parameter count mismatch");
-    //    throw ParseError::Todo("Bind enum variant with params passed");
-    //}
-    
     DEBUG("Bound to enum variant '" << name << "' (#" << idx << ")");
     m_binding = PathBinding::make_EnumVar({&ent, idx});
 }
 void Path::bind_struct(const Struct& ent, const ::std::vector<TypeRef>& /*args*/)
 {
-    //if( args.size() > 0 )
-    //{
-    //    if( args.size() != ent.params().n_params() )
-    //        throw ParseError::Generic("Parameter count mismatch");
-    //    // TODO: Is it the role of this section of code to ensure that the passed args are valid?
-    //    // - Probably not, it should instead be the type checker that does it
-    //    // - Count validation is OK here though
-    //}
-    
     DEBUG("Bound to struct");
     m_binding = PathBinding::make_Struct({&ent});
 }

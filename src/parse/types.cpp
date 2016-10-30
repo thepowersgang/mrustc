@@ -146,11 +146,11 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
             // Sized array
             AST::Expr array_size = Parse_Expr(lex);
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-            return TypeRef(TypeRef::TagSizedArray(), lex.end_span(ps), inner, array_size.take_node());
+            return TypeRef(TypeRef::TagSizedArray(), lex.end_span(ps), mv$(inner), array_size.take_node());
         }
         else if( tok.type() == TOK_SQUARE_CLOSE )
         {
-            return TypeRef(TypeRef::TagUnsizedArray(), lex.end_span(ps), inner);
+            return TypeRef(TypeRef::TagUnsizedArray(), lex.end_span(ps), mv$(inner));
         }
         else {
             throw ParseError::Unexpected(lex, tok/*, "; or ]"*/);
@@ -181,7 +181,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
                     break;
                 else
                     PUTBACK(tok, lex);
-                types.push_back(Parse_Type(lex));
+                types.push_back( Parse_Type(lex) );
             }
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
             return TypeRef(TypeRef::TagTuple(), lex.end_span(ps), mv$(types)); }
@@ -287,7 +287,7 @@ TypeRef Parse_Type_Path(TokenStream& lex, ::std::vector<::std::string> hrls, boo
             return TypeRef(lex.end_span(ps), mv$(hrls), ::std::move(traits));
         }
         else {
-            return TypeRef(TypeRef::TagPath(), lex.end_span(ps), traits.at(0));
+            return TypeRef(TypeRef::TagPath(), lex.end_span(ps), mv$(traits.at(0)));
         }
     }
 }

@@ -596,7 +596,7 @@ struct ImplRef
     
     ImplRef(const Impl& impl, ::std::vector<TypeRef> params):
         impl(impl),
-        params(params)
+        params( mv$(params) )
     {}
     
     ::rust::option<char> find_named_item(const ::std::string& name) const;

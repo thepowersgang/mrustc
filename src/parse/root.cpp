@@ -138,7 +138,7 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
             auto param_ty = TypeRef(lex.getPosition(), param_name);
             if( GET_TOK(tok, lex) == TOK_COLON )
             {
-                Parse_TypeBound(lex, ret, param_ty);
+                Parse_TypeBound(lex, ret, mv$(param_ty));
                 GET_TOK(tok, lex);
             }
             
@@ -200,14 +200,14 @@ void Parse_WhereClause(TokenStream& lex, AST::GenericParams& params)
             
             TypeRef type = Parse_Type(lex);
             GET_CHECK_TOK(tok, lex, TOK_COLON);
-            Parse_TypeBound(lex, params, type, lifetimes);
+            Parse_TypeBound(lex,params, mv$(type), mv$(lifetimes));
         }
         else
         {
             PUTBACK(tok, lex);
             TypeRef type = Parse_Type(lex);
             GET_CHECK_TOK(tok, lex, TOK_COLON);
-            Parse_TypeBound(lex, params, type);
+            Parse_TypeBound(lex, params, mv$(type));
         }
     } while( GET_TOK(tok, lex) == TOK_COMMA );
     PUTBACK(tok, lex);
@@ -328,7 +328,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
             else {
                 PUTBACK(tok, lex);
             }
-            args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), ty) );
+            args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), mv$(ty)) );
             GET_TOK(tok, lex);
         }
     }
@@ -345,7 +345,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
         else {
             PUTBACK(tok, lex);
         }
-        args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), ty) );
+        args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), mv$(ty)) );
         GET_TOK(tok, lex);
     }
     else
@@ -1149,7 +1149,7 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::M
             auto type = Parse_Type(lex);
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
             
-            auto i = ::AST::Item(::AST::Static( (is_mut ? ::AST::Static::MUT : ::AST::Static::STATIC),  type, ::AST::Expr() ));
+            auto i = ::AST::Item(::AST::Static( (is_mut ? ::AST::Static::MUT : ::AST::Static::STATIC),  mv$(type), ::AST::Expr() ));
             i.attrs = mv$(meta_items);
             i.span = lex.end_span(ps);
             rv.add_item( AST::Named<AST::Item> { mv$(name), mv$(i), is_public } );
@@ -1464,7 +1464,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
             GET_CHECK_TOK(tok, lex, TOK_EQUAL);
             AST::Expr val = Parse_Expr(lex);
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-            item_data = ::AST::Item( ::AST::Static(AST::Static::CONST, type, val) );
+            item_data = ::AST::Item( ::AST::Static(AST::Static::CONST, mv$(type), mv$(val)) );
             break; }
         case TOK_RWORD_UNSAFE:
             GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
@@ -1501,7 +1501,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         AST::Expr val = Parse_Expr(lex);
 
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-        item_data = ::AST::Item( ::AST::Static( (is_mut ? AST::Static::MUT : AST::Static::STATIC), type, val) );
+        item_data = ::AST::Item( ::AST::Static( (is_mut ? AST::Static::MUT : AST::Static::STATIC), mv$(type), mv$(val)) );
         break; }
 
     // `unsafe fn`

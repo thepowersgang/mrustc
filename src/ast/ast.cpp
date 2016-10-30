@@ -67,21 +67,21 @@ MetaItem MetaItem::clone() const
 
 StructItem StructItem::clone() const
 {
-    return StructItem(m_attrs.clone(), m_is_public, m_name, m_type);
+    return StructItem(m_attrs.clone(), m_is_public, m_name, m_type.clone());
 }
 TupleItem TupleItem::clone() const
 {
-    return TupleItem(m_attrs.clone(), m_is_public, m_type);
+    return TupleItem(m_attrs.clone(), m_is_public, m_type.clone());
 }
 
 
 TypeAlias TypeAlias::clone() const
 {
-    return TypeAlias( m_params.clone(), m_type );
+    return TypeAlias( m_params.clone(), m_type.clone() );
 }
 Static Static::clone() const
 {
-    return Static( m_class, m_type, m_value.is_valid() ? AST::Expr( m_value.node().clone() ) : AST::Expr() );
+    return Static( m_class, m_type.clone(), m_value.is_valid() ? AST::Expr( m_value.node().clone() ) : AST::Expr() );
 }
 
 Function::Function(Span sp, GenericParams params, ::std::string abi, bool is_unsafe, bool is_const, bool is_variadic, TypeRef ret_type, Arglist args):
@@ -99,9 +99,9 @@ Function Function::clone() const
 {
     decltype(m_args)    new_args;
     for(const auto& arg : m_args)
-        new_args.push_back( ::std::make_pair( arg.first.clone(), arg.second ) );
+        new_args.push_back( ::std::make_pair( arg.first.clone(), arg.second.clone() ) );
     
-    auto rv = Function( m_span, m_params.clone(), m_abi, m_is_unsafe, m_is_const, m_is_variadic, m_rettype, mv$(new_args) );
+    auto rv = Function( m_span, m_params.clone(), m_abi, m_is_unsafe, m_is_const, m_is_variadic, m_rettype.clone(), mv$(new_args) );
     if( m_code.is_valid() )
     {
         rv.m_code = AST::Expr( m_code.node().clone() );
@@ -157,7 +157,10 @@ Enum Enum::clone() const
             new_variants.push_back( EnumVariant(var.m_attrs.clone(), var.m_name, e.m_value.clone()) );
             ),
         (Tuple,
-            new_variants.push_back( EnumVariant(var.m_attrs.clone(), var.m_name, e.m_sub_types) );
+            decltype(e.m_sub_types) new_st;
+            for(const auto& f : e.m_sub_types)
+                new_st.push_back( f.clone() );
+            new_variants.push_back( EnumVariant(var.m_attrs.clone(), var.m_name, mv$(new_st)) );
             ),
         (Struct,
             decltype(e.m_fields)    new_fields;

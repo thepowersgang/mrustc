@@ -78,9 +78,10 @@ const char* coretype_name(const eCoreType ct ) {
 Type_Function::Type_Function(const Type_Function& other):
     is_unsafe(other.is_unsafe),
     m_abi(other.m_abi),
-    m_rettype( box$( TypeRef(*other.m_rettype) ) ),
-    m_arg_types(other.m_arg_types)
+    m_rettype( box$( other.m_rettype->clone() ) )
 {
+    for( const auto& at : other.m_arg_types )
+        m_arg_types.push_back( at.clone() );
 }
 
 Ordering Type_Function::ord(const Type_Function& x) const
@@ -98,13 +99,22 @@ TypeRef::~TypeRef()
 {
 }
 
-TypeRef::TypeRef(const TypeRef& other)
+TypeRef TypeRef::clone() const
 {
-    switch( other.m_data.tag() )
+    struct H {
+        static ::std::vector< ::TypeRef> clone_ty_vec(const ::std::vector<TypeRef>& x) {
+            ::std::vector<TypeRef>  rv;
+            rv.reserve(x.size());
+            for(const auto& t : x)
+                rv.push_back( t.clone() );
+            return rv;
+        }
+    };
+    switch( m_data.tag() )
     {
     case TypeData::TAGDEAD: assert(!"Copying a destructed type");
-    #define _COPY(VAR)  case TypeData::TAG_##VAR: m_data = TypeData::make_##VAR(other.m_data.as_##VAR()); break;
-    #define _CLONE(VAR, code...)    case TypeData::TAG_##VAR: { auto& old = other.m_data.as_##VAR(); m_data = TypeData::make_##VAR(code); } break;
+    #define _COPY(VAR)  case TypeData::TAG_##VAR: return TypeRef(m_span, TypeData::make_##VAR(m_data.as_##VAR()) ); break;
+    #define _CLONE(VAR, code...)    case TypeData::TAG_##VAR: { auto& old = m_data.as_##VAR(); return TypeRef(m_span, TypeData::make_##VAR(code) ); } break;
     _COPY(None)
     _COPY(Any)
     _COPY(Bang)
@@ -112,10 +122,10 @@ TypeRef::TypeRef(const TypeRef& other)
     _COPY(Unit)
     _COPY(Primitive)
     _COPY(Function)
-    _COPY(Tuple)
-    _CLONE(Borrow,  { old.is_mut, box$(TypeRef(*old.inner)) })
-    _CLONE(Pointer, { old.is_mut, box$(TypeRef(*old.inner)) })
-    _CLONE(Array, { box$(TypeRef(*old.inner)), old.size })
+    _CLONE(Tuple, { H::clone_ty_vec(old.inner_types) })
+    _CLONE(Borrow,  { old.is_mut, box$(old.inner->clone()) })
+    _CLONE(Pointer, { old.is_mut, box$(old.inner->clone()) })
+    _CLONE(Array, { box$(old.inner->clone()), old.size })
     _COPY(Generic)
     _COPY(Path)
     _COPY(TraitObject)
@@ -123,6 +133,7 @@ TypeRef::TypeRef(const TypeRef& other)
     #undef _COPY
     #undef _CLONE
     }
+    throw "";
 }
 
 Ordering TypeRef::ord(const TypeRef& x) const
