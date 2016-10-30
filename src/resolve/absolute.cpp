@@ -1727,7 +1727,10 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
             }
         }
         else {
-            TODO(pat.span(), "Resolve_Absolute_Pattern - Encountered MaybeBind in irrefutable context - replace with binding");
+            auto name = mv$( e.name );
+            
+            pat = ::AST::Pattern(::AST::Pattern::TagBind(), mv$(name));
+            pat.binding().m_slot = context.push_var( pat.span(), pat.binding().m_name );
         }
         ),
     (Macro,
