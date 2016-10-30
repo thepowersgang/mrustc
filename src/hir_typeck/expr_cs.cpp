@@ -1969,7 +1969,10 @@ namespace {
                 ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
                 ),
             (Borrow,
-                TODO(sp, "Cast to borrow - coercion point");
+                // Emit a coercion and delete this revisit
+                this->context.equate_types_coerce(sp, tgt_ty, node.m_value);
+                this->m_completed = true;
+                return ;
                 ),
             (Pointer,
                 TU_MATCH_DEF( ::HIR::TypeRef::Data, (src_ty.m_data), (s_e),
