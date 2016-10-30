@@ -82,16 +82,21 @@ namespace {
             ::HIR::Visitor::visit_type_impl(impl);
         }
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override {
+            ::HIR::ItemPath    p( impl.m_type, trait_path, impl.m_trait_args );
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " (mod=" << impl.m_src_module << ")");
             auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
             auto _g = m_resolve.set_impl_generics(impl.m_params);
             
             // TODO: Push a bound that `Self: ThisTrait`
+            m_current_trait = &m_crate.get_trait_by_path(Span(), trait_path);
+            m_current_trait_path = &p;
             
             // The implemented trait is always in scope
-            m_traits.push_back( ::std::make_pair( &trait_path, &m_crate.get_trait_by_path(Span(), trait_path)) );
+            m_traits.push_back( ::std::make_pair( &trait_path, m_current_trait) );
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
             m_traits.pop_back( );
+            
+            m_current_trait = nullptr;
         }
 
         void visit_expr(::HIR::ExprPtr& expr) override
@@ -452,9 +457,18 @@ namespace {
                     // If processing a trait, and the type is 'Self', search for the type/method on the trait
                     // - TODO: This could be encoded by a `Self: Trait` bound in the generics, but that may have knock-on issues?
                     if( te.name == "Self" && m_current_trait ) {
-                        auto trait_path = ::HIR::GenericPath( m_current_trait_path->get_simple_path() );
-                        for(unsigned int i = 0; i < m_current_trait->m_params.m_types.size(); i ++ ) {
-                            trait_path.m_params.m_types.push_back( ::HIR::TypeRef(m_current_trait->m_params.m_types[i].m_name, i) );
+                        
+                        ::HIR::GenericPath  trait_path;
+                        if( m_current_trait_path->trait_path() )
+                        {
+                            trait_path = ::HIR::GenericPath( *m_current_trait_path->trait_path() );
+                            trait_path.m_params = m_current_trait_path->trait_args()->clone();
+                        }
+                        else {
+                            trait_path = ::HIR::GenericPath( m_current_trait_path->get_simple_path() );
+                            for(unsigned int i = 0; i < m_current_trait->m_params.m_types.size(); i ++ ) {
+                                trait_path.m_params.m_types.push_back( ::HIR::TypeRef(m_current_trait->m_params.m_types[i].m_name, i) );
+                            }
                         }
                         if( locate_in_trait_and_set(pc, trait_path, *m_current_trait,  p.m_data) ) {
                             // Success!

@@ -35,6 +35,9 @@ public:
         trait(&path)
     {}
     
+    const ::HIR::SimplePath* trait_path() const { return trait; }
+    const ::HIR::PathParams* trait_args() const { return trait_params; }
+    
     ::HIR::SimplePath get_simple_path() const {
         if( parent ) {
             assert(name);
