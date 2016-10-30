@@ -181,10 +181,12 @@ rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
 output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs output/libstd.hir $(BIN)
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 
+TEST_ARGS_run-pass/cfgs-on-items := --cfg fooA --cfg fooB
+
 output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir output/libtest.hir
 	@mkdir -p $(dir $@)
 	@echo "--- TEST $(patsubst output/rust/%.o,%,$@)"
-	@$(BIN) $< -o $@ --stop-after $(RUST_TESTS_FINAL_STAGE) > $@.txt 2>&1
+	@$(BIN) $< -o $@ --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1
 	@touch $@
 
 output/rust/run-pass/allocator-default.o: output/libstd.hir output/liballoc_jemalloc.hir
@@ -199,6 +201,7 @@ test_deps_run-pass.mk: Makefile $(wildcard $(RUST_TESTS_DIR)run_pass/*.rs)
 	@grep 'aux-build:' rustc-nightly/src/test/run-pass/*.rs | awk -F : '{a=gensub(/.+run-pass\/(.*)\.rs$$/, "\\1", "g", $$1); b=gensub(/(.*)\.rs/,"\\1","g",$$3); gsub(/-/,"_",b); print "output/rust/run-pass/" a ".o: " "output/test_deps/lib" b ".hir" }' > $@.tmp
 	@grep 'aux-build:' rustc-nightly/src/test/run-pass/*.rs | awk -F : '{ print $$3 }' | sort | uniq | awk '{ b=gensub(/(.*)\.rs/,"\\1","g",$$1); gsub(/-/,"_",b); print "output/test_deps/lib" b ".hir: $$(RUST_TESTS_DIR)run-pass/auxiliary/" $$1 " output/libstd.hir" ; print "\t@mkdir -p $$(dir $$@)" ; print "\t@echo \"--- [MRUSTC] $$@\"" ; print "\t@$$(DBG) $$(BIN) $$< --crate-type rlib --out-dir output/test_deps > $$@.txt 2>&1" }' >> $@.tmp
 	@mv $@.tmp $@
+
 
 -include test_deps_run-pass.mk
 
