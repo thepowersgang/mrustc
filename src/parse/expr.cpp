@@ -200,6 +200,8 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
     {
         switch( tok.type() )
         {
+        case TOK_INTERPOLATED_BLOCK:
+            return tok.take_frag_node();
         case TOK_SEMICOLON:
             return NEWNODE(AST::ExprNode_Tuple, ::std::vector<AST::ExprNodeP>());
         
@@ -1042,7 +1044,9 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         return Parse_ExprBlockNode(lex);
     
     case TOK_INTERPOLATED_EXPR:
+    case TOK_INTERPOLATED_BLOCK:
         return tok.take_frag_node();
+
     
     // TODO: Return/break/continue/... here?
     case TOK_RWORD_RETURN:
