@@ -67,6 +67,7 @@ namespace {
     TAGGED_UNION(EntPtr, NotFound,
         (NotFound, struct{}),
         (Function, const ::HIR::Function*),
+        (Static, const ::HIR::Static*),
         (Constant, const ::HIR::Constant*),
         (Struct, const ::HIR::Struct*)
         );
@@ -124,6 +125,7 @@ namespace {
                 return EntPtr { &e };
                 ),
             (Static,
+                return EntPtr { &e };
                 )
             )
             BUG(sp, "Path " << path << " pointed to a invalid item - " << it->second->ent.tag_str());
@@ -254,7 +256,7 @@ namespace {
             
             ::std::vector< ::HIR::Literal>   m_values;
             
-            ::HIR::TypeRef  m_exp_type;
+            ::HIR::TypeRef  m_rv_type;
             ::HIR::Literal  m_rv;
             
             Visitor(const ::HIR::Crate& crate, NewvalState newval_state):
@@ -307,6 +309,7 @@ namespace {
                     ERROR(node.span(), E0000, "ExprNode_BinOp - Types mismatched - " << left.tag_str() << " != " << right.tag_str());
                 }
                 
+                // Keep m_rv_type
                 switch(node.m_op)
                 {
                 case ::HIR::ExprNode_BinOp::Op::CmpEqu:
@@ -399,6 +402,7 @@ namespace {
                 node.m_value->visit(*this);
                 auto val = mv$(m_rv);
                 
+                // Keep m_rv_type
                 switch(node.m_op)
                 {
                 case ::HIR::ExprNode_UniOp::Op::Invert:
@@ -418,8 +422,6 @@ namespace {
                 }
             }
             void visit(::HIR::ExprNode_Borrow& node) override {
-                //auto ty = m_exp_type;
-                
                 node.m_value->visit(*this);
                 auto val = mv$(m_rv);
                 
@@ -427,6 +429,7 @@ namespace {
                     ERROR(node.span(), E0000, "Only shared borrows are allowed in constants");
                 }
                 
+                m_rv_type = ::HIR::TypeRef::new_borrow( node.m_type, mv$(m_rv_type) );
                 // Create new static containing borrowed data
                 auto name = FMT(m_newval_state.name_prefix << &node);
                 m_newval_state.newval_output.push_back(::std::make_pair( name, ::HIR::Static {
@@ -442,12 +445,14 @@ namespace {
                 node.m_value->visit(*this);
                 //auto val = mv$(m_rv);
                 //DEBUG("ExprNode_Cast - val = " << val << " as " << node.m_type);
+                m_rv_type = node.m_res_type.clone();
             }
             void visit(::HIR::ExprNode_Unsize& node) override {
                 TRACE_FUNCTION_F("_Unsize");
                 node.m_value->visit(*this);
                 //auto val = mv$(m_rv);
                 //DEBUG("ExprNode_Unsize - val = " << val << " as " << node.m_type);
+                m_rv_type = node.m_res_type.clone();
             }
             void visit(::HIR::ExprNode_Index& node) override {
                 // Index
@@ -466,6 +471,16 @@ namespace {
                 if( idx >= v.size() )
                     ERROR(node.span(), E0000, "Constant array index " << idx << " out of range " << v.size());
                 m_rv = mv$(v[idx]);
+                
+                TU_MATCH_DEF( ::HIR::TypeRef::Data, (m_rv_type.m_data), (e),
+                (
+                    ERROR(node.span(), E0000, "Indexing non-array - " << m_rv_type);
+                    ),
+                (Array,
+                    auto tmp = mv$(e.inner);
+                    m_rv_type = mv$(*tmp);
+                    )
+                )
             }
             void visit(::HIR::ExprNode_Deref& node) override {
                 badnode(node);
@@ -487,9 +502,10 @@ namespace {
                 {
                     const auto& ent = m_crate.get_typeitem_by_path(node.span(), node.m_path.m_path);
                     ASSERT_BUG(node.span(), ent.is_Struct(), "_TupleVariant with m_is_struct set pointing to " << ent.tag_str());
-                    //const auto& str = ent.as_Struct();
+                    const auto& str = ent.as_Struct();
                     
                     m_rv = ::HIR::Literal::make_List(mv$(vals));
+                    m_rv_type = ::HIR::TypeRef::new_path( node.m_path.clone(), ::HIR::TypeRef::TypePathBinding(&str) );
                 }
                 else
                 {
@@ -505,6 +521,7 @@ namespace {
                     unsigned int var_idx = it - enm.m_variants.begin();
 
                     m_rv = ::HIR::Literal::make_Variant({var_idx, mv$(vals)});
+                    m_rv_type = ::HIR::TypeRef::new_path( mv$(tmp_path), ::HIR::TypeRef::TypePathBinding(&enm) );
                 }
             }
             void visit(::HIR::ExprNode_CallPath& node) override {
@@ -546,7 +563,29 @@ namespace {
                 badnode(node);
             }
             void visit(::HIR::ExprNode_Field& node) override {
-                badnode(node);
+                const auto& sp = node.span();
+                TRACE_FUNCTION_FR("_Field", m_rv);
+                
+                node.m_value->visit(*this);
+                auto val = mv$( m_rv );
+                
+                if( !val.is_List() )
+                    ERROR(sp, E0000, "Field access on invalid literal type - " << val.tag_str());
+                auto& vals = val.as_List();
+                
+                TU_MATCH_DEF( ::HIR::TypeRef::Data, (m_rv_type.m_data), (e),
+                (
+                    ERROR(sp, E0000, "Field access on invalid type - " << m_rv_type);
+                    ),
+                (Tuple,
+                    unsigned int idx = ::std::atoi( node.m_field.c_str() );
+                    ASSERT_BUG(sp, idx < e.size(), "Index out of range in tuple");
+                    ASSERT_BUG(sp, idx < vals.size(), "Index out of range in literal");
+                    
+                    m_rv = mv$( vals[idx] );
+                    m_rv_type = mv$( e[idx] );
+                    )
+                )
             }
 
             void visit(::HIR::ExprNode_Literal& node) override {
@@ -568,15 +607,17 @@ namespace {
                     m_rv = ::HIR::Literal::make_String({e.begin(), e.end()});
                     )
                 )
+                m_rv_type = node.m_res_type.clone();
             }
             void visit(::HIR::ExprNode_UnitVariant& node) override {
                 if( node.m_is_struct )
                 {
                     const auto& ent = m_crate.get_typeitem_by_path(node.span(), node.m_path.m_path);
                     ASSERT_BUG(node.span(), ent.is_Struct(), "_UnitVariant with m_is_struct set pointing to " << ent.tag_str());
-                    //const auto& str = ent.as_Struct();
+                    const auto& str = ent.as_Struct();
                     
                     m_rv = ::HIR::Literal::make_List({});
+                    m_rv_type = ::HIR::TypeRef::new_path( node.m_path.clone(), ::HIR::TypeRef::TypePathBinding(&str) );
                 }
                 else
                 {
@@ -592,6 +633,7 @@ namespace {
                     unsigned int var_idx = it - enm.m_variants.begin();
 
                     m_rv = ::HIR::Literal::make_Variant({var_idx, {}});
+                    m_rv_type = ::HIR::TypeRef::new_path( mv$(tmp_path), ::HIR::TypeRef::TypePathBinding(&enm) );
                 }
             }
             void visit(::HIR::ExprNode_PathValue& node) override {
@@ -601,10 +643,17 @@ namespace {
                 (
                     BUG(node.span(), "Path value with unsupported value type - " << ep.tag_str());
                     ),
+                (Static,
+                    // TODO: Should be a more complex path to support associated paths
+                    ASSERT_BUG(node.span(), node.m_path.m_data.is_Generic(), "Static path not Path::Generic - " << node.m_path);
+                    m_rv = ::HIR::Literal(node.m_path.m_data.as_Generic().m_path);
+                    m_rv_type = e->m_type.clone();
+                    ),
                 (Function,
                     // TODO: Should be a more complex path to support associated paths
                     ASSERT_BUG(node.span(), node.m_path.m_data.is_Generic(), "Function path not Path::Generic - " << node.m_path);
                     m_rv = ::HIR::Literal(node.m_path.m_data.as_Generic().m_path);
+                    m_rv_type = ::HIR::TypeRef();   // TODO: Better type
                     ),
                 (Constant,
                     // TODO: Associated constants
@@ -615,6 +664,7 @@ namespace {
                     else {
                         m_rv = clone_literal(c.m_value_res);
                     }
+                    m_rv_type = e->m_type.clone();
                     )
                 )
             }
@@ -636,15 +686,17 @@ namespace {
                     m_rv = ::HIR::Literal(e);
                     )
                 )
+                m_rv_type = ::HIR::TypeRef();    // TODO:
             }
             
             void visit(::HIR::ExprNode_StructLiteral& node) override {
                 TRACE_FUNCTION_FR("_StructLiteral - " << node.m_path, m_rv);
                 
-                // TODO: Fix for enums - see _UnitVariant and _TupleVariant
-                const auto& ent = m_crate.get_typeitem_by_path(node.span(), node.m_path.m_path);
-                TU_IFLET( ::HIR::TypeItem, ent, Struct, str,
-                    ASSERT_BUG(node.span(), node.m_is_struct, "_StructLiteral with m_is_struct clear pointing to a struct");
+                if( node.m_is_struct )
+                {
+                    const auto& ent = m_crate.get_typeitem_by_path(node.span(), node.m_path.m_path);
+                    ASSERT_BUG(node.span(), ent.is_Struct(), "_StructLiteral with m_is_struct set pointing to a " << ent.tag_str());
+                    const auto& str = ent.as_Struct();
                     const auto& fields = str.m_data.as_Named();
                     
                     ::std::vector< ::HIR::Literal>  vals;
@@ -675,23 +727,27 @@ namespace {
                     }
 
                     m_rv = ::HIR::Literal::make_List(mv$(vals));
-                )
-                else TU_IFLET( ::HIR::TypeItem, ent, Enum, enm,
-                    ASSERT_BUG(node.span(), !node.m_is_struct, "_StructLiteral with m_is_struct set pointing to an enum");
+                    m_rv_type = ::HIR::TypeRef::new_path( node.m_path.clone(), ::HIR::TypeRef::TypePathBinding(&str) );
+                }
+                else
+                {
+                    const auto& ent = m_crate.get_typeitem_by_path(node.span(), node.m_path.m_path);
+                    ASSERT_BUG(node.span(), ent.is_Enum(), "_StructLiteral with m_is_struct clear pointing to a " << ent.tag_str());
+                    
                     TODO(node.span(), "Handle Enum _UnitVariant - " << node.m_path);
-                )
-                else {
-                    BUG(node.span(), "Could not find struct/enum for " << node.m_path << " - " << ent.tag_str());
                 }
             }
             void visit(::HIR::ExprNode_Tuple& node) override {
                 ::std::vector< ::HIR::Literal>  vals;
+                ::std::vector< ::HIR::TypeRef>  tys;
                 for(const auto& vn : node.m_vals ) {
                     vn->visit(*this);
                     assert( !m_rv.is_Invalid() );
                     vals.push_back( mv$(m_rv) );
+                    tys.push_back( mv$(m_rv_type) );
                 }
                 m_rv = ::HIR::Literal::make_List(mv$(vals));
+                m_rv_type = ::HIR::TypeRef( mv$(tys) );
             }
             void visit(::HIR::ExprNode_ArrayList& node) override {
                 ::std::vector< ::HIR::Literal>  vals;
@@ -701,6 +757,7 @@ namespace {
                     vals.push_back( mv$(m_rv) );
                 }
                 m_rv = ::HIR::Literal::make_List(mv$(vals));
+                m_rv_type = ::HIR::TypeRef::new_array( mv$(m_rv_type), vals.size() );
             }
             void visit(::HIR::ExprNode_ArraySized& node) override {
                 node.m_size->visit(*this);
@@ -720,6 +777,7 @@ namespace {
                     vals.push_back( mv$(m_rv) );
                 }
                 m_rv = ::HIR::Literal::make_List(mv$(vals));
+                m_rv_type = ::HIR::TypeRef::new_array( mv$(m_rv_type), count );
             }
             
             void visit(::HIR::ExprNode_Closure& node) override {
