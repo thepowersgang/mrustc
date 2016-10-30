@@ -1380,9 +1380,7 @@ namespace {
         {
             TRACE_FUNCTION_F("_Field");
             this->visit_node_ptr(node.m_value);
-            // TODO: What if this is called as `(1, 2, 3).0`
-            // - NOTE: `rustc` accepts the above - even for assignments. So `get_result_in_lvalue` is likely more correct
-            auto val = m_builder.get_result_unwrap_lvalue(node.m_value->span());
+            auto val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
             
             unsigned int idx;
             if( '0' <= node.m_field[0] && node.m_field[0] <= '9' ) {
