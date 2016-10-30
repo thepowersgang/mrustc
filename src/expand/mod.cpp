@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * expand/mod.cpp
+ * - Expand pass core code
  */
 #include <ast/ast.hpp>
 #include <ast/crate.hpp>
@@ -123,22 +128,39 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate&
     return Expand_Macro(crate, modstack, mod,  mi.span(), mi.name(), mi.input_ident(), mi.input_tt());
 }
 
-void Expand_Pattern(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::Pattern& pat)
+void Expand_Pattern(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::Pattern& pat, bool is_refutable)
 {
     TU_MATCH(::AST::Pattern::Data, (pat.data()), (e),
     (MaybeBind,
         ),
     (Macro,
+        const auto span = e.inv->span();
+        
         auto tt = Expand_Macro(crate, modstack, mod,  *e.inv);
-        TODO(e.inv->span(), "Expand macro invocation in pattern");
+        if( ! tt ) {
+            ERROR(span, E0000, "Macro in pattern didn't expand to anything");
+        }
+        auto& lex = *tt;
+        auto newpat = Parse_Pattern(lex, is_refutable);
+        if( LOOK_AHEAD(lex) != TOK_EOF ) {
+            ERROR(span, E0000, "Trailing tokens in macro expansion");
+        }
+        
+        if( pat.binding().is_valid() ) {
+            if( newpat.binding().is_valid() ) 
+                ERROR(span, E0000, "Macro expansion provided a binding, but one already present");
+            newpat.binding() = mv$(pat.binding());
+        }
+        
+        pat = mv$(newpat);
         ),
     (Any,
         ),
     (Box,
-        Expand_Pattern(crate, modstack, mod,  *e.sub);
+        Expand_Pattern(crate, modstack, mod,  *e.sub, is_refutable);
         ),
     (Ref,
-        Expand_Pattern(crate, modstack, mod,  *e.sub);
+        Expand_Pattern(crate, modstack, mod,  *e.sub, is_refutable);
         ),
     (Value,
         //Expand_Expr(crate, modstack, e.start);
@@ -146,25 +168,25 @@ void Expand_Pattern(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
         ),
     (Tuple,
         for(auto& sp : e.start)
-            Expand_Pattern(crate, modstack, mod, sp);
+            Expand_Pattern(crate, modstack, mod, sp, is_refutable);
         for(auto& sp : e.end)
-            Expand_Pattern(crate, modstack, mod, sp);
+            Expand_Pattern(crate, modstack, mod, sp, is_refutable);
         ),
     (StructTuple,
         for(auto& sp : e.tup_pat.start)
-            Expand_Pattern(crate, modstack, mod, sp);
+            Expand_Pattern(crate, modstack, mod, sp, is_refutable);
         for(auto& sp : e.tup_pat.end)
-            Expand_Pattern(crate, modstack, mod, sp);
+            Expand_Pattern(crate, modstack, mod, sp, is_refutable);
         ),
     (Struct,
         for(auto& sp : e.sub_patterns)
-            Expand_Pattern(crate, modstack, mod, sp.second);
+            Expand_Pattern(crate, modstack, mod, sp.second, is_refutable);
         ),
     (Slice,
         for(auto& sp : e.leading)
-            Expand_Pattern(crate, modstack, mod, sp);
+            Expand_Pattern(crate, modstack, mod, sp, is_refutable);
         for(auto& sp : e.trailing)
-            Expand_Pattern(crate, modstack, mod, sp);
+            Expand_Pattern(crate, modstack, mod, sp, is_refutable);
         )
     )
 }
@@ -348,7 +370,7 @@ struct CExpandExpr:
     }
     void visit(::AST::ExprNode_LetBinding& node) override {
         Expand_Type(crate, modstack, this->cur_mod(),  node.m_type);
-        Expand_Pattern(crate, modstack, this->cur_mod(),  node.m_pat);
+        Expand_Pattern(crate, modstack, this->cur_mod(),  node.m_pat, false);
         this->visit_nodelete(node, node.m_value);
     }
     void visit(::AST::ExprNode_Assign& node) override {
@@ -369,7 +391,7 @@ struct CExpandExpr:
     void visit(::AST::ExprNode_Loop& node) override {
         this->visit_nodelete(node, node.m_cond);
         this->visit_nodelete(node, node.m_code);
-        Expand_Pattern(crate, modstack, this->cur_mod(),  node.m_pattern);
+        Expand_Pattern(crate, modstack, this->cur_mod(),  node.m_pattern, (node.m_type == ::AST::ExprNode_Loop::WHILELET));
         if(node.m_type == ::AST::ExprNode_Loop::FOR)
         {
             auto core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core");
@@ -436,7 +458,7 @@ struct CExpandExpr:
             if( arm.m_patterns.size() == 0 )
                 continue ;
             for(auto& pat : arm.m_patterns) {
-                Expand_Pattern(crate, modstack, this->cur_mod(),  pat);
+                Expand_Pattern(crate, modstack, this->cur_mod(),  pat, true);
             }
             this->visit_nodelete(node, arm.m_cond);
             this->visit_nodelete(node, arm.m_code);
@@ -456,7 +478,7 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_false);
     }
     void visit(::AST::ExprNode_IfLet& node) override {
-        Expand_Pattern(crate, modstack, this->cur_mod(),  node.m_pattern);
+        Expand_Pattern(crate, modstack, this->cur_mod(),  node.m_pattern, true);
         this->visit_nodelete(node, node.m_value);
         this->visit_nodelete(node, node.m_true);
         this->visit_nodelete(node, node.m_false);
@@ -468,7 +490,7 @@ struct CExpandExpr:
     void visit(::AST::ExprNode_ByteString& node) override { }
     void visit(::AST::ExprNode_Closure& node) override {
         for(auto& arg : node.m_args) {
-            Expand_Pattern(crate, modstack, this->cur_mod(),  arg.first);
+            Expand_Pattern(crate, modstack, this->cur_mod(),  arg.first, false);
             Expand_Type(crate, modstack, this->cur_mod(),  arg.second);
         }
         Expand_Type(crate, modstack, this->cur_mod(),  node.m_return);
@@ -641,7 +663,7 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
             ),
         (Function,
             for(auto& arg : e.args()) {
-                Expand_Pattern(crate, modstack, mod,  arg.first);
+                Expand_Pattern(crate, modstack, mod,  arg.first, false);
                 Expand_Type(crate, modstack, mod,  arg.second);
             }
             Expand_Type(crate, modstack, mod,  e.rettype());
@@ -836,7 +858,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 (None, ),
                 (Function,
                     for(auto& arg : e.args()) {
-                        Expand_Pattern(crate, modstack, mod,  arg.first);
+                        Expand_Pattern(crate, modstack, mod,  arg.first, false);
                         Expand_Type(crate, modstack, mod,  arg.second);
                     }
                     Expand_Type(crate, modstack, mod,  e.rettype());
@@ -862,7 +884,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
         
         (Function,
             for(auto& arg : e.args()) {
-                Expand_Pattern(crate, modstack, mod,  arg.first);
+                Expand_Pattern(crate, modstack, mod,  arg.first, false);
                 Expand_Type(crate, modstack, mod,  arg.second);
             }
             Expand_Type(crate, modstack, mod,  e.rettype());
