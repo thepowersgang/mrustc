@@ -57,7 +57,7 @@ namespace {
             (Any,
                 ),
             (Box,
-                TODO(sp, "Destructure using " << pat);
+                define_vars_from(sp, *e.sub);
                 ),
             (Ref,
                 define_vars_from(sp, *e.sub);
@@ -168,7 +168,7 @@ namespace {
             (Any,
                 ),
             (Box,
-                TODO(sp, "Destructure using Box - " << pat);
+                destructure_from_ex(sp, *e.sub, ::MIR::LValue::make_Deref({ box$( mv$(lval) ) }), allow_refutable);
                 ),
             (Ref,
                 destructure_from_ex(sp, *e.sub, ::MIR::LValue::make_Deref({ box$( mv$(lval) ) }), allow_refutable);

@@ -104,9 +104,12 @@ struct Context
     
     ::std::vector< IVarPossible>    possible_ivar_vals;
     
+    const ::HIR::SimplePath m_lang_Box;
+    
     Context(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params):
         m_crate(crate),
-        m_resolve(m_ivars, crate, impl_params, item_params)
+        m_resolve(m_ivars, crate, impl_params, item_params),
+        m_lang_Box( crate.get_lang_item_path_opt("owned_box") )
     {
     }
     
@@ -2180,7 +2183,7 @@ namespace {
 
                 // HACK: Add a possibility of the result type being ``Box<`data_ty`>``
                 // - This only happens if the `owned_box` lang item is present and this node is a `box` operation
-                const auto& lang_Boxed = this->context.m_crate.get_lang_item_path_opt("owned_box");
+                const auto& lang_Boxed = this->context.m_lang_Box;
                 if( ! lang_Boxed.m_components.empty() && node_ty == ::HIR::ExprNode_Emplace::Type::Boxer )
                 {
                     // NOTE: `owned_box` shouldn't point to anything but a struct
@@ -2589,7 +2592,7 @@ namespace {
                         const auto& box_ty = this->context.get_type(node_ptr->m_res_type);
                         TU_IFLET(::HIR::TypeRef::Data, box_ty.m_data, Path, e,
                             TU_IFLET(::HIR::Path::Data, e.path.m_data, Generic, pe,
-                                if( pe.m_path == this->context.m_crate.get_lang_item_path(sp, "owned_box") ) {
+                                if( pe.m_path == context.m_lang_Box ) {
                                 }
                                 else {
                                     ERROR(sp, E0000, "Calling Box receiver method on non-box - " << box_ty);
@@ -3253,7 +3256,27 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         H::handle_value(*this, sp, type, e.end);
         ),
     (Box,
-        TODO(sp, "Box pattern");
+        if( m_lang_Box == ::HIR::SimplePath() )
+            ERROR(sp, E0000, "Use of `box` pattern without the `owned_box` lang item");
+        const auto& ty = this->get_type(type);
+        // Two options:
+        // 1. Enforce that the current type must be "owned_box"
+        // 2. Make a new ivar for the inner and emit an associated type bound on Deref
+
+        // Taking option 1 for now
+        TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, te,
+            if( te.path.m_data.is_Generic() && te.path.m_data.as_Generic().m_path == m_lang_Box ) {
+                // Box<T>
+                const auto& inner = te.path.m_data.as_Generic().m_params.m_types.at(0);
+                this->add_binding(sp, *e.sub, inner);
+                break ;
+            }
+        )
+
+        auto inner = this->m_ivars.new_ivar_tr();
+        this->add_binding(sp, *e.sub, inner);
+        ::HIR::GenericPath  path { m_lang_Box, ::HIR::PathParams(mv$(inner)) };
+        this->equate_types( sp, type, ::HIR::TypeRef::new_path(mv$(path), ::HIR::TypeRef::TypePathBinding(&m_crate.get_struct_by_path(sp, m_lang_Box))) );
         ),
     (Ref,
         const auto& ty = this->get_type(type);

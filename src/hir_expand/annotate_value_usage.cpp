@@ -369,8 +369,9 @@ namespace {
                 return ::HIR::ValueUsage::Borrow;
                 ),
             (Box,
-                TODO(sp, "Box");
-                //return get_usage_for_pattern(sp, *pe.inner, [&](const auto&){ if(tmp == ::HIR::TypeRef()) tmp = m_resolve.deref_type(sp, get_ty()); return tmp; });
+                // NOTE: Specific to `owned_box`
+                const auto& sty = ty.m_data.as_Path().path.m_data.as_Generic().m_params.m_types.at(0);
+                return get_usage_for_pattern(sp, *pe.sub, sty);
                 ),
             (Ref,
                 return get_usage_for_pattern(sp, *pe.sub, *ty.m_data.as_Borrow().inner);
