@@ -206,7 +206,7 @@ struct Context
     }
     void pop_block() {
         assert( m_block_level > 0 );
-        if( m_name_context.back().is_VarBlock() && m_name_context.back().as_VarBlock().level == m_block_level ) {
+        if( m_name_context.size() > 0 && m_name_context.back().is_VarBlock() && m_name_context.back().as_VarBlock().level == m_block_level ) {
             DEBUG("Pop block from " << m_block_level << " with vars:" << FMT_CB(os,
                 for(const auto& v : m_name_context.back().as_VarBlock().variables)
                     os << " " << v.name << "#" << v.value;
