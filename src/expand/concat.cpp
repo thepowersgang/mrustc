@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * expand/concat.cpp
+ * - concat! handler
  */
 #include <synext.hpp>
 #include "../parse/common.hpp"
@@ -20,6 +25,11 @@ class CConcatExpander:
         
         ::std::string   rv;
         do {
+            if( LOOK_AHEAD(lex) == TOK_EOF ) {
+                GET_TOK(tok, lex);
+                break ;
+            }
+            
             auto v = Parse_Expr0(lex);
             DEBUG("concat - v=" << *v);
             Expand_BareExpr(crate, mod,  v);
@@ -30,11 +40,24 @@ class CConcatExpander:
             }
             else if( auto* vp = dynamic_cast<AST::ExprNode_Integer*>(v.get()) )
             {
+                if( vp->m_datatype == CORETYPE_CHAR ) {
+                    rv += Codepoint { static_cast<uint32_t>(vp->m_value) };
+                }
+                else {
+                    rv += FMT(vp->m_value);
+                }
+            }
+            else if( auto* vp = dynamic_cast<AST::ExprNode_Float*>(v.get()) )
+            {
                 rv += FMT(vp->m_value);
+            }
+            else if( auto* vp = dynamic_cast<AST::ExprNode_Bool*>(v.get()) )
+            {
+                rv += (vp->m_value ? "true" : "false");
             }
             else
             {
-                ERROR(sp, E0000, "Unexpected expression type");
+                ERROR(sp, E0000, "Unexpected expression type in concat! argument");
             }
         } while( GET_TOK(tok, lex) == TOK_COMMA );
         if( tok.type() != TOK_EOF )
