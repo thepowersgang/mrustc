@@ -198,6 +198,7 @@ output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir outp
 output/rust/run-pass/allocator-default.o: output/libstd.hir output/liballoc_jemalloc.hir
 output/rust/run-pass/allocator-system.o: output/liballoc_system.hir
 output/rust/run-pass/anon-extern-mod-cross-crate-2.o: output/test_deps/libanonexternmod.hir
+output/test_deps/libsvh_b.hir: output/test_deps/libsvh_a_base.hir
 
 output/test_deps/libanonexternmod.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/anon-extern-mod-cross-crate-1.rs
 	$(BIN) $< --crate-type rlib --out-dir output/test_deps > $@.txt 2>&1
