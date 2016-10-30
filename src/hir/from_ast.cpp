@@ -1096,7 +1096,7 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
         (Crate,
             // All 'extern crate' items should be normalised into a list in the crate root
             // - If public, add a namespace import here referring to the root of the imported crate
-            _add_mod_ns_item( mod, item.name, item.is_pub, ::HIR::TypeItem::make_Import( ::HIR::SimplePath(e.name, {}) ) );
+            _add_mod_ns_item( mod, item.name, item.is_pub, ::HIR::TypeItem::make_Import({ ::HIR::SimplePath(e.name, {}), false, 0} ) );
             ),
         (Type,
             _add_mod_ns_item( mod,  item.name, item.is_pub, ::HIR::TypeItem::make_TypeAlias( LowerHIR_TypeAlias(e) ) );
@@ -1141,17 +1141,34 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
     for( const auto& ie : ast_mod.m_namespace_items )
     {
         if( ie.second.is_import ) {
-            _add_mod_ns_item(mod, ie.first, ie.second.is_pub,  ::HIR::TypeItem::make_Import({
-                LowerHIR_SimplePath( Span(), ie.second.path )
-                }) );
+            auto hir_path = LowerHIR_SimplePath( Span(), ie.second.path );
+            ::HIR::TypeItem ti;
+            TU_MATCH_DEF( ::AST::PathBinding, (ie.second.path.binding()), (pb),
+            (
+                ti = ::HIR::TypeItem::make_Import({ mv$(hir_path), false, 0 });
+                ),
+            (EnumVar,
+                ti = ::HIR::TypeItem::make_Import({ mv$(hir_path), true, pb.idx });
+                )
+            )
+            _add_mod_ns_item(mod, ie.first, ie.second.is_pub, mv$(ti));
         }
     }
     for( const auto& ie : ast_mod.m_value_items )
     {
         if( ie.second.is_import ) {
-            _add_mod_val_item(mod, ie.first, ie.second.is_pub,  ::HIR::ValueItem::make_Import({
-                LowerHIR_SimplePath( Span(), ie.second.path )
-                }) );
+            auto hir_path = LowerHIR_SimplePath( Span(), ie.second.path );
+            ::HIR::ValueItem    vi;
+            
+            TU_MATCH_DEF( ::AST::PathBinding, (ie.second.path.binding()), (pb),
+            (
+                vi = ::HIR::ValueItem::make_Import({ mv$(hir_path), false, 0 });
+                ),
+            (EnumVar,
+                vi = ::HIR::ValueItem::make_Import({ mv$(hir_path), true, pb.idx });
+                )
+            )
+            _add_mod_val_item(mod, ie.first, ie.second.is_pub, mv$(vi));
         }
     }
     

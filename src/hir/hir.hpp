@@ -257,7 +257,7 @@ public:
 // --------------------------------------------------------------------
 
 TAGGED_UNION(TypeItem, Import,
-    (Import, ::HIR::SimplePath),  // `pub use` statements (no globs)
+    (Import, struct { ::HIR::SimplePath path; bool is_variant; unsigned int idx; }),
     (Module, Module),
     (TypeAlias, TypeAlias), // NOTE: These don't introduce new values
     (Enum,      Enum),
@@ -265,7 +265,7 @@ TAGGED_UNION(TypeItem, Import,
     (Trait,     Trait)
     );
 TAGGED_UNION(ValueItem, Import,
-    (Import,    ::HIR::SimplePath),
+    (Import,    struct { ::HIR::SimplePath path; bool is_variant; unsigned int idx; }),
     (Constant,  Constant),
     (Static,    Static),
     (StructConstant,    struct { ::HIR::SimplePath ty; }),

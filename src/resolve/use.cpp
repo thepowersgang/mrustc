@@ -471,10 +471,10 @@ namespace {
             TU_IFLET( ::HIR::TypeItem, (it->second->ent), Module, mod,
                 hmod = &mod;
             )
-            else TU_IFLET( ::HIR::TypeItem, (it->second->ent), Import, import_path,
-                hmod = get_hir_mod_by_path(sp, crate, import_path);
+            else TU_IFLET( ::HIR::TypeItem, (it->second->ent), Import, import,
+                hmod = get_hir_mod_by_path(sp, crate, import.path);
                 if( !hmod )
-                    BUG(sp, "");
+                    BUG(sp, "Import in module position didn't resolve as a module - " << import.path);
             )
             else TU_IFLET( ::HIR::TypeItem, (it->second->ent), Enum, enm,
                 if( &node == &path.m_components.back() ) {
@@ -519,7 +519,7 @@ namespace {
             ),
         (Import,
             bool is_enum = false;
-            auto ptr = get_hir_modenum_by_path(span, crate, e, is_enum);
+            auto ptr = get_hir_modenum_by_path(span, crate, e.path, is_enum);
             if( !ptr )
                 BUG(span, "Path component " << nodes[i].name() << " pointed to non-module (" << path << ")");
             if( is_enum ) {
@@ -566,12 +566,12 @@ namespace {
             if( item_ptr->is_Import() ) {
                 const auto& e = item_ptr->as_Import();
                 // This doesn't need to recurse - it can just do a single layer (as no Import should refer to another)
-                const auto& ec = crate.m_extern_crates.at( e.m_crate_name );
-                item_ptr = &ec.m_hir->get_typeitem_by_path(span, e, true);    // ignore_crate_name=true
+                const auto& ec = crate.m_extern_crates.at( e.path.m_crate_name );
+                item_ptr = &ec.m_hir->get_typeitem_by_path(span, e.path, true);    // ignore_crate_name=true
             }
             TU_MATCHA( (*item_ptr), (e),
             (Import,
-                BUG(span, "Recursive import in " << path << " - " << it->second->ent.as_Import() << " -> " << e);
+                BUG(span, "Recursive import in " << path << " - " << it->second->ent.as_Import().path << " -> " << e.path);
                 ),
             (Module,
                 return ::AST::PathBinding::make_Module({nullptr, &e});
@@ -599,12 +599,12 @@ namespace {
             if( item_ptr->is_Import() ) {
                 const auto& e = item_ptr->as_Import();
                 // This doesn't need to recurse - it can just do a single layer (as no Import should refer to another)
-                const auto& ec = crate.m_extern_crates.at( e.m_crate_name );
-                item_ptr = &ec.m_hir->get_valitem_by_path(span, e, true);    // ignore_crate_name=true
+                const auto& ec = crate.m_extern_crates.at( e.path.m_crate_name );
+                item_ptr = &ec.m_hir->get_valitem_by_path(span, e.path, true);    // ignore_crate_name=true
             }
             TU_MATCHA( (*item_ptr), (e),
             (Import,
-                BUG(span, "Recursive import in " << path << " - " << it2->second->ent.as_Import() << " -> " << e);
+                BUG(span, "Recursive import in " << path << " - " << it2->second->ent.as_Import().path << " -> " << e.path);
                 ),
             (Constant,
                 return ::AST::PathBinding::make_Static({ nullptr });

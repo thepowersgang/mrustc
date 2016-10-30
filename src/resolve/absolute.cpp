@@ -798,8 +798,8 @@ namespace {
             TU_MATCH(::HIR::TypeItem, (it->second->ent), (e),
             (Import,
                 // - Update path then restart
-                auto newpath = AST::Path(e.m_crate_name, {});
-                for(const auto& n : e.m_components)
+                auto newpath = AST::Path(e.path.m_crate_name, {});
+                for(const auto& n : e.path.m_components)
                     newpath.nodes().push_back( AST::PathNode(n) );
                 for(unsigned int j = i + 1; j < path.nodes().size(); j ++)
                     newpath.nodes().push_back( mv$(path.nodes()[j]) );
@@ -904,15 +904,11 @@ namespace {
             {
                 auto v = hmod->m_mod_items.find(name);
                 if( v != hmod->m_mod_items.end() ) {
-                    const auto& ti = v->second->ent;
-                    if( ti.is_Import() ) {
-                        DEBUG("= Import " << ti.as_Import());
-                        Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, false,  path, ti.as_Import());
-                        return ;
-                    }
                     TU_MATCH(::HIR::TypeItem, (v->second->ent), (e),
                     (Import,
-                        throw "";
+                        DEBUG("= Import " << e.path);
+                        Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, false,  path, e.path);
+                        return ;
                         ),
                     (Trait,
                         path.bind( ::AST::PathBinding::make_Trait({nullptr, &e}) );
@@ -941,12 +937,12 @@ namespace {
             {
                 auto v = hmod->m_mod_items.find(name);
                 if( v != hmod->m_mod_items.end() ) {
-                    if( v->second->ent.is_Import() ) {
-                        Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, false,  path, v->second->ent.as_Import());
-                        TODO(sp, "Imports in HIR mod items");
-                    }
                     TU_MATCH_DEF(::HIR::TypeItem, (v->second->ent), (e),
                     (
+                        ),
+                    (Import,
+                        Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, false,  path, e.path);
+                        TODO(sp, "Imports in HIR mod items - " << e.path);
                         ),
                     (Struct,
                         // Bind and update path
@@ -960,11 +956,11 @@ namespace {
             {
                 auto v = hmod->m_value_items.find(name);
                 if( v != hmod->m_value_items.end() ) {
-                    if( v->second->ent.is_Import() ) {
-                        TODO(sp, "Imports in HIR val items - " << v->second->ent.as_Import());
-                    }
                     TU_MATCH_DEF(::HIR::ValueItem, (v->second->ent), (e),
                     (
+                        ),
+                    (Import,
+                        TODO(sp, "Imports in HIR val items - " << e.path);
                         ),
                     (Constant,
                         // Bind and update path
@@ -981,14 +977,10 @@ namespace {
             {
                 auto v = hmod->m_value_items.find(name);
                 if( v != hmod->m_value_items.end() ) {
-                    if( v->second->ent.is_Import() ) {
-                        Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, true,  path, v->second->ent.as_Import());
+                    TU_MATCH(::HIR::ValueItem, (v->second->ent), (e),
+                    (Import,
+                        Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, true,  path, e.path);
                         return ;
-                    }
-                    TU_MATCH_DEF(::HIR::ValueItem, (v->second->ent), (e),
-                    (
-                        // TODO: Handle other values types
-                        TODO(sp, "Bind item type " << v->second->ent.tag_str());
                         ),
                     (Function,
                         path.bind( ::AST::PathBinding::make_Function({nullptr/*, &e*/}) );

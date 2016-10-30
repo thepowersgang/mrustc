@@ -268,7 +268,7 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(const Span& sp, const AST::C
         if( ve.is_public ) {
             AST::Path   p;
             if( ve.ent.is_Import() ) {
-                p = hir_to_ast( ve.ent.as_Import() );
+                p = hir_to_ast( ve.ent.as_Import().path );
             }
             else {
                 p = path + it.first;
@@ -302,7 +302,7 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(const Span& sp, const AST::C
             AST::Path   p;
             const auto* vep = &ve.ent;
             if( ve.ent.is_Import() ) {
-                const auto& spath = ve.ent.as_Import();
+                const auto& spath = ve.ent.as_Import().path;
                 p = hir_to_ast( spath );
                 
                 ASSERT_BUG(sp, crate.m_extern_crates.count(spath.m_crate_name) == 1, "Crate " << spath.m_crate_name << " is not loaded");
@@ -526,15 +526,15 @@ void Resolve_Index_Module_Normalise_Path_ext(const ::AST::Crate& crate, const Sp
         const auto* item_ptr = &it->second->ent;
         if( item_ptr->is_Import() ) {
             const auto& e = item_ptr->as_Import();
-            const auto& ec = crate.m_extern_crates.at( e.m_crate_name );
-            item_ptr = &ec.m_hir->get_typeitem_by_path(sp, e, true);    // ignore_crate_name=true
+            const auto& ec = crate.m_extern_crates.at( e.path.m_crate_name );
+            item_ptr = &ec.m_hir->get_typeitem_by_path(sp, e.path, true);    // ignore_crate_name=true
         }
         TU_MATCH_DEF(::HIR::TypeItem, (*item_ptr), (e),
         (
             BUG(sp, "Path " << path << " pointed to non-module in component " << i);
             ),
         (Import,
-            BUG(sp, "Recursive import in " << path << " - " << it->second->ent.as_Import() << " -> " << e);
+            BUG(sp, "Recursive import in " << path << " - " << it->second->ent.as_Import().path << " -> " << e.path);
             ),
         (Enum,
             if( i != info.nodes.size() - 2 ) {
@@ -560,7 +560,7 @@ void Resolve_Index_Module_Normalise_Path_ext(const ::AST::Crate& crate, const Sp
             TU_IFLET( ::HIR::TypeItem, it_m->second->ent, Import, e,
                 // Replace the path with this path (maintaining binding)
                 auto binding = path.binding().clone();
-                path = hir_to_ast(e);
+                path = hir_to_ast(e.path);
                 path.bind( mv$(binding) );
             )
             return ;
@@ -573,7 +573,7 @@ void Resolve_Index_Module_Normalise_Path_ext(const ::AST::Crate& crate, const Sp
             TU_IFLET( ::HIR::ValueItem, it_v->second->ent, Import, e,
                 // Replace the path with this path (maintaining binding)
                 auto binding = path.binding().clone();
-                path = hir_to_ast(e);
+                path = hir_to_ast(e.path);
                 path.bind( mv$(binding) );
             )
             return ;

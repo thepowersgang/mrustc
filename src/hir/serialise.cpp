@@ -610,7 +610,9 @@ namespace {
             TU_MATCHA( (item), (e),
             (Import,
                 m_out.write_tag(0);
-                serialise_simplepath(e);
+                serialise_simplepath(e.path);
+                m_out.write_bool(e.is_variant);
+                m_out.write_bool(e.idx);
                 ),
             (Module,
                 m_out.write_tag(1);
@@ -639,7 +641,9 @@ namespace {
             TU_MATCHA( (item), (e),
             (Import,
                 m_out.write_tag(0);
-                serialise_simplepath(e);
+                serialise_simplepath(e.path);
+                m_out.write_bool(e.is_variant);
+                m_out.write_bool(e.idx);
                 ),
             (Constant,
                 m_out.write_tag(1);
