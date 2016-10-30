@@ -145,6 +145,16 @@ struct TraitMarkings
     bool    is_always_sized = false;
     /// `true` if there is a Copy impl
     bool    is_copy = false;
+
+    struct AutoMarking {
+        // If present, this impl is conditionally true based on the listed type parameters
+        ::std::vector< ::HIR::TypeRef> conditions;
+        // Implementation state
+        bool is_impled;
+    };
+    
+    // General auto trait impls
+    mutable ::std::map< ::HIR::SimplePath, AutoMarking>    auto_impls;
 };
 
 class Enum

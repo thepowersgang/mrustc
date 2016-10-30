@@ -2078,15 +2078,72 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         t_cb_trait_impl_r callback
         ) const
 {
+    static ::std::map< ::std::string, ::HIR::TypeRef>    null_assoc;
     TRACE_FUNCTION_F(trait << FMT_CB(ss, if(params_ptr) { ss << *params_ptr; } else { ss << "<?>"; }) << " for " << type);
     
     // Handle auto traits (aka OIBITs)
     if( m_crate.get_trait_by_path(sp, trait).m_is_marker )
     {
+        // Detect recursion and return true if detected
+        static ::std::vector< ::std::tuple< const ::HIR::SimplePath*, const ::HIR::PathParams*, const ::HIR::TypeRef*> >    stack;
+        for(const auto& ent : stack ) {
+            if( *::std::get<0>(ent) != trait )
+                continue ;
+            if( ::std::get<1>(ent) && params_ptr && *::std::get<1>(ent) != *params_ptr )
+                continue ;
+            if( *::std::get<2>(ent) != type )
+                continue ;
+            
+            return callback( ImplRef(&type, params_ptr, &null_assoc), ::HIR::Compare::Equal );
+        }
+        stack.push_back( ::std::make_tuple( &trait, params_ptr, &type ) );
+        struct Guard {
+            ~Guard() { stack.pop_back(); }
+        };
+        Guard   _;
+        
         // NOTE: Expected behavior is for Ivars to return false
         // TODO: Should they return Compare::Fuzzy instead?
         if( type.m_data.is_Infer() ) {
             return false;
+        }
+        
+        const ::HIR::TraitMarkings* markings = nullptr;
+        TU_IFLET( ::HIR::TypeRef::Data, (type.m_data), Path, e,
+            if( e.path.m_data.is_Generic() && e.path.m_data.as_Generic().m_params.m_types.size() == 0 )
+            {
+                TU_MATCH( ::HIR::TypeRef::TypePathBinding, (e.binding), (tpb),
+                (Unbound,
+                    ),
+                (Opaque,
+                    ),
+                (Struct,
+                    markings = &tpb->m_markings;
+                    ),
+                (Enum,
+                    markings = &tpb->m_markings;
+                    )
+                )
+            }
+        )
+
+        // NOTE: `markings` is only set if there's no type params to a path type
+        // - Cache populated after destructure
+        if( markings )
+        {
+            auto it = markings->auto_impls.find( trait );
+            if( it != markings->auto_impls.end() )
+            {
+                if( ! it->second.conditions.empty() ) {
+                    TODO(sp, "Conditional auto trait impl");
+                }
+                else if( it->second.is_impled ) {
+                    return callback( ImplRef(&type, params_ptr, &null_assoc), ::HIR::Compare::Equal );
+                }
+                else {
+                    return false;
+                }
+            }
         }
         
         // - Search for positive impls for this type
@@ -2140,7 +2197,19 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 // Skip any positive impls
                 if( impl.is_positive != false )
                     return false;
-                TODO(sp, "[find_trait_impls_crate] Matching negative impl !" << trait << " for " << type);
+                DEBUG("[find_trait_impls_crate] - Found auto neg impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << " " << impl.m_params.fmt_bounds());
+                
+                // Compare with `params`
+                ::std::vector< const ::HIR::TypeRef*> impl_params;
+                ::std::vector< ::HIR::TypeRef>  placeholders;
+                auto match = this->ftic_check_params(sp, trait,  params_ptr, type,  impl.m_params, impl.m_trait_args, impl.m_type,  impl_params, placeholders);
+                if( match == ::HIR::Compare::Unequal ) {
+                    // If any bound failed, return false (continue searching)
+                    return false;
+                }
+                
+                DEBUG("[find_trait_impls_crate] - Found neg impl");
+                return true;
             });
         if( negative_found ) {
             // A negative impl _was_ found, so return false
@@ -2150,11 +2219,17 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         auto cmp = this->check_auto_trait_impl_destructure(sp, trait, params_ptr, type);
         if( cmp != ::HIR::Compare::Unequal )
         {
-            static ::std::map< ::std::string, ::HIR::TypeRef>    null_assoc;
+            if( markings ) {
+                ASSERT_BUG(sp, cmp == ::HIR::Compare::Equal, "Auto trait with no params returned a fuzzy match from destructure");
+                markings->auto_impls.insert( ::std::make_pair(trait, ::HIR::TraitMarkings::AutoMarking { {}, true }) );
+            }
             return callback( ImplRef(&type, params_ptr, &null_assoc), cmp );
         }
         else
         {
+            if( markings ) {
+                markings->auto_impls.insert( ::std::make_pair(trait, ::HIR::TraitMarkings::AutoMarking { {}, false }) );
+            }
             return false;
         }
     }
@@ -2210,7 +2285,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
     auto type_impls_trait = [&](const auto& inner_ty) -> ::HIR::Compare {
         auto l_res = ::HIR::Compare::Unequal;
         this->find_trait_impls(sp, trait, *params_ptr, inner_ty, [&](auto, auto cmp){ l_res = cmp; return (cmp == ::HIR::Compare::Equal); });
-        DEBUG("[type_impls_auto_trait] " << inner_ty << " - " << l_res);
+        DEBUG("[check_auto_trait_impl_destructure] " << inner_ty << " - " << l_res);
         return l_res;
         };
     
