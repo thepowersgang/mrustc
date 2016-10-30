@@ -2151,6 +2151,7 @@ namespace {
                 ),
             (Infer,
                 // Keep trying
+                this->context.equate_types_shadow(node.span(), node.m_res_type);
                 return ;
                 ),
             (Borrow,
