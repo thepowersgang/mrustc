@@ -134,11 +134,17 @@ output/librustc_unicode.hir: output/libcore.hir
 output/libcollections.hir: output/libcore.hir output/liballoc.hir output/librustc_unicode.hir
 output/librand.hir: output/libcore.hir
 output/liblibc.hir: output/libcore.hir
+output/libcompiler_builtins.hir: output/libcore.hir
 output/libstd.hir: $(call fcn_extcrate, core collections rand libc unwind compiler_builtins)
 output/libunwind.hir: $(call fcn_extcrate, core libc)
 
+output/libterm.hir: $(call fcn_extcrate, std)
+output/libpanic_unwind.hir: $(call fcn_extcrate, core alloc libc unwind)
 output/libtest.hir: $(call fcn_extcrate, std getopts term panic_unwind)
 output/libgetopts.hir: output/libstd.hir
+
+output/liballoc_system.hir: $(call fcn_extcrate, core libc)
+output/liballoc_jemalloc.hir: $(call fcn_extcrate, core libc)
 
 output/libserialize.hir: $(call fcn_extcrate, std log)
 output/librbml.hir: $(call fcn_extcrate, std serialize)
