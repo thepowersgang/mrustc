@@ -1983,11 +1983,12 @@ namespace {
                     ERROR(sp, E0000, "Invalid cast to pointer from " << src_ty);
                     ),
                 (Function,
-                    if( *e.inner == ::HIR::TypeRef::new_unit() ) {
+                    // TODO: What is the valid set? *const () and *const u8 at least are allowed
+                    if( *e.inner == ::HIR::TypeRef::new_unit() || *e.inner == ::HIR::CoreType::U8 ) {
                         this->m_completed = true;
                     }
                     else {
-                        ERROR(sp, E0000, "Invalid cast to pointer from " << src_ty);
+                        ERROR(sp, E0000, "Invalid cast to " << tgt_ty << " from " << src_ty);
                     }
                     ),
                 (Primitive,
