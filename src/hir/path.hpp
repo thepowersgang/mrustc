@@ -19,6 +19,15 @@ enum Compare {
     Fuzzy,
     Unequal,
 };
+static inline ::std::ostream& operator<<(::std::ostream& os, const Compare& x) {
+    switch(x)
+    {
+    case Compare::Equal:    os << "Equal";  break;
+    case Compare::Fuzzy:    os << "Fuzzy";  break;
+    case Compare::Unequal:  os << "Unequal"; break;
+    }
+    return os;
+}
 static inline Compare& operator &=(Compare& x, const Compare& y) {
     if(x == Compare::Unequal) {
     }
