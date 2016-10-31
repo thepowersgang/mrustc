@@ -868,9 +868,30 @@ namespace {
         mv$(variants)
         };
 }
-::HIR::Union LowerHIR_Union(::HIR::ItemPath path, const ::AST::Union& f)
+::HIR::Union LowerHIR_Union(::HIR::ItemPath path, const ::AST::Union& f, const ::AST::MetaItems& attrs)
 {
-    TODO(Span(), "LowerHIR_Union");
+    auto repr = ::HIR::Union::Repr::Rust;
+    
+    if( const auto* attr_repr = attrs.get("repr") )
+    {
+        const auto& repr_str = attr_repr->string();
+        if( repr_str == "C" ) {
+            repr = ::HIR::Union::Repr::C;
+        }
+        else {
+            // TODO: Error?
+        }
+    }
+    
+    ::HIR::Struct::Data::Data_Named variants;
+    for(const auto& field : f.m_variants)
+        variants.push_back( ::std::make_pair( field.m_name, new_visent(field.m_is_public, LowerHIR_Type(field.m_type)) ) );
+    
+    return ::HIR::Union {
+        LowerHIR_GenericParams(f.m_params, nullptr),
+        repr,
+        mv$(variants)
+        };
 }
 ::HIR::Trait LowerHIR_Trait(::HIR::SimplePath trait_path, const ::AST::Trait& f)
 {
@@ -1119,7 +1140,7 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Enum(item_path, e) );
             ),
         (Union,
-            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Union(item_path, e) );
+            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Union(item_path, e, item.data.attrs) );
             ),
         (Trait,
             _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Trait(item_path.get_simple_path(), e) );

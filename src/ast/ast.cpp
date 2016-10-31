@@ -35,11 +35,11 @@ void MetaItems::push_back(MetaItem i)
 {
     m_items.push_back( ::std::move(i) );
 }
-MetaItem* MetaItems::get(const char *name)
+const MetaItem* MetaItems::get(const char *name) const
 {
     for( auto& i : m_items ) {
         if(i.name() == name) {
-            i.mark_used();
+            //i.mark_used();
             return &i;
         }
     }
