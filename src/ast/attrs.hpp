@@ -28,8 +28,9 @@ public:
     
     MetaItems clone() const;
     
-    MetaItem* get(const char *name);
-    bool has(const char *name) {
+    MetaItem* get(const char *name) { return const_cast<MetaItem*>( const_cast<const MetaItems*>(this)->get(name)); }
+    const MetaItem* get(const char *name) const;
+    bool has(const char *name) const {
         return get(name) != 0;
     }
     

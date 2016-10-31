@@ -1951,6 +1951,17 @@ void Resolve_Absolute_Struct(Context& item_context, ::AST::Struct& e)
     
     item_context.pop( e.params() );
 }
+void Resolve_Absolute_Union(Context& item_context, ::AST::Union& e)
+{
+    item_context.push( e.m_params, GenericSlot::Level::Top );
+    Resolve_Absolute_Generic(item_context,  e.m_params);
+    
+    for(auto& field : e.m_variants) {
+        Resolve_Absolute_Type(item_context,  field.m_type);
+    }
+    
+    item_context.pop( e.m_params );
+}
 void Resolve_Absolute_Trait(Context& item_context, ::AST::Trait& e)
 {
     item_context.push( e.params(), GenericSlot::Level::Top, true );
@@ -2114,7 +2125,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             ),
         (Union,
             DEBUG("Union - " << i.name);
-            TODO(i.data.span, "Union");
+            Resolve_Absolute_Union(item_context, e);
             ),
         (Function,
             DEBUG("Function - " << i.name);
