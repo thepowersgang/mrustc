@@ -4676,6 +4676,14 @@ namespace {
                 }
                 count += 1;
                 if( cmp == ::HIR::Compare::Equal ) {
+                    // NOTE: Sometimes equal can be returned when it's not 100% equal (TODO)
+                    // - Equate the types
+                    auto itp = impl.get_trait_params();
+                    assert( v.params.m_types.size() == itp.m_types.size() );
+                    for(unsigned int i = 0; i < v.params.m_types.size(); i ++)
+                    {
+                        context.equate_types(sp, v.params.m_types[i], itp.m_types[i]);
+                    }
                     return true;
                 }
                 else {
