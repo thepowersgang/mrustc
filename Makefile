@@ -34,6 +34,7 @@ CXXFLAGS += -O2
 CPPFLAGS := -I src/include/ -I src/
 
 CXXFLAGS += -Wno-pessimizing-move
+CXXFLAGS += -Wno-misleading-indentation
 #CXXFLAGS += -Wno-unused-private-field
 
 SHELL = bash

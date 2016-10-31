@@ -272,8 +272,6 @@ class Deriver_Debug:
             TypeRef(sp, AST::Path(core_name, {AST::PathNode("fmt",{}), AST::PathNode("Formatter", {})}))
             );
         
-        DEBUG("node = " << *node);
-        
         AST::Function fcn(
             sp,
             AST::GenericParams(),

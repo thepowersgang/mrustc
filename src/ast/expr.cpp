@@ -55,12 +55,12 @@ Expr Expr::clone() const
 
 ::std::ostream& operator<<(::std::ostream& os, const ExprNode& node)
 {
-    if( static_cast<const void*>(&node) != nullptr ) {
+    //if( static_cast<const void*>(&node) != nullptr ) {
         node.print(os);
-    }
-    else {
-        os << "/* NULLPTR */";
-    }
+    //}
+    //else {
+    //    os << "/* NULLPTR */";
+    //}
     return os;
 }
 ExprNode::~ExprNode() {

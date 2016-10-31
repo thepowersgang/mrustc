@@ -341,20 +341,10 @@ private:
     
     void check_param_counts(const GenericParams& params, bool expect_params, PathNode& node);
 public:
-    void bind_module(const Module& mod);
-    void bind_enum(const Enum& ent, const ::std::vector<TypeRef>& args={});
     void bind_enum_var(const Enum& ent, const ::std::string& name, const ::std::vector<TypeRef>& args={});
-    void bind_struct(const Struct& ent, const ::std::vector<TypeRef>& args={});
-    void bind_struct_member(const Struct& ent, const ::std::vector<TypeRef>& args, const PathNode& member_node);
-    void bind_static(const Static& ent);
-    void bind_trait(const Trait& ent, const ::std::vector<TypeRef>& args={});
     void bind_function(const Function& ent, const ::std::vector<TypeRef>& args={}) {
         (void)args;
         m_binding = PathBinding::make_Function({&ent});
-    }
-    void bind_type_alias(const TypeAlias& ent, const ::std::vector<TypeRef>& args={}) {
-        (void)args;
-        m_binding = PathBinding::make_TypeAlias({&ent});
     }
     
     void bind(::AST::PathBinding pb) {

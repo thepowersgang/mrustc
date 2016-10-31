@@ -1092,8 +1092,13 @@ ScopeHandle::~ScopeHandle()
 {
     if( idx != ~0u )
     {
-        ASSERT_BUG(Span(), m_builder.m_scopes.size() > idx, "Scope invalid");
-        ASSERT_BUG(Span(), m_builder.m_scopes.at(idx).complete, "Scope " << idx << " not completed");
+        try {
+            ASSERT_BUG(Span(), m_builder.m_scopes.size() > idx, "Scope invalid");
+            ASSERT_BUG(Span(), m_builder.m_scopes.at(idx).complete, "Scope " << idx << " not completed");
+        }
+        catch(...) {
+            abort();
+        }
     }
 }
 

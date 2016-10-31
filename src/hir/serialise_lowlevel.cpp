@@ -69,8 +69,10 @@ WriterInner::~WriterInner()
     do
     {
         ret = deflate(&m_zstream, Z_FINISH);
-        if(ret == Z_STREAM_ERROR)
-            throw ::std::runtime_error("zlib deflate stream error (cleanup)");
+        if(ret == Z_STREAM_ERROR) {
+            ::std::cerr << "ERROR: zlib deflate stream error (cleanup)";
+            abort();
+        }
         if( m_zstream.avail_out != m_buffer.size() )
         {
             size_t rem = m_buffer.size() - m_zstream.avail_out;
