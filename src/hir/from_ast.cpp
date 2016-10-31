@@ -868,6 +868,10 @@ namespace {
         mv$(variants)
         };
 }
+::HIR::Union LowerHIR_Union(::HIR::ItemPath path, const ::AST::Union& f)
+{
+    TODO(Span(), "LowerHIR_Union");
+}
 ::HIR::Trait LowerHIR_Trait(::HIR::SimplePath trait_path, const ::AST::Trait& f)
 {
     TRACE_FUNCTION_F(trait_path);
@@ -1113,6 +1117,9 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             ),
         (Enum,
             _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Enum(item_path, e) );
+            ),
+        (Union,
+            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Union(item_path, e) );
             ),
         (Trait,
             _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Trait(item_path.get_simple_path(), e) );

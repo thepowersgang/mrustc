@@ -146,6 +146,8 @@ namespace {
             (Struct,
                 return &e;
                 ),
+            (Union,
+                ),
             (Enum,
                 ),
             (TypeAlias,

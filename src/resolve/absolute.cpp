@@ -766,6 +766,9 @@ namespace {
             (Struct,
                 pb = ::AST::PathBinding::make_Struct({nullptr, &e});
                 ),
+            (Union,
+                pb = ::AST::PathBinding::make_Union({nullptr, &e});
+                ),
             (Enum,
                 pb = ::AST::PathBinding::make_Enum({nullptr, &e});
                 )
@@ -868,6 +871,12 @@ namespace {
                 path = split_into_ufcs_ty(sp, mv$(path), i-start);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 ),
+            (Union,
+                // TODO: set binding
+                path = split_into_crate(sp, mv$(path), start,  crate.m_name);
+                path = split_into_ufcs_ty(sp, mv$(path), i-start);
+                return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
+                ),
             (Enum,
                 const auto& last_node = path_abs.nodes.back();
                 // If this refers to an enum variant, return the full path
@@ -924,6 +933,9 @@ namespace {
                         ),
                     (Struct,
                         path.bind( ::AST::PathBinding::make_Struct({nullptr, &e}) );
+                        ),
+                    (Union,
+                        path.bind( ::AST::PathBinding::make_Union({nullptr, &e}) );
                         )
                     )
                     // Update path (trim down to `start` and set crate name)
@@ -1800,6 +1812,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
         (Enum  , BUG(i.data.span, "Resolve_Absolute_ImplItems - Enum");),
         (Trait , BUG(i.data.span, "Resolve_Absolute_ImplItems - Trait");),
         (Struct, BUG(i.data.span, "Resolve_Absolute_ImplItems - Struct");),
+        (Union , BUG(i.data.span, "Resolve_Absolute_ImplItems - Union");),
         (Type,
             DEBUG("Type - " << i.name);
             assert( e.params().ty_params().size() == 0 );
@@ -1862,6 +1875,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Im
         (Enum  , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Trait , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Struct, BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Union , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Type,
             DEBUG("Type - " << i.name);
             assert( e.params().ty_params().size() == 0 );
@@ -2097,6 +2111,10 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
         (Struct,
             DEBUG("Struct - " << i.name);
             Resolve_Absolute_Struct(item_context, e);
+            ),
+        (Union,
+            DEBUG("Union - " << i.name);
+            TODO(i.data.span, "Union");
             ),
         (Function,
             DEBUG("Function - " << i.name);

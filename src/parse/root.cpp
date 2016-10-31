@@ -843,6 +843,62 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
     return AST::Enum( mv$(params), mv$(variants) );
 }
 
+::AST::Union Parse_Union(TokenStream& lex, AST::MetaItems& meta_items)
+{
+    Token   tok;
+    
+    TRACE_FUNCTION;
+
+    AST::GenericParams params;
+    if( GET_TOK(tok, lex) == TOK_LT )
+    {
+        params = Parse_GenericParams(lex);
+        GET_CHECK_TOK(tok, lex, TOK_GT);
+        if(GET_TOK(tok, lex) == TOK_RWORD_WHERE)
+        {
+            Parse_WhereClause(lex, params);
+            tok = lex.getToken();
+        }
+    }
+    
+    ::std::vector< ::AST::StructItem>   variants;
+    
+    CHECK_TOK(tok, TOK_BRACE_OPEN);
+    do {
+        if( LOOK_AHEAD(lex) == TOK_BRACE_CLOSE ) {
+            GET_TOK(tok, lex);
+            break ;
+        }
+        
+        AST::MetaItems item_attrs;
+        while( tok.type() == TOK_ATTR_OPEN )
+        {
+            item_attrs.push_back( Parse_MetaItem(lex) );
+            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+            GET_TOK(tok, lex);
+        }
+        SET_ATTRS(lex, item_attrs);
+        
+        bool is_pub = false;
+        if( LOOK_AHEAD(lex) == TOK_RWORD_PUB ) {
+            is_pub = true;
+            GET_TOK(tok, lex);
+        }
+        
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        auto name = mv$(tok.str());
+        GET_CHECK_TOK(tok, lex, TOK_COLON);
+        
+        auto ty = Parse_Type(lex);
+        
+        variants.push_back( ::AST::StructItem( mv$(item_attrs), is_pub, mv$(name), mv$(ty) ) );
+        
+    } while( GET_TOK(tok, lex) == TOK_COMMA );
+    CHECK_TOK(tok, TOK_BRACE_CLOSE);
+    
+    return ::AST::Union( mv$(params), mv$(variants) );
+}
+
 /// Parse a meta-item declaration (either #![ or #[)
 AST::MetaItem Parse_MetaItem(TokenStream& lex)
 {
@@ -1571,6 +1627,17 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         item_name = mv$(tok.str());
         item_data = ::AST::Item( Parse_EnumDef(lex, meta_items) );
+        break;
+    // Contextual keywords
+    case TOK_IDENT:
+        if( tok.str() == "union" ) {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            item_name = mv$(tok.str());
+            item_data = ::AST::Item( Parse_Union(lex, meta_items) );
+        }
+        else {
+            throw ParseError::Unexpected(lex, tok);
+        }
         break;
     // `impl`
     case TOK_RWORD_IMPL:

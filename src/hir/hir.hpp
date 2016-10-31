@@ -204,6 +204,21 @@ public:
     
     TraitMarkings   m_markings;
 };
+class Union
+{
+public:
+    enum class Repr
+    {
+        Rust,
+        C,
+    };
+    
+    GenericParams   m_params;
+    Repr    m_repr;
+    t_struct_fields m_variants;
+    
+    TraitMarkings   m_markings;
+};
 
 struct AssociatedType
 {
@@ -262,6 +277,7 @@ TAGGED_UNION(TypeItem, Import,
     (TypeAlias, TypeAlias), // NOTE: These don't introduce new values
     (Enum,      Enum),
     (Struct,    Struct),
+    (Union,     Union),
     (Trait,     Trait)
     );
 TAGGED_UNION(ValueItem, Import,

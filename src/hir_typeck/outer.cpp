@@ -88,6 +88,9 @@ namespace {
             (Enum,
                 return e.m_params;
                 ),
+            (Union,
+                return e.m_params;
+                ),
             (Trait,
                 return e.m_params;
                 )

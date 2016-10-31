@@ -633,6 +633,10 @@ namespace {
             (Trait,
                 m_out.write_tag(5);
                 serialise(e);
+                ),
+            (Union,
+                m_out.write_tag(6);
+                serialise(e);
                 )
             )
         }
@@ -755,6 +759,14 @@ namespace {
                 serialise_vec(e);
                 )
             )
+        }
+        void serialise(const ::HIR::Union& item)
+        {
+            TRACE_FUNCTION;
+            
+            serialise_generics(item.m_params);
+            m_out.write_tag( static_cast<int>(item.m_repr) );
+            serialise_vec(item.m_variants);
         }
         void serialise(const ::HIR::Trait& item)
         {

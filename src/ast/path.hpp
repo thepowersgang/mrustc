@@ -21,6 +21,7 @@ class Module;
 class Trait;
 class Enum;
 class Struct;
+class Union;
 class Static;
 }   // namespace HIR
 
@@ -32,6 +33,7 @@ class Module;
 class TypeAlias;
 class Enum;
 class Struct;
+class Union;
 class Trait;
 class Static;
 class Function;
@@ -47,13 +49,17 @@ TAGGED_UNION_EX(PathBinding, (), Unbound, (
         const Module* module_;
         const ::HIR::Module* hir = nullptr;
         }),
+    (Struct, struct {
+        const Struct* struct_;
+        const ::HIR::Struct* hir = nullptr;
+        }),
     (Enum,   struct {
         const Enum* enum_;
         const ::HIR::Enum*  hir = nullptr;
         }),
-    (Struct, struct {
-        const Struct* struct_;
-        const ::HIR::Struct* hir = nullptr;
+    (Union,   struct {
+        const Union* union_;
+        const ::HIR::Union*  hir = nullptr;
         }),
     (Trait,  struct {
         const Trait* trait_;

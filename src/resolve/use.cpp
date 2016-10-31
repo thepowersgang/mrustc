@@ -324,6 +324,10 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 if( allow != Lookup::Value )
                     return ::AST::PathBinding::make_Enum({&e});
                 ),
+            (Union,
+                if( allow != Lookup::Value )
+                    return ::AST::PathBinding::make_Union({&e});
+                ),
             (Module,
                 if( allow != Lookup::Value )
                     return ::AST::PathBinding::make_Module({&e});
@@ -590,6 +594,9 @@ namespace {
                 ),
             (Struct,
                 return ::AST::PathBinding::make_Struct({nullptr, &e});
+                ),
+            (Union,
+                return ::AST::PathBinding::make_Union({nullptr, &e});
                 ),
             (Trait,
                 return ::AST::PathBinding::make_Trait({nullptr, &e});

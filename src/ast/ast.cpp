@@ -191,6 +191,14 @@ Struct Struct::clone() const
     throw "";
 }
 
+Union Union::clone() const
+{
+    decltype(m_variants)    new_vars;
+    for(const auto& f : m_variants)
+        new_vars.push_back( f.clone() );
+    return Union(m_params.clone(), mv$(new_vars));
+}
+
 ::std::ostream& operator<<(::std::ostream& os, const ImplDef& impl)
 {
     return os << "impl<" << impl.m_params << "> " << impl.m_trait.ent << " for " << impl.m_type << "";
@@ -341,6 +349,9 @@ Item Item::clone() const
         return AST::Item(e.clone());
         ),
     (Enum,
+        return AST::Item(e.clone());
+        ),
+    (Union,
         return AST::Item(e.clone());
         ),
     (Trait,

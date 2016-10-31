@@ -130,6 +130,10 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
             p.bind( ::AST::PathBinding::make_Enum({&e}) );
             _add_item_type(i.data.span, mod, i.name, i.is_pub,  mv$(p));
             ),
+        (Union,
+            p.bind( ::AST::PathBinding::make_Union({&e}) );
+            _add_item_type(i.data.span, mod, i.name, i.is_pub,  mv$(p));
+            ),
         (Trait,
             p.bind( ::AST::PathBinding::make_Trait({&e}) );
             _add_item_type(i.data.span, mod, i.name, i.is_pub,  mv$(p));
@@ -194,6 +198,7 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                     (Crate ,  _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i_data.path, !allow_collide); ),
                     (Module,  _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i_data.path, !allow_collide); ),
                     (Enum,     _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); ),
+                    (Union,    _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); ),
                     (Trait,    _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); ),
                     (TypeAlias,_add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); ),
                     
@@ -285,6 +290,9 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(const Span& sp, const AST::C
                 ),
             (Struct,
                 p.bind( ::AST::PathBinding::make_Struct({nullptr, &e}) );
+                ),
+            (Union,
+                p.bind( ::AST::PathBinding::make_Union({nullptr, &e}) );
                 ),
             (Enum,
                 p.bind( ::AST::PathBinding::make_Enum({nullptr}) );

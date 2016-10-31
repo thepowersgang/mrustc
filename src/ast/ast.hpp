@@ -351,9 +351,21 @@ public:
     const GenericParams& params() const { return m_params; }
           GenericParams& params()       { return m_params; }
     
-    TypeRef get_field_type(const char *name, const ::std::vector<TypeRef>& args);
-    
     Struct clone() const;
+};
+
+class Union
+{
+public:
+    GenericParams   m_params;
+    ::std::vector<StructItem>   m_variants;
+    
+    Union( GenericParams params, ::std::vector<StructItem> fields ):
+        m_params( move(params) ),
+        m_variants( mv$(fields) )
+    {}
+    
+    Union clone() const;
 };
 
 class ImplDef
@@ -572,6 +584,7 @@ TAGGED_UNION_EX(Item, (), None,
     (Type, TypeAlias),
     (Struct, Struct),
     (Enum, Enum),
+    (Union, Union),
     (Trait, Trait),
     
     (Function, Function),

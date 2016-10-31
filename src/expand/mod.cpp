@@ -848,6 +848,19 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 Expand_Attrs(var.m_attrs, AttrStage::Post,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, var); });
             }
             ),
+        (Union,
+            for(auto it = e.m_variants.begin(); it != e.m_variants.end(); ) {
+                auto& si = *it;
+                Expand_Attrs(si.m_attrs, AttrStage::Pre, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
+                Expand_Type(crate, modstack, mod,  si.m_type);
+                Expand_Attrs(si.m_attrs, AttrStage::Post, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
+
+                if( si.m_name == "" )
+                    it = e.m_variants.erase(it);
+                else
+                    ++it;
+            }
+            ),
         (Trait,
             for(auto& ti : e.items())
             {

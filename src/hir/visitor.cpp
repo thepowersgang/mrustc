@@ -55,6 +55,10 @@ void ::HIR::Visitor::visit_module(::HIR::ItemPath p, ::HIR::Module& mod)
             DEBUG("struct " << name);
             this->visit_struct(p + name, e);
             ),
+        (Union,
+            DEBUG("union " << name);
+            this->visit_union(p + name, e);
+            ),
         (Trait,
             DEBUG("trait " << name);
             this->visit_trait(p + name, e);
@@ -222,6 +226,12 @@ void ::HIR::Visitor::visit_enum(::HIR::ItemPath p, ::HIR::Enum& item)
             )
         )
     }
+}
+void ::HIR::Visitor::visit_union(::HIR::ItemPath p, ::HIR::Union& item)
+{
+    this->visit_params(item.m_params);
+    for(auto& var : item.m_variants)
+        this->visit_type(var.second.ent);
 }
 void ::HIR::Visitor::visit_function(::HIR::ItemPath p, ::HIR::Function& item)
 {
