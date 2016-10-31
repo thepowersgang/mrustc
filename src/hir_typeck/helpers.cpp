@@ -1903,23 +1903,26 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
         t_cb_trait_impl callback
     ) const
 {
-    TRACE_FUNCTION_F(des << des_params << " from " << trait_path << pp);
+    TRACE_FUNCTION_F(des << des_params << " in " << trait_path << pp);
     if( pp.m_types.size() != trait_ptr.m_params.m_types.size() ) {
         BUG(sp, "Incorrect number of parameters for trait");
     }
+    
+    const auto monomorph_cb = [&](const auto& gt)->const auto& {
+        const auto& ge = gt.m_data.as_Generic();
+        if( ge.binding == 0xFFFF ) {
+            return target_type;
+        }
+        else {
+            if( ge.binding >= pp.m_types.size() )
+                BUG(sp, "find_named_trait_in_trait - Generic #" << ge.binding << " " << ge.name << " out of range");
+            return pp.m_types[ge.binding];
+        }
+        };
+    
     for( const auto& pt : trait_ptr.m_parent_traits )
     {
-        auto pt_mono = monomorphise_traitpath_with(sp, pt, [&](const auto& gt)->const auto& {
-            const auto& ge = gt.m_data.as_Generic();
-            if( ge.binding == 0xFFFF ) {
-                return target_type;
-            }
-            else {
-                if( ge.binding >= pp.m_types.size() )
-                    BUG(sp, "find_named_trait_in_trait - Generic #" << ge.binding << " " << ge.name << " out of range");
-                return pp.m_types[ge.binding];
-            }
-            }, false);
+        auto pt_mono = monomorphise_traitpath_with(sp, pt, monomorph_cb, false);
 
         DEBUG(pt << " => " << pt_mono);
         if( pt.m_path.m_path == des ) {
@@ -1937,6 +1940,38 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
             return true;
         }
     }
+    
+    // Also check bounds for `Self: T` bounds
+    for(const auto& b : trait_ptr.m_params.m_bounds)
+    {
+        if( !b.is_TraitBound() )    continue;
+        const auto& be = b.as_TraitBound();
+        
+        if( be.type == ::HIR::TypeRef("Self", 0xFFFF) )
+        {
+            // Something earlier adds a "Self: SelfTrait" bound, prevent that from causing infinite recursion
+            if( be.trait.m_path.m_path == trait_path )
+                continue ;
+            auto pt_mono = monomorphise_traitpath_with(sp, be.trait, monomorph_cb, false);
+            DEBUG(be.trait << " (Bound) => " << pt_mono);
+
+            if( pt_mono.m_path.m_path == des ) {
+                // NOTE: Doesn't quite work...
+                //auto cmp = this->compare_pp(sp, pt_mono.m_path.m_params, des_params);
+                //if( cmp != ::HIR::Compare::Unequal )
+                //{
+                    callback( target_type, pt_mono.m_path.m_params, pt_mono.m_type_bounds );
+                //}
+                return true;
+            }
+            
+            const auto& tr = m_crate.get_trait_by_path(sp, pt_mono.m_path.m_path);
+            if( find_named_trait_in_trait(sp, des, des_params,  tr, pt_mono.m_path.m_path, pt_mono.m_path.m_params,  target_type, callback) ) {
+                return true;
+            }
+        }
+    }
+    
     return false;
 }
 bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const
