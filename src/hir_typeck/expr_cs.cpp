@@ -5064,7 +5064,19 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             it->left_ty = context.m_resolve.expand_associated_types( (*it->right_node_ptr)->span(), mv$(it->left_ty) );
             if( check_coerce(context, *it) ) {
                 DEBUG("- Consumed coercion " << it->left_ty << " := " << src_ty);
+            
+                #if 1
+                unsigned int i = it - context.link_coerce.begin();
+                if( it != context.link_coerce.end()-1 )
+                {
+                    *it = mv$(context.link_coerce.back());
+                    // TODO: Iterator position?
+                }
+                context.link_coerce.pop_back();
+                it = context.link_coerce.begin() + i;
+                #else
                 it = context.link_coerce.erase(it);
+                #endif
             }
             else {
                 ++ it;
@@ -5087,7 +5099,15 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         
             if( check_associated(context, rule) ) {
                 DEBUG("- Consumed associated type rule - " << rule);
+                #if 1
+                if( i != context.link_assoc.size()-1 )
+                {
+                    context.link_assoc[i] = mv$( context.link_assoc.back() );
+                }
+                context.link_assoc.pop_back();
+                #else
                 context.link_assoc.erase( context.link_assoc.begin() + i );
+                #endif
             }
             else {
                 context.link_assoc[i] = mv$(rule);
