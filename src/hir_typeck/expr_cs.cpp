@@ -4734,7 +4734,11 @@ namespace {
             }
             else
             {
-                ERROR(sp, E0000, "Failed to find an impl of " << v.trait << context.m_ivars.fmt(v.params) << " for " << context.m_ivars.fmt_type(v.impl_ty));
+                if( v.name == "" )
+                    ERROR(sp, E0000, "Failed to find an impl of " << v.trait << context.m_ivars.fmt(v.params) << " for " << context.m_ivars.fmt_type(v.impl_ty));
+                else
+                    ERROR(sp, E0000, "Failed to find an impl of " << v.trait << context.m_ivars.fmt(v.params) << " for " << context.m_ivars.fmt_type(v.impl_ty)
+                        << " with " << v.name << " = " << context.m_ivars.fmt_type(v.left_ty));
             }
         }
         else if( count == 1 ) {

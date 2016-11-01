@@ -1602,6 +1602,24 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         }
     )
     
+    TU_IFLET(::HIR::TypeRef::Data, pe.type->m_data, Function, te,
+        if( te.m_abi == ABI_RUST && !te.is_unsafe )
+        {
+            const auto trait_fn = this->m_crate.get_lang_item_path(sp, "fn");
+            const auto trait_fn_mut = this->m_crate.get_lang_item_path(sp, "fn_mut");
+            const auto trait_fn_once = this->m_crate.get_lang_item_path(sp, "fn_once");
+            if( pe.trait.m_path == trait_fn || pe.trait.m_path == trait_fn_mut || pe.trait.m_path == trait_fn_once  ) {
+                if( pe.item == "Output" ) {
+                    input = te.m_rettype->clone();
+                    return ;
+                }
+                else {
+                    ERROR(sp, E0000, "No associated type " << pe.item << " for trait " << pe.trait);
+                }
+            }
+        }
+    )
+    
     // If it's a TraitObject, then maybe we're asking for a bound
     TU_IFLET(::HIR::TypeRef::Data, pe.type->m_data, TraitObject, te,
         const auto& data_trait = te.m_trait.m_path;
