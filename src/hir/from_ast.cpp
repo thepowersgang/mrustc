@@ -132,7 +132,7 @@
         case ::AST::PatternBinding::Type::REF:  bt = ::HIR::PatternBinding::Type::Ref;  break;
         case ::AST::PatternBinding::Type::MUTREF: bt = ::HIR::PatternBinding::Type::MutRef; break;
         }
-        binding = ::HIR::PatternBinding(pat.binding().m_mutable, bt, pat.binding().m_name, pat.binding().m_slot);
+        binding = ::HIR::PatternBinding(pat.binding().m_mutable, bt, pat.binding().m_name.name, pat.binding().m_slot);
     }
     
     struct H {
@@ -433,37 +433,38 @@
         ),
     (Slice,
         ::std::vector< ::HIR::Pattern>  leading;
+        for(const auto& sp : e.sub_pats)
+            leading.push_back( LowerHIR_Pattern(sp) );
+        return ::HIR::Pattern {
+            mv$(binding),
+            ::HIR::Pattern::Data::make_Slice({
+                mv$(leading)
+                })
+            };
+        ),
+    (SplitSlice,
+        ::std::vector< ::HIR::Pattern>  leading;
         for(const auto& sp : e.leading)
             leading.push_back( LowerHIR_Pattern(sp) );
         
-        if( e.extra_bind != "" || e.trailing.size() > 0 ) {
-            ::std::vector< ::HIR::Pattern>  trailing;
-            for(const auto& sp : e.trailing)
-                trailing.push_back( LowerHIR_Pattern(sp) );
-            
-            auto extra_bind = (e.extra_bind == "_" || e.extra_bind == "")
-                ? ::HIR::PatternBinding()
-                // TODO: Get slot name for `extra_bind`
-                : ::HIR::PatternBinding(false, ::HIR::PatternBinding::Type::Ref, e.extra_bind, 0)
-                ;
-            
-            return ::HIR::Pattern {
-                mv$(binding),
-                ::HIR::Pattern::Data::make_SplitSlice({
-                    mv$(leading),
-                    mv$(extra_bind),
-                    mv$(trailing)
-                    })
-                };
-        }
-        else {
-            return ::HIR::Pattern {
-                mv$(binding),
-                ::HIR::Pattern::Data::make_Slice({
-                    mv$(leading)
-                    })
-                };
-        }
+        ::std::vector< ::HIR::Pattern>  trailing;
+        for(const auto& sp : e.trailing)
+            trailing.push_back( LowerHIR_Pattern(sp) );
+        
+        auto extra_bind = e.extra_bind.is_valid()
+            ? ::HIR::PatternBinding()
+            // TODO: Share code with the outer binding code
+            : ::HIR::PatternBinding(false, ::HIR::PatternBinding::Type::Ref, e.extra_bind.m_name.name, e.extra_bind.m_slot)
+            ;
+        
+        return ::HIR::Pattern {
+            mv$(binding),
+            ::HIR::Pattern::Data::make_SplitSlice({
+                mv$(leading),
+                mv$(extra_bind),
+                mv$(trailing)
+                })
+            };
         )
     )
     throw ::std::runtime_error("TODO: LowerHIR_Pattern");

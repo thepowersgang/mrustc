@@ -889,7 +889,7 @@ ExprNodeP Parse_ExprFC(TokenStream& lex)
             switch(GET_TOK(tok, lex))
             {
             case TOK_IDENT: {
-                AST::PathNode   path(tok.str(), {});
+                AST::PathNode   path( mv$(tok.ident_str()) , {});
                 switch( GET_TOK(tok, lex) )
                 {
                 case TOK_PAREN_OPEN:
@@ -965,7 +965,7 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
     ::std::vector< ::std::pair< ::std::string, ::std::unique_ptr<AST::ExprNode>> >  items;
     while( GET_TOK(tok, lex) == TOK_IDENT )
     {
-        ::std::string   name = tok.str();
+        auto name = mv$(tok.ident_str());
         GET_CHECK_TOK(tok, lex, TOK_COLON);
         ExprNodeP   val = Parse_Stmt(lex);
         items.push_back( ::std::make_pair(::std::move(name), ::std::move(val)) );
@@ -1224,7 +1224,7 @@ ExprNodeP Parse_ExprMacro(TokenStream& lex, Token tok)
     ::std::string name = tok.str();
     ::std::string ident;
     if( GET_TOK(tok, lex) == TOK_IDENT ) {
-        ident = mv$(tok.str());
+        ident = mv$(tok.ident_str());
     }
     else {
         PUTBACK(tok, lex);

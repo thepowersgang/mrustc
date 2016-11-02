@@ -365,17 +365,17 @@ namespace {
             break;
         case ::AST::Crate::LOAD_CORE:
             toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-            toks.push_back( Token(TOK_STRING, "core") );
+            toks.push_back( Token(Ident("core")) );
             break;
         case ::AST::Crate::LOAD_STD:
             toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-            toks.push_back( Token(TOK_IDENT, "std") );
+            toks.push_back( Token(Ident("std")) );
             break;
         }
         for(auto ent : il)
         {
             toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-            toks.push_back( Token(TOK_IDENT, ent) );
+            toks.push_back( Token(Ident(ent)) );
         }
     }
 }
@@ -417,7 +417,7 @@ class CFormatArgsExpander:
             if( lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_EQUAL )
             {
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                auto name = mv$(tok.str());
+                auto name = mv$(tok.ident_str());
                 
                 GET_CHECK_TOK(tok, lex, TOK_EQUAL);
                 
@@ -478,7 +478,7 @@ class CFormatArgsExpander:
         toks.push_back( TokenTree(TOK_PAREN_OPEN) );
         for(unsigned int i = 0; i < free_args.size() + named_args.size(); i ++ )
         {
-            toks.push_back( Token(TOK_IDENT, FMT("a" << i)) );
+            toks.push_back( Token(Ident(FMT("a" << i))) );
             toks.push_back( TokenTree(TOK_COMMA) );
         }
         toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
@@ -490,13 +490,13 @@ class CFormatArgsExpander:
         // - Contains N+1 entries, where N is the number of fragments
         {
             toks.push_back( TokenTree(TOK_RWORD_STATIC) );
-            toks.push_back( Token(TOK_IDENT, "FRAGMENTS") );
+            toks.push_back( Token(Ident("FRAGMENTS")) );
             toks.push_back( TokenTree(TOK_COLON) );
             
             toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
             toks.push_back( Token(TOK_AMP) );
             toks.push_back( Token(TOK_LIFETIME, "static") );
-            toks.push_back( Token(TOK_IDENT, "str") );
+            toks.push_back( Token(Ident("str")) );
             toks.push_back( Token(TOK_SEMICOLON) );
             toks.push_back( Token(fragments.size() + 1, CORETYPE_UINT) );
             toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
@@ -522,7 +522,7 @@ class CFormatArgsExpander:
             toks.push_back( TokenTree(TOK_PAREN_OPEN) );
             {
                 toks.push_back( TokenTree(TOK_AMP) );
-                toks.push_back( Token(TOK_IDENT, "FRAGMENTS") );
+                toks.push_back( Token(Ident("FRAGMENTS")) );
                 toks.push_back( TokenTree(TOK_COMMA) );
                 
                 toks.push_back( TokenTree(TOK_AMP) );
@@ -531,7 +531,7 @@ class CFormatArgsExpander:
                 {
                     push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
                     toks.push_back( Token(TOK_PAREN_OPEN) );
-                    toks.push_back( Token(TOK_IDENT, FMT("a" << frag.arg_index)) );
+                    toks.push_back( Token(Ident(FMT("a" << frag.arg_index))) );
                     
                     toks.push_back( TokenTree(TOK_COMMA) );
                     
@@ -554,7 +554,7 @@ class CFormatArgsExpander:
             toks.push_back( TokenTree(TOK_PAREN_OPEN) );
             {
                 toks.push_back( TokenTree(TOK_AMP) );
-                toks.push_back( Token(TOK_IDENT, "FRAGMENTS") );
+                toks.push_back( Token(Ident("FRAGMENTS")) );
                 toks.push_back( TokenTree(TOK_COMMA) );
                 
                 // 1. Generate a set of arguments+formatters

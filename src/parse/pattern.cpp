@@ -80,18 +80,19 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
         // Fall through
     }
     
-    ::std::string   bind_name;
+    AST::PatternBinding binding;
     // If a 'ref' or 'mut' annotation was seen, the next name must be a binding name
     if( expect_bind )
     {
         CHECK_TOK(tok, TOK_IDENT);
-        bind_name = tok.str();
+        auto bind_name = tok.take_ident();
         // If there's no '@' after it, it's a name binding only (_ pattern)
         if( GET_TOK(tok, lex) != TOK_AT )
         {
             PUTBACK(tok, lex);
-            return AST::Pattern(AST::Pattern::TagBind(), bind_name, bind_type, is_mut);
+            return AST::Pattern(AST::Pattern::TagBind(), mv$(bind_name), bind_type, is_mut);
         }
+        binding = AST::PatternBinding( mv$(bind_name), bind_type, is_mut );
         
         // '@' consumed, move on to next token
         GET_TOK(tok, lex);
@@ -113,8 +114,8 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
             break;
         // Known binding `ident @`
         case TOK_AT:
-            bind_name = mv$(tok.str());
-            GET_TOK(tok, lex);
+            binding = AST::PatternBinding( tok.take_ident(), bind_type/*MOVE*/, is_mut/*false*/ );
+            GET_TOK(tok, lex);  // '@'
             GET_TOK(tok, lex);  // Match lex.putback() below
             break;
         default:  // Maybe bind
@@ -122,11 +123,11 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
             if( is_refutable ) {
                 assert(bind_type == ::AST::PatternBinding::Type::MOVE);
                 assert(is_mut == false);
-                return AST::Pattern(AST::Pattern::TagMaybeBind(), mv$(tok.str()));
+                return AST::Pattern(AST::Pattern::TagMaybeBind(), tok.take_ident());
             }
             // Otherwise, it IS a binding
             else {
-                return AST::Pattern(AST::Pattern::TagBind(), mv$(tok.str()), bind_type, is_mut);
+                return AST::Pattern(AST::Pattern::TagBind(), tok.take_ident(), bind_type, is_mut);
             }
         }
     }
@@ -137,8 +138,9 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     
     PUTBACK(tok, lex);
     auto pat = Parse_PatternReal(lex, is_refutable);
-    pat.set_bind(bind_name, bind_type, is_mut);
-    return mv$(pat);
+    //pat.set_bind( mv$(binding) );
+    pat.binding() = mv$(binding);
+    return pat;
 }
 
 AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable)
@@ -263,46 +265,48 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
     auto sp = lex.start_span();
     Token   tok;
     
-    auto rv = ::AST::Pattern( AST::Pattern::TagSlice() );
-    auto& rv_array = rv.data().as_Slice();
+    ::std::vector< ::AST::Pattern>  leading;
+    ::std::vector< ::AST::Pattern>  trailing;
+    ::AST::PatternBinding   inner_binding;
+    bool is_split = false;
     
-    bool is_trailing = false;
     while(GET_TOK(tok, lex) != TOK_SQUARE_CLOSE)
     {
-        ::std::string   binding_name;
+        bool has_binding = true;
+        ::AST::PatternBinding  binding;
         if( tok.type() == TOK_RWORD_REF && lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_DOUBLE_DOT ) {
             GET_TOK(tok, lex);
-            // TODO: Bind type
-            binding_name = tok.str();
+            binding = ::AST::PatternBinding( tok.take_ident(), ::AST::PatternBinding::Type::REF, false );
         }
         else if( tok.type() == TOK_IDENT && lex.lookahead(0) == TOK_DOUBLE_DOT) {
-            // TODO: Bind type
-            binding_name = tok.str();
+            binding = ::AST::PatternBinding( tok.take_ident(), ::AST::PatternBinding::Type::MOVE, false );
         }
         else if( tok.type() == TOK_UNDERSCORE && lex.lookahead(0) == TOK_DOUBLE_DOT) {
-            binding_name = "_";
+            // No binding, but switching to trailing
         }
         else if( tok.type() == TOK_DOUBLE_DOT ) {
-            binding_name = "_";
+            // No binding, but switching to trailing
             PUTBACK(tok, lex);
         }
         else {
+            has_binding = false;
         }
         
-        if( binding_name != "" ) {
-            if(is_trailing)
+        if( has_binding ) {
+            if(is_split)
                 ERROR(lex.end_span(sp), E0000, "Multiple instances of .. in a slice pattern");
-            rv_array.extra_bind = mv$(binding_name);
-            is_trailing = true;
+            
+            inner_binding = mv$(binding);
+            is_split = true;
             GET_TOK(tok, lex);  // TOK_DOUBLE_DOT
         }
         else {
             PUTBACK(tok, lex);
-            if(is_trailing) {
-                rv_array.trailing.push_back( Parse_Pattern(lex, is_refutable) );
+            if(!is_split) {
+                leading.push_back( Parse_Pattern(lex, is_refutable) );
             }
             else {
-                rv_array.leading.push_back( Parse_Pattern(lex, is_refutable) );
+                trailing.push_back( Parse_Pattern(lex, is_refutable) );
             }
         }
         
@@ -311,7 +315,16 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
     }
     CHECK_TOK(tok, TOK_SQUARE_CLOSE);
     
-    return rv;
+    if( is_split )
+    {
+        return ::AST::Pattern( ::AST::Pattern::Data::make_SplitSlice({ mv$(leading), mv$(inner_binding), mv$(trailing) }) );
+    }
+    else
+    {
+        assert( !inner_binding.is_valid() );
+        assert( trailing.empty() );
+        return ::AST::Pattern( ::AST::Pattern::Data::make_Slice({ mv$(leading) }) );
+    }
 }
 
 ::AST::Pattern::TuplePat Parse_PatternTuple(TokenStream& lex, bool is_refutable)
@@ -453,14 +466,16 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
         }
         
         CHECK_TOK(tok, TOK_IDENT);
-        ::std::string   field = tok.str();
+        auto field_ident = tok.take_ident();
+        ::std::string field_name;
         GET_TOK(tok, lex);
         
         AST::Pattern    pat;
         if( is_short_bind || tok.type() != TOK_COLON ) {
             PUTBACK(tok, lex);
-            pat = AST::Pattern(AST::Pattern::TagBind(), field);
-            pat.set_bind(field, bind_type, is_mut);
+            pat = AST::Pattern();
+            field_name = field_ident.name;
+            pat.set_bind(mv$(field_ident), bind_type, is_mut);
             if( is_box )
             {
                 pat = AST::Pattern(AST::Pattern::TagBox(), mv$(pat));
@@ -468,10 +483,11 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
         }
         else {
             CHECK_TOK(tok, TOK_COLON);
+            field_name = mv$(field_ident.name);
             pat = Parse_Pattern(lex, is_refutable);
         }
         
-        subpats.push_back( ::std::make_pair(::std::move(field), ::std::move(pat)) );
+        subpats.push_back( ::std::make_pair(mv$(field_name), mv$(pat)) );
     } while( GET_TOK(tok, lex) == TOK_COMMA );
     CHECK_TOK(tok, TOK_BRACE_CLOSE);
     

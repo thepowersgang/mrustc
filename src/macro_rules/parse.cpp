@@ -49,10 +49,10 @@ public:
             switch( GET_TOK(tok, lex) )
             {
             case TOK_IDENT: {
-                ::std::string   name = tok.str();
+                ::std::string   name = mv$(tok.ident_str());
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                ::std::string   type = tok.str();
+                ::std::string   type = mv$(tok.ident_str());
                 
                 unsigned int idx = ::std::find( names.begin(), names.end(), name ) - names.begin();
                 if( idx == names.size() )
@@ -202,9 +202,10 @@ public:
             else if( tok.type() == TOK_IDENT )
             {
                 // Look up the named parameter in the list of param names for this arm
-                unsigned int idx = ::std::find(var_names.begin(), var_names.end(), tok.str()) - var_names.begin();
+                const auto& name = tok.ident_str();
+                unsigned int idx = ::std::find(var_names.begin(), var_names.end(), name) - var_names.begin();
                 if( idx == var_names.size() )
-                    ERROR(lex.getPosition(), E0000, "Macro variable $" << tok.str() << " not found");
+                    ERROR(lex.getPosition(), E0000, "Macro variable $" << name << " not found");
                 if( var_set_ptr ) {
                     var_set_ptr->insert( ::std::make_pair(idx,true) );
                 }

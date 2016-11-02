@@ -55,12 +55,8 @@ Expr Expr::clone() const
 
 ::std::ostream& operator<<(::std::ostream& os, const ExprNode& node)
 {
-    //if( static_cast<const void*>(&node) != nullptr ) {
-        node.print(os);
-    //}
-    //else {
-    //    os << "/* NULLPTR */";
-    //}
+    assert( static_cast<const void*>(&node) != nullptr );
+    node.print(os);
     return os;
 }
 ExprNode::~ExprNode() {
@@ -332,6 +328,27 @@ NODE(ExprNode_TypeAnnotation, {
 })
 
 NODE(ExprNode_BinOp, {
+    if( m_type == RANGE_INC ) {
+        os << "(";
+        if( m_left ) {
+            os << *m_left << " ";
+        }
+        os << "... " << *m_right;
+        os << ")";
+        return ;
+    }
+    if( m_type == RANGE ) {
+        os << "(";
+        if( m_left ) {
+            os << *m_left;
+        }
+        os << "..";
+        if( m_right ) {
+            os << " " << *m_right;
+        }
+        os << ")";
+        return ;
+    }
     os << "(" << *m_left << " ";
     switch(m_type)
     {

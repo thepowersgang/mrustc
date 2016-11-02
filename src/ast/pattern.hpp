@@ -1,3 +1,10 @@
+/*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * ast/pattern.hpp
+ * - AST Pattern representation
+ */
 
 #ifndef _AST__PATTERN_HPP_INCLUDED_
 #define _AST__PATTERN_HPP_INCLUDED_
@@ -6,6 +13,7 @@
 #include <memory>
 #include <string>
 #include <tagged_union.hpp>
+#include <ident.hpp>
 
 namespace AST {
 
@@ -21,25 +29,29 @@ public:
         REF,
         MUTREF,
     };
-    ::std::string   m_name;
+    Ident   m_name;
     Type    m_type;
     bool    m_mutable;
     unsigned int    m_slot;
 
     PatternBinding():
-        m_name(""),
+        m_name({0,{}}, ""),
         m_type(Type::MOVE),
         m_mutable(false),
         m_slot( ~0u )
     {}
-    PatternBinding(::std::string name, Type ty, bool ismut):
-        m_name(name),
+    PatternBinding(Ident name, Type ty, bool ismut):
+        m_name(::std::move(name)),
         m_type(ty),
         m_mutable(ismut),
         m_slot( ~0u )
     {}
     
-    bool is_valid() const { return m_name != ""; }
+    PatternBinding(PatternBinding&& x) = default;
+    PatternBinding(const PatternBinding& x) = default;
+    PatternBinding& operator=(PatternBinding&& x) = default;
+    
+    bool is_valid() const { return m_name.name != ""; }
 };
 
 class Pattern:
@@ -68,7 +80,7 @@ public:
     };
     
     TAGGED_UNION(Data, Any,
-        (MaybeBind, struct { ::std::string name; } ),
+        (MaybeBind, struct { Ident name; } ),
         (Macro,     struct { unique_ptr<::AST::MacroInvocation> inv; } ),
         (Any,       struct { } ),
         (Box,       struct { unique_ptr<Pattern> sub; } ),
@@ -77,7 +89,8 @@ public:
         (Tuple,     TuplePat ),
         (StructTuple, struct { Path path; TuplePat tup_pat; } ),
         (Struct,    struct { Path path; ::std::vector< ::std::pair< ::std::string, Pattern> > sub_patterns; bool is_exhaustive; } ),
-        (Slice,     struct { ::std::vector<Pattern> leading; ::std::string extra_bind; ::std::vector<Pattern> trailing; } )
+        (Slice,     struct { ::std::vector<Pattern> sub_pats; }),
+        (SplitSlice, struct { ::std::vector<Pattern> leading; PatternBinding extra_bind; ::std::vector<Pattern> trailing; } )
         );
 private:
     Span    m_span;
@@ -98,19 +111,19 @@ public:
     {};
 
     struct TagMaybeBind {};
-    Pattern(TagMaybeBind, ::std::string name):
+    Pattern(TagMaybeBind, Ident name):
         m_binding(),
-        m_data( Data::make_MaybeBind({name}) )
+        m_data( Data::make_MaybeBind({ mv$(name) }) )
     {}
 
     struct TagMacro {};
     Pattern(TagMacro, unique_ptr<::AST::MacroInvocation> inv):
-        m_data( Data::make_Macro({mv$(inv)}) )
+        m_data( Data::make_Macro({ mv$(inv) }) )
     {}
 
     struct TagBind {};
-    Pattern(TagBind, ::std::string name, PatternBinding::Type ty = PatternBinding::Type::MOVE, bool is_mut=false):
-        m_binding( PatternBinding(name, ty, is_mut) )
+    Pattern(TagBind, Ident name, PatternBinding::Type ty = PatternBinding::Type::MOVE, bool is_mut=false):
+        m_binding( PatternBinding(mv$(name), ty, is_mut) )
     {}
 
     struct TagBox {};
@@ -152,15 +165,10 @@ public:
     Pattern(TagStruct, Path path, ::std::vector< ::std::pair< ::std::string,Pattern> > sub_patterns, bool is_exhaustive):
         m_data( Data::make_Struct( { ::std::move(path), ::std::move(sub_patterns), is_exhaustive } ) ) 
     {}
-
-    struct TagSlice {};
-    Pattern(TagSlice):
-        m_data( Data::make_Slice( {} ) )
-    {}
     
     // Mutators
-    void set_bind(::std::string name, PatternBinding::Type type, bool is_mut) {
-        m_binding = PatternBinding(name, type, is_mut);
+    void set_bind(Ident name, PatternBinding::Type type, bool is_mut) {
+        m_binding = PatternBinding(mv$(name), type, is_mut);
     }
     
     

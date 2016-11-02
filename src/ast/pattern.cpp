@@ -113,20 +113,25 @@ namespace AST {
         ),
     (Slice,
         os << "[";
+        os << ent.sub_pats;
+        os << "]";
+        ),
+    (SplitSlice,
+        os << "[";
         bool needs_comma = false;
         if(ent.leading.size()) {
             os << ent.leading;
             needs_comma = true;
         }
-        if(ent.extra_bind.size() > 0) {
-            if( needs_comma ) {
-                os << ", ";
-            }
-            if(ent.extra_bind != "_")
-                os << ent.extra_bind;
-            os << "..";
-            needs_comma = true;
+        
+        if( needs_comma ) {
+            os << ", ";
         }
+        if( ent.extra_bind.is_valid() )
+            os << ent.extra_bind.m_name;
+        os << "..";
+        needs_comma = true;
+        
         if(ent.trailing.size()) {
             if( needs_comma ) {
                 os << ", ";
@@ -161,7 +166,7 @@ AST::Pattern AST::Pattern::clone() const
 {
     AST::Pattern    rv;
     rv.m_span = m_span;
-    rv.m_binding = m_binding;
+    rv.m_binding = PatternBinding(m_binding);
     
     struct H {
         static ::std::unique_ptr<Pattern> clone_sp(const ::std::unique_ptr<Pattern>& p) {
@@ -226,7 +231,10 @@ AST::Pattern AST::Pattern::clone() const
         rv.m_data = Data::make_Struct({ ::AST::Path(e.path), mv$(sps) });
         ),
     (Slice,
-        rv.m_data = Data::make_Slice({ H::clone_list(e.leading), e.extra_bind, H::clone_list(e.trailing) });
+        rv.m_data = Data::make_Slice({ H::clone_list(e.sub_pats) });
+        ),
+    (SplitSlice,
+        rv.m_data = Data::make_SplitSlice({ H::clone_list(e.leading), e.extra_bind, H::clone_list(e.trailing) });
         )
     )
     

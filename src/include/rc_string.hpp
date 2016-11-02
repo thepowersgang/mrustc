@@ -75,6 +75,7 @@ public:
             return "";
         }
     }
+    bool operator==(const RcString& s) const { return *this == s.c_str(); }
     bool operator==(const char* s) const;
     friend ::std::ostream& operator<<(::std::ostream& os, const RcString& x) {
         return os << x.c_str();

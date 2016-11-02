@@ -13,6 +13,7 @@
 #include <tagged_union.hpp>
 #include <string>
 #include "../include/span.hpp"
+#include "../include/ident.hpp"
 
 class TypeRef;
 
@@ -161,6 +162,7 @@ public:
             ::std::string name;
             } ),
         (Relative, struct {    // General relative
+            Ident::Hygine hygine;    // Taken from the first ident
             ::std::vector<PathNode> nodes;
             } ),
         (Self, struct {    // Module-relative
@@ -224,8 +226,8 @@ public:
     
     // RELATIVE
     struct TagRelative {};
-    Path(TagRelative, ::std::vector<PathNode> nodes):
-        m_class( Class::make_Relative({ mv$(nodes) }) )
+    Path(TagRelative, Ident::Hygine hygine, ::std::vector<PathNode> nodes):
+        m_class( Class::make_Relative({ mv$(hygine), mv$(nodes) }) )
     {}
     // SELF
     struct TagSelf {};
@@ -266,8 +268,9 @@ public:
     Path& operator+=(const Path& x);
 
     void append(PathNode node) {
-        if( m_class.is_Invalid() )
-            m_class = Class::make_Relative({});
+        assert( !m_class.is_Invalid() );
+        //if( m_class.is_Invalid() )
+        //    m_class = Class::make_Relative({});
         nodes().push_back( mv$(node) );
         m_binding = PathBinding();
     }

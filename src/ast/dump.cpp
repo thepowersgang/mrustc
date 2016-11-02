@@ -922,20 +922,38 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
         ),
     (Slice,
         m_os << "[";
+        m_os << v.sub_pats;
+        m_os << "]";
+        ),
+    (SplitSlice,
+        m_os << "[";
         bool needs_comma = false;
         if(v.leading.size()) {
             m_os << v.leading;
-            needs_comma = true;
+            m_os << ", ";
         }
-        if(v.extra_bind.size() > 0) {
-            if( needs_comma ) {
-                m_os << ", ";
+        
+        if(v.extra_bind.is_valid())
+        {
+            const auto& b = v.extra_bind;
+            if( b.m_mutable )
+                m_os << "mut ";
+            switch(b.m_type)
+            {
+            case ::AST::PatternBinding::Type::MOVE:
+                break;
+            case ::AST::PatternBinding::Type::REF:
+                m_os << "ref ";
+                break;
+            case ::AST::PatternBinding::Type::MUTREF:
+                m_os << "ref mut ";
+                break;
             }
-            if(v.extra_bind != "_")
-                m_os << v.extra_bind;
-            m_os << "..";
-            needs_comma = true;
+            m_os << b.m_name << "/*"<<b.m_slot<<"*/";
         }
+        m_os << "..";
+        needs_comma = true;
+        
         if(v.trailing.size()) {
             if( needs_comma ) {
                 m_os << ", ";

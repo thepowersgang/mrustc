@@ -251,6 +251,29 @@ Token Lexer::realGetToken()
         //::std::cout << "getTokenInt: tok = " << tok << ::std::endl;
         switch(tok.type())
         {
+        case TOK_IDENT:
+            if( m_hygine_stack.size() > 0 )
+            {
+                m_hygine_stack.back() ++;
+            }
+            return tok;
+        
+        case TOK_PAREN_OPEN:
+        case TOK_SQUARE_OPEN:
+        case TOK_BRACE_OPEN:
+        case TOK_ATTR_OPEN:
+        case TOK_CATTR_OPEN:
+            m_hygine_stack.push_back(0);
+            return tok;
+        case TOK_PAREN_CLOSE:
+        case TOK_SQUARE_CLOSE:
+        case TOK_BRACE_CLOSE:
+            m_hygine_stack.pop_back();
+            if( m_hygine_stack.size() > 0 ) {
+                m_hygine_stack.back() ++;
+            }
+            return tok;
+        
         case TOK_NEWLINE:
             m_line ++;
             m_line_ofs = 0;
@@ -767,7 +790,7 @@ Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2)
             if( str < RWORDS[i].chars ) break;
             if( str == RWORDS[i].chars )    return Token((enum eTokenType)RWORDS[i].type);
         }
-        return Token(TOK_IDENT, str);
+        return Token(Ident( Ident::Hygine(m_file_index, m_hygine_stack), mv$(str) ));
     }
 }
 

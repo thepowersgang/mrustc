@@ -91,14 +91,10 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         }
     }
     else {
-        //assert( GET_TOK(tok, lex) == TOK_IDENT );
-        //if( lex.lookahead(0) != TOK_DOUBLE_COLON ) {
-        //    return AST::Path( tok.str() );
-        //}
-        //else {
-        //    PUTBACK(tok, lex);
-            return AST::Path(AST::Path::TagRelative(), Parse_PathNodes(lex, generic_mode));
-        //}
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        auto hygine = mv$( tok.ident().hygine );
+        PUTBACK(tok, lex);
+        return AST::Path(AST::Path::TagRelative(), mv$(hygine), Parse_PathNodes(lex, generic_mode));
     }
 }
 
@@ -115,7 +111,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         ::AST::PathParams   params;
 
         CHECK_TOK(tok, TOK_IDENT);
-        ::std::string component = tok.str();
+        auto component = mv$( tok.ident_str() );
 
         GET_TOK(tok, lex);
         if( generic_mode == PATH_GENERIC_TYPE )
@@ -144,6 +140,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                 {
                     PUTBACK(tok, lex);
                     do {
+                        // TODO: Trailing commas
                         args.push_back( Parse_Type(lex) );
                     } while( GET_TOK(tok, lex) == TOK_COMMA );
                 }
@@ -221,7 +218,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         case TOK_IDENT:
             if( LOOK_AHEAD(lex) == TOK_EQUAL )
             {
-                ::std::string name = tok.str();
+                ::std::string name = mv$(tok.ident_str());
                 GET_CHECK_TOK(tok, lex, TOK_EQUAL);
                 assoc_bounds.push_back( ::std::make_pair( mv$(name), Parse_Type(lex,false) ) );
                 break;

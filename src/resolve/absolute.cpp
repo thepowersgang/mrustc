@@ -47,7 +47,7 @@ struct Context
     (VarBlock, struct {
         unsigned int level;
         // "Map" of names to function-level variable slots
-        ::std::vector< Named< unsigned int > > variables;
+        ::std::vector< ::std::pair<Ident, unsigned int> > variables;
         }),
     (Generic, struct {
         // Map of names to slots
@@ -169,7 +169,7 @@ struct Context
         m_block_level += 1;
         DEBUG("Push block to " << m_block_level);
     }
-    unsigned int push_var(const Span& sp, const ::std::string& name) {
+    unsigned int push_var(const Span& sp, const Ident& name) {
         if( m_var_count == ~0u ) {
             BUG(sp, "Assigning local when there's no variable context");
         }
@@ -183,8 +183,8 @@ struct Context
             for( const auto& v : vb.variables )
             {
                 // TODO: Error when a binding is used twice or not at all
-                if( v.name == name ) {
-                    return v.value;
+                if( v.first == name ) {
+                    return v.second;
                 }
             }
             ERROR(sp, E0000, "Mismatched bindings in pattern");
@@ -198,7 +198,7 @@ struct Context
             DEBUG("New var @ " << m_block_level << ": #" << m_var_count << " " << name);
             auto& vb = m_name_context.back().as_VarBlock();
             assert(vb.level == m_block_level);
-            vb.variables.push_back( Named<unsigned int> { name, m_var_count } );
+            vb.variables.push_back( ::std::make_pair(mv$(name), m_var_count) );
             m_var_count += 1;
             assert( m_var_count >= vb.variables.size() );
             return m_var_count - 1;
@@ -209,7 +209,7 @@ struct Context
         if( m_name_context.size() > 0 && m_name_context.back().is_VarBlock() && m_name_context.back().as_VarBlock().level == m_block_level ) {
             DEBUG("Pop block from " << m_block_level << " with vars:" << FMT_CB(os,
                 for(const auto& v : m_name_context.back().as_VarBlock().variables)
-                    os << " " << v.name << "#" << v.value;
+                    os << " " << v.first << "#" << v.second;
                 ));
             m_name_context.pop_back();
         }
@@ -259,20 +259,8 @@ struct Context
         }
         return "";
     }
-    AST::Path lookup_mod(const Span& sp, const ::std::string& name) const {
-        return this->lookup(sp, name, LookupMode::Namespace);
-    }
-    AST::Path lookup_type(const Span& sp, const ::std::string& name) const {
-        return this->lookup(sp, name, LookupMode::Type);
-    }
-    AST::Path lookup_constant(const Span& sp, const ::std::string& name) const {
-        return this->lookup(sp, name, LookupMode::Constant);
-    }
-    AST::Path lookup_value(const Span& sp, const ::std::string& name) const {
-        return this->lookup(sp, name, LookupMode::Variable);
-    }
-    AST::Path lookup(const Span& sp, const ::std::string& name, LookupMode mode) const {
-        auto rv = this->lookup_opt(name, mode);
+    AST::Path lookup(const Span& sp, const ::std::string& name, const Ident::Hygine& src_context, LookupMode mode) const {
+        auto rv = this->lookup_opt(name, src_context, mode);
         if( !rv.is_valid() ) {
             switch(mode)
             {
@@ -364,7 +352,7 @@ struct Context
         }
         return false;
     }
-    AST::Path lookup_opt(const ::std::string& name, LookupMode mode) const {
+    AST::Path lookup_opt(const ::std::string& name, const Ident::Hygine& src_context, LookupMode mode) const {
         
         for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
         {
@@ -391,9 +379,9 @@ struct Context
                 else {
                     for( auto it2 = e.variables.rbegin(); it2 != e.variables.rend(); ++ it2 )
                     {
-                        if( it2->name == name ) {
+                        if( it2->first.name == name && it2->first.hygine.is_visible(src_context) ) {
                             ::AST::Path rv(name);
-                            rv.bind_variable( it2->value );
+                            rv.bind_variable( it2->second );
                             return rv;
                         }
                     }
@@ -457,8 +445,9 @@ struct Context
                 if( mode == LookupMode::Variable ) {
                     for( auto it2 = e.variables.rbegin(); it2 != e.variables.rend(); ++ it2 )
                     {
-                        if( it2->name == name ) {
-                            return it2->value;
+                        // TODO: Hyginic lookup?
+                        if( it2->first.name == name ) {
+                            return it2->second;
                         }
                     }
                 }
@@ -1255,7 +1244,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         if(e.nodes.size() > 1)
         {
             // Look up type/module name
-            auto p = context.lookup(sp, e.nodes[0].name(), Context::LookupMode::Namespace);
+            auto p = context.lookup(sp, e.nodes[0].name(), e.hygine, Context::LookupMode::Namespace);
             DEBUG("Found type/mod - " << p);
             // HACK: If this is a primitive name, and resolved to a module.
             // - If the next component isn't found in the located module
@@ -1344,7 +1333,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         }
         else {
             // Look up value
-            auto p = context.lookup(sp, e.nodes[0].name(), mode);
+            auto p = context.lookup(sp, e.nodes[0].name(), e.hygine, mode);
             //DEBUG("Found path " << p << " for " << path);
             if( p.is_absolute() ) {
                 assert( !p.nodes().empty() );
@@ -1726,7 +1715,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         if( allow_refutable ) {
             auto name = mv$( e.name );
             // Attempt to resolve the name in the current namespace, and if it fails, it's a binding
-            auto p = context.lookup_opt( name, Context::LookupMode::Pattern );
+            auto p = context.lookup_opt( name.name, name.hygine, Context::LookupMode::Pattern );
             if( p.is_valid() ) {
                 Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::Pattern, p);
                 pat = ::AST::Pattern(::AST::Pattern::TagValue(), ::AST::Pattern::Value::make_Named(mv$(p)));
@@ -1783,10 +1772,15 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         ),
     (Slice,
         // NOTE: Can be irrefutable (if the type is array)
+        for(auto& sp : e.sub_pats)
+            Resolve_Absolute_Pattern(context, allow_refutable,  sp);
+        ),
+    (SplitSlice,
+        // NOTE: Can be irrefutable (if the type is array)
         for(auto& sp : e.leading)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
-        if( e.extra_bind != "" && e.extra_bind != "_" ) {
-            context.push_var( pat.span(), e.extra_bind );
+        if( e.extra_bind.is_valid() ) {
+            context.push_var( pat.span(), e.extra_bind.m_name );
         }
         for(auto& sp : e.trailing)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);

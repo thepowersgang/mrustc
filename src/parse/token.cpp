@@ -53,7 +53,12 @@ Token::Token(enum eTokenType type, ::std::string str):
     m_type(type),
     m_data(Data::make_String(mv$(str)))
 {
+    assert( m_type != TOK_IDENT );
 }
+Token::Token(Ident ident):
+    m_type(TOK_IDENT),
+    m_data(Data( mv$(ident) ))
+{}
 Token::Token(uint64_t val, enum eCoreType datatype):
     m_type(TOK_INTEGER),
     m_data( Data::make_Integer({datatype, val}) )
@@ -152,6 +157,7 @@ Token::Token(const Token& t):
     (None,  ),
     (String,    m_data = Data::make_String(e); ),
     (Integer,   m_data = Data::make_Integer(e);),
+    (Ident  ,   m_data = Data(e);),
     (Float, m_data = Data::make_Float(e);),
     (Fragment, BUG(t.m_pos, "Attempted to copy a fragment - " << t);)
     )
@@ -171,6 +177,7 @@ Token Token::clone() const
     (Integer,
         rv.m_data = Data::make_Integer(e);
         ),
+    (Ident, rv.m_data = Data(e); ),
     (Float,
         rv.m_data = Data::make_Float(e);
         ),
@@ -299,7 +306,7 @@ struct EscapedString {
     case TOK_INTERPOLATED_META: return "/*:meta*/";
     case TOK_INTERPOLATED_ITEM: return "/*:item*/";
     // Value tokens
-    case TOK_IDENT:     return m_data.as_String();
+    case TOK_IDENT:     return m_data.as_Ident().name;
     case TOK_MACRO:     return m_data.as_String() + "!";
     case TOK_LIFETIME:  return "'" + m_data.as_String();
     case TOK_INTEGER:   return FMT(m_data.as_Integer().m_intval);    // TODO: suffix for type
@@ -464,6 +471,10 @@ SERIALISE_TYPE(Token::, "Token", {
         s % e.m_datatype;
         s.item( e.m_intval );
         ),
+    (Ident,
+        // Hygine contex for serialised idents is left for the loader
+        s << e.name;
+        ),
     (Float,
         s % e.m_datatype;
         s.item( e.m_floatval );
@@ -484,19 +495,25 @@ SERIALISE_TYPE(Token::, "Token", {
     {
     case Token::Data::TAGDEAD:  break;
     case Token::Data::TAG_None: break;
-    case Token::Data::TAG_String:{ 
+    case Token::Data::TAG_String: {
         ::std::string str;
         s.item( str );
         m_data = Token::Data::make_String(str);
         break; }
-    case Token::Data::TAG_Integer:{ 
+    case Token::Data::TAG_Integer: {
         enum eCoreType  dt;
         uint64_t    v;
         s % dt;
         s.item( v );
         m_data = Token::Data::make_Integer({dt, v});
         break; }
-    case Token::Data::TAG_Float:{ 
+    case Token::Data::TAG_Ident: {
+        ::std::string   str;
+        s.item( str );
+        // - Hygine is populated by caller, fill with dummy values for now
+        m_data = Token::Data::make_Ident(Ident { {~0u,{}}, mv$(str) });
+        break; }
+    case Token::Data::TAG_Float: {
         enum eCoreType  dt;
         double   v;
         s % dt;

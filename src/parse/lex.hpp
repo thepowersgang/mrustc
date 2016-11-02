@@ -125,6 +125,10 @@ class Lexer:
     bool    m_last_char_valid;
     Codepoint   m_last_char;
     Token   m_next_token;   // Used when lexing generated two tokens
+    
+    unsigned int m_file_index;
+    // Incremented on every ident and TT close, pushed on TT open
+    ::std::vector<unsigned int> m_hygine_stack;
 public:
     Lexer(const ::std::string& filename);
 

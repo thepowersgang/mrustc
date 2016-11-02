@@ -183,6 +183,10 @@ void Expand_Pattern(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
             Expand_Pattern(crate, modstack, mod, sp.second, is_refutable);
         ),
     (Slice,
+        for(auto& sp : e.sub_pats)
+            Expand_Pattern(crate, modstack, mod, sp, is_refutable);
+        ),
+    (SplitSlice,
         for(auto& sp : e.leading)
             Expand_Pattern(crate, modstack, mod, sp, is_refutable);
         for(auto& sp : e.trailing)

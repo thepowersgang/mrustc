@@ -1772,15 +1772,15 @@ public:
                 unsigned int idx = 0;
                 for( const auto& fld : e.m_fields )
                 {
-                    auto name_a = FMT("a" << fld.m_name);
-                    pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF)) );
+                    auto name_a = Ident( FMT("a" << fld.m_name) );
+                    pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), Ident(name_a), ::AST::PatternBinding::Type::REF)) );
                     
                     nodes.push_back( NEWNODE(CallPath, this->get_trait_path_Encoder() + "emit_struct_variant_field",
                         vec$(
                             NEWNODE(NamedValue, AST::Path("s")),
                             NEWNODE(String, fld.m_name),
                             NEWNODE(Integer, idx, CORETYPE_UINT),
-                            this->enc_closure(sp, this->enc_val_direct(NEWNODE(NamedValue, AST::Path(name_a))))
+                            this->enc_closure(sp, this->enc_val_direct(NEWNODE(NamedValue, AST::Path(name_a.name))))
                             )
                         ) );
                     idx ++;
