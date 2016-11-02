@@ -142,6 +142,8 @@ public:
     /// - Populated on deserialise if not already set
     ::std::string   m_source_crate;
     
+    Ident::Hygiene  m_hygiene;
+    
     /// Expansion rules
     ::std::vector<MacroRulesArm>  m_rules;
     

@@ -473,7 +473,8 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
         rule_arms.push_back( mv$(arm) );
     }
     
-    auto rv = new MacroRules();
+    auto rv = new MacroRules( );
+    rv->m_hygiene = lex.getHygiene();
     rv->m_rules = mv$(rule_arms);
     
     return MacroRulesPtr(rv);

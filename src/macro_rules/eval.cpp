@@ -571,12 +571,12 @@ class MacroExpander:
 public:
     MacroExpander(const MacroExpander& x) = delete;
     
-    MacroExpander(const ::std::string& macro_name, const ::std::vector<MacroExpansionEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
+    MacroExpander(const ::std::string& macro_name, const Ident::Hygiene& parent_hygiene, const ::std::vector<MacroExpansionEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
         m_macro_filename( FMT("Macro:" << macro_name) ),
         m_crate_name( mv$(crate_name) ),
         m_mappings( mv$(mappings) ),
         m_state( contents, m_mappings ),
-        m_hygiene( Ident::Hygiene::new_scope() )
+        m_hygiene( Ident::Hygiene::new_scope_chained(parent_hygiene) )
     {
     }
 
@@ -708,7 +708,7 @@ void Macro_HandlePatternCap(TokenStream& lex, unsigned int index, MacroPatEnt::T
             ;
         else
             CHECK_TOK(tok, TOK_IDENT);
-        bound_tts.insert( index, iterations, InterpolatedFragment( TokenTree(tok) ) );
+        bound_tts.insert( index, iterations, InterpolatedFragment( TokenTree(lex.getHygiene(), tok) ) );
         break;
     }
 }
@@ -786,7 +786,7 @@ bool Macro_HandlePattern(TokenStream& lex, const MacroPatEnt& pat, ::std::vector
     // Run through the expansion counting the number of times each fragment is used
     Macro_InvokeRules_CountSubstUses(bound_tts, rule.m_contents);
     
-    TokenStream* ret_ptr = new MacroExpander(name, rule.m_contents, mv$(bound_tts), rules.m_source_crate);
+    TokenStream* ret_ptr = new MacroExpander(name, rules.m_hygiene, rule.m_contents, mv$(bound_tts), rules.m_source_crate);
     
     return ::std::unique_ptr<TokenStream>( ret_ptr );
 }

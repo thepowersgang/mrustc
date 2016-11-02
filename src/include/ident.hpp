@@ -14,19 +14,28 @@ struct Ident
     class Hygiene
     {
         static unsigned g_next_scope;
-        unsigned int scope_index;
+        
+        ::std::vector<unsigned int> contexts;
         
         Hygiene(unsigned int index):
-            scope_index(index)
+            contexts({index})
         {}
     public:
         Hygiene():
-            scope_index(0)
+            contexts({})
         {}
         
         static Hygiene new_scope()
         {
             return Hygiene(++g_next_scope);
+        }
+        static Hygiene new_scope_chained(const Hygiene& parent)
+        {
+            Hygiene rv;
+            rv.contexts.reserve( parent.contexts.size() + 1 );
+            rv.contexts.insert( rv.contexts.begin(),  parent.contexts.begin(), parent.contexts.end() );
+            rv.contexts.push_back( ++g_next_scope );
+            return rv;
         }
         
         Hygiene(Hygiene&& x) = default;
@@ -36,8 +45,8 @@ struct Ident
         
         // Returns true if an ident with hygine `souce` can see an ident with this hygine
         bool is_visible(const Hygiene& source) const;
-        bool operator==(const Hygiene& x) const { return scope_index == x.scope_index; }
-        bool operator!=(const Hygiene& x) const { return scope_index != x.scope_index; }
+        //bool operator==(const Hygiene& x) const { return scope_index == x.scope_index; }
+        //bool operator!=(const Hygiene& x) const { return scope_index != x.scope_index; }
         
         friend ::std::ostream& operator<<(::std::ostream& os, const Hygiene& v);
     };
