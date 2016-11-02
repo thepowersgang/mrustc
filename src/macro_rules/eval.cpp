@@ -8,7 +8,7 @@
 #include <common.hpp>
 #include "macro_rules.hpp"
 #include <parse/parseerror.hpp>
-#include <parse/tokentree.hpp>
+#include <parse/ttstream.hpp>
 #include <parse/common.hpp>
 #include <limits.h>
 #include "pattern_checks.hpp"

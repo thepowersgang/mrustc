@@ -1,7 +1,16 @@
+/*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * parse/tokentree.hpp
+ * - Token Trees (groups of tokens
+ */
 #ifndef TOKENTREE_HPP_INCLUDED
 #define TOKENTREE_HPP_INCLUDED
 
-#include "lex.hpp"
+#include "token.hpp"
+#include <ident.hpp>
+#include <vector>
 
 class TokenTree
 {
@@ -54,47 +63,5 @@ public:
         }
     }
 };
-
-class TTStream:
-    public TokenStream
-{
-    ::std::vector< ::std::pair<unsigned int, const TokenTree*> > m_stack;
-    const Ident::Hygiene*   m_hygiene_ptr = nullptr;
-public:
-    TTStream(const TokenTree& input_tt);
-    ~TTStream();
-
-    TTStream& operator=(const TTStream& x) { m_stack = x.m_stack; return *this; }
-    
-    Position getPosition() const override;
-    Ident::Hygiene getHygiene() const override;
-
-protected:
-    Token realGetToken() override;
-};
-
-class TTStreamO:
-    public TokenStream
-{
-    Position    m_last_pos;
-    TokenTree   m_input_tt;
-    ::std::vector< ::std::pair<unsigned int, TokenTree*> > m_stack;
-public:
-    TTStreamO(TokenTree input_tt);
-    TTStreamO(TTStreamO&& x) = default;
-    ~TTStreamO();
-
-    TTStreamO& operator=(const TTStreamO& x) { m_stack = x.m_stack; return *this; }
-    TTStreamO& operator=(TTStreamO&& x) = default;
-    
-    Position getPosition() const override;
-    Ident::Hygiene getHygiene() const override;
-
-protected:
-    Token realGetToken() override;
-};
-
-// unwrapped = Exclude the enclosing brackets (used by macro parse code)
-extern TokenTree Parse_TT(TokenStream& lex, bool unwrapped);
 
 #endif // TOKENTREE_HPP_INCLUDED

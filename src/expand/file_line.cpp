@@ -1,7 +1,13 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * expand/file_line.cpp
+ * - file! line! and macro_path! macros
  */
 #include <synext.hpp>
 #include "../parse/common.hpp"
+#include "../parse/ttstream.hpp"
 
 class CExpanderFile:
     public ExpandProcMacro

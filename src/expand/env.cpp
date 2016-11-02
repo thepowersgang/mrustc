@@ -7,6 +7,7 @@
  */
 #include <synext_macro.hpp>
 #include <parse/common.hpp>
+#include <parse/ttstream.hpp>
 #include <ast/expr.hpp> // ExprNode_*
 #include <synext.hpp>   // for Expand_BareExpr
 

@@ -1,7 +1,13 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * expand/stringify.cpp
+ * - stringify! macro
  */
 #include <synext.hpp>
 #include "../parse/common.hpp"
+#include "../parse/ttstream.hpp"
 
 class CExpander:
     public ExpandProcMacro

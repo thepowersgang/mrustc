@@ -8,8 +8,8 @@
 #include <synext_macro.hpp>
 #include <parse/common.hpp>
 #include <parse/parseerror.hpp> // for GET_CHECK_TOK
-#include <parse/tokentree.hpp>  // TTStream
-#include <parse/lex.hpp>
+#include <parse/ttstream.hpp>
+#include <parse/lex.hpp>    // Lexer (new files)
 #include <ast/expr.hpp>
 
 namespace {

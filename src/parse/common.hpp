@@ -8,6 +8,7 @@
 #ifndef PARSE_COMMON_HPP_INCLUDED
 #define PARSE_COMMON_HPP_INCLUDED
 #include <iostream>
+#include "tokenstream.hpp"
 #include "../ast/ast.hpp"
 
 #define GET_TOK(tok, lex) ((tok = lex.getToken()).type())
@@ -59,6 +60,9 @@ extern AST::ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe=false
 extern AST::ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence);
 extern AST::ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST::Module>& local_mod, bool& add_silence_if_end);
 extern AST::ExprNodeP Parse_Stmt(TokenStream& lex);
+
+// unwrapped = Exclude the enclosing brackets (used by macro parse code)
+extern TokenTree Parse_TT(TokenStream& lex, bool unwrapped);
 
 
 extern bool Parse_IsTokValue(eTokenType tok_type);

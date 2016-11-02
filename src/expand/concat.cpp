@@ -9,7 +9,8 @@
 #include "../parse/common.hpp"
 #include "../parse/parseerror.hpp"
 #include "../parse/tokentree.hpp"
-#include "../parse/lex.hpp"
+#include "../parse/ttstream.hpp"
+#include "../parse/lex.hpp" // For Codepoint
 #include <ast/expr.hpp>
 
 class CConcatExpander:

@@ -6,6 +6,7 @@
 #include "../expand/cfg.hpp"
 #include <hir/hir.hpp>  // HIR::Crate
 #include <hir/main_bindings.hpp>    // HIR_Deserialise
+#include <fstream>
 
 namespace {
     bool check_item_cfg(const ::AST::MetaItems& attrs)

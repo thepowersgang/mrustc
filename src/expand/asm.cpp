@@ -8,6 +8,7 @@
 #include <common.hpp>
 #include <synext_macro.hpp>
 #include <parse/tokentree.hpp>
+#include <parse/ttstream.hpp>
 
 class CAsmExpander:
     public ExpandProcMacro

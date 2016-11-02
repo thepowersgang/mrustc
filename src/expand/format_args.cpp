@@ -10,7 +10,7 @@
 #include "../parse/common.hpp"
 #include "../parse/parseerror.hpp"
 #include "../parse/tokentree.hpp"
-#include "../parse/lex.hpp"
+#include "../parse/ttstream.hpp"
 #include "../parse/interpolated_fragment.hpp"
 #include <ast/crate.hpp>    // for m_load_std
 #include <ast/expr.hpp>    // for ExprNode_*

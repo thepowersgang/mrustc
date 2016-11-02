@@ -1,9 +1,14 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * expand/cfg.hpp
+ * - cfg! and #[cfg] handling
  */
 #include <synext.hpp>
-#include <parse/tokentree.hpp>
-#include <parse/lex.hpp>
 #include <parse/common.hpp>
+#include <parse/tokentree.hpp>
+#include <parse/ttstream.hpp>
 #include "cfg.hpp"
 #include <ast/expr.hpp> // Needed to clear a ExprNodeP
 #include <ast/crate.hpp>

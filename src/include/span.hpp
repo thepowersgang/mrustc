@@ -8,6 +8,7 @@
 #pragma once
 
 #include <rc_string.hpp>
+#include <functional>
 
 enum ErrorType
 {

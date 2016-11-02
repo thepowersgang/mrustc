@@ -9,6 +9,7 @@
 #include <ast/ast.hpp>
 #include <ast/expr.hpp>
 #include <main_bindings.hpp>
+#include <fstream>
 
 #include <cpp_unpack.h>
 
@@ -564,9 +565,9 @@ private:
     void dec_indent();
 };
 
-void Dump_Rust(const char *Filename, const AST::Crate& crate)
+void Dump_Rust(const char *filename, const AST::Crate& crate)
 {
-    ::std::ofstream os(Filename);
+    ::std::ofstream os(filename);
     RustPrinter printer(os);
     printer.handle_module(crate.root_module());
 }

@@ -7,6 +7,7 @@
  */
 #include <synext.hpp>
 #include <parse/common.hpp>  // TokenTree etc
+#include <parse/ttstream.hpp>
 
 class CExpanderRegisterDiagnostic:
     public ExpandProcMacro

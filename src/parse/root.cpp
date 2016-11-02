@@ -9,13 +9,15 @@
  * - Parse_Crate : Handles crate attrbutes, and passes on to Parse_ModRoot
  * - Parse_ModRoot
  */
-#include "../ast/ast.hpp"
-#include "../ast/crate.hpp"
+#include <ast/ast.hpp>
+#include <ast/crate.hpp>
 #include "parseerror.hpp"
 #include "common.hpp"
 #include <cassert>
 #include <hir/hir.hpp>  // ABI_RUST - TODO: Move elsewhere?
 #include <expand/cfg.hpp>   // check_cfg - for `mod nonexistant;`
+#include <fstream>  // Used by directory path
+#include "lex.hpp"  // New file lexer
 
 template<typename T>
 Spanned<T> get_spanned(TokenStream& lex, ::std::function<T()> f) {

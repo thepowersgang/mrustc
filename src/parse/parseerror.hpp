@@ -2,7 +2,7 @@
 #define PARSEERROR_HPP_INCLUDED
 
 #include <stdexcept>
-#include "lex.hpp"
+#include "tokenstream.hpp"
 #include <compile_error.hpp>
 
 namespace ParseError {
