@@ -35,7 +35,7 @@ public:
     unsigned int    m_slot;
 
     PatternBinding():
-        m_name({0,{}}, ""),
+        m_name({}, ""),
         m_type(Type::MOVE),
         m_mutable(false),
         m_slot( ~0u )

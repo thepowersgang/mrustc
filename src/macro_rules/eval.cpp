@@ -566,6 +566,7 @@ class MacroExpander:
     
     Token   m_next_token;   // used for inserting a single token into the stream
     ::std::unique_ptr<TTStreamO> m_ttstream;
+    Ident::Hygiene  m_hygiene;
     
 public:
     MacroExpander(const MacroExpander& x) = delete;
@@ -574,12 +575,14 @@ public:
         m_macro_filename( FMT("Macro:" << macro_name) ),
         m_crate_name( mv$(crate_name) ),
         m_mappings( mv$(mappings) ),
-        m_state( contents, m_mappings )
+        m_state( contents, m_mappings ),
+        m_hygiene( Ident::Hygiene::new_scope() )
     {
     }
 
-    virtual Position getPosition() const override;
-    virtual Token realGetToken() override;
+    Position getPosition() const override;
+    Ident::Hygiene getHygiene() const override;
+    Token realGetToken() override;
 };
 
 void Macro_InitDefaults()
@@ -1043,6 +1046,17 @@ Position MacroExpander::getPosition() const
 {
     // TODO: Return a far better span - invocaion location?
     return Position(m_macro_filename, 0, m_state.top_pos());
+}
+Ident::Hygiene MacroExpander::getHygiene() const
+{
+    if( m_ttstream )
+    {
+        return m_ttstream->getHygiene();
+    }
+    else
+    {
+        return m_hygiene;
+    }
 }
 Token MacroExpander::realGetToken()
 {

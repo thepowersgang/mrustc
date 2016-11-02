@@ -61,7 +61,6 @@ class Token:
     TAGGED_UNION(Data, None,
     (None, struct {}),
     (String, ::std::string),
-    (Ident, Ident),
     (Integer, struct {
         enum eCoreType  m_datatype;
         uint64_t    m_intval;
@@ -99,7 +98,6 @@ public:
     
     Token(enum eTokenType type);
     Token(enum eTokenType type, ::std::string str);
-    Token(Ident ident);
     Token(uint64_t val, enum eCoreType datatype);
     Token(double val, enum eCoreType datatype);
     Token(const InterpolatedFragment& );
@@ -112,11 +110,6 @@ public:
     enum eCoreType  datatype() const { TU_MATCH_DEF(Data, (m_data), (e), (assert(!"Getting datatype of invalid token type");), (Integer, return e.m_datatype;), (Float, return e.m_datatype;)) }
     uint64_t intval() const { return m_data.as_Integer().m_intval; }
     double floatval() const { return m_data.as_Float().m_floatval; }
-    
-    const Ident& ident() const { return m_data.as_Ident(); }
-    Ident take_ident() { return ::std::move(m_data.as_Ident()); }
-          ::std::string& ident_str()       { return m_data.as_Ident().name; }
-    const ::std::string& ident_str() const { return m_data.as_Ident().name; }
     
     TypeRef& frag_type() { assert(m_type == TOK_INTERPOLATED_TYPE); return *reinterpret_cast<TypeRef*>( m_data.as_Fragment() ); }
     AST::Path& frag_path() { assert(m_type == TOK_INTERPOLATED_PATH); return *reinterpret_cast<AST::Path*>( m_data.as_Fragment() ); }
@@ -131,7 +124,6 @@ public:
         TU_MATCH(Data, (m_data, r.m_data), (e, re),
         (None, return true;),
         (String, return e == re; ),
-        (Ident, return e == re; ),
         (Integer, return e.m_datatype == re.m_datatype && e.m_intval == re.m_intval;),
         (Float, return e.m_datatype == re.m_datatype && e.m_floatval == re.m_floatval;),
         (Fragment, assert(!"Token equality on Fragment");)

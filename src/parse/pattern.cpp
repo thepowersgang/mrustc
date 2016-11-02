@@ -85,7 +85,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     if( expect_bind )
     {
         CHECK_TOK(tok, TOK_IDENT);
-        auto bind_name = tok.take_ident();
+        auto bind_name = Ident(lex.getHygiene(), mv$(tok.str()));
         // If there's no '@' after it, it's a name binding only (_ pattern)
         if( GET_TOK(tok, lex) != TOK_AT )
         {
@@ -114,21 +114,23 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
             break;
         // Known binding `ident @`
         case TOK_AT:
-            binding = AST::PatternBinding( tok.take_ident(), bind_type/*MOVE*/, is_mut/*false*/ );
+            binding = AST::PatternBinding( Ident(lex.getHygiene(), mv$(tok.str())), bind_type/*MOVE*/, is_mut/*false*/ );
             GET_TOK(tok, lex);  // '@'
             GET_TOK(tok, lex);  // Match lex.putback() below
             break;
-        default:  // Maybe bind
+        default: {  // Maybe bind
+            Ident   name = Ident(lex.getHygiene(), mv$(tok.str()));
             // if the pattern can be refuted (i.e this could be an enum variant), return MaybeBind
             if( is_refutable ) {
                 assert(bind_type == ::AST::PatternBinding::Type::MOVE);
                 assert(is_mut == false);
-                return AST::Pattern(AST::Pattern::TagMaybeBind(), tok.take_ident());
+                return AST::Pattern(AST::Pattern::TagMaybeBind(), mv$(name));
             }
             // Otherwise, it IS a binding
             else {
-                return AST::Pattern(AST::Pattern::TagBind(), tok.take_ident(), bind_type, is_mut);
+                return AST::Pattern(AST::Pattern::TagBind(), mv$(name), bind_type, is_mut);
             }
+            break;}
         }
     }
     else
@@ -138,7 +140,6 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     
     PUTBACK(tok, lex);
     auto pat = Parse_PatternReal(lex, is_refutable);
-    //pat.set_bind( mv$(binding) );
     pat.binding() = mv$(binding);
     return pat;
 }
@@ -276,10 +277,10 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
         ::AST::PatternBinding  binding;
         if( tok.type() == TOK_RWORD_REF && lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_DOUBLE_DOT ) {
             GET_TOK(tok, lex);
-            binding = ::AST::PatternBinding( tok.take_ident(), ::AST::PatternBinding::Type::REF, false );
+            binding = ::AST::PatternBinding( lex.get_ident(mv$(tok)), ::AST::PatternBinding::Type::REF, false );
         }
         else if( tok.type() == TOK_IDENT && lex.lookahead(0) == TOK_DOUBLE_DOT) {
-            binding = ::AST::PatternBinding( tok.take_ident(), ::AST::PatternBinding::Type::MOVE, false );
+            binding = ::AST::PatternBinding( lex.get_ident(mv$(tok)), ::AST::PatternBinding::Type::MOVE, false );
         }
         else if( tok.type() == TOK_UNDERSCORE && lex.lookahead(0) == TOK_DOUBLE_DOT) {
             // No binding, but switching to trailing
@@ -466,7 +467,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
         }
         
         CHECK_TOK(tok, TOK_IDENT);
-        auto field_ident = tok.take_ident();
+        auto field_ident = lex.get_ident(mv$(tok));
         ::std::string field_name;
         GET_TOK(tok, lex);
         

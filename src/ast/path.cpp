@@ -162,7 +162,7 @@ AST::Path::Path(const Path& x):
         m_class = Class::make_Local({ent.name});
         ),
     (Relative,
-        m_class = Class::make_Relative({ent.hygine, ent.nodes});
+        m_class = Class::make_Relative({ent.hygiene, ent.nodes});
         ),
     (Self,
         m_class = Class::make_Self({ent.nodes});

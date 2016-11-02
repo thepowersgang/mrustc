@@ -5,6 +5,7 @@
 
 class TokenTree
 {
+    Ident::Hygiene m_hygiene;
     Token   m_tok;
     ::std::vector<TokenTree>    m_subtrees;
 public:
@@ -16,7 +17,8 @@ public:
         m_tok( ::std::move(tok) )
     {
     }
-    TokenTree(::std::vector<TokenTree> subtrees):
+    TokenTree(Ident::Hygiene hygiene, ::std::vector<TokenTree> subtrees):
+        m_hygiene( ::std::move(hygiene) ),
         m_subtrees( ::std::move(subtrees) )
     {
     }
@@ -33,6 +35,7 @@ public:
           TokenTree& operator[](unsigned int idx)       { return m_subtrees[idx]; }
     const Token& tok() const { return m_tok; }
           Token& tok()       { return m_tok; }
+    const Ident::Hygiene& hygiene() const { return m_hygiene; }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const TokenTree& tt) {
         if( tt.m_subtrees.size() == 0 )
@@ -56,16 +59,18 @@ class TTStream:
     public TokenStream
 {
     ::std::vector< ::std::pair<unsigned int, const TokenTree*> > m_stack;
+    const Ident::Hygiene*   m_hygiene_ptr = nullptr;
 public:
     TTStream(const TokenTree& input_tt);
     ~TTStream();
 
     TTStream& operator=(const TTStream& x) { m_stack = x.m_stack; return *this; }
     
-    virtual Position getPosition() const override;
+    Position getPosition() const override;
+    Ident::Hygiene getHygiene() const override;
 
 protected:
-    virtual Token realGetToken() override;
+    Token realGetToken() override;
 };
 
 class TTStreamO:
@@ -82,10 +87,11 @@ public:
     TTStreamO& operator=(const TTStreamO& x) { m_stack = x.m_stack; return *this; }
     TTStreamO& operator=(TTStreamO&& x) = default;
     
-    virtual Position getPosition() const override;
+    Position getPosition() const override;
+    Ident::Hygiene getHygiene() const override;
 
 protected:
-    virtual Token realGetToken() override;
+    Token realGetToken() override;
 };
 
 // unwrapped = Exclude the enclosing brackets (used by macro parse code)

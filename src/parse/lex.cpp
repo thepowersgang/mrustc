@@ -29,7 +29,8 @@ Lexer::Lexer(const ::std::string& filename):
     m_line(1),
     m_line_ofs(0),
     m_istream(filename.c_str()),
-    m_last_char_valid(false)
+    m_last_char_valid(false),
+    m_hygiene( Ident::Hygiene::new_scope() )
 {
     if( !m_istream.is_open() )
     {
@@ -243,6 +244,10 @@ Position Lexer::getPosition() const
 {
     return Position(m_path, m_line, m_line_ofs);
 }
+Ident::Hygiene Lexer::getHygiene() const
+{
+    return m_hygiene;
+}
 Token Lexer::realGetToken()
 {
     while(true)
@@ -251,29 +256,6 @@ Token Lexer::realGetToken()
         //::std::cout << "getTokenInt: tok = " << tok << ::std::endl;
         switch(tok.type())
         {
-        case TOK_IDENT:
-            if( m_hygine_stack.size() > 0 )
-            {
-                m_hygine_stack.back() ++;
-            }
-            return tok;
-        
-        case TOK_PAREN_OPEN:
-        case TOK_SQUARE_OPEN:
-        case TOK_BRACE_OPEN:
-        case TOK_ATTR_OPEN:
-        case TOK_CATTR_OPEN:
-            m_hygine_stack.push_back(0);
-            return tok;
-        case TOK_PAREN_CLOSE:
-        case TOK_SQUARE_CLOSE:
-        case TOK_BRACE_CLOSE:
-            m_hygine_stack.pop_back();
-            if( m_hygine_stack.size() > 0 ) {
-                m_hygine_stack.back() ++;
-            }
-            return tok;
-        
         case TOK_NEWLINE:
             m_line ++;
             m_line_ofs = 0;
@@ -790,7 +772,7 @@ Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2)
             if( str < RWORDS[i].chars ) break;
             if( str == RWORDS[i].chars )    return Token((enum eTokenType)RWORDS[i].type);
         }
-        return Token(Ident( Ident::Hygine(m_file_index, m_hygine_stack), mv$(str) ));
+        return Token(TOK_IDENT, mv$(str));
     }
 }
 
@@ -1022,21 +1004,28 @@ Token TTStream::realGetToken()
             const TokenTree&    subtree = tree[idx];
             idx ++;
             if( subtree.size() == 0 ) {
+                m_hygiene_ptr = &m_stack.back().second->hygiene();
                 return subtree.tok().clone();
             }
             else {
-                m_stack.push_back( ::std::make_pair(0, &subtree ) );
+                m_stack.push_back( ::std::make_pair(0, &subtree) );
             }
         }
         else {
             m_stack.pop_back();
         }
     }
+    //m_hygiene = nullptr;
     return Token(TOK_EOF);
 }
 Position TTStream::getPosition() const
 {
     return Position("TTStream", 0,0);
+}
+Ident::Hygiene TTStream::getHygiene() const
+{
+    //assert( m_hygiene );
+    return *m_hygiene_ptr;
 }
 
 
@@ -1071,7 +1060,7 @@ Token TTStreamO::realGetToken()
                 return mv$( subtree.tok() );
             }
             else {
-                m_stack.push_back( ::std::make_pair(0, &subtree ) );
+                m_stack.push_back( ::std::make_pair(0, &subtree) );
             }
         }
         else {
@@ -1083,6 +1072,10 @@ Token TTStreamO::realGetToken()
 Position TTStreamO::getPosition() const
 {
     return m_last_pos;
+}
+Ident::Hygiene TTStreamO::getHygiene() const
+{
+    return (m_stack.back().second ? m_stack.back().second->hygiene() : m_input_tt.hygiene());
 }
 
 
@@ -1183,7 +1176,18 @@ Span TokenStream::end_span(ProtoSpan ps) const
         p.line, p.ofs
         );
 }
-
+Ident TokenStream::get_ident(Token tok) const
+{
+    if(tok.type() == TOK_IDENT) {
+        return Ident(getHygiene(), tok.str());
+    }
+    else if( tok.type() == TOK_INTERPOLATED_IDENT ) {
+        TODO(getPosition(), "");
+    }
+    else {
+        throw ParseError::Unexpected(*this, tok);
+    }
+}
 
 TokenTree TokenTree::clone() const
 {
@@ -1195,7 +1199,7 @@ TokenTree TokenTree::clone() const
         ents.reserve( m_subtrees.size() );
         for(const auto& sub : m_subtrees)
             ents.push_back( sub.clone() );
-        return TokenTree( mv$(ents) );
+        return TokenTree( m_hygiene, mv$(ents) );
     }
 }
 

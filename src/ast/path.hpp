@@ -162,7 +162,7 @@ public:
             ::std::string name;
             } ),
         (Relative, struct {    // General relative
-            Ident::Hygine hygine;    // Taken from the first ident
+            Ident::Hygiene hygiene;
             ::std::vector<PathNode> nodes;
             } ),
         (Self, struct {    // Module-relative
@@ -226,8 +226,8 @@ public:
     
     // RELATIVE
     struct TagRelative {};
-    Path(TagRelative, Ident::Hygine hygine, ::std::vector<PathNode> nodes):
-        m_class( Class::make_Relative({ mv$(hygine), mv$(nodes) }) )
+    Path(TagRelative, Ident::Hygiene hygiene, ::std::vector<PathNode> nodes):
+        m_class( Class::make_Relative({ mv$(hygiene), mv$(nodes) }) )
     {}
     // SELF
     struct TagSelf {};

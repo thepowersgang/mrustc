@@ -3,7 +3,7 @@
  * - By John Hodge (Mutabah/thePowersGang)
  *
  * include/ident.hpp
- * - Identifiers with hygine
+ * - Identifiers with hygiene
  */
 #pragma once
 #include <vector>
@@ -11,42 +11,50 @@
 
 struct Ident
 {
-    struct Hygine
+    class Hygiene
     {
-        unsigned int file_num;
-        ::std::vector<unsigned int> indexes;
+        static unsigned g_next_scope;
+        unsigned int scope_index;
         
-        Hygine(unsigned int file, ::std::vector<unsigned int> indexes):
-            file_num(file),
-            indexes(::std::move(indexes))
+        Hygiene(unsigned int index):
+            scope_index(index)
+        {}
+    public:
+        Hygiene():
+            scope_index(0)
         {}
         
-        Hygine(Hygine&& x) = default;
-        Hygine(const Hygine& x) = default;
-        Hygine& operator=(Hygine&& x) = default;
-        Hygine& operator=(const Hygine& x) = default;
+        static Hygiene new_scope()
+        {
+            return Hygiene(++g_next_scope);
+        }
+        
+        Hygiene(Hygiene&& x) = default;
+        Hygiene(const Hygiene& x) = default;
+        Hygiene& operator=(Hygiene&& x) = default;
+        Hygiene& operator=(const Hygiene& x) = default;
         
         // Returns true if an ident with hygine `souce` can see an ident with this hygine
-        bool is_visible(const Hygine& source) const;
-        bool operator==(const Hygine& x) const { return file_num == x.file_num && indexes == x.indexes; }
-        bool operator!=(const Hygine& x) const { return file_num != x.file_num || indexes != x.indexes; }
+        bool is_visible(const Hygiene& source) const;
+        bool operator==(const Hygiene& x) const { return scope_index == x.scope_index; }
+        bool operator!=(const Hygiene& x) const { return scope_index != x.scope_index; }
         
-        friend ::std::ostream& operator<<(::std::ostream& os, const Hygine& v);
+        friend ::std::ostream& operator<<(::std::ostream& os, const Hygiene& v);
     };
     
-    Hygine  hygine;
+    Hygiene hygiene;
     ::std::string   name;
     
     Ident(const char* name):
-        hygine(~0u, {}),
+        hygiene(),
         name(name)
     { }
     Ident(::std::string name):
-        hygine(~0u, {}),
+        hygiene(),
         name(::std::move(name))
     { }
-    Ident(Hygine hygine, ::std::string name):
-        hygine(::std::move(hygine)), name(::std::move(name))
+    Ident(Hygiene hygiene, ::std::string name):
+        hygiene(::std::move(hygiene)), name(::std::move(name))
     { }
     
     Ident(Ident&& x) = default;

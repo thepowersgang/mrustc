@@ -62,12 +62,16 @@ public:
     Token   getToken();
     void    putback(Token tok);
     eTokenType  lookahead(unsigned int count);
+    
     virtual Position getPosition() const = 0;
+    virtual Ident::Hygiene getHygiene() const = 0;
     
     ParseState& parse_state() { return m_parse_state; }
     
     ProtoSpan   start_span() const;
     Span    end_span(ProtoSpan ps) const;
+    
+    Ident get_ident(Token tok) const;
     
 protected:
     virtual Token   realGetToken() = 0;
@@ -126,14 +130,13 @@ class Lexer:
     Codepoint   m_last_char;
     Token   m_next_token;   // Used when lexing generated two tokens
     
-    unsigned int m_file_index;
-    // Incremented on every ident and TT close, pushed on TT open
-    ::std::vector<unsigned int> m_hygine_stack;
+    Ident::Hygiene m_hygiene;
 public:
     Lexer(const ::std::string& filename);
 
-    virtual Position getPosition() const override;
-    virtual Token realGetToken() override;
+    Position getPosition() const override;
+    Ident::Hygiene getHygiene() const override;
+    Token realGetToken() override;
 
 private:
     Token getTokenInt();

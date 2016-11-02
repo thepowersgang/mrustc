@@ -91,8 +91,9 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         }
     }
     else {
+        // TODO: TOK_INTERPOLATED_IDENT?
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        auto hygine = mv$( tok.ident().hygine );
+        auto hygine = lex.getHygiene();
         PUTBACK(tok, lex);
         return AST::Path(AST::Path::TagRelative(), mv$(hygine), Parse_PathNodes(lex, generic_mode));
     }
@@ -111,7 +112,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         ::AST::PathParams   params;
 
         CHECK_TOK(tok, TOK_IDENT);
-        auto component = mv$( tok.ident_str() );
+        auto component = mv$( tok.str() );
 
         GET_TOK(tok, lex);
         if( generic_mode == PATH_GENERIC_TYPE )
@@ -218,7 +219,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         case TOK_IDENT:
             if( LOOK_AHEAD(lex) == TOK_EQUAL )
             {
-                ::std::string name = mv$(tok.ident_str());
+                ::std::string name = mv$(tok.str());
                 GET_CHECK_TOK(tok, lex, TOK_EQUAL);
                 assoc_bounds.push_back( ::std::make_pair( mv$(name), Parse_Type(lex,false) ) );
                 break;

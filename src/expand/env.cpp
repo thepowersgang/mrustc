@@ -67,7 +67,7 @@ class CExpanderOptionEnv:
             rv.push_back( Token(TOK_PAREN_OPEN) );
             rv.push_back( Token(TOK_STRING, var_val_cstr) );
             rv.push_back( Token(TOK_PAREN_CLOSE) );
-            return box$( TTStreamO(TokenTree( mv$(rv) )) );
+            return box$( TTStreamO(TokenTree( {}, mv$(rv) )) );
         }
     }
 };

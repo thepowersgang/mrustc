@@ -259,7 +259,7 @@ struct Context
         }
         return "";
     }
-    AST::Path lookup(const Span& sp, const ::std::string& name, const Ident::Hygine& src_context, LookupMode mode) const {
+    AST::Path lookup(const Span& sp, const ::std::string& name, const Ident::Hygiene& src_context, LookupMode mode) const {
         auto rv = this->lookup_opt(name, src_context, mode);
         if( !rv.is_valid() ) {
             switch(mode)
@@ -352,7 +352,7 @@ struct Context
         }
         return false;
     }
-    AST::Path lookup_opt(const ::std::string& name, const Ident::Hygine& src_context, LookupMode mode) const {
+    AST::Path lookup_opt(const ::std::string& name, const Ident::Hygiene& src_context, LookupMode mode) const {
         
         for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
         {
@@ -379,7 +379,7 @@ struct Context
                 else {
                     for( auto it2 = e.variables.rbegin(); it2 != e.variables.rend(); ++ it2 )
                     {
-                        if( it2->first.name == name && it2->first.hygine.is_visible(src_context) ) {
+                        if( it2->first.name == name && it2->first.hygiene.is_visible(src_context) ) {
                             ::AST::Path rv(name);
                             rv.bind_variable( it2->second );
                             return rv;
@@ -1244,7 +1244,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         if(e.nodes.size() > 1)
         {
             // Look up type/module name
-            auto p = context.lookup(sp, e.nodes[0].name(), e.hygine, Context::LookupMode::Namespace);
+            auto p = context.lookup(sp, e.nodes[0].name(), e.hygiene, Context::LookupMode::Namespace);
             DEBUG("Found type/mod - " << p);
             // HACK: If this is a primitive name, and resolved to a module.
             // - If the next component isn't found in the located module
@@ -1333,7 +1333,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         }
         else {
             // Look up value
-            auto p = context.lookup(sp, e.nodes[0].name(), e.hygine, mode);
+            auto p = context.lookup(sp, e.nodes[0].name(), e.hygiene, mode);
             //DEBUG("Found path " << p << " for " << path);
             if( p.is_absolute() ) {
                 assert( !p.nodes().empty() );
@@ -1715,7 +1715,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         if( allow_refutable ) {
             auto name = mv$( e.name );
             // Attempt to resolve the name in the current namespace, and if it fails, it's a binding
-            auto p = context.lookup_opt( name.name, name.hygine, Context::LookupMode::Pattern );
+            auto p = context.lookup_opt( name.name, name.hygiene, Context::LookupMode::Pattern );
             if( p.is_valid() ) {
                 Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::Pattern, p);
                 pat = ::AST::Pattern(::AST::Pattern::TagValue(), ::AST::Pattern::Value::make_Named(mv$(p)));
