@@ -353,7 +353,7 @@ struct Context
         return false;
     }
     AST::Path lookup_opt(const ::std::string& name, const Ident::Hygiene& src_context, LookupMode mode) const {
-        
+        DEBUG("name=" << name <<", src_context=" << src_context);
         for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
         {
             TU_MATCH(Ent, (*it), (e),

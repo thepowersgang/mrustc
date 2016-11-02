@@ -22,10 +22,12 @@ Token TTStream::realGetToken()
     {
         // If current index is above TT size, go up
         unsigned int& idx = m_stack.back().first;
+        assert( m_stack.back().second );
         const TokenTree& tree = *m_stack.back().second;
 
         if(idx == 0 && tree.is_token()) {
             idx ++;
+            m_hygiene_ptr = &tree.hygiene();
             return tree.tok();
         }
 
@@ -34,7 +36,7 @@ Token TTStream::realGetToken()
             const TokenTree&    subtree = tree[idx];
             idx ++;
             if( subtree.size() == 0 ) {
-                m_hygiene_ptr = &m_stack.back().second->hygiene();
+                m_hygiene_ptr = &subtree.hygiene();
                 return subtree.tok().clone();
             }
             else {
@@ -52,7 +54,7 @@ Position TTStream::getPosition() const
 {
     return Position("TTStream", 0,0);
 }
-Ident::Hygiene TTStream::getHygiene() const
+Ident::Hygiene TTStream::realGetHygiene() const
 {
     assert( m_hygiene_ptr );
     return *m_hygiene_ptr;
@@ -73,11 +75,12 @@ Token TTStreamO::realGetToken()
     {
         // If current index is above TT size, go up
         unsigned int& idx = m_stack.back().first;
-        TokenTree& tree = *( m_stack.back().second ? m_stack.back().second : &m_input_tt );
+        TokenTree& tree = (m_stack.back().second ? *m_stack.back().second : m_input_tt);
 
         if(idx == 0 && tree.is_token()) {
             idx ++;
             m_last_pos = tree.tok().get_pos();
+            m_hygiene_ptr = &tree.hygiene();
             return mv$(tree.tok());
         }
 
@@ -87,6 +90,7 @@ Token TTStreamO::realGetToken()
             idx ++;
             if( subtree.size() == 0 ) {
                 m_last_pos = subtree.tok().get_pos();
+                m_hygiene_ptr = &subtree.hygiene();
                 return mv$( subtree.tok() );
             }
             else {
@@ -103,7 +107,10 @@ Position TTStreamO::getPosition() const
 {
     return m_last_pos;
 }
-Ident::Hygiene TTStreamO::getHygiene() const
+Ident::Hygiene TTStreamO::realGetHygiene() const
 {
-    return (m_stack.back().second ? m_stack.back().second->hygiene() : m_input_tt.hygiene());
+    // Empty.
+    if(!m_hygiene_ptr)
+        return Ident::Hygiene();
+    return *m_hygiene_ptr;
 }

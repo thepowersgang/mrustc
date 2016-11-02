@@ -38,7 +38,8 @@ Token TokenStream::getToken()
     }
     else if( m_lookahead.size() )
     {
-        Token ret = mv$( m_lookahead.front() );
+        Token ret = mv$( m_lookahead.front().first );
+        m_hygiene = m_lookahead.front().second;
         m_lookahead.erase(m_lookahead.begin());
         if( DEBUG_PRINT_TOKENS ) {
             ::std::cout << "getToken[" << typeid(*this).name() << "] - " << ret.get_pos() << "-" << ret << ::std::endl;
@@ -48,6 +49,7 @@ Token TokenStream::getToken()
     else
     {
         Token ret = this->innerGetToken();
+        m_hygiene = this->realGetHygiene();
         if( DEBUG_PRINT_TOKENS ) {
             ::std::cout << "getToken[" << typeid(*this).name() << "] - " << ret.get_pos() << "-" << ret << ::std::endl;
         }
@@ -85,11 +87,18 @@ eTokenType TokenStream::lookahead(unsigned int i)
     while( i >= m_lookahead.size() )
     {
         DEBUG("lookahead - read #" << m_lookahead.size());
-        m_lookahead.push_back( this->innerGetToken() );
+        auto tok = this->innerGetToken();
+        auto hygiene = this->realGetHygiene();
+        m_lookahead.push_back( ::std::make_pair(mv$(tok), mv$(hygiene)) );
     }
     
     DEBUG("lookahead(" << i << ") = " << m_lookahead[i]);
-    return m_lookahead[i].type();
+    return m_lookahead[i].first.type();
+}
+
+Ident::Hygiene TokenStream::getHygiene() const
+{
+    return m_hygiene;
 }
 
 ProtoSpan TokenStream::start_span() const

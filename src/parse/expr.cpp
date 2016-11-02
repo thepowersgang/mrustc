@@ -1239,7 +1239,8 @@ ExprNodeP Parse_ExprMacro(TokenStream& lex, Token tok)
 // Token Tree Parsing
 TokenTree Parse_TT(TokenStream& lex, bool unwrapped)
 {
-    TRACE_FUNCTION;
+    TokenTree   rv;
+    TRACE_FUNCTION_FR("", rv);
     
     Token tok = lex.getToken();
     eTokenType  closer = TOK_PAREN_CLOSE;
@@ -1270,12 +1271,13 @@ TokenTree Parse_TT(TokenStream& lex, bool unwrapped)
     case TOK_BRACE_CLOSE:
         throw ParseError::Unexpected(lex, tok);
     default:
-        return TokenTree( mv$(tok) );
+        rv = TokenTree(lex.getHygiene(), mv$(tok) );
+        return rv;
     }
 
     ::std::vector<TokenTree>   items;
     if( !unwrapped )
-        items.push_back( mv$(tok) );
+        items.push_back( TokenTree(lex.getHygiene(), mv$(tok)) );
     while(GET_TOK(tok, lex) != closer && tok.type() != TOK_EOF)
     {
         if( tok.type() == TOK_NULL )
@@ -1284,6 +1286,7 @@ TokenTree Parse_TT(TokenStream& lex, bool unwrapped)
         items.push_back(Parse_TT(lex, false));
     }
     if( !unwrapped )
-        items.push_back( mv$(tok) );
-    return TokenTree(lex.getHygiene(), mv$(items));
+        items.push_back( TokenTree(lex.getHygiene(), mv$(tok)) );
+    rv = TokenTree(lex.getHygiene(), mv$(items));
+    return rv;
 }

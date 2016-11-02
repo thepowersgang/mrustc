@@ -26,6 +26,11 @@ public:
         m_tok( ::std::move(tok) )
     {
     }
+    TokenTree(Ident::Hygiene hygiene, Token tok):
+        m_hygiene( ::std::move(hygiene) ),
+        m_tok( ::std::move(tok) )
+    {
+    }
     TokenTree(Ident::Hygiene hygiene, ::std::vector<TokenTree> subtrees):
         m_hygiene( ::std::move(hygiene) ),
         m_subtrees( ::std::move(subtrees) )
@@ -46,22 +51,7 @@ public:
           Token& tok()       { return m_tok; }
     const Ident::Hygiene& hygiene() const { return m_hygiene; }
     
-    friend ::std::ostream& operator<<(::std::ostream& os, const TokenTree& tt) {
-        if( tt.m_subtrees.size() == 0 )
-            return os << tt.m_tok;
-        else {
-            os << "TT([";
-            bool first = true;
-            for(const auto& i : tt.m_subtrees) {
-                if(!first)
-                    os << ", ";
-                os << i;
-                first = false;
-            }
-            os << "])";
-            return os;
-        }
-    }
+    friend ::std::ostream& operator<<(::std::ostream& os, const TokenTree& tt);
 };
 
 #endif // TOKENTREE_HPP_INCLUDED

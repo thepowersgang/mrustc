@@ -581,7 +581,7 @@ public:
     }
 
     Position getPosition() const override;
-    Ident::Hygiene getHygiene() const override;
+    Ident::Hygiene realGetHygiene() const override;
     Token realGetToken() override;
 };
 
@@ -1047,7 +1047,7 @@ Position MacroExpander::getPosition() const
     // TODO: Return a far better span - invocaion location?
     return Position(m_macro_filename, 0, m_state.top_pos());
 }
-Ident::Hygiene MacroExpander::getHygiene() const
+Ident::Hygiene MacroExpander::realGetHygiene() const
 {
     if( m_ttstream )
     {

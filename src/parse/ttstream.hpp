@@ -23,9 +23,9 @@ public:
     TTStream& operator=(const TTStream& x) { m_stack = x.m_stack; return *this; }
     
     Position getPosition() const override;
-    Ident::Hygiene getHygiene() const override;
 
 protected:
+    Ident::Hygiene realGetHygiene() const override;
     Token realGetToken() override;
 };
 
@@ -36,6 +36,7 @@ class TTStreamO:
     Position    m_last_pos;
     TokenTree   m_input_tt;
     ::std::vector< ::std::pair<unsigned int, TokenTree*> > m_stack;
+    const Ident::Hygiene*   m_hygiene_ptr = nullptr;
 public:
     TTStreamO(TokenTree input_tt);
     TTStreamO(TTStreamO&& x) = default;
@@ -45,8 +46,8 @@ public:
     TTStreamO& operator=(TTStreamO&& x) = default;
     
     Position getPosition() const override;
-    Ident::Hygiene getHygiene() const override;
 
 protected:
+    Ident::Hygiene realGetHygiene() const override;
     Token realGetToken() override;
 };

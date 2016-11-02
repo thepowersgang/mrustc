@@ -235,7 +235,7 @@ Position Lexer::getPosition() const
 {
     return Position(m_path, m_line, m_line_ofs);
 }
-Ident::Hygiene Lexer::getHygiene() const
+Ident::Hygiene Lexer::realGetHygiene() const
 {
     return m_hygiene;
 }

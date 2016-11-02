@@ -50,7 +50,8 @@ class TokenStream
     
     bool    m_cache_valid;
     Token   m_cache;
-    ::std::vector<Token>    m_lookahead;
+    Ident::Hygiene  m_hygiene;
+    ::std::vector< ::std::pair<Token, Ident::Hygiene> > m_lookahead;
     ParseState  m_parse_state;
 public:
     TokenStream();
@@ -60,7 +61,7 @@ public:
     eTokenType  lookahead(unsigned int count);
     
     virtual Position getPosition() const = 0;
-    virtual Ident::Hygiene getHygiene() const = 0;
+    Ident::Hygiene getHygiene() const;
     
     ParseState& parse_state() { return m_parse_state; }
     
@@ -71,6 +72,7 @@ public:
     
 protected:
     virtual Token   realGetToken() = 0;
+    virtual Ident::Hygiene realGetHygiene() const = 0;
 private:
     Token innerGetToken();
 };

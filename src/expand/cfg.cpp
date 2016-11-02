@@ -99,10 +99,10 @@ class CCfgExpander:
         DEBUG("cfg!() - " << attrs);
         
         if( check_cfg(sp, attrs) ) {
-            return box$( TTStreamO(TokenTree(TOK_RWORD_TRUE )) );
+            return box$( TTStreamO(TokenTree({},TOK_RWORD_TRUE )) );
         }
         else {
-            return box$( TTStreamO(TokenTree(TOK_RWORD_FALSE)) );
+            return box$( TTStreamO(TokenTree({},TOK_RWORD_FALSE)) );
         }
     }
 };

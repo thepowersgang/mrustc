@@ -16,11 +16,11 @@ bool Ident::Hygiene::is_visible(const Hygiene& src) const
 {
     // HACK: Disable hygiene for now
     return true;
-    //return x.scope_index == src.scope_index;
+    //return this->scope_index == src.scope_index;
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const Ident& x) {
-    os << x.name;
+    os << x.name << x.hygiene;
     return os;
 }
 

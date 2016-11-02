@@ -46,7 +46,7 @@ public:
     Lexer(const ::std::string& filename);
 
     Position getPosition() const override;
-    Ident::Hygiene getHygiene() const override;
+    Ident::Hygiene realGetHygiene() const override;
     Token realGetToken() override;
 
 private:
