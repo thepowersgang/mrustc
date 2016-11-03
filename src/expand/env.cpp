@@ -59,7 +59,16 @@ class CExpanderOptionEnv:
         
         const char* var_val_cstr = getenv(varname.c_str());
         if( !var_val_cstr ) {
-            return box$( TTStreamO(TokenTree(Token(TOK_IDENT, "None"))) );
+            ::std::vector< TokenTree>   rv;
+            rv.reserve(7);
+            rv.push_back( Token(TOK_IDENT, "None") );
+            rv.push_back( Token(TOK_DOUBLE_COLON) );
+            rv.push_back( Token(TOK_LT) );
+            rv.push_back( Token(TOK_AMP) );
+            rv.push_back( Token(TOK_LIFETIME, "static") );
+            rv.push_back( Token(TOK_IDENT, "str") );
+            rv.push_back( Token(TOK_GT) );
+            return box$( TTStreamO(TokenTree( {}, mv$(rv) )) );
         }
         else {
             ::std::vector< TokenTree>   rv;
