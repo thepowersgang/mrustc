@@ -1,6 +1,6 @@
-% Macro Hygine rules and notes
+% Macro Hygiene rules and notes
 
-Usecases
+Use-cases
 =========
 
 A variable defined within the macro won't collide with one in a capture
@@ -43,7 +43,7 @@ fn bar() {
 }
 ```
 
-Implementaton Notes
+Implementation Notes
 ===================
 
 Idea 1: Index list
@@ -51,14 +51,14 @@ Idea 1: Index list
 
 Lexer maintains a stack of counts - incremented after every TT end (closing bracket) and for every IDENT lexed. The stack grows into each TT.
 
-This stack is the hygine information for an identifier. During lookup a symbol is only usable if its hygine information is a superset or before yours.
+This stack is the hygiene information for an identifier. During lookup a symbol is only usable if its hygiene information is a superset or before yours.
 ```
-if( item_hygine[..-1].is_subset_of(my_hygine) && item_hygine[-1] < my_hygine[item_hygine.len] ) {
+if( item_hygine[..-1].is_subset_of(my_hygine) && item_hygiene[-1] < my_hygiene[item_hygiene.len] ) {
     /* allowed */
 }
 ```
 
-Hygine storage points:
+Hygiene storage points:
 - Relative paths (of the leading node)
 - Pattern bindings (variable definitions)
 - _TODO: Where else?_
@@ -66,14 +66,14 @@ Hygine storage points:
 - Items? (when would that be checked? They're "globally" addressable)
 
 
-Problem: Destructuring patterns end up with an incorrect hygine using this system.
+Problem: Destructuring patterns end up with an incorrect hygiene using this system.
 
-Idea 2: Hygine is directly related to the parser state
+Idea 2: Hygiene is directly related to the parser state
 --------------------------
 
-- Each lexer has a hygine tag
-- Token trees carry with them the hygine tag for the contained tokens
-- :ident captures Ident as TOK_INTERPOLATED_IDENT
+- Each lexer has a hygiene tag
+- Token trees carry with them the hygiene tag for the contained tokens
+- :ident captures a TT with associated hygiene context
 
 
 <!-- vim: ft=markdown
