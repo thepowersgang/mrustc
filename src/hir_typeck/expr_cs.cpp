@@ -2523,14 +2523,25 @@ namespace {
                 this->context.equate_types(sp, node.m_res_type,  node.m_cache.m_arg_types.back());
                 
                 // Add derefs
-                if( deref_count >= ~3u )
+                if( deref_count >= ~6u )
                 {
+                    auto inv = ~deref_count;
+                    bool is_box_deref = (inv > 3);
+                    auto borrow_ty = inv % 3;
+                    
+                    if( is_box_deref ) {
+                        const auto& ity = this->context.get_type(node.m_value->m_res_type).m_data.as_Path().path.m_data.as_Generic().m_params.m_types.at(0);
+                        auto span = node.m_value->span();
+                        DEBUG("- Deref Box " << &*node.m_value << " -> " << ity);
+                        node.m_value = NEWNODE(ity.clone(), span, _Deref,  mv$(node.m_value));
+                    }
+                    
                     ::HIR::BorrowType   bt = ::HIR::BorrowType::Shared;
-                    switch(deref_count)
+                    switch(borrow_ty)
                     {
-                    case ~1u:   bt = ::HIR::BorrowType::Shared; break;
-                    case ~2u:   bt = ::HIR::BorrowType::Unique; break;
-                    case ~3u:   bt = ::HIR::BorrowType::Owned ; break;
+                    case 1:   bt = ::HIR::BorrowType::Shared; break;
+                    case 2:   bt = ::HIR::BorrowType::Unique; break;
+                    case 0:   bt = ::HIR::BorrowType::Owned ; break;
                     default:
                         BUG(sp, "Invalid deref return count - " << deref_count);
                     }

@@ -2945,7 +2945,10 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
         return ~0u;
     }
     
-    // TODO: Insert a single reference and try again (only allowing by-value methods), returning a magic value (e.g. ~1u)
+    // TODO: Try the following after dereferencing a Box? - Requires indiciating via the return that the caller should deref+ref
+    // - Should refactor to change searching to search for functions taking the current type as a receiver (not method searching as is currently done)
+    
+    // Insert a single reference and try again (only allowing by-value methods), returning a magic value (e.g. ~1u)
     // - Required for calling `(self[..]: str).into_searcher(haystack)` - Which invokes `<&str as Pattern>::into_searcher(&self[..], haystack)`
     // - Have to do several tries, each with different borrow classes.
     auto borrow_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, top_ty.clone());
@@ -2961,8 +2964,35 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
     borrow_ty.m_data.as_Borrow().type = ::HIR::BorrowType::Owned;
     if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
         DEBUG("FOUND &mut, fcn_path = " << fcn_path);
-        return ~2u;
+        return ~3u;
     }
+    
+    // Handle `self: Box<Self>` methods by detecting m_lang_Box and searchig for box receiver methods
+    TU_IFLET(::HIR::TypeRef::Data, top_ty_r.m_data, Path, e,
+        TU_IFLET(::HIR::Path::Data, e.path.m_data, Generic, pe,
+            if( pe.m_path == m_lang_Box )
+            {
+                const auto& ty = this->m_ivars.get_type( pe.m_params.m_types.at(0) );
+                assert( ! ty.m_data.is_Infer() );
+                
+                auto borrow_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ty.clone());
+                if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
+                    DEBUG("FOUND &*box, fcn_path = " << fcn_path);
+                    return ~4u;
+                }
+                borrow_ty.m_data.as_Borrow().type = ::HIR::BorrowType::Unique;
+                if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
+                    DEBUG("FOUND &mut*box, fcn_path = " << fcn_path);
+                    return ~5u;
+                }
+                borrow_ty.m_data.as_Borrow().type = ::HIR::BorrowType::Owned;
+                if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
+                    DEBUG("FOUND &mut*box, fcn_path = " << fcn_path);
+                    return ~6u;
+                }
+            }
+        )
+    )
     
     // Dereference failed! This is a hard error (hitting _ is checked above and returns ~0)
     this->m_ivars.dump();
