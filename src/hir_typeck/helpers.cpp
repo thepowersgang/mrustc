@@ -2680,7 +2680,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
     return match;
 }
 
-bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const ::std::string& name, bool allow_move,  ::HIR::GenericPath& out_path) const
+bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const ::std::string& name, AllowedReceivers ar,  ::HIR::GenericPath& out_path) const
 {
     auto it = trait_ptr.m_values.find(name);
     if( it != trait_ptr.m_values.end() ) {
@@ -2691,9 +2691,12 @@ bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::Generic
             case ::HIR::Function::Receiver::Free:
                 break;
             case ::HIR::Function::Receiver::Value:
-                if( !allow_move ) {
+                if( ar != AllowedReceivers::All && ar != AllowedReceivers::Value )
                     break;
-                }
+                if(0)
+            case ::HIR::Function::Receiver::Box:
+                if( ar != AllowedReceivers::Box )
+                    break;
             default:
                 out_path = trait_path.clone();
                 return true;
@@ -2705,7 +2708,7 @@ bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::Generic
     for(const auto& st : trait_ptr.m_parent_traits)
     {
         auto& st_ptr = this->m_crate.get_trait_by_path(sp, st.m_path.m_path);
-        if( trait_contains_method(sp, st.m_path, st_ptr, self, name, allow_move,  out_path) ) {
+        if( trait_contains_method(sp, st.m_path, st_ptr, self, name, ar,  out_path) ) {
             out_path.m_params = monomorphise_path_params_with(sp, mv$(out_path.m_params), [&](const auto& gt)->const auto& {
                 const auto& ge = gt.m_data.as_Generic();
                 if( ge.binding == 0xFFFF ) {
@@ -2887,6 +2890,24 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
         deref_count += 1;
     )
     
+    // Handle `self: Box<Self>` methods by detecting m_lang_Box and searchig for box receiver methods
+    TU_IFLET(::HIR::TypeRef::Data, top_ty_r.m_data, Path, e,
+        TU_IFLET(::HIR::Path::Data, e.path.m_data, Generic, pe,
+            if( pe.m_path == m_lang_Box )
+            {
+                const auto& ty = this->m_ivars.get_type( pe.m_params.m_types.at(0) );
+                if( ! ty.m_data.is_Infer() )
+                {
+                    // Search for methods on the inner type with Receiver::Box
+                    if( this->find_method(sp, traits, ivars, ty, method_name, AllowedReceivers::Box, fcn_path) ) {
+                        DEBUG("FOUND Box, fcn_path = " << fcn_path);
+                        return 1;
+                    }
+                }
+            }
+        )
+    )
+    
     // TODO: This appears to dereference a &mut to call a `self: Self` method, where it should use the trait impl on &mut Self.
     // - Shouldn't deref to get a by-value receiver.// unless it's via a &move.
     
@@ -2971,7 +2992,7 @@ bool TraitResolution::find_method(
                 DEBUG("Bound `" << e.type << " : " << e.trait.m_path << "` - Matches " << ty);
                 ::HIR::GenericPath final_trait_path;
                 assert(e.trait.m_trait_ptr);
-                if( !this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, ty, method_name, ar != AllowedReceivers::AnyBorrow,  final_trait_path) )
+                if( !this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, ty, method_name, ar,  final_trait_path) )
                     continue ;
                 DEBUG("- Found trait " << final_trait_path);
                 // TODO: Re-monomorphise final trait using `ty`?
@@ -3007,6 +3028,9 @@ bool TraitResolution::find_method(
                     // Only accept by-value methods if not dereferencing to them
                     if( ar == AllowedReceivers::AnyBorrow ) 
                         break;
+                case ::HIR::Function::Receiver::Box:
+                    if( ar != AllowedReceivers::Box ) 
+                        break;
                 default:
                     fcn_path = ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown({
                         box$( ty.clone() ),
@@ -3035,7 +3059,7 @@ bool TraitResolution::find_method(
         {
             ASSERT_BUG(sp, bound.m_trait_ptr, "Pointer to trait " << bound.m_path << " not set in " << e.trait.m_path);
             ::HIR::GenericPath final_trait_path;
-            if( !this->trait_contains_method(sp, bound.m_path, *bound.m_trait_ptr, ::HIR::TypeRef("Self", 0xFFFF), method_name, ar != AllowedReceivers::AnyBorrow,  final_trait_path) )
+            if( !this->trait_contains_method(sp, bound.m_path, *bound.m_trait_ptr, ::HIR::TypeRef("Self", 0xFFFF), method_name, ar,  final_trait_path) )
                 continue ;
             DEBUG("- Found trait " << final_trait_path);
             
@@ -3087,8 +3111,12 @@ bool TraitResolution::find_method(
                 if( ar == AllowedReceivers::AnyBorrow )
                     break;
                 if( 0 )
+            case ::HIR::Function::Receiver::Box:
+                if( ar != AllowedReceivers::Box )
+                    break;
+                if(0)
             default:
-                if( ar == AllowedReceivers::Value )
+                if( ar == AllowedReceivers::Value || ar == AllowedReceivers::Box )
                     break;
                 DEBUG("Matching `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "`"/* << " - " << top_ty*/);
                 fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsInherent({
@@ -3131,11 +3159,12 @@ bool TraitResolution::find_method(
                 if( ar == AllowedReceivers::AnyBorrow )
                     break;
                 if(0)
-            default:
-                if( ar == AllowedReceivers::Value )
+            case ::HIR::Function::Receiver::Box:
+                if( ar != AllowedReceivers::Box )
                     break;
-                // NOTE: Only allow picking a `self: Box<Self>` method if we've been through a deref.
-                if( v.m_receiver == ::HIR::Function::Receiver::Box && ar != AllowedReceivers::AnyBorrow )
+                if(0)
+            default:
+                if( ar == AllowedReceivers::Value || ar == AllowedReceivers::Box || (v.m_receiver == ::HIR::Function::Receiver::Box && ar != AllowedReceivers::AnyBorrow) )
                     break;
                 DEBUG("Search for impl of " << *trait_ref.first);
                 

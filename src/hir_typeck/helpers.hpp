@@ -138,6 +138,7 @@ class TraitResolution
     
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
     
+    ::HIR::SimplePath   m_lang_Box;
     mutable ::std::vector< ::HIR::TypeRef>  m_eat_active_stack;
 public:
     TraitResolution(const HMTypeInferrence& ivars, const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params):
@@ -147,6 +148,7 @@ public:
         m_item_params( item_params )
     {
         prep_indexes();
+        m_lang_Box = crate.get_lang_item_path_opt("owned_box");
     }
     
     const ::HIR::GenericParams& impl_params() const {
@@ -233,11 +235,12 @@ public:
         All,
         AnyBorrow,
         Value,
+        Box,
     };
     bool find_method(const Span& sp, const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& ty, const ::std::string& method_name, AllowedReceivers ar,  /* Out -> */::HIR::Path& fcn_path) const;
     
     /// Locates a named method in a trait, and returns the path of the trait that contains it (with fixed parameters)
-    bool trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const ::std::string& name, bool allow_move,  ::HIR::GenericPath& out_path) const;
+    bool trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const ::std::string& name, AllowedReceivers ar,  ::HIR::GenericPath& out_path) const;
     bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
 
     ::HIR::Compare type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const;
