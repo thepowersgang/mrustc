@@ -56,7 +56,9 @@ Position TTStream::getPosition() const
 }
 Ident::Hygiene TTStream::realGetHygiene() const
 {
-    assert( m_hygiene_ptr );
+    // Empty.
+    if(!m_hygiene_ptr)
+        return Ident::Hygiene();
     return *m_hygiene_ptr;
 }
 
