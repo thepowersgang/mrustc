@@ -193,7 +193,7 @@ TEST_ARGS_run-pass/cfgs-on-items := --cfg fooA --cfg fooB
 output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir output/libtest.hir
 	@mkdir -p $(dir $@)
 	@echo "--- TEST $(patsubst output/rust/%.o,%,$@)"
-	@$(BIN) $< -o $@ --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1
+	@$(BIN) $< -o $@ --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1 || tail -n 1 $@.txt
 	@touch $@
 
 output/rust/run-pass/allocator-default.o: output/libstd.hir output/liballoc_jemalloc.hir
