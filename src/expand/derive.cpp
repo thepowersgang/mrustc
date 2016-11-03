@@ -1775,7 +1775,7 @@ public:
                     auto name_a = Ident( FMT("a" << fld.m_name) );
                     pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), Ident(name_a), ::AST::PatternBinding::Type::REF)) );
                     
-                    nodes.push_back( NEWNODE(CallPath, this->get_trait_path_Encoder() + "emit_struct_variant_field",
+                    nodes.push_back( NEWNODE(CallPath, this->get_trait_path_Encoder() + "emit_enum_struct_variant_field",
                         vec$(
                             NEWNODE(NamedValue, AST::Path("s")),
                             NEWNODE(String, fld.m_name),
@@ -1985,7 +1985,7 @@ public:
                 {
                     auto name_a = FMT("a" << fld.m_name);
                     
-                    vals.push_back(::std::make_pair(fld.m_name, NEWNODE(UniOp, ::AST::ExprNode_UniOp::QMARK, NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_struct_variant_field",
+                    vals.push_back(::std::make_pair(fld.m_name, NEWNODE(UniOp, ::AST::ExprNode_UniOp::QMARK, NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_enum_struct_variant_field",
                         vec$(
                             NEWNODE(NamedValue, AST::Path("d")),
                             NEWNODE(String, fld.m_name),
@@ -2006,12 +2006,12 @@ public:
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),
                 nullptr,
-                mv$(code)
+                this->get_val_ok(core_name, mv$(code))
                 ));
             var_name_strs.push_back( NEWNODE(String, v.m_name) );
         }
         
-        auto node_match = NEWNODE(Match, NEWNODE(NamedValue, AST::Path("self")), mv$(arms));
+        auto node_match = NEWNODE(Match, NEWNODE(NamedValue, AST::Path("idx")), mv$(arms));
         auto node_var_closure = NEWNODE(Closure,
             vec$(
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "d"), ::TypeRef(sp) ),
