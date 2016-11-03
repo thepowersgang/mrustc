@@ -203,7 +203,8 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
         case TOK_INTERPOLATED_BLOCK:
             return tok.take_frag_node();
         case TOK_SEMICOLON:
-            return NEWNODE(AST::ExprNode_Tuple, ::std::vector<AST::ExprNodeP>());
+            // Return a NULL expression, nothing here.
+            return nullptr;
         
         // let binding
         case TOK_RWORD_LET:
@@ -239,6 +240,12 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
                 lex.putback( Token(Token::TagTakeIP(), InterpolatedFragment(InterpolatedFragment::EXPR, ret.release())) );
                 return Parse_ExprBlockLine_Stmt(lex, *add_silence);
             }
+            
+            if( LOOK_AHEAD(lex) == TOK_SEMICOLON ) {
+                GET_TOK(tok, lex);
+                *add_silence = true;
+            }
+            
             return ret;
         
         // Flow control
