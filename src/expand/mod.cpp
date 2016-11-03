@@ -208,7 +208,14 @@ void Expand_Type(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
         ),
     (Macro,
         auto tt = Expand_Macro(crate, modstack, mod,  e.inv);
-        TODO(e.inv.span(), "Expand macro invocation in type");
+        if(!tt)
+            ERROR(e.inv.span(), E0000, "Macro invocation didn't yeild any data");
+        auto new_ty = Parse_Type(*tt);
+        if( tt->lookahead(0) != TOK_EOF )
+            ERROR(e.inv.span(), E0000, "Extra tokens after parsed type");
+        ty = mv$(new_ty);
+        
+        Expand_Type(crate, modstack, mod,  ty);
         ),
     (Primitive,
         ),
@@ -357,6 +364,8 @@ struct CExpandExpr:
     
     void visit(::AST::ExprNode_Block& node) override {
         unsigned int mod_item_count = 0;
+        // TODO: macro_rules! invocations within the expression list influence this.
+        // > Solution: Defer creation of the local module until during expand.
         if( node.m_local_mod ) {
             Expand_Mod(crate, modstack, node.m_local_mod->path(), *node.m_local_mod);
             mod_item_count = node.m_local_mod->items().size();
