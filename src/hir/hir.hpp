@@ -181,6 +181,8 @@ public:
     ::std::vector< ::std::pair< ::std::string, Variant > >    m_variants;
     
     TraitMarkings   m_markings;
+    
+    const Variant* get_variant(const ::std::string& ) const;
 };
 class Struct
 {

@@ -8,6 +8,7 @@
  * HIR type helper code
  */
 #include "hir.hpp"
+#include <algorithm>
 
 namespace HIR {
     ::std::ostream& operator<<(::std::ostream& os, const ::HIR::Literal& v)
@@ -43,6 +44,14 @@ namespace HIR {
         )
         return os;
     }
+}
+
+const ::HIR::Enum::Variant* ::HIR::Enum::get_variant(const ::std::string& name) const
+{
+    auto it = ::std::find_if(m_variants.begin(), m_variants.end(), [&](const auto& x){ return x.first == name; });
+    if( it == m_variants.end() )
+        return nullptr;
+    return &it->second;
 }
 
 namespace {

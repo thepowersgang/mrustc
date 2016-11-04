@@ -674,6 +674,7 @@ struct ExprNode_StructLiteral:
     ::HIR::ExprNodeP    m_base_value;
     t_values    m_values;
     
+    /// Monomorphised types of each field.
     ::std::vector< ::HIR::TypeRef>  m_value_types;
     
     ExprNode_StructLiteral(Span sp, ::HIR::GenericPath path, bool is_struct, ::HIR::ExprNodeP base_value, t_values values):

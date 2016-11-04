@@ -313,8 +313,40 @@ namespace {
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
             if( node.m_base_value ) {
-                // TODO: If only Copy fields will be used, set usage to Borrow
-                auto _ = push_usage( ::HIR::ValueUsage::Move );
+                bool is_moved = false;
+                const auto& tpb = node.m_base_value->m_res_type.m_data.as_Path().binding;
+                const ::HIR::t_struct_fields*   fields_ptr;
+                if( tpb.is_Enum() ) {
+                    const auto* var = tpb.as_Enum()->get_variant( node.m_path.m_path.m_components.back() );
+                    ASSERT_BUG(node.span(), var, "");
+                    fields_ptr = &var->as_Struct();
+                }
+                else {
+                    fields_ptr = &tpb.as_Struct()->m_data.as_Named();
+                }
+                const auto& fields = *fields_ptr;
+                ::std::vector<bool> provided_mask( fields.size() );
+                for( const auto& fld : node.m_values ) {
+                    unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == fld.first; }) - fields.begin();
+                    provided_mask[idx] = true;
+                }
+                
+                const auto monomorph_cb = monomorphise_type_get_cb(node.span(), nullptr, &node.m_path.m_params, nullptr);
+                for( unsigned int i = 0; i < fields.size(); i ++ ) {
+                    if( ! provided_mask[i] ) {
+                        const auto& ty_o = fields[i].second.ent;
+                        ::HIR::TypeRef  tmp;
+                        const auto& ty_m = (monomorphise_type_needed(ty_o) ? tmp = monomorphise_type_with(node.span(), ty_o, monomorph_cb) : ty_o);
+                        bool is_copy = m_resolve.type_is_copy(node.span(), ty_m);
+                        if( !is_copy ) {
+                            DEBUG("- Field " << i << " " << fields[i].first << ": " << ty_m << " moved");
+                            is_moved = true;
+                        }
+                    }
+                }
+                
+                // If only Copy fields will be used, set usage to Borrow
+                auto _ = push_usage( is_moved ? ::HIR::ValueUsage::Move : ::HIR::ValueUsage::Borrow );
                 this->visit_node_ptr(node.m_base_value);
             }
             

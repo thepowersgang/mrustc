@@ -443,7 +443,7 @@ namespace {
                 fields_ptr = &e->m_data.as_Named();
                 )
             )
-            assert(fields_ptr);
+            ASSERT_BUG(node.span(), fields_ptr, "Didn't get field for path in _StructLiteral - " << ty);
             const ::HIR::t_struct_fields& fields = *fields_ptr;
             
             #if 1
