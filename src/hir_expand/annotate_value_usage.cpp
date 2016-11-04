@@ -254,8 +254,10 @@ namespace {
         
         void visit(::HIR::ExprNode_Field& node) override
         {
+            bool is_copy = m_resolve.type_is_copy(node.span(), node.m_res_type);
+            DEBUG("ty = " << node.m_res_type << ", is_copy=" << is_copy);
             // If taking this field by value, but the type is Copy - pretend it's a borrow.
-            if( this->get_usage() == ::HIR::ValueUsage::Move && m_resolve.type_is_copy(node.span(), node.m_res_type) ) {
+            if( this->get_usage() == ::HIR::ValueUsage::Move && is_copy ) {
                 auto _ = push_usage( ::HIR::ValueUsage::Borrow );
                 this->visit_node_ptr(node.m_value);
             }
@@ -310,11 +312,13 @@ namespace {
 
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
-            auto _ = push_usage( ::HIR::ValueUsage::Move );
-            
             if( node.m_base_value ) {
+                // TODO: If only Copy fields will be used, set usage to Borrow
+                auto _ = push_usage( ::HIR::ValueUsage::Move );
                 this->visit_node_ptr(node.m_base_value);
             }
+            
+            auto _ = push_usage( ::HIR::ValueUsage::Move );
             for( auto& fld_val : node.m_values ) {
                 this->visit_node_ptr(fld_val.second);
             }

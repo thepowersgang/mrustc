@@ -44,3 +44,8 @@ Blocks that don't yield a value can mark as diverged if ?any statement diverges
 =============
 - This includes any function call (or method call)
 - TODO: Is this just the last statement? or all statements
+
+The "base" value of a struct literal isn't always moved
+======================================================
+- Only the values used are moved, which can lead to the source not being moved (if all used values are Copy)
+
