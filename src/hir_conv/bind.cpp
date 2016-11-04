@@ -410,6 +410,11 @@ namespace {
                     upper_visitor(uv)
                 {}
                 
+                void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override
+                {
+                    upper_visitor.visit_type(node_ptr->m_res_type);
+                    ::HIR::ExprVisitorDef::visit_node_ptr(node_ptr);
+                }
                 void visit(::HIR::ExprNode_Let& node) override
                 {
                     upper_visitor.visit_type(node.m_type);
@@ -443,6 +448,12 @@ namespace {
                 void visit(::HIR::ExprNode_CallMethod& node) override
                 {
                     upper_visitor.visit_path_params(node.m_params);
+                    ::HIR::ExprVisitorDef::visit(node);
+                }
+                
+                void visit(::HIR::ExprNode_StructLiteral& node) override
+                {
+                    upper_visitor.visit_generic_path(node.m_path, ::HIR::Visitor::PathContext::TYPE);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
                 

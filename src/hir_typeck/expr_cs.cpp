@@ -1112,7 +1112,7 @@ namespace {
                 generics = &e->m_params;
                 )
             )
-            assert(fields_ptr);
+            ASSERT_BUG(node.span(), fields_ptr, "");
             const ::HIR::t_struct_fields& fields = *fields_ptr;
             
             const auto& ty_params = node.m_path.m_params.m_types;
