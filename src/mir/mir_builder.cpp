@@ -505,6 +505,7 @@ void MirBuilder::end_split_arm_early(const Span& sp)
 void MirBuilder::complete_scope(ScopeDef& sd)
 {
     sd.complete = true;
+    
     TU_MATCHA( (sd.data), (e),
     (Temporaries,
         DEBUG("Temporaries " << e.temporaries);
@@ -516,8 +517,16 @@ void MirBuilder::complete_scope(ScopeDef& sd)
         DEBUG("Loop");
         ),
     (Split,
+        )
+    )
+    
+    // No macro for better debug output.
+    if( sd.data.is_Split() )
+    {
+        auto& e = sd.data.as_Split();
+        
         assert( e.arms.size() > 1 );
-        DEBUG("Split - " << (e.arms.size() - 1) << " arms");
+        TRACE_FUNCTION_F("Split - " << (e.arms.size() - 1) << " arms");
         e.arms.pop_back();
         
         // Merge all arms and apply upwards
@@ -643,8 +652,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                 //}
             }
         }
-        )
-    )
+    }
 }
 
 void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::function<void(const ::HIR::TypeRef&)> cb)
