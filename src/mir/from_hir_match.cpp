@@ -3274,8 +3274,10 @@ void DecisionTreeGen::generate_branches_Enum(
         
         TU_MATCHA( (var.second), (e),
         (Unit,
+            DEBUG("- Unit");
             ),
         (Value,
+            DEBUG("- Value");
             ),
         (Tuple,
             // Make a fake tuple
@@ -3285,6 +3287,7 @@ void DecisionTreeGen::generate_branches_Enum(
                 ents.push_back( monomorphise_type(sp,  enum_ref.m_params, enum_path.m_params,  fld.ent) );
             }
             fake_ty = ::HIR::TypeRef( mv$(ents) );
+            DEBUG("- Tuple - " << fake_ty);
             ),
         (Struct,
             ::std::vector< ::HIR::TypeRef>  ents;
@@ -3293,6 +3296,7 @@ void DecisionTreeGen::generate_branches_Enum(
                 ents.push_back( monomorphise_type(sp,  enum_ref.m_params, enum_path.m_params,  fld.second.ent) );
             }
             fake_ty = ::HIR::TypeRef( mv$(ents) );
+            DEBUG("- Struct - " << fake_ty);
             )
         )
         
@@ -3400,6 +3404,7 @@ void DecisionTreeGen::generate_branches_Slice(
 namespace {
     bool path_starts_with(const PatternRule::field_path_t& test, const PatternRule::field_path_t& prefix)
     {
+        //DEBUG("test="<<test<<", prefix="<<prefix);
         if( test.size() < prefix.size() )
         {
             return false;
@@ -3436,7 +3441,7 @@ void DecisionTreeGen::generate_tree_code__enum(
                 }
                 else
                 {
-                    this->generate_tree_code__enum(sp, node, fake_ty, val, path_prefix, and_then);
+                    this->generate_tree_code__enum(sp, next_node, fake_ty, val, path_prefix, and_then);
                 }
             });
     }
