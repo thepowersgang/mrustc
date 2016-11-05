@@ -306,6 +306,7 @@ namespace {
             {
                 bool res_valid;
                 ::MIR::RValue   res;
+                bool diverged = false;
                 
                 auto scope = m_builder.new_scope_var(node.span());
                 
@@ -325,6 +326,9 @@ namespace {
                     }
                     else {
                         auto _ = mv$(stmt_scope);
+                        
+                        m_builder.set_cur_block( m_builder.new_bb_unlinked() );
+                        diverged = true;
                     }
                 }
                 
@@ -351,7 +355,13 @@ namespace {
                 
                 // Drop all bindings introduced during this block.
                 if( m_builder.block_active() ) {
-                    m_builder.terminate_scope( node.span(), mv$(scope) );
+                    if( diverged ) {
+                        auto _ = mv$(scope);
+                        m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+                    }
+                    else {
+                        m_builder.terminate_scope( node.span(), mv$(scope) );
+                    }
                 }
                 else {
                     auto _ = mv$(scope);
@@ -389,7 +399,12 @@ namespace {
             {
                 this->visit_node_ptr(node.m_value);
                 
-                this->destructure_from(node.span(), node.m_pattern, m_builder.get_result_in_lvalue(node.m_value->span(), node.m_type));
+                if( m_builder.block_active() ) {
+                    this->destructure_from(node.span(), node.m_pattern, m_builder.get_result_in_lvalue(node.m_value->span(), node.m_type));
+                }
+                else {
+                    return ;
+                }
             }
             m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
         }
@@ -481,6 +496,9 @@ namespace {
                 // TODO: Ensure that the type is a zero-variant enum or !
                 m_builder.end_split_arm_early(node.span());
                 m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+                // Push an "diverge" result
+                //m_builder.set_cur_block( m_builder.new_bb_unlinked() );
+                //m_builder.set_result(node.span(), ::MIR::LValue::make_Invalid({}) );
             }
             else if( node.m_arms.size() == 1 && node.m_arms[0].m_patterns.size() == 1 && ! node.m_arms[0].m_cond ) {
                 // - Shortcut: Single-arm match

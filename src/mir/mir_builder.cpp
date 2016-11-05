@@ -38,12 +38,12 @@ MirBuilder::~MirBuilder()
 {
     // TODO: Function span
     const auto& sp = m_root_span;
-    if( has_result() )
-    {
-        push_stmt_assign( sp, ::MIR::LValue::make_Return({}), get_result(Span()) );
-    }
     if( block_active() )
     {
+        if( has_result() )
+        {
+            push_stmt_assign( sp, ::MIR::LValue::make_Return({}), get_result(Span()) );
+        }
         terminate_scope( sp, ScopeHandle { *this, 1 } );
         terminate_scope( sp, mv$(m_fcn_scope) );
         end_block( ::MIR::Terminator::make_Return({}) );
