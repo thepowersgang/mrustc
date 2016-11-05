@@ -66,11 +66,13 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
 struct PatternRulesetBuilder
 {
     const StaticTraitResolve&   m_resolve;
+    bool m_is_impossible;
     ::std::vector<PatternRule>  m_rules;
     PatternRule::field_path_t   m_field_path;
     
     PatternRulesetBuilder(const StaticTraitResolve& resolve):
-        m_resolve(resolve)
+        m_resolve(resolve),
+        m_is_impossible(false)
     {}
     
     void append_from_lit(const Span& sp, const ::HIR::Literal& lit, const ::HIR::TypeRef& ty);
@@ -115,16 +117,21 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         // - Define variables from the first pattern
         conv.define_vars_from(node.span(), arm.m_patterns.front());
         
-        unsigned int pat_idx = 0;
-        for( const auto& pat : arm.m_patterns )
+        for( unsigned int pat_idx = 0; pat_idx < arm.m_patterns.size(); pat_idx ++ )
         {
-            
+            const auto& pat = arm.m_patterns[pat_idx];
             // - Convert HIR pattern into ruleset
             auto pat_builder = PatternRulesetBuilder { builder.resolve() };
             pat_builder.append_from(node.span(), pat, node.m_value->m_res_type);
-            arm_rules.push_back( PatternRuleset { arm_idx, pat_idx, mv$(pat_builder.m_rules) } );
-            
-            DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << ") " << pat << " ==> [" << arm_rules.back().m_rules << "]");
+            if( pat_builder.m_is_impossible )
+            {
+                DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << ") " << pat << " ==> IMPOSSIBLE [" << pat_builder.m_rules << "]");
+            }
+            else
+            {
+                DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << ") " << pat << " ==> [" << pat_builder.m_rules << "]");
+                arm_rules.push_back( PatternRuleset { arm_idx, pat_idx, mv$(pat_builder.m_rules) } );
+            }
             
             // - Emit code to destructure the matched pattern
             ac.destructures.push_back( builder.new_bb_unlinked() );
@@ -132,8 +139,6 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             conv.destructure_from( arm.m_code->span(), pat, match_val.clone(), true );
             builder.pause_cur_block();
             // NOTE: Paused block resumed upon successful match
-            
-            pat_idx += 1;
         }
         
         // Condition
@@ -183,7 +188,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             // - Go to the next block
             builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
         }
-
+        
         arm_code.push_back( mv$(ac) );
     }
     
@@ -634,7 +639,11 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
     
     TU_MATCHA( (ty.m_data), (e),
     (Infer,   BUG(sp, "Ivar for in match type"); ),
-    (Diverge, BUG(sp, "Diverge in match type");  ),
+    (Diverge,
+        // Since ! can never exist, mark this arm as impossible.
+        // TODO: Marking as impossible (and not emitting) leads to exhuaustiveness failure.
+        //this->m_is_impossible = true;
+        ),
     (Primitive,
         TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
         ( BUG(sp, "Matching primitive with invalid pattern - " << pat); ),
@@ -884,6 +893,8 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                     
                     sub_builder.append_from( sp, subpat, subty );
                 }
+                if( sub_builder.m_is_impossible )
+                    this->m_is_impossible = true;
                 this->push_rule( PatternRule::make_Variant({ pe.binding_idx, mv$(sub_builder.m_rules) }) );
                 ),
             (EnumStruct,
@@ -917,6 +928,8 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                         sub_builder.append_from( sp, subpat, subty );
                     }
                 }
+                if( sub_builder.m_is_impossible )
+                    this->m_is_impossible = true;
                 this->push_rule( PatternRule::make_Variant({ pe.binding_idx, mv$(sub_builder.m_rules) }) );
                 )
             )
@@ -1077,6 +1090,9 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
         
         for( unsigned int i = 0; i < arm.m_patterns.size(); i ++ )
         {
+            if( arm_code.destructures[i] == 0 )
+                continue ;
+            
             const auto& pat_rule = arm_rules[rule_idx];
             bool is_last_pat = (i+1 == arm.m_patterns.size());
             auto next_pattern_bb = (!is_last_pat ? builder.new_bb_unlinked() : next_arm_bb);
