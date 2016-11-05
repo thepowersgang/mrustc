@@ -1069,10 +1069,130 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
     )
 }
 
+namespace {
+    void get_ty_and_val(
+        const Span& sp,
+        const ::HIR::TypeRef& top_ty, const ::MIR::LValue& top_val,
+        const PatternRule::field_path_t& field_path, unsigned int field_path_ofs,
+        /*Out ->*/ ::HIR::TypeRef& out_ty, ::MIR::LValue& out_val
+        )
+    {
+        ::MIR::LValue   lval = top_val.clone();
+        ::HIR::TypeRef  tmp_ty;
+        const ::HIR::TypeRef* cur_ty = &top_ty;
+        
+        // TODO: Cache the correspondance of path->type (lval can be inferred)
+        ASSERT_BUG(sp, field_path_ofs <= field_path.size(), "Field path offset " << field_path_ofs << " is larger than the path [" << field_path << "]");
+        for(unsigned int i = field_path_ofs; i < field_path.size(); i ++ )
+        {
+            auto idx = field_path[i];
+            
+            TU_MATCHA( (cur_ty->m_data), (e),
+            (Infer,   BUG(sp, "Ivar for in match type"); ),
+            (Diverge, BUG(sp, "Diverge in match type");  ),
+            (Primitive,
+                BUG(sp, "Destructuring a primitive");
+                ),
+            (Tuple,
+                ASSERT_BUG(sp, idx < e.size(), "Tuple index out of range");
+                lval = ::MIR::LValue::make_Field({ box$(lval), idx });
+                cur_ty = &e[idx];
+                ),
+            (Path,
+                TU_MATCHA( (e.binding), (pbe),
+                (Unbound,
+                    BUG(sp, "Encounterd unbound path - " << e.path);
+                    ),
+                (Opaque,
+                    BUG(sp, "Destructuring an opaque type - " << *cur_ty);
+                    ),
+                (Struct,
+                    // TODO: Should this do a call to expand_associated_types?
+                    auto monomorph = [&](const auto& ty) { return monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty); };
+                    TU_MATCHA( (pbe->m_data), (fields),
+                    (Unit,
+                        BUG(sp, "Destructuring an unit-like tuple - " << *cur_ty);
+                        ),
+                    (Tuple,
+                        assert( idx < fields.size() );
+                        const auto& fld = fields[idx];
+                        if( monomorphise_type_needed(fld.ent) ) {
+                            tmp_ty = monomorph(fld.ent);
+                            cur_ty = &tmp_ty;
+                        }
+                        else {
+                            cur_ty = &fld.ent;
+                        }
+                        lval = ::MIR::LValue::make_Field({ box$(lval), idx });
+                        ),
+                    (Named,
+                        assert( idx < fields.size() );
+                        const auto& fld = fields[idx].second;
+                        if( monomorphise_type_needed(fld.ent) ) {
+                            tmp_ty = monomorph(fld.ent);
+                            cur_ty = &tmp_ty;
+                        }
+                        else {
+                            cur_ty = &fld.ent;
+                        }
+                        lval = ::MIR::LValue::make_Field({ box$(lval), idx });
+                        )
+                    )
+                    ),
+                (Enum,
+                    BUG(sp, "Destructuring an enum - " << *cur_ty);
+                    )
+                )
+                ),
+            (Generic,
+                BUG(sp, "Destructuring a generic - " << *cur_ty);
+                ),
+            (TraitObject,
+                BUG(sp, "Destructuring a trait object - " << *cur_ty);
+                ),
+            (ErasedType,
+                BUG(sp, "Destructuring an erased type - " << *cur_ty);
+                ),
+            (Array,
+                assert(idx < e.size_val);
+                cur_ty = &*e.inner;
+                lval = ::MIR::LValue::make_Field({ box$(lval), idx });
+                ),
+            (Slice,
+                cur_ty = &*e.inner;
+                lval = ::MIR::LValue::make_Field({ box$(lval), idx });
+                ),
+            (Borrow,
+                ASSERT_BUG(sp, idx == FIELD_DEREF, "Destructure of borrow doesn't correspond to a deref in the path");
+                if( cur_ty == &tmp_ty ) {
+                    tmp_ty = mv$(*tmp_ty.m_data.as_Borrow().inner);
+                }
+                else {
+                    cur_ty = &*e.inner;
+                }
+                lval = ::MIR::LValue::make_Deref({ box$(lval) });
+                ),
+            (Pointer,
+                ERROR(sp, E0000, "Attempting to match over a pointer");
+                ),
+            (Function,
+                ERROR(sp, E0000, "Attempting to match over a functon pointer");
+                ),
+            (Closure,
+                ERROR(sp, E0000, "Attempting to match over a closure");
+                )
+            )
+        }
+        
+        out_ty = (cur_ty == &tmp_ty ? mv$(tmp_ty) : cur_ty->clone());
+        out_val = mv$(lval);
+    }
+}
+
 // --------------------------------------------------------------------
 // Dumb and Simple
 // --------------------------------------------------------------------
-int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& sp, const PatternRule* rules, unsigned int num_rules, const ::HIR::TypeRef& ty, const ::MIR::LValue& match_val,  ::MIR::BasicBlockId fail_bb);
+int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& sp, const PatternRule* rules, unsigned int num_rules, const ::HIR::TypeRef& ty, const ::MIR::LValue& val, unsigned int field_path_offset,  ::MIR::BasicBlockId fail_bb);
 
 void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arms_code, ::MIR::BasicBlockId first_cmp_block )
 {
@@ -1101,7 +1221,7 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
             // - If the ruleset is empty, this is a _ arm over a value
             if( pat_rule.m_rules.size() > 0 )
             {
-                MIR_LowerHIR_Match_Simple__GeneratePattern(builder, arm.m_code->span(), pat_rule.m_rules.data(), pat_rule.m_rules.size(), node.m_value->m_res_type, match_val, next_pattern_bb);
+                MIR_LowerHIR_Match_Simple__GeneratePattern(builder, arm.m_code->span(), pat_rule.m_rules.data(), pat_rule.m_rules.size(), node.m_value->m_res_type, match_val, 0, next_pattern_bb);
             }
             builder.end_block( ::MIR::Terminator::make_Goto(arm_code.destructures[i]) );
             builder.set_cur_block( arm_code.destructures[i] );
@@ -1134,20 +1254,33 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
     builder.end_block( ::MIR::Terminator::make_Diverge({}) );
 }
 
-int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& sp, const PatternRule* rules, unsigned int num_rules, const ::HIR::TypeRef& ty, const ::MIR::LValue& match_val,  ::MIR::BasicBlockId fail_bb)
+int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& sp, const PatternRule* rules, unsigned int num_rules, const ::HIR::TypeRef& top_ty, const ::MIR::LValue& top_val, unsigned int field_path_ofs,  ::MIR::BasicBlockId fail_bb)
 {
-    TRACE_FUNCTION_F("ty = " << ty);
-    assert( num_rules > 0 );
-    const auto& rule = *rules;
-    TU_MATCHA( (ty.m_data), (te),
-    (Infer,
-        BUG(sp, "Hit _ in type - " << ty);
-        ),
-    (Diverge,
-        BUG(sp, "Matching over !");
-        ),
-    (Primitive,
-        if( !rule.is_Any() ) {
+    TRACE_FUNCTION_F("top_ty = " << top_ty << ", rules = [" << FMT_CB(os, for(const auto* r = rules; r != rules+num_rules; r++) os << *r << ","; ));
+    for(unsigned int rule_idx = 0; rule_idx < num_rules; rule_idx ++)
+    {
+        const auto& rule = rules[rule_idx];
+        DEBUG("rule = " << rule);
+        
+        // Don't care.
+        if( rule.is_Any() )
+            continue ;
+        
+        ::MIR::LValue   val;
+        ::HIR::TypeRef  ity;
+        
+        get_ty_and_val(sp, top_ty, top_val,  rule.field_path, field_path_ofs,  ity, val);
+        DEBUG("ty = " << ity << ", val = " << val);
+        
+        const auto& ty = ity;
+        TU_MATCHA( (ty.m_data), (te),
+        (Infer,
+            BUG(sp, "Hit _ in type - " << ty);
+            ),
+        (Diverge,
+            BUG(sp, "Matching over !");
+            ),
+        (Primitive,
             switch(te)
             {
             case ::HIR::CoreType::Bool: {
@@ -1157,10 +1290,10 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 auto succ_bb = builder.new_bb_unlinked();
                 
                 if( test_val ) {
-                    builder.end_block( ::MIR::Terminator::make_If({ match_val.clone(), succ_bb, fail_bb }) );
+                    builder.end_block( ::MIR::Terminator::make_If({ val.clone(), succ_bb, fail_bb }) );
                 }
                 else {
-                    builder.end_block( ::MIR::Terminator::make_If({ match_val.clone(), fail_bb, succ_bb }) );
+                    builder.end_block( ::MIR::Terminator::make_If({ val.clone(), fail_bb, succ_bb }) );
                 }
                 builder.set_cur_block(succ_bb);
                 } break;
@@ -1177,7 +1310,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     auto succ_bb = builder.new_bb_unlinked();
                     
                     auto test_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant(re.as_Uint()));
-                    auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
+                    auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
                     builder.set_cur_block(succ_bb);
                     ),
@@ -1199,7 +1332,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     auto succ_bb = builder.new_bb_unlinked();
                     
                     auto test_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant(re.as_Int()));
-                    auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
+                    auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
                     builder.set_cur_block(succ_bb);
                     ),
@@ -1217,7 +1350,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     auto succ_bb = builder.new_bb_unlinked();
                     
                     auto test_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant(re.as_Uint()));
-                    auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
+                    auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
                     builder.set_cur_block(succ_bb);
                     ),
@@ -1225,16 +1358,16 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     auto succ_bb = builder.new_bb_unlinked();
                     auto test_bb_2 = builder.new_bb_unlinked();
                     
-                    // IF `match_val` < `first` : fail_bb
+                    // IF `val` < `first` : fail_bb
                     auto test_lt_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant(re.first.as_Uint()));
-                    auto cmp_lt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::LT, mv$(test_lt_lval) }));
+                    auto cmp_lt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::LT, mv$(test_lt_lval) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lt_lval), fail_bb, test_bb_2 }) );
                     
                     builder.set_cur_block(test_bb_2);
                     
-                    // IF `match_val` > `last` : fail_bb
+                    // IF `val` > `last` : fail_bb
                     auto test_gt_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant(re.last.as_Uint()));
-                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::GT, mv$(test_gt_lval) }));
+                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::GT, mv$(test_gt_lval) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_gt_lval), fail_bb, succ_bb }) );
                     
                     builder.set_cur_block(succ_bb);
@@ -1245,85 +1378,43 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
             case ::HIR::CoreType::F64:
                 TODO(sp, "Simple match over float - " << ty);
                 break;
-            case ::HIR::CoreType::Str:
-                BUG(sp, "Match on str shouldn't hit this code");
-                break;
+            case ::HIR::CoreType::Str: {
+                ASSERT_BUG(sp, rule.is_Value() && rule.as_Value().is_StaticString(), "");
+                const auto& v = rule.as_Value();
+                
+                auto succ_bb = builder.new_bb_unlinked();
+                
+                auto test_lval = builder.lvalue_or_temp(sp, ty.clone(), ::MIR::RValue(::MIR::Constant( v.as_StaticString() )));
+                auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
+                builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
+                builder.set_cur_block(succ_bb);
+                } break;
             }
-        }
-        return 1;
-        ),
-    (Path,
-        TU_MATCHA( (te.binding), (pbe),
-        (Unbound,
-            BUG(sp, "Encounterd unbound path - " << te.path);
             ),
-        (Opaque,
-            if( !rule.is_Any() ) {
+        (Path,
+            TU_MATCHA( (te.binding), (pbe),
+            (Unbound,
+                BUG(sp, "Encounterd unbound path - " << te.path);
+                ),
+            (Opaque,
                 BUG(sp, "Attempting to match over opaque type - " << ty);
-            }
-            return 1;
-            ),
-        (Struct,
-            auto monomorph = [&](const auto& ty) { return monomorphise_type(sp, pbe->m_params, te.path.m_data.as_Generic().m_params, ty); };
-            const auto& str_data = pbe->m_data;
-            TU_MATCHA( (str_data), (sd),
-            (Unit,
-                if( !rule.is_Any() ) {
+                ),
+            (Struct,
+                const auto& str_data = pbe->m_data;
+                TU_MATCHA( (str_data), (sd),
+                (Unit,
                     BUG(sp, "Attempting to match over unit type - " << ty);
-                }
-                return 1;
-                ),
-            (Tuple,
-                if( !rule.is_Any() ) {
-                    unsigned int total = 0;
-                    unsigned int i = 0;
-                    for( const auto& fld : sd ) {
-                        ::HIR::TypeRef  ent_ty_tmp;
-                        const auto& ent_ty = (monomorphise_type_needed(fld.ent) ? ent_ty_tmp = monomorph(fld.ent) : fld.ent);
-                        unsigned int cnt = MIR_LowerHIR_Match_Simple__GeneratePattern(
-                            builder, sp,
-                            rules, num_rules, ent_ty,
-                            ::MIR::LValue::make_Field({ box$(match_val.clone()), i }),
-                            fail_bb
-                            );
-                        total += cnt;
-                        rules += cnt;
-                        num_rules -= cnt;
-                        i += 1;
-                    }
-                    return total;
-                }
-                return 1;
-                ),
-            (Named,
-                if( !rule.is_Any() ) {
-                    unsigned int total = 0;
-                    unsigned int i = 0;
-                    for( const auto& fld : sd ) {
-                        ::HIR::TypeRef  ent_ty_tmp;
-                        const auto& ent_ty = (monomorphise_type_needed(fld.second.ent) ? ent_ty_tmp = monomorph(fld.second.ent) : fld.second.ent);
-                        unsigned int cnt = MIR_LowerHIR_Match_Simple__GeneratePattern(
-                            builder, sp,
-                            rules, num_rules, ent_ty,
-                            ::MIR::LValue::make_Field({ box$(match_val.clone()), i }),
-                            fail_bb
-                            );
-                        total += cnt;
-                        rules += cnt;
-                        num_rules -= cnt;
-                        i += 1;
-                    }
-                    return total;
-                }
-                else {
-                    return 1;
-                }
+                    ),
+                (Tuple,
+                    TODO(sp, "Matching on tuple-like struct?");
+                    ),
+                (Named,
+                    TODO(sp, "Matching on struct?");
+                    )
                 )
-            )
-            ),
-        (Enum,
-            auto monomorph = [&](const auto& ty) { return monomorphise_type(sp, pbe->m_params, te.path.m_data.as_Generic().m_params, ty); };
-            if( !rule.is_Any() ) {
+                ),
+            (Enum,
+                auto monomorph = [&](const auto& ty) { return monomorphise_type(sp, pbe->m_params, te.path.m_data.as_Generic().m_params, ty); };
                 ASSERT_BUG(sp, rule.is_Variant(), "Rule for enum isn't Any or Variant");
                 const auto& re = rule.as_Variant();
                 unsigned int var_idx = re.idx;
@@ -1334,94 +1425,71 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 // Generate a switch with only one option different.
                 ::std::vector< ::MIR::BasicBlockId> arms(var_count, fail_bb);
                 arms[var_idx] = next_bb;
-                builder.end_block( ::MIR::Terminator::make_Switch({ match_val.clone(), mv$(arms) }) );
+                builder.end_block( ::MIR::Terminator::make_Switch({ val.clone(), mv$(arms) }) );
                 
                 builder.set_cur_block(next_bb);
                 
-                const auto& var_data = pbe->m_variants.at(re.idx).second;
-                TU_MATCHA( (var_data), (ve),
-                (Unit,
-                    // Nothing to recurse
-                    ),
-                (Value,
-                    // Nothing to recurse
-                    ),
-                (Tuple,
-                    auto lval_var = ::MIR::LValue::make_Downcast({ box$(match_val.clone()), var_idx });
-                    const auto* subrules = re.sub_rules.data();
-                    unsigned int subrule_count = re.sub_rules.size();
-                    
-                    for(unsigned int i = 0; i < ve.size(); i ++)
-                    {
-                        if( subrule_count == 0 )
-                            break ;
+                if( re.sub_rules.size() > 0 )
+                {
+                    const auto& var_data = pbe->m_variants.at(re.idx).second;
+                    TU_MATCHA( (var_data), (ve),
+                    (Unit,
+                        // Nothing to recurse
+                        ),
+                    (Value,
+                        // Nothing to recurse
+                        ),
+                    (Tuple,
+                        // Create a dummy tuple to contain the inner types.
+                        ::std::vector< ::HIR::TypeRef>  fake_ty_ents;
+                        fake_ty_ents.reserve( ve.size() );
+                        for(unsigned int i = 0; i < ve.size(); i ++)
+                        {
+                            fake_ty_ents.push_back( monomorph(ve[i].ent) );
+                        }
+                        ::HIR::TypeRef fake_tup = ::HIR::TypeRef( mv$(fake_ty_ents) );
                         
-                        ::HIR::TypeRef  ent_ty_tmp;
-                        const auto& ent_ty = (monomorphise_type_needed(ve[i].ent) ? ent_ty_tmp = monomorph(ve[i].ent) : ve[i].ent);
-                        unsigned int cnt = MIR_LowerHIR_Match_Simple__GeneratePattern(
-                            builder, sp,
-                            subrules, subrule_count, ent_ty,
-                            ::MIR::LValue::make_Field({ box$(lval_var.clone()), i }),
+                        // Recurse with the new ruleset
+                        MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp,
+                            re.sub_rules.data(), re.sub_rules.size(),
+                            fake_tup, ::MIR::LValue::make_Downcast({ box$(val.clone()), var_idx }), rule.field_path.size(),
                             fail_bb
                             );
-                        subrules += cnt;
-                        subrule_count -= cnt;
-                    }
-                    ),
-                (Struct,
-                    auto lval_var = ::MIR::LValue::make_Downcast({ box$(match_val.clone()), var_idx });
-                    const auto* subrules = re.sub_rules.data();
-                    unsigned int subrule_count = re.sub_rules.size();
-                    
-                    for(unsigned int i = 0; i < ve.size(); i ++)
-                    {
-                        if( subrule_count == 0 )
-                            break ;
+                        ),
+                    (Struct,
+                        // Create a dummy tuple to contain the inner types.
+                        ::std::vector< ::HIR::TypeRef>  fake_ty_ents;
+                        fake_ty_ents.reserve( ve.size() );
+                        for(unsigned int i = 0; i < ve.size(); i ++)
+                        {
+                            fake_ty_ents.push_back( monomorph(ve[i].second.ent) );
+                        }
+                        ::HIR::TypeRef fake_tup = ::HIR::TypeRef( mv$(fake_ty_ents) );
                         
-                        const auto& tpl_ty = ve[i].second.ent;
-                        ::HIR::TypeRef  ent_ty_tmp;
-                        const auto& ent_ty = (monomorphise_type_needed(tpl_ty) ? ent_ty_tmp = monomorph(tpl_ty) : tpl_ty);
-                        unsigned int cnt = MIR_LowerHIR_Match_Simple__GeneratePattern(
-                            builder, sp,
-                            subrules, subrule_count, ent_ty,
-                            ::MIR::LValue::make_Field({ box$(lval_var.clone()), i }),
+                        // Recurse with the new ruleset
+                        MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp,
+                            re.sub_rules.data(), re.sub_rules.size(),
+                            fake_tup, ::MIR::LValue::make_Downcast({ box$(val.clone()), var_idx }), rule.field_path.size(),
                             fail_bb
                             );
-                        subrules += cnt;
-                        subrule_count -= cnt;
-                    }
+                        )
                     )
-                )
-                // NOTE: All enum variant patterns take one slot
-                return 1;
-            }
-            else {
-                return 1;
-            }
+                }
+                )   // TypePathBinding::Enum
             )
-        )
-        ),
-    (Generic,
-        // Nothing needed
-        if( !rule.is_Any() ) {
+            ),  // Type::Data::Path
+        (Generic,
             BUG(sp, "Attempting to match a generic");
-        }
-        return 1;
-        ),
-    (TraitObject,
-        if( !rule.is_Any() ) {
+            ),
+        (TraitObject,
             BUG(sp, "Attempting to match a trait object");
-        }
-        return 1;
-        ),
-    (ErasedType,
-        if( !rule.is_Any() ) {
+            ),
+        (ErasedType,
             BUG(sp, "Attempting to match an erased type");
-        }
-        return 1;
-        ),
-    (Array,
-        if( !rule.is_Any() ) {
+            ),
+        (Array,
+            TODO(sp, "Match directly on array?");
+            #if 0
             unsigned int total = 0;
             for( unsigned int i = 0; i < te.size_val; i ++ ) {
                 unsigned int cnt = MIR_LowerHIR_Match_Simple__GeneratePattern(
@@ -1436,87 +1504,43 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 if( num_rules == 0 )
                     return total;
             }
-            return total;
-        }
-        return 1;
-        ),
-    (Slice,
-        if( !rule.is_Any() ) {
-            TODO(sp, "Match over Slice - " << rule);
-        }
-        return 1;
-        ),
-    (Tuple,
-        if( !rule.is_Any() ) {
-            unsigned int total = 0;
-            for( unsigned int i = 0; i < te.size(); i ++ ) {
-                unsigned int cnt = MIR_LowerHIR_Match_Simple__GeneratePattern(
-                    builder, sp,
-                    rules, num_rules, te[i],
-                    ::MIR::LValue::make_Field({ box$(match_val.clone()), i }),
-                    fail_bb
-                    );
-                total += cnt;
-                rules += cnt;
-                num_rules -= cnt;
-                if( num_rules == 0 )
-                    return total;
-            }
-            return total;
-        }
-        return 1;
-        ),
-    (Borrow,
-        if( rule.is_Value() ) {
-            const auto& v = rule.as_Value();
-            if( v.is_StaticString() || v.is_Bytes() )
-            {
-                ::MIR::Constant cloned_val;
-                if( v.is_StaticString() ) {
-                    ASSERT_BUG(sp, *te.inner == ::HIR::TypeRef(::HIR::CoreType::Str), "StaticString pattern on non &str");
-                    cloned_val = ::MIR::Constant( v.as_StaticString() );
-                }
-                else {
-                    ASSERT_BUG(sp, *te.inner == ::HIR::TypeRef::new_slice(::HIR::CoreType::U8), "Bytes pattern on non-&[u8]");
-                    cloned_val = ::MIR::Constant( v.as_Bytes() );
-                }
+            #endif
+            ),
+        (Slice,
+            ASSERT_BUG(sp, rule.is_Slice() || (rule.is_Value() && rule.as_Value().is_Bytes()), "Can only match slice with Bytes or Slice rules - " << rule);
+            if( rule.is_Value() ) {
+                ASSERT_BUG(sp, *te.inner == ::HIR::CoreType::U8, "Bytes pattern on non-&[u8]");
+                auto cloned_val = ::MIR::Constant( rule.as_Value().as_Bytes() );
                 
                 auto succ_bb = builder.new_bb_unlinked();
                 
                 auto test_lval = builder.lvalue_or_temp(sp, ty.clone(), ::MIR::RValue(mv$(cloned_val)));
-                auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ match_val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
+                auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
                 builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
                 builder.set_cur_block(succ_bb);
-                return 1;
             }
-        }
-        
-        if( !rule.is_Any() ) {
-            return MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp, rules, num_rules, *te.inner, match_val, fail_bb);
-        }
-        return 1;
-        ),
-    (Pointer,
-        if( !rule.is_Any() ) {
-            BUG(sp, "Attempting to match a pointer");
-        }
-        return 1;
-        ),
-    (Function,
-        if( !rule.is_Any() ) {
-            BUG(sp, "Attempting to match a function pointer");
-        }
-        return 1;
-        ),
-    (Closure,
-        if( !rule.is_Any() ) {
+            else {
+                TODO(sp, "Match over Slice - " << rule);
+            }
+            ),
+        (Tuple,
+            TODO(sp, "Match directly on tuple?");
+            ),
+        (Borrow,
+            TODO(sp, "Match directly on borrow?");
+            ),  // Type::Data::Borrow
+        (Pointer,
+            BUG(sp, "Attempting to match a pointer - " << rule << " against " << ty);
+            ),
+        (Function,
+            BUG(sp, "Attempting to match a function pointer - " << rule << " against " << ty);
+            ),
+        (Closure,
             BUG(sp, "Attempting to match a closure");
-        }
-        return 1;
+            )
         )
-    )
-    
-    throw "";
+    }
+    return 0;
 }
 
 // --------------------------------------------------------------------
@@ -1682,13 +1706,6 @@ struct DecisionTreeGen
         return m_rule_blocks.at( rule_index );
     }
     
-    void get_ty_and_val(
-        const Span& sp,
-        const ::HIR::TypeRef& top_ty, const ::MIR::LValue& top_val,
-        const PatternRule::field_path_t& field_path, unsigned int field_path_ofs,
-        /*Out ->*/ ::HIR::TypeRef& out_ty, ::MIR::LValue& out_val
-        );
-
     void generate_tree_code(const Span& sp, const DecisionTreeNode& node, const ::HIR::TypeRef& ty, const ::MIR::LValue& val) {
         generate_tree_code(sp, node, ty, 0, val, [&](const auto& n){
             DEBUG("node = " << n);
@@ -2723,124 +2740,6 @@ void DecisionTreeNode::unify_from(const Branch& b)
 // ----------------------------
 // DecisionTreeGen
 // ----------------------------
-
-void DecisionTreeGen::get_ty_and_val(
-    const Span& sp,
-    const ::HIR::TypeRef& top_ty, const ::MIR::LValue& top_val,
-    const PatternRule::field_path_t& field_path, unsigned int field_path_ofs,
-    /*Out ->*/ ::HIR::TypeRef& out_ty, ::MIR::LValue& out_val
-    )
-{
-    ::MIR::LValue   lval = top_val.clone();
-    ::HIR::TypeRef  tmp_ty;
-    const ::HIR::TypeRef* cur_ty = &top_ty;
-    
-    // TODO: Cache the correspondance of path->type (lval can be inferred)
-    ASSERT_BUG(sp, field_path_ofs <= field_path.size(), "Field path offset " << field_path_ofs << " is larger than the path [" << field_path << "]");
-    for(unsigned int i = field_path_ofs; i < field_path.size(); i ++ )
-    {
-        auto idx = field_path[i];
-        
-        TU_MATCHA( (cur_ty->m_data), (e),
-        (Infer,   BUG(sp, "Ivar for in match type"); ),
-        (Diverge, BUG(sp, "Diverge in match type");  ),
-        (Primitive,
-            BUG(sp, "Destructuring a primitive");
-            ),
-        (Tuple,
-            ASSERT_BUG(sp, idx < e.size(), "Tuple index out of range");
-            lval = ::MIR::LValue::make_Field({ box$(lval), idx });
-            cur_ty = &e[idx];
-            ),
-        (Path,
-            TU_MATCHA( (e.binding), (pbe),
-            (Unbound,
-                BUG(sp, "Encounterd unbound path - " << e.path);
-                ),
-            (Opaque,
-                BUG(sp, "Destructuring an opaque type - " << *cur_ty);
-                ),
-            (Struct,
-                // TODO: Should this do a call to expand_associated_types?
-                auto monomorph = [&](const auto& ty) { return monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty); };
-                TU_MATCHA( (pbe->m_data), (fields),
-                (Unit,
-                    BUG(sp, "Destructuring an unit-like tuple - " << *cur_ty);
-                    ),
-                (Tuple,
-                    assert( idx < fields.size() );
-                    const auto& fld = fields[idx];
-                    if( monomorphise_type_needed(fld.ent) ) {
-                        tmp_ty = monomorph(fld.ent);
-                        cur_ty = &tmp_ty;
-                    }
-                    else {
-                        cur_ty = &fld.ent;
-                    }
-                    lval = ::MIR::LValue::make_Field({ box$(lval), idx });
-                    ),
-                (Named,
-                    assert( idx < fields.size() );
-                    const auto& fld = fields[idx].second;
-                    if( monomorphise_type_needed(fld.ent) ) {
-                        tmp_ty = monomorph(fld.ent);
-                        cur_ty = &tmp_ty;
-                    }
-                    else {
-                        cur_ty = &fld.ent;
-                    }
-                    lval = ::MIR::LValue::make_Field({ box$(lval), idx });
-                    )
-                )
-                ),
-            (Enum,
-                BUG(sp, "Destructuring an enum - " << *cur_ty);
-                )
-            )
-            ),
-        (Generic,
-            BUG(sp, "Destructuring a generic - " << *cur_ty);
-            ),
-        (TraitObject,
-            BUG(sp, "Destructuring a trait object - " << *cur_ty);
-            ),
-        (ErasedType,
-            BUG(sp, "Destructuring an erased type - " << *cur_ty);
-            ),
-        (Array,
-            assert(idx < e.size_val);
-            cur_ty = &*e.inner;
-            lval = ::MIR::LValue::make_Field({ box$(lval), idx });
-            ),
-        (Slice,
-            cur_ty = &*e.inner;
-            lval = ::MIR::LValue::make_Field({ box$(lval), idx });
-            ),
-        (Borrow,
-            ASSERT_BUG(sp, idx == FIELD_DEREF, "Destructure of borrow doesn't correspond to a deref in the path");
-            if( cur_ty == &tmp_ty ) {
-                tmp_ty = mv$(*tmp_ty.m_data.as_Borrow().inner);
-            }
-            else {
-                cur_ty = &*e.inner;
-            }
-            lval = ::MIR::LValue::make_Deref({ box$(lval) });
-            ),
-        (Pointer,
-            ERROR(sp, E0000, "Attempting to match over a pointer");
-            ),
-        (Function,
-            ERROR(sp, E0000, "Attempting to match over a functon pointer");
-            ),
-        (Closure,
-            ERROR(sp, E0000, "Attempting to match over a closure");
-            )
-        )
-    }
-    
-    out_ty = (cur_ty == &tmp_ty ? mv$(tmp_ty) : cur_ty->clone());
-    out_val = mv$(lval);
-}
 
 void DecisionTreeGen::generate_tree_code(
     const Span& sp,
