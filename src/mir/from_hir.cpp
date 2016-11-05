@@ -523,8 +523,8 @@ namespace {
                 this->visit_node_ptr(node.m_true);
                 if( m_builder.block_active() || m_builder.has_result() ) {
                     m_builder.push_stmt_assign( node.span(), result_val.clone(), m_builder.get_result(node.m_true->span()) );
-                    m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
                     m_builder.end_split_arm(node.span(), scope, true);
+                    m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
                 }
                 else {
                     m_builder.end_split_arm(node.span(), scope, false);

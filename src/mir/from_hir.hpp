@@ -38,14 +38,17 @@ public:
     ~ScopeHandle();
 };
 
+// TODO: Replace the first three states with just one (and flags for init/moved)
 enum class VarState {
     Uninit, // No value assigned yet
-    Init,   // Initialised and valid at this point
-    MaybeMoved, // Possibly has been moved
-    //MaybeMovedInner,  // Inner possibly has been moved
     Moved,  // Definitely moved
-    InnerMoved, // The inner has been moved, but the container needs to be dropped
     Dropped,    // Dropped (out of scope)
+    
+    InnerMoved, // The inner has been moved, but the container needs to be dropped
+    //MaybeMovedInner,  // Inner possibly has been moved
+    MaybeMoved, // Possibly has been moved
+    
+    Init,   // Initialised and valid at this point
 };
 extern ::std::ostream& operator<<(::std::ostream& os, VarState x);
 
@@ -88,6 +91,7 @@ class MirBuilder
     ::MIR::RValue   m_result;
     bool    m_result_valid;
     
+    // TODO: Extra information.
     //::std::vector<VarState>   m_arg_states;
     ::std::vector<VarState> m_variable_states;
     ::std::vector<VarState> m_temporary_states;

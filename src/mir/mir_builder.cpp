@@ -480,7 +480,21 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
     
     sd_split.arms.back().always_early_terminated = /*sd_split.arms.back().has_early_terminated &&*/ !reachable;
     
-    // TODO: Undo moves from within the other scope
+    // HACK: If this arm's end is reachable, convert InnerMoved (shallow drop) variable states to Moved
+    // - I'm not 100% sure this is the correct place for calling drop.
+    if( reachable )
+    {
+        for(unsigned int i = 0; i < sd_split.arms.back().var_states.size(); i ++ )
+        {
+            auto& vs = sd_split.arms.back().var_states[i];
+            if( vs == VarState::InnerMoved ) {
+                // Emit the shallow drop
+                push_stmt_drop_shallow( sp, ::MIR::LValue::make_Variable(i) );
+                vs = VarState::Moved;
+            }
+        }
+    }
+    
     sd_split.arms.push_back( {} );
 }
 void MirBuilder::end_split_arm_early(const Span& sp)
@@ -500,6 +514,16 @@ void MirBuilder::end_split_arm_early(const Span& sp)
         auto& sd = m_scopes[ m_scope_stack.back() ];
         auto& sd_split = sd.data.as_Split();
         sd_split.arms.back().has_early_terminated = true;
+        
+        for(unsigned int i = 0; i < sd_split.arms.back().var_states.size(); i ++ )
+        {
+            auto& vs = sd_split.arms.back().var_states[i];
+            if( vs == VarState::InnerMoved ) {
+                // Emit the shallow drop
+                push_stmt_drop_shallow( sp, ::MIR::LValue::make_Variable(i) );
+                //vs = VarState::Dropped;
+            }
+        }
     }
 }
 void MirBuilder::complete_scope(ScopeDef& sd)
@@ -546,7 +570,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                 assert(i < changed.size());
                 if( changed[i] )
                 {
-                    DEBUG("("<<new_states[i]<<","<<arm.var_states[i]<<")");
+                    DEBUG(i << " ("<<new_states[i]<<","<<arm.var_states[i]<<")");
                     switch(new_states[i])
                     {
                     case VarState::Uninit:
@@ -581,7 +605,9 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                         }
                         break;
                     case VarState::InnerMoved:
-                        TODO(sd.span, "Handle InnerMoved in Split scope (new_states)");
+                        // Need to tag for conditional shallow drop? Or just do that at the end of the split?
+                        // - End of the split means that the only optional state is outer drop.
+                        TODO(sd.span, "Handle InnerMoved in Split scope (new_states) - " << i << " " << m_output.named_variables[i]);
                         break;
                     case VarState::MaybeMoved:
                         // Already optional, don't change
@@ -623,6 +649,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                 }
                 else if( arm.changed_var_states[i] )
                 {
+                    DEBUG(i << " (_,"<<arm.var_states[i]<<")");
                     changed[i] = true;
                     new_states[i] = arm.var_states[i];
                 }

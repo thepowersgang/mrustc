@@ -178,10 +178,10 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             builder.push_stmt_assign( arm.m_code->span(), result_val.clone(), builder.get_result(arm.m_code->span()) );
             // - Drop all non-moved values from this scope
             builder.terminate_scope( arm.m_code->span(), mv$(drop_scope) );
+            // - Split end match scope
+            builder.end_split_arm( arm.m_code->span(), match_scope, true );
             // - Go to the next block
             builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
-            
-            builder.end_split_arm( arm.m_code->span(), match_scope, true );
         }
 
         arm_code.push_back( mv$(ac) );
