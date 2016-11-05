@@ -153,7 +153,8 @@ output/librustc_llvm.hir: $(call fcn_extcrate, std rustc_bitflags)
 output/librustc_errors.hir: $(call fcn_extcrate, std syntax_pos term)
 output/libsyntax.hir: $(call fcn_extcrate, std rustc_errors)
 output/librustc_back.hir: $(call fcn_extcrate, std syntax)
-output/librustc.hir: $(call fcn_extcrate, std arena flate fmt_macros graphviz rbml rustc_llvm rustc_back)
+output/librustc_data_structures.hir: $(call fcn_extcrate, std log serialize libc)
+output/librustc.hir: $(call fcn_extcrate, std arena flate fmt_macros graphviz rbml rustc_llvm rustc_back getopts rustc_data_structures)
 
 output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc.hir
 	@echo "--- [MRUSTC] $@"
