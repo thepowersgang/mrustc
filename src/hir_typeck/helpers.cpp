@@ -1010,20 +1010,26 @@ bool TraitResolution::find_trait_impls(const Span& sp,
         ASSERT_BUG(sp, params.m_types.size() == 1, "Unsize trait requires a single type param");
         const auto& dst_ty = this->m_ivars.get_type(params.m_types[0]);
         TU_IFLET( ::HIR::TypeRef::Data, dst_ty.m_data, TraitObject, e,
-            // TODO: Magic impl if T: ThisTrait
+            // Magic impl if T: ThisTrait
             bool good;
             ::HIR::Compare  total_cmp = ::HIR::Compare::Equal;
+            auto cb = [&](const auto&, auto cmp){
+                if( cmp == ::HIR::Compare::Unequal )
+                    return false;
+                total_cmp &= cmp;
+                return true;
+                };
             if( e.m_trait.m_path.m_path == ::HIR::SimplePath() ) {
                 ASSERT_BUG(sp, e.m_markers.size() > 0, "TraitObject with no traits - " << dst_ty);
                 good = true;
             }
             else {
-                good = find_trait_impls(sp, e.m_trait.m_path.m_path, e.m_trait.m_path.m_params, ty, [&](const auto& , auto cmp){return cmp == ::HIR::Compare::Equal;} );
+                good = find_trait_impls(sp, e.m_trait.m_path.m_path, e.m_trait.m_path.m_params, ty, cb);
             }
             for(const auto& marker : e.m_markers)
             {
                 if(!good)   break;
-                good &= find_trait_impls(sp, marker.m_path, marker.m_params, ty, [&](const auto& , auto cmp){return cmp == ::HIR::Compare::Equal;} );
+                good &= find_trait_impls(sp, marker.m_path, marker.m_params, ty, cb);
             }
             if( good ) {
                 return callback( ImplRef(type.clone(), params.clone(), {}), total_cmp );
