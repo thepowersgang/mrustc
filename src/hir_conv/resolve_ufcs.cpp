@@ -22,8 +22,10 @@ namespace {
         t_trait_imports m_traits;
         
         StaticTraitResolve  m_resolve;
+        const ::HIR::TypeRef* m_current_type = nullptr;
         const ::HIR::Trait* m_current_trait;
         const ::HIR::ItemPath* m_current_trait_path;
+        bool m_in_expr = false;
         
     public:
         Visitor(const ::HIR::Crate& crate):
@@ -41,11 +43,12 @@ namespace {
             }
         };
         ModTraitsGuard push_mod_traits(const ::HIR::Module& mod) {
+            static Span sp;
             DEBUG("");
             auto rv = ModTraitsGuard {  this, mv$(this->m_traits)  };
             for( const auto& trait_path : mod.m_traits ) {
                 DEBUG("- " << trait_path);
-                m_traits.push_back( ::std::make_pair( &trait_path, &this->find_trait(trait_path) ) );
+                m_traits.push_back( ::std::make_pair( &trait_path, &m_crate.get_trait_by_path(sp, trait_path) ) );
             }
             return rv;
         }
@@ -88,6 +91,7 @@ namespace {
             auto _g = m_resolve.set_impl_generics(impl.m_params);
             
             // TODO: Push a bound that `Self: ThisTrait`
+            m_current_type = &impl.m_type;
             m_current_trait = &m_crate.get_trait_by_path(Span(), trait_path);
             m_current_trait_path = &p;
             
@@ -97,6 +101,7 @@ namespace {
             m_traits.pop_back( );
             
             m_current_trait = nullptr;
+            m_current_type = nullptr;
         }
 
         void visit_expr(::HIR::ExprPtr& expr) override
@@ -177,12 +182,15 @@ namespace {
             
             if( expr.get() != nullptr )
             {
+                m_in_expr = true;
                 ExprVisitor v { *this };
                 (*expr).visit(v);
+                m_in_expr = false;
             }
         }
 
         bool locate_trait_item_in_bounds(::HIR::Visitor::PathContext pc,  const ::HIR::TypeRef& tr, const ::HIR::GenericParams& params,  ::HIR::Path::Data& pd) {
+            static Span sp;
             //const auto& name = pd.as_UfcsUnknown().item;
             for(const auto& b : params.m_bounds)
             {
@@ -190,7 +198,7 @@ namespace {
                     DEBUG("- " << e.type << " : " << e.trait.m_path);
                     if( e.type == tr ) {
                         DEBUG(" - Match");
-                        if( locate_in_trait_and_set(pc, e.trait.m_path, this->find_trait(e.trait.m_path.m_path),  pd) ) {
+                        if( locate_in_trait_and_set(pc, e.trait.m_path, m_crate.get_trait_by_path(sp, e.trait.m_path.m_path),  pd) ) {
                             return true;
                         }
                     }
@@ -290,7 +298,7 @@ namespace {
                 DEBUG("- Check " << *par_trait_path_ptr);
                 const auto& par_trait_path = *par_trait_path_ptr;
                 //const auto& par_trait_ent = *trait.m_parent_trait_ptrs[i];
-                const auto& par_trait_ent = this->find_trait(par_trait_path.m_path);
+                const auto& par_trait_ent = m_crate.get_trait_by_path(sp, par_trait_path.m_path);
                 if( locate_in_trait_and_set(pc, par_trait_path, par_trait_ent,  pd) ) {
                     return true;
                 }
@@ -355,7 +363,7 @@ namespace {
             {
                 const auto& par_trait_path = trait.m_parent_traits[i].m_path;
                 //const auto& par_trait_ent = *trait.m_parent_trait_ptrs[i];
-                const auto& par_trait_ent = this->find_trait(par_trait_path.m_path);
+                const auto& par_trait_ent = m_crate.get_trait_by_path(sp, par_trait_path.m_path);
                 // TODO: Modify path parameters based on the current trait's params
                 if( locate_in_trait_impl_and_set(pc, par_trait_path, par_trait_ent,  pd) ) {
                     return true;
@@ -452,33 +460,6 @@ namespace {
                     DEBUG("Found in impl params, p = " << p);
                     return ;
                 }
-                
-                TU_IFLET(::HIR::TypeRef::Data, e.type->m_data, Generic, te,
-                    // If processing a trait, and the type is 'Self', search for the type/method on the trait
-                    // - TODO: This could be encoded by a `Self: Trait` bound in the generics, but that may have knock-on issues?
-                    if( te.name == "Self" && m_current_trait ) {
-                        
-                        ::HIR::GenericPath  trait_path;
-                        if( m_current_trait_path->trait_path() )
-                        {
-                            trait_path = ::HIR::GenericPath( *m_current_trait_path->trait_path() );
-                            trait_path.m_params = m_current_trait_path->trait_args()->clone();
-                        }
-                        else {
-                            trait_path = ::HIR::GenericPath( m_current_trait_path->get_simple_path() );
-                            for(unsigned int i = 0; i < m_current_trait->m_params.m_types.size(); i ++ ) {
-                                trait_path.m_params.m_types.push_back( ::HIR::TypeRef(m_current_trait->m_params.m_types[i].m_name, i) );
-                            }
-                        }
-                        if( locate_in_trait_and_set(pc, trait_path, *m_current_trait,  p.m_data) ) {
-                            // Success!
-                            DEBUG("Found in Self, p = " << p);
-                            return ;
-                        }
-                    }
-                    //ERROR(sp, E0000, "Failed to find bound with '" << e.item << "' for " << *e.type);
-                    //return ;
-                )
 
                 // TODO: Control ordering with a flag in UfcsUnknown
                 // 1. Search for applicable inherent methods (COMES FIRST!)
@@ -486,6 +467,36 @@ namespace {
                     return ;
                 }
                 assert(p.m_data.is_UfcsUnknown());
+                
+                // If processing a trait, and the type is 'Self', search for the type/method on the trait
+                // - TODO: This could be encoded by a `Self: Trait` bound in the generics, but that may have knock-on issues?
+                if( *e.type == ::HIR::TypeRef("Self", 0xFFFF) || (m_current_type && *e.type == *m_current_type) )
+                {
+                    ::HIR::GenericPath  trait_path;
+                    if( m_current_trait_path->trait_path() )
+                    {
+                        trait_path = ::HIR::GenericPath( *m_current_trait_path->trait_path() );
+                        trait_path.m_params = m_current_trait_path->trait_args()->clone();
+                    }
+                    else
+                    {
+                        trait_path = ::HIR::GenericPath( m_current_trait_path->get_simple_path() );
+                        for(unsigned int i = 0; i < m_current_trait->m_params.m_types.size(); i ++ ) {
+                            trait_path.m_params.m_types.push_back( ::HIR::TypeRef(m_current_trait->m_params.m_types[i].m_name, i) );
+                        }
+                    }
+                    if( locate_in_trait_and_set(pc, trait_path, *m_current_trait,  p.m_data) ) {
+                        // Success!
+                        if( m_in_expr ) {
+                            for(auto& t : p.m_data.as_UfcsKnown().trait.m_params.m_types)
+                                t = ::HIR::TypeRef();
+                        }
+                        DEBUG("Found in Self, p = " << p);
+                        return ;
+                    }
+                    DEBUG("- Item " << e.item << " not found in Self - ty=" << *e.type);
+                }
+                
                 // 2. Search all impls of in-scope traits for this method on this type
                 if( this->resolve_UfcsUnknown_trait(p, pc, p.m_data) ) {
                     return ;
@@ -559,11 +570,6 @@ namespace {
                     )
                 )
             )
-        }
-        
-        const ::HIR::Trait& find_trait(const ::HIR::SimplePath& path) const
-        {
-            return m_crate.get_trait_by_path(Span(), path);
         }
     };
 
