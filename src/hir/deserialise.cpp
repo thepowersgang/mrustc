@@ -298,7 +298,7 @@ namespace {
         }
         ::MIR::LValue deserialise_mir_lvalue_()
         {
-            switch( m_in.read_tag() )
+            switch(auto tag = m_in.read_tag())
             {
             #define _(x, ...)    case ::MIR::LValue::TAG_##x: return ::MIR::LValue::make_##x( __VA_ARGS__ );
             _(Variable,  static_cast<unsigned int>(m_in.read_count()) )
@@ -321,7 +321,7 @@ namespace {
                 } )
             #undef _
             default:
-                throw "";
+                throw ::std::runtime_error(FMT("Invalid MIR LValue tag - " << tag));
             }
         }
         ::MIR::RValue deserialise_mir_rvalue()
@@ -581,7 +581,7 @@ namespace {
     ::HIR::TypeRef HirDeserialiser::deserialise_type()
     {
         TRACE_FUNCTION;
-        switch( m_in.read_tag() )
+        switch( auto tag = m_in.read_tag() )
         {
         #define _(x, ...)    case ::HIR::TypeRef::Data::TAG_##x: DEBUG("- "#x); return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_##x( __VA_ARGS__ ) );
         _(Infer, {})
@@ -629,7 +629,7 @@ namespace {
             })
         #undef _
         default:
-            assert(!"Bad TypeRef tag");
+            throw ::std::runtime_error(FMT("Bad TypeRef tag - " << tag));
         }
     }
     
