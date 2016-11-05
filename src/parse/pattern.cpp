@@ -7,6 +7,7 @@
  */
 #include "common.hpp"
 #include "parseerror.hpp"
+#include <ast/expr.hpp> // To convert :expr
 
 // NEWNODE is needed for the Value pattern type
 typedef ::std::unique_ptr<AST::ExprNode>    ExprNodeP;
@@ -237,6 +238,28 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
         return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_String( mv$(tok.str()) ) );
     case TOK_BYTESTRING:
         return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_ByteString({ mv$(tok.str()) }) );
+    case TOK_INTERPOLATED_EXPR: {
+        auto e = tok.take_frag_node();
+        if( auto* n = dynamic_cast<AST::ExprNode_String*>(e.get()) ) {
+            return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_String( mv$(n->m_value) ) );
+        }
+        //else if( auto* n = dynamic_cast<AST::ExprNode_ByteString*>(e.get()) ) {
+        //    return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_ByteString( mv$(n->m_value) ) );
+        //}
+        else if( auto* n = dynamic_cast<AST::ExprNode_Bool*>(e.get()) ) {
+            return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Integer({CORETYPE_BOOL, n->m_value}) );
+        }
+        else if( auto* n = dynamic_cast<AST::ExprNode_Integer*>(e.get()) ) {
+            return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Integer({n->m_datatype, n->m_value}) );
+        }
+        else if( auto* n = dynamic_cast<AST::ExprNode_Float*>(e.get()) ) {
+            return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Float({n->m_datatype, n->m_value}) );
+        }
+        else {
+            TODO(lex.getPosition(), "Convert :expr into a pattern value - " << *e);
+        }
+        } break;
+    
     case TOK_PAREN_OPEN:
         return AST::Pattern( AST::Pattern::TagTuple(), Parse_PatternTuple(lex, is_refutable) );
     case TOK_SQUARE_OPEN:
