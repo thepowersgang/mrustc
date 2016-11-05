@@ -176,6 +176,7 @@ void MirBuilder::set_result(const Span& sp, ::MIR::RValue val)
 
 void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val)
 {
+    DEBUG(dst << " = " << val);
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
     ASSERT_BUG(sp, dst.tag() != ::MIR::LValue::TAGDEAD, "");
     ASSERT_BUG(sp, val.tag() != ::MIR::RValue::TAGDEAD, "");
@@ -1062,6 +1063,7 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
             {
                 bool is_box = false;
                 with_val_type(sp, *e.val, [&](const auto& ty){
+                    DEBUG("ty = " << ty);
                     is_box = this->is_type_owned_box(ty);
                     });
                 if( is_box )
@@ -1070,7 +1072,9 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
                     // 1. If the inner lvalue isn't a slot with move information, move out of the lvalue into a temporary (with standard temp scope)
                     TU_MATCH_DEF( ::MIR::LValue, (*e.val), (ei),
                     (
-                        TODO(sp, "Move Box out of indirect access " << *e.val << " and into a temp");
+                        //TODO(sp, "Move Box out of indirect access " << *e.val << " and into a temp");
+                        with_val_type(sp, *e.val, [&](const auto& ty){ inner_lv = this->new_temporary(ty); });
+                        this->push_stmt_assign(sp, inner_lv.clone(), ::MIR::RValue( mv$(*e.val) ));
                         ),
                     (Variable,
                         inner_lv = ::MIR::LValue(ei);
