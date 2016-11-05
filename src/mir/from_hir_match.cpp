@@ -1275,7 +1275,23 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 ),
             (Tuple,
                 if( !rule.is_Any() ) {
-                    TODO(sp, "Match over tuple struct");
+                    unsigned int total = 0;
+                    unsigned int i = 0;
+                    for( const auto& fld : sd ) {
+                        ::HIR::TypeRef  ent_ty_tmp;
+                        const auto& ent_ty = (monomorphise_type_needed(fld.ent) ? ent_ty_tmp = monomorph(fld.ent) : fld.ent);
+                        unsigned int cnt = MIR_LowerHIR_Match_Simple__GeneratePattern(
+                            builder, sp,
+                            rules, num_rules, ent_ty,
+                            ::MIR::LValue::make_Field({ box$(match_val.clone()), i }),
+                            fail_bb
+                            );
+                        total += cnt;
+                        rules += cnt;
+                        num_rules -= cnt;
+                        i += 1;
+                    }
+                    return total;
                 }
                 return 1;
                 ),
