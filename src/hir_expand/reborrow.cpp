@@ -106,6 +106,19 @@ namespace {
                 arg = do_reborrow(mv$(arg));
             }
         }
+        
+        void visit(::HIR::ExprNode_TupleVariant& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            for(auto& arg : node.m_args) {
+                arg = do_reborrow(mv$(arg));
+            }
+        }
+        void visit(::HIR::ExprNode_StructLiteral& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            for(auto& arg : node.m_values) {
+                arg.second = do_reborrow(mv$(arg.second));
+            }
+        }
     };
     class OuterVisitor:
         public ::HIR::Visitor
