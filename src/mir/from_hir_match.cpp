@@ -768,11 +768,10 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
                 ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
                 (Any,
-                    // Nothing.
-                    //this->push_rule( PatternRule::make_Any({}) );
+                    // _ on a unit-like type, unconditional
                     ),
                 (Value,
-                    //TODO(sp, "Match over struct - Unit + Value");
+                    // Unit-like struct value, nothing to match (it's unconditional)
                     )
                 )
                 ),
@@ -791,7 +790,17 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                     }
                     ),
                 (StructTuple,
-                    TODO(sp, "Match over struct - TypeRef::Tuple + Pattern::StructTuple");
+                    assert( sd.size() == pe.sub_patterns.size() );
+                    for(unsigned int i = 0; i < sd.size(); i ++)
+                    {
+                        const auto& fld = sd[i];
+                        const auto& fld_pat = pe.sub_patterns[i];
+                        
+                        ::HIR::TypeRef  tmp;
+                        const auto& sty_mono = (monomorphise_type_needed(fld.ent) ? tmp = monomorph(fld.ent) : fld.ent);
+                        this->append_from(sp, fld_pat, sty_mono);
+                        m_field_path.back() ++;
+                    }
                     )
                 )
                 m_field_path.pop_back();
