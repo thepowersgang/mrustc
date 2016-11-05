@@ -1262,7 +1262,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
         const auto& rule = rules[rule_idx];
         DEBUG("rule = " << rule);
         
-        // Don't care.
+        // Don't emit anything for '_' matches
         if( rule.is_Any() )
             continue ;
         

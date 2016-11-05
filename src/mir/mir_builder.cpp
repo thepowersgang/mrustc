@@ -1072,9 +1072,9 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
                     // 1. If the inner lvalue isn't a slot with move information, move out of the lvalue into a temporary (with standard temp scope)
                     TU_MATCH_DEF( ::MIR::LValue, (*e.val), (ei),
                     (
-                        //TODO(sp, "Move Box out of indirect access " << *e.val << " and into a temp");
                         with_val_type(sp, *e.val, [&](const auto& ty){ inner_lv = this->new_temporary(ty); });
                         this->push_stmt_assign(sp, inner_lv.clone(), ::MIR::RValue( mv$(*e.val) ));
+                        *e.val = inner_lv.clone();
                         ),
                     (Variable,
                         inner_lv = ::MIR::LValue(ei);
