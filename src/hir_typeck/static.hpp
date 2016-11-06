@@ -102,7 +102,8 @@ public:
         const Span& sp,
         const ::HIR::SimplePath& trait_path, const ::HIR::PathParams* trait_params,
         const ::HIR::TypeRef& type,
-        t_cb_find_impl found_cb
+        t_cb_find_impl found_cb,
+        bool dont_handoff_to_specialised = false
         ) const;
     
 private:

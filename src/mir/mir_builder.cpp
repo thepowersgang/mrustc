@@ -854,6 +854,7 @@ bool MirBuilder::lvalue_is_copy(const Span& sp, const ::MIR::LValue& val)
 {
     int rv = 0;
     with_val_type(sp, val, [&](const auto& ty){
+        DEBUG("[lvalue_is_copy] ty="<<ty);
         rv = (m_resolve.type_is_copy(sp, ty) ? 2 : 1);
         });
     assert(rv != 0);

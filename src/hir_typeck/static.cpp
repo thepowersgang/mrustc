@@ -85,7 +85,8 @@ bool StaticTraitResolve::find_impl(
     const Span& sp,
     const ::HIR::SimplePath& trait_path, const ::HIR::PathParams* trait_params,
     const ::HIR::TypeRef& type,
-    t_cb_find_impl found_cb
+    t_cb_find_impl found_cb,
+    bool dont_handoff_to_specialised
     ) const
 {
     TRACE_FUNCTION_F(trait_path << FMT_CB(os, if(trait_params) { os << *trait_params; } else { os << "<?>"; }) << " for " << type);
@@ -94,9 +95,11 @@ bool StaticTraitResolve::find_impl(
     static ::HIR::PathParams    null_params;
     static ::std::map< ::std::string, ::HIR::TypeRef>    null_assoc;
     
-    if( trait_path == m_lang_Copy ) {
-        if( this->type_is_copy(sp, type) ) {
-            return found_cb( ImplRef(&type, &null_params, &null_assoc) );
+    if( !dont_handoff_to_specialised ) {
+        if( trait_path == m_lang_Copy ) {
+            if( this->type_is_copy(sp, type) ) {
+                return found_cb( ImplRef(&type, &null_params, &null_assoc) );
+            }
         }
     }
     
@@ -952,12 +955,8 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
             });
         ),
     (Path,
-        // TODO: Cache this result for the relevant scope.
-        auto cb_ident = [](const auto&ty)->const auto&{return ty;};
-        return m_crate.find_trait_impls(m_lang_Copy, ty, cb_ident, [&](const auto& impl) {
-            auto pp = ::HIR::PathParams();
-            return this->find_impl__check_crate(sp, m_lang_Copy, &pp, ty, [&](auto ){ return true; },  impl);
-            });
+        auto pp = ::HIR::PathParams();
+        return this->find_impl(sp, m_lang_Copy, &pp, ty, [&](auto ){ return true; }, true);
         ),
     (Diverge,
         // The ! type is kinda Copy ...
