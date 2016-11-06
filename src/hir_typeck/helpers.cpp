@@ -1319,30 +1319,30 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                 ::HIR::PathParams   params_mono_o;
                 const auto& b_params_mono = (monomorphise_pathparams_needed(b_params) ? params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false) : b_params);
                 
-                // TODO: find trait in trait.
                 if( bound.m_path.m_path == trait )
                 {
-                    auto cmp = ::HIR::Compare::Equal;
-                    cmp = this->compare_pp(sp, b_params_mono, params);
-                    
-                    if( &b_params_mono == &params_mono_o )
+                    auto cmp = this->compare_pp(sp, b_params_mono, params);
+                    if( cmp != ::HIR::Compare::Unequal )
                     {
-                        if( callback( ImplRef(type.clone(), mv$(params_mono_o), {}), cmp ) )
-                            return true;
-                        params_mono_o = monomorphise_path_params_with(sp, params, monomorph_cb, false);
-                    }
-                    else
-                    {
-                        if( callback( ImplRef(&type, &bound.m_path.m_params, &null_assoc), cmp ) )
-                            return true;
+                        if( &b_params_mono == &params_mono_o )
+                        {
+                            if( callback( ImplRef(type.clone(), mv$(params_mono_o), {}), cmp ) )
+                                return true;
+                            params_mono_o = monomorphise_path_params_with(sp, params, monomorph_cb, false);
+                        }
+                        else
+                        {
+                            if( callback( ImplRef(&type, &bound.m_path.m_params, &null_assoc), cmp ) )
+                                return true;
+                        }
                     }
                 }
                 
                 bool ret = this->find_named_trait_in_trait(sp,  trait, params,  *bound.m_trait_ptr,  bound.m_path.m_path, b_params_mono, type,
                     [&](const auto& i_ty, const auto& i_params, const auto& i_assoc) {
                         auto cmp = this->compare_pp(sp, i_params, params);
-                        DEBUG("impl " << trait << i_params << " for " << i_ty << " -- desired " << trait << params);
-                        return callback( ImplRef(i_ty.clone(), i_params.clone(), {}), cmp );
+                        DEBUG("cmp=" << cmp << ", impl " << trait << i_params << " for " << i_ty << " -- desired " << trait << params);
+                        return cmp != ::HIR::Compare::Unequal && callback( ImplRef(i_ty.clone(), i_params.clone(), {}), cmp );
                     });
                 if( ret )
                     return true;
