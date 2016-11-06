@@ -1311,29 +1311,41 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             ASSERT_BUG(sp, trait_ref.m_types.count( pe.item ) != 0, "Trait " << pe.trait.m_path << " doesn't contain an associated type " << pe.item);
             const auto& aty_def = trait_ref.m_types.find(pe.item)->second;
             
+            auto monomorph_cb = monomorphise_type_get_cb(sp, &*pe.type, &pe.trait.m_params, nullptr, nullptr);
+
             for(const auto& bound : aty_def.m_trait_bounds)
             {
+                const auto& b_params = bound.m_path.m_params;
+                ::HIR::PathParams   params_mono_o;
+                const auto& b_params_mono = (monomorphise_pathparams_needed(b_params) ? params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false) : b_params);
+                
+                // TODO: find trait in trait.
                 if( bound.m_path.m_path == trait )
                 {
                     auto cmp = ::HIR::Compare::Equal;
-                    if( monomorphise_pathparams_needed(bound.m_path.m_params) )
+                    cmp = this->compare_pp(sp, b_params_mono, params);
+                    
+                    if( &b_params_mono == &params_mono_o )
                     {
-                        auto monomorph_cb = monomorphise_type_get_cb(sp, &*pe.type, &pe.trait.m_params, nullptr, nullptr);
-                        auto b_params_mono = monomorphise_path_params_with(sp, bound.m_path.m_params, monomorph_cb, false);
-                        cmp = this->compare_pp(sp, b_params_mono, params);
-                        
-                        // TODO: bound.m_type_bounds
-                        //if( callback( ImplRef(&type, mv$(b_params_mono), {}), cmp ) )
-                        if( callback( ImplRef(type.clone(), mv$(b_params_mono), {}), cmp ) )
+                        if( callback( ImplRef(type.clone(), mv$(params_mono_o), {}), cmp ) )
                             return true;
+                        params_mono_o = monomorphise_path_params_with(sp, params, monomorph_cb, false);
                     }
                     else
                     {
-                        // TODO: bound.m_type_bounds
                         if( callback( ImplRef(&type, &bound.m_path.m_params, &null_assoc), cmp ) )
                             return true;
                     }
                 }
+                
+                bool ret = this->find_named_trait_in_trait(sp,  trait, params,  *bound.m_trait_ptr,  bound.m_path.m_path, b_params_mono, type,
+                    [&](const auto& i_ty, const auto& i_params, const auto& i_assoc) {
+                        auto cmp = this->compare_pp(sp, i_params, params);
+                        DEBUG("impl " << trait << i_params << " for " << i_ty << " -- desired " << trait << params);
+                        return callback( ImplRef(i_ty.clone(), i_params.clone(), {}), cmp );
+                    });
+                if( ret )
+                    return true;
             }
         }
     )
