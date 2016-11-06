@@ -476,6 +476,7 @@ bool StaticTraitResolve::find_impl__check_crate(
                     else {
                         rv = this->find_impl(sp, aty_src_trait.m_path, aty_src_trait.m_params, b_ty_mono, [&](const auto& impl) {
                             ::HIR::TypeRef have = impl.get_type(aty_name.c_str());
+                            this->expand_associated_types(sp, have);
                             
                             //auto cmp = have .match_test_generics_fuzz(sp, exp, cb_ident, cb_match);
                             auto cmp = exp .match_test_generics_fuzz(sp, have, cb_ident, cb_match);
