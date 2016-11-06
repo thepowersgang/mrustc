@@ -1144,8 +1144,9 @@ namespace {
         
         void visit_type(::HIR::TypeRef& ty) override
         {
+            ::HIR::Visitor::visit_type(ty);
+            
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
-                ::HIR::Visitor::visit_type(*e.inner);
                 if( e.size_val == ~0u )
                 {
                     assert(e.size);
@@ -1158,9 +1159,6 @@ namespace {
                 }
                 DEBUG("Array " << ty << " - size = " << e.size_val);
             )
-            else {
-                ::HIR::Visitor::visit_type(ty);
-            }
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override
         {
