@@ -2559,6 +2559,12 @@ void DecisionTreeNode::unify_from(const Branch& b)
         }
     }
     
+    if( b.is_Subtree() && b.as_Subtree()->m_branches.tag() != m_branches.tag() ) {
+        // Is this a bug, or expected (and don't unify in?)
+        DEBUG("TODO - Unify mismatched arms? - " << b.as_Subtree()->m_branches.tag_str() << " and " << m_branches.tag_str());
+        return ;
+    }
+    
     TU_MATCHA( (m_branches), (dst),
     (Unset,
         if( b.is_Subtree() ) {
@@ -2575,12 +2581,12 @@ void DecisionTreeNode::unify_from(const Branch& b)
         unify_branch( dst.true_branch , (src ? src->true_branch : b) );
         ),
     (Variant,
-        if( b.is_Subtree() )
-        {
-            unify_from_vals_pt(dst, b.as_Subtree()->m_branches.as_Variant());
+        if( b.is_Subtree() ) {
+            auto& sb = b.as_Subtree()->m_branches;
+            ASSERT_BUG(Span(), sb.is_Variant(), "Unifying Variant with " << sb.tag_str());
+            unify_from_vals_pt(dst, sb.as_Variant());
         }
-        else
-        {
+        else {
             // Unify all with terminal branch
             for(auto& dstv : dst)
             {
@@ -2590,7 +2596,9 @@ void DecisionTreeNode::unify_from(const Branch& b)
         ),
     (Unsigned,
         if( b.is_Subtree() ) {
-            unify_from_vals_range(dst, b.as_Subtree()->m_branches.as_Unsigned());
+            auto& sb = b.as_Subtree()->m_branches;
+            ASSERT_BUG(Span(), sb.is_Unsigned(), "Unifying Unsigned with " << sb.tag_str());
+            unify_from_vals_range(dst, sb.as_Unsigned());
         }
         else {
             for(auto& dstv : dst)
@@ -2601,7 +2609,9 @@ void DecisionTreeNode::unify_from(const Branch& b)
         ),
     (Signed,
         if( b.is_Subtree() ) {
-            unify_from_vals_range(dst, b.as_Subtree()->m_branches.as_Signed());
+            auto& sb = b.as_Subtree()->m_branches;
+            ASSERT_BUG(Span(), sb.is_Signed(), "Unifying Signed with " << sb.tag_str());
+            unify_from_vals_range(dst, sb.as_Signed());
         }
         else {
             for(auto& dstv : dst)
@@ -2612,7 +2622,9 @@ void DecisionTreeNode::unify_from(const Branch& b)
         ),
     (Float,
         if( b.is_Subtree() ) {
-            unify_from_vals_range(dst, b.as_Subtree()->m_branches.as_Float());
+            auto& sb = b.as_Subtree()->m_branches;
+            ASSERT_BUG(Span(), sb.is_Float(), "Unifying Float with " << sb.tag_str());
+            unify_from_vals_range(dst, sb.as_Float());
         }
         else {
             for(auto& dstv : dst) {
@@ -2622,7 +2634,9 @@ void DecisionTreeNode::unify_from(const Branch& b)
     ),
     (String,
         if( b.is_Subtree() ) {
-            unify_from_vals_pt(dst, b.as_Subtree()->m_branches.as_String());
+            auto& sb = b.as_Subtree()->m_branches;
+            ASSERT_BUG(Span(), sb.is_String(), "Unifying String with " << sb.tag_str());
+            unify_from_vals_pt(dst, sb.as_String());
         }
         else {
             for(auto& dstv : dst) {
@@ -2631,14 +2645,14 @@ void DecisionTreeNode::unify_from(const Branch& b)
         }
         ),
     (Slice,
-        if( b.is_Subtree() )
-        {
-            const auto& src = b.as_Subtree()->m_branches.as_Slice();
+        if( b.is_Subtree() ) {
+            auto& sb = b.as_Subtree()->m_branches;
+            ASSERT_BUG(Span(), sb.is_Slice(), "Unifying Slice with " << sb.tag_str());
             
+            const auto& src = sb.as_Slice();
             unify_from_vals_pt(dst.fixed_arms, src.fixed_arms);
         }
-        else
-        {
+        else {
             for(auto& dstv : dst.fixed_arms) {
                 unify_branch( dstv.second, b );
             }
