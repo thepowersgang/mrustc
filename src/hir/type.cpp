@@ -91,10 +91,12 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         os << e.name << "/*";
         if( e.binding == 0xFFFF )
             os << "";
-        else if( e.binding < 256 )
+        else if( e.binding < 1*256 )
             os << "I:" << e.binding;
-        else if( e.binding < 512 )
-            os << "M:" << (e.binding - 256);
+        else if( e.binding < 2*256 )
+            os << "M:" << (e.binding % 256);
+        else if( e.binding < 3*256 )
+            os << "P:" << (e.binding % 256);
         else
             os << e.binding;
         os << "*/";

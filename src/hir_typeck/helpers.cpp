@@ -1884,6 +1884,9 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 if( ty == ::HIR::TypeRef() )
                     ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in " << pe.trait);
                 
+                if( impl.has_magic_params() )
+                    ;
+                
                 // TODO: What if there's multiple impls?
                 DEBUG("Converted UfcsKnown - " << e.path << " = " << ty);
                 input = mv$(ty);
@@ -1903,6 +1906,12 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             auto ty = best_impl.get_type( pe.item.c_str() );
             if( ty == ::HIR::TypeRef() )
                 ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in " << pe.trait);
+            
+            // Try again later?
+            if( best_impl.has_magic_params() ) {
+                DEBUG("- Placeholder parameters present in impl, can't expand");
+                return ;
+            }
             
             DEBUG("Converted UfcsKnown - " << e.path << " = " << ty);
             input = mv$(ty);
@@ -2643,6 +2652,8 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                         ty_p = &tmp;
                     }
                     else {
+                        // Expand after extraction, just to make sure.
+                        this->expand_associated_types_inplace(sp, tmp, {});
                         ty_p = &this->m_ivars.get_type(tmp);
                     }
                     const auto& ty = *ty_p;

@@ -4684,7 +4684,7 @@ namespace {
                         return false;
                     }
                     // if solid or fuzzy, leave as-is
-                    output_type = out_ty.clone();
+                    output_type = mv$( out_ty_o );
                 }
                 count += 1;
                 if( cmp == ::HIR::Compare::Equal ) {
@@ -4754,8 +4754,10 @@ namespace {
         }
         else if( count == 1 ) {
             DEBUG("Only one impl " << v.trait << context.m_ivars.fmt(possible_params) << " for " << context.m_ivars.fmt_type(possible_impl_ty)
-                << " - params=" << possible_params << ", ty=" << possible_impl_ty << ", out=" << output_type);
+                << " - out=" << output_type);
             // - If there are any magic params in the impl, don't use it yet.
+            //  > Ideally, there should be a match_test_generics to resolve the magic impls.
+            DEBUG("> best_impl=" << best_impl);
             if( best_impl.has_magic_params() ) {
                 return false;
             }

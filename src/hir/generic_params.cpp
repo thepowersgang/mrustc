@@ -13,7 +13,7 @@ namespace HIR {
             os << e.type << ": '" << e.valid_for;
             ),
         (TraitBound,
-            os << e.type << ": " << e.trait.m_path;
+            os << e.type << ": " << e.trait/*.m_path*/;
             ),
         (TypeEquality,
             os << e.type << " = " << e.other_type;
