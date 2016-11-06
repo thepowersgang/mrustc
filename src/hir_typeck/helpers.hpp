@@ -237,6 +237,7 @@ public:
         Value,
         Box,
     };
+    friend ::std::ostream& operator<<(::std::ostream& os, const AllowedReceivers& x);
     bool find_method(const Span& sp, const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& ty, const ::std::string& method_name, AllowedReceivers ar,  /* Out -> */::HIR::Path& fcn_path) const;
     
     /// Locates a named method in a trait, and returns the path of the trait that contains it (with fixed parameters)

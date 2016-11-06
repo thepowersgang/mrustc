@@ -2825,11 +2825,21 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
         }
         ),
     (Generic,
+        // TODO: Store this result - or even pre-calculate it.
         const auto& lang_Copy = this->m_crate.get_lang_item_path(sp, "copy");
         return this->iterate_bounds([&](const auto& b) {
             TU_IFLET(::HIR::GenericBound, b, TraitBound, be,
-                if(be.type == ty && be.trait.m_path == lang_Copy ) {
-                    return true;
+                if(be.type == ty)
+                {
+                    if(be.trait.m_path == lang_Copy)
+                        return true;
+                    ::HIR::PathParams   pp;
+                    bool rv = this->find_named_trait_in_trait(sp,
+                            lang_Copy,pp,  *be.trait.m_trait_ptr, be.trait.m_path.m_path, be.trait.m_path.m_params, type,
+                            [&](const auto& , const auto&, const auto&) { return true; }
+                            );
+                    if(rv)
+                        return true;
                 }
             )
             return false;
@@ -3028,13 +3038,25 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
     ERROR(sp, E0000, "Could not find method `" << method_name << "` on type `" << top_ty << "`");
 }
 
+::std::ostream& operator<<(::std::ostream& os, const TraitResolution::AllowedReceivers& x)
+{
+    switch(x)
+    {
+    case TraitResolution::AllowedReceivers::All: os << "All";    break;
+    case TraitResolution::AllowedReceivers::AnyBorrow:   os << "AnyBorrow";  break;
+    case TraitResolution::AllowedReceivers::Value:   os << "Value";  break;
+    case TraitResolution::AllowedReceivers::Box: os << "Box";    break;
+    }
+    return os;
+}
+
 bool TraitResolution::find_method(
     const Span& sp,
     const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars,
     const ::HIR::TypeRef& ty, const ::std::string& method_name, AllowedReceivers ar,
     /* Out -> */::HIR::Path& fcn_path) const
 {
-    TRACE_FUNCTION_F("ty=" << ty << ", name=" << method_name);
+    TRACE_FUNCTION_F("ty=" << ty << ", name=" << method_name << ", ar=" << ar);
     // 1. Search generic bounds for a match
     const ::HIR::GenericParams* v[2] = { m_item_params, m_impl_params };
     for(auto p : v)
@@ -3048,11 +3070,13 @@ bool TraitResolution::find_method(
                     continue ;
                 
                 // - Bound's type matches, check if the bounded trait has the method we're searching for
-                DEBUG("Bound `" << e.type << " : " << e.trait.m_path << "` - Matches " << ty);
+                DEBUG("Bound `" << e.type << " : " << e.trait.m_path << "` - Type match " << ty);
                 ::HIR::GenericPath final_trait_path;
                 assert(e.trait.m_trait_ptr);
-                if( !this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, ty, method_name, ar,  final_trait_path) )
+                if( !this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, ty, method_name, ar,  final_trait_path) ) {
+                    DEBUG("- Method '" << method_name << "' missing");
                     continue ;
+                }
                 DEBUG("- Found trait " << final_trait_path);
                 // TODO: Re-monomorphise final trait using `ty`?
                 // - Could collide with legitimate uses of `Self`
