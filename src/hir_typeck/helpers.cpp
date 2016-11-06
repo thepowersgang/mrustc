@@ -1328,7 +1328,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                         {
                             if( callback( ImplRef(type.clone(), mv$(params_mono_o), {}), cmp ) )
                                 return true;
-                            params_mono_o = monomorphise_path_params_with(sp, params, monomorph_cb, false);
+                            params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false);
                         }
                         else
                         {

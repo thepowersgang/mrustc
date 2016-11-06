@@ -92,10 +92,10 @@ bool StaticTraitResolve::find_impl(
     auto cb_ident = [](const auto&ty)->const auto&{return ty;};
     
     static ::HIR::PathParams    null_params;
+    static ::std::map< ::std::string, ::HIR::TypeRef>    null_assoc;
     
     if( trait_path == m_lang_Copy ) {
         if( this->type_is_copy(sp, type) ) {
-            static ::std::map< ::std::string, ::HIR::TypeRef>    null_assoc;
             return found_cb( ImplRef(&type, &null_params, &null_assoc) );
         }
     }
@@ -173,6 +173,60 @@ bool StaticTraitResolve::find_impl(
         }
     )
     // --- / ---
+    
+    // ---
+    // If this type is an opaque UfcsKnown - check bounds
+    // ---
+    TU_IFLET(::HIR::TypeRef::Data, type.m_data, Path, e,
+        if( e.binding.is_Opaque() )
+        {
+            ASSERT_BUG(sp, e.path.m_data.is_UfcsKnown(), "Opaque bound type wasn't UfcsKnown - " << type);
+            const auto& pe = e.path.m_data.as_UfcsKnown();
+            
+            // If this associated type has a bound of the desired trait, return it.
+            const auto& trait_ref = m_crate.get_trait_by_path(sp, pe.trait.m_path);
+            ASSERT_BUG(sp, trait_ref.m_types.count( pe.item ) != 0, "Trait " << pe.trait.m_path << " doesn't contain an associated type " << pe.item);
+            const auto& aty_def = trait_ref.m_types.find(pe.item)->second;
+            
+            auto monomorph_cb = monomorphise_type_get_cb(sp, &*pe.type, &pe.trait.m_params, nullptr, nullptr);
+
+            for(const auto& bound : aty_def.m_trait_bounds)
+            {
+                const auto& b_params = bound.m_path.m_params;
+                ::HIR::PathParams   params_mono_o;
+                const auto& b_params_mono = (monomorphise_pathparams_needed(b_params) ? params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false) : b_params);
+                
+                if( bound.m_path.m_path == trait_path )
+                {
+                    if( !trait_params || b_params_mono == *trait_params )
+                    {
+                        if( &b_params_mono == &params_mono_o )
+                        {
+                            if( found_cb( ImplRef(type.clone(), mv$(params_mono_o), {}) ) )
+                                return true;
+                            params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false);
+                        }
+                        else
+                        {
+                            if( found_cb( ImplRef(&type, &bound.m_path.m_params, &null_assoc) ) )
+                                return true;
+                        }
+                    }
+                }
+                
+                bool ret = trait_params && this->find_named_trait_in_trait(sp,  trait_path, *trait_params,  *bound.m_trait_ptr,  bound.m_path.m_path, b_params_mono, type,
+                    [&](const auto& i_params, const auto& i_assoc) {
+                        if( i_params != *trait_params )
+                            return false;
+                        DEBUG("impl " << trait_path << i_params << " for " << type << " -- desired " << trait_path << *trait_params);
+                        return found_cb( ImplRef(type.clone(), i_params.clone(), {}) );
+                    });
+                if( ret )
+                    return true;
+            }
+        }
+    )
+    // --- /UfcsKnown ---
     
     bool ret;
     
