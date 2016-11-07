@@ -25,7 +25,16 @@ class CExpanderDiagnosticUsed:
         return box$( TTStreamO(TokenTree()) );
     }
 };
+class CExpanderBuildDiagnosticArray:
+    public ExpandProcMacro
+{
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    {
+        return box$( TTStreamO(TokenTree()) );
+    }
+};
 
 STATIC_MACRO("__register_diagnostic", CExpanderRegisterDiagnostic)
 STATIC_MACRO("__diagnostic_used", CExpanderDiagnosticUsed)
+STATIC_MACRO("__build_diagnostic_array", CExpanderBuildDiagnosticArray)
 
