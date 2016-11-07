@@ -108,14 +108,17 @@ NODE(ExprNode_Flow, {
     case BREAK:     os << "break"; break;
     case CONTINUE:  os << "continue"; break;
     }
-    os << " " << *m_value;
+    if(m_value)
+        os << " " << *m_value;
 },{
     return NEWNODE(ExprNode_Flow, m_type, m_target, m_value ? m_value->clone() : nullptr);
 })
 
 
 NODE(ExprNode_LetBinding, {
-    os << "let " << m_pat << ": " << m_type << " = " << *m_value;
+    os << "let " << m_pat << ": " << m_type;
+    if(m_value)
+        os << " = " << *m_value;
 },{
     return NEWNODE(ExprNode_LetBinding, m_pat.clone(), m_type.clone(), OPT_CLONE(m_value));
 })
@@ -169,7 +172,10 @@ NODE(ExprNode_CallObject, {
 })
 
 NODE(ExprNode_Loop, {
-    os << "LOOP [" << m_label << "] " << m_pattern << " in/= " << *m_cond << " " << *m_code;
+    os << "LOOP [" << m_label << "] " << m_pattern;
+    if(m_cond)
+        os << " in/= " << *m_cond;
+    os << " " << *m_code;
 },{
     return NEWNODE(ExprNode_Loop, m_label, m_type, m_pattern.clone(), OPT_CLONE(m_cond), m_code->clone());
 })
@@ -180,7 +186,8 @@ NODE(ExprNode_Match, {
     {
         for( const auto& pat : arm.m_patterns )
             os << " " << pat;
-        os << " if " << *arm.m_cond;
+        if( arm.m_cond )
+            os << " if " << *arm.m_cond;
         
         os << " => " << *arm.m_code << ",";
     }
@@ -199,7 +206,9 @@ NODE(ExprNode_Match, {
 })
 
 NODE(ExprNode_If, {
-    os << "if " << *m_cond << " { " << *m_true << " } else { " << *m_false << " }";
+    os << "if " << *m_cond << " { " << *m_true << " }";
+    if(m_false)
+        os << " else { " << *m_false << " }";
 },{
     return NEWNODE(ExprNode_If, m_cond->clone(), m_true->clone(), OPT_CLONE(m_false));
 })
