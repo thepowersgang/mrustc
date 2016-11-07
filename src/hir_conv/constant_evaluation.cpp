@@ -445,8 +445,48 @@ namespace {
             void visit(::HIR::ExprNode_Cast& node) override {
                 TRACE_FUNCTION_F("_Cast");
                 node.m_value->visit(*this);
-                //auto val = mv$(m_rv);
+                auto val = mv$(m_rv);
                 //DEBUG("ExprNode_Cast - val = " << val << " as " << node.m_type);
+                TU_MATCH_DEF( ::HIR::TypeRef::Data, (node.m_res_type.m_data), (te),
+                (
+                    m_rv = mv$(val);
+                    ),
+                (Primitive,
+                    switch(te)
+                    {
+                    case ::HIR::CoreType::F32:
+                    case ::HIR::CoreType::F64:
+                        TU_MATCH_DEF( ::HIR::Literal, (val), (ve),
+                        ( BUG(node.span(), "Cast to float, bad literal " << val.tag_str()); ),
+                        (Float,
+                            m_rv = mv$(val);
+                            ),
+                        (Integer,
+                            m_rv = ::HIR::Literal(static_cast<double>(ve));
+                            )
+                        )
+                        break;
+                    case ::HIR::CoreType::I8:   case ::HIR::CoreType::U8:
+                    case ::HIR::CoreType::I16:  case ::HIR::CoreType::U16:
+                    case ::HIR::CoreType::I32:  case ::HIR::CoreType::U32:
+                    case ::HIR::CoreType::I64:  case ::HIR::CoreType::U64:
+                    case ::HIR::CoreType::Isize:  case ::HIR::CoreType::Usize:
+                        TU_MATCH_DEF( ::HIR::Literal, (val), (ve),
+                        ( BUG(node.span(), "Cast to float, bad literal " << val.tag_str()); ),
+                        (Integer,
+                            m_rv = mv$(val);
+                            ),
+                        (Float,
+                            m_rv = ::HIR::Literal(static_cast<uint64_t>(ve));
+                            )
+                        )
+                        break;
+                    default:
+                        m_rv = mv$(val);
+                        break;
+                    }
+                    )
+                )
                 m_rv_type = node.m_res_type.clone();
             }
             void visit(::HIR::ExprNode_Unsize& node) override {
@@ -1112,6 +1152,70 @@ namespace {
             BUG(sp, "Attempting to evaluate constant expression with code");
         }
     }
+    
+    void check_lit_type(const Span& sp, const ::HIR::TypeRef& type,  ::HIR::Literal& lit)
+    {
+        // TODO: Mask down limited size integers
+        TU_MATCHA( (type.m_data), (te),
+        (Infer,
+            ),
+        (Diverge,
+            ),
+        (Generic,
+            ),
+        (Slice,
+            ),
+        (TraitObject,
+            ),
+        (ErasedType,
+            ),
+        (Closure,
+            ),
+        
+        (Path,
+            // List
+            ),
+        (Array,
+            // List
+            ),
+        (Tuple,
+            // List
+            ),
+        
+        (Borrow,
+            // A whole host of things
+            ),
+        (Pointer,
+            // Integer, or itemaddr?
+            ),
+        (Function,
+            // ItemAddr
+            ),
+        
+        (Primitive,
+            switch(te)
+            {
+            case ::HIR::CoreType::Str:
+                BUG(sp, "Direct str literal not valid");
+            case ::HIR::CoreType::F32:
+            case ::HIR::CoreType::F64:
+                ASSERT_BUG(sp, lit.is_Float(), "Bad literal type for " << type << " - " << lit);
+                break;
+            default:
+                ASSERT_BUG(sp, lit.is_Integer(), "Bad literal type for " << type << " - " << lit);
+                switch(te)
+                {
+                case ::HIR::CoreType::U8:   lit.as_Integer() &= (1ull<<8)-1;  break;
+                case ::HIR::CoreType::U16:  lit.as_Integer() &= (1ull<<16)-1; break;
+                case ::HIR::CoreType::U32:  lit.as_Integer() &= (1ull<<32)-1; break;
+                default:
+                    break;
+                }
+                break;
+            }
+            )
+        )
+    }
 
     class Expander:
         public ::HIR::Visitor
@@ -1166,6 +1270,9 @@ namespace {
             if( item.m_value )
             {
                 item.m_value_res = evaluate_constant(item.m_value->span(), m_crate, NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$") }, item.m_value, {});
+                
+                check_lit_type(item.m_value->span(), item.m_type, item.m_value_res);
+                
                 DEBUG("constant: " << item.m_type <<  " = " << item.m_value_res);
                 visit_expr(item.m_value);
             }
