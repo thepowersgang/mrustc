@@ -1658,7 +1658,7 @@ struct DecisionTreeNode
             (Terminal,
                 //if( e == arm_index )    // Wut? How would this happen? Exact duplicate pattern
                 //    return ;
-                BUG(sp, "Duplicate terminal - Existing goes to arm " << e << ", new goes to arm " << e );
+                BUG(sp, "Duplicate terminal - Existing goes to arm " << e << ", new goes to arm " << arm_index );
                 )
             )
             branch = Branch::make_Terminal(arm_index);
@@ -1931,50 +1931,62 @@ namespace
         const char* name, const PatternRule::field_path_t& field_path, ::std::function<void(DecisionTreeNode::Branch&)> and_then
         )
     {
-        // Find the first entry that sorts after this range
-        auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first >= ve_start || v.first.contains(ve_end); });
-        // If the end of the list was reached, OR the located entry sorts after the end of this range
-        if( it == be.end() || it->first >= ve_end ) {
-            it = be.insert( it, ::std::make_pair( DecisionTreeNode::Range<T> { ve_start,ve_end }, new_branch_subtree(field_path) ) );
-        }
-        else if( it->first.start == ve_start && it->first.end == ve_end ) {
-            // Equal, add sub-pattern
-        }
-        else {
-            // Collide or overlap!
-            // - Overlap should split around the collision and merge into it (if this is less-specific).
-            ASSERT_BUG(sp, ve_start < ve_end, "Range pattern with one value");
-            ASSERT_BUG(sp, it->first.start == it->first.end, "Attempting to override a range pattern with another range");
-            
-            // TODO: This breaks miserably if the new range overlaps with two other ranges
-            
-            // Insert half of ve before, and the other half after? OR Create a sub-pattern specializing.
-            if( ve_start == it->first.start ) {
-                // Add single range after
-                it ++;
-                it = be.insert(it, ::std::make_pair( DecisionTreeNode::Range<T> { ve_start + 1, ve_end }, new_branch_subtree(field_path) ) );
-            }
-            else if( ve_end == it->first.start ) {
-                // Add single range before
-                it = be.insert(it, ::std::make_pair( DecisionTreeNode::Range<T> { ve_start, ve_end - 1 }, new_branch_subtree(field_path) ) );
-            }
-            else {
-                // Add two ranges
-                auto end1 = it->first.start - 1;
-                auto start2 = it->first.end + 1;
-                it = be.insert(it, ::std::make_pair( DecisionTreeNode::Range<T> { ve_start, end1 }, new_branch_subtree(field_path) ) );
-                auto& branch_1 = it->second;
-                it ++;
-                it ++;   // Skip the original entry
-                it = be.insert(it, ::std::make_pair( DecisionTreeNode::Range<T> { start2, ve_end }, new_branch_subtree(field_path) ) );
-                auto& branch_2 = it->second;
-                
-                and_then(branch_1);
-                and_then(branch_2);
+        ASSERT_BUG(sp, ve_start < ve_end, "Range pattern with one value - " << ve_start << "..." << ve_end);
+        
+        TRACE_FUNCTION_F("[" << FMT_CB(os, for(const auto& i:be) os << i.first <<" , ";) << "]");
+        // - Find the first entry that ends after the new one starts.
+        auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.end >= ve_start; });
+        while(ve_start < ve_end)
+        {
+            if( it == be.end() ) {
+            DEBUG("new = (" << ve_start << "..." << ve_end << "), exist=END");
+                it = be.insert( it, ::std::make_pair( DecisionTreeNode::Range<T> { ve_start,ve_end }, new_branch_subtree(field_path) ) );
+                and_then(it->second);
                 return ;
             }
+            DEBUG("new = (" << ve_start << "..." << ve_end << "), exist=" << it->first);
+            // If the located entry starts after the end of this range
+            if( it->first.start >= ve_end ) {
+                DEBUG("- New free");
+                it = be.insert( it, ::std::make_pair( DecisionTreeNode::Range<T> { ve_start,ve_end }, new_branch_subtree(field_path) ) );
+                and_then(it->second);
+                return ;
+            }
+            // If this range is equal to the existing, just recurse into it
+            else if( it->first.start == ve_start && it->first.end == ve_end ) {
+                DEBUG("- Equal");
+                and_then(it->second);
+                return ;
+            }
+            // If the new range starts before the start of this range, add a new entry before the existing one
+            else if( it->first.start > ve_start ) {
+                DEBUG("- New head, continue");
+                it = be.insert( it, ::std::make_pair( DecisionTreeNode::Range<T> { ve_start,it->first.start-1 }, new_branch_subtree(field_path) ) );
+                and_then(it->second);
+                ++ it;
+                ve_start = it->first.start;
+            }
+            // If the new range ends before the end of this range, split the existing range and recurse into the first
+            else if( it->first.end > ve_end ) {
+                DEBUG("- Inner");
+                assert(ve_start == it->first.start);
+                it = be.insert( it, ::std::make_pair( DecisionTreeNode::Range<T> { ve_start, ve_end }, DecisionTreeNode::clone(it->second) ) );
+                and_then(it->second);
+                (it+1)->first.start = ve_end+1;
+                return ;
+            }
+            // (else) if the new range ends after the end of this range, apply to the rest of this range and advance
+            else {
+                DEBUG("- Shared head, continue");
+                //assert(it->first.start == ve_start);
+                assert((it->first.end) < ve_end);
+                
+                if( it->first.start != it->first.end )
+                    and_then(it->second);
+                ve_start = it->first.end + 1;
+                ++ it;
+            }
         }
-        and_then(it->second);
     }
     
     template<typename T>
@@ -2007,7 +2019,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
         m_field_path = rule.field_path;
     }
     else {
-        ASSERT_BUG(sp, m_field_path == rule.field_path, "Patterns with mismatched field paths");// - " << m_field_path << " != " << rule.field_path);
+        ASSERT_BUG(sp, m_field_path == rule.field_path, "Patterns with mismatched field paths - " << m_field_path << " != " << rule.field_path);
     }
     
     #define GET_BRANCHES(fld, var)  (({if( fld.is_Unset() ) {\
