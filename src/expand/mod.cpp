@@ -952,6 +952,8 @@ void Expand_Mod_IndexAnon(::AST::Crate& crate, ::AST::Module& mod)
         DEBUG("- " << i.data.tag_str() << " '" << i.name << "'");
         TU_IFLET(::AST::Item, (i.data), Module, e,
             Expand_Mod_IndexAnon(crate, e);
+            
+            // TODO: Also ensure that all #[macro_export] macros end up in parent
         )
     }
     

@@ -1419,29 +1419,45 @@ public:
     g_core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core");
     auto& macros = rv.m_exported_macros;
     
-    // - Extract macros from root module
-    for( /*const*/ auto& mac : crate.m_root_module.macros() ) {
-        if( mac.data->m_exported ) {
-            auto res = macros.insert( ::std::make_pair( mac.name, mv$(mac.data) ) );
-            if( res.second )
-                DEBUG("- Define " << mac.name << "!");
-        }
-        else {
-            DEBUG("- Non-exported " << mac.name << "!");
-        }
-    }
-    for( auto& mac : crate.m_root_module.macro_imports_res() ) {
-        if( mac.data->m_exported && mac.name != "" ) {
-            auto v = ::std::make_pair( mac.name, MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mac.data)) )) );
-            auto it = macros.find(mac.name);
-            if( it == macros.end() )
-            {
-                auto res = macros.insert( mv$(v) );
-                DEBUG("- Import " << mac.name << "! (from \"" << res.first->second->m_source_crate << "\")");
+    // - Extract exported macros
+    {
+        ::std::vector< ::AST::Module*>    mods;
+        mods.push_back( &crate.m_root_module );
+        do
+        {
+            auto& mod = *mods.back();
+            mods.pop_back();
+            
+            for( /*const*/ auto& mac : mod.macros() ) {
+                if( mac.data->m_exported ) {
+                    auto res = macros.insert( ::std::make_pair( mac.name, mv$(mac.data) ) );
+                    if( res.second )
+                        DEBUG("- Define " << mac.name << "!");
+                }
+                else {
+                    DEBUG("- Non-exported " << mac.name << "!");
+                }
             }
-            else {
-                DEBUG("- Replace " << mac.name << "! (from \"" << it->second->m_source_crate << "\") with one from \"" << v.second->m_source_crate << "\"");
-                it->second = mv$( v.second );
+            
+            for(auto& i : mod.items()) {
+                if( i.data.is_Module() )
+                    mods.push_back( &i.data.as_Module() );
+            }
+        } while( mods.size() > 0 );
+        
+        for( auto& mac : crate.m_root_module.macro_imports_res() ) {
+            if( mac.data->m_exported && mac.name != "" ) {
+                auto v = ::std::make_pair( mac.name, MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mac.data)) )) );
+                auto it = macros.find(mac.name);
+                if( it == macros.end() )
+                {
+                    auto res = macros.insert( mv$(v) );
+                    DEBUG("- Import " << mac.name << "! (from \"" << res.first->second->m_source_crate << "\")");
+                }
+                else {
+                    DEBUG("- Replace " << mac.name << "! (from \"" << it->second->m_source_crate << "\") with one from \"" << v.second->m_source_crate << "\"");
+                    it->second = mv$( v.second );
+                }
             }
         }
     }

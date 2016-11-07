@@ -57,6 +57,7 @@ class CMacroUseHandler:
             else
             {
                 ec.with_all_macros([&](const auto& name, const auto& mac) {
+                    DEBUG("Imported " << name << "!");
                     mod.add_macro_import( name, mac );
                     });
             }
