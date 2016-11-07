@@ -1634,6 +1634,7 @@ struct DecisionTreeNode
     
     DecisionTreeNode( PatternRule::field_path_t field_path ):
         is_specialisation(false)/*,
+        // TODO: This is commented out fo a reason, but I don't know why.
         m_field_path( mv$(field_path) ) // */
     {}
     
@@ -1909,6 +1910,7 @@ DecisionTreeNode::Values DecisionTreeNode::clone(const DecisionTreeNode::Values&
 }
 DecisionTreeNode DecisionTreeNode::clone() const {
     DecisionTreeNode    rv(m_field_path);
+    rv.m_field_path = m_field_path;
     rv.is_specialisation = is_specialisation;
     rv.m_branches = clone(m_branches);
     rv.m_default = clone(m_default);
