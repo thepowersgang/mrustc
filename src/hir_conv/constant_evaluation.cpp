@@ -9,6 +9,7 @@
 #include <hir/visitor.hpp>
 #include <algorithm>
 #include <mir/mir.hpp>
+#include <hir_typeck/common.hpp>    // Monomorph
 
 namespace {
     typedef ::std::vector< ::std::pair< ::std::string, ::HIR::Static> > t_new_values;
@@ -620,7 +621,39 @@ namespace {
                     ERROR(sp, E0000, "Field access on invalid type - " << m_rv_type);
                     ),
                 (Path,
-                    TODO(sp, "Field access on path type - " << m_rv_type);
+                    TU_MATCHA( (e.binding), (pbe),
+                    (Unbound,
+                        ERROR(sp, E0000, "Field access on invalid type - " << m_rv_type);
+                        ),
+                    (Opaque,
+                        ERROR(sp, E0000, "Field access on invalid type - " << m_rv_type);
+                        ),
+                    (Struct,
+                        auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, &e.path.m_data.as_Generic().m_params, nullptr);
+                        const auto& str = *pbe;
+                        unsigned int idx=0;
+                        TU_MATCHA( (str.m_data), (se),
+                        (Unit,
+                            ERROR(sp, E0000, "Field access on invalid type - " << m_rv_type << " - Unit-like");
+                            ),
+                        (Tuple,
+                            idx = ::std::atoi( node.m_field.c_str() );
+                            ASSERT_BUG(sp, idx < se.size(), "Index out of range in tuple struct");
+                            m_rv_type = monomorphise_type_with(sp, se[idx].ent, monomorph_cb);
+                            ),
+                        (Named,
+                            idx = ::std::find_if(se.begin(), se.end(), [&](const auto&x){return x.first==node.m_field;}) - se.begin();
+                            ASSERT_BUG(sp, idx < se.size(), "Field no found in struct");
+                            m_rv_type = monomorphise_type_with(sp, se[idx].second.ent, monomorph_cb);
+                            )
+                        )
+                        ASSERT_BUG(sp, idx < vals.size(), "Index out of range in literal");
+                        m_rv = mv$( vals[idx] );
+                        ),
+                    (Enum,
+                        TODO(sp, "Field access on enum variant - " << m_rv_type);
+                        )
+                    )
                     ),
                 (Tuple,
                     unsigned int idx = ::std::atoi( node.m_field.c_str() );
