@@ -577,6 +577,8 @@ namespace {
                     const auto& enm = ec.m_hir->get_typeitem_by_path(span, p, true).as_Enum();
                     return ::AST::PathBinding::make_EnumVar({ nullptr, e.idx, &enm });
                 }
+                if( e.path.m_components.empty() )
+                    return ::AST::PathBinding::make_Module({nullptr, &ec.m_hir->m_root_module});
                 item_ptr = &ec.m_hir->get_typeitem_by_path(span, e.path, true);    // ignore_crate_name=true
             }
             TU_MATCHA( (*item_ptr), (e),
