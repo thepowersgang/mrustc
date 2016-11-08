@@ -779,10 +779,22 @@ namespace {
         TRACE_FUNCTION_FR(path << " start=" << start, path);
         auto& path_abs = path.m_class.as_Absolute();
         
+        if( path_abs.nodes.empty() ) {
+            switch(mode)
+            {
+            case Context::LookupMode::Namespace:
+                path.bind( ::AST::PathBinding::make_Module({nullptr, &crate.m_hir->m_root_module}) );
+                return ;
+            default:
+                TODO(sp, "");
+            }
+        }
+        
         const ::HIR::Module* hmod = &crate.m_hir->m_root_module;
         for(unsigned int i = start; i < path_abs.nodes.size() - 1; i ++ )
         {
             auto& n = path_abs.nodes[i];
+            assert(hmod);
             auto it = hmod->m_mod_items.find(n.name());
             if( it == hmod->m_mod_items.end() )
                 ERROR(sp, E0000, "Couldn't find path component '" << n.name() << "' of " << path);
@@ -887,7 +899,8 @@ namespace {
                     }
                 }
                 // TODO: Set binding
-                path = split_into_ufcs_ty(sp, mv$(path), i);
+                path = split_into_crate(sp, mv$(path), start,  crate.m_name);
+                path = split_into_ufcs_ty(sp, mv$(path), i-start);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 )
             )
@@ -961,7 +974,8 @@ namespace {
                     (
                         ),
                     (Import,
-                        TODO(sp, "Imports in HIR val items - " << e.path);
+                        Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, true,  path, e.path);
+                        return ;
                         ),
                     (Constant,
                         // Bind and update path
