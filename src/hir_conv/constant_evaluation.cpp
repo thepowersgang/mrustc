@@ -619,6 +619,9 @@ namespace {
                 (
                     ERROR(sp, E0000, "Field access on invalid type - " << m_rv_type);
                     ),
+                (Path,
+                    TODO(sp, "Field access on path type - " << m_rv_type);
+                    ),
                 (Tuple,
                     unsigned int idx = ::std::atoi( node.m_field.c_str() );
                     ASSERT_BUG(sp, idx < e.size(), "Index out of range in tuple");
@@ -941,7 +944,9 @@ namespace {
                         val = ::HIR::Literal(e2);
                         ),
                     (Const,
-                        TODO(sp, "Constant::Const - " << e);
+                        auto ent = get_ent_fullpath(sp, crate, e2.p, EntNS::Value);
+                        ASSERT_BUG(sp, ent.is_Constant(), "MIR Constant::Const("<<e2.p<<") didn't point to a Constant - " << ent.tag_str());
+                        val = clone_literal( ent.as_Constant()->m_value_res );
                         ),
                     (ItemAddr,
                         val = ::HIR::Literal::make_BorrowOf( e2.clone() );
