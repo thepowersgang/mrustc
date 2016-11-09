@@ -4935,6 +4935,31 @@ namespace {
                         return context.m_ivars.types_equal(*s_e.inner, *d_e.inner);
                     }
                 }
+                
+                if( dst.m_data.is_Pointer() && src.m_data.is_Pointer() ) {
+                    const auto& d_e = dst.m_data.as_Pointer();
+                    const auto& s_e = src.m_data.as_Pointer();
+                    // Higher = more specific (e.g. Unique > Shared)
+                    if( s_e.type < d_e.type ) {
+                        return false;
+                    }
+                    else if( s_e.type == d_e.type ) {
+                        // Check relationship
+                        // - 1. Deref chain.
+                        // - 2. Trait object?
+                    }
+                    else {
+                        return context.m_ivars.types_equal(*s_e.inner, *d_e.inner);
+                    }
+                }
+                
+                if( dst.m_data.is_Pointer() && src.m_data.is_Borrow() ) {
+                    const auto& d_e = dst.m_data.as_Pointer();
+                    const auto& s_e = src.m_data.as_Borrow();
+                    if( s_e.type == d_e.type ) {
+                        return context.m_ivars.types_equal(*s_e.inner, *d_e.inner);
+                    }
+                }
                 return false;
             }
             
@@ -5011,6 +5036,28 @@ namespace {
             #endif
             
             // Prefer cases where this type is being created from a known type
+            if( ivar_ent.types_from.size() == 0 && ivar_ent.types_to.size() == 0 ) {
+                ivar_ent.reset();
+                return ;
+            }
+            DEBUG("-- " << ty_l << " FROM=" << ivar_ent.types_from << ", TO=" << ivar_ent.types_to);
+            
+            #if 1
+            if( ivar_ent.types_from.size() == 1 && ivar_ent.types_to.size() == 1 ) {
+                const auto& ty_to = ivar_ent.types_to[0];
+                const auto& ty_from = ivar_ent.types_from[0];
+                if( H::can_coerce_to(context, ty_to, ty_from) )
+                {
+                    // Only one possibility
+                    DEBUG("- IVar " << ty_l << " = " << ty_to << " (to)");
+                    context.equate_types(sp, ty_l, ty_to);
+                    
+                    ivar_ent.reset();
+                    return ;
+                }
+            }
+            //else
+            #endif
             if( ivar_ent.types_from.size() == 1 ) {
                 //const ::HIR::TypeRef& ty_r = *ivar_ent.types_from[0];
                 const ::HIR::TypeRef& ty_r = ivar_ent.types_from[0];
