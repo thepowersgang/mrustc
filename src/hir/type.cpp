@@ -685,6 +685,9 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         TODO(sp, "ErasedType - match_test_generics_fuzz - " << v << " -- " << x);
         ),
     (Array,
+        if( te.size_val != xe.size_val ) {
+            return Compare::Unequal;
+        }
         return te.inner->match_test_generics_fuzz( sp, *xe.inner, resolve_placeholder, callback );
         ),
     (Slice,
