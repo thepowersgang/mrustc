@@ -2647,6 +2647,10 @@ namespace {
                     DEBUG("Hit ivar, returning early");
                     return ;
                 }
+                if(ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Unbound()) {
+                    DEBUG("Hit unbound path, returning early");
+                    return ;
+                }
                 if( this->context.m_resolve.find_field(node.span(), ty, field_name, out_type) ) {
                     this->context.equate_types(node.span(), node.m_res_type, out_type);
                     break;

@@ -3294,6 +3294,9 @@ unsigned int TraitResolution::autoderef_find_field(const Span& sp, const ::HIR::
         if( ty.m_data.is_Infer() ) {
             return ~0u;
         }
+        if(ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Unbound()) {
+            return ~0u;
+        }
         
         if( this->find_field(sp, ty, field_name, field_type) ) {
             return deref_count;
