@@ -1,5 +1,9 @@
 /*
- * Check types (and evaluate constants) at the module level
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir_typeck/output.cpp
+ * - Typechecking at the module level (no inferrence)
  */
 #include <hir/hir.hpp>
 #include <hir/visitor.hpp>
@@ -9,42 +13,14 @@ namespace {
     
     const ::HIR::GenericParams& get_params_for_item(const Span& sp, const ::HIR::Crate& crate, const ::HIR::SimplePath& path, ::HIR::Visitor::PathContext pc)
     {
-        const ::HIR::Module* mod;
-        if( path.m_crate_name != "" ) {
-            ASSERT_BUG(sp, crate.m_ext_crates.count(path.m_crate_name) != 0, "Referenced crate in " << path << " not loaded");
-            mod = &crate.m_ext_crates.at(path.m_crate_name)->m_root_module;
-        }
-        else {
-            mod = &crate.m_root_module;
-        }
-        for( unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
-        {
-            const auto& pc = path.m_components[i];
-            auto it = mod->m_mod_items.find( pc );
-            if( it == mod->m_mod_items.end() ) {
-                BUG(sp, "Couldn't find component " << i << " of " << path);
-            }
-            TU_MATCH_DEF( ::HIR::TypeItem, (it->second->ent), (e2),
-            (
-                BUG(sp, "Node " << i << " of path " << path << " wasn't a module");
-                ),
-            (Module,
-                mod = &e2;
-                )
-            )
-        }
-        
         switch( pc )
         {
         case ::HIR::Visitor::PathContext::VALUE: {
-            auto it = mod->m_value_items.find( path.m_components.back() );
-            if( it == mod->m_value_items.end() ) {
-                BUG(sp, "Couldn't find final component of " << path);
-            }
+            const auto& item = crate.get_valitem_by_path(sp, path);
             
-            TU_MATCH( ::HIR::ValueItem, (it->second->ent), (e),
+            TU_MATCH( ::HIR::ValueItem, (item), (e),
             (Import,
-                BUG(sp, "Value path pointed to import");
+                BUG(sp, "Value path pointed to import - " << path << " = " << e.path);
                 ),
             (Function,
                 return e.m_params;
@@ -54,7 +30,7 @@ namespace {
                 ),
             (Static,
                 // TODO: Return an empty set?
-                BUG(sp, "Attepted to get parameters for static");
+                BUG(sp, "Attepted to get parameters for static " << path);
                 ),
             (StructConstructor,
                 return get_params_for_item(sp, crate, e.ty, ::HIR::Visitor::PathContext::TYPE);
@@ -67,12 +43,9 @@ namespace {
         case ::HIR::Visitor::PathContext::TRAIT:
             // TODO: treat PathContext::TRAIT differently
         case ::HIR::Visitor::PathContext::TYPE: {
-            auto it = mod->m_mod_items.find( path.m_components.back() );
-            if( it == mod->m_mod_items.end() ) {
-                BUG(sp, "Couldn't find final component of " << path);
-            }
+            const auto& item = crate.get_typeitem_by_path(sp, path);
             
-            TU_MATCH( ::HIR::TypeItem, (it->second->ent), (e),
+            TU_MATCH( ::HIR::TypeItem, (item), (e),
             (Import,
                 BUG(sp, "Type path pointed to import - " << path);
                 ),

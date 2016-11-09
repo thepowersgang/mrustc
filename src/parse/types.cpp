@@ -310,6 +310,6 @@ TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list)
     
     if( lifetimes.size() )
         DEBUG("TODO: Lifetime bounds on erased types");
-    return TypeRef(lex.end_span(ps), TypeData::make_TraitObject({ {}, mv$(traits) }));
+    return TypeRef(lex.end_span(ps), TypeData::make_ErasedType({ {}, mv$(traits) }));
 }
 

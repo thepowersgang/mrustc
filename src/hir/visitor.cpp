@@ -306,7 +306,9 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
         }
         ),
     (ErasedType,
-        this->visit_path(e.m_origin, ::HIR::Visitor::PathContext::TYPE);
+        if( e.m_origin != ::HIR::SimplePath() ) {
+            this->visit_path(e.m_origin, ::HIR::Visitor::PathContext::VALUE);
+        }
         for(auto& trait : e.m_traits) {
             this->visit_trait_path(trait);
         }
