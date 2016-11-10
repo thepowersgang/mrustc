@@ -46,6 +46,25 @@ void HMTypeInferrence::check_for_loops()
             for(const auto& ty : pp.m_types)
                 this->check_ty(ivars, ty);
         }
+        void check_path(const HMTypeInferrence& ivars, const ::HIR::Path& path) {
+            TU_MATCH(::HIR::Path::Data, (path.m_data), (pe),
+            (Generic,
+                this->check_pathparams(ivars, pe.m_params);
+                ),
+            (UfcsKnown,
+                this->check_ty(ivars, *pe.type);
+                this->check_pathparams(ivars, pe.trait.m_params);
+                this->check_pathparams(ivars, pe.params);
+                ),
+            (UfcsInherent,
+                this->check_ty(ivars, *pe.type);
+                this->check_pathparams(ivars, pe.params);
+                ),
+            (UfcsUnknown,
+                BUG(Span(), "UfcsUnknown");
+                )
+            )
+        }
         void check_ty(const HMTypeInferrence& ivars, const ::HIR::TypeRef& ty) {
             TU_MATCH( ::HIR::TypeRef::Data, (ty.m_data), (e),
             (Infer,
@@ -65,23 +84,7 @@ void HMTypeInferrence::check_for_loops()
             (Diverge, ),
             (Generic, ),
             (Path,
-                TU_MATCH(::HIR::Path::Data, (e.path.m_data), (pe),
-                (Generic,
-                    this->check_pathparams(ivars, pe.m_params);
-                    ),
-                (UfcsKnown,
-                    this->check_ty(ivars, *pe.type);
-                    this->check_pathparams(ivars, pe.trait.m_params);
-                    this->check_pathparams(ivars, pe.params);
-                    ),
-                (UfcsInherent,
-                    this->check_ty(ivars, *pe.type);
-                    this->check_pathparams(ivars, pe.params);
-                    ),
-                (UfcsUnknown,
-                    BUG(Span(), "UfcsUnknown");
-                    )
-                )
+                this->check_path(ivars, e.path);
                 ),
             (Borrow,
                 this->check_ty(ivars, *e.inner);
@@ -105,12 +108,19 @@ void HMTypeInferrence::check_for_loops()
                 ),
             (TraitObject,
                 this->check_pathparams(ivars, e.m_trait.m_path.m_params);
+                for(const auto& aty : e.m_trait.m_type_bounds)
+                    this->check_ty(ivars, aty.second);
                 for(const auto& marker : e.m_markers) {
                     this->check_pathparams(ivars, marker.m_params);
                 }
                 ),
             (ErasedType,
-                TODO(Span(), "ErasedType");
+                this->check_path(ivars, e.m_origin);
+                for(const auto& trait : e.m_traits) {
+                    this->check_pathparams(ivars, trait.m_path.m_params);
+                    for(const auto& aty : trait.m_type_bounds)
+                        this->check_ty(ivars, aty.second);
+                }
                 ),
             (Tuple,
                 for(const auto& st : e) {
@@ -370,7 +380,24 @@ void HMTypeInferrence::expand_ivars(::HIR::TypeRef& type)
             this->expand_ivars_params(marker.m_params);
         ),
     (ErasedType,
-        TODO(Span(), "ErasedType");
+        TU_MATCH(::HIR::Path::Data, (e.m_origin.m_data), (e2),
+        (Generic,
+            this->expand_ivars_params(e2.m_params);
+            ),
+        (UfcsKnown,
+            this->expand_ivars(*e2.type);
+            this->expand_ivars_params(e2.trait.m_params);
+            this->expand_ivars_params(e2.params);
+            ),
+        (UfcsUnknown,
+            this->expand_ivars(*e2.type);
+            this->expand_ivars_params(e2.params);
+            ),
+        (UfcsInherent,
+            this->expand_ivars(*e2.type);
+            this->expand_ivars_params(e2.params);
+            )
+        )
         ),
     (Array,
         this->expand_ivars(*e.inner);
@@ -723,7 +750,26 @@ bool HMTypeInferrence::type_contains_ivars(const ::HIR::TypeRef& ty) const {
         return pathparams_contain_ivars(e.m_trait.m_path.m_params);
         ),
     (ErasedType,
-        TODO(Span(), "ErasedType");
+        TU_MATCH(::HIR::Path::Data, (e.m_origin.m_data), (pe),
+        (Generic,
+            return pathparams_contain_ivars(pe.m_params);
+            ),
+        (UfcsKnown,
+            if( type_contains_ivars(*pe.type) )
+                return true;
+            if( pathparams_contain_ivars(pe.trait.m_params) )
+                return true;
+            return pathparams_contain_ivars(pe.params);
+            ),
+        (UfcsInherent,
+            if( type_contains_ivars(*pe.type) )
+                return true;
+            return pathparams_contain_ivars(pe.params);
+            ),
+        (UfcsUnknown,
+            BUG(Span(), "UfcsUnknown");
+            )
+        )
         ),
     (Tuple,
         for(const auto& st : e)
