@@ -1334,6 +1334,43 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             return callback( ImplRef(&type, &e.m_trait.m_path.m_params, &e.m_trait.m_type_bounds), cmp );
         }
     )
+    
+    TU_IFLET(::HIR::TypeRef::Data, type.m_data, ErasedType, e,
+        for( const auto& trait_path : e.m_traits )
+        {
+            if( trait == trait_path.m_path.m_path ) {
+                auto cmp = compare_pp(sp, trait_path.m_path.m_params, params);
+                if( cmp != ::HIR::Compare::Unequal ) {
+                    DEBUG("TraitObject impl params" << trait_path.m_path.m_params);
+                    return callback( ImplRef(&type, &trait_path.m_path.m_params, &trait_path.m_type_bounds), cmp );
+                }
+            }
+            
+            // - Check if the desired trait is a supertrait of this.
+            // NOTE: `params` (aka des_params) is not used (TODO)
+            bool rv = false;
+            bool is_supertrait = this->find_named_trait_in_trait(sp, trait,params, *trait_path.m_trait_ptr, trait_path.m_path.m_path,trait_path.m_path.m_params, type,
+                [&](const auto& i_ty, const auto& i_params, const auto& i_assoc) {
+                    // The above is just the monomorphised params and associated set. Comparison is still needed.
+                    auto cmp = this->compare_pp(sp, i_params, params);
+                    if( cmp != ::HIR::Compare::Unequal ) {
+                        // Invoke callback with a proper ImplRef
+                        ::std::map< ::std::string, ::HIR::TypeRef> assoc_clone;
+                        for(const auto& e : i_assoc)
+                            assoc_clone.insert( ::std::make_pair(e.first, e.second.clone()) );
+                        auto ir = ImplRef(i_ty.clone(), i_params.clone(), mv$(assoc_clone));
+                        DEBUG("- ir = " << ir);
+                        rv = callback(mv$(ir), cmp);
+                        return true;
+                    }
+                    return false;
+                });
+            if( is_supertrait )
+            {
+                return rv;
+            }
+        }
+    )
 
     // If the type in question is a magic placeholder, return a placeholder impl :)
     TU_IFLET(::HIR::TypeRef::Data, type.m_data, Generic, e,
@@ -3173,6 +3210,42 @@ bool TraitResolution::find_method(
         }
     )
     
+    // Erased type - `impl Trait`
+    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, ErasedType, e,
+        for(const auto& trait_path : e.m_traits)
+        {
+            const auto& trait = this->m_crate.get_trait_by_path(sp, trait_path.m_path.m_path);
+            auto it = trait.m_values.find( method_name );
+            if( it != trait.m_values.end() )
+            {
+                if( it->second.is_Function() ) {
+                    const auto& v = it->second.as_Function();
+                    switch(v.m_receiver)
+                    {
+                    case ::HIR::Function::Receiver::Free:
+                        break;
+                    case ::HIR::Function::Receiver::Value:
+                        // Only accept by-value methods if not dereferencing to them
+                        if( ar == AllowedReceivers::AnyBorrow ) 
+                            break;
+                    case ::HIR::Function::Receiver::Box:
+                        if( ar != AllowedReceivers::Box ) 
+                            break;
+                    default:
+                        fcn_path = ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown({
+                            box$( ty.clone() ),
+                            trait_path.m_path.clone(),
+                            method_name,
+                            {}
+                            }) );
+                        return true;
+                    }
+                }
+            }
+        }
+    )
+    
+    // Trait object - `(Trait)`
     TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
         // No match, keep trying.
     )
