@@ -340,6 +340,29 @@ void HMTypeInferrence::print_pathparams(::std::ostream& os, const ::HIR::PathPar
 
 void HMTypeInferrence::expand_ivars(::HIR::TypeRef& type)
 {
+    struct H {
+        static void expand_ivars_path(/*const*/ HMTypeInferrence& self, ::HIR::Path& path)
+        {
+            TU_MATCH(::HIR::Path::Data, (path.m_data), (e2),
+            (Generic,
+                self.expand_ivars_params(e2.m_params);
+                ),
+            (UfcsKnown,
+                self.expand_ivars(*e2.type);
+                self.expand_ivars_params(e2.trait.m_params);
+                self.expand_ivars_params(e2.params);
+                ),
+            (UfcsUnknown,
+                self.expand_ivars(*e2.type);
+                self.expand_ivars_params(e2.params);
+                ),
+            (UfcsInherent,
+                self.expand_ivars(*e2.type);
+                self.expand_ivars_params(e2.params);
+                )
+            )
+        }
+    };
     TU_MATCH(::HIR::TypeRef::Data, (type.m_data), (e),
     (Infer,
         const auto& t = this->get_type(type);
@@ -353,24 +376,7 @@ void HMTypeInferrence::expand_ivars(::HIR::TypeRef& type)
         ),
     (Path,
         // Iterate all arguments
-        TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
-        (Generic,
-            this->expand_ivars_params(e2.m_params);
-            ),
-        (UfcsKnown,
-            this->expand_ivars(*e2.type);
-            this->expand_ivars_params(e2.trait.m_params);
-            this->expand_ivars_params(e2.params);
-            ),
-        (UfcsUnknown,
-            this->expand_ivars(*e2.type);
-            this->expand_ivars_params(e2.params);
-            ),
-        (UfcsInherent,
-            this->expand_ivars(*e2.type);
-            this->expand_ivars_params(e2.params);
-            )
-        )
+        H::expand_ivars_path(*this, e.path);
         ),
     (Generic,
         ),
@@ -378,26 +384,15 @@ void HMTypeInferrence::expand_ivars(::HIR::TypeRef& type)
         this->expand_ivars_params(e.m_trait.m_path.m_params);
         for(auto& marker : e.m_markers)
             this->expand_ivars_params(marker.m_params);
+        // TODO: Associated types
         ),
     (ErasedType,
-        TU_MATCH(::HIR::Path::Data, (e.m_origin.m_data), (e2),
-        (Generic,
-            this->expand_ivars_params(e2.m_params);
-            ),
-        (UfcsKnown,
-            this->expand_ivars(*e2.type);
-            this->expand_ivars_params(e2.trait.m_params);
-            this->expand_ivars_params(e2.params);
-            ),
-        (UfcsUnknown,
-            this->expand_ivars(*e2.type);
-            this->expand_ivars_params(e2.params);
-            ),
-        (UfcsInherent,
-            this->expand_ivars(*e2.type);
-            this->expand_ivars_params(e2.params);
-            )
-        )
+        H::expand_ivars_path(*this, e.m_origin);
+        for(auto& trait : e.m_traits)
+        {
+            this->expand_ivars_params(trait.m_path.m_params);
+            // TODO: Associated types
+        }
         ),
     (Array,
         this->expand_ivars(*e.inner);
@@ -1498,7 +1493,11 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
                 return H::check_pathparams(r, e2.m_params);
                 ),
             (UfcsInherent,
-                TODO(Span(), "Path - UfcsInherent - " << p);
+                if( r.has_associated_type(*e2.type) )
+                    return true;
+                if( H::check_pathparams(r, e2.params) )
+                    return true;
+                return false;
                 ),
             (UfcsKnown,
                 if( r.has_associated_type(*e2.type) )

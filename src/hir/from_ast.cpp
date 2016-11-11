@@ -749,7 +749,7 @@
         }
         // Leave `m_origin` until the bind pass
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_ErasedType(::HIR::TypeRef::Data::Data_ErasedType {
-            ::HIR::Path(::HIR::SimplePath()),
+            ::HIR::Path(::HIR::SimplePath()), 0,
             mv$(traits),
             ::HIR::LifetimeRef()    // TODO: Lifetime ref
             } ) );

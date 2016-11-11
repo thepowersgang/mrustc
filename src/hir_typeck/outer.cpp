@@ -80,9 +80,14 @@ namespace {
         ::HIR::Crate& crate;
         StaticTraitResolve  m_resolve;
         
-        const ::HIR::Trait* m_current_trait;
-        const ::HIR::ItemPath* m_current_trait_path;
-    
+        const ::HIR::Trait* m_current_trait = nullptr;
+        const ::HIR::ItemPath* m_current_trait_path = nullptr;
+        
+        
+        ::HIR::ItemPath* m_fcn_path = nullptr;
+        ::HIR::Function* m_fcn_ptr = nullptr;
+        unsigned int m_fcn_erased_count = 0;
+        
         ::std::vector< ::HIR::TypeRef* >    m_self_types;
         
         typedef ::std::vector< ::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >   t_trait_imports;
@@ -90,8 +95,7 @@ namespace {
     public:
         Visitor(::HIR::Crate& crate):
             crate(crate),
-            m_resolve(crate),
-            m_current_trait(nullptr)
+            m_resolve(crate)
         {
         }
         
@@ -270,6 +274,29 @@ namespace {
                     }
                     )
                 )
+            )
+            
+            // If an ErasedType is encountered, check if it has an origin set.
+            TU_IFLET(::HIR::TypeRef::Data, ty.m_data, ErasedType, e,
+                if( e.m_origin == ::HIR::SimplePath() )
+                {
+                    // If not, ensure taht we're checking a function return type, and error if not
+                    if( ! m_fcn_path )
+                        ERROR(sp, E0000, "Use of an erased type outside of a function return - " << ty);
+                    
+                    ::HIR::PathParams    params;
+                    for(unsigned int i = 0; i < m_fcn_ptr->m_params.m_types.size(); i ++)
+                        params.m_types.push_back(::HIR::TypeRef(m_fcn_ptr->m_params.m_types[i].m_name, 256+i));
+                    // Populate with function path
+                    e.m_origin = m_fcn_path->get_full_path();
+                    TU_MATCHA( (e.m_origin.m_data), (e2),
+                    (Generic, e2.m_params = mv$(params); ),
+                    (UfcsInherent, e2.params = mv$(params); ),
+                    (UfcsKnown, e2.params = mv$(params); ),
+                    (UfcsUnknown, throw ""; )
+                    )
+                    e.m_index = m_fcn_erased_count++;
+                }
             )
         }
         
@@ -489,7 +516,7 @@ namespace {
     public:
         void visit_path(::HIR::Path& p, ::HIR::Visitor::PathContext pc) override
         {
-            assert(pc == ::HIR::Visitor::PathContext::TYPE);
+            //assert(pc == ::HIR::Visitor::PathContext::TYPE);
             TU_MATCH(::HIR::Path::Data, (p.m_data), (e),
             (Generic,
                 this->visit_generic_path(e, pc);
@@ -497,7 +524,7 @@ namespace {
             (UfcsKnown,
                 this->visit_type(*e.type);
                 m_self_types.push_back(&*e.type);
-                this->visit_generic_path(e.trait, ::HIR::Visitor::PathContext::TYPE);
+                this->visit_generic_path(e.trait, pc);
                 m_self_types.pop_back();
                 // TODO: Locate impl block and check parameters
                 ),
@@ -599,6 +626,17 @@ namespace {
             // Check that the type+trait is valid
             
             m_self_types.pop_back();
+        }
+        
+        void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override {
+            
+            m_fcn_path = &p;
+            m_fcn_ptr = &item;
+            m_fcn_erased_count = 0;
+            visit_type(item.m_return);
+            m_fcn_path = nullptr;
+            
+            ::HIR::Visitor::visit_function(p, item);
         }
     };
 }

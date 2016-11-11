@@ -218,7 +218,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
             traits.push_back( monomorphise_traitpath_with(sp, trait, callback, allow_infer) );
         
         rv = ::HIR::TypeRef( ::HIR::TypeRef::Data::Data_ErasedType {
-            mv$(origin),
+            mv$(origin), e.m_index,
             mv$(traits),
             e.m_lifetime
             } );

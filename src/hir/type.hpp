@@ -141,6 +141,7 @@ public:
         }),
     (ErasedType, struct {
         ::HIR::Path m_origin;
+        unsigned int m_index;
         ::std::vector< ::HIR::TraitPath>    m_traits;
         ::HIR::LifetimeRef  m_lifetime;
         }),

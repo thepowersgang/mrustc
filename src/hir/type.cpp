@@ -119,7 +119,7 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         }
         if( e.m_lifetime.name != "" )
             os << "+ '" << e.m_lifetime.name;
-        os << "/*" << e.m_origin << "*/";
+        os << "/*" << e.m_origin << "#" << e.m_index << "*/";
         ),
     (Array,
         os << "[" << *e.inner << "; ";
@@ -786,7 +786,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         for(const auto& trait : e.m_traits)
             traits.push_back( trait.clone() );
         return ::HIR::TypeRef( Data::make_ErasedType({
-            e.m_origin.clone(),
+            e.m_origin.clone(), e.m_index,
             mv$(traits),
             e.m_lifetime
             }) );

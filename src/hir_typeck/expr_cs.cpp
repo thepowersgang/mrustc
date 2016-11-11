@@ -2918,6 +2918,7 @@ namespace {
                 }
                 ),
             (ErasedType,
+                ASSERT_BUG(sp, e.m_origin != ::HIR::SimplePath(), "ErasedType " << ty << " wasn't bound to its origin");
                 check_type_resolved_path(sp, e.m_origin, top_type);
                 ),
             (Array,
@@ -3144,7 +3145,12 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
                 // NOTE: Lifetime is ignored
                 ),
             (ErasedType,
-                TODO(sp, "ErasedType");
+                ASSERT_BUG(sp, l_e.m_origin != ::HIR::SimplePath(), "ErasedType " << l_t << " wasn't bound to its origin");
+                ASSERT_BUG(sp, r_e.m_origin != ::HIR::SimplePath(), "ErasedType " << r_t << " wasn't bound to its origin");
+                // TODO: Ivar equate origin
+                if( l_e.m_origin != r_e.m_origin ) {
+                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - different source");
+                }
                 ),
             (Array,
                 this->equate_types(sp, *l_e.inner, *r_e.inner);

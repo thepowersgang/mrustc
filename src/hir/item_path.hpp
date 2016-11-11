@@ -48,6 +48,20 @@ public:
             return ::HIR::SimplePath();
         }
     }
+    ::HIR::Path get_full_path() const {
+        assert(parent);
+        assert(name);
+        
+        if( parent->name ) {
+            return get_simple_path();
+        }
+        else if( parent->trait ) {
+            return ::HIR::Path( parent->ty->clone(), ::HIR::GenericPath(parent->trait->clone(), parent->trait_params->clone()), ::std::string(name) );
+        }
+        else {
+            return ::HIR::Path( parent->ty->clone(), ::std::string(name) );
+        }
+    }
     const char* get_name() const {
         return name ? name : "";
     }
