@@ -49,3 +49,8 @@ The "base" value of a struct literal isn't always moved
 ======================================================
 - Only the values used are moved, which can lead to the source not being moved (if all used values are Copy)
 
+
+Binops are coercion points
+==========================
+
+

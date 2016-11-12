@@ -804,8 +804,14 @@ namespace {
             auto _ = this->push_inner_coerce_scoped(false);
             
             TRACE_FUNCTION_F(&node << "... "<<::HIR::ExprNode_BinOp::opname(node.m_op)<<" ...");
+            
             this->context.add_ivars( node.m_left ->m_res_type );
             this->context.add_ivars( node.m_right->m_res_type );
+            
+            const auto& left_ty = node.m_left ->m_res_type;
+            ::HIR::TypeRef  right_ty_inner = this->context.m_ivars.new_ivar_tr();
+            const auto& right_ty = right_ty_inner;//node.m_right->m_res_type;
+            this->context.equate_types_coerce(node.span(), right_ty_inner, node.m_right);
             
             switch(node.m_op)
             {
@@ -831,14 +837,14 @@ namespace {
                 assert(item_name);
                 const auto& op_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
 
-                this->context.equate_types_assoc(node.span(), ::HIR::TypeRef(),  op_trait, ::make_vec1(node.m_right->m_res_type.clone()), node.m_left->m_res_type.clone(), "");
+                this->context.equate_types_assoc(node.span(), ::HIR::TypeRef(),  op_trait, ::make_vec1(right_ty.clone()), left_ty.clone(), "");
                 break; }
             
             case ::HIR::ExprNode_BinOp::Op::BoolAnd:
             case ::HIR::ExprNode_BinOp::Op::BoolOr:
                 this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef(::HIR::CoreType::Bool));
-                this->context.equate_types(node.span(), node.m_left ->m_res_type, ::HIR::TypeRef(::HIR::CoreType::Bool));
-                this->context.equate_types(node.span(), node.m_right->m_res_type, ::HIR::TypeRef(::HIR::CoreType::Bool));
+                this->context.equate_types(node.span(), left_ty , ::HIR::TypeRef(::HIR::CoreType::Bool));
+                this->context.equate_types(node.span(), right_ty, ::HIR::TypeRef(::HIR::CoreType::Bool));
                 break;
             default: {
                 const char* item_name = nullptr;
@@ -870,10 +876,11 @@ namespace {
                 const auto& op_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
                 
                 // NOTE: `true` marks the association as coming from a binary operation, which changes integer handling
-                this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, ::make_vec1(node.m_right->m_res_type.clone()), node.m_left->m_res_type.clone(), "Output", true);
+                this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, ::make_vec1(right_ty.clone()), left_ty.clone(), "Output", true);
                 break; }
             }
             node.m_left ->visit( *this );
+            auto _2 = this->push_inner_coerce_scoped(true);
             node.m_right->visit( *this );
         }
         void visit(::HIR::ExprNode_UniOp& node) override
