@@ -1039,7 +1039,9 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return rv;
         ),
     (ErasedType,
-        TODO(sp, "ErasedType");
+        auto rv = le.m_origin .compare_with_placeholders( sp, le.m_origin, resolve_placeholder );
+        return rv;
+        //TODO(sp, "ErasedType");
         ),
     (Array,
         if( le.size_val != re.size_val )

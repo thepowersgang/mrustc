@@ -800,40 +800,47 @@ bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRe
     if( l.m_data.tag() != r.m_data.tag() )
         return false;
     
+    struct H {
+        static bool compare_path(const HMTypeInferrence& self, const ::HIR::Path& l, const ::HIR::Path& r) {
+            if( l.m_data.tag() != r.m_data.tag() )
+                return false;
+            TU_MATCH(::HIR::Path::Data, (l.m_data, r.m_data), (lpe, rpe),
+            (Generic,
+                if( lpe.m_path != rpe.m_path )
+                    return false;
+                return self.pathparams_equal(lpe.m_params, rpe.m_params);
+                ),
+            (UfcsKnown,
+                if( lpe.item != rpe.item )
+                    return false;
+                if( ! self.types_equal(*lpe.type, *rpe.type) )
+                    return false;
+                if( ! self.pathparams_equal(lpe.trait.m_params, rpe.trait.m_params) )
+                    return false;
+                return self.pathparams_equal(lpe.params, rpe.params);
+                ),
+            (UfcsInherent,
+                if( lpe.item != rpe.item )
+                    return false;
+                if( ! self.types_equal(*lpe.type, *rpe.type) )
+                    return false;
+                return self.pathparams_equal(lpe.params, rpe.params);
+                ),
+            (UfcsUnknown,
+                BUG(Span(), "UfcsUnknown");
+                )
+            )
+            throw "";
+        }
+    };
+    
     TU_MATCH(::HIR::TypeRef::Data, (l.m_data, r.m_data), (le, re),
     (Infer, return le.index == re.index; ),
     (Primitive, return le == re; ),
     (Diverge, return true; ),
     (Generic, return le.binding == re.binding; ),
     (Path,
-        if( le.path.m_data.tag() != re.path.m_data.tag() )
-            return false;
-        TU_MATCH(::HIR::Path::Data, (le.path.m_data, re.path.m_data), (lpe, rpe),
-        (Generic,
-            if( lpe.m_path != rpe.m_path )
-                return false;
-            return pathparams_equal(lpe.m_params, rpe.m_params);
-            ),
-        (UfcsKnown,
-            if( lpe.item != rpe.item )
-                return false;
-            if( ! types_equal(*lpe.type, *rpe.type) )
-                return false;
-            if( ! pathparams_equal(lpe.trait.m_params, rpe.trait.m_params) )
-                return false;
-            return pathparams_equal(lpe.params, rpe.params);
-            ),
-        (UfcsInherent,
-            if( lpe.item != rpe.item )
-                return false;
-            if( ! types_equal(*lpe.type, *rpe.type) )
-                return false;
-            return pathparams_equal(lpe.params, rpe.params);
-            ),
-        (UfcsUnknown,
-            BUG(Span(), "UfcsUnknown");
-            )
-        )
+        return H::compare_path(*this, le.path, re.path);
         ),
     (Borrow,
         if( le.type != re.type )
@@ -879,7 +886,8 @@ bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRe
         return pathparams_equal(le.m_trait.m_path.m_params, re.m_trait.m_path.m_params);
         ),
     (ErasedType,
-        TODO(Span(), "ErasedType");
+        return H::compare_path(*this, le.m_origin, re.m_origin);
+        //TODO(Span(), "ErasedType");
         ),
     (Tuple,
         return type_list_equal(*this, le, re);
@@ -1777,6 +1785,69 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         if( is_supertrait )
         {
             return ;
+        }
+    )
+    
+    // If it's a ErasedType, then maybe we're asking for a bound
+    TU_IFLET(::HIR::TypeRef::Data, pe.type->m_data, ErasedType, te,
+        for( const auto& trait : te.m_traits )
+        {
+            const auto& trait_gp = trait.m_path;
+            if( pe.trait.m_path == trait_gp.m_path ) {
+                auto cmp = ::HIR::Compare::Equal;
+                if( pe.trait.m_params.m_types.size() != trait_gp.m_params.m_types.size() )
+                {
+                    cmp = ::HIR::Compare::Unequal;
+                }
+                else
+                {
+                    for(unsigned int i = 0; i < pe.trait.m_params.m_types.size(); i ++)
+                    {
+                        const auto& l = pe.trait.m_params.m_types[i];
+                        const auto& r = trait_gp.m_params.m_types[i];
+                        cmp &= l.compare_with_placeholders(sp, r, m_ivars.callback_resolve_infer());
+                    }
+                }
+                if( cmp != ::HIR::Compare::Unequal )
+                {
+                    auto it = trait.m_type_bounds.find( pe.item );
+                    if( it == trait.m_type_bounds.end() ) {
+                        // TODO: Mark as opaque and return.
+                        // - Why opaque? It's not bounded, don't even bother
+                        TODO(sp, "Handle unconstrained associate type " << pe.item << " from " << *pe.type);
+                    }
+                    
+                    input = it->second.clone();
+                    return ;
+                }
+            }
+            
+            // - Check if the desired trait is a supertrait of this.
+            // NOTE: `params` (aka des_params) is not used (TODO)
+            bool is_supertrait = this->find_named_trait_in_trait(sp, pe.trait.m_path,pe.trait.m_params, *trait.m_trait_ptr, trait_gp.m_path,trait_gp.m_params, *pe.type,
+                [&](const auto& i_ty, const auto& i_params, const auto& i_assoc) {
+                    // The above is just the monomorphised params and associated set. Comparison is still needed.
+                    auto cmp = this->compare_pp(sp, i_params, pe.trait.m_params);
+                    if( cmp != ::HIR::Compare::Unequal ) {
+                        auto it = i_assoc.find( pe.item );
+                        if( it != i_assoc.end() ) {
+                            input = it->second.clone();
+                            return true;
+                        }
+                        // NOTE: (currently) there can only be one trait with this name, so if we found this trait and the item is present - good.
+                        it = trait.m_type_bounds.find( pe.item );
+                        if( it != trait.m_type_bounds.end() ) {
+                            input = it->second.clone();
+                            return true;
+                        }
+                        return false;
+                    }
+                    return false;
+                });
+            if( is_supertrait )
+            {
+                return ;
+            }
         }
     )
     
