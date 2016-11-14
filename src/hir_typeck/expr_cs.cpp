@@ -332,20 +332,10 @@ namespace {
         // --- Monomorphise the argument/return types (into current context)
         for(const auto& arg : fcn.m_args) {
             DEBUG("Arg " << arg.first << ": " << arg.second);
-            if( monomorphise_type_needed(arg.second) ) {
-                cache.m_arg_types.push_back( monomorphise_type_with(sp, arg.second,  monomorph_cb, false) );
-            }
-            else {
-                cache.m_arg_types.push_back( arg.second.clone() );
-            }
+            cache.m_arg_types.push_back( monomorphise_type_with(sp, arg.second,  monomorph_cb, false) );
         }
         DEBUG("Ret " << fcn.m_return);
-        if( monomorphise_type_needed(fcn.m_return) ) {
-            cache.m_arg_types.push_back( monomorphise_type_with(sp, fcn.m_return,  monomorph_cb, false) );
-        }
-        else {
-            cache.m_arg_types.push_back( fcn.m_return.clone() );
-        }
+        cache.m_arg_types.push_back( monomorphise_type_with(sp, fcn.m_return,  monomorph_cb, false) );
         
         // --- Apply bounds by adding them to the associated type ruleset
         apply_bounds_as_rules(context, sp, *cache.m_fcn_params, cache.m_monomorph_cb);

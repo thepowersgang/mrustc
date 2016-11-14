@@ -163,7 +163,11 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
             });
         ),
     (UfcsInherent,
-        TODO(sp, "UfcsInherent - " << tpl);
+        return ::HIR::Path::Data::make_UfcsInherent({
+            box$( clone_ty_with(sp, *e2.type, callback) ),
+            e2.item,
+            clone_ty_with__path_params(sp, e2.params, callback)
+            });
         )
     )
     throw "";
@@ -319,11 +323,11 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
     )
     throw "";
 }
-::HIR::TypeRef monomorphise_type_with_inner(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer)
+::HIR::TypeRef monomorphise_type_with_inner(const Span& sp, const ::HIR::TypeRef& outer_tpl, t_cb_generic callback, bool allow_infer)
 {
-    return clone_ty_with(sp, tpl, [&](const auto& tpl, auto& rv) {
+    return clone_ty_with(sp, outer_tpl, [&](const auto& tpl, auto& rv) {
         if( tpl.m_data.is_Infer() && !allow_infer )
-           BUG(sp, "_ type found in monomorphisation target");
+           BUG(sp, "_ type found in " << outer_tpl);
         
         if( tpl.m_data.is_Generic() ) {
             rv = callback(tpl).clone();
