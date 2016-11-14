@@ -514,7 +514,7 @@ namespace {
                 const auto& ty = this->context.get_type(rty);
                 // TODO: Search the entire type for `!`? (What about pointers to it? or Option/Result?)
                 // - A correct search will search for unconditional (ignoring enums with a non-! variant) non-rawptr instances of ! in the type
-                return ty.m_data.is_Diverge() || (ty.m_data.is_Infer() && ty.m_data.as_Infer().ty_class == ::HIR::InferClass::Diverge);
+                return ty.m_data.is_Diverge();// || (ty.m_data.is_Infer() && ty.m_data.as_Infer().ty_class == ::HIR::InferClass::Diverge);
                 };
             
             if( node.m_nodes.size() > 0 )
@@ -1849,10 +1849,11 @@ namespace {
                 const auto& ty = this->context.get_type(rty);
                 // TODO: Search the entire type for `!`? (What about pointers to it? or Option/Result?)
                 // - A correct search will search for unconditional (ignoring enums with a non-! variant) non-rawptr instances of ! in the type
-                return ty.m_data.is_Diverge() || (ty.m_data.is_Infer() && ty.m_data.as_Infer().ty_class == ::HIR::InferClass::Diverge);
+                return ty.m_data.is_Diverge();// || (ty.m_data.is_Infer() && ty.m_data.as_Infer().ty_class == ::HIR::InferClass::Diverge);
                 };
             
             const auto& last_ty = this->context.get_type( node.m_nodes.back()->m_res_type );
+            DEBUG("_Block: last_ty = " << last_ty);
             
             bool diverges = false;
             // NOTE: If the final statement in the block diverges, mark this as diverging
@@ -1875,11 +1876,11 @@ namespace {
             }
             // If a statement in this block diverges
             if( diverges ) {
-                DEBUG("Block diverges, yield !");
+                DEBUG("_Block: diverges, yield !");
                 this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
             }
             else {
-                DEBUG("Block doesn't diverge but doesn't yield a value, yield ()");
+                DEBUG("_Block: doesn't diverge but doesn't yield a value, yield ()");
                 this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
             }
             this->m_completed = true;
