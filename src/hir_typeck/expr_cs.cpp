@@ -5129,13 +5129,39 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
 
     // - Build up ruleset from node tree
     {
+        const Span& sp = root_ptr->span();
+        // If the result type contans an erased type, replace that with a new ivar and emit trait bounds for it.
+        ::HIR::TypeRef  new_res_ty = clone_ty_with(sp, result_type, [&](const auto& tpl, auto& rv) {
+            if( tpl.m_data.is_ErasedType() )
+            {
+                const auto& e = tpl.m_data.as_ErasedType();
+                // TODO: Save this ivar somewhere for users of this function.
+                rv = context.m_ivars.new_ivar_tr();
+                for(const auto& trait : e.m_traits)
+                {
+                    if( trait.m_type_bounds.size() == 0 )
+                    {
+                        context.equate_types_assoc(sp, ::HIR::TypeRef(), trait.m_path.m_path, trait.m_path.m_params.clone(), rv, "", false);
+                    }
+                    else
+                    {
+                        for(const auto& aty : trait.m_type_bounds)
+                        {
+                            context.equate_types_assoc(sp, aty.second, trait.m_path.m_path, trait.m_path.m_params.clone(), rv, aty.first.c_str(), false);
+                        }
+                    }
+                }
+                return true;
+            }
+            return false;
+            });
+        
         ExprVisitor_Enum    visitor(context, ms.m_traits, result_type);
         context.add_ivars(root_ptr->m_res_type);
         root_ptr->visit(visitor);
         
-        //context.equate_types(expr->span(), result_type, root_ptr->m_res_type);
-        DEBUG("Return type = " << result_type);
-        context.equate_types_coerce(expr->span(), result_type, root_ptr);
+        DEBUG("Return type = " << new_res_ty);
+        context.equate_types_coerce(sp, new_res_ty, root_ptr);
     }
     
     const unsigned int MAX_ITERATIONS = 100;
