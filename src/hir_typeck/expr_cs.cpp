@@ -420,9 +420,13 @@ namespace {
                 
                 context.equate_types(sp, impl_ty_mono, *e.type);
             }
-            // - Check that all entries were populated by the above function
-            for(const auto& ty : impl_params.m_types) {
-                assert( ty != ::HIR::TypeRef() );
+            
+            // Fill unknown parametrs with ivars
+            for(auto& ty : impl_params.m_types) {
+                if( ty == ::HIR::TypeRef() ) {
+                    // Allocate a new ivar for the param
+                    ty = context.m_ivars.new_ivar_tr();
+                }
             }
         }
         
