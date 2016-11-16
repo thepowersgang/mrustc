@@ -98,7 +98,7 @@ bool StaticTraitResolve::find_impl(
     if( !dont_handoff_to_specialised ) {
         if( trait_path == m_lang_Copy ) {
             if( this->type_is_copy(sp, type) ) {
-                return found_cb( ImplRef(&type, &null_params, &null_assoc) );
+                return found_cb( ImplRef(&type, &null_params, &null_assoc), false );
             }
         }
     }
@@ -126,7 +126,7 @@ bool StaticTraitResolve::find_impl(
             }
             ::std::map< ::std::string, ::HIR::TypeRef>  assoc;
             assoc.insert( ::std::make_pair("Output", e.m_rettype->clone()) );
-            return found_cb( ImplRef(type.clone(), trait_params->clone(), mv$(assoc)) );
+            return found_cb( ImplRef(type.clone(), trait_params->clone(), mv$(assoc)), false );
         }
     )
     
@@ -138,7 +138,7 @@ bool StaticTraitResolve::find_impl(
         {
             if( !trait_params || e.m_trait.m_path.m_params == *trait_params )
             {
-                return found_cb( ImplRef(&type, &e.m_trait.m_path.m_params, &e.m_trait.m_type_bounds) );
+                return found_cb( ImplRef(&type, &e.m_trait.m_path.m_params, &e.m_trait.m_type_bounds), false );
             }
         }
         // Markers too
@@ -148,7 +148,7 @@ bool StaticTraitResolve::find_impl(
                 if( !trait_params || mt.m_params == *trait_params )
                 {
                     static ::std::map< ::std::string, ::HIR::TypeRef>  types;
-                    return found_cb( ImplRef(&type, &mt.m_params, &types) );
+                    return found_cb( ImplRef(&type, &mt.m_params, &types), false );
                 }
             }
         }
@@ -167,7 +167,7 @@ bool StaticTraitResolve::find_impl(
                     assoc_clone.insert( ::std::make_pair(e2.first, e2.second.clone()) );
                 auto ir = ImplRef(type.clone(), i_params.clone(), mv$(assoc_clone));
                 DEBUG("- ir = " << ir);
-                rv = found_cb( mv$(ir) );
+                rv = found_cb( mv$(ir), false );
                 return false;
             });
         if( is_supertrait )
@@ -205,13 +205,13 @@ bool StaticTraitResolve::find_impl(
                     {
                         if( &b_params_mono == &params_mono_o )
                         {
-                            if( found_cb( ImplRef(type.clone(), mv$(params_mono_o), {}) ) )
+                            if( found_cb( ImplRef(type.clone(), mv$(params_mono_o), {}), false ) )
                                 return true;
                             params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false);
                         }
                         else
                         {
-                            if( found_cb( ImplRef(&type, &bound.m_path.m_params, &null_assoc) ) )
+                            if( found_cb( ImplRef(&type, &bound.m_path.m_params, &null_assoc), false ) )
                                 return true;
                         }
                     }
@@ -222,7 +222,7 @@ bool StaticTraitResolve::find_impl(
                         if( i_params != *trait_params )
                             return false;
                         DEBUG("impl " << trait_path << i_params << " for " << type << " -- desired " << trait_path << *trait_params);
-                        return found_cb( ImplRef(type.clone(), i_params.clone(), {}) );
+                        return found_cb( ImplRef(type.clone(), i_params.clone(), {}), false );
                     });
                 if( ret )
                     return true;
@@ -297,7 +297,7 @@ bool StaticTraitResolve::find_impl__check_bound(
                     return false;
             }
             // Hand off to the closure, and return true if it does
-            if( found_cb(ImplRef(&e.type, &e.trait.m_path.m_params, &e.trait.m_type_bounds)) ) {
+            if( found_cb(ImplRef(&e.type, &e.trait.m_path.m_params, &e.trait.m_type_bounds), false) ) {
                 return true;
             }
         }
@@ -314,7 +314,7 @@ bool StaticTraitResolve::find_impl__check_bound(
                         assoc.insert( ::std::make_pair(i.first, i.second.clone())  );
                     //}
                 }
-                return found_cb( ImplRef(type.clone(), params.clone(), mv$(assoc)) );
+                return found_cb( ImplRef(type.clone(), params.clone(), mv$(assoc)), false );
             });
         if( rv ) {
             return true;
@@ -348,7 +348,7 @@ bool StaticTraitResolve::find_impl__check_bound(
                 }
                 DEBUG("- tp_mono = " << tp_mono);
                 // TODO: Instead of using `type` here, build the real type
-                if( found_cb( ImplRef(type.clone(), mv$(tp_mono.m_path.m_params), mv$(tp_mono.m_type_bounds)) ) ) {
+                if( found_cb( ImplRef(type.clone(), mv$(tp_mono.m_path.m_params), mv$(tp_mono.m_type_bounds)), false ) ) {
                     return true;
                 }
             }
@@ -393,9 +393,8 @@ bool StaticTraitResolve::find_impl__check_crate(
             match &= l.match_test_generics_fuzz(sp, r, cb_ident, cb);
         }
     }
-    if( match != ::HIR::Compare::Equal ) {
+    if( match == ::HIR::Compare::Unequal ) {
         DEBUG(" > Type mismatch");
-        // TODO: Support fuzzy matches for some edge cases. E.g. in parts of outer typecheck?
         return false;
     }
     
@@ -477,7 +476,7 @@ bool StaticTraitResolve::find_impl__check_crate(
                         rv = true;
                     }
                     else {
-                        rv = this->find_impl(sp, aty_src_trait.m_path, aty_src_trait.m_params, b_ty_mono, [&](const auto& impl) {
+                        rv = this->find_impl(sp, aty_src_trait.m_path, aty_src_trait.m_params, b_ty_mono, [&](const auto& impl, bool) {
                             ::HIR::TypeRef have = impl.get_type(aty_name.c_str());
                             this->expand_associated_types(sp, have);
                             
@@ -499,7 +498,11 @@ bool StaticTraitResolve::find_impl__check_crate(
                 rv = true;
             }
             else {
-                rv = this->find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const auto& impl) {
+                rv = this->find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const auto& impl, bool) {
+                    //if( fuzzy ) {
+                    //    DEBUG("[find_impl__check_bound] - Fuzzy in bound");
+                    //    return false;
+                    //}
                     
                     #if 0
                     for(const auto& assoc_bound : b_tp_mono.m_type_bounds) {
@@ -529,7 +532,7 @@ bool StaticTraitResolve::find_impl__check_crate(
         )
     }
     
-    return found_cb( ImplRef(impl_params, trait_path, impl, mv$(placeholders)) );
+    return found_cb( ImplRef(impl_params, trait_path, impl, mv$(placeholders)), (match == ::HIR::Compare::Fuzzy) );
 }
 
 void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef& input) const
@@ -791,8 +794,12 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
     //e2.trait = mv$(trait_path);
     
     ::ImplRef  best_impl;
-    rv = this->find_impl(sp, trait_path.m_path, trait_path.m_params, *e2.type, [&](auto impl) {
+    rv = this->find_impl(sp, trait_path.m_path, trait_path.m_params, *e2.type, [&](auto impl, bool fuzzy) {
         DEBUG("[expand_associated_types] Found " << impl);
+        if( fuzzy ) {
+            DEBUG("[expand_associated_types] - Fuzzy");
+            return false;
+        }
         
         if( impl.type_is_specialisable(e2.item.c_str()) ) {
             if( impl.more_specific_than(best_impl) ) {
@@ -951,12 +958,12 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
     (Generic,
         return this->iterate_bounds([&](const auto& b) {
             auto pp = ::HIR::PathParams();
-            return this->find_impl__check_bound(sp, m_lang_Copy, &pp, ty, [&](auto ){ return true; },  b);
+            return this->find_impl__check_bound(sp, m_lang_Copy, &pp, ty, [&](auto , bool ){ return true; },  b);
             });
         ),
     (Path,
         auto pp = ::HIR::PathParams();
-        return this->find_impl(sp, m_lang_Copy, &pp, ty, [&](auto ){ return true; }, true);
+        return this->find_impl(sp, m_lang_Copy, &pp, ty, [&](auto , bool){ return true; }, true);
         ),
     (Diverge,
         // The ! type is kinda Copy ...

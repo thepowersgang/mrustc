@@ -306,15 +306,14 @@ namespace {
             return false;
         }
         
-        bool locate_in_trait_impl_and_set(::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd) {
-            static Span sp;
-            
+        bool locate_in_trait_impl_and_set(const Span& sp, ::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd)
+        {
             auto& e = pd.as_UfcsUnknown();
             if( this->locate_item_in_trait(pc, trait,  pd) ) {
                 const auto& type = *e.type;
                 
                 // TODO: This is VERY arbitary and possibly nowhere near what rustc does.
-                this->m_resolve.find_impl(sp,  trait_path.m_path, nullptr, type, [&](const auto& impl){
+                this->m_resolve.find_impl(sp,  trait_path.m_path, nullptr, type, [&](const auto& impl, bool fuzzy){
                     auto pp = impl.get_trait_params();
                     // Replace all placeholder parameters (group 2) with ivars (empty types)
                     pp = monomorphise_path_params_with(sp, pp, [&](const auto& gt)->const auto& {
@@ -325,6 +324,7 @@ namespace {
                         }
                         return gt;
                         }, true);
+                    DEBUG("FOUND impl from " << impl);
                     // If this has already found an option...
                     TU_IFLET( ::HIR::Path::Data, pd, UfcsKnown, e,
                         // Compare all path params, and set different params to _
@@ -345,10 +345,10 @@ namespace {
                         }
                     )
                     else {
+                        DEBUG("pp = " << pp);
                         // Otherwise, set to the current result.
                         pd = get_ufcs_known(mv$(e), ::HIR::GenericPath(trait_path.m_path, mv$(pp)), trait);
                     }
-                    DEBUG("FOUND impl from " << impl);
                     return false;
                     });
                 return pd.is_UfcsKnown();
@@ -365,7 +365,7 @@ namespace {
                 //const auto& par_trait_ent = *trait.m_parent_trait_ptrs[i];
                 const auto& par_trait_ent = m_crate.get_trait_by_path(sp, par_trait_path.m_path);
                 // TODO: Modify path parameters based on the current trait's params
-                if( locate_in_trait_impl_and_set(pc, par_trait_path, par_trait_ent,  pd) ) {
+                if( locate_in_trait_impl_and_set(sp, pc, par_trait_path, par_trait_ent,  pd) ) {
                     return true;
                 }
             }
@@ -404,12 +404,13 @@ namespace {
         
         bool resolve_UfcsUnknown_trait(const ::HIR::Path& p, ::HIR::Visitor::PathContext pc, ::HIR::Path::Data& pd)
         {
+            static Span sp;
             auto& e = pd.as_UfcsUnknown();
             for( const auto& trait_info : m_traits )
             {
                 const auto& trait = *trait_info.second;
                 
-                DEBUG( *trait_info.first << " " << e.item);
+                DEBUG( e.item << " in? " << *trait_info.first );
                 switch(pc)
                 {
                 case ::HIR::Visitor::PathContext::VALUE:
@@ -434,7 +435,7 @@ namespace {
                 // TODO: Search supertraits
                 // TODO: Should impls be searched first, or item names?
                 // - Item names add complexity, but impls are slower
-                if( this->locate_in_trait_impl_and_set(pc, mv$(trait_path), trait,  pd) ) {
+                if( this->locate_in_trait_impl_and_set(sp, pc, mv$(trait_path), trait,  pd) ) {
                     return true;
                 }
             }
@@ -446,7 +447,7 @@ namespace {
             static Span sp;
             
             TU_IFLET(::HIR::Path::Data, p.m_data, UfcsUnknown, e,
-                TRACE_FUNCTION_F("UfcsUnknown - p=" << p);
+                TRACE_FUNCTION_FR("UfcsUnknown - p=" << p, p);
                 
                 this->visit_type( *e.type );
                 this->visit_path_params( e.params );
@@ -557,7 +558,7 @@ namespace {
                     }
                     ),
                 (UfcsKnown,
-                    bool rv = this->m_resolve.find_impl(sp,  pe.trait.m_path, &pe.trait.m_params, *pe.type, [&](const auto& impl) {
+                    bool rv = this->m_resolve.find_impl(sp,  pe.trait.m_path, &pe.trait.m_params, *pe.type, [&](const auto& impl, bool) {
                         if( !impl.m_data.is_TraitImpl() ) {
                             return true;
                         }

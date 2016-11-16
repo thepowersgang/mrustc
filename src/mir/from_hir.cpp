@@ -1029,7 +1029,7 @@ namespace {
                 TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_out.m_data), (e),
                 (
                     const auto& lang_Unsize = m_builder.crate().get_lang_item_path(node.span(), "unsize");
-                    if( m_builder.resolve().find_impl( node.span(), lang_Unsize, ::HIR::PathParams(ty_out.clone()), ty_in.clone(), [](auto ){ return true; }) )
+                    if( m_builder.resolve().find_impl( node.span(), lang_Unsize, ::HIR::PathParams(ty_out.clone()), ty_in.clone(), [](auto , bool ){ return true; }) )
                     {
                         // - HACK: Emit a cast operation on the pointers. Leave it up to monomorph to 'fix' it
                         m_builder.set_result( node.span(), ::MIR::RValue::make_Cast({ mv$(ptr_lval), node.m_res_type.clone() }) );

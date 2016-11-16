@@ -87,7 +87,7 @@ public:
     
     /// \brief Lookups
     /// \{
-    typedef ::std::function<bool(ImplRef)> t_cb_find_impl;
+    typedef ::std::function<bool(ImplRef, bool is_fuzzed)> t_cb_find_impl;
     
     bool find_impl(
         const Span& sp,

@@ -768,7 +768,10 @@ namespace {
                 ::HIR::PathParams   params;
                 params.m_types.push_back( ::HIR::TypeRef( mv$(tup_ents) ) );
                 
-                bool found = m_resolve.find_impl(node.span(), trait, &params, val_ty, [](auto ){ return true; });
+                bool found = m_resolve.find_impl(node.span(), trait, &params, val_ty, [&](auto , bool fuzzy){
+                    ASSERT_BUG(node.span(), !fuzzy, "Fuzzy match in check pass");
+                    return true;
+                    });
                 if( !found ) {
                     ERROR(node.span(), E0000, "Unable to find a matching impl of " << trait << " for " << val_ty);
                 }

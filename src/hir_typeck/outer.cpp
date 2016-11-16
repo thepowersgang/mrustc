@@ -277,8 +277,10 @@ namespace {
                     }
                     else {
                         ImplRef best_impl;
-                        m_resolve.find_impl(sp, pe.trait.m_path, pe.trait.m_params, *pe.type, [&](auto impl) {
+                        m_resolve.find_impl(sp, pe.trait.m_path, pe.trait.m_params, *pe.type, [&](auto impl, bool fuzzy) {
                             DEBUG("[visit_type] Found " << impl);
+                            if(fuzzy)
+                                TODO(sp, "What error should be used when an impl matches fuzzily in outer?");
                             if( best_impl.more_specific_than(impl) )
                                 return false;
                             best_impl = mv$(impl);
@@ -454,7 +456,7 @@ namespace {
         }
         void visit_path_UfcsUnknown(const Span& sp, ::HIR::Path& p, ::HIR::Visitor::PathContext pc)
         {
-            TRACE_FUNCTION_F("UfcsUnknown - p=" << p);
+            TRACE_FUNCTION_FR("UfcsUnknown - p=" << p, p);
             auto& e = p.m_data.as_UfcsUnknown();
             
             this->visit_type( *e.type );
