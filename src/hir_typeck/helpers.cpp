@@ -631,15 +631,30 @@ void HMTypeInferrence::ivar_unify(unsigned int left_slot, unsigned int right_slo
         auto& root_ivar = this->get_pointed_ivar(right_slot);
         
         TU_IFLET(::HIR::TypeRef::Data, root_ivar.type->m_data, Infer, re,
-            if(re.ty_class != ::HIR::InferClass::None && re.ty_class != ::HIR::InferClass::Diverge) {
+            if( re.ty_class == ::HIR::InferClass::Diverge )
+            {
+                TU_IFLET(::HIR::TypeRef::Data, left_ivar.type->m_data, Infer, le,
+                    if( le.ty_class == ::HIR::InferClass::None ) {
+                        le.ty_class = ::HIR::InferClass::Diverge;
+                    }
+                )
+            }
+            else if(re.ty_class != ::HIR::InferClass::None)
+            {
                 TU_MATCH_DEF(::HIR::TypeRef::Data, (left_ivar.type->m_data), (le),
                 (
                     ERROR(sp, E0000, "Type unificiation of literal with invalid type - " << *left_ivar.type);
                     ),
                 (Infer,
-                    if( le.ty_class != ::HIR::InferClass::None && le.ty_class != re.ty_class )
+                    if( le.ty_class == ::HIR::InferClass::Diverge )
+                    {
+                    }
+                    else if( le.ty_class != ::HIR::InferClass::None && le.ty_class != re.ty_class )
                     {
                         ERROR(sp, E0000, "Unifying types with mismatching literal classes - " << *left_ivar.type << " := " << *root_ivar.type);
+                    }
+                    else
+                    {
                     }
                     le.ty_class = re.ty_class;
                     ),
@@ -647,6 +662,9 @@ void HMTypeInferrence::ivar_unify(unsigned int left_slot, unsigned int right_slo
                     check_type_class_primitive(sp, *left_ivar.type, re.ty_class, le);
                     )
                 )
+            }
+            else
+            {
             }
         )
         else {

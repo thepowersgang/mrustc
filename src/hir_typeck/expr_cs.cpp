@@ -4141,7 +4141,10 @@ namespace {
             }
         }
         
-        if( ty_dst.compare_with_placeholders(sp, ty_src, context.m_ivars.callback_resolve_infer()) != ::HIR::Compare::Unequal )
+        if( ty_dst.m_data.is_Path() && ty_dst.m_data.as_Path().binding.is_Unbound() )
+        {
+        }
+        else if( ty_dst.compare_with_placeholders(sp, ty_src, context.m_ivars.callback_resolve_infer()) != ::HIR::Compare::Unequal )
         {
             context.equate_types(sp, ty_dst,  ty_src);
             return true;
