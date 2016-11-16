@@ -4886,16 +4886,13 @@ namespace {
             return ;
         }
         
-        //enum class List {
-        //    CoerceTo,
-        //    CoerceFrom,
-        //    UnsizeTo,
-        //    UnsizeFrom,
-        //};
+        enum class DedupKeep {
+            Both,
+            Left,
+            Right,
+        };
         struct H {
-            // De-duplicate list (taking into account other ivars)
-            // - TODO: Use the direction and do a fuzzy equality based on coercion possibility
-            static void dedup_type_list(const Context& context, ::std::vector< ::HIR::TypeRef>& list) {
+            static void dedup_type_list_with(::std::vector< ::HIR::TypeRef>& list, ::std::function<DedupKeep(const ::HIR::TypeRef& l, const ::HIR::TypeRef& r)> cmp) {
                 if( list.size() <= 1 )
                     return ;
                 
@@ -4903,8 +4900,16 @@ namespace {
                 {
                     bool found = false;
                     for( auto it2 = list.begin(); it2 != it; ++ it2 ) {
-                        //if( context.m_ivars.types_equal( **it, **it2 ) ) {
-                        if( H::equal_to(context, *it, *it2) ) {
+                        auto action = cmp(*it, *it2);
+                        if( action != DedupKeep::Both )
+                        {
+                            if( action == DedupKeep::Right ) {
+                                //DEBUG("Keep " << *it << ", toss " << *it2);
+                            }
+                            else {
+                                ::std::swap(*it2, *it);
+                                //DEBUG("Keep " << *it << ", toss " << *it2 << " (swapped)");
+                            }
                             found = true;
                             break;
                         }
@@ -4916,6 +4921,11 @@ namespace {
                         ++ it;
                     }
                 }
+            }
+            // De-duplicate list (taking into account other ivars)
+            // - TODO: Use the direction and do a fuzzy equality based on coercion possibility
+            static void dedup_type_list(const Context& context, ::std::vector< ::HIR::TypeRef>& list) {
+                dedup_type_list_with(list, [&context](const auto& l, const auto& r){ return H::equal_to(context, l, r) ? DedupKeep::Left : DedupKeep::Both; });
             }
             
             // Types are equal from the view of being coercion targets
@@ -5077,10 +5087,9 @@ namespace {
         {
             TRACE_FUNCTION_F(i);
             
-            // TODO: Some cases lead to two possibilities that compare different (due to inferrence) but are actually the same.
-            // - The above dedup should probably be aware of the way the types are used (for coercions).
             
-            // TODO: Dedup based on context.
+            // TODO: Dedup based on context?
+            // - The dedup should probably be aware of the way the types are used (for coercions).
             H::dedup_type_list(context, ivar_ent.types_coerce_to);
             H::dedup_type_list(context, ivar_ent.types_unsize_to);
             H::dedup_type_list(context, ivar_ent.types_coerce_from);
@@ -5104,6 +5113,28 @@ namespace {
             }
             DEBUG("-- " << ty_l << " FROM=Coerce:[" << ivar_ent.types_coerce_from << "] / Unsize:[" << ivar_ent.types_unsize_from << "],"
                 << " TO=Coerce:[" << ivar_ent.types_coerce_to << "] / Unsize:[" << ivar_ent.types_unsize_to << "]");
+            
+            // TODO: Find an entry in the `types_unsize_from` list that all other entries can unsize to
+            H::dedup_type_list_with(ivar_ent.types_unsize_from, [&](const auto& l, const auto& r) {
+                // &T and T
+                TU_IFLET( ::HIR::TypeRef::Data, l.m_data, Borrow, le,
+                    TU_IFLET( ::HIR::TypeRef::Data, r.m_data, Borrow, re,
+                    )
+                    else {
+                        // if *le.inner == r, return DedupKeep::Right
+                        if( context.m_ivars.types_equal(*le.inner, r) )
+                            return DedupKeep::Right;
+                    }
+                )
+                else {
+                    TU_IFLET( ::HIR::TypeRef::Data, r.m_data, Borrow, re,
+                        // if *re.inner == l, return DedupKeep::Left
+                        if( context.m_ivars.types_equal(*re.inner, l) )
+                            return DedupKeep::Left;
+                    )
+                }
+                return DedupKeep::Both;
+                });
             
             // HACK: Merge into a single list.
             ::std::vector< ::HIR::TypeRef>  types_from_o;
