@@ -986,6 +986,7 @@ namespace {
             
             this->context.add_revisit(node);
             node.m_place->visit( *this );
+            auto _2 = this->push_inner_coerce_scoped(true);
             node.m_value->visit( *this );
         }
 
@@ -5221,7 +5222,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         context.equate_types_coerce(sp, new_res_ty, root_ptr);
     }
     
-    const unsigned int MAX_ITERATIONS = 100;
+    const unsigned int MAX_ITERATIONS = 1000;
     unsigned int count = 0;
     while( context.take_changed() /*&& context.has_rules()*/ && count < MAX_ITERATIONS )
     {
@@ -5324,6 +5325,9 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             for(auto& ivar_ent : context.possible_ivar_vals)
             {
                 check_ivar_poss(context, i, ivar_ent);
+                // If a change happened, it can add new information that makes subsequent guesses wrong.
+                if( context.m_ivars.peek_changed() )
+                    break;
                 i ++ ;
             }
         }
@@ -5348,10 +5352,13 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         count ++;
         context.m_resolve.compact_ivars(context.m_ivars);
     }
+    if( count == MAX_ITERATIONS ) {
+        BUG(root_ptr->span(), "Typecheck ran for too many iterations, max - " << MAX_ITERATIONS);
+    }
     
     if( context.has_rules() )
     {
-        context.dump();
+        //context.dump();
         BUG(root_ptr->span(), "Spare rules left after typecheck stabilised");
     }
     
