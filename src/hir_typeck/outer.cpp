@@ -119,8 +119,15 @@ namespace {
             return rv;
         }
         
-        void update_self_type(const Span& sp, ::HIR::TypeRef& ty)
+        void update_self_type(const Span& sp, ::HIR::TypeRef& ty) const
         {
+            struct H {
+                static void handle_pathparams(const Visitor& self, const Span& sp, ::HIR::PathParams& pp) {
+                    for(auto& typ : pp.m_types)
+                        self.update_self_type(sp, typ);
+                }
+            };
+            
             TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
             (Generic,
                 if(e.name == "Self") {
@@ -140,11 +147,28 @@ namespace {
             (Primitive,
                 ),
             (Path,
-                TODO(sp, "update_self_type - Path");
+                TU_MATCHA( (e.path.m_data), (pe),
+                (Generic,
+                    H::handle_pathparams(*this, sp, pe.m_params);
+                    ),
+                (UfcsKnown,
+                    update_self_type(sp, *pe.type);
+                    H::handle_pathparams(*this, sp, pe.trait.m_params);
+                    H::handle_pathparams(*this, sp, pe.params);
+                    ),
+                (UfcsInherent,
+                    update_self_type(sp, *pe.type);
+                    H::handle_pathparams(*this, sp, pe.params);
+                    ),
+                (UfcsUnknown,
+                    update_self_type(sp, *pe.type);
+                    H::handle_pathparams(*this, sp, pe.params);
+                    )
+                )
                 ),
             (TraitObject,
                 // NOTE: Can't mention Self anywhere
-                TODO(sp, "update_self_type - TraitObject");
+                TODO(sp, "TraitObject - " << ty);
                 ),
             (ErasedType,
                 TODO(sp, "update_self_type - ErasedType");
@@ -189,6 +213,17 @@ namespace {
             
             if( param_vals.m_types.size() != param_def.m_types.size() ) {
                 ERROR(sp, E0000, "Incorrect number of parameters - expected " << param_def.m_types.size() << ", got " << param_vals.m_types.size());
+            }
+
+            for(unsigned int i = 0; i < param_vals.m_types.size(); i ++)
+            {
+                if( param_vals.m_types[i] == ::HIR::TypeRef() ) {
+                    //if( param_def.m_types[i].m_default == ::HIR::TypeRef() )
+                    //    ERROR(sp, E0000, "Unspecified parameter with no default");
+                    // TODO: Monomorph?
+                    param_vals.m_types[i] = param_def.m_types[i].m_default.clone();
+                    update_self_type(sp, param_vals.m_types[i]);
+                }
             }
             
             // TODO: Check generic bounds

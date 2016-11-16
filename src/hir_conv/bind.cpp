@@ -4,6 +4,7 @@
  *
  * hir_conv/bind.cpp
  * - Set binding pointers in HIR structures
+ * - Also fixes parameter counts.
  */
 #include "main_bindings.hpp"
 #include <hir/visitor.hpp>
@@ -98,12 +99,14 @@ namespace {
     
     void fix_type_params(const Span& sp, const ::HIR::GenericParams& params_def, ::HIR::PathParams& params)
     {
+        #if 1
         if( params.m_types.size() == 0 ) {
             params.m_types.resize( params_def.m_types.size() );
         }
         if( params.m_types.size() != params_def.m_types.size() ) {
             ERROR(sp, E0000, "Incorrect parameter count, expected " << params_def.m_types.size() << ", got " << params.m_types.size());
         }
+        #endif
     }
     
     const ::HIR::Struct& get_struct_ptr(const Span& sp, const ::HIR::Crate& crate, ::HIR::GenericPath& path) {
