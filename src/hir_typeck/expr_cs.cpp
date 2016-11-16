@@ -2982,7 +2982,20 @@ void Context::dump() const {
 void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR::TypeRef& ri) {
     // Instantly apply equality
     TRACE_FUNCTION_F(li << " == " << ri);
-
+    
+    visit_ty_with(ri, [&](const auto& ty) {
+        if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding >> 8 == 2 ) {
+            BUG(sp, "Type contained an impl placeholder parameter - " << ri);
+        }
+        return false;
+        });
+    visit_ty_with(li, [&](const auto& ty) {
+        if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding >> 8 == 2 ) {
+            BUG(sp, "Type contained an impl placeholder parameter - " << li);
+        }
+        return false;
+        });
+    
     // Check if the type contains a replacable associated type
     ::HIR::TypeRef  l_tmp;
     ::HIR::TypeRef  r_tmp;
