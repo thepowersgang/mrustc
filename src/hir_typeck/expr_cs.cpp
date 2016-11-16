@@ -2100,6 +2100,7 @@ namespace {
                 ::HIR::TypeRef  possible_res_type;
                 unsigned int count = 0;
                 bool rv = this->context.m_resolve.find_trait_impls(node.span(), lang_Index, trait_pp, ty, [&](auto impl, auto cmp) {
+                    DEBUG("[visit(_Index)] cmp=" << cmp << " - " << impl);
                     possible_res_type = impl.get_type("Output");
                     count += 1;
                     if( cmp == ::HIR::Compare::Equal ) {
@@ -2115,8 +2116,7 @@ namespace {
                 }
                 else if( count == 1 ) {
                     assert( possible_index_type != ::HIR::TypeRef() );
-                    this->context.equate_types(node.span(), node.m_index->m_res_type, possible_index_type);
-                    this->context.equate_types(node.span(), node.m_res_type,  possible_res_type);
+                    this->context.equate_types_assoc(node.span(), node.m_res_type,  lang_Index, mv$(trait_pp), ty, "Output", false);
                     break;
                 }
                 else if( count > 1 ) {
