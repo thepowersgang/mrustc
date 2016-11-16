@@ -5033,6 +5033,24 @@ namespace {
                 } while( (ty = context.m_resolve.autoderef(sp, *ty, tmp)) );
                 return false;
             }
+            
+            static const ::std::vector<::HIR::TypeRef>& merge_lists(const Context& context, const ::std::vector<::HIR::TypeRef>& list_a, const ::std::vector<::HIR::TypeRef>& list_b, ::std::vector<::HIR::TypeRef>& out)
+            {
+                if( list_a.size() == 0 )
+                    return list_b;
+                else if( list_b.size() == 0 )
+                    return list_a;
+                else {
+                    for(const auto& t : list_a) {
+                        out.push_back( t.clone() );
+                    }
+                    for(const auto& t : list_b ) {
+                        out.push_back( t.clone() );
+                    }
+                    H::dedup_type_list(context, out);
+                    return out;
+                }
+            }
         };
         
         
@@ -5112,39 +5130,11 @@ namespace {
                 return DedupKeep::Both;
                 });
             
-            // HACK: Merge into a single list.
+            // HACK: Merge into a single lists
             ::std::vector< ::HIR::TypeRef>  types_from_o;
-            const auto* types_from_p = &types_from_o;
-            if( ivar_ent.types_coerce_from.size() == 0 )
-                types_from_p = &ivar_ent.types_unsize_from;
-            else if( ivar_ent.types_unsize_from.size() == 0 )
-                types_from_p = &ivar_ent.types_coerce_from;
-            else {
-                for(const auto& t : ivar_ent.types_coerce_from) {
-                    types_from_o.push_back( t.clone() );
-                }
-                for(const auto& t : ivar_ent.types_unsize_from) {
-                    types_from_o.push_back( t.clone() );
-                }
-                H::dedup_type_list(context, types_from_o);
-            }
-            const auto& types_from = *types_from_p;
+            const auto& types_from = H::merge_lists(context, ivar_ent.types_coerce_from, ivar_ent.types_unsize_from,  types_from_o);
             ::std::vector< ::HIR::TypeRef>  types_to_o;
-            const auto* types_to_p = &types_to_o;
-            if( ivar_ent.types_coerce_to.size() == 0 )
-                types_to_p = &ivar_ent.types_unsize_to;
-            else if( ivar_ent.types_unsize_to.size() == 0 )
-                types_to_p = &ivar_ent.types_coerce_to;
-            else {
-                for(const auto& t : ivar_ent.types_coerce_to) {
-                    types_to_o.push_back( t.clone() );
-                }
-                for(const auto& t : ivar_ent.types_unsize_to) {
-                    types_to_o.push_back( t.clone() );
-                }
-                H::dedup_type_list(context, types_to_o);
-            }
-            const auto& types_to = *types_to_p;
+            const auto& types_to = H::merge_lists(context, ivar_ent.types_coerce_to, ivar_ent.types_unsize_to,  types_to_o);
             
             
             #if 1
