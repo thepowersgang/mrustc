@@ -3552,41 +3552,28 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         this->add_ivars_params( e.path.m_params );
         this->equate_types( sp, type, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)) );
         
-        const auto& ty = this->get_type(type).clone();
         assert(e.binding);
         const auto& str = *e.binding;
         // - assert check from earlier pass
         assert( str.m_data.is_Named() );
         const auto& sd = str.m_data.as_Named();
+        const auto& params = e.path.m_params;
         
-        TU_MATCH_DEF(::HIR::TypeRef::Data, (ty.m_data), (te),
-        (
-            ERROR(sp, E0000, "Type mismatch in struct pattern - " << ty << " is not " << e.path);
-            ),
-        (Infer, throw ""; ),
-        (Path,
-            if( ! te.binding.is_Struct() || te.binding.as_Struct() != &str ) {
-                ERROR(sp, E0000, "Type mismatch in struct pattern - " << ty << " is not " << e.path);
+        for( auto& field_pat : e.sub_patterns )
+        {
+            unsigned int f_idx = ::std::find_if( sd.begin(), sd.end(), [&](const auto& x){ return x.first == field_pat.first; } ) - sd.begin();
+            if( f_idx == sd.size() ) {
+                ERROR(sp, E0000, "Struct " << e.path << " doesn't have a field " << field_pat.first);
             }
-            // NOTE: Must be Generic for the above to have passed
-            auto& gp = te.path.m_data.as_Generic();
-            for( auto& field_pat : e.sub_patterns )
-            {
-                unsigned int f_idx = ::std::find_if( sd.begin(), sd.end(), [&](const auto& x){ return x.first == field_pat.first; } ) - sd.begin();
-                if( f_idx == sd.size() ) {
-                    ERROR(sp, E0000, "Struct " << e.path << " doesn't have a field " << field_pat.first);
-                }
-                const ::HIR::TypeRef& field_type = sd[f_idx].second.ent;
-                if( monomorphise_type_needed(field_type) ) {
-                    auto field_type_mono = monomorphise_type(sp, str.m_params, gp.m_params,  field_type);
-                    this->add_binding(sp, field_pat.second, field_type_mono);
-                }
-                else {
-                    this->add_binding(sp, field_pat.second, field_type);
-                }
+            const ::HIR::TypeRef& field_type = sd[f_idx].second.ent;
+            if( monomorphise_type_needed(field_type) ) {
+                auto field_type_mono = monomorphise_type(sp, str.m_params, params,  field_type);
+                this->add_binding(sp, field_pat.second, field_type_mono);
             }
-            )
-        )
+            else {
+                this->add_binding(sp, field_pat.second, field_type);
+            }
+        }
         ),
     (EnumValue,
         this->add_ivars_params( e.path.m_params );
@@ -3595,25 +3582,11 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             path.m_path.m_components.pop_back();
             this->equate_types( sp, type, ::HIR::TypeRef::new_path(mv$(path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
         }
-        const auto& ty = this->get_type(type);
-        const auto& type = ty;
 
         assert(e.binding_ptr);
         const auto& enm = *e.binding_ptr;
         const auto& var = enm.m_variants[e.binding_idx].second;
         assert(var.is_Value() || var.is_Unit());
-        
-        TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
-        (
-            ERROR(sp, E0000, "Type mismatch in enum pattern - " << type << " is not " << e.path);
-            ),
-        (Infer, throw ""; ),
-        (Path,
-            if( ! te.binding.is_Enum() || te.binding.as_Enum() != &enm ) {
-                ERROR(sp, E0000, "Type mismatch in enum pattern - " << type << " is not " << e.path);
-            }
-            )
-        )
         ),
     (EnumTuple,
         this->add_ivars_params( e.path.m_params );
@@ -3623,43 +3596,28 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
 
             this->equate_types( sp, type, ::HIR::TypeRef::new_path(mv$(path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
         }
-        const auto& ty = this->get_type(type);
-        const auto& type = ty;
-        
         assert(e.binding_ptr);
         const auto& enm = *e.binding_ptr;
         const auto& var = enm.m_variants[e.binding_idx].second;
         assert(var.is_Tuple());
         const auto& tup_var = var.as_Tuple();
         
-        TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
-        (
-            ERROR(sp, E0000, "Type mismatch in enum pattern - " << type << " is not " << e.path);
-            ),
-        (Infer, throw ""; ),
-        (Path,
-            if( ! te.binding.is_Enum() || te.binding.as_Enum() != &enm ) {
-                ERROR(sp, E0000, "Type mismatch in enum pattern - " << type << " is not " << e.path);
+        const auto& params = e.path.m_params;
+        
+        ASSERT_BUG(sp, e.sub_patterns.size() == tup_var.size(),
+            "Enum pattern with an incorrect number of fields - " << e.path << " - expected " << tup_var.size() << ", got " << e.sub_patterns.size()
+            );
+        
+        for( unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
+        {
+            if( monomorphise_type_needed(tup_var[i].ent) ) {
+                auto var_ty = monomorphise_type(sp, enm.m_params, params,  tup_var[i].ent);
+                this->add_binding(sp, e.sub_patterns[i], var_ty);
             }
-            // NOTE: Must be Generic for the above to have passed
-            auto& gp = te.path.m_data.as_Generic();
-            
-            ASSERT_BUG(sp, e.sub_patterns.size() == tup_var.size(),
-                "Enum pattern with an incorrect number of fields - " << e.path << " - expected " << tup_var.size() << ", got " << e.sub_patterns.size()
-                );
-            
-            for( unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
-            {
-                if( monomorphise_type_needed(tup_var[i].ent) ) {
-                    auto var_ty = monomorphise_type(sp, enm.m_params, gp.m_params,  tup_var[i].ent);
-                    this->add_binding(sp, e.sub_patterns[i], var_ty);
-                }
-                else {
-                    this->add_binding(sp, e.sub_patterns[i], tup_var[i].ent);
-                }
+            else {
+                this->add_binding(sp, e.sub_patterns[i], tup_var[i].ent);
             }
-            )
-        )
+        }
         ),
     (EnumStruct,
         this->add_ivars_params( e.path.m_params );
@@ -3669,44 +3627,29 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
 
             this->equate_types( sp, type, ::HIR::TypeRef::new_path(mv$(path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
         }
-        const auto& ty = this->get_type(type);
-        const auto& type = ty;
 
         assert(e.binding_ptr);
         const auto& enm = *e.binding_ptr;
         const auto& var = enm.m_variants[e.binding_idx].second;
         assert(var.is_Struct());
         const auto& tup_var = var.as_Struct();
-        
-        TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (te),
-        (
-            ERROR(sp, E0000, "Type mismatch in enum pattern - " << type << " is not " << e.path);
-            ),
-        (Infer, throw ""; ),
-        (Path,
-            if( ! te.binding.is_Enum() || te.binding.as_Enum() != &enm ) {
-                ERROR(sp, E0000, "Type mismatch in enum pattern - " << type << " is not " << e.path);
-            }
-            // NOTE: Must be Generic for the above to have passed
-            auto& gp = te.path.m_data.as_Generic();
+        const auto& params = e.path.m_params;
             
-            for( auto& field_pat : e.sub_patterns )
-            {
-                unsigned int f_idx = ::std::find_if( tup_var.begin(), tup_var.end(), [&](const auto& x){ return x.first == field_pat.first; } ) - tup_var.begin();
-                if( f_idx == tup_var.size() ) {
-                    ERROR(sp, E0000, "Enum variant " << e.path << " doesn't have a field " << field_pat.first);
-                }
-                const ::HIR::TypeRef& field_type = tup_var[f_idx].second.ent;
-                if( monomorphise_type_needed(field_type) ) {
-                    auto field_type_mono = monomorphise_type(sp, enm.m_params, gp.m_params,  field_type);
-                    this->add_binding(sp, field_pat.second, field_type_mono);
-                }
-                else {
-                    this->add_binding(sp, field_pat.second, field_type);
-                }
+        for( auto& field_pat : e.sub_patterns )
+        {
+            unsigned int f_idx = ::std::find_if( tup_var.begin(), tup_var.end(), [&](const auto& x){ return x.first == field_pat.first; } ) - tup_var.begin();
+            if( f_idx == tup_var.size() ) {
+                ERROR(sp, E0000, "Enum variant " << e.path << " doesn't have a field " << field_pat.first);
             }
-            )
-        )
+            const ::HIR::TypeRef& field_type = tup_var[f_idx].second.ent;
+            if( monomorphise_type_needed(field_type) ) {
+                auto field_type_mono = monomorphise_type(sp, enm.m_params, params,  field_type);
+                this->add_binding(sp, field_pat.second, field_type_mono);
+            }
+            else {
+                this->add_binding(sp, field_pat.second, field_type);
+            }
+        }
         )
     )
 }
