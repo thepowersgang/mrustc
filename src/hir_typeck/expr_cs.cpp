@@ -73,19 +73,21 @@ struct Context
     
     struct IVarPossible
     {
-        bool force_no = false;
-        ::std::vector<::HIR::TypeRef>   types_to;
-        ::std::vector<::HIR::TypeRef>   types_from;
+        bool force_no_to = false;
+        bool force_no_from = false;
+        ::std::vector<::HIR::TypeRef>   types_coerce_to;
+        ::std::vector<::HIR::TypeRef>   types_unsize_to;
+        ::std::vector<::HIR::TypeRef>   types_coerce_from;
+        ::std::vector<::HIR::TypeRef>   types_unsize_from;
         //::std::vector<::HIR::TypeRef>   types_default;
         
         void reset() {
-            force_no = false;
-            types_to.clear();
-            types_from.clear();
-            //types_default.clear();
+            //auto tmp = mv$(this->types_default);
+            *this = IVarPossible();
+            //this->types_default = mv$(tmp);
         }
         bool has_rules() const {
-            return !types_to.empty() || !types_from.empty() /* || !types_default.empty()*/;
+            return !types_unsize_to.empty() || !types_coerce_to.empty() || !types_unsize_from.empty() || !types_coerce_from.empty() /* || !types_default.empty()*/;
         }
     };
     
@@ -129,9 +131,6 @@ struct Context
     void equate_types(const Span& sp, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r);
     // - Equate two types, allowing inferrence
     void equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR::ExprNodeP& node_ptr);
-    // - Mark a type as having an unknown coercion (for this round)
-    // TODO: Include the direction for the shadow, allowing guesses from the other direction.
-    void equate_types_shadow(const Span& sp, const ::HIR::TypeRef& l);
     // - Equate a type to an associated type (if name == "", no equation is done, but trait is searched)
     void equate_types_assoc(
         const Span& sp, const ::HIR::TypeRef& l,
@@ -144,21 +143,51 @@ struct Context
         equate_types_assoc(sp, l, trait, mv$(pp), impl_ty, name, is_op);
     }
     void equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::HIR::PathParams params, const ::HIR::TypeRef& impl_ty, const char *name, bool is_op);
+    
     // - Add a trait bound (gets encoded as an associated type bound)
     void add_trait_bound(const Span& sp, const ::HIR::TypeRef& impl_ty, const ::HIR::SimplePath& trait, ::HIR::PathParams params) {
         equate_types_assoc(sp, ::HIR::TypeRef(), trait, mv$(params), impl_ty, "", false);
     }
+    
+    /// Disable possibility checking for the type (as if <impossible> was added as a coerce_to)
+    void equate_types_to_shadow(const Span& sp, const ::HIR::TypeRef& r) {
+        equate_types_shadow(sp, r, true);
+    }
+    /// Disable possibility checking for the type (as if <impossible> was added as a coerce_from)
+    void equate_types_from_shadow(const Span& sp, const ::HIR::TypeRef& l) {
+        equate_types_shadow(sp, l, false);
+    }
+    void equate_types_shadow(const Span& sp, const ::HIR::TypeRef& ty, bool is_to);
 
-    // - List `t` as a possible type for `ivar_index`
     /// Possible type that this ivar can coerce to
-    void possible_equate_type_to(unsigned int ivar_index, const ::HIR::TypeRef& t);
+    void possible_equate_type_coerce_to(unsigned int ivar_index, const ::HIR::TypeRef& t) {
+        possible_equate_type(ivar_index, t, true , false);
+    }
+    /// Possible type that this ivar can unsize to
+    void possible_equate_type_unsize_to(unsigned int ivar_index, const ::HIR::TypeRef& t) {
+        possible_equate_type(ivar_index, t, true , true);
+    }
     /// Possible type that this ivar can coerce from
-    void possible_equate_type_from(unsigned int ivar_index, const ::HIR::TypeRef& t);
+    void possible_equate_type_coerce_from(unsigned int ivar_index, const ::HIR::TypeRef& t) {
+        possible_equate_type(ivar_index, t, false, false);
+    }
+    /// Possible type that this ivar can unsize from
+    void possible_equate_type_unsize_from(unsigned int ivar_index, const ::HIR::TypeRef& t) {
+        possible_equate_type(ivar_index, t, false, true);
+    }
+    // Mark an ivar as having an unknown possibility (on the destination side)
+    void possible_equate_type_disable_to(unsigned int ivar_index) {
+        possible_equate_type_disable(ivar_index, true);
+    }
+    // Mark an ivar as having an unknown possibility (on the source side)
+    void possible_equate_type_disable_from(unsigned int ivar_index) {
+        possible_equate_type_disable(ivar_index, true);
+    }
     /// Default type
     //void possible_equate_type_def(unsigned int ivar_index, const ::HIR::TypeRef& t);
-    // Mark an ivar as having an unknown possibility
-    void possible_equate_type_disable(unsigned int ivar_index);
-    void possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t, bool is_to);
+    
+    void possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t, bool is_to, bool is_borrow);
+    void possible_equate_type_disable(unsigned int ivar_index, bool is_to);
     
     // - Add a pattern binding (forcing the type to match)
     void add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type);
@@ -705,7 +734,7 @@ namespace {
             
             for(auto& arm : node.m_arms)
             {
-                DEBUG("ARM " << arm.m_patterns);
+                TRACE_FUNCTION_F("ARM " << arm.m_patterns);
                 for(auto& pat : arm.m_patterns)
                 {
                     this->context.add_binding(node.span(), pat, val_type);
@@ -2032,7 +2061,7 @@ namespace {
                     // TODO: Wouldn't this be better served by a coercion point?
                     TU_IFLET( ::HIR::TypeRef::Data, this->context.get_type(*s_e.inner).m_data, Infer, s_e_i,
                         // If the type is an ivar, possible equate
-                        this->context.possible_equate_type_to(s_e_i.index, *e.inner);
+                        this->context.possible_equate_type_unsize_to(s_e_i.index, *e.inner);
                     )
                     else
                     {
@@ -2081,7 +2110,7 @@ namespace {
             const auto& idx_ty = this->context.get_type(node.m_index->m_res_type);
             TRACE_FUNCTION_F("Index: val=" << val_ty << ", idx=" << idx_ty << "");
             
-            this->context.equate_types_shadow(node.span(), node.m_res_type);
+            this->context.equate_types_from_shadow(node.span(), node.m_res_type);
             
             // NOTE: Indexing triggers autoderef
             unsigned int deref_count = 0;
@@ -2160,7 +2189,7 @@ namespace {
                 ),
             (Infer,
                 // Keep trying
-                this->context.equate_types_shadow(node.span(), node.m_res_type);
+                this->context.equate_types_from_shadow(node.span(), node.m_res_type);
                 return ;
                 ),
             (Borrow,
@@ -2193,7 +2222,7 @@ namespace {
                     const auto& str = this->context.m_crate.get_struct_by_path(sp, lang_Boxed);
                     // TODO: Store this type to avoid having to construct it every pass
                     auto boxed_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(lang_Boxed, {data_ty.clone()}), &str );
-                    this->context.possible_equate_type_from( exp_ty.m_data.as_Infer().index, boxed_ty );
+                    this->context.possible_equate_type_coerce_from( exp_ty.m_data.as_Infer().index, boxed_ty );
                 }
                 return ;
             }
@@ -2266,9 +2295,9 @@ namespace {
             TRACE_FUNCTION_F("CallValue: ty=" << ty_o);
             
             // - Shadow (prevent ivar guessing) every parameter
-            this->context.equate_types_shadow(node.span(), node.m_res_type);
+            this->context.equate_types_from_shadow(node.span(), node.m_res_type);
             for( const auto& arg_ty : node.m_arg_ivars ) {
-                this->context.equate_types_shadow(node.span(), arg_ty);
+                this->context.equate_types_to_shadow(node.span(), arg_ty);
             }
             
             if( ty_o.m_data.is_Infer() ) {
@@ -2472,9 +2501,9 @@ namespace {
             TRACE_FUNCTION_F("(CallMethod) {" << this->context.m_ivars.fmt_type(ty) << "}." << node.m_method << node.m_params);
             
             // Make sure that no mentioned types are inferred until this method is known
-            this->context.equate_types_shadow(node.span(), node.m_res_type);
+            this->context.equate_types_from_shadow(node.span(), node.m_res_type);
             for( const auto& arg_node : node.m_args ) {
-                this->context.equate_types_shadow(node.span(), arg_node->m_res_type);
+                this->context.equate_types_to_shadow(node.span(), arg_node->m_res_type);
             }
             
             // Using autoderef, locate this method on the type
@@ -2633,7 +2662,7 @@ namespace {
             const auto& field_name = node.m_field;
             TRACE_FUNCTION_F("(Field) name=" << field_name << ", ty = " << this->context.m_ivars.fmt_type(node.m_value->m_res_type));
 
-            this->context.equate_types_shadow(node.span(), node.m_res_type);
+            this->context.equate_types_from_shadow(node.span(), node.m_res_type);
 
             ::HIR::TypeRef  out_type;
 
@@ -3691,7 +3720,7 @@ void Context::equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR
     DEBUG("equate_types_coerce(" << this->link_coerce.back() << ")");
     this->m_ivars.mark_change();
 }
-void Context::equate_types_shadow(const Span& sp, const ::HIR::TypeRef& l)
+void Context::equate_types_shadow(const Span& sp, const ::HIR::TypeRef& l, bool is_to)
 {
     TU_MATCH_DEF(::HIR::TypeRef::Data, (this->get_type(l).m_data), (e),
     (
@@ -3703,24 +3732,24 @@ void Context::equate_types_shadow(const Span& sp, const ::HIR::TypeRef& l)
             ),
         (Generic,
             for(const auto& sty : pe.m_params.m_types)
-                this->equate_types_shadow(sp, sty);
+                this->equate_types_shadow(sp, sty, is_to);
             )
         )
         ),
     (Tuple,
         for(const auto& sty : e)
-            this->equate_types_shadow(sp, sty);
+            this->equate_types_shadow(sp, sty, is_to);
         ),
     (Borrow,
-        this->equate_types_shadow(sp, *e.inner);
+        this->equate_types_shadow(sp, *e.inner, is_to);
         ),
     (Closure,
         for(const auto& aty : e.m_arg_types)
-            this->equate_types_shadow(sp, aty);
-        this->equate_types_shadow(sp, *e.m_rettype);
+            this->equate_types_shadow(sp, aty, is_to);
+        this->equate_types_shadow(sp, *e.m_rettype, is_to);
         ),
     (Infer,
-        this->possible_equate_type_disable(e.index);
+        this->possible_equate_type_disable(e.index, is_to);
         )
     )
 }
@@ -3746,15 +3775,8 @@ void Context::add_revisit_adv(::std::unique_ptr<Revisitor> ent_ptr) {
     this->adv_revisits.push_back( mv$(ent_ptr) );
 }
 
-void Context::possible_equate_type_to(unsigned int ivar_index, const ::HIR::TypeRef& t) {
-    // TODO: If the other side is an ivar, add to the other list too
-    possible_equate_type(ivar_index, t, true);
-}
-void Context::possible_equate_type_from(unsigned int ivar_index, const ::HIR::TypeRef& t) {
-    possible_equate_type(ivar_index, t, false);
-}
-void Context::possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t, bool is_to) {
-    DEBUG(ivar_index << " ?= " << t << " " << this->m_ivars.get_type(t));
+void Context::possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t, bool is_to, bool is_borrow) {
+    DEBUG(ivar_index << " " << (is_borrow ? "unsize":"coerce") << " " << (is_to?"to":"from") << " " << t << " " << this->m_ivars.get_type(t));
     {
         ::HIR::TypeRef  ty_l;
         ty_l.m_data.as_Infer().index = ivar_index;
@@ -3765,14 +3787,13 @@ void Context::possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef
         possible_ivar_vals.resize( ivar_index + 1 );
     }
     auto& ent = possible_ivar_vals[ivar_index];
-    auto& list = (is_to ? ent.types_to : ent.types_from);
-    //list.push_back( &t );
+    auto& list = (is_borrow
+        ? (is_to ? ent.types_unsize_to : ent.types_unsize_from)
+        : (is_to ? ent.types_coerce_to : ent.types_coerce_from)
+        );
     list.push_back( t.clone() );
 }
-// TODO: This could eventually be used to direct inferrence
-//void Context::possible_equate_type_def(unsigned int ivar_index, const ::HIR::TypeRef& t) {
-//}
-void Context::possible_equate_type_disable(unsigned int ivar_index) {
+void Context::possible_equate_type_disable(unsigned int ivar_index, bool is_to) {
     DEBUG(ivar_index << " ?= ??");
     {
         ::HIR::TypeRef  ty_l;
@@ -3784,7 +3805,12 @@ void Context::possible_equate_type_disable(unsigned int ivar_index) {
         possible_ivar_vals.resize( ivar_index + 1 );
     }
     auto& ent = possible_ivar_vals[ivar_index];
-    ent.force_no = true;
+    if( is_to ) {
+        ent.force_no_to = true;
+    }
+    else {
+        ent.force_no_from = true;
+    }
 }
 
 void Context::add_var(unsigned int index, const ::std::string& name, ::HIR::TypeRef type) {
@@ -3943,8 +3969,8 @@ namespace {
             //    context.equate_types(sp, ty_dst, ty_src);
             //    return true;
             //}
-            context.possible_equate_type_to(r_e.index, ty_dst);
-            context.possible_equate_type_from(l_e.index, ty_src);
+            context.possible_equate_type_unsize_to(r_e.index, ty_dst);
+            context.possible_equate_type_unsize_from(l_e.index, ty_src);
             DEBUG("- Infer, add possibility");
             return false;
         }
@@ -3956,14 +3982,14 @@ namespace {
             //    context.equate_types(sp, ty_dst, ty_src);
             //    return true;
             //}
-            context.possible_equate_type_to(r_e.index, ty_dst);
+            context.possible_equate_type_unsize_to(r_e.index, ty_dst);
             DEBUG("- Infer, add possibility");
             return false;
         )
         
         TU_IFLET(::HIR::TypeRef::Data, ty_dst.m_data, Infer, l_e,
             //if( l_e.ty_class == ::HIR::InferClass::None ) {
-                context.possible_equate_type_from(l_e.index, ty_src);
+                context.possible_equate_type_unsize_from(l_e.index, ty_src);
                 DEBUG("- Infer, add possibility");
                 return false;
             //}
@@ -4267,11 +4293,11 @@ namespace {
             }
             else {
                 TU_IFLET(::HIR::TypeRef::Data, ty_dst.m_data, Infer, e2,
-                    context.possible_equate_type_to(e.index, ty_dst);
-                    context.possible_equate_type_from(e2.index, ty_src);
+                    context.possible_equate_type_coerce_to(e.index, ty_dst);
+                    context.possible_equate_type_coerce_from(e2.index, ty_src);
                 )
                 else {
-                    context.possible_equate_type_to(e.index, ty_dst);
+                    context.possible_equate_type_coerce_to(e.index, ty_dst);
                     return false;
                 }
             }
@@ -4359,7 +4385,7 @@ namespace {
             // Can't do anything yet?
             // - Later code can handle "only path" coercions
 
-            context.possible_equate_type_from(l_e.index,  ty_src);
+            context.possible_equate_type_coerce_from(l_e.index,  ty_src);
             DEBUG("- Infer, add possibility");
             return false;
             ),
@@ -4444,7 +4470,7 @@ namespace {
                     BUG(sp, "Type error expected " << ty_dst << " == " << ty_src);
                 }
                 
-                context.possible_equate_type_to(r_e.index, ty_dst);
+                context.possible_equate_type_coerce_to(r_e.index, ty_dst);
                 DEBUG("- Infer, add possibility");
                 return false;
             )
@@ -4504,7 +4530,7 @@ namespace {
                     BUG(sp, "Type error expected " << ty_dst << " == " << ty_src);
                 }
                 // Can't do much for now
-                context.possible_equate_type_to(r_e.index, ty_dst);
+                context.possible_equate_type_coerce_to(r_e.index, ty_dst);
                 DEBUG("- Infer, add possibility");
                 return false;
             )
@@ -4594,7 +4620,7 @@ namespace {
         // - This generates an exact equation.
         if( v.left_ty != ::HIR::TypeRef() )
         {
-            context.equate_types_shadow(sp, v.left_ty);
+            context.equate_types_from_shadow(sp, v.left_ty);
         }
         
         // HACK! If the trait is `Unsize` then pretend `impl<T> Unsize<T> for T` exists to possibly propagate the type through
@@ -4623,11 +4649,11 @@ namespace {
                 }
                 else {
                     TU_IFLET(::HIR::TypeRef::Data, dst_ty.m_data, Infer, de,
-                        context.possible_equate_type_to(se.index, dst_ty);
-                        context.possible_equate_type_from(de.index, src_ty);
+                        context.possible_equate_type_unsize_to(se.index, dst_ty);
+                        context.possible_equate_type_unsize_from(de.index, src_ty);
                     )
                     else {
-                        context.possible_equate_type_to(se.index, dst_ty);
+                        context.possible_equate_type_unsize_to(se.index, dst_ty);
                     }
                 }
             )
@@ -4637,7 +4663,7 @@ namespace {
                     context.equate_types(sp, dst_ty,  src_ty);
                 }
                 else {
-                    context.possible_equate_type_from(de.index, src_ty);
+                    context.possible_equate_type_unsize_from(de.index, src_ty);
                 }
             )
             else {
@@ -4660,15 +4686,15 @@ namespace {
             else if( src_ty.m_data.is_Infer() )
             {
                 // Source can possibly equate to dst_ty
-                context.possible_equate_type_to(src_ty.m_data.as_Infer().index, dst_ty);
-                DEBUG("- Src Infer, add possibility");
+                context.possible_equate_type_coerce_to(src_ty.m_data.as_Infer().index, dst_ty);
+                DEBUG("- CoerceUnsized Src Infer, add possibility");
                 return false;
             }
             else if( dst_ty.m_data.is_Infer() )
             {
                 // Destination can possibly equate from src_ty
-                context.possible_equate_type_to(dst_ty.m_data.as_Infer().index, src_ty);
-                DEBUG("- Dst Infer, add possibility");
+                context.possible_equate_type_coerce_from(dst_ty.m_data.as_Infer().index, src_ty);
+                DEBUG("- CoerceUnsized Dst Infer, add possibility");
                 return false;
             }
             else
@@ -4844,7 +4870,8 @@ namespace {
         if( ! ivar_ent.has_rules() ) {
             // No idea! (or unused)
             // - Clear the `force_no` flag
-            ivar_ent.force_no = false;
+            ivar_ent.force_no_to = false;
+            ivar_ent.force_no_from = false;
             return ;
         }
         
@@ -4859,10 +4886,19 @@ namespace {
             return ;
         }
         
+        //enum class List {
+        //    CoerceTo,
+        //    CoerceFrom,
+        //    UnsizeTo,
+        //    UnsizeFrom,
+        //};
         struct H {
             // De-duplicate list (taking into account other ivars)
             // - TODO: Use the direction and do a fuzzy equality based on coercion possibility
             static void dedup_type_list(const Context& context, ::std::vector< ::HIR::TypeRef>& list) {
+                if( list.size() <= 1 )
+                    return ;
+                
                 for( auto it = list.begin(); it != list.end(); )
                 {
                     bool found = false;
@@ -5033,7 +5069,7 @@ namespace {
         };
         
         
-        if( ivar_ent.force_no == true )
+        if( ivar_ent.force_no_to == true || ivar_ent.force_no_from )
         {
             DEBUG("- IVar " << ty_l << " is forced unknown");
         }
@@ -5044,12 +5080,11 @@ namespace {
             // TODO: Some cases lead to two possibilities that compare different (due to inferrence) but are actually the same.
             // - The above dedup should probably be aware of the way the types are used (for coercions).
             
-            if( ivar_ent.types_to.size() > 1 ) {
-                H::dedup_type_list(context, ivar_ent.types_to);
-            }
-            if( ivar_ent.types_from.size() > 1 ) {
-                H::dedup_type_list(context, ivar_ent.types_from);
-            }
+            // TODO: Dedup based on context.
+            H::dedup_type_list(context, ivar_ent.types_coerce_to);
+            H::dedup_type_list(context, ivar_ent.types_unsize_to);
+            H::dedup_type_list(context, ivar_ent.types_coerce_from);
+            H::dedup_type_list(context, ivar_ent.types_unsize_from);
             
             #if 0
             // If there is a default type compatible with all possibilities, use that.
@@ -5060,16 +5095,55 @@ namespace {
             #endif
             
             // Prefer cases where this type is being created from a known type
-            if( ivar_ent.types_from.size() == 0 && ivar_ent.types_to.size() == 0 ) {
+            if( ivar_ent.types_coerce_from.size() == 0 && ivar_ent.types_coerce_to.size() == 0
+             && ivar_ent.types_unsize_from.size() == 0 && ivar_ent.types_unsize_to.size() == 0
+                )
+            {
                 ivar_ent.reset();
                 return ;
             }
-            DEBUG("-- " << ty_l << " FROM=" << ivar_ent.types_from << ", TO=" << ivar_ent.types_to);
+            DEBUG("-- " << ty_l << " FROM=Coerce:[" << ivar_ent.types_coerce_from << "] / Unsize:[" << ivar_ent.types_unsize_from << "],"
+                << " TO=Coerce:[" << ivar_ent.types_coerce_to << "] / Unsize:[" << ivar_ent.types_unsize_to << "]");
+            
+            // HACK: Merge into a single list.
+            ::std::vector< ::HIR::TypeRef>  types_from_o;
+            const auto* types_from_p = &types_from_o;
+            if( ivar_ent.types_coerce_from.size() == 0 )
+                types_from_p = &ivar_ent.types_unsize_from;
+            else if( ivar_ent.types_unsize_from.size() == 0 )
+                types_from_p = &ivar_ent.types_coerce_from;
+            else {
+                for(const auto& t : ivar_ent.types_coerce_from) {
+                    types_from_o.push_back( t.clone() );
+                }
+                for(const auto& t : ivar_ent.types_unsize_from) {
+                    types_from_o.push_back( t.clone() );
+                }
+                H::dedup_type_list(context, types_from_o);
+            }
+            const auto& types_from = *types_from_p;
+            ::std::vector< ::HIR::TypeRef>  types_to_o;
+            const auto* types_to_p = &types_to_o;
+            if( ivar_ent.types_coerce_to.size() == 0 )
+                types_to_p = &ivar_ent.types_unsize_to;
+            else if( ivar_ent.types_unsize_to.size() == 0 )
+                types_to_p = &ivar_ent.types_coerce_to;
+            else {
+                for(const auto& t : ivar_ent.types_coerce_to) {
+                    types_to_o.push_back( t.clone() );
+                }
+                for(const auto& t : ivar_ent.types_unsize_to) {
+                    types_to_o.push_back( t.clone() );
+                }
+                H::dedup_type_list(context, types_to_o);
+            }
+            const auto& types_to = *types_to_p;
+            
             
             #if 1
-            if( ivar_ent.types_from.size() == 1 && ivar_ent.types_to.size() == 1 ) {
-                const auto& ty_to = ivar_ent.types_to[0];
-                const auto& ty_from = ivar_ent.types_from[0];
+            if( types_from.size() == 1 && types_to.size() == 1 ) {
+                const auto& ty_to = types_to[0];
+                const auto& ty_from = types_from[0];
                 if( H::can_coerce_to(context, ty_to, ty_from) )
                 {
                     // Only one possibility
@@ -5082,28 +5156,26 @@ namespace {
             }
             //else
             #endif
-            if( ivar_ent.types_from.size() == 1 ) {
-                //const ::HIR::TypeRef& ty_r = *ivar_ent.types_from[0];
-                const ::HIR::TypeRef& ty_r = ivar_ent.types_from[0];
+            if( types_from.size() == 1 ) {
+                const ::HIR::TypeRef& ty_r = types_from[0];
                 // Only one possibility
                 DEBUG("- IVar " << ty_l << " = " << ty_r << " (from)");
                 context.equate_types(sp, ty_l, ty_r);
             }
-            else if( ivar_ent.types_to.size() == 1 ) {
-                //const ::HIR::TypeRef& ty_r = *ivar_ent.types_to[0];
-                const ::HIR::TypeRef& ty_r = ivar_ent.types_to[0];
+            else if( types_to.size() == 1 ) {
+                const ::HIR::TypeRef& ty_r = types_to[0];
                 // Only one possibility
                 DEBUG("- IVar " << ty_l << " = " << ty_r << " (to)");
                 context.equate_types(sp, ty_l, ty_r);
             }
             else {
-                DEBUG("- IVar " << ty_l << " not concretely known {" << ivar_ent.types_from << "} and {" << ivar_ent.types_to << "}" );
+                DEBUG("- IVar " << ty_l << " not concretely known {" << types_from << "} and {" << types_to << "}" );
                 
                 // If one side is completely unknown, pick the most liberal of the other side
-                if( ivar_ent.types_to.size() == 0 && ivar_ent.types_from.size() > 0 )
+                if( types_to.size() == 0 && types_from.size() > 0 )
                 {
                     // Search for the lowest-level source type (e.g. &[T])
-                    const auto* lowest_type = H::find_lowest_type(context, ivar_ent.types_from);
+                    const auto* lowest_type = H::find_lowest_type(context, types_from);
                     if( lowest_type )
                     {
                         const ::HIR::TypeRef& ty_r = *lowest_type;
@@ -5111,7 +5183,7 @@ namespace {
                         context.equate_types(sp, ty_l, ty_r);
                     }
                 }
-                else if( ivar_ent.types_to.size() > 0 && ivar_ent.types_from.size() == 0 )
+                else if( types_to.size() > 0 && types_from.size() == 0 )
                 {
                     // TODO: Get highest-level target type
                 }
