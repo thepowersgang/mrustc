@@ -620,6 +620,7 @@ bool ::HIR::Crate::find_auto_trait_impls(const ::HIR::SimplePath& trait, const :
 }
 bool ::HIR::Crate::find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback) const
 {
+    // TODO: Restrict which crate is searched based on the type.
     for( const auto& impl : this->m_type_impls )
     {
         if( impl.matches_type(type, ty_res) ) {
@@ -630,7 +631,7 @@ bool ::HIR::Crate::find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type
     }
     for( const auto& ec : this->m_ext_crates )
     {
-        DEBUG("- " << ec.first);
+        //DEBUG("- " << ec.first);
         if( ec.second->find_type_impls(type, ty_res, callback) ) {
             return true;
         }
