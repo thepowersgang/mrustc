@@ -5020,6 +5020,19 @@ namespace {
                 
                 return nullptr;
             }
+            
+            /// Returns true if `dst` is found when dereferencing `src`
+            static bool type_derefs_from(const Span& sp, const Context& context, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src) {
+                
+                ::HIR::TypeRef  tmp;
+                const ::HIR::TypeRef* ty = &src;
+                do
+                {
+                    if( context.m_ivars.types_equal(*ty, dst) )
+                        return true;
+                } while( (ty = context.m_resolve.autoderef(sp, *ty, tmp)) );
+                return false;
+            }
         };
         
         
@@ -5058,7 +5071,7 @@ namespace {
             DEBUG("-- " << ty_l << " FROM=Coerce:[" << ivar_ent.types_coerce_from << "] / Unsize:[" << ivar_ent.types_unsize_from << "],"
                 << " TO=Coerce:[" << ivar_ent.types_coerce_to << "] / Unsize:[" << ivar_ent.types_unsize_to << "]");
             
-            // TODO: Find an entry in the `types_unsize_from` list that all other entries can unsize to
+            // Find an entry in the `types_unsize_from` list that all other entries can unsize to
             H::dedup_type_list_with(ivar_ent.types_unsize_from, [&](const auto& l, const auto& r) {
                 // &T and T
                 TU_IFLET( ::HIR::TypeRef::Data, l.m_data, Borrow, le,
@@ -5076,6 +5089,25 @@ namespace {
                         if( context.m_ivars.types_equal(*re.inner, l) )
                             return DedupKeep::Left;
                     )
+                }
+                return DedupKeep::Both;
+                });
+            // Find an entry in the `types_coerce_from` list that all other entries can coerce to
+            H::dedup_type_list_with(ivar_ent.types_coerce_from, [&](const auto& l, const auto& r) {
+                if( l.m_data.is_Infer() || r.m_data.is_Infer() )
+                    return DedupKeep::Both;
+                
+                if( l.m_data.is_Borrow() )
+                {
+                    const auto& le = l.m_data.as_Borrow();
+                    const auto& re = r.m_data.as_Borrow();
+                    
+                    // Dereference `*re.inner` until it isn't possible or it equals `*le.inner`
+                    // - Repeat going the other direction.
+                    if( H::type_derefs_from(sp, context, *le.inner, *re.inner) )
+                        return DedupKeep::Left;
+                    if( H::type_derefs_from(sp, context, *re.inner, *le.inner) )
+                        return DedupKeep::Right;
                 }
                 return DedupKeep::Both;
                 });
