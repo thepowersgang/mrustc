@@ -1004,7 +1004,13 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
         return false;
         ),
     (ErasedType,
-        TODO(Span(), "ErasedType - It's Copy if Copy is a trait in it");
+        for(const auto& trait : e.m_traits)
+        {
+            if( find_named_trait_in_trait(sp, m_lang_Copy, {},  *trait.m_trait_ptr, trait.m_path.m_path, trait.m_path.m_params,  ty, [](const auto&, auto ){ }) ) {
+                return true;
+            }
+        }
+        return false;
         ),
     (Tuple,
         for(const auto& ty : e)
