@@ -216,6 +216,7 @@ namespace {
             TRACE_FUNCTION;
             
             root->visit(*this);
+            visit_type(root->m_res_type);
             
             DEBUG("Locals");
             for(auto& ty : root.m_bindings)
