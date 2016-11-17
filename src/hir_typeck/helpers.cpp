@@ -3075,7 +3075,7 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
         }
     }
 }
-unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path) const
+unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path, AutoderefBorrow& borrow) const
 {
     unsigned int deref_count = 0;
     ::HIR::TypeRef  tmp_type;   // Temporary type used for handling Deref
@@ -3111,6 +3111,7 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
                     // Search for methods on the inner type with Receiver::Box
                     if( this->find_method(sp, traits, ivars, ty, method_name, AllowedReceivers::Box, fcn_path) ) {
                         DEBUG("FOUND Box, fcn_path = " << fcn_path);
+                        borrow = AutoderefBorrow::None;
                         return 1;
                     }
                 }
@@ -3131,6 +3132,27 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
         auto allowed_receivers = (unconditional_allow_move || (deref_count == 0) ? AllowedReceivers::All : AllowedReceivers::AnyBorrow);
         if( this->find_method(sp, traits, ivars, ty, method_name,  allowed_receivers, fcn_path) ) {
             DEBUG("FOUND " << deref_count << ", fcn_path = " << fcn_path);
+            borrow = AutoderefBorrow::None;
+            return deref_count;
+        }
+        
+        
+        auto borrow_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ty.clone());
+        if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
+            DEBUG("FOUND &*" << deref_count << ", fcn_path = " << fcn_path);
+            borrow = AutoderefBorrow::Shared;
+            return deref_count;
+        }
+        borrow_ty.m_data.as_Borrow().type = ::HIR::BorrowType::Unique;
+        if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
+            DEBUG("FOUND &mut*" << deref_count << ", fcn_path = " << fcn_path);
+            borrow = AutoderefBorrow::Unique;
+            return deref_count;
+        }
+        borrow_ty.m_data.as_Borrow().type = ::HIR::BorrowType::Owned;
+        if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
+            DEBUG("FOUND &mut*" << deref_count << ", fcn_path = " << fcn_path);
+            borrow = AutoderefBorrow::Owned;
             return deref_count;
         }
         
@@ -3145,6 +3167,7 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
         
         if( find_method(sp, traits, ivars, ty, method_name, AllowedReceivers::All, fcn_path) ) {
             DEBUG("FOUND " << 0 << ", fcn_path = " << fcn_path);
+            borrow = AutoderefBorrow::None;
             return 0;
         }
     )
@@ -3155,57 +3178,30 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
         return ~0u;
     }
     
-    // TODO: Try the following after dereferencing a Box? - Requires indiciating via the return that the caller should deref+ref
-    // - Should refactor to change searching to search for functions taking the current type as a receiver (not method searching as is currently done)
-    
     // Insert a single reference and try again (only allowing by-value methods), returning a magic value (e.g. ~1u)
     // - Required for calling `(self[..]: str).into_searcher(haystack)` - Which invokes `<&str as Pattern>::into_searcher(&self[..], haystack)`
     // - Have to do several tries, each with different borrow classes.
     auto borrow_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, top_ty.clone());
     if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
         DEBUG("FOUND &, fcn_path = " << fcn_path);
-        return ~1u;
+        borrow = AutoderefBorrow::Shared;
+        return 0;
     }
     borrow_ty.m_data.as_Borrow().type = ::HIR::BorrowType::Unique;
     if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
         DEBUG("FOUND &mut, fcn_path = " << fcn_path);
-        return ~2u;
+        borrow = AutoderefBorrow::Unique;
+        return 0;
     }
     borrow_ty.m_data.as_Borrow().type = ::HIR::BorrowType::Owned;
     if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
-        DEBUG("FOUND &mut, fcn_path = " << fcn_path);
-        return ~3u;
+        DEBUG("FOUND &move, fcn_path = " << fcn_path);
+        borrow = AutoderefBorrow::Owned;
+        return 0;
     }
     
-    // Handle `self: Box<Self>` methods by detecting m_lang_Box and searchig for box receiver methods
-    TU_IFLET(::HIR::TypeRef::Data, top_ty_r.m_data, Path, e,
-        TU_IFLET(::HIR::Path::Data, e.path.m_data, Generic, pe,
-            if( pe.m_path == m_lang_Box )
-            {
-                const auto& ty = this->m_ivars.get_type( pe.m_params.m_types.at(0) );
-                assert( ! ty.m_data.is_Infer() );
-                
-                auto borrow_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ty.clone());
-                if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
-                    DEBUG("FOUND &*box, fcn_path = " << fcn_path);
-                    return ~4u;
-                }
-                borrow_ty.m_data.as_Borrow().type = ::HIR::BorrowType::Unique;
-                if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
-                    DEBUG("FOUND &mut*box, fcn_path = " << fcn_path);
-                    return ~5u;
-                }
-                borrow_ty.m_data.as_Borrow().type = ::HIR::BorrowType::Owned;
-                if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
-                    DEBUG("FOUND &mut*box, fcn_path = " << fcn_path);
-                    return ~6u;
-                }
-            }
-        )
-    )
-    
     // Dereference failed! This is a hard error (hitting _ is checked above and returns ~0)
-    this->m_ivars.dump();
+    //this->m_ivars.dump();
     ERROR(sp, E0000, "Could not find method `" << method_name << "` on type `" << top_ty << "`");
 }
 

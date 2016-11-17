@@ -2509,7 +2509,8 @@ namespace {
             
             // Using autoderef, locate this method on the type
             ::HIR::Path   fcn_path { ::HIR::SimplePath() };
-            unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, ty, node.m_method,  fcn_path);
+            TraitResolution::AutoderefBorrow    ad_borrow;
+            unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, ty, node.m_method,  fcn_path, ad_borrow);
             if( deref_count != ~0u )
             {
                 DEBUG("- deref_count = " << deref_count << ", fcn_path = " << fcn_path);
@@ -2555,35 +2556,7 @@ namespace {
                 this->context.equate_types(sp, node.m_res_type,  node.m_cache.m_arg_types.back());
                 
                 // Add derefs
-                if( deref_count >= ~6u )
-                {
-                    auto inv = ~deref_count;
-                    bool is_box_deref = (inv > 3);
-                    auto borrow_ty = inv % 3;
-                    
-                    if( is_box_deref ) {
-                        const auto& ity = this->context.get_type(node.m_value->m_res_type).m_data.as_Path().path.m_data.as_Generic().m_params.m_types.at(0);
-                        auto span = node.m_value->span();
-                        DEBUG("- Deref Box " << &*node.m_value << " -> " << ity);
-                        node.m_value = NEWNODE(ity.clone(), span, _Deref,  mv$(node.m_value));
-                    }
-                    
-                    ::HIR::BorrowType   bt = ::HIR::BorrowType::Shared;
-                    switch(borrow_ty)
-                    {
-                    case 1:   bt = ::HIR::BorrowType::Shared; break;
-                    case 2:   bt = ::HIR::BorrowType::Unique; break;
-                    case 0:   bt = ::HIR::BorrowType::Owned ; break;
-                    default:
-                        BUG(sp, "Invalid deref return count - " << deref_count);
-                    }
-                    
-                    auto ty = ::HIR::TypeRef::new_borrow(bt, node.m_value->m_res_type.clone());
-                    DEBUG("- Ref " << &*node.m_value << " -> " << ty);
-                    auto span = node.m_value->span();
-                    node.m_value = NEWNODE(mv$(ty), span, _Borrow,  bt, mv$(node.m_value) );
-                }
-                else if( deref_count > 0 )
+                if( deref_count > 0 )
                 {
                     assert( deref_count < (1<<16) );    // Just some sanity.
                     DEBUG("- Inserting " << deref_count << " dereferences");
@@ -2603,6 +2576,23 @@ namespace {
                 }
                 
                 // Autoref
+                if( ad_borrow != TraitResolution::AutoderefBorrow::None )
+                {
+                    ::HIR::BorrowType   bt = ::HIR::BorrowType::Shared;
+                    switch(ad_borrow)
+                    {
+                    case TraitResolution::AutoderefBorrow::None:    throw "";
+                    case TraitResolution::AutoderefBorrow::Shared:   bt = ::HIR::BorrowType::Shared; break;
+                    case TraitResolution::AutoderefBorrow::Unique:   bt = ::HIR::BorrowType::Unique; break;
+                    case TraitResolution::AutoderefBorrow::Owned :   bt = ::HIR::BorrowType::Owned ; break;
+                    }
+                    
+                    auto ty = ::HIR::TypeRef::new_borrow(bt, node.m_value->m_res_type.clone());
+                    DEBUG("- Ref (cmd) " << &*node.m_value << " -> " << ty);
+                    auto span = node.m_value->span();
+                    node.m_value = NEWNODE(mv$(ty), span, _Borrow,  bt, mv$(node.m_value) );
+                }
+                else
                 {
                     auto receiver_class = node.m_cache.m_fcn->m_receiver;
                     ::HIR::BorrowType   bt;
