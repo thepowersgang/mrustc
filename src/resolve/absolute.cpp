@@ -1612,15 +1612,16 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
         void visit(AST::ExprNode_IfLet& node) override {
             DEBUG("ExprNode_IfLet");
             node.m_value->visit( *this );
+            
             this->context.push_block();
             Resolve_Absolute_Pattern(this->context, true, node.m_pattern);
             
             assert( node.m_true );
             node.m_true->visit( *this );
+            this->context.pop_block();
+            
             if(node.m_false)
                 node.m_false->visit(*this);
-            
-            this->context.pop_block();
         }
         void visit(AST::ExprNode_StructLiteral& node) override {
             DEBUG("ExprNode_StructLiteral");
