@@ -192,6 +192,7 @@ struct Context
     
     // - Add a pattern binding (forcing the type to match)
     void add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type);
+    void add_binding_inner(const Span& sp, const ::HIR::PatternBinding& pb, ::HIR::TypeRef type);
     
     void add_var(unsigned int index, const ::std::string& name, ::HIR::TypeRef type);
     const ::HIR::TypeRef& get_var(const Span& sp, unsigned int idx) const;
@@ -3262,27 +3263,31 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
         }
     }
 }
+
+void Context::add_binding_inner(const Span& sp, const ::HIR::PatternBinding& pb, ::HIR::TypeRef type)
+{
+    assert( pb.is_valid() );
+    switch( pb.m_type )
+    {
+    case ::HIR::PatternBinding::Type::Move:
+        this->add_var( pb.m_slot, pb.m_name, mv$(type) );
+        break;
+    case ::HIR::PatternBinding::Type::Ref:
+        this->add_var( pb.m_slot, pb.m_name, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(type)) );
+        break;
+    case ::HIR::PatternBinding::Type::MutRef:
+        this->add_var( pb.m_slot, pb.m_name, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, mv$(type)) );
+        break;
+    }
+}
+
 // NOTE: Mutates the pattern to add ivars to contained paths
 void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type)
 {
     TRACE_FUNCTION_F("pat = " << pat << ", type = " << type);
     
     if( pat.m_binding.is_valid() ) {
-        const auto& pb = pat.m_binding;
-        
-        assert( pb.is_valid() );
-        switch( pb.m_type )
-        {
-        case ::HIR::PatternBinding::Type::Move:
-            this->add_var( pb.m_slot, pb.m_name, type.clone() );
-            break;
-        case ::HIR::PatternBinding::Type::Ref:
-            this->add_var( pb.m_slot, pb.m_name, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, type.clone()) );
-            break;
-        case ::HIR::PatternBinding::Type::MutRef:
-            this->add_var( pb.m_slot, pb.m_name, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, type.clone()) );
-            break;
-        }
+        this->add_binding_inner(sp, pat.m_binding, type.clone());
         
         // TODO: Bindings aren't allowed within another binding
     }
@@ -3471,9 +3476,11 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         unsigned int min_len = e.leading.size() + e.trailing.size();
         const auto& ty = this->get_type(type);
         TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Slice, te,
+            // Slice - Fetch inner and set new variable also be a slice
+            // - TODO: Better new variable handling.
             inner = te.inner->clone();
             if( e.extra_bind.is_valid() ) {
-                this->add_var( e.extra_bind.m_slot, e.extra_bind.m_name, ty.clone() );
+                this->add_binding_inner( sp, e.extra_bind, ty.clone() );
             }
         )
         else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, te,
@@ -3484,7 +3491,7 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             unsigned extra_len = te.size_val - min_len;
             
             if( e.extra_bind.is_valid() ) {
-                this->add_var( e.extra_bind.m_slot, e.extra_bind.m_name, ::HIR::TypeRef::new_array(inner.clone(), extra_len) );
+                this->add_binding_inner( sp, e.extra_bind, ::HIR::TypeRef::new_array(inner.clone(), extra_len) );
             }
         )
         else if( ty.m_data.is_Infer() ) {
@@ -3492,15 +3499,18 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             ::HIR::TypeRef  var_ty;
             if( e.extra_bind.is_valid() ) {
                 var_ty = this->m_ivars.new_ivar_tr();
-                this->add_var( e.extra_bind.m_slot, e.extra_bind.m_name, var_ty.clone() );
+                this->add_binding_inner( sp, e.extra_bind, var_ty.clone() );
             }
             
             struct SplitSlicePatRevisit:
                 public Revisitor
             {
                 Span    sp;
+                // Inner type
                 ::HIR::TypeRef  inner;
+                // Outer ivar (should be either Slice or Array)
                 ::HIR::TypeRef  type;
+                // Binding type (if not default value)
                 ::HIR::TypeRef  var_ty;
                 unsigned int min_size;
                 
@@ -3510,7 +3520,33 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
                 
                 void fmt(::std::ostream& os) const override { os << "SplitSlice inner=" << inner << ", outer=" << type << ", binding="<<var_ty<<", " << min_size; }
                 bool revisit(Context& context) override {
-                    TODO(sp, "SplitSlicePatRevisit");
+                    const auto& ty = context.get_type(this->type);
+                    if( ty.m_data.is_Infer() )
+                        return false;
+                    
+                    // Slice - Equate inners
+                    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Slice, te,
+                        context.equate_types(this->sp, this->inner, *te.inner);
+                        if( this->var_ty != ::HIR::TypeRef() ) {
+                            context.equate_types(this->sp, this->var_ty, ty);
+                        }
+                    )
+                    // Array - Equate inners and check size
+                    else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, te,
+                        context.equate_types(this->sp, this->inner, *te.inner);
+                        if( te.size_val < this->min_size ) {
+                            ERROR(sp, E0000, "Slice pattern on an array smaller than the pattern");
+                        }
+                        unsigned extra_len = te.size_val - this->min_size;
+                        
+                        if( this->var_ty != ::HIR::TypeRef() ) {
+                            context.equate_types(this->sp, this->var_ty, ::HIR::TypeRef::new_array(this->inner.clone(), extra_len) );
+                        }
+                    )
+                    else {
+                        ERROR(sp, E0000, "Slice pattern on non-array/-slice - " << ty);
+                    }
+                    return true;
                 }
             };
             // Callback
