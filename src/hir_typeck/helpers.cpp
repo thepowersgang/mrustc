@@ -3265,32 +3265,20 @@ bool TraitResolution::find_method(
         //assert( e.m_trait.m_trait_ptr );
         //const auto& trait = *e.m_trait.m_trait_ptr;
         const auto& trait = this->m_crate.get_trait_by_path(sp, e.m_trait.m_path.m_path);
-        auto it = trait.m_values.find( method_name );
-        if( it != trait.m_values.end() )
+        
+        
+        ::HIR::GenericPath final_trait_path;
+        if( this->trait_contains_method(sp, e.m_trait.m_path, trait, ::HIR::TypeRef("Self", 0xFFFF), method_name, ar,  final_trait_path) )
         {
-            if( it->second.is_Function() ) {
-                const auto& v = it->second.as_Function();
-                switch(v.m_receiver)
-                {
-                case ::HIR::Function::Receiver::Free:
-                    break;
-                case ::HIR::Function::Receiver::Value:
-                    // Only accept by-value methods if not dereferencing to them
-                    if( ar == AllowedReceivers::AnyBorrow ) 
-                        break;
-                case ::HIR::Function::Receiver::Box:
-                    if( ar != AllowedReceivers::Box ) 
-                        break;
-                default:
-                    fcn_path = ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown({
-                        box$( ty.clone() ),
-                        e.m_trait.m_path.clone(),
-                        method_name,
-                        {}
-                        }) );
-                    return true;
-                }
-            }
+            DEBUG("- Found trait " << final_trait_path);
+            
+            fcn_path = ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown({
+                box$( ty.clone() ),
+                mv$(final_trait_path),
+                method_name,
+                {}
+                }) );
+            return true;
         }
     )
     
@@ -3299,32 +3287,19 @@ bool TraitResolution::find_method(
         for(const auto& trait_path : e.m_traits)
         {
             const auto& trait = this->m_crate.get_trait_by_path(sp, trait_path.m_path.m_path);
-            auto it = trait.m_values.find( method_name );
-            if( it != trait.m_values.end() )
+            
+            ::HIR::GenericPath final_trait_path;
+            if( this->trait_contains_method(sp, trait_path.m_path, trait, ::HIR::TypeRef("Self", 0xFFFF), method_name, ar,  final_trait_path) )
             {
-                if( it->second.is_Function() ) {
-                    const auto& v = it->second.as_Function();
-                    switch(v.m_receiver)
-                    {
-                    case ::HIR::Function::Receiver::Free:
-                        break;
-                    case ::HIR::Function::Receiver::Value:
-                        // Only accept by-value methods if not dereferencing to them
-                        if( ar == AllowedReceivers::AnyBorrow ) 
-                            break;
-                    case ::HIR::Function::Receiver::Box:
-                        if( ar != AllowedReceivers::Box ) 
-                            break;
-                    default:
-                        fcn_path = ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown({
-                            box$( ty.clone() ),
-                            trait_path.m_path.clone(),
-                            method_name,
-                            {}
-                            }) );
-                        return true;
-                    }
-                }
+                DEBUG("- Found trait " << final_trait_path);
+                
+                fcn_path = ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown({
+                    box$( ty.clone() ),
+                    mv$(final_trait_path),
+                    method_name,
+                    {}
+                    }) );
+                return true;
             }
         }
     )
@@ -3464,6 +3439,7 @@ bool TraitResolution::find_method(
                     ASSERT_BUG(sp, m_ivars.get_type( trait_params.m_types.back() ).m_data.as_Infer().index == ivars[i], "A method selection ivar was bound");
                 }
                 
+                //if( find_trait_impls(sp, *trait_ref.first, trait_params, ty,  [](auto , auto ) { return true; }) ) {
                 if( find_trait_impls_crate(sp, *trait_ref.first, &trait_params, ty,  [](auto , auto ) { return true; }) ) {
                     DEBUG("Found trait impl " << *trait_ref.first << trait_params << " for " << ty << " ("<<m_ivars.fmt_type(ty)<<")");
                     fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
