@@ -3766,6 +3766,8 @@ void Context::possible_equate_type_disable(unsigned int ivar_index, bool is_to) 
 }
 
 void Context::add_var(unsigned int index, const ::std::string& name, ::HIR::TypeRef type) {
+    DEBUG("(" << index << " " << name << " : " << type << ")");
+    assert(index != ~0u);
     if( m_bindings.size() <= index )
         m_bindings.resize(index+1);
     m_bindings[index] = Binding { name, mv$(type) };
@@ -3776,7 +3778,7 @@ const ::HIR::TypeRef& Context::get_var(const Span& sp, unsigned int idx) const {
         return this->m_bindings[idx].ty;
     }
     else {
-        BUG(sp, "get_var - Binding index out of range");
+        BUG(sp, "get_var - Binding index out of range - " << idx << " >=" << this->m_bindings.size());
     }
 }
 

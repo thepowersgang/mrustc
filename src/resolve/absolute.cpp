@@ -1790,7 +1790,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         for(auto& sp : e.leading)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
         if( e.extra_bind.is_valid() ) {
-            context.push_var( pat.span(), e.extra_bind.m_name );
+            e.extra_bind.m_slot = context.push_var( pat.span(), e.extra_bind.m_name );
         }
         for(auto& sp : e.trailing)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);

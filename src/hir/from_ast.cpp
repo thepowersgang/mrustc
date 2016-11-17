@@ -452,9 +452,9 @@
             trailing.push_back( LowerHIR_Pattern(sp) );
         
         auto extra_bind = e.extra_bind.is_valid()
-            ? ::HIR::PatternBinding()
             // TODO: Share code with the outer binding code
-            : ::HIR::PatternBinding(false, ::HIR::PatternBinding::Type::Ref, e.extra_bind.m_name.name, e.extra_bind.m_slot)
+            ? ::HIR::PatternBinding(false, ::HIR::PatternBinding::Type::Ref, e.extra_bind.m_name.name, e.extra_bind.m_slot)
+            : ::HIR::PatternBinding()
             ;
         
         return ::HIR::Pattern {
