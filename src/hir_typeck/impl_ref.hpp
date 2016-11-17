@@ -16,6 +16,7 @@ struct ImplRef
         ::std::vector<::HIR::TypeRef>   params_ph;
         const ::HIR::SimplePath*    trait_path;
         const ::HIR::TraitImpl* impl;
+        mutable ::HIR::TypeRef  self_cache;
         }),
     (BoundedPtr, struct {
         const ::HIR::TypeRef*    type;

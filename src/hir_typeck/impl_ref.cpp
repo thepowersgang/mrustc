@@ -72,8 +72,22 @@ bool ImplRef::type_is_specialisable(const char* name) const
     const auto& e = this->m_data.as_TraitImpl();
     return [this,&e,&sp](const auto& gt)->const auto& {
         const auto& ge = gt.m_data.as_Generic();
-        assert(ge.binding < 256);
-        assert(ge.binding < e.params.size());
+        if( ge.binding == 0xFFFF ) {
+            // Store (or cache) a monomorphisation of Self, and error if this recurses
+            if( e.self_cache == ::HIR::TypeRef() ) {
+                e.self_cache = ::HIR::TypeRef::new_diverge();
+                e.self_cache = monomorphise_type_with(sp, e.impl->m_type, this->get_cb_monomorph_traitimpl(sp));
+            }
+            else if( e.self_cache == ::HIR::TypeRef::new_diverge() ) {
+                // BUG!
+                BUG(sp, "Use of `Self` in expansion of `Self`");
+            }
+            else {
+            }
+            return e.self_cache;
+        }
+        ASSERT_BUG(sp, ge.binding < 256, "Binding in " << gt << " out of range (>=256)");
+        ASSERT_BUG(sp, ge.binding < e.params.size(), "Binding in " << gt << " out of range (>= " << e.params.size() << ")");
         if( e.params[ge.binding] ) {
             return *e.params[ge.binding];
         }
