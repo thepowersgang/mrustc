@@ -2828,11 +2828,11 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                         ty_p = &this->m_ivars.get_type(tmp);
                     }
                     const auto& ty = *ty_p;
-                    DEBUG("[find_trait_impls_crate] - Compare " << ty << " and " << assoc_bound.second << ", matching generics");
+                    DEBUG("[ftic_check_params] - Compare " << ty << " and " << assoc_bound.second << ", matching generics");
                     // `ty` = Monomorphised actual type (< `be.type` as `be.trait` >::`assoc_bound.first`)
                     // `assoc_bound.second` = Desired type (monomorphised too)
-                    auto cmp = assoc_bound.second .match_test_generics_fuzz(sp, ty, cb_infer, cb_match);
-                    switch(cmp)
+                    auto cmp_i = assoc_bound.second .match_test_generics_fuzz(sp, ty, cb_infer, cb_match);
+                    switch(cmp_i)
                     {
                     case ::HIR::Compare::Equal:
                         DEBUG("Equal");
@@ -2843,7 +2843,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     case ::HIR::Compare::Fuzzy:
                         // TODO: When a fuzzy match is encountered on a conditional bound, returning `false` can lead to an false negative (and a compile error)
                         // BUT, returning `true` could lead to it being selected. (Is this a problem, should a later validation pass check?)
-                        DEBUG("[find_trait_impls_crate] Fuzzy match assoc bound between " << ty << " and " << assoc_bound.second);
+                        DEBUG("[ftic_check_params] Fuzzy match assoc bound between " << ty << " and " << assoc_bound.second);
                         cmp = ::HIR::Compare::Fuzzy;
                         continue ;
                     }
@@ -3126,6 +3126,9 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
         // TODO: Update `unconditional_allow_move` based on the current type.
         const auto& ty = this->m_ivars.get_type(*current_ty);
         if( ty.m_data.is_Infer() ) {
+            return ~0u;
+        }
+        if(ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Unbound()) {
             return ~0u;
         }
         
