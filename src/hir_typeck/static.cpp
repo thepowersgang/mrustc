@@ -176,6 +176,36 @@ bool StaticTraitResolve::find_impl(
         }
     )
     // --- / ---
+    TU_IFLET( ::HIR::TypeRef::Data, type.m_data, ErasedType, e,
+        for(const auto& trait : e.m_traits)
+        {
+            if( trait_path == trait.m_path.m_path && (!trait_params || trait.m_path.m_params == *trait_params) )
+            {
+                return found_cb( ImplRef(&type, &trait.m_path.m_params, &trait.m_type_bounds), false );
+            }
+            
+            // TODO: What if `trait_params` is nullptr?
+            bool rv = false;
+            bool is_supertrait = trait_params && this->find_named_trait_in_trait(sp, trait_path,*trait_params, *trait.m_trait_ptr, trait.m_path.m_path,trait.m_path.m_params, type,
+                [&](const auto& i_params, const auto& i_assoc) {
+                    // Invoke callback with a proper ImplRef
+                    ::std::map< ::std::string, ::HIR::TypeRef> assoc_clone;
+                    for(const auto& e : i_assoc)
+                        assoc_clone.insert( ::std::make_pair(e.first, e.second.clone()) );
+                    // HACK! Just add all the associated type bounds (only inserted if not already present)
+                    for(const auto& e2 : trait.m_type_bounds)
+                        assoc_clone.insert( ::std::make_pair(e2.first, e2.second.clone()) );
+                    auto ir = ImplRef(type.clone(), i_params.clone(), mv$(assoc_clone));
+                    DEBUG("- ir = " << ir);
+                    rv = found_cb( mv$(ir), false );
+                    return false;
+                });
+            if( is_supertrait )
+            {
+                return rv;
+            }
+        }
+    )
     
     // ---
     // If this type is an opaque UfcsKnown - check bounds
