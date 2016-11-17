@@ -129,6 +129,7 @@ struct Context
     //  > Errors if the types are incompatible.
     //  > Forces types if one side is an infer
     void equate_types(const Span& sp, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r);
+    void equate_types_inner(const Span& sp, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r);
     // - Equate two types, allowing inferrence
     void equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR::ExprNodeP& node_ptr);
     // - Equate a type to an associated type (if name == "", no equation is done, but trait is searched)
@@ -3000,6 +3001,12 @@ void Context::dump() const {
 }
 
 void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR::TypeRef& ri) {
+    
+    if( li == ri || this->m_ivars.get_type(li) == this->m_ivars.get_type(ri) ) {
+        DEBUG(li << " == " << ri);
+        return ;
+    }
+    
     // Instantly apply equality
     TRACE_FUNCTION_F(li << " == " << ri);
     
@@ -3015,18 +3022,29 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
         }
         return false;
         });
-    
-    // Check if the type contains a replacable associated type
+
     ::HIR::TypeRef  l_tmp;
     ::HIR::TypeRef  r_tmp;
     const auto& l_t = this->m_resolve.expand_associated_types(sp, this->m_ivars.get_type(li), l_tmp);
     const auto& r_t = this->m_resolve.expand_associated_types(sp, this->m_ivars.get_type(ri), r_tmp);
     
-    #if 0
-    if( l_t.m_data.is_Diverge() || r_t.m_data.is_Diverge() ) {
+    equate_types_inner(sp, l_t, r_t);
+}
+
+void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const ::HIR::TypeRef& ri) {
+    
+    if( li == ri || this->m_ivars.get_type(li) == this->m_ivars.get_type(ri) ) {
         return ;
     }
-    #endif
+    
+    // Check if the type contains a replacable associated type
+    ::HIR::TypeRef  l_tmp;
+    ::HIR::TypeRef  r_tmp;
+    const auto& l_t = (li.m_data.is_Infer() ? this->m_resolve.expand_associated_types(sp, this->m_ivars.get_type(li), l_tmp) : li);
+    const auto& r_t = (ri.m_data.is_Infer() ? this->m_resolve.expand_associated_types(sp, this->m_ivars.get_type(ri), r_tmp) : ri);
+    if( l_t == r_t ) {
+        return ;
+    }
     
     // If either side is still a UfcsUnkonw after `expand_associated_types`, then emit an assoc bound instead of damaging ivars
     TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Path, r_e,
@@ -3070,7 +3088,7 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
                     }
                     for(unsigned int i = 0; i < l.m_types.size(); i ++)
                     {
-                        this->equate_types(sp, l.m_types[i], r.m_types[i]);
+                        this->equate_types_inner(sp, l.m_types[i], r.m_types[i]);
                     }
                 };
             
@@ -3130,21 +3148,21 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
                     equality_typeparams(lpe.params, rpe.params);
                     if( lpe.item != rpe.item )
                         ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
-                    this->equate_types(sp, *lpe.type, *rpe.type);
+                    this->equate_types_inner(sp, *lpe.type, *rpe.type);
                     ),
                 (UfcsKnown,
                     if( lpe.trait.m_path != rpe.trait.m_path || lpe.item != rpe.item )
                         ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
                     equality_typeparams(lpe.trait.m_params, rpe.trait.m_params);
                     equality_typeparams(lpe.params, rpe.params);
-                    this->equate_types(sp, *lpe.type, *rpe.type);
+                    this->equate_types_inner(sp, *lpe.type, *rpe.type);
                     ),
                 (UfcsUnknown,
                     // TODO: If the type is fully known, locate a suitable trait item
                     equality_typeparams(lpe.params, rpe.params);
                     if( lpe.item != rpe.item )
                         ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
-                    this->equate_types(sp, *lpe.type, *rpe.type);
+                    this->equate_types_inner(sp, *lpe.type, *rpe.type);
                     )
                 )
                 ),
@@ -3162,7 +3180,7 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
                     if( it_l->first != it_r->first ) {
                         ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - associated bounds differ");
                     }
-                    this->equate_types(sp, it_l->second, it_r->second);
+                    this->equate_types_inner(sp, it_l->second, it_r->second);
                 }
                 if( l_e.m_markers.size() != r_e.m_markers.size() ) {
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - trait counts differ");
@@ -3188,13 +3206,13 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
                 }
                 ),
             (Array,
-                this->equate_types(sp, *l_e.inner, *r_e.inner);
+                this->equate_types_inner(sp, *l_e.inner, *r_e.inner);
                 if( l_e.size_val != r_e.size_val ) {
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - sizes differ");
                 }
                 ),
             (Slice,
-                this->equate_types(sp, *l_e.inner, *r_e.inner);
+                this->equate_types_inner(sp, *l_e.inner, *r_e.inner);
                 ),
             (Tuple,
                 if( l_e.size() != r_e.size() ) {
@@ -3202,20 +3220,20 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
                 }
                 for(unsigned int i = 0; i < l_e.size(); i ++)
                 {
-                    this->equate_types(sp, l_e[i], r_e[i]);
+                    this->equate_types_inner(sp, l_e[i], r_e[i]);
                 }
                 ),
             (Borrow,
                 if( l_e.type != r_e.type ) {
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - Borrow classes differ");
                 }
-                this->equate_types(sp, *l_e.inner, *r_e.inner);
+                this->equate_types_inner(sp, *l_e.inner, *r_e.inner);
                 ),
             (Pointer,
                 if( l_e.type != r_e.type ) {
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - Pointer mutability differs");
                 }
-                this->equate_types(sp, *l_e.inner, *r_e.inner);
+                this->equate_types_inner(sp, *l_e.inner, *r_e.inner);
                 ),
             (Function,
                 if( l_e.is_unsafe != r_e.is_unsafe
@@ -3225,19 +3243,19 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
                 {
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
                 }
-                this->equate_types(sp, *l_e.m_rettype, *r_e.m_rettype);
+                this->equate_types_inner(sp, *l_e.m_rettype, *r_e.m_rettype);
                 for(unsigned int i = 0; i < l_e.m_arg_types.size(); i ++ ) {
-                    this->equate_types(sp, l_e.m_arg_types[i], r_e.m_arg_types[i]);
+                    this->equate_types_inner(sp, l_e.m_arg_types[i], r_e.m_arg_types[i]);
                 }
                 ),
             (Closure,
                 if( l_e.m_arg_types.size() != r_e.m_arg_types.size() ) {
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
                 }
-                this->equate_types(sp, *l_e.m_rettype, *r_e.m_rettype);
+                this->equate_types_inner(sp, *l_e.m_rettype, *r_e.m_rettype);
                 for( unsigned int i = 0; i < l_e.m_arg_types.size(); i ++ )
                 {
-                    this->equate_types(sp, l_e.m_arg_types[i], r_e.m_arg_types[i]);
+                    this->equate_types_inner(sp, l_e.m_arg_types[i], r_e.m_arg_types[i]);
                 }
                 )
             )
