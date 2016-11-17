@@ -382,22 +382,27 @@ namespace {
         }
         
     private:
+        ::HIR::ValueUsage get_usage_for_pattern_binding(const Span& sp, const ::HIR::PatternBinding& pb, const ::HIR::TypeRef& ty) const
+        {
+            switch( pb.m_type )
+            {
+            case ::HIR::PatternBinding::Type::Move:
+                if( m_resolve.type_is_copy(sp, ty) )
+                    return ::HIR::ValueUsage::Borrow;
+                else
+                    return ::HIR::ValueUsage::Move;
+            case ::HIR::PatternBinding::Type::MutRef:
+                return ::HIR::ValueUsage::Mutate;
+            case ::HIR::PatternBinding::Type::Ref:
+                return ::HIR::ValueUsage::Borrow;
+            }
+            throw "";
+        }
+        
         ::HIR::ValueUsage get_usage_for_pattern(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty) const
         {
             if( pat.m_binding.is_valid() ) {
-                switch( pat.m_binding.m_type )
-                {
-                case ::HIR::PatternBinding::Type::Move:
-                    if( m_resolve.type_is_copy(sp, ty) )
-                        return ::HIR::ValueUsage::Borrow;
-                    else
-                        return ::HIR::ValueUsage::Move;
-                case ::HIR::PatternBinding::Type::MutRef:
-                    return ::HIR::ValueUsage::Mutate;
-                case ::HIR::PatternBinding::Type::Ref:
-                    return ::HIR::ValueUsage::Borrow;
-                }
-                throw "";
+                return get_usage_for_pattern_binding(sp, pat.m_binding, ty);
             }
             
             TU_MATCHA( (pat.m_data), (pe),
@@ -421,7 +426,14 @@ namespace {
                 return rv;
                 ),
             (SplitTuple,
-                BUG(sp, "SplitTuple unexpected here.");
+                const auto& subtys = ty.m_data.as_Tuple();
+                assert(pe.leading.size() + pe.trailing.size() < subtys.size());
+                auto rv = ::HIR::ValueUsage::Borrow;
+                for(unsigned int i = 0; i < pe.leading.size(); i ++)
+                    rv = ::std::max(rv, get_usage_for_pattern(sp, pe.leading[i], subtys[i]));
+                for(unsigned int i = 0; i < pe.trailing.size(); i ++)
+                    rv = ::std::max(rv, get_usage_for_pattern(sp, pe.trailing[pe.trailing.size() - 1 - i], subtys[subtys.size() - 1 - i]));
+                return rv;
                 ),
             (StructValue,
                 return ::HIR::ValueUsage::Borrow;
@@ -504,7 +516,15 @@ namespace {
                 return rv;
                 ),
             (SplitSlice,
-                TODO(sp, "SplitSlice - " << pat);
+                const auto& inner_ty = (ty.m_data.is_Array() ? *ty.m_data.as_Array().inner : *ty.m_data.as_Slice().inner);
+                auto rv = ::HIR::ValueUsage::Borrow;
+                for(const auto& pat : pe.leading)
+                    rv = ::std::max(rv, get_usage_for_pattern(sp, pat, inner_ty));
+                for(const auto& pat : pe.trailing)
+                    rv = ::std::max(rv, get_usage_for_pattern(sp, pat, inner_ty));
+                if( pe.extra_bind.is_valid() )
+                    rv = ::std::max(rv, get_usage_for_pattern_binding(sp, pe.extra_bind, inner_ty));
+                return rv;
                 )
             )
             throw "";
