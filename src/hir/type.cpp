@@ -648,6 +648,10 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             if( te.binding.is_Unbound() || xe.binding.is_Unbound() ) {
                 rv = ::HIR::Compare::Fuzzy;
             }
+            if( te.binding.is_Opaque() ) {
+                DEBUG("- Fuzzy match due to opaque");
+                return Compare::Fuzzy;
+            }
         }
         return rv;
         ),

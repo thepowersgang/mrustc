@@ -2692,6 +2692,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             return ::HIR::Compare::Equal;
         }
         else {
+            DEBUG("[ftic_check_params] Param " << idx << " " << *impl_params[idx] << " == " << ty);
             return impl_params[idx]->compare_with_placeholders(sp, ty, this->m_ivars.callback_resolve_infer());
         }
         };
@@ -2716,16 +2717,16 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         const auto& params = *params_ptr;
         ASSERT_BUG(sp, impl_trait_args.m_types.size() == params.m_types.size(), "Param count mismatch between `" << impl_trait_args << "` and `" << params << "` for " << trait );
         for(unsigned int i = 0; i < impl_trait_args.m_types.size(); i ++)
-            match &= impl_trait_args.m_types[i].match_test_generics_fuzz(sp, params.m_types[i], this->m_ivars.callback_resolve_infer(), cb);
+            match &= impl_trait_args.m_types[i] .match_test_generics_fuzz(sp, params.m_types[i], this->m_ivars.callback_resolve_infer(), cb);
         if( match == ::HIR::Compare::Unequal ) {
-            DEBUG("[find_trait_impls_crate] - Failed to match parameters - " << impl_trait_args << "+" << impl_ty << " != " << params << "+" << type);
+            DEBUG("- Failed to match parameters - " << impl_trait_args << "+" << impl_ty << " != " << params << "+" << type);
             return ::HIR::Compare::Unequal;
         }
     }
     else
     {
         if( match == ::HIR::Compare::Unequal ) {
-            DEBUG("[find_trait_impls_crate] - Failed to match type - " << impl_ty << " != " << type);
+            DEBUG("- Failed to match type - " << impl_ty << " != " << type);
             return ::HIR::Compare::Unequal;
         }
     }
