@@ -32,13 +32,13 @@ bool visit_ty_with__path(const ::HIR::Path& tpl, t_cb_visit_ty callback)
         return visit_ty_with__path_params(e.m_params, callback);
         ),
     (UfcsInherent,
-        return monomorphise_type_needed(*e.type) || monomorphise_pathparams_needed(e.params);
+        return visit_ty_with(*e.type, callback) || visit_ty_with__path_params(e.params, callback);
         ),
     (UfcsKnown,
-        return monomorphise_type_needed(*e.type) || monomorphise_pathparams_needed(e.trait.m_params) || monomorphise_pathparams_needed(e.params);
+        return visit_ty_with(*e.type, callback) || visit_ty_with__path_params(e.trait.m_params, callback) || visit_ty_with__path_params(e.params, callback);
         ),
     (UfcsUnknown,
-        return monomorphise_type_needed(*e.type) || monomorphise_pathparams_needed(e.params);
+        return visit_ty_with(*e.type, callback) || visit_ty_with__path_params(e.params, callback);
         )
     )
     throw "";
@@ -51,7 +51,6 @@ bool visit_ty_with(const ::HIR::TypeRef& ty, t_cb_visit_ty callback)
 
     TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
     (Infer,
-        //BUG(Span(), "_ type found in monomorphisation target - " << tpl);
         ),
     (Diverge,
         ),
