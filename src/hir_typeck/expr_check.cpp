@@ -13,11 +13,7 @@
 
 namespace {
     typedef ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >   t_args;
-    // -----------------------------------------------------------------------
-    // Enumeration visitor
-    // 
-    // Iterates the HIR expression tree and extracts type "equations"
-    // -----------------------------------------------------------------------
+    
     class ExprVisitor_Validate:
         public ::HIR::ExprVisitor
     {
@@ -34,10 +30,38 @@ namespace {
         {
         }
         
-        void visit_root(::HIR::ExprNode& node)
+        void visit_root(::HIR::ExprPtr& node_ptr)
         {
-            node.visit(*this);
-            check_types_equal(node.span(), ret_type, node.m_res_type);
+            const auto& sp = node_ptr->span();
+            node_ptr->visit(*this);
+            
+            // TODO: If the return type contains ErasedType, then this check should instead check the structure and bounds.
+            // > Or just replace ErasedType-s with the known types and then equate
+            if( visit_ty_with(ret_type, [](const auto& ty) {
+                if( ty.m_data.is_ErasedType() )
+                    return true;
+                return false;
+                }) )
+            {
+                // Monomorphise erased type
+                ::HIR::TypeRef  new_ret_type = clone_ty_with(sp, ret_type, [&](const auto& tpl, auto& rv) {
+                    if( tpl.m_data.is_ErasedType() )
+                    {
+                        const auto& e = tpl.m_data.as_ErasedType();
+                        ASSERT_BUG(sp, e.m_index < node_ptr.m_erased_types.size(), "Erased type index OOB - " << e.m_index << " >= " << node_ptr.m_erased_types.size() << " - " << tpl);
+                        // TODO: Emit checks on bounds
+                        rv = node_ptr.m_erased_types[e.m_index].clone();
+                        return true;
+                    }
+                    return false;
+                    });
+
+                check_types_equal(sp, new_ret_type, node_ptr->m_res_type);
+            }
+            else
+            {
+                check_types_equal(sp, ret_type, node_ptr->m_res_type);
+            }
         }
         
         void visit(::HIR::ExprNode_Block& node) override
@@ -624,19 +648,9 @@ namespace {
                 cache.m_fcn_params = &fcn_ptr->m_params;
                 
                 
-                // If the impl block has parameters, figure out what types they map to
-                // - The function params are already mapped (from fix_param_count)
+                // NOTE: Trusts the existing cache.
+                ASSERT_BUG(sp, cache.m_ty_impl_params.m_types.size() == impl_ptr->m_params.m_types.size(), "");
                 auto& impl_params = cache.m_ty_impl_params;
-                if( impl_ptr->m_params.m_types.size() > 0 ) {
-                    impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
-                    impl_ptr->m_type.match_generics(sp, *e.type, [&](const auto&x)->const auto&{return x;}, [&](auto idx, const auto& ty) {
-                        assert( idx < impl_params.m_types.size() );
-                        impl_params.m_types[idx] = ty.clone();
-                        return ::HIR::Compare::Equal;
-                        });
-                    for(const auto& ty : impl_params.m_types)
-                        assert( !( ty.m_data.is_Infer() && ty.m_data.as_Infer().index == ~0u) );
-                }
                 
                 // Create monomorphise callback
                 const auto& fcn_params = e.params;
@@ -696,7 +710,7 @@ namespace {
             
             cache.m_monomorph_cb = mv$(monomorph_cb);
             
-            // Bounds (encoded as associated)
+            // Bounds
             for(const auto& bound : cache.m_fcn_params->m_bounds)
             {
                 TU_MATCH(::HIR::GenericBound, (bound), (be),
@@ -1009,7 +1023,7 @@ namespace {
                     t_args  tmp;
                     auto ty_usize = ::HIR::TypeRef(::HIR::CoreType::Usize);
                     ExprVisitor_Validate    ev(m_resolve, tmp, ty_usize);
-                    ev.visit_root( **e.size );
+                    ev.visit_root( *e.size );
                 }
             )
             else {
@@ -1025,7 +1039,7 @@ namespace {
             {
                 DEBUG("Function code " << p);
                 ExprVisitor_Validate    ev(m_resolve, item.m_args, item.m_return);
-                ev.visit_root( *item.m_code );
+                ev.visit_root( item.m_code );
             }
             else
             {
@@ -1037,7 +1051,7 @@ namespace {
             {
                 t_args  tmp;
                 ExprVisitor_Validate    ev(m_resolve, tmp, item.m_type);
-                ev.visit_root(*item.m_value);
+                ev.visit_root(item.m_value);
             }
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override {
@@ -1045,7 +1059,7 @@ namespace {
             {
                 t_args  tmp;
                 ExprVisitor_Validate    ev(m_resolve, tmp, item.m_type);
-                ev.visit_root(*item.m_value);
+                ev.visit_root(item.m_value);
             }
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
@@ -1060,7 +1074,7 @@ namespace {
                     
                     t_args  tmp;
                     ExprVisitor_Validate    ev(m_resolve, tmp, enum_type);
-                    ev.visit_root(*e.expr);
+                    ev.visit_root(e.expr);
                 )
             }
         }

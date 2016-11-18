@@ -221,6 +221,9 @@ namespace {
             DEBUG("Locals");
             for(auto& ty : root.m_bindings)
                 visit_type(ty);
+            
+            for(auto& ty : root.m_erased_types)
+                visit_type(ty);
         }
         
         void visit_node_ptr(::HIR::ExprNodeP& node) override

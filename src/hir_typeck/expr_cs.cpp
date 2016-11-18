@@ -2771,6 +2771,9 @@ namespace {
             
             for( auto& ty : node_ptr.m_bindings )
                 this->check_type_resolved_top(node.span(), ty);
+            
+            for( auto& ty : node_ptr.m_erased_types )
+                this->check_type_resolved_top(node.span(), ty);
         }
         void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override {
             auto& node = *node_ptr;
@@ -2832,15 +2835,23 @@ namespace {
             ::HIR::ExprVisitorDef::visit(node);
         }
         
+        void visit_callcache(const Span&sp, ::HIR::ExprCallCache& cache)
+        {
+            for(auto& ty : cache.m_arg_types)
+                this->check_type_resolved_top(sp, ty);
+            
+            for(auto& ty : cache.m_ty_impl_params.m_types)
+                this->check_type_resolved_top(sp, ty);
+        }
         void visit(::HIR::ExprNode_CallPath& node) override {
-            for(auto& ty : node.m_cache.m_arg_types)
-                this->check_type_resolved_top(node.span(), ty);
+            this->visit_callcache(node.span(), node.m_cache);
+            
             this->check_type_resolved_path(node.span(), node.m_path);
             ::HIR::ExprVisitorDef::visit(node);
         }
         void visit(::HIR::ExprNode_CallMethod& node) override {
-            for(auto& ty : node.m_cache.m_arg_types)
-                this->check_type_resolved_top(node.span(), ty);
+            this->visit_callcache(node.span(), node.m_cache);
+            
             this->check_type_resolved_path(node.span(), node.m_method_path);
             ::HIR::ExprVisitorDef::visit(node);
         }
@@ -5261,8 +5272,8 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             if( tpl.m_data.is_ErasedType() )
             {
                 const auto& e = tpl.m_data.as_ErasedType();
-                // TODO: Save this ivar somewhere for users of this function.
                 rv = context.m_ivars.new_ivar_tr();
+                expr.m_erased_types.push_back( rv.clone() );
                 for(const auto& trait : e.m_traits)
                 {
                     if( trait.m_type_bounds.size() == 0 )
@@ -5431,7 +5442,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
     }
     
     // - Recreate the pointer
-    expr = ::HIR::ExprPtr( mv$(root_ptr) );
+    expr.reset( root_ptr.release() );
     //  > Steal the binding types
     expr.m_bindings.reserve( context.m_bindings.size() );
     for(auto& binding : context.m_bindings) {
