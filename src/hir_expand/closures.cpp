@@ -511,6 +511,28 @@ namespace {
                 }
                 };
             auto monomorph = [&](const auto& ty){ return monomorphise_type_with(sp, ty, monomorph_cb); };
+            auto cb_replace = [&](const auto& tpl, auto& rv) {
+                if( tpl.m_data.is_Infer() ) {
+                    BUG(sp, "");
+                }
+                else if( tpl.m_data.is_Generic() ) {
+                    rv = monomorph_cb(tpl).clone();
+                    return true;
+                }
+                //else if( tpl.m_data.is_ErasedType() ) {
+                //    const auto& e = tpl.m_data.as_ErasedType();
+                //    
+                //    // TODO: Share code with 
+                //    TODO(sp, "Repalce ErasedType with origin " << e.m_origin << " #" << e.m_index);
+                //    //ASSERT_BUG(sp, e.m_index < fcn_ptr->m_code.m_erased_types.size(), "");
+                //    //const auto& erased_type_replacement = fcn_ptr->m_code.m_erased_types.at(e.m_index);
+                //    //rv = monomorphise_type_with(sp, erased_type_replacement,  monomorph_cb, false);
+                //    //return true;
+                //}
+                else {
+                    return false;
+                }
+                };
             
             // - Clone the bounds (from both levels)
             auto monomorph_bound = [&](const ::HIR::GenericBound& b)->auto {
@@ -612,14 +634,15 @@ namespace {
             // - Args
             ::std::vector< ::HIR::Pattern>  args_pat_inner;
             ::std::vector< ::HIR::TypeRef>  args_ty_inner;
+            
             for(const auto& arg : node.m_args) {
                 args_pat_inner.push_back( arg.first.clone() );
                 ev.visit_pattern( args_pat_inner.back() );
-                args_ty_inner.push_back( monomorphise_type_with(sp, arg.second, monomorph_cb) );
+                args_ty_inner.push_back( clone_ty_with(sp, arg.second, cb_replace) );
             }
             ::HIR::TypeRef  args_ty { mv$(args_ty_inner) };
             ::HIR::Pattern  args_pat { {}, ::HIR::Pattern::Data::make_Tuple({ mv$(args_pat_inner) }) };
-            ::HIR::TypeRef  ret_type = monomorphise_type_with(sp, node.m_return, monomorph_cb);
+            ::HIR::TypeRef  ret_type = clone_ty_with(sp, node.m_return, cb_replace);
             
             DEBUG("args_ty = " << args_ty << ", ret_type = " << ret_type);
             
@@ -634,6 +657,7 @@ namespace {
                 DEBUG("-- Fixing types in signature");
                 fixup.visit_type( args_ty );
                 fixup.visit_type( ret_type );
+                // TODO: Replace erased types too
             }
             
             // ---

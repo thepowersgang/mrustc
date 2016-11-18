@@ -11,13 +11,13 @@ namespace HIR {
 
 class ItemPath
 {
+public:
     const ItemPath* parent = nullptr;
     const ::HIR::TypeRef* ty = nullptr;
     const ::HIR::SimplePath* trait = nullptr;
     const ::HIR::PathParams* trait_params = nullptr;
     const char* name = nullptr;
     
-public:
     ItemPath() {}
     ItemPath(const ItemPath& p, const char* n):
         parent(&p),
@@ -68,6 +68,24 @@ public:
     
     ItemPath operator+(const ::std::string& name) const {
         return ItemPath(*this, name.c_str());
+    }
+    
+    bool operator==(const ::HIR::SimplePath& sp) const {
+        if( sp.m_crate_name != "" )  return false;
+        
+        unsigned int i = sp.m_components.size();
+        const auto* n = this;
+        while( n && i -- )
+        {
+            if( !n->name )
+                return false;
+            if( n->name != sp.m_components[i] )
+                return false;
+            n = n->parent;
+        }
+        if( i > 0 || n->name )
+            return false;
+        return true;
     }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const ItemPath& x) {
