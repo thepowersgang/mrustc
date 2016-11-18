@@ -48,7 +48,7 @@ namespace {
                     if( tpl.m_data.is_ErasedType() )
                     {
                         const auto& e = tpl.m_data.as_ErasedType();
-                        ASSERT_BUG(sp, e.m_index < node_ptr.m_erased_types.size(), "Erased type index OOB - " << e.m_index << " >= " << node_ptr.m_erased_types.size() << " - " << tpl);
+                        ASSERT_BUG(sp, e.m_index < node_ptr.m_erased_types.size(), "Erased type index OOB - " << e.m_origin << " " << e.m_index << " >= " << node_ptr.m_erased_types.size());
                         // TODO: Emit checks on bounds
                         rv = node_ptr.m_erased_types[e.m_index].clone();
                         return true;
@@ -692,7 +692,27 @@ namespace {
                 DEBUG("= " << cache.m_arg_types.back());
             }
             DEBUG("Ret " << fcn.m_return);
-            cache.m_arg_types.push_back( monomorphise_type_with(sp, fcn.m_return,  monomorph_cb, false) );
+            // Replace ErasedType and monomorphise
+            cache.m_arg_types.push_back( clone_ty_with(sp, fcn.m_return, [&](const auto& tpl, auto& rv) {
+                if( tpl.m_data.is_Infer() ) {
+                    BUG(sp, "");
+                }
+                else if( tpl.m_data.is_Generic() ) {
+                    rv = monomorph_cb(tpl).clone();
+                    return true;
+                }
+                else if( tpl.m_data.is_ErasedType() ) {
+                    const auto& e = tpl.m_data.as_ErasedType();
+                    
+                    ASSERT_BUG(sp, e.m_index < fcn_ptr->m_code.m_erased_types.size(), "");
+                    const auto& erased_type_replacement = fcn_ptr->m_code.m_erased_types.at(e.m_index);
+                    rv = monomorphise_type_with(sp, erased_type_replacement,  monomorph_cb, false);
+                    return true;
+                }
+                else {
+                    return false;
+                }
+                }) );
             m_resolve.expand_associated_types(sp, cache.m_arg_types.back());
             DEBUG("= " << cache.m_arg_types.back());
             
