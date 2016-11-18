@@ -826,9 +826,26 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
     ::ImplRef  best_impl;
     rv = this->find_impl(sp, trait_path.m_path, trait_path.m_params, *e2.type, [&](auto impl, bool fuzzy) {
         DEBUG("[expand_associated_types] Found " << impl);
+        // If a fuzzy match was found, monomorphise and EAT the checked types and try again
+        // - A fuzzy can be caused by an opaque match.
+        // - TODO: Move this logic into `find_impl`
         if( fuzzy ) {
-            DEBUG("[expand_associated_types] - Fuzzy");
-            return false;
+            DEBUG("[expand_associated_types] - Fuzzy, monomorph+expand and recheck");
+            
+            auto impl_ty = impl.get_impl_type();
+            this->expand_associated_types(sp, impl_ty);
+            if(impl_ty != *e2.type) {
+                DEBUG("[expand_associated_types] - Fuzzy - Doesn't match");
+                return false;
+            }
+            auto pp = impl.get_trait_params();
+            for(auto& ty : pp.m_types)
+                this->expand_associated_types(sp, ty);
+            if( pp != trait_path.m_params ) {
+                DEBUG("[expand_associated_types] - Fuzzy - Doesn't match");
+                return false;
+            }
+            DEBUG("[expand_associated_types] - Fuzzy - Actually matches");
         }
         
         if( impl.type_is_specialisable(e2.item.c_str()) ) {
