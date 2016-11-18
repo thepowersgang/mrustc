@@ -28,10 +28,17 @@ namespace {
         void visit_root(::HIR::ExprPtr& root)
         {
             root->visit(*this);
+            visit_type(root->m_res_type);
             for(auto& ty : root.m_bindings)
                 visit_type(ty);
             for(auto& ty : root.m_erased_types)
                 visit_type(ty);
+        }
+        
+        void visit_node_ptr(::std::unique_ptr< ::HIR::ExprNode>& node_ptr) override {
+            assert(node_ptr);
+            node_ptr->visit(*this);
+            visit_type(node_ptr->m_res_type);
         }
         
         void visit_type(::HIR::TypeRef& ty) override
