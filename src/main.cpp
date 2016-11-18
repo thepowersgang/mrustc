@@ -54,6 +54,7 @@ void init_debug_list()
     g_debug_disable_map.insert( "Expand HIR Closures" );
     g_debug_disable_map.insert( "Expand HIR Calls" );
     g_debug_disable_map.insert( "Expand HIR Reborrows" );
+    g_debug_disable_map.insert( "Expand HIR ErasedType" );
     g_debug_disable_map.insert( "Typecheck Expressions (validate)" );
     
     g_debug_disable_map.insert( "Dump HIR" );
@@ -344,6 +345,9 @@ int main(int argc, char *argv[])
             });
         CompilePhaseV("Expand HIR Reborrows", [&]() {
             HIR_Expand_Reborrows(*hir_crate);
+            });
+        CompilePhaseV("Expand HIR ErasedType", [&]() {
+            HIR_Expand_ErasedType(*hir_crate);
             });
         CompilePhaseV("Dump HIR", [&]() {
             ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
