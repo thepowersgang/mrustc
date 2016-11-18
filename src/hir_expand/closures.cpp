@@ -630,6 +630,10 @@ namespace {
                 DEBUG("-- Fixing types in body code");
                 ExprVisitor_Fixup   fixup { m_resolve.m_crate, monomorph_cb };
                 fixup.visit_root( body_code );
+                
+                DEBUG("-- Fixing types in signature");
+                fixup.visit_type( args_ty );
+                fixup.visit_type( ret_type );
             }
             
             // ---
