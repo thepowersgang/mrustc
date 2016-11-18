@@ -1,28 +1,34 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/expr_ptr.cpp
+ * - HIR Expression
  */
 #include <hir/expr_ptr.hpp>
 #include <hir/expr.hpp>
 
-::HIR::ExprPtr::ExprPtr():
-    node(nullptr)
-{
-}
 ::HIR::ExprPtr::ExprPtr(::std::unique_ptr< ::HIR::ExprNode> v):
-    node( v.release() )
+    node( mv$(v) )
 {
-}
-::HIR::ExprPtr::~ExprPtr()
-{
-    delete node;
 }
 ::std::unique_ptr< ::HIR::ExprNode> HIR::ExprPtr::into_unique()
 {
-    ::std::unique_ptr< ::HIR::ExprNode> rv( this->node );
-    this->node = nullptr;
-    return rv;
+    return node.into_unique();
 }
-void ::HIR::ExprPtr::reset(::HIR::ExprNode* p)
+
+
+::HIR::ExprPtrInner::ExprPtrInner(::std::unique_ptr< ::HIR::ExprNode> v):
+    ptr( v.release() )
 {
-    delete node;
-    node = p;
+}
+::HIR::ExprPtrInner::~ExprPtrInner()
+{
+    delete ptr;
+}
+::std::unique_ptr< ::HIR::ExprNode> HIR::ExprPtrInner::into_unique()
+{
+    ::std::unique_ptr< ::HIR::ExprNode> rv( this->ptr );
+    this->ptr = nullptr;
+    return rv;
 }

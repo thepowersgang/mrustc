@@ -16,44 +16,65 @@ namespace HIR {
 class TypeRef;
 class ExprNode;
 
+class ExprPtrInner
+{
+    ::HIR::ExprNode* ptr;
+public:
+    ExprPtrInner():
+        ptr(nullptr)
+    {}
+    ExprPtrInner(::std::unique_ptr< ::HIR::ExprNode> _);
+    ExprPtrInner(ExprPtrInner&& x):
+        ptr(x.ptr)
+    {
+        x.ptr = nullptr;
+    }
+    ~ExprPtrInner();
+    
+    ExprPtrInner& operator=(ExprPtrInner&& x)
+    {
+        this->~ExprPtrInner();
+        ptr = x.ptr;
+        x.ptr = nullptr;
+        return *this;
+    }
+    
+    ::std::unique_ptr< ::HIR::ExprNode> into_unique();
+    operator bool () const { return ptr != nullptr; }
+    ::HIR::ExprNode* get() const { return ptr; }
+    void reset(::HIR::ExprNode* p) {
+        this->~ExprPtrInner();
+        this->ptr = p;
+    }
+    
+          ::HIR::ExprNode& operator*()       { return *ptr; }
+    const ::HIR::ExprNode& operator*() const { return *ptr; }
+          ::HIR::ExprNode* operator->()       { return ptr; }
+    const ::HIR::ExprNode* operator->() const { return ptr; }
+};
+
 class ExprPtr
 {
-    ::HIR::ExprNode* node;
+    ::HIR::ExprPtrInner node;
     
 public:
     ::std::vector< ::HIR::TypeRef>  m_bindings;
+    ::std::vector< ::HIR::TypeRef>  m_erased_types;
     ::MIR::FunctionPointer  m_mir;
     
 public:
-    ExprPtr();
+    ExprPtr() {}
     ExprPtr(::std::unique_ptr< ::HIR::ExprNode> _);
-    ExprPtr(ExprPtr&& x):
-        node(x.node),
-        m_bindings( ::std::move(x.m_bindings) ),
-        m_mir( ::std::move(x.m_mir) )
-    {
-        x.node = nullptr;
-    }
-    ExprPtr& operator=(ExprPtr&& x)
-    {
-        this->~ExprPtr();
-        node = x.node;
-        m_bindings = ::std::move(x.m_bindings);
-        m_mir = ::std::move(x.m_mir);
-        x.node = nullptr;
-        return *this;
-    }
-    ~ExprPtr();
     
     ::std::unique_ptr< ::HIR::ExprNode> into_unique();
-    operator bool () const { return node != nullptr; }
-    ::HIR::ExprNode* get() const { return node; }
-    void reset(::HIR::ExprNode* p);
+    operator bool () const { return node; }
+    ::HIR::ExprNode* get() const { return node.get(); }
+    void reset(::HIR::ExprNode* p) { node.reset(p); }
     
           ::HIR::ExprNode& operator*()       { return *node; }
     const ::HIR::ExprNode& operator*() const { return *node; }
-          ::HIR::ExprNode* operator->()       { return node; }
-    const ::HIR::ExprNode* operator->() const { return node; }
+          ::HIR::ExprNode* operator->()       { return &*node; }
+    const ::HIR::ExprNode* operator->() const { return &*node; }
 };
 
 }   // namespace HIR
