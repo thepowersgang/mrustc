@@ -630,6 +630,9 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
         ),
     (Function,
         // Recurse?
+        for(auto& ty : e.m_arg_types)
+            expand_associated_types_inner(sp, ty);
+        expand_associated_types_inner(sp, *e.m_rettype);
         ),
     (Closure,
         // Recurse?

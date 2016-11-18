@@ -1683,6 +1683,9 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
         ),
     (Function,
         // Recurse?
+        for(auto& ty : e.m_arg_types)
+            expand_associated_types_inplace(sp, ty, stack);
+        expand_associated_types_inplace(sp, *e.m_rettype, stack);
         ),
     (Closure,
         // Recurse?

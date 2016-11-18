@@ -755,7 +755,7 @@ namespace {
             const auto& val_ty = node.m_value->m_res_type;
             
             TU_IFLET( ::HIR::TypeRef::Data, val_ty.m_data, Function, e,
-                
+                DEBUG("- Function pointer: " << val_ty);
                 if( node.m_args.size() != e.m_arg_types.size() ) {
                     ERROR(node.span(), E0000, "Incorrect number of arguments to call via " << val_ty);
                 }
