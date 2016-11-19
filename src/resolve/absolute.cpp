@@ -1186,6 +1186,10 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                 path = split_replace_into_ufcs_path(sp, mv$(path), i,  name_ref.path);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 ),
+            (Union,
+                path = split_replace_into_ufcs_path(sp, mv$(path), i,  name_ref.path);
+                return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
+                ),
             (Module,
                 if( name_ref.is_import ) {
                     //TODO(sp, "Replace path component with new path - " << path << "[.."<<i+1<<"] with " << name_ref.path);
