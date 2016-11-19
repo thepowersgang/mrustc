@@ -117,7 +117,9 @@ class CMacroExportHandler:
     
     void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
-        if( i.is_MacroInv() ) {
+        if( i.is_None() ) {
+        }
+        else if( i.is_MacroInv() ) {
             const auto& mac = i.as_MacroInv();
             if( mac.name() != "macro_rules" ) {
                 ERROR(sp, E0000, "#[macro_export] is only valid on macro_rules!");
