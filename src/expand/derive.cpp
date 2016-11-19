@@ -1880,6 +1880,15 @@ class Deriver_RustcDecodable:
             mv$(code)
             );
     }
+    AST::ExprNodeP get_val_err_str(const ::std::string& core_name, ::std::string err_str) const {
+        return NEWNODE(CallPath, AST::Path(core_name, {AST::PathNode("result",{}), AST::PathNode("Result",{}), AST::PathNode("Err",{})}), vec$(
+            NEWNODE(CallMethod,
+                NEWNODE(NamedValue, AST::Path("d")),
+                AST::PathNode("error"),
+                vec$( NEWNODE(String, err_str) )
+                )
+            ) );
+    }
     AST::ExprNodeP get_val_ok(const ::std::string& core_name, AST::ExprNodeP inner) const {
         return NEWNODE(CallPath, AST::Path(core_name, {AST::PathNode("result",{}), AST::PathNode("Result",{}), AST::PathNode("Ok",{})}), vec$( mv$(inner) ) );
     }
@@ -2009,6 +2018,15 @@ public:
                 this->get_val_ok(core_name, mv$(code))
                 ));
             var_name_strs.push_back( NEWNODE(String, v.m_name) );
+        }
+        
+        // Default arm
+        {
+            arms.push_back(AST::ExprNode_Match_Arm(
+                ::make_vec1( AST::Pattern() ),
+                nullptr,
+                this->get_val_err_str(core_name, "enum value unknown")
+                ));
         }
         
         auto node_match = NEWNODE(Match, NEWNODE(NamedValue, AST::Path("idx")), mv$(arms));
