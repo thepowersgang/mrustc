@@ -585,7 +585,23 @@ namespace {
             auto _ = this->m_resolve.set_item_generics(item.m_params);
             if( item.m_code ) {
                 DEBUG("Function code " << p);
-                MIR_Validate(m_resolve, p, *item.m_code.m_mir, item.m_args, item.m_return);
+                static Span sp;
+                
+                // Replace ErasedType instances in `ret_type`
+                ::HIR::TypeRef  tmp;
+                const auto& ret_type = item.m_return;
+                const auto& ret_type_v = ( !visit_ty_with(ret_type, [](const auto& t){ return t.m_data.is_ErasedType(); }) ? ret_type : tmp = clone_ty_with(sp, ret_type, [&](const auto& tpl, auto& rv) {
+                    if( tpl.m_data.is_ErasedType() )
+                    {
+                        const auto& e = tpl.m_data.as_ErasedType();
+                        assert(e.m_index < item.m_code.m_erased_types.size());
+                        rv = item.m_code.m_erased_types[e.m_index].clone();
+                        return true;
+                    }
+                    return false;
+                    }) );
+    
+                MIR_Validate(m_resolve, p, *item.m_code.m_mir, item.m_args, ret_type_v);
             }
         }
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override {
