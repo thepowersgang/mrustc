@@ -806,6 +806,9 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 (Any,
                     // _ on a unit-like type, unconditional
                     ),
+                (StructValue,
+                    // Unit-like struct value, nothing to match (it's unconditional)
+                    ),
                 (Value,
                     // Unit-like struct value, nothing to match (it's unconditional)
                     )
