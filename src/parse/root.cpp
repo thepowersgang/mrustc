@@ -875,11 +875,11 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
         }
         
         AST::MetaItems item_attrs;
-        while( tok.type() == TOK_ATTR_OPEN )
+        while( LOOK_AHEAD(lex) == TOK_ATTR_OPEN )
         {
+            GET_TOK(tok, lex);
             item_attrs.push_back( Parse_MetaItem(lex) );
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-            GET_TOK(tok, lex);
         }
         SET_ATTRS(lex, item_attrs);
         
