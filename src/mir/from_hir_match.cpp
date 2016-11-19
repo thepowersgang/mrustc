@@ -14,6 +14,24 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
 #define FIELD_DEREF 255
 
+struct field_path_t
+{
+    ::std::vector<uint8_t>  data;
+    
+    size_t size() const { return data.size(); }
+    void push_back(uint8_t v) { data.push_back(v); }
+    void pop_back() { data.pop_back(); }
+    uint8_t& back() { return data.back(); }
+    
+    bool operator==(const field_path_t& x) const { return data == x.data; }
+    
+    friend ::std::ostream& operator<<(::std::ostream& os, const field_path_t& x) {
+        for(const auto idx : x.data)
+            os << "." << static_cast<unsigned int>(idx);
+        return os;
+    }
+};
+
 TAGGED_UNION_EX(PatternRule, (), Any,(
     // _ pattern
     (Any, struct {}),
@@ -31,7 +49,6 @@ TAGGED_UNION_EX(PatternRule, (), Any,(
     ),
     ( , field_path(mv$(x.field_path)) ), (field_path = mv$(x.field_path);),
     (
-        typedef ::std::vector<uint8_t>  field_path_t;
         field_path_t    field_path;
     )
     );
@@ -68,7 +85,7 @@ struct PatternRulesetBuilder
     const StaticTraitResolve&   m_resolve;
     bool m_is_impossible;
     ::std::vector<PatternRule>  m_rules;
-    PatternRule::field_path_t   m_field_path;
+    field_path_t   m_field_path;
     
     PatternRulesetBuilder(const StaticTraitResolve& resolve):
         m_resolve(resolve),
@@ -251,10 +268,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 // --------------------------------------------------------------------
 ::std::ostream& operator<<(::std::ostream& os, const PatternRule& x)
 {
-    os <<"{";
-    for(const auto idx : x.field_path)
-        os << "." << static_cast<unsigned int>(idx);
-    os << "}=";
+    os << "{" << x.field_path << "}=";
     TU_MATCHA( (x), (e),
     (Any,
         os << "_";
@@ -357,7 +371,7 @@ void PatternRulesetBuilder::push_rule(PatternRule r)
 
 void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal& lit, const ::HIR::TypeRef& ty)
 {
-    TRACE_FUNCTION_F("lit="<<lit<<", ty="<<ty<<",   m_field_path.size()=" <<m_field_path.size() << " " << (m_field_path.empty() ? 0 : m_field_path.back()) );
+    TRACE_FUNCTION_F("lit="<<lit<<", ty="<<ty<<",   m_field_path=[" << m_field_path << "]");
 
     TU_MATCHA( (ty.m_data), (e),
     (Infer,   BUG(sp, "Ivar for in match type"); ),
@@ -585,7 +599,7 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
 }
 void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty)
 {
-    TRACE_FUNCTION_F("pat="<<pat<<", ty="<<ty<<",   m_field_path.size()=" <<m_field_path.size() << " " << (m_field_path.empty() ? 0 : m_field_path.back()) );
+    TRACE_FUNCTION_F("pat="<<pat<<", ty="<<ty<<",   m_field_path=[" << m_field_path << "]");
     struct H {
         static uint64_t get_pattern_value_int(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::Pattern::Value& val) {
             TU_MATCH_DEF( ::HIR::Pattern::Value, (val), (e),
@@ -1086,7 +1100,7 @@ namespace {
     void get_ty_and_val(
         const Span& sp,
         const ::HIR::TypeRef& top_ty, const ::MIR::LValue& top_val,
-        const PatternRule::field_path_t& field_path, unsigned int field_path_ofs,
+        const field_path_t& field_path, unsigned int field_path_ofs,
         /*Out ->*/ ::HIR::TypeRef& out_ty, ::MIR::LValue& out_val
         )
     {
@@ -1098,7 +1112,7 @@ namespace {
         ASSERT_BUG(sp, field_path_ofs <= field_path.size(), "Field path offset " << field_path_ofs << " is larger than the path [" << field_path << "]");
         for(unsigned int i = field_path_ofs; i < field_path.size(); i ++ )
         {
-            auto idx = field_path[i];
+            auto idx = field_path.data[i];
             
             TU_MATCHA( (cur_ty->m_data), (e),
             (Infer,   BUG(sp, "Ivar for in match type"); ),
@@ -1640,15 +1654,15 @@ struct DecisionTreeNode
         );
     
     // TODO: Arm specialisation?
-    bool is_specialisation;
-    PatternRule::field_path_t   m_field_path;
+    field_path_t   m_field_path;
     Values  m_branches;
     Branch  m_default;
     
-    DecisionTreeNode( PatternRule::field_path_t field_path ):
-        is_specialisation(false)/*,
+    DecisionTreeNode( field_path_t field_path ):
         // TODO: This is commented out fo a reason, but I don't know why.
-        m_field_path( mv$(field_path) ) // */
+        //m_field_path( mv$(field_path) ),
+        m_branches(),
+        m_default()
     {}
     
     static Branch clone(const Branch& b);
@@ -1691,7 +1705,7 @@ struct DecisionTreeNode
     ::MIR::LValue get_field(const ::MIR::LValue& base, unsigned int base_depth) const {
         ::MIR::LValue   cur = base.clone();
         for(unsigned int i = base_depth; i < m_field_path.size(); i ++ ) {
-            const auto idx = m_field_path[i];
+            const auto idx = m_field_path.data[i];
             if( idx == FIELD_DEREF ) {
                 cur = ::MIR::LValue::make_Deref({ box$(cur) });
             }
@@ -1783,7 +1797,7 @@ struct DecisionTreeGen
         const Span& sp,
         const DecisionTreeNode::Branch& default_branch,
         const DecisionTreeNode::Values::Data_Variant& branches,
-        const PatternRule::field_path_t& field_path,   // used to know when to stop handling sub-nodes
+        const field_path_t& field_path,   // used to know when to stop handling sub-nodes
         const ::HIR::TypeRef& ty, ::MIR::LValue val,
         ::std::function<void(const DecisionTreeNode&)> and_then
         );
@@ -1791,14 +1805,14 @@ struct DecisionTreeGen
         const Span& sp,
         const DecisionTreeNode::Branch& default_branch,
         const DecisionTreeNode::Values::Data_Slice& branches,
-        const PatternRule::field_path_t& field_path,
+        const field_path_t& field_path,
         const ::HIR::TypeRef& ty, ::MIR::LValue val,
         ::std::function<void(const DecisionTreeNode&)> and_then
         );
     void generate_tree_code__enum(
         const Span& sp,
         const DecisionTreeNode& node, const ::HIR::TypeRef& fake_ty, const ::MIR::LValue& val,
-        const PatternRule::field_path_t& path_prefix,
+        const field_path_t& path_prefix,
         ::std::function<void(const DecisionTreeNode&)> and_then
         );
 };
@@ -1860,6 +1874,68 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
     gen.generate_tree_code( node.span(), root_node, node.m_value->m_res_type, mv$(match_val) );
     ASSERT_BUG(node.span(), !builder.block_active(), "Decision tree didn't terminate the final block");
 }
+
+#if 0
+DecisionTreeNode MIR_LowerHIR_Match_DecisionTree__MakeTree(const Span& sp, t_arm_rules& arm_rules)
+{
+    ::std::vector<unsigned int> indexes;
+    ::std::vector< slice<PatternRule> > rules;
+    for(unsigned i = 0; i < arm_rules.size(); i ++)
+    {
+        rules.push_back( arm_rules[i].m_rules );
+        indexes.push_back(i);
+    }
+    
+    return MIR_LowerHIR_Match_DecisionTree__MakeTree_Node(sp, indexes, rules);
+}
+DecisionTreeNode MIR_LowerHIR_Match_DecisionTree__MakeTree_Node(const Span& sp, slice<unsigned int> arm_indexes, slice< slice<PaternRule>> arm_rules)
+{
+    assert( arm_indexes.size() == arm_rules.size() );
+    assert( arm_rules.size() > 1 );
+    assert( arm_rules[0].size() > 0 );
+    
+    // 1. Sort list (should it already be sorted?)
+    for(const auto& rules : arm_rules)
+    {
+        ASSERT_BUG(sp, rules.size() != arm_rules[0].size(), "");
+    }
+    
+    // 2. Detect all arms being `_` and move on to the next condition
+    while( ::std::all_of(arm_rules.begin(), arm_rules.end(), [](const auto& r){ return r.m_rules[0].is_Any(); }) )
+    {
+        // Delete first rule from all and continue.
+        if( arm_rules[0].size() == 1 ) {
+            // No rules left?
+            BUG(sp, "Duplicate match arms");
+        }
+        
+        for(auto& rules : arm_rules)
+        {
+            rules = rules.subslice_from(1);
+        }
+    }
+    
+    // We have a codition.
+    for(const auto& rules : arm_rules)
+    {
+        ASSERT_BUG(sp, rules[0].is_Any() || rules[0].tag() == arm_rules[0][0].tag(), "Mismatched rules in match");
+    }
+    
+    bool has_any = arm_rules.back()[0].is_Any();
+    
+    // All rules must either be _ or the same type, and can't all be _
+    switch( arm_rules[0][0].tag() )
+    {
+    case PatternRule::TAGDEAD:  throw "";
+    case PatternRule::TAG_Any:  throw "";
+    
+    case PatternRule::TAG_Variant:
+        break;
+    // TODO: Value and ValueRange can appear together.
+    // - They also overlap in non-trivial ways.
+    }
+}
+#endif
 
 // ----------------------------
 // DecisionTreeNode
@@ -1926,7 +2002,6 @@ DecisionTreeNode::Values DecisionTreeNode::clone(const DecisionTreeNode::Values&
 DecisionTreeNode DecisionTreeNode::clone() const {
     DecisionTreeNode    rv(m_field_path);
     rv.m_field_path = m_field_path;
-    rv.is_specialisation = is_specialisation;
     rv.m_branches = clone(m_branches);
     rv.m_default = clone(m_default);
     return rv;
@@ -1935,7 +2010,7 @@ DecisionTreeNode DecisionTreeNode::clone() const {
 // Helpers for `populate_tree_from_rule`
 namespace
 {
-    DecisionTreeNode::Branch new_branch_subtree(PatternRule::field_path_t path)
+    DecisionTreeNode::Branch new_branch_subtree(field_path_t path)
     {
         return DecisionTreeNode::Branch( box$(DecisionTreeNode( mv$(path) )) );
     }
@@ -1945,7 +2020,7 @@ namespace
     static void from_rule_valuerange(
         const Span& sp,
         ::std::vector< ::std::pair< DecisionTreeNode::Range<T>, DecisionTreeNode::Branch> >& be, T ve_start, T ve_end,
-        const char* name, const PatternRule::field_path_t& field_path, ::std::function<void(DecisionTreeNode::Branch&)> and_then
+        const char* name, const field_path_t& field_path, ::std::function<void(DecisionTreeNode::Branch&)> and_then
         )
     {
         ASSERT_BUG(sp, ve_start < ve_end, "Range pattern with one value - " << ve_start << "..." << ve_end);
@@ -2010,7 +2085,7 @@ namespace
     static void from_rule_value(
         const Span& sp,
         ::std::vector< ::std::pair< DecisionTreeNode::Range<T>, DecisionTreeNode::Branch> >& be, T ve,
-        const char* name, const PatternRule::field_path_t& field_path, ::std::function<void(DecisionTreeNode::Branch&)> and_then
+        const char* name, const field_path_t& field_path, ::std::function<void(DecisionTreeNode::Branch&)> and_then
         )
     {
         auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.end >= ve; });
@@ -2593,6 +2668,9 @@ void DecisionTreeNode::unify_from(const Branch& b)
         DEBUG("TODO - Unify mismatched arms? - " << b.as_Subtree()->m_branches.tag_str() << " and " << m_branches.tag_str());
         return ;
     }
+    if( b.is_Subtree() ) {
+        ASSERT_BUG(Span(), this->m_field_path == b.as_Subtree()->m_field_path, "Unifiying DTNs with mismatched paths - " << this->m_field_path << " != " << b.as_Subtree()->m_field_path);
+    }
     
     TU_MATCHA( (m_branches), (dst),
     (Unset,
@@ -2705,10 +2783,7 @@ void DecisionTreeNode::unify_from(const Branch& b)
     return os;
 }
 ::std::ostream& operator<<(::std::ostream& os, const DecisionTreeNode& x) {
-    os << "DTN [";
-    for(const auto idx : x.m_field_path)
-        os << "." << static_cast<unsigned int>(idx);
-    os << "] { ";
+    os << "DTN [" << x.m_field_path << "] { ";
     TU_MATCHA( (x.m_branches), (e),
     (Unset,
         os << "!, ";
@@ -3200,7 +3275,7 @@ void DecisionTreeGen::generate_branches_Enum(
     const Span& sp,
     const DecisionTreeNode::Branch& default_branch,
     const DecisionTreeNode::Values::Data_Variant& branches,
-    const PatternRule::field_path_t& field_path,
+    const field_path_t& field_path,
     const ::HIR::TypeRef& ty, ::MIR::LValue val,
     ::std::function<void(const DecisionTreeNode&)> and_then
     )
@@ -3315,7 +3390,7 @@ void DecisionTreeGen::generate_branches_Slice(
     const Span& sp,
     const DecisionTreeNode::Branch& default_branch,
     const DecisionTreeNode::Values::Data_Slice& branches,
-    const PatternRule::field_path_t& field_path,
+    const field_path_t& field_path,
     const ::HIR::TypeRef& ty, ::MIR::LValue val,
     ::std::function<void(const DecisionTreeNode&)> and_then
     )
@@ -3393,14 +3468,14 @@ void DecisionTreeGen::generate_branches_Slice(
 }
 
 namespace {
-    bool path_starts_with(const PatternRule::field_path_t& test, const PatternRule::field_path_t& prefix)
+    bool path_starts_with(const field_path_t& test, const field_path_t& prefix)
     {
         //DEBUG("test="<<test<<", prefix="<<prefix);
         if( test.size() < prefix.size() )
         {
             return false;
         }
-        else if( ! ::std::equal(prefix.begin(), prefix.end(), test.begin()) )
+        else if( ! ::std::equal(prefix.data.begin(), prefix.data.end(), test.data.begin()) )
         {
             return false;
         }
@@ -3414,7 +3489,7 @@ namespace {
 void DecisionTreeGen::generate_tree_code__enum(
     const Span& sp,
     const DecisionTreeNode& node, const ::HIR::TypeRef& fake_ty, const ::MIR::LValue& val,
-    const PatternRule::field_path_t& path_prefix,
+    const field_path_t& path_prefix,
     ::std::function<void(const DecisionTreeNode&)> and_then
     )
 {
