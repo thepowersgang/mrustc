@@ -225,6 +225,7 @@ namespace {
                         for(const auto& fld : ve)
                             tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.ent) );
                         tmp = ::HIR::TypeRef( mv$(tys) );
+                        this->resolve.expand_associated_types(sp, tmp);
                         return tmp;
                         ),
                     (Struct,
@@ -233,6 +234,7 @@ namespace {
                         for(const auto& fld : ve)
                             tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.second.ent) );
                         tmp = ::HIR::TypeRef( mv$(tys) );
+                        this->resolve.expand_associated_types(sp, tmp);
                         return tmp;
                         )
                     )
