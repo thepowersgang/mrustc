@@ -280,28 +280,43 @@ namespace {
             (SplitSlice,
                 // These are only refutable if T is [T]
                 bool ty_is_array = false;
-                m_builder.with_val_type(sp, lval, [&ty_is_array](const auto& ty){
-                    ty_is_array = ty.m_data.is_Array();
+                unsigned int array_size = 0;
+                m_builder.with_val_type(sp, lval, [&ty_is_array,&array_size](const auto& ty){
+                    if( ty.m_data.is_Array() ) {
+                        array_size = ty.m_data.as_Array().size_val;
+                        ty_is_array = true;
+                    }
+                    else {
+                        ty_is_array = false;
+                    }
                     });
                 if( ty_is_array )
                 {
-                    // TODO: Assert array size
-                    //for(unsigned int i = 0; i < e.leading.size(); i ++)
-                    //{
-                    //    auto idx = 0 + i;
-                    //    destructure_from_ex(sp, e.leading[i], ::MIR::LValue::make_Index({ box$( lval.clone() ), box$(lval_idx) }), allow_refutable );
-                    //}
-                    //for(unsigned int i = 0; i < e.trailing.size(); i ++)
-                    //{
-                    //    auto idx = 0 + i;
-                    //    destructure_from_ex(sp, e.leading[i], ::MIR::LValue::make_Index({ box$( lval.clone() ), box$(lval_idx) }), allow_refutable );
-                    //}
-                    TODO(sp, "Destructure array using SplitSlice - " << pat);
+                    assert(array_size >= e.leading.size() + e.trailing.size());
+                    for(unsigned int i = 0; i < e.leading.size(); i ++)
+                    {
+                        unsigned int idx = 0 + i;
+                        destructure_from_ex(sp, e.leading[i], ::MIR::LValue::make_Field({ box$(lval.clone()), idx }), allow_refutable );
+                    }
+                    for(unsigned int i = 0; i < e.trailing.size(); i ++)
+                    {
+                        unsigned int idx = array_size - e.trailing.size() + i;
+                        destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::make_Field({ box$(lval.clone()), idx }), allow_refutable );
+                    }
                 }
                 else
                 {
                     ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
-                    TODO(sp, "Destructure slice using SplitSlice - " << pat);
+                    // TODO: Acquire the slice size variable.
+                    for(unsigned int i = 0; i < e.leading.size(); i ++)
+                    {
+                        unsigned int idx = i;
+                        destructure_from_ex(sp, e.leading[i], ::MIR::LValue::make_Field({ box$(lval.clone()), idx }), allow_refutable );
+                    }
+                    if( e.trailing.size() > 0 )
+                    {
+                        TODO(sp, "Destructure slice using SplitSlice with trailing - " << pat);
+                    }
                 }
                 )
             )

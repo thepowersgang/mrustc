@@ -39,8 +39,9 @@ TAGGED_UNION_EX(PatternRule, (), Any,(
     (Variant, struct { unsigned int idx; ::std::vector<PatternRule> sub_rules; }),
     // Slice (includes desired length)
     (Slice, struct { unsigned int len; ::std::vector<PatternRule> sub_rules; }),
-    // TODO: SplitSlice encoding - how are the tail patterns to be encoded?
-    //(SplitSlice, struct { unsigned int len; ::std::vector<PatternRule> sub_rules; }),
+    // SplitSlice
+    // TODO: How can the negative offsets in the `trailing` be handled correctly? (both here and in the destructure)
+    (SplitSlice, struct { unsigned int min_len; ::std::vector<PatternRule> leading, trailing; }),
     // Boolean (different to Constant because of how restricted it is)
     (Bool, bool),
     // General value
@@ -277,9 +278,13 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     (Variant,
         os << e.idx << " [" << e.sub_rules << "]";
         ),
-    // Enum variant
+    // Slice pattern
     (Slice,
         os << "len=" << e.len << " [" << e.sub_rules << "]";
+        ),
+    // SplitSlice
+    (SplitSlice,
+        os << "len>=" << e.min_len << " [" << e.leading << ", ..., " << e.trailing << "]";
         ),
     // Boolean (different to Constant because of how restricted it is)
     (Bool,
@@ -334,6 +339,9 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                 return cmp;
         }
         return ::OrdEqual;
+        ),
+    (SplitSlice,
+        TODO(Span(), "Order PatternRule::SplitSlice");
         ),
     (Bool,
         return ::ord( le, re );
@@ -1036,9 +1044,27 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             this->push_rule( PatternRule::make_Slice({ static_cast<unsigned int>(pe.sub_patterns.size()), mv$(sub_builder.m_rules) }) );
             ),
         (SplitSlice,
-            // 1. Length minimum check
-            // 2. Sub-patterns (handling trailing)
-            TODO(sp, "Match [T] with SplitSlice - " << pat);
+            PatternRulesetBuilder   sub_builder { this->m_resolve };
+            sub_builder.m_field_path = m_field_path;
+            sub_builder.m_field_path.push_back(0);
+            for(const auto& subpat : pe.leading)
+            {
+                sub_builder.append_from( sp, subpat, *e.inner );
+                sub_builder.m_field_path.back() ++;
+            }
+            auto leading = mv$(sub_builder.m_rules);
+            
+            sub_builder.m_field_path.back() = 0;
+            if( pe.trailing.size() )
+            {
+                TODO(sp, "SplitSlice on [T] with trailing - " << pat);
+            }
+            auto trailing = mv$(sub_builder.m_rules);
+            
+            this->push_rule( PatternRule::make_SplitSlice({
+                static_cast<unsigned int>(pe.leading.size() + pe.trailing.size()),
+                mv$(leading), mv$(trailing)
+                }) );
             )
         )
         ),
@@ -1541,7 +1567,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
             #endif
             ),
         (Slice,
-            ASSERT_BUG(sp, rule.is_Slice() || (rule.is_Value() && rule.as_Value().is_Bytes()), "Can only match slice with Bytes or Slice rules - " << rule);
+            ASSERT_BUG(sp, rule.is_Slice() || rule.is_SplitSlice() || (rule.is_Value() && rule.as_Value().is_Bytes()), "Can only match slice with Bytes or Slice rules - " << rule);
             if( rule.is_Value() ) {
                 ASSERT_BUG(sp, *te.inner == ::HIR::CoreType::U8, "Bytes pattern on non-&[u8]");
                 auto cloned_val = ::MIR::Constant( rule.as_Value().as_Bytes() );
@@ -1553,8 +1579,50 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
                 builder.set_cur_block(succ_bb);
             }
+            else if( rule.is_Slice() ) {
+                const auto& re = rule.as_Slice();
+                
+                // Compare length
+                auto test_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue( ::MIR::Constant::make_Uint(re.len) ));
+                auto len_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ val.clone() }));
+                auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(len_val), ::MIR::eBinOp::EQ, mv$(test_lval) }));
+                
+                auto len_succ_bb = builder.new_bb_unlinked();
+                builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), len_succ_bb, fail_bb }) );
+                builder.set_cur_block(len_succ_bb);
+                
+                // Recurse checking values
+                MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp,
+                    re.sub_rules.data(), re.sub_rules.size(),
+                    top_ty, top_val, field_path_ofs,
+                    fail_bb
+                    );
+            }
+            else if( rule.is_SplitSlice() ) {
+                const auto& re = rule.as_SplitSlice();
+                
+                // Compare length
+                auto test_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue( ::MIR::Constant::make_Uint(re.min_len) ));
+                auto len_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ val.clone() }));
+                auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(len_val), ::MIR::eBinOp::LT, mv$(test_lval) }));
+                
+                auto len_succ_bb = builder.new_bb_unlinked();
+                builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), fail_bb, len_succ_bb }) );   // if len < test : FAIL
+                builder.set_cur_block(len_succ_bb);
+                
+                MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp,
+                    re.leading.data(), re.leading.size(),
+                    top_ty, top_val, field_path_ofs,
+                    fail_bb
+                    );
+                
+                if( re.trailing.size() > 0 )
+                {
+                    TODO(sp, "Match over Slice using SplitSlice with trailing - " << rule);
+                }
+            }
             else {
-                TODO(sp, "Match over Slice - " << rule);
+                BUG(sp, "Invalid rule type for slice - " << rule);
             }
             ),
         (Tuple,
@@ -2244,6 +2312,10 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
         {
             and_then(it->second);
         }
+        ),
+    (SplitSlice,
+        //auto& be = GET_BRANCHES(m_branches, Slice);
+        TODO(sp, "SplitSlice in DTN - " << rule);
         ),
     (Bool,
         auto& be = GET_BRANCHES(m_branches, Bool);
