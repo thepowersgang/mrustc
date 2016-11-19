@@ -149,16 +149,16 @@ output/liballoc_system.hir: $(call fcn_extcrate, core libc)
 output/liballoc_jemalloc.hir: $(call fcn_extcrate, core libc)
 
 output/libserialize.hir: $(call fcn_extcrate, std log)
-output/librbml.hir: $(call fcn_extcrate, std serialize)
 output/librustc_llvm.hir: $(call fcn_extcrate, std rustc_bitflags)
 output/librustc_errors.hir: $(call fcn_extcrate, std syntax_pos term)
 output/libsyntax.hir: $(call fcn_extcrate, std rustc_errors)
 output/librustc_back.hir: $(call fcn_extcrate, std syntax)
 output/librustc_data_structures.hir: $(call fcn_extcrate, std log serialize libc)
 output/librustc_const_math.hir: $(call fcn_extcrate, std log syntax serialize)
-output/librustc.hir: $(call fcn_extcrate, std arena core flate fmt_macros graphviz rbml rustc_llvm rustc_back getopts rustc_data_structures rustc_const_math rustc_errors log syntax syntax_pos rustc_bitflags serialize)
+output/librustc.hir: $(call fcn_extcrate, std arena core flate fmt_macros graphviz rustc_llvm rustc_back getopts rustc_data_structures rustc_const_math rustc_errors log syntax syntax_pos rustc_bitflags serialize)
+output/librustc_driver.hir: $(call fcn_extcrate, arena flate getopts graphviz libc rustc rustc_back rustc_borrowck rustc_const_eval rustc_errors rustc_passes rustc_lint rustc_plugin rustc_privacy rustc_incremental rustc_metadata rustc_mir rustc_resolve rustc_save_analysis rustc_trans rustc_typeck serialize rustc_llvm log syntax syntax_ext syntax_pos)
 
-output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc.hir
+output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc.hir output/librustc_driver.hir
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
