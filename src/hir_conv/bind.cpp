@@ -362,6 +362,11 @@ namespace {
                         e.binding = ::HIR::TypeRef::TypePathBinding::make_Struct(&e3);
                         DEBUG("- " << ty);
                         ),
+                    (Union,
+                        fix_param_count(sp, pe, e3.m_params,  pe.m_params);
+                        e.binding = ::HIR::TypeRef::TypePathBinding::make_Union(&e3);
+                        DEBUG("- " << ty);
+                        ),
                     (Enum,
                         fix_param_count(sp, pe, e3.m_params,  pe.m_params);
                         e.binding = ::HIR::TypeRef::TypePathBinding::make_Enum(&e3);
@@ -493,6 +498,9 @@ namespace {
                     ),
                 (Struct,
                     markings = &const_cast<HIR::Struct*>(tpb)->m_markings;
+                    ),
+                (Union,
+                    markings = &const_cast<HIR::Union*>(tpb)->m_markings;
                     ),
                 (Enum,
                     markings = &const_cast<HIR::Enum*>(tpb)->m_markings;

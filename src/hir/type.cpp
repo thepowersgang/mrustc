@@ -81,9 +81,10 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
     (Path,
         os << e.path;
         TU_MATCH(::HIR::TypeRef::TypePathBinding, (e.binding), (be),
-        (Unbound, os << "/*U*/";),
+        (Unbound, os << "/*?*/";),
         (Opaque, os << "/*O*/";),
         (Struct, os << "/*S*/";),
+        (Union, os << "/*U*/";),
         (Enum, os << "/*E*/";)
         )
         ),
@@ -748,8 +749,9 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     TU_MATCH(::HIR::TypeRef::TypePathBinding, (*this), (e),
     (Unbound, return ::HIR::TypeRef::TypePathBinding::make_Unbound({}); ),
     (Opaque , return ::HIR::TypeRef::TypePathBinding::make_Opaque({}); ),
-    (Struct , return ::HIR::TypeRef::TypePathBinding(e); ),
-    (Enum   , return ::HIR::TypeRef::TypePathBinding(e); )
+    (Struct, return ::HIR::TypeRef::TypePathBinding(e); ),
+    (Union , return ::HIR::TypeRef::TypePathBinding(e); ),
+    (Enum  , return ::HIR::TypeRef::TypePathBinding(e); )
     )
     assert(!"Fell off end of clone_binding");
 }

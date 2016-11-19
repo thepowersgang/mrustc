@@ -1066,6 +1066,9 @@ namespace {
             (Struct,
                 ASSERT_BUG(sp, e->m_data.is_Tuple(), "Pointed struct in TupleVariant (" << node.m_path << ") isn't a Tuple");
                 fields_ptr = &e->m_data.as_Tuple();
+                ),
+            (Union,
+                BUG(sp, "TupleVariant pointing to a union");
                 )
             )
             assert(fields_ptr);
@@ -1139,6 +1142,9 @@ namespace {
                 assert(it != enm.m_variants.end());
                 fields_ptr = &it->second.as_Struct();
                 generics = &enm.m_params;
+                ),
+            (Union,
+                TODO(node.span(), "StructLiteral of a union - " << ty);
                 ),
             (Struct,
                 fields_ptr = &e->m_data.as_Named();
@@ -1975,6 +1981,10 @@ namespace {
                     TODO(sp, "Cast Path::Opaque with CoerceUnsized - " << tgt_ty);
                     ),
                 (Struct,
+                    if( !be->m_markings.can_coerce )
+                        ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
+                    ),
+                (Union,
                     if( !be->m_markings.can_coerce )
                         ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
                     ),
@@ -4227,6 +4237,9 @@ namespace {
                         return true;
                         ),
                     (Struct,
+                        return pbe->m_markings.can_coerce;
+                        ),
+                    (Union,
                         return pbe->m_markings.can_coerce;
                         ),
                     (Enum,

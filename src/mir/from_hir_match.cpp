@@ -492,6 +492,9 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
                 )
             )
             ),
+        (Union,
+            TODO(sp, "Match union");
+            ),
         (Enum,
             ASSERT_BUG(sp, lit.is_Variant(), "Matching enum non-variant literal - " << lit);
             auto var_idx = lit.as_Variant().idx;
@@ -892,6 +895,9 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 )
             )
             ),
+        (Union,
+            TODO(sp, "Match over union - " << ty);
+            ),
         (Enum,
             auto monomorph = [&](const auto& ty) {
                 auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
@@ -1199,6 +1205,23 @@ namespace {
                         )
                     )
                     ),
+                (Union,
+                    auto monomorph = [&](const auto& ty) {
+                        auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
+                        resolve.expand_associated_types(sp, rv);
+                        return rv;
+                        };
+                    assert(idx < pbe->m_variants.size());
+                    const auto& fld = pbe->m_variants[idx];
+                    if( monomorphise_type_needed(fld.second.ent) ) {
+                        tmp_ty = monomorph(fld.second.ent);
+                        cur_ty = &tmp_ty;
+                    }
+                    else {
+                        cur_ty = &fld.second.ent;
+                    }
+                    lval = ::MIR::LValue::make_Downcast({ box$(lval), idx });
+                    ),
                 (Enum,
                     BUG(sp, "Destructuring an enum - " << *cur_ty);
                     )
@@ -1472,6 +1495,9 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     TODO(sp, "Matching on struct?");
                     )
                 )
+                ),
+            (Union,
+                TODO(sp, "Match over Union");
                 ),
             (Enum,
                 auto monomorph = [&](const auto& ty) { return monomorphise_type(sp, pbe->m_params, te.path.m_data.as_Generic().m_params, ty); };
@@ -3022,6 +3048,9 @@ void DecisionTreeGen::generate_tree_code(
                 BUG(sp, "Decision node on struct");
                 )
             )
+            ),
+        (Union,
+            TODO(sp, "Decision node on Union");
             ),
         (Enum,
             ASSERT_BUG(sp, node.m_branches.is_Variant(), "Tree for enum isn't a Variant - node="<<node);

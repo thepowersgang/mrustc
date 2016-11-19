@@ -413,6 +413,9 @@ namespace {
                 ASSERT_BUG(sp, it->second.is_Tuple(), "Pointed variant of TupleVariant (" << node.m_path << ") isn't a Tuple");
                 fields_ptr = &it->second.as_Tuple();
                 ),
+            (Union,
+                BUG(sp, "Union in TupleVariant");
+                ),
             (Struct,
                 ASSERT_BUG(sp, e->m_data.is_Tuple(), "Pointed struct in TupleVariant (" << node.m_path << ") isn't a Tuple");
                 fields_ptr = &e->m_data.as_Tuple();
@@ -462,6 +465,9 @@ namespace {
                 auto it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&v)->auto{ return v.first == var_name; });
                 assert(it != enm.m_variants.end());
                 fields_ptr = &it->second.as_Struct();
+                ),
+            (Union,
+                TODO(sp, "Union in StructLiteral");
                 ),
             (Struct,
                 fields_ptr = &e->m_data.as_Named();
@@ -532,6 +538,9 @@ namespace {
                 auto it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&v)->auto{ return v.first == var_name; });
                 assert(it != enm.m_variants.end());
                 assert( it->second.is_Unit() || it->second.is_Value() );
+                ),
+            (Union,
+                BUG(sp, "Union with _UnitVariant");
                 ),
             (Struct,
                 assert( e->m_data.is_Unit() );

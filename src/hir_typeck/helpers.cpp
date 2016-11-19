@@ -2374,6 +2374,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 (Struct,
                     markings = &tpb->m_markings;
                     ),
+                (Union,
+                    markings = &tpb->m_markings;
+                    ),
                 (Enum,
                     markings = &tpb->m_markings;
                     )
@@ -2645,6 +2648,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                         )
                     )
                 }
+                ),
+            (Union,
+                TODO(sp, "Check auto trait destructure on union " << type);
                 )
             )
             DEBUG("- Nothing failed, calling callback");
@@ -3561,6 +3567,9 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
             ),
         (Enum,
             // No fields on enums either
+            ),
+        (Union,
+            TODO(sp, "Field search on union");
             )
         )
     )

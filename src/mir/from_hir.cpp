@@ -1667,6 +1667,9 @@ namespace {
                 assert(it != enm.m_variants.end());
                 fields_ptr = &it->second.as_Struct();
                 ),
+            (Union,
+                TODO(node.span(), "_StructLiteral Union");
+                ),
             (Struct,
                 fields_ptr = &e->m_data.as_Named();
                 )

@@ -17,6 +17,7 @@
 namespace HIR {
 
 class Struct;
+class Union;
 class Enum;
 struct ExprNode_Closure;
 
@@ -112,6 +113,7 @@ public:
     (Unbound, struct {}),   // Not yet bound, either during lowering OR during resolution (when associated and still being resolved)
     (Opaque, struct {}),    // Opaque, i.e. An associated type of a generic (or Self in a trait)
     (Struct, const ::HIR::Struct*),
+    (Union, const ::HIR::Union*),
     (Enum, const ::HIR::Enum*)
     ), (), (), (
         TypePathBinding clone() const;

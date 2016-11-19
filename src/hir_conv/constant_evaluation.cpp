@@ -652,6 +652,9 @@ namespace {
                         ),
                     (Enum,
                         TODO(sp, "Field access on enum variant - " << m_rv_type);
+                        ),
+                    (Union,
+                        TODO(sp, "Field access on union - " << m_rv_type);
                         )
                     )
                     ),
