@@ -90,7 +90,12 @@ namespace {
                 //write_string(e.lifetime); // TODO: Need a better type
                 ),
             (ErasedType,
-                TODO(Span(), "ErasedType");
+                m_out.write_count(e.m_traits.size());
+                for(const auto& t : e.m_traits)
+                    serialise_traitpath(t);
+                
+                serialise_path(e.m_origin);
+                m_out.write_count(e.m_index);
                 ),
             (Array,
                 assert(e.size_val != ~0u);
