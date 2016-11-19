@@ -815,7 +815,8 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                 BUG(sp, "Downcast on unexpected type - " << ty);
                 ),
             (Path,
-                ASSERT_BUG(sp, te.binding.is_Enum(), "Downcast on non-Enum");
+                ASSERT_BUG(sp, !te.binding.is_Unbound(), "Unbound path " << ty << " encountered");
+                ASSERT_BUG(sp, te.binding.is_Enum(), "Downcast on non-Enum - " << ty << " for " << val);
                 const auto& enm = *te.binding.as_Enum();
                 const auto& variants = enm.m_variants;
                 ASSERT_BUG(sp, e.variant_index < variants.size(), "Variant index out of range");
