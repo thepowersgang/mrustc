@@ -537,15 +537,31 @@ struct LowerHIR_ExprNode_Visitor:
             ) );
     }
     virtual void visit(::AST::ExprNode_StructLiteral& v) override {
-        ::HIR::ExprNode_StructLiteral::t_values values;
-        for(const auto& val : v.m_values)
-            values.push_back( ::std::make_pair(val.first, LowerHIR_ExprNode_Inner(*val.second)) );
-        m_rv.reset( new ::HIR::ExprNode_StructLiteral( v.span(),
-            LowerHIR_GenericPath(v.get_pos(), v.m_path),
-            ! v.m_path.binding().is_EnumVar(),
-            LowerHIR_ExprNode_Inner_Opt(v.m_base_value.get()),
-            mv$(values)
-            ) );
+        if( v.m_path.binding().is_Union() )
+        {
+            if( v.m_values.size() != 1 )
+                ERROR(v.span(), E0000, "Union constructors can only specify a single field");
+            if( v.m_base_value )
+                ERROR(v.span(), E0000, "Union constructors can't take a base value");
+            
+            m_rv.reset( new ::HIR::ExprNode_UnionLiteral( v.span(),
+                LowerHIR_GenericPath(v.get_pos(), v.m_path),
+                v.m_values[0].first,
+                LowerHIR_ExprNode_Inner(*v.m_values[0].second)
+                ) );
+        }
+        else
+        {
+            ::HIR::ExprNode_StructLiteral::t_values values;
+            for(const auto& val : v.m_values)
+                values.push_back( ::std::make_pair(val.first, LowerHIR_ExprNode_Inner(*val.second)) );
+            m_rv.reset( new ::HIR::ExprNode_StructLiteral( v.span(),
+                LowerHIR_GenericPath(v.get_pos(), v.m_path),
+                ! v.m_path.binding().is_EnumVar(),
+                LowerHIR_ExprNode_Inner_Opt(v.m_base_value.get()),
+                mv$(values)
+                ) );
+        }
     }
     virtual void visit(::AST::ExprNode_Array& v) override {
         if( v.m_size )

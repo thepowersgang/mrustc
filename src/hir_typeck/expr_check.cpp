@@ -522,12 +522,17 @@ namespace {
                 node.m_base_value->visit( *this );
             }
         }
+        void visit(::HIR::ExprNode_UnionLiteral& node) override
+        {
+            // TODO: Check.
+            node.m_value->visit(*this);
+        }
         void visit(::HIR::ExprNode_UnitVariant& node) override
         {
             TRACE_FUNCTION_F(&node << " " << node.m_path << " [" << (node.m_is_struct ? "struct" : "enum") << "]");
             const auto& sp = node.span();
             const auto& ty = node.m_res_type;
-            ASSERT_BUG(sp, ty.m_data.is_Path(), "Result type of _StructLiteral isn't Path");
+            ASSERT_BUG(sp, ty.m_data.is_Path(), "Result type of _UnitVariant isn't Path");
             
             TU_MATCH(::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (e),
             (Unbound, ),
@@ -870,10 +875,18 @@ namespace {
             {
                 ASSERT_BUG(sp, str_ty.m_data.is_Path(), "Value type of _Field isn't Path - " << str_ty);
                 const auto& ty_e = str_ty.m_data.as_Path();
-                ASSERT_BUG(sp, ty_e.binding.is_Struct(), "Value type of _Field isn't a Struct - " << str_ty);
-                //const auto& str = *ty_e.binding.as_Struct();
-                
-                // TODO: Triple-check result, but that probably isn't needed
+                if( ty_e.binding.is_Struct() )
+                {
+                    //const auto& str = *ty_e.binding.as_Struct();
+                    // TODO: Triple-check result, but that probably isn't needed
+                }
+                else if( ty_e.binding.is_Union() )
+                {
+                }
+                else
+                {
+                    ASSERT_BUG(sp, ty_e.binding.is_Struct() || ty_e.binding.is_Union(), "Value type of _Field isn't a Struct or Union - " << str_ty);
+                }
             }
             
             node.m_value->visit( *this );

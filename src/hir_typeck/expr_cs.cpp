@@ -1208,6 +1208,56 @@ namespace {
                 node.m_base_value->visit( *this );
             }
         }
+        void visit(::HIR::ExprNode_UnionLiteral& node) override
+        {
+            const Span& sp = node.span();
+            TRACE_FUNCTION_F(&node << " " << node.m_path << "{ " << node.m_variant_name << ": ... }");
+            this->context.add_ivars( node.m_value->m_res_type );
+            
+            const auto& unm = this->context.m_crate.get_union_by_path(sp, node.m_path.m_path);
+            fix_param_count(sp, this->context, ::HIR::TypeRef(), false, node.m_path, unm.m_params, node.m_path.m_params);
+            const auto ty = ::HIR::TypeRef::new_path( node.m_path.clone(), ::HIR::TypeRef::TypePathBinding::make_Union(&unm) );
+            
+            this->context.equate_types(node.span(), node.m_res_type, ty);
+            
+            const auto& ty_params = node.m_path.m_params.m_types;
+            auto monomorph_cb = [&](const auto& gt)->const auto& {
+                const auto& ge = gt.m_data.as_Generic();
+                if( ge.binding == 0xFFFF ) {
+                    return ty;
+                }
+                else if( ge.binding < 256 ) {
+                    if( ge.binding >= ty_params.size() ) {
+                        BUG(node.span(), "Type parameter index out of range (#" << ge.binding << " " << ge.name << ")");
+                    }
+                    return ty_params[ge.binding];
+                }
+                else {
+                    BUG(node.span(), "Method-level parameter on struct (#" << ge.binding << " " << ge.name << ")");
+                }
+                };
+            
+            // Convert bounds on the type into rules
+            apply_bounds_as_rules(context, node.span(), unm.m_params, monomorph_cb);
+
+            auto it = ::std::find_if(unm.m_variants.begin(), unm.m_variants.end(), [&](const auto& v)->bool{ return v.first == node.m_variant_name; });
+            assert(it != unm.m_variants.end());
+            const auto& des_ty_r = it->second.ent;
+            ::HIR::TypeRef  des_ty_cache;
+            const auto* des_ty = &des_ty_r;
+            if( monomorphise_type_needed(des_ty_r) ) {
+                if( des_ty_cache == ::HIR::TypeRef() ) {
+                    des_ty_cache = monomorphise_type_with(node.span(), des_ty_r, monomorph_cb);
+                }
+                else {
+                    // TODO: Is it an error when it's already populated?
+                }
+                des_ty = &des_ty_cache;
+            }
+            this->equate_types_inner_coerce(node.span(), *des_ty,  node.m_value);
+            
+            node.m_value->visit(*this);
+        }
         void visit(::HIR::ExprNode_UnitVariant& node) override
         {
             TRACE_FUNCTION_F(&node << " " << node.m_path << " [" << (node.m_is_struct ? "struct" : "enum") << "]");
@@ -2730,6 +2780,9 @@ namespace {
         }
         
         void visit(::HIR::ExprNode_StructLiteral& node) override {
+            no_revisit(node);
+        }
+        void visit(::HIR::ExprNode_UnionLiteral& node) override {
             no_revisit(node);
         }
         void visit(::HIR::ExprNode_Tuple& node) override {

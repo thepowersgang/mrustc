@@ -355,6 +355,11 @@ namespace {
                 this->visit_node_ptr(fld_val.second);
             }
         }
+        void visit(::HIR::ExprNode_UnionLiteral& node) override
+        {
+            auto _ = push_usage( ::HIR::ValueUsage::Move );
+            this->visit_node_ptr(node.m_value);
+        }
         void visit(::HIR::ExprNode_Tuple& node) override
         {
             auto _ = push_usage( ::HIR::ValueUsage::Move );

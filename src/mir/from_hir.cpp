@@ -1668,7 +1668,7 @@ namespace {
                 fields_ptr = &it->second.as_Struct();
                 ),
             (Union,
-                TODO(node.span(), "_StructLiteral Union");
+                BUG(node.span(), "_StructLiteral Union");
                 ),
             (Struct,
                 fields_ptr = &e->m_data.as_Named();
@@ -1708,6 +1708,10 @@ namespace {
                 node.m_path.clone(),
                 mv$(values)
                 }) );
+        }
+        void visit(::HIR::ExprNode_UnionLiteral& node) override
+        {
+            TODO(node.span(), "_UnionLiteral");
         }
         
         void visit(::HIR::ExprNode_Tuple& node) override

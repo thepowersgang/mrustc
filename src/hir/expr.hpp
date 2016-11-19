@@ -690,6 +690,25 @@ struct ExprNode_StructLiteral:
     
     NODE_METHODS();
 };
+struct ExprNode_UnionLiteral:
+    public ExprNode
+{
+    ::HIR::GenericPath  m_path;
+    ::std::string   m_variant_name;
+    ::HIR::ExprNodeP    m_value;
+    
+    unsigned int    m_variant_index = ~0;
+    
+    ExprNode_UnionLiteral(Span sp, ::HIR::GenericPath path, ::std::string name, ::HIR::ExprNodeP value):
+        ExprNode( mv$(sp) ),
+        m_path( mv$(path) ),
+        m_variant_name( mv$(name) ),
+        m_value( mv$(value) )
+    {
+    }
+    
+    NODE_METHODS();
+};
 struct ExprNode_Tuple:
     public ExprNode
 {
@@ -803,6 +822,7 @@ public:
     NV(ExprNode_Variable);
     
     NV(ExprNode_StructLiteral);
+    NV(ExprNode_UnionLiteral);
     NV(ExprNode_Tuple);
     NV(ExprNode_ArrayList);
     NV(ExprNode_ArraySized);
@@ -847,6 +867,7 @@ public:
     NV(ExprNode_Variable);
     
     NV(ExprNode_StructLiteral);
+    NV(ExprNode_UnionLiteral);
     NV(ExprNode_Tuple);
     NV(ExprNode_ArrayList);
     NV(ExprNode_ArraySized);

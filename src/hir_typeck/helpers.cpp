@@ -3569,7 +3569,30 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
             // No fields on enums either
             ),
         (Union,
-            TODO(sp, "Field search on union");
+            const auto& unm = *be;
+            const auto& params = e.path.m_data.as_Generic().m_params;
+            auto monomorph = [&](const auto& gt)->const auto& {
+                const auto& ge = gt.m_data.as_Generic();
+                if( ge.binding == 0xFFFF )
+                    TODO(sp, "Monomorphise union field types (Self) - " << gt);
+                else if( ge.binding < 256 ) {
+                    assert(ge.binding < params.m_types.size());
+                    return params.m_types[ge.binding];
+                }
+                else {
+                    BUG(sp, "function-level param encountered in union field");
+                }
+                return gt;
+                };
+            
+            for( const auto& fld : unm.m_variants )
+            {
+                // TODO: Privacy
+                if( fld.first == name ) {
+                    field_ty = monomorphise_type_with(sp, fld.second.ent, monomorph);
+                    return true;
+                }
+            }
             )
         )
     )

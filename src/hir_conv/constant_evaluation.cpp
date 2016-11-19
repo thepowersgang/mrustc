@@ -818,6 +818,10 @@ namespace {
                     TODO(node.span(), "Handle Enum _UnitVariant - " << node.m_path);
                 }
             }
+            void visit(::HIR::ExprNode_UnionLiteral& node) override {
+                TRACE_FUNCTION_FR("_UnionLiteral - " << node.m_path, m_rv);
+                TODO(node.span(), "_UnionLiteral");
+            }
             void visit(::HIR::ExprNode_Tuple& node) override {
                 ::std::vector< ::HIR::Literal>  vals;
                 ::std::vector< ::HIR::TypeRef>  tys;

@@ -141,6 +141,10 @@ DEF_VISIT(ExprNode_StructLiteral, node,
     for(auto& val : node.m_values)
         visit_node_ptr(val.second);
 )
+DEF_VISIT(ExprNode_UnionLiteral, node,
+    visit_generic_path(::HIR::Visitor::PathContext::TYPE, node.m_path);
+    visit_node_ptr(node.m_value);
+)
 DEF_VISIT(ExprNode_Tuple, node,
     for(auto& val : node.m_vals)
         visit_node_ptr(val);

@@ -522,6 +522,16 @@ const ::HIR::Struct& ::HIR::Crate::get_struct_by_path(const Span& sp, const ::HI
         BUG(sp, "Struct path " << path << " didn't point to a struct");
     }
 }
+const ::HIR::Union& ::HIR::Crate::get_union_by_path(const Span& sp, const ::HIR::SimplePath& path) const
+{
+    const auto& ti = this->get_typeitem_by_path(sp, path);
+    TU_IFLET(::HIR::TypeItem, ti, Union, e,
+        return e;
+    )
+    else {
+        BUG(sp, "Path " << path << " didn't point to a union");
+    }
+}
 const ::HIR::Enum& ::HIR::Crate::get_enum_by_path(const Span& sp, const ::HIR::SimplePath& path) const
 {
     const auto& ti = this->get_typeitem_by_path(sp, path);
