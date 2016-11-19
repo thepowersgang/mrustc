@@ -3418,6 +3418,8 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             for(auto& subpat : e.leading) {
                 this->add_binding(sp, subpat, te[tup_idx++]);
             }
+            
+            // TODO: Should this replace the pattern with a non-split?
         )
         else {
             if( !ty.m_data.is_Infer() ) {

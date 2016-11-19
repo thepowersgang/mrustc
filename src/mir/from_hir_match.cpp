@@ -747,6 +747,19 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 this->append_from(sp, pe.sub_patterns[i], e[i]);
                 m_field_path.back() ++;
             }
+            ),
+        (SplitTuple,
+            assert(e.size() > pe.leading.size() + pe.trailing.size());
+            unsigned trailing_start = e.size() - pe.trailing.size();
+            for(unsigned int i = 0; i < e.size(); i ++) {
+                if( i < pe.leading.size() )
+                    this->append_from(sp, pe.leading[i], e[i]);
+                else if( i < trailing_start )
+                    this->append_from(sp, ::HIR::Pattern(), e[i]);
+                else
+                    this->append_from(sp, pe.trailing[i-trailing_start], e[i]);
+                m_field_path.back() ++;
+            }
             )
         )
         m_field_path.pop_back();
@@ -1668,7 +1681,7 @@ struct DecisionTreeNode
     // `and_then` - Closure called after processing the final rule
     void populate_tree_from_rule(const Span& sp, const PatternRule* first_rule, unsigned int rule_count, ::std::function<void(Branch&)> and_then);
     
-    /// Simplifies the tree by eliminating nodes with just a default
+    /// Simplifies the tree by eliminating nodes that don't make a decision
     void simplify();
     /// Propagate the m_default arm's contents to value arms, and vice-versa
     void propagate_default();
@@ -1835,8 +1848,10 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
     }
     DEBUG("root_node = " << root_node);
     root_node.simplify();
+    DEBUG("root_node = " << root_node);
     root_node.propagate_default();
     DEBUG("root_node = " << root_node);
+    // TODO: Pretty print `root_node`
     
     // - Convert the above decision tree into MIR
     DEBUG("- Emitting decision tree");
@@ -3220,10 +3235,11 @@ void DecisionTreeGen::generate_branches_Enum(
     }
     if( variant_blocks.size() != variant_count )
     {
-        assert( variant_blocks.size() < variant_count );
-        assert( has_any );
+        ASSERT_BUG(sp, variant_blocks.size() < variant_count, "Branch count (" << variant_blocks.size() << ") > variant count (" << variant_count << ") in match of " << ty);
+        ASSERT_BUG(sp, has_any, "Non-exhaustive match and no any arm");
         variant_blocks.resize( variant_count, any_block );
     }
+    bool any_arm_used = ::std::any_of( variant_blocks.begin(), variant_blocks.end(), [any_block](const auto& blk){ return blk == any_block; } );
     
     m_builder.end_block( ::MIR::Terminator::make_Switch({
         val.clone(), variant_blocks // NOTE: Copies the list, so it can be used lower down
@@ -3280,11 +3296,18 @@ void DecisionTreeGen::generate_branches_Enum(
         }
     }
     
-    DEBUG("_ = " << default_branch);
-    if( !default_branch.is_Unset() )
+    if( any_arm_used )
     {
-        m_builder.set_cur_block(any_block);
-        this->generate_branch(default_branch, and_then);
+        DEBUG("_ = " << default_branch);
+        if( !default_branch.is_Unset() )
+        {
+            m_builder.set_cur_block(any_block);
+            this->generate_branch(default_branch, and_then);
+        }
+    }
+    else
+    {
+        DEBUG("_ = UNUSED - " << default_branch);
     }
 }
 

@@ -69,7 +69,10 @@ namespace {
                 }
                 ),
             (SplitTuple,
-                BUG(sp, "Tuple .. should be eliminated");
+                for(unsigned int i = 0; i < e.leading.size(); i ++ )
+                    define_vars_from(sp, e.leading[i]);
+                for(unsigned int i = 0; i < e.trailing.size(); i ++ )
+                    define_vars_from(sp, e.trailing[i]);
                 ),
             (StructValue,
                 // Nothing.
@@ -180,7 +183,14 @@ namespace {
                 }
                 ),
             (SplitTuple,
-                BUG(sp, "Tuple .. should be eliminated");
+                for(unsigned int i = 0; i < e.leading.size(); i ++ )
+                {
+                    destructure_from_ex(sp, e.leading[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), i}), allow_refutable);
+                }
+                for(unsigned int i = 0; i < e.trailing.size(); i ++ )
+                {
+                    destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), i}), allow_refutable);
+                }
                 ),
             (StructValue,
                 // Nothing.
