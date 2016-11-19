@@ -1098,7 +1098,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
 
 namespace {
     void get_ty_and_val(
-        const Span& sp,
+        const Span& sp, const StaticTraitResolve& resolve,
         const ::HIR::TypeRef& top_ty, const ::MIR::LValue& top_val,
         const field_path_t& field_path, unsigned int field_path_ofs,
         /*Out ->*/ ::HIR::TypeRef& out_ty, ::MIR::LValue& out_val
@@ -1135,7 +1135,11 @@ namespace {
                     ),
                 (Struct,
                     // TODO: Should this do a call to expand_associated_types?
-                    auto monomorph = [&](const auto& ty) { return monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty); };
+                    auto monomorph = [&](const auto& ty) {
+                        auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
+                        resolve.expand_associated_types(sp, rv);
+                        return rv;
+                        };
                     TU_MATCHA( (pbe->m_data), (fields),
                     (Unit,
                         BUG(sp, "Destructuring an unit-like tuple - " << *cur_ty);
@@ -1296,7 +1300,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
         ::MIR::LValue   val;
         ::HIR::TypeRef  ity;
         
-        get_ty_and_val(sp, top_ty, top_val,  rule.field_path, field_path_ofs,  ity, val);
+        get_ty_and_val(sp, builder.resolve(), top_ty, top_val,  rule.field_path, field_path_ofs,  ity, val);
         DEBUG("ty = " << ity << ", val = " << val);
         
         const auto& ty = ity;
@@ -2872,7 +2876,7 @@ void DecisionTreeGen::generate_tree_code(
     ::MIR::LValue   val;
     ::HIR::TypeRef  ty;
     
-    get_ty_and_val(sp, top_ty, top_val,  node.m_field_path, field_path_ofs,  ty, val);
+    get_ty_and_val(sp, m_builder.resolve(), top_ty, top_val,  node.m_field_path, field_path_ofs,  ty, val);
     DEBUG("ty = " << ty << ", val = " << val);
     
     TU_MATCHA( (ty.m_data), (e),
@@ -3347,6 +3351,7 @@ void DecisionTreeGen::generate_branches_Enum(
                 ents.push_back( monomorphise_type(sp,  enum_ref.m_params, enum_path.m_params,  fld.ent) );
             }
             fake_ty = ::HIR::TypeRef( mv$(ents) );
+            m_builder.resolve().expand_associated_types(sp, fake_ty);
             DEBUG("- Tuple - " << fake_ty);
             ),
         (Struct,
@@ -3356,6 +3361,7 @@ void DecisionTreeGen::generate_branches_Enum(
                 ents.push_back( monomorphise_type(sp,  enum_ref.m_params, enum_path.m_params,  fld.second.ent) );
             }
             fake_ty = ::HIR::TypeRef( mv$(ents) );
+            m_builder.resolve().expand_associated_types(sp, fake_ty);
             DEBUG("- Struct - " << fake_ty);
             )
         )

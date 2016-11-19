@@ -815,7 +815,7 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                 BUG(sp, "Downcast on unexpected type - " << ty);
                 ),
             (Path,
-                ASSERT_BUG(sp, !te.binding.is_Unbound(), "Unbound path " << ty << " encountered");
+                //ASSERT_BUG(sp, !te.binding.is_Unbound(), "Unbound path " << ty << " encountered");
                 ASSERT_BUG(sp, te.binding.is_Enum(), "Downcast on non-Enum - " << ty << " for " << val);
                 const auto& enm = *te.binding.as_Enum();
                 const auto& variants = enm.m_variants;
@@ -833,6 +833,7 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                     for(const auto& fld : ve)
                         tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.ent) );
                     ::HIR::TypeRef  tup( mv$(tys) );
+                    m_resolve.expand_associated_types(sp, tup);
                     cb(tup);
                     ),
                 (Struct,
@@ -841,6 +842,7 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                     for(const auto& fld : ve)
                         tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.second.ent) );
                     ::HIR::TypeRef  tup( mv$(tys) );
+                    m_resolve.expand_associated_types(sp, tup);
                     cb(tup);
                     )
                 )
