@@ -1759,9 +1759,8 @@ struct DecisionTreeNode
                 }
                 ),
             (Terminal,
-                //if( e == arm_index )    // Wut? How would this happen? Exact duplicate pattern
-                //    return ;
-                BUG(sp, "Duplicate terminal - Existing goes to arm " << e << ", new goes to arm " << arm_index );
+                // TODO: This is ok if it's due to overlapping rules (e.g. ranges)
+                //BUG(sp, "Duplicate terminal - Existing goes to arm " << e << ", new goes to arm " << arm_index );
                 )
             )
             branch = Branch::make_Terminal(arm_index);
