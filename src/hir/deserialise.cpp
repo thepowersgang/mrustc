@@ -368,6 +368,11 @@ namespace {
             _(Array, {
                 deserialise_vec_c< ::MIR::LValue>([&](){ return deserialise_mir_lvalue(); })
                 })
+            _(Variant, {
+                deserialise_genericpath(),
+                static_cast<unsigned int>( m_in.read_count() ),
+                deserialise_mir_lvalue()
+                })
             _(Struct, {
                 deserialise_genericpath(),
                 deserialise_vec_c< ::MIR::LValue>([&](){ return deserialise_mir_lvalue(); })
@@ -419,6 +424,8 @@ namespace {
                 return ::HIR::TypeItem( deserialise_struct() );
             case 5:
                 return ::HIR::TypeItem( deserialise_trait() );
+            case 6:
+                return ::HIR::TypeItem( deserialise_union() );
             default:
                 throw "";
             }
@@ -506,6 +513,7 @@ namespace {
         ::HIR::Enum::Variant deserialise_enumvariant();
 
         ::HIR::Struct deserialise_struct();
+        ::HIR::Union deserialise_union();
         ::HIR::Trait deserialise_trait();
         
         ::HIR::TraitValueItem deserialise_traitvalueitem()
@@ -764,6 +772,17 @@ namespace {
         default:
             throw "";
         }
+    }
+    ::HIR::Union HirDeserialiser::deserialise_union()
+    {
+        TRACE_FUNCTION;
+        auto params = deserialise_genericparams();
+        auto repr = static_cast< ::HIR::Union::Repr>( m_in.read_tag() );
+        
+        return ::HIR::Union {
+            mv$(params), repr,
+            deserialise_vec< ::std::pair< ::std::string, ::HIR::VisEnt< ::HIR::TypeRef> > >()
+            };
     }
     ::HIR::Struct HirDeserialiser::deserialise_struct()
     {

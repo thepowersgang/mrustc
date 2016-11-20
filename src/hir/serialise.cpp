@@ -572,6 +572,11 @@ namespace {
             (Array,
                 serialise_vec(e.vals);
                 ),
+            (Variant,
+                serialise_genericpath(e.path);
+                m_out.write_count(e.index);
+                serialise(e.val);
+                ),
             (Struct,
                 serialise_genericpath(e.path);
                 serialise_vec(e.vals);

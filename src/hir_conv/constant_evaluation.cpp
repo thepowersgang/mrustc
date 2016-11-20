@@ -1136,6 +1136,9 @@ namespace {
                         vals.push_back( read_lval(v) );
                     val = ::HIR::Literal::make_List( mv$(vals) );
                     ),
+                (Variant,
+                    TODO(sp, "MIR _Variant");
+                    ),
                 (Struct,
                     ::std::vector< ::HIR::Literal>  vals;
                     vals.reserve( e.vals.size() );

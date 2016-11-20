@@ -109,22 +109,28 @@ TAGGED_UNION(RValue, Use,
         ::HIR::BorrowType   type;
         LValue  val;
         }),
+    // Cast on primitives
     (Cast, struct {
         LValue  val;
         ::HIR::TypeRef  type;
         }),
+    // Binary operation on primitives
     (BinOp, struct {
         LValue  val_l;
         eBinOp  op;
         LValue  val_r;
         }),
+    // Unary operation on primitives
     (UniOp, struct {
         LValue  val;
         eUniOp  op;
         }),
+    // Extract the metadata from a DST pointer
+    // NOTE: If used on an array, this yields the array size (for generics)
     (DstMeta, struct {
         LValue  val;
         }),
+    // Construct a DST pointer from a thin pointer and metadata
     (MakeDst, struct {
         LValue  ptr_val;
         LValue  meta_val;
@@ -132,14 +138,17 @@ TAGGED_UNION(RValue, Use,
     (Tuple, struct {
         ::std::vector<LValue>   vals;
         }),
+    // Array literal
     (Array, struct {
         ::std::vector<LValue>   vals;
         }),
-    //(Variant, struct {
-    //    ::HIR::GenericPath  path;
-    //    unsigned int index;
-    //    LValue    val;
-    //    }),
+    // Create a new instance of a union (and eventually enum)
+    (Variant, struct {
+        ::HIR::GenericPath  path;
+        unsigned int index;
+        LValue    val;
+        }),
+    // Create a new instance of a struct (or enum)
     (Struct, struct {
         ::HIR::GenericPath  path;
         ::std::vector<LValue>   vals;

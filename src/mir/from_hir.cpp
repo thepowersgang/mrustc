@@ -1721,12 +1721,21 @@ namespace {
         }
         void visit(::HIR::ExprNode_UnionLiteral& node) override
         {
+            TRACE_FUNCTION_F("_UnionLiteral " << node.m_path);
             
             this->visit_node_ptr(node.m_value);
             auto val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
             
-            // TODO: Need a way of initialising just this "variant"
-            TODO(node.span(), "_UnionLiteral");
+            const auto& unm = *node.m_res_type.m_data.as_Path().binding.as_Union();
+            auto it = ::std::find_if(unm.m_variants.begin(), unm.m_variants.end(), [&](const auto&v)->auto{ return v.first == node.m_variant_name; });
+            assert(it != unm.m_variants.end());
+            unsigned int idx = it - unm.m_variants.begin();
+
+            m_builder.set_result( node.span(), ::MIR::RValue::make_Variant({
+                node.m_path.clone(),
+                idx,
+                mv$(val)
+                }) );
         }
         
         void visit(::HIR::ExprNode_Tuple& node) override

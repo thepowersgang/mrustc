@@ -238,6 +238,9 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
         for(const auto& val : e.vals)
             this->moved_lvalue(sp, val);
         ),
+    (Variant,
+        this->moved_lvalue(sp, e.val);
+        ),
     (Struct,
         for(const auto& val : e.vals)
             this->moved_lvalue(sp, val);

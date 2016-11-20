@@ -114,6 +114,9 @@ namespace MIR {
         (Array,
             os << "Array(" << e.vals << ")";
             ),
+        (Variant,
+            os << "Variant(" << e.path << " #" << e.index << ", " << e.val << ")";
+            ),
         (Struct,
             os << "Struct(" << e.path << ", {" << e.vals << "})";
             )

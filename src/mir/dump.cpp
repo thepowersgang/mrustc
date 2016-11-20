@@ -376,6 +376,11 @@ namespace {
                 }
                 os << "]";
                 ),
+            (Variant,
+                os << e.path << " #" << e.index << " (";
+                fmt_val(os, e.val);
+                os << ")";
+                ),
             (Struct,
                 os << e.path << " { ";
                 for(const auto& v : e.vals) {

@@ -208,36 +208,55 @@ namespace {
                     MIR_BUG(*this, "Downcast on unexpected type - " << ty);
                     ),
                 (Path,
-                    MIR_ASSERT(*this, te.binding.is_Enum(), "Downcast on non-Enum");
-                    const auto& enm = *te.binding.as_Enum();
-                    const auto& variants = enm.m_variants;
-                    MIR_ASSERT(*this, e.variant_index < variants.size(), "Variant index out of range");
-                    const auto& variant = variants[e.variant_index];
-                    // TODO: Make data variants refer to associated types (unify enum and struct handling)
-                    TU_MATCHA( (variant.second), (ve),
-                    (Value,
-                        ),
-                    (Unit,
-                        ),
-                    (Tuple,
-                        // HACK! Create tuple.
-                        ::std::vector< ::HIR::TypeRef>  tys;
-                        for(const auto& fld : ve)
-                            tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.ent) );
-                        tmp = ::HIR::TypeRef( mv$(tys) );
-                        this->resolve.expand_associated_types(sp, tmp);
-                        return tmp;
-                        ),
-                    (Struct,
-                        // HACK! Create tuple.
-                        ::std::vector< ::HIR::TypeRef>  tys;
-                        for(const auto& fld : ve)
-                            tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.second.ent) );
-                        tmp = ::HIR::TypeRef( mv$(tys) );
-                        this->resolve.expand_associated_types(sp, tmp);
-                        return tmp;
+                    MIR_ASSERT(*this, te.binding.is_Enum() || te.binding.is_Union(), "Downcast on non-Enum");
+                    if( te.binding.is_Enum() )
+                    {
+                        const auto& enm = *te.binding.as_Enum();
+                        const auto& variants = enm.m_variants;
+                        MIR_ASSERT(*this, e.variant_index < variants.size(), "Variant index out of range");
+                        const auto& variant = variants[e.variant_index];
+                        // TODO: Make data variants refer to associated types (unify enum and struct handling)
+                        TU_MATCHA( (variant.second), (ve),
+                        (Value,
+                            ),
+                        (Unit,
+                            ),
+                        (Tuple,
+                            // HACK! Create tuple.
+                            ::std::vector< ::HIR::TypeRef>  tys;
+                            for(const auto& fld : ve)
+                                tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.ent) );
+                            tmp = ::HIR::TypeRef( mv$(tys) );
+                            this->resolve.expand_associated_types(sp, tmp);
+                            return tmp;
+                            ),
+                        (Struct,
+                            // HACK! Create tuple.
+                            ::std::vector< ::HIR::TypeRef>  tys;
+                            for(const auto& fld : ve)
+                                tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.second.ent) );
+                            tmp = ::HIR::TypeRef( mv$(tys) );
+                            this->resolve.expand_associated_types(sp, tmp);
+                            return tmp;
+                            )
                         )
-                    )
+                    }
+                    else
+                    {
+                        const auto& unm = *te.binding.as_Union();
+                        MIR_ASSERT(*this, e.variant_index < unm.m_variants.size(), "Variant index out of range");
+                        const auto& variant = unm.m_variants[e.variant_index];
+                        const auto& var_ty = variant.second.ent;
+                        
+                        if( monomorphise_type_needed(var_ty) ) {
+                            tmp = monomorphise_type(sp, unm.m_params, te.path.m_data.as_Generic().m_params, variant.second.ent);
+                            this->resolve.expand_associated_types(sp, tmp);
+                            return tmp;
+                        }
+                        else {
+                            return var_ty;
+                        }
+                    }
                     )
                 )
                 )
@@ -503,6 +522,9 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         // TODO: Check return type
                         ),
                     (Array,
+                        // TODO: Check return type
+                        ),
+                    (Variant,
                         // TODO: Check return type
                         ),
                     (Struct,
