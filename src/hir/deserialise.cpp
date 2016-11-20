@@ -283,6 +283,7 @@ namespace {
             {
                 rv.m_mir = deserialise_mir();
             }
+            rv.m_erased_types = deserialise_vec< ::HIR::TypeRef>();
             return rv;
         }
         ::MIR::FunctionPointer deserialise_mir();

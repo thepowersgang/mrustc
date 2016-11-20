@@ -423,6 +423,7 @@ namespace {
             if( exp.m_mir ) {
                 serialise(*exp.m_mir);
             }
+            serialise_vec( exp.m_erased_types );
         }
         void serialise(const ::MIR::Function& mir)
         {
