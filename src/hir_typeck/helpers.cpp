@@ -2504,32 +2504,6 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 return false;
             }
 
-            #if 0
-            auto monomorph = [&](const auto& gt)->const auto& {
-                    const auto& ge = gt.m_data.as_Generic();
-                    ASSERT_BUG(sp, ge.binding >> 8 != 2, "");
-                    assert( ge.binding < impl_params.size() );
-                    if( !impl_params[ge.binding] ) {
-                        return placeholders[ge.binding];
-                    }
-                    return *impl_params[ge.binding];
-                    };
-            
-            auto ty_mono = monomorphise_type_with(sp, impl.m_type, monomorph, false);
-            auto args_mono = monomorphise_path_params_with(sp, impl.m_trait_args, monomorph, false);
-            // TODO: Expand associated types in these then ensure that they still match the desired types.
-            
-            DEBUG("- Making associated type output map - " << impl.m_types.size() << " entries");
-            ::std::map< ::std::string, ::HIR::TypeRef>  types;
-            for( const auto& aty : impl.m_types )
-            {
-                DEBUG(" > " << aty.first << " = monomorph(" << aty.second.data << ")");
-                types.insert( ::std::make_pair(aty.first,  this->expand_associated_types(sp, monomorphise_type_with(sp, aty.second.data, monomorph))) );
-            }
-            // TODO: Ensure that there are no-longer any magic params?
-            
-            DEBUG("[find_trait_impls_crate] callback(args=" << args_mono << ", assoc={" << types << "})");
-            #endif
             return callback(ImplRef(mv$(impl_params), trait, impl, mv$(placeholders)), match);
         }
         );
@@ -2768,12 +2742,12 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             ASSERT_BUG(sp, !impl_params[i], "Placeholder to populated type returned");
             auto& ph = placeholders[i];
             if( ph.m_data.is_Generic() && ph.m_data.as_Generic().binding == idx ) {
-                DEBUG("Bind placeholder " << i << " to " << ty);
+                DEBUG("[ftic_check_params:cb_match] Bind placeholder " << i << " to " << ty);
                 ph = ty.clone();
                 return ::HIR::Compare::Equal;
             }
             else {
-                TODO(sp, "Compare placeholder " << i << " " << ph << " == " << ty);
+                TODO(sp, "[ftic_check_params:cb_match] Compare placeholder " << i << " " << ph << " == " << ty);
             }
         }
         else {

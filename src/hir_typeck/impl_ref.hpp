@@ -55,7 +55,7 @@ struct ImplRef
     bool has_magic_params() const {
         TU_IFLET(Data, m_data, TraitImpl, e,
             for(const auto& t : e.params_ph)
-                if( t.m_data.is_Generic() )
+                if( t.m_data.is_Generic() && (t.m_data.as_Generic().binding >> 8) == 2 )
                     return true;
         )
         return false;
