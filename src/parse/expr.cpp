@@ -254,7 +254,9 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
         case TOK_RWORD_BREAK: {
             PUTBACK(tok, lex);
             auto ret = Parse_Stmt(lex);
-            if( GET_TOK(tok, lex) != TOK_SEMICOLON ) {
+            if( LOOK_AHEAD(lex) == TOK_EOF ) {
+            }
+            else if( GET_TOK(tok, lex) != TOK_SEMICOLON ) {
                 CHECK_TOK(tok, TOK_BRACE_CLOSE);
                 PUTBACK(tok, lex);
             }
