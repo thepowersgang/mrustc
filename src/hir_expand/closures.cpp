@@ -837,7 +837,7 @@ namespace {
             (Range,
                 ),
             (Box,
-                TODO(sp, "Box pattern");
+                add_closure_def_from_pattern(sp, *e.sub);
                 ),
             (Ref,
                 add_closure_def_from_pattern(sp, *e.sub);
