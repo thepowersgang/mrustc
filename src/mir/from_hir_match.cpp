@@ -84,6 +84,7 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
 struct PatternRulesetBuilder
 {
     const StaticTraitResolve&   m_resolve;
+    const ::HIR::SimplePath*    m_lang_Box = nullptr;
     bool m_is_impossible;
     ::std::vector<PatternRule>  m_rules;
     field_path_t   m_field_path;
@@ -91,7 +92,11 @@ struct PatternRulesetBuilder
     PatternRulesetBuilder(const StaticTraitResolve& resolve):
         m_resolve(resolve),
         m_is_impossible(false)
-    {}
+    {
+        if( resolve.m_crate.m_lang_items.count("owned_box") > 0 ) {
+            m_lang_Box = &resolve.m_crate.m_lang_items.at("owned_box");
+        }
+    }
     
     void append_from_lit(const Span& sp, const ::HIR::Literal& lit, const ::HIR::TypeRef& ty);
     void append_from(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty);
@@ -810,6 +815,26 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 return rv;
                 };
             const auto& str_data = pbe->m_data;
+            
+            if( m_lang_Box && e.path.m_data.as_Generic().m_path == *m_lang_Box )
+            {
+                const auto& inner_ty = e.path.m_data.as_Generic().m_params.m_types.at(0);
+                TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+                ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
+                (Any,
+                    // _ on a box, recurse into the box type.
+                    m_field_path.push_back(FIELD_DEREF);
+                    this->append_from(sp, pat, inner_ty);
+                    m_field_path.pop_back();
+                    ),
+                (Box,
+                    m_field_path.push_back(FIELD_DEREF);
+                    this->append_from(sp, *pe.sub, inner_ty);
+                    m_field_path.pop_back();
+                    )
+                )
+                break;
+            }
             TU_MATCHA( (str_data), (sd),
             (Unit,
                 TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
@@ -1161,6 +1186,12 @@ namespace {
                 cur_ty = &e[idx];
                 ),
             (Path,
+                if( idx == FIELD_DEREF ) {
+                    // TODO: Check that the path is Box
+                    lval = ::MIR::LValue::make_Deref({ box$(lval) });
+                    cur_ty = &e.path.m_data.as_Generic().m_params.m_types.at(0);
+                    break;
+                }
                 TU_MATCHA( (e.binding), (pbe),
                 (Unbound,
                     BUG(sp, "Encounterd unbound path - " << e.path);
