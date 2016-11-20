@@ -5507,7 +5507,37 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
     
     if( context.has_rules() )
     {
-        //context.dump();
+        for(const auto& coercion : context.link_coerce)
+        {
+            const auto& sp = (**coercion.right_node_ptr).span();
+            const auto& src_ty = (**coercion.right_node_ptr).m_res_type;
+            WARNING(sp, W0000, "Spare Rule - " << context.m_ivars.fmt_type(coercion.left_ty) << " := " << context.m_ivars.fmt_type(src_ty) );
+        }
+        for(const auto& rule : context.link_assoc)
+        {
+            const auto& sp = rule.span;
+            if( rule.name == "" || rule.left_ty == ::HIR::TypeRef() )
+            {
+                WARNING(sp, W0000, "Spare Rule - " << context.m_ivars.fmt_type(rule.impl_ty) << " : " << rule.trait << rule.params );
+            }
+            else
+            {
+                WARNING(sp, W0000, "Spare Rule - " << context.m_ivars.fmt_type(rule.left_ty)
+                    << " = < " << context.m_ivars.fmt_type(rule.impl_ty) << " as " << rule.trait << rule.params << " >::" << rule.name );
+            }
+        }
+        // TODO: Print revisit rules and advanced revisit rules.
+        for(const auto& node : context.to_visit)
+        {
+            const auto& sp = node->span();
+            if( const auto* np = dynamic_cast<::HIR::ExprNode_CallMethod*>(node) )
+            {
+                WARNING(sp, W0000, "Spare Rule - {" << context.m_ivars.fmt_type(np->m_value->m_res_type) << "}." << np->m_method);
+            }
+            else
+            {
+            }
+        }
         BUG(root_ptr->span(), "Spare rules left after typecheck stabilised");
     }
     
