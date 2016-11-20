@@ -610,6 +610,12 @@ namespace {
             deserialise_vec< ::HIR::GenericPath>(),
             ""  // TODO: m_lifetime
             })
+        _(ErasedType, {
+            deserialise_path(),
+            static_cast<unsigned int>(m_in.read_count()),
+            deserialise_vec< ::HIR::TraitPath>(),
+            ""  // TODO: m_lifetime
+            })
         _(Array, {
             deserialise_ptr< ::HIR::TypeRef>(),
             nullptr,
