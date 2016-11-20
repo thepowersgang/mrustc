@@ -9,6 +9,7 @@
 #include "hir.hpp"
 #include "main_bindings.hpp"
 #include <ast/ast.hpp>
+#include <ast/expr.hpp> // For shortcut in array size handling
 #include <ast/crate.hpp>
 #include "from_ast.hpp"
 #include "visitor.hpp"
@@ -684,13 +685,22 @@
         return ::HIR::TypeRef::new_pointer( cl, LowerHIR_Type(*e.inner) );
         ),
     (Array,
+        auto inner = LowerHIR_Type(*e.inner);
         if( e.size ) {
-            return ::HIR::TypeRef::new_array( LowerHIR_Type(*e.inner), LowerHIR_Expr( e.size ) );
+            // If the size expression is an unannotated or usize integer literal, don't bother converting the expression
+            if( const auto* ptr = dynamic_cast<const ::AST::ExprNode_Integer*>(&*e.size) )
+            {
+                if( ptr->m_datatype == CORETYPE_UINT || ptr->m_datatype == CORETYPE_ANY )
+                {
+                    unsigned int size_val = ptr->m_value;
+                    return ::HIR::TypeRef::new_array( mv$(inner), size_val );
+                }
+            }
+            
+            return ::HIR::TypeRef::new_array( mv$(inner), LowerHIR_Expr(e.size) );
         }
         else {
-            return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Slice({
-                box$( LowerHIR_Type(*e.inner) )
-                }) );
+            return ::HIR::TypeRef::new_slice( mv$(inner) );
         }
         ),
     
