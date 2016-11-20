@@ -901,8 +901,16 @@ namespace {
                 return ;
             }
 
-            if( usage == ::HIR::ValueUsage::Move && m_resolve.type_is_copy(sp, m_variable_types.at(slot)) ) {
-                usage = ::HIR::ValueUsage::Borrow;
+            
+            if( usage == ::HIR::ValueUsage::Move ) {
+                if( m_resolve.type_is_copy(sp, m_variable_types.at(slot)) ) {
+                    usage = ::HIR::ValueUsage::Borrow;
+                }
+                else if( m_variable_types.at(slot).m_data.is_Borrow() && m_variable_types.at(slot).m_data.as_Borrow().type == ::HIR::BorrowType::Unique ) {
+                    usage = ::HIR::ValueUsage::Mutate;
+                }
+                else {
+                }
             }
             
             assert(m_closure_stack.size() > 0 );
