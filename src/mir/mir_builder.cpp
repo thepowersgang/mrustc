@@ -411,9 +411,9 @@ void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope, bool emit_cl
 {
     DEBUG("DONE scope " << scope.idx);
     // 1. Check that this is the current scope (at the top of the stack)
-    if( m_scope_stack.back() != scope.idx )
+    if( m_scope_stack.empty() || m_scope_stack.back() != scope.idx )
     {
-        DEBUG("m_scope_stack = " << m_scope_stack);
+        DEBUG("- m_scope_stack = [" << m_scope_stack << "]");
         auto it = ::std::find( m_scope_stack.begin(), m_scope_stack.end(), scope.idx );
         if( it == m_scope_stack.end() )
             BUG(sp, "Terminating scope not on the stack - scope " << scope.idx);
@@ -504,16 +504,17 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
 void MirBuilder::end_split_arm_early(const Span& sp)
 {
     // Terminate all scopes until a split is found.
-    while( ! m_scope_stack.empty() && ! m_scopes.at( m_scope_stack.back() ).data.is_Split() )
+    while( ! m_scope_stack.empty() && ! (m_scopes.at( m_scope_stack.back() ).data.is_Split() || m_scopes.at( m_scope_stack.back() ).data.is_Loop()) )
     {
         auto& scope_def = m_scopes[m_scope_stack.back()];
         // Fully drop the scope
+        DEBUG("Complete scope " << m_scope_stack.size()-1);
         drop_scope_values(scope_def);
         m_scope_stack.pop_back();
         complete_scope(scope_def);
     }
     
-    if( !m_scope_stack.empty() )
+    if( !m_scope_stack.empty() && m_scopes.at( m_scope_stack.back() ).data.is_Split() )
     {
         auto& sd = m_scopes[ m_scope_stack.back() ];
         auto& sd_split = sd.data.as_Split();
