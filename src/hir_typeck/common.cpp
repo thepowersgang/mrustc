@@ -255,9 +255,11 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         ),
     (Array,
         if( e.size_val == ~0u ) {
-            BUG(sp, "Attempting to clone array with unknown size - " << tpl);
+            rv = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Array({ box$(clone_ty_with(sp, *e.inner, callback)), e.size, ~0u }) );
         }
-        rv = ::HIR::TypeRef::new_array( clone_ty_with(sp, *e.inner, callback), e.size_val );
+        else {
+            rv = ::HIR::TypeRef::new_array( clone_ty_with(sp, *e.inner, callback), e.size_val );
+        }
         ),
     (Slice,
         rv = ::HIR::TypeRef::new_slice( clone_ty_with(sp, *e.inner, callback) );
