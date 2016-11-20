@@ -52,5 +52,9 @@ The "base" value of a struct literal isn't always moved
 
 Binops are coercion points
 ==========================
+- This only really shows up with some edge cases where the RHS is inferred
 
+Casts can act as coercions
+==========================
+- E.g. `None as Option<Span>` is perfectly valid, and is the same as `None::<Span>`
 

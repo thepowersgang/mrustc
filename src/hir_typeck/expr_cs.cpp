@@ -2022,6 +2022,7 @@ namespace {
                 this->m_completed = true;
                 ),
             (Path,
+                #if 0
                 TU_MATCHA( (e.binding), (be),
                 (Unbound,
                     BUG(sp, "Encountered unbound type in _Cast Path - " << tgt_ty);
@@ -2043,6 +2044,7 @@ namespace {
                         ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
                     )
                 )
+                #endif
                 this->context.equate_types_coerce(sp, tgt_ty, node.m_value);
                 this->m_completed = true;
                 return ;
