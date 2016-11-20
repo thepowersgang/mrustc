@@ -107,6 +107,18 @@ namespace {
             }
         }
         
+        void visit(::HIR::ExprNode_ArrayList& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            for(auto& arg : node.m_vals) {
+                arg = do_reborrow(mv$(arg));
+            }
+        }
+        void visit(::HIR::ExprNode_Tuple& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            for(auto& arg : node.m_vals) {
+                arg = do_reborrow(mv$(arg));
+            }
+        }
         void visit(::HIR::ExprNode_TupleVariant& node) override {
             ::HIR::ExprVisitorDef::visit(node);
             for(auto& arg : node.m_args) {
