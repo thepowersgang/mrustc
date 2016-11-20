@@ -72,7 +72,7 @@ namespace {
         {
         }
         
-        void visit_pattern(::HIR::Pattern& pat) override {
+        void visit_pattern(const Span& sp, ::HIR::Pattern& pat) override {
             if( pat.m_binding.is_valid() ) {
                 auto binding_it = ::std::find(m_local_vars.begin(), m_local_vars.end(), pat.m_binding.m_slot);
                 if( binding_it != m_local_vars.end() ) {
@@ -80,15 +80,15 @@ namespace {
                     pat.m_binding.m_slot = 1 + binding_it - m_local_vars.begin();
                 }
                 else {
-                    BUG(Span(), "Pattern binds to non-local");
+                    BUG(sp, "Pattern binds to non-local");
                 }
             }
             
             TU_IFLET(::HIR::Pattern::Data, (pat.m_data), SplitSlice, e,
-                TODO(Span(), "Fixup binding in split slice");
+                TODO(sp, "Fixup binding in split slice");
             )
             
-            ::HIR::ExprVisitorDef::visit_pattern(pat);
+            ::HIR::ExprVisitorDef::visit_pattern(sp, pat);
         }
         
         void visit_type(::HIR::TypeRef& ty) override {
@@ -637,7 +637,7 @@ namespace {
             
             for(const auto& arg : node.m_args) {
                 args_pat_inner.push_back( arg.first.clone() );
-                ev.visit_pattern( args_pat_inner.back() );
+                ev.visit_pattern(sp, args_pat_inner.back() );
                 args_ty_inner.push_back( clone_ty_with(sp, arg.second, cb_replace) );
             }
             ::HIR::TypeRef  args_ty { mv$(args_ty_inner) };
@@ -760,11 +760,11 @@ namespace {
             }
         }
         
-        void visit_pattern(::HIR::Pattern& pat) override
+        void visit_pattern(const Span& sp, ::HIR::Pattern& pat) override
         {
             if( !m_closure_stack.empty() )
             {
-                add_closure_def_from_pattern(Span(), pat);
+                add_closure_def_from_pattern(sp, pat);
             }
         }
         void visit(::HIR::ExprNode_Variable& node) override

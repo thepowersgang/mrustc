@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/expr.cpp
+ * - HIR expression helper code
  */
 #include <hir/expr.hpp>
 
@@ -23,7 +28,7 @@ DEF_VISIT(ExprNode_Return, node,
     visit_node_ptr(node.m_value);
 )
 DEF_VISIT(ExprNode_Let, node,
-    visit_pattern(node.m_pattern);
+    visit_pattern(node.span(), node.m_pattern);
     visit_type(node.m_type);
     if( node.m_value ) {
         visit_node_ptr(node.m_value);
@@ -38,7 +43,7 @@ DEF_VISIT(ExprNode_Match, node,
     for(auto& arm : node.m_arms)
     {
         for(auto& pat : arm.m_patterns)
-            visit_pattern(pat);
+            visit_pattern(node.span(), pat);
         if( arm.m_cond )
             visit_node_ptr(arm.m_cond);
         visit_node_ptr(arm.m_code);
@@ -160,7 +165,7 @@ DEF_VISIT(ExprNode_ArraySized, node,
 
 DEF_VISIT(ExprNode_Closure, node,
     for(auto& arg : node.m_args) {
-        visit_pattern(arg.first);
+        visit_pattern(node.span(), arg.first);
         visit_type(arg.second);
     }
     visit_type(node.m_return);
@@ -173,38 +178,38 @@ DEF_VISIT(ExprNode_Closure, node,
 #undef DEF_VISIT
 
 // TODO: Merge this with the stuff in ::HIR::Visitor
-void ::HIR::ExprVisitorDef::visit_pattern(::HIR::Pattern& pat)
+void ::HIR::ExprVisitorDef::visit_pattern(const Span& sp, ::HIR::Pattern& pat)
 {
     TU_MATCH(::HIR::Pattern::Data, (pat.m_data), (e),
     (Any,
         ),
     (Box,
-        this->visit_pattern(*e.sub);
+        this->visit_pattern(sp, *e.sub);
         ),
     (Ref,
-        this->visit_pattern(*e.sub);
+        this->visit_pattern(sp, *e.sub);
         ),
     (Tuple,
         for(auto& subpat : e.sub_patterns)
-            this->visit_pattern(subpat);
+            this->visit_pattern(sp, subpat);
         ),
     (SplitTuple,
         for(auto& subpat : e.leading)
-            this->visit_pattern(subpat);
+            this->visit_pattern(sp, subpat);
         for(auto& subpat : e.trailing)
-            this->visit_pattern(subpat);
+            this->visit_pattern(sp, subpat);
         ),
     (StructValue,
         // Nothing.
         ),
     (StructTuple,
         for(auto& subpat : e.sub_patterns)
-            this->visit_pattern(subpat);
+            this->visit_pattern(sp, subpat);
         ),
     (Struct,
         for(auto& fld_pat : e.sub_patterns)
         {
-            this->visit_pattern(fld_pat.second);
+            this->visit_pattern(sp, fld_pat.second);
         }
         ),
     // Refutable
@@ -216,21 +221,21 @@ void ::HIR::ExprVisitorDef::visit_pattern(::HIR::Pattern& pat)
         ),
     (EnumTuple,
         for(auto& subpat : e.sub_patterns)
-            this->visit_pattern(subpat);
+            this->visit_pattern(sp, subpat);
         ),
     (EnumStruct,
         for(auto& fld_pat : e.sub_patterns)
-            this->visit_pattern(fld_pat.second);
+            this->visit_pattern(sp, fld_pat.second);
         ),
     (Slice,
         for(auto& subpat : e.sub_patterns)
-            this->visit_pattern(subpat);
+            this->visit_pattern(sp, subpat);
         ),
     (SplitSlice,
         for(auto& subpat : e.leading)
-            this->visit_pattern(subpat);
+            this->visit_pattern(sp, subpat);
         for(auto& subpat : e.trailing)
-            this->visit_pattern(subpat);
+            this->visit_pattern(sp, subpat);
         )
     )
 }

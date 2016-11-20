@@ -2849,8 +2849,7 @@ namespace {
             ::HIR::ExprVisitorDef::visit_node_ptr(node_ptr);
         }
         
-        void visit_pattern(::HIR::Pattern& pat) override {
-            static Span sp;
+        void visit_pattern(const Span& sp, ::HIR::Pattern& pat) override {
             TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (e),
             (
                 ),
@@ -2886,7 +2885,7 @@ namespace {
                 this->check_type_resolved_genericpath(sp, e.path);
                 )
             )
-            ::HIR::ExprVisitorDef::visit_pattern(pat);
+            ::HIR::ExprVisitorDef::visit_pattern(sp, pat);
         }
         
         void visit(::HIR::ExprNode_Let& node) override {
