@@ -35,33 +35,21 @@ namespace {
             const auto& sp = node_ptr->span();
             node_ptr->visit(*this);
             
-            // TODO: If the return type contains ErasedType, then this check should instead check the structure and bounds.
-            // > Or just replace ErasedType-s with the known types and then equate
-            if( visit_ty_with(ret_type, [](const auto& ty) {
-                if( ty.m_data.is_ErasedType() )
+            // Monomorphise erased type
+            ::HIR::TypeRef  new_ret_type = clone_ty_with(sp, ret_type, [&](const auto& tpl, auto& rv) {
+                if( tpl.m_data.is_ErasedType() )
+                {
+                    const auto& e = tpl.m_data.as_ErasedType();
+                    ASSERT_BUG(sp, e.m_index < node_ptr.m_erased_types.size(), "Erased type index OOB - " << e.m_origin << " " << e.m_index << " >= " << node_ptr.m_erased_types.size());
+                    // TODO: Emit checks on bounds
+                    rv = node_ptr.m_erased_types[e.m_index].clone();
                     return true;
+                }
                 return false;
-                }) )
-            {
-                // Monomorphise erased type
-                ::HIR::TypeRef  new_ret_type = clone_ty_with(sp, ret_type, [&](const auto& tpl, auto& rv) {
-                    if( tpl.m_data.is_ErasedType() )
-                    {
-                        const auto& e = tpl.m_data.as_ErasedType();
-                        ASSERT_BUG(sp, e.m_index < node_ptr.m_erased_types.size(), "Erased type index OOB - " << e.m_origin << " " << e.m_index << " >= " << node_ptr.m_erased_types.size());
-                        // TODO: Emit checks on bounds
-                        rv = node_ptr.m_erased_types[e.m_index].clone();
-                        return true;
-                    }
-                    return false;
-                    });
+                });
+            m_resolve.expand_associated_types(sp, new_ret_type);
 
-                check_types_equal(sp, new_ret_type, node_ptr->m_res_type);
-            }
-            else
-            {
-                check_types_equal(sp, ret_type, node_ptr->m_res_type);
-            }
+            check_types_equal(sp, new_ret_type, node_ptr->m_res_type);
         }
         
         void visit(::HIR::ExprNode_Block& node) override
