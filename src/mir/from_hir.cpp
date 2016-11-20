@@ -1072,7 +1072,7 @@ namespace {
                         auto size_lval = m_builder.lvalue_or_temp( node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::Constant( static_cast<uint64_t>(in_array.size_val) ) );
                         m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_lval) }) );
                     }
-                    else if( ty_in.m_data.is_Generic() )
+                    else if( ty_in.m_data.is_Generic() || (ty_in.m_data.is_Path() && ty_in.m_data.as_Path().binding.is_Opaque()) )
                     {
                         // HACK: FixedSizeArray uses `A: Unsize<[T]>` which will lead to the above code not working (as the size isn't known).
                         // - Maybe _Meta on the `&A` would work as a stopgap (since A: Sized, it won't collide with &[T] or similar)
@@ -1436,16 +1436,26 @@ namespace {
             this->visit_node_ptr(node.m_value);
             auto val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
             
+            const auto& val_ty = node.m_value->m_res_type;
+            
             unsigned int idx;
             if( '0' <= node.m_field[0] && node.m_field[0] <= '9' ) {
                 ::std::stringstream(node.m_field) >> idx;
+                m_builder.set_result( node.span(), ::MIR::LValue::make_Field({ box$(val), idx }) );
             }
-            else {
+            else if( val_ty.m_data.as_Path().binding.is_Struct() ) {
                 const auto& str = *node.m_value->m_res_type.m_data.as_Path().binding.as_Struct();
                 const auto& fields = str.m_data.as_Named();
                 idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == node.m_field; } ) - fields.begin();
+                m_builder.set_result( node.span(), ::MIR::LValue::make_Field({ box$(val), idx }) );
             }
-            m_builder.set_result( node.span(), ::MIR::LValue::make_Field({ box$(val), idx }) );
+            else {
+                const auto& unm = *node.m_value->m_res_type.m_data.as_Path().binding.as_Union();
+                const auto& fields = unm.m_variants;
+                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == node.m_field; } ) - fields.begin();
+                
+                m_builder.set_result( node.span(), ::MIR::LValue::make_Downcast({ box$(val), idx }) );
+            }
         }
         void visit(::HIR::ExprNode_Literal& node) override
         {
@@ -1711,6 +1721,11 @@ namespace {
         }
         void visit(::HIR::ExprNode_UnionLiteral& node) override
         {
+            
+            this->visit_node_ptr(node.m_value);
+            auto val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
+            
+            // TODO: Need a way of initialising just this "variant"
             TODO(node.span(), "_UnionLiteral");
         }
         

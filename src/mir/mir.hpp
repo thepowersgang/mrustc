@@ -135,6 +135,11 @@ TAGGED_UNION(RValue, Use,
     (Array, struct {
         ::std::vector<LValue>   vals;
         }),
+    //(Variant, struct {
+    //    ::HIR::GenericPath  path;
+    //    unsigned int index;
+    //    LValue    val;
+    //    }),
     (Struct, struct {
         ::HIR::GenericPath  path;
         ::std::vector<LValue>   vals;
