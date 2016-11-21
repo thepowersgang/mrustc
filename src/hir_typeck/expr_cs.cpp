@@ -5160,7 +5160,7 @@ namespace {
                 return false;
             }
             
-            static const ::std::vector<::HIR::TypeRef>& merge_lists(const Context& context, const ::std::vector<::HIR::TypeRef>& list_a, const ::std::vector<::HIR::TypeRef>& list_b, ::std::vector<::HIR::TypeRef>& out)
+            static ::std::vector<::HIR::TypeRef>& merge_lists(const Context& context, ::std::vector<::HIR::TypeRef>& list_a, ::std::vector<::HIR::TypeRef>& list_b, ::std::vector<::HIR::TypeRef>& out)
             {
                 if( list_a.size() == 0 )
                     return list_b;
@@ -5204,7 +5204,6 @@ namespace {
             }
             #endif
             
-            // Prefer cases where this type is being created from a known type
             if( ivar_ent.types_coerce_from.size() == 0 && ivar_ent.types_coerce_to.size() == 0
              && ivar_ent.types_unsize_from.size() == 0 && ivar_ent.types_unsize_to.size() == 0
                 )
@@ -5256,14 +5255,62 @@ namespace {
                 return DedupKeep::Both;
                 });
             
+            // TODO: If there is a type that appears on both sides, pick it?
+            
             // HACK: Merge into a single lists
             ::std::vector< ::HIR::TypeRef>  types_from_o;
-            const auto& types_from = H::merge_lists(context, ivar_ent.types_coerce_from, ivar_ent.types_unsize_from,  types_from_o);
+            auto& types_from = H::merge_lists(context, ivar_ent.types_coerce_from, ivar_ent.types_unsize_from,  types_from_o);
             ::std::vector< ::HIR::TypeRef>  types_to_o;
-            const auto& types_to = H::merge_lists(context, ivar_ent.types_coerce_to, ivar_ent.types_unsize_to,  types_to_o);
+            auto& types_to   = H::merge_lists(context, ivar_ent.types_coerce_to  , ivar_ent.types_unsize_to  ,  types_to_o  );
             
+            // Same type on both sides, pick it.
+            if( types_from == types_to && types_from.size() == 1 ) {
+                const auto& new_ty = types_from[0];
+                DEBUG("- IVar " << ty_l << " = " << new_ty << " (only)");
+                context.equate_types(sp, ty_l, new_ty);
+                ivar_ent.reset();
+                return ;
+            }
             
-            #if 1
+            // Eliminate possibilities that don't fit known constraints
+            if( types_to.size() > 0 && types_from.size() > 0 )
+            {
+                // TODO: Search `types_to` too
+                for(auto it = types_from.begin(); it != types_from.end(); )
+                {
+                    bool remove = false;
+                    const auto& new_ty = context.get_type(*it);
+                    if( !new_ty.m_data.is_Infer() )
+                    {
+                        for(const auto& bound : context.link_assoc)
+                        {
+                            if( bound.impl_ty != ty_l )
+                                continue ;
+                            
+                            // TODO: Monomorphise this type replacing mentions of the current ivar with the replacement?
+
+                            // Search for any trait impl that could match this,
+                            bool has = context.m_resolve.find_trait_impls(sp, bound.trait, bound.params, new_ty, [&](const auto , auto){return true;});
+                            if( !has ) {
+                                // If none was found, remove from the possibility list
+                                remove = true;
+                                DEBUG("Remove possibility " << new_ty << " because it failed a bound");
+                                break ;
+                            }
+                        }
+                    }
+                    
+                    if( remove ) {
+                        it = types_from.erase(it);
+                    }
+                    else {
+                        ++it;
+                    }
+                }
+            }
+            
+            // Prefer cases where this type is being created from a known type
+            #if 0
             if( types_from.size() == 1 && types_to.size() == 1 ) {
                 const auto& ty_to = types_to[0];
                 const auto& ty_from = types_from[0];
