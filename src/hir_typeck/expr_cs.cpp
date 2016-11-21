@@ -4027,6 +4027,7 @@ namespace {
         if( ty_src.m_data.is_Infer() && ty_dst.m_data.is_Infer() ) {
             const auto& r_e = ty_src.m_data.as_Infer();
             const auto& l_e = ty_dst.m_data.as_Infer();
+            
             // TODO: Commented out - &-ptrs can infer to trait objects, and &-ptrs can infer from deref coercion
             //if( r_e.ty_class != ::HIR::InferClass::None ) {
             //    context.equate_types(sp, ty_dst, ty_src);
@@ -4044,6 +4045,8 @@ namespace {
         
         // If the source is '_', we can't know yet
         TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Infer, r_e,
+            // TODO: If the source is a literal, and the destination isn't a TraitObject, equate.
+            
             // - Except if it's known to be a primitive
             //if( r_e.ty_class != ::HIR::InferClass::None ) {
             //    context.equate_types(sp, ty_dst, ty_src);
@@ -4055,12 +4058,22 @@ namespace {
         )
         
         TU_IFLET(::HIR::TypeRef::Data, ty_dst.m_data, Infer, l_e,
-            //if( l_e.ty_class == ::HIR::InferClass::None ) {
-                context.possible_equate_type_unsize_from(l_e.index, ty_src);
-                DEBUG("- Infer, add possibility");
-                return false;
-            //}
-            // - Otherwise, it could be a deref to the same ivar? (TODO)
+            
+            // If the destination is known to be a primitive (integer or float) and the source is a primitive
+            // - Equate.
+            // - NOTE: The source can't be something that could deref coerce into the literal.
+            if( l_e.ty_class == ::HIR::InferClass::Integer && ty_src.m_data.is_Primitive() ) {
+                context.equate_types(sp, ty_dst, ty_src);
+                return true;
+            }
+            if( l_e.ty_class == ::HIR::InferClass::Float && ty_src.m_data.is_Primitive() ) {
+                context.equate_types(sp, ty_dst, ty_src);
+                return true;
+            }
+            
+            context.possible_equate_type_unsize_from(l_e.index, ty_src);
+            DEBUG("- Infer, add possibility");
+            return false;
         )
         
         // Fast hack for slices (avoids going via the Deref impl search)
