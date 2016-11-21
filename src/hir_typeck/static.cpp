@@ -271,14 +271,21 @@ bool StaticTraitResolve::find_impl(
     if(ret)
         return true;
     
-    // Search the crate for impls
-    ret = m_crate.find_trait_impls(trait_path, type, cb_ident, [&](const auto& impl) {
-        return this->find_impl__check_crate(sp, trait_path, trait_params, type, found_cb,  impl);
-        });
-    if(ret)
-        return true;
-    
-    return false;
+    if( m_crate.get_trait_by_path(sp, trait_path).m_is_marker )
+    {
+        TODO(sp, "Search for auto trait impls - " << trait_path << " for " << type);
+    }
+    else
+    {
+        // Search the crate for impls
+        ret = m_crate.find_trait_impls(trait_path, type, cb_ident, [&](const auto& impl) {
+            return this->find_impl__check_crate(sp, trait_path, trait_params, type, found_cb,  impl);
+            });
+        if(ret)
+            return true;
+        
+        return false;
+    }
 }
 
 bool StaticTraitResolve::find_impl__check_bound(
