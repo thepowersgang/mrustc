@@ -2002,6 +2002,7 @@ namespace {
             const auto& sp = node.span();
             const auto& tgt_ty = this->context.get_type(node.m_res_type);
             const auto& src_ty = this->context.get_type(node.m_value->m_res_type);
+            TRACE_FUNCTION_F(src_ty << " as " << tgt_ty);
             
             if( this->context.m_ivars.types_equal(src_ty, tgt_ty) ) {
                 this->m_completed = true;
@@ -2121,13 +2122,22 @@ namespace {
                     if( s_e.type != e.type ) {
                         ERROR(sp, E0000, "Invalid cast from " << src_ty << " to " << tgt_ty);
                     }
+                    const auto& src_inner = this->context.get_type(*s_e.inner);
                     
                     // NOTE: &mut T -> *mut U where T: Unsize<U> is allowed
                     // TODO: Wouldn't this be better served by a coercion point?
-                    TU_IFLET( ::HIR::TypeRef::Data, this->context.get_type(*s_e.inner).m_data, Infer, s_e_i,
+                    TU_IFLET( ::HIR::TypeRef::Data, src_inner.m_data, Infer, s_e_i,
                         // If the type is an ivar, possible equate
                         this->context.possible_equate_type_unsize_to(s_e_i.index, *e.inner);
                     )
+                    // - NOTE: Crude, and likely to break if ether inner isn't known.
+                    else if( src_inner.m_data.is_Array() && *src_inner.m_data.as_Array().inner == *e.inner )
+                    {
+                        // Allow &[T; n] -> *const T - Convert into two casts
+                        auto ty = ::HIR::TypeRef::new_pointer(e.type, src_inner.clone());
+                        node.m_value = NEWNODE(ty.clone(), sp, _Cast, mv$(node.m_value), ty.clone());
+                        this->m_completed = true;
+                    }
                     else
                     {
                         const auto& lang_Unsize = this->context.m_crate.get_lang_item_path(sp, "unsize");

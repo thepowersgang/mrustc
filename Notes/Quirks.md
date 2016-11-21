@@ -26,6 +26,10 @@ Any integer can cast to a pointer
 ===================
 This includes `u8`
 
+Array &-ptrs appear to be able to be cast to raw pointers of the element type
+=============================================================================
+
+
 
 Modules with the same name as primtiive types have interesting lookup quirks
 ===================
