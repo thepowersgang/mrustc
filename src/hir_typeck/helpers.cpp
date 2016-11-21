@@ -1451,6 +1451,56 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                 if( ret )
                     return true;
             }
+            // TODO: Search `<Self as Trait>::Name` bounds on the trait itself
+            for(const auto& bound : trait_ref.m_params.m_bounds)
+            {
+                if( ! bound.is_TraitBound() ) continue ;
+                const auto& be = bound.as_TraitBound();
+                
+                if( ! be.type.m_data.is_Path() )   continue ;
+                if( ! be.type.m_data.as_Path().binding.is_Opaque() )   continue ;
+                
+                const auto& be_type_pe = be.type.m_data.as_Path().path.m_data.as_UfcsKnown();
+                if( *be_type_pe.type != ::HIR::TypeRef("Self", 0xFFFF) )
+                    continue ;
+                if( be_type_pe.trait.m_path != pe.trait.m_path )
+                    continue ;
+                if( be_type_pe.item != pe.item )
+                    continue ;
+                
+                // TODO: Merge the below code with the code from the above loop.
+                const auto& b_params = be.trait.m_path.m_params;
+                ::HIR::PathParams   params_mono_o;
+                const auto& b_params_mono = (monomorphise_pathparams_needed(b_params) ? params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false) : b_params);
+                
+                if( be.trait.m_path.m_path == trait )
+                {
+                    auto cmp = this->compare_pp(sp, b_params_mono, params);
+                    if( cmp != ::HIR::Compare::Unequal )
+                    {
+                        if( &b_params_mono == &params_mono_o )
+                        {
+                            if( callback( ImplRef(type.clone(), mv$(params_mono_o), {}), cmp ) )
+                                return true;
+                            params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false);
+                        }
+                        else
+                        {
+                            if( callback( ImplRef(&type, &b_params, &null_assoc), cmp ) )
+                                return true;
+                        }
+                    }
+                }
+                
+                bool ret = this->find_named_trait_in_trait(sp,  trait, params,  *be.trait.m_trait_ptr,  be.trait.m_path.m_path, b_params_mono, type,
+                    [&](const auto& i_ty, const auto& i_params, const auto& i_assoc) {
+                        auto cmp = this->compare_pp(sp, i_params, params);
+                        DEBUG("cmp=" << cmp << ", impl " << trait << i_params << " for " << i_ty << " -- desired " << trait << params);
+                        return cmp != ::HIR::Compare::Unequal && callback( ImplRef(i_ty.clone(), i_params.clone(), {}), cmp );
+                    });
+                if( ret )
+                    return true;
+            }
         }
     )
     
@@ -3299,7 +3349,29 @@ bool TraitResolution::find_method(
     {
         const auto& e = ty.m_data.as_Path().path.m_data.as_UfcsKnown();
         DEBUG("UfcsKnown - Search associated type bounds in trait - " << e.trait);
+        
         // UFCS known - Assuming that it's reached the maximum resolvable level (i.e. a type within is generic), search for trait bounds on the type
+        
+        // `Self` = `*e.type`
+        // `/*I:#*/` := `e.trait.m_params`
+        auto monomorph_cb = [&](const auto& gt)->const auto& {
+            const auto& ge = gt.m_data.as_Generic();
+            if( ge.binding == 0xFFFF ) {
+                return *e.type;
+            }
+            else if( ge.binding >> 8 == 0 ) {
+                auto idx = ge.binding & 0xFF;
+                ASSERT_BUG(sp, idx < e.trait.m_params.m_types.size(), "Type parameter out of range - " << gt);
+                return e.trait.m_params.m_types[idx];
+            }
+            else {
+                BUG(sp, "Unexpected type parameter - " << ty);
+            }
+            };
+        // `Self` = `*e.type`
+        // `/*I:#*/` := `e.trait.m_params`
+        //auto monomorph_cb = monomorphise_type_get_cb(sp, &*e.type, &e.trait.m_params, nullptr);
+        
         const auto& trait = this->m_crate.get_trait_by_path(sp, e.trait.m_path);
         const auto& assoc_ty = trait.m_types.at( e.item );
         // NOTE: The bounds here have 'Self' = the type
@@ -3312,22 +3384,43 @@ bool TraitResolution::find_method(
             DEBUG("- Found trait " << final_trait_path);
             
             if( monomorphise_pathparams_needed(final_trait_path.m_params) ) {
-                // `Self` = `*e.type`
-                // `/*I:#*/` := `e.trait.m_params`
-                auto monomorph_cb = [&](const auto& gt)->const auto& {
-                    const auto& ge = gt.m_data.as_Generic();
-                    if( ge.binding == 0xFFFF ) {
-                        return *e.type;
-                    }
-                    else if( ge.binding >> 8 == 0 ) {
-                        auto idx = ge.binding & 0xFF;
-                        ASSERT_BUG(sp, idx < e.trait.m_params.m_types.size(), "Type parameter out of range - " << gt);
-                        return e.trait.m_params.m_types[idx];
-                    }
-                    else {
-                        BUG(sp, "Unexpected type parameter - " << ty);
-                    }
-                    };
+                final_trait_path.m_params = monomorphise_path_params_with(sp, final_trait_path.m_params, monomorph_cb, false);
+                DEBUG("- Monomorph to " << final_trait_path);
+            }
+            
+            // Found the method, return the UFCS path for it
+            fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
+                box$( ty.clone() ),
+                mv$(final_trait_path),
+                method_name,
+                {}
+                }) );
+            return true;
+        }
+        
+        // Search `<Self as Trait>::Name` bounds on the trait itself
+        for(const auto& bound : trait.m_params.m_bounds)
+        {
+            if( ! bound.is_TraitBound() ) continue ;
+            const auto& be = bound.as_TraitBound();
+            
+            if( ! be.type.m_data.is_Path() )   continue ;
+            if( ! be.type.m_data.as_Path().binding.is_Opaque() )   continue ;
+            
+            const auto& be_type_pe = be.type.m_data.as_Path().path.m_data.as_UfcsKnown();
+            if( *be_type_pe.type != ::HIR::TypeRef("Self", 0xFFFF) )
+                continue ;
+            if( be_type_pe.trait.m_path != e.trait.m_path )
+                continue ;
+            if( be_type_pe.item != e.item )
+                continue ;
+            
+            ::HIR::GenericPath final_trait_path;
+            if( !this->trait_contains_method(sp, be.trait.m_path, *be.trait.m_trait_ptr, ::HIR::TypeRef("Self", 0xFFFF), method_name, ar,  final_trait_path) )
+                continue ;
+            DEBUG("- Found trait " << final_trait_path);
+            
+            if( monomorphise_pathparams_needed(final_trait_path.m_params) ) {
                 final_trait_path.m_params = monomorphise_path_params_with(sp, final_trait_path.m_params, monomorph_cb, false);
                 DEBUG("- Monomorph to " << final_trait_path);
             }
