@@ -131,6 +131,8 @@ output/lib%.hir: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(BIN)
 
 fcn_extcrate = $(patsubst %,output/lib%.hir,$(1))
 
+fn_getdeps = $(shell cat $1 | sed -nr 's/.*extern crate ([a-zA-Z_0-9]+)( as .*)?;.*/\1/p' | tr '\n' ' ')
+
 output/liballoc.hir: output/libcore.hir
 output/librustc_unicode.hir: output/libcore.hir
 output/libcollections.hir: output/libcore.hir output/liballoc.hir output/librustc_unicode.hir
@@ -156,7 +158,6 @@ output/librustc_back.hir: $(call fcn_extcrate, std syntax)
 output/librustc_data_structures.hir: $(call fcn_extcrate, std log serialize libc)
 output/librustc_const_math.hir: $(call fcn_extcrate, std log syntax serialize)
 output/libfmt_macros.hir: $(call fcn_extcrate, std)
-output/librustc.hir: $(call fcn_extcrate, std arena core flate fmt_macros graphviz rustc_llvm rustc_back getopts rustc_data_structures rustc_const_math rustc_errors log syntax syntax_pos rustc_bitflags serialize)
 output/libproc_macro.hir: $(call fcn_extcrate, std syntax)
 output/libsyntax_ext.hir: $(call fcn_extcrate, std fmt_macros log syntax syntax_pos proc_macro rustc_errors)
 output/librustc_metadata.hir: $(call fcn_extcrate, std log syntax syntax_pos flate serialize rustc_errors syntax_ext proc_macro rustc rustc_back rustc_const_math rustc_data_structures rustc_llvm)
@@ -164,7 +165,9 @@ output/librustc_driver.hir: $(call fcn_extcrate, arena flate getopts graphviz li
 output/librustc_borrowck.hir: $(call fcn_extcrate, std log syntax syntax_pos rustc_errors graphviz rustc rustc_data_structures rustc_mir core)
 output/librustc_mir.hir: $(call fcn_extcrate, std log graphviz rustc rustc_data_structures rustc_back rustc_bitflags syntax syntax_pos rustc_const_math rustc_const_eval)
 output/librustc_const_eval.hir: $(call fcn_extcrate, std arena syntax log rustc rustc_back rustc_const_math rustc_data_structures rustc_errors graphviz syntax_pos serialize)
-output/librustc_plugin.hir: $(call fcn_extcrate, std log syntax rustc_bitflags rustc rustc_back rustc_metadata syntax_pos rustc_errors)
+
+output/librustc_plugin.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_plugin/lib.rs))
+output/librustc.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc/lib.rs))
 
 output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc.hir output/librustc_driver.hir
 	@echo "--- [MRUSTC] $@"
