@@ -155,11 +155,16 @@ output/libsyntax.hir: $(call fcn_extcrate, std core serialize term libc log rust
 output/librustc_back.hir: $(call fcn_extcrate, std syntax)
 output/librustc_data_structures.hir: $(call fcn_extcrate, std log serialize libc)
 output/librustc_const_math.hir: $(call fcn_extcrate, std log syntax serialize)
+output/libfmt_macros.hir: $(call fcn_extcrate, std)
 output/librustc.hir: $(call fcn_extcrate, std arena core flate fmt_macros graphviz rustc_llvm rustc_back getopts rustc_data_structures rustc_const_math rustc_errors log syntax syntax_pos rustc_bitflags serialize)
+output/libproc_macro.hir: $(call fcn_extcrate, std syntax)
+output/libsyntax_ext.hir: $(call fcn_extcrate, std fmt_macros log syntax syntax_pos proc_macro rustc_errors)
+output/librustc_metadata.hir: $(call fcn_extcrate, std log syntax syntax_pos flate serialize rustc_errors syntax_ext proc_macro rustc rustc_back rustc_const_math rustc_data_structures rustc_llvm)
 output/librustc_driver.hir: $(call fcn_extcrate, arena flate getopts graphviz libc rustc rustc_back rustc_borrowck rustc_const_eval rustc_errors rustc_passes rustc_lint rustc_plugin rustc_privacy rustc_incremental rustc_metadata rustc_mir rustc_resolve rustc_save_analysis rustc_trans rustc_typeck serialize rustc_llvm log syntax syntax_ext syntax_pos)
 output/librustc_borrowck.hir: $(call fcn_extcrate, std log syntax syntax_pos rustc_errors graphviz rustc rustc_data_structures rustc_mir core)
 output/librustc_mir.hir: $(call fcn_extcrate, std log graphviz rustc rustc_data_structures rustc_back rustc_bitflags syntax syntax_pos rustc_const_math rustc_const_eval)
-output/librustc_const_eval.mir: $(call fcn_extcrate, std arena syntax log rustc rustc_back rustc_const_math rustc_data_structures rustc_errors graphviz syntax_pos serialize)
+output/librustc_const_eval.hir: $(call fcn_extcrate, std arena syntax log rustc rustc_back rustc_const_math rustc_data_structures rustc_errors graphviz syntax_pos serialize)
+output/librustc_plugin.hir: $(call fcn_extcrate, std log syntax rustc_bitflags rustc rustc_back rustc_metadata syntax_pos rustc_errors)
 
 output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc.hir output/librustc_driver.hir
 	@echo "--- [MRUSTC] $@"
