@@ -5202,6 +5202,41 @@ namespace {
             }
         };
         
+        // If this type has an infer class active, don't allw a non-primitive to coerce over it.
+        switch( ty_l.m_data.as_Infer().ty_class )
+        {
+        case ::HIR::InferClass::Integer:
+        case ::HIR::InferClass::Float:
+            // TODO: Actively search possibility list for the real type.
+            for(const auto& ty : ivar_ent.types_coerce_to)
+                if( ty.m_data.is_Primitive() ) {
+                    context.equate_types(sp, ty_l, ty);
+                    ivar_ent = Context::IVarPossible();
+                    return ;
+                }
+            for(const auto& ty : ivar_ent.types_unsize_to)
+                if( ty.m_data.is_Primitive() ) {
+                    context.equate_types(sp, ty_l, ty);
+                    ivar_ent = Context::IVarPossible();
+                    return ;
+                }
+            for(const auto& ty : ivar_ent.types_coerce_from)
+                if( ty.m_data.is_Primitive() ) {
+                    context.equate_types(sp, ty_l, ty);
+                    ivar_ent = Context::IVarPossible();
+                    return ;
+                }
+            for(const auto& ty : ivar_ent.types_unsize_from)
+                if( ty.m_data.is_Primitive() ) {
+                    context.equate_types(sp, ty_l, ty);
+                    ivar_ent = Context::IVarPossible();
+                    return ;
+                }
+            ivar_ent = Context::IVarPossible();
+            return ;
+        default:
+            break;
+        }
         
         if( ivar_ent.force_no_to == true || ivar_ent.force_no_from )
         {
