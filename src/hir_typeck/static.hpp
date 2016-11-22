@@ -121,6 +121,17 @@ private:
         t_cb_find_impl found_cb,
         const ::HIR::TraitImpl& impl
         ) const;
+    bool find_impl__check_crate_raw(
+        const Span& sp,
+        const ::HIR::SimplePath& des_trait_path, const ::HIR::PathParams* des_trait_params, const ::HIR::TypeRef& des_type,
+        const ::HIR::GenericParams& impl_params_def, const ::HIR::PathParams& impl_trait_params, const ::HIR::TypeRef& impl_type,
+        ::std::function<bool(::std::vector<const ::HIR::TypeRef*>, ::std::vector<::HIR::TypeRef>, ::HIR::Compare)>
+        ) const;
+    ::HIR::Compare check_auto_trait_impl_destructure(
+        const Span& sp,
+        const ::HIR::SimplePath& trait, const ::HIR::PathParams* params_ptr,
+        const ::HIR::TypeRef& type
+        ) const;
 
 public:
 

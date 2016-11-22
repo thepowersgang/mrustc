@@ -273,7 +273,49 @@ bool StaticTraitResolve::find_impl(
     
     if( m_crate.get_trait_by_path(sp, trait_path).m_is_marker )
     {
-        TODO(sp, "Search for auto trait impls - " << trait_path << " for " << type);
+        // Positive/negative impls
+        bool rv = false;
+        ret = this->m_crate.find_auto_trait_impls(trait_path, type, cb_ident, [&](const auto& impl) {
+            DEBUG("[find_impls] - Auto " << (impl.is_positive?"Pos":"Neg")
+                << " impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " " << impl.m_params.fmt_bounds());
+            return this->find_impl__check_crate_raw(sp, trait_path, trait_params, type, impl.m_params, impl.m_trait_args, impl.m_type,
+                [&](auto impl_params, auto placeholders, auto cmp) {
+                    if( impl.is_positive ) {
+                        //rv = found_cb( ImplRef(impl_params, trait_path, impl, mv$(placeholders)), (match == ::HIR::Compare::Fuzzy) );
+                        rv = found_cb( ImplRef(&type, trait_params, &null_assoc), cmp == ::HIR::Compare::Fuzzy );
+                        return rv;
+                    }
+                    else {
+                        rv = false;
+                        return true;
+                    }
+                });
+            });
+        if(ret)
+            return rv;
+        
+        // Detect recursion and return true if detected
+        static ::std::vector< ::std::tuple< const ::HIR::SimplePath*, const ::HIR::PathParams*, const ::HIR::TypeRef*> >    stack;
+        for(const auto& ent : stack ) {
+            if( *::std::get<0>(ent) != trait_path )
+                continue ;
+            if( ::std::get<1>(ent) && trait_params && *::std::get<1>(ent) != *trait_params )
+                continue ;
+            if( *::std::get<2>(ent) != type )
+                continue ;
+            
+            return found_cb( ImplRef(&type, trait_params, &null_assoc), false );
+        }
+        stack.push_back( ::std::make_tuple( &trait_path, trait_params, &type ) );
+        struct Guard {
+            ~Guard() { stack.pop_back(); }
+        };
+        Guard   _;
+        
+        auto cmp = this->check_auto_trait_impl_destructure(sp, trait_path, trait_params, type);
+        if( cmp != ::HIR::Compare::Unequal )
+            return found_cb( ImplRef(&type, trait_params, &null_assoc), cmp == ::HIR::Compare::Fuzzy );
+        return false;
     }
     else
     {
@@ -395,19 +437,18 @@ bool StaticTraitResolve::find_impl__check_bound(
     return false;
 }
 
-bool StaticTraitResolve::find_impl__check_crate(
+bool StaticTraitResolve::find_impl__check_crate_raw(
         const Span& sp,
-        const ::HIR::SimplePath& trait_path, const ::HIR::PathParams* trait_params,
-        const ::HIR::TypeRef& type,
-        t_cb_find_impl found_cb,
-        const ::HIR::TraitImpl& impl
+        const ::HIR::SimplePath& des_trait_path, const ::HIR::PathParams* des_trait_params, const ::HIR::TypeRef& des_type,
+        const ::HIR::GenericParams& impl_params_def, const ::HIR::PathParams& impl_trait_params, const ::HIR::TypeRef& impl_type,
+        ::std::function<bool(::std::vector<const ::HIR::TypeRef*>, ::std::vector<::HIR::TypeRef>, ::HIR::Compare)> found_cb
     ) const
 {
     auto cb_ident = [](const auto&ty)->const auto&{return ty;};
-    DEBUG("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << impl.m_params.fmt_bounds());
+    DEBUG("impl" << impl_params_def.fmt_args() << " " << des_trait_path << impl_trait_params << " for " << impl_type << impl_params_def.fmt_bounds());
     
     ::std::vector< const ::HIR::TypeRef*> impl_params;
-    impl_params.resize( impl.m_params.m_types.size() );
+    impl_params.resize( impl_params_def.m_types.size() );
     
     auto cb = [&impl_params,&sp,cb_ident](auto idx, const auto& ty) {
         assert( idx < impl_params.size() );
@@ -419,14 +460,14 @@ bool StaticTraitResolve::find_impl__check_crate(
             return impl_params[idx]->compare_with_placeholders(sp, ty, cb_ident);
         }
         };
-    auto match = impl.m_type.match_test_generics_fuzz(sp, type, cb_ident, cb);
-    if( trait_params )
+    auto match = impl_type.match_test_generics_fuzz(sp, des_type, cb_ident, cb);
+    if( des_trait_params )
     {
-        assert( trait_params->m_types.size() == impl.m_trait_args.m_types.size() );
-        for( unsigned int i = 0; i < impl.m_trait_args.m_types.size(); i ++ )
+        assert( des_trait_params->m_types.size() == impl_trait_params.m_types.size() );
+        for( unsigned int i = 0; i < impl_trait_params.m_types.size(); i ++ )
         {
-            const auto& l = impl.m_trait_args.m_types[i];
-            const auto& r = trait_params->m_types[i];
+            const auto& l = impl_trait_params.m_types[i];
+            const auto& r = des_trait_params->m_types[i];
             match &= l.match_test_generics_fuzz(sp, r, cb_ident, cb);
         }
     }
@@ -476,7 +517,7 @@ bool StaticTraitResolve::find_impl__check_crate(
             };
     
     // Bounds
-    for(const auto& bound : impl.m_params.m_bounds) {
+    for(const auto& bound : impl_params_def.m_bounds) {
         TU_MATCH_DEF(::HIR::GenericBound, (bound), (e),
         (
             ),
@@ -569,7 +610,176 @@ bool StaticTraitResolve::find_impl__check_crate(
         )
     }
     
-    return found_cb( ImplRef(impl_params, trait_path, impl, mv$(placeholders)), (match == ::HIR::Compare::Fuzzy) );
+    return found_cb( mv$(impl_params), mv$(placeholders), match );
+}
+
+bool StaticTraitResolve::find_impl__check_crate(
+        const Span& sp,
+        const ::HIR::SimplePath& trait_path, const ::HIR::PathParams* trait_params,
+        const ::HIR::TypeRef& type,
+        t_cb_find_impl found_cb,
+        const ::HIR::TraitImpl& impl
+    ) const
+{
+    DEBUG("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << impl.m_params.fmt_bounds());
+    return this->find_impl__check_crate_raw(
+        sp,
+        trait_path, trait_params, type,
+        impl.m_params, impl.m_trait_args, impl.m_type,
+        [&](auto impl_params, auto placeholders, auto match) {
+            return found_cb( ImplRef(impl_params, trait_path, impl, mv$(placeholders)), (match == ::HIR::Compare::Fuzzy) );
+        });
+}
+
+::HIR::Compare StaticTraitResolve::check_auto_trait_impl_destructure(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams* params_ptr, const ::HIR::TypeRef& type) const
+{
+    TRACE_FUNCTION_F("trait = " << trait << ", type = " << type);
+    // HELPER: Search for an impl of this trait for an inner type, and return the match type
+    auto type_impls_trait = [&](const auto& inner_ty) -> ::HIR::Compare {
+        auto l_res = ::HIR::Compare::Unequal;
+        this->find_impl(sp, trait, *params_ptr, inner_ty, [&](auto, auto is_fuzzy){ l_res = is_fuzzy ? ::HIR::Compare::Fuzzy : ::HIR::Compare::Equal; return !is_fuzzy; });
+        DEBUG("[check_auto_trait_impl_destructure] " << inner_ty << " - " << l_res);
+        return l_res;
+        };
+    
+    // - If the type is a path (struct/enum/...), search for impls for all contained types.
+    TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Path, e,
+        ::HIR::Compare  res = ::HIR::Compare::Equal;
+        TU_MATCH( ::HIR::Path::Data, (e.path.m_data), (pe),
+        (Generic,
+            ::HIR::TypeRef  tmp;
+            auto monomorph_cb = [&](const auto& gt)->const auto& {
+                const auto& ge = gt.m_data.as_Generic();
+                if( ge.binding == 0xFFFF ) {
+                    BUG(sp, "Self type in struct/enum generics");
+                }
+                else if( ge.binding >> 8 == 0 ) {
+                    auto idx = ge.binding & 0xFF;
+                    ASSERT_BUG(sp, idx < pe.m_params.m_types.size(), "Type parameter out of range - " << gt);
+                    return pe.m_params.m_types[idx];
+                }
+                else {
+                    BUG(sp, "Unexpected type parameter - " << gt << " in content of " << type);
+                }
+                };
+            // HELPER: Get a possibily monomorphised version of the input type (stored in `tmp` if needed)
+            auto monomorph_get = [&](const auto& ty)->const auto& {
+                if( monomorphise_type_needed(ty) ) {
+                    return (tmp = monomorphise_type_with(sp, ty,  monomorph_cb));
+                }
+                else {
+                    return ty;
+                }
+                };
+            
+            TU_MATCH( ::HIR::TypeRef::TypePathBinding, (e.binding), (tpb),
+            (Opaque,
+                BUG(sp, "Opaque binding on generic path - " << type);
+                ),
+            (Unbound,
+                BUG(sp, "Unbound binding on generic path - " << type);
+                ),
+            (Struct,
+                const auto& str = *tpb;
+                
+                // TODO: Somehow store a ruleset for auto traits on the type
+                // - Map of trait->does_impl for local fields?
+                // - Problems occur with type parameters
+                TU_MATCH( ::HIR::Struct::Data, (str.m_data), (se),
+                (Unit,
+                    ),
+                (Tuple,
+                    for(const auto& fld : se)
+                    {
+                        const auto& fld_ty_mono = monomorph_get(fld.ent);
+                        DEBUG("Struct::Tuple " << fld_ty_mono);
+                        res &= type_impls_trait(fld_ty_mono);
+                        if( res == ::HIR::Compare::Unequal )
+                            return ::HIR::Compare::Unequal;
+                    }
+                    ),
+                (Named,
+                    for(const auto& fld : se)
+                    {
+                        const auto& fld_ty_mono = monomorph_get(fld.second.ent);
+                        DEBUG("Struct::Named '" << fld.first << "' " << fld_ty_mono);
+                        
+                        res &= type_impls_trait(fld_ty_mono);
+                        if( res == ::HIR::Compare::Unequal )
+                            return ::HIR::Compare::Unequal;
+                    }
+                    )
+                )
+                ),
+            (Enum,
+                const auto& enm = *tpb;
+                
+                for(const auto& var : enm.m_variants)
+                {
+                    TU_MATCH(::HIR::Enum::Variant, (var.second), (ve),
+                    (Unit,
+                        ),
+                    (Value,
+                        ),
+                    (Tuple,
+                        for(const auto& fld : ve)
+                        {
+                            const auto& fld_ty_mono = monomorph_get(fld.ent);
+                            DEBUG("Enum '" << var.first << "'::Tuple " << fld_ty_mono);
+                            res &= type_impls_trait(fld_ty_mono);
+                            if( res == ::HIR::Compare::Unequal )
+                                return ::HIR::Compare::Unequal;
+                        }
+                        ),
+                    (Struct,
+                        for(const auto& fld : ve)
+                        {
+                            const auto& fld_ty_mono = monomorph_get(fld.second.ent);
+                            DEBUG("Enum '" << var.first << "'::Struct '" << fld.first << "' " << fld_ty_mono);
+                            
+                            res &= type_impls_trait(fld_ty_mono);
+                            if( res == ::HIR::Compare::Unequal )
+                                return ::HIR::Compare::Unequal;
+                        }
+                        )
+                    )
+                }
+                ),
+            (Union,
+                TODO(sp, "Check auto trait destructure on union " << type);
+                )
+            )
+            DEBUG("- Nothing failed, calling callback");
+            ),
+        (UfcsUnknown,
+            BUG(sp, "UfcsUnknown in typeck - " << type);
+            ),
+        (UfcsKnown,
+            TODO(sp, "Check trait bounds for bound on " << type);
+            ),
+        (UfcsInherent,
+            TODO(sp, "Auto trait lookup on UFCS Inherent type");
+            )
+        )
+        return res;
+    )
+    else TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Tuple, e,
+        ::HIR::Compare  res = ::HIR::Compare::Equal;
+        for(const auto& sty : e)
+        {
+            res &= type_impls_trait(sty);
+            if( res == ::HIR::Compare::Unequal )
+                return ::HIR::Compare::Unequal;
+        }
+        return res;
+    )
+    else TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Array, e,
+        return type_impls_trait(*e.inner);
+    )
+    // Otherwise, there's no negative so it must be positive
+    else {
+        return ::HIR::Compare::Equal;
+    }
 }
 
 void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef& input) const
