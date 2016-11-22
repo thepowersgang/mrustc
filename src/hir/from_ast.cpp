@@ -258,9 +258,13 @@
             assert( pb.struct_ || pb.hir );
             unsigned int field_count;
             if( pb.struct_ ) {
+                if( !pb.struct_->m_data.is_Tuple() )
+                    ERROR(pat.span(), E0000, "Tuple struct pattern on non-tuple struct - " << e.path);
                 field_count = pb.struct_->m_data.as_Tuple().ents.size();
             }
             else {
+                if( !pb.hir->m_data.is_Tuple() )
+                    ERROR(pat.span(), E0000, "Tuple struct pattern on non-tuple struct - " << e.path);
                 field_count = pb.hir->m_data.as_Tuple().size();
             }
             ::std::vector<HIR::Pattern> sub_patterns;
@@ -1177,16 +1181,20 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
         )
     }
     
+    Span    mod_span;
     for( const auto& ie : ast_mod.m_namespace_items )
     {
+        const auto& sp = mod_span;
         if( ie.second.is_import ) {
-            auto hir_path = LowerHIR_SimplePath( Span(), ie.second.path );
+            auto hir_path = LowerHIR_SimplePath( sp, ie.second.path );
             ::HIR::TypeItem ti;
             TU_MATCH_DEF( ::AST::PathBinding, (ie.second.path.binding()), (pb),
             (
+                DEBUG("Import NS " << ie.first << " = " << hir_path);
                 ti = ::HIR::TypeItem::make_Import({ mv$(hir_path), false, 0 });
                 ),
             (EnumVar,
+                DEBUG("Import NS " << ie.first << " = " << hir_path << " (Enum Variant)");
                 ti = ::HIR::TypeItem::make_Import({ mv$(hir_path), true, pb.idx });
                 )
             )
@@ -1195,15 +1203,18 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
     }
     for( const auto& ie : ast_mod.m_value_items )
     {
+        const auto& sp = mod_span;
         if( ie.second.is_import ) {
-            auto hir_path = LowerHIR_SimplePath( Span(), ie.second.path );
+            auto hir_path = LowerHIR_SimplePath( sp, ie.second.path );
             ::HIR::ValueItem    vi;
             
             TU_MATCH_DEF( ::AST::PathBinding, (ie.second.path.binding()), (pb),
             (
+                DEBUG("Import VAL " << ie.first << " = " << hir_path);
                 vi = ::HIR::ValueItem::make_Import({ mv$(hir_path), false, 0 });
                 ),
             (EnumVar,
+                DEBUG("Import VAL " << ie.first << " = " << hir_path << " (Enum Variant)");
                 vi = ::HIR::ValueItem::make_Import({ mv$(hir_path), true, pb.idx });
                 )
             )

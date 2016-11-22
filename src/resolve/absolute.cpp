@@ -1774,7 +1774,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
         ),
     (StructTuple,
-        Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::Pattern, e.path);
+        Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::Constant, e.path);
         for(auto& sp : e.tup_pat.start)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
         for(auto& sp : e.tup_pat.end)
