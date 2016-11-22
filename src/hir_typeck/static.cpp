@@ -1077,8 +1077,15 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
         }
         else {
             auto nt = impl.get_type( e2.item.c_str() );
-            DEBUG("Converted UfcsKnown - " << e.path << " = " << nt);
-            input = mv$(nt);
+            if( nt == ::HIR::TypeRef() ) {
+                DEBUG("Mark  " << e.path << " as opaque");
+                e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                this->replace_equalities(input);
+            }
+            else {
+                DEBUG("Converted UfcsKnown - " << e.path << " = " << nt);
+                input = mv$(nt);
+            }
             return true;
         }
         });

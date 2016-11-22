@@ -265,50 +265,8 @@ namespace {
                     TODO(sp, "Locate impl block for UFCS Inherent");
                     ),
                 (UfcsKnown,
-                    DEBUG("UfcsKnown - " << ty);
-                    if( pe.type->m_data.is_Path() && pe.type->m_data.as_Path().binding.is_Opaque() ) {
-                        // - Opaque type, opaque result
-                        DEBUG("Inner type opaque, assuming " << ty << " also opaque");
-                        e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
-                    }
-                    else if( pe.type->m_data.is_Generic() ) {
-                        // - Generic type, opaque resut. (TODO: Sometimes these are known - via generic bounds)
-                        e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
-                    }
-                    else {
-                        ImplRef best_impl;
-                        m_resolve.find_impl(sp, pe.trait.m_path, pe.trait.m_params, *pe.type, [&](auto impl, bool fuzzy) {
-                            DEBUG("[visit_type] Found " << impl);
-                            if(fuzzy)
-                                TODO(sp, "What error should be used when an impl matches fuzzily in outer?");
-                            if( best_impl.more_specific_than(impl) )
-                                return false;
-                            best_impl = mv$(impl);
-                            if( ! best_impl.type_is_specialisable(pe.item.c_str()) )
-                                return true;
-                            return false;
-                            });
-                        if( best_impl.is_valid() ) {
-                            // If the type is still specialisable, and there's geerics in the type.
-                            if( best_impl.type_is_specialisable(pe.item.c_str()) && pe.type->contains_generics() ) {
-                                // Mark it as opaque (because monomorphisation could change things)
-                                DEBUG("Still-specialisable impl for " << ty << " also opaque");
-                                e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
-                            }
-                            else {
-                                auto new_ty = best_impl.get_type(pe.item.c_str());
-                                if( new_ty == ::HIR::TypeRef() ) {
-                                    ERROR(sp, E0000, "Associated type '"<<pe.item<<"' could not be found in " << pe.trait);
-                                }
-                                DEBUG("Replaced " << ty << " with " << new_ty);
-                                ty = mv$(new_ty);
-                                visit_type(ty); // Recurse on this
-                            }
-                        }
-                        else {
-                            ERROR(sp, E0000, "Couldn't find an impl of " << pe.trait << " for " << *pe.type);
-                        }
-                    }
+                    TRACE_FUNCTION_FR("UfcsKnown - " << ty, ty);
+                    m_resolve.expand_associated_types(sp,ty);
                     )
                 )
             )
@@ -339,11 +297,12 @@ namespace {
         
         void visit_generic_path(::HIR::GenericPath& p, PathContext pc) override
         {
+            static Span sp;
             TRACE_FUNCTION_F("p = " << p);
-            const auto& params = get_params_for_item(Span(), crate, p.m_path, pc);
+            const auto& params = get_params_for_item(sp, crate, p.m_path, pc);
             auto& args = p.m_params;
             
-            check_parameters(Span(), params, args);
+            check_parameters(sp, params, args);
             DEBUG("p = " << p);
             
             ::HIR::Visitor::visit_generic_path(p, pc);
@@ -617,7 +576,7 @@ namespace {
             m_current_trait = &item;
             m_current_trait_path = &p;
             
-            auto _ = m_resolve.set_item_generics(item.m_params);
+            auto _ = m_resolve.set_impl_generics(item.m_params);
             ::HIR::TypeRef tr { "Self", 0xFFFF };
             m_self_types.push_back(&tr);
             ::HIR::Visitor::visit_trait(p, item);
@@ -629,6 +588,16 @@ namespace {
         {
             auto _ = m_resolve.set_item_generics(item.m_params);
             ::HIR::Visitor::visit_struct(p, item);
+        }
+        void visit_union(::HIR::ItemPath p, ::HIR::Union& item) override
+        {
+            auto _ = m_resolve.set_item_generics(item.m_params);
+            ::HIR::Visitor::visit_union(p, item);
+        }
+        void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override
+        {
+            auto _ = m_resolve.set_item_generics(item.m_params);
+            ::HIR::Visitor::visit_enum(p, item);
         }
         
         void visit_type_impl(::HIR::TypeImpl& impl) override
@@ -666,6 +635,7 @@ namespace {
         }
         
         void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override {
+            auto _ = m_resolve.set_item_generics(item.m_params);
             
             m_fcn_path = &p;
             m_fcn_ptr = &item;
