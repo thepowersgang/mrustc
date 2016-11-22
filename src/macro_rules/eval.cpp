@@ -125,6 +125,9 @@ class MacroPatternStream
     
     ::std::vector<SimplePatEnt> m_stack;
     unsigned int    m_skip_count;
+    
+    SimplePatEnt    m_peek_cache;
+    bool m_peek_cache_valid = false;
 
     bool m_break_if_not = false;
     bool m_condition_fired = false;
@@ -137,6 +140,15 @@ public:
     
     /// Get the next pattern entry
     SimplePatEnt next();
+    
+    const SimplePatEnt& peek() {
+        if( !m_peek_cache_valid ) {
+            m_peek_cache = next();
+            m_peek_cache_valid = true;
+        }
+        return m_peek_cache;
+    }
+    
     /// Inform the stream that the `if` rule that was just returned succeeded
     void if_succeeded();
     /// Get the current loop iteration count
@@ -304,6 +316,11 @@ SimplePatEnt MacroPatternStream::next()
 {
     TRACE_FUNCTION_F("m_pos=[" << m_pos << "], m_stack.size()=" << m_stack.size());
     assert(m_pos.size() >= 1);
+    
+    if( m_peek_cache_valid ) {
+        m_peek_cache_valid = false;
+        return mv$(m_peek_cache);
+    }
     
     // Pop off the generation stack
     if( ! m_stack.empty() ) {
@@ -902,8 +919,11 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
         
         // 3. If there is a token pattern in the list, take that arm (and any other token arms)
         const SimplePatEnt* tok_pat = nullptr;
-        for( const auto& pat : arm_pats )
+        unsigned int ident_pat_idx = arm_pats.size();
+        bool has_non_ident_pat = false;
+        for( unsigned int i = 0; i < arm_pats.size(); i ++ )
         {
+            const auto& pat = arm_pats[i];
             TU_IFLET(SimplePatEnt, pat, ExpectTok, e,
                 if( tok_pat ) {
                     if( e != tok_pat->as_ExpectTok() )
@@ -911,6 +931,14 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                 }
                 else {
                     tok_pat = &pat;
+                }
+            )
+            else TU_IFLET(SimplePatEnt, pat, ExpectPat, e,
+                if( e.type == MacroPatEnt::PAT_IDENT ) {
+                    ident_pat_idx = i;
+                }
+                else {
+                    has_non_ident_pat = true;
                 }
             )
         }
@@ -926,6 +954,65 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
         }
         else
         {
+            if( has_non_ident_pat && ident_pat_idx < arm_pats.size() )
+            {
+                // For all :ident patterns present, check the next rule.
+                // - If this rule would fail, remove the arm.
+                bool ident_rule_kept = false;
+                for( unsigned int i = 0; i < arm_pats.size(); )
+                {
+                    bool discard = false;
+                    const auto& pat = arm_pats[i];
+                    const auto& e = pat.as_ExpectPat();
+                    if( e.type == MacroPatEnt::PAT_IDENT )
+                    {
+                        const auto& next = active_arms[i].second.peek();
+                        TU_MATCHA( (next), (ne),
+                        (IfPat, TODO(sp, "Handle IfPat following a conflicting :ident");),
+                        (IfTok, TODO(sp, "IfTok following a conflicting :ident");),
+                        (ExpectTok,
+                            if( ne.type() != lex.lookahead(1) ) {
+                                DEBUG("Discard active arm " << i << " due to next token mismatch");
+                                discard = true;
+                            }
+                            else {
+                                ident_rule_kept = true;
+                            }
+                            ),
+                        (ExpectPat,
+                            TODO(sp, "Handle ExpectPat following a conflicting :ident");
+                            ),
+                        (End, TODO(sp, "Handle End following a conflicting :ident"); )
+                        )
+                    }
+                    
+                    if( discard ) {
+                        arm_pats.erase( arm_pats.begin() + i );
+                        active_arms.erase( active_arms.begin() + i );
+                    }
+                    else {
+                        ++ i;
+                    }
+                }
+                
+                // If there are any remaining ident rules, erase the non-ident rules.
+                if( ident_rule_kept ) {
+                    // If no rules were discarded, remove the non-ident rules
+                    for( unsigned int i = 0; i < arm_pats.size(); )
+                    {
+                        if( arm_pats[i].as_ExpectPat().type != MacroPatEnt::PAT_IDENT ) {
+                            arm_pats.erase( arm_pats.begin() + i );
+                            active_arms.erase( active_arms.begin() + i );
+                        }
+                        else {
+                            ++ i;
+                        }
+                    }
+                }
+                assert(arm_pats.size() > 0);
+                assert(arm_pats.size() == active_arms.size());
+            }
+            
             // 3. Check that all remaining arms are the same pattern.
             const auto& active_pat = arm_pats[0];
             for(unsigned int i = 1; i < arm_pats.size(); i ++)
@@ -945,7 +1032,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                 (ExpectPat,
                     // Can fail, as :expr and :stmt overlap in their trigger set
                     if( e1.type != e2.type ) {
-                        ERROR(lex.getPosition(), E0000, "Incompatible macro arms - mismatched patterns");
+                        ERROR(lex.getPosition(), E0000, "Incompatible macro arms - mismatched patterns " << e1.type << " and " << e2.type);
                     }
                     if( e1.idx != e2.idx ) {
                         ERROR(lex.getPosition(), E0000, "Incompatible macro arms - mismatched pattern bindings " << e1.idx << " and " << e2.idx);
