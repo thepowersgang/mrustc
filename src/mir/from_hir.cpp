@@ -1462,6 +1462,7 @@ namespace {
             TRACE_FUNCTION_F("_Literal");
             TU_MATCHA( (node.m_data), (e),
             (Integer,
+                ASSERT_BUG(node.span(), node.m_res_type.m_data.is_Primitive(), "Non-primitive return type for Integer literal - " << node.m_res_type);
                 switch(node.m_res_type.m_data.as_Primitive())
                 {
                 case ::HIR::CoreType::U8:
