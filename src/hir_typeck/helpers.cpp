@@ -1079,27 +1079,44 @@ bool TraitResolution::find_trait_impls(const Span& sp,
         TU_IFLET( ::HIR::TypeRef::Data, dst_ty.m_data, TraitObject, e,
             // Magic impl if T: ThisTrait
             bool good;
+            
+            ::HIR::TypeRef::Data::Data_TraitObject  tmp_e;
+            tmp_e.m_trait.m_path = e.m_trait.m_path.m_path;
+            
             ::HIR::Compare  total_cmp = ::HIR::Compare::Equal;
-            auto cb = [&](const auto&, auto cmp){
-                if( cmp == ::HIR::Compare::Unequal )
-                    return false;
-                total_cmp &= cmp;
-                return true;
-                };
             if( e.m_trait.m_path.m_path == ::HIR::SimplePath() ) {
                 ASSERT_BUG(sp, e.m_markers.size() > 0, "TraitObject with no traits - " << dst_ty);
                 good = true;
             }
             else {
-                good = find_trait_impls(sp, e.m_trait.m_path.m_path, e.m_trait.m_path.m_params, ty, cb);
+                good = find_trait_impls(sp, e.m_trait.m_path.m_path, e.m_trait.m_path.m_params, ty,
+                    [&](const auto impl, auto cmp){
+                        if( cmp == ::HIR::Compare::Unequal )
+                            return false;
+                        total_cmp &= cmp;
+                        tmp_e.m_trait.m_path.m_params = impl.get_trait_params();
+                        for(const auto& aty : e.m_trait.m_type_bounds)
+                            tmp_e.m_trait.m_type_bounds[aty.first] = impl.get_type(aty.first.c_str());
+                        return true;
+                    });
             }
+            auto cb = [&](const auto impl, auto cmp){
+                if( cmp == ::HIR::Compare::Unequal )
+                    return false;
+                total_cmp &= cmp;
+                tmp_e.m_markers.back().m_params = impl.get_trait_params();
+                return true;
+                };
             for(const auto& marker : e.m_markers)
             {
                 if(!good)   break;
+                tmp_e.m_markers.push_back( marker.m_path );
                 good &= find_trait_impls(sp, marker.m_path, marker.m_params, ty, cb);
             }
             if( good ) {
-                return callback( ImplRef(type.clone(), params.clone(), {}), total_cmp );
+                // TODO: params.clone() isn't quite right.
+                ::HIR::PathParams   real_params { ::HIR::TypeRef( ::HIR::TypeRef::Data(mv$(tmp_e)) ) };
+                return callback( ImplRef(type.clone(), mv$(real_params), {}), total_cmp );
             }
             else {
                 return false;
