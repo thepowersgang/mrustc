@@ -126,7 +126,7 @@ namespace {
                 ),
             (Closure,
                 DEBUG("-- Closure - " << ty);
-                assert(!"Encountered closure type!");
+                BUG(Span(), "Encountered closure type when serialising - " << ty);
                 )
             )
         }
@@ -754,7 +754,7 @@ namespace {
 
         void serialise(const ::HIR::Struct& item)
         {
-            TRACE_FUNCTION;
+            TRACE_FUNCTION_F("Struct");
             
             serialise_generics(item.m_params);
             m_out.write_tag( static_cast<int>(item.m_repr) );
@@ -773,7 +773,7 @@ namespace {
         }
         void serialise(const ::HIR::Union& item)
         {
-            TRACE_FUNCTION;
+            TRACE_FUNCTION_F("Union");
             
             serialise_generics(item.m_params);
             m_out.write_tag( static_cast<int>(item.m_repr) );
