@@ -3489,7 +3489,7 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
                 this->add_binding(sp, subpat, te[tup_idx++]);
             }
             tup_idx = te.size() - e.trailing.size();
-            for(auto& subpat : e.leading) {
+            for(auto& subpat : e.trailing) {
                 this->add_binding(sp, subpat, te[tup_idx++]);
             }
             
