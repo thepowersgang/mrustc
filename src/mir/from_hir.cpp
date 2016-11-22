@@ -946,7 +946,7 @@ namespace {
                     // Valid
                 )
                 else TU_IFLET( ::HIR::TypeRef::Data, ty_in.m_data, Function, se,
-                    if( *de.inner != ::HIR::TypeRef::new_unit() ) {
+                    if( *de.inner != ::HIR::TypeRef::new_unit() && *de.inner != ::HIR::CoreType::U8 ) {
                         BUG(node.span(), "Cannot cast to " << ty_out << " from " << ty_in);
                     }
                     // Valid
