@@ -952,7 +952,7 @@ namespace {
                         ),
                     (Import,
                         Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, false,  path, e.path);
-                        TODO(sp, "Imports in HIR mod items - " << e.path);
+                        return ;
                         ),
                     (Struct,
                         // Bind and update path
