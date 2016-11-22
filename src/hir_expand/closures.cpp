@@ -610,7 +610,8 @@ namespace {
                 }
                 
                 // - Fix type to replace closure types with known paths
-                ExprVisitor_Fixup::fix_type(m_resolve.m_crate, monomorph_cb, ty_mono);
+                ExprVisitor_Fixup   fixup { m_resolve.m_crate, monomorph_cb };
+                fixup.visit_type(ty_mono);
                 capture_types.push_back( ::HIR::VisEnt< ::HIR::TypeRef> { false, mv$(ty_mono) } );
             }
             auto closure_struct_path = m_new_type(
