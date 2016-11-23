@@ -3489,66 +3489,66 @@ bool TraitResolution::find_method(
         if( rv ) {
             return true;
         }
+    }
+    
+    // 3. Search for trait methods (using currently in-scope traits)
+    for(const auto& trait_ref : ::reverse(traits))
+    {
+        if( trait_ref.first == nullptr )
+            break;
         
-        // 3. Search for trait methods (using currently in-scope traits)
-        for(const auto& trait_ref : ::reverse(traits))
+        //::HIR::GenericPath final_trait_path;
+        //if( !this->trait_contains_method(sp, *trait_ref.first, *trait_ref.second, method_name,  final_trait_path) )
+        //    continue ;
+        //DEBUG("- Found trait " << final_trait_path);
+        
+        // TODO: Shouldn't this use trait_contains_method?
+        // TODO: Search supertraits too
+        auto it = trait_ref.second->m_values.find(method_name);
+        if( it == trait_ref.second->m_values.end() )
+            continue ;
+        if( !it->second.is_Function() )
+            continue ;
+        const auto& v = it->second.as_Function();
+        switch(v.m_receiver)
         {
-            if( trait_ref.first == nullptr )
+        case ::HIR::Function::Receiver::Free:
+            break;
+        case ::HIR::Function::Receiver::Value:
+            if( ar == AllowedReceivers::AnyBorrow )
                 break;
+            if(0)
+        case ::HIR::Function::Receiver::Box:
+            if( ar != AllowedReceivers::Box )
+                break;
+            if(0)
+        default:
+            if( ar == AllowedReceivers::Value || ar == AllowedReceivers::Box || (v.m_receiver == ::HIR::Function::Receiver::Box && ar != AllowedReceivers::AnyBorrow) )
+                break;
+            DEBUG("Search for impl of " << *trait_ref.first);
             
-            //::HIR::GenericPath final_trait_path;
-            //if( !this->trait_contains_method(sp, *trait_ref.first, *trait_ref.second, method_name,  final_trait_path) )
-            //    continue ;
-            //DEBUG("- Found trait " << final_trait_path);
-            
-            // TODO: Shouldn't this use trait_contains_method?
-            // TODO: Search supertraits too
-            auto it = trait_ref.second->m_values.find(method_name);
-            if( it == trait_ref.second->m_values.end() )
-                continue ;
-            if( !it->second.is_Function() )
-                continue ;
-            const auto& v = it->second.as_Function();
-            switch(v.m_receiver)
-            {
-            case ::HIR::Function::Receiver::Free:
-                break;
-            case ::HIR::Function::Receiver::Value:
-                if( ar == AllowedReceivers::AnyBorrow )
-                    break;
-                if(0)
-            case ::HIR::Function::Receiver::Box:
-                if( ar != AllowedReceivers::Box )
-                    break;
-                if(0)
-            default:
-                if( ar == AllowedReceivers::Value || ar == AllowedReceivers::Box || (v.m_receiver == ::HIR::Function::Receiver::Box && ar != AllowedReceivers::AnyBorrow) )
-                    break;
-                DEBUG("Search for impl of " << *trait_ref.first);
-                
-                // Use the set of ivars we were given to populate the trait parameters
-                unsigned int n_params = trait_ref.second->m_params.m_types.size();
-                assert(n_params <= ivars.size());
-                ::HIR::PathParams   trait_params;
-                trait_params.m_types.reserve( n_params );
-                for(unsigned int i = 0; i < n_params; i++) {
-                    trait_params.m_types.push_back( ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Infer({ ivars[i], ::HIR::InferClass::None }) ) );
-                    ASSERT_BUG(sp, m_ivars.get_type( trait_params.m_types.back() ).m_data.as_Infer().index == ivars[i], "A method selection ivar was bound");
-                }
-                
-                //if( find_trait_impls(sp, *trait_ref.first, trait_params, ty,  [](auto , auto ) { return true; }) ) {
-                if( find_trait_impls_crate(sp, *trait_ref.first, &trait_params, ty,  [](auto , auto ) { return true; }) ) {
-                    DEBUG("Found trait impl " << *trait_ref.first << trait_params << " for " << ty << " ("<<m_ivars.fmt_type(ty)<<")");
-                    fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
-                        box$( ty.clone() ),
-                        ::HIR::GenericPath( *trait_ref.first, mv$(trait_params) ),
-                        method_name,
-                        {}
-                        }) );
-                    return true;
-                }
-                break;
+            // Use the set of ivars we were given to populate the trait parameters
+            unsigned int n_params = trait_ref.second->m_params.m_types.size();
+            assert(n_params <= ivars.size());
+            ::HIR::PathParams   trait_params;
+            trait_params.m_types.reserve( n_params );
+            for(unsigned int i = 0; i < n_params; i++) {
+                trait_params.m_types.push_back( ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Infer({ ivars[i], ::HIR::InferClass::None }) ) );
+                ASSERT_BUG(sp, m_ivars.get_type( trait_params.m_types.back() ).m_data.as_Infer().index == ivars[i], "A method selection ivar was bound");
             }
+            
+            //if( find_trait_impls(sp, *trait_ref.first, trait_params, ty,  [](auto , auto ) { return true; }) ) {
+            if( find_trait_impls_crate(sp, *trait_ref.first, &trait_params, ty,  [](auto , auto ) { return true; }) ) {
+                DEBUG("Found trait impl " << *trait_ref.first << trait_params << " for " << ty << " ("<<m_ivars.fmt_type(ty)<<")");
+                fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
+                    box$( ty.clone() ),
+                    ::HIR::GenericPath( *trait_ref.first, mv$(trait_params) ),
+                    method_name,
+                    {}
+                    }) );
+                return true;
+            }
+            break;
         }
     }
     
