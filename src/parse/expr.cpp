@@ -477,7 +477,7 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
         case TOK_SQUARE_CLOSE:
             break;
         default:
-            val = Parse_Expr1(lex);
+            val = Parse_Expr0(lex);
             break;
         }
         return NEWNODE( AST::ExprNode_Flow, AST::ExprNode_Flow::RETURN, "", ::std::move(val) );
