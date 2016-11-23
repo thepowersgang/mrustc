@@ -185,6 +185,12 @@ public:
                 upper_visitor(uv)
             {}
             
+            // TODO: Use the other visitors.
+            void visit_path(::HIR::Visitor::PathContext pc, ::HIR::Path& p)
+            {
+                upper_visitor.visit_path(p, pc);
+            }
+            
             void visit(::HIR::ExprNode_Let& node) override
             {
                 upper_visitor.visit_type(node.m_type);
