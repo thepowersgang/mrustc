@@ -623,7 +623,7 @@ namespace {
                 m_out.write_tag(0);
                 serialise_simplepath(e.path);
                 m_out.write_bool(e.is_variant);
-                m_out.write_bool(e.idx);
+                m_out.write_count(e.idx);
                 ),
             (Module,
                 m_out.write_tag(1);
@@ -658,7 +658,7 @@ namespace {
                 m_out.write_tag(0);
                 serialise_simplepath(e.path);
                 m_out.write_bool(e.is_variant);
-                m_out.write_bool(e.idx);
+                m_out.write_count(e.idx);
                 ),
             (Constant,
                 m_out.write_tag(1);

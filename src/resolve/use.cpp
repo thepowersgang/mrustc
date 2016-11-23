@@ -575,6 +575,7 @@ namespace {
                     auto p = e.path;
                     p.m_components.pop_back();
                     const auto& enm = ec.m_hir->get_typeitem_by_path(span, p, true).as_Enum();
+                    assert(e.idx < enm.m_variants.size());
                     return ::AST::PathBinding::make_EnumVar({ nullptr, e.idx, &enm });
                 }
                 if( e.path.m_components.empty() )
@@ -619,6 +620,7 @@ namespace {
                     auto p = e.path;
                     p.m_components.pop_back();
                     const auto& enm = ec.m_hir->get_typeitem_by_path(span, p, true).as_Enum();
+                    assert(e.idx < enm.m_variants.size());
                     return ::AST::PathBinding::make_EnumVar({ nullptr, e.idx, &enm });
                 }
                 item_ptr = &ec.m_hir->get_valitem_by_path(span, e.path, true);    // ignore_crate_name=true

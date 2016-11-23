@@ -219,7 +219,21 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                         ),
                     (Static  , _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); ),
                     (Function, _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); ),
-                    (EnumVar , _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); )
+                    (EnumVar ,
+                        bool is_struct = false;
+                        if( e.enum_ ) {
+                            ASSERT_BUG(sp, e.idx < e.enum_->variants().size(), "Variant out of range for " << i_data.path);
+                            is_struct = e.enum_->variants().at(e.idx).m_data.is_Struct();
+                        }
+                        else {
+                            ASSERT_BUG(sp, e.idx < e.hir->m_variants.size(), "Variant out of range for " << i_data.path);
+                            is_struct = e.hir->m_variants.at(e.idx).second.is_Struct();
+                        }
+                        if( is_struct )
+                            _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
+                        else
+                            _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
+                        )
                     )
                 }
             };
