@@ -5182,6 +5182,18 @@ namespace {
                 return false;
             }
             
+            // Returns true if the `src` concretely cannot coerce to `dst`
+            static bool cannot_coerce_to(const Context& context, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src) {
+                TU_IFLET( ::HIR::TypeRef::Data, src.m_data, Borrow, se,
+                    TU_IFLET( ::HIR::TypeRef::Data, dst.m_data, Borrow, de,
+                    )
+                    else {
+                        return true;
+                    }
+                )
+                return false;
+            }
+            
             static const ::HIR::TypeRef* find_lowest_type(const Context& context, const ::std::vector< ::HIR::TypeRef>& list)
             {
                 // 1. Locate types that cannot coerce to anything
@@ -5325,8 +5337,8 @@ namespace {
                 ivar_ent.reset();
                 return ;
             }
-            DEBUG("-- " << ty_l << " FROM=Coerce:[" << ivar_ent.types_coerce_from << "] / Unsize:[" << ivar_ent.types_unsize_from << "],"
-                << " TO=Coerce:[" << ivar_ent.types_coerce_to << "] / Unsize:[" << ivar_ent.types_unsize_to << "]");
+            DEBUG("-- " << ty_l << " FROM=Coerce:{" << ivar_ent.types_coerce_from << "} / Unsize:{" << ivar_ent.types_unsize_from << "},"
+                << " TO=Coerce:{" << ivar_ent.types_coerce_to << "} / Unsize:{" << ivar_ent.types_unsize_to << "}");
             
             // Find an entry in the `types_unsize_from` list that all other entries can unsize to
             H::dedup_type_list_with(ivar_ent.types_unsize_from, [&](const auto& l, const auto& r) {
@@ -5400,11 +5412,14 @@ namespace {
             }
             #endif
             
+            // 
+            
             // HACK: Merge into a single lists
             ::std::vector< ::HIR::TypeRef>  types_from_o;
             auto& types_from = H::merge_lists(context, ivar_ent.types_coerce_from, ivar_ent.types_unsize_from,  types_from_o);
             ::std::vector< ::HIR::TypeRef>  types_to_o;
             auto& types_to   = H::merge_lists(context, ivar_ent.types_coerce_to  , ivar_ent.types_unsize_to  ,  types_to_o  );
+            DEBUG("   " << ty_l << " FROM={" << types_from << "}, TO={" << types_to << "}");
             
             // Same type on both sides, pick it.
             if( types_from == types_to && types_from.size() == 1 ) {
@@ -5450,25 +5465,37 @@ namespace {
                         ++it;
                     }
                 }
-            }
-            
-            // Prefer cases where this type is being created from a known type
-            #if 0
-            if( types_from.size() == 1 && types_to.size() == 1 ) {
-                const auto& ty_to = types_to[0];
-                const auto& ty_from = types_from[0];
-                if( H::can_coerce_to(context, ty_to, ty_from) )
+                
+                // Eliminate `to` types that can't be coerced from `from` types
+                if(types_from.size() > 0)
+                for(auto it = types_to.begin(); it != types_to.end(); )
                 {
-                    // Only one possibility
-                    DEBUG("- IVar " << ty_l << " = " << ty_to << " (to)");
-                    context.equate_types(sp, ty_l, ty_to);
+                    if( it->m_data.is_Infer() ) {
+                        ++ it;
+                        continue;
+                    }
+                    bool remove = false;
                     
-                    ivar_ent.reset();
-                    return ;
+                    for(const auto& src : types_from)
+                    {
+                        if( H::cannot_coerce_to(context, *it, src) ) {
+                            remove = true;
+                            DEBUG("Remove target type " << *it << " because it cannot be created from a source type");
+                            break;
+                        }
+                    }
+                    
+                    if( remove ) {
+                        it = types_to.erase(it);
+                    }
+                    else {
+                        ++it;
+                    }
                 }
             }
-            //else
-            #endif
+            
+            
+            // Prefer cases where this type is being created from a known type
             if( types_from.size() == 1 ) {
                 const ::HIR::TypeRef& ty_r = types_from[0];
                 // Only one possibility
