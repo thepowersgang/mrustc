@@ -183,13 +183,15 @@ namespace {
                 }
                 ),
             (SplitTuple,
+                assert(e.total_size >= e.leading.size() + e.trailing.size());
                 for(unsigned int i = 0; i < e.leading.size(); i ++ )
                 {
                     destructure_from_ex(sp, e.leading[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), i}), allow_refutable);
                 }
+                unsigned int ofs = e.total_size - e.trailing.size();
                 for(unsigned int i = 0; i < e.trailing.size(); i ++ )
                 {
-                    destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), i}), allow_refutable);
+                    destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), ofs+i}), allow_refutable);
                 }
                 ),
             (StructValue,

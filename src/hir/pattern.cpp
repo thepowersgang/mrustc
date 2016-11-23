@@ -201,7 +201,8 @@ namespace {
     (SplitTuple,
         return Pattern(m_binding, Data::make_SplitTuple({
             clone_pat_vec(e.leading),
-            clone_pat_vec(e.trailing)
+            clone_pat_vec(e.trailing),
+            e.total_size
             }));
         ),
     (StructValue,

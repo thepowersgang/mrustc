@@ -3494,13 +3494,68 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             }
             
             // TODO: Should this replace the pattern with a non-split?
+            // - Changing the address of the pattern means that the below revisit could fail.
+            e.total_size = te.size();
         )
         else {
             if( !ty.m_data.is_Infer() ) {
                 ERROR(sp, E0000, "Tuple pattern on non-tuple");
             }
             
-            TODO(sp, "Handle split tuple patterns when type isn't known in starting pass");
+            ::std::vector<::HIR::TypeRef>   leading_tys;
+            leading_tys.reserve(e.leading.size());
+            for(auto& subpat : e.leading) {
+                leading_tys.push_back( this->m_ivars.new_ivar_tr() );
+                this->add_binding(sp, subpat, leading_tys.back());
+            }
+            ::std::vector<::HIR::TypeRef>   trailing_tys;
+            for(auto& subpat : e.trailing) {
+                trailing_tys.push_back( this->m_ivars.new_ivar_tr() );
+                this->add_binding(sp, subpat, trailing_tys.back());
+            }
+            
+            struct SplitTuplePatRevisit:
+                public Revisitor
+            {
+                Span    sp;
+                ::HIR::TypeRef  m_outer_ty;
+                ::std::vector<::HIR::TypeRef>   m_leading_tys;
+                ::std::vector<::HIR::TypeRef>   m_trailing_tys;
+                unsigned int& m_pat_total_size;
+                
+                SplitTuplePatRevisit(Span sp, ::HIR::TypeRef outer, ::std::vector<::HIR::TypeRef> leading, ::std::vector<::HIR::TypeRef> trailing, unsigned int& pat_total_size):
+                    sp(mv$(sp)), m_outer_ty(mv$(outer)),
+                    m_leading_tys( mv$(leading) ), m_trailing_tys( mv$(trailing) ),
+                    m_pat_total_size(pat_total_size)
+                {}
+                
+                void fmt(::std::ostream& os) const override {
+                    os << "SplitTuplePatRevisit { " << m_outer_ty << " = (" << m_leading_tys << ", ..., " << m_trailing_tys << ") }";
+                }
+                bool revisit(Context& context) override {
+                    const auto& ty = context.get_type(m_outer_ty);
+                    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Infer, te,
+                        return false;
+                    )
+                    else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Tuple, te,
+                        if( te.size() < m_leading_tys.size() + m_trailing_tys.size() )
+                            ERROR(sp, E0000, "Tuple pattern too large for tuple");
+                        for(unsigned int i = 0; i < m_leading_tys.size(); i ++)
+                            context.equate_types(sp, te[i], m_leading_tys[i]);
+                        unsigned int ofs = te.size() - m_trailing_tys.size();
+                        for(unsigned int i = 0; i < m_trailing_tys.size(); i ++)
+                            context.equate_types(sp, te[ofs+i], m_trailing_tys[i]);
+                        m_pat_total_size = te.size();
+                        return true;
+                    )
+                    else {
+                        ERROR(sp, E0000, "Tuple pattern on non-tuple - " << ty);
+                    }
+                }
+            };
+            
+            // Register a revisit and wait until the tuple is known - then bind through.
+            this->add_revisit_adv( box$(( SplitTuplePatRevisit { sp, ty.clone(), mv$(leading_tys), mv$(trailing_tys), e.total_size } )) );
         }
         ),
     (Slice,
