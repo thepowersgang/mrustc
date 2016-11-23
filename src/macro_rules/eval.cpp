@@ -674,49 +674,40 @@ bool Macro_TryPattern(TokenStream& lex, const MacroPatEnt& pat)
     }
 }
 
-void Macro_HandlePatternCap(TokenStream& lex, unsigned int index, MacroPatEnt::Type type, const ::std::vector<unsigned int>& iterations, ParameterMappings& bound_tts)
+InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type type)
 {
     Token   tok;
     switch(type)
     {
     case MacroPatEnt::PAT_TOKEN:
-        BUG(lex.getPosition(), "");
+        BUG(lex.getPosition(), "Encountered PAT_TOKEN when handling capture");
     case MacroPatEnt::PAT_LOOP:
-        BUG(lex.getPosition(), "");
+        BUG(lex.getPosition(), "Encountered PAT_LOOP when handling capture");
     
     case MacroPatEnt::PAT_TT:
-        DEBUG("TT");
         if( GET_TOK(tok, lex) == TOK_EOF )
             throw ParseError::Unexpected(lex, TOK_EOF);
         else
             PUTBACK(tok, lex);
-        bound_tts.insert( index, iterations, InterpolatedFragment( Parse_TT(lex, false) ) );
-        break;
+        return InterpolatedFragment( Parse_TT(lex, false) );
     case MacroPatEnt::PAT_PAT:
-        bound_tts.insert( index, iterations, InterpolatedFragment( Parse_Pattern(lex, true) ) );
-        break;
+        return InterpolatedFragment( Parse_Pattern(lex, true) );
     case MacroPatEnt::PAT_TYPE:
-        bound_tts.insert( index, iterations, InterpolatedFragment( Parse_Type(lex) ) );
-        break;
+        return InterpolatedFragment( Parse_Type(lex) );
     case MacroPatEnt::PAT_EXPR:
-        bound_tts.insert( index, iterations, InterpolatedFragment( InterpolatedFragment::EXPR, Parse_Expr0(lex).release() ) );
-        break;
+        return InterpolatedFragment( InterpolatedFragment::EXPR, Parse_Expr0(lex).release() );
     case MacroPatEnt::PAT_STMT:
-        bound_tts.insert( index, iterations, InterpolatedFragment( InterpolatedFragment::STMT, Parse_Stmt(lex).release() ) );
-        break;
+        return InterpolatedFragment( InterpolatedFragment::STMT, Parse_Stmt(lex).release() );
     case MacroPatEnt::PAT_PATH:
-        bound_tts.insert( index, iterations, InterpolatedFragment( Parse_Path(lex, PATH_GENERIC_TYPE) ) );    // non-expr mode
-        break;
+        return InterpolatedFragment( Parse_Path(lex, PATH_GENERIC_TYPE) );    // non-expr mode
     case MacroPatEnt::PAT_BLOCK:
-        bound_tts.insert( index, iterations, InterpolatedFragment( InterpolatedFragment::BLOCK, Parse_ExprBlockNode(lex).release() ) );
-        break;
+        return InterpolatedFragment( InterpolatedFragment::BLOCK, Parse_ExprBlockNode(lex).release() );
     case MacroPatEnt::PAT_META:
-        bound_tts.insert( index, iterations, InterpolatedFragment( Parse_MetaItem(lex) ) );
-        break;
+        return InterpolatedFragment( Parse_MetaItem(lex) );
     case MacroPatEnt::PAT_ITEM: {
         assert( lex.parse_state().module );
         const auto& cur_mod = *lex.parse_state().module;
-        bound_tts.insert( index, iterations, InterpolatedFragment( Parse_Mod_Item_S(lex, cur_mod.m_file_info, cur_mod.path(), AST::MetaItems{}) ) );
+        return InterpolatedFragment( Parse_Mod_Item_S(lex, cur_mod.m_file_info, cur_mod.path(), AST::MetaItems{}) );
         } break;
     case MacroPatEnt::PAT_IDENT:
         // TODO: Any reserved word is also valid as an ident
@@ -725,62 +716,9 @@ void Macro_HandlePatternCap(TokenStream& lex, unsigned int index, MacroPatEnt::T
             ;
         else
             CHECK_TOK(tok, TOK_IDENT);
-        bound_tts.insert( index, iterations, InterpolatedFragment( TokenTree(lex.getHygiene(), tok) ) );
-        break;
+        return InterpolatedFragment( TokenTree(lex.getHygiene(), tok) );
     }
-}
-bool Macro_HandlePattern(TokenStream& lex, const MacroPatEnt& pat, ::std::vector<unsigned int>& iterations, ParameterMappings& bound_tts)
-{
-    TRACE_FUNCTION_F("iterations = " << iterations);
-    Token   tok;
-    
-    switch(pat.type)
-    {
-    case MacroPatEnt::PAT_TOKEN:
-        DEBUG("Token " << pat.tok);
-        GET_CHECK_TOK(tok, lex, pat.tok.type());
-        break;
-    case MacroPatEnt::PAT_LOOP:
-    //case MacroPatEnt::PAT_OPTLOOP:
-        {
-        unsigned int match_count = 0;
-        DEBUG("Loop");
-        iterations.push_back(0);
-        for(;;)
-        {
-            if( ! Macro_TryPattern(lex, pat.subpats[0]) )
-            {
-                DEBUG("break");
-                break;
-            }
-            for( unsigned int i = 0; i < pat.subpats.size(); i ++ )
-            {
-                if( !Macro_HandlePattern(lex, pat.subpats[i], iterations, bound_tts) ) {
-                    DEBUG("Ent " << i << " failed");
-                    return false;
-                }
-            }
-            match_count += 1;
-            iterations.back() += 1;
-            DEBUG("succ");
-            if( pat.tok.type() != TOK_NULL )
-            {
-                if( GET_TOK(tok, lex) != pat.tok.type() )
-                {
-                    lex.putback( mv$(tok) );
-                    break;
-                }
-            }
-        }
-        iterations.pop_back();
-        DEBUG("Done (" << match_count << " matches)");
-        break; }
-    
-    default:
-        Macro_HandlePatternCap(lex, pat.name_index, pat.type, iterations, bound_tts);
-        break;
-    }
-    return true;
+    throw "";
 }
 
 /// Parse the input TokenTree according to the `macro_rules!` patterns and return a token stream of the replacement
@@ -813,13 +751,26 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
     TRACE_FUNCTION;
     Span    sp;// = input.span();
     
+    struct Capture {
+        unsigned int    binding_idx;
+        ::std::vector<unsigned int> iterations;
+        unsigned int    cap_idx;
+    };
+    struct ActiveArm {
+        unsigned int    index;
+        ::std::vector<Capture>  captures;
+        MacroPatternStream  stream;
+    };
     // - List of active rules (rules that haven't yet failed)
-    ::std::vector< ::std::pair<unsigned, MacroPatternStream> > active_arms;
+    ::std::vector< ActiveArm > active_arms;
     active_arms.reserve( rules.m_rules.size() );
     for(unsigned int i = 0; i < rules.m_rules.size(); i ++)
     {
-        active_arms.push_back( ::std::make_pair(i, MacroPatternStream(rules.m_rules[i].m_pattern)) );
+        active_arms.push_back( ActiveArm { i, {}, MacroPatternStream(rules.m_rules[i].m_pattern) } );
     }
+    
+    // - List of captured values
+    ::std::vector<InterpolatedFragment> captures;
     
     TTStreamO   lex( mv$(input) );
     SET_MODULE(lex, mod);
@@ -830,18 +781,18 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
         ::std::vector<SimplePatEnt> arm_pats;
         for(auto& arm : active_arms)
         {
-            auto idx = arm.first;
+            auto idx = arm.index;
             SimplePatEnt pat;
             // Consume all If* rules 
             do
             {
-                pat = arm.second.next();
+                pat = arm.stream.next();
                 TU_IFLET( SimplePatEnt, pat, IfPat, e,
                     DEBUG(idx << " IfPat(" << (e.is_equal ? "==" : "!=") << " ?" << e.type << ")");
                     if( Macro_TryPatternCap(lex, e.type) == e.is_equal )
                     {
                         DEBUG("- Succeeded");
-                        arm.second.if_succeeded();
+                        arm.stream.if_succeeded();
                     }
                 )
                 else TU_IFLET( SimplePatEnt, pat, IfTok, e,
@@ -850,7 +801,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                     if( (tok == e.tok) == e.is_equal )
                     {
                         DEBUG("- Succeeded");
-                        arm.second.if_succeeded();
+                        arm.stream.if_succeeded();
                     }
                     lex.putback( mv$(tok) );
                 )
@@ -879,7 +830,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
         // 2. Prune imposible arms
         for(unsigned int i = 0, j = 0; i < arm_pats.size(); )
         {
-            auto idx = active_arms[i].first;
+            auto idx = active_arms[i].index;
             const auto& pat = arm_pats[i];
             bool fail = false;
             
@@ -902,7 +853,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                 )
             )
             if( fail ) {
-                DEBUG("- Failed arm " << active_arms[i].first);
+                DEBUG("- Failed arm " << active_arms[i].index);
                 arm_pats.erase( arm_pats.begin() + i );
                 active_arms.erase( active_arms.begin() + i );
             }
@@ -966,7 +917,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                     const auto& e = pat.as_ExpectPat();
                     if( e.type == MacroPatEnt::PAT_IDENT )
                     {
-                        const auto& next = active_arms[i].second.peek();
+                        const auto& next = active_arms[i].stream.peek();
                         TU_MATCHA( (next), (ne),
                         (IfPat, TODO(sp, "Handle IfPat following a conflicting :ident");),
                         (IfTok, TODO(sp, "IfTok following a conflicting :ident");),
@@ -1019,8 +970,8 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
             {
                 if( active_pat.tag() != arm_pats[i].tag() ) {
                     ERROR(lex.getPosition(), E0000, "Incompatible macro arms "
-                        << "- " << active_arms[0].first << " SimplePatEnt::" << active_pat.tag_str()
-                        << " vs " << active_arms[i].first <<  " SimplePatEnt::" << arm_pats[i].tag_str()
+                        << "- " << active_arms[0].index << " SimplePatEnt::" << active_pat.tag_str()
+                        << " vs " << active_arms[i].index<<  " SimplePatEnt::" << arm_pats[i].tag_str()
                         );
                 }
                 TU_MATCH( SimplePatEnt, (active_pat, arm_pats[i]), (e1, e2),
@@ -1033,9 +984,6 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                     // Can fail, as :expr and :stmt overlap in their trigger set
                     if( e1.type != e2.type ) {
                         ERROR(lex.getPosition(), E0000, "Incompatible macro arms - mismatched patterns " << e1.type << " and " << e2.type);
-                    }
-                    if( e1.idx != e2.idx ) {
-                        ERROR(lex.getPosition(), E0000, "Incompatible macro arms - mismatched pattern bindings " << e1.idx << " and " << e2.idx);
                     }
                     ),
                 (End,
@@ -1051,11 +999,16 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                     ERROR(lex.getPosition(), E0000, "Unexpected " << tok << ", expected TOK_EOF");
                 }
                 // NOTE: There can be multiple arms active, take the first.
-                return active_arms[0].first;
+                for(const auto& cap : active_arms[0].captures)
+                {
+                    bound_tts.insert( cap.binding_idx, cap.iterations, mv$(captures[cap.cap_idx]) );
+                }
+                return active_arms[0].index;
                 ),
             (IfPat, BUG(sp, "IfPat unexpected here");),
             (IfTok, BUG(sp, "IfTok unexpected here");),
             (ExpectTok,
+                BUG(sp, "ExpectTok should have been handled already");
                 ),
             (ExpectPat,
                 struct H {
@@ -1073,35 +1026,16 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                     }
                 };
                 
-                // Use the shortest (and ensure that it's a prefix to the others) and let the capture code move caps around when needed
-                const auto* longest = &active_arms[0].second.get_loop_iters();
-                const auto* shortest = longest;
-                for( unsigned int i = 1; i < active_arms.size(); i ++ ) {
-                    const auto& iters2 = active_arms[i].second.get_loop_iters();
-                    // If this arm has a deeper tree,
-                    if( iters2.size() > longest->size() ) {
-                        // The existing longest must be a prefix to this
-                        if( !H::is_prefix(*longest, iters2) ) {
-                            TODO(sp, "Handle ExpectPat where iteration counts aren't prefixes - [" << *longest << "] vs [" << iters2 << "]");
-                        }
-                        longest = &iters2;
-                    }
-                    else {
-                        // Keep track of the shortest
-                        if( iters2.size() < shortest->size() ) {
-                            shortest = &iters2;
-                        }
-                        
-                        // This must be a prefix to the longest
-                        if( !H::is_prefix(iters2, *longest) ) {
-                            TODO(sp, "Handle ExpectPat where iteration counts aren't prefixes - [" << *longest << "] vs [" << iters2 << "]");
-                        }
-                    }
-                }
+                auto cap = Macro_HandlePatternCap(lex, e.type);
                 
-                // Use the shallowest iteration state
-                // TODO: All other should be on the first iteration.
-                Macro_HandlePatternCap(lex, e.idx, e.type,  *shortest,  bound_tts);
+                unsigned int cap_idx = captures.size();
+                captures.push_back( mv$(cap) );
+                for(unsigned int i = 0; i < active_arms.size(); i ++)
+                {
+                    auto& arm = active_arms[i];
+                    const auto& pat_e = arm_pats[i].as_ExpectPat();
+                    arm.captures.push_back( Capture { pat_e.idx, arm.stream.get_loop_iters(), cap_idx } );
+                }
                 )
             )
         }
