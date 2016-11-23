@@ -535,6 +535,10 @@ void Resolve_Index_Module_Normalise_Path_ext(const ::AST::Crate& crate, const Sp
         if( item_ptr->is_Import() ) {
             const auto& e = item_ptr->as_Import();
             const auto& ec = crate.m_extern_crates.at( e.path.m_crate_name );
+            if( e.path.m_components.size() == 0 ) {
+                hmod = &ec.m_hir->m_root_module;
+                continue ;
+            }
             item_ptr = &ec.m_hir->get_typeitem_by_path(sp, e.path, true);    // ignore_crate_name=true
         }
         TU_MATCH_DEF(::HIR::TypeItem, (*item_ptr), (e),
