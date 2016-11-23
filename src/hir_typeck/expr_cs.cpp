@@ -194,7 +194,7 @@ struct Context
     void add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type);
     void add_binding_inner(const Span& sp, const ::HIR::PatternBinding& pb, ::HIR::TypeRef type);
     
-    void add_var(unsigned int index, const ::std::string& name, ::HIR::TypeRef type);
+    void add_var(const Span& sp, unsigned int index, const ::std::string& name, ::HIR::TypeRef type);
     const ::HIR::TypeRef& get_var(const Span& sp, unsigned int idx) const;
     
     // - Add a revisit entry
@@ -3355,13 +3355,13 @@ void Context::add_binding_inner(const Span& sp, const ::HIR::PatternBinding& pb,
     switch( pb.m_type )
     {
     case ::HIR::PatternBinding::Type::Move:
-        this->add_var( pb.m_slot, pb.m_name, mv$(type) );
+        this->add_var( sp, pb.m_slot, pb.m_name, mv$(type) );
         break;
     case ::HIR::PatternBinding::Type::Ref:
-        this->add_var( pb.m_slot, pb.m_name, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(type)) );
+        this->add_var( sp, pb.m_slot, pb.m_name, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(type)) );
         break;
     case ::HIR::PatternBinding::Type::MutRef:
-        this->add_var( pb.m_slot, pb.m_name, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, mv$(type)) );
+        this->add_var( sp, pb.m_slot, pb.m_name, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, mv$(type)) );
         break;
     }
 }
@@ -3943,12 +3943,18 @@ void Context::possible_equate_type_disable(unsigned int ivar_index, bool is_to) 
     }
 }
 
-void Context::add_var(unsigned int index, const ::std::string& name, ::HIR::TypeRef type) {
+void Context::add_var(const Span& sp, unsigned int index, const ::std::string& name, ::HIR::TypeRef type) {
     DEBUG("(" << index << " " << name << " : " << type << ")");
     assert(index != ~0u);
     if( m_bindings.size() <= index )
         m_bindings.resize(index+1);
-    m_bindings[index] = Binding { name, mv$(type) };
+    if( m_bindings[index].name == "" ) {
+        m_bindings[index] = Binding { name, mv$(type) };
+    }
+    else {
+        ASSERT_BUG(sp, m_bindings[index].name == name, "");
+        this->equate_types(sp, m_bindings[index].ty, type);
+    }
 }
 
 const ::HIR::TypeRef& Context::get_var(const Span& sp, unsigned int idx) const {
