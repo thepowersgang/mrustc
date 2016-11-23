@@ -5130,6 +5130,7 @@ namespace {
                 return context.m_ivars.types_equal(a, b);
             }
             
+            // TODO: `can_unsize_to`
             static bool can_coerce_to(const Context& context, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src) {
                 if( dst.m_data.is_Infer() )
                     return false;
@@ -5368,7 +5369,36 @@ namespace {
                 return DedupKeep::Both;
                 });
             
-            // TODO: If there is a type that appears on both sides, pick it?
+            
+            // If there's one option for both desination types, and nothing for the source ...
+            if( ivar_ent.types_coerce_to.size() == 1 && ivar_ent.types_unsize_to.size() == 1 && ivar_ent.types_coerce_from.empty() && ivar_ent.types_unsize_from.empty() )
+            {
+                // And the coercion can unsize to the unsize, pick the coercion (it's valid, the other way around isn't)
+                // TODO: Use a `can_unsize_to` functon instead (that handles Unsize as well as Deref)
+                if( H::type_derefs_from(sp, context, ivar_ent.types_unsize_to[0], ivar_ent.types_coerce_to[0]) )
+                {
+                    const auto& new_ty = ivar_ent.types_coerce_to[0];
+                    DEBUG("- IVar " << ty_l << " = " << new_ty << " (unsize to)");
+                    context.equate_types(sp, ty_l, new_ty);
+                    ivar_ent.reset();
+                    return ;
+                }
+            }
+            #if 0
+            // If there's only one coerce and unsize from, ...
+            if( ivar_ent.types_coerce_from.size() == 1 && ivar_ent.types_unsize_from.size() == 1 && ivar_ent.types_coerce_to.empty() && ivar_ent.types_unsize_to.empty() )
+            {
+                // and if the coerce can unsize to the unsize target.
+                if( H::can_coerce_to(context, ivar_ent.types_unsize_from[0], ivar_ent.types_coerce_from[0]) )
+                {
+                    const auto& new_ty = ivar_ent.types_coerce_from[0];
+                    DEBUG("- IVar " << ty_l << " = " << new_ty << " (coerce from)");
+                    context.equate_types(sp, ty_l, new_ty);
+                    ivar_ent.reset();
+                    return ;
+                }
+            }
+            #endif
             
             // HACK: Merge into a single lists
             ::std::vector< ::HIR::TypeRef>  types_from_o;
