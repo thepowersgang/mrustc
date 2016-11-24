@@ -9,6 +9,7 @@
 #include <ast/ast.hpp>
 #include <ast/expr.hpp>
 #include <main_bindings.hpp>
+#include <hir/hir.hpp>  // ABI_RUST - TODO: Move elsewhere?
 #include <fstream>
 
 #include <cpp_unpack.h>
@@ -1083,8 +1084,12 @@ void RustPrinter::handle_function(bool is_pub, const ::std::string& name, const 
 {
     m_os << indent();
     m_os << (is_pub ? "pub " : "");
-    // TODO: Unsafe
-    // TODO: Const
+    if( f.is_const() )
+        m_os << "const ";
+    if( f.is_unsafe() )
+        m_os << "unsafe ";
+    if( f.abi() != ABI_RUST )
+        m_os << "extern \"" << f.abi() << "\" ";
     m_os << "fn " << name;
     print_params(f.params());
     m_os << "(";

@@ -1163,7 +1163,7 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::M
     }
     PUTBACK(tok, lex);
     
-    AST::ExternBlock    rv { mv$(abi) };
+    AST::ExternBlock    rv { abi };
     
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
@@ -1189,8 +1189,8 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::M
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             auto name = mv$(tok.str());
             // parse function as prototype
-            // - no self, "safe" and not const
-            auto i = ::AST::Item( Parse_FunctionDef(lex, abi, false, true,  false,false) );
+            // - no self, is prototype, is unsafe and not const
+            auto i = ::AST::Item( Parse_FunctionDef(lex, abi, false, true,  true,false) );
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
             
             i.attrs = mv$(meta_items);
