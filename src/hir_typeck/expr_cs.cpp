@@ -4264,6 +4264,11 @@ namespace {
                     return false;
                 }
                 
+                if( best_impl.has_magic_params() ) {
+                    DEBUG("Defer as there were magic parameters");
+                    return false;
+                }
+                
                 // TODO: Get a better way of equating these that doesn't require getting copies of the impl's types
                 context.equate_types(sp, ty_src, best_impl.get_impl_type());
                 auto args = best_impl.get_trait_params();
