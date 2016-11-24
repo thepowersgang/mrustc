@@ -884,6 +884,8 @@ bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRe
         return types_equal(*le.m_rettype, *re.m_rettype);
         ),
     (Function,
+        if( le.is_unsafe != re.is_unsafe || le.m_abi != re.m_abi )
+            return false;
         if( !type_list_equal(*this, le.m_arg_types, re.m_arg_types) )
             return false;
         return types_equal(*le.m_rettype, *re.m_rettype);

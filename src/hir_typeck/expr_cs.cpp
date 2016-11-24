@@ -4514,9 +4514,6 @@ namespace {
             }
             ),
         (Function,
-            // NOTE: Functions don't coerce (TODO: They could lose the origin marker?)
-            context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
-            return true;
             ),
         (Closure,
             // TODO: Can closures coerce to anything?
@@ -4696,8 +4693,32 @@ namespace {
             }
             ),
         (Function,
-            // TODO: Could capture-less closures coerce to fn() types?
-            context.equate_types(sp, ty_dst, ty_src);
+            TU_IFLET( ::HIR::TypeRef::Data, ty_src.m_data, Function, r_e,
+                if(l_e.m_abi != r_e.m_abi && l_e.is_unsafe == true && r_e.is_unsafe == false ) {
+                    // LHS is unsafe, RHS is not - Insert a cast
+                    
+                    auto ty_dst_new = ty_src.clone();
+                    ty_dst_new.m_data.as_Function().is_unsafe = true;
+                    context.equate_types(sp, ty_dst, ty_dst_new);
+                    
+                    // Add cast down
+                    auto span = node_ptr->span();
+                    node_ptr->m_res_type = ty_src.clone();
+                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), ty_dst_new.clone() ));
+                    node_ptr->m_res_type = mv$(ty_dst_new);
+                    
+                    context.m_ivars.mark_change();
+                    return true;
+                }
+                context.equate_types(sp, ty_dst, ty_src);
+            )
+            else TU_IFLET( ::HIR::TypeRef::Data, ty_src.m_data, Closure, r_e,
+                // TODO: Could capture-less closures coerce to fn() types?
+                context.equate_types(sp, ty_dst, ty_src);
+            )
+            else {
+                context.equate_types(sp, ty_dst, ty_src);
+            }
             return true;
             ),
         (Closure,
