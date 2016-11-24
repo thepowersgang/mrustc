@@ -728,9 +728,10 @@ namespace {
             const auto& val_type = node.m_value->m_res_type;
 
             {
-                auto _ = this->push_inner_coerce_scoped(false);
+                auto _ = this->push_inner_coerce_scoped(true);
                 this->context.add_ivars(node.m_value->m_res_type);
-                // TODO: If a coercion point is placed here, it will allow `match &string { "..." ... }`
+                
+                // TODO: If a coercion point (and ivar for the value) is placed here, it will allow `match &string { "..." ... }`
                 node.m_value->visit( *this );
             }
             
