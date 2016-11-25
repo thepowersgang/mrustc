@@ -2,7 +2,6 @@ TODO:
 - Implement asm! macro fully
 - Get all run-pass and run-fail tests passing resolve
  - Lots of fixes to do here
- - Including a quirk in lookup for `<Foo>::Bar` searching traits
 - "Compile" rustc
 - Audit TODOs in codebase
 - MIR Optimisations
@@ -12,6 +11,9 @@ TODO:
 - HIR Optimisation (remove dead code in `if true/if false` branches)
 - Basic codegen such that `hello.rs` runs
 - Convert enum variants to point to structs for the data type
+ - Four types of variants: Unit, Value, Tuple1, Composite
+  - TODO: Have value enums be a different structure to data enums
+  - Tuple1 is a special case to reduce the cost of Some/Ok/Err/...
  - This may have to wait for a rustc RFC? (or can hide the structs for now)
 - Clean up Span code to correctly handle nested spans
 - Clean up AST
@@ -19,3 +21,4 @@ TODO:
 - Split arg patterns and arg types up for cleaner serialisation
  - Could be a good idea to do as part of changing HIR::TraitImpl to only contain the impl data
  - May not be too useful due to argument monomorphisation.
+- Optimise typecheck.
