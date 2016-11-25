@@ -21,4 +21,5 @@ install:
 # Tests! (check that they parse, and keep going)
 script:
  - make test
+ - make output/librustc_typeck.hir output/librustc_mir.hir output/librustc_trans.hir
 # - make rust_tests-run-pass RUST_TESTS_FINAL_STAGE=expand -k
