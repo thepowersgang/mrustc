@@ -5110,8 +5110,9 @@ namespace {
             }
             
             // Types are equal from the view of being coercion targets
-            // - Inequality here means that the targets could coexist (e.g. &[u8; N] and &[u8])
+            // - Inequality here means that the targets could coexist in the list (e.g. &[u8; N] and &[u8])
             // - Equality means that they HAVE to be equal (even if they're not currently due to ivars)
+            //  - E.g. &mut HashMap<_1> and &mut HashMap<T> would unify
             static bool equal_to(const Context& context, const ::HIR::TypeRef& ia, const ::HIR::TypeRef& ib) {
                 const auto& a = context.m_ivars.get_type(ia);
                 const auto& b = context.m_ivars.get_type(ib);
@@ -5134,6 +5135,39 @@ namespace {
                         ),
                     (Infer,
                         return false;
+                        ),
+                    (Path,
+                        #if 0
+                        if( e_ia.binding.tag() != e_ib.binding.tag() )
+                            return false;
+                        const ::HIR::TraitMarkings* tm = nullptr;
+                        TU_MATCHA( (e_ia.binding, e_ib.binding), (pbe_a, pbe_b),
+                        (Unbound,   return false; ),
+                        (Opaque,
+                            // TODO: Check bounds?
+                            return false;
+                            ),
+                        (Struct,
+                            if(pbe_a != pbe_b)  return false;
+                            tm = &pbe_a->m_markings;
+                            ),
+                        (Union,
+                            if(pbe_a != pbe_b)  return false;
+                            tm = &pbe_a->m_markings;
+                            ),
+                        (Enum,
+                            if(pbe_a != pbe_b)  return false;
+                            tm = &pbe_a->m_markings;
+                            )
+                        )
+                        assert(tm);
+                        if( !tm->can_unsize )
+                            return true;
+                        // It _could_ unsize, so let it coexist
+                        return false;
+                        #else
+                        return context.m_ivars.types_equal(ia, ib);
+                        #endif
                         ),
                     (Slice,
                         const auto& ia2 = context.m_ivars.get_type(*e_ia.inner);

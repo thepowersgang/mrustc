@@ -727,11 +727,14 @@ namespace {
             serialise_generics(ta.m_params);
             serialise_type(ta.m_type);
         }
-        void serialise(const ::HIR::Enum& ta)
+        void serialise(const ::HIR::Enum& item)
         {
-            serialise_generics(ta.m_params);
-            m_out.write_tag( static_cast<int>(ta.m_repr) );
-            serialise_vec( ta.m_variants );
+            serialise_generics(item.m_params);
+            m_out.write_tag( static_cast<int>(item.m_repr) );
+            
+            serialise_vec( item.m_variants );
+            
+            serialise(item.m_markings);
         }
         void serialise(const ::HIR::Enum::Variant& v)
         {
@@ -750,6 +753,21 @@ namespace {
                 serialise_vec(e);
                 )
             )
+        }
+        
+        void serialise(const ::HIR::TraitMarkings& m)
+        {
+            uint8_t bitflag_1 = 0;
+            #define BIT(i,fld)  if(fld) bitflag_1 |= 1 << (i);
+            BIT(0, m.can_coerce)
+            BIT(1, m.can_unsize)
+            BIT(2, m.has_a_deref)
+            BIT(3, m.is_always_unsized)
+            BIT(4, m.is_always_sized)
+            BIT(5, m.is_copy)
+            #undef BIT
+            m_out.write_u8(bitflag_1);
+            // TODO: auto_impls
         }
 
         void serialise(const ::HIR::Struct& item)
@@ -770,6 +788,8 @@ namespace {
                 serialise_vec(e);
                 )
             )
+            
+            serialise(item.m_markings);
         }
         void serialise(const ::HIR::Union& item)
         {
@@ -777,7 +797,10 @@ namespace {
             
             serialise_generics(item.m_params);
             m_out.write_tag( static_cast<int>(item.m_repr) );
+            
             serialise_vec(item.m_variants);
+            
+            serialise(item.m_markings);
         }
         void serialise(const ::HIR::Trait& item)
         {

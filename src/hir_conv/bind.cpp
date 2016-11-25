@@ -131,14 +131,10 @@ namespace {
         public ::HIR::Visitor
     {
         const ::HIR::Crate& m_crate;
-        const ::HIR::SimplePath&    m_lang_CoerceUnsized;
-        const ::HIR::SimplePath&    m_lang_Deref;
 
     public:
         Visitor(const ::HIR::Crate& crate):
-            m_crate(crate),
-            m_lang_CoerceUnsized(m_crate.get_lang_item_path_opt("coerce_unsized")),
-            m_lang_Deref(m_crate.get_lang_item_path_opt("coerce_unsized"))
+            m_crate(crate)
         {}
         
         void visit_trait_path(::HIR::TraitPath& p) override
@@ -486,44 +482,6 @@ namespace {
                 ExprVisitor v { *this };
                 (*expr).visit(v);
             }
-        }
-        
-        void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
-        {
-            ::HIR::Visitor::visit_trait_impl(trait_path, impl);
-            
-            TU_IFLET(::HIR::TypeRef::Data, impl.m_type.m_data, Path, te,
-                ::HIR::TraitMarkings*   markings = nullptr;
-                TU_MATCHA( (te.binding), (tpb),
-                (Unbound,
-                    // Wut?
-                    ),
-                (Opaque,
-                    // Just ignore, it's a wildcard... wait? is that valid?
-                    ),
-                (Struct,
-                    markings = &const_cast<HIR::Struct*>(tpb)->m_markings;
-                    ),
-                (Union,
-                    markings = &const_cast<HIR::Union*>(tpb)->m_markings;
-                    ),
-                (Enum,
-                    markings = &const_cast<HIR::Enum*>(tpb)->m_markings;
-                    )
-                )
-                
-                if( markings )
-                {
-                    // CoerceUnsized - set flag to avoid needless searches later
-                    if( trait_path == m_lang_CoerceUnsized ) {
-                        markings->can_coerce = true;
-                    }
-                    // Deref - set flag to avoid needless searches later
-                    else if( trait_path == m_lang_Deref ) {
-                        markings->has_a_deref = true;
-                    }
-                }
-            )
         }
     };
 }

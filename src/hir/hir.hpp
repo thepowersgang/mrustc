@@ -135,6 +135,8 @@ struct TraitMarkings
 {
     /// There is at least one CoerceUnsized impl for this type
     bool    can_coerce = false;
+    /// There is at least one CoerceUnsized impl for this type
+    bool    can_unsize = false;
     
     /// Indicates that there is at least one Deref impl
     bool    has_a_deref = false;

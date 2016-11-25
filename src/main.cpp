@@ -45,6 +45,7 @@ void init_debug_list()
     g_debug_disable_map.insert( "Resolve Type Aliases" );
     g_debug_disable_map.insert( "Resolve Bind" );
     g_debug_disable_map.insert( "Resolve UFCS paths" );
+    g_debug_disable_map.insert( "Resolve HIR Markings" );
     g_debug_disable_map.insert( "Constant Evaluate" );
     
     g_debug_disable_map.insert( "Typecheck Outer");
@@ -308,6 +309,9 @@ int main(int argc, char *argv[])
             });
         CompilePhaseV("Resolve UFCS paths", [&]() {
             ConvertHIR_ResolveUFCS(*hir_crate);
+            });
+        CompilePhaseV("Resolve HIR Markings", [&]() {
+            ConvertHIR_Markings(*hir_crate);
             });
         CompilePhaseV("Constant Evaluate", [&]() {
             ConvertHIR_ConstantEvaluate(*hir_crate);
