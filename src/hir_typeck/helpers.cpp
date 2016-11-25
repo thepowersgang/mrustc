@@ -3179,9 +3179,11 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
         // TODO: Update `unconditional_allow_move` based on the current type.
         const auto& ty = this->m_ivars.get_type(*current_ty);
         if( ty.m_data.is_Infer() ) {
+            DEBUG("- Ivar, pausing");
             return ~0u;
         }
         if(ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Unbound()) {
+            DEBUG("- Unbound type path " << ty << ", pausing");
             return ~0u;
         }
         
@@ -3231,6 +3233,7 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
     // If there are ivars within the type, don't error (yet)
     if( this->m_ivars.type_contains_ivars(top_ty) )
     {
+        DEBUG("- Contains ivars, pausing");
         return ~0u;
     }
     

@@ -418,6 +418,11 @@ namespace {
                     upper_visitor(uv)
                 {}
                 
+                void visit_generic_path(::HIR::Visitor::PathContext pc, ::HIR::GenericPath& p)
+                {
+                    upper_visitor.visit_generic_path(p, pc);
+                }
+                
                 void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override
                 {
                     upper_visitor.visit_type(node_ptr->m_res_type);
