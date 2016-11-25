@@ -282,7 +282,27 @@ namespace {
         }
         void visit(::HIR::ExprNode_CallValue& node) override
         {
-            auto _ = push_usage( ::HIR::ValueUsage::Move );
+            // TODO: Different usage based on trait.
+            ::HIR::ValueUsage   vu = ::HIR::ValueUsage::Borrow;
+            switch( node.m_trait_used )
+            {
+            case ::HIR::ExprNode_CallValue::TraitUsed::Unknown:
+                //TODO(node.span(), "Annotate usage when CallValue trait is unknown");
+                // - Can only happen when the callee is a closure, could do detectection of closure class in this pass?
+                // - Assume Move for now.
+                vu = ::HIR::ValueUsage::Move;
+                break;
+            case ::HIR::ExprNode_CallValue::TraitUsed::Fn:
+                vu = ::HIR::ValueUsage::Borrow;
+                break;
+            case ::HIR::ExprNode_CallValue::TraitUsed::FnMut:
+                vu = ::HIR::ValueUsage::Mutate;
+                break;
+            case ::HIR::ExprNode_CallValue::TraitUsed::FnOnce:
+                vu = ::HIR::ValueUsage::Move;
+                break;
+            }
+            auto _ = push_usage( vu );
             
             this->visit_node_ptr(node.m_value);
             for( auto& val : node.m_args )

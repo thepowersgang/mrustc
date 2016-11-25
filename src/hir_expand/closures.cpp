@@ -595,16 +595,19 @@ namespace {
                 case ::HIR::ValueUsage::Unknown:
                     BUG(sp, "ValueUsage::Unkown on " << binding_idx);
                 case ::HIR::ValueUsage::Borrow:
+                    DEBUG("Capture by & _#" << binding_idx << " : " << binding_type);
                     bt = ::HIR::BorrowType::Shared;
                     capture_nodes.push_back(NEWNODE( ::HIR::TypeRef::new_borrow(bt, cap_ty.clone()), Borrow,  sp, bt, mv$(val_node) ));
                     ty_mono = ::HIR::TypeRef::new_borrow(bt, mv$(ty_mono));
                     break;
                 case ::HIR::ValueUsage::Mutate:
+                    DEBUG("Capture by &mut _#" << binding_idx << " : " << binding_type);
                     bt = ::HIR::BorrowType::Unique;
                     capture_nodes.push_back(NEWNODE( ::HIR::TypeRef::new_borrow(bt, cap_ty.clone()), Borrow,  sp, bt, mv$(val_node) ));
                     ty_mono = ::HIR::TypeRef::new_borrow(bt, mv$(ty_mono));
                     break;
                 case ::HIR::ValueUsage::Move:
+                    DEBUG("Capture by value _#" << binding_idx << " : " << binding_type);
                     capture_nodes.push_back( mv$(val_node) );
                     break;
                 }
@@ -925,16 +928,18 @@ namespace {
             else {
                 it->second = ::std::max(it->second, usage);
             }
-            DEBUG("Captured " << slot << " - " << m_variable_types.at(slot));
             
+            const char* cap_type_name = "?";
             switch( usage )
             {
             case ::HIR::ValueUsage::Unknown:
                 BUG(sp, "Unknown usage of variable " << slot);
             case ::HIR::ValueUsage::Borrow:
+                cap_type_name = "Borrow";
                 closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Shared);
                 break;
             case ::HIR::ValueUsage::Mutate:
+                cap_type_name = "Mutate";
                 closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Mut);
                 break;
             case ::HIR::ValueUsage::Move:
@@ -942,10 +947,12 @@ namespace {
                 //    closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Shared);
                 //}
                 //else {
+                    cap_type_name = "Move";
                     closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Once);
                 //}
                 break;
             }
+            DEBUG("Captured " << slot << " - " << m_variable_types.at(slot) << " :: " << cap_type_name);
         }
     };
     
