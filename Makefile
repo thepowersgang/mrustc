@@ -169,6 +169,7 @@ output/librustc_const_eval.hir: $(call fcn_extcrate, std arena syntax log rustc 
 output/librustc_plugin.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_plugin/lib.rs))
 output/librustc.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc/lib.rs))
 output/librustc_trans.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_trans/lib.rs))
+output/librustc_typeck.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_trans/lib.rs))
 
 output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc.hir output/librustc_driver.hir
 	@echo "--- [MRUSTC] $@"
