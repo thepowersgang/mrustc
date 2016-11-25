@@ -190,6 +190,10 @@ public:
             {
                 upper_visitor.visit_path(p, pc);
             }
+            void visit_generic_path(::HIR::Visitor::PathContext pc, ::HIR::GenericPath& p)
+            {
+                upper_visitor.visit_generic_path(p, pc);
+            }
             
             void visit(::HIR::ExprNode_Let& node) override
             {
