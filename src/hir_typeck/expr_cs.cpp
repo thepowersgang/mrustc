@@ -5137,7 +5137,6 @@ namespace {
                         return false;
                         ),
                     (Path,
-                        #if 0
                         if( e_ia.binding.tag() != e_ib.binding.tag() )
                             return false;
                         const ::HIR::TraitMarkings* tm = nullptr;
@@ -5165,9 +5164,6 @@ namespace {
                             return true;
                         // It _could_ unsize, so let it coexist
                         return false;
-                        #else
-                        return context.m_ivars.types_equal(ia, ib);
-                        #endif
                         ),
                     (Slice,
                         const auto& ia2 = context.m_ivars.get_type(*e_ia.inner);
