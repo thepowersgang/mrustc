@@ -247,7 +247,7 @@ size_t ReaderInner::read(void* buf, size_t len)
             m_zstream.avail_in = m_backing.gcount();
             if( m_zstream.avail_in == 0 ) {
                 m_byte_out_count += len  - m_zstream.avail_out;
-                ::std::cerr << "Out of bytes, " << m_zstream.avail_out << " needed" << ::std::endl;
+                //::std::cerr << "Out of bytes, " << m_zstream.avail_out << " needed" << ::std::endl;
                 return len - m_zstream.avail_out;
             }
             m_zstream.next_in = const_cast<unsigned char*>(m_buffer.data());
