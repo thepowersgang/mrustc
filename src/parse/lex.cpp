@@ -656,6 +656,7 @@ Token Lexer::getTokenInt()
                     }
                     else
                     {
+                        if( ch == '\n') m_line ++;
                         str += ch;
                     }
                 }
