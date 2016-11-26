@@ -22,6 +22,10 @@ public:
     TokenTree() {}
     TokenTree(TokenTree&&) = default;
     TokenTree& operator=(TokenTree&&) = default;
+    TokenTree(enum eTokenType ty):
+        m_tok( Token(ty) )
+    {
+    }
     TokenTree(Token tok):
         m_tok( ::std::move(tok) )
     {
