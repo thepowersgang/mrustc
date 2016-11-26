@@ -157,10 +157,10 @@ namespace {
                 }
                 
                 // Debugging: A view of the formatting fragment
-                //const char* s2 = s;
-                //while(*s2 && *s2 != '}')
-                //    s2 ++;
-                //auto fmt_frag_str = string_view { s, s2 };
+                const char* s2 = s;
+                while(*s2 && *s2 != '}')
+                    s2 ++;
+                auto fmt_frag_str = string_view { s, s2 };
                 
                 unsigned int index = ~0u;
                 const char* trait_name;
@@ -271,6 +271,31 @@ namespace {
                             //args.width_is_arg = false;
                         }
                     }
+                    else if( ::std::isalpha(*s) ) {
+                        // Parse an ident and if the next character is $, convert to named
+                        // - Otherwise keep the ident around for the formatter
+
+                        const char* start = s;
+                        while( isalnum(*s) || *s == '_' || (*s < 0 || *s > 127) ) {
+                            s ++;
+                        }
+                        if( *s == '$' )
+                        {
+                            ::std::string   ident { start, s };
+                            auto it = named.find(ident);
+                            if( it == named.end() )
+                                ERROR(sp, E0000, "Named argument '"<<ident<<"' not found");
+                            args.width = n_free + it->second;
+                            args.width_is_arg = true;
+                            
+                            s ++;
+                        }
+                        else {
+                            s = start;
+                        }
+                    }
+                    else {
+                    }
                     // Precision
                     if( *s == '.' ) {
                         s ++;
@@ -283,7 +308,7 @@ namespace {
                             args.prec = next_free + n_named;
                             next_free ++;
                         }
-                        else {
+                        else if( ::std::isdigit(*s) ) {
                             unsigned int val = 0;
                             while( ::std::isdigit(*s) )
                             {
@@ -301,12 +326,15 @@ namespace {
                                 //args.prec_is_arg = false;
                             }
                         }
+                        else {
+                            // Wut?
+                        }
                     }
                     
                     // Parse ident?
                     // - Lazy way is to just handle a single char and ensure that it is just a single char
                     if( s[0] != '}' && s[0] != '\0' && s[1] != '}' ) {
-                        TODO(sp, "Parse formatting fragment at \"" << s << "\" (long type)");
+                        TODO(sp, "Parse formatting fragment at \"" << fmt_frag_str << "\" (long type)");
                     }
                     
                     switch(s[0])
@@ -399,6 +427,7 @@ class CFormatArgsExpander:
         if( !format_string_np ) {
             ERROR(sp, E0000, "format_args! requires a string literal - got " << *n);
         }
+        const auto& format_string_sp = format_string_np->span();
         const auto& format_string = format_string_np->m_value;
         
         ::std::map< ::std::string, unsigned int>   named_args_index;
@@ -441,7 +470,7 @@ class CFormatArgsExpander:
         // - Parse the format string
         ::std::vector< FmtFrag> fragments;
         ::std::string   tail;
-        ::std::tie( fragments, tail ) = parse_format_string(sp, format_string,  named_args_index, free_args.size());
+        ::std::tie( fragments, tail ) = parse_format_string(format_string_sp, format_string,  named_args_index, free_args.size());
         
         bool is_simple = true;
         for(unsigned int i = 0; i < fragments.size(); i ++)
