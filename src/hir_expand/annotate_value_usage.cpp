@@ -302,9 +302,12 @@ namespace {
                 vu = ::HIR::ValueUsage::Move;
                 break;
             }
-            auto _ = push_usage( vu );
+            {
+                auto _ = push_usage( vu );
+                this->visit_node_ptr(node.m_value);
+            }
             
-            this->visit_node_ptr(node.m_value);
+            auto _ = push_usage( ::HIR::ValueUsage::Move );
             for( auto& val : node.m_args )
                 this->visit_node_ptr(val);
         }

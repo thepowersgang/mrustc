@@ -453,6 +453,7 @@ namespace {
             // --- Apply the capture set for this closure to the parent ---
             if( m_closure_stack.size() > 0 )
             {
+                DEBUG("> Apply to parent");
                 for(const auto& cap : ent.captured_vars)
                 {
                     mark_used_variable(node.span(), cap.first, cap.second);
@@ -784,6 +785,7 @@ namespace {
         {
             if( !m_closure_stack.empty() )
             {
+                TRACE_FUNCTION_F("_CallValue");
                 if( node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Unknown )
                 {
                     if( node.m_res_type.m_data.is_Closure() )

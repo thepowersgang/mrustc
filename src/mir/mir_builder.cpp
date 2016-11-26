@@ -1113,7 +1113,7 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
                     return ;
                 }
             }
-            BUG(sp, "Move out of deref with non-Copy values - &move? - " << lv);
+            BUG(sp, "Move out of deref with non-Copy values - &move? - " << lv << " : " << FMT_CB(ss, this->with_val_type(sp, lv, [&](const auto& ty){ss<<ty;});) );
             moved_lvalue(sp, *e.val);
         }
         ),
