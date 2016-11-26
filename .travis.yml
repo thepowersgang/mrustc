@@ -12,14 +12,10 @@ addons:
 
 install:
   # Build mrustc
- - CC=gcc-6 && CXX=g++-6 make
-#  # Build libstd (and hello world). Also downloads the source
-# - make test
-#  # Create the test dependencies testlibstd (and hello world). Also downloads the source
-# - make test_deps_run-pass.mk
+ - CC=gcc-6 CXX=g++-6 make
 
 # Tests! (check that they parse, and keep going)
 script:
- - make test
- - make output/librustc_typeck.hir output/librustc_mir.hir output/librustc_trans.hir
+ - make test TAIL_COUNT=2
+ - make output/librustc_typeck.hir output/librustc_mir.hir output/librustc_trans.hir output/libsyntax_ext.hir TAIL_COUNT=2
 # - make rust_tests-run-pass RUST_TESTS_FINAL_STAGE=expand -k

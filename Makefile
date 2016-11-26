@@ -15,6 +15,8 @@ EXESUF ?=
 CXX ?= g++
 V ?= @
 
+TAIL_COUNT ?= 45
+
 .SUFFIXES:
 
 # - Final stage for tests run as part of the rust_tests target.
@@ -105,7 +107,7 @@ clean:
 	$(RM) -r $(BIN) $(OBJ)
 
 
-PIPECMD ?= 2>&1 | tee $@_dbg.txt | tail -n 45 ; test $${PIPESTATUS[0]} -eq 0
+PIPECMD ?= 2>&1 | tee $@_dbg.txt | tail -n $(TAIL_COUNT) ; test $${PIPESTATUS[0]} -eq 0
 
 output/%.ast: samples/%.rs $(BIN) 
 	@mkdir -p output/
