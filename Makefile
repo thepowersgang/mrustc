@@ -163,7 +163,6 @@ output/libfmt_macros.hir: $(call fcn_extcrate, std)
 output/libproc_macro.hir: $(call fcn_extcrate, std syntax)
 output/libsyntax_ext.hir: $(call fcn_extcrate, std fmt_macros log syntax syntax_pos proc_macro rustc_errors)
 output/librustc_metadata.hir: $(call fcn_extcrate, std log syntax syntax_pos flate serialize rustc_errors syntax_ext proc_macro rustc rustc_back rustc_const_math rustc_data_structures rustc_llvm)
-output/librustc_driver.hir: $(call fcn_extcrate, arena flate getopts graphviz libc rustc rustc_back rustc_borrowck rustc_const_eval rustc_errors rustc_passes rustc_lint rustc_plugin rustc_privacy rustc_incremental rustc_metadata rustc_mir rustc_resolve rustc_save_analysis rustc_trans rustc_typeck serialize rustc_llvm log syntax syntax_ext syntax_pos)
 output/librustc_borrowck.hir: $(call fcn_extcrate, std log syntax syntax_pos rustc_errors graphviz rustc rustc_data_structures rustc_mir core)
 output/librustc_mir.hir: $(call fcn_extcrate, std log graphviz rustc rustc_data_structures rustc_back rustc_bitflags syntax syntax_pos rustc_const_math rustc_const_eval)
 output/librustc_const_eval.hir: $(call fcn_extcrate, std arena syntax log rustc rustc_back rustc_const_math rustc_data_structures rustc_errors graphviz syntax_pos serialize)
@@ -172,6 +171,7 @@ output/librustc_plugin.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCS
 output/librustc.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc/lib.rs))
 output/librustc_trans.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_trans/lib.rs))
 output/librustc_typeck.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_trans/lib.rs))
+output/librustc_driver.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_driver/lib.rs))
 
 output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc.hir output/librustc_driver.hir
 	@echo "--- [MRUSTC] $@"
