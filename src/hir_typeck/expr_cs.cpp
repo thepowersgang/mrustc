@@ -1362,9 +1362,7 @@ namespace {
                 if( !it->second.is_Function() )
                     continue ;
                 
-                if( ::std::count_if( possible_traits.begin(), possible_traits.end(), [&](const auto&x){return x.second == trait_ref.second;}) ) {
-                }
-                else {
+                if( ::std::none_of( possible_traits.begin(), possible_traits.end(), [&](const auto&x){return x.second == trait_ref.second;}) ) {
                     possible_traits.push_back( trait_ref );
                     if( trait_ref.second->m_params.m_types.size() > max_num_params )
                         max_num_params = trait_ref.second->m_params.m_types.size();
