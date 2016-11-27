@@ -5081,7 +5081,7 @@ namespace {
         ty_l_ivar.m_data.as_Infer().index = i;
         const auto& ty_l = context.m_ivars.get_type(ty_l_ivar);
         
-        if( !ty_l.m_data.is_Infer() ) {
+        if( ty_l != ty_l_ivar ) {
             DEBUG("- IVar " << i << " had possibilities, but was known to be " << ty_l);
             // Completely clear by reinitialising
             ivar_ent = Context::IVarPossible();
