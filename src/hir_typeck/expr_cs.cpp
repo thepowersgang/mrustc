@@ -947,10 +947,10 @@ namespace {
             TRACE_FUNCTION_F(&node << " ... as " << node.m_res_type);
             this->context.add_ivars( node.m_value->m_res_type );
             
+            node.m_value->visit( *this );
+            
             // TODO: Only revisit if the cast type requires inferring.
             this->context.add_revisit(node);
-            
-            node.m_value->visit( *this );
         }
         void visit(::HIR::ExprNode_Unsize& node) override
         {
@@ -964,10 +964,10 @@ namespace {
             this->context.add_ivars( node.m_value->m_res_type );
             this->context.add_ivars( node.m_index->m_res_type );
             
-            this->context.add_revisit(node);
-            
             node.m_value->visit( *this );
             node.m_index->visit( *this );
+            
+            this->context.add_revisit(node);
         }
         void visit(::HIR::ExprNode_Deref& node) override
         {
@@ -975,10 +975,10 @@ namespace {
             
             TRACE_FUNCTION_F(&node << " *...");
             this->context.add_ivars( node.m_value->m_res_type );
-            
-            this->context.add_revisit(node);
 
             node.m_value->visit( *this );
+            
+            this->context.add_revisit(node);
         }
         void visit(::HIR::ExprNode_Emplace& node) override
         {
@@ -1319,9 +1319,6 @@ namespace {
                 this->context.add_ivars( val->m_res_type );
                 node.m_arg_ivars.push_back( this->context.m_ivars.new_ivar_tr() );
             }
-            
-            // Nothing can be done until type is known
-            this->context.add_revisit(node);
 
             {
                 auto _ = this->push_inner_coerce_scoped(false);
@@ -1334,6 +1331,9 @@ namespace {
                 this->context.equate_types_coerce(val->span(), node.m_arg_ivars[i],  val);
                 val->visit( *this );
             }
+            
+            // Nothing can be done until type is known
+            this->context.add_revisit(node);
         }
         void visit(::HIR::ExprNode_CallMethod& node) override
         {
