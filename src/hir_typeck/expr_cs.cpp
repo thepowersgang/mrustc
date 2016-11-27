@@ -1376,10 +1376,6 @@ namespace {
                 node.m_trait_param_ivars.push_back( this->context.m_ivars.new_ivar() );
             }
             
-            // Resolution can't be done until lefthand type is known.
-            // > Has to be done during iteraton
-            this->context.add_revisit( node );
-            
             {
                 auto _ = this->push_inner_coerce_scoped(false);
                 node.m_value->visit( *this );
@@ -1388,6 +1384,10 @@ namespace {
             for( auto& val : node.m_args ) {
                 val->visit( *this );
             }
+            
+            // Resolution can't be done until lefthand type is known.
+            // > Has to be done during iteraton
+            this->context.add_revisit( node );
         }
         void visit(::HIR::ExprNode_Field& node) override
         {
@@ -1395,9 +1395,9 @@ namespace {
             TRACE_FUNCTION_F(&node << " (...)."<<node.m_field);
             this->context.add_ivars( node.m_value->m_res_type );
             
-            this->context.add_revisit( node );
-            
             node.m_value->visit( *this );
+            
+            this->context.add_revisit( node );
         }
         
         void visit(::HIR::ExprNode_Tuple& node) override
@@ -2626,8 +2626,10 @@ namespace {
                 for(unsigned int i = 0; i < node.m_args.size(); i ++)
                 {
                     // 1+ because it's a method call (#0 is Self)
+                    DEBUG("> ARG " << i << " : " << node.m_cache.m_arg_types[1+i]);
                     this->context.equate_types_coerce(sp, node.m_cache.m_arg_types[1+i], node.m_args[i]);
                 }
+                DEBUG("> Ret : " << node.m_cache.m_arg_types.back());
                 this->context.equate_types(sp, node.m_res_type,  node.m_cache.m_arg_types.back());
                 
                 // Add derefs
@@ -4440,27 +4442,34 @@ namespace {
                 node_ptr = NEWNODE( ty_dst.clone(), sp, _Unsize,  mv$(node_ptr), ty_dst.clone() );
                 return true;
             }
+            DEBUG("- No CoerceUnsized impl found");
         }
         
         // 1. Check that the source type can coerce
         TU_MATCH( ::HIR::TypeRef::Data, (ty_src.m_data), (e),
         (Infer,
             // If this ivar is of a primitive, equate (as primitives never coerce)
-            // TODO: InferClass::Diverge
+            // TODO: InferClass::Diverge?
             if( e.ty_class != ::HIR::InferClass::None ) {
                 context.equate_types(sp, ty_dst,  ty_src);
                 return true;
             }
-            else {
-                TU_IFLET(::HIR::TypeRef::Data, ty_dst.m_data, Infer, e2,
-                    context.possible_equate_type_coerce_to(e.index, ty_dst);
-                    context.possible_equate_type_coerce_from(e2.index, ty_src);
-                )
-                else {
-                    context.possible_equate_type_coerce_to(e.index, ty_dst);
-                    return false;
+            
+            TU_IFLET(::HIR::TypeRef::Data, ty_dst.m_data, Infer, e2,
+                
+                if( e2.ty_class != ::HIR::InferClass::None ) {
+                    context.equate_types(sp, ty_dst,  ty_src);
+                    return true;
                 }
-            }
+                
+                DEBUG("Both infer, add possibilities");
+                context.possible_equate_type_coerce_to(e.index, ty_dst);
+                context.possible_equate_type_coerce_from(e2.index, ty_src);
+                return false;
+            )
+            
+            context.possible_equate_type_coerce_to(e.index, ty_dst);
+            DEBUG("Source infer, add possibility and continue");
             ),
         (Diverge,
             return true;
@@ -4472,11 +4481,9 @@ namespace {
         (Path,
             // If there is an impl of CoerceUnsized<_> for this, don't equate (just return and wait for a while)
             if( H::type_has_coerce_path(ty_src) ) {
-                // TODO: Is unconditionally returning here a good thing?
-                //return false;
+                // - Fall through and check the destination.
             }
             else {
-                // TODO: Use the CoerceUnsized trait here
                 context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
                 return true;
             }
@@ -4539,8 +4546,6 @@ namespace {
                 context.equate_types(sp, ty_dst,  ty_src);
                 return true;
             }
-            // Can't do anything yet?
-            // - Later code can handle "only path" coercions
 
             context.possible_equate_type_coerce_from(l_e.index,  ty_src);
             DEBUG("- Infer, add possibility");
@@ -4554,19 +4559,28 @@ namespace {
             return true;
             ),
         (Path,
-            if( ! l_e.binding.is_Unbound() ) {
-                // TODO: CoerceUnsized
+            if( H::type_has_coerce_path(ty_dst) && ty_src.m_data.is_Infer() ) {
+                // If this type is coercble, and the source is _ (which means that the first check would have silently failed)
+                // - Keep the rule around until the ivar is known
+                // NOTE: This assumes that a type can only coerce to a variant of itself (which is usually true)
+                DEBUG("Can coerce and source is _, keep rule");
+                return false;
+            }
+            else if( l_e.binding.is_Unbound() ) {
+                DEBUG("Unbound path, keep rule");
+                return false;
+            }
+            else {
                 context.equate_types(sp, ty_dst, ty_src);
                 return true;
             }
             ),
         (Generic,
-            //TODO(Span(), "check_coerce - Coercion to " << ty);
+            // TODO: Determine if this generic has any CoerceUnsized impls possible.
             context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
             return true;
             ),
         (TraitObject,
-            // TODO: Can bare trait objects coerce?
             context.equate_types(sp, ty_dst,  ty_src);
             return true;
             ),
@@ -5484,6 +5498,8 @@ namespace {
             auto& types_to   = H::merge_lists(context, ivar_ent.types_coerce_to  , ivar_ent.types_unsize_to  ,  types_to_o  );
             DEBUG("   " << ty_l << " FROM={" << types_from << "}, TO={" << types_to << "}");
             
+            // TODO: If there is only a single option and it's from an Unsize, is it valid?
+            
             // Same type on both sides, pick it.
             if( types_from == types_to && types_from.size() == 1 ) {
                 const auto& new_ty = types_from[0];
@@ -5754,8 +5770,8 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             {
                 check_ivar_poss(context, i, ivar_ent);
                 // If a change happened, it can add new information that makes subsequent guesses wrong.
-                if( context.m_ivars.peek_changed() )
-                    break;
+                //if( context.m_ivars.peek_changed() )
+                //    break;
                 i ++ ;
             }
         }
