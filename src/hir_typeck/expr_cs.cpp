@@ -987,10 +987,11 @@ namespace {
             this->context.add_ivars( node.m_place->m_res_type );
             this->context.add_ivars( node.m_value->m_res_type );
             
-            this->context.add_revisit(node);
             node.m_place->visit( *this );
             auto _2 = this->push_inner_coerce_scoped(true);
             node.m_value->visit( *this );
+            
+            this->context.add_revisit(node);
         }
 
         void add_ivars_generic_path(const Span& sp, ::HIR::GenericPath& gp) {
@@ -3876,6 +3877,12 @@ void Context::equate_types_shadow(const Span& sp, const ::HIR::TypeRef& l, bool 
     (Borrow,
         this->equate_types_shadow(sp, *e.inner, is_to);
         ),
+    (Array,
+        this->equate_types_shadow(sp, *e.inner, is_to);
+        ),
+    (Slice,
+        this->equate_types_shadow(sp, *e.inner, is_to);
+        ),
     (Closure,
         for(const auto& aty : e.m_arg_types)
             this->equate_types_shadow(sp, aty, is_to);
@@ -5057,7 +5064,7 @@ namespace {
         }
     }
     
-    void check_ivar_poss(Context& context, unsigned int i, Context::IVarPossible& ivar_ent)
+    bool check_ivar_poss(Context& context, unsigned int i, Context::IVarPossible& ivar_ent)
     {
         static Span _span;
         const auto& sp = _span;
@@ -5067,7 +5074,7 @@ namespace {
             // - Clear the `force_no` flag
             ivar_ent.force_no_to = false;
             ivar_ent.force_no_from = false;
-            return ;
+            return false;
         }
         
         ::HIR::TypeRef  ty_l_ivar;
@@ -5078,7 +5085,7 @@ namespace {
             DEBUG("- IVar " << i << " had possibilities, but was known to be " << ty_l);
             // Completely clear by reinitialising
             ivar_ent = Context::IVarPossible();
-            return ;
+            return false;
         }
         
         enum class DedupKeep {
@@ -5356,29 +5363,24 @@ namespace {
             for(const auto& ty : ivar_ent.types_coerce_to)
                 if( ty.m_data.is_Primitive() ) {
                     context.equate_types(sp, ty_l, ty);
-                    ivar_ent = Context::IVarPossible();
-                    return ;
+                    return true;
                 }
             for(const auto& ty : ivar_ent.types_unsize_to)
                 if( ty.m_data.is_Primitive() ) {
                     context.equate_types(sp, ty_l, ty);
-                    ivar_ent = Context::IVarPossible();
-                    return ;
+                    return true;
                 }
             for(const auto& ty : ivar_ent.types_coerce_from)
                 if( ty.m_data.is_Primitive() ) {
                     context.equate_types(sp, ty_l, ty);
-                    ivar_ent = Context::IVarPossible();
-                    return ;
+                    return true;
                 }
             for(const auto& ty : ivar_ent.types_unsize_from)
                 if( ty.m_data.is_Primitive() ) {
                     context.equate_types(sp, ty_l, ty);
-                    ivar_ent = Context::IVarPossible();
-                    return ;
+                    return true;
                 }
-            ivar_ent = Context::IVarPossible();
-            return ;
+            return false;
         default:
             break;
         }
@@ -5386,6 +5388,7 @@ namespace {
         if( ivar_ent.force_no_to == true || ivar_ent.force_no_from )
         {
             DEBUG("- IVar " << ty_l << " is forced unknown");
+            return false;
         }
         else
         {
@@ -5411,8 +5414,7 @@ namespace {
              && ivar_ent.types_unsize_from.size() == 0 && ivar_ent.types_unsize_to.size() == 0
                 )
             {
-                ivar_ent.reset();
-                return ;
+                return false;
             }
             DEBUG("-- " << ty_l << " FROM=Coerce:{" << ivar_ent.types_coerce_from << "} / Unsize:{" << ivar_ent.types_unsize_from << "},"
                 << " TO=Coerce:{" << ivar_ent.types_coerce_to << "} / Unsize:{" << ivar_ent.types_unsize_to << "}");
@@ -5469,8 +5471,7 @@ namespace {
                     const auto& new_ty = ivar_ent.types_coerce_to[0];
                     DEBUG("- IVar " << ty_l << " = " << new_ty << " (unsize to)");
                     context.equate_types(sp, ty_l, new_ty);
-                    ivar_ent.reset();
-                    return ;
+                    return true;
                 }
             }
             #if 0
@@ -5483,8 +5484,7 @@ namespace {
                     const auto& new_ty = ivar_ent.types_coerce_from[0];
                     DEBUG("- IVar " << ty_l << " = " << new_ty << " (coerce from)");
                     context.equate_types(sp, ty_l, new_ty);
-                    ivar_ent.reset();
-                    return ;
+                    return true;
                 }
             }
             #endif
@@ -5505,8 +5505,7 @@ namespace {
                 const auto& new_ty = types_from[0];
                 DEBUG("- IVar " << ty_l << " = " << new_ty << " (only)");
                 context.equate_types(sp, ty_l, new_ty);
-                ivar_ent.reset();
-                return ;
+                return true;
             }
             
             // Eliminate possibilities that don't fit known constraints
@@ -5580,12 +5579,14 @@ namespace {
                 // Only one possibility
                 DEBUG("- IVar " << ty_l << " = " << ty_r << " (from)");
                 context.equate_types(sp, ty_l, ty_r);
+                return true;
             }
             else if( types_to.size() == 1 ) {
                 const ::HIR::TypeRef& ty_r = types_to[0];
                 // Only one possibility
                 DEBUG("- IVar " << ty_l << " = " << ty_r << " (to)");
                 context.equate_types(sp, ty_l, ty_r);
+                return true;
             }
             else {
                 DEBUG("- IVar " << ty_l << " not concretely known {" << types_from << "} and {" << types_to << "}" );
@@ -5600,6 +5601,7 @@ namespace {
                         const ::HIR::TypeRef& ty_r = *lowest_type;
                         DEBUG("- IVar " << ty_l << " = " << ty_r << " (from, lowest)");
                         context.equate_types(sp, ty_l, ty_r);
+                        return true;
                     }
                 }
                 else if( types_to.size() > 0 && types_from.size() == 0 )
@@ -5612,7 +5614,7 @@ namespace {
             }
         }
         
-        ivar_ent.reset();
+        return false;
     }
 }
 
@@ -5765,14 +5767,28 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         {
             // Check the possible equations
             DEBUG("--- IVar possibilities");
-            unsigned int i = 0;
+            for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
+            {
+                if( check_ivar_poss(context, i, context.possible_ivar_vals[i]) ) {
+                    static Span sp;
+                    assert( context.possible_ivar_vals[i].has_rules() );
+                    // TODO: Disable all metioned ivars in the possibilities
+                    for(const auto& ty : context.possible_ivar_vals[i].types_coerce_to)
+                        context.equate_types_from_shadow(sp,ty);
+                    for(const auto& ty : context.possible_ivar_vals[i].types_unsize_to)
+                        context.equate_types_from_shadow(sp,ty);
+                    for(const auto& ty : context.possible_ivar_vals[i].types_coerce_from)
+                        context.equate_types_to_shadow(sp,ty);
+                    for(const auto& ty : context.possible_ivar_vals[i].types_unsize_from)
+                        context.equate_types_to_shadow(sp,ty);
+                }
+                else {
+                    //assert( !context.m_ivars.peek_changed() );
+                }
+            }
             for(auto& ivar_ent : context.possible_ivar_vals)
             {
-                check_ivar_poss(context, i, ivar_ent);
-                // If a change happened, it can add new information that makes subsequent guesses wrong.
-                //if( context.m_ivars.peek_changed() )
-                //    break;
-                i ++ ;
+                ivar_ent.reset();
             }
         }
         else
