@@ -38,4 +38,5 @@ Progress
 ===
 - Compiles the following standard library crates through to emitting serialised HIR+MIR
  - `libcore`, `liballoc`, `librustc_unicode`, `libcollections`, `liblibc`, AND `libstd`
+- `librustc_driver` compiles to serialised MIR
 

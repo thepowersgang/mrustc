@@ -2,7 +2,6 @@ TODO:
 - Implement asm! macro fully
 - Get all run-pass and run-fail tests passing resolve
  - Lots of fixes to do here
-- "Compile" rustc
 - Audit TODOs in codebase
 - MIR Optimisations
  - Assignment elision (e.g. remove intermediate temporaries assigned to RETURN)
