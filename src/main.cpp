@@ -174,9 +174,6 @@ int main(int argc, char *argv[])
     Cfg_SetValueCb("feature", [&params](const ::std::string& s) {
         return params.features.count(s) != 0;
         });
-    
-    // TODO: This is for liblibc - should be a command-line option
-    //Cfg_SetFlag("stdbuild");
 
     
     

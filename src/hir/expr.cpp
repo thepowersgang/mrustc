@@ -102,7 +102,6 @@ DEF_VISIT(ExprNode_CallPath, node,
     TRACE_FUNCTION_F("_CallPath: " << node.m_path);
     for(auto& ty : node.m_cache.m_arg_types)
         visit_type(ty);
-    visit_path_params(node.m_cache.m_ty_impl_params);
     
     visit_path(::HIR::Visitor::PathContext::VALUE, node.m_path);
     for(auto& arg : node.m_args)
@@ -121,7 +120,6 @@ DEF_VISIT(ExprNode_CallMethod, node,
     TRACE_FUNCTION_F("_CallMethod: " << node.m_method);
     for(auto& ty : node.m_cache.m_arg_types)
         visit_type(ty);
-    visit_path_params(node.m_cache.m_ty_impl_params);
 
     visit_path(::HIR::Visitor::PathContext::VALUE, node.m_method_path);
     
@@ -322,6 +320,7 @@ void ::HIR::ExprVisitorDef::visit_path(::HIR::Visitor::PathContext pc, ::HIR::Pa
         visit_type(*e.type);
         visit_generic_path(pc, e.trait);
         visit_path_params(e.params);
+        visit_path_params(e.impl_params);
         ),
     (UfcsUnknown,
         visit_type(*e.type);
@@ -330,6 +329,7 @@ void ::HIR::ExprVisitorDef::visit_path(::HIR::Visitor::PathContext pc, ::HIR::Pa
     (UfcsInherent,
         visit_type(*e.type);
         visit_path_params(e.params);
+        visit_path_params(e.impl_params);
         )
     )
 }

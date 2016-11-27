@@ -406,7 +406,7 @@ namespace {
         
         // If the impl block has parameters, figure out what types they map to
         // - The function params are already mapped (from fix_param_count)
-        auto& impl_params = cache.m_ty_impl_params;
+        auto& impl_params = e.impl_params;
         if( impl_ptr->m_params.m_types.size() > 0 )
         {
             // Default-construct entires in the `impl_params` array
@@ -2915,9 +2915,6 @@ namespace {
         {
             for(auto& ty : cache.m_arg_types)
                 this->check_type_resolved_top(sp, ty);
-            
-            for(auto& ty : cache.m_ty_impl_params.m_types)
-                this->check_type_resolved_top(sp, ty);
         }
         void visit(::HIR::ExprNode_CallPath& node) override {
             this->visit_callcache(node.span(), node.m_cache);
@@ -2982,11 +2979,13 @@ namespace {
             (UfcsInherent,
                 check_type_resolved(sp, *pe.type, top_type);
                 check_type_resolved_pp(sp, pe.params, top_type);
+                check_type_resolved_pp(sp, pe.impl_params, top_type);
                 ),
             (UfcsKnown,
                 check_type_resolved(sp, *pe.type, top_type);
                 check_type_resolved_pp(sp, pe.trait.m_params, top_type);
                 check_type_resolved_pp(sp, pe.params, top_type);
+                check_type_resolved_pp(sp, pe.impl_params, top_type);
                 ),
             (UfcsUnknown,
                 ERROR(sp, E0000, "UfcsUnknown " << path << " left in " << top_type);

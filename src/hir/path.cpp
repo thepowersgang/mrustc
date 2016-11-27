@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/path.hpp
+ * - Item paths (helper code)
  */
 #include <hir/path.hpp>
 #include <hir/type.hpp>
@@ -206,7 +211,8 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
         return Path(Data::make_UfcsInherent({
             box$( e.type->clone() ),
             e.item,
-            e.params.clone()
+            e.params.clone(),
+            e.impl_params.clone()
             }));
         ),
     (UfcsKnown,
@@ -214,7 +220,8 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
             box$( e.type->clone() ),
             e.trait.clone(),
             e.item,
-            e.params.clone()
+            e.params.clone(),
+            e.impl_params.clone()
             }));
         ),
     (UfcsUnknown,

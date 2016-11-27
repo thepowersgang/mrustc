@@ -651,8 +651,8 @@ namespace {
                 
                 
                 // NOTE: Trusts the existing cache.
-                ASSERT_BUG(sp, cache.m_ty_impl_params.m_types.size() == impl_ptr->m_params.m_types.size(), "");
-                auto& impl_params = cache.m_ty_impl_params;
+                ASSERT_BUG(sp, e.impl_params.m_types.size() == impl_ptr->m_params.m_types.size(), "");
+                auto& impl_params = e.impl_params;
                 
                 // Create monomorphise callback
                 const auto& fcn_params = e.params;

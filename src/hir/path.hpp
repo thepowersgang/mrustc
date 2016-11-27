@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/path.hpp
+ * - Item paths
  */
 #ifndef _HIR_PATH_HPP_
 #define _HIR_PATH_HPP_
@@ -175,12 +180,14 @@ public:
         ::std::unique_ptr<TypeRef>  type;
         ::std::string   item;
         PathParams  params;
+        PathParams  impl_params;
         }),
     (UfcsKnown, struct {
         ::std::unique_ptr<TypeRef>  type;
         GenericPath trait;
         ::std::string   item;
         PathParams  params;
+        PathParams  impl_params;
         }),
     (UfcsUnknown, struct {
         ::std::unique_ptr<TypeRef>  type;

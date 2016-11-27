@@ -452,8 +452,6 @@ struct ExprCallCache
     const ::HIR::GenericParams* m_fcn_params;
     const ::HIR::GenericParams* m_top_params;
     const ::HIR::Function*  m_fcn;
-
-    ::HIR::PathParams   m_ty_impl_params;
     
     ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>   m_monomorph_cb;
 };

@@ -444,11 +444,13 @@ void ::HIR::Visitor::visit_path(::HIR::Path& p, ::HIR::Visitor::PathContext pc)
     (UfcsInherent,
         this->visit_type(*e.type);
         this->visit_path_params(e.params);
+        this->visit_path_params(e.impl_params);
         ),
     (UfcsKnown,
         this->visit_type(*e.type);
         this->visit_generic_path(e.trait, ::HIR::Visitor::PathContext::TYPE);
         this->visit_path_params(e.params);
+        this->visit_path_params(e.impl_params);
         ),
     (UfcsUnknown,
         this->visit_type(*e.type);
