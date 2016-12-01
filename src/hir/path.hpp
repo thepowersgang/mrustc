@@ -18,12 +18,15 @@ namespace HIR {
 
 struct Trait;
 
-typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
 enum Compare {
     Equal,
     Fuzzy,
     Unequal,
 };
+
+typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
+typedef ::std::function< ::HIR::Compare(unsigned int, const ::HIR::TypeRef&) > t_cb_match_generics;
+
 static inline ::std::ostream& operator<<(::std::ostream& os, const Compare& x) {
     switch(x)
     {
@@ -105,6 +108,7 @@ struct PathParams
     PathParams& operator=(PathParams&&) = default;
     
     Compare compare_with_placeholders(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder) const;
+    Compare match_test_generics_fuzz(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder, t_cb_match_generics) const;
     
     bool operator==(const PathParams& x) const;
     bool operator!=(const PathParams& x) const { return !(*this == x); }
@@ -215,6 +219,7 @@ public:
     
     bool operator==(const Path& x) const;
     bool operator!=(const Path& x) const { return !(*this == x); }
+    bool operator<(const Path& x) const { return ord(x) == OrdLess; }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const Path& x);
 };

@@ -87,10 +87,10 @@ namespace HIR {
             return os << e;
             ),
         (UfcsInherent,
-            return os << "<" << *e.type << ">::" << e.item << e.params;
+            return os << "<" << *e.type << " /*- " << e.impl_params << "*/>::" << e.item << e.params;
             ),
         (UfcsKnown,
-            return os << "<" << *e.type << " as " << e.trait << ">::" << e.item << e.params;
+            return os << "<" << *e.type << " as " << e.trait << " /*- " << e.impl_params << "*/>::" << e.item << e.params;
             ),
         (UfcsUnknown,
             return os << "<" << *e.type << " as _>::" << e.item << e.params;
@@ -252,6 +252,22 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
             if( rv2 == Compare::Fuzzy )
                 rv = Compare::Fuzzy;
         }
+    }
+    return rv;
+}
+::HIR::Compare HIR::PathParams::match_test_generics_fuzz(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder, t_cb_match_generics match) const
+{
+    using ::HIR::Compare;
+    auto rv = Compare::Equal;
+
+    if( this->m_types.size() != x.m_types.size() ) {
+        return Compare::Unequal;
+    }
+    for( unsigned int i = 0; i < x.m_types.size(); i ++ )
+    {
+        rv &= this->m_types[i].match_test_generics_fuzz( sp, x.m_types[i], resolve_placeholder, match );
+        if( rv == Compare::Unequal )
+            return Compare::Unequal;
     }
     return rv;
 }

@@ -23,8 +23,6 @@ struct ExprNode_Closure;
 
 class TypeRef;
 
-typedef ::std::function< ::HIR::Compare(unsigned int, const ::HIR::TypeRef&) > t_cb_match_generics;
-
 enum class InferClass
 {
     None,

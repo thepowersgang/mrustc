@@ -17,8 +17,8 @@ class Static;
 
 class TransList
 {
-    ::std::vector< ::std::pair<::HIR::Path, const ::HIR::Function*> > m_functions;
-    ::std::vector< ::std::pair<::HIR::Path, const ::HIR::Static*> > m_statics;
+    ::std::map< ::HIR::Path, const ::HIR::Function* > m_functions;
+    ::std::map< ::HIR::Path, const ::HIR::Static* > m_statics;
 public:
     bool add_function(::HIR::Path p, const ::HIR::Function& f);
     bool add_static(::HIR::Path p, const ::HIR::Static& s);

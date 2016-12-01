@@ -22,6 +22,7 @@
 #include "hir_typeck/main_bindings.hpp"
 #include "hir_expand/main_bindings.hpp"
 #include "mir/main_bindings.hpp"
+#include "trans/main_bindings.hpp"
 
 #include "expand/cfg.hpp"
 
@@ -340,6 +341,8 @@ int main(int argc, char *argv[])
         CompilePhaseV("Expand HIR Closures", [&]() {
             HIR_Expand_Closures(*hir_crate);
             });
+        // - Construct VTables for all traits and impls.
+        CompilePhaseV("Expand HIR VTables", [&]() { HIR_Expand_VTables(*hir_crate); });
         // - And calls can be turned into UFCS
         CompilePhaseV("Expand HIR Calls", [&]() {
             HIR_Expand_UfcsEverything(*hir_crate);
@@ -420,6 +423,9 @@ int main(int argc, char *argv[])
             break;
         case ::AST::Crate::Type::Executable:
             // Generate a binary
+            CompilePhaseV("Trans Enumerate", [&]() {
+                Trans_Enumerate_Main(*hir_crate);
+                });
             //HIR_Codegen_Main(params.outfile + ".o", *hir_crate);
             break;
         }

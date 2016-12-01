@@ -1732,7 +1732,7 @@ namespace {
                 
                 // If the impl block has parameters, figure out what types they map to
                 // - The function params are already mapped (from fix_param_count)
-                ::HIR::PathParams   impl_params;
+                auto& impl_params = e.impl_params;
                 if( impl_ptr->m_params.m_types.size() > 0 ) {
                     impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
                     impl_ptr->m_type.match_generics(sp, *e.type, this->context.m_ivars.callback_resolve_infer(), [&](auto idx, const auto& ty) {

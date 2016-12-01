@@ -169,6 +169,7 @@ namespace {
                 serialise_type(*e.type);
                 m_out.write_string(e.item);
                 serialise_pathparams(e.params);
+                serialise_pathparams(e.impl_params);
                 ),
             (UfcsKnown,
                 m_out.write_tag(2);
@@ -176,6 +177,7 @@ namespace {
                 serialise_genericpath(e.trait);
                 m_out.write_string(e.item);
                 serialise_pathparams(e.params);
+                serialise_pathparams(e.impl_params);
                 ),
             (UfcsUnknown,
                 DEBUG("-- UfcsUnknown - " << path);

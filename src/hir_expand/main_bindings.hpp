@@ -12,6 +12,7 @@ namespace HIR {
 };
 
 extern void HIR_Expand_AnnotateUsage(::HIR::Crate& crate);
+extern void HIR_Expand_VTables(::HIR::Crate& crate);
 extern void HIR_Expand_Closures(::HIR::Crate& crate);
 extern void HIR_Expand_UfcsEverything(::HIR::Crate& crate);
 extern void HIR_Expand_Reborrows(::HIR::Crate& crate);

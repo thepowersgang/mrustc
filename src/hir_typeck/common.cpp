@@ -177,7 +177,8 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
             box$( clone_ty_with(sp, *e2.type, callback) ),
             clone_ty_with__generic_path(sp, e2.trait, callback),
             e2.item,
-            clone_ty_with__path_params(sp, e2.params, callback)
+            clone_ty_with__path_params(sp, e2.params, callback),
+            clone_ty_with__path_params(sp, e2.impl_params, callback)
             });
         ),
     (UfcsUnknown,
@@ -191,7 +192,8 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         return ::HIR::Path::Data::make_UfcsInherent({
             box$( clone_ty_with(sp, *e2.type, callback) ),
             e2.item,
-            clone_ty_with__path_params(sp, e2.params, callback)
+            clone_ty_with__path_params(sp, e2.params, callback),
+            clone_ty_with__path_params(sp, e2.impl_params, callback)
             });
         )
     )

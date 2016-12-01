@@ -710,19 +710,21 @@ namespace {
             return ::HIR::Path( deserialise_genericpath() );
         case 1:
             DEBUG("Inherent");
-            return ::HIR::Path {
-                deserialise_type(),
+            return ::HIR::Path( ::HIR::Path::Data::Data_UfcsInherent {
+                box$( deserialise_type() ),
                 m_in.read_string(),
+                deserialise_pathparams(),
                 deserialise_pathparams()
-                };
+                } );
         case 2:
             DEBUG("Known");
-            return ::HIR::Path {
-                deserialise_type(),
+            return ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown {
+                box$( deserialise_type() ),
                 deserialise_genericpath(),
                 m_in.read_string(),
+                deserialise_pathparams(),
                 deserialise_pathparams()
-                };
+                } );
         default:
             throw "";
         }

@@ -9,11 +9,19 @@
 
 bool TransList::add_function(::HIR::Path p, const ::HIR::Function& f)
 {
-    TODO(Span(), "");
-    return false;
+    auto rv = m_functions.insert( ::std::make_pair(mv$(p), &f) );
+    if( rv.second )
+    {
+        DEBUG("Function " << rv.first->first);
+    }
+    return rv.second;
 }
 bool TransList::add_static(::HIR::Path p, const ::HIR::Static& f)
 {
-    TODO(Span(), "");
-    return false;
+    auto rv = m_statics.insert( ::std::make_pair(mv$(p), &f) );
+    if( rv.second )
+    {
+        DEBUG("Static " << rv.first->first);
+    }
+    return rv.second;
 }

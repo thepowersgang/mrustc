@@ -1002,6 +1002,9 @@ namespace {
         )
     }
     
+    // TODO: If this trait is object safe, build up the vtable (and vtable type)
+    // - Or do it in a pass?
+    
     rv.m_is_marker = f.is_marker();
     
     return rv;

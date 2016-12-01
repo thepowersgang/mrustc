@@ -17,6 +17,7 @@ struct Params {
     Span    sp;
     ::HIR::PathParams   pp_method;
     ::HIR::PathParams   pp_impl;
+    ::HIR::TypeRef  self_type;
     
     t_cb_generic get_cb() const;
     ::HIR::TypeRef monomorph(const ::HIR::TypeRef& p) const;
@@ -126,7 +127,7 @@ namespace {
         )
         BUG(sp, "Path " << path << " pointed to a invalid item - " << it->second->ent.tag_str());
     }
-    EntPtr get_ent_fullpath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::Path& path)
+    EntPtr get_ent_fullpath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::Path& path, ::HIR::PathParams& impl_pp)
     {
         TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
         (Generic,
@@ -159,29 +160,94 @@ namespace {
             ),
         (UfcsKnown,
             EntPtr rv;
+            
+            // Obtain trait pointer (for default impl and to know what the item type is)
+            const auto& trait_ref = crate.get_trait_by_path(sp, e.trait.m_path);
+            auto trait_vi_it = trait_ref.m_values.find(e.item);
+            ASSERT_BUG(sp, trait_vi_it != trait_ref.m_values.end(), "Couldn't find item " << e.item << " in trait " << e.trait.m_path);
+            const auto& trait_vi = trait_vi_it->second;
+            
+
+            if( e.item == "#vtable" ) {
+                return EntPtr{};
+            }
+            
+            ::std::vector<const ::HIR::TypeRef*>    best_impl_params;
+            const ::HIR::TraitImpl* best_impl = nullptr;
             crate.find_trait_impls(e.trait.m_path, *e.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
-                // Hacky selection of impl.
-                // - TODO: Specialisation
-                {
-                    auto fit = impl.m_methods.find(e.item);
-                    if( fit != impl.m_methods.end() )
-                    {
-                        DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-                        rv = EntPtr { &fit->second.data };
-                        return true;
+                
+                ::std::vector<const ::HIR::TypeRef*>    impl_params;
+
+                auto cb_ident = [](const auto& t)->const auto& { return t; };
+                auto cb = [&impl_params,&sp,cb_ident](auto idx, const auto& ty) {
+                    assert( idx < impl_params.size() );
+                    if( ! impl_params[idx] ) {
+                        impl_params[idx] = &ty;
+                        return ::HIR::Compare::Equal;
                     }
+                    else {
+                        return impl_params[idx]->compare_with_placeholders(sp, ty, cb_ident);
+                    }
+                    };
+                impl_params.resize(impl.m_params.m_types.size());
+                auto match = impl.m_type.match_test_generics_fuzz(sp, *e.type, cb_ident, cb);
+                match &= impl.m_trait_args.match_test_generics_fuzz(sp, e.trait.m_params, cb_ident, cb);
+                if( match != ::HIR::Compare::Equal )
+                    return false;
+                
+                if( best_impl == nullptr || impl.more_specific_than(*best_impl) ) {
+                    best_impl = &impl;
+                    bool is_spec = false;
+                    TU_MATCHA( (trait_vi), (ve),
+                    (Constant, ),
+                    (Static,
+                        //auto it = impl.m_statics.find(e.item);
+                        //if( it == impl.m_statics.end() ) {
+                        //    DEBUG("Static " << e.item << " missing in trait " << e.trait << " for " << *e.type);
+                        //    return false;
+                        //}
+                        //is_spec = it->second.is_specialisable;
+                        ),
+                    (Function,
+                        auto fit = impl.m_methods.find(e.item);
+                        if( fit == impl.m_methods.end() ) {
+                            DEBUG("Method " << e.item << " missing in trait " << e.trait << " for " << *e.type);
+                            return false;
+                        }
+                        is_spec = fit->second.is_specialisable;
+                        )
+                    )
+                    best_impl_params = mv$( impl_params );
+                    return !is_spec;
                 }
-                //{
-                //    auto it = impl.m_constants.find(e.item);
-                //    if( it != impl.m_constants.end() )
-                //    {
-                //        rv = EntPtr { &it->second.data };
-                //        return true;
-                //    }
-                //}
                 return false;
                 });
-            return rv;
+            if( !best_impl )
+                return EntPtr {};
+            const auto& impl = *best_impl;
+
+            for(const auto* ty_ptr : best_impl_params) {
+                assert( ty_ptr );
+                impl_pp.m_types.push_back( ty_ptr->clone() );
+            }
+            
+            TU_MATCHA( (trait_vi), (ve),
+            (Constant, TODO(sp, "Associated constant"); ),
+            (Static,
+                TODO(sp, "Associated static - " << path);
+                ),
+            (Function,
+                auto fit = impl.m_methods.find(e.item);
+                if( fit != impl.m_methods.end() )
+                {
+                    DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+                    return EntPtr { &fit->second.data };
+                }
+                impl_pp = e.trait.m_params.clone();
+                return EntPtr { &ve };
+                )
+            )
+            BUG(sp, "");
             ),
         (UfcsUnknown,
             // TODO: Are these valid at this point in compilation?
@@ -202,10 +268,10 @@ void Trans_Enumerate_FillFrom_Path(TransList& out, const ::HIR::Crate& crate, co
         sub_pp = Params { sp, pe.m_params.clone() };
         ),
     (UfcsKnown,
-        sub_pp = Params { sp, pe.params.clone(), pe.impl_params.clone() };
+        sub_pp = Params { sp, pe.params.clone(), pe.impl_params.clone(), pe.type->clone() };
         ),
     (UfcsInherent,
-        sub_pp = Params { sp, pe.params.clone(), pe.impl_params.clone() };
+        sub_pp = Params { sp, pe.params.clone(), pe.impl_params.clone(), pe.type->clone() };
         ),
     (UfcsUnknown,
         BUG(sp, "UfcsUnknown - " << path);
@@ -213,9 +279,10 @@ void Trans_Enumerate_FillFrom_Path(TransList& out, const ::HIR::Crate& crate, co
     )
     // Get the item type
     // - Valid types are Function and Static
-    auto item_ref = get_ent_fullpath(sp, crate, path_mono);
+    auto item_ref = get_ent_fullpath(sp, crate, path_mono, sub_pp.pp_impl);
     TU_MATCHA( (item_ref), (e),
     (NotFound,
+        // TODO: This should be an error... but vtable generation?
         ),
     (Function,
         // Add this path (monomorphised) to the queue
@@ -360,16 +427,20 @@ void Trans_Enumerate_FillFrom_MIR(TransList& out, const ::HIR::Crate& crate, con
 
 void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const ::HIR::Function& function, Params pp)
 {
-    Trans_Enumerate_FillFrom_MIR(out, crate, *function.m_code.m_mir, pp);
+    TRACE_FUNCTION_F("Function pp=" << pp.pp_method<<"+"<<pp.pp_impl);
+    if( function.m_code.m_mir )
+        Trans_Enumerate_FillFrom_MIR(out, crate, *function.m_code.m_mir, pp);
 }
 void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const ::HIR::Static& item, Params pp)
 {
-    Trans_Enumerate_FillFrom_MIR(out, crate, *item.m_value.m_mir, pp);
+    TRACE_FUNCTION;
+    if( item.m_value.m_mir )
+        Trans_Enumerate_FillFrom_MIR(out, crate, *item.m_value.m_mir, pp);
 }
 
 t_cb_generic Params::get_cb() const
 {
-    return monomorphise_type_get_cb(sp, nullptr, &pp_impl, &pp_method);
+    return monomorphise_type_get_cb(sp, &self_type, &pp_impl, &pp_method);
 }
 ::HIR::Path Params::monomorph(const ::HIR::Path& p) const
 {
