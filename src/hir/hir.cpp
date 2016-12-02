@@ -9,6 +9,7 @@
  */
 #include "hir.hpp"
 #include <algorithm>
+#include <hir_typeck/common.hpp>
 
 namespace HIR {
     ::std::ostream& operator<<(::std::ostream& os, const ::HIR::Literal& v)
@@ -413,6 +414,25 @@ namespace {
 }
 
 namespace {
+    void add_bound_from_trait(::std::vector< ::HIR::GenericBound>& rv,  const ::HIR::TypeRef& type, const ::HIR::TraitPath& cur_trait)
+    {
+        static Span sp;
+        assert( cur_trait.m_trait_ptr );
+        const auto& tr = *cur_trait.m_trait_ptr;
+        auto monomorph_cb = monomorphise_type_get_cb(sp, &type, &cur_trait.m_path.m_params, nullptr);
+        
+        for(const auto& trait_path_raw : tr.m_parent_traits)
+        {
+            // 1. Monomorph
+            auto trait_path_mono = monomorphise_traitpath_with(sp, trait_path_raw, monomorph_cb, false);
+            // 2. Recurse
+            add_bound_from_trait(rv, type, trait_path_mono);
+            // 3. Add
+            rv.push_back( ::HIR::GenericBound::make_TraitBound({ type.clone(), mv$(trait_path_mono) }) );
+        }
+        
+        // TODO: Add traits from `Self: Foo` bounds?
+    }
     ::std::vector< ::HIR::GenericBound> flatten_bounds(const ::std::vector<::HIR::GenericBound>& bounds)
     {
         ::std::vector< ::HIR::GenericBound >    rv;
@@ -427,6 +447,7 @@ namespace {
                 ),
             (TraitBound,
                 rv.push_back( ::HIR::GenericBound::make_TraitBound({ be.type.clone(), be.trait.clone() }) );
+                add_bound_from_trait(rv,  be.type, be.trait);
                 ),
             (TypeEquality,
                 rv.push_back( ::HIR::GenericBound::make_TypeEquality({ be.type.clone(), be.other_type.clone() }) );
@@ -458,24 +479,24 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
         return m_params.m_bounds.size() > 0;
     }
     // 3. Compare bound set, if there is a rule in oe that is missing from te; return false
-    // 3a. Compare for rules in te that are missing from oe
+    // TODO: Cache these lists (calculate after outer typecheck?)
     auto bounds_t = flatten_bounds(m_params.m_bounds);
     auto bounds_o = flatten_bounds(other.m_params.m_bounds);
-    ::std::sort(bounds_t.begin(), bounds_t.end(), [](const auto& a, const auto& b){ return ::ord(a,b); });
-    ::std::sort(bounds_o.begin(), bounds_o.end(), [](const auto& a, const auto& b){ return ::ord(a,b); });
+    ::std::sort(bounds_t.begin(), bounds_t.end(), [](const auto& a, const auto& b){ return ::ord(a,b) == OrdLess; });
+    ::std::sort(bounds_o.begin(), bounds_o.end(), [](const auto& a, const auto& b){ return ::ord(a,b) == OrdLess; });
+    
+    DEBUG("bounds_t = " << bounds_t);
+    DEBUG("bounds_o = " << bounds_o);
     
     if( bounds_t.size() < bounds_o.size() )
         return false;
     
-    // TODO: One must be a subset of the other.
-    // For this to be more specific, it must have bounds that don't appear in the other
-    // - it also needs to not be missing present items
     auto it_t = bounds_t.begin();
     for(auto it_o = bounds_o.begin(); it_o != bounds_o.end(); ++it_o)
     {
         while( ::ord(*it_t, *it_o) == OrdLess && it_t != bounds_t.end() )
             ++ it_t;
-        if( it_t == bounds_t.end() || ::ord(*it_t, *it_o) != OrdEqual ) {
+        if( it_t == bounds_t.end() || ::ord(*it_t, *it_o) > OrdEqual ) {
             TODO(Span(), "Error when an impl is missing a bound - " << *it_t << " != " << *it_o);
             return false;
         }
