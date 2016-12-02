@@ -7,21 +7,33 @@
  */
 #include "trans_list.hpp"
 
-bool TransList::add_function(::HIR::Path p, const ::HIR::Function& f)
+TransList_Function* TransList::add_function(::HIR::Path p)
 {
-    auto rv = m_functions.insert( ::std::make_pair(mv$(p), &f) );
+    auto rv = m_functions.insert( ::std::make_pair(mv$(p), nullptr) );
     if( rv.second )
     {
         DEBUG("Function " << rv.first->first);
+        assert( !rv.first->second );
+        rv.first->second.reset( new TransList_Function {} );
+        return &*rv.first->second;
     }
-    return rv.second;
+    else
+    {
+        return nullptr;
+    }
 }
-bool TransList::add_static(::HIR::Path p, const ::HIR::Static& f)
+TransList_Static* TransList::add_static(::HIR::Path p)
 {
-    auto rv = m_statics.insert( ::std::make_pair(mv$(p), &f) );
+    auto rv = m_statics.insert( ::std::make_pair(mv$(p), nullptr) );
     if( rv.second )
     {
         DEBUG("Static " << rv.first->first);
+        assert( !rv.first->second );
+        rv.first->second.reset( new TransList_Static {} );
+        return &*rv.first->second;
     }
-    return rv.second;
+    else
+    {
+        return nullptr;
+    }
 }
