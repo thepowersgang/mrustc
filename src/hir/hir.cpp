@@ -315,7 +315,22 @@ namespace {
             }
             ),
         (Path,
-            TODO(sp, "Path - " << le.path);
+            if( !right.m_data.is_Path() || le.path.m_data.tag() != right.m_data.as_Path().path.m_data.tag() )
+                BUG(sp, "Mismatched types - " << left << " and " << right);
+            TU_MATCHA( (le.path.m_data, right.m_data.as_Path().path.m_data), (lpe, rpe),
+            (Generic,
+                if( lpe.m_path != rpe.m_path )
+                    BUG(sp, "Mismatched types - " << left << " and " << right);
+                return typelist_ord_specific(sp, lpe.m_params.m_types, rpe.m_params.m_types);
+                ),
+            (UfcsUnknown,
+                ),
+            (UfcsKnown,
+                ),
+            (UfcsInherent,
+                )
+            )
+            TODO(sp, "Path - " << le.path << " and " << right);
             ),
         (TraitObject,
             TODO(sp, "TraitObject - " << left);
@@ -397,6 +412,31 @@ namespace {
     }
 }
 
+namespace {
+    ::std::vector< ::HIR::GenericBound> flatten_bounds(const ::std::vector<::HIR::GenericBound>& bounds)
+    {
+        ::std::vector< ::HIR::GenericBound >    rv;
+        for(const auto& b : bounds)
+        {
+            TU_MATCHA( (b), (be),
+            (Lifetime,
+                rv.push_back( ::HIR::GenericBound(be) );
+                ),
+            (TypeLifetime,
+                rv.push_back( ::HIR::GenericBound::make_TypeLifetime({ be.type.clone(), be.valid_for }) );
+                ),
+            (TraitBound,
+                rv.push_back( ::HIR::GenericBound::make_TraitBound({ be.type.clone(), be.trait.clone() }) );
+                ),
+            (TypeEquality,
+                rv.push_back( ::HIR::GenericBound::make_TypeEquality({ be.type.clone(), be.other_type.clone() }) );
+                )
+            )
+        }
+        return rv;
+    }
+}
+
 bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
 {
     static const Span   _sp;
@@ -419,8 +459,30 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
     }
     // 3. Compare bound set, if there is a rule in oe that is missing from te; return false
     // 3a. Compare for rules in te that are missing from oe
-
-    TODO(Span(), "TraitImpl - " << m_params.fmt_bounds() << " VERSUS " << other.m_params.fmt_bounds());// ( `" << *this << "` '>' `" << other << "`)");
+    auto bounds_t = flatten_bounds(m_params.m_bounds);
+    auto bounds_o = flatten_bounds(other.m_params.m_bounds);
+    ::std::sort(bounds_t.begin(), bounds_t.end(), [](const auto& a, const auto& b){ return ::ord(a,b); });
+    ::std::sort(bounds_o.begin(), bounds_o.end(), [](const auto& a, const auto& b){ return ::ord(a,b); });
+    
+    if( bounds_t.size() < bounds_o.size() )
+        return false;
+    
+    // TODO: One must be a subset of the other.
+    // For this to be more specific, it must have bounds that don't appear in the other
+    // - it also needs to not be missing present items
+    auto it_t = bounds_t.begin();
+    for(auto it_o = bounds_o.begin(); it_o != bounds_o.end(); ++it_o)
+    {
+        while( ::ord(*it_t, *it_o) == OrdLess && it_t != bounds_t.end() )
+            ++ it_t;
+        if( it_t == bounds_t.end() || ::ord(*it_t, *it_o) != OrdEqual ) {
+            TODO(Span(), "Error when an impl is missing a bound - " << *it_t << " != " << *it_o);
+            return false;
+        }
+    }
+    if( bounds_t.size() <= bounds_o.size() )
+        return false;
+    return true;
 }
 
 

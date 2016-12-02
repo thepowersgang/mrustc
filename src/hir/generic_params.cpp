@@ -59,6 +59,38 @@ namespace HIR {
         return os;
     }
 }
+Ordering ord(const HIR::GenericBound& a, const HIR::GenericBound& b)
+{
+    if( a.tag() != b.tag() )
+        return a.tag() < b.tag() ? OrdLess : OrdGreater;
+    TU_MATCHA( (a,b), (ae,be),
+    (Lifetime,
+        auto cmp = ::ord( ae.test, be.test );
+        if(cmp != OrdEqual) return cmp;
+        cmp = ::ord( ae.valid_for, be.valid_for );
+        if(cmp != OrdEqual) return cmp;
+        ),
+    (TypeLifetime,
+        auto cmp = ae.type.ord( be.type );
+        if(cmp != OrdEqual) return cmp;
+        cmp = ::ord( ae.valid_for, be.valid_for );
+        if(cmp != OrdEqual) return cmp;
+        ),
+    (TraitBound,
+        auto cmp = ae.type.ord( be.type );
+        if(cmp != OrdEqual) return cmp;
+        cmp = ae.trait.ord( be.trait );
+        if(cmp != OrdEqual) return cmp;
+        ),
+    (TypeEquality,
+        auto cmp = ae.type.ord( be.type );
+        if(cmp != OrdEqual) return cmp;
+        cmp = ae.other_type.ord( be.other_type );
+        if(cmp != OrdEqual) return cmp;
+        )
+    )
+    return OrdEqual;
+}
 
 ::HIR::GenericParams HIR::GenericParams::clone() const
 {

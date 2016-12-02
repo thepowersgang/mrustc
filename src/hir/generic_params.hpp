@@ -67,3 +67,5 @@ public:
 
 }   // namespace HIR
 
+extern Ordering ord(const HIR::GenericBound& a, const HIR::GenericBound& b);
+
