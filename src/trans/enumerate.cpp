@@ -186,13 +186,20 @@ namespace {
                 return EntPtr::make_VTable({});
             }
             
-            ::std::vector<const ::HIR::TypeRef*>    best_impl_params;
+            bool is_dynamic = false;
+            ::std::vector<::HIR::TypeRef>    best_impl_params;
             const ::HIR::TraitImpl* best_impl = nullptr;
             resolve.find_impl(sp, e.trait.m_path, e.trait.m_params, *e.type, [&](auto impl_ref, auto is_fuzz) {
                 DEBUG("Found " << impl_ref);
                 //ASSERT_BUG(sp, !is_fuzz, "Fuzzy match not allowed here");
-                ASSERT_BUG(sp, impl_ref.m_data.is_TraitImpl(), "Trans impl search found an invalid impl type");
-                const auto& impl = *impl_ref.m_data.as_TraitImpl().impl;
+                if( ! impl_ref.m_data.is_TraitImpl() ) {
+                    DEBUG("Trans impl search found an invalid impl type");
+                    is_dynamic = true;
+                    // TODO: This can only really happen if it's a trait object magic impl, which should become a vtable lookup.
+                    return true;
+                }
+                const auto& impl_ref_e = impl_ref.m_data.as_TraitImpl();
+                const auto& impl = *impl_ref_e.impl;
                 ASSERT_BUG(sp, impl.m_trait_args.m_types.size() == e.trait.m_params.m_types.size(), "Trait parameter count mismatch " << impl.m_trait_args << " vs " << e.trait.m_params);
                 
                 if( best_impl == nullptr || impl.more_specific_than(*best_impl) ) {
@@ -217,19 +224,27 @@ namespace {
                         is_spec = fit->second.is_specialisable;
                         )
                     )
-                    best_impl_params = mv$( impl_ref.m_data.as_TraitImpl().params );
+                    best_impl_params.clear();
+                    for(unsigned int i = 0; i < impl_ref_e.params.size(); i ++)
+                    {
+                        if( impl_ref_e.params[i] )
+                            best_impl_params.push_back( impl_ref_e.params[i]->clone() );
+                        else if( ! impl_ref_e.params_ph[i].m_data.is_Generic() )
+                            best_impl_params.push_back( impl_ref_e.params_ph[i].clone() );
+                        else
+                            BUG(sp, "Parameter " << i << " unset");
+                    }
                     return !is_spec;
                 }
                 return false;
                 });
+            if( is_dynamic )
+                return EntPtr::make_VTable( {} );
             if( !best_impl )
                 return EntPtr {};
             const auto& impl = *best_impl;
 
-            for(const auto* ty_ptr : best_impl_params) {
-                ASSERT_BUG(sp, ty_ptr, "Parameter unset");
-                impl_pp.m_types.push_back( ty_ptr->clone() );
-            }
+            impl_pp.m_types = mv$(best_impl_params);
             
             TU_MATCHA( (trait_vi), (ve),
             (Constant, TODO(sp, "Associated constant"); ),
@@ -289,10 +304,22 @@ void Trans_Enumerate_FillFrom_Path(TransList& out, const ::HIR::Crate& crate, co
         BUG(sp, "Item not found for " << path_mono);
         ),
     (VTable,
-        // TODO: Vtable generation
-        //if( auto* ptr = out.add_vtable(mv$(path_mono)) )
-        //{
-        //}
+        // This is returned either if the item is <T as U>::#vtable or if it's <(Trait) as Trait>::method
+        if( path_mono.m_data.as_UfcsKnown().item == "#vtable" )
+        {
+            // TODO: Vtable generation
+            //if( auto* ptr = out.add_vtable(mv$(path_mono)) )
+            //{
+            //}
+        }
+        else if( path_mono.m_data.as_UfcsKnown().type->m_data.is_TraitObject() )
+        {
+            // Must have been a dynamic dispatch request, just leave as-is
+        }
+        else
+        {
+            BUG(sp, "");
+        }
         ),
     (Function,
         // Add this path (monomorphised) to the queue

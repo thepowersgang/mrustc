@@ -498,12 +498,12 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
             ASSERT_BUG(sp, !impl_params[i], "Placeholder to populated type returned");
             auto& ph = placeholders[i];
             if( ph.m_data.is_Generic() && ph.m_data.as_Generic().binding == idx ) {
-                DEBUG("Bind placeholder " << i << " to " << ty);
+                DEBUG("[find_impl__check_crate_raw:cb_match] Bind placeholder " << i << " to " << ty);
                 ph = ty.clone();
                 return ::HIR::Compare::Equal;
             }
             else {
-                TODO(sp, "Compare placeholder " << i << " " << ph << " == " << ty);
+                TODO(sp, "[find_impl__check_crate_raw:cb_match] Compare placeholder " << i << " " << ph << " == " << ty);
             }
         }
         else {
@@ -556,6 +556,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                     
                     bool rv = false;
                     if( b_ty_mono.m_data.is_Generic() && (b_ty_mono.m_data.as_Generic().binding >> 8) == 2 ) {
+                        DEBUG("- Placeholder param " << b_ty_mono << ", magic success");
                         rv = true;
                     }
                     else {
@@ -575,41 +576,21 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                     }
                 }
             }
-            
-            bool rv = false;
-            if( b_ty_mono.m_data.is_Generic() && (b_ty_mono.m_data.as_Generic().binding >> 8) == 2 ) {
-                rv = true;
-            }
-            else {
-                rv = this->find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const auto& impl, bool) {
-                    //if( fuzzy ) {
-                    //    DEBUG("[find_impl__check_bound] - Fuzzy in bound");
-                    //    return false;
-                    //}
-                    
-                    #if 0
-                    for(const auto& assoc_bound : b_tp_mono.m_type_bounds) {
-                        const char* name = assoc_bound.first.c_str();
-                        const ::HIR::TypeRef& exp = assoc_bound.second;
-                        ::HIR::TypeRef have = impl.get_type(name);
-                        // TODO: Returning `_` means unset associated type, should that still be compared?
-                        if( have != ::HIR::TypeRef() )
-                        {
-                            auto cmp = have .match_test_generics_fuzz(sp, exp, cb_ident, cb_match);
-                            ASSERT_BUG(sp, cmp == ::HIR::Compare::Equal, "Assoc ty " << name << " mismatch, " << have << " != des " << exp);
-                        }
-                        else
-                        {
-                            DEBUG("Assoc `" << name << "` unbound, can't compare with " << exp);
-                        }
-                    }
-                    #endif
-                    return true;
-                    });
-            }
-            if( !rv ) {
-                DEBUG("> Fail - " << b_ty_mono << ": " << b_tp_mono);
-                return false;
+            else
+            {
+                bool rv = false;
+                if( b_ty_mono.m_data.is_Generic() && (b_ty_mono.m_data.as_Generic().binding >> 8) == 2 ) {
+                    rv = true;
+                }
+                else {
+                    rv = this->find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const auto& impl, bool) {
+                        return true;
+                        });
+                }
+                if( !rv ) {
+                    DEBUG("> Fail - " << b_ty_mono << ": " << b_tp_mono);
+                    return false;
+                }
             }
             )
         )
