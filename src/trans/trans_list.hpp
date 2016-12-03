@@ -32,6 +32,11 @@ struct Trans_Params
     t_cb_generic get_cb() const;
     ::HIR::TypeRef monomorph(const ::HIR::Crate& crate, const ::HIR::TypeRef& p) const;
     ::HIR::Path monomorph(const ::HIR::Crate& crate, const ::HIR::Path& p) const;
+    ::HIR::GenericPath monomorph(const ::HIR::Crate& crate, const ::HIR::GenericPath& p) const;
+    
+    bool has_types() const {
+        return pp_method.m_types.size() > 0 || pp_impl.m_types.size() > 0;
+    }
 };
 
 struct TransList_Function
@@ -47,9 +52,10 @@ struct TransList_Static
 
 class TransList
 {
+public:
     ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Function> > m_functions;
     ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Static> > m_statics;
-public:
+
     TransList_Function* add_function(::HIR::Path p);
     TransList_Static* add_static(::HIR::Path p);
 };

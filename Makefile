@@ -95,7 +95,8 @@ OBJ +=  mir/dump.o
 OBJ +=  mir/from_hir.o mir/from_hir_match.o mir/mir_builder.o
 OBJ +=  mir/check.o
 OBJ += hir/serialise.o hir/deserialise.o hir/serialise_lowlevel.o
-OBJ += trans/trans_list.o trans/enumerate.o
+OBJ += trans/trans_list.o trans/mangling.o
+OBJ += trans/enumerate.o trans/monomorphise.o trans/codegen.o trans/codegen_c.o
 
 PCHS := ast/ast.hpp
 

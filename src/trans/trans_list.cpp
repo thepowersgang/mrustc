@@ -6,6 +6,7 @@
  * - A list of items that require translation
  */
 #include "trans_list.hpp"
+#include <hir_typeck/static.hpp>    // StaticTraitResolve
 
 TransList_Function* TransList::add_function(::HIR::Path p)
 {
@@ -36,4 +37,58 @@ TransList_Static* TransList::add_static(::HIR::Path p)
     {
         return nullptr;
     }
+}
+
+t_cb_generic Trans_Params::get_cb() const
+{
+    return monomorphise_type_get_cb(sp, &self_type, &pp_impl, &pp_method);
+}
+::HIR::Path Trans_Params::monomorph(const ::HIR::Crate& crate, const ::HIR::Path& p) const
+{
+    TRACE_FUNCTION_F(p);
+    auto rv = monomorphise_path_with(sp, p, this->get_cb(), false);
+
+    ::StaticTraitResolve    resolve { crate };
+    TU_MATCH(::HIR::Path::Data, (rv.m_data), (e2),
+    (Generic,
+        for(auto& arg : e2.m_params.m_types)
+            resolve.expand_associated_types(sp, arg);
+        ),
+    (UfcsInherent,
+        resolve.expand_associated_types(sp, *e2.type);
+        for(auto& arg : e2.params.m_types)
+            resolve.expand_associated_types(sp, arg);
+        // TODO: impl params too?
+        for(auto& arg : e2.impl_params.m_types)
+            resolve.expand_associated_types(sp, arg);
+        ),
+    (UfcsKnown,
+        resolve.expand_associated_types(sp, *e2.type);
+        for(auto& arg : e2.trait.m_params.m_types)
+            resolve.expand_associated_types(sp, arg);
+        for(auto& arg : e2.params.m_types)
+            resolve.expand_associated_types(sp, arg);
+        ),
+    (UfcsUnknown,
+        BUG(sp, "Encountered UfcsUnknown");
+        )
+    )
+    return rv;
+}
+
+::HIR::GenericPath Trans_Params::monomorph(const ::HIR::Crate& crate, const ::HIR::GenericPath& p) const
+{
+    auto rv = monomorphise_genericpath_with(sp, p, this->get_cb(), false);
+    ::StaticTraitResolve    resolve { crate };
+    for(auto& arg : rv.m_params.m_types)
+        resolve.expand_associated_types(sp, arg);
+    return rv;
+}
+
+::HIR::TypeRef Trans_Params::monomorph(const ::HIR::Crate& crate, const ::HIR::TypeRef& ty) const
+{
+    auto rv = monomorphise_type_with(sp, ty, this->get_cb(), false);
+    ::StaticTraitResolve    resolve { crate };
+    resolve.expand_associated_types(sp, rv);
+    return rv;
 }

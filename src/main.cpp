@@ -66,6 +66,8 @@ void init_debug_list()
     g_debug_disable_map.insert( "Dump MIR" );
     
     g_debug_disable_map.insert( "HIR Serialise" );
+    g_debug_disable_map.insert( "Trans Enumerate" );
+    g_debug_disable_map.insert( "Trans" );
     
     // Mutate this map using an environment variable
     const char* debug_string = ::std::getenv("MRUSTC_DEBUG");
@@ -406,16 +408,20 @@ int main(int argc, char *argv[])
                 //HIR_Serialise(params.outfile + ".meta", *hir_crate);
                 HIR_Serialise(params.outfile, *hir_crate);
                 });
+            //TransList   items;
+            //CompilePhaseV("Trans Enumerate", [&]() { Trans_Enumerate_Public(*hir_crate); });
+            //CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", *hir_crate, items); });
             // Generate a .o
             //HIR_Codegen_Lib(params.outfile + ".o", *hir_crate);
             // Link metatdata and object into a .rlib
             break;
         case ::AST::Crate::Type::RustDylib:
             // Save a loadable HIR dump
-            CompilePhaseV("HIR Serialise", [&]() {
-                //HIR_Serialise(params.outfile + ".meta", *hir_crate);
-                HIR_Serialise(params.outfile, *hir_crate);
-                });
+            CompilePhaseV("HIR Serialise", [&]() { HIR_Serialise(params.outfile, *hir_crate); });
+            // - Enumerate codegen for visible and non-generic items
+            //TransList   items;
+            //CompilePhaseV("Trans Enumerate", [&]() { Trans_Enumerate_Public(*hir_crate); });
+            //CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, *hir_crate, items); });
             // Generate a .so/.dll
             // TODO: Codegen and include the metadata in a non-loadable segment
             break;
@@ -424,10 +430,11 @@ int main(int argc, char *argv[])
             break;
         case ::AST::Crate::Type::Executable:
             // Generate a binary
-            CompilePhaseV("Trans Enumerate", [&]() {
-                Trans_Enumerate_Main(*hir_crate);
-                });
-            //HIR_Codegen_Main(params.outfile + ".o", *hir_crate);
+            // - Enumerate items for translation
+            TransList items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Main(*hir_crate); });
+            // - Perform codegen
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, *hir_crate, items); });
+            // - Invoke linker?
             break;
         }
     }
