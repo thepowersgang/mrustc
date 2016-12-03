@@ -219,7 +219,8 @@ namespace {
         
         TU_MATCHA( (block.terminator), (e),
         (Incomplete,
-            BUG(sp, "Incomplete block");
+            //BUG(sp, "Incomplete block");
+            terminator = e;
             ),
         (Return,
             terminator = e;
