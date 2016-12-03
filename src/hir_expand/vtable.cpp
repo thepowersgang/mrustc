@@ -46,10 +46,57 @@ namespace {
         
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& tr) override
         {
+            static Span sp;
             TRACE_FUNCTION_F(p);
             
+            ::HIR::GenericPath  trait_path( p.get_simple_path() );
+            {
+                unsigned int i = 0;
+                for(const auto& tp : tr.m_params.m_types) {
+                    trait_path.m_params.m_types.push_back( ::HIR::TypeRef(tp.m_name, i) );
+                    i ++;
+                }
+            }
+            
+            ::std::unordered_map< ::std::string,unsigned int>  assoc_type_indexes;
+            struct Foo {
+                ::HIR::Trait*   trait_ptr;
+                unsigned int    i;
+                void add_types_from_trait(const ::HIR::Trait& tr) {
+                    for(const auto& ty : tr.m_types) {
+                        trait_ptr->m_type_indexes[ty.first] = i;
+                        i ++;
+                    }
+                    // TODO: Iterate supertraits too.
+                    for(const auto& st : tr.m_parent_traits) {
+                        add_types_from_trait(*st.m_trait_ptr);
+                    }
+                }
+            };
+            Foo { &tr, static_cast<unsigned int>(tr.m_params.m_types.size()) }.add_types_from_trait(tr);
+            
+            auto clone_cb = [&](const auto& t, auto& o) {
+                if(t.m_data.is_Path() && t.m_data.as_Path().path.m_data.is_UfcsKnown()) {
+                    const auto& pe = t.m_data.as_Path().path.m_data.as_UfcsKnown();
+                    DEBUG("t=" << t);
+                    if( *pe.type == ::HIR::TypeRef("Self", 0xFFFF) /*&& pe.trait == trait_path*/ ) {
+                        // Replace with a new type param, need to know the index of it
+                        o = ::HIR::TypeRef("a#"+pe.item, tr.m_type_indexes.at(pe.item));
+                        return true;
+                    }
+                }
+                return false;
+                };
+            auto clone_self_cb = [](const auto& t, auto&o) {
+                if( t == ::HIR::TypeRef("Self", 0xFFFF) ) {
+                    o = ::HIR::TypeRef::new_unit();
+                    return true;
+                }
+                return false;
+                };
+            
             ::HIR::t_struct_fields fields;
-            for(const auto& vi : tr.m_values)
+            for(auto& vi : tr.m_values)
             {
                 TU_MATCHA( (vi.second), (ve),
                 (Function,
@@ -72,24 +119,22 @@ namespace {
                     ::HIR::FunctionType ft;
                     ft.is_unsafe = ve.m_unsafe;
                     ft.m_abi = ve.m_abi;
-                    ft.m_rettype = box$( ve.m_return.clone() );
-                    for(const auto& t : ve.m_args)
-                        ft.m_arg_types.push_back( t.second.clone() );
-                    ft.m_arg_types[0] = ::HIR::TypeRef();   // Clear the first argument (the receiver)
+                    ft.m_rettype = box$( clone_ty_with(sp, ve.m_return, clone_cb) );
+                    ft.m_arg_types.reserve( ve.m_args.size() );
+                    ft.m_arg_types.push_back( clone_ty_with(sp, ve.m_args[0].second, clone_self_cb) );
+                    for(unsigned int i = 1; i < ve.m_args.size(); i ++)
+                        ft.m_arg_types.push_back( clone_ty_with(sp, ve.m_args[i].second, clone_cb) );
+                    // Clear the first argument (the receiver)
                     ::HIR::TypeRef  fcn_type( mv$(ft) );
                     
-                    // Detect use of `Self`
-                    if( visit_ty_with(fcn_type, [&](const auto& t){
-                        if( t == ::HIR::TypeRef("Self", 0xFFFF) )
-                            return true;
-                        return false;
-                        })
-                        )
+                    // Detect use of `Self` and don't create the vtable if there is.
+                    if( visit_ty_with(fcn_type, [&](const auto& t){ return (t == ::HIR::TypeRef("Self", 0xFFFF)); }) )
                     {
-                        DEBUG("- '" << vi.first << "' NOT object safe (Self), not creating vtable");
+                        DEBUG("- '" << vi.first << "' NOT object safe (Self), not creating vtable - " << fcn_type);
                         return ;
                     }
                     
+                    vi.second.vtable_ofs = fields.size();
                     fields.push_back( ::std::make_pair(
                         vi.first,
                         ::HIR::VisEnt< ::HIR::TypeRef> { true, mv$(fcn_type) }
@@ -106,6 +151,20 @@ namespace {
             
             ::HIR::PathParams   params;
             ::HIR::GenericParams    args;
+            {
+                unsigned int i = 0;
+                for(const auto& tp : tr.m_params.m_types) {
+                    args.m_types.push_back( ::HIR::TypeParamDef { tp.m_name, {}, tp.m_is_sized } );
+                    params.m_types.push_back( ::HIR::TypeRef(tp.m_name, i) );
+                    i ++;
+                }
+                for(const auto& ty : tr.m_types) {
+                    args.m_types.push_back( ::HIR::TypeParamDef { "a#"+ty.first, {}, ty.second.is_sized } );
+                    ::HIR::Path path( ::HIR::TypeRef("Self",0xFFFF), trait_path.clone(), ty.first );
+                    params.m_types.push_back( ::HIR::TypeRef( mv$(path) ) );
+                    i ++;
+                }
+            }
             // TODO: Would like to have access to the publicity marker
             auto item_path = m_new_type(true, FMT(p.get_name() << "#vtable"), ::HIR::Struct {
                 mv$(args),

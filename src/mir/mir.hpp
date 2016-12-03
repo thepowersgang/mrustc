@@ -130,6 +130,10 @@ TAGGED_UNION(RValue, Use,
     (DstMeta, struct {
         LValue  val;
         }),
+    // Extract the pointer from a DST pointer (as *const ())
+    (DstPtr, struct {
+        LValue  val;
+        }),
     // Construct a DST pointer from a thin pointer and metadata
     (MakeDst, struct {
         LValue  ptr_val;

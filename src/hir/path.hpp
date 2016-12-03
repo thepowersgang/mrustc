@@ -191,7 +191,6 @@ public:
         GenericPath trait;
         ::std::string   item;
         PathParams  params;
-        PathParams  impl_params;
         }),
     (UfcsUnknown, struct {
         ::std::unique_ptr<TypeRef>  type;

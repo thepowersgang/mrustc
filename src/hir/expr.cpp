@@ -320,7 +320,6 @@ void ::HIR::ExprVisitorDef::visit_path(::HIR::Visitor::PathContext pc, ::HIR::Pa
         visit_type(*e.type);
         visit_generic_path(pc, e.trait);
         visit_path_params(e.params);
-        visit_path_params(e.impl_params);
         ),
     (UfcsUnknown,
         visit_type(*e.type);

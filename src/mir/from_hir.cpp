@@ -1351,6 +1351,7 @@ namespace {
         
         void visit(::HIR::ExprNode_CallPath& node) override
         {
+            const Span& sp = node.span();
             TRACE_FUNCTION_F("_CallPath " << node.m_path);
             ::std::vector< ::MIR::LValue>   values;
             values.reserve( node.m_args.size() );
@@ -1361,19 +1362,70 @@ namespace {
                 m_builder.moved_lvalue( arg->span(), values.back() );
             }
             
-            // TODO: Obtain function type for this function (i.e. a type that is specifically for this function)
-            auto fcn_ty_data = ::HIR::FunctionType {
-                false,
-                "",
-                box$( node.m_cache.m_arg_types.back().clone() ),
-                {}
-                };
-            for(unsigned int i = 0; i < node.m_cache.m_arg_types.size() - 1; i ++)
+            ::MIR::LValue   fcn_val;
+            
+            // If the call was to a TraitObject function, get it from the vtable.
+            bool was_virtual = false;
+            if( node.m_path.m_data.is_UfcsKnown() && node.m_path.m_data.as_UfcsKnown().type->m_data.is_TraitObject() )
             {
-                fcn_ty_data.m_arg_types.push_back( node.m_cache.m_arg_types[i].clone() );
+                const auto& pe = node.m_path.m_data.as_UfcsKnown();
+                const auto& te = pe.type->m_data.as_TraitObject();
+                if( pe.trait == te.m_trait.m_path )
+                {
+                    assert( te.m_trait.m_trait_ptr );
+                    const auto& trait = *te.m_trait.m_trait_ptr;
+                    
+                    // 1. Get the vtable index for this function
+                    unsigned int vtable_idx = trait.m_values.at( pe.item ).vtable_ofs;
+                    if( vtable_idx == ~0u ) {
+                        BUG(sp, "Calling method '" << pe.item << "' of " << pe.trait << " which isn't in the vtable");
+                    }
+                    
+                    // 2. Load from the vtable
+                    auto vtable_rval = ::MIR::RValue::make_DstMeta({
+                        ::MIR::LValue::make_Deref({ box$(values.front().clone()) })
+                        });
+                    auto vtable_ty_spath = pe.trait.m_path;
+                    vtable_ty_spath.m_components.back() += "#vtable";
+                    const auto& vtable_ref = m_builder.crate().get_struct_by_path(sp, vtable_ty_spath);
+                    // Copy the param set from the trait in the trait object
+                    ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
+                    // - Include associated types on bound
+                    for(const auto& ty_b : te.m_trait.m_type_bounds) {
+                        auto idx = trait.m_type_indexes.at(ty_b.first);
+                        if(vtable_params.m_types.size() <= idx)
+                            vtable_params.m_types.resize(idx+1);
+                        vtable_params.m_types[idx] = ty_b.second.clone();
+                    }
+                    auto vtable_ty = ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
+                    
+                    auto vtable = m_builder.lvalue_or_temp(sp, mv$(vtable_ty), mv$(vtable_rval));
+                    auto vtable_fcn = ::MIR::LValue::make_Field({ box$(vtable), vtable_idx });
+                    m_builder.with_val_type(sp, vtable_fcn, [&](const auto& ty){
+                        fcn_val = m_builder.new_temporary(ty);
+                        });
+                    
+                    m_builder.push_stmt_assign( sp, fcn_val.clone(), ::MIR::RValue( mv$(vtable_fcn) ) );
+                    was_virtual = true;
+                }
             }
-            auto fcn_val = m_builder.new_temporary( ::HIR::TypeRef(mv$(fcn_ty_data)) );
-            m_builder.push_stmt_assign( node.span(), fcn_val.clone(), ::MIR::RValue::make_Constant( ::MIR::Constant(node.m_path.clone()) ) );
+            
+            if( ! was_virtual )
+            {
+                // TODO: Obtain function type for this function (i.e. a type that is specifically for this function)
+                auto fcn_ty_data = ::HIR::FunctionType {
+                    false,
+                    "",
+                    box$( node.m_cache.m_arg_types.back().clone() ),
+                    {}
+                    };
+                for(unsigned int i = 0; i < node.m_cache.m_arg_types.size() - 1; i ++)
+                {
+                    fcn_ty_data.m_arg_types.push_back( node.m_cache.m_arg_types[i].clone() );
+                }
+                fcn_val = m_builder.new_temporary( ::HIR::TypeRef(mv$(fcn_ty_data)) );
+                m_builder.push_stmt_assign( sp, fcn_val.clone(), ::MIR::RValue::make_Constant( ::MIR::Constant(node.m_path.clone()) ) );
+            }
             
             auto panic_block = m_builder.new_bb_unlinked();
             auto next_block = m_builder.new_bb_unlinked();

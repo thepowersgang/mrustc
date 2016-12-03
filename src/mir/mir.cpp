@@ -105,6 +105,9 @@ namespace MIR {
         (DstMeta,
             os << "DstMeta(" << e.val << ")";
             ),
+        (DstPtr,
+            os << "DstPtr(" << e.val << ")";
+            ),
         (MakeDst,
             os << "MakeDst(" << e.ptr_val << ", " << e.meta_val << ")";
             ),

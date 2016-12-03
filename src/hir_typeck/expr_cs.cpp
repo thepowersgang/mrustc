@@ -2985,7 +2985,6 @@ namespace {
                 check_type_resolved(sp, *pe.type, top_type);
                 check_type_resolved_pp(sp, pe.trait.m_params, top_type);
                 check_type_resolved_pp(sp, pe.params, top_type);
-                check_type_resolved_pp(sp, pe.impl_params, top_type);
                 ),
             (UfcsUnknown,
                 ERROR(sp, E0000, "UfcsUnknown " << path << " left in " << top_type);

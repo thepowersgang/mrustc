@@ -275,7 +275,7 @@ void Trans_Enumerate_FillFrom_Path(TransList& out, const ::HIR::Crate& crate, co
         sub_pp = Trans_Params { sp, pe.m_params.clone() };
         ),
     (UfcsKnown,
-        sub_pp = Trans_Params { sp, pe.params.clone(), pe.impl_params.clone(), pe.type->clone() };
+        sub_pp = Trans_Params { sp, pe.params.clone(), {}, pe.type->clone() };
         ),
     (UfcsInherent,
         sub_pp = Trans_Params { sp, pe.params.clone(), pe.impl_params.clone(), pe.type->clone() };
@@ -387,6 +387,9 @@ void Trans_Enumerate_FillFrom_MIR(TransList& out, const ::HIR::Crate& crate, con
                     Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.val, pp);
                     ),
                 (DstMeta,
+                    Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.val, pp);
+                    ),
+                (DstPtr,
                     Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.val, pp);
                     ),
                 (MakeDst,

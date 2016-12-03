@@ -884,6 +884,8 @@ namespace {
     
     ::HIR::Literal evaluate_constant_mir(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::MIR::Function& fcn, ::std::vector< ::HIR::Literal> args)
     {
+        TRACE_FUNCTION;
+        
         ::HIR::Literal  retval;
         ::std::vector< ::HIR::Literal>  locals;
         ::std::vector< ::HIR::Literal>  temps;
@@ -1119,6 +1121,9 @@ namespace {
                 (DstMeta,
                     TODO(sp, "RValue::DstMeta");
                     ),
+                (DstPtr,
+                    TODO(sp, "RValue::DstPtr");
+                    ),
                 (MakeDst,
                     TODO(sp, "RValue::MakeDst");
                     ),
@@ -1197,7 +1202,7 @@ namespace {
             return evaluate_constant_mir(sp, crate, mv$(newval_state), *expr.m_mir, mv$(args));
         }
         else {
-            BUG(sp, "Attempting to evaluate constant expression with code");
+            BUG(sp, "Attempting to evaluate constant expression with no associated code");
         }
     }
     

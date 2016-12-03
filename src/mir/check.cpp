@@ -516,6 +516,10 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         // TODO: Ensure that the input type is a: Generic, Array, or DST
                         // TODO: Check return type
                         ),
+                    (DstPtr,
+                        // TODO: Ensure that the input type is a DST
+                        // TODO: Check return type
+                        ),
                     (MakeDst,
                         ),
                     (Tuple,

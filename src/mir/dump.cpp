@@ -353,6 +353,11 @@ namespace {
                 fmt_val(os, e.val);
                 os << ")";
                 ),
+            (DstPtr,
+                os << "PTR(";
+                fmt_val(os, e.val);
+                os << ")";
+                ),
             (MakeDst,
                 os << "DST(";
                 fmt_val(os, e.ptr_val);

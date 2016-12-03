@@ -226,6 +226,9 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
     (DstMeta,
         // Doesn't move
         ),
+    (DstPtr,
+        // Doesn't move
+        ),
     (MakeDst,
         // Doesn't move ptr_val
         this->moved_lvalue(sp, e.meta_val);
@@ -741,7 +744,8 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                     BUG(sp, "Field on unit-like struct - " << ty);
                     ),
                 (Tuple,
-                    ASSERT_BUG(sp, e.field_index < se.size(), "Field index out of range in tuple-struct");
+                    ASSERT_BUG(sp, e.field_index < se.size(),
+                        "Field index out of range in tuple-struct " << ty << " - " << e.field_index << " > " << se.size());
                     const auto& fld = se[e.field_index];
                     if( monomorphise_type_needed(fld.ent) ) {
                         auto sty = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, fld.ent);
@@ -753,7 +757,8 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                     }
                     ),
                 (Named,
-                    ASSERT_BUG(sp, e.field_index < se.size(), "Field index out of range in struct");
+                    ASSERT_BUG(sp, e.field_index < se.size(),
+                        "Field index out of range in struct " << ty << " - " << e.field_index << " > " << se.size());
                     const auto& fld = se[e.field_index].second;
                     if( monomorphise_type_needed(fld.ent) ) {
                         auto sty = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, fld.ent);

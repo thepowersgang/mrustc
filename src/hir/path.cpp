@@ -90,7 +90,7 @@ namespace HIR {
             return os << "<" << *e.type << " /*- " << e.impl_params << "*/>::" << e.item << e.params;
             ),
         (UfcsKnown,
-            return os << "<" << *e.type << " as " << e.trait << " /*- " << e.impl_params << "*/>::" << e.item << e.params;
+            return os << "<" << *e.type << " as " << e.trait << ">::" << e.item << e.params;
             ),
         (UfcsUnknown,
             return os << "<" << *e.type << " as _>::" << e.item << e.params;
@@ -220,8 +220,7 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
             box$( e.type->clone() ),
             e.trait.clone(),
             e.item,
-            e.params.clone(),
-            e.impl_params.clone()
+            e.params.clone()
             }));
         ),
     (UfcsUnknown,

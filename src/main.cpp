@@ -55,6 +55,7 @@ void init_debug_list()
     g_debug_disable_map.insert( "Expand HIR Annotate" );
     g_debug_disable_map.insert( "Expand HIR Closures" );
     g_debug_disable_map.insert( "Expand HIR Calls" );
+    g_debug_disable_map.insert( "Expand HIR VTables" );
     g_debug_disable_map.insert( "Expand HIR Reborrows" );
     g_debug_disable_map.insert( "Expand HIR ErasedType" );
     g_debug_disable_map.insert( "Typecheck Expressions (validate)" );

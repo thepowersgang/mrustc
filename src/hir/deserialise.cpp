@@ -31,6 +31,7 @@ namespace {
         {}
         
         ::std::string read_string() { return m_in.read_string(); }
+        size_t deserialise_count() { return m_in.read_count(); }
         
         template<typename V>
         ::std::map< ::std::string,V> deserialise_strmap()
@@ -359,6 +360,9 @@ namespace {
             _(DstMeta, {
                 deserialise_mir_lvalue()
                 })
+            _(DstPtr, {
+                deserialise_mir_lvalue()
+                })
             _(MakeDst, {
                 deserialise_mir_lvalue(),
                 deserialise_mir_lvalue()
@@ -535,9 +539,12 @@ namespace {
         
         ::HIR::TraitValueItem deserialise_traitvalueitem()
         {
-            switch( m_in.read_tag() )
+            auto tag = m_in.read_tag();
+            auto idx = m_in.read_count();
+            ::HIR::TraitValueItem   rv;
+            switch( tag )
             {
-            #define _(x, ...)    case ::HIR::TraitValueItem::TAG_##x: DEBUG("- " #x); return ::HIR::TraitValueItem::make_##x( __VA_ARGS__ );
+            #define _(x, ...)    case ::HIR::TraitValueItem::TAG_##x: DEBUG("- " #x); rv = ::HIR::TraitValueItem::make_##x( __VA_ARGS__ ); break;
             _(Constant, deserialise_constant() )
             _(Static,   deserialise_static() )
             _(Function, deserialise_function() )
@@ -546,6 +553,8 @@ namespace {
                 DEBUG("Invalid TraitValueItem tag");
                 throw "";
             }
+            rv.vtable_ofs = idx;
+            return rv;
         }
         ::HIR::AssociatedType deserialise_associatedtype()
         {
@@ -602,6 +611,7 @@ namespace {
     
     template<> DEF_D( ::HIR::TypeImpl, return d.deserialise_typeimpl(); )
     template<> DEF_D( ::MacroRulesPtr, return d.deserialise_macrorulesptr(); )
+    template<> DEF_D( unsigned int, return static_cast<unsigned int>(d.deserialise_count()); )
     
     ::HIR::TypeRef HirDeserialiser::deserialise_type()
     {
@@ -722,7 +732,6 @@ namespace {
                 box$( deserialise_type() ),
                 deserialise_genericpath(),
                 m_in.read_string(),
-                deserialise_pathparams(),
                 deserialise_pathparams()
                 } );
         default:
@@ -857,6 +866,7 @@ namespace {
         rv.m_is_marker = m_in.read_bool();
         rv.m_types = deserialise_strumap< ::HIR::AssociatedType>();
         rv.m_values = deserialise_strumap< ::HIR::TraitValueItem>();
+        rv.m_type_indexes = deserialise_strumap< unsigned int>();
         return rv;
     }
     

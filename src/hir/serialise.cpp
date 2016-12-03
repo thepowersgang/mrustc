@@ -177,7 +177,6 @@ namespace {
                 serialise_genericpath(e.trait);
                 m_out.write_string(e.item);
                 serialise_pathparams(e.params);
-                serialise_pathparams(e.impl_params);
                 ),
             (UfcsUnknown,
                 DEBUG("-- UfcsUnknown - " << path);
@@ -565,6 +564,9 @@ namespace {
             (DstMeta,
                 serialise(e.val);
                 ),
+            (DstPtr,
+                serialise(e.val);
+                ),
             (MakeDst,
                 serialise(e.ptr_val);
                 serialise(e.meta_val);
@@ -684,6 +686,8 @@ namespace {
                 )
             )
         }
+        
+        void serialise(unsigned int v) { m_out.write_count(v); };
         
         // - Value items
         void serialise(const ::HIR::Function& fcn)
@@ -813,10 +817,12 @@ namespace {
             m_out.write_bool( item.m_is_marker );
             serialise_strmap( item.m_types );
             serialise_strmap( item.m_values );
+            serialise_strmap( item.m_type_indexes );
         }
         void serialise(const ::HIR::TraitValueItem& tvi)
         {
             m_out.write_tag( tvi.tag() );
+            m_out.write_count( tvi.vtable_ofs );
             TU_MATCHA( (tvi), (e),
             (Constant,
                 DEBUG("Constant");
