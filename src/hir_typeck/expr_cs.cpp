@@ -2937,6 +2937,9 @@ namespace {
         void visit(::HIR::ExprNode_PathValue& node) override {
             this->check_type_resolved_path(node.span(), node.m_path);
         }
+        void visit(::HIR::ExprNode_UnitVariant& node) override {
+            this->check_type_resolved_genericpath(node.span(), node.m_path);
+        }
         void visit(::HIR::ExprNode_StructLiteral& node) override {
             this->check_type_resolved_pp(node.span(), node.m_path.m_params, ::HIR::TypeRef());
             for(auto& ty : node.m_value_types) {
