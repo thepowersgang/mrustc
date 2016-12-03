@@ -11,7 +11,8 @@
 #include "trans_list.hpp"
 #include <hir/hir.hpp>
 #include <mir/mir.hpp>
-#include <hir_typeck/common.hpp>
+#include <hir_typeck/common.hpp>    // monomorph
+#include <hir_typeck/static.hpp>    // StaticTraitResolve
 
 
 void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const ::HIR::Function& function, TransList_Function& fcn_out, Trans_Params pp={});
@@ -20,9 +21,11 @@ void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const :
 /// Enumerate trans items starting from `::main` (binary crate)
 TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
 {
+    static Span sp;
+    
     TransList   rv;
     auto main_path = ::HIR::SimplePath("", {"main"});
-    const auto& fcn = crate.get_function_by_path(Span(), main_path);
+    const auto& fcn = crate.get_function_by_path(sp, main_path);
     
     auto* ptr = rv.add_function(main_path);
     assert(ptr);
@@ -136,6 +139,9 @@ namespace {
     }
     EntPtr get_ent_fullpath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::Path& path, ::HIR::PathParams& impl_pp)
     {
+        TRACE_FUNCTION_F(path);
+        StaticTraitResolve  resolve { crate };
+        
         TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
         (Generic,
             return get_ent_simplepath(sp, crate, e.m_path);
@@ -182,30 +188,12 @@ namespace {
             
             ::std::vector<const ::HIR::TypeRef*>    best_impl_params;
             const ::HIR::TraitImpl* best_impl = nullptr;
-            crate.find_trait_impls(e.trait.m_path, *e.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
-                DEBUG("Found impl" << impl.m_params.fmt_args() << " " << e.trait.m_path << impl.m_trait_args << " for " << impl.m_type);
+            resolve.find_impl(sp, e.trait.m_path, e.trait.m_params, *e.type, [&](auto impl_ref, auto is_fuzz) {
+                DEBUG("Found " << impl_ref);
+                //ASSERT_BUG(sp, !is_fuzz, "Fuzzy match not allowed here");
+                ASSERT_BUG(sp, impl_ref.m_data.is_TraitImpl(), "Trans impl search found an invalid impl type");
+                const auto& impl = *impl_ref.m_data.as_TraitImpl().impl;
                 ASSERT_BUG(sp, impl.m_trait_args.m_types.size() == e.trait.m_params.m_types.size(), "Trait parameter count mismatch " << impl.m_trait_args << " vs " << e.trait.m_params);
-                
-                ::std::vector<const ::HIR::TypeRef*>    impl_params;
-
-                auto cb_ident = [](const auto& t)->const auto& { return t; };
-                auto cb = [&impl_params,&sp,cb_ident](auto idx, const auto& ty) {
-                    assert( idx < impl_params.size() );
-                    if( ! impl_params[idx] ) {
-                        impl_params[idx] = &ty;
-                        return ::HIR::Compare::Equal;
-                    }
-                    else {
-                        return impl_params[idx]->compare_with_placeholders(sp, ty, cb_ident);
-                    }
-                    };
-                impl_params.resize(impl.m_params.m_types.size());
-                auto match = impl.m_type.match_test_generics_fuzz(sp, *e.type, cb_ident, cb);
-                match &= impl.m_trait_args.match_test_generics_fuzz(sp, e.trait.m_params, cb_ident, cb);
-                if( match != ::HIR::Compare::Equal ) {
-                    DEBUG("- Match failed (" << match << ") " << *e.type << " \n + " << e.trait.m_params);
-                    return false;
-                }
                 
                 if( best_impl == nullptr || impl.more_specific_than(*best_impl) ) {
                     best_impl = &impl;
@@ -229,7 +217,7 @@ namespace {
                         is_spec = fit->second.is_specialisable;
                         )
                     )
-                    best_impl_params = mv$( impl_params );
+                    best_impl_params = mv$( impl_ref.m_data.as_TraitImpl().params );
                     return !is_spec;
                 }
                 return false;
@@ -239,7 +227,7 @@ namespace {
             const auto& impl = *best_impl;
 
             for(const auto* ty_ptr : best_impl_params) {
-                assert( ty_ptr );
+                ASSERT_BUG(sp, ty_ptr, "Parameter unset");
                 impl_pp.m_types.push_back( ty_ptr->clone() );
             }
             
@@ -272,18 +260,22 @@ namespace {
 
 void Trans_Enumerate_FillFrom_Path(TransList& out, const ::HIR::Crate& crate, const ::HIR::Path& path, const Trans_Params& pp)
 {
+    TRACE_FUNCTION_F(path);
     Span    sp;
-    auto path_mono = pp.monomorph(path);
-    Trans_Params  sub_pp;
+    auto path_mono = pp.monomorph(crate, path);
+    Trans_Params  sub_pp(sp);
     TU_MATCHA( (path_mono.m_data), (pe),
     (Generic,
-        sub_pp = Trans_Params { sp, pe.m_params.clone() };
+        sub_pp.pp_method = pe.m_params.clone();
         ),
     (UfcsKnown,
-        sub_pp = Trans_Params { sp, pe.params.clone(), {}, pe.type->clone() };
+        sub_pp.pp_method = pe.params.clone();
+        sub_pp.self_type = pe.type->clone();
         ),
     (UfcsInherent,
-        sub_pp = Trans_Params { sp, pe.params.clone(), pe.impl_params.clone(), pe.type->clone() };
+        sub_pp.pp_method = pe.params.clone();
+        sub_pp.pp_impl = pe.impl_params.clone();
+        sub_pp.self_type = pe.type->clone();
         ),
     (UfcsUnknown,
         BUG(sp, "UfcsUnknown - " << path);
@@ -479,8 +471,36 @@ t_cb_generic Trans_Params::get_cb() const
 {
     return monomorphise_type_get_cb(sp, &self_type, &pp_impl, &pp_method);
 }
-::HIR::Path Trans_Params::monomorph(const ::HIR::Path& p) const
+::HIR::Path Trans_Params::monomorph(const ::HIR::Crate& crate, const ::HIR::Path& p) const
 {
-    return monomorphise_path_with(sp, p, this->get_cb(), false);
+    TRACE_FUNCTION_F(p);
+    auto rv = monomorphise_path_with(sp, p, this->get_cb(), false);
+
+    ::StaticTraitResolve    resolve { crate };
+    TU_MATCH(::HIR::Path::Data, (rv.m_data), (e2),
+    (Generic,
+        for(auto& arg : e2.m_params.m_types)
+            resolve.expand_associated_types(sp, arg);
+        ),
+    (UfcsInherent,
+        resolve.expand_associated_types(sp, *e2.type);
+        for(auto& arg : e2.params.m_types)
+            resolve.expand_associated_types(sp, arg);
+        // TODO: impl params too?
+        for(auto& arg : e2.impl_params.m_types)
+            resolve.expand_associated_types(sp, arg);
+        ),
+    (UfcsKnown,
+        resolve.expand_associated_types(sp, *e2.type);
+        for(auto& arg : e2.trait.m_params.m_types)
+            resolve.expand_associated_types(sp, arg);
+        for(auto& arg : e2.params.m_types)
+            resolve.expand_associated_types(sp, arg);
+        ),
+    (UfcsUnknown,
+        BUG(sp, "Encountered UfcsUnknown");
+        )
+    )
+    return rv;
 }
 

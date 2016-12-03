@@ -101,6 +101,11 @@ bool StaticTraitResolve::find_impl(
                 return found_cb( ImplRef(&type, &null_params, &null_assoc), false );
             }
         }
+        else if( trait_path == m_lang_Sized ) {
+            if( this->type_is_sized(sp, type) ) {
+                return found_cb( ImplRef(&type, &null_params, &null_assoc), false );
+            }
+        }
     }
     
     // --- MAGIC IMPLS ---
@@ -806,7 +811,12 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
                 this->expand_associated_types_inner(sp, arg);
             ),
         (UfcsInherent,
-            TODO(sp, "Path - UfcsInherent - " << e.path);
+            this->expand_associated_types_inner(sp, *e2.type);
+            for(auto& arg : e2.params.m_types)
+                this->expand_associated_types_inner(sp, arg);
+            // TODO: impl params too?
+            for(auto& arg : e2.impl_params.m_types)
+                this->expand_associated_types_inner(sp, arg);
             ),
         (UfcsKnown,
             // - Only try resolving if the binding isn't known
@@ -1289,6 +1299,83 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
     (Tuple,
         for(const auto& ty : e)
             if( !type_is_copy(sp, ty) )
+                return false;
+        return true;
+        )
+    )
+    throw "";
+}
+
+bool StaticTraitResolve::type_is_sized(const Span& sp, const ::HIR::TypeRef& ty) const
+{
+    TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
+    (Generic,
+        if( e.binding == 0xFFFF ) {
+            // TODO: Self: Sized?
+            return true;
+        }
+        else if( (e.binding >> 8) == 0 ) {
+            auto idx = e.binding & 0xFF;
+            assert( m_impl_generics );
+            assert( idx < m_impl_generics->m_types.size() );
+            return m_impl_generics->m_types[idx].m_is_sized;
+        }
+        else if( (e.binding >> 8) == 1 ) {
+            auto idx = e.binding & 0xFF;
+            assert( m_item_generics );
+            assert( idx < m_item_generics->m_types.size() );
+            return m_item_generics->m_types[idx].m_is_sized;
+        }
+        else {
+            BUG(sp, "");
+        }
+        ),
+    (Path,
+        auto pp = ::HIR::PathParams();
+        // TODO: Destructure?
+        return true;
+        //return this->find_impl(sp, m_lang_Sized, &pp, ty, [&](auto , bool){ return true; }, true);
+        ),
+    (Diverge,
+        // The ! type is kinda Copy ...
+        return true;
+        ),
+    (Closure,
+        return true;
+        ),
+    (Infer,
+        // Shouldn't be hit
+        return false;
+        ),
+    (Borrow,
+        return true;
+        ),
+    (Pointer,
+        return true;
+        ),
+    (Function,
+        return true;
+        ),
+    (Primitive,
+        // All primitives (except the unsized `str`) are Sized
+        return e != ::HIR::CoreType::Str;
+        ),
+    (Array,
+        return true;
+        ),
+    (Slice,
+        return false;
+        ),
+    (TraitObject,
+        return false;
+        ),
+    (ErasedType,
+        // NOTE: All erased types are implicitly Sized
+        return true;
+        ),
+    (Tuple,
+        for(const auto& ty : e)
+            if( !type_is_sized(sp, ty) )
                 return false;
         return true;
         )

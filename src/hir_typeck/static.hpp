@@ -23,6 +23,7 @@ public:
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
 private:
     ::HIR::SimplePath   m_lang_Copy;
+    ::HIR::SimplePath   m_lang_Sized;
     ::HIR::SimplePath   m_lang_Fn;
     ::HIR::SimplePath   m_lang_FnMut;
     ::HIR::SimplePath   m_lang_FnOnce;
@@ -33,10 +34,11 @@ public:
         m_impl_generics(nullptr),
         m_item_generics(nullptr)
     {
-        m_lang_Copy = m_crate.get_lang_item_path(Span(), "copy");
-        m_lang_Fn = m_crate.get_lang_item_path(Span(), "fn");
-        m_lang_FnMut = m_crate.get_lang_item_path(Span(), "fn_mut");
-        m_lang_FnOnce = m_crate.get_lang_item_path(Span(), "fn_once");
+        m_lang_Copy = m_crate.get_lang_item_path_opt("copy");
+        m_lang_Sized = m_crate.get_lang_item_path_opt("sized");
+        m_lang_Fn = m_crate.get_lang_item_path_opt("fn");
+        m_lang_FnMut = m_crate.get_lang_item_path_opt("fn_mut");
+        m_lang_FnOnce = m_crate.get_lang_item_path_opt("fn_once");
         prep_indexes();
     }
 
@@ -163,5 +165,6 @@ public:
     // Common bounds
     // -------------
     bool type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const;
+    bool type_is_sized(const Span& sp, const ::HIR::TypeRef& ty) const;
 };
 

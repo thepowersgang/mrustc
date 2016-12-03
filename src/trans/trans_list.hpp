@@ -12,6 +12,7 @@
 #include <hir_typeck/common.hpp>
 
 namespace HIR {
+class Crate;
 class Function;
 class Static;
 }
@@ -23,9 +24,14 @@ struct Trans_Params
     ::HIR::PathParams   pp_impl;
     ::HIR::TypeRef  self_type;
     
+    Trans_Params() {}
+    Trans_Params(const Span& sp):
+        sp(sp)
+    {}
+    
     t_cb_generic get_cb() const;
-    ::HIR::TypeRef monomorph(const ::HIR::TypeRef& p) const;
-    ::HIR::Path monomorph(const ::HIR::Path& p) const;
+    ::HIR::TypeRef monomorph(const ::HIR::Crate& crate, const ::HIR::TypeRef& p) const;
+    ::HIR::Path monomorph(const ::HIR::Crate& crate, const ::HIR::Path& p) const;
 };
 
 struct TransList_Function

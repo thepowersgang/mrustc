@@ -32,9 +32,9 @@ public:
     
     void reset();
     
-    ::MIR::Function& operator->() { return *ptr; }
+    ::MIR::Function* operator->() { return ptr; }
     ::MIR::Function& operator*() { return *ptr; }
-    const ::MIR::Function& operator->() const { return *ptr; }
+    const ::MIR::Function* operator->() const { return ptr; }
     const ::MIR::Function& operator*() const { return *ptr; }
     
     operator bool() const { return ptr != nullptr; }

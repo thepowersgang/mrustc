@@ -9,6 +9,7 @@
 #include "main_bindings.hpp"
 #include <hir/visitor.hpp>
 #include <hir/expr.hpp>
+#include <mir/mir.hpp>
 #include <algorithm>    // std::find_if
 
 #include <hir_typeck/static.hpp>
@@ -481,6 +482,138 @@ namespace {
             {
                 ExprVisitor v { *this };
                 (*expr).visit(v);
+            }
+            else if( expr.m_mir )
+            {
+                struct H {
+                    static void visit_lvalue(Visitor& upper_visitor, ::MIR::LValue& lv)
+                    {
+                        TU_MATCHA( (lv), (e),
+                        (Variable,
+                            ),
+                        (Temporary,
+                            ),
+                        (Argument,
+                            ),
+                        (Return,
+                            ),
+                        (Static,
+                            upper_visitor.visit_path(e, ::HIR::Visitor::PathContext::VALUE);
+                            ),
+                        (Field,
+                            H::visit_lvalue(upper_visitor, *e.val);
+                            ),
+                        (Deref,
+                            H::visit_lvalue(upper_visitor, *e.val);
+                            ),
+                        (Index,
+                            H::visit_lvalue(upper_visitor, *e.val);
+                            H::visit_lvalue(upper_visitor, *e.idx);
+                            ),
+                        (Downcast,
+                            H::visit_lvalue(upper_visitor, *e.val);
+                            )
+                        )
+                    }
+                };
+                for(auto& block : expr.m_mir->blocks)
+                {
+                    for(auto& stmt : block.statements)
+                    {
+                        TU_IFLET(::MIR::Statement, stmt, Assign, se,
+                            H::visit_lvalue(*this, se.dst);
+                            TU_MATCHA( (se.src), (e),
+                            (Use,
+                                H::visit_lvalue(*this, e);
+                                ),
+                            (Constant,
+                                TU_MATCHA( (e), (ce),
+                                (Int, ),
+                                (Uint,),
+                                (Float, ),
+                                (Bool, ),
+                                (Bytes, ),
+                                (StaticString, ),  // String
+                                (Const,
+                                    // TODO: Should this trigger anything?
+                                    ),
+                                (ItemAddr,
+                                    this->visit_path(ce, ::HIR::Visitor::PathContext::VALUE);
+                                    )
+                                )
+                                ),
+                            (SizedArray,
+                                H::visit_lvalue(*this, e.val);
+                                ),
+                            (Borrow,
+                                H::visit_lvalue(*this, e.val);
+                                ),
+                            (Cast,
+                                H::visit_lvalue(*this, e.val);
+                                ),
+                            (BinOp,
+                                H::visit_lvalue(*this, e.val_l);
+                                H::visit_lvalue(*this, e.val_r);
+                                ),
+                            (UniOp,
+                                H::visit_lvalue(*this, e.val);
+                                ),
+                            (DstMeta,
+                                H::visit_lvalue(*this, e.val);
+                                ),
+                            (DstPtr,
+                                H::visit_lvalue(*this, e.val);
+                                ),
+                            (MakeDst,
+                                H::visit_lvalue(*this, e.meta_val);
+                                H::visit_lvalue(*this, e.ptr_val);
+                                ),
+                            (Tuple,
+                                for(auto& val : e.vals)
+                                    H::visit_lvalue(*this, val);
+                                ),
+                            (Array,
+                                for(auto& val : e.vals)
+                                    H::visit_lvalue(*this, val);
+                                ),
+                            (Variant,
+                                H::visit_lvalue(*this, e.val);
+                                ),
+                            (Struct,
+                                for(auto& val : e.vals)
+                                    H::visit_lvalue(*this, val);
+                                )
+                            )
+                        )
+                        else TU_IFLET(::MIR::Statement, stmt, Drop, se,
+                            H::visit_lvalue(*this, se.slot);
+                        )
+                        else {
+                        }
+                    }
+                    TU_MATCHA( (block.terminator), (te),
+                    (Incomplete, ),
+                    (Return, ),
+                    (Diverge, ),
+                    (Goto, ),
+                    (Panic, ),
+                    (If,
+                        H::visit_lvalue(*this, te.cond);
+                        ),
+                    (Switch,
+                        H::visit_lvalue(*this, te.val);
+                        ),
+                    (Call,
+                        H::visit_lvalue(*this, te.ret_val);
+                        H::visit_lvalue(*this, te.fcn_val);
+                        for(auto& arg : te.args)
+                            H::visit_lvalue(*this, arg);
+                        )
+                    )
+                }
+            }
+            else
+            {
             }
         }
     };
