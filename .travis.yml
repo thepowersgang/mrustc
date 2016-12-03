@@ -17,7 +17,7 @@ install:
 # Tests! (check that they parse, and keep going)
 script:
 # libstd
- - make "./rustc-nightly/"
+ - make rustc-nightly/
  - make output/libstd.hir TAIL_COUNT=2
 # rustc (not the actual binary, because that doesn't emit a file yet)
  - make output/librustc_driver.hir TAIL_COUNT=2

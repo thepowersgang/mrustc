@@ -115,7 +115,7 @@ output/%.ast: samples/%.rs $(BIN)
 	@mkdir -p output/
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 
-RUSTCSRC := ./rustc-nightly/
+RUSTCSRC := rustc-nightly/
 RUSTC_SRC_DL := $(RUSTCSRC)/dl-version
 
 output/lib%.hir: $(RUSTCSRC)src/lib%/lib.rs $(RUSTCSRC) $(BIN)
