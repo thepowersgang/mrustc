@@ -144,11 +144,12 @@ namespace {
             // Easy (ish)
             EntPtr rv;
             crate.find_type_impls(*e.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
+                DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                 {
                     auto fit = impl.m_methods.find(e.item);
                     if( fit != impl.m_methods.end() )
                     {
-                        DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+                        DEBUG("- Contains method, good");
                         rv = EntPtr { &fit->second.data };
                         return true;
                     }
@@ -182,6 +183,8 @@ namespace {
             ::std::vector<const ::HIR::TypeRef*>    best_impl_params;
             const ::HIR::TraitImpl* best_impl = nullptr;
             crate.find_trait_impls(e.trait.m_path, *e.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
+                DEBUG("Found impl" << impl.m_params.fmt_args() << " " << e.trait.m_path << impl.m_trait_args << " for " << impl.m_type);
+                ASSERT_BUG(sp, impl.m_trait_args.m_types.size() == e.trait.m_params.m_types.size(), "Trait parameter count mismatch " << impl.m_trait_args << " vs " << e.trait.m_params);
                 
                 ::std::vector<const ::HIR::TypeRef*>    impl_params;
 
@@ -199,8 +202,10 @@ namespace {
                 impl_params.resize(impl.m_params.m_types.size());
                 auto match = impl.m_type.match_test_generics_fuzz(sp, *e.type, cb_ident, cb);
                 match &= impl.m_trait_args.match_test_generics_fuzz(sp, e.trait.m_params, cb_ident, cb);
-                if( match != ::HIR::Compare::Equal )
+                if( match != ::HIR::Compare::Equal ) {
+                    DEBUG("- Match failed (" << match << ") " << *e.type << " \n + " << e.trait.m_params);
                     return false;
+                }
                 
                 if( best_impl == nullptr || impl.more_specific_than(*best_impl) ) {
                     best_impl = &impl;

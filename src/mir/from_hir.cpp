@@ -1271,8 +1271,8 @@ namespace {
                 auto place_refmut__type = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, place_type.clone());
                 auto place_refmut = m_builder.lvalue_or_temp(node.span(), place_refmut__type,  ::MIR::RValue::make_Borrow({ 0, ::HIR::BorrowType::Unique, place.clone() }));
                 auto fcn_ty_data = ::HIR::FunctionType { false, "", box$( place_raw__type.clone() ), ::make_vec1(mv$(place_refmut__type)) };
-                // <typeof(place) as ops::Place>::pointer
-                auto fcn_path = ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_Place), "pointer", {});
+                // <typeof(place) as ops::Place<T>>::pointer (T = inner)
+                auto fcn_path = ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_Place, ::HIR::PathParams(data_ty.clone())), "pointer");
                 auto fcn_val = m_builder.new_temporary( ::HIR::TypeRef(mv$(fcn_ty_data)) );
                 m_builder.push_stmt_assign( node.span(), fcn_val.clone(), ::MIR::RValue::make_Constant( ::MIR::Constant(mv$(fcn_path)) ) );
                 m_builder.end_block(::MIR::Terminator::make_Call({
