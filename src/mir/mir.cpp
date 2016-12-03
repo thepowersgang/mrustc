@@ -154,8 +154,14 @@ namespace MIR {
                 os << j << " => bb" << e.targets[j] << ", ";
             os << ")";
             ),
-        (Call,
+        (CallValue,
             os << "Call( " << e.ret_val << " = " << e.fcn_val << "( ";
+            for(const auto& arg : e.args)
+                os << arg << ", ";
+            os << "), bb" << e.ret_block << ", bb" << e.panic_block << ")";
+            ),
+        (CallPath,
+            os << "Call( " << e.ret_val << " = " << e.fcn_path << "( ";
             for(const auto& arg : e.args)
                 os << arg << ", ";
             os << "), bb" << e.ret_block << ", bb" << e.panic_block << ")";

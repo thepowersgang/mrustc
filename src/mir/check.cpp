@@ -350,7 +350,11 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     PUSH_BB(e.targets[i], "Switch V" << i);
                 }
                 ),
-            (Call,
+            (CallValue,
+                PUSH_BB(e.ret_block, "Call ret");
+                PUSH_BB(e.panic_block, "Call panic");
+                ),
+            (CallPath,
                 PUSH_BB(e.ret_block, "Call ret");
                 PUSH_BB(e.panic_block, "Call panic");
                 )
@@ -566,7 +570,10 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             (Switch,
                 // Check that the condition is an enum
                 ),
-            (Call,
+            (CallValue,
+                // Typecheck arguments and return value
+                ),
+            (CallPath,
                 // Typecheck arguments and return value
                 )
             )

@@ -1239,15 +1239,11 @@ namespace {
             case ::HIR::ExprNode_Emplace::Type::Noop:
                 throw "";
             case ::HIR::ExprNode_Emplace::Type::Boxer: {
-                auto fcn_ty_data = ::HIR::FunctionType { false, "", box$( place_type.clone() ), {} };
                 ::HIR::PathParams   trait_params;
                 trait_params.m_types.push_back( data_ty.clone() );
-                auto fcn_path = ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_BoxPlace, mv$(trait_params)), "make_place", {});
-                auto fcn_val = m_builder.new_temporary( ::HIR::TypeRef(mv$(fcn_ty_data)) );
-                m_builder.push_stmt_assign( node.span(), fcn_val.clone(), ::MIR::RValue::make_Constant( ::MIR::Constant(mv$(fcn_path)) ) );
-                m_builder.end_block(::MIR::Terminator::make_Call({
+                m_builder.end_block(::MIR::Terminator::make_CallPath({
                     place__ok, place__panic,
-                    place.clone(), mv$(fcn_val),
+                    place.clone(), ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_BoxPlace, mv$(trait_params)), "make_place", {}),
                     {}
                     }));
                 break; }
@@ -1270,14 +1266,11 @@ namespace {
             {
                 auto place_refmut__type = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, place_type.clone());
                 auto place_refmut = m_builder.lvalue_or_temp(node.span(), place_refmut__type,  ::MIR::RValue::make_Borrow({ 0, ::HIR::BorrowType::Unique, place.clone() }));
-                auto fcn_ty_data = ::HIR::FunctionType { false, "", box$( place_raw__type.clone() ), ::make_vec1(mv$(place_refmut__type)) };
                 // <typeof(place) as ops::Place<T>>::pointer (T = inner)
                 auto fcn_path = ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_Place, ::HIR::PathParams(data_ty.clone())), "pointer");
-                auto fcn_val = m_builder.new_temporary( ::HIR::TypeRef(mv$(fcn_ty_data)) );
-                m_builder.push_stmt_assign( node.span(), fcn_val.clone(), ::MIR::RValue::make_Constant( ::MIR::Constant(mv$(fcn_path)) ) );
-                m_builder.end_block(::MIR::Terminator::make_Call({
+                m_builder.end_block(::MIR::Terminator::make_CallPath({
                     place_raw__ok, place_raw__panic,
-                    place_raw.clone(), mv$(fcn_val),
+                    place_raw.clone(), mv$(fcn_path),
                     ::make_vec1( mv$(place_refmut) )
                     }));
             }
@@ -1311,16 +1304,11 @@ namespace {
             auto res = m_builder.new_temporary( node.m_res_type );
             auto res__panic = m_builder.new_bb_unlinked();
             auto res__ok = m_builder.new_bb_unlinked();
-            {
-                auto fcn_ty_data = ::HIR::FunctionType { true, "", box$(node.m_res_type.clone()), ::make_vec1(mv$(place_type)) };
-                auto fcn_val = m_builder.new_temporary( ::HIR::TypeRef(mv$(fcn_ty_data)) );
-                m_builder.push_stmt_assign( node.span(), fcn_val.clone(), ::MIR::RValue::make_Constant( ::MIR::Constant(mv$(finalize_path)) ) );
-                m_builder.end_block(::MIR::Terminator::make_Call({
-                    res__ok, res__panic,
-                    res.clone(), mv$(fcn_val),
-                    ::make_vec1( mv$(place) )
-                    }));
-            }
+            m_builder.end_block(::MIR::Terminator::make_CallPath({
+                res__ok, res__panic,
+                res.clone(), mv$(finalize_path),
+                ::make_vec1( mv$(place) )
+                }));
             
             // TODO: Proper panic handling, including scope destruction
             m_builder.set_cur_block(res__panic);
@@ -1362,9 +1350,13 @@ namespace {
                 m_builder.moved_lvalue( arg->span(), values.back() );
             }
             
-            ::MIR::LValue   fcn_val;
+            
+            auto panic_block = m_builder.new_bb_unlinked();
+            auto next_block = m_builder.new_bb_unlinked();
+            auto res = m_builder.new_temporary( node.m_res_type );
             
             // If the call was to a TraitObject function, get it from the vtable.
+            // TODO: Should this be a later pass?
             bool was_virtual = false;
             if( node.m_path.m_data.is_UfcsKnown() && node.m_path.m_data.as_UfcsKnown().type->m_data.is_TraitObject() )
             {
@@ -1400,40 +1392,31 @@ namespace {
                     
                     auto vtable = m_builder.lvalue_or_temp(sp, mv$(vtable_ty), mv$(vtable_rval));
                     auto vtable_fcn = ::MIR::LValue::make_Field({ box$(vtable), vtable_idx });
+                    
+                    ::MIR::LValue   fcn_val;
                     m_builder.with_val_type(sp, vtable_fcn, [&](const auto& ty){
                         fcn_val = m_builder.new_temporary(ty);
                         });
                     
                     m_builder.push_stmt_assign( sp, fcn_val.clone(), ::MIR::RValue( mv$(vtable_fcn) ) );
+                    
                     was_virtual = true;
+                    m_builder.end_block(::MIR::Terminator::make_CallValue({
+                        next_block, panic_block,
+                        res.clone(), mv$(fcn_val),
+                        mv$(values)
+                        }));
                 }
             }
             
             if( ! was_virtual )
             {
-                // TODO: Obtain function type for this function (i.e. a type that is specifically for this function)
-                auto fcn_ty_data = ::HIR::FunctionType {
-                    false,
-                    "",
-                    box$( node.m_cache.m_arg_types.back().clone() ),
-                    {}
-                    };
-                for(unsigned int i = 0; i < node.m_cache.m_arg_types.size() - 1; i ++)
-                {
-                    fcn_ty_data.m_arg_types.push_back( node.m_cache.m_arg_types[i].clone() );
-                }
-                fcn_val = m_builder.new_temporary( ::HIR::TypeRef(mv$(fcn_ty_data)) );
-                m_builder.push_stmt_assign( sp, fcn_val.clone(), ::MIR::RValue::make_Constant( ::MIR::Constant(node.m_path.clone()) ) );
+                m_builder.end_block(::MIR::Terminator::make_CallPath({
+                    next_block, panic_block,
+                    res.clone(), node.m_path.clone(),
+                    mv$(values)
+                    }));
             }
-            
-            auto panic_block = m_builder.new_bb_unlinked();
-            auto next_block = m_builder.new_bb_unlinked();
-            auto res = m_builder.new_temporary( node.m_res_type );
-            m_builder.end_block(::MIR::Terminator::make_Call({
-                next_block, panic_block,
-                res.clone(), mv$(fcn_val),
-                mv$(values)
-                }));
             
             m_builder.set_cur_block(panic_block);
             // TODO: Proper panic handling, including scope destruction
@@ -1465,7 +1448,7 @@ namespace {
             auto panic_block = m_builder.new_bb_unlinked();
             auto next_block = m_builder.new_bb_unlinked();
             auto res = m_builder.new_temporary( node.m_res_type );
-            m_builder.end_block(::MIR::Terminator::make_Call({
+            m_builder.end_block(::MIR::Terminator::make_CallValue({
                 next_block, panic_block,
                 res.clone(), mv$(fcn_val),
                 mv$(values)

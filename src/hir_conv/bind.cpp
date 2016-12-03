@@ -603,9 +603,15 @@ namespace {
                     (Switch,
                         H::visit_lvalue(*this, te.val);
                         ),
-                    (Call,
+                    (CallValue,
                         H::visit_lvalue(*this, te.ret_val);
                         H::visit_lvalue(*this, te.fcn_val);
+                        for(auto& arg : te.args)
+                            H::visit_lvalue(*this, arg);
+                        ),
+                    (CallPath,
+                        H::visit_lvalue(*this, te.ret_val);
+                        visit_path(te.fcn_path, ::HIR::Visitor::PathContext::VALUE);
                         for(auto& arg : te.args)
                             H::visit_lvalue(*this, arg);
                         )

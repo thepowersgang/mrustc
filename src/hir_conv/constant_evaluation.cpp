@@ -1166,13 +1166,9 @@ namespace {
             (Return,
                 return retval;
                 ),
-            (Call,
+            (CallPath,
                 auto& dst = get_lval(e.ret_val);
-                auto fcn_v = read_lval(e.fcn_val);
-                if( ! fcn_v.is_BorrowOf() ) {
-                    BUG(sp, "Execute MIR - Calling function through invalid value - " << fcn_v);
-                }
-                const auto& fcnp = fcn_v.as_BorrowOf();
+                const auto& fcnp = e.fcn_path;
                 auto& fcn = get_function(sp, crate, fcnp);
                 
                 ::std::vector< ::HIR::Literal>  call_args;

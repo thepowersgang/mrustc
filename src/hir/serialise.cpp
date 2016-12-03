@@ -483,11 +483,18 @@ namespace {
                 for(auto t : e.targets)
                     m_out.write_count(t);
                 ),
-            (Call,
+            (CallValue,
                 m_out.write_count(e.ret_block);
                 m_out.write_count(e.panic_block);
                 serialise(e.ret_val);
                 serialise(e.fcn_val);
+                serialise_vec(e.args);
+                ),
+            (CallPath,
+                m_out.write_count(e.ret_block);
+                m_out.write_count(e.panic_block);
+                serialise(e.ret_val);
+                serialise_path(e.fcn_path);
                 serialise_vec(e.args);
                 )
             )

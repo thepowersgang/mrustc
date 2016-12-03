@@ -247,11 +247,20 @@ namespace {
                 e.targets
                 });
             ),
-        (Call,
-            terminator = ::MIR::Terminator::make_Call({
+        (CallValue,
+            terminator = ::MIR::Terminator::make_CallValue({
                 e.ret_block, e.panic_block,
                 monomorph_LValue(crate, params, e.ret_val),
                 monomorph_LValue(crate, params, e.fcn_val),
+                monomorph_LValue_list(crate, params, e.args)
+                });
+            ),
+        (CallPath,
+            // TODO: Replace vtable calls
+            terminator = ::MIR::Terminator::make_CallPath({
+                e.ret_block, e.panic_block,
+                monomorph_LValue(crate, params, e.ret_val),
+                params.monomorph(crate, e.fcn_path),
                 monomorph_LValue_list(crate, params, e.args)
                 });
             )

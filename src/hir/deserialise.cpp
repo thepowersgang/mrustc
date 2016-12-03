@@ -952,11 +952,18 @@ namespace {
             deserialise_mir_lvalue(),
             deserialise_vec_c<unsigned int>([&](){ return m_in.read_count(); })
             })
-        _(Call, {
+        _(CallValue, {
             static_cast<unsigned int>(m_in.read_count()),
             static_cast<unsigned int>(m_in.read_count()),
             deserialise_mir_lvalue(),
             deserialise_mir_lvalue(),
+            deserialise_vec< ::MIR::LValue>()
+            })
+        _(CallPath, {
+            static_cast<unsigned int>(m_in.read_count()),
+            static_cast<unsigned int>(m_in.read_count()),
+            deserialise_mir_lvalue(),
+            deserialise_path(),
             deserialise_vec< ::MIR::LValue>()
             })
         #undef _

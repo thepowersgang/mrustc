@@ -196,8 +196,14 @@ namespace {
                         m_os << j << " => bb" << e.targets[j] << ", ";
                     m_os << "}\n";
                     ),
-                (Call,
+                (CallValue,
                     m_os << FMT_M(e.ret_val) << " = (" << FMT_M(e.fcn_val) << ")( ";
+                    for(const auto& arg : e.args)
+                        m_os << FMT_M(arg) << ", ";
+                    m_os << ") goto bb" << e.ret_block << " else bb" << e.panic_block << "\n";
+                    ),
+                (CallPath,
+                    m_os << FMT_M(e.ret_val) << " = " << e.fcn_path << "( ";
                     for(const auto& arg : e.args)
                         m_os << FMT_M(arg) << ", ";
                     m_os << ") goto bb" << e.ret_block << " else bb" << e.panic_block << "\n";

@@ -175,11 +175,18 @@ TAGGED_UNION(Terminator, Incomplete,
         LValue val;
         ::std::vector<BasicBlockId>  targets;
         }),
-    (Call, struct {
+    (CallValue, struct {
         BasicBlockId    ret_block;
         BasicBlockId    panic_block;
         LValue  ret_val;
         LValue  fcn_val;
+        ::std::vector<LValue>   args;
+        }),
+    (CallPath, struct {
+        BasicBlockId    ret_block;
+        BasicBlockId    panic_block;
+        LValue  ret_val;
+        ::HIR::Path fcn_path;
         ::std::vector<LValue>   args;
         })
     );
