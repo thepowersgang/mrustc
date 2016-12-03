@@ -7,7 +7,7 @@
  */
 #include "monomorphise.hpp"
 #include <mir/mir.hpp>
-
+#include <hir/hir.hpp>
 
 namespace {
     ::MIR::LValue monomorph_LValue(const ::HIR::Crate& crate, const Trans_Params& params, const ::MIR::LValue& tpl)
@@ -132,6 +132,7 @@ namespace {
                         auto p = params.monomorph(crate, ce);
                         // TODO: If this is a pointer to a function on a trait object, replace with the address loaded from the vtable.
                         // - Requires creating a new temporary for the vtable pointer.
+                        // - Also requires knowing what the receiver is.
                         rval = ::MIR::Constant( mv$(p) );
                         )
                     )
