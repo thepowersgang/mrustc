@@ -1376,10 +1376,9 @@ namespace {
                     const auto& trait = *te.m_trait.m_trait_ptr;
                     
                     // 1. Get the vtable index for this function
-                    unsigned int vtable_idx = trait.m_values.at( pe.item ).vtable_ofs;
-                    if( vtable_idx == ~0u ) {
+                    if( trait.m_value_indexes.count(pe.item) == 0 )
                         BUG(sp, "Calling method '" << pe.item << "' of " << pe.trait << " which isn't in the vtable");
-                    }
+                    unsigned int vtable_idx = trait.m_value_indexes.at( pe.item );
                     
                     // 2. Load from the vtable
                     auto vtable_rval = ::MIR::RValue::make_DstMeta({

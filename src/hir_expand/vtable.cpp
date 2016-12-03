@@ -61,10 +61,17 @@ namespace {
             ::std::unordered_map< ::std::string,unsigned int>  assoc_type_indexes;
             struct Foo {
                 ::HIR::Trait*   trait_ptr;
+                ::HIR::GenericParams    params;
                 unsigned int    i;
                 void add_types_from_trait(const ::HIR::Trait& tr) {
                     for(const auto& ty : tr.m_types) {
-                        trait_ptr->m_type_indexes[ty.first] = i;
+                        auto rv = trait_ptr->m_type_indexes.insert( ::std::make_pair(ty.first, i) );
+                        if(rv.second == false) {
+                            //TODO(Span(), "Handle conflicting associated types - '" << ty.first << "'");
+                        }
+                        else {
+                            params.m_types.push_back( ::HIR::TypeParamDef { "a#"+ty.first, {}, ty.second.is_sized } );
+                        }
                         i ++;
                     }
                     // TODO: Iterate supertraits too.
@@ -73,7 +80,12 @@ namespace {
                     }
                 }
             };
-            Foo { &tr, static_cast<unsigned int>(tr.m_params.m_types.size()) }.add_types_from_trait(tr);
+            Foo visitor { &tr, {}, static_cast<unsigned int>(tr.m_params.m_types.size()) };
+            for(const auto& tp : tr.m_params.m_types) {
+                visitor.params.m_types.push_back( ::HIR::TypeParamDef { tp.m_name, {}, tp.m_is_sized } );
+            }
+            visitor.add_types_from_trait(tr);
+            auto args = mv$(visitor.params);
             
             auto clone_cb = [&](const auto& t, auto& o) {
                 if(t.m_data.is_Path() && t.m_data.as_Path().path.m_data.is_UfcsKnown()) {
@@ -131,10 +143,13 @@ namespace {
                     if( visit_ty_with(fcn_type, [&](const auto& t){ return (t == ::HIR::TypeRef("Self", 0xFFFF)); }) )
                     {
                         DEBUG("- '" << vi.first << "' NOT object safe (Self), not creating vtable - " << fcn_type);
+                        tr.m_value_indexes.clear();
+                        tr.m_type_indexes.clear();
                         return ;
                     }
                     
-                    vi.second.vtable_ofs = fields.size();
+                    tr.m_value_indexes[vi.first] = fields.size();
+                    DEBUG("- '" << vi.first << "' is @" << fields.size());
                     fields.push_back( ::std::make_pair(
                         vi.first,
                         ::HIR::VisEnt< ::HIR::TypeRef> { true, mv$(fcn_type) }
@@ -150,19 +165,15 @@ namespace {
             }
             
             ::HIR::PathParams   params;
-            ::HIR::GenericParams    args;
             {
                 unsigned int i = 0;
                 for(const auto& tp : tr.m_params.m_types) {
-                    args.m_types.push_back( ::HIR::TypeParamDef { tp.m_name, {}, tp.m_is_sized } );
                     params.m_types.push_back( ::HIR::TypeRef(tp.m_name, i) );
                     i ++;
                 }
-                for(const auto& ty : tr.m_types) {
-                    args.m_types.push_back( ::HIR::TypeParamDef { "a#"+ty.first, {}, ty.second.is_sized } );
+                for(const auto& ty : tr.m_type_indexes) {
                     ::HIR::Path path( ::HIR::TypeRef("Self",0xFFFF), trait_path.clone(), ty.first );
                     params.m_types.push_back( ::HIR::TypeRef( mv$(path) ) );
-                    i ++;
                 }
             }
             // TODO: Would like to have access to the publicity marker

@@ -539,12 +539,9 @@ namespace {
         
         ::HIR::TraitValueItem deserialise_traitvalueitem()
         {
-            auto tag = m_in.read_tag();
-            auto idx = m_in.read_count();
-            ::HIR::TraitValueItem   rv;
-            switch( tag )
+            switch( m_in.read_tag() )
             {
-            #define _(x, ...)    case ::HIR::TraitValueItem::TAG_##x: DEBUG("- " #x); rv = ::HIR::TraitValueItem::make_##x( __VA_ARGS__ ); break;
+            #define _(x, ...)    case ::HIR::TraitValueItem::TAG_##x: DEBUG("- " #x); return ::HIR::TraitValueItem::make_##x( __VA_ARGS__ ); break;
             _(Constant, deserialise_constant() )
             _(Static,   deserialise_static() )
             _(Function, deserialise_function() )
@@ -553,8 +550,6 @@ namespace {
                 DEBUG("Invalid TraitValueItem tag");
                 throw "";
             }
-            rv.vtable_ofs = idx;
-            return rv;
         }
         ::HIR::AssociatedType deserialise_associatedtype()
         {
@@ -866,6 +861,7 @@ namespace {
         rv.m_is_marker = m_in.read_bool();
         rv.m_types = deserialise_strumap< ::HIR::AssociatedType>();
         rv.m_values = deserialise_strumap< ::HIR::TraitValueItem>();
+        rv.m_value_indexes = deserialise_strumap< unsigned int>();
         rv.m_type_indexes = deserialise_strumap< unsigned int>();
         return rv;
     }

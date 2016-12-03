@@ -231,15 +231,10 @@ struct AssociatedType
     ::std::vector< ::HIR::TraitPath>    m_trait_bounds;
     ::HIR::TypeRef  m_default;
 };
-TAGGED_UNION_EX(TraitValueItem, (), Constant, (
+TAGGED_UNION(TraitValueItem, Constant,
     (Constant,  Constant),
     (Static,    Static),
     (Function,  Function)
-    ),
-    (),(),
-    (
-        unsigned int vtable_ofs = ~0u;
-    )
     );
 struct Trait
 {
@@ -252,7 +247,9 @@ struct Trait
     ::std::unordered_map< ::std::string, AssociatedType >   m_types;
     ::std::unordered_map< ::std::string, TraitValueItem >   m_values;
     
-    // Indexes in the parameter list for each associated type
+    // Indexes into the vtable for each present method and value
+    ::std::unordered_map< ::std::string, unsigned int > m_value_indexes;
+    // Indexes in the vtable parameter list for each associated type
     ::std::unordered_map< ::std::string, unsigned int > m_type_indexes;
     
     Trait( GenericParams gps, ::std::string lifetime, ::std::vector< ::HIR::TraitPath> parents):
