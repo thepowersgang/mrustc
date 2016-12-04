@@ -125,6 +125,8 @@ Ordering ord(const ::std::vector<T>& l, const ::std::vector<T>& r)
         i ++;
     }
     
+    if( i < r.size() )
+        return OrdLess;
     return OrdEqual;
 }
 template<typename T, typename U>
