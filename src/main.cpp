@@ -67,7 +67,7 @@ void init_debug_list()
     
     g_debug_disable_map.insert( "HIR Serialise" );
     g_debug_disable_map.insert( "Trans Enumerate" );
-    g_debug_disable_map.insert( "Trans" );
+    g_debug_disable_map.insert( "Trans Codegen" );
     
     // Mutate this map using an environment variable
     const char* debug_string = ::std::getenv("MRUSTC_DEBUG");
