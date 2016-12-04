@@ -11,6 +11,8 @@
 #include <hir/hir.hpp>
 #include <mir/mir.hpp>
 #include <hir_typeck/static.hpp>
+#include <mir/helpers.hpp>
+
 
 namespace {
     class CodeGenerator_C:
@@ -34,6 +36,7 @@ namespace {
                 << "#include <stdbool.h>\n"
                 << "typedef uint32_t CHAR;\n"
                 << "typedef struct { } tUNIT;\n"
+                << "typedef struct { } tBANG;\n"
                 << "typedef struct { char* PTR; size_t META; } STR_PTR;\n"
                 << "typedef struct { void* PTR; size_t META; } SLICE_PTR;\n"
                 << "typedef struct { void* PTR; void* META; } TRAITOBJ_PTR;\n"
@@ -202,6 +205,13 @@ namespace {
         {
             static Span sp;
             TRACE_FUNCTION_F(p);
+            
+            ::MIR::TypeResolve::args_t  arg_types;
+            for(const auto& ent : item.m_args)
+                arg_types.push_back(::std::make_pair( ::HIR::Pattern{}, params.monomorph(m_crate, ent.second) ));
+            ::HIR::TypeRef  ret_type = params.monomorph(m_crate, item.m_return);
+            
+            ::MIR::TypeResolve  mir_res { sp, m_crate, ret_type, arg_types, *code };
 
             m_of << "// " << p << "\n";
             emit_function_header(p, item, params);
@@ -318,12 +328,44 @@ namespace {
                         (Borrow,
                             emit_lvalue(e.dst);
                             m_of << " = ";
-                            m_of << "& "; emit_lvalue(ve.val);
+                            bool special = false;
+                            // If the inner value has type [T] or str, just assign.
+                            TU_IFLET(::MIR::LValue, ve.val, Deref, e,
+                                ::HIR::TypeRef  tmp;
+                                const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);  // NOTE: Checks the result of the deref
+                                if( is_dst(ty) ) {
+                                    emit_lvalue(*e.val);
+                                    special = true;
+                                }
+                            )
+                            if( !special )
+                            {
+                                m_of << "& "; emit_lvalue(ve.val);
+                            }
                             ),
                         (Cast,
                             emit_lvalue(e.dst);
                             m_of << " = ";
-                            m_of << "("; emit_ctype(ve.type); m_of << ")"; emit_lvalue(ve.val);
+                            m_of << "("; emit_ctype(ve.type); m_of << ")";
+                            // TODO: If the source is an unsized borrow, then extract the pointer
+                            bool special = false;
+                            if( ve.type.m_data.is_Pointer() && !is_dst( *ve.type.m_data.as_Pointer().inner ) )
+                            {
+                                ::HIR::TypeRef  tmp;
+                                const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);  // NOTE: Checks the result of the deref
+                                if( (ty.m_data.is_Borrow() && is_dst(*ty.m_data.as_Borrow().inner))
+                                 || (ty.m_data.is_Pointer() && is_dst(*ty.m_data.as_Pointer().inner))
+                                    )
+                                {
+                                    emit_lvalue(ve.val);
+                                    m_of << ".PTR";
+                                    special = true;
+                                }
+                            }
+                            if( !special )
+                            {
+                                emit_lvalue(ve.val);
+                            }
                             ),
                         (BinOp,
                             emit_lvalue(e.dst);
@@ -417,7 +459,9 @@ namespace {
                             }
                             )
                         )
-                        m_of << ";\n";
+                        m_of << ";";
+                        m_of << "\t// " << e.dst << " = " << e.src;
+                        m_of << "\n";
                     }
                 }
                 TU_MATCHA( (code->blocks[i].terminator), (e),
@@ -535,7 +579,7 @@ namespace {
                 m_of << "@" << ty << "@";
                 ),
             (Diverge,
-                m_of << "void";
+                m_of << "tBANG";
                 ),
             (Primitive,
                 switch(te)
@@ -640,6 +684,18 @@ namespace {
                 BUG(Span(), "Closure during trans - " << ty);
                 )
             )
+        }
+        
+        int is_dst(const ::HIR::TypeRef& ty) const
+        {
+            if( ty == ::HIR::CoreType::Str )
+                return 1;
+            if( ty.m_data.is_Slice() )
+                return 1;
+            if( ty.m_data.is_TraitObject() )
+                return 2;
+            // TODO: Unsized named types.
+            return 0;
         }
     };
 }
