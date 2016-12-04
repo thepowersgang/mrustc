@@ -43,8 +43,12 @@ namespace {
 {
     return FMT_CB(ss,
         ss << "_ZN" << path.m_path.m_crate_name.size() << path.m_path.m_crate_name;
-        for(const auto& comp : path.m_path.m_components)
-            ss << comp.size() << comp;
+        for(const auto& comp : path.m_path.m_components) {
+            if( comp[0] == '#' )
+                ss << (comp.size()-1+2) << "$H" << (comp.c_str()+1);
+            else
+                ss << comp.size() << comp;
+        }
         ss << emit_params(path.m_params);
         );
 }
@@ -64,7 +68,10 @@ namespace {
             ss << "_as_";
             ss << Trans_Mangle(pe.trait);
             ss << "$aR";
-            ss << pe.item;
+            if( pe.item[0] == '#' )
+                ss << (pe.item.size()-1+2) << "$H" << (pe.item.c_str()+1);
+            else
+                ss << pe.item;
             ss << emit_params(pe.params);
             );
         ),
