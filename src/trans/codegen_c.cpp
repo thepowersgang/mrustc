@@ -221,11 +221,15 @@ namespace {
             m_of << "\t"; emit_ctype(params.monomorph(m_crate, item.m_return)); m_of << " rv;\n";
             for(unsigned int i = 0; i < code->named_variables.size(); i ++) {
                 DEBUG("var" << i << " : " << code->named_variables[i]);
-                m_of << "\t"; emit_ctype(code->named_variables[i]); m_of << " var" << i << ";\n";
+                m_of << "\t"; emit_ctype(code->named_variables[i]); m_of << " var" << i << ";";
+                m_of << "\t// " << code->named_variables[i];
+                m_of << "\n";
             }
             for(unsigned int i = 0; i < code->temporaries.size(); i ++) {
                 DEBUG("tmp" << i << " : " << code->temporaries[i]);
-                m_of << "\t"; emit_ctype(code->temporaries[i]); m_of << " tmp" << i << ";\n";
+                m_of << "\t"; emit_ctype(code->temporaries[i]); m_of << " tmp" << i << ";";
+                m_of << "\t// " << code->temporaries[i];
+                m_of << "\n";
             }
             // TODO: Code.
             for(unsigned int i = 0; i < code->blocks.size(); i ++)
