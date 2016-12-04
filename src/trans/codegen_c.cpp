@@ -281,7 +281,7 @@ namespace {
             m_of << "\n";
             m_of << "{\n";
             // Variables
-            m_of << "\t"; emit_ctype(params.monomorph(m_crate, item.m_return)); m_of << " rv;\n";
+            m_of << "\t"; emit_ctype(params.monomorph(m_crate, item.m_return), FMT_CB(ss, ss << "rv";)); m_of << ";\n";
             for(unsigned int i = 0; i < code->named_variables.size(); i ++) {
                 DEBUG("var" << i << " : " << code->named_variables[i]);
                 m_of << "\t"; emit_ctype(code->named_variables[i], FMT_CB(ss, ss << "var" << i;)); m_of << ";";
@@ -602,23 +602,24 @@ namespace {
     private:
         void emit_function_header(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params)
         {
-            emit_ctype( params.monomorph(m_crate, item.m_return) );
-            m_of << " " << Trans_Mangle(p) << "(";
-            if( item.m_args.size() == 0 )
-            {
-                m_of << "void)";
-            }
-            else
-            {
-                for(unsigned int i = 0; i < item.m_args.size(); i ++)
+            emit_ctype( params.monomorph(m_crate, item.m_return), FMT_CB(ss,
+                ss << " " << Trans_Mangle(p) << "(";
+                if( item.m_args.size() == 0 )
                 {
-                    if( i != 0 )    m_of << ",";
-                    m_of << "\n\t\t";
-                    emit_ctype( params.monomorph(m_crate, item.m_args[i].second) );
-                    m_of << " arg" << i;
+                    ss << "void)";
                 }
-                m_of << "\n\t\t)";
-            }
+                else
+                {
+                    for(unsigned int i = 0; i < item.m_args.size(); i ++)
+                    {
+                        if( i != 0 )    m_of << ",";
+                        ss << "\n\t\t";
+                        this->emit_ctype( params.monomorph(m_crate, item.m_args[i].second) );
+                        ss << " arg" << i;
+                    }
+                    ss << "\n\t\t)";
+                }
+                ));
         }
         void emit_lvalue(const ::MIR::LValue& val) {
             TU_MATCHA( (val), (e),
