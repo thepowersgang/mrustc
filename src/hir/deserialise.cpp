@@ -674,11 +674,12 @@ namespace {
         TRACE_FUNCTION;
         // HACK! If the read crate name is empty, replace it with the name we're loaded with
         auto crate_name = m_in.read_string();
-        if( crate_name == "" )
+        auto components = deserialise_vec< ::std::string>();
+        if( crate_name == "" && components.size() > 0)
             crate_name = m_crate_name;
         return ::HIR::SimplePath {
             mv$(crate_name),
-            deserialise_vec< ::std::string>()
+            mv$(components)
             };
     }
     ::HIR::PathParams HirDeserialiser::deserialise_pathparams()

@@ -516,6 +516,10 @@ namespace {
                         )
                     }
                 };
+                for(auto& ty : expr.m_mir->named_variables)
+                    this->visit_type(ty);
+                for(auto& ty : expr.m_mir->temporaries)
+                    this->visit_type(ty);
                 for(auto& block : expr.m_mir->blocks)
                 {
                     for(auto& stmt : block.statements)
