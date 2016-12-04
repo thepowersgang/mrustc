@@ -674,32 +674,10 @@ namespace {
                 m_of << " " << inner;
                 ),
             (Borrow,
-                if( *te.inner == ::HIR::CoreType::Str ) {
-                    m_of << "STR_PTR " << inner;
-                }
-                else if( te.inner->m_data.is_TraitObject() ) {
-                    m_of << "TRAITOBJ_PTR " << inner;
-                }
-                else if( te.inner->m_data.is_Slice() ) {
-                    m_of << "SLICE_PTR " << inner;
-                }
-                else {
-                    emit_ctype(*te.inner, FMT_CB(ss, ss << "*" << inner;));
-                }
+                emit_ctype_ptr(*te.inner, inner);
                 ),
             (Pointer,
-                if( *te.inner == ::HIR::CoreType::Str ) {
-                    m_of << "STR_PTR " << inner;
-                }
-                else if( te.inner->m_data.is_TraitObject() ) {
-                    m_of << "TRAITOBJ_PTR " << inner;
-                }
-                else if( te.inner->m_data.is_Slice() ) {
-                    m_of << "SLICE_PTR " << inner;
-                }
-                else {
-                    emit_ctype(*te.inner, FMT_CB(ss, ss << "*" << inner;));
-                }
+                emit_ctype_ptr(*te.inner, inner);
                 ),
             (Function,
                 m_of << "t_" << Trans_Mangle(ty) << " " << inner;
@@ -708,6 +686,24 @@ namespace {
                 BUG(Span(), "Closure during trans - " << ty);
                 )
             )
+        }
+        
+        void emit_ctype_ptr(const ::HIR::TypeRef& inner_ty, ::FmtLambda inner) {
+            if( inner_ty == ::HIR::CoreType::Str ) {
+                m_of << "STR_PTR " << inner;
+            }
+            else if( inner_ty.m_data.is_TraitObject() ) {
+                m_of << "TRAITOBJ_PTR " << inner;
+            }
+            else if( inner_ty.m_data.is_Slice() ) {
+                m_of << "SLICE_PTR " << inner;
+            }
+            else if( inner_ty.m_data.is_Array() ) {
+                emit_ctype(inner_ty, FMT_CB(ss, ss << "(*" << inner << ")";));
+            }
+            else {
+                emit_ctype(inner_ty, FMT_CB(ss, ss << "*" << inner;));
+            }
         }
         
         int is_dst(const ::HIR::TypeRef& ty) const
