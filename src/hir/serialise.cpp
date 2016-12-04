@@ -297,6 +297,13 @@ namespace {
                 m_out.write_bool(v.second.is_specialisable);
                 serialise(v.second.data);
             }
+            m_out.write_count(impl.m_statics.size());
+            for(const auto& v : impl.m_statics) {
+                DEBUG("static " << v.first);
+                m_out.write_string(v.first);
+                m_out.write_bool(v.second.is_specialisable);
+                serialise(v.second.data);
+            }
             m_out.write_count(impl.m_types.size());
             for(const auto& v : impl.m_types) {
                 DEBUG("type " << v.first);

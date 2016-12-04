@@ -160,6 +160,14 @@ namespace {
                     m_in.read_bool(), deserialise_constant()
                     } ) );
             }
+            size_t static_count = m_in.read_count();
+            for(size_t i = 0; i < static_count; i ++)
+            {
+                auto name = m_in.read_string();
+                rv.m_statics.insert( ::std::make_pair( mv$(name), ::HIR::TraitImpl::ImplEnt< ::HIR::Static> {
+                    m_in.read_bool(), deserialise_static()
+                    } ) );
+            }
             size_t type_count = m_in.read_count();
             for(size_t i = 0; i < type_count; i ++)
             {

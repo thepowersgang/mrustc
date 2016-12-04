@@ -182,9 +182,9 @@ namespace {
             const auto& trait_vi = trait_vi_it->second;
             
 
-            if( e.item == "#vtable" ) {
-                return EntPtr::make_VTable({});
-            }
+            //if( e.item == "#vtable" ) {
+            //    return EntPtr::make_VTable({});
+            //}
             
             bool is_dynamic = false;
             ::std::vector<::HIR::TypeRef>    best_impl_params;
@@ -208,12 +208,12 @@ namespace {
                     TU_MATCHA( (trait_vi), (ve),
                     (Constant, ),
                     (Static,
-                        //auto it = impl.m_statics.find(e.item);
-                        //if( it == impl.m_statics.end() ) {
-                        //    DEBUG("Static " << e.item << " missing in trait " << e.trait << " for " << *e.type);
-                        //    return false;
-                        //}
-                        //is_spec = it->second.is_specialisable;
+                        auto it = impl.m_statics.find(e.item);
+                        if( it == impl.m_statics.end() ) {
+                            DEBUG("Static " << e.item << " missing in trait " << e.trait << " for " << *e.type);
+                            return false;
+                        }
+                        is_spec = it->second.is_specialisable;
                         ),
                     (Function,
                         auto fit = impl.m_methods.find(e.item);
@@ -249,6 +249,12 @@ namespace {
             TU_MATCHA( (trait_vi), (ve),
             (Constant, TODO(sp, "Associated constant"); ),
             (Static,
+                auto it = impl.m_statics.find(e.item);
+                if( it != impl.m_statics.end() )
+                {
+                    DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+                    return EntPtr { &it->second.data };
+                }
                 TODO(sp, "Associated static - " << path);
                 ),
             (Function,

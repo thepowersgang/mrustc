@@ -133,6 +133,10 @@ void ::HIR::Visitor::visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR
         DEBUG("const " << ent.first);
         this->visit_constant(p + ent.first, ent.second.data);
     }
+    for(auto& ent : impl.m_statics) {
+        DEBUG("static " << ent.first);
+        this->visit_static(p + ent.first, ent.second.data);
+    }
     for(auto& ent : impl.m_types) {
         DEBUG("type " << ent.first);
         this->visit_type(ent.second.data);

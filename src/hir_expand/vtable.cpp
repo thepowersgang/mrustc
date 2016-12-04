@@ -15,12 +15,13 @@ namespace {
     class OuterVisitor:
         public ::HIR::Visitor
     {
+        const ::HIR::Crate& m_crate;
         //StaticTraitResolve  m_resolve;
         ::std::function<::HIR::SimplePath(bool, ::std::string, ::HIR::Struct)>  m_new_type;
         ::HIR::SimplePath   m_lang_Sized;
     public:
-        OuterVisitor(const ::HIR::Crate& crate)//:
-            //m_resolve(crate)
+        OuterVisitor(const ::HIR::Crate& crate):
+            m_crate(crate)
         {
             m_lang_Sized = crate.get_lang_item_path_opt("sized");
         }
@@ -125,6 +126,8 @@ namespace {
                     }
                     if( ve.m_params.m_types.size() > 0 ) {
                         DEBUG("- '" << vi.first << "' NOT object safe (generic), not creating vtable");
+                        tr.m_value_indexes.clear();
+                        tr.m_type_indexes.clear();
                         return ;
                     }
                     
@@ -194,10 +197,42 @@ namespace {
         
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
         {
+            static Span sp;
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
             //auto _ = this->m_resolve.set_impl_generics(impl.m_params);
             
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
+            
+            // Check if the trait has a vtable, and if it does emit an associated static for it.
+            const auto& tr = m_crate.get_trait_by_path(sp, trait_path);
+            if(tr.m_value_indexes.size() > 0)
+            {
+                auto trait_gpath = ::HIR::GenericPath(trait_path, impl.m_trait_args.clone());
+                
+                ::std::vector< ::HIR::Literal>  vals;
+                vals.resize( tr.m_value_indexes.size() );
+                for(const auto& m : tr.m_value_indexes)
+                {
+                    //ASSERT_BUG(sp, tr.m_values.at(m.first).is_Function(), "TODO: Handle generating vtables with non-function items");
+                    vals.at(m.second) = ::HIR::Literal::make_BorrowOf( ::HIR::Path(impl.m_type.clone(), trait_gpath.clone(), m.first) );
+                }
+                
+                auto vtable_sp = trait_path;
+                vtable_sp.m_components.back() += "#vtable";
+                auto vtable_params = impl.m_trait_args.clone();
+                for(const auto& ty : tr.m_type_indexes) {
+                    ::HIR::Path path( impl.m_type.clone(), mv$(trait_gpath), ty.first );
+                    vtable_params.m_types.push_back( ::HIR::TypeRef( mv$(path) ) );
+                }
+                
+                const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_sp);
+                impl.m_statics.insert(::std::make_pair( "#vtable", ::HIR::TraitImpl::ImplEnt<::HIR::Static> { true, ::HIR::Static {
+                    false,
+                    ::HIR::TypeRef::new_path(::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref),
+                    {},
+                    ::HIR::Literal::make_List( mv$(vals) )
+                    } } ));
+            }
         }
     };
 }

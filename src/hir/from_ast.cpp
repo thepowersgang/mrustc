@@ -1318,6 +1318,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                     
                     mv$(methods),
                     mv$(constants),
+                    {}, // Statics
                     mv$(types),
                     
                     LowerHIR_SimplePath(Span(), ast_mod.path())

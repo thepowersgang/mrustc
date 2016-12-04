@@ -309,6 +309,7 @@ namespace {
                         } }
                     ),
                 {},
+                {},
                 make_map1(
                     ::std::string("Output"), ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> { false, mv$(ret_ty) }
                     ),
@@ -346,6 +347,7 @@ namespace {
                     ),
                 {},
                 {},
+                {},
                 ::HIR::SimplePath()
                 };
         }
@@ -378,6 +380,7 @@ namespace {
                         mv$(code)
                         } }
                     ),
+                {},
                 {},
                 {},
                 ::HIR::SimplePath()

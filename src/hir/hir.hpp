@@ -339,6 +339,8 @@ public:
     
     ::std::map< ::std::string, ImplEnt< ::HIR::Function> > m_methods;
     ::std::map< ::std::string, ImplEnt< ::HIR::Constant> > m_constants;
+    ::std::map< ::std::string, ImplEnt< ::HIR::Static> > m_statics;
+    
     ::std::map< ::std::string, ImplEnt< ::HIR::TypeRef> > m_types;
     
     ::HIR::SimplePath   m_src_module;
