@@ -42,5 +42,5 @@ public:
 };
 
 
-extern ::std::unique_ptr<CodeGenerator> Trans_Codegen_GetGeneratorC(const ::std::string& outfile);
+extern ::std::unique_ptr<CodeGenerator> Trans_Codegen_GetGeneratorC(const ::HIR::Crate& crate, const ::std::string& outfile);
 

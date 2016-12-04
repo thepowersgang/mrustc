@@ -7,6 +7,7 @@
  */
 #pragma once
 #include <string>
+#include <debug.hpp>
 
 namespace HIR {
     class GenericPath;
@@ -14,7 +15,7 @@ namespace HIR {
     class TypeRef;
 }
 
-extern ::std::string Trans_Mangle(const ::HIR::GenericPath& path);
-extern ::std::string Trans_Mangle(const ::HIR::Path& path);
-extern ::std::string Trans_Mangle(const ::HIR::TypeRef& ty);
+extern ::FmtLambda Trans_Mangle(const ::HIR::GenericPath& path);
+extern ::FmtLambda Trans_Mangle(const ::HIR::Path& path);
+extern ::FmtLambda Trans_Mangle(const ::HIR::TypeRef& ty);
 

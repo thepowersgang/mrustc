@@ -72,7 +72,7 @@ namespace {
     output.temporaries.reserve( tpl->temporaries.size() );
     for(const auto& ty : tpl->temporaries)
     {
-        output.named_variables.push_back( params.monomorph(crate, ty) );
+        output.temporaries.push_back( params.monomorph(crate, ty) );
     }
     
     // 2. Monomorphise all paths
@@ -82,6 +82,7 @@ namespace {
     {
         ::std::vector< ::MIR::Statement>    statements;
         
+        TRACE_FUNCTION_F("bb" << output.blocks.size());
         statements.reserve( block.statements.size() );
         for(const auto& stmt : block.statements)
         {

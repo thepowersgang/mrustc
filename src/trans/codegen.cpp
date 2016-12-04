@@ -14,15 +14,22 @@
 
 void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, const TransList& list)
 {
-    auto codegen = Trans_Codegen_GetGeneratorC(outfile);
+    auto codegen = Trans_Codegen_GetGeneratorC(crate, outfile);
     
     // 1. Emit structure/type definitions.
     // - Emit in the order they're needed.
     
     // 2. Emit function prototypes
-    for(const auto& fcn : list.m_functions)
+    for(const auto& ent : list.m_functions)
     {
-        DEBUG("FUNCTION " << fcn.first);
+        DEBUG("FUNCTION " << ent.first);
+        assert( ent.second->ptr );
+        if( ent.second->ptr->m_code.m_mir ) {
+            codegen->emit_function_proto(ent.first, *ent.second->ptr, ent.second->pp);
+        }
+        else {
+            codegen->emit_function_ext(ent.first, *ent.second->ptr, ent.second->pp);
+        }
     }
     // 3. Emit statics
     for(const auto& ent : list.m_statics)
@@ -47,6 +54,7 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
             DEBUG("FUNCTION CODE " << ent.first);
             if( ent.second->pp.has_types() ) {
                 auto mir = Trans_Monomorphise(crate, ent.second->pp, ent.second->ptr->m_code.m_mir);
+                // TODO: MIR Optimisation
                 codegen->emit_function_code(ent.first, *ent.second->ptr, ent.second->pp,  mir);
             }
             else {

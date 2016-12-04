@@ -477,13 +477,9 @@ void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const :
     if( function.m_code.m_mir )
     {
         Trans_Enumerate_FillFrom_MIR(out, crate, *function.m_code.m_mir, pp);
-        out_fcn.ptr = &function;
-        out_fcn.pp = mv$(pp);
     }
-    else
-    {
-        out_fcn.ptr = nullptr;
-    }
+    out_fcn.ptr = &function;
+    out_fcn.pp = mv$(pp);
 }
 void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const ::HIR::Static& item, TransList_Static& out_stat, Trans_Params pp)
 {
@@ -491,12 +487,8 @@ void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const :
     if( item.m_value.m_mir )
     {
         Trans_Enumerate_FillFrom_MIR(out, crate, *item.m_value.m_mir, pp);
-        out_stat.ptr = &item;
-        out_stat.pp = mv$(pp);
     }
-    else
-    {
-        out_stat.ptr = nullptr;
-    }
+    out_stat.ptr = &item;
+    out_stat.pp = mv$(pp);
 }
 
