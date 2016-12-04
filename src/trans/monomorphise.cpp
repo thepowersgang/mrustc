@@ -38,7 +38,7 @@ namespace {
                 });
             ),
         (Downcast,
-            return ::MIR::LValue::make_Field({
+            return ::MIR::LValue::make_Downcast({
                 box$(monomorph_LValue(crate, params, *e.val)),
                 e.variant_index
                 });
