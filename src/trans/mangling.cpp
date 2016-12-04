@@ -12,11 +12,32 @@
  * $R = &-ptr
  * $P = + symbol
  * $E = = symbol
+ * $C = , symbol
  * $pL/$pR = Left/right paren
+ * $aL/$aR = Left/right angle (<>)
  */
 #include "mangling.hpp"
 #include <hir/type.hpp>
 #include <hir/path.hpp>
+
+namespace {
+    ::FmtLambda emit_params(const ::HIR::PathParams& params)
+    {
+        return FMT_CB(ss,
+            if( params.m_types.size() > 0 )
+            {
+                ss << "$aL";
+                for(unsigned int i = 0; i < params.m_types.size(); i ++)
+                {
+                    if(i != 0)  ss << "$C";
+                    ss << Trans_Mangle( params.m_types[i] );
+                }
+                ss << "$aR";
+            }
+            );
+    }
+}
+
 
 ::FmtLambda Trans_Mangle(const ::HIR::GenericPath& path)
 {
@@ -24,6 +45,7 @@
         ss << "_ZN" << path.m_path.m_crate_name.size() << path.m_path.m_crate_name;
         for(const auto& comp : path.m_path.m_components)
             ss << comp.size() << comp;
+        ss << emit_params(path.m_params);
         );
 }
 ::FmtLambda Trans_Mangle(const ::HIR::Path& path)
@@ -36,10 +58,24 @@
         BUG(Span(), "UfcsUnknown - " << path);
         ),
     (UfcsKnown,
-        return FMT_CB(ss, ss << "/*ufcsknown*/";);
+        return FMT_CB(ss,
+            ss << "_ZRK$aL";
+            ss << Trans_Mangle(*pe.type);
+            ss << "_as_";
+            ss << Trans_Mangle(pe.trait);
+            ss << "$aR";
+            ss << pe.item;
+            ss << emit_params(pe.params);
+            );
         ),
     (UfcsInherent,
-        return FMT_CB(ss, ss << "/*ufcsinherent*/"; );
+        return FMT_CB(ss,
+            ss << "_ZRI$aL";
+            ss << Trans_Mangle(*pe.type);
+            ss << "$aR";
+            ss << pe.item;
+            ss << emit_params(pe.params);
+            );
         )
     )
     throw "";

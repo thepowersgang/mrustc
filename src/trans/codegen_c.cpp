@@ -279,13 +279,21 @@ namespace {
         {
             emit_ctype( params.monomorph(m_crate, item.m_return) );
             m_of << " " << Trans_Mangle(p) << "(";
-            for(unsigned int i = 0; i < item.m_args.size(); i ++)
+            if( item.m_args.size() == 0 )
             {
-                if( i != 0 )    m_of << ", ";
-                emit_ctype( params.monomorph(m_crate, item.m_args[i].second) );
-                m_of << " arg" << i;
+                m_of << "void)";
             }
-            m_of << ")";
+            else
+            {
+                for(unsigned int i = 0; i < item.m_args.size(); i ++)
+                {
+                    if( i != 0 )    m_of << ",";
+                    m_of << "\n\t\t";
+                    emit_ctype( params.monomorph(m_crate, item.m_args[i].second) );
+                    m_of << " arg" << i;
+                }
+                m_of << "\n\t\t)";
+            }
         }
         void emit_lvalue(const ::MIR::LValue& val) {
             TU_MATCHA( (val), (e),
