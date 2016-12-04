@@ -4,6 +4,15 @@
  *
  * trans/mangling.hpp
  * - Name mangling support
+ *
+ *
+ * $D = ! type
+ * $A = Array
+ * $S = *-ptr
+ * $R = &-ptr
+ * $P = + symbol
+ * $E = = symbol
+ * $pL/$pR = Left/right paren
  */
 #include "mangling.hpp"
 #include <hir/type.hpp>
@@ -27,10 +36,10 @@
         BUG(Span(), "UfcsUnknown - " << path);
         ),
     (UfcsKnown,
-        return FMT_CB(ss, );
+        return FMT_CB(ss, ss << "/*ufcsknown*/";);
         ),
     (UfcsInherent,
-        return FMT_CB(ss, );
+        return FMT_CB(ss, ss << "/*ufcsinherent*/"; );
         )
     )
     throw "";
@@ -54,7 +63,17 @@
         BUG(Span(), "Generic in trans - " << ty);
         ),
     (TraitObject,
-        BUG(Span(), "Raw trait object - " << ty);
+        return FMT_CB(ss,
+            ss << "$pL";
+            ss << Trans_Mangle(te.m_trait.m_path);
+            for(const auto& bound : te.m_trait.m_type_bounds) {
+                ss << "_" << bound.first << "$E" << Trans_Mangle(bound.second);
+            }
+            for(const auto& marker : te.m_markers) {
+                ss << "$P" << Trans_Mangle(marker);
+            }
+            ss << "$pR";
+            );
         ),
     (ErasedType,
         BUG(Span(), "ErasedType in trans - " << ty);
@@ -86,7 +105,7 @@
         ),
     (Pointer,
         return FMT_CB(ss,
-            ss << "$P";
+            ss << "$S";
             switch(te.type)
             {
             case ::HIR::BorrowType::Shared: ss << "s"; break;

@@ -67,11 +67,13 @@ namespace {
     output.named_variables.reserve( tpl->named_variables.size() );
     for(const auto& var : tpl->named_variables)
     {
+        DEBUG("- var" << output.named_variables.size());
         output.named_variables.push_back( params.monomorph(crate, var) );
     }
     output.temporaries.reserve( tpl->temporaries.size() );
     for(const auto& ty : tpl->temporaries)
     {
+        DEBUG("- var" << output.temporaries.size());
         output.temporaries.push_back( params.monomorph(crate, ty) );
     }
     

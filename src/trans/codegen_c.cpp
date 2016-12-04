@@ -84,12 +84,54 @@ namespace {
                     }
                     else {
                         const auto& e = stmt.as_Assign();
+                        DEBUG("- " << e.dst << " = " << e.src);
                         m_of << "\t"; emit_lvalue(e.dst); m_of << " = ";
                         TU_MATCHA( (e.src), (ve),
                         (Use,
                             emit_lvalue(ve);
                             ),
                         (Constant,
+                            TU_MATCHA( (ve), (c),
+                            (Int,
+                                m_of << c;
+                                ),
+                            (Uint,
+                                m_of << ::std::hex << "0x" << c << ::std::dec;
+                                ),
+                            (Float,
+                                m_of << c;
+                                ),
+                            (Bool,
+                                m_of << (c ? "true" : "false");
+                                ),
+                            // TODO: These need to be arrays, not strings! (strings are NUL terminated)
+                            (Bytes,
+                                m_of << "\"" << ::std::oct;
+                                for(const auto& v : c) {
+                                    if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
+                                        m_of << v;
+                                    else
+                                        m_of << "\\" << (unsigned int)v;
+                                }
+                                m_of << "\"" << ::std::dec;
+                                ),
+                            (StaticString,
+                                m_of << "\"" << ::std::oct;
+                                for(const auto& v : c) {
+                                    if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
+                                        m_of << v;
+                                    else
+                                        m_of << "\\" << (unsigned int)v;
+                                }
+                                m_of << "\"" << ::std::dec;
+                                ),
+                            (Const,
+                                // TODO: This should have been eliminated?
+                                ),
+                            (ItemAddr,
+                                m_of << "&" << Trans_Mangle(c);
+                                )
+                            )
                             ),
                         (SizedArray,
                             m_of << "{";
@@ -210,8 +252,22 @@ namespace {
                     m_of << "\t}\n";
                     ),
                 (CallValue,
+                    m_of << "\t"; emit_lvalue(e.ret_val); m_of << " = ("; emit_lvalue(e.fcn_val); m_of << ")(";
+                    for(unsigned int j = 0; j < e.args.size(); j ++) {
+                        if(j != 0)  m_of << ",";
+                        m_of << " "; emit_lvalue(e.args[j]);
+                    }
+                    m_of << " )\n";
+                    m_of << "\tgoto bb" << e.ret_block << ";\n";
                     ),
                 (CallPath,
+                    m_of << "\t"; emit_lvalue(e.ret_val); m_of << " = " << Trans_Mangle(e.fcn_path) << "(";
+                    for(unsigned int j = 0; j < e.args.size(); j ++) {
+                        if(j != 0)  m_of << ",";
+                        m_of << " "; emit_lvalue(e.args[j]);
+                    }
+                    m_of << " )\n";
+                    m_of << "\tgoto bb" << e.ret_block << ";\n";
                     )
                 )
             }
@@ -232,6 +288,43 @@ namespace {
             m_of << ")";
         }
         void emit_lvalue(const ::MIR::LValue& val) {
+            TU_MATCHA( (val), (e),
+            (Variable,
+                m_of << "var" << e;
+                ),
+            (Temporary,
+                m_of << "tmp" << e.idx;
+                ),
+            (Argument,
+                m_of << "arg" << e.idx;
+                ),
+            (Return,
+                m_of << "rv";
+                ),
+            (Static,
+                m_of << Trans_Mangle(e);
+                ),
+            (Field,
+                // TODO: Also used for indexing
+                emit_lvalue(*e.val);
+                m_of << "._" << e.field_index;
+                ),
+            (Deref,
+                m_of << "*";
+                emit_lvalue(*e.val);
+                ),
+            (Index,
+                m_of << "(";
+                emit_lvalue(*e.val);
+                m_of << ")[";
+                emit_lvalue(*e.idx);
+                m_of << "]";
+                ),
+            (Downcast,
+                emit_lvalue(*e.val);
+                m_of << ".var_" << e.variant_index;
+                )
+            )
         }
         void emit_ctype(const ::HIR::TypeRef& ty) {
             TU_MATCHA( (ty.m_data), (te),
@@ -270,10 +363,10 @@ namespace {
                     m_of << "struct s_" << Trans_Mangle(te.path);
                     ),
                 (Union,
-                    m_of << "struct e_" << Trans_Mangle(te.path);
+                    m_of << "union u_" << Trans_Mangle(te.path);
                     ),
                 (Enum,
-                    m_of << "union u_" << Trans_Mangle(te.path);
+                    m_of << "struct e_" << Trans_Mangle(te.path);
                     ),
                 (Unbound,
                     BUG(Span(), "Unbound path in trans - " << ty);
