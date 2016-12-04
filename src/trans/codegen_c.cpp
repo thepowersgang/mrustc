@@ -322,14 +322,24 @@ namespace {
                             )
                             ),
                         (SizedArray,
-                            emit_lvalue(e.dst);
-                            m_of << " = ";
-                            m_of << "{";
-                            for(unsigned int j = ve.count; j --;) {
-                                emit_lvalue(ve.val);
-                                if( j != 0 )    m_of << ",";
+                            if( ve.count == 0 ) {
                             }
-                            m_of << "}";
+                            else if( ve.count == 1 ) {
+                                emit_lvalue(e.dst); m_of << "[0] = "; emit_lvalue(ve.val);
+                            }
+                            else if( ve.count == 2 ) {
+                                emit_lvalue(e.dst); m_of << "[0] = "; emit_lvalue(ve.val); m_of << ";\n\t";
+                                emit_lvalue(e.dst); m_of << "[1] = "; emit_lvalue(ve.val);
+                            }
+                            else if( ve.count == 3 ) {
+                                emit_lvalue(e.dst); m_of << "[0] = "; emit_lvalue(ve.val); m_of << ";\n\t";
+                                emit_lvalue(e.dst); m_of << "[1] = "; emit_lvalue(ve.val); m_of << ";\n\t";
+                                emit_lvalue(e.dst); m_of << "[2] = "; emit_lvalue(ve.val);
+                            }
+                            else {
+                                m_of << "for(unsigned int i = 0; i < " << ve.count << "; i ++)\n";
+                                m_of << "\t\t"; emit_lvalue(e.dst); m_of << "[i] = "; emit_lvalue(ve.val);
+                            }
                             ),
                         (Borrow,
                             emit_lvalue(e.dst);
@@ -446,12 +456,11 @@ namespace {
                             }
                             ),
                         (Array,
-                            m_of << "{";
                             for(unsigned int j = 0; j < ve.vals.size(); j ++) {
-                                if( j != 0 )    m_of << ",";
+                                if( j != 0 )    m_of << ";\n\t";
+                                emit_lvalue(e.dst); m_of << "[" << j << "] = ";
                                 emit_lvalue(ve.vals[j]);
                             }
-                            m_of << "}";
                             ),
                         (Variant,
                             TODO(sp, "Handle constructing variants");
