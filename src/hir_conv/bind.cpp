@@ -554,6 +554,7 @@ namespace {
                                 ),
                             (Cast,
                                 H::visit_lvalue(*this, e.val);
+                                this->visit_type(e.type);
                                 ),
                             (BinOp,
                                 H::visit_lvalue(*this, e.val_l);
