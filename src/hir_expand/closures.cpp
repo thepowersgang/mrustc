@@ -407,7 +407,7 @@ namespace {
         };
 
         const StaticTraitResolve& m_resolve;
-        const ::HIR::SimplePath&  m_module_path;
+        const ::HIR::TypeRef*   m_self_type;
         ::std::vector< ::HIR::TypeRef>& m_variable_types;
         
         // Outputs
@@ -418,9 +418,9 @@ namespace {
         ::std::vector<ClosureScope> m_closure_stack;
         
     public:
-        ExprVisitor_Extract(const StaticTraitResolve& resolve, const ::HIR::SimplePath& mod_path, ::std::vector< ::HIR::TypeRef>& var_types, out_impls_t& out_impls, const new_type_cb_t& new_type):
+        ExprVisitor_Extract(const StaticTraitResolve& resolve, const ::HIR::TypeRef* self_type, ::std::vector< ::HIR::TypeRef>& var_types, out_impls_t& out_impls, const new_type_cb_t& new_type):
             m_resolve(resolve),
-            m_module_path(mod_path),
+            m_self_type(self_type),
             m_variable_types(var_types),
             m_out_impls( out_impls ),
             m_new_type( new_type )
@@ -470,7 +470,8 @@ namespace {
             // - 0xFFFF "Self" -> 0 "Super" (if present)
             if( m_resolve.has_self() )
             {
-                constructor_path_params.m_types.push_back( ::HIR::TypeRef("Self", 0xFFFF) );
+                assert( m_self_type );
+                constructor_path_params.m_types.push_back( m_self_type->clone() );
                 params.m_types.push_back( ::HIR::TypeParamDef { "Super", {}, false } );  // TODO: Determine if parent Self is Sized
             }
             // - Top-level params come first
@@ -965,6 +966,7 @@ namespace {
         out_impls_t m_new_trait_impls;
         new_type_cb_t   m_new_type;
         const ::HIR::SimplePath*  m_cur_mod_path;
+        const ::HIR::TypeRef*   m_self_type = nullptr;
     public:
         OuterVisitor(const ::HIR::Crate& crate):
             m_resolve(crate),
@@ -1054,7 +1056,7 @@ namespace {
                 DEBUG("Function code " << p);
                 
                 {
-                    ExprVisitor_Extract    ev(m_resolve, *m_cur_mod_path, item.m_code.m_bindings, m_new_trait_impls, m_new_type);
+                    ExprVisitor_Extract    ev(m_resolve, m_self_type, item.m_code.m_bindings, m_new_trait_impls, m_new_type);
                     ev.visit_root( *item.m_code );
                 }
                 
@@ -1072,7 +1074,7 @@ namespace {
             if( item.m_value )
             {
                 //::std::vector< ::HIR::TypeRef>  tmp;
-                //ExprVisitor_Extract    ev(m_resolve, *m_cur_mod_path, tmp, m_new_trait_impls);
+                //ExprVisitor_Extract    ev(m_resolve, m_self_type, tmp, m_new_trait_impls);
                 //ev.visit_root(*item.m_value);
             }
         }
@@ -1080,7 +1082,7 @@ namespace {
             if( item.m_value )
             {
                 //::std::vector< ::HIR::TypeRef>  tmp;
-                //ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
+                //ExprVisitor_Extract    ev(m_resolve, m_self_type, tmp, m_new_trait_impls);
                 //ev.visit_root(*item.m_value);
             }
         }
@@ -1102,23 +1104,32 @@ namespace {
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
         {
             auto _ = this->m_resolve.set_impl_generics(item.m_params);
+            ::HIR::TypeRef  self("Self", 0xFFFF);
+            m_self_type = &self;
             ::HIR::Visitor::visit_trait(p, item);
+            m_self_type = nullptr;
         }
         
         
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << impl.m_type);
+            m_self_type = &impl.m_type;
             auto _ = this->m_resolve.set_impl_generics(impl.m_params);
             
             ::HIR::Visitor::visit_type_impl(impl);
+            
+            m_self_type = nullptr;
         }
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
+            m_self_type = &impl.m_type;
             auto _ = this->m_resolve.set_impl_generics(impl.m_params);
             
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
+            
+            m_self_type = nullptr;
         }
     };
 }
