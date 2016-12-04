@@ -188,8 +188,69 @@ namespace {
             m_of << "};\n";
         }
         
-        //virtual void emit_static_ext(const ::HIR::Path& p);
-        //virtual void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params);
+        void emit_static_ext(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
+        {
+            auto type = params.monomorph(m_crate, item.m_type);
+            m_of << "extern ";
+            emit_ctype( type, FMT_CB(ss, ss << Trans_Mangle(p);) );
+            m_of << ";";
+            m_of << "\t// static " << p << " : " << type;
+            m_of << "\n";
+        }
+        void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
+        {
+            auto type = params.monomorph(m_crate, item.m_type);
+            emit_ctype( type, FMT_CB(ss, ss << Trans_Mangle(p);) );
+            m_of << " = ";
+            emit_literal(/*type,*/ item.m_value_res);
+            m_of << ";";
+            m_of << "\t// static " << p << " : " << type;
+            m_of << "\n";
+        }
+        void emit_literal(/*const ::HIR::TypeRef& ty,*/ const ::HIR::Literal& lit) {
+            TU_MATCHA( (lit), (e),
+            (Invalid, m_of << "/* INVALID */"; ),
+            (List,
+                m_of << "{";
+                for(unsigned int i = 0; i < e.size(); i ++) {
+                    if(i != 0)  m_of << ",";
+                    m_of << " ";
+                    emit_literal(e[i]);
+                }
+                m_of << " }";
+                ),
+            (Variant,
+                m_of << "{" << e.idx << ", { .var_" << e.idx << " = {";
+                for(unsigned int i = 0; i < e.vals.size(); i ++) {
+                    if(i != 0)  m_of << ",";
+                    m_of << " ";
+                    emit_literal(e.vals[i]);
+                }
+                m_of << " }}}";
+                ),
+            (Integer,
+                m_of << ::std::hex << "0x" << e << ::std::dec;
+                ),
+            (Float,
+                m_of << e;
+                ),
+            (BorrowOf,
+                // TODO:
+                ),
+            (String,
+                m_of << "{ ";
+                m_of << "\"" << ::std::oct;
+                for(const auto& v : e) {
+                    if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
+                        m_of << v;
+                    else
+                        m_of << "\\" << (unsigned int)v;
+                }
+                m_of << "\"" << ::std::dec;
+                m_of << ", " << e.size() << "}";
+                )
+            )
+        }
         
         void emit_function_ext(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) override
         {

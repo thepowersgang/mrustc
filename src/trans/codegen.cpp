@@ -217,7 +217,7 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
         assert(ent.second->ptr);
         const auto& stat = *ent.second->ptr;
         
-        if( stat.m_value )
+        if( ! stat.m_value_res.is_Invalid() )
         {
             codegen->emit_static_local(ent.first, stat, ent.second->pp);
         }
