@@ -32,7 +32,14 @@ namespace MIR {
             os << "]";
             ),
         (StaticString,
-            os << "\"" << e << "\"";
+            os << "\"";
+            for(auto v : e) {
+                if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
+                    os << v;
+                else
+                    os << "\\u{" << FMT(::std::hex << (unsigned int)v) << "}";
+            }
+            os << "\"";
             ),
         (Const,
             os << e.p;
