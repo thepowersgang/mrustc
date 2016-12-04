@@ -15,6 +15,7 @@
 #include <hir_typeck/common.hpp>   // monomorphise_type
 #include "main_bindings.hpp"
 #include "from_hir.hpp"
+#include "operations.hpp"
 
 
 namespace {
@@ -1355,7 +1356,6 @@ namespace {
         
         void visit(::HIR::ExprNode_CallPath& node) override
         {
-            const Span& sp = node.span();
             TRACE_FUNCTION_F("_CallPath " << node.m_path);
             ::std::vector< ::MIR::LValue>   values;
             values.reserve( node.m_args.size() );
@@ -1371,68 +1371,11 @@ namespace {
             auto next_block = m_builder.new_bb_unlinked();
             auto res = m_builder.new_temporary( node.m_res_type );
             
-            // If the call was to a TraitObject function, get it from the vtable.
-            // TODO: Should this be a later pass?
-            bool was_virtual = false;
-            if( node.m_path.m_data.is_UfcsKnown() && node.m_path.m_data.as_UfcsKnown().type->m_data.is_TraitObject() )
-            {
-                const auto& pe = node.m_path.m_data.as_UfcsKnown();
-                const auto& te = pe.type->m_data.as_TraitObject();
-                if( pe.trait == te.m_trait.m_path )
-                {
-                    assert( te.m_trait.m_trait_ptr );
-                    const auto& trait = *te.m_trait.m_trait_ptr;
-                    
-                    // 1. Get the vtable index for this function
-                    if( trait.m_value_indexes.count(pe.item) == 0 )
-                        BUG(sp, "Calling method '" << pe.item << "' of " << pe.trait << " which isn't in the vtable");
-                    unsigned int vtable_idx = trait.m_value_indexes.at( pe.item );
-                    
-                    // 2. Load from the vtable
-                    auto vtable_rval = ::MIR::RValue::make_DstMeta({
-                        ::MIR::LValue::make_Deref({ box$(values.front().clone()) })
-                        });
-                    auto vtable_ty_spath = pe.trait.m_path;
-                    vtable_ty_spath.m_components.back() += "#vtable";
-                    const auto& vtable_ref = m_builder.crate().get_struct_by_path(sp, vtable_ty_spath);
-                    // Copy the param set from the trait in the trait object
-                    ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
-                    // - Include associated types on bound
-                    for(const auto& ty_b : te.m_trait.m_type_bounds) {
-                        auto idx = trait.m_type_indexes.at(ty_b.first);
-                        if(vtable_params.m_types.size() <= idx)
-                            vtable_params.m_types.resize(idx+1);
-                        vtable_params.m_types[idx] = ty_b.second.clone();
-                    }
-                    auto vtable_ty = ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
-                    
-                    auto vtable = m_builder.lvalue_or_temp(sp, mv$(vtable_ty), mv$(vtable_rval));
-                    auto vtable_fcn = ::MIR::LValue::make_Field({ box$(vtable), vtable_idx });
-                    
-                    ::MIR::LValue   fcn_val;
-                    m_builder.with_val_type(sp, vtable_fcn, [&](const auto& ty){
-                        fcn_val = m_builder.new_temporary(ty);
-                        });
-                    
-                    m_builder.push_stmt_assign( sp, fcn_val.clone(), ::MIR::RValue( mv$(vtable_fcn) ) );
-                    
-                    was_virtual = true;
-                    m_builder.end_block(::MIR::Terminator::make_CallValue({
-                        next_block, panic_block,
-                        res.clone(), mv$(fcn_val),
-                        mv$(values)
-                        }));
-                }
-            }
-            
-            if( ! was_virtual )
-            {
-                m_builder.end_block(::MIR::Terminator::make_CallPath({
-                    next_block, panic_block,
-                    res.clone(), node.m_path.clone(),
-                    mv$(values)
-                    }));
-            }
+            m_builder.end_block(::MIR::Terminator::make_CallPath({
+                next_block, panic_block,
+                res.clone(), node.m_path.clone(),
+                mv$(values)
+                }));
             
             m_builder.set_cur_block(panic_block);
             // TODO: Proper panic handling, including scope destruction
@@ -1903,6 +1846,9 @@ namespace {
         ::HIR::ExprNode& root_node = const_cast<::HIR::ExprNode&>(*ptr);
         root_node.visit( ev );
     }
+    
+    ::HIR::TypeRef  ret;
+    MIR_Cleanup(resolve, ::HIR::ItemPath(), fcn, args, ret);
     
     return ::MIR::FunctionPointer(new ::MIR::Function(mv$(fcn)));
 }

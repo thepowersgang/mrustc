@@ -273,7 +273,7 @@ namespace {
                 arg_types.push_back(::std::make_pair( ::HIR::Pattern{}, params.monomorph(m_crate, ent.second) ));
             ::HIR::TypeRef  ret_type = params.monomorph(m_crate, item.m_return);
             
-            ::MIR::TypeResolve  mir_res { sp, m_crate, ret_type, arg_types, *code };
+            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << p;), ret_type, arg_types, *code };
             m_mir_res = &mir_res;
 
             m_of << "// " << p << "\n";
@@ -294,7 +294,6 @@ namespace {
                 m_of << "\t// " << code->temporaries[i];
                 m_of << "\n";
             }
-            // TODO: Code.
             for(unsigned int i = 0; i < code->blocks.size(); i ++)
             {
                 TRACE_FUNCTION_F(p << " bb" << i);
@@ -305,6 +304,7 @@ namespace {
                 {
                     assert( stmt.is_Drop() || stmt.is_Assign() );
                     if( stmt.is_Drop() ) {
+                        // TODO: Emit destructor calls
                     }
                     else {
                         const auto& e = stmt.as_Assign();
@@ -338,7 +338,6 @@ namespace {
                                 m_of << " = ";
                                 m_of << (c ? "true" : "false");
                                 ),
-                            // TODO: These need to be arrays, not strings! (strings are NUL terminated)
                             (Bytes,
                                 emit_lvalue(e.dst);
                                 m_of << ".PTR = ";

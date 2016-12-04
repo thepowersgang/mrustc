@@ -11,9 +11,21 @@
 #include <hir/type.hpp>
 #include <mir/mir.hpp>
 
-#define MIR_ASSERT(...) do{}while(0)
-#define MIR_BUG(...) do{}while(0)
-#define MIR_TODO(_, v...)    TODO(sp, v)
+void ::MIR::TypeResolve::print_msg(const char* tag, ::std::function<void(::std::ostream& os)> cb) const
+{
+    auto& os = ::std::cerr;
+    os << "MIR " << tag << ": " << this->m_path << " BB" << this->bb_idx << "/";
+    if( this->stmt_idx == STMT_TERM ) {
+        os << "TERM";
+    }
+    else {
+        os << this->stmt_idx;
+    }
+    os << ": ";
+    cb(os);
+    os << ::std::endl;
+    throw CheckFailure {};
+}
 
 const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, const ::MIR::LValue& val) const
 {
