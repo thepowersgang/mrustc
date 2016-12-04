@@ -21,6 +21,16 @@
 #include <hir/path.hpp>
 
 namespace {
+    ::std::string   escape_str(const ::std::string& s) {
+        ::std::string   output;
+        output.reserve(s.size() + 1);
+        for(auto v : s)
+            if( v == '#' )
+                output += "$H";
+            else
+                output += v;
+        return output;
+    }
     ::FmtLambda emit_params(const ::HIR::PathParams& params)
     {
         return FMT_CB(ss,
@@ -44,10 +54,8 @@ namespace {
     return FMT_CB(ss,
         ss << "_ZN" << path.m_path.m_crate_name.size() << path.m_path.m_crate_name;
         for(const auto& comp : path.m_path.m_components) {
-            if( comp[0] == '#' )
-                ss << (comp.size()-1+2) << "$H" << (comp.c_str()+1);
-            else
-                ss << comp.size() << comp;
+            auto v = escape_str(comp);
+            ss << v.size() << v;
         }
         ss << emit_params(path.m_params);
         );
