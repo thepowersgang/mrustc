@@ -52,13 +52,16 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
     {
         if( ent.second->ptr && ent.second->ptr->m_code.m_mir ) {
             DEBUG("FUNCTION CODE " << ent.first);
-            if( ent.second->pp.has_types() ) {
-                auto mir = Trans_Monomorphise(crate, ent.second->pp, ent.second->ptr->m_code.m_mir);
+            const auto& fcn = *ent.second->ptr;
+            // TODO: If this is a provided trait method, it needs to be monomorphised too.
+            bool is_method = ( fcn.m_args.size() > 0 && visit_ty_with(fcn.m_args[0].second, [&](const auto& x){return x == ::HIR::TypeRef("Self",0xFFFF);}) );
+            if( ent.second->pp.has_types() || is_method ) {
+                auto mir = Trans_Monomorphise(crate, ent.second->pp, fcn.m_code.m_mir);
                 // TODO: MIR Optimisation
-                codegen->emit_function_code(ent.first, *ent.second->ptr, ent.second->pp,  mir);
+                codegen->emit_function_code(ent.first, fcn, ent.second->pp,  mir);
             }
             else {
-                codegen->emit_function_code(ent.first, *ent.second->ptr, ent.second->pp,  ent.second->ptr->m_code.m_mir);
+                codegen->emit_function_code(ent.first, fcn, ent.second->pp,  fcn.m_code.m_mir);
             }
         }
     }
