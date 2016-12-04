@@ -206,7 +206,7 @@ rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
 #rust_tests-compile-fail: $(call DEF_RUST_TESTS,compile-fail)
 
 output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs output/libstd.hir $(BIN)
-	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
+	$(DBG) $(BIN) $< -o $@.c $(PIPECMD)
 
 TEST_ARGS_run-pass/cfgs-on-items := --cfg fooA --cfg fooB
 
