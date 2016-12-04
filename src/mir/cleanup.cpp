@@ -74,10 +74,14 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     auto vtable_lv = ::MIR::LValue::make_Temporary({ static_cast<unsigned int>(fcn.temporaries.size()) });
                     fcn.temporaries.push_back( mv$(vtable_ty) );
                     // - Load the vtable and store it
-                    auto vtable_rval = ::MIR::RValue::make_DstMeta({
-                        ::MIR::LValue::make_Deref({ box$(e.args.front().clone()) })
-                        });
+                    auto vtable_rval = ::MIR::RValue::make_DstMeta({ ::MIR::LValue::make_Deref({ box$(e.args.front().clone()) }) });
                     block.statements.push_back( ::MIR::Statement::make_Assign({ vtable_lv.clone(), mv$(vtable_rval) }) );
+                    
+                    auto ptr_rval = ::MIR::RValue::make_DstPtr({ ::MIR::LValue::make_Deref({ box$(e.args.front().clone()) }) });
+                    auto ptr_lv = ::MIR::LValue::make_Temporary({ static_cast<unsigned int>(fcn.temporaries.size()) });
+                    fcn.temporaries.push_back( ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit()) );
+                    block.statements.push_back( ::MIR::Statement::make_Assign({ ptr_lv.clone(), mv$(ptr_rval) }) );
+                    e.args.front() = mv$(ptr_lv);
                     
                     // Update the terminator with the new information.
                     auto vtable_fcn = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(vtable_lv) })), vtable_idx });
