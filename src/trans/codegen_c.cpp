@@ -490,13 +490,15 @@ namespace {
                         (DstMeta,
                             emit_lvalue(e.dst);
                             m_of << " = ";
-                            emit_lvalue(ve.val);
+                            assert( ve.val.is_Deref() );
+                            emit_lvalue(*ve.val.as_Deref().val);
                             m_of << ".META";
                             ),
                         (DstPtr,
                             emit_lvalue(e.dst);
                             m_of << " = ";
-                            emit_lvalue(ve.val);
+                            assert( ve.val.is_Deref() );
+                            emit_lvalue(*ve.val.as_Deref().val);
                             m_of << ".PTR";
                             ),
                         (MakeDst,
