@@ -21,6 +21,7 @@ namespace {
         const ::HIR::Crate& m_crate;
         ::StaticTraitResolve    m_resolve;
         ::std::ofstream m_of;
+        const ::MIR::TypeResolve* m_mir_res;
     public:
         CodeGenerator_C(const ::HIR::Crate& crate, const ::std::string& outfile):
             m_crate(crate),
@@ -212,6 +213,7 @@ namespace {
             ::HIR::TypeRef  ret_type = params.monomorph(m_crate, item.m_return);
             
             ::MIR::TypeResolve  mir_res { sp, m_crate, ret_type, arg_types, *code };
+            m_mir_res = &mir_res;
 
             m_of << "// " << p << "\n";
             emit_function_header(p, item, params);
@@ -515,6 +517,7 @@ namespace {
             }
             m_of << "}\n";
             m_of.flush();
+            m_mir_res = nullptr;
         }
     private:
         void emit_function_header(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params)
@@ -565,8 +568,18 @@ namespace {
                 m_of << ")";
                 ),
             (Index,
+                ::HIR::TypeRef  tmp;
+                const auto& ty = m_mir_res->get_lvalue_type(tmp, *e.val);
                 m_of << "(";
-                emit_lvalue(*e.val);
+                if( ty.m_data.is_Slice() ) {
+                    assert(e.val->is_Deref());
+                    m_of << "("; emit_ctype(*ty.m_data.as_Slice().inner); m_of << ")";
+                    emit_lvalue(*e.val->as_Deref().val);
+                    m_of << ".PTR";
+                }
+                else {
+                    emit_lvalue(*e.val);
+                }
                 m_of << ")[";
                 emit_lvalue(*e.idx);
                 m_of << "]";
