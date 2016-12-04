@@ -75,10 +75,10 @@ namespace {
                         }
                         i ++;
                     }
-                    // TODO: Iterate supertraits too.
                     for(const auto& st : tr.m_parent_traits) {
                         add_types_from_trait(*st.m_trait_ptr);
                     }
+                    // TODO: Iterate supertraits from bounds too
                 }
             };
             Foo visitor { &tr, {}, static_cast<unsigned int>(tr.m_params.m_types.size()) };
@@ -92,7 +92,7 @@ namespace {
                 if(t.m_data.is_Path() && t.m_data.as_Path().path.m_data.is_UfcsKnown()) {
                     const auto& pe = t.m_data.as_Path().path.m_data.as_UfcsKnown();
                     DEBUG("t=" << t);
-                    if( *pe.type == ::HIR::TypeRef("Self", 0xFFFF) /*&& pe.trait == trait_path*/ ) {
+                    if( *pe.type == ::HIR::TypeRef("Self", 0xFFFF) /*&& pe.trait == trait_path*/ && tr.m_type_indexes.count(pe.item) ) {
                         // Replace with a new type param, need to know the index of it
                         o = ::HIR::TypeRef("a#"+pe.item, tr.m_type_indexes.at(pe.item));
                         return true;
