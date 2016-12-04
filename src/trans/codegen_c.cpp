@@ -203,6 +203,7 @@ namespace {
             static Span sp;
             TRACE_FUNCTION_F(p);
 
+            m_of << "// " << p << "\n";
             emit_function_header(p, item, params);
             m_of << "\n";
             m_of << "{\n";
@@ -231,27 +232,39 @@ namespace {
                     else {
                         const auto& e = stmt.as_Assign();
                         DEBUG("- " << e.dst << " = " << e.src);
-                        m_of << "\t"; emit_lvalue(e.dst); m_of << " = ";
+                        m_of << "\t";
                         TU_MATCHA( (e.src), (ve),
                         (Use,
+                            emit_lvalue(e.dst);
+                            m_of << " = ";
                             emit_lvalue(ve);
                             ),
                         (Constant,
                             TU_MATCHA( (ve), (c),
                             (Int,
+                                emit_lvalue(e.dst);
+                                m_of << " = ";
                                 m_of << c;
                                 ),
                             (Uint,
+                                emit_lvalue(e.dst);
+                                m_of << " = ";
                                 m_of << ::std::hex << "0x" << c << ::std::dec;
                                 ),
                             (Float,
+                                emit_lvalue(e.dst);
+                                m_of << " = ";
                                 m_of << c;
                                 ),
                             (Bool,
+                                emit_lvalue(e.dst);
+                                m_of << " = ";
                                 m_of << (c ? "true" : "false");
                                 ),
                             // TODO: These need to be arrays, not strings! (strings are NUL terminated)
                             (Bytes,
+                                emit_lvalue(e.dst);
+                                m_of << ".PTR = ";
                                 m_of << "\"" << ::std::oct;
                                 for(const auto& v : c) {
                                     if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
@@ -260,8 +273,13 @@ namespace {
                                         m_of << "\\" << (unsigned int)v;
                                 }
                                 m_of << "\"" << ::std::dec;
+                                m_of << ";\n\t";
+                                emit_lvalue(e.dst);
+                                m_of << ".META = " << c.size();
                                 ),
                             (StaticString,
+                                emit_lvalue(e.dst);
+                                m_of << ".PTR = ";
                                 m_of << "\"" << ::std::oct;
                                 for(const auto& v : c) {
                                     if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
@@ -270,16 +288,26 @@ namespace {
                                         m_of << "\\" << (unsigned int)v;
                                 }
                                 m_of << "\"" << ::std::dec;
+                                
+                                m_of << ";\n\t";
+                                emit_lvalue(e.dst);
+                                m_of << ".META = " << c.size();
                                 ),
                             (Const,
                                 // TODO: This should have been eliminated?
+                                emit_lvalue(e.dst);
+                                m_of << " = /*CONST*/";
                                 ),
                             (ItemAddr,
+                                emit_lvalue(e.dst);
+                                m_of << " = ";
                                 m_of << "&" << Trans_Mangle(c);
                                 )
                             )
                             ),
                         (SizedArray,
+                            emit_lvalue(e.dst);
+                            m_of << " = ";
                             m_of << "{";
                             for(unsigned int j = ve.count; j --;) {
                                 emit_lvalue(ve.val);
@@ -288,32 +316,38 @@ namespace {
                             m_of << "}";
                             ),
                         (Borrow,
+                            emit_lvalue(e.dst);
+                            m_of << " = ";
                             m_of << "& "; emit_lvalue(ve.val);
                             ),
                         (Cast,
+                            emit_lvalue(e.dst);
+                            m_of << " = ";
                             m_of << "("; emit_ctype(ve.type); m_of << ")"; emit_lvalue(ve.val);
                             ),
                         (BinOp,
+                            emit_lvalue(e.dst);
+                            m_of << " = ";
                             emit_lvalue(ve.val_l);
                             switch(ve.op)
                             {
-                            case ::MIR::eBinOp::ADD:   m_of << "+";    break;
-                            case ::MIR::eBinOp::SUB:   m_of << "-";    break;
-                            case ::MIR::eBinOp::MUL:   m_of << "*";    break;
-                            case ::MIR::eBinOp::DIV:   m_of << "/";    break;
-                            case ::MIR::eBinOp::MOD:   m_of << "%";    break;
+                            case ::MIR::eBinOp::ADD:   m_of << " + ";    break;
+                            case ::MIR::eBinOp::SUB:   m_of << " - ";    break;
+                            case ::MIR::eBinOp::MUL:   m_of << " * ";    break;
+                            case ::MIR::eBinOp::DIV:   m_of << " / ";    break;
+                            case ::MIR::eBinOp::MOD:   m_of << " % ";    break;
                             
-                            case ::MIR::eBinOp::BIT_OR:    m_of << "|";    break;
-                            case ::MIR::eBinOp::BIT_AND:   m_of << "&";    break;
-                            case ::MIR::eBinOp::BIT_XOR:   m_of << "^";    break;
-                            case ::MIR::eBinOp::BIT_SHR:   m_of << ">>";   break;
-                            case ::MIR::eBinOp::BIT_SHL:   m_of << "<<";   break;
-                            case ::MIR::eBinOp::EQ:    m_of << "==";   break;
-                            case ::MIR::eBinOp::NE:    m_of << "!=";   break;
-                            case ::MIR::eBinOp::GT:    m_of << ">" ;   break;
-                            case ::MIR::eBinOp::GE:    m_of << ">=";   break;
-                            case ::MIR::eBinOp::LT:    m_of << "<" ;   break;
-                            case ::MIR::eBinOp::LE:    m_of << "<=";   break;
+                            case ::MIR::eBinOp::BIT_OR:    m_of << " | ";    break;
+                            case ::MIR::eBinOp::BIT_AND:   m_of << " & ";    break;
+                            case ::MIR::eBinOp::BIT_XOR:   m_of << " ^ ";    break;
+                            case ::MIR::eBinOp::BIT_SHR:   m_of << " >> ";   break;
+                            case ::MIR::eBinOp::BIT_SHL:   m_of << " << ";   break;
+                            case ::MIR::eBinOp::EQ:    m_of << " == ";   break;
+                            case ::MIR::eBinOp::NE:    m_of << " != ";   break;
+                            case ::MIR::eBinOp::GT:    m_of << " > " ;   break;
+                            case ::MIR::eBinOp::GE:    m_of << " >= ";   break;
+                            case ::MIR::eBinOp::LT:    m_of << " < " ;   break;
+                            case ::MIR::eBinOp::LE:    m_of << " <= ";   break;
                             
                             case ::MIR::eBinOp::ADD_OV:
                             case ::MIR::eBinOp::SUB_OV:
@@ -325,29 +359,43 @@ namespace {
                             emit_lvalue(ve.val_r);
                             ),
                         (UniOp,
+                            emit_lvalue(e.dst);
+                            m_of << " = ";
+                            switch(ve.op)
+                            {
+                            case ::MIR::eUniOp::NEG:    m_of << "-";    break;
+                            case ::MIR::eUniOp::INV:    m_of << "~";    break;
+                            }
+                            emit_lvalue(ve.val);
                             ),
                         (DstMeta,
+                            emit_lvalue(e.dst);
+                            m_of << " = ";
                             emit_lvalue(ve.val);
                             m_of << ".META";
                             ),
                         (DstPtr,
+                            emit_lvalue(e.dst);
+                            m_of << " = ";
                             emit_lvalue(ve.val);
                             m_of << ".PTR";
                             ),
                         (MakeDst,
-                            m_of << "{";
+                            emit_lvalue(e.dst);
+                            m_of << ".PTR = ";
                             emit_lvalue(ve.ptr_val);
-                            m_of << ",";
+                            m_of << ";\n\t";
+                            emit_lvalue(e.dst);
+                            m_of << ".META = ";
                             emit_lvalue(ve.meta_val);
-                            m_of << "}";
                             ),
                         (Tuple,
-                            m_of << "{";
                             for(unsigned int j = 0; j < ve.vals.size(); j ++) {
-                                if( j != 0 )    m_of << ",";
+                                if( j != 0 )    m_of << ";\n\t";
+                                emit_lvalue(e.dst);
+                                m_of << "._" << j << " = ";
                                 emit_lvalue(ve.vals[j]);
                             }
-                            m_of << "}";
                             ),
                         (Array,
                             m_of << "{";
@@ -361,12 +409,12 @@ namespace {
                             TODO(sp, "Handle constructing variants");
                             ),
                         (Struct,
-                            m_of << "{";
                             for(unsigned int j = 0; j < ve.vals.size(); j ++) {
-                                if( j != 0 )    m_of << ",";
+                                if( j != 0 )    m_of << ";\n\t";
+                                emit_lvalue(e.dst);
+                                m_of << "._" << j << " = ";
                                 emit_lvalue(ve.vals[j]);
                             }
-                            m_of << "}";
                             )
                         )
                         m_of << ";\n";
