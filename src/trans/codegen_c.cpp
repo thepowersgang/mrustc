@@ -529,6 +529,13 @@ namespace {
                             TODO(sp, "Handle constructing variants");
                             ),
                         (Struct,
+                            if(ve.variant_idx != ~0u) {
+                                emit_lvalue(e.dst);
+                                m_of << ".TAG = " << ve.variant_idx;
+                                if(ve.vals.size() > 0)
+                                    m_of << ";\n\t";
+                            }
+                                
                             for(unsigned int j = 0; j < ve.vals.size(); j ++) {
                                 if( j != 0 )    m_of << ";\n\t";
                                 emit_lvalue(e.dst);
