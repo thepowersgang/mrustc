@@ -59,8 +59,8 @@ namespace {
                     for(unsigned int i = 0; i < te.size(); i++)
                     {
                         m_of << "\t";
-                        emit_ctype(te[i]);
-                        m_of << " _" << i << ";\n";
+                        emit_ctype(te[i], FMT_CB(ss, ss << "_" << i;));
+                        m_of << ";\n";
                     }
                     // TODO: Fields.
                     m_of << "} "; emit_ctype(ty); m_of << ";\n";
@@ -69,6 +69,7 @@ namespace {
             else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Function, te,
                 m_of << "typedef ";
                 // TODO: ABI marker, need an ABI enum?
+                // TODO: Better emit_ctype call for return type.
                 emit_ctype(*te.m_rettype); m_of << " (*"; emit_ctype(ty); m_of << ")(";
                 if( te.m_arg_types.size() == 0 )
                 {
@@ -103,13 +104,12 @@ namespace {
                     return x;
                 }
                 };
-            auto emit_struct_fld_ty = [&](const auto& ty) {
+            auto emit_struct_fld_ty = [&](const ::HIR::TypeRef& ty, ::FmtLambda inner) {
                 TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Slice, te,
-                    emit_ctype( monomorph(*te.inner) );
-                    m_of << "[]";
+                    emit_ctype( monomorph(*te.inner), FMT_CB(ss, ss << inner << "[]";) );
                 )
                 else {
-                    emit_ctype( monomorph(ty) );
+                    emit_ctype( monomorph(ty), inner );
                 }
                 };
             m_of << "struct s_" << Trans_Mangle(p) << " {\n";
@@ -121,8 +121,8 @@ namespace {
                 {
                     const auto& fld = e[i];
                     m_of << "\t";
-                    emit_struct_fld_ty(fld.ent);
-                    m_of << " _" << i << ";\n";
+                    emit_struct_fld_ty(fld.ent, FMT_CB(ss, ss << "_" << i;));
+                    m_of << ";\n";
                 }
                 ),
             (Named,
@@ -130,8 +130,8 @@ namespace {
                 {
                     const auto& fld = e[i].second;
                     m_of << "\t";
-                    emit_struct_fld_ty( fld.ent );
-                    m_of << " _" << i << ";\n";
+                    emit_struct_fld_ty(fld.ent, FMT_CB(ss, ss << "_" << i;));
+                    m_of << ";\n";
                 }
                 )
             )
@@ -223,13 +223,13 @@ namespace {
             m_of << "\t"; emit_ctype(params.monomorph(m_crate, item.m_return)); m_of << " rv;\n";
             for(unsigned int i = 0; i < code->named_variables.size(); i ++) {
                 DEBUG("var" << i << " : " << code->named_variables[i]);
-                m_of << "\t"; emit_ctype(code->named_variables[i]); m_of << " var" << i << ";";
+                m_of << "\t"; emit_ctype(code->named_variables[i], FMT_CB(ss, ss << "var" << i;)); m_of << ";";
                 m_of << "\t// " << code->named_variables[i];
                 m_of << "\n";
             }
             for(unsigned int i = 0; i < code->temporaries.size(); i ++) {
                 DEBUG("tmp" << i << " : " << code->temporaries[i]);
-                m_of << "\t"; emit_ctype(code->temporaries[i]); m_of << " tmp" << i << ";";
+                m_of << "\t"; emit_ctype(code->temporaries[i], FMT_CB(ss, ss << " tmp" << i;)); m_of << ";";
                 m_of << "\t// " << code->temporaries[i];
                 m_of << "\n";
             }
@@ -573,7 +573,7 @@ namespace {
                 m_of << "(";
                 if( ty.m_data.is_Slice() ) {
                     assert(e.val->is_Deref());
-                    m_of << "("; emit_ctype(*ty.m_data.as_Slice().inner); m_of << ")";
+                    m_of << "("; emit_ctype(*ty.m_data.as_Slice().inner); m_of << "*)";
                     emit_lvalue(*e.val->as_Deref().val);
                     m_of << ".PTR";
                 }
@@ -591,12 +591,15 @@ namespace {
             )
         }
         void emit_ctype(const ::HIR::TypeRef& ty) {
+            emit_ctype(ty, FMT_CB(_,));
+        }
+        void emit_ctype(const ::HIR::TypeRef& ty, ::FmtLambda inner) {
             TU_MATCHA( (ty.m_data), (te),
             (Infer,
-                m_of << "@" << ty << "@";
+                m_of << "@" << ty << "@" << inner;
                 ),
             (Diverge,
-                m_of << "tBANG";
+                m_of << "tBANG " << inner;
                 ),
             (Primitive,
                 switch(te)
@@ -620,6 +623,7 @@ namespace {
                 case ::HIR::CoreType::Str:
                     BUG(Span(), "Raw str");
                 }
+                m_of << " " << inner;
                 ),
             (Path,
                 TU_MATCHA( (te.binding), (tpb),
@@ -639,6 +643,7 @@ namespace {
                     BUG(Span(), "Opaque path in trans - " << ty);
                     )
                 )
+                m_of << " " << inner;
                 ),
             (Generic,
                 BUG(Span(), "Generic in trans - " << ty);
@@ -650,7 +655,8 @@ namespace {
                 BUG(Span(), "ErasedType in trans - " << ty);
                 ),
             (Array,
-                emit_ctype(*te.inner); m_of << "[" << te.size_val << "]";
+                emit_ctype(*te.inner, inner);
+                m_of << "[" << te.size_val << "]";
                 ),
             (Slice,
                 BUG(Span(), "Raw slice object - " << ty);
@@ -663,39 +669,38 @@ namespace {
                     for(const auto& t : te)
                         m_of << "_" << Trans_Mangle(t);
                 }
+                m_of << " " << inner;
                 ),
             (Borrow,
                 if( *te.inner == ::HIR::CoreType::Str ) {
-                    m_of << "STR_PTR";
+                    m_of << "STR_PTR " << inner;
                 }
                 else if( te.inner->m_data.is_TraitObject() ) {
-                    m_of << "TRAITOBJ_PTR";
+                    m_of << "TRAITOBJ_PTR " << inner;
                 }
                 else if( te.inner->m_data.is_Slice() ) {
-                    m_of << "SLICE_PTR";
+                    m_of << "SLICE_PTR " << inner;
                 }
                 else {
-                    emit_ctype(*te.inner);
-                    m_of << "*";
+                    emit_ctype(*te.inner, FMT_CB(ss, ss << "*" << inner;));
                 }
                 ),
             (Pointer,
                 if( *te.inner == ::HIR::CoreType::Str ) {
-                    m_of << "STR_PTR";
+                    m_of << "STR_PTR " << inner;
                 }
                 else if( te.inner->m_data.is_TraitObject() ) {
-                    m_of << "TRAITOBJ_PTR";
+                    m_of << "TRAITOBJ_PTR " << inner;
                 }
                 else if( te.inner->m_data.is_Slice() ) {
-                    m_of << "SLICE_PTR";
+                    m_of << "SLICE_PTR " << inner;
                 }
                 else {
-                    emit_ctype(*te.inner);
-                    m_of << "*";
+                    emit_ctype(*te.inner, FMT_CB(ss, ss << "*" << inner;));
                 }
                 ),
             (Function,
-                m_of << "t_" << Trans_Mangle(ty);
+                m_of << "t_" << Trans_Mangle(ty) << " " << inner;
                 ),
             (Closure,
                 BUG(Span(), "Closure during trans - " << ty);
