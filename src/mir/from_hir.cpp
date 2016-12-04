@@ -1322,6 +1322,7 @@ namespace {
         
         void visit(::HIR::ExprNode_TupleVariant& node) override
         {
+            const Span& sp = node.span();
             TRACE_FUNCTION_F("_TupleVariant");
             ::std::vector< ::MIR::LValue>   values;
             values.reserve( node.m_args.size() );
@@ -1331,8 +1332,23 @@ namespace {
                 values.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
             }
             
+            unsigned int variant_index = ~0u;
+            if( !node.m_is_struct )
+            {
+                // Get the variant index from the enum.
+                auto enum_path = node.m_path.m_path;
+                enum_path.m_components.pop_back();
+                const auto& var_name = node.m_path.m_path.m_components.back();
+                const auto& enm = m_builder.crate().get_enum_by_path(sp, enum_path);
+                auto var_it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x){ return x.first == var_name; });
+                ASSERT_BUG(sp, var_it != enm.m_variants.end(), "Variant " << node.m_path.m_path << " isn't present");
+                
+                variant_index = var_it - enm.m_variants.begin();
+            }
+            
             m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
                 node.m_path.clone(),
+                variant_index,
                 mv$(values)
                 }) );
         }
@@ -1539,9 +1555,24 @@ namespace {
         }
         void visit(::HIR::ExprNode_UnitVariant& node) override
         {
+            const Span& sp = node.span();
             TRACE_FUNCTION_F("_UnitVariant");
+            unsigned int variant_index = ~0u;
+            if( !node.m_is_struct )
+            {
+                // Get the variant index from the enum.
+                auto enum_path = node.m_path.m_path;
+                enum_path.m_components.pop_back();
+                const auto& var_name = node.m_path.m_path.m_components.back();
+                const auto& enm = m_builder.crate().get_enum_by_path(sp, enum_path);
+                auto var_it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x){ return x.first == var_name; });
+                ASSERT_BUG(sp, var_it != enm.m_variants.end(), "Variant " << node.m_path.m_path << " isn't present");
+                
+                variant_index = var_it - enm.m_variants.begin();
+            }
             m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
                 node.m_path.clone(),
+                variant_index,
                 {}
                 }) );
         }
@@ -1585,6 +1616,7 @@ namespace {
                     // TODO: Why is this still a PathValue?
                     m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
                         pe.clone(),
+                        ~0u,
                         {}
                         }) );
                     ),
@@ -1703,6 +1735,7 @@ namespace {
                 base_val = m_builder.get_result_in_lvalue(node.m_base_value->span(), node.m_base_value->m_res_type);
             }
             
+            unsigned int variant_index = ~0u;
             const ::HIR::t_struct_fields* fields_ptr = nullptr;
             TU_MATCH(::HIR::TypeRef::TypePathBinding, (node.m_res_type.m_data.as_Path().binding), (e),
             (Unbound, ),
@@ -1712,6 +1745,7 @@ namespace {
                 const auto& enm = *e;
                 auto it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&v)->auto{ return v.first == var_name; });
                 assert(it != enm.m_variants.end());
+                variant_index = it - enm.m_variants.begin();
                 fields_ptr = &it->second.as_Struct();
                 ),
             (Union,
@@ -1753,6 +1787,7 @@ namespace {
             
             m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
                 node.m_path.clone(),
+                variant_index,
                 mv$(values)
                 }) );
         }
@@ -1833,6 +1868,7 @@ namespace {
             
             m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
                 node.m_obj_path.clone(),
+                ~0u,
                 mv$(vals)
                 }) );
         }

@@ -460,6 +460,8 @@ namespace {
                             for(unsigned int j = 0; j < ve.vals.size(); j ++) {
                                 if( j != 0 )    m_of << ";\n\t";
                                 emit_lvalue(e.dst);
+                                if(ve.variant_idx != ~0u)
+                                    m_of << ".DATA.var_" << ve.variant_idx;
                                 m_of << "._" << j << " = ";
                                 emit_lvalue(ve.vals[j]);
                             }

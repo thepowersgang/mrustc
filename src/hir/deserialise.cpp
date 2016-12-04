@@ -380,6 +380,7 @@ namespace {
                 })
             _(Struct, {
                 deserialise_genericpath(),
+                static_cast<unsigned int>( m_in.read_count() ),
                 deserialise_vec_c< ::MIR::LValue>([&](){ return deserialise_mir_lvalue(); })
                 })
             #undef _

@@ -591,6 +591,7 @@ namespace {
                 ),
             (Struct,
                 serialise_genericpath(e.path);
+                m_out.write_count(e.variant_idx);
                 serialise_vec(e.vals);
                 )
             )

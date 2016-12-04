@@ -155,6 +155,7 @@ TAGGED_UNION(RValue, Use,
     // Create a new instance of a struct (or enum)
     (Struct, struct {
         ::HIR::GenericPath  path;
+        unsigned int variant_idx;   // if ~0, it's a struct
         ::std::vector<LValue>   vals;
         })
 );
