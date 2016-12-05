@@ -15,6 +15,26 @@
 #include <hir_typeck/static.hpp>
 #include <mir/helpers.hpp>
 
+const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::Path& path,  ::HIR::TypeRef& out_ty)
+{
+    TU_MATCHA( (path.m_data), (pe),
+    (Generic,
+        const auto& constant = resolve.m_crate.get_constant_by_path(sp, pe.m_path);
+        if( pe.m_params.m_types.size() != 0 )
+            TODO(sp, "Generic constants - " << path);
+        out_ty = constant.m_type.clone();
+        return &constant.m_value_res;
+        ),
+    (UfcsUnknown,
+        ),
+    (UfcsKnown,
+        ),
+    (UfcsInherent,
+        )
+    )
+    return nullptr;
+}
+
 void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
 {
     Span    sp;
@@ -22,15 +42,95 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
     
     for(auto& block : fcn.blocks)
     {
-        for(auto& stmt : block.statements)
+        for(auto it = block.statements.begin(); it != block.statements.end(); ++ it)
         {
+            auto& stmt = *it;
+            ::std::vector< ::MIR::Statement>    new_stmts;
+            auto new_temporary = [&](::HIR::TypeRef ty, ::MIR::RValue val)->::MIR::LValue {
+                auto rv = ::MIR::LValue::make_Temporary({ static_cast<unsigned int>(fcn.temporaries.size()) });
+                fcn.temporaries.push_back( mv$(ty) );
+                new_stmts.push_back( ::MIR::Statement::make_Assign({ rv.clone(), mv$(val) }) );
+                return rv;
+                };
             if( stmt.is_Assign() )
             {
                 auto& se = stmt.as_Assign();
                 
                 TU_IFLET( ::MIR::RValue, se.src, Constant, e,
                     // TODO: Replace `Const` with actual values
+                    TU_IFLET( ::MIR::Constant, e, Const, ce,
+                        // 1. Find the constant
+                        ::HIR::TypeRef  ty;
+                        const auto* lit_ptr = MIR_Cleanup_GetConstant(sp, resolve, ce.p, ty);
+                        if( lit_ptr )
+                        {
+                            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
+                            (
+                                //TODO(sp, "Literal of type " << ty << " - " << *lit_ptr);
+                                ),
+                            (Primitive,
+                                switch(te)
+                                {
+                                case ::HIR::CoreType::Char:
+                                case ::HIR::CoreType::Usize:
+                                case ::HIR::CoreType::U64:
+                                case ::HIR::CoreType::U32:
+                                case ::HIR::CoreType::U16:
+                                case ::HIR::CoreType::U8:
+                                    e = ::MIR::Constant::make_Uint( lit_ptr->as_Integer() );
+                                    break;
+                                case ::HIR::CoreType::Isize:
+                                case ::HIR::CoreType::I64:
+                                case ::HIR::CoreType::I32:
+                                case ::HIR::CoreType::I16:
+                                case ::HIR::CoreType::I8:
+                                    e = ::MIR::Constant::make_Int( lit_ptr->as_Integer() );
+                                    break;
+                                case ::HIR::CoreType::F64:
+                                case ::HIR::CoreType::F32:
+                                    e = ::MIR::Constant::make_Float( lit_ptr->as_Float() );
+                                    break;
+                                case ::HIR::CoreType::Bool:
+                                    e = ::MIR::Constant::make_Bool( !!lit_ptr->as_Integer() );
+                                    break;
+                                case ::HIR::CoreType::Str:
+                                    BUG(sp, "Const of type `str` - " << ce.p);
+                                }
+                                ),
+                            (Pointer,
+                                if( lit_ptr->is_BorrowOf() ) {
+                                    // TODO: 
+                                }
+                                else {
+                                    auto lval = new_temporary( ::HIR::CoreType::Usize, ::MIR::RValue( ::MIR::Constant::make_Uint( lit_ptr->as_Integer() ) ) );
+                                    se.src = ::MIR::RValue::make_Cast({ mv$(lval), mv$(ty) });
+                                }
+                                ),
+                            (Borrow,
+                                if( lit_ptr->is_BorrowOf() ) {
+                                    // TODO: 
+                                }
+                                else if( te.inner->m_data.is_Slice() && *te.inner->m_data.as_Slice().inner == ::HIR::CoreType::U8 ) {
+                                    ::std::vector<uint8_t>  bytestr;
+                                    for(auto v : lit_ptr->as_String())
+                                        bytestr.push_back( static_cast<uint8_t>(v) );
+                                    e = ::MIR::Constant::make_Bytes( mv$(bytestr) );
+                                }
+                                else if( *te.inner == ::HIR::CoreType::Str ) {
+                                    e = ::MIR::Constant::make_StaticString( lit_ptr->as_String() );
+                                }
+                                else {
+                                    TODO(sp, "Const with type " << ty);
+                                }
+                                )
+                            )
+                        }
+                    )
                 )
+            }
+            
+            for(auto& v : new_stmts) {
+                it = block.statements.insert(it, mv$(v));
             }
         }
         
