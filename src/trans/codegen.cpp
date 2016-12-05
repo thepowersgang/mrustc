@@ -197,6 +197,13 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
                     tv.visit_type(pp.monomorph(crate, ty));
             }
         }
+        for(const auto& ent : list.m_statics)
+        {
+            assert(ent.second->ptr);
+            const auto& stat = *ent.second->ptr;
+            
+            tv.visit_type( stat.m_type );
+        }
     }
     
     // 2. Emit function prototypes

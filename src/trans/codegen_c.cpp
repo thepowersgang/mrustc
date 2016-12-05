@@ -62,7 +62,6 @@ namespace {
                         emit_ctype(te[i], FMT_CB(ss, ss << "_" << i;));
                         m_of << ";\n";
                     }
-                    // TODO: Fields.
                     m_of << "} "; emit_ctype(ty); m_of << ";\n";
                 }
             )
@@ -87,6 +86,11 @@ namespace {
                 }
                 m_of << ";\n";
             )
+            else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Array, te,
+                m_of << "typedef struct {\n";
+                m_of << "\t"; emit_ctype(*te.inner); m_of << " DATA[" << te.size_val << "];\n";
+                m_of << "} "; emit_ctype(ty); m_of << ";\n";
+            )
             else {
             }
         }
@@ -106,7 +110,7 @@ namespace {
                 };
             auto emit_struct_fld_ty = [&](const ::HIR::TypeRef& ty, ::FmtLambda inner) {
                 TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Slice, te,
-                    emit_ctype( monomorph(*te.inner), FMT_CB(ss, ss << inner << "[]";) );
+                    emit_ctype( monomorph(*te.inner), FMT_CB(ss, ss << inner << "[0]";) );
                 )
                 else {
                     emit_ctype( monomorph(ty), inner );
@@ -385,20 +389,20 @@ namespace {
                             if( ve.count == 0 ) {
                             }
                             else if( ve.count == 1 ) {
-                                emit_lvalue(e.dst); m_of << "[0] = "; emit_lvalue(ve.val);
+                                emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_lvalue(ve.val);
                             }
                             else if( ve.count == 2 ) {
-                                emit_lvalue(e.dst); m_of << "[0] = "; emit_lvalue(ve.val); m_of << ";\n\t";
-                                emit_lvalue(e.dst); m_of << "[1] = "; emit_lvalue(ve.val);
+                                emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_lvalue(ve.val); m_of << ";\n\t";
+                                emit_lvalue(e.dst); m_of << ".DATA[1] = "; emit_lvalue(ve.val);
                             }
                             else if( ve.count == 3 ) {
-                                emit_lvalue(e.dst); m_of << "[0] = "; emit_lvalue(ve.val); m_of << ";\n\t";
-                                emit_lvalue(e.dst); m_of << "[1] = "; emit_lvalue(ve.val); m_of << ";\n\t";
-                                emit_lvalue(e.dst); m_of << "[2] = "; emit_lvalue(ve.val);
+                                emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_lvalue(ve.val); m_of << ";\n\t";
+                                emit_lvalue(e.dst); m_of << ".DATA[1] = "; emit_lvalue(ve.val); m_of << ";\n\t";
+                                emit_lvalue(e.dst); m_of << ".DATA[2] = "; emit_lvalue(ve.val);
                             }
                             else {
                                 m_of << "for(unsigned int i = 0; i < " << ve.count << "; i ++)\n";
-                                m_of << "\t\t"; emit_lvalue(e.dst); m_of << "[i] = "; emit_lvalue(ve.val);
+                                m_of << "\t\t"; emit_lvalue(e.dst); m_of << ".DATA[i] = "; emit_lvalue(ve.val);
                             }
                             ),
                         (Borrow,
@@ -425,10 +429,11 @@ namespace {
                             m_of << "("; emit_ctype(ve.type); m_of << ")";
                             // TODO: If the source is an unsized borrow, then extract the pointer
                             bool special = false;
+                            ::HIR::TypeRef  tmp;
+                            const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);
                             if( ve.type.m_data.is_Pointer() && !is_dst( *ve.type.m_data.as_Pointer().inner ) )
                             {
-                                ::HIR::TypeRef  tmp;
-                                const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);  // NOTE: Checks the result of the deref
+                                // NOTE: Checks the result of the deref
                                 if( (ty.m_data.is_Borrow() && is_dst(*ty.m_data.as_Borrow().inner))
                                  || (ty.m_data.is_Pointer() && is_dst(*ty.m_data.as_Pointer().inner))
                                     )
@@ -437,6 +442,12 @@ namespace {
                                     m_of << ".PTR";
                                     special = true;
                                 }
+                            }
+                            if( ve.type.m_data.is_Primitive() && ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum() )
+                            {
+                                emit_lvalue(ve.val);
+                                m_of << ".TAG";
+                                special = true;
                             }
                             if( !special )
                             {
@@ -520,7 +531,7 @@ namespace {
                         (Array,
                             for(unsigned int j = 0; j < ve.vals.size(); j ++) {
                                 if( j != 0 )    m_of << ";\n\t";
-                                emit_lvalue(e.dst); m_of << "[" << j << "] = ";
+                                emit_lvalue(e.dst); m_of << ".DATA[" << j << "] = ";
                                 emit_lvalue(ve.vals[j]);
                             }
                             ),
@@ -576,7 +587,16 @@ namespace {
                     m_of << "\t}\n";
                     ),
                 (CallValue,
-                    m_of << "\t"; emit_lvalue(e.ret_val); m_of << " = ("; emit_lvalue(e.fcn_val); m_of << ")(";
+                    m_of << "\t";
+                    {
+                        ::HIR::TypeRef  tmp;
+                        const auto& ty = mir_res.get_lvalue_type(tmp, e.fcn_val);
+                        if( !ty.m_data.as_Function().m_rettype->m_data.is_Diverge() )
+                        {
+                            emit_lvalue(e.ret_val); m_of << " = ";
+                        }
+                    }
+                    m_of << "("; emit_lvalue(e.fcn_val); m_of << ")(";
                     for(unsigned int j = 0; j < e.args.size(); j ++) {
                         if(j != 0)  m_of << ",";
                         m_of << " "; emit_lvalue(e.args[j]);
@@ -585,7 +605,30 @@ namespace {
                     m_of << "\tgoto bb" << e.ret_block << ";\n";
                     ),
                 (CallPath,
-                    m_of << "\t"; emit_lvalue(e.ret_val); m_of << " = " << Trans_Mangle(e.fcn_path) << "(";
+                    m_of << "\t";
+                    {
+                        bool is_diverge = false;
+                        TU_MATCHA( (e.fcn_path.m_data), (pe),
+                        (Generic,
+                            const auto& fcn = m_crate.get_function_by_path(sp, pe.m_path);
+                            is_diverge |= fcn.m_return.m_data.is_Diverge();
+                            // TODO: Monomorph.
+                            ),
+                        (UfcsUnknown,
+                            ),
+                        (UfcsInherent,
+                            // TODO: Check if the return type is !
+                            ),
+                        (UfcsKnown,
+                            // TODO: Check if the return type is !
+                            )
+                        )
+                        if(!is_diverge)
+                        {
+                            emit_lvalue(e.ret_val); m_of << " = ";
+                        }
+                    }
+                    m_of << Trans_Mangle(e.fcn_path) << "(";
                     for(unsigned int j = 0; j < e.args.size(); j ++) {
                         if(j != 0)  m_of << ",";
                         m_of << " "; emit_lvalue(e.args[j]);
@@ -658,6 +701,10 @@ namespace {
                     emit_lvalue(*e.val->as_Deref().val);
                     m_of << ".PTR";
                 }
+                else if( ty.m_data.is_Array() ) {
+                    emit_lvalue(*e.val);
+                    m_of << ".DATA";
+                }
                 else {
                     emit_lvalue(*e.val);
                 }
@@ -707,6 +754,12 @@ namespace {
                 m_of << " " << inner;
                 ),
             (Path,
+                //if( m_mir_res ) {
+                //    if( const auto* ity = m_mir_res->is_type_owned_box(ty) ) {
+                //        emit_ctype_ptr(*ity, inner);
+                //        return ;
+                //    }
+                //}
                 TU_MATCHA( (te.binding), (tpb),
                 (Struct,
                     m_of << "struct s_" << Trans_Mangle(te.path);
@@ -736,8 +789,9 @@ namespace {
                 BUG(Span(), "ErasedType in trans - " << ty);
                 ),
             (Array,
-                emit_ctype(*te.inner, inner);
-                m_of << "[" << te.size_val << "]";
+                m_of << "t_" << Trans_Mangle(ty) << " " << inner;
+                //emit_ctype(*te.inner, inner);
+                //m_of << "[" << te.size_val << "]";
                 ),
             (Slice,
                 BUG(Span(), "Raw slice object - " << ty);

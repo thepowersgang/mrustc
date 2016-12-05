@@ -84,7 +84,6 @@ public:
     
     const ::HIR::TypeRef& get_lvalue_type(::HIR::TypeRef& tmp, const ::MIR::LValue& val) const;
     
-private:
     const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
 };
 
