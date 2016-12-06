@@ -306,6 +306,7 @@ namespace {
                 
                 for(const auto& stmt : code->blocks[i].statements)
                 {
+                    mir_res.set_cur_stmt(i, (&stmt - &code->blocks[i].statements.front()));
                     assert( stmt.is_Drop() || stmt.is_Assign() );
                     if( stmt.is_Drop() ) {
                         // TODO: Emit destructor calls
@@ -561,6 +562,8 @@ namespace {
                         m_of << "\n";
                     }
                 }
+                
+                mir_res.set_cur_stmt_term(i);
                 TU_MATCHA( (code->blocks[i].terminator), (e),
                 (Incomplete,
                     m_of << "\tfor(;;);\n";

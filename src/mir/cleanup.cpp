@@ -61,7 +61,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
     unsigned int vtable_idx = it->second.first;
     
     // 2. Load from the vtable
-    auto vtable_ty_spath = pe.trait.m_path;
+    auto vtable_ty_spath = te.m_trait.m_path.m_path;
     vtable_ty_spath.m_components.back() += "#vtable";
     const auto& vtable_ref = state.m_resolve.m_crate.get_struct_by_path(sp, vtable_ty_spath);
     // Copy the param set from the trait in the trait object

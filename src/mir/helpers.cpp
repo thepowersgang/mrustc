@@ -85,7 +85,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
                 MIR_BUG(*this, "Field on unit-like struct - " << ty);
                 ),
             (Tuple,
-                MIR_ASSERT(*this, e.field_index < se.size(), "Field index out of range in tuple-struct");
+                MIR_ASSERT(*this, e.field_index < se.size(), "Field index out of range in tuple-struct " << te.path);
                 const auto& fld = se[e.field_index];
                 if( monomorphise_type_needed(fld.ent) ) {
                     tmp = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, fld.ent);
@@ -97,7 +97,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
                 }
                 ),
             (Named,
-                MIR_ASSERT(*this, e.field_index < se.size(), "Field index out of range in struct");
+                MIR_ASSERT(*this, e.field_index < se.size(), "Field index out of range in struct " << te.path);
                 const auto& fld = se[e.field_index].second;
                 if( monomorphise_type_needed(fld.ent) ) {
                     tmp = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, fld.ent);
