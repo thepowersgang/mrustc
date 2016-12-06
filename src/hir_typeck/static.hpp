@@ -27,6 +27,7 @@ private:
     ::HIR::SimplePath   m_lang_Fn;
     ::HIR::SimplePath   m_lang_FnMut;
     ::HIR::SimplePath   m_lang_FnOnce;
+    ::HIR::SimplePath   m_lang_Box;
     
 public:
     StaticTraitResolve(const ::HIR::Crate& crate):
@@ -39,6 +40,7 @@ public:
         m_lang_Fn = m_crate.get_lang_item_path_opt("fn");
         m_lang_FnMut = m_crate.get_lang_item_path_opt("fn_mut");
         m_lang_FnOnce = m_crate.get_lang_item_path_opt("fn_once");
+        m_lang_Box = m_crate.get_lang_item_path_opt("owned_box");
         prep_indexes();
     }
 
@@ -166,5 +168,7 @@ public:
     // -------------
     bool type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const;
     bool type_is_sized(const Span& sp, const ::HIR::TypeRef& ty) const;
+    
+    const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
 };
 

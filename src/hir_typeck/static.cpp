@@ -1363,3 +1363,22 @@ bool StaticTraitResolve::type_is_sized(const Span& sp, const ::HIR::TypeRef& ty)
     )
     throw "";
 }
+
+const ::HIR::TypeRef* StaticTraitResolve::is_type_owned_box(const ::HIR::TypeRef& ty) const
+{
+    if( ! ty.m_data.is_Path() ) {
+        return nullptr;
+    }
+    const auto& te = ty.m_data.as_Path();
+    
+    if( ! te.path.m_data.is_Generic() ) {
+        return nullptr;
+    }
+    const auto& pe = te.path.m_data.as_Generic();
+    
+    if( pe.m_path != m_lang_Box ) {
+        return nullptr;
+    }
+    // TODO: Properly assert?
+    return &pe.m_params.m_types.at(0);
+}

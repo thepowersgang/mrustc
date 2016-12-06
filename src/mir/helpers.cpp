@@ -213,26 +213,5 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
 }
 const ::HIR::TypeRef* ::MIR::TypeResolve::is_type_owned_box(const ::HIR::TypeRef& ty) const
 {
-    if( m_lang_Box )
-    {
-        if( ! ty.m_data.is_Path() ) {
-            return nullptr;
-        }
-        const auto& te = ty.m_data.as_Path();
-        
-        if( ! te.path.m_data.is_Generic() ) {
-            return nullptr;
-        }
-        const auto& pe = te.path.m_data.as_Generic();
-        
-        if( pe.m_path != *m_lang_Box ) {
-            return nullptr;
-        }
-        // TODO: Properly assert?
-        return &pe.m_params.m_types.at(0);
-    }
-    else
-    {
-        return nullptr;
-    }
+    return m_resolve.is_type_owned_box(ty);
 }

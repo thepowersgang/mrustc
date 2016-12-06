@@ -757,12 +757,10 @@ namespace {
                 m_of << " " << inner;
                 ),
             (Path,
-                //if( m_mir_res ) {
-                //    if( const auto* ity = m_mir_res->is_type_owned_box(ty) ) {
-                //        emit_ctype_ptr(*ity, inner);
-                //        return ;
-                //    }
-                //}
+                if( const auto* ity = m_resolve.is_type_owned_box(ty) ) {
+                    emit_ctype_ptr(*ity, inner);
+                    return ;
+                }
                 TU_MATCHA( (te.binding), (tpb),
                 (Struct,
                     m_of << "struct s_" << Trans_Mangle(te.path);
