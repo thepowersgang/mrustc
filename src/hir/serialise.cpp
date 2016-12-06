@@ -40,6 +40,16 @@ namespace {
                 serialise(v.second);
             }
         }
+        template<typename V>
+        void serialise_strmap(const ::std::unordered_multimap< ::std::string,V>& map)
+        {
+            m_out.write_count(map.size());
+            for(const auto& v : map) {
+                DEBUG("- " << v.first);
+                m_out.write_string(v.first);
+                serialise(v.second);
+            }
+        }
         template<typename T>
         void serialise_vec(const ::std::vector<T>& vec)
         {
@@ -60,6 +70,11 @@ namespace {
         template<typename T>
         void serialise(const ::std::pair< ::std::string, T>& e) {
             m_out.write_string(e.first);
+            serialise(e.second);
+        }
+        template<typename T>
+        void serialise(const ::std::pair<unsigned int, T>& e) {
+            m_out.write_count(e.first);
             serialise(e.second);
         }
         
@@ -150,6 +165,7 @@ namespace {
             serialise_simplepath(path.m_path);
             serialise_pathparams(path.m_params);
         }
+        void serialise(const ::HIR::GenericPath& path) { serialise_genericpath(path); }
         void serialise_traitpath(const ::HIR::TraitPath& path)
         {
             serialise_genericpath(path.m_path);

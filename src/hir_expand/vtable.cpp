@@ -88,84 +88,113 @@ namespace {
             visitor.add_types_from_trait(tr);
             auto args = mv$(visitor.params);
             
-            auto clone_cb = [&](const auto& t, auto& o) {
-                if(t.m_data.is_Path() && t.m_data.as_Path().path.m_data.is_UfcsKnown()) {
-                    const auto& pe = t.m_data.as_Path().path.m_data.as_UfcsKnown();
-                    DEBUG("t=" << t);
-                    if( *pe.type == ::HIR::TypeRef("Self", 0xFFFF) /*&& pe.trait == trait_path*/ && tr.m_type_indexes.count(pe.item) ) {
-                        // Replace with a new type param, need to know the index of it
-                        o = ::HIR::TypeRef("a#"+pe.item, tr.m_type_indexes.at(pe.item));
-                        return true;
+            struct VtableConstruct {
+                const OuterVisitor* m_outer;
+                ::HIR::Trait*   trait_ptr;
+                ::HIR::t_struct_fields fields;
+                
+                bool add_ents_from_trait(const ::HIR::Trait& tr, const ::HIR::GenericPath& trait_path)
+                {
+                    TRACE_FUNCTION_F(trait_path);
+                    auto clone_cb = [&](const auto& t, auto& o) {
+                        if(t.m_data.is_Path() && t.m_data.as_Path().path.m_data.is_UfcsKnown()) {
+                            const auto& pe = t.m_data.as_Path().path.m_data.as_UfcsKnown();
+                            DEBUG("t=" << t);
+                            if( *pe.type == ::HIR::TypeRef("Self", 0xFFFF) /*&& pe.trait == trait_path*/ && tr.m_type_indexes.count(pe.item) ) {
+                                // Replace with a new type param, need to know the index of it
+                                o = ::HIR::TypeRef("a#"+pe.item, tr.m_type_indexes.at(pe.item));
+                                return true;
+                            }
+                        }
+                        return false;
+                        };
+                    auto clone_self_cb = [](const auto& t, auto&o) {
+                        if( t == ::HIR::TypeRef("Self", 0xFFFF) ) {
+                            o = ::HIR::TypeRef::new_unit();
+                            return true;
+                        }
+                        return false;
+                        };
+                    for(auto& vi : tr.m_values)
+                    {
+                        TU_MATCHA( (vi.second), (ve),
+                        (Function,
+                            if( ve.m_receiver == ::HIR::Function::Receiver::Free ) {
+                                DEBUG("- '" << vi.first << "' Skip free function");  // ?
+                                continue ;
+                            }
+                            if( ::std::any_of(ve.m_params.m_bounds.begin(), ve.m_params.m_bounds.end(), [&](const auto& b){
+                                return b.is_TraitBound()
+                                    && b.as_TraitBound().type == ::HIR::TypeRef("Self", 0xFFFF)
+                                    && b.as_TraitBound().trait.m_path.m_path == m_outer->m_lang_Sized;
+                                }) )
+                            {
+                                DEBUG("- '" << vi.first << "' Skip where `Self: Sized`");
+                                continue ;
+                            }
+                            if( ve.m_params.m_types.size() > 0 ) {
+                                DEBUG("- '" << vi.first << "' NOT object safe (generic), not creating vtable");
+                                return false;
+                            }
+                            
+                            ::HIR::FunctionType ft;
+                            ft.is_unsafe = ve.m_unsafe;
+                            ft.m_abi = ve.m_abi;
+                            ft.m_rettype = box$( clone_ty_with(sp, ve.m_return, clone_cb) );
+                            ft.m_arg_types.reserve( ve.m_args.size() );
+                            ft.m_arg_types.push_back( clone_ty_with(sp, ve.m_args[0].second, clone_self_cb) );
+                            for(unsigned int i = 1; i < ve.m_args.size(); i ++)
+                                ft.m_arg_types.push_back( clone_ty_with(sp, ve.m_args[i].second, clone_cb) );
+                            // Clear the first argument (the receiver)
+                            ::HIR::TypeRef  fcn_type( mv$(ft) );
+                            
+                            // Detect use of `Self` and don't create the vtable if there is.
+                            if( visit_ty_with(fcn_type, [&](const auto& t){ return (t == ::HIR::TypeRef("Self", 0xFFFF)); }) )
+                            {
+                                DEBUG("- '" << vi.first << "' NOT object safe (Self), not creating vtable - " << fcn_type);
+                                return false;
+                            }
+                            
+                            trait_ptr->m_value_indexes.insert( ::std::make_pair(
+                                vi.first,
+                                ::std::make_pair(fields.size(), trait_path.clone())
+                                ) );
+                            DEBUG("- '" << vi.first << "' is @" << fields.size());
+                            fields.push_back( ::std::make_pair(
+                                vi.first,
+                                ::HIR::VisEnt< ::HIR::TypeRef> { true, mv$(fcn_type) }
+                                ) );
+                            ),
+                        (Static,
+                            if( vi.first != "#vtable" )
+                            {
+                                TODO(Span(), "Associated static in vtable");
+                            }
+                            ),
+                        (Constant,
+                            //TODO(Span(), "Associated const in vtable");
+                            )
+                        )
                     }
-                }
-                return false;
-                };
-            auto clone_self_cb = [](const auto& t, auto&o) {
-                if( t == ::HIR::TypeRef("Self", 0xFFFF) ) {
-                    o = ::HIR::TypeRef::new_unit();
+                    for(const auto& st : tr.m_parent_traits) {
+                        ::HIR::TypeRef  self("Self", 0xFFFF);
+                        auto st_gp = monomorphise_genericpath_with(sp, st.m_path, monomorphise_type_get_cb(sp, &self, &trait_path.m_params, nullptr), false);
+                        // NOTE: Doesn't trigger non-object-safe
+                        add_ents_from_trait(*st.m_trait_ptr, st_gp);
+                    }
+                    // TODO: Iterate supertraits from bounds too
                     return true;
                 }
-                return false;
-                };
+            };
             
-            ::HIR::t_struct_fields fields;
-            for(auto& vi : tr.m_values)
+            VtableConstruct vtc { this, &tr, {} };
+            if( ! vtc.add_ents_from_trait(tr, trait_path) )
             {
-                TU_MATCHA( (vi.second), (ve),
-                (Function,
-                    if( ve.m_receiver == ::HIR::Function::Receiver::Free ) {
-                        DEBUG("- '" << vi.first << "' Skip free function");  // ?
-                        continue ;
-                    }
-                    if( ::std::any_of(ve.m_params.m_bounds.begin(), ve.m_params.m_bounds.end(), [&](const auto& b){
-                        return b.is_TraitBound() && b.as_TraitBound().type == ::HIR::TypeRef("Self", 0xFFFF) && b.as_TraitBound().trait.m_path.m_path == m_lang_Sized;
-                        }) )
-                    {
-                        DEBUG("- '" << vi.first << "' Skip where `Self: Sized`");
-                        continue ;
-                    }
-                    if( ve.m_params.m_types.size() > 0 ) {
-                        DEBUG("- '" << vi.first << "' NOT object safe (generic), not creating vtable");
-                        tr.m_value_indexes.clear();
-                        tr.m_type_indexes.clear();
-                        return ;
-                    }
-                    
-                    ::HIR::FunctionType ft;
-                    ft.is_unsafe = ve.m_unsafe;
-                    ft.m_abi = ve.m_abi;
-                    ft.m_rettype = box$( clone_ty_with(sp, ve.m_return, clone_cb) );
-                    ft.m_arg_types.reserve( ve.m_args.size() );
-                    ft.m_arg_types.push_back( clone_ty_with(sp, ve.m_args[0].second, clone_self_cb) );
-                    for(unsigned int i = 1; i < ve.m_args.size(); i ++)
-                        ft.m_arg_types.push_back( clone_ty_with(sp, ve.m_args[i].second, clone_cb) );
-                    // Clear the first argument (the receiver)
-                    ::HIR::TypeRef  fcn_type( mv$(ft) );
-                    
-                    // Detect use of `Self` and don't create the vtable if there is.
-                    if( visit_ty_with(fcn_type, [&](const auto& t){ return (t == ::HIR::TypeRef("Self", 0xFFFF)); }) )
-                    {
-                        DEBUG("- '" << vi.first << "' NOT object safe (Self), not creating vtable - " << fcn_type);
-                        tr.m_value_indexes.clear();
-                        tr.m_type_indexes.clear();
-                        return ;
-                    }
-                    
-                    tr.m_value_indexes[vi.first] = fields.size();
-                    DEBUG("- '" << vi.first << "' is @" << fields.size());
-                    fields.push_back( ::std::make_pair(
-                        vi.first,
-                        ::HIR::VisEnt< ::HIR::TypeRef> { true, mv$(fcn_type) }
-                        ) );
-                    ),
-                (Static,
-                    TODO(Span(), "Associated static in vtable");
-                    ),
-                (Constant,
-                    //TODO(Span(), "Associated const in vtable");
-                    )
-                )
+                tr.m_value_indexes.clear();
+                tr.m_type_indexes.clear();
+                return ;
             }
+            auto fields = mv$(vtc.fields);
             
             ::HIR::PathParams   params;
             {
@@ -207,6 +236,7 @@ namespace {
             const auto& tr = m_crate.get_trait_by_path(sp, trait_path);
             if(tr.m_value_indexes.size() > 0)
             {
+                auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &impl.m_type, &impl.m_trait_args, nullptr);
                 auto trait_gpath = ::HIR::GenericPath(trait_path, impl.m_trait_args.clone());
                 
                 ::std::vector< ::HIR::Literal>  vals;
@@ -214,7 +244,9 @@ namespace {
                 for(const auto& m : tr.m_value_indexes)
                 {
                     //ASSERT_BUG(sp, tr.m_values.at(m.first).is_Function(), "TODO: Handle generating vtables with non-function items");
-                    vals.at(m.second) = ::HIR::Literal::make_BorrowOf( ::HIR::Path(impl.m_type.clone(), trait_gpath.clone(), m.first) );
+                    DEBUG("- " << m.second.first << " = " << m.second.second << " :: " << m.first);
+                    auto gpath = monomorphise_genericpath_with(sp, m.second.second, monomorph_cb_trait, false);
+                    vals.at(m.second.first) = ::HIR::Literal::make_BorrowOf( ::HIR::Path(impl.m_type.clone(), mv$(gpath), m.first) );
                 }
                 
                 auto vtable_sp = trait_path;

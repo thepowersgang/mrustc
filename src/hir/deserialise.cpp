@@ -60,6 +60,20 @@ namespace {
             }
             return rv;
         }
+        template<typename V>
+        ::std::unordered_multimap< ::std::string,V> deserialise_strummap()
+        {
+            size_t n = m_in.read_count();
+            ::std::unordered_multimap< ::std::string, V>   rv;
+            //rv.reserve(n);
+            for(size_t i = 0; i < n; i ++)
+            {
+                auto s = m_in.read_string();
+                DEBUG("- " << s);
+                rv.insert( ::std::make_pair( mv$(s), D<V>::des(*this) ) );
+            }
+            return rv;
+        }
         
         template<typename T>
         ::std::vector<T> deserialise_vec()
@@ -871,7 +885,7 @@ namespace {
         rv.m_is_marker = m_in.read_bool();
         rv.m_types = deserialise_strumap< ::HIR::AssociatedType>();
         rv.m_values = deserialise_strumap< ::HIR::TraitValueItem>();
-        rv.m_value_indexes = deserialise_strumap< unsigned int>();
+        rv.m_value_indexes = deserialise_strummap< ::std::pair<unsigned int, ::HIR::GenericPath> >();
         rv.m_type_indexes = deserialise_strumap< unsigned int>();
         return rv;
     }

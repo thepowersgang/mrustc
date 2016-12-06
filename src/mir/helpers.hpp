@@ -39,8 +39,10 @@ private:
     const unsigned int STMT_TERM = ~0u;
     
     const Span& sp;
+public:
     const ::StaticTraitResolve& m_resolve;
     const ::HIR::Crate& m_crate;
+private:
     ::FmtLambda m_path;
     const ::HIR::TypeRef&   m_ret_type;
     const args_t&    m_args;

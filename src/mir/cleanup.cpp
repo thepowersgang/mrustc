@@ -35,6 +35,71 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
     return nullptr;
 }
 
+::MIR::Terminator MIR_Cleanup_Virtualize(
+    const Span& sp, const ::MIR::TypeResolve& state, ::MIR::Function& fcn,
+    ::MIR::BasicBlock& block, ::MIR::Terminator::Data_CallPath& e,
+    const ::HIR::TypeRef::Data::Data_TraitObject& te, const ::HIR::Path::Data::Data_UfcsKnown& pe
+    )
+{
+    assert( te.m_trait.m_trait_ptr );
+    const auto& trait = *te.m_trait.m_trait_ptr;
+    
+    // 1. Get the vtable index for this function
+    auto it = trait.m_value_indexes.find( pe.item );
+    while( it != trait.m_value_indexes.end() )
+    {
+        DEBUG("- " << it->second.second);
+        if( it->second.second.m_path == pe.trait.m_path )
+        {
+            // TODO: Match generics using match_test_generics comparing to the trait args
+            break ;
+        }
+        ++ it;
+    }
+    if( it == trait.m_value_indexes.end() || it->first != pe.item )
+        BUG(sp, "Calling method '" << pe.item << "' from " << pe.trait << " through " << te.m_trait.m_path << " which isn't in the vtable");
+    unsigned int vtable_idx = it->second.first;
+    
+    // 2. Load from the vtable
+    auto vtable_ty_spath = pe.trait.m_path;
+    vtable_ty_spath.m_components.back() += "#vtable";
+    const auto& vtable_ref = state.m_resolve.m_crate.get_struct_by_path(sp, vtable_ty_spath);
+    // Copy the param set from the trait in the trait object
+    ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
+    // - Include associated types on bound
+    for(const auto& ty_b : te.m_trait.m_type_bounds) {
+        auto idx = trait.m_type_indexes.at(ty_b.first);
+        if(vtable_params.m_types.size() <= idx)
+            vtable_params.m_types.resize(idx+1);
+        vtable_params.m_types[idx] = ty_b.second.clone();
+    }
+    auto vtable_ty = ::HIR::TypeRef::new_pointer(
+        ::HIR::BorrowType::Shared,
+        ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref )
+        );
+    
+    // Allocate a temporary for the vtable pointer itself
+    auto vtable_lv = ::MIR::LValue::make_Temporary({ static_cast<unsigned int>(fcn.temporaries.size()) });
+    fcn.temporaries.push_back( mv$(vtable_ty) );
+    // - Load the vtable and store it
+    auto vtable_rval = ::MIR::RValue::make_DstMeta({ ::MIR::LValue::make_Deref({ box$(e.args.front().clone()) }) });
+    block.statements.push_back( ::MIR::Statement::make_Assign({ vtable_lv.clone(), mv$(vtable_rval) }) );
+    
+    auto ptr_rval = ::MIR::RValue::make_DstPtr({ ::MIR::LValue::make_Deref({ box$(e.args.front().clone()) }) });
+    auto ptr_lv = ::MIR::LValue::make_Temporary({ static_cast<unsigned int>(fcn.temporaries.size()) });
+    fcn.temporaries.push_back( ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit()) );
+    block.statements.push_back( ::MIR::Statement::make_Assign({ ptr_lv.clone(), mv$(ptr_rval) }) );
+    e.args.front() = mv$(ptr_lv);
+    
+    // Update the terminator with the new information.
+    auto vtable_fcn = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(vtable_lv) })), vtable_idx });
+    return ::MIR::Terminator::make_CallValue({
+        e.ret_block, e.panic_block,
+        mv$(e.ret_val), mv$(vtable_fcn),
+        mv$(e.args)
+        });
+}
+
 void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
 {
     Span    sp;
@@ -142,55 +207,16 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                 const auto& pe = e.fcn_path.m_data.as_UfcsKnown();
                 const auto& te = pe.type->m_data.as_TraitObject();
                 // TODO: What if the method is from a supertrait?
-                if( pe.trait == te.m_trait.m_path )
+
+                if( te.m_trait.m_path == pe.trait || resolve.find_named_trait_in_trait(
+                        sp, pe.trait.m_path, pe.trait.m_params,
+                        *te.m_trait.m_trait_ptr, te.m_trait.m_path.m_path, te.m_trait.m_path.m_params,
+                        *pe.type,
+                        [](const auto&, auto){}
+                        )
+                    )
                 {
-                    assert( te.m_trait.m_trait_ptr );
-                    const auto& trait = *te.m_trait.m_trait_ptr;
-                    
-                    // 1. Get the vtable index for this function
-                    if( trait.m_value_indexes.count(pe.item) == 0 )
-                        BUG(sp, "Calling method '" << pe.item << "' of " << pe.trait << " which isn't in the vtable");
-                    unsigned int vtable_idx = trait.m_value_indexes.at( pe.item );
-                    
-                    // 2. Load from the vtable
-                    auto vtable_ty_spath = pe.trait.m_path;
-                    vtable_ty_spath.m_components.back() += "#vtable";
-                    const auto& vtable_ref = resolve.m_crate.get_struct_by_path(sp, vtable_ty_spath);
-                    // Copy the param set from the trait in the trait object
-                    ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
-                    // - Include associated types on bound
-                    for(const auto& ty_b : te.m_trait.m_type_bounds) {
-                        auto idx = trait.m_type_indexes.at(ty_b.first);
-                        if(vtable_params.m_types.size() <= idx)
-                            vtable_params.m_types.resize(idx+1);
-                        vtable_params.m_types[idx] = ty_b.second.clone();
-                    }
-                    auto vtable_ty = ::HIR::TypeRef::new_pointer(
-                        ::HIR::BorrowType::Shared,
-                        ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref )
-                        );
-                    
-                    // Allocate a temporary for the vtable pointer itself
-                    auto vtable_lv = ::MIR::LValue::make_Temporary({ static_cast<unsigned int>(fcn.temporaries.size()) });
-                    fcn.temporaries.push_back( mv$(vtable_ty) );
-                    // - Load the vtable and store it
-                    auto vtable_rval = ::MIR::RValue::make_DstMeta({ ::MIR::LValue::make_Deref({ box$(e.args.front().clone()) }) });
-                    block.statements.push_back( ::MIR::Statement::make_Assign({ vtable_lv.clone(), mv$(vtable_rval) }) );
-                    
-                    auto ptr_rval = ::MIR::RValue::make_DstPtr({ ::MIR::LValue::make_Deref({ box$(e.args.front().clone()) }) });
-                    auto ptr_lv = ::MIR::LValue::make_Temporary({ static_cast<unsigned int>(fcn.temporaries.size()) });
-                    fcn.temporaries.push_back( ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit()) );
-                    block.statements.push_back( ::MIR::Statement::make_Assign({ ptr_lv.clone(), mv$(ptr_rval) }) );
-                    e.args.front() = mv$(ptr_lv);
-                    
-                    // Update the terminator with the new information.
-                    auto vtable_fcn = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(vtable_lv) })), vtable_idx });
-                    auto new_term = ::MIR::Terminator::make_CallValue({
-                        e.ret_block, e.panic_block,
-                        mv$(e.ret_val), mv$(vtable_fcn),
-                        mv$(e.args)
-                        });
-                    
+                    auto new_term = MIR_Cleanup_Virtualize(sp, state, fcn, block, e, te, pe);
                     block.terminator = mv$(new_term);
                 }
             }

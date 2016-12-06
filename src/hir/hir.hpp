@@ -248,7 +248,7 @@ struct Trait
     ::std::unordered_map< ::std::string, TraitValueItem >   m_values;
     
     // Indexes into the vtable for each present method and value
-    ::std::unordered_map< ::std::string, unsigned int > m_value_indexes;
+    ::std::unordered_multimap< ::std::string, ::std::pair<unsigned int,::HIR::GenericPath> > m_value_indexes;
     // Indexes in the vtable parameter list for each associated type
     ::std::unordered_map< ::std::string, unsigned int > m_type_indexes;
     
