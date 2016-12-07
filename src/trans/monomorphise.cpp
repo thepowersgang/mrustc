@@ -78,7 +78,6 @@ namespace {
     }
     
     // 2. Monomorphise all paths
-    // 3. Convert virtual dispatch to vtable load
     output.blocks.reserve( tpl->blocks.size() );
     for(const auto& block : tpl->blocks)
     {
@@ -251,20 +250,27 @@ namespace {
                 e.targets
                 });
             ),
-        (CallValue,
-            terminator = ::MIR::Terminator::make_CallValue({
+        (Call,
+            struct H {
+                static ::MIR::CallTarget monomorph_calltarget(const ::HIR::Crate& crate, const Trans_Params& params, const ::MIR::CallTarget& ct) {
+                    TU_MATCHA( (ct), (e),
+                    (Value,
+                        return monomorph_LValue(crate, params, e);
+                        ),
+                    (Path,
+                        return params.monomorph(crate, e);
+                        ),
+                    (Intrinsic,
+                        return e;
+                        )
+                    )
+                    throw "";
+                }
+            };
+            terminator = ::MIR::Terminator::make_Call({
                 e.ret_block, e.panic_block,
                 monomorph_LValue(crate, params, e.ret_val),
-                monomorph_LValue(crate, params, e.fcn_val),
-                monomorph_LValue_list(crate, params, e.args)
-                });
-            ),
-        (CallPath,
-            // TODO: Replace vtable calls
-            terminator = ::MIR::Terminator::make_CallPath({
-                e.ret_block, e.panic_block,
-                monomorph_LValue(crate, params, e.ret_val),
-                params.monomorph(crate, e.fcn_path),
+                H::monomorph_calltarget(crate, params, e.fcn),
                 monomorph_LValue_list(crate, params, e.args)
                 });
             )

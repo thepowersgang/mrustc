@@ -589,49 +589,50 @@ namespace {
                         m_of << "\t\tcase " << j << ": goto bb" << e.targets[j] << ";\n";
                     m_of << "\t}\n";
                     ),
-                (CallValue,
+                (Call,
                     m_of << "\t";
-                    {
-                        ::HIR::TypeRef  tmp;
-                        const auto& ty = mir_res.get_lvalue_type(tmp, e.fcn_val);
-                        if( !ty.m_data.as_Function().m_rettype->m_data.is_Diverge() )
+                    TU_MATCHA( (e.fcn), (e2),
+                    (Value,
                         {
-                            emit_lvalue(e.ret_val); m_of << " = ";
+                            ::HIR::TypeRef  tmp;
+                            const auto& ty = mir_res.get_lvalue_type(tmp, e2);
+                            if( !ty.m_data.as_Function().m_rettype->m_data.is_Diverge() )
+                            {
+                                emit_lvalue(e.ret_val); m_of << " = ";
+                            }
                         }
-                    }
-                    m_of << "("; emit_lvalue(e.fcn_val); m_of << ")(";
-                    for(unsigned int j = 0; j < e.args.size(); j ++) {
-                        if(j != 0)  m_of << ",";
-                        m_of << " "; emit_lvalue(e.args[j]);
-                    }
-                    m_of << " );\n";
-                    m_of << "\tgoto bb" << e.ret_block << ";\n";
-                    ),
-                (CallPath,
-                    m_of << "\t";
-                    {
-                        bool is_diverge = false;
-                        TU_MATCHA( (e.fcn_path.m_data), (pe),
-                        (Generic,
-                            const auto& fcn = m_crate.get_function_by_path(sp, pe.m_path);
-                            is_diverge |= fcn.m_return.m_data.is_Diverge();
-                            // TODO: Monomorph.
-                            ),
-                        (UfcsUnknown,
-                            ),
-                        (UfcsInherent,
-                            // TODO: Check if the return type is !
-                            ),
-                        (UfcsKnown,
-                            // TODO: Check if the return type is !
+                        m_of << "("; emit_lvalue(e2); m_of << ")";
+                        ),
+                    (Path,
+                        {
+                            bool is_diverge = false;
+                            TU_MATCHA( (e2.m_data), (pe),
+                            (Generic,
+                                const auto& fcn = m_crate.get_function_by_path(sp, pe.m_path);
+                                is_diverge |= fcn.m_return.m_data.is_Diverge();
+                                // TODO: Monomorph.
+                                ),
+                            (UfcsUnknown,
+                                ),
+                            (UfcsInherent,
+                                // TODO: Check if the return type is !
+                                ),
+                            (UfcsKnown,
+                                // TODO: Check if the return type is !
+                                )
                             )
-                        )
-                        if(!is_diverge)
-                        {
-                            emit_lvalue(e.ret_val); m_of << " = ";
+                            if(!is_diverge)
+                            {
+                                emit_lvalue(e.ret_val); m_of << " = ";
+                            }
                         }
-                    }
-                    m_of << Trans_Mangle(e.fcn_path) << "(";
+                        m_of << Trans_Mangle(e2);
+                        ),
+                    (Intrinsic,
+                        BUG(sp, "Intrinsic not expected, should be handled above");
+                        )
+                    )
+                    m_of << "(";
                     for(unsigned int j = 0; j < e.args.size(); j ++) {
                         if(j != 0)  m_of << ",";
                         m_of << " "; emit_lvalue(e.args[j]);

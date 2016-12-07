@@ -1256,7 +1256,7 @@ namespace {
             case ::HIR::ExprNode_Emplace::Type::Boxer: {
                 ::HIR::PathParams   trait_params;
                 trait_params.m_types.push_back( data_ty.clone() );
-                m_builder.end_block(::MIR::Terminator::make_CallPath({
+                m_builder.end_block(::MIR::Terminator::make_Call({
                     place__ok, place__panic,
                     place.clone(), ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_BoxPlace, mv$(trait_params)), "make_place", {}),
                     {}
@@ -1283,7 +1283,7 @@ namespace {
                 auto place_refmut = m_builder.lvalue_or_temp(node.span(), place_refmut__type,  ::MIR::RValue::make_Borrow({ 0, ::HIR::BorrowType::Unique, place.clone() }));
                 // <typeof(place) as ops::Place<T>>::pointer (T = inner)
                 auto fcn_path = ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_Place, ::HIR::PathParams(data_ty.clone())), "pointer");
-                m_builder.end_block(::MIR::Terminator::make_CallPath({
+                m_builder.end_block(::MIR::Terminator::make_Call({
                     place_raw__ok, place_raw__panic,
                     place_raw.clone(), mv$(fcn_path),
                     ::make_vec1( mv$(place_refmut) )
@@ -1319,7 +1319,7 @@ namespace {
             auto res = m_builder.new_temporary( node.m_res_type );
             auto res__panic = m_builder.new_bb_unlinked();
             auto res__ok = m_builder.new_bb_unlinked();
-            m_builder.end_block(::MIR::Terminator::make_CallPath({
+            m_builder.end_block(::MIR::Terminator::make_Call({
                 res__ok, res__panic,
                 res.clone(), mv$(finalize_path),
                 ::make_vec1( mv$(place) )
@@ -1385,7 +1385,7 @@ namespace {
             auto next_block = m_builder.new_bb_unlinked();
             auto res = m_builder.new_temporary( node.m_res_type );
             
-            m_builder.end_block(::MIR::Terminator::make_CallPath({
+            m_builder.end_block(::MIR::Terminator::make_Call({
                 next_block, panic_block,
                 res.clone(), node.m_path.clone(),
                 mv$(values)
@@ -1421,7 +1421,7 @@ namespace {
             auto panic_block = m_builder.new_bb_unlinked();
             auto next_block = m_builder.new_bb_unlinked();
             auto res = m_builder.new_temporary( node.m_res_type );
-            m_builder.end_block(::MIR::Terminator::make_CallValue({
+            m_builder.end_block(::MIR::Terminator::make_Call({
                 next_block, panic_block,
                 res.clone(), mv$(fcn_val),
                 mv$(values)

@@ -461,15 +461,18 @@ void Trans_Enumerate_FillFrom_MIR(TransList& out, const ::HIR::Crate& crate, con
         (Switch,
             Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.val, pp);
             ),
-        (CallValue,
+        (Call,
             Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.ret_val, pp);
-            Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.fcn_val, pp);
-            for(const auto& arg : e.args)
-                Trans_Enumerate_FillFrom_MIR_LValue(out,crate, arg, pp);
-            ),
-        (CallPath,
-            Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.ret_val, pp);
-            Trans_Enumerate_FillFrom_Path(out,crate, e.fcn_path, pp);
+            TU_MATCHA( (e.fcn), (e2),
+            (Value,
+                Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e2, pp);
+                ),
+            (Path,
+                Trans_Enumerate_FillFrom_Path(out,crate, e2, pp);
+                ),
+            (Intrinsic,
+                )
+            )
             for(const auto& arg : e.args)
                 Trans_Enumerate_FillFrom_MIR_LValue(out,crate, arg, pp);
             )

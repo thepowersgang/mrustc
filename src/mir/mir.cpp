@@ -161,14 +161,20 @@ namespace MIR {
                 os << j << " => bb" << e.targets[j] << ", ";
             os << ")";
             ),
-        (CallValue,
-            os << "Call( " << e.ret_val << " = " << e.fcn_val << "( ";
-            for(const auto& arg : e.args)
-                os << arg << ", ";
-            os << "), bb" << e.ret_block << ", bb" << e.panic_block << ")";
-            ),
-        (CallPath,
-            os << "Call( " << e.ret_val << " = " << e.fcn_path << "( ";
+        (Call,
+            os << "Call( " << e.ret_val << " = ";
+            TU_MATCHA( (e.fcn), (e2),
+            (Value,
+                os << "(" << e2 << ")";
+                ),
+            (Path,
+                os << e2;
+                ),
+            (Intrinsic,
+                os << "\"" << e2 << "\"";
+                )
+            )
+            os << "( ";
             for(const auto& arg : e.args)
                 os << arg << ", ";
             os << "), bb" << e.ret_block << ", bb" << e.panic_block << ")";

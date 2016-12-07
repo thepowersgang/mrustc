@@ -313,6 +313,7 @@ namespace {
         ::MIR::BasicBlock deserialise_mir_basicblock();
         ::MIR::Statement deserialise_mir_statement();
         ::MIR::Terminator deserialise_mir_terminator();
+        ::MIR::CallTarget deserialise_mir_calltarget();
         
         ::MIR::LValue deserialise_mir_lvalue() {
             ::MIR::LValue   rv;
@@ -976,20 +977,27 @@ namespace {
             deserialise_mir_lvalue(),
             deserialise_vec_c<unsigned int>([&](){ return m_in.read_count(); })
             })
-        _(CallValue, {
+        _(Call, {
             static_cast<unsigned int>(m_in.read_count()),
             static_cast<unsigned int>(m_in.read_count()),
             deserialise_mir_lvalue(),
-            deserialise_mir_lvalue(),
+            deserialise_mir_calltarget(),
             deserialise_vec< ::MIR::LValue>()
             })
-        _(CallPath, {
-            static_cast<unsigned int>(m_in.read_count()),
-            static_cast<unsigned int>(m_in.read_count()),
-            deserialise_mir_lvalue(),
-            deserialise_path(),
-            deserialise_vec< ::MIR::LValue>()
-            })
+        #undef _
+        default:
+            throw "";
+        }
+    }
+    
+    ::MIR::CallTarget HirDeserialiser::deserialise_mir_calltarget()
+    {
+        switch( m_in.read_tag() )
+        {
+        #define _(x, ...)    case ::MIR::CallTarget::TAG_##x: return ::MIR::CallTarget::make_##x( __VA_ARGS__ );
+        _(Value, deserialise_mir_lvalue() )
+        _(Path, deserialise_path() )
+        _(Intrinsic, m_in.read_string() )
         #undef _
         default:
             throw "";

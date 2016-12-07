@@ -35,9 +35,9 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
     return nullptr;
 }
 
-::MIR::Terminator MIR_Cleanup_Virtualize(
+::MIR::LValue MIR_Cleanup_Virtualize(
     const Span& sp, const ::MIR::TypeResolve& state, ::MIR::Function& fcn,
-    ::MIR::BasicBlock& block, ::MIR::Terminator::Data_CallPath& e,
+    ::MIR::BasicBlock& block, ::MIR::LValue& receiver_lvp,
     const ::HIR::TypeRef::Data::Data_TraitObject& te, const ::HIR::Path::Data::Data_UfcsKnown& pe
     )
 {
@@ -82,22 +82,17 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
     auto vtable_lv = ::MIR::LValue::make_Temporary({ static_cast<unsigned int>(fcn.temporaries.size()) });
     fcn.temporaries.push_back( mv$(vtable_ty) );
     // - Load the vtable and store it
-    auto vtable_rval = ::MIR::RValue::make_DstMeta({ ::MIR::LValue::make_Deref({ box$(e.args.front().clone()) }) });
+    auto vtable_rval = ::MIR::RValue::make_DstMeta({ ::MIR::LValue::make_Deref({ box$(receiver_lvp.clone()) }) });
     block.statements.push_back( ::MIR::Statement::make_Assign({ vtable_lv.clone(), mv$(vtable_rval) }) );
     
-    auto ptr_rval = ::MIR::RValue::make_DstPtr({ ::MIR::LValue::make_Deref({ box$(e.args.front().clone()) }) });
+    auto ptr_rval = ::MIR::RValue::make_DstPtr({ ::MIR::LValue::make_Deref({ box$(receiver_lvp.clone()) }) });
     auto ptr_lv = ::MIR::LValue::make_Temporary({ static_cast<unsigned int>(fcn.temporaries.size()) });
     fcn.temporaries.push_back( ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit()) );
     block.statements.push_back( ::MIR::Statement::make_Assign({ ptr_lv.clone(), mv$(ptr_rval) }) );
-    e.args.front() = mv$(ptr_lv);
+    receiver_lvp = mv$(ptr_lv);
     
     // Update the terminator with the new information.
-    auto vtable_fcn = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(vtable_lv) })), vtable_idx });
-    return ::MIR::Terminator::make_CallValue({
-        e.ret_block, e.panic_block,
-        mv$(e.ret_val), mv$(vtable_fcn),
-        mv$(e.args)
-        });
+    return ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(vtable_lv) })), vtable_idx });
 }
 
 void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
@@ -199,27 +194,29 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
             }
         }
         
-        TU_IFLET( ::MIR::Terminator, block.terminator, CallPath, e,
+        TU_IFLET( ::MIR::Terminator, block.terminator, Call, e,
             
-            // Detect calling `<Trait as Trait>::method()` and replace with vtable call
-            if( e.fcn_path.m_data.is_UfcsKnown() && e.fcn_path.m_data.as_UfcsKnown().type->m_data.is_TraitObject() )
-            {
-                const auto& pe = e.fcn_path.m_data.as_UfcsKnown();
-                const auto& te = pe.type->m_data.as_TraitObject();
-                // TODO: What if the method is from a supertrait?
-
-                if( te.m_trait.m_path == pe.trait || resolve.find_named_trait_in_trait(
-                        sp, pe.trait.m_path, pe.trait.m_params,
-                        *te.m_trait.m_trait_ptr, te.m_trait.m_path.m_path, te.m_trait.m_path.m_params,
-                        *pe.type,
-                        [](const auto&, auto){}
-                        )
-                    )
+            TU_IFLET( ::MIR::CallTarget, e.fcn, Path, path,
+                // Detect calling `<Trait as Trait>::method()` and replace with vtable call
+                if( path.m_data.is_UfcsKnown() && path.m_data.as_UfcsKnown().type->m_data.is_TraitObject() )
                 {
-                    auto new_term = MIR_Cleanup_Virtualize(sp, state, fcn, block, e, te, pe);
-                    block.terminator = mv$(new_term);
+                    const auto& pe = path.m_data.as_UfcsKnown();
+                    const auto& te = pe.type->m_data.as_TraitObject();
+                    // TODO: What if the method is from a supertrait?
+
+                    if( te.m_trait.m_path == pe.trait || resolve.find_named_trait_in_trait(
+                            sp, pe.trait.m_path, pe.trait.m_params,
+                            *te.m_trait.m_trait_ptr, te.m_trait.m_path.m_path, te.m_trait.m_path.m_params,
+                            *pe.type,
+                            [](const auto&, auto){}
+                            )
+                        )
+                    {
+                        auto tgt_lvalue = MIR_Cleanup_Virtualize(sp, state, fcn, block, e.args.front(), te, pe);
+                        e.fcn = mv$(tgt_lvalue);
+                    }
                 }
-            }
+            )
         )
     }
 }

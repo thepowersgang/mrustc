@@ -1166,9 +1166,12 @@ namespace {
             (Return,
                 return retval;
                 ),
-            (CallPath,
+            (Call,
+                if( !e.fcn.is_Path() )
+                    BUG(sp, "Unexpected terminator - " << block.terminator);
+                const auto& fcnp = e.fcn.as_Path();
+
                 auto& dst = get_lval(e.ret_val);
-                const auto& fcnp = e.fcn_path;
                 auto& fcn = get_function(sp, crate, fcnp);
                 
                 ::std::vector< ::HIR::Literal>  call_args;

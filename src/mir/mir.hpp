@@ -161,6 +161,12 @@ TAGGED_UNION(RValue, Use,
 );
 extern ::std::ostream& operator<<(::std::ostream& os, const RValue& x);
 
+TAGGED_UNION(CallTarget, Intrinsic,
+    (Value, LValue),
+    (Path,  ::HIR::Path),
+    (Intrinsic, ::std::string)
+    );
+
 TAGGED_UNION(Terminator, Incomplete,
     (Incomplete, struct {}),    // Block isn't complete (ERROR in output)
     (Return, struct {}),    // Return clealy to caller
@@ -176,18 +182,11 @@ TAGGED_UNION(Terminator, Incomplete,
         LValue val;
         ::std::vector<BasicBlockId>  targets;
         }),
-    (CallValue, struct {
+    (Call, struct {
         BasicBlockId    ret_block;
         BasicBlockId    panic_block;
         LValue  ret_val;
-        LValue  fcn_val;
-        ::std::vector<LValue>   args;
-        }),
-    (CallPath, struct {
-        BasicBlockId    ret_block;
-        BasicBlockId    panic_block;
-        LValue  ret_val;
-        ::HIR::Path fcn_path;
+        CallTarget  fcn;
         ::std::vector<LValue>   args;
         })
     );

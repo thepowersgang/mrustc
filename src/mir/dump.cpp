@@ -196,14 +196,20 @@ namespace {
                         m_os << j << " => bb" << e.targets[j] << ", ";
                     m_os << "}\n";
                     ),
-                (CallValue,
-                    m_os << FMT_M(e.ret_val) << " = (" << FMT_M(e.fcn_val) << ")( ";
-                    for(const auto& arg : e.args)
-                        m_os << FMT_M(arg) << ", ";
-                    m_os << ") goto bb" << e.ret_block << " else bb" << e.panic_block << "\n";
-                    ),
-                (CallPath,
-                    m_os << FMT_M(e.ret_val) << " = " << e.fcn_path << "( ";
+                (Call,
+                    m_os << FMT_M(e.ret_val) << " = ";
+                    TU_MATCHA( (e.fcn), (e2),
+                    (Value,
+                        m_os << "(" << FMT_M(e2) << ")";
+                        ),
+                    (Path,
+                        m_os << e2;
+                        ),
+                    (Intrinsic,
+                        m_os << "\"" << e2 << "\"";
+                        )
+                    )
+                    m_os << "( ";
                     for(const auto& arg : e.args)
                         m_os << FMT_M(arg) << ", ";
                     m_os << ") goto bb" << e.ret_block << " else bb" << e.panic_block << "\n";

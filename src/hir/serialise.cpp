@@ -506,19 +506,27 @@ namespace {
                 for(auto t : e.targets)
                     m_out.write_count(t);
                 ),
-            (CallValue,
+            (Call,
                 m_out.write_count(e.ret_block);
                 m_out.write_count(e.panic_block);
                 serialise(e.ret_val);
-                serialise(e.fcn_val);
+                serialise(e.fcn);
                 serialise_vec(e.args);
+                )
+            )
+        }
+        void serialise(const ::MIR::CallTarget& ct)
+        {
+            m_out.write_tag( static_cast<int>(ct.tag()) );
+            TU_MATCHA( (ct), (e),
+            (Value,
+                serialise(e);
                 ),
-            (CallPath,
-                m_out.write_count(e.ret_block);
-                m_out.write_count(e.panic_block);
-                serialise(e.ret_val);
-                serialise_path(e.fcn_path);
-                serialise_vec(e.args);
+            (Path,
+                serialise_path(e);
+                ),
+            (Intrinsic,
+                m_out.write_string(e);
                 )
             )
         }
