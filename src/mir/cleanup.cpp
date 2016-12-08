@@ -176,6 +176,13 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                                         bytestr.push_back( static_cast<uint8_t>(v) );
                                     e = ::MIR::Constant::make_Bytes( mv$(bytestr) );
                                 }
+                                else if( te.inner->m_data.is_Array() && *te.inner->m_data.as_Array().inner == ::HIR::CoreType::U8 ) {
+                                    // TODO: How does this differ at codegen to the above?
+                                    ::std::vector<uint8_t>  bytestr;
+                                    for(auto v : lit_ptr->as_String())
+                                        bytestr.push_back( static_cast<uint8_t>(v) );
+                                    e = ::MIR::Constant::make_Bytes( mv$(bytestr) );
+                                }
                                 else if( *te.inner == ::HIR::CoreType::Str ) {
                                     e = ::MIR::Constant::make_StaticString( lit_ptr->as_String() );
                                 }
@@ -186,6 +193,42 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                             )
                         }
                     )
+                    
+                    if( se.src.is_Cast() )
+                    {
+                        const auto& e = se.src.as_Cast();
+                        ::HIR::TypeRef  tmp;
+                        const auto& src_ty = state.get_lvalue_type(tmp, e.val);
+                        // TODO: Unsize and CoerceUnsized operations
+                        // - Unsize should create a fat pointer if the pointer class is known (vtable or len)
+                        TU_IFLET( ::HIR::TypeRef::Data, e.type.m_data, Borrow, te
+                            //  > & -> & = Unsize, create DST based on the pointer class of the destination.
+                            // (&-ptr being destination is otherwise invalid)
+                            // TODO Share with the CoerceUnsized handling
+                        )
+                        // - CoerceUnsized should re-create the inner type if known.
+                        else TU_IFLET( ::HIR::TypeRef::Data, e.type.m_data, Path, te,
+                            TU_IFLET( ::HIR::TypeRef::Data, src_ty.m_data, Path, ste,
+                                //  > Path -> Path = Unsize
+                                // (path being destination is otherwise invalid)
+                                ASSERT_BUG( sp, ! te.binding.is_Unbound(), "" );
+                                ASSERT_BUG( sp, !ste.binding.is_Unbound(), "" );
+                                if( te.binding.is_Opaque() || ste.binding.is_Opaque() ) {
+                                }
+                                else {
+                                    // - Types must differ only by a single field, and be from the same definition
+                                    ASSERT_BUG(sp, te.binding.tag() == ste.binding.tag(), "" );
+                                    // TODO: The CoerceUnsized rule could be in the TraitMarkings (listing the relevant field)
+                                    // - Destructure and restrucure with the unsized fields
+                                }
+                            )
+                            else {
+                                ASSERT_BUG( sp, src_ty.m_data.is_Generic(), "Cast to Path from " << src_ty );
+                            }
+                        )
+                        else {
+                        }
+                    }
                 )
             }
             
