@@ -751,6 +751,28 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                         e.fcn = mv$(tgt_lvalue);
                     }
                 }
+                
+                if( path.m_data.is_UfcsKnown() && path.m_data.as_UfcsKnown().type->m_data.is_Function() )
+                {
+                    const auto& pe = path.m_data.as_UfcsKnown();
+                    const auto& fcn_ty = pe.type->m_data.as_Function();
+                    if( pe.trait.m_path == resolve.m_lang_Fn || pe.trait.m_path == resolve.m_lang_FnMut || pe.trait.m_path == resolve.m_lang_FnOnce )
+                    {
+                        MIR_ASSERT(state, e.args.size() == 2, "Fn* call requires two arguments");
+                        auto fcn_lvalue = mv$(e.args[0]);
+                        auto args_lvalue = mv$(e.args[1]);
+                        
+                        DEBUG("Convert function pointer call");
+                        
+                        e.args.clear();
+                        e.args.reserve( fcn_ty.m_arg_types.size() );
+                        for(unsigned int i = 0; i < fcn_ty.m_arg_types.size(); i ++)
+                        {
+                            e.args.push_back( ::MIR::LValue::make_Field({ box$(args_lvalue.clone()), i }) );
+                        }
+                        e.fcn = mv$(fcn_lvalue);
+                    }
+                }
             )
         )
         

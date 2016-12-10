@@ -21,7 +21,7 @@ public:
     
     
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
-private:
+
     ::HIR::SimplePath   m_lang_Copy;
     ::HIR::SimplePath   m_lang_Sized;
     ::HIR::SimplePath   m_lang_Fn;
