@@ -23,11 +23,13 @@ namespace {
     
     struct TypeVisitor
     {
+        const ::HIR::Crate& m_crate;
         CodeGenerator&  codegen;
         ::std::set< ::HIR::TypeRef> visited;
         ::std::set< const ::HIR::TypeRef*, PtrComp> active_set;
         
-        TypeVisitor(CodeGenerator& codegen):
+        TypeVisitor(const ::HIR::Crate& crate, CodeGenerator& codegen):
+            m_crate(crate),
             codegen(codegen)
         {}
         
@@ -139,6 +141,25 @@ namespace {
                 )
                 ),
             (TraitObject,
+                static Span sp;
+                // Ensure that the data trait's vtable is present
+                const auto& trait = *te.m_trait.m_trait_ptr;
+                
+                auto vtable_ty_spath = te.m_trait.m_path.m_path;
+                vtable_ty_spath.m_components.back() += "#vtable";
+                const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_ty_spath);
+                // Copy the param set from the trait in the trait object
+                ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
+                // - Include associated types on bound
+                for(const auto& ty_b : te.m_trait.m_type_bounds) {
+                    auto idx = trait.m_type_indexes.at(ty_b.first);
+                    if(vtable_params.m_types.size() <= idx)
+                        vtable_params.m_types.resize(idx+1);
+                    vtable_params.m_types[idx] = ty_b.second.clone();
+                }
+                
+                
+                visit_type( ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
                 ),
             (Array,
                 visit_type(*te.inner);
@@ -179,7 +200,7 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
     {
         TRACE_FUNCTION;
         
-        TypeVisitor tv { *codegen };
+        TypeVisitor tv { crate, *codegen };
         for(const auto& ent : list.m_functions)
         {
             TRACE_FUNCTION_F("Enumerate fn " << ent.first);
