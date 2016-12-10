@@ -33,6 +33,26 @@ const ::MIR::BasicBlock& ::MIR::TypeResolve::get_block(::MIR::BasicBlockId id) c
     return m_fcn.blocks[id];
 }
 
+const ::HIR::TypeRef& ::MIR::TypeResolve::get_static_type(::HIR::TypeRef& tmp, const ::HIR::Path& path) const
+{
+    TU_MATCHA( (path.m_data), (pe),
+    (Generic,
+        MIR_ASSERT(*this, pe.m_params.m_types.empty(), "Path params on static");
+        const auto& s = m_crate.get_static_by_path(sp, pe.m_path);
+        return s.m_type;
+        ),
+    (UfcsKnown,
+        MIR_TODO(*this, "LValue::Static - UfcsKnown - " << path);
+        ),
+    (UfcsUnknown,
+        MIR_BUG(*this, "Encountered UfcsUnknown in LValue::Static - " << path);
+        ),
+    (UfcsInherent,
+        MIR_TODO(*this, "LValue::Static - UfcsInherent - " << path);
+        )
+    )
+    throw "";
+}
 const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, const ::MIR::LValue& val) const
 {
     TU_MATCH(::MIR::LValue, (val), (e),
@@ -46,22 +66,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
         return m_args.at(e.idx).second;
         ),
     (Static,
-        TU_MATCHA( (e.m_data), (pe),
-        (Generic,
-            MIR_ASSERT(*this, pe.m_params.m_types.empty(), "Path params on static");
-            const auto& s = m_crate.get_static_by_path(sp, pe.m_path);
-            return s.m_type;
-            ),
-        (UfcsKnown,
-            MIR_TODO(*this, "LValue::Static - UfcsKnown - " << e);
-            ),
-        (UfcsUnknown,
-            MIR_BUG(*this, "Encountered UfcsUnknown in LValue::Static - " << e);
-            ),
-        (UfcsInherent,
-            MIR_TODO(*this, "LValue::Static - UfcsInherent - " << e);
-            )
-        )
+        return get_static_type(tmp,  e);
         ),
     (Return,
         return m_ret_type;

@@ -627,12 +627,28 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                                 }
                                 ),
                             (Borrow,
-                                if( lit_ptr->is_BorrowOf() ) {
-                                    // TODO: 
-                                    if( te.inner->m_data.is_Slice() ) {
-                                        // TODO: Create DST
+                                if( lit_ptr->is_BorrowOf() )
+                                {
+                                    const auto& path = lit_ptr->as_BorrowOf();
+                                    if( te.inner->m_data.is_Slice() )
+                                    {
+                                        ::HIR::TypeRef tmp;
+                                        const auto& ty = state.get_static_type(tmp, path);
+                                        MIR_ASSERT(state, ty.m_data.is_Array(), "BorrowOf returning slice not of an array");
+                                        unsigned int size = ty.m_data.as_Array().size_val;
+                                        
+                                        auto ptr_type = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared,
+                                            (&ty == &tmp ? mv$(tmp) : ty.clone())
+                                            );
+                                        
+                                        auto ptr_lval = mutator.in_temporary( mv$(ptr_type), ::MIR::Constant::make_ItemAddr(path.clone()) );
+                                        auto size_lval = mutator.in_temporary( ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint(size) );
+                                        se.src = ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_lval) });
                                     }
-                                    e = ::MIR::Constant::make_ItemAddr( lit_ptr->as_BorrowOf().clone() );
+                                    else
+                                    {
+                                        e = ::MIR::Constant::make_ItemAddr( path.clone() );
+                                    }
                                 }
                                 else if( te.inner->m_data.is_Slice() && *te.inner->m_data.as_Slice().inner == ::HIR::CoreType::U8 ) {
                                     ::std::vector<uint8_t>  bytestr;
