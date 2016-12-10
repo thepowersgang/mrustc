@@ -1985,11 +1985,13 @@ void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, :
     // - Build tree by running each arm's pattern across it
     DEBUG("- Building decision tree");
     DecisionTreeNode    root_node({});
+    unsigned int rule_idx = 0;
     for( const auto& arm_rule : arm_rules )
     {
         auto arm_idx = arm_rule.arm_idx;
         DEBUG("(" << arm_idx << ", " << arm_rule.pat_idx << "): " << arm_rule.m_rules);
-        root_node.populate_tree_from_rule( node.m_arms[arm_idx].m_code->span(), arm_idx, arm_rule.m_rules.data(), arm_rule.m_rules.size() );
+        root_node.populate_tree_from_rule( node.m_arms[arm_idx].m_code->span(), rule_idx, arm_rule.m_rules.data(), arm_rule.m_rules.size() );
+        rule_idx += 1;
     }
     DEBUG("root_node = " << root_node);
     root_node.simplify();

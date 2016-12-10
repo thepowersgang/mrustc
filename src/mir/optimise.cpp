@@ -74,7 +74,6 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         )
     }
     
-    #if 0
     // GC pass on blocks and variables
     // - Find unused blocks, then delete and rewrite all references.
     {
@@ -173,5 +172,4 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             }
         }
     }
-    #endif
 }

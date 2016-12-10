@@ -410,7 +410,7 @@ namespace {
                             emit_lvalue(e.dst);
                             m_of << " = ";
                             bool special = false;
-                            // If the inner value has type [T] or str, just assign.
+                            // If the inner value has type [T] or str, create DST based on inner pointer and existing metadata
                             TU_IFLET(::MIR::LValue, ve.val, Deref, e,
                                 ::HIR::TypeRef  tmp;
                                 const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);  // NOTE: Checks the result of the deref
