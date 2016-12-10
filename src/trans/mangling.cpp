@@ -27,6 +27,8 @@ namespace {
         for(auto v : s)
             if( v == '#' )
                 output += "$H";
+            else if( v == '-' )
+                output += "_";
             else
                 output += v;
         return output;
@@ -169,7 +171,7 @@ namespace {
     (Function,
         return FMT_CB(ss,
             if(te.m_abi != "Rust")
-                ss << "extern_" << te.m_abi << "_";
+                ss << "extern_" << escape_str(te.m_abi) << "_";
             if(te.is_unsafe)
                 ss << "unsafe_";
             ss << "fn_" << te.m_arg_types.size();
