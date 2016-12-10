@@ -810,6 +810,7 @@ namespace {
             #undef BIT
             m_out.write_u8(bitflag_1);
             
+            m_out.write_tag( static_cast<unsigned int>(m.dst_type) );
             m_out.write_count( m.coerce_unsized_index );
             m_out.write_count( m.unsized_field );
             // TODO: auto_impls

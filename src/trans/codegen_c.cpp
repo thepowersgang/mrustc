@@ -18,6 +18,12 @@ namespace {
     class CodeGenerator_C:
         public CodeGenerator
     {
+        enum class MetadataType {
+            None,
+            Slice,
+            TraitObject,
+        };
+        
         const ::HIR::Crate& m_crate;
         ::StaticTraitResolve    m_resolve;
         ::std::ofstream m_of;
@@ -38,7 +44,6 @@ namespace {
                 << "typedef uint32_t CHAR;\n"
                 << "typedef struct { } tUNIT;\n"
                 << "typedef struct { } tBANG;\n"
-                << "typedef struct { char* PTR; size_t META; } STR_PTR;\n"
                 << "typedef struct { void* PTR; size_t META; } SLICE_PTR;\n"
                 << "typedef struct { void* PTR; void* META; } TRAITOBJ_PTR;\n"
                 << "\n";
@@ -414,11 +419,13 @@ namespace {
                             TU_IFLET(::MIR::LValue, ve.val, Deref, e,
                                 ::HIR::TypeRef  tmp;
                                 const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);  // NOTE: Checks the result of the deref
-                                if( is_dst(ty) ) {
+                                if( metadata_type(ty) != MetadataType::None ) {
                                     emit_lvalue(*e.val);
                                     special = true;
                                 }
                             )
+                            // TODO: Magic for taking a &-ptr to unsized field of a struct.
+                            // - Needs to get metadata from bottom-level pointer.
                             if( !special )
                             {
                                 m_of << "& "; emit_lvalue(ve.val);
@@ -691,9 +698,33 @@ namespace {
                 m_of << Trans_Mangle(e);
                 ),
             (Field,
-                // TODO: Also used for indexing
-                emit_lvalue(*e.val);
-                m_of << "._" << e.field_index;
+                ::HIR::TypeRef  tmp;
+                const auto& ty = m_mir_res->get_lvalue_type(tmp, *e.val);
+                if( ty.m_data.is_Slice() ) {
+                    m_of << "(("; emit_ctype(*ty.m_data.as_Slice().inner); m_of << "*)";
+                    emit_lvalue(*e.val);
+                    m_of << ".DATA)[" << e.field_index << "]";
+                }
+                else if( ty.m_data.is_Array() ) {
+                    emit_lvalue(*e.val);
+                    m_of << "[" << e.field_index << "]";
+                }
+                else if( e.val->is_Deref() ) {
+                    auto dst_type = metadata_type(ty);
+                    if( dst_type != MetadataType::None )
+                    {
+                        m_of << "(("; emit_ctype(ty); m_of << "*)"; emit_lvalue(*e.val->as_Deref().val); m_of << ".PTR)->_" << e.field_index;
+                    }
+                    else
+                    {
+                        emit_lvalue(*e.val);
+                        m_of << "._" << e.field_index;
+                    }
+                }
+                else {
+                    emit_lvalue(*e.val);
+                    m_of << "._" << e.field_index;
+                }
                 ),
             (Deref,
                 m_of << "(*";
@@ -828,21 +859,63 @@ namespace {
             )
         }
         
-        void emit_ctype_ptr(const ::HIR::TypeRef& inner_ty, ::FmtLambda inner) {
-            if( inner_ty == ::HIR::CoreType::Str ) {
-                m_of << "STR_PTR " << inner;
+        MetadataType metadata_type(const ::HIR::TypeRef& ty)
+        {
+            if( ty == ::HIR::CoreType::Str || ty.m_data.is_Slice() ) {
+                return MetadataType::Slice;
             }
-            else if( inner_ty.m_data.is_TraitObject() ) {
-                m_of << "TRAITOBJ_PTR " << inner;
+            else if( ty.m_data.is_TraitObject() ) {
+                return MetadataType::TraitObject;
             }
-            else if( inner_ty.m_data.is_Slice() ) {
-                m_of << "SLICE_PTR " << inner;
-            }
-            else if( inner_ty.m_data.is_Array() ) {
-                emit_ctype(inner_ty, FMT_CB(ss, ss << "(*" << inner << ")";));
+            else if( ty.m_data.is_Path() )
+            {
+                const ::HIR::TraitMarkings* markings;
+                TU_MATCH_DEF( ::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (tpb),
+                (
+                    BUG(Span(), "Unbound/opaque path in trans - " << ty);
+                    ),
+                (Struct, markings = &tpb->m_markings; ),
+                (Union, markings = &tpb->m_markings; ),
+                (Enum, markings = &tpb->m_markings; )
+                )
+                switch( markings->dst_type )
+                {
+                case ::HIR::TraitMarkings::DstType::None:
+                    return MetadataType::None;
+                case ::HIR::TraitMarkings::DstType::Possible:
+                    // TODO: How to figure out?
+                    //TODO(Span(), "Determine DST type when ::Possible - " << ty);
+                    return MetadataType::None;
+                case ::HIR::TraitMarkings::DstType::Slice:
+                    return MetadataType::Slice;
+                case ::HIR::TraitMarkings::DstType::TraitObject:
+                    return MetadataType::TraitObject;
+                }
+                throw "";
             }
             else {
-                emit_ctype(inner_ty, FMT_CB(ss, ss << "*" << inner;));
+                return MetadataType::None;
+            }
+        }
+        
+        void emit_ctype_ptr(const ::HIR::TypeRef& inner_ty, ::FmtLambda inner) {
+            if( inner_ty.m_data.is_Array() ) {
+                emit_ctype(inner_ty, FMT_CB(ss, ss << "(*" << inner << ")";));
+            }
+            else
+            {
+                switch( metadata_type(inner_ty) )
+                {
+                case MetadataType::None:
+                    emit_ctype(inner_ty, FMT_CB(ss, ss << "*" << inner;));
+                    break;
+                case MetadataType::Slice:
+                    m_of << "SLICE_PTR " << inner;
+                    break;
+                case MetadataType::TraitObject:
+                    m_of << "TRAITOBJ_PTR " << inner;
+                    break;
+                }
             }
         }
         

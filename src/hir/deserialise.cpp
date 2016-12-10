@@ -547,6 +547,7 @@ namespace {
             BIT(1, m.has_a_deref)
             BIT(2, m.is_copy)
             #undef BIT
+            m.dst_type = static_cast< ::HIR::TraitMarkings::DstType>( m_in.read_tag() );
             m.coerce_unsized_index = m_in.read_count( );
             m.unsized_field = m_in.read_count( );
             // TODO: auto_impls

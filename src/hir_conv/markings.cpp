@@ -61,7 +61,20 @@ public:
                     if( str.m_params.m_types.at(te.binding).m_is_sized == false )
                     {
                         str.m_markings.unsized_field = se.size() - 1;
+                        str.m_markings.dst_type = ::HIR::TraitMarkings::DstType::Possible;
                     }
+                }
+                else if( last_field.m_data.is_Slice() )
+                {
+                    str.m_markings.dst_type = ::HIR::TraitMarkings::DstType::Slice;
+                }
+                else if( last_field.m_data.is_TraitObject() )
+                {
+                    str.m_markings.dst_type = ::HIR::TraitMarkings::DstType::TraitObject;
+                }
+                else
+                {
+                    str.m_markings.dst_type = ::HIR::TraitMarkings::DstType::None;
                 }
             }
             )
