@@ -561,6 +561,14 @@ namespace {
                 case ::HIR::CoreType::I32:  m_os << static_cast<int64_t>(e.m_value) << "_i32";  break;
                 case ::HIR::CoreType::I64:  m_os << static_cast<int64_t>(e.m_value) << "_i64";  break;
                 case ::HIR::CoreType::Isize:m_os << static_cast<int64_t>(e.m_value) << "_isize";break;
+                case ::HIR::CoreType::Char:
+                    if( e.m_value == '\\' || e.m_value == '\'' )
+                        m_os << "'\\" << static_cast<char>(e.m_value) << "'";
+                    else if( ' ' <= e.m_value && e.m_value <= 0x7F )
+                        m_os << "'" << static_cast<char>(e.m_value) << "'";
+                    else
+                        m_os << "'\\u{" << ::std::hex << e.m_value << ::std::dec << "}'";
+                    break;
                 default: m_os << e.m_value << "_unk";    break;
                 }
                 ),
