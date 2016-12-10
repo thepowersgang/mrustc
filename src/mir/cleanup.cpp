@@ -264,8 +264,16 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
                     auto ty_s = monomorphise_type_with(state.sp, se[i].ent, monomorph_cb_s, false);
                     
                     auto new_rval = MIR_Cleanup_CoerceUnsized(state, mutator, ty_d, ty_s,  ::MIR::LValue::make_Field({ box$(value.clone()), i }));
-                    auto new_lval = mutator.new_temporary( mv$(ty_d) );
-                    mutator.push_statement( ::MIR::Statement::make_Assign({ new_lval.clone(), mv$(new_rval) }) );
+                    auto new_lval = mutator.in_temporary( mv$(ty_d), mv$(new_rval) );
+                    
+                    ents.push_back( mv$(new_lval) );
+                }
+                else if( state.m_resolve.is_type_phantom_data( se[i].ent ) )
+                {
+                    auto ty_d = monomorphise_type_with(state.sp, se[i].ent, monomorph_cb_d, false);
+                    
+                    auto new_rval = ::MIR::RValue::make_Cast({ ::MIR::LValue::make_Field({ box$(value.clone()), i }), ty_d.clone() });
+                    auto new_lval = mutator.in_temporary( mv$(ty_d), mv$(new_rval) );
                     
                     ents.push_back( mv$(new_lval) );
                 }
@@ -279,7 +287,8 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
             ents.reserve( se.size() );
             for(unsigned int i = 0; i < se.size(); i++)
             {
-                if( i == str.m_markings.coerce_unsized_index ) {
+                if( i == str.m_markings.coerce_unsized_index )
+                {
                     auto ty_d = monomorphise_type_with(state.sp, se[i].second.ent, monomorph_cb_d, false);
                     auto ty_s = monomorphise_type_with(state.sp, se[i].second.ent, monomorph_cb_s, false);
                     
@@ -289,7 +298,17 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
                     
                     ents.push_back( mv$(new_lval) );
                 }
-                else {
+                else if( state.m_resolve.is_type_phantom_data( se[i].second.ent ) )
+                {
+                    auto ty_d = monomorphise_type_with(state.sp, se[i].second.ent, monomorph_cb_d, false);
+                    
+                    auto new_rval = ::MIR::RValue::make_Cast({ ::MIR::LValue::make_Field({ box$(value.clone()), i }), ty_d.clone() });
+                    auto new_lval = mutator.in_temporary( mv$(ty_d), mv$(new_rval) );
+                    
+                    ents.push_back( mv$(new_lval) );
+                }
+                else
+                {
                     ents.push_back( ::MIR::LValue::make_Field({ box$(value.clone()), i}) );
                 }
             }
@@ -439,6 +458,12 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                         // (&-ptr being destination is otherwise invalid)
                         // TODO Share with the CoerceUnsized handling?
                     )
+                    // Casts to PhantomData are only valid from PhandomData, and are added by _CoerceUnsized
+                    else if( state.m_resolve.is_type_phantom_data(e.type) )
+                    {
+                        // Leave 
+                        MIR_ASSERT(state, state.m_resolve.is_type_phantom_data(src_ty) != nullptr, "PhandomData can only cast from PhantomData");
+                    }
                     // - CoerceUnsized should re-create the inner type if known.
                     else TU_IFLET( ::HIR::TypeRef::Data, e.type.m_data, Path, te,
                         TU_IFLET( ::HIR::TypeRef::Data, src_ty.m_data, Path, ste,

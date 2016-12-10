@@ -425,6 +425,11 @@ namespace {
                             }
                             ),
                         (Cast,
+                            if( m_resolve.is_type_phantom_data(ve.type) ) {
+                                m_of << "/* PhandomData cast */\n";
+                                continue ;
+                            }
+                            
                             emit_lvalue(e.dst);
                             m_of << " = ";
                             m_of << "("; emit_ctype(ve.type); m_of << ")";
@@ -758,10 +763,10 @@ namespace {
                 m_of << " " << inner;
                 ),
             (Path,
-                if( const auto* ity = m_resolve.is_type_owned_box(ty) ) {
-                    emit_ctype_ptr(*ity, inner);
-                    return ;
-                }
+                //if( const auto* ity = m_resolve.is_type_owned_box(ty) ) {
+                //    emit_ctype_ptr(*ity, inner);
+                //    return ;
+                //}
                 TU_MATCHA( (te.binding), (tpb),
                 (Struct,
                     m_of << "struct s_" << Trans_Mangle(te.path);
