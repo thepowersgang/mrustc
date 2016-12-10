@@ -177,9 +177,12 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
     // 1. Emit structure/type definitions.
     // - Emit in the order they're needed.
     {
+        TRACE_FUNCTION;
+        
         TypeVisitor tv { *codegen };
         for(const auto& ent : list.m_functions)
         {
+            TRACE_FUNCTION_F("Enumerate fn " << ent.first);
             assert(ent.second->ptr);
             const auto& fcn = *ent.second->ptr;
             const auto& pp = ent.second->pp;
@@ -199,10 +202,12 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
         }
         for(const auto& ent : list.m_statics)
         {
+            TRACE_FUNCTION_F("Enumerate static " << ent.first);
             assert(ent.second->ptr);
             const auto& stat = *ent.second->ptr;
+            const auto& pp = ent.second->pp;
             
-            tv.visit_type( stat.m_type );
+            tv.visit_type( pp.monomorph(crate, stat.m_type) );
         }
     }
     
@@ -239,7 +244,9 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
     // 4. Emit function code
     for(const auto& ent : list.m_functions)
     {
-        if( ent.second->ptr && ent.second->ptr->m_code.m_mir ) {
+        if( ent.second->ptr && ent.second->ptr->m_code.m_mir )
+        {
+            TRACE_FUNCTION_F(ent.first);
             DEBUG("FUNCTION CODE " << ent.first);
             const auto& fcn = *ent.second->ptr;
             // TODO: If this is a provided trait method, it needs to be monomorphised too.
