@@ -227,6 +227,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
 
 ::MIR::RValue MIR_Cleanup_CoerceUnsized(const ::MIR::TypeResolve& state, MirMutator& mutator, const ::HIR::TypeRef& dst_ty, const ::HIR::TypeRef& src_ty, ::MIR::LValue value)
 {
+    TRACE_FUNCTION_F(dst_ty << " <- " << src_ty << " ( " << value << " )");
     //  > Path -> Path = Unsize
     // (path being destination is otherwise invalid)
     if( dst_ty.m_data.is_Path() )
@@ -350,6 +351,46 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
     throw "";
 }
 
+void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::MIR::LValue& lval)
+{
+    if( lval.is_Deref() )
+    {
+        ::HIR::TypeRef  tmp;
+        const auto& ty = state.get_lvalue_type(tmp, lval);
+        if( state.m_resolve.is_type_owned_box(ty) )
+        {
+            // TODO: Handle Box by extracting it to its pointer.
+            // - Locate (or remember) which field in Box is the pointer, and replace the inner by that field
+        }
+    }
+    
+    TU_MATCHA( (lval), (le),
+    (Variable,
+        ),
+    (Temporary,
+        ),
+    (Argument,
+        ),
+    (Static,
+        ),
+    (Return,
+        ),
+    (Field,
+        MIR_Cleanup_LValue(state, mutator,  *le.val);
+        ),
+    (Deref,
+        MIR_Cleanup_LValue(state, mutator,  *le.val);
+        ),
+    (Index,
+        MIR_Cleanup_LValue(state, mutator,  *le.val);
+        MIR_Cleanup_LValue(state, mutator,  *le.idx);
+        ),
+    (Downcast,
+        MIR_Cleanup_LValue(state, mutator,  *le.val);
+        )
+    )
+}
+
 void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
 {
     Span    sp;
@@ -363,6 +404,65 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
             state.set_cur_stmt( mutator.cur_block, mutator.cur_stmt );
             auto& stmt = *it;
             
+            // 1. Visit all LValues for box deref hackery
+            TU_MATCHA( (stmt), (se),
+            (Drop,
+                MIR_Cleanup_LValue(state, mutator,  se.slot);
+                ),
+            (Assign,
+                MIR_Cleanup_LValue(state, mutator,  se.dst);
+                TU_MATCHA( (se.src), (re),
+                (Use,
+                    MIR_Cleanup_LValue(state, mutator,  re);
+                    ),
+                (Constant,
+                    ),
+                (SizedArray,
+                    MIR_Cleanup_LValue(state, mutator,  re.val);
+                    ),
+                (Borrow,
+                    MIR_Cleanup_LValue(state, mutator,  re.val);
+                    ),
+                (Cast,
+                    MIR_Cleanup_LValue(state, mutator,  re.val);
+                    ),
+                (BinOp,
+                    MIR_Cleanup_LValue(state, mutator,  re.val_l);
+                    MIR_Cleanup_LValue(state, mutator,  re.val_r);
+                    ),
+                (UniOp,
+                    MIR_Cleanup_LValue(state, mutator,  re.val);
+                    ),
+                (DstMeta,
+                    MIR_Cleanup_LValue(state, mutator,  re.val);
+                    ),
+                (DstPtr,
+                    MIR_Cleanup_LValue(state, mutator,  re.val);
+                    ),
+                (MakeDst,
+                    MIR_Cleanup_LValue(state, mutator,  re.ptr_val);
+                    MIR_Cleanup_LValue(state, mutator,  re.meta_val);
+                    ),
+                (Tuple,
+                    for(auto& lv : re.vals)
+                        MIR_Cleanup_LValue(state, mutator,  lv);
+                    ),
+                (Array,
+                    for(auto& lv : re.vals)
+                        MIR_Cleanup_LValue(state, mutator,  lv);
+                    ),
+                (Variant,
+                    MIR_Cleanup_LValue(state, mutator,  re.val);
+                    ),
+                (Struct,
+                    for(auto& lv : re.vals)
+                        MIR_Cleanup_LValue(state, mutator,  lv);
+                    )
+                )
+                )
+            )
+
+            // 2. RValue conversions
             if( stmt.is_Assign() )
             {
                 auto& se = stmt.as_Assign();
