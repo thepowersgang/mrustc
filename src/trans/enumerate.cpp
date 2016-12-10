@@ -24,12 +24,27 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
     static Span sp;
     
     TransList   rv;
-    auto main_path = ::HIR::SimplePath("", {"main"});
-    const auto& fcn = crate.get_function_by_path(sp, main_path);
     
-    auto* ptr = rv.add_function(main_path);
-    assert(ptr);
-    Trans_Enumerate_FillFrom(rv, crate,  fcn, *ptr);
+    // "start" language item
+    // - Takes main, and argc/argv as arguments
+    {
+        auto start_path = crate.get_lang_item_path(sp, "start");
+        const auto& fcn = crate.get_function_by_path(sp, start_path);
+        
+        auto* ptr = rv.add_function(start_path);
+        assert(ptr);
+        Trans_Enumerate_FillFrom(rv, crate,  fcn, *ptr);
+    }
+    
+    // user entrypoint
+    {
+        auto main_path = ::HIR::SimplePath("", {"main"});
+        const auto& fcn = crate.get_function_by_path(sp, main_path);
+        
+        auto* ptr = rv.add_function(main_path);
+        assert(ptr);
+        Trans_Enumerate_FillFrom(rv, crate,  fcn, *ptr);
+    }
     
     return rv;
 }
@@ -322,9 +337,13 @@ void Trans_Enumerate_FillFrom_Path(TransList& out, const ::HIR::Crate& crate, co
         {
             // Must have been a dynamic dispatch request, just leave as-is
         }
+        else if( path_mono.m_data.as_UfcsKnown().type->m_data.is_Function() )
+        {
+            // Must have been a dynamic dispatch request, just leave as-is
+        }
         else
         {
-            BUG(sp, "");
+            BUG(sp, "VTable returned for unknown path type - " << path_mono);
         }
         ),
     (Function,
