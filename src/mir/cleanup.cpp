@@ -429,17 +429,6 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
 
 void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::MIR::LValue& lval)
 {
-    if( lval.is_Deref() )
-    {
-        ::HIR::TypeRef  tmp;
-        const auto& ty = state.get_lvalue_type(tmp, lval);
-        if( state.m_resolve.is_type_owned_box(ty) )
-        {
-            // TODO: Handle Box by extracting it to its pointer.
-            // - Locate (or remember) which field in Box is the pointer, and replace the inner by that field
-        }
-    }
-    
     TU_MATCHA( (lval), (le),
     (Variable,
         ),
@@ -465,6 +454,49 @@ void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::
         MIR_Cleanup_LValue(state, mutator,  *le.val);
         )
     )
+
+    // If this is a deref of Box, unpack and deref the inner pointer
+    if( lval.is_Deref() )
+    {
+        auto& le = lval.as_Deref();
+        ::HIR::TypeRef  tmp;
+        const auto& ty = state.get_lvalue_type(tmp, *le.val);
+        if( state.m_resolve.is_type_owned_box(ty) )
+        {
+            // Handle Box by extracting it to its pointer.
+            // - Locate (or remember) which field in Box is the pointer, and replace the inner by that field
+            // > Dumb idea, assume it's always the first field. Keep accessing until located.
+
+            const auto* typ = &ty;
+            while( typ->m_data.is_Path() )
+            {
+                const auto& te = typ->m_data.as_Path();
+                MIR_ASSERT(state, te.binding.is_Struct(), "Box contained a non-struct");
+                const auto& str = *te.binding.as_Struct();
+                const ::HIR::TypeRef* ty_tpl = nullptr;
+                TU_MATCHA( (str.m_data), (se),
+                (Unit,
+                    MIR_BUG(state, "Box contained a unit-like struct");
+                    ),
+                (Tuple,
+                    MIR_ASSERT(state, se.size() > 0, "Box contained an empty tuple struct");
+                    ty_tpl = &se[0].ent;
+                    ),
+                (Named,
+                    MIR_ASSERT(state, se.size() > 0, "Box contained an empty named struct");
+                    ty_tpl = &se[0].second.ent;
+                    )
+                )
+                tmp = monomorphise_type(state.sp, str.m_params, te.path.m_data.as_Generic().m_params, *ty_tpl);
+                typ = &tmp;
+                
+                auto new_lval = ::MIR::LValue::make_Field({ mv$(le.val), 0 });
+                le.val = box$(new_lval);
+            }
+            MIR_ASSERT(state, typ->m_data.is_Pointer(), "First non-path field in Box wasn't a pointer - " << *typ);
+            // We have reached the pointer. Good.
+        }
+    }
 }
 
 void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
