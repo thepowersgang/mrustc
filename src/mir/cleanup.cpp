@@ -143,86 +143,162 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
     return ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(vtable_lv) })), vtable_idx });
 }
 
+bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator& mutator,
+        const ::HIR::TypeRef& dst_ty, const ::HIR::TypeRef& src_ty, const ::MIR::LValue& ptr_value,
+        ::MIR::RValue& out_meta_val, ::HIR::TypeRef& out_meta_ty, bool& out_src_is_dst
+        )
+{
+    TU_MATCH_DEF(::HIR::TypeRef::Data, (dst_ty.m_data), (de),
+    (
+        MIR_TODO(state, "Obtain metadata converting to " << dst_ty);
+        ),
+    (Generic,
+        // TODO: What should be returned to indicate "no conversion"
+        return false;
+        ),
+    (Path,
+        // Source must be Path and Unsize
+        if( de.binding.is_Opaque() )
+            return false;
+        
+        MIR_ASSERT(state, src_ty.m_data.is_Path(), "Unsize to path from non-path - " << src_ty);
+        const auto& se = src_ty.m_data.as_Path();
+        MIR_ASSERT(state, de.binding.tag() == se.binding.tag(), "Unsize between mismatched types - " << dst_ty << " and " << src_ty);
+        MIR_ASSERT(state, de.binding.is_Struct(), "Unsize to non-struct - " << dst_ty);
+        MIR_ASSERT(state, de.binding.as_Struct() == se.binding.as_Struct(), "Unsize between mismatched types - " << dst_ty << " and " << src_ty);
+        const auto& str = *de.binding.as_Struct();
+        MIR_ASSERT(state, str.m_markings.unsized_field != ~0u, "Unsize on type that doesn't implement have a ?Sized field - " << dst_ty);
+        
+        auto monomorph_cb_d = monomorphise_type_get_cb(state.sp, nullptr, &de.path.m_data.as_Generic().m_params, nullptr);
+        auto monomorph_cb_s = monomorphise_type_get_cb(state.sp, nullptr, &se.path.m_data.as_Generic().m_params, nullptr);
+        
+        // Return GetMetadata on the inner type
+        TU_MATCHA( (str.m_data), (se),
+        (Unit,
+            MIR_BUG(state, "Unit-like struct Unsize is impossible - " << src_ty);
+            ),
+        (Tuple,
+            const auto& ty_tpl = se.at( str.m_markings.unsized_field ).ent;
+            auto ty_d = monomorphise_type_with(state.sp, ty_tpl, monomorph_cb_d, false);
+            auto ty_s = monomorphise_type_with(state.sp, ty_tpl, monomorph_cb_s, false);
+            
+            return MIR_Cleanup_Unsize_GetMetadata(state, mutator,  ty_d, ty_s, ptr_value,  out_meta_val,out_meta_ty,out_src_is_dst);
+            ),
+        (Named,
+            const auto& ty_tpl = se.at( str.m_markings.unsized_field ).second.ent;
+            auto ty_d = monomorphise_type_with(state.sp, ty_tpl, monomorph_cb_d, false);
+            auto ty_s = monomorphise_type_with(state.sp, ty_tpl, monomorph_cb_s, false);
+            
+            return MIR_Cleanup_Unsize_GetMetadata(state, mutator,  ty_d, ty_s, ptr_value,  out_meta_val,out_meta_ty,out_src_is_dst);
+            )
+        )
+        throw "";
+        ),
+    (Slice,
+        // Source must be an array (or generic)
+        if( src_ty.m_data.is_Array() )
+        {
+            const auto& in_array = src_ty.m_data.as_Array();
+            out_meta_ty = ::HIR::CoreType::Usize;
+            out_meta_val = ::MIR::Constant( static_cast<uint64_t>(in_array.size_val) );
+            return true;
+        }
+        else if( src_ty.m_data.is_Generic() || (src_ty.m_data.is_Path() && src_ty.m_data.as_Path().binding.is_Opaque()) )
+        {
+            // HACK: FixedSizeArray uses `A: Unsize<[T]>` which will lead to the above code not working (as the size isn't known).
+            // - Maybe _Meta on the `&A` would work as a stopgap (since A: Sized, it won't collide with &[T] or similar)
+            
+            return false;
+            
+            //out_meta_ty = ::HIR::CoreType::Usize;
+            //out_meta_val = ::MIR::RValue::make_DstMeta({ ptr_value.clone() });
+            //return true;
+        }
+        else
+        {
+            MIR_BUG(state, "Unsize to slice from non-array - " << src_ty);
+        }
+        ),
+    (TraitObject,
+        
+        auto ty_unit_ptr = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit());
+        
+        // No data trait, vtable is a null unit pointer.
+        // - Shouldn't the vtable be just unit?
+        // - Codegen assumes it's a pointer.
+        if( de.m_trait.m_path.m_path == ::HIR::SimplePath() )
+        {
+            auto null_lval = mutator.in_temporary( ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint(0u) );
+            out_meta_ty = ty_unit_ptr.clone();
+            out_meta_val = ::MIR::RValue::make_Cast({ mv$(null_lval), mv$(ty_unit_ptr) });
+        }
+        else
+        {
+            const auto& trait_path = de.m_trait;
+            const auto& trait = *de.m_trait.m_trait_ptr;
+
+            // Obtain vtable type `::"path"::to::Trait#vtable`
+            auto vtable_ty_spath = trait_path.m_path.m_path;
+            vtable_ty_spath.m_components.back() += "#vtable";
+            const auto& vtable_ref = state.m_crate.get_struct_by_path(state.sp, vtable_ty_spath);
+            // Copy the param set from the trait in the trait object
+            ::HIR::PathParams   vtable_params = trait_path.m_path.m_params.clone();
+            // - Include associated types
+            for(const auto& ty_b : trait_path.m_type_bounds) {
+                auto idx = trait.m_type_indexes.at(ty_b.first);
+                if(vtable_params.m_types.size() <= idx)
+                    vtable_params.m_types.resize(idx+1);
+                vtable_params.m_types[idx] = ty_b.second.clone();
+            }
+            auto vtable_type = ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
+            
+            out_meta_ty = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, mv$(vtable_type));
+            
+            // If the data trait hasn't changed, return the vtable pointer
+            if( src_ty.m_data.is_TraitObject() )
+            {
+                out_src_is_dst = true;
+                out_meta_val = ::MIR::RValue::make_DstMeta({ ptr_value.clone() });
+            }
+            else
+            {
+                ::HIR::Path vtable { src_ty.clone(), trait_path.m_path.clone(), "#vtable" };
+                out_meta_val = ::MIR::RValue( ::MIR::Constant::make_ItemAddr(mv$(vtable)) );
+            }
+        }
+        return true;
+        )
+    )
+}
+
 ::MIR::RValue MIR_Cleanup_Unsize(const ::MIR::TypeResolve& state, MirMutator& mutator, const ::HIR::TypeRef& dst_ty, const ::HIR::TypeRef& src_ty_inner, ::MIR::LValue ptr_value)
 {
     const auto& dst_ty_inner = (dst_ty.m_data.is_Borrow() ? *dst_ty.m_data.as_Borrow().inner : *dst_ty.m_data.as_Pointer().inner);
     
-    TU_MATCH_DEF( ::HIR::TypeRef::Data, (dst_ty_inner.m_data), (die),
-    (
-        // Dunno?
-        MIR_TODO(state, "Unsize to pointer to " << dst_ty_inner);
-        ),
-    (Generic,
-        // Emit a cast rvalue
+    ::HIR::TypeRef  meta_type;
+    ::MIR::RValue   meta_value;
+    bool source_is_dst = false;
+    if( MIR_Cleanup_Unsize_GetMetadata(state, mutator, dst_ty_inner, src_ty_inner, ptr_value,  meta_value, meta_type, source_is_dst) )
+    {
+        // TODO: There is a case where the source is already a fat pointer. In that case the pointer of the new DST must be the source DST pointer
+        auto meta_lval = mutator.in_temporary( mv$(meta_type), mv$(meta_value) );
+        if( source_is_dst )
+        {
+            auto ty_unit_ptr = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit());
+            auto thin_ptr_lval = mutator.in_temporary( mv$(ty_unit_ptr), ::MIR::RValue::make_DstPtr({ mv$(ptr_value) }) );
+            
+            return ::MIR::RValue::make_MakeDst({ mv$(thin_ptr_lval), mv$(meta_lval) });
+        }
+        else
+        {
+            return ::MIR::RValue::make_MakeDst({ mv$(ptr_value), mv$(meta_lval) });
+        }
+    }
+    else
+    {
+        // Emit a cast rvalue, as something is still generic.
         return ::MIR::RValue::make_Cast({ mv$(ptr_value), dst_ty.clone() });
-        ),
-    (Slice,
-        if( src_ty_inner.m_data.is_Array() )
-        {
-            const auto& in_array = src_ty_inner.m_data.as_Array();
-            auto size_lval = mutator.in_temporary( ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::Constant( static_cast<uint64_t>(in_array.size_val) ) );
-            return ::MIR::RValue::make_MakeDst({ mv$(ptr_value), mv$(size_lval) });
-        }
-        else if( src_ty_inner.m_data.is_Generic() || (src_ty_inner.m_data.is_Path() && src_ty_inner.m_data.as_Path().binding.is_Opaque()) )
-        {
-            // HACK: FixedSizeArray uses `A: Unsize<[T]>` which will lead to the above code not working (as the size isn't known).
-            // - Maybe _Meta on the `&A` would work as a stopgap (since A: Sized, it won't collide with &[T] or similar)
-            auto size_lval = mutator.in_temporary( ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::RValue::make_DstMeta({ ptr_value.clone() }) );
-            return ::MIR::RValue::make_MakeDst({ mv$(ptr_value), mv$(size_lval) });
-        }
-        else
-        {
-            MIR_BUG(state, "Unsize to slice from non-array - " << src_ty_inner);
-        }
-        ),
-    (TraitObject,
-        auto unit_ptr = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit());
-        // If the data trait hasn't changed, re-create the DST
-        if( src_ty_inner.m_data.is_TraitObject() )
-        {
-            auto inner_ptr_lval = mutator.in_temporary( unit_ptr.clone(), ::MIR::RValue::make_DstPtr({ ptr_value.clone() }) );
-            auto vtable_lval = mutator.in_temporary( unit_ptr.clone(), ::MIR::RValue::make_DstMeta({ ptr_value.clone() }) );
-            return ::MIR::RValue::make_MakeDst({ mv$(inner_ptr_lval), mv$(vtable_lval) });
-        }
-        else
-        {
-            // Obtain the vtable if the destination is a trait object vtable exists as an unnamable associated type
-            ::MIR::LValue   vtable_lval;
-            if( die.m_trait.m_path.m_path == ::HIR::SimplePath() )
-            {
-                auto null_lval = mutator.in_temporary( ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint(0u) );
-                auto unit_ptr_2 = unit_ptr.clone();
-                vtable_lval = mutator.in_temporary( mv$(unit_ptr), ::MIR::RValue::make_Cast({ mv$(null_lval), mv$(unit_ptr_2) }) );
-            }
-            else
-            {
-                const auto& trait = *die.m_trait.m_trait_ptr;
-
-                auto vtable_ty_spath = die.m_trait.m_path.m_path;
-                vtable_ty_spath.m_components.back() += "#vtable";
-                const auto& vtable_ref = state.m_crate.get_struct_by_path(state.sp, vtable_ty_spath);
-                // Copy the param set from the trait in the trait object
-                ::HIR::PathParams   vtable_params = die.m_trait.m_path.m_params.clone();
-                // - Include associated types on bound
-                for(const auto& ty_b : die.m_trait.m_type_bounds) {
-                    auto idx = trait.m_type_indexes.at(ty_b.first);
-                    if(vtable_params.m_types.size() <= idx)
-                        vtable_params.m_types.resize(idx+1);
-                    vtable_params.m_types[idx] = ty_b.second.clone();
-                }
-                auto vtable_type = ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
-                    
-                ::HIR::Path vtable { src_ty_inner.clone(), die.m_trait.m_path.clone(), "#vtable" };
-                vtable_lval = mutator.in_temporary(
-                    ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, mv$(vtable_type)),
-                    ::MIR::RValue( ::MIR::Constant::make_ItemAddr(mv$(vtable)) )
-                    );
-                    
-            }
-            return ::MIR::RValue::make_MakeDst({ mv$(ptr_value), mv$(vtable_lval) });
-        }
-        )
-    )
+    }
 }
 
 ::MIR::RValue MIR_Cleanup_CoerceUnsized(const ::MIR::TypeResolve& state, MirMutator& mutator, const ::HIR::TypeRef& dst_ty, const ::HIR::TypeRef& src_ty, ::MIR::LValue value)

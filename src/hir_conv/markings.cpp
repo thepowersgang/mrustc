@@ -35,6 +35,37 @@ public:
     void visit_struct(::HIR::ItemPath ip, ::HIR::Struct& str) override
     {
         ::HIR::Visitor::visit_struct(ip, str);
+        
+        TU_MATCHA( (str.m_data), (se),
+        (Unit,
+            ),
+        (Tuple,
+            ),
+        (Named,
+            // Check the last field in the struct.
+            // - If it is Sized, leave as-is (struct is marked as Sized)
+            // - If it is known unsized, record the type
+            // - If it is a ?Sized parameter, mark as possible and record index for MIR
+            
+            // TODO: Ensure that only the last field is ?Sized
+            if( se.size() > 0 )
+            {
+                const auto& last_field = se.back().second.ent;
+                // TODO: Recurse into path types
+
+                // If the type is generic, and the pointed-to parameters is ?Sized, record as needing unsize
+                if( last_field.m_data.is_Generic() )
+                {
+                    const auto& te = last_field.m_data.as_Generic();
+                    
+                    if( str.m_params.m_types.at(te.binding).m_is_sized == false )
+                    {
+                        str.m_markings.unsized_field = se.size() - 1;
+                    }
+                }
+            }
+            )
+        )
     }
 
     void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
@@ -59,10 +90,12 @@ public:
                 ::HIR::TraitMarkings& markings = *const_cast<::HIR::TraitMarkings*>(markings_ptr);
                 if( trait_path == m_lang_Unsize ) {
                     DEBUG("Type " << impl.m_type << " can Unsize");
-                    markings.can_unsize = true;
-                    // Determine which field is the one that does the unsize
+                    ERROR(sp, E0000, "Unsize shouldn't be manually implemented");
                 }
                 else if( trait_path == m_lang_CoerceUnsized ) {
+                    if( markings_ptr->coerce_unsized_index != ~0u )
+                        ERROR(sp, E0000, "CoerceUnsized can only be implemented once per struct");
+                    
                     DEBUG("Type " << impl.m_type << " can Coerce");
                     if( impl.m_trait_args.m_types.size() != 1 )
                         ERROR(sp, E0000, "Unexpected number of arguments for CoerceUnsized");
