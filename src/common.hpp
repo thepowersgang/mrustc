@@ -14,8 +14,8 @@
 #define FMT(ss)    (dynamic_cast< ::std::stringstream&>(::std::stringstream() << ss).str())
 // XXX: Evil hack - Define 'mv$' to be ::std::move
 #define mv$(x)    ::std::move(x)
-#define box$(x) ::make_unique_ptr(::std::move(x))
-#define rc_new$(x) ::make_shared_ptr(::std::move(x))
+#define box$(x...) ::make_unique_ptr(::std::move(x))
+#define rc_new$(x...) ::make_shared_ptr(::std::move(x))
 
 #include "include/debug.hpp"
 #include "include/rustic.hpp"	// slice and option

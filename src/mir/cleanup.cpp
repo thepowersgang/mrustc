@@ -629,6 +629,10 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                             (Borrow,
                                 if( lit_ptr->is_BorrowOf() ) {
                                     // TODO: 
+                                    if( te.inner->m_data.is_Slice() ) {
+                                        // TODO: Create DST
+                                    }
+                                    e = ::MIR::Constant::make_ItemAddr( lit_ptr->as_BorrowOf().clone() );
                                 }
                                 else if( te.inner->m_data.is_Slice() && *te.inner->m_data.as_Slice().inner == ::HIR::CoreType::U8 ) {
                                     ::std::vector<uint8_t>  bytestr;

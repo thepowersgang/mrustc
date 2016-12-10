@@ -242,6 +242,10 @@ namespace {
             {
                 m_os << indent() << "static " << p.get_name() << ": " << item.m_type << " = " << item.m_value_res << ";\n";
             }
+            else if( !item.m_value_res.is_Invalid() )
+            {
+                m_os << indent() << "static " << p.get_name() << ": " << item.m_type << " = /*magic*/ " << item.m_value_res << ";\n";
+            }
             else
             {
                 m_os << indent() << "extern static " << p.get_name() << ": " << item.m_type << ";\n";
