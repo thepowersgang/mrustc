@@ -64,6 +64,8 @@ TAGGED_UNION(Literal, Invalid,
     (String, ::std::string)
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const Literal& v);
+extern bool operator==(const Literal& l, const Literal& r);
+static inline bool operator!=(const Literal& l, const Literal& r) { return !(l == r); }
 
 // --------------------------------------------------------------------
 // Type structures

@@ -45,6 +45,45 @@ namespace HIR {
         )
         return os;
     }
+    
+    bool operator==(const Literal& l, const Literal& r)
+    {
+        if( l.tag() != r.tag() )
+            return false;
+        TU_MATCH(::HIR::Literal, (l,r), (le,re),
+        (Invalid,
+            ),
+        (List,
+            if( le.size() != re.size() )
+                return false;
+            for(unsigned int i = 0; i < le.size(); i ++)
+                if( le[i] != re[i] )
+                    return false;
+            ),
+        (Variant,
+            if( le.idx != re.idx )
+                return false;
+            if( le.vals.size() != re.vals.size() )
+                return false;
+            for(unsigned int i = 0; i < le.vals.size(); i ++)
+                if( le.vals[i] != re.vals[i] )
+                    return false;
+            ),
+        (Integer,
+            return le == re;
+            ),
+        (Float,
+            return le == re;
+            ),
+        (BorrowOf,
+            return le == re;
+            ),
+        (String,
+            return le == re;
+            )
+        )
+        return true;
+    }
 }
 
 const ::HIR::Enum::Variant* ::HIR::Enum::get_variant(const ::std::string& name) const
