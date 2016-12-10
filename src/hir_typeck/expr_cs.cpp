@@ -2960,6 +2960,25 @@ namespace {
             
             ::HIR::ExprVisitorDef::visit(node);
         }
+        
+        void visit(::HIR::ExprNode_Literal& node) override {
+            TU_MATCH(::HIR::ExprNode_Literal::Data, (node.m_data), (e),
+            (Integer,
+                ASSERT_BUG(node.span(), node.m_res_type.m_data.is_Primitive(), "Float Literal didn't return primitive");
+                e.m_type = node.m_res_type.m_data.as_Primitive();
+                ),
+            (Float,
+                ASSERT_BUG(node.span(), node.m_res_type.m_data.is_Primitive(), "Float Literal didn't return primitive");
+                e.m_type = node.m_res_type.m_data.as_Primitive();
+                ),
+            (Boolean,
+                ),
+            (ByteString,
+                ),
+            (String,
+                )
+            )
+        }
     private:
         void check_type_resolved_top(const Span& sp, ::HIR::TypeRef& ty) const {
             check_type_resolved(sp, ty, ty);
