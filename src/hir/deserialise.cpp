@@ -543,13 +543,12 @@ namespace {
             ::HIR::TraitMarkings    m;
             uint8_t bitflag_1 = m_in.read_u8();
             #define BIT(i,fld)  fld = (bitflag_1 & (1 << (i))) != 0;
-            BIT(0, m.can_coerce)
-            BIT(1, m.can_unsize)
-            BIT(2, m.has_a_deref)
-            BIT(3, m.is_always_unsized)
-            BIT(4, m.is_always_sized)
-            BIT(5, m.is_copy)
+            BIT(0, m.can_unsize)
+            BIT(1, m.has_a_deref)
+            BIT(2, m.is_copy)
             #undef BIT
+            m.coerce_unsized_index = m_in.read_count( );
+            m.unsized_field = m_in.read_count( );
             // TODO: auto_impls
             return m;
         }

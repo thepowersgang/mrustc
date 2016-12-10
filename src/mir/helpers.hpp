@@ -27,9 +27,9 @@ struct CheckFailure:
 {
 };
 
-#define MIR_BUG(state, ...) ( (state).print_bug( [&](auto& _os){_os << __VA_ARGS__; } ) )
+#define MIR_BUG(state, ...) do { (state).print_bug( [&](auto& _os){_os << __VA_ARGS__; } ); throw ""; } while(0)
 #define MIR_ASSERT(state, cnd, ...) do { if( !(cnd) ) (state).print_bug( [&](auto& _os){_os << "ASSERT " #cnd " failed - " << __VA_ARGS__; } ); } while(0)
-#define MIR_TODO(state, ...) ( (state).print_todo( [&](auto& _os){_os << __VA_ARGS__; } ) )
+#define MIR_TODO(state, ...) do { (state).print_todo( [&](auto& _os){_os << __VA_ARGS__; } ); throw ""; } while(0)
 
 class TypeResolve
 {
@@ -38,8 +38,8 @@ public:
 private:
     const unsigned int STMT_TERM = ~0u;
     
-    const Span& sp;
 public:
+    const Span& sp;
     const ::StaticTraitResolve& m_resolve;
     const ::HIR::Crate& m_crate;
 private:

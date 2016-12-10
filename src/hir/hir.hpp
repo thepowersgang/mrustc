@@ -133,18 +133,24 @@ typedef ::std::vector< ::std::pair< ::std::string, VisEnt<::HIR::TypeRef> > >   
 /// Cache of the state of various language traits on an enum/struct
 struct TraitMarkings
 {
-    /// There is at least one CoerceUnsized impl for this type
-    bool    can_coerce = false;
-    /// There is at least one CoerceUnsized impl for this type
+    /// There is at least one Unsize impl for this type
     bool    can_unsize = false;
     
     /// Indicates that there is at least one Deref impl
     bool    has_a_deref = false;
     
-    /// Type is always unsized (i.e. contains an unsized type)
-    bool    is_always_unsized = false;
-    /// Type is always sized (i.e. cannot contain any unsized types)
-    bool    is_always_sized = false;
+    // If populated, indicates the field that is the coercable pointer.
+    unsigned int coerce_unsized_index = ~0u;
+    
+    // TODO: This would have to be changed for custom DSTs
+    enum class DstType {
+        None,   // Sized
+        Possible,   // Has a ?Sized field
+        Slice,  // [T]
+        TraitObject,    // (Trait)
+    }   dst_type;
+    unsigned int unsized_field = ~0u;
+    
     /// `true` if there is a Copy impl
     bool    is_copy = false;
 

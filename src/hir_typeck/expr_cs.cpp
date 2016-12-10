@@ -4389,13 +4389,13 @@ namespace {
                         return true;
                         ),
                     (Struct,
-                        return pbe->m_markings.can_coerce;
+                        return pbe->m_markings.coerce_unsized_index != ~0u;
                         ),
                     (Union,
-                        return pbe->m_markings.can_coerce;
+                        return pbe->m_markings.coerce_unsized_index != ~0u;
                         ),
                     (Enum,
-                        return pbe->m_markings.can_coerce;
+                        return pbe->m_markings.coerce_unsized_index != ~0u;
                         )
                     )
                 )

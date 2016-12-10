@@ -21,12 +21,14 @@ class Visitor:
     const ::HIR::SimplePath&    m_lang_Unsize;
     const ::HIR::SimplePath&    m_lang_CoerceUnsized;
     const ::HIR::SimplePath&    m_lang_Deref;
+    const ::HIR::SimplePath&    m_lang_PhantomData;
 public:
     Visitor(const ::HIR::Crate& crate):
         m_crate(crate),
         m_lang_Unsize( crate.get_lang_item_path_opt("unsize") ),
         m_lang_CoerceUnsized( crate.get_lang_item_path_opt("coerce_unsized") ),
-        m_lang_Deref( crate.get_lang_item_path_opt("deref") )
+        m_lang_Deref( crate.get_lang_item_path_opt("deref") ),
+        m_lang_PhantomData( crate.get_lang_item_path_opt("phantom_data") )
     {
     }
     
@@ -58,10 +60,84 @@ public:
                 if( trait_path == m_lang_Unsize ) {
                     DEBUG("Type " << impl.m_type << " can Unsize");
                     markings.can_unsize = true;
+                    // Determine which field is the one that does the unsize
                 }
                 else if( trait_path == m_lang_CoerceUnsized ) {
                     DEBUG("Type " << impl.m_type << " can Coerce");
-                    markings.can_coerce = true;
+                    if( impl.m_trait_args.m_types.size() != 1 )
+                        ERROR(sp, E0000, "Unexpected number of arguments for CoerceUnsized");
+                    const auto& dst_ty = impl.m_trait_args.m_types[0];
+                    // Determine which field is the one that does the coerce
+                    if( !te.binding.is_Struct() )
+                        ERROR(sp, E0000, "Cannot implement CoerceUnsized on non-structs");
+                    if( !dst_ty.m_data.is_Path() )
+                        ERROR(sp, E0000, "Cannot implement CoerceUnsized from non-structs");
+                    const auto& dst_te = dst_ty.m_data.as_Path();
+                    if( !dst_te.binding.is_Struct() )
+                        ERROR(sp, E0000, "Cannot implement CoerceUnsized from non-structs");
+                    if( dst_te.binding.as_Struct() != te.binding.as_Struct() )
+                        ERROR(sp, E0000, "CoerceUnsized can only be implemented between variants of the same struct");
+                    
+                    // NOTES: (from IRC: eddyb)
+                    // < eddyb> they're required that T and U are the same struct definition (with different type parameters) and exactly one field differs in type between T and U (ignoring PhantomData)
+                    // < eddyb> Mutabah: I forgot to mention that the field that differs in type must also impl CoerceUnsized
+                    
+                    // Determine the difference in monomorphised variants.
+                    unsigned int field = ~0u;
+                    const auto& str = te.binding.as_Struct();
+                    
+                    auto monomorph_cb_l = monomorphise_type_get_cb(sp, nullptr, &dst_te.path.m_data.as_Generic().m_params, nullptr);
+                    auto monomorph_cb_r = monomorphise_type_get_cb(sp, nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
+                    
+                    TU_MATCHA( (str->m_data), (se),
+                    (Unit,
+                        ),
+                    (Tuple,
+                        for(unsigned int i = 0; i < se.size(); i ++)
+                        {
+                            // If the data is PhantomData, ignore it.
+                            TU_IFLET(::HIR::TypeRef::Data, se[i].ent.m_data, Path, ite,
+                                TU_IFLET(::HIR::Path::Data, ite.path.m_data, Generic, pe,
+                                    if( pe.m_path == m_lang_PhantomData )
+                                        continue ;
+                                )
+                            )
+                            if( monomorphise_type_needed(se[i].ent) ) {
+                                auto ty_l = monomorphise_type_with(sp, se[i].ent, monomorph_cb_l, false);
+                                auto ty_r = monomorphise_type_with(sp, se[i].ent, monomorph_cb_r, false);
+                                if( ty_l != ty_r ) {
+                                    if( field != ~0u )
+                                        ERROR(sp, E0000, "CoerceUnsized impls can only differ by one field");
+                                    field = i;
+                                }
+                            }
+                        }
+                        ),
+                    (Named,
+                        for(unsigned int i = 0; i < se.size(); i ++)
+                        {
+                            // If the data is PhantomData, ignore it.
+                            TU_IFLET(::HIR::TypeRef::Data, se[i].second.ent.m_data, Path, ite,
+                                TU_IFLET(::HIR::Path::Data, ite.path.m_data, Generic, pe,
+                                    if( pe.m_path == m_lang_PhantomData )
+                                        continue ;
+                                )
+                            )
+                            if( monomorphise_type_needed(se[i].second.ent) ) {
+                                auto ty_l = monomorphise_type_with(sp, se[i].second.ent, monomorph_cb_l, false);
+                                auto ty_r = monomorphise_type_with(sp, se[i].second.ent, monomorph_cb_r, false);
+                                if( ty_l != ty_r ) {
+                                    if( field != ~0u )
+                                        ERROR(sp, E0000, "CoerceUnsized impls can only differ by one field");
+                                    field = i;
+                                }
+                            }
+                        }
+                        )
+                    )
+                    if( field == ~0u )
+                        ERROR(sp, E0000, "CoerceUnsized requires a field to differ between source and destination");
+                    markings.coerce_unsized_index = field;
                 }
                 else if( trait_path == m_lang_Deref ) {
                     DEBUG("Type " << impl.m_type << " can Deref");
