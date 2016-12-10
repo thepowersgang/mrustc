@@ -14,6 +14,7 @@
 #include <hir/visitor.hpp>
 #include <hir_typeck/static.hpp>
 #include <mir/helpers.hpp>
+#include <mir/operations.hpp>
 
 struct MirMutator
 {
@@ -700,6 +701,34 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
         }
         
         state.set_cur_stmt_term( mutator.cur_block );
+        
+        TU_MATCHA( (block.terminator), (e),
+        (Incomplete,
+            ),
+        (Return,
+            ),
+        (Diverge,
+            ),
+        (Goto,
+            ),
+        (Panic,
+            ),
+        (If,
+            MIR_Cleanup_LValue(state, mutator, e.cond);
+            ),
+        (Switch,
+            MIR_Cleanup_LValue(state, mutator, e.val);
+            ),
+        (Call,
+            MIR_Cleanup_LValue(state, mutator, e.ret_val);
+            if( e.fcn.is_Value() ) {
+                MIR_Cleanup_LValue(state, mutator, e.fcn.as_Value());
+            }
+            for(auto& lv : e.args)
+                MIR_Cleanup_LValue(state, mutator, lv);
+            )
+        )
+        
         TU_IFLET( ::MIR::Terminator, block.terminator, Call, e,
             
             TU_IFLET( ::MIR::CallTarget, e.fcn, Path, path,
@@ -729,5 +758,9 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
         mutator.cur_block += 1;
         mutator.cur_stmt = 0;
     }
+    
+    
+    // TODO: Make this configurable once the optimisations become expensive
+    MIR_Optimise(resolve, path, fcn, args, ret_type);
 }
 

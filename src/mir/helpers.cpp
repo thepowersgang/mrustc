@@ -27,6 +27,12 @@ void ::MIR::TypeResolve::print_msg(const char* tag, ::std::function<void(::std::
     throw CheckFailure {};
 }
 
+const ::MIR::BasicBlock& ::MIR::TypeResolve::get_block(::MIR::BasicBlockId id) const
+{
+    MIR_ASSERT(*this, id < m_fcn.blocks.size(), "Block ID " << id << " out of range");
+    return m_fcn.blocks[id];
+}
+
 const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, const ::MIR::LValue& val) const
 {
     TU_MATCH(::MIR::LValue, (val), (e),

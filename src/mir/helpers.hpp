@@ -21,6 +21,9 @@ namespace MIR {
 
 class Function;
 class LValue;
+class BasicBlock;
+
+typedef unsigned int    BasicBlockId;
 
 struct CheckFailure:
     public ::std::exception
@@ -83,6 +86,8 @@ public:
         print_msg("TODO", cb);
     }
     void print_msg(const char* tag, ::std::function<void(::std::ostream& os)> cb) const;
+    
+    const ::MIR::BasicBlock& get_block(::MIR::BasicBlockId id) const;
     
     const ::HIR::TypeRef& get_lvalue_type(::HIR::TypeRef& tmp, const ::MIR::LValue& val) const;
     
