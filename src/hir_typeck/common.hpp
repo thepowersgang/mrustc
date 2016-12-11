@@ -38,6 +38,24 @@ typedef ::std::function<bool(const ::HIR::TypeRef&, ::HIR::TypeRef&)>   t_cb_clo
 /// Clones a type, calling the provided callback on every type (optionally providing a replacement)
 extern ::HIR::TypeRef clone_ty_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_clone_ty callback);
 
+// Helper for passing a group of params around
+struct MonomorphState
+{
+    const ::HIR::TypeRef*   self_ty;
+    const ::HIR::PathParams*    pp_impl;
+    const ::HIR::PathParams*    pp_method;
+    
+    t_cb_generic    get_cb(const Span& sp) const;
+    
+    ::HIR::TypeRef  monomorph(const Span& sp, const ::HIR::TypeRef& ty, bool allow_infer=true) const {
+        return monomorphise_type_with(sp, ty, this->get_cb(sp), allow_infer);
+    }
+    ::HIR::Path monomorph(const Span& sp, const ::HIR::Path& tpl, bool allow_infer=true) const {
+        return monomorphise_path_with(sp, tpl, this->get_cb(sp), allow_infer);
+    }
+};
+extern ::std::ostream& operator<<(::std::ostream& os, const MonomorphState& ms);
+
 static inline t_cb_generic monomorphise_type_get_cb(const Span& sp, const ::HIR::TypeRef* self_ty, const ::HIR::PathParams* params_i, const ::HIR::PathParams* params_m, const ::HIR::PathParams* params_p=nullptr)
 {
     return [=](const auto& gt)->const auto& {

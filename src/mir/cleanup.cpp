@@ -74,6 +74,8 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
         if( pe.m_params.m_types.size() != 0 )
             TODO(sp, "Generic constants - " << path);
         out_ty = constant.m_type.clone();
+        if( constant.m_value_res.is_Invalid() )
+            return nullptr;
         return &constant.m_value_res;
         ),
     (UfcsUnknown,

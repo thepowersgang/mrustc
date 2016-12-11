@@ -11,6 +11,7 @@ namespace {
         Typecheck_Code_CS(ms, args, result_type, expr);
     }
     
+    
     class OuterVisitor:
         public ::HIR::Visitor
     {

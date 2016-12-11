@@ -373,6 +373,23 @@ namespace {
         }, false);
 }
 
+t_cb_generic MonomorphState::get_cb(const Span& sp) const
+{
+    return monomorphise_type_get_cb(sp, this->self_ty, this->pp_impl, this->pp_method);
+}
+::std::ostream& operator<<(::std::ostream& os, const MonomorphState& ms)
+{
+    os << "MonomorphState {";
+    if(ms.self_ty)
+        os << " self=" << *ms.self_ty;
+    if(ms.pp_impl)
+        os << " I=" << *ms.pp_impl;
+    if(ms.pp_method)
+        os << " M=" << *ms.pp_method;
+    os << " }";
+    return os;
+}
+
 void check_type_class_primitive(const Span& sp, const ::HIR::TypeRef& type, ::HIR::InferClass ic, ::HIR::CoreType ct)
 {
     switch(ic)

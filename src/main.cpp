@@ -64,6 +64,7 @@ void init_debug_list()
     g_debug_disable_map.insert( "Lower MIR" );
     g_debug_disable_map.insert( "MIR Validate" );
     g_debug_disable_map.insert( "Dump MIR" );
+    g_debug_disable_map.insert( "Constant Evaluate Full" );
     
     g_debug_disable_map.insert( "HIR Serialise" );
     g_debug_disable_map.insert( "Trans Enumerate" );
@@ -382,6 +383,16 @@ int main(int argc, char *argv[])
         // Validate the MIR
         CompilePhaseV("MIR Validate", [&]() {
             MIR_CheckCrate(*hir_crate);
+            });
+        
+        // Second shot of constant evaluation (with full type information)
+        CompilePhaseV("Constant Evaluate Full", [&]() {
+            ConvertHIR_ConstantEvaluateFull(*hir_crate);
+            });
+        
+        CompilePhaseV("Dump HIR", [&]() {
+            ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
+            HIR_Dump( os, *hir_crate );
             });
         
         // Optimise the MIR

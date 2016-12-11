@@ -17,3 +17,4 @@ extern void HIR_Expand_Closures(::HIR::Crate& crate);
 extern void HIR_Expand_UfcsEverything(::HIR::Crate& crate);
 extern void HIR_Expand_Reborrows(::HIR::Crate& crate);
 extern void HIR_Expand_ErasedType(::HIR::Crate& crate);
+extern void ConvertHIR_ConstantEvaluateFull(::HIR::Crate& crate);

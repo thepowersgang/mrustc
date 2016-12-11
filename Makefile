@@ -90,6 +90,7 @@ OBJ += hir_typeck/expr_cs.o
 OBJ += hir_typeck/expr_check.o
 OBJ += hir_expand/annotate_value_usage.o hir_expand/closures.o hir_expand/ufcs_everything.o
 OBJ += hir_expand/reborrow.o hir_expand/erased_types.o hir_expand/vtable.o
+OBJ += hir_expand/const_eval_full.o
 OBJ += mir/mir.o mir/mir_ptr.o
 OBJ +=  mir/dump.o mir/helpers.o
 OBJ +=  mir/from_hir.o mir/from_hir_match.o mir/mir_builder.o

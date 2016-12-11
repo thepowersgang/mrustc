@@ -104,7 +104,33 @@ namespace MIR {
             os << "Cast(" << e.val << " as " << e.type << ")";
             ),
         (BinOp,
-            os << "BinOp(" << e.val_l << " " << static_cast<int>(e.op) << " " << e.val_r << ")";
+            os << "BinOp(" << e.val_l << " ";
+            switch(e.op)
+            {
+            case ::MIR::eBinOp::ADD:    os << "ADD";    break;
+            case ::MIR::eBinOp::SUB:    os << "SUB";    break;
+            case ::MIR::eBinOp::MUL:    os << "MUL";    break;
+            case ::MIR::eBinOp::DIV:    os << "DIV";    break;
+            case ::MIR::eBinOp::MOD:    os << "MOD";    break;
+            case ::MIR::eBinOp::ADD_OV: os << "ADD_OV"; break;
+            case ::MIR::eBinOp::SUB_OV: os << "SUB_OV"; break;
+            case ::MIR::eBinOp::MUL_OV: os << "MUL_OV"; break;
+            case ::MIR::eBinOp::DIV_OV: os << "DIV_OV"; break;
+            
+            case ::MIR::eBinOp::BIT_OR : os << "BIT_OR" ; break;
+            case ::MIR::eBinOp::BIT_AND: os << "BIT_AND"; break;
+            case ::MIR::eBinOp::BIT_XOR: os << "BIT_XOR"; break;
+            case ::MIR::eBinOp::BIT_SHL: os << "BIT_SHL"; break;
+            case ::MIR::eBinOp::BIT_SHR: os << "BIT_SHR"; break;
+            
+            case ::MIR::eBinOp::EQ: os << "EQ"; break;
+            case ::MIR::eBinOp::NE: os << "NE"; break;
+            case ::MIR::eBinOp::GT: os << "GT"; break;
+            case ::MIR::eBinOp::GE: os << "GE"; break;
+            case ::MIR::eBinOp::LT: os << "LT"; break;
+            case ::MIR::eBinOp::LE: os << "LE"; break;
+            }
+            os << " " << e.val_r << ")";
             ),
         (UniOp,
             os << "UniOp(" << e.val << " " << static_cast<int>(e.op) << ")";

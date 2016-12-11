@@ -499,6 +499,31 @@ void Trans_Enumerate_FillFrom_MIR(TransList& out, const ::HIR::Crate& crate, con
     }
 }
 
+void Trans_Enumerate_FillFrom_Literal(TransList& out, const ::HIR::Crate& crate, const ::HIR::Literal& lit, const Trans_Params& pp)
+{
+    TU_MATCHA( (lit), (e),
+    (Invalid,
+        ),
+    (List,
+        for(const auto& v : e)
+            Trans_Enumerate_FillFrom_Literal(out, crate, v, pp);
+        ),
+    (Variant,
+        for(const auto& v : e.vals)
+            Trans_Enumerate_FillFrom_Literal(out, crate, v, pp);
+        ),
+    (Integer,
+        ),
+    (Float,
+        ),
+    (BorrowOf,
+        Trans_Enumerate_FillFrom_Path(out, crate, e, pp);
+        ),
+    (String,
+        )
+    )
+}
+
 void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const ::HIR::Function& function, TransList_Function& out_fcn, Trans_Params pp)
 {
     TRACE_FUNCTION_F("Function pp=" << pp.pp_method<<"+"<<pp.pp_impl);
@@ -515,6 +540,10 @@ void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const :
     if( item.m_value.m_mir )
     {
         Trans_Enumerate_FillFrom_MIR(out, crate, *item.m_value.m_mir, pp);
+    }
+    else if( ! item.m_value_res.is_Invalid() )
+    {
+        Trans_Enumerate_FillFrom_Literal(out, crate, item.m_value_res, pp);
     }
     out_stat.ptr = &item;
     out_stat.pp = mv$(pp);
