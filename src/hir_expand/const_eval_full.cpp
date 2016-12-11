@@ -663,7 +663,10 @@ namespace {
                     vals.reserve( e.vals.size() );
                     for(const auto& v : e.vals)
                         vals.push_back( read_lval(v) );
-                    val = ::HIR::Literal::make_List( mv$(vals) );
+                    if( e.variant_idx == ~0u )
+                        val = ::HIR::Literal::make_List( mv$(vals) );
+                    else
+                        val = ::HIR::Literal::make_Variant({ e.variant_idx, mv$(vals) });
                     )
                 )
                 

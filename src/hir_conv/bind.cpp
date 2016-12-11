@@ -146,6 +146,32 @@ namespace {
             ::HIR::Visitor::visit_trait_path(p);
         }
         
+        void visit_literal(const Span& sp, ::HIR::Literal& lit)
+        {
+            TU_MATCH(::HIR::Literal, (lit), (e),
+            (Invalid,
+                ),
+            (List,
+                for(auto& val : e) {
+                    visit_literal(sp, val);
+                }
+                ),
+            (Variant,
+                for(auto& val : e.vals) {
+                    visit_literal(sp, val);
+                }
+                ),
+            (Integer,
+                ),
+            (Float,
+                ),
+            (BorrowOf,
+                visit_path(e, ::HIR::Visitor::PathContext::VALUE);
+                ),
+            (String,
+                )
+            )
+        }
         
         void visit_pattern_Value(const Span& sp, ::HIR::Pattern& pat, ::HIR::Pattern::Value& val)
         {
@@ -402,6 +428,17 @@ namespace {
             )
             
             ::HIR::Visitor::visit_type(ty);
+        }
+        
+        void visit_static(::HIR::ItemPath p, ::HIR::Static& i) override
+        {
+            ::HIR::Visitor::visit_static(p, i);
+            visit_literal(Span(), i.m_value_res);
+        }
+        void visit_constant(::HIR::ItemPath p, ::HIR::Constant& i) override
+        {
+            ::HIR::Visitor::visit_constant(p, i);
+            visit_literal(Span(), i.m_value_res);
         }
         
         void visit_expr(::HIR::ExprPtr& expr) override

@@ -223,6 +223,7 @@ namespace {
             m_of << "\n";
         }
         void emit_literal(const ::HIR::TypeRef& ty, const ::HIR::Literal& lit, const Trans_Params& params) {
+            TRACE_FUNCTION_F("ty=" << ty << ", lit=" << lit);
             Span    sp;
             ::HIR::TypeRef  tmp;
             auto monomorph_with = [&](const ::HIR::PathParams& pp, const ::HIR::TypeRef& ty)->const ::HIR::TypeRef& {
@@ -242,12 +243,12 @@ namespace {
                 else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, te,
                     const auto& pp = te.path.m_data.as_Generic().m_params;
                     TU_MATCHA((te.binding), (pbe),
-                    (Unbound, throw"";),
-                    (Opaque, throw"";),
+                    (Unbound, BUG(sp, "Unbound type path " << ty); ),
+                    (Opaque, BUG(sp, "Opaque type path " << ty); ),
                     (Struct,
                         TU_MATCHA( (pbe->m_data), (se),
                         (Unit,
-                            throw "";
+                            BUG(sp, "Unit struct " << ty);
                             ),
                         (Tuple,
                             return monomorph_with(pp, se.at(idx).ent);
@@ -264,10 +265,10 @@ namespace {
                         const auto& evar = pbe->m_variants.at(var);
                         TU_MATCHA( (evar.second), (se),
                         (Unit,
-                            throw "";
+                            BUG(sp, "Unit enum var " << ty << " #" << var << " - fld " << idx);
                             ),
                         (Value,
-                            throw "";
+                            BUG(sp, "Value enum var " << ty << " #" << var << " - fld " << idx);
                             ),
                         (Tuple,
                             return monomorph_with(pp, se.at(idx).ent);

@@ -96,7 +96,7 @@ TransList Trans_Enumerate_Public(const ::HIR::Crate& crate)
 namespace {
     TAGGED_UNION(EntPtr, NotFound,
         (NotFound, struct{}),
-        (VTable, struct{}),
+        (AutoGenerate, struct{}),
         (Function, const ::HIR::Function*),
         (Static, const ::HIR::Static*)
         );
@@ -139,6 +139,8 @@ namespace {
         (StructConstant,
             ),
         (StructConstructor,
+            // TODO: What to do with these?
+            return EntPtr::make_AutoGenerate({});
             ),
         (Function,
             return EntPtr { &e };
@@ -196,11 +198,6 @@ namespace {
             ASSERT_BUG(sp, trait_vi_it != trait_ref.m_values.end(), "Couldn't find item " << e.item << " in trait " << e.trait.m_path);
             const auto& trait_vi = trait_vi_it->second;
             
-
-            //if( e.item == "#vtable" ) {
-            //    return EntPtr::make_VTable({});
-            //}
-            
             bool is_dynamic = false;
             ::std::vector<::HIR::TypeRef>    best_impl_params;
             const ::HIR::TraitImpl* best_impl = nullptr;
@@ -254,7 +251,7 @@ namespace {
                 return false;
                 });
             if( is_dynamic )
-                return EntPtr::make_VTable( {} );
+                return EntPtr::make_AutoGenerate( {} );
             if( !best_impl )
                 return EntPtr {};
             const auto& impl = *best_impl;
@@ -324,14 +321,11 @@ void Trans_Enumerate_FillFrom_Path(TransList& out, const ::HIR::Crate& crate, co
     (NotFound,
         BUG(sp, "Item not found for " << path_mono);
         ),
-    (VTable,
+    (AutoGenerate,
         // This is returned either if the item is <T as U>::#vtable or if it's <(Trait) as Trait>::method
-        if( path_mono.m_data.as_UfcsKnown().item == "#vtable" )
+        if( path_mono.m_data.is_Generic() )
         {
-            // TODO: Vtable generation
-            //if( auto* ptr = out.add_vtable(mv$(path_mono)) )
-            //{
-            //}
+            // TODO: Generate struct constructors?
         }
         else if( path_mono.m_data.as_UfcsKnown().type->m_data.is_TraitObject() )
         {
@@ -343,7 +337,7 @@ void Trans_Enumerate_FillFrom_Path(TransList& out, const ::HIR::Crate& crate, co
         }
         else
         {
-            BUG(sp, "VTable returned for unknown path type - " << path_mono);
+            BUG(sp, "AutoGenerate returned for unknown path type - " << path_mono);
         }
         ),
     (Function,
