@@ -41,7 +41,9 @@ namespace {
                 << "#include <stddef.h>\n"
                 << "#include <stdint.h>\n"
                 << "#include <stdbool.h>\n"
-                << "#include <string.h>\n"
+                << "#include <stdatomic.h>\n"   // atomic_*
+                << "#include <stdlib.h>\n"  // abort
+                << "#include <string.h>\n"  // mem*
                 << "typedef uint32_t CHAR;\n"
                 << "typedef struct { } tUNIT;\n"
                 << "typedef struct { } tBANG;\n"
@@ -634,9 +636,10 @@ namespace {
                             }
                         };
                         auto emit_atomic_cxchg = [&](const auto& e, const char* o_succ, const char* o_fail) {
-                            emit_lvalue(e.ret_val); m_of << " = atomic_compare_exchange_strong_explicit(";
+                            emit_lvalue(e.ret_val); m_of << "._0 = "; emit_lvalue(e.args.at(1)); m_of << ";\n\t";
+                            emit_lvalue(e.ret_val); m_of << "._1 = atomic_compare_exchange_strong_explicit(";
                                 emit_lvalue(e.args.at(0));
-                                m_of << ", &"; emit_lvalue(e.args.at(1));
+                                m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0";
                                 m_of << ", "; emit_lvalue(e.args.at(2));
                                 m_of << ", "<<o_succ<<", "<<o_fail<<")";
                             };
@@ -667,6 +670,23 @@ namespace {
                         }
                         else if( name == "abort" ) {
                             m_of << "abort()";
+                        }
+                        else if( name == "offset" ) {
+                            emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0)); m_of << " + "; emit_lvalue(e.args.at(1));
+                        }
+                        else if( name == "arith_offset" ) {
+                            emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0)); m_of << " + "; emit_lvalue(e.args.at(1));
+                        }
+                        // Hints
+                        else if( name == "unreachable" ) {
+                            m_of << "__builtin_unreachable()";
+                        }
+                        else if( name == "assume" ) {
+                            // I don't assume :)
+                        }
+                        else if( name == "likely" ) {
+                        }
+                        else if( name == "unlikely" ) {
                         }
                         // Overflowing Arithmatic
                         // HACK: Uses GCC intrinsics
@@ -699,6 +719,10 @@ namespace {
                             m_of << "__builtin_mul_overflow("; emit_lvalue(e.args.at(0));
                                 m_of << ", "; emit_lvalue(e.args.at(1));
                                 m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                        }
+                        // Bit Twiddling
+                        else if( name == "ctlz" ) {
+                            emit_lvalue(e.ret_val); m_of << " = __builtin_clz("; emit_lvalue(e.args.at(0)); m_of << ")";
                         }
                         // --- Atomics!
                         // > Single-ordering atomics
