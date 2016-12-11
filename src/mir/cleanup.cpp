@@ -692,6 +692,7 @@ void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::
 void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
 {
     Span    sp;
+    TRACE_FUNCTION_F(path);
     ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
     
     MirMutator  mutator { fcn, 0, 0 };
@@ -777,6 +778,45 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                         }
                     )
                 )
+                
+                if( se.src.is_Borrow() && se.src.as_Borrow().val.is_Field() )
+                {
+                    auto& e = se.src.as_Borrow();
+                    // TODO: If borrowing a !Sized value via a field access, create the DST
+                    ::HIR::TypeRef  tmp;
+                    const auto& src_ty = state.get_lvalue_type(tmp, e.val);
+                    
+                    if( !resolve.type_is_sized(sp, src_ty) && !src_ty.m_data.is_Generic() )
+                    {
+                        auto ty_unit_ptr = ::HIR::TypeRef::new_borrow( e.type, ::HIR::TypeRef::new_unit() );
+                        if( se.dst.is_Temporary() && state.get_lvalue_type(tmp, se.dst) == ty_unit_ptr )
+                        {
+                            // Assigning fat pointer to a &() temporary, only happens if this has already happend
+                        }
+                        else
+                        {
+                            // Unwrap field accesses, next lvalue should be a deref
+                            const ::MIR::LValue* lv = &e.val;
+                            while( lv->is_Field() )
+                                lv = &*lv->as_Field().val;
+                            MIR_ASSERT(state, lv->is_Deref(), "Access of !Sized field not via a deref");
+                            
+                            const auto& dst_val_lval = *lv;
+                            
+                            auto meta_rval = ::MIR::RValue::make_DstMeta({ dst_val_lval.clone() });
+                            // TODO: How can the thin pointer to the field be obtained without tripping this twice?
+                            auto ptr_rval = mv$( se.src );
+                            
+                            // TODO: Get the metadata type.
+                            auto meta_ty = ::HIR::TypeRef( ::HIR::CoreType::Usize );
+                            auto meta_lval = mutator.in_temporary( mv$(meta_ty), mv$(meta_rval) );
+                            
+                            // HACK: Store the pointer as &()
+                            auto ptr_lval = mutator.in_temporary( mv$(ty_unit_ptr), mv$(ptr_rval) );
+                            se.src = ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(meta_lval) });
+                        }
+                    }
+                }
                 
                 if( se.src.is_Cast() )
                 {

@@ -1833,7 +1833,7 @@ namespace {
 }
 
 
-::MIR::FunctionPointer LowerMIR(const StaticTraitResolve& resolve, const ::HIR::ExprPtr& ptr, const ::HIR::Function::args_t& args)
+::MIR::FunctionPointer LowerMIR(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, const ::HIR::ExprPtr& ptr, const ::HIR::Function::args_t& args)
 {
     TRACE_FUNCTION;
     
@@ -1862,7 +1862,7 @@ namespace {
     }
     
     ::HIR::TypeRef  ret;
-    MIR_Cleanup(resolve, ::HIR::ItemPath(), fcn, args, ret);
+    MIR_Cleanup(resolve, path, fcn, args, ret);
     
     return ::MIR::FunctionPointer(new ::MIR::Function(mv$(fcn)));
 }
@@ -1889,7 +1889,7 @@ namespace {
                 this->visit_type( *e.inner );
                 DEBUG("Array size " << ty);
                 if( e.size ) {
-                    auto fcn = LowerMIR(m_resolve, *e.size, {});
+                    auto fcn = LowerMIR(m_resolve, ::HIR::ItemPath(), *e.size, {});
                     e.size->m_mir = mv$(fcn);
                 }
             )
@@ -1906,7 +1906,7 @@ namespace {
             if( item.m_code )
             {
                 DEBUG("Function code " << p);
-                item.m_code.m_mir = LowerMIR(m_resolve, item.m_code, item.m_args);
+                item.m_code.m_mir = LowerMIR(m_resolve, p, item.m_code, item.m_args);
             }
             else
             {
@@ -1917,14 +1917,14 @@ namespace {
             if( item.m_value )
             {
                 DEBUG("`static` value " << p);
-                item.m_value.m_mir = LowerMIR(m_resolve, item.m_value, {});
+                item.m_value.m_mir = LowerMIR(m_resolve, p, item.m_value, {});
             }
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override {
             if( item.m_value )
             {
                 DEBUG("`const` value " << p);
-                item.m_value.m_mir = LowerMIR(m_resolve, item.m_value, {});
+                item.m_value.m_mir = LowerMIR(m_resolve, p, item.m_value, {});
             }
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
@@ -1932,7 +1932,7 @@ namespace {
             for(auto& var : item.m_variants)
             {
                 TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-                    e.expr.m_mir = LowerMIR(m_resolve, e.expr, {});
+                    e.expr.m_mir = LowerMIR(m_resolve, p + var.first, e.expr, {});
                 )
             }
         }

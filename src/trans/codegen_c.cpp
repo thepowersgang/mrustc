@@ -513,14 +513,14 @@ namespace {
                         (DstMeta,
                             emit_lvalue(e.dst);
                             m_of << " = ";
-                            assert( ve.val.is_Deref() );
+                            MIR_ASSERT(mir_res, ve.val.is_Deref(), "DstMeta on non-deref");
                             emit_lvalue(*ve.val.as_Deref().val);
                             m_of << ".META";
                             ),
                         (DstPtr,
                             emit_lvalue(e.dst);
                             m_of << " = ";
-                            assert( ve.val.is_Deref() );
+                            MIR_ASSERT(mir_res, ve.val.is_Deref(), "DstPtr on non-deref");
                             emit_lvalue(*ve.val.as_Deref().val);
                             m_of << ".PTR";
                             ),
