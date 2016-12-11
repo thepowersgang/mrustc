@@ -171,7 +171,7 @@ namespace MIR {
                 os << e2;
                 ),
             (Intrinsic,
-                os << "\"" << e2 << "\"";
+                os << "\"" << e2.name << "\"::" << e2.params;
                 )
             )
             os << "( ";

@@ -91,6 +91,7 @@ namespace {
             if( stmt.is_Drop() )
             {
                 const auto& e = stmt.as_Drop();
+                DEBUG("- DROP " << e.slot);
                 statements.push_back( ::MIR::Statement::make_Drop({
                     e.kind,
                     monomorph_LValue(crate, params, e.slot)
@@ -99,6 +100,7 @@ namespace {
             else
             {
                 const auto& e = stmt.as_Assign();
+                DEBUG("- " << e.dst << " = " << e.src);
                 
                 ::MIR::RValue   rval;
                 TU_MATCHA( (e.src), (se),
@@ -221,6 +223,7 @@ namespace {
         
         ::MIR::Terminator   terminator;
         
+        DEBUG("> " << block.terminator);
         TU_MATCHA( (block.terminator), (e),
         (Incomplete,
             //BUG(sp, "Incomplete block");
@@ -261,7 +264,7 @@ namespace {
                         return params.monomorph(crate, e);
                         ),
                     (Intrinsic,
-                        return e;
+                        return ::MIR::CallTarget::make_Intrinsic({ e.name, params.monomorph(crate, e.params) });
                         )
                     )
                     throw "";

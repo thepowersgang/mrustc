@@ -164,7 +164,10 @@ extern ::std::ostream& operator<<(::std::ostream& os, const RValue& x);
 TAGGED_UNION(CallTarget, Intrinsic,
     (Value, LValue),
     (Path,  ::HIR::Path),
-    (Intrinsic, ::std::string)
+    (Intrinsic, struct {
+        ::std::string   name;
+        ::HIR::PathParams   params;
+        })
     );
 
 TAGGED_UNION(Terminator, Incomplete,

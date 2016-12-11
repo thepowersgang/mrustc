@@ -41,6 +41,7 @@ namespace {
                 << "#include <stddef.h>\n"
                 << "#include <stdint.h>\n"
                 << "#include <stdbool.h>\n"
+                << "#include <string.h>\n"
                 << "typedef uint32_t CHAR;\n"
                 << "typedef struct { } tUNIT;\n"
                 << "typedef struct { } tBANG;\n"
@@ -263,6 +264,7 @@ namespace {
         
         void emit_function_ext(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) override
         {
+            m_of << "// extern \"" << item.m_abi << "\" " << p << "\n";
             m_of << "extern ";
             emit_function_header(p, item, params);
             m_of << ";\n";
@@ -576,6 +578,7 @@ namespace {
                 }
                 
                 mir_res.set_cur_stmt_term(i);
+                DEBUG("- " << code->blocks[i].terminator);
                 TU_MATCHA( (code->blocks[i].terminator), (e),
                 (Incomplete,
                     m_of << "\tfor(;;);\n";
@@ -603,6 +606,138 @@ namespace {
                     ),
                 (Call,
                     m_of << "\t";
+                    if( e.fcn.is_Intrinsic() )
+                    {
+                        const auto& name = e.fcn.as_Intrinsic().name;
+                        const auto& params = e.fcn.as_Intrinsic().params;
+                        
+                        struct H {
+                            static const char* get_atomic_ordering(const ::MIR::TypeResolve& mir_res, const ::std::string& name, size_t prefix_len) {
+                                if( name.size() < prefix_len )
+                                    return "memory_order_seq_cst";
+                                const char* suffix = name.c_str() + prefix_len;
+                                if( ::std::strcmp(suffix, "acq") == 0 ) {
+                                    return "memory_order_acquire";
+                                }
+                                else if( ::std::strcmp(suffix, "rel") == 0 ) {
+                                    return "memory_order_release";
+                                }
+                                else if( ::std::strcmp(suffix, "relaxed") == 0 ) {
+                                    return "memory_order_relaxed";
+                                }
+                                else if( ::std::strcmp(suffix, "acqrel") == 0 ) {
+                                    return "memory_order_acq_rel";
+                                }
+                                else {
+                                    MIR_BUG(mir_res, "Unknown atomic ordering suffix - '" << suffix << "'");
+                                }
+                            }
+                        };
+                        auto emit_atomic_cxchg = [&](const auto& e, const char* o_succ, const char* o_fail) {
+                            emit_lvalue(e.ret_val); m_of << " = atomic_compare_exchange_strong_explicit(";
+                                emit_lvalue(e.args.at(0));
+                                m_of << ", &"; emit_lvalue(e.args.at(1));
+                                m_of << ", "; emit_lvalue(e.args.at(2));
+                                m_of << ", "<<o_succ<<", "<<o_fail<<")";
+                            };
+                        if( name == "size_of" ) {
+                            emit_lvalue(e.ret_val); m_of << " = sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
+                        }
+                        else if( name == "min_align_of" ) {
+                            //emit_lvalue(e.ret_val); m_of << " = alignof("; emit_ctype(params.m_types.at(0)); m_of << ")";
+                            emit_lvalue(e.ret_val); m_of << " = __alignof__("; emit_ctype(params.m_types.at(0)); m_of << ")";
+                        }
+                        else if( name == "transmute" ) {
+                            m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &"; emit_lvalue(e.args.at(0)); m_of << ", sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
+                        }
+                        else if( name == "copy_nonoverlapping" ) {
+                            m_of << "memcpy( "; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", "; emit_lvalue(e.args.at(2)); m_of << ")";
+                        }
+                        else if( name == "forget" ) {
+                            // Nothing needs to be done, this just stops the destructor from running.
+                        }
+                        else if( name == "uninit" ) {
+                            // Do nothing, leaves the destination undefined
+                        }
+                        else if( name == "init" ) {
+                            m_of << "memset( &"; emit_lvalue(e.ret_val); m_of << ", 0, sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
+                        }
+                        else if( name == "move_val_init" ) {
+                            m_of << "*"; emit_lvalue(e.args.at(0)); m_of << " = "; emit_lvalue(e.args.at(1));
+                        }
+                        else if( name == "abort" ) {
+                            m_of << "abort()";
+                        }
+                        // Overflowing Arithmatic
+                        // HACK: Uses GCC intrinsics
+                        else if( name == "add_with_overflow" ) {
+                            emit_lvalue(e.ret_val); m_of << "._1 = __builtin_add_overflow("; emit_lvalue(e.args.at(0));
+                                m_of << ", "; emit_lvalue(e.args.at(1));
+                                m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                        }
+                        else if( name == "sub_with_overflow" ) {
+                            emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow("; emit_lvalue(e.args.at(0));
+                                m_of << ", "; emit_lvalue(e.args.at(1));
+                                m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                        }
+                        else if( name == "mul_with_overflow" ) {
+                            emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow("; emit_lvalue(e.args.at(0));
+                                m_of << ", "; emit_lvalue(e.args.at(1));
+                                m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                        }
+                        else if( name == "overflowing_add" ) {
+                            m_of << "__builtin_add_overflow("; emit_lvalue(e.args.at(0));
+                                m_of << ", "; emit_lvalue(e.args.at(1));
+                                m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                        }
+                        else if( name == "overflowing_sub" ) {
+                            m_of << "__builtin_sub_overflow("; emit_lvalue(e.args.at(0));
+                                m_of << ", "; emit_lvalue(e.args.at(1));
+                                m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                        }
+                        else if( name == "overflowing_mul" ) {
+                            m_of << "__builtin_mul_overflow("; emit_lvalue(e.args.at(0));
+                                m_of << ", "; emit_lvalue(e.args.at(1));
+                                m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                        }
+                        // --- Atomics!
+                        // > Single-ordering atomics
+                        else if( name == "atomic_xadd" || name.compare(0, 7+4+1, "atomic_xadd_") == 0 ) {
+                            auto ordering = H::get_atomic_ordering(mir_res, name, 7+4+1);
+                            emit_lvalue(e.ret_val); m_of << " = atomic_fetch_add_explicit("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
+                        }
+                        else if( name == "atomic_load" || name.compare(0, 7+4+1, "atomic_load_") == 0 ) {
+                            auto ordering = H::get_atomic_ordering(mir_res, name, 7+4+1);
+                            emit_lvalue(e.ret_val); m_of << " = atomic_load_explicit("; emit_lvalue(e.args.at(0)); m_of << ", " << ordering << ")";
+                        }
+                        else if( name == "atomic_store" || name.compare(0, 7+5+1, "atomic_store_") == 0 ) {
+                            auto ordering = H::get_atomic_ordering(mir_res, name, 7+5+1);
+                            m_of << "atomic_store_explicit("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
+                        }
+                        // Comare+Exchange (has two orderings)
+                        else if( name == "atomic_cxchg_acq_failrelaxed" ) {
+                            emit_atomic_cxchg(e, "memory_order_acquire", "memory_order_relaxed");
+                        }
+                        else if( name == "atomic_cxchg_acqrel_failrelaxed" ) {
+                            emit_atomic_cxchg(e, "memory_order_acq_rel", "memory_order_relaxed");
+                        }
+                        else if( name.compare(0, 7+6+4, "atomic_cxchg_fail") == 0 ) {
+                            auto fail_ordering = H::get_atomic_ordering(mir_res, name, 7+6+4);
+                            emit_atomic_cxchg(e, "memory_order_seq_cst", fail_ordering);
+                        }
+                        else if( name == "atomic_cxchg" || name.compare(0, 7+6, "atomic_cxchg_") == 0 ) {
+                            auto ordering = H::get_atomic_ordering(mir_res, name, 7+6);
+                            emit_atomic_cxchg(e, ordering, ordering);
+
+                        }
+                        else {
+                            MIR_BUG(mir_res, "Unknown intrinsic '" << name << "'");
+                        }
+                        m_of << ";\n";
+                        m_of << "\tgoto bb" << e.ret_block << ";\n";
+                        break ;
+                    }
+                    
                     TU_MATCHA( (e.fcn), (e2),
                     (Value,
                         {
@@ -809,7 +944,7 @@ namespace {
                     m_of << "struct e_" << Trans_Mangle(te.path);
                     ),
                 (Unbound,
-                    BUG(Span(), "Unbound path in trans - " << ty);
+                    BUG(Span(), "Unbound type path in trans - " << ty);
                     ),
                 (Opaque,
                     BUG(Span(), "Opaque path in trans - " << ty);

@@ -997,7 +997,10 @@ namespace {
         #define _(x, ...)    case ::MIR::CallTarget::TAG_##x: return ::MIR::CallTarget::make_##x( __VA_ARGS__ );
         _(Value, deserialise_mir_lvalue() )
         _(Path, deserialise_path() )
-        _(Intrinsic, m_in.read_string() )
+        _(Intrinsic, {
+            m_in.read_string(),
+            deserialise_pathparams()
+            })
         #undef _
         default:
             throw "";

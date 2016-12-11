@@ -206,7 +206,7 @@ namespace {
                         m_os << e2;
                         ),
                     (Intrinsic,
-                        m_os << "\"" << e2 << "\"";
+                        m_os << "\"" << e2.name << "\"::" << e2.params;
                         )
                     )
                     m_os << "( ";

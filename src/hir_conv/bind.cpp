@@ -618,6 +618,7 @@ namespace {
                             visit_path(e2, ::HIR::Visitor::PathContext::VALUE);
                             ),
                         (Intrinsic,
+                            visit_path_params(e2.params);
                             )
                         )
                         for(auto& arg : te.args)

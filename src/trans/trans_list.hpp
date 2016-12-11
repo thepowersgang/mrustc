@@ -33,6 +33,7 @@ struct Trans_Params
     ::HIR::TypeRef monomorph(const ::HIR::Crate& crate, const ::HIR::TypeRef& p) const;
     ::HIR::Path monomorph(const ::HIR::Crate& crate, const ::HIR::Path& p) const;
     ::HIR::GenericPath monomorph(const ::HIR::Crate& crate, const ::HIR::GenericPath& p) const;
+    ::HIR::PathParams monomorph(const ::HIR::Crate& crate, const ::HIR::PathParams& p) const;
     
     bool has_types() const {
         return pp_method.m_types.size() > 0 || pp_impl.m_types.size() > 0;

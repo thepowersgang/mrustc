@@ -78,9 +78,14 @@ t_cb_generic Trans_Params::get_cb() const
 
 ::HIR::GenericPath Trans_Params::monomorph(const ::HIR::Crate& crate, const ::HIR::GenericPath& p) const
 {
-    auto rv = monomorphise_genericpath_with(sp, p, this->get_cb(), false);
+    return ::HIR::GenericPath( p.m_path,  this->monomorph(crate, p.m_params) );
+}
+
+::HIR::PathParams Trans_Params::monomorph(const ::HIR::Crate& crate, const ::HIR::PathParams& p) const
+{
+    auto rv = monomorphise_path_params_with(sp, p, this->get_cb(), false);
     ::StaticTraitResolve    resolve { crate };
-    for(auto& arg : rv.m_params.m_types)
+    for(auto& arg : rv.m_types)
         resolve.expand_associated_types(sp, arg);
     return rv;
 }

@@ -526,7 +526,8 @@ namespace {
                 serialise_path(e);
                 ),
             (Intrinsic,
-                m_out.write_string(e);
+                m_out.write_string(e.name);
+                serialise_pathparams(e.params);
                 )
             )
         }

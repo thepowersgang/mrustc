@@ -1385,11 +1385,31 @@ namespace {
             auto next_block = m_builder.new_bb_unlinked();
             auto res = m_builder.new_temporary( node.m_res_type );
             
-            m_builder.end_block(::MIR::Terminator::make_Call({
-                next_block, panic_block,
-                res.clone(), node.m_path.clone(),
-                mv$(values)
-                }));
+            // Emit intrinsics as a special call type
+            // TODO: Should the parameters be stored? (trans has get_lvalue_type, so no 100% needed)
+            if( node.m_path.m_data.is_Generic() )
+            {
+                const auto& gpath = node.m_path.m_data.as_Generic();
+                const auto& fcn = m_builder.crate().get_function_by_path(node.span(), gpath.m_path);
+                if( fcn.m_abi == "rust-intrinsic" )
+                {
+                    m_builder.end_block(::MIR::Terminator::make_Call({
+                        next_block, panic_block,
+                        res.clone(), ::MIR::CallTarget::make_Intrinsic({ gpath.m_path.m_components.back(), gpath.m_params.clone() }),
+                        mv$(values)
+                        }));
+                }
+            }
+            
+            // If the call wasn't to an intrinsic, emit it as a path
+            if( m_builder.block_active() )
+            {
+                m_builder.end_block(::MIR::Terminator::make_Call({
+                    next_block, panic_block,
+                    res.clone(), node.m_path.clone(),
+                    mv$(values)
+                    }));
+            }
             
             m_builder.set_cur_block(panic_block);
             // TODO: Proper panic handling, including scope destruction
