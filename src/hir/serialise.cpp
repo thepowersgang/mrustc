@@ -764,7 +764,8 @@ namespace {
             
             m_out.write_bool(item.m_is_mut);
             serialise(item.m_type);
-            // NOTE: Omit the rest, not generic and emitted as part of the image.
+            
+            serialise(item.m_value_res);
         }
         
         // - Type items

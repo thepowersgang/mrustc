@@ -202,6 +202,7 @@ namespace {
         
         void emit_static_ext(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
         {
+            TRACE_FUNCTION_F(p);
             auto type = params.monomorph(m_crate, item.m_type);
             m_of << "extern ";
             emit_ctype( type, FMT_CB(ss, ss << Trans_Mangle(p);) );
@@ -211,32 +212,102 @@ namespace {
         }
         void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
         {
+            TRACE_FUNCTION_F(p);
+            
             auto type = params.monomorph(m_crate, item.m_type);
             emit_ctype( type, FMT_CB(ss, ss << Trans_Mangle(p);) );
             m_of << " = ";
-            emit_literal(/*type,*/ item.m_value_res);
+            emit_literal(type, item.m_value_res, params);
             m_of << ";";
             m_of << "\t// static " << p << " : " << type;
             m_of << "\n";
         }
-        void emit_literal(/*const ::HIR::TypeRef& ty,*/ const ::HIR::Literal& lit) {
+        void emit_literal(const ::HIR::TypeRef& ty, const ::HIR::Literal& lit, const Trans_Params& params) {
+            Span    sp;
+            ::HIR::TypeRef  tmp;
+            auto monomorph_with = [&](const ::HIR::PathParams& pp, const ::HIR::TypeRef& ty)->const ::HIR::TypeRef& {
+                if( monomorphise_type_needed(ty) ) {
+                    tmp = monomorphise_type_with(sp, ty, monomorphise_type_get_cb(sp, nullptr, &pp, nullptr), false);
+                    m_resolve.expand_associated_types(sp, tmp);
+                    return tmp;
+                }
+                else {
+                    return ty;
+                }
+                };
+            auto get_inner_type = [&](unsigned int var, unsigned int idx)->const ::HIR::TypeRef& {
+                TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, te,
+                    return *te.inner;
+                )
+                else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, te,
+                    const auto& pp = te.path.m_data.as_Generic().m_params;
+                    TU_MATCHA((te.binding), (pbe),
+                    (Unbound, throw"";),
+                    (Opaque, throw"";),
+                    (Struct,
+                        TU_MATCHA( (pbe->m_data), (se),
+                        (Unit,
+                            throw "";
+                            ),
+                        (Tuple,
+                            return monomorph_with(pp, se.at(idx).ent);
+                            ),
+                        (Named,
+                            return monomorph_with(pp, se.at(idx).second.ent);
+                            )
+                        )
+                        ),
+                    (Union,
+                        TODO(Span(), "Union literals");
+                        ),
+                    (Enum,
+                        const auto& evar = pbe->m_variants.at(var);
+                        TU_MATCHA( (evar.second), (se),
+                        (Unit,
+                            throw "";
+                            ),
+                        (Value,
+                            throw "";
+                            ),
+                        (Tuple,
+                            return monomorph_with(pp, se.at(idx).ent);
+                            ),
+                        (Struct,
+                            return monomorph_with(pp, se.at(idx).second.ent);
+                            )
+                        )
+                        )
+                    )
+                    throw "";
+                )
+                else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Tuple, te,
+                    return te.at(idx);
+                )
+                else {
+                    TODO(Span(), "Unknown type in list literal - " << ty);
+                }
+                };
             TU_MATCHA( (lit), (e),
             (Invalid, m_of << "/* INVALID */"; ),
             (List,
+                if( ty.m_data.is_Array() )
+                    m_of << "{";
                 m_of << "{";
                 for(unsigned int i = 0; i < e.size(); i ++) {
                     if(i != 0)  m_of << ",";
                     m_of << " ";
-                    emit_literal(e[i]);
+                    emit_literal(get_inner_type(0, i), e[i], params);
                 }
                 m_of << " }";
+                if( ty.m_data.is_Array() )
+                    m_of << "}";
                 ),
             (Variant,
                 m_of << "{" << e.idx << ", { .var_" << e.idx << " = {";
                 for(unsigned int i = 0; i < e.vals.size(); i ++) {
                     if(i != 0)  m_of << ",";
                     m_of << " ";
-                    emit_literal(e.vals[i]);
+                    emit_literal(get_inner_type(e.idx, i), e.vals[i], params);
                 }
                 m_of << " }}}";
                 ),
@@ -247,7 +318,7 @@ namespace {
                 m_of << e;
                 ),
             (BorrowOf,
-                // TODO:
+                //m_of << "&" << Trans_Mangle( params.monomorph(m_crate, e));
                 ),
             (String,
                 m_of << "{ ";

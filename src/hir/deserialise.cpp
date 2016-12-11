@@ -526,7 +526,8 @@ namespace {
             return ::HIR::Static {
                 m_in.read_bool(),
                 deserialise_type(),
-                ::HIR::ExprPtr {}
+                ::HIR::ExprPtr {},
+                deserialise_literal()
                 };
         }
         
