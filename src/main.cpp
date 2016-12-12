@@ -315,6 +315,7 @@ int main(int argc, char *argv[])
         CompilePhaseV("Resolve HIR Markings", [&]() {
             ConvertHIR_Markings(*hir_crate);
             });
+        // Basic constant evalulation (intergers/floats only)
         CompilePhaseV("Constant Evaluate", [&]() {
             ConvertHIR_ConstantEvaluate(*hir_crate);
             });
@@ -389,14 +390,24 @@ int main(int argc, char *argv[])
         CompilePhaseV("Constant Evaluate Full", [&]() {
             ConvertHIR_ConstantEvaluateFull(*hir_crate);
             });
-        
         CompilePhaseV("Dump HIR", [&]() {
             ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
             HIR_Dump( os, *hir_crate );
             });
         
+        // - Expand constants in MIR
+        CompilePhaseV("MIR Const Expand", [&]() {
+            //MIR_ExpandConstants(*hir_crate);
+            });
         // Optimise the MIR
-        // TODO: MIR Optimisation
+        CompilePhaseV("MIR Optimise", [&]() {
+            //MIR_Optimise(*hir_crate);
+            });
+        
+        CompilePhaseV("Dump MIR", [&]() {
+            ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));
+            MIR_Dump( os, *hir_crate );
+            });
 
         if( params.last_stage == ProgramParams::STAGE_MIR ) {
             return 0;

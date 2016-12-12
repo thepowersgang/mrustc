@@ -319,7 +319,9 @@ namespace {
                 m_of << e;
                 ),
             (BorrowOf,
-                //m_of << "&" << Trans_Mangle( params.monomorph(m_crate, e));
+                if( ! ty.m_data.is_Function() )
+                    m_of << "&";
+                m_of << Trans_Mangle( params.monomorph(m_crate, e));
                 ),
             (String,
                 m_of << "{ ";
@@ -457,8 +459,10 @@ namespace {
                                 ),
                             (Const,
                                 // TODO: This should have been eliminated?
-                                emit_lvalue(e.dst);
-                                m_of << " = /*CONST*/";
+                                ::HIR::TypeRef  tmp;
+                                const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
+                                const auto& lit = get_literal_for_const(c.p);
+                                assign_from_literal([&](){ emit_lvalue(e.dst); }, ty, lit);
                                 ),
                             (ItemAddr,
                                 emit_lvalue(e.dst);
@@ -722,6 +726,9 @@ namespace {
                             //emit_lvalue(e.ret_val); m_of << " = alignof("; emit_ctype(params.m_types.at(0)); m_of << ")";
                             emit_lvalue(e.ret_val); m_of << " = __alignof__("; emit_ctype(params.m_types.at(0)); m_of << ")";
                         }
+                        else if( name == "type_id" ) {
+                            emit_lvalue(e.ret_val); m_of << " = __typeid_" << Trans_Mangle(params.m_types.at(0));
+                        }
                         else if( name == "transmute" ) {
                             m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &"; emit_lvalue(e.args.at(0)); m_of << ", sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
                         }
@@ -911,6 +918,150 @@ namespace {
                 }
                 ));
         }
+        
+        const ::HIR::Literal& get_literal_for_const(const ::HIR::Path& path)
+        {
+            TU_MATCHA( (path.m_data), (pe),
+            (Generic,
+                if( pe.m_params.m_types.size() > 0 )
+                    MIR_TODO(*m_mir_res, "Paths with generics " << path);
+                return m_crate.get_constant_by_path(Span(), pe.m_path).m_value_res;
+                ),
+            (UfcsUnknown,
+                MIR_BUG(*m_mir_res, "UfcsUnknown " << path);
+                ),
+            (UfcsKnown,
+                MIR_TODO(*m_mir_res, "UfcsKnown " << path);
+                ),
+            (UfcsInherent,
+                MIR_TODO(*m_mir_res, "UfcsInherent " << path);
+                )
+            )
+            throw "";
+        }
+        
+        void assign_from_literal(::std::function<void()> emit_dst, const ::HIR::TypeRef& ty, const ::HIR::Literal& lit)
+        {
+            //TRACE_FUNCTION_F("ty=" << ty << ", lit=" << lit);
+            Span    sp;
+            ::HIR::TypeRef  tmp;
+            auto monomorph_with = [&](const ::HIR::PathParams& pp, const ::HIR::TypeRef& ty)->const ::HIR::TypeRef& {
+                if( monomorphise_type_needed(ty) ) {
+                    tmp = monomorphise_type_with(sp, ty, monomorphise_type_get_cb(sp, nullptr, &pp, nullptr), false);
+                    m_resolve.expand_associated_types(sp, tmp);
+                    return tmp;
+                }
+                else {
+                    return ty;
+                }
+                };
+            auto get_inner_type = [&](unsigned int var, unsigned int idx)->const ::HIR::TypeRef& {
+                TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, te,
+                    return *te.inner;
+                )
+                else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, te,
+                    const auto& pp = te.path.m_data.as_Generic().m_params;
+                    TU_MATCHA((te.binding), (pbe),
+                    (Unbound, BUG(sp, "Unbound type path " << ty); ),
+                    (Opaque, BUG(sp, "Opaque type path " << ty); ),
+                    (Struct,
+                        TU_MATCHA( (pbe->m_data), (se),
+                        (Unit,
+                            BUG(sp, "Unit struct " << ty);
+                            ),
+                        (Tuple,
+                            return monomorph_with(pp, se.at(idx).ent);
+                            ),
+                        (Named,
+                            return monomorph_with(pp, se.at(idx).second.ent);
+                            )
+                        )
+                        ),
+                    (Union,
+                        TODO(Span(), "Union literals");
+                        ),
+                    (Enum,
+                        const auto& evar = pbe->m_variants.at(var);
+                        TU_MATCHA( (evar.second), (se),
+                        (Unit,
+                            BUG(sp, "Unit enum var " << ty << " #" << var << " - fld " << idx);
+                            ),
+                        (Value,
+                            BUG(sp, "Value enum var " << ty << " #" << var << " - fld " << idx);
+                            ),
+                        (Tuple,
+                            return monomorph_with(pp, se.at(idx).ent);
+                            ),
+                        (Struct,
+                            return monomorph_with(pp, se.at(idx).second.ent);
+                            )
+                        )
+                        )
+                    )
+                    throw "";
+                )
+                else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Tuple, te,
+                    return te.at(idx);
+                )
+                else {
+                    TODO(Span(), "Unknown type in list literal - " << ty);
+                }
+                };
+            TU_MATCHA( (lit), (e),
+            (Invalid,
+                m_of << "/* INVALID */";
+                ),
+            (List,
+                if( ty.m_data.is_Array() )
+                {
+                    for(unsigned int i = 0; i < e.size(); i ++) {
+                        if(i != 0)  m_of << ";\n\t";
+                        assign_from_literal([&](){ emit_dst(); m_of << ".DATA[" << i << "]"; }, *ty.m_data.as_Array().inner, e[i]);
+                    }
+                }
+                else
+                {
+                    for(unsigned int i = 0; i < e.size(); i ++) {
+                        if(i != 0)  m_of << ";\n\t";
+                        assign_from_literal([&](){ emit_dst(); m_of << "._" << i; }, get_inner_type(0, i), e[i]);
+                    }
+                }
+                ),
+            (Variant,
+                emit_dst(); m_of << ".TAG = " << e.idx;
+                for(unsigned int i = 0; i < e.vals.size(); i ++) {
+                    m_of << ";\n\t";
+                    assign_from_literal([&](){ emit_dst(); m_of << ".DATA.var_" << e.idx << "._" << i; }, get_inner_type(e.idx, i), e.vals[i]);
+                }
+                ),
+            (Integer,
+                emit_dst(); m_of << " = " << ::std::hex << "0x" << e << ::std::dec;
+                ),
+            (Float,
+                emit_dst(); m_of << " = " << e;
+                ),
+            (BorrowOf,
+                emit_dst(); m_of << " = ";
+                if( ! ty.m_data.is_Function() )
+                    m_of << "&";
+                m_of << Trans_Mangle(e);
+                ),
+            (String,
+                emit_dst(); m_of << ".PTR = ";
+                m_of << "\"" << ::std::oct;
+                for(const auto& v : e) {
+                    if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
+                        m_of << v;
+                    else
+                        m_of << "\\" << (unsigned int)v;
+                }
+                m_of << "\"" << ::std::dec;
+                m_of << ";\n\t";
+                emit_dst(); m_of << ".META = " << e.size();
+                )
+            )
+        }
+        
         void emit_lvalue(const ::MIR::LValue& val) {
             TU_MATCHA( (val), (e),
             (Variable,
