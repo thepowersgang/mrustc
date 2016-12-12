@@ -1042,10 +1042,39 @@ namespace {
                 ),
             (BorrowOf,
                 // TODO: If the type is Borrow of a DST, do a fat assign.
-                emit_dst(); m_of << " = ";
-                if( ! ty.m_data.is_Function() )
-                    m_of << "&";
-                m_of << Trans_Mangle(e);
+                if( ty.m_data.is_Function() )
+                {
+                    emit_dst(); m_of << " = " << Trans_Mangle(e);
+                }
+                else if( ty.m_data.is_Borrow() )
+                {
+                    const auto& ity = *ty.m_data.as_Borrow().inner;
+                    switch( metadata_type(ity) )
+                    {
+                    case MetadataType::None:
+                        emit_dst(); m_of << " = &" << Trans_Mangle(e);
+                        break;
+                    case MetadataType::Slice:
+                        emit_dst(); m_of << ".PTR = &" << Trans_Mangle(e) << ";\n\t";
+                        // HACK: Since getting the size is hard, use two sizeofs
+                        emit_dst(); m_of << ".META = sizeof(" << Trans_Mangle(e) << ") / ";
+                        if( ity.m_data.is_Slice() ) {
+                            m_of << "sizeof("; emit_ctype(*ity.m_data.as_Slice().inner); m_of << ")";
+                        }
+                        else {
+                            m_of << "/*TODO*/";
+                        }
+                        break;
+                    case MetadataType::TraitObject:
+                        emit_dst(); m_of << ".PTR = &" << Trans_Mangle(e) << ";\n\t";
+                        emit_dst(); m_of << ".META = /* TODO: Const VTable */";
+                        break;
+                    }
+                }
+                else
+                {
+                    emit_dst(); m_of << " = &" << Trans_Mangle(e);
+                }
                 ),
             (String,
                 emit_dst(); m_of << ".PTR = ";
