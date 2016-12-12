@@ -1041,6 +1041,7 @@ namespace {
                 emit_dst(); m_of << " = " << e;
                 ),
             (BorrowOf,
+                // TODO: If the type is Borrow of a DST, do a fat assign.
                 emit_dst(); m_of << " = ";
                 if( ! ty.m_data.is_Function() )
                     m_of << "&";

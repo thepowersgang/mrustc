@@ -17,6 +17,7 @@
 
 void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const ::HIR::Function& function, TransList_Function& fcn_out, Trans_Params pp={});
 void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const ::HIR::Static& stat, TransList_Static& stat_out, Trans_Params pp={});
+void Trans_Enumerate_FillFrom_Literal(TransList& out, const ::HIR::Crate& crate, const ::HIR::Literal& lit, const Trans_Params& pp);
 
 /// Enumerate trans items starting from `::main` (binary crate)
 TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
@@ -98,7 +99,8 @@ namespace {
         (NotFound, struct{}),
         (AutoGenerate, struct{}),
         (Function, const ::HIR::Function*),
-        (Static, const ::HIR::Static*)
+        (Static, const ::HIR::Static*),
+        (Constant, const ::HIR::Constant*)
         );
     EntPtr get_ent_simplepath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::SimplePath& path)
     {
@@ -146,7 +148,7 @@ namespace {
             return EntPtr { &e };
             ),
         (Constant,
-            //return EntPtr { &e };
+            return EntPtr { &e };
             ),
         (Static,
             return EntPtr { &e };
@@ -352,6 +354,9 @@ void Trans_Enumerate_FillFrom_Path(TransList& out, const ::HIR::Crate& crate, co
         {
             Trans_Enumerate_FillFrom(out,crate, *e, *ptr, mv$(sub_pp));
         }
+        ),
+    (Constant,
+        Trans_Enumerate_FillFrom_Literal(out, crate, e->m_value_res, sub_pp);
         )
     )
 }
@@ -406,7 +411,7 @@ void Trans_Enumerate_FillFrom_MIR(TransList& out, const ::HIR::Crate& crate, con
                     (Bytes, ),
                     (StaticString, ),  // String
                     (Const,
-                        // TODO: Should this trigger anything?
+                        Trans_Enumerate_FillFrom_Path(out,crate, ce.p, pp);
                         ),
                     (ItemAddr,
                         Trans_Enumerate_FillFrom_Path(out,crate, ce, pp);
