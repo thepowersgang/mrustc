@@ -148,6 +148,26 @@ namespace {
                 )
             )
             m_of << "};\n";
+            TU_IFLET(::HIR::Struct::Data, item.m_data, Tuple, e,
+                m_of << "struct s_" << Trans_Mangle(p) << " " << Trans_Mangle(p) << "(";
+                for(unsigned int i = 0; i < e.size(); i ++)
+                {
+                    if(i != 0)
+                        m_of << ", ";
+                    emit_ctype( monomorph(e[i].ent), FMT_CB(ss, ss << "_" << i;) );
+                }
+                m_of << ") {\n";
+                m_of << "\tstruct s_" << Trans_Mangle(p) << " rv = {";
+                for(unsigned int i = 0; i < e.size(); i ++)
+                {
+                    if(i != 0)
+                        m_of << ",";
+                    m_of << "\n\t\t_" << i;
+                }
+                m_of << "\n\t\t};\n";
+                m_of << "\treturn rv;\n";
+                m_of << "}\n";
+            )
         }
         //virtual void emit_union(const ::HIR::GenericPath& p, const ::HIR::Union& item);
         void emit_enum(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Enum& item) override
