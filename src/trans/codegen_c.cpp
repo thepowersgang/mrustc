@@ -57,6 +57,12 @@ namespace {
 
         void finalise() override
         {
+            m_of
+                << "int main(int argc, const char* argv[]) {\n"
+                << "\t" << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) ) << "("
+                    << Trans_Mangle( ::HIR::GenericPath(::HIR::SimplePath("", {"main"})) ) << ", argc, argv"
+                    << ");\n"
+                << "}\n";
         }
         
         void emit_type(const ::HIR::TypeRef& ty) override
