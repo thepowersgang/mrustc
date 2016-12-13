@@ -47,6 +47,7 @@ namespace {
                 << "typedef uint32_t CHAR;\n"
                 << "typedef struct { } tUNIT;\n"
                 << "typedef struct { } tBANG;\n"
+                << "typedef struct { } tTYPEID;\n"
                 << "typedef struct { void* PTR; size_t META; } SLICE_PTR;\n"
                 << "typedef struct { void* PTR; void* META; } TRAITOBJ_PTR;\n"
                 << "\n";
@@ -101,6 +102,8 @@ namespace {
             )
             else {
             }
+            
+            m_of << "tTYPEID __typeid_" << Trans_Mangle(ty) << ";\n";
         }
         
         void emit_struct(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Struct& item) override
@@ -148,6 +151,7 @@ namespace {
                 )
             )
             m_of << "};\n";
+            // Crate constructor function
             TU_IFLET(::HIR::Struct::Data, item.m_data, Tuple, e,
                 m_of << "struct s_" << Trans_Mangle(p) << " " << Trans_Mangle(p) << "(";
                 for(unsigned int i = 0; i < e.size(); i ++)
@@ -658,8 +662,14 @@ namespace {
                                 if(ve.vals.size() > 0)
                                     m_of << ";\n\t";
                             }
+                            
+                            for(unsigned int j = 0; j < ve.vals.size(); j ++)
+                            {
+                                // HACK: Don't emit assignment of PhantomData
+                                ::HIR::TypeRef  tmp;
+                                if( m_resolve.is_type_phantom_data( mir_res.get_lvalue_type(tmp, ve.vals[j])) )
+                                    continue ;
                                 
-                            for(unsigned int j = 0; j < ve.vals.size(); j ++) {
                                 if( j != 0 )    m_of << ";\n\t";
                                 emit_lvalue(e.dst);
                                 if(ve.variant_idx != ~0u)
@@ -747,7 +757,7 @@ namespace {
                             emit_lvalue(e.ret_val); m_of << " = __alignof__("; emit_ctype(params.m_types.at(0)); m_of << ")";
                         }
                         else if( name == "type_id" ) {
-                            emit_lvalue(e.ret_val); m_of << " = __typeid_" << Trans_Mangle(params.m_types.at(0));
+                            emit_lvalue(e.ret_val); m_of << " = (uintptr_t)&__typeid_" << Trans_Mangle(params.m_types.at(0));
                         }
                         else if( name == "transmute" ) {
                             m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &"; emit_lvalue(e.args.at(0)); m_of << ", sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
