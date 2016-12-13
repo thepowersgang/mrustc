@@ -326,13 +326,86 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
     auto vtable_rval = ::MIR::RValue::make_DstMeta({ ::MIR::LValue::make_Deref({ box$(receiver_lvp.clone()) }) });
     mutator.push_statement( ::MIR::Statement::make_Assign({ vtable_lv.clone(), mv$(vtable_rval) }) );
     
-    auto ptr_rval = ::MIR::RValue::make_DstPtr({ ::MIR::LValue::make_Deref({ box$(receiver_lvp.clone()) }) });
-    auto ptr_lv = mutator.new_temporary( ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit()) );
-    mutator.push_statement( ::MIR::Statement::make_Assign({ ptr_lv.clone(), mv$(ptr_rval) }) );
-    receiver_lvp = mv$(ptr_lv);
+    auto fcn_lval = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(vtable_lv) })), vtable_idx });
+    
+    ::HIR::TypeRef  tmp;
+    const auto& ty = state.get_lvalue_type(tmp, fcn_lval);
+    const auto& receiver = ty.m_data.as_Function().m_arg_types.at(0);
+    if( state.is_type_owned_box(receiver) )
+    {
+        // TODO: If the receiver is Box, create a Box<()> as the value.
+        // - Requires de/restructuring the Box same as CoerceUnsized
+        // - Can use the `coerce_unsized_index` field too
+        
+        struct H {
+            static ::MIR::LValue get_unit_ptr(const ::MIR::TypeResolve& state, MirMutator& mutator, ::HIR::TypeRef ty, ::MIR::LValue lv)
+            {
+                if( ty.m_data.is_Path() )
+                {
+                    const auto& te = ty.m_data.as_Path();
+                    MIR_ASSERT(state, te.binding.is_Struct(), "");
+                    const auto& ty_path = te.path.m_data.as_Generic();
+                    const auto& str = *te.binding.as_Struct();
+                    ::HIR::TypeRef  tmp;
+                    auto monomorph = [&](const auto& t) { return monomorphise_type(Span(), str.m_params, ty_path.m_params, t); };
+                    ::std::vector< ::MIR::LValue>   vals;
+                    TU_MATCHA( (str.m_data), (se),
+                    (Unit,
+                        ),
+                    (Tuple,
+                        for(unsigned int i = 0; i < se.size(); i ++ ) {
+                            auto val = (i == se.size() - 1 ? mv$(lv) : lv.clone());
+                            if( i == str.m_markings.coerce_unsized_index ) {
+                                vals.push_back( H::get_unit_ptr(state, mutator, monomorph(se[i].ent), ::MIR::LValue::make_Field({ box$(val), i }) ) );
+                            }
+                            else {
+                                vals.push_back( ::MIR::LValue::make_Field({ box$(val), i }) );
+                            }
+                        }
+                        ),
+                    (Named,
+                        for(unsigned int i = 0; i < se.size(); i ++ ) {
+                            auto val = (i == se.size() - 1 ? mv$(lv) : lv.clone());
+                            if( i == str.m_markings.coerce_unsized_index ) {
+                                vals.push_back( H::get_unit_ptr(state, mutator, monomorph(se[i].second.ent), ::MIR::LValue::make_Field({ box$(val), i }) ) );
+                            }
+                            else {
+                                vals.push_back( ::MIR::LValue::make_Field({ box$(val), i }) );
+                            }
+                        }
+                        )
+                    )
+                    
+                    auto new_path = ty_path.clone();
+                    return mutator.in_temporary( mv$(ty), ::MIR::RValue::make_Struct({ mv$(new_path), ~0u, mv$(vals) }) );
+                }
+                else if( ty.m_data.is_Pointer() )
+                {
+                    return mutator.in_temporary(
+                        ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit()),
+                        ::MIR::RValue::make_DstPtr({ ::MIR::LValue::make_Deref({ box$(lv) }) })
+                        );
+                }
+                else
+                {
+                    MIR_BUG(state, "Unexpected type coerce_unsize in Box - " << ty);
+                }
+            }
+        };
+        
+        receiver_lvp = H::get_unit_ptr(state,mutator, receiver.clone(), receiver_lvp.clone());
+    }
+    else
+    {
+        auto ptr_rval = ::MIR::RValue::make_DstPtr({ ::MIR::LValue::make_Deref({ box$(receiver_lvp.clone()) }) });
+        
+        auto ptr_lv = mutator.new_temporary( ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit()) );
+        mutator.push_statement( ::MIR::Statement::make_Assign({ ptr_lv.clone(), mv$(ptr_rval) }) );
+        receiver_lvp = mv$(ptr_lv);
+    }
     
     // Update the terminator with the new information.
-    return ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(vtable_lv) })), vtable_idx });
+    return fcn_lval;
 }
 
 bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator& mutator,
