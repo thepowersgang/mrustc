@@ -333,7 +333,7 @@ namespace {
                 return args[e.idx];
                 ),
             (Static,
-                TODO(sp, "LValue::Static");
+                TODO(sp, "LValue::Static - " << e);
                 ),
             (Return,
                 return retval;
@@ -468,38 +468,39 @@ namespace {
                         TODO(sp, "RValue::Cast to " << e.type << ", val = " << inval);
                         ),
                     (Primitive,
-                        uint64_t mask;
-                        switch(te)
-                        {
-                        // Integers mask down
-                        case ::HIR::CoreType::I8:
-                        case ::HIR::CoreType::U8:
-                            mask = 0xFF;
-                            if(0)
-                        case ::HIR::CoreType::I16:
-                        case ::HIR::CoreType::U16:
-                            mask = 0xFFFF;
-                            if(0)
-                        case ::HIR::CoreType::I32:
-                        case ::HIR::CoreType::U32:
-                            mask = 0xFFFFFFFF;
-                            if(0)
-                        case ::HIR::CoreType::I64:
-                        case ::HIR::CoreType::U64:
-                        case ::HIR::CoreType::Usize:
-                        case ::HIR::CoreType::Isize:
-                            mask = 0xFFFFFFFFFFFFFFFF;
-                        
+                        auto cast_to_int = [&inval,&e,&sp](bool is_signed, unsigned bits) {
+                            uint64_t mask = (bits >= 64 ? ~0ull : (1ull << bits) - 1);
+                            uint64_t outval;
                             TU_IFLET( ::HIR::Literal, inval, Integer, i,
-                                val = ::HIR::Literal(i & mask);
+                                outval = i & mask;
+                                if( bits < 64 && is_signed && (outval >> (bits-1)) )
+                                    outval |= ~mask;
                             )
                             else TU_IFLET( ::HIR::Literal, inval, Float, i,
-                                val = ::HIR::Literal( static_cast<uint64_t>(i) & mask);
+                                outval = static_cast<uint64_t>(i) & mask;
+                                if( is_signed && i < 0 )
+                                    outval |= ~mask;
                             )
                             else {
                                 BUG(sp, "Invalid cast of " << inval.tag_str() << " to " << e.type);
                             }
-                            break;
+                            return ::HIR::Literal(outval);
+                            };
+                        switch(te)
+                        {
+                        // Integers mask down
+                        case ::HIR::CoreType::I8:   val = cast_to_int(true , 8);    break;
+                        case ::HIR::CoreType::U8:   val = cast_to_int(false, 8);    break;
+                        case ::HIR::CoreType::I16:  val = cast_to_int(true , 16);   break;
+                        case ::HIR::CoreType::U16:  val = cast_to_int(false, 16);   break;
+                        case ::HIR::CoreType::I32:  val = cast_to_int(true , 32);   break;
+                        case ::HIR::CoreType::U32:  val = cast_to_int(false, 32);   break;
+                        
+                        case ::HIR::CoreType::I64:  val = cast_to_int(true , 64);   break;
+                        case ::HIR::CoreType::U64:  val = cast_to_int(false, 64);   break;
+                        case ::HIR::CoreType::Isize: val = cast_to_int(true , 64);   break;
+                        case ::HIR::CoreType::Usize: val = cast_to_int(false, 64);   break;
+                        
                         case ::HIR::CoreType::F32:
                         case ::HIR::CoreType::F64:
                             TU_IFLET( ::HIR::Literal, inval, Integer, i,
@@ -724,6 +725,74 @@ namespace {
             BUG(sp, "Attempting to evaluate constant expression with no associated code");
         }
     }
+    
+    void check_lit_type(const Span& sp, const ::HIR::TypeRef& type,  ::HIR::Literal& lit)
+    {
+        // TODO: Mask down limited size integers
+        TU_MATCHA( (type.m_data), (te),
+        (Infer,
+            ),
+        (Diverge,
+            ),
+        (Generic,
+            ),
+        (Slice,
+            ),
+        (TraitObject,
+            ),
+        (ErasedType,
+            ),
+        (Closure,
+            ),
+        
+        (Path,
+            // List
+            ),
+        (Array,
+            // List
+            ),
+        (Tuple,
+            // List
+            ),
+        
+        (Borrow,
+            // A whole host of things
+            ),
+        (Pointer,
+            // Integer, or itemaddr?
+            ),
+        (Function,
+            // ItemAddr
+            ),
+        
+        (Primitive,
+            switch(te)
+            {
+            case ::HIR::CoreType::Str:
+                BUG(sp, "Direct str literal not valid");
+            case ::HIR::CoreType::F32:
+            case ::HIR::CoreType::F64:
+                ASSERT_BUG(sp, lit.is_Float(), "Bad literal type for " << type << " - " << lit);
+                break;
+            default:
+                ASSERT_BUG(sp, lit.is_Integer(), "Bad literal type for " << type << " - " << lit);
+                switch(te)
+                {
+                case ::HIR::CoreType::U8:   lit.as_Integer() &= (1ull<<8)-1;  break;
+                case ::HIR::CoreType::U16:  lit.as_Integer() &= (1ull<<16)-1; break;
+                case ::HIR::CoreType::U32:  lit.as_Integer() &= (1ull<<32)-1; break;
+                
+                //case ::HIR::CoreType::I8:   lit.as_Integer() &= (1ull<<8)-1;  break;
+                //case ::HIR::CoreType::I16:  lit.as_Integer() &= (1ull<<16)-1; break;
+                //case ::HIR::CoreType::I32:  lit.as_Integer() &= (1ull<<32)-1; break;
+                default:
+                    break;
+                }
+                break;
+            }
+            )
+        )
+    }
 
     class Expander:
         public ::HIR::Visitor
@@ -775,6 +844,7 @@ namespace {
                 auto nvs = NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$") };
                 item.m_value_res = evaluate_constant(item.m_value->span(), m_resolve, nvs, item.m_value, {}, {});
                 
+                check_lit_type(item.m_value->span(), item.m_type, item.m_value_res);
                 DEBUG("constant: " << item.m_type <<  " = " << item.m_value_res);
                 visit_expr(item.m_value);
             }

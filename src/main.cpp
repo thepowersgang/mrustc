@@ -65,6 +65,8 @@ void init_debug_list()
     g_debug_disable_map.insert( "MIR Validate" );
     g_debug_disable_map.insert( "Dump MIR" );
     g_debug_disable_map.insert( "Constant Evaluate Full" );
+    g_debug_disable_map.insert( "MIR Cleanup" );
+    g_debug_disable_map.insert( "MIR Optimise" );
     
     g_debug_disable_map.insert( "HIR Serialise" );
     g_debug_disable_map.insert( "Trans Enumerate" );
@@ -395,13 +397,13 @@ int main(int argc, char *argv[])
             HIR_Dump( os, *hir_crate );
             });
         
-        // - Expand constants in MIR
-        CompilePhaseV("MIR Const Expand", [&]() {
-            //MIR_ExpandConstants(*hir_crate);
+        // - Expand constants in HIR and virtualise calls
+        CompilePhaseV("MIR Cleanup", [&]() {
+            MIR_CleanupCrate(*hir_crate);
             });
         // Optimise the MIR
         CompilePhaseV("MIR Optimise", [&]() {
-            //MIR_Optimise(*hir_crate);
+            MIR_OptimiseCrate(*hir_crate);
             });
         
         CompilePhaseV("Dump MIR", [&]() {

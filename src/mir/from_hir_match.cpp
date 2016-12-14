@@ -2156,7 +2156,8 @@ namespace
         const char* name, const field_path_t& field_path, ::std::function<void(DecisionTreeNode::Branch&)> and_then
         )
     {
-        ASSERT_BUG(sp, ve_start < ve_end, "Range pattern with one value - " << ve_start << "..." << ve_end);
+        ASSERT_BUG(sp, ve_start != ve_end, "Range pattern with one value - " << ve_start);
+        ASSERT_BUG(sp, ve_start < ve_end, "Range pattern with a start after the end - " << ve_start << "..." << ve_end);
         
         TRACE_FUNCTION_F("[" << FMT_CB(os, for(const auto& i:be) os << i.first <<" , ";) << "]");
         // - Find the first entry that ends after the new one starts.

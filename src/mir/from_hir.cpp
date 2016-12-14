@@ -16,6 +16,7 @@
 #include "main_bindings.hpp"
 #include "from_hir.hpp"
 #include "operations.hpp"
+#include <mir/visit_crate_mir.hpp>
 
 
 namespace {
@@ -1881,103 +1882,16 @@ namespace {
         root_node.visit( ev );
     }
     
-    ::HIR::TypeRef  ret;
-    MIR_Cleanup(resolve, path, fcn, args, ret);
-    
     return ::MIR::FunctionPointer(new ::MIR::Function(mv$(fcn)));
-}
-
-namespace {
-    // TODO: Create visitor that handles setting up a StaticTraitResolve?
-    class OuterVisitor:
-        public ::HIR::Visitor
-    {
-        StaticTraitResolve  m_resolve;
-    public:
-        OuterVisitor(const ::HIR::Crate& crate):
-            m_resolve(crate)
-        {}
-        
-        // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
-        void visit_expr(::HIR::ExprPtr& exp) override {
-            BUG(Span(), "visit_expr hit in OuterVisitor");
-        }
-        
-        void visit_type(::HIR::TypeRef& ty) override
-        {
-            TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
-                this->visit_type( *e.inner );
-                DEBUG("Array size " << ty);
-                if( e.size ) {
-                    auto fcn = LowerMIR(m_resolve, ::HIR::ItemPath(), *e.size, {});
-                    e.size->m_mir = mv$(fcn);
-                }
-            )
-            else {
-                ::HIR::Visitor::visit_type(ty);
-            }
-        }
-
-        // ------
-        // Code-containing items
-        // ------
-        void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override {
-            auto _ = this->m_resolve.set_item_generics(item.m_params);
-            if( item.m_code )
-            {
-                DEBUG("Function code " << p);
-                item.m_code.m_mir = LowerMIR(m_resolve, p, item.m_code, item.m_args);
-            }
-            else
-            {
-                DEBUG("Function code " << p << " (none)");
-            }
-        }
-        void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override {
-            if( item.m_value )
-            {
-                DEBUG("`static` value " << p);
-                item.m_value.m_mir = LowerMIR(m_resolve, p, item.m_value, {});
-            }
-        }
-        void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override {
-            if( item.m_value )
-            {
-                DEBUG("`const` value " << p);
-                item.m_value.m_mir = LowerMIR(m_resolve, p, item.m_value, {});
-            }
-        }
-        void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
-            auto _ = this->m_resolve.set_item_generics(item.m_params);
-            for(auto& var : item.m_variants)
-            {
-                TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-                    e.expr.m_mir = LowerMIR(m_resolve, p + var.first, e.expr, {});
-                )
-            }
-        }
-        
-        // Boilerplate
-        void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override {
-            auto _ = this->m_resolve.set_impl_generics(item.m_params);
-            ::HIR::Visitor::visit_trait(p, item);
-        }
-        void visit_type_impl(::HIR::TypeImpl& impl) override {
-            auto _ = this->m_resolve.set_impl_generics(impl.m_params);
-            ::HIR::Visitor::visit_type_impl(impl);
-        }
-        void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override {
-            auto _ = this->m_resolve.set_impl_generics(impl.m_params);
-            ::HIR::Visitor::visit_trait_impl(trait_path, impl);
-        }
-    };
 }
 
 // --------------------------------------------------------------------
 
 void HIR_GenerateMIR(::HIR::Crate& crate)
 {
-    OuterVisitor    ov(crate);
-    ov.visit_crate( crate );
+    ::MIR::OuterVisitor    ov { crate, [&](const auto& res, const auto& p, auto& expr_ptr, const auto& args, const auto& ty){
+            expr_ptr.m_mir = LowerMIR(res, p, expr_ptr, args);
+        } };
+    ov.visit_crate(crate);
 }
 

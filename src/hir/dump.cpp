@@ -417,11 +417,11 @@ namespace {
         void visit(::HIR::ExprNode_BinOp& node) override
         {
             m_os << "(";
-            this->visit_node_ptr(node.m_right);
+            this->visit_node_ptr(node.m_left);
             m_os << ")";
             m_os << " " << ::HIR::ExprNode_BinOp::opname(node.m_op) << " ";
             m_os << "(";
-            this->visit_node_ptr(node.m_left);
+            this->visit_node_ptr(node.m_right);
             m_os << ")";
         }
         void visit(::HIR::ExprNode_UniOp& node) override

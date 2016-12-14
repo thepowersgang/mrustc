@@ -453,7 +453,10 @@ namespace {
             }
             void visit(::HIR::ExprNode_Borrow& node) override {
                 
-                badnode(node);
+                //m_rv_type = ::HIR::TypeRef();
+                //m_rv = ::HIR::Literal::make_BorrowOf( ::HIR::SimplePath() );
+                //return ;
+                //badnode(node);
                 
                 TU_MATCH_DEF( ::HIR::TypeRef::Data, (m_exp_type.m_data), (te),
                 (
@@ -478,12 +481,13 @@ namespace {
                 auto name = FMT(m_newval_state.name_prefix << &node);
                 
                 if( visit_ty_with(m_rv_type, [&](const auto& x){ return x.m_data.is_Infer(); }) ) {
-                    ERROR(node.span(), E0000, "Could not trivially infer type of referenced static");
+                    ERROR(node.span(), E0000, "Could not trivially infer type of referenced static - " << m_rv_type << ", lit = " << val);
                 }
                 
                 m_newval_state.newval_output.push_back(::std::make_pair( name, ::HIR::Static {
                     false,
-                    m_rv_type.clone(),
+                    //m_rv_type.clone(),
+                    {},
                     ::HIR::ExprNodeP(),
                     mv$(val)
                     } ));
@@ -810,7 +814,9 @@ namespace {
                     // TODO: Should be a more complex path to support associated paths
                     ASSERT_BUG(node.span(), node.m_path.m_data.is_Generic(), "Function path not Path::Generic - " << node.m_path);
                     m_rv = ::HIR::Literal(node.m_path.m_data.as_Generic().m_path);
-                    m_rv_type = ::HIR::TypeRef();   // TODO: Better type
+                    ::HIR::FunctionType fcn;
+                    fcn.m_rettype = box$( e->m_return.clone() );
+                    m_rv_type = ::HIR::TypeRef( mv$(fcn) );   // TODO: Better type
                     ),
                 (Constant,
                     // TODO: Associated constants
@@ -913,6 +919,7 @@ namespace {
             }
             void visit(::HIR::ExprNode_Tuple& node) override
             {
+                TRACE_FUNCTION_FR("_Tuple", m_rv);
                 ::std::vector< ::HIR::TypeRef> exp_tys;
                 TU_MATCH_DEF(::HIR::TypeRef::Data, (m_exp_type.m_data), (te),
                 (
@@ -1491,6 +1498,10 @@ namespace {
                 case ::HIR::CoreType::U8:   lit.as_Integer() &= (1ull<<8)-1;  break;
                 case ::HIR::CoreType::U16:  lit.as_Integer() &= (1ull<<16)-1; break;
                 case ::HIR::CoreType::U32:  lit.as_Integer() &= (1ull<<32)-1; break;
+                
+                case ::HIR::CoreType::I8:   lit.as_Integer() &= (1ull<<8)-1;  break;
+                case ::HIR::CoreType::I16:  lit.as_Integer() &= (1ull<<16)-1; break;
+                case ::HIR::CoreType::I32:  lit.as_Integer() &= (1ull<<32)-1; break;
                 default:
                     break;
                 }
@@ -1554,11 +1565,14 @@ namespace {
         {
             ::HIR::Visitor::visit_constant(p, item);
             
-            //visit_type(item.m_type);
             if( item.m_value )
             {
-                if( ! item.m_type.m_data.is_Primitive() )
-                    return ;
+                //if( item.m_type.m_data.is_Primitive() )
+                //    ;
+                //else if( item.m_type.m_data.is_Borrow() && *item.m_type.m_data.as_Borrow().inner == ::HIR::CoreType::Str )
+                //    ;
+                //else
+                //    return ;
                 
                 auto nvs = NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$") };
                 item.m_value_res = evaluate_constant(item.m_value->span(), m_crate, nvs, item.m_value, item.m_type.clone(), {});
@@ -1566,7 +1580,6 @@ namespace {
                 check_lit_type(item.m_value->span(), item.m_type, item.m_value_res);
                 
                 DEBUG("constant: " << item.m_type <<  " = " << item.m_value_res);
-                //visit_expr(item.m_value);
             }
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {

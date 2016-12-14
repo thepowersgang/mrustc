@@ -12,6 +12,7 @@
 #include <hir_typeck/static.hpp>
 #include <mir/helpers.hpp>
 #include <mir/operations.hpp>
+#include <mir/visit_crate_mir.hpp>
 
 namespace {
     ::MIR::BasicBlockId get_new_target(const ::MIR::TypeResolve& state, ::MIR::BasicBlockId bb)
@@ -173,3 +174,14 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         }
     }
 }
+
+void MIR_OptimiseCrate(::HIR::Crate& crate)
+{
+    ::MIR::OuterVisitor ov { crate, [](const auto& res, const auto& p, auto& expr, const auto& args, const auto& ty)
+        {
+            MIR_Optimise(res, p, *expr.m_mir, args, ty);
+        }
+        };
+    ov.visit_crate(crate);
+}
+

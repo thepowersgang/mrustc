@@ -15,6 +15,7 @@
 #include <hir_typeck/static.hpp>
 #include <mir/helpers.hpp>
 #include <mir/operations.hpp>
+#include <mir/visit_crate_mir.hpp>
 
 struct MirMutator
 {
@@ -1018,9 +1019,13 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
         mutator.cur_block += 1;
         mutator.cur_stmt = 0;
     }
-    
-    
-    // TODO: Make this configurable once the optimisations become expensive
-    MIR_Optimise(resolve, path, fcn, args, ret_type);
+}
+
+void MIR_CleanupCrate(::HIR::Crate& crate)
+{
+    ::MIR::OuterVisitor    ov { crate, [&](const auto& res, const auto& p, auto& expr_ptr, const auto& args, const auto& ty){
+            MIR_Cleanup(res, p, *expr_ptr.m_mir, args, ty);
+        } };
+    ov.visit_crate(crate);
 }
 
