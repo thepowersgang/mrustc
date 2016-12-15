@@ -294,6 +294,7 @@ namespace {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
                     ::std::string("call_once"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
+                        ::HIR::Linkage {},
                         ::HIR::Function::Receiver::Value,
                         ABI_RUST, false, false,
                         {},
@@ -331,6 +332,7 @@ namespace {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
                     ::std::string("call_mut"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
+                        ::HIR::Linkage {},
                         ::HIR::Function::Receiver::BorrowUnique,
                         ABI_RUST, false, false,
                         {},
@@ -366,6 +368,7 @@ namespace {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
                     ::std::string("call"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
+                        ::HIR::Linkage {},
                         ::HIR::Function::Receiver::BorrowShared,
                         ABI_RUST, false, false,
                         {},

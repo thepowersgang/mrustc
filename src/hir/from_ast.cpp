@@ -17,7 +17,7 @@
 #include <hir/item_path.hpp>
 
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::ItemPath path, ::std::vector< ::HIR::SimplePath> traits = {});
-::HIR::Function LowerHIR_Function(::HIR::ItemPath path, const ::AST::Function& f, const ::HIR::TypeRef& self_type);
+::HIR::Function LowerHIR_Function(::HIR::ItemPath path, const ::AST::MetaItems& attrs, const ::AST::Function& f, const ::HIR::TypeRef& self_type);
 ::HIR::PathParams LowerHIR_PathParams(const Span& sp, const ::AST::PathParams& src_params, bool allow_assoc);
 ::HIR::TraitPath LowerHIR_TraitPath(const Span& sp, const ::AST::Path& path);
 
@@ -982,7 +982,7 @@ namespace {
             ),
         (Function,
             ::HIR::TypeRef  self_type {"Self", 0xFFFF};
-            rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Function( LowerHIR_Function(item_path, i, self_type) )) );
+            rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Function( LowerHIR_Function(item_path, item.data.attrs, i, self_type) )) );
             ),
         (Static,
             if( i.s_class() == ::AST::Static::CONST )
@@ -992,7 +992,9 @@ namespace {
                     LowerHIR_Expr( i.value() )
                     })) );
             else {
+                ::HIR::Linkage  linkage;
                 rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Static(::HIR::Static {
+                    mv$(linkage),
                     (i.s_class() == ::AST::Static::MUT),
                     LowerHIR_Type( i.type() ),
                     LowerHIR_Expr( i.value() )
@@ -1002,14 +1004,11 @@ namespace {
         )
     }
     
-    // TODO: If this trait is object safe, build up the vtable (and vtable type)
-    // - Or do it in a pass?
-    
     rv.m_is_marker = f.is_marker();
     
     return rv;
 }
-::HIR::Function LowerHIR_Function(::HIR::ItemPath p, const ::AST::Function& f, const ::HIR::TypeRef& self_type)
+::HIR::Function LowerHIR_Function(::HIR::ItemPath p, const ::AST::MetaItems& attrs, const ::AST::Function& f, const ::HIR::TypeRef& self_type)
 {
     static Span sp;
     
@@ -1059,8 +1058,10 @@ namespace {
         }
     }
     
-    // TODO: ABI and unsafety/constness
+    ::HIR::Linkage  linkage;
+    
     return ::HIR::Function {
+        mv$(linkage),
         receiver,
         f.abi(), f.is_unsafe(), f.is_const(),
         LowerHIR_GenericParams(f.params(), nullptr),    // TODO: If this is a method, then it can add the Self: Sized bound
@@ -1164,7 +1165,7 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Trait(item_path.get_simple_path(), e) );
             ),
         (Function,
-            _add_mod_val_item(mod, item.name, item.is_pub,  LowerHIR_Function(item_path, e, ::HIR::TypeRef{}));
+            _add_mod_val_item(mod, item.name, item.is_pub,  LowerHIR_Function(item_path, item.data.attrs, e, ::HIR::TypeRef{}));
             ),
         (Static,
             if( e.s_class() == ::AST::Static::CONST )
@@ -1174,7 +1175,9 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
                     LowerHIR_Expr( e.value() )
                     }));
             else {
+                ::HIR::Linkage  linkage;
                 _add_mod_val_item(mod, item.name, item.is_pub,  ::HIR::ValueItem::make_Static(::HIR::Static {
+                    mv$(linkage),
                     (e.s_class() == ::AST::Static::MUT),
                     LowerHIR_Type( e.type() ),
                     LowerHIR_Expr( e.value() )
@@ -1306,7 +1309,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                         ),
                     (Function,
                         DEBUG("- method " << item.name);
-                        methods.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { item.is_specialisable, LowerHIR_Function(item_path, e, type) }) );
+                        methods.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { item.is_specialisable, LowerHIR_Function(item_path, item.data->attrs, e, type) }) );
                         )
                     )
                 }
@@ -1374,7 +1377,9 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                     }
                     ),
                 (Function,
-                    methods.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> { item.is_pub, item.is_specialisable, LowerHIR_Function(item_path, e, type) } ) );
+                    methods.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> {
+                        item.is_pub, item.is_specialisable, LowerHIR_Function(item_path, item.data->attrs, e, type)
+                        } ) );
                     )
                 )
             }

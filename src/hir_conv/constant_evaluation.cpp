@@ -37,6 +37,7 @@ namespace {
             next_item_idx ++;
             auto rv = (mod_path + name.c_str()).get_simple_path();
             newval_output.push_back( ::std::make_pair( mv$(name), ::HIR::Static {
+                ::HIR::Linkage {},
                 false,
                 mv$(type),
                 ::HIR::ExprPtr(),
@@ -477,23 +478,16 @@ namespace {
                     ERROR(node.span(), E0000, "Only shared borrows are allowed in constants");
                 }
                 
-                // Create new static containing borrowed data
-                auto name = FMT(m_newval_state.name_prefix << &node);
-                
                 if( visit_ty_with(m_rv_type, [&](const auto& x){ return x.m_data.is_Infer(); }) ) {
                     ERROR(node.span(), E0000, "Could not trivially infer type of referenced static - " << m_rv_type << ", lit = " << val);
                 }
                 
-                m_newval_state.newval_output.push_back(::std::make_pair( name, ::HIR::Static {
-                    false,
-                    //m_rv_type.clone(),
-                    {},
-                    ::HIR::ExprNodeP(),
-                    mv$(val)
-                    } ));
+                // Create new static containing borrowed data
+                //auto path = m_newval_state.new_static( m_rv_type.clone(), mv$(val) );
+                auto path = m_newval_state.new_static( ::HIR::TypeRef(), mv$(val) );
                 
                 m_rv_type = ::HIR::TypeRef::new_borrow( node.m_type, mv$(m_rv_type) );
-                m_rv = ::HIR::Literal::make_BorrowOf( (m_newval_state.mod_path + name).get_simple_path() );
+                m_rv = ::HIR::Literal::make_BorrowOf( mv$(path) );
             }
             void visit(::HIR::ExprNode_Cast& node) override {
                 TRACE_FUNCTION_F("_Cast");

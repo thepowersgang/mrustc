@@ -68,15 +68,33 @@ extern bool operator==(const Literal& l, const Literal& r);
 static inline bool operator!=(const Literal& l, const Literal& r) { return !(l == r); }
 
 // --------------------------------------------------------------------
-// Type structures
+// Value structures
 // --------------------------------------------------------------------
+struct Linkage
+{
+    enum class Type
+    {
+        Auto,   // Default
+        Weak,   // Weak linkage (multiple definitions are allowed
+        External, // Force the symbol to be externally visible
+    };
+    
+    // Linkage type
+    Type    type = Type::Auto;
+    
+    // External symbol name
+    ::std::string   name;
+};
+
 class Static
 {
 public:
+    Linkage m_linkage;
     bool    m_is_mut;
     TypeRef m_type;
     
     ExprPtr m_value;
+    
     Literal   m_value_res;
 };
 struct Constant
@@ -103,6 +121,8 @@ public:
     };
     
     typedef ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >   args_t;
+    
+    Linkage m_linkage;
     
     Receiver    m_receiver;
     ::std::string   m_abi;

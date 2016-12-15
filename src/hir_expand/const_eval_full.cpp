@@ -37,6 +37,7 @@ namespace {
             next_item_idx ++;
             auto rv = (mod_path + name.c_str()).get_simple_path();
             newval_output.push_back( ::std::make_pair( mv$(name), ::HIR::Static {
+                ::HIR::Linkage(),
                 false,
                 mv$(type),
                 ::HIR::ExprPtr(),
@@ -819,10 +820,16 @@ namespace {
             
             for( auto& item : m_new_values )
             {
-                mod.m_value_items.insert( ::std::make_pair(
-                    mv$(item.first),
-                    box$(::HIR::VisEnt<::HIR::ValueItem> { false, ::HIR::ValueItem(mv$(item.second)) })
-                    ) );
+                auto boxed_ent = box$(::HIR::VisEnt<::HIR::ValueItem> { false, ::HIR::ValueItem(mv$(item.second)) });
+                auto it = mod.m_value_items.find( item.first );
+                if( it != mod.m_value_items.end() )
+                {
+                    it->second = mv$(boxed_ent);
+                }
+                else
+                {
+                    mod.m_value_items.insert( ::std::make_pair( mv$(item.first), mv$(boxed_ent) ) );
+                }
             }
             m_new_values = mv$(saved);
             m_mod_path = saved_mp;

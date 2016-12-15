@@ -729,10 +729,18 @@ namespace {
         
         void serialise(unsigned int v) { m_out.write_count(v); };
         
+        void serialise(const ::HIR::Linkage& linkage)
+        {
+            //m_out.write_tag( static_cast<int>(linkage.type) );
+            m_out.write_string( linkage.name );
+        }
+        
         // - Value items
         void serialise(const ::HIR::Function& fcn)
         {
             TRACE_FUNCTION_F("_function:");
+            
+            serialise(fcn.m_linkage);
             
             m_out.write_tag( static_cast<int>(fcn.m_receiver) );
             m_out.write_string(fcn.m_abi);
@@ -761,6 +769,8 @@ namespace {
         void serialise(const ::HIR::Static& item)
         {
             TRACE_FUNCTION_F("_static:");
+            
+            serialise(item.m_linkage);
             
             m_out.write_bool(item.m_is_mut);
             serialise(item.m_type);

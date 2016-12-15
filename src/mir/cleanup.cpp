@@ -239,7 +239,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
             {
                 ::HIR::TypeRef tmp;
                 const auto& ty = state.get_static_type(tmp, path);
-                MIR_ASSERT(state, ty.m_data.is_Array(), "BorrowOf returning slice not of an array");
+                MIR_ASSERT(state, ty.m_data.is_Array(), "BorrowOf returning slice not of an array, instead " << ty);
                 unsigned int size = ty.m_data.as_Array().size_val;
                 
                 auto ptr_type = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared,

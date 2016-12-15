@@ -480,12 +480,21 @@ namespace {
             }
         }
         
+        ::HIR::Linkage deserialise_linkage()
+        {
+            return ::HIR::Linkage {
+                ::HIR::Linkage::Type::Auto,
+                m_in.read_string(),
+                };
+        }
+        
         // - Value items
         ::HIR::Function deserialise_function()
         {
             TRACE_FUNCTION;
             
             ::HIR::Function rv {
+                deserialise_linkage(),
                 static_cast< ::HIR::Function::Receiver>( m_in.read_tag() ),
                 m_in.read_string(),
                 m_in.read_bool(),
@@ -524,6 +533,7 @@ namespace {
             TRACE_FUNCTION;
             
             return ::HIR::Static {
+                deserialise_linkage(),
                 m_in.read_bool(),
                 deserialise_type(),
                 ::HIR::ExprPtr {},
