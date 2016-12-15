@@ -340,16 +340,16 @@ namespace {
                 return retval;
                 ),
             (Field,
-                TODO(sp, "LValue::Field");
+                TODO(sp, "LValue::Field - " << lv);
                 ),
             (Deref,
-                TODO(sp, "LValue::Deref");
+                TODO(sp, "LValue::Deref - " << lv);
                 ),
             (Index,
-                TODO(sp, "LValue::Index");
+                TODO(sp, "LValue::Index - " << lv);
                 ),
             (Downcast,
-                TODO(sp, "LValue::Downcast");
+                TODO(sp, "LValue::Downcast - " << lv);
                 )
             )
             throw "";
@@ -450,16 +450,22 @@ namespace {
                         MIR_BUG(state, "Only shared borrows are allowed in constants");
                     }
                     
-                    auto inner_val = read_lval(e.val);
-                    
-                    ::HIR::TypeRef  inner_ty;
-                    const auto& inner_ty_r = state.get_lvalue_type(inner_ty, e.val);
-                    if( &inner_ty_r != &inner_ty )
-                        inner_ty = inner_ty_r.clone();
-                    
-                    // Create new static containing borrowed data
-                    auto item_path = newval_state.new_static( mv$(inner_ty), mv$(inner_val) );
-                    val = ::HIR::Literal::make_BorrowOf( mv$(item_path) );
+                    if( e.val.is_Static() ) {
+                        // Borrow of a static, emit BorrowOf with the same path
+                        val = ::HIR::Literal::make_BorrowOf( e.val.as_Static().clone() );
+                    }
+                    else {
+                        auto inner_val = read_lval(e.val);
+                        
+                        ::HIR::TypeRef  inner_ty;
+                        const auto& inner_ty_r = state.get_lvalue_type(inner_ty, e.val);
+                        if( &inner_ty_r != &inner_ty )
+                            inner_ty = inner_ty_r.clone();
+                        
+                        // Create new static containing borrowed data
+                        auto item_path = newval_state.new_static( mv$(inner_ty), mv$(inner_val) );
+                        val = ::HIR::Literal::make_BorrowOf( mv$(item_path) );
+                    }
                     ),
                 (Cast,
                     auto inval = read_lval(e.val);
