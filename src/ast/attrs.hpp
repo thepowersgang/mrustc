@@ -87,7 +87,7 @@ public:
     
     bool has_sub_items() const { return m_data.is_List(); }
     const ::std::vector<MetaItem>& items() const { return m_data.as_List().sub_items; }
-    //::std::vector<MetaItem>& items() { return m_data.as_List().sub_items; }
+          ::std::vector<MetaItem>& items()       { return m_data.as_List().sub_items; }
     
     friend ::std::ostream& operator<<(::std::ostream& os, const MetaItem& x) {
         os << x.m_name;

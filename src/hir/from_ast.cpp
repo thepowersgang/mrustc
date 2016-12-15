@@ -1060,6 +1060,19 @@ namespace {
     
     ::HIR::Linkage  linkage;
     
+    if( const auto* a = attrs.get("link_name") )
+    {
+        if( !a->has_string() )
+            ERROR(sp, E0000, "#[link_name] requires a string");
+        linkage.name = a->string();
+    }
+    // TODO: Convert #[link/link_name/no_mangle] attributes into linkage
+    // - Also, if there's no code, it's an external linkage?
+    if( linkage.name == "" && ! f.code().is_valid() )
+    {
+        linkage.name = p.get_name();
+    }
+    
     return ::HIR::Function {
         mv$(linkage),
         receiver,

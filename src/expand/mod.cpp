@@ -47,13 +47,17 @@ void Expand_Attr(const Span& sp, const ::AST::MetaItem& a, AttrStage stage,  ::s
         }
     }
 }
-void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::MetaItem& a)> f)
+void Expand_Attrs(/*const */::AST::MetaItems& attrs, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::MetaItem& a)> f)
 {
     for( auto& a : attrs.m_items )
     {
         if( a.name() == "cfg_attr" ) {
             if( check_cfg(attrs.m_span, a.items().at(0)) ) {
-                Expand_Attr(attrs.m_span, a.items().at(1), stage, f);
+                auto inner_attr = mv$(a.items().at(1));
+                Expand_Attr(attrs.m_span, inner_attr, stage, f);
+                a = mv$(inner_attr);
+            }
+            else {
             }
         }
         else {
@@ -61,11 +65,11 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::std::functi
         }
     }
 }
-void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate, const ::AST::Path& path, ::AST::Module& mod, ::AST::Item& item)
+void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate, const ::AST::Path& path, ::AST::Module& mod, ::AST::Item& item)
 {
     Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, path, mod, item); });
 }
-void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate, ::AST::Module& mod, ::AST::ImplDef& impl)
+void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate, ::AST::Module& mod, ::AST::ImplDef& impl)
 {
     Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mod, impl); });
 }

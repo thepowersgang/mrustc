@@ -373,10 +373,18 @@ namespace {
             m_of << "// extern \"" << item.m_abi << "\" " << p << "\n";
             m_of << "extern ";
             emit_function_header(p, item, params);
+            if( item.m_linkage.name != "" )
+            {
+                m_of << " asm(\"" << item.m_linkage.name << "\")";
+            }
             m_of << ";\n";
         }
         void emit_function_proto(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) override
         {
+            if( item.m_linkage.name != "" )
+            {
+                m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
+            }
             emit_function_header(p, item, params);
             m_of << ";\n";
         }

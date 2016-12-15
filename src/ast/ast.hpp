@@ -390,6 +390,7 @@ public:
     // Accessors
     const Span& span() const { return m_span; }
     const MetaItems& attrs() const { return m_attrs; }
+          MetaItems& attrs()       { return m_attrs; }
     
     const GenericParams& params() const { return m_params; }
           GenericParams& params()       { return m_params; }
