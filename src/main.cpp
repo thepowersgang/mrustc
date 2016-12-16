@@ -271,6 +271,14 @@ int main(int argc, char *argv[])
             return 0;
         }
         
+        // Allocator and panic strategies
+        if( crate.m_crate_type == ::AST::Crate::Type::Executable )
+        {
+            // TODO: Detect if an allocator crate is already present.
+            crate.load_extern_crate(Span(), "alloc_system");
+            crate.load_extern_crate(Span(), "panic_abort");
+        }
+        
         // Resolve names to be absolute names (include references to the relevant struct/global/function)
         // - This does name checking on types and free functions.
         // - Resolves all identifiers/paths to references
