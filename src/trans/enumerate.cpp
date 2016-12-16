@@ -13,6 +13,7 @@
 #include <mir/mir.hpp>
 #include <hir_typeck/common.hpp>    // monomorph
 #include <hir_typeck/static.hpp>    // StaticTraitResolve
+#include <hir/item_path.hpp>
 
 
 void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const ::HIR::Function& function, TransList_Function& fcn_out, Trans_Params pp={});
@@ -46,6 +47,8 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
         assert(ptr);
         Trans_Enumerate_FillFrom(rv, crate,  fcn, *ptr);
     }
+    
+    // TODO: Search the trans list for external functions that refer to a named symbol, search for that defined elsewhere.
     
     return rv;
 }
@@ -523,12 +526,69 @@ void Trans_Enumerate_FillFrom_Literal(TransList& out, const ::HIR::Crate& crate,
     )
 }
 
+namespace {
+    ::HIR::Function* find_function_by_link_name(const ::HIR::Module& mod, ::HIR::ItemPath mod_path,  const char* name,  ::HIR::SimplePath& out_path)
+    {
+        for(const auto& vi : mod.m_value_items)
+        {
+            TU_IFLET( ::HIR::ValueItem, vi.second->ent, Function, i,
+                if( i.m_code.m_mir && i.m_linkage.name != "" && i.m_linkage.name == name )
+                {
+                    out_path = (mod_path + vi.first.c_str()).get_simple_path();
+                    return &i;
+                }
+            )
+        }
+        
+        for(const auto& ti : mod.m_mod_items)
+        {
+            TU_IFLET( ::HIR::TypeItem, ti.second->ent, Module, i,
+                if( auto rv = find_function_by_link_name(i, mod_path + ti.first.c_str(), name,  out_path) )
+                    return rv;
+            )
+        }
+        
+        return nullptr;
+    }
+    ::HIR::Function* find_function_by_link_name(const ::HIR::Crate& crate, const char* name,  ::HIR::SimplePath& out_path)
+    {
+        if(auto rv = find_function_by_link_name(crate.m_root_module, {}, name, out_path))
+            return rv;
+        for(const auto& e_crate : crate.m_ext_crates)
+        {
+            if(auto rv = find_function_by_link_name(e_crate.second->m_root_module, {}, name,  out_path))
+            {
+                out_path.m_crate_name = e_crate.first;
+                return rv;
+            }
+        }
+        return nullptr;
+    }
+}
+
 void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const ::HIR::Function& function, TransList_Function& out_fcn, Trans_Params pp)
 {
     TRACE_FUNCTION_F("Function pp=" << pp.pp_method<<"+"<<pp.pp_impl);
     if( function.m_code.m_mir )
     {
         Trans_Enumerate_FillFrom_MIR(out, crate, *function.m_code.m_mir, pp);
+    }
+    else
+    {
+        if( function.m_linkage.name != "" )
+        {
+            // Search for a function with the same linkage name anywhere in the loaded crates
+            ::HIR::SimplePath   path;
+            if(const auto* f = find_function_by_link_name(crate, function.m_linkage.name.c_str(), path))
+            {
+                auto path_mono = ::HIR::Path( mv$(path) );
+                if( auto* ptr = out.add_function(mv$(path_mono)) )
+                {
+                    Trans_Enumerate_FillFrom(out,crate, *f, *ptr, Trans_Params(pp.sp));
+                }
+            }
+        }
+        // External.
     }
     out_fcn.ptr = &function;
     out_fcn.pp = mv$(pp);
