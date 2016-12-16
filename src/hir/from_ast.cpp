@@ -1060,14 +1060,31 @@ namespace {
     
     ::HIR::Linkage  linkage;
     
+    // Convert #[link_name/no_mangle] attributes into the name
     if( const auto* a = attrs.get("link_name") )
     {
         if( !a->has_string() )
             ERROR(sp, E0000, "#[link_name] requires a string");
         linkage.name = a->string();
     }
-    // TODO: Convert #[link/link_name/no_mangle] attributes into linkage
-    // - Also, if there's no code, it's an external linkage?
+    else if( const auto* a = attrs.get("no_mangle") )
+    {
+        (void)a;
+        linkage.name = p.get_name();
+    }
+    else if( const auto* a = attrs.get("lang") )
+    {
+        if( a->string() == "panic_fmt")
+        {
+            linkage.name = "rust_begin_unwind";
+        }
+    }
+    else
+    {
+        // Leave linkage.name as empty
+    }
+    
+    // If there's no code, demangle the name (TODO: By ABI) and set linkage.
     if( linkage.name == "" && ! f.code().is_valid() )
     {
         linkage.name = p.get_name();
