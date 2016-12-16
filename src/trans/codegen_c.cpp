@@ -50,7 +50,10 @@ namespace {
                 << "typedef struct { } tTYPEID;\n"
                 << "typedef struct { void* PTR; size_t META; } SLICE_PTR;\n"
                 << "typedef struct { void* PTR; void* META; } TRAITOBJ_PTR;\n"
-                << "\n";
+                << "\n"
+                << "extern void _Unwind_Resume(void);\n"
+                << "\n"
+                ;
         }
         
         ~CodeGenerator_C() {}
@@ -60,7 +63,7 @@ namespace {
             m_of
                 << "int main(int argc, const char* argv[]) {\n"
                 << "\t" << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) ) << "("
-                    << Trans_Mangle( ::HIR::GenericPath(::HIR::SimplePath("", {"main"})) ) << ", argc, argv"
+                    << "(uint8_t*)" << Trans_Mangle( ::HIR::GenericPath(::HIR::SimplePath("", {"main"})) ) << ", argc, (uint8_t**)argv"
                     << ");\n"
                 << "}\n";
         }
