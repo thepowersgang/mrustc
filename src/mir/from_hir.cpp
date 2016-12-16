@@ -1089,6 +1089,7 @@ namespace {
                     }
                     ),
                 (TraitObject,
+                    #if 0
                     // TODO: Obtain the vtable if the destination is a trait object
                     // vtable exists as an unnamable associated type
                     const auto& trait = *e.m_trait.m_trait_ptr;
@@ -1115,6 +1116,9 @@ namespace {
                         );
                     
                     m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(vtable_lval) }) );
+                    #else
+                    m_builder.set_result( node.span(), ::MIR::RValue::make_Cast({ mv$(ptr_lval), node.m_res_type.clone() }) );
+                    #endif
                     )
                 )
             }

@@ -524,7 +524,8 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             if( src_ty.m_data.is_TraitObject() )
             {
                 out_src_is_dst = true;
-                out_meta_val = ::MIR::RValue::make_DstMeta({ ptr_value.clone() });
+                auto deref_ptr_val = ::MIR::LValue::make_Deref({ box$(ptr_value.clone()) });
+                out_meta_val = ::MIR::RValue::make_DstMeta({ mv$(deref_ptr_val) });
             }
             else
             {
@@ -551,7 +552,8 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         if( source_is_dst )
         {
             auto ty_unit_ptr = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit());
-            auto thin_ptr_lval = mutator.in_temporary( mv$(ty_unit_ptr), ::MIR::RValue::make_DstPtr({ mv$(ptr_value) }) );
+            auto deref_ptr_val = ::MIR::LValue::make_Deref({ box$(ptr_value) });
+            auto thin_ptr_lval = mutator.in_temporary( mv$(ty_unit_ptr), ::MIR::RValue::make_DstPtr({ mv$(deref_ptr_val) }) );
             
             return ::MIR::RValue::make_MakeDst({ mv$(thin_ptr_lval), mv$(meta_lval) });
         }
@@ -901,10 +903,11 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     const auto& src_ty = state.get_lvalue_type(tmp, e.val);
                     // TODO: Unsize and CoerceUnsized operations
                     // - Unsize should create a fat pointer if the pointer class is known (vtable or len)
-                    TU_IFLET( ::HIR::TypeRef::Data, e.type.m_data, Borrow, te
+                    TU_IFLET( ::HIR::TypeRef::Data, e.type.m_data, Borrow, te,
                         //  > & -> & = Unsize, create DST based on the pointer class of the destination.
                         // (&-ptr being destination is otherwise invalid)
                         // TODO Share with the CoerceUnsized handling?
+                        se.src = MIR_Cleanup_CoerceUnsized(state, mutator, e.type, src_ty, mv$(e.val));
                     )
                     // Casts to PhantomData are only valid from PhandomData, and are added by _CoerceUnsized
                     else if( state.m_resolve.is_type_phantom_data(e.type) )
