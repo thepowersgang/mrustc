@@ -188,7 +188,38 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
         }
         else if( te.binding.is_Enum() )
         {
-            MIR_TODO(state, "Enum constant");
+            const auto& enm = *te.binding.as_Enum();
+            const auto& lit_var = lit.as_Variant();
+            
+            auto monomorph = [&](const auto& tpl) { return monomorphise_type(state.sp, enm.m_params, te.path.m_data.as_Generic().m_params, tpl); };
+            
+            ::std::vector< ::MIR::LValue>   lvals;
+            MIR_ASSERT(state, lit_var.idx < enm.m_variants.size(), "Variant index out of range");
+            TU_MATCHA( (enm.m_variants[lit_var.idx].second), (ve),
+            (Unit,
+                ),
+            (Value,
+                ),
+            (Tuple,
+                MIR_ASSERT(state, lit_var.vals.size() == ve.size(), "Value count mismatch in literal for " << ty << " #" << lit_var.idx << " - exp " << ve.size() << ", " << lit);
+                for(unsigned int i = 0; i < ve.size(); i ++)
+                {
+                    auto ent_ty = monomorph(ve[i].ent);
+                    auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, lit_var.vals[i], ent_ty.clone(), ::HIR::GenericPath());
+                    lvals.push_back( mutator.in_temporary(mv$(ent_ty), mv$(rval)) );
+                }
+                ),
+            (Struct,
+                MIR_ASSERT(state, lit_var.vals.size() == ve.size(), "Value count mismatch in literal for " << ty << " #" << lit_var.idx << " - exp " << ve.size() << ", " << lit);
+                for(unsigned int i = 0; i < ve.size(); i ++)
+                {
+                    auto ent_ty = monomorph(ve[i].second.ent);
+                    auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, lit_var.vals[i], ent_ty.clone(), ::HIR::GenericPath());
+                    lvals.push_back( mutator.in_temporary(mv$(ent_ty), mv$(rval)) );
+                }
+                )
+            )
+            return ::MIR::RValue::make_Struct({ te.path.m_data.as_Generic().clone(), lit_var.idx, mv$(lvals) });
         }
         else
         {
