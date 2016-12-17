@@ -318,42 +318,67 @@ namespace {
         locals.resize( fcn.named_variables.size() );
         temps.resize( fcn.temporaries.size() );
         
-        auto get_lval = [&](const ::MIR::LValue& lv) -> ::HIR::Literal& {
-            TU_MATCHA( (lv), (e),
-            (Variable,
-                if( e >= locals.size() )
-                    BUG(sp, "Local index out of range - " << e << " >= " << locals.size());
-                return locals[e];
-                ),
-            (Temporary,
-                if( e.idx >= temps.size() )
-                    BUG(sp, "Temp index out of range - " << e.idx << " >= " << temps.size());
-                return temps[e.idx];
-                ),
-            (Argument,
-                return args[e.idx];
-                ),
-            (Static,
-                TODO(sp, "LValue::Static - " << e);
-                ),
-            (Return,
-                return retval;
-                ),
-            (Field,
-                TODO(sp, "LValue::Field - " << lv);
-                ),
-            (Deref,
-                TODO(sp, "LValue::Deref - " << lv);
-                ),
-            (Index,
-                TODO(sp, "LValue::Index - " << lv);
-                ),
-            (Downcast,
-                TODO(sp, "LValue::Downcast - " << lv);
+        struct LocalState {
+            typedef ::std::vector< ::HIR::Literal>  t_vec_lit;
+            ::MIR::TypeResolve& state;
+            ::HIR::Literal&  retval;
+            ::std::vector< ::HIR::Literal>&  locals;
+            ::std::vector< ::HIR::Literal>&  temps;
+            ::std::vector< ::HIR::Literal>&  args;
+            
+            LocalState(::MIR::TypeResolve& state, ::HIR::Literal& retval, t_vec_lit& locals, t_vec_lit& temps, t_vec_lit& args):
+                state(state),
+                retval(retval),
+                locals(locals),
+                temps(temps),
+                args(args)
+            {}
+            
+            ::HIR::Literal& get_lval(const ::MIR::LValue& lv)
+            {
+                TU_MATCHA( (lv), (e),
+                (Variable,
+                    if( e >= locals.size() )
+                        MIR_BUG(state, "Local index out of range - " << e << " >= " << locals.size());
+                    return locals[e];
+                    ),
+                (Temporary,
+                    if( e.idx >= temps.size() )
+                        MIR_BUG(state, "Temp index out of range - " << e.idx << " >= " << temps.size());
+                    return temps[e.idx];
+                    ),
+                (Argument,
+                    return args[e.idx];
+                    ),
+                (Static,
+                    MIR_TODO(state, "LValue::Static - " << e);
+                    ),
+                (Return,
+                    return retval;
+                    ),
+                (Field,
+                    auto& val = get_lval(*e.val);
+                    MIR_ASSERT(state, val.is_List(), "LValue::Field on non-list literal - " << val.tag_str() << " - " << lv);
+                    auto& vals = val.as_List();
+                    MIR_ASSERT(state, e.field_index < vals.size(), "LValue::Field index out of range");
+                    return vals[ e.field_index ];
+                    ),
+                (Deref,
+                    MIR_TODO(state, "LValue::Deref - " << lv);
+                    ),
+                (Index,
+                    MIR_TODO(state, "LValue::Index - " << lv);
+                    ),
+                (Downcast,
+                    MIR_TODO(state, "LValue::Downcast - " << lv);
+                    )
                 )
-            )
-            throw "";
-            };
+                throw "";
+            }
+        };
+        LocalState  local_state( state, retval, locals, temps, args );
+        
+        auto get_lval = [&](const ::MIR::LValue& lv) -> ::HIR::Literal& { return local_state.get_lval(lv); };
         auto read_lval = [&](const ::MIR::LValue& lv) -> ::HIR::Literal {
             auto& v = get_lval(lv);
             TU_MATCH_DEF(::HIR::Literal, (v), (e),
