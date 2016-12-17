@@ -425,6 +425,12 @@ namespace {
             for(unsigned int i = 0; i < code->blocks.size(); i ++)
             {
                 TRACE_FUNCTION_F(p << " bb" << i);
+                
+                if( code->blocks[i].statements.size() == 0 && code->blocks[i].terminator.is_Diverge() ) {
+                    DEBUG("- Diverge only, omitting");
+                m_of << "bb" << i << ": _Unwind_Resume(); // Diverge\n";
+                    continue ;
+                }
             
                 m_of << "bb" << i << ":\n";
                 
@@ -622,12 +628,18 @@ namespace {
                             emit_lvalue(ve.val_r);
                             ),
                         (UniOp,
+                            ::HIR::TypeRef  tmp;
                             emit_lvalue(e.dst);
                             m_of << " = ";
                             switch(ve.op)
                             {
                             case ::MIR::eUniOp::NEG:    m_of << "-";    break;
-                            case ::MIR::eUniOp::INV:    m_of << "~";    break;
+                            case ::MIR::eUniOp::INV:
+                                if( mir_res.get_lvalue_type(tmp, e.dst) == ::HIR::CoreType::Bool )
+                                    m_of << "!";
+                                else
+                                    m_of << "~";
+                                break;
                             }
                             emit_lvalue(ve.val);
                             ),
@@ -945,6 +957,7 @@ namespace {
                     m_of << "\tgoto bb" << e.ret_block << ";\n";
                     )
                 )
+                m_of << "\t// ^ " << code->blocks[i].terminator << "\n";
             }
             m_of << "}\n";
             m_of.flush();
