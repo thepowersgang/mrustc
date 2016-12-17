@@ -1406,8 +1406,9 @@ namespace {
             auto next_block = m_builder.new_bb_unlinked();
             auto res = m_builder.new_temporary( node.m_res_type );
             
+            bool unconditional_diverge = false;
+            
             // Emit intrinsics as a special call type
-            // TODO: Should the parameters be stored? (trans has get_lvalue_type, so no 100% needed)
             if( node.m_path.m_data.is_Generic() )
             {
                 const auto& gpath = node.m_path.m_data.as_Generic();
@@ -1419,6 +1420,11 @@ namespace {
                         res.clone(), ::MIR::CallTarget::make_Intrinsic({ gpath.m_path.m_components.back(), gpath.m_params.clone() }),
                         mv$(values)
                         }));
+                }
+                
+                if( fcn.m_return.m_data.is_Diverge() )
+                {
+                    unconditional_diverge = true;
                 }
             }
             
@@ -1437,6 +1443,16 @@ namespace {
             m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
             
             m_builder.set_cur_block( next_block );
+
+            // If the function doesn't return, early-terminate the return block.
+            if( unconditional_diverge )
+            {
+                m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+                m_builder.set_cur_block( m_builder.new_bb_unlinked() );
+            }
+            else
+            {
+            }
             m_builder.set_result( node.span(), mv$(res) );
         }
         
