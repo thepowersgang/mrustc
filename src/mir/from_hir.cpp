@@ -551,13 +551,29 @@ namespace {
         {
             TRACE_FUNCTION_FR("_If", "_If");
             
-            this->visit_node_ptr(node.m_cond);
+            bool reverse = false;
+            {
+                auto* cond_p = &node.m_cond;
+                while( auto* cond_uni = dynamic_cast<::HIR::ExprNode_UniOp*>(cond_p->get()) )
+                {
+                    ASSERT_BUG(cond_uni->span(), cond_uni->m_op == ::HIR::ExprNode_UniOp::Op::Invert, "");
+                    cond_p = &cond_uni->m_value;
+                    reverse = !reverse;
+                }
+                
+                this->visit_node_ptr(*cond_p);
+            }
             auto decision_val = m_builder.get_result_in_lvalue(node.m_cond->span(), node.m_cond->m_res_type);
             
             auto true_branch = m_builder.new_bb_unlinked();
             auto false_branch = m_builder.new_bb_unlinked();
             auto next_block = m_builder.new_bb_unlinked();
-            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(decision_val), true_branch, false_branch }) );
+            if( reverse ) {
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(decision_val), false_branch, true_branch }) );
+            }
+            else {
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(decision_val), true_branch, false_branch }) );
+            }
             
             auto result_val = m_builder.new_temporary(node.m_res_type);
             

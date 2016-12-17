@@ -45,7 +45,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     TRACE_FUNCTION_F(path);
     ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
     
-    // 1. Replace targets that point to a block that is just a goto
+    // >> Replace targets that point to a block that is just a goto
     for(auto& block : fcn.blocks)
     {
         TU_MATCHA( (block.terminator), (e),
@@ -74,6 +74,66 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             )
         )
     }
+    
+    // >> Merge blocks where a block goto-s to a single-use block.
+    {
+        ::std::vector<unsigned int> uses( fcn.blocks.size() );
+        for(auto& block : fcn.blocks)
+        {
+            TU_MATCHA( (block.terminator), (e),
+            (Incomplete,
+                ),
+            (Return,
+                ),
+            (Diverge,
+                ),
+            (Goto,
+                uses[e] ++;
+                ),
+            (Panic,
+                ),
+            (If,
+                uses[e.bb0] ++;
+                uses[e.bb1] ++;
+                ),
+            (Switch,
+                for(auto& target : e.targets)
+                    uses[target] ++;
+                ),
+            (Call,
+                uses[e.ret_block] ++;
+                uses[e.panic_block] ++;
+                )
+            )
+        }
+         
+        unsigned int i = 0;
+        for(auto& block : fcn.blocks)
+        {
+            while( block.terminator.is_Goto() )
+            {
+                auto tgt = block.terminator.as_Goto();
+                if( uses[tgt] != 1 )
+                    break ;
+                DEBUG("Append bb " << tgt << " to bb" << i);
+                
+                assert( &fcn.blocks[tgt] != &block );
+                
+                for(auto& stmt : fcn.blocks[tgt].statements)
+                    block.statements.push_back( mv$(stmt) );
+                block.terminator = mv$( fcn.blocks[tgt].terminator );
+            }
+            i ++;
+        }
+    }
+    
+    // >> Combine Duplicate Blocks
+    // TODO:
+
+    
+    // >> Propagate dead assignments
+    // TODO: This requires kowing that doing so has no effect.
+    // - Can use little heristics like a Call pointing to an assignment of its RV
     
     // GC pass on blocks and variables
     // - Find unused blocks, then delete and rewrite all references.
