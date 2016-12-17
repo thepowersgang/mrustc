@@ -168,7 +168,7 @@ int main(int argc, char *argv[])
     Cfg_SetValue("target_os", "linux");
     Cfg_SetValue("target_pointer_width", "64");
     Cfg_SetValue("target_endian", "little");
-    Cfg_SetValue("target_arch", "x86");
+    Cfg_SetValue("target_arch", "x86_64");
     Cfg_SetValue("target_env", "gnu");
     Cfg_SetValueCb("target_has_atomic", [](const ::std::string& s) {
         if(s == "8")    return true;    // Has an atomic byte
