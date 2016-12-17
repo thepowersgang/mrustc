@@ -220,7 +220,7 @@ public:
             return -static_cast<int64_t>(va);
         }
         else {
-            return -static_cast<uint64_t>(va);
+            return static_cast<int64_t>(va);
         }
     }
     double read_double() {
