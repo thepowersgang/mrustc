@@ -791,11 +791,18 @@ namespace {
                         else if( name == "transmute" ) {
                             m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &"; emit_lvalue(e.args.at(0)); m_of << ", sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
                         }
-                        else if( name == "copy_nonoverlapping" ) {
-                            m_of << "memcpy( "; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", "; emit_lvalue(e.args.at(2)); m_of << ")";
-                        }
-                        else if( name == "copy" ) {
-                            m_of << "memmove( "; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", "; emit_lvalue(e.args.at(2)); m_of << ")";
+                        else if( name == "copy_nonoverlapping" || name == "copy" ) {
+                            if( name == "copy" ) {
+                                m_of << "memmove";
+                            }
+                            else {
+                                m_of << "memcpy";
+                            }
+                            // 0: Source, 1: Destination, 2: Count
+                            m_of << "( "; emit_lvalue(e.args.at(1));
+                                m_of << ", "; emit_lvalue(e.args.at(0));
+                                m_of << ", "; emit_lvalue(e.args.at(2)); m_of << " * sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
+                                m_of << ")";
                         }
                         else if( name == "forget" ) {
                             // Nothing needs to be done, this just stops the destructor from running.
