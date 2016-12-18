@@ -86,7 +86,130 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     // - [ValState] No drops or usage of uninitalised values (Uninit, Moved, or Dropped)
     // - [ValState] Temporaries are write-once.
     //  - Requires maintaining state information for all variables/temporaries with support for loops
-    //  - 
+    {
+        // > Iterate through code, creating state maps. Save map at the start of each bb.
+        struct ValStates {
+            enum class State {
+                Invalid,
+                Either,
+                Valid,
+            };
+            ::std::vector<State> arguments;
+            ::std::vector<State> temporaries;
+            ::std::vector<State> variables;
+            
+            ValStates() {}
+            ValStates(size_t n_args, size_t n_temps, size_t n_vars):
+                arguments(n_args, State::Valid),
+                temporaries(n_temps),
+                variables(n_vars)
+            {
+            }
+            
+            bool empty() const {
+                return arguments.empty() && temporaries.empty() && variables.empty();
+            }
+            
+            bool merge(ValStates& other)
+            {
+                if( this->empty() )
+                {
+                    *this = other;
+                    return true;
+                }
+                else if( this->arguments == other.arguments && this->temporaries == other.temporaries && this->variables == other.variables )
+                {
+                    return false;
+                }
+                else
+                {
+                    bool rv = false;
+                    rv |= ValStates::merge_lists(this->arguments, other.arguments);
+                    rv |= ValStates::merge_lists(this->temporaries, other.temporaries);
+                    rv |= ValStates::merge_lists(this->variables, other.variables);
+                    return rv;
+                }
+            }
+        private:
+            static bool merge_lists(::std::vector<State>& a, ::std::vector<State>& b)
+            {
+                bool rv = false;
+                assert( a.size() == b.size() );
+                for(unsigned int i = 0; a.size(); i++)
+                {
+                    if( a[i] != b[i] ) {
+                        if( a[i] == State::Either || b[i] == State::Either ) {
+                            rv = true;
+                        }
+                        a[i] = b[i] = State::Either;
+                    }
+                }
+                return rv;
+            }
+        };
+        ::std::vector< ValStates>   block_start_states( fcn.blocks.size() );
+        ::std::vector< ::std::pair<unsigned int, ValStates> > to_visit_blocks;
+        to_visit_blocks.push_back( ::std::make_pair(0, ValStates{ args.size(), fcn.temporaries.size(), fcn.named_variables.size() }) );
+        while( to_visit_blocks.size() > 0 )
+        {
+            auto block = to_visit_blocks.back().first;
+            auto val_state = mv$( to_visit_blocks.back().second );
+            to_visit_blocks.pop_back();
+            assert(block < fcn.blocks.size());
+            
+            // 1. Apply current state to `block_start_states` (merging if needed)
+            // - If no change happened, skip.
+            if( ! block_start_states.at(block).merge( val_state ) ) {
+                continue ;
+            }
+
+            // 2. Using the newly merged state, iterate statements checking the usage and updating state.
+            const auto& bb = fcn.blocks[block];
+            for(unsigned int stmt_idx = 0; stmt_idx < bb.statements.size(); stmt_idx ++)
+            {
+                const auto& stmt = bb.statements[stmt_idx];
+                state.set_cur_stmt(block, stmt_idx);
+                
+                if( stmt.is_Drop() )
+                {
+                    // TODO: Invalidate the slot
+                }
+                else
+                {
+                    assert( stmt.is_Assign() );
+                    // TODO: Check source
+                    // TODO: Mark destination as valid
+                }
+            }
+
+            // 3. Pass new state on to destination blocks
+            state.set_cur_stmt_term(block);
+            TU_MATCH(::MIR::Terminator, (bb.terminator), (e),
+            (Incomplete,
+                // Should be impossible here.
+                ),
+            (Return,
+                // TODO: Check if the return value has been set
+                ),
+            (Diverge,
+                ),
+            (Goto,
+                // TODO: Push block.
+                ),
+            (Panic,
+                ),
+            (If,
+                // TODO: Push blocks
+                ),
+            (Switch,
+                // TODO: Push blocks
+                ),
+            (Call,
+                // TODO: Push blocks (with return valid only in one)
+                )
+            )
+        }
+    }
 
     // [Flat] = Basic checks (just iterates BBs)
     // - [Flat] Types must be valid (correct type for slot etc.)
