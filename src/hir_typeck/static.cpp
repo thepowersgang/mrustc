@@ -106,6 +106,11 @@ bool StaticTraitResolve::find_impl(
                 return found_cb( ImplRef(&type, &null_params, &null_assoc), false );
             }
         }
+        //else if( trait_path == m_lang_Unsize ) {
+        //    if( true ) {
+        //        return found_cb( ImplRef(&type, &null_params, &null_assoc), false );
+        //    }
+        //}
     }
     
     // --- MAGIC IMPLS ---
@@ -388,7 +393,7 @@ bool StaticTraitResolve::find_impl__check_bound(
         // HACK: The wrapping closure takes associated types from this bound and applies them to the returned set
         // - XXX: This is actually wrong (false-positive) in many cases. FIXME
         bool rv = this->find_named_trait_in_trait(sp,
-            trait_path,b_params,
+            trait_path,*trait_params,
             *e.trait.m_trait_ptr, e.trait.m_path.m_path,e.trait.m_path.m_params,
             type,
             [&](const auto& params, auto assoc) {
@@ -1130,7 +1135,7 @@ bool StaticTraitResolve::find_named_trait_in_trait(const Span& sp,
         ::std::function<void(const ::HIR::PathParams&, ::std::map< ::std::string, ::HIR::TypeRef>)> callback
     ) const
 {
-    TRACE_FUNCTION_F(des << " from " << trait_path << pp);
+    TRACE_FUNCTION_F(des << des_params << " from " << trait_path << pp);
     if( pp.m_types.size() != trait_ptr.m_params.m_types.size() ) {
         BUG(sp, "Incorrect number of parameters for trait");
     }

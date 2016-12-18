@@ -138,7 +138,7 @@ namespace {
                 assert(lang_item);
                 const auto& trait_path = this->get_lang_item_path(node.span(), lang_item);
                 
-                check_associated_type(node.span(),  ::HIR::TypeRef(),  trait_path, ::make_vec1(node.m_value->m_res_type.clone()), node.m_slot->m_res_type,  "");
+                check_associated_type(node.span(),  ::HIR::TypeRef(),  trait_path, { node.m_value->m_res_type.clone() }, node.m_slot->m_res_type,  "");
             }
             
             node.m_slot->visit( *this );
@@ -172,7 +172,7 @@ namespace {
                 assert(item_name);
                 const auto& op_trait = this->get_lang_item_path(node.span(), item_name);
                 
-                check_associated_type(node.span(),  ::HIR::TypeRef(),  op_trait, ::make_vec1(node.m_right->m_res_type.clone()), node.m_left->m_res_type,  "");
+                check_associated_type(node.span(),  ::HIR::TypeRef(),  op_trait, { node.m_right->m_res_type.clone() }, node.m_left->m_res_type,  "");
                 break; }
             
             case ::HIR::ExprNode_BinOp::Op::BoolAnd:
@@ -208,7 +208,7 @@ namespace {
                 assert(item_name);
                 const auto& op_trait = this->get_lang_item_path(node.span(), item_name);
                 
-                check_associated_type(node.span(),  node.m_res_type,  op_trait, ::make_vec1(node.m_right->m_res_type.clone()), node.m_left->m_res_type,  "Output");
+                check_associated_type(node.span(),  node.m_res_type,  op_trait, { node.m_right->m_res_type.clone() }, node.m_left->m_res_type,  "Output");
                 break; }
             }
             
@@ -241,7 +241,7 @@ namespace {
             TRACE_FUNCTION_F(&node << " ... [ ... ]");
             check_associated_type(node.span(),
                 node.m_res_type,
-                this->get_lang_item_path(node.span(), "index"), ::make_vec1(node.m_index->m_res_type.clone()), node.m_value->m_res_type, "Target"
+                this->get_lang_item_path(node.span(), "index"), { node.m_index->m_res_type.clone() }, node.m_value->m_res_type, "Target"
                 );
             
             node.m_value->visit( *this );
@@ -330,7 +330,7 @@ namespace {
                 
                 const auto& lang_Unsize = this->get_lang_item_path(node.span(), "unsize");
                 // _ == < `src_ty` as Unsize< `dst_ty` >::""
-                check_associated_type(sp, ::HIR::TypeRef(), lang_Unsize, ::make_vec1( dst_ty.clone() ), src_ty, "");
+                check_associated_type(sp, ::HIR::TypeRef(), lang_Unsize, { dst_ty.clone() }, src_ty, "");
             }
             else if( src_ty.m_data.is_Borrow() || dst_ty.m_data.is_Borrow() )
             {
@@ -340,7 +340,7 @@ namespace {
             {
                 const auto& lang_CoerceUnsized = this->get_lang_item_path(node.span(), "coerce_unsized");
                 // _ == < `src_ty` as CoerceUnsized< `dst_ty` >::""
-                check_associated_type(sp, ::HIR::TypeRef(), lang_CoerceUnsized, ::make_vec1( dst_ty.clone() ), src_ty, "");
+                check_associated_type(sp, ::HIR::TypeRef(), lang_CoerceUnsized, { dst_ty.clone() }, src_ty, "");
             }
             
             node.m_value->visit( *this );
@@ -598,7 +598,7 @@ namespace {
                 cache.m_top_params = &trait.m_params;
                 
                 // Add a bound requiring the Self type impl the trait
-                check_associated_type(sp, ::HIR::TypeRef(), e.trait.m_path, mv$(e.trait.m_params.clone().m_types), *e.type, "");
+                check_associated_type(sp, ::HIR::TypeRef(), e.trait.m_path, e.trait.m_params, *e.type, "");
                 
                 fcn_ptr = &fcn;
                 
@@ -748,7 +748,7 @@ namespace {
                     const auto& trait_params = real_trait.m_params;
                     
                     const auto& trait_path = be.trait.m_path.m_path;
-                    check_associated_type(sp, ::HIR::TypeRef(), trait_path, mv$(trait_params.clone().m_types), real_type, "");
+                    check_associated_type(sp, ::HIR::TypeRef(), trait_path, trait_params, real_type, "");
                     
                     // TODO: Either - Don't include the above impl bound, or change the below trait to the one that has that type
                     for( const auto& assoc : be.trait.m_type_bounds ) {
@@ -757,7 +757,7 @@ namespace {
                         
                         auto other_ty = monomorphise_type_with(sp, assoc.second, cache.m_monomorph_cb, true);
                         
-                        check_associated_type(sp, other_ty,  type_trait_path.m_path, mv$(type_trait_path.m_params.m_types), real_type, assoc.first.c_str());
+                        check_associated_type(sp, other_ty,  type_trait_path.m_path, type_trait_path.m_params, real_type, assoc.first.c_str());
                     }
                     ),
                 (TypeEquality,
@@ -952,7 +952,7 @@ namespace {
                 BUG(sp, "Encountered UfcsUnknown");
                 ),
             (UfcsKnown,
-                check_associated_type(sp, ::HIR::TypeRef(),  e.trait.m_path, mv$(e.trait.m_params.clone().m_types), e.type->clone(), "");
+                check_associated_type(sp, ::HIR::TypeRef(),  e.trait.m_path, e.trait.m_params, e.type->clone(), "");
                 
                 const auto& trait = this->m_resolve.m_crate.get_trait_by_path(sp, e.trait.m_path);
                 auto it = trait.m_values.find( e.item );
@@ -1017,10 +1017,21 @@ namespace {
         }
         void check_associated_type(const Span& sp,
                 const ::HIR::TypeRef& res,  // Expected result
-                const ::HIR::SimplePath& trait, const ::std::vector< ::HIR::TypeRef>& params, const ::HIR::TypeRef& ity, const char* name
+                const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& ity, const char* name
             ) const
         {
             // TODO: Actually check.
+            #if 0
+            bool found = m_resolve.find_impl(sp, trait, &params, ity, [&](auto impl, bool fuzzy){
+                
+                
+                return true;
+                });
+            if( !found )
+            {
+                ERROR(sp, E0000, "Cannot find an impl of " << trait << params << " for " << ity);
+            }
+            #endif
         }
         
         const ::HIR::SimplePath& get_lang_item_path(const Span& sp, const char* name) const
