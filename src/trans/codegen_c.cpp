@@ -190,7 +190,7 @@ namespace {
             // - Drop Glue
             
             if( item.m_markings.has_drop_impl ) {
-                m_of << "void " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(struct s_" << Trans_Mangle(p) << "*rv);\n";
+                m_of << "tUNIT " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(struct s_" << Trans_Mangle(p) << "*rv);\n";
             }
            
             m_of << "void " << Trans_Mangle(drop_glue_path) << "(struct s_" << Trans_Mangle(p) << "* rv) {\n";
@@ -947,6 +947,37 @@ namespace {
                             //emit_lvalue(e.ret_val); m_of << " = alignof("; emit_ctype(params.m_types.at(0)); m_of << ")";
                             emit_lvalue(e.ret_val); m_of << " = __alignof__("; emit_ctype(params.m_types.at(0)); m_of << ")";
                         }
+                        else if( name == "size_of_val" ) {
+                            emit_lvalue(e.ret_val); m_of << " = ";
+                            const auto& ty = params.m_types.at(0);
+                            switch( metadata_type(ty) )
+                            {
+                            case MetadataType::None:
+                                m_of << "sizeof("; emit_ctype(ty); m_of << ")";
+                                break;
+                            case MetadataType::Slice:
+                                MIR_TODO(mir_res, "size_of_val - " << ty);
+                                break;
+                            case MetadataType::TraitObject:
+                                MIR_TODO(mir_res, "size_of_val - " << ty);
+                                break;
+                            }
+                        }
+                        else if( name == "min_align_of_val" ) {
+                            const auto& ty = params.m_types.at(0);
+                            switch( metadata_type(ty) )
+                            {
+                            case MetadataType::None:
+                                m_of << "__alignof__("; emit_ctype(ty); m_of << ")";
+                                break;
+                            case MetadataType::Slice:
+                                MIR_TODO(mir_res, "min_align_of_val - " << ty);
+                                break;
+                            case MetadataType::TraitObject:
+                                MIR_TODO(mir_res, "min_align_of_val - " << ty);
+                                break;
+                            }
+                        }
                         else if( name == "type_id" ) {
                             emit_lvalue(e.ret_val); m_of << " = (uintptr_t)&__typeid_" << Trans_Mangle(params.m_types.at(0));
                         }
@@ -968,6 +999,9 @@ namespace {
                         }
                         else if( name == "forget" ) {
                             // Nothing needs to be done, this just stops the destructor from running.
+                        }
+                        else if( name == "drop_in_place" ) {
+                            emit_destructor_call( ::MIR::LValue::make_Deref({ box$(e.args.at(0).clone()) }), params.m_types.at(0), true );
                         }
                         else if( name == "uninit" ) {
                             // Do nothing, leaves the destination undefined
@@ -1066,7 +1100,14 @@ namespace {
                         else if( name == "atomic_cxchg" || name.compare(0, 7+6, "atomic_cxchg_") == 0 ) {
                             auto ordering = H::get_atomic_ordering(mir_res, name, 7+6);
                             emit_atomic_cxchg(e, ordering, ordering);
-
+                        }
+                        else if( name == "atomic_xchg" || name.compare(0, 7+5, "atomic_xchg_") == 0 ) {
+                            auto ordering = H::get_atomic_ordering(mir_res, name, 7+5);
+                            emit_lvalue(e.ret_val); m_of << " = atomic_exchange_explicit("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
+                        }
+                        else if( name == "atomic_fence" || name.compare(0, 7+6, "atomic_fence_") == 0 ) {
+                            auto ordering = H::get_atomic_ordering(mir_res, name, 7+6);
+                            m_of << "atomic_thread_fence(" << ordering << ")";
                         }
                         else {
                             MIR_BUG(mir_res, "Unknown intrinsic '" << name << "'");
