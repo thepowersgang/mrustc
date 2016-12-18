@@ -337,6 +337,7 @@ namespace {
                 ::MIR::RValue   res;
                 bool diverged = false;
                 
+                auto block_res = m_builder.new_temporary(node.m_res_type);
                 auto scope = m_builder.new_scope_var(node.span());
                 
                 for(unsigned int i = 0; i < node.m_nodes.size()-1; i ++)
@@ -347,6 +348,7 @@ namespace {
                     auto stmt_scope = m_builder.new_scope_temp(sp);
                     this->visit_node_ptr(subnode);
                     if( m_builder.has_result() ) {
+                        // TODO: Drop.
                         m_builder.get_result(sp);
                     }
                     
@@ -371,8 +373,11 @@ namespace {
                     if( m_builder.has_result() || m_builder.block_active() ) {
                         ASSERT_BUG(sp, m_builder.block_active(), "Result yielded, but no active block");
                         ASSERT_BUG(sp, m_builder.has_result(), "Active block but no result yeilded");
-                        // PROBLEM:
+                        // PROBLEM: This can drop the result before we want to use it.
+                        
                         res = m_builder.get_result(sp);
+                        m_builder.raise_variables(sp, res);
+                        
                         m_builder.terminate_scope(sp, mv$(stmt_scope));
                         res_valid = true;
                     }

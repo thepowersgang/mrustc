@@ -336,6 +336,145 @@ void MirBuilder::mark_value_assigned(const Span& sp, const ::MIR::LValue& dst)
     )
 }
 
+void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val)
+{
+    TRACE_FUNCTION_F(val);
+    TU_MATCH_DEF(::MIR::LValue, (val), (e),
+    (
+        ),
+    (Variable,
+        auto idx = e;
+        auto scope_it = m_scope_stack.rbegin();
+        while( scope_it != m_scope_stack.rend() )
+        {
+            auto& scope_def = m_scopes.at(*scope_it);
+            
+            TU_IFLET( ScopeType, scope_def.data, Variables, e,
+                auto tmp_it = ::std::find( e.vars.begin(), e.vars.end(), idx );
+                if( tmp_it != e.vars.end() )
+                {
+                    e.vars.erase( tmp_it );
+                    DEBUG("Move variable " << idx << " from " << *scope_it);
+                    break ;
+                }
+            )
+            ++scope_it;
+        }
+        if( scope_it == m_scope_stack.rend() )
+        {
+            // Temporary wasn't defined in a visible scope?
+            return ;
+        }
+        ++scope_it;
+        
+        while( scope_it != m_scope_stack.rend() )
+        {
+            auto& scope_def = m_scopes.at(*scope_it);
+            
+            TU_IFLET( ScopeType, scope_def.data, Variables, e,
+                e.vars.push_back( idx );
+                DEBUG("- to " << *scope_it);
+                return ;
+            )
+            ++scope_it;
+        }
+        
+        DEBUG("- top");
+        ),
+    (Temporary,
+        auto idx = e.idx;
+        auto scope_it = m_scope_stack.rbegin();
+        while( scope_it != m_scope_stack.rend() )
+        {
+            auto& scope_def = m_scopes.at(*scope_it);
+            
+            TU_IFLET( ScopeType, scope_def.data, Temporaries, e,
+                auto tmp_it = ::std::find( e.temporaries.begin(), e.temporaries.end(), idx );
+                if( tmp_it != e.temporaries.end() )
+                {
+                    e.temporaries.erase( tmp_it );
+                    DEBUG("Move temporary " << idx << " from " << *scope_it);
+                    break ;
+                }
+            )
+            ++scope_it;
+        }
+        if( scope_it == m_scope_stack.rend() )
+        {
+            // Temporary wasn't defined in a visible scope?
+            return ;
+        }
+        ++scope_it;
+        
+        while( scope_it != m_scope_stack.rend() )
+        {
+            auto& scope_def = m_scopes.at(*scope_it);
+            
+            TU_IFLET( ScopeType, scope_def.data, Temporaries, e,
+                e.temporaries.push_back( idx );
+                DEBUG("- to " << *scope_it);
+                return ;
+            )
+            ++scope_it;
+        }
+        
+        DEBUG("- top");
+        )
+    )
+}
+void MirBuilder::raise_variables(const Span& sp, const ::MIR::RValue& rval)
+{
+    TU_MATCHA( (rval), (e),
+    (Use,
+        this->raise_variables(sp, e);
+        ),
+    (Constant,
+        ),
+    (SizedArray,
+        this->raise_variables(sp, e.val);
+        ),
+    (Borrow,
+        // TODO: Wait, is this valid?
+        this->raise_variables(sp, e.val);
+        ),
+    (Cast,
+        this->raise_variables(sp, e.val);
+        ),
+    (BinOp,
+        this->raise_variables(sp, e.val_l);
+        this->raise_variables(sp, e.val_r);
+        ),
+    (UniOp,
+        this->raise_variables(sp, e.val);
+        ),
+    (DstMeta,
+        this->raise_variables(sp, e.val);
+        ),
+    (DstPtr,
+        this->raise_variables(sp, e.val);
+        ),
+    (MakeDst,
+        this->raise_variables(sp, e.ptr_val);
+        this->raise_variables(sp, e.meta_val);
+        ),
+    (Tuple,
+        for(const auto& val : e.vals)
+            this->raise_variables(sp, val);
+        ),
+    (Array,
+        for(const auto& val : e.vals)
+            this->raise_variables(sp, val);
+        ),
+    (Variant,
+        this->raise_variables(sp, e.val);
+        ),
+    (Struct,
+        for(const auto& val : e.vals)
+            this->raise_variables(sp, val);
+        )
+    )
+}
+
 void MirBuilder::set_cur_block(unsigned int new_block)
 {
     ASSERT_BUG(Span(), !m_block_active, "Updating block when previous is active");
@@ -943,19 +1082,18 @@ VarState MirBuilder::get_temp_state(const Span& sp, unsigned int idx) const
     for( auto scope_idx : ::reverse(m_scope_stack) )
     {
         const auto& scope_def = m_scopes.at(scope_idx);
-        TU_MATCH_DEF( ScopeType, (scope_def.data), (e),
-        (
-            ),
-        (Temporaries,
+        if( scope_def.data.is_Temporaries() )
+        {
+            const auto& e = scope_def.data.as_Temporaries();
             auto it = ::std::find(e.temporaries.begin(), e.temporaries.end(), idx);
             if( it != e.temporaries.end() ) {
                 break ;
             }
-            ),
-        (Split,
+        }
+        else if( scope_def.data.is_Split() )
+        {
             // TODO: Does split account for temps? It should.
-            )
-        )
+        }
     }
     
     ASSERT_BUG(sp, idx < m_temporary_states.size(), "Temporary " << idx << " out of range for state table");
@@ -966,19 +1104,18 @@ void MirBuilder::set_temp_state(const Span& sp, unsigned int idx, VarState state
     for( auto scope_idx : ::reverse(m_scope_stack) )
     {
         auto& scope_def = m_scopes.at(scope_idx);
-        TU_MATCH_DEF( ScopeType, (scope_def.data), (e),
-        (
-            ),
-        (Temporaries,
+        if( scope_def.data.is_Temporaries() )
+        {
+            const auto& e = scope_def.data.as_Temporaries();
             auto it = ::std::find(e.temporaries.begin(), e.temporaries.end(), idx);
             if( it != e.temporaries.end() ) {
-                break;
+                break ;
             }
-            ),
-        (Split,
+        }
+        else if( scope_def.data.is_Split() )
+        {
             // TODO: Does split account for temps? It should.
-            )
-        )
+        }
     }
     
     ASSERT_BUG(sp, idx < m_temporary_states.size(), "Temporary " << idx << " out of range for state table");
