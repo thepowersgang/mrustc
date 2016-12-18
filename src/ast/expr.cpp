@@ -251,7 +251,7 @@ NODE(ExprNode_Closure, {
     for(const auto& a : m_args) {
         args.push_back( ::std::make_pair(a.first.clone(), a.second.clone()) );
     }
-    return NEWNODE(ExprNode_Closure, mv$(args), m_return.clone(), m_code->clone());
+    return NEWNODE(ExprNode_Closure, mv$(args), m_return.clone(), m_code->clone(), m_is_move);
 });
 
 NODE(ExprNode_StructLiteral, {

@@ -756,6 +756,7 @@ struct ExprNode_Closure:
     args_t  m_args;
     ::HIR::TypeRef  m_return;
     ::HIR::ExprNodeP    m_code;
+    bool    m_is_move = false;
     
     enum class Class {
         Unknown,
@@ -764,18 +765,18 @@ struct ExprNode_Closure:
         Mut,
         Once,
     } m_class = Class::Unknown;
-    bool    m_is_move = false;
     
     // - Path to the generated closure type
     ::HIR::GenericPath  m_obj_path_base;
     ::HIR::GenericPath  m_obj_path;
     ::std::vector< ::HIR::ExprNodeP>    m_captures;
     
-    ExprNode_Closure(Span sp, args_t args, ::HIR::TypeRef rv, ::HIR::ExprNodeP code):
+    ExprNode_Closure(Span sp, args_t args, ::HIR::TypeRef rv, ::HIR::ExprNodeP code, bool is_move):
         ExprNode(mv$(sp)),
         m_args( ::std::move(args) ),
         m_return( ::std::move(rv) ),
-        m_code( ::std::move(code) )
+        m_code( ::std::move(code) ),
+        m_is_move(is_move)
     {}
     
     NODE_METHODS();

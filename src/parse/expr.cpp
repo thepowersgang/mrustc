@@ -1037,7 +1037,7 @@ ExprNodeP Parse_ExprVal_Closure(TokenStream& lex, bool is_move)
     
     auto code = Parse_Expr0(lex);
     
-    return NEWNODE( AST::ExprNode_Closure, ::std::move(args), ::std::move(rt), ::std::move(code) );
+    return NEWNODE( AST::ExprNode_Closure, ::std::move(args), ::std::move(rt), ::std::move(code), is_move );
 }
 
 ExprNodeP Parse_ExprVal(TokenStream& lex)

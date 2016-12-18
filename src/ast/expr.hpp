@@ -370,11 +370,13 @@ struct ExprNode_Closure:
     args_t  m_args;
     TypeRef m_return;
     unique_ptr<ExprNode>    m_code;
+    bool m_is_move;
     
-    ExprNode_Closure(args_t args, TypeRef rv, unique_ptr<ExprNode> code):
+    ExprNode_Closure(args_t args, TypeRef rv, unique_ptr<ExprNode> code, bool is_move):
         m_args( ::std::move(args) ),
         m_return( ::std::move(rv) ),
-        m_code( ::std::move(code) )
+        m_code( ::std::move(code) ),
+        m_is_move( is_move )
     {}
     
     NODE_METHODS();

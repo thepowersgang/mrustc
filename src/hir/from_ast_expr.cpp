@@ -533,7 +533,8 @@ struct LowerHIR_ExprNode_Visitor:
         m_rv.reset( new ::HIR::ExprNode_Closure( v.span(),
             mv$(args),
             LowerHIR_Type(v.m_return),
-            LowerHIR_ExprNode_Inner(*v.m_code)
+            LowerHIR_ExprNode_Inner(*v.m_code),
+            v.m_is_move
             ) );
     }
     virtual void visit(::AST::ExprNode_StructLiteral& v) override {

@@ -564,9 +564,17 @@ namespace {
             }
 
             
+            // - If this closure is a move closure, mutate `captured_vars` such that all captures are tagged with ValueUsage::Move
+            if( node.m_is_move )
+            {
+                for(auto& cap : ent.captured_vars)
+                {
+                    cap.second = ::HIR::ValueUsage::Move;
+                }
+            }
+            
             DEBUG("--- Mutate inner code");
             // 2. Iterate over the nodes and rewrite variable accesses to either renumbered locals, or field accesses
-            // - TODO: If this closure is a move closure, mutate `captured_vars` such that all captures are tagged with ValueUsage::Move
             ExprVisitor_Mutate    ev { node.m_res_type, ent.local_vars, ent.captured_vars, monomorph_cb };
             ev.visit_node_ptr( node.m_code );
             // NOTE: `ev` is used down in `Args` to convert the argument destructuring pattern
@@ -589,7 +597,7 @@ namespace {
             for(const auto binding : ent.captured_vars)
             {
                 const auto binding_idx = binding.first;
-                const auto binding_type = binding.second;
+                auto binding_type = binding.second;
 
                 const auto& cap_ty = m_variable_types.at(binding_idx);
                 auto ty_mono = monomorphise_type_with(sp, cap_ty, monomorph_cb);
