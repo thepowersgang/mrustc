@@ -232,6 +232,11 @@ namespace {
                 auto _ = push_usage( ::HIR::ValueUsage::Borrow );
                 this->visit_node_ptr(node.m_value);
             }
+            // Pointers only need a borrow to be derefernced.
+            else if( node.m_res_type.m_data.is_Pointer() ) {
+                auto _ = push_usage( ::HIR::ValueUsage::Borrow );
+                this->visit_node_ptr(node.m_value);
+            }
             else {
                 this->visit_node_ptr(node.m_value);
             }
