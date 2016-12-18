@@ -218,6 +218,7 @@ rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
 #rust_tests-compile-fail: $(call DEF_RUST_TESTS,compile-fail)
 
 output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs output/libstd.hir $(BIN) output/liballoc_system.hir output/libpanic_abort.hir
+	@mkdir -p $(dir $@)
 	$(DBG) $(BIN) $< -o $@.c $(PIPECMD)
 	gcc $@.c -pthread -g -o $@
 
