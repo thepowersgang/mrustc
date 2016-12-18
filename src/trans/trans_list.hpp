@@ -57,6 +57,8 @@ public:
     ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Function> > m_functions;
     ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Static> > m_statics;
     ::std::map< ::HIR::Path, Trans_Params> m_vtables;
+    
+    ::std::vector< ::HIR::TypeRef>  m_types;
 
     TransList_Function* add_function(::HIR::Path p);
     TransList_Static* add_static(::HIR::Path p);

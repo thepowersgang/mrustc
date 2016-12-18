@@ -14,222 +14,31 @@
 #include "codegen.hpp"
 #include "monomorphise.hpp"
 
-namespace {
-    struct PtrComp
-    {
-        template<typename T>
-        bool operator()(const T* lhs, const T* rhs) const { return *lhs < *rhs; }
-    };
-    
-    struct TypeVisitor
-    {
-        const ::HIR::Crate& m_crate;
-        CodeGenerator&  codegen;
-        ::std::set< ::HIR::TypeRef> visited;
-        ::std::set< const ::HIR::TypeRef*, PtrComp> active_set;
-        
-        TypeVisitor(const ::HIR::Crate& crate, CodeGenerator& codegen):
-            m_crate(crate),
-            codegen(codegen)
-        {}
-        
-        void visit_struct(const ::HIR::GenericPath& path, const ::HIR::Struct& item) {
-            static Span sp;
-            ::HIR::TypeRef  tmp;
-            auto monomorph = [&](const auto& x)->const auto& {
-                if( monomorphise_type_needed(x) ) {
-                    tmp = monomorphise_type(sp, item.m_params, path.m_params, x);
-                    //m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return x;
-                }
-                };
-            TU_MATCHA( (item.m_data), (e),
-            (Unit,
-                ),
-            (Tuple,
-                for(const auto& fld : e) {
-                    visit_type( monomorph(fld.ent) );
-                }
-                ),
-            (Named,
-                for(const auto& fld : e)
-                    visit_type( monomorph(fld.second.ent) );
-                )
-            )
-            codegen.emit_struct(sp, path, item);
-        }
-        void visit_union(const ::HIR::GenericPath& path, const ::HIR::Union& item) {
-        }
-        void visit_enum(const ::HIR::GenericPath& path, const ::HIR::Enum& item) {
-            static Span sp;
-            ::HIR::TypeRef  tmp;
-            auto monomorph = [&](const auto& x)->const auto& {
-                if( monomorphise_type_needed(x) ) {
-                    tmp = monomorphise_type(sp, item.m_params, path.m_params, x);
-                    //m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return x;
-                }
-                };
-            for(const auto& variant : item.m_variants)
-            {
-                TU_MATCHA( (variant.second), (e),
-                (Unit,
-                    ),
-                (Value,
-                    ),
-                (Tuple,
-                    for(const auto& ty : e)
-                        visit_type( monomorph(ty.ent) );
-                    ),
-                (Struct,
-                    for(const auto& fld : e)
-                        visit_type( monomorph(fld.second.ent) );
-                    )
-                )
-            }
-            
-            codegen.emit_enum(sp, path, item);
-        }
-        
-        void visit_type(const ::HIR::TypeRef& ty)
-        {
-            // Already done
-            if( visited.find(ty) != visited.end() )
-                return ;
-            
-            if( active_set.find(&ty) != active_set.end() ) {
-                // TODO: Handle recursion
-                return ;
-            }
-            active_set.insert( &ty );
-            
-            TU_MATCHA( (ty.m_data), (te),
-            // Impossible
-            (Infer,
-                ),
-            (Generic,
-                ),
-            (ErasedType,
-                ),
-            (Closure,
-                ),
-            // Nothing to do
-            (Diverge,
-                ),
-            (Primitive,
-                ),
-            // Recursion!
-            (Path,
-                TU_MATCHA( (te.binding), (tpb),
-                (Unbound,   ),
-                (Opaque,   ),
-                (Struct,
-                    visit_struct(te.path.m_data.as_Generic(), *tpb);
-                    ),
-                (Union,
-                    visit_union(te.path.m_data.as_Generic(), *tpb);
-                    ),
-                (Enum,
-                    visit_enum(te.path.m_data.as_Generic(), *tpb);
-                    )
-                )
-                ),
-            (TraitObject,
-                static Span sp;
-                // Ensure that the data trait's vtable is present
-                const auto& trait = *te.m_trait.m_trait_ptr;
-                
-                auto vtable_ty_spath = te.m_trait.m_path.m_path;
-                vtable_ty_spath.m_components.back() += "#vtable";
-                const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_ty_spath);
-                // Copy the param set from the trait in the trait object
-                ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
-                // - Include associated types on bound
-                for(const auto& ty_b : te.m_trait.m_type_bounds) {
-                    auto idx = trait.m_type_indexes.at(ty_b.first);
-                    if(vtable_params.m_types.size() <= idx)
-                        vtable_params.m_types.resize(idx+1);
-                    vtable_params.m_types[idx] = ty_b.second.clone();
-                }
-                
-                
-                visit_type( ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
-                ),
-            (Array,
-                visit_type(*te.inner);
-                ),
-            (Slice,
-                visit_type(*te.inner);
-                ),
-            (Borrow,
-                visit_type(*te.inner);
-                ),
-            (Pointer,
-                visit_type(*te.inner);
-                ),
-            (Tuple,
-                for(const auto& sty : te)
-                    visit_type(sty);
-                ),
-            (Function,
-                visit_type(*te.m_rettype);
-                for(const auto& sty : te.m_arg_types)
-                    visit_type(sty);
-                )
-            )
-            active_set.erase( active_set.find(&ty) );
-            
-            codegen.emit_type(ty);
-            visited.insert( ty.clone() );
-        }
-    };
-}
-
 void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, const TransList& list)
 {
+    static Span sp;
     auto codegen = Trans_Codegen_GetGeneratorC(crate, outfile);
     
     // 1. Emit structure/type definitions.
     // - Emit in the order they're needed.
+    for(const auto& ty : list.m_types)
     {
-        TRACE_FUNCTION;
-        
-        TypeVisitor tv { crate, *codegen };
-        for(const auto& ent : list.m_functions)
-        {
-            TRACE_FUNCTION_F("Enumerate fn " << ent.first);
-            assert(ent.second->ptr);
-            const auto& fcn = *ent.second->ptr;
-            const auto& pp = ent.second->pp;
-            
-            tv.visit_type( pp.monomorph(crate, fcn.m_return) );
-            for(const auto& arg : fcn.m_args)
-                tv.visit_type( pp.monomorph(crate, arg.second) );
-            
-            if( fcn.m_code.m_mir )
-            {
-                const auto& mir = *fcn.m_code.m_mir;
-                for(const auto& ty : mir.named_variables)
-                    tv.visit_type(pp.monomorph(crate, ty));
-                for(const auto& ty : mir.temporaries)
-                    tv.visit_type(pp.monomorph(crate, ty));
-            }
-        }
-        for(const auto& ent : list.m_statics)
-        {
-            TRACE_FUNCTION_F("Enumerate static " << ent.first);
-            assert(ent.second->ptr);
-            const auto& stat = *ent.second->ptr;
-            const auto& pp = ent.second->pp;
-            
-            tv.visit_type( pp.monomorph(crate, stat.m_type) );
-        }
+        TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Path, te,
+            TU_MATCHA( (te.binding), (tpb),
+            (Unbound,   ),
+            (Opaque,   ),
+            (Struct,
+                codegen->emit_struct(sp, te.path.m_data.as_Generic(), *tpb);
+                ),
+            (Union,
+                codegen->emit_union(sp, te.path.m_data.as_Generic(), *tpb);
+                ),
+            (Enum,
+                codegen->emit_enum(sp, te.path.m_data.as_Generic(), *tpb);
+                )
+            )
+        )
+        codegen->emit_type(ty);
     }
     
     // 2. Emit function prototypes

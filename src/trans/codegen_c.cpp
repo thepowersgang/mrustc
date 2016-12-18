@@ -188,8 +188,18 @@ namespace {
             ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, {}, *(::MIR::Function*)nullptr };
             m_mir_res = &mir_res;
             // - Drop Glue
-            // TOOD: If there's no fields, emit a #define-ed out destructor?
+            
+            if( item.m_markings.has_drop_impl ) {
+                m_of << "void " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(struct s_" << Trans_Mangle(p) << "*rv);\n";
+            }
+           
             m_of << "void " << Trans_Mangle(drop_glue_path) << "(struct s_" << Trans_Mangle(p) << "* rv) {\n";
+            
+            // If this type has an impl of Drop, call that impl
+            if( item.m_markings.has_drop_impl ) {
+                m_of << "\t" << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(rv);\n";
+            }
+            
             auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
             auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
             TU_MATCHA( (item.m_data), (e),
@@ -277,8 +287,21 @@ namespace {
             auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
             ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, {}, *(::MIR::Function*)nullptr };
             m_mir_res = &mir_res;
-            // TOOD: If there's no fields, emit a #define-ed out destructor?
+            
+            
+            if( item.m_markings.has_drop_impl )
+            {
+                m_of << "void " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(struct e_" << Trans_Mangle(p) << "*rv);\n";
+            }
+           
             m_of << "void " << Trans_Mangle(drop_glue_path) << "(struct e_" << Trans_Mangle(p) << "* rv) {\n";
+            
+            // If this type has an impl of Drop, call that impl
+            if( item.m_markings.has_drop_impl )
+            {
+                m_of << "\t" << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(rv);\n";
+            }
+            
             auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
             auto fld_lv = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Downcast({ box$(self), 0 })), 0 });
             
