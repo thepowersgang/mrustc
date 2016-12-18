@@ -819,6 +819,7 @@ namespace {
             BIT(0, m.can_unsize)
             BIT(1, m.has_a_deref)
             BIT(2, m.is_copy)
+            BIT(3, m.has_drop_impl)
             #undef BIT
             m_out.write_u8(bitflag_1);
             

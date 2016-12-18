@@ -21,6 +21,7 @@ class Visitor:
     const ::HIR::SimplePath&    m_lang_Unsize;
     const ::HIR::SimplePath&    m_lang_CoerceUnsized;
     const ::HIR::SimplePath&    m_lang_Deref;
+    const ::HIR::SimplePath&    m_lang_Drop;
     const ::HIR::SimplePath&    m_lang_PhantomData;
 public:
     Visitor(const ::HIR::Crate& crate):
@@ -28,6 +29,7 @@ public:
         m_lang_Unsize( crate.get_lang_item_path_opt("unsize") ),
         m_lang_CoerceUnsized( crate.get_lang_item_path_opt("coerce_unsized") ),
         m_lang_Deref( crate.get_lang_item_path_opt("deref") ),
+        m_lang_Drop( crate.get_lang_item_path_opt("drop") ),
         m_lang_PhantomData( crate.get_lang_item_path_opt("phantom_data") )
     {
     }
@@ -104,6 +106,11 @@ public:
                 if( trait_path == m_lang_Unsize ) {
                     DEBUG("Type " << impl.m_type << " can Unsize");
                     ERROR(sp, E0000, "Unsize shouldn't be manually implemented");
+                }
+                else if( trait_path == m_lang_Drop )
+                {
+                    // TODO: Check that there's only one impl, and that it covers the same set as the type.
+                    markings.has_drop_impl = true;
                 }
                 else if( trait_path == m_lang_CoerceUnsized ) {
                     if( markings_ptr->coerce_unsized_index != ~0u )

@@ -161,6 +161,10 @@ struct TraitMarkings
     /// Indicates that there is at least one Deref impl
     bool    has_a_deref = false;
     
+    /// Indicates that there is a Drop impl
+    /// - If there is an impl, there must be an applicable impl to every instance.
+    bool has_drop_impl = false;
+    
     // If populated, indicates the field that is the coercable pointer.
     unsigned int coerce_unsized_index = ~0u;
     

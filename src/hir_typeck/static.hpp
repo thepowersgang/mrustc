@@ -23,6 +23,7 @@ public:
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
 
     ::HIR::SimplePath   m_lang_Copy;
+    ::HIR::SimplePath   m_lang_Drop;
     ::HIR::SimplePath   m_lang_Sized;
     ::HIR::SimplePath   m_lang_Fn;
     ::HIR::SimplePath   m_lang_FnMut;
@@ -37,6 +38,7 @@ public:
         m_item_generics(nullptr)
     {
         m_lang_Copy = m_crate.get_lang_item_path_opt("copy");
+        m_lang_Drop = m_crate.get_lang_item_path_opt("drop");
         m_lang_Sized = m_crate.get_lang_item_path_opt("sized");
         m_lang_Fn = m_crate.get_lang_item_path_opt("fn");
         m_lang_FnMut = m_crate.get_lang_item_path_opt("fn_mut");
