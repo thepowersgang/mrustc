@@ -127,6 +127,11 @@ namespace {
             (
                 BUG(sp, "Node " << i << " of path " << path << " wasn't a module");
                 ),
+            (Enum,
+                ASSERT_BUG(sp, i == path.m_components.size() - 2, "Enum found somewhere other than penultimate posiiton in " << path);
+                // TODO: Check that this is a tuple variant
+                return EntPtr::make_AutoGenerate({});
+                ),
             (Module,
                 mod = &e2;
                 )
