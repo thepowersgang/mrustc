@@ -115,6 +115,7 @@ namespace {
     struct TypeVisitor
     {
         const ::HIR::Crate& m_crate;
+        ::StaticTraitResolve    m_resolve;
         ::std::vector< ::HIR::TypeRef>& out_list;
         
         ::std::set< ::HIR::TypeRef> visited;
@@ -122,6 +123,7 @@ namespace {
         
         TypeVisitor(const ::HIR::Crate& crate, ::std::vector< ::HIR::TypeRef>& out_list):
             m_crate(crate),
+            m_resolve(crate),
             out_list(out_list)
         {}
         
@@ -131,7 +133,7 @@ namespace {
             auto monomorph = [&](const auto& x)->const auto& {
                 if( monomorphise_type_needed(x) ) {
                     tmp = monomorphise_type(sp, item.m_params, path.m_params, x);
-                    //m_resolve.expand_associated_types(sp, tmp);
+                    m_resolve.expand_associated_types(sp, tmp);
                     return tmp;
                 }
                 else {
@@ -277,6 +279,7 @@ namespace {
             
             visited.insert( ty.clone() );
             out_list.push_back( ty.clone() );
+            DEBUG("Add type " << ty);
         }
     };
 }
@@ -341,7 +344,7 @@ void Trans_Enumerate_Types(TransList& out, const ::HIR::Crate& crate)
                     markings_ptr = &tpb->m_markings;
                     )
                 )
-                ASSERT_BUG(Span(), markings_ptr, "");
+                ASSERT_BUG(Span(), markings_ptr, "Path binding not set correctly - " << ty);
                 
                 if( markings_ptr->has_drop_impl )
                 {
