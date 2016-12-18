@@ -1452,6 +1452,8 @@ namespace {
             }
             else
             {
+                // NOTE: This has to be done here because the builder can't easily do it.
+                m_builder.mark_value_assigned(node.span(), res);
             }
             m_builder.set_result( node.span(), mv$(res) );
         }

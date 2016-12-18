@@ -251,6 +251,37 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
     )
     
     // Drop target if populated
+    mark_value_assigned(sp, dst);
+    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Assign({ mv$(dst), mv$(val) }) );
+}
+void MirBuilder::push_stmt_drop(const Span& sp, ::MIR::LValue val)
+{
+    ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
+    ASSERT_BUG(sp, val.tag() != ::MIR::LValue::TAGDEAD, "");
+    
+    if( lvalue_is_copy(sp, val) ) {
+        // Don't emit a drop for Copy values
+        return ;
+    }
+    
+    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::DEEP, mv$(val) }) );
+}
+void MirBuilder::push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val)
+{
+    ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
+    ASSERT_BUG(sp, val.tag() != ::MIR::LValue::TAGDEAD, "");
+    
+    // TODO: Ensure that the type is a Box
+    //if( lvalue_is_copy(sp, val) ) {
+    //    // Don't emit a drop for Copy values
+    //    return ;
+    //}
+    
+    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::SHALLOW, mv$(val) }) );
+}
+
+void MirBuilder::mark_value_assigned(const Span& sp, const ::MIR::LValue& dst)
+{
     TU_MATCH_DEF(::MIR::LValue, (dst), (e),
     (
         ),
@@ -303,32 +334,6 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
         set_variable_state(sp, e, VarState::Init);
         )
     )
-    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Assign({ mv$(dst), mv$(val) }) );
-}
-void MirBuilder::push_stmt_drop(const Span& sp, ::MIR::LValue val)
-{
-    ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
-    ASSERT_BUG(sp, val.tag() != ::MIR::LValue::TAGDEAD, "");
-    
-    if( lvalue_is_copy(sp, val) ) {
-        // Don't emit a drop for Copy values
-        return ;
-    }
-    
-    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::DEEP, mv$(val) }) );
-}
-void MirBuilder::push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val)
-{
-    ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
-    ASSERT_BUG(sp, val.tag() != ::MIR::LValue::TAGDEAD, "");
-    
-    // TODO: Ensure that the type is a Box
-    //if( lvalue_is_copy(sp, val) ) {
-    //    // Don't emit a drop for Copy values
-    //    return ;
-    //}
-    
-    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::SHALLOW, mv$(val) }) );
 }
 
 void MirBuilder::set_cur_block(unsigned int new_block)
@@ -412,7 +417,7 @@ ScopeHandle MirBuilder::new_scope_loop(const Span& sp)
 }
 void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope, bool emit_cleanup/*=true*/)
 {
-    DEBUG("DONE scope " << scope.idx);
+    DEBUG("DONE scope " << scope.idx << " - " << (emit_cleanup ? "CLEANUP" : "NO CLEANUP"));
     // 1. Check that this is the current scope (at the top of the stack)
     if( m_scope_stack.empty() || m_scope_stack.back() != scope.idx )
     {
@@ -989,8 +994,13 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
             switch( get_temp_state(sd.span, tmp_idx) )
             {
             case VarState::Uninit:
+                DEBUG("Temporary " << tmp_idx << " Uninit");
+                break;
             case VarState::Dropped:
+                DEBUG("Temporary " << tmp_idx << " Dropped");
+                break;
             case VarState::Moved:
+                DEBUG("Temporary " << tmp_idx << " Moved");
                 break;
             case VarState::Init:
                 push_stmt_drop( sd.span, ::MIR::LValue::make_Temporary({ tmp_idx }) );

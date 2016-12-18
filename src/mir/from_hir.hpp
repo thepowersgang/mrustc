@@ -156,6 +156,9 @@ public:
         return m_block_active;
     }
     
+    // Mark a value as initialised (used for Call, because it has to be done after the panic block is populated)
+    void mark_value_assigned(const Span& sp, const ::MIR::LValue& val);
+    
     void set_cur_block(unsigned int new_block);
     ::MIR::BasicBlockId pause_cur_block();
     void end_block(::MIR::Terminator term);
