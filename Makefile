@@ -150,6 +150,7 @@ output/libunwind.hir: $(call fcn_extcrate, core libc)
 
 output/libterm.hir: $(call fcn_extcrate, std)
 output/libpanic_unwind.hir: $(call fcn_extcrate, core alloc libc unwind)
+output/libpanic_abort.hir: $(call fcn_extcrate, core $(call fn_getdeps, $(RUSTCSRC)src/libpanic_abort.rs))
 output/libtest.hir: $(call fcn_extcrate, std getopts term panic_unwind)
 output/libgetopts.hir: output/libstd.hir
 output/libflate.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libflate/lib.rs))
@@ -174,7 +175,7 @@ output/librustc_const_eval.hir: $(call fcn_extcrate, std arena syntax log rustc 
 
 output/libsyntax_pos.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libsyntax_pos/lib.rs))
 
-output/librustc_privacy.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_privacy/lib.rs))
+output/librustc_plugin.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_plugin/lib.rs))
 output/librustc_save_analysis.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_save_analysis/lib.rs))
 output/librustc_resolve.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_resolve/lib.rs))
 output/librustc_plugin.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_plugin/lib.rs))
