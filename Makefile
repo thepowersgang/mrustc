@@ -150,7 +150,7 @@ output/libunwind.hir: $(call fcn_extcrate, core libc)
 
 output/libterm.hir: $(call fcn_extcrate, std)
 output/libpanic_unwind.hir: $(call fcn_extcrate, core alloc libc unwind)
-output/libpanic_abort.hir: $(call fcn_extcrate, core $(call fn_getdeps, $(RUSTCSRC)src/libpanic_abort.rs))
+output/libpanic_abort.hir: $(call fcn_extcrate, core $(call fn_getdeps, $(RUSTCSRC)src/libpanic_abort/lib.rs))
 output/libtest.hir: $(call fcn_extcrate, std getopts term panic_unwind)
 output/libgetopts.hir: output/libstd.hir
 output/libflate.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libflate/lib.rs))
