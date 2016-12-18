@@ -371,6 +371,52 @@ namespace {
             )
         }
         
+        void emit_vtable(const ::HIR::Path& p, const ::HIR::Trait& trait) override
+        {
+            static Span sp;
+            const auto& trait_path = p.m_data.as_UfcsKnown().trait;
+            const auto& type = *p.m_data.as_UfcsKnown().type;
+            
+            {
+                auto vtable_sp = trait_path.m_path;
+                vtable_sp.m_components.back() += "#vtable";
+                auto vtable_params = trait_path.m_params.clone();
+                for(const auto& ty : trait.m_type_indexes) {
+                    auto aty = ::HIR::TypeRef( ::HIR::Path( type.clone(), trait_path.clone(), ty.first ) );
+                    m_resolve.expand_associated_types(sp, aty);
+                    vtable_params.m_types.push_back( mv$(aty) );
+                }
+                const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_sp);
+                ::HIR::TypeRef  vtable_ty( ::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref );
+                
+                emit_ctype(vtable_ty);
+                m_of << " " << Trans_Mangle(p) << " = {\n";
+            }
+
+            auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &type, &trait_path.m_params, nullptr);
+            
+            // TODO: Alignment and destructor
+            for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
+            {
+                if( i != 0 )
+                    m_of << ",\n";
+                for(const auto& m : trait.m_value_indexes)
+                {
+                    if( m.second.first != i )
+                        continue ;
+                    
+                    //ASSERT_BUG(sp, tr.m_values.at(m.first).is_Function(), "TODO: Handle generating vtables with non-function items");
+                    DEBUG("- " << m.second.first << " = " << m.second.second << " :: " << m.first);
+                    
+                    auto gpath = monomorphise_genericpath_with(sp, m.second.second, monomorph_cb_trait, false);
+                    // NOTE: `void*` cast avoids mismatched pointer type errors due to the receiver being &mut()/&() in the vtable
+                    m_of << "\t(void*)" << Trans_Mangle( ::HIR::Path(type.clone(), mv$(gpath), m.first) );
+                }
+            }
+            m_of << "\n";
+            m_of << "\t};\n";
+        }
+        
         void emit_function_ext(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) override
         {
             m_of << "// extern \"" << item.m_abi << "\" " << p << "\n";

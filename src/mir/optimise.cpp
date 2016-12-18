@@ -134,6 +134,8 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     // >> Propagate dead assignments
     // TODO: This requires kowing that doing so has no effect.
     // - Can use little heristics like a Call pointing to an assignment of its RV
+    // - Count the read/write count of a variable, if it's 1,1 then this optimisation is correct.
+    // - If the count is read=*,write=1 and the write is of an argument, replace with the argument.
     
     // GC pass on blocks and variables
     // - Find unused blocks, then delete and rewrite all references.

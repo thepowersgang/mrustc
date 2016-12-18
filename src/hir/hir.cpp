@@ -533,6 +533,7 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
     auto it_t = bounds_t.begin();
     for(auto it_o = bounds_o.begin(); it_o != bounds_o.end(); ++it_o)
     {
+        // TODO: `T: Foo<T>` is more specific than `T: Foo<U>`
         while( ::ord(*it_t, *it_o) == OrdLess && it_t != bounds_t.end() )
             ++ it_t;
         if( it_t == bounds_t.end() || ::ord(*it_t, *it_o) > OrdEqual ) {

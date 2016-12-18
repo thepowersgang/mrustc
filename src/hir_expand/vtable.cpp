@@ -232,6 +232,7 @@ namespace {
             
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
             
+            #if 0
             // Check if the trait has a vtable, and if it does emit an associated static for it.
             const auto& tr = m_crate.get_trait_by_path(sp, trait_path);
             if(tr.m_value_indexes.size() > 0)
@@ -266,6 +267,7 @@ namespace {
                     ::HIR::Literal::make_List( mv$(vals) )
                     } } ));
             }
+            #endif
         }
     };
 }

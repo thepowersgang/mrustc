@@ -18,6 +18,7 @@
 
 void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const ::HIR::Function& function, TransList_Function& fcn_out, Trans_Params pp={});
 void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const ::HIR::Static& stat, TransList_Static& stat_out, Trans_Params pp={});
+void Trans_Enumerate_FillFrom_VTable(TransList& out, const ::HIR::Crate& crate, ::HIR::Path vtable_path, const Trans_Params& pp);
 void Trans_Enumerate_FillFrom_Literal(TransList& out, const ::HIR::Crate& crate, const ::HIR::Literal& lit, const Trans_Params& pp);
 
 /// Enumerate trans items starting from `::main` (binary crate)
@@ -277,6 +278,8 @@ namespace {
                     DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                     return EntPtr { &it->second.data };
                 }
+                if( e.item == "#vtable" )
+                    return EntPtr::make_AutoGenerate( {} );
                 TODO(sp, "Associated static - " << path);
                 ),
             (Function,
@@ -335,7 +338,15 @@ void Trans_Enumerate_FillFrom_Path(TransList& out, const ::HIR::Crate& crate, co
         // This is returned either if the item is <T as U>::#vtable or if it's <(Trait) as Trait>::method
         if( path_mono.m_data.is_Generic() )
         {
-            // TODO: Generate struct constructors?
+            // Leave generation of struct/enum constructors to codgen
+        }
+        else if( path_mono.m_data.as_UfcsKnown().item == "#vtable" )
+        {
+            if( out.add_vtable( path_mono.clone(), {} ) )
+            {
+                // Fill from the vtable
+                Trans_Enumerate_FillFrom_VTable(out,crate, mv$(path_mono), sub_pp);
+            }
         }
         else if( path_mono.m_data.as_UfcsKnown().type->m_data.is_TraitObject() )
         {
@@ -503,6 +514,22 @@ void Trans_Enumerate_FillFrom_MIR(TransList& out, const ::HIR::Crate& crate, con
                 Trans_Enumerate_FillFrom_MIR_LValue(out,crate, arg, pp);
             )
         )
+    }
+}
+
+void Trans_Enumerate_FillFrom_VTable(TransList& out, const ::HIR::Crate& crate, ::HIR::Path vtable_path, const Trans_Params& pp)
+{
+    static Span sp;
+    const auto& type = *vtable_path.m_data.as_UfcsKnown().type;
+    const auto& trait_path = vtable_path.m_data.as_UfcsKnown().trait;
+    const auto& tr = crate.get_trait_by_path(Span(), trait_path.m_path);
+    
+    auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &type, &trait_path.m_params, nullptr);
+    for(const auto& m : tr.m_value_indexes)
+    {
+        DEBUG("- " << m.second.first << " = " << m.second.second << " :: " << m.first);
+        auto gpath = monomorphise_genericpath_with(sp, m.second.second, monomorph_cb_trait, false);
+        Trans_Enumerate_FillFrom_Path(out,crate, ::HIR::Path(type.clone(), mv$(gpath), m.first), {});
     }
 }
 
