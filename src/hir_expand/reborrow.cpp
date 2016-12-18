@@ -131,6 +131,10 @@ namespace {
                 arg.second = do_reborrow(mv$(arg.second));
             }
         }
+        void visit(::HIR::ExprNode_Unsize& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            node.m_value = do_reborrow(mv$(node.m_value));
+        }
     };
     class OuterVisitor:
         public ::HIR::Visitor
