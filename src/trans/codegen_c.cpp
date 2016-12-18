@@ -1474,8 +1474,8 @@ namespace {
                     }
                     else
                     {
-                        emit_lvalue(*e.val);
-                        m_of << "._" << e.field_index;
+                        emit_lvalue(*e.val->as_Deref().val);
+                        m_of << "->_" << e.field_index;
                     }
                 }
                 else {
