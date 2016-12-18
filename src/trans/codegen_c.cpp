@@ -181,6 +181,41 @@ namespace {
                 m_of << "\treturn rv;\n";
                 m_of << "}\n";
             )
+            
+            auto struct_ty = ::HIR::TypeRef(p.clone(), &item);
+            auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
+            auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
+            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, {}, *(::MIR::Function*)nullptr };
+            m_mir_res = &mir_res;
+            // - Drop Glue
+            // TOOD: If there's no fields, emit a #define-ed out destructor?
+            m_of << "void " << Trans_Mangle(drop_glue_path) << "(struct s_" << Trans_Mangle(p) << "* rv) {\n";
+            auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
+            auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
+            TU_MATCHA( (item.m_data), (e),
+            (Unit,
+                ),
+            (Tuple,
+                for(unsigned int i = 0; i < e.size(); i ++)
+                {
+                    const auto& fld = e[i];
+                    fld_lv.as_Field().field_index = i;
+                    
+                    emit_destructor_call(fld_lv, monomorph(fld.ent), true);
+                }
+                ),
+            (Named,
+                for(unsigned int i = 0; i < e.size(); i ++)
+                {
+                    const auto& fld = e[i].second;
+                    fld_lv.as_Field().field_index = i;
+                    
+                    emit_destructor_call(fld_lv, monomorph(fld.ent), true);
+                }
+                )
+            )
+            m_of << "}\n";
+            m_mir_res = nullptr;
         }
         //virtual void emit_union(const ::HIR::GenericPath& p, const ::HIR::Union& item);
         void emit_enum(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Enum& item) override
@@ -231,6 +266,55 @@ namespace {
             }
             m_of << "\t} DATA;\n";
             m_of << "};\n";
+            
+            // TODO: Constructors for tuple variants
+            
+            // ---
+            // - Drop Glue
+            // ---
+            auto struct_ty = ::HIR::TypeRef(p.clone(), &item);
+            auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
+            auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
+            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, {}, *(::MIR::Function*)nullptr };
+            m_mir_res = &mir_res;
+            // TOOD: If there's no fields, emit a #define-ed out destructor?
+            m_of << "void " << Trans_Mangle(drop_glue_path) << "(struct e_" << Trans_Mangle(p) << "* rv) {\n";
+            auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
+            auto fld_lv = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Downcast({ box$(self), 0 })), 0 });
+            
+            m_of << "\tswitch(rv->TAG) {\n";
+            for(unsigned int var_idx = 0; var_idx < item.m_variants.size(); var_idx ++)
+            {
+                m_of << "\n";
+                fld_lv.as_Field().val->as_Downcast().variant_index = var_idx;
+                m_of << "\tcase " << var_idx << ":\n";
+                TU_MATCHA( (item.m_variants[var_idx].second), (e),
+                (Unit,
+                    ),
+                (Value,
+                    ),
+                (Tuple,
+                    for(unsigned int i = 0; i < e.size(); i ++)
+                    {
+                        fld_lv.as_Field().field_index = i;
+                        const auto& fld = e[i];
+                        
+                        emit_destructor_call(fld_lv, monomorph(fld.ent), false);
+                    }
+                    ),
+                (Struct,
+                    for(unsigned int i = 0; i < e.size(); i ++)
+                    {
+                        fld_lv.as_Field().field_index = i;
+                        const auto& fld = e[i];
+                        emit_destructor_call(fld_lv, monomorph(fld.second.ent), false);
+                    }
+                    )
+                )
+                m_of << "\tbreak;\n";
+            }
+            m_of << "\t}\n";
+            m_of << "}\n";
         }
         
         void emit_static_ext(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
@@ -484,8 +568,17 @@ namespace {
                 {
                     mir_res.set_cur_stmt(i, (&stmt - &code->blocks[i].statements.front()));
                     assert( stmt.is_Drop() || stmt.is_Assign() );
-                    if( stmt.is_Drop() ) {
+                    if( stmt.is_Drop() )
+                    {
+                        const auto& e = stmt.as_Drop();
                         // TODO: Emit destructor calls
+                        ::HIR::TypeRef  tmp;
+                        const auto& ty = mir_res.get_lvalue_type(tmp, e.slot);
+                        
+                        if( e.kind == ::MIR::eDropKind::SHALLOW ) {
+                            // TODO: Shallow drops are only valid on owned_box
+                        }
+                        emit_destructor_call(e.slot, ty, false);
                     }
                     else {
                         const auto& e = stmt.as_Assign();
@@ -1037,6 +1130,74 @@ namespace {
                     ss << "\n\t\t)";
                 }
                 ));
+        }
+        
+        void emit_destructor_call(const ::MIR::LValue& slot, const ::HIR::TypeRef& ty, bool unsized_valid)
+        {
+            TU_MATCHA( (ty.m_data), (te),
+            // Impossible
+            (Diverge, ),
+            (Infer, ),
+            (ErasedType, ),
+            (Closure, ),
+            (Generic, ),
+            
+            // Nothing
+            (Primitive,
+                ),
+            (Pointer,
+                ),
+            (Function,
+                ),
+            // Has drop glue/destructors
+            (Borrow,
+                if( te.type == ::HIR::BorrowType::Owned )
+                {
+                    // Call drop glue on inner.
+                    emit_destructor_call( ::MIR::LValue::make_Deref({ box$(slot.clone()) }), *te.inner, true );
+                }
+                ),
+            (Path,
+                // Call drop glue
+                // - TODO: If the destructor is known to do nothing, don't call it.
+                auto p = ::HIR::Path(ty.clone(), "#drop_glue");
+                m_of << "\t" << Trans_Mangle(p) << "(&"; emit_lvalue(slot); m_of << ");\n";
+                ),
+            (Array,
+                // Emit destructors for all entries
+                if( te.size_val > 0 )
+                {
+                    ::MIR::LValue   lv = ::MIR::LValue::make_Field({ box$(slot.clone()), 0 });
+                    for(unsigned int i = 0; i < te.size_val; i ++)
+                    {
+                        lv.as_Field().field_index = i;
+                        emit_destructor_call(lv, *te.inner, false);
+                    }
+                }
+                ),
+            (Tuple,
+                // Emit destructors for all entries
+                if( te.size() > 0 )
+                {
+                    ::MIR::LValue   lv = ::MIR::LValue::make_Field({ box$(slot.clone()), 0 });
+                    for(unsigned int i = 0; i < te.size(); i ++)
+                    {
+                        lv.as_Field().field_index = i;
+                        emit_destructor_call(lv, te[i], unsized_valid && (i == te.size()-1));
+                    }
+                }
+                ),
+            (TraitObject,
+                MIR_ASSERT(*m_mir_res, unsized_valid, "Dropping TraitObject without a pointer");
+                //MIR_ASSERT(*m_mir_res, slot.is_Deref(), "Dropping a TraitObject through a non-Deref");
+                // Call destructor in vtable
+                ),
+            (Slice,
+                MIR_ASSERT(*m_mir_res, unsized_valid, "Dropping Slice without a pointer");
+                //MIR_ASSERT(*m_mir_res, slot.is_Deref(), "Dropping a slice through a non-Deref");
+                // Call destructor on all entries
+                )
+            )
         }
         
         const ::HIR::Literal& get_literal_for_const(const ::HIR::Path& path)

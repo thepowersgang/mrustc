@@ -90,7 +90,10 @@ namespace {
             ss << "_ZRI$aL";
             ss << Trans_Mangle(*pe.type);
             ss << "$aR";
-            ss << pe.item;
+            if( pe.item[0] == '#' )
+                ss << (pe.item.size()-1+2) << "$H" << (pe.item.c_str()+1);
+            else
+                ss << pe.item;
             ss << emit_params(pe.params);
             );
         )
