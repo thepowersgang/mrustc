@@ -105,9 +105,7 @@ namespace {
                 m_of << ";\n";
             )
             else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Array, te,
-                m_of << "typedef struct {\n";
-                m_of << "\t"; emit_ctype(*te.inner); m_of << " DATA[" << te.size_val << "];\n";
-                m_of << "} "; emit_ctype(ty); m_of << ";\n";
+                m_of << "typedef struct { "; emit_ctype(*te.inner); m_of << " DATA[" << te.size_val << "]; } "; emit_ctype(ty); m_of << ";\n";
             )
             else {
             }
@@ -246,14 +244,15 @@ namespace {
             m_of << "\tunion {\n";
             for(unsigned int i = 0; i < item.m_variants.size(); i ++)
             {
-                m_of << "\t\tstruct {\n";
                 TU_MATCHA( (item.m_variants[i].second), (e),
                 (Unit,
+                    m_of << "\t\tstruct {} var_" << i << ";\n";
                     ),
                 (Value,
-                    // TODO: omit
+                    m_of << "\t\tstruct {} var_" << i << ";\n";
                     ),
                 (Tuple,
+                    m_of << "\t\tstruct {\n";
                     for(unsigned int i = 0; i < e.size(); i ++)
                     {
                         const auto& fld = e[i];
@@ -261,8 +260,10 @@ namespace {
                         emit_ctype( monomorph(fld.ent) );
                         m_of << " _" << i << ";\n";
                     }
+                    m_of << "\t\t} var_" << i << ";\n";
                     ),
                 (Struct,
+                    m_of << "\t\tstruct {\n";
                     for(unsigned int i = 0; i < e.size(); i ++)
                     {
                         const auto& fld = e[i];
@@ -270,9 +271,9 @@ namespace {
                         emit_ctype( monomorph(fld.second.ent) );
                         m_of << " _" << i << ";\n";
                     }
+                    m_of << "\t\t} var_" << i << ";\n";
                     )
                 )
-                m_of << "\t\t} var_" << i << ";\n";
             }
             m_of << "\t} DATA;\n";
             m_of << "};\n";
@@ -308,15 +309,16 @@ namespace {
             m_of << "\tswitch(rv->TAG) {\n";
             for(unsigned int var_idx = 0; var_idx < item.m_variants.size(); var_idx ++)
             {
-                m_of << "\n";
                 fld_lv.as_Field().val->as_Downcast().variant_index = var_idx;
-                m_of << "\tcase " << var_idx << ":\n";
                 TU_MATCHA( (item.m_variants[var_idx].second), (e),
                 (Unit,
+                    m_of << "\tcase " << var_idx << ": break;\n";
                     ),
                 (Value,
+                    m_of << "\tcase " << var_idx << ": break;\n";
                     ),
                 (Tuple,
+                    m_of << "\tcase " << var_idx << ":\n";
                     for(unsigned int i = 0; i < e.size(); i ++)
                     {
                         fld_lv.as_Field().field_index = i;
@@ -324,17 +326,19 @@ namespace {
                         
                         emit_destructor_call(fld_lv, monomorph(fld.ent), false);
                     }
+                    m_of << "\tbreak;\n";
                     ),
                 (Struct,
+                    m_of << "\tcase " << var_idx << ":\n";
                     for(unsigned int i = 0; i < e.size(); i ++)
                     {
                         fld_lv.as_Field().field_index = i;
                         const auto& fld = e[i];
                         emit_destructor_call(fld_lv, monomorph(fld.second.ent), false);
                     }
+                    m_of << "\tbreak;\n";
                     )
                 )
-                m_of << "\tbreak;\n";
             }
             m_of << "\t}\n";
             m_of << "}\n";
