@@ -94,6 +94,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 Either,
                 Valid,
             };
+            State ret_state = State::Invalid;
             ::std::vector<State> arguments;
             ::std::vector<State> temporaries;
             ::std::vector<State> variables;
@@ -130,12 +131,83 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     return rv;
                 }
             }
+            
+            void mark_validity(const ::MIR::TypeResolve& state, const ::MIR::LValue& lv, bool is_valid)
+            {
+                TU_MATCH_DEF( ::MIR::LValue, (lv), (e),
+                (
+                    ),
+                (Return,
+                    ret_state = is_valid ? State::Valid : State::Invalid;
+                    ),
+                (Argument,
+                    MIR_ASSERT(state, e.idx < this->arguments.size(), "");
+                    this->arguments[e.idx] = is_valid ? State::Valid : State::Invalid;
+                    ),
+                (Variable,
+                    MIR_ASSERT(state, e < this->variables.size(), "");
+                    this->variables[e] = is_valid ? State::Valid : State::Invalid;
+                    ),
+                (Temporary,
+                    MIR_ASSERT(state, e.idx < this->temporaries.size(), "");
+                    this->temporaries[e.idx] = is_valid ? State::Valid : State::Invalid;
+                    )
+                )
+            }
+            void ensure_valid(const ::MIR::TypeResolve& state, const ::MIR::LValue& lv)
+            {
+                TU_MATCH( ::MIR::LValue, (lv), (e),
+                (Variable,
+                    MIR_ASSERT(state, e < this->variables.size(), "");
+                    if( this->variables[e] != State::Valid )
+                        MIR_BUG(state, "Use of non-valid variable - " << lv);
+                    ),
+                (Temporary,
+                    MIR_ASSERT(state, e.idx < this->temporaries.size(), "");
+                    if( this->temporaries[e.idx] != State::Valid )
+                        MIR_BUG(state, "Use of non-valid temporary - " << lv);
+                    ),
+                (Argument,
+                    MIR_ASSERT(state, e.idx < this->arguments.size(), "");
+                    if( this->arguments[e.idx] != State::Valid )
+                        MIR_BUG(state, "Use of non-valid argument - " << lv);
+                    ),
+                (Return,
+                    if( this->ret_state != State::Valid )
+                        MIR_BUG(state, "Use of non-valid lvalue - " << lv);
+                    ),
+                (Static,
+                    ),
+                (Field,
+                    ensure_valid(state, *e.val);
+                    ),
+                (Deref,
+                    ensure_valid(state, *e.val);
+                    ),
+                (Index,
+                    ensure_valid(state, *e.val);
+                    ensure_valid(state, *e.idx);
+                    ),
+                (Downcast,
+                    ensure_valid(state, *e.val);
+                    )
+                )
+            }
+            void move_val(const ::MIR::TypeResolve& state, const ::MIR::LValue& lv)
+            {
+                ensure_valid(state, lv);
+                ::HIR::TypeRef  tmp;
+                if( ! state.m_resolve.type_is_copy( state.sp, state.get_lvalue_type(tmp, lv) ) )
+                {
+                    mark_validity(state, lv, false);
+                }
+            }
         private:
             static bool merge_lists(::std::vector<State>& a, ::std::vector<State>& b)
             {
                 bool rv = false;
                 assert( a.size() == b.size() );
-                for(unsigned int i = 0; a.size(); i++)
+                for(unsigned int i = 0; i < a.size(); i++)
                 {
                     if( a[i] != b[i] ) {
                         if( a[i] == State::Either || b[i] == State::Either ) {
@@ -172,13 +244,65 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 
                 if( stmt.is_Drop() )
                 {
-                    // TODO: Invalidate the slot
+                    // Invalidate the slot
+                    val_state.ensure_valid(state, stmt.as_Drop().slot);
+                    val_state.mark_validity( state, stmt.as_Drop().slot, false );
                 }
                 else
                 {
                     assert( stmt.is_Assign() );
-                    // TODO: Check source
-                    // TODO: Mark destination as valid
+                    // Check source (and invalidate sources)
+                    TU_MATCH( ::MIR::RValue, (stmt.as_Assign().src), (se),
+                    (Use,
+                        val_state.move_val(state, se);
+                        ),
+                    (Constant,
+                        ),
+                    (SizedArray,
+                        val_state.move_val(state, se.val);
+                        ),
+                    (Borrow,
+                        val_state.ensure_valid(state, se.val);
+                        ),
+                    (Cast,
+                        val_state.move_val(state, se.val);
+                        ),
+                    (BinOp,
+                        val_state.move_val(state, se.val_l);
+                        val_state.move_val(state, se.val_r);
+                        ),
+                    (UniOp,
+                        val_state.move_val(state, se.val);
+                        ),
+                    (DstMeta,
+                        val_state.ensure_valid(state, se.val);
+                        ),
+                    (DstPtr,
+                        val_state.ensure_valid(state, se.val);
+                        ),
+                    (MakeDst,
+                        //val_state.move_val(state, se.ptr_val);
+                        val_state.ensure_valid(state, se.ptr_val);
+                        val_state.move_val(state, se.meta_val);
+                        ),
+                    (Tuple,
+                        for(const auto& v : se.vals)
+                            val_state.move_val(state, v);
+                        ),
+                    (Array,
+                        for(const auto& v : se.vals)
+                            val_state.move_val(state, v);
+                        ),
+                    (Variant,
+                        val_state.move_val(state, se.val);
+                        ),
+                    (Struct,
+                        for(const auto& v : se.vals)
+                            val_state.move_val(state, v);
+                        )
+                    )
+                    // Mark destination as valid
+                    val_state.mark_validity( state, stmt.as_Assign().dst, true );
                 }
             }
 
@@ -189,17 +313,37 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 // Should be impossible here.
                 ),
             (Return,
-                // TODO: Check if the return value has been set
+                // Check if the return value has been set
+                val_state.ensure_valid( state, ::MIR::LValue::make_Return({}) );
+                // Ensure that no other non-Copy values are valid
+                for(unsigned int i = 0; i < val_state.variables.size(); i ++)
+                {
+                    if( val_state.variables[i] == ValStates::State::Invalid )
+                    {
+                    }
+                    else if( state.m_resolve.type_is_copy(state.sp, fcn.named_variables[i]) )
+                    {
+                    }
+                    else
+                    {
+                        // TODO: Error, becuase this has just been leaked
+                    }
+                }
                 ),
             (Diverge,
+                // TODO: Ensure that cleanup has been performed.
                 ),
             (Goto,
-                // TODO: Push block.
+                // Push block with the new state
+                to_visit_blocks.push_back( ::std::make_pair(e, ::std::move(val_state)) );
                 ),
             (Panic,
+                // What should be done here?
                 ),
             (If,
-                // TODO: Push blocks
+                // Push blocks
+                to_visit_blocks.push_back( ::std::make_pair(e.bb0, val_state) );
+                to_visit_blocks.push_back( ::std::make_pair(e.bb1, ::std::move(val_state)) );
                 ),
             (Switch,
                 // TODO: Push blocks
