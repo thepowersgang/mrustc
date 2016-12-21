@@ -191,20 +191,25 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         // Code
         DEBUG("-- Body Code");
         ac.code = builder.new_bb_unlinked();
+        auto tmp_scope = builder.new_scope_temp(arm.m_code->span());
         builder.set_cur_block( ac.code );
         conv.visit_node_ptr( arm.m_code );
         if( !builder.block_active() && !builder.has_result() ) {
             DEBUG("Arm diverged");
             // Nothing need be done, as the block diverged.
             // - Drops were handled by the diverging block (if not, the below will panic)
-            auto _ = mv$(drop_scope);
+            { auto _ = mv$(tmp_scope); }
+            { auto _ = mv$(drop_scope); }
             builder.end_split_arm( arm.m_code->span(), match_scope, false );
         }
         else {
             DEBUG("Arm result");
             // - Set result
-            builder.push_stmt_assign( arm.m_code->span(), result_val.clone(), builder.get_result(arm.m_code->span()) );
+            auto res = builder.get_result(arm.m_code->span());
+            builder.raise_variables( arm.m_code->span(), res );
+            builder.push_stmt_assign( arm.m_code->span(), result_val.clone(), mv$(res) );
             // - Drop all non-moved values from this scope
+            builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
             builder.terminate_scope( arm.m_code->span(), mv$(drop_scope) );
             // - Split end match scope
             builder.end_split_arm( arm.m_code->span(), match_scope, true );
