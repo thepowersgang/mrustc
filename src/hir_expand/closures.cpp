@@ -456,6 +456,14 @@ namespace {
             auto ent = mv$( m_closure_stack.back() );
             m_closure_stack.pop_back();
             
+            // - If this closure is a move closure, mutate `captured_vars` such that all captures are tagged with ValueUsage::Move
+            if( node.m_is_move )
+            {
+                for(auto& cap : ent.captured_vars)
+                {
+                    cap.second = ::HIR::ValueUsage::Move;
+                }
+            }
             // --- Apply the capture set for this closure to the parent ---
             if( m_closure_stack.size() > 0 )
             {
@@ -562,16 +570,6 @@ namespace {
             for(const auto& bound : m_resolve.item_generics().m_bounds ) {
                 params.m_bounds.push_back( monomorph_bound(bound) );
             }
-
-            
-            // - If this closure is a move closure, mutate `captured_vars` such that all captures are tagged with ValueUsage::Move
-            if( node.m_is_move )
-            {
-                for(auto& cap : ent.captured_vars)
-                {
-                    cap.second = ::HIR::ValueUsage::Move;
-                }
-            }
             
             DEBUG("--- Mutate inner code");
             // 2. Iterate over the nodes and rewrite variable accesses to either renumbered locals, or field accesses
@@ -605,7 +603,6 @@ namespace {
                 auto val_node = NEWNODE(cap_ty.clone(), Variable,  sp, "", binding_idx);
                 ::HIR::BorrowType   bt;
                 
-                // TODO: If move closure, all move.
                 switch(binding_type)
                 {
                 case ::HIR::ValueUsage::Unknown:

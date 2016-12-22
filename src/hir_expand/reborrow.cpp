@@ -79,6 +79,8 @@ namespace {
                     else
                     {
                         // Not a node that should have reborrow applied (likely generated an owned &mut)
+                        const auto* node = node_ptr.get();
+                        DEBUG("Node " << node << " " << typeid(*node).name() << " cannot have a reborrow");
                     }
                 }
             )
@@ -86,6 +88,7 @@ namespace {
         }
         
         void visit(::HIR::ExprNode_Assign& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
             node.m_value = do_reborrow(mv$(node.m_value));
         }
         void visit(::HIR::ExprNode_CallPath& node) override {
@@ -134,6 +137,12 @@ namespace {
         void visit(::HIR::ExprNode_Unsize& node) override {
             ::HIR::ExprVisitorDef::visit(node);
             node.m_value = do_reborrow(mv$(node.m_value));
+        }
+        void visit(::HIR::ExprNode_Closure& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            for(auto& arg : node.m_captures) {
+                arg = do_reborrow(mv$(arg));
+            }
         }
     };
     class OuterVisitor:
