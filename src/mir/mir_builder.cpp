@@ -36,13 +36,12 @@ MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const 
 }
 MirBuilder::~MirBuilder()
 {
-    // TODO: Function span
     const auto& sp = m_root_span;
     if( block_active() )
     {
         if( has_result() )
         {
-            push_stmt_assign( sp, ::MIR::LValue::make_Return({}), get_result(Span()) );
+            push_stmt_assign( sp, ::MIR::LValue::make_Return({}), get_result(sp) );
         }
         terminate_scope( sp, ScopeHandle { *this, 1 } );
         terminate_scope( sp, mv$(m_fcn_scope) );
