@@ -120,10 +120,121 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     auto next_block = builder.new_bb_unlinked();
     
     // 1. Stop the current block so we can generate code
-    //  > TODO: Can this goto be avoided while still being defensive? (Avoiding incomplete blocks)
     auto first_cmp_block = builder.new_bb_unlinked();
     builder.end_block( ::MIR::Terminator::make_Goto(first_cmp_block) );
 
+    
+    struct H {
+        static bool is_pattern_move(const Span& sp, const MirBuilder& builder, const ::HIR::Pattern& pat) {
+            if( pat.m_binding.is_valid() )
+            {
+                if( pat.m_binding.m_type != ::HIR::PatternBinding::Type::Move)
+                    return false;
+                return !builder.lvalue_is_copy( sp, ::MIR::LValue::make_Variable( pat.m_binding.m_slot) );
+            }
+            TU_MATCHA( (pat.m_data), (e),
+            (Any,
+                ),
+            (Box,
+                return is_pattern_move(sp, builder, *e.sub);
+                ),
+            (Ref,
+                return is_pattern_move(sp, builder, *e.sub);
+                ),
+            (Tuple,
+                for(const auto& sub : e.sub_patterns)
+                {
+                    if( is_pattern_move(sp, builder, sub) )
+                        return true;
+                }
+                ),
+            (SplitTuple,
+                for(const auto& sub : e.leading)
+                {
+                    if( is_pattern_move(sp, builder, sub) )
+                        return true;
+                }
+                for(const auto& sub : e.trailing)
+                {
+                    if( is_pattern_move(sp, builder, sub) )
+                        return true;
+                }
+                ),
+            (StructValue,
+                // Nothing.
+                ),
+            (StructTuple,
+                for(const auto& sub : e.sub_patterns)
+                {
+                    if( is_pattern_move(sp, builder, sub) )
+                        return true;
+                }
+                ),
+            (Struct,
+                for(const auto& fld_pat : e.sub_patterns)
+                {
+                    if( is_pattern_move(sp, builder, fld_pat.second) )
+                        return true;
+                }
+                ),
+            (Value,
+                ),
+            (Range,
+                ),
+            (EnumValue,
+                ),
+            (EnumTuple,
+                for(const auto& sub : e.sub_patterns)
+                {
+                    if( is_pattern_move(sp, builder, sub) )
+                        return true;
+                }
+                ),
+            (EnumStruct,
+                for(const auto& fld_pat : e.sub_patterns)
+                {
+                    if( is_pattern_move(sp, builder, fld_pat.second) )
+                        return true;
+                }
+                ),
+            (Slice,
+                for(const auto& sub : e.sub_patterns)
+                {
+                    if( is_pattern_move(sp, builder, sub) )
+                        return true;
+                }
+                ),
+            (SplitSlice,
+                for(const auto& sub : e.leading)
+                {
+                    if( is_pattern_move(sp, builder, sub) )
+                        return true;
+                }
+                // TODO: Middle binding?
+                for(const auto& sub : e.trailing)
+                {
+                    if( is_pattern_move(sp, builder, sub) )
+                        return true;
+                }
+                )
+            )
+            return false;
+        }
+    };
+    
+    bool has_move_pattern = false;
+    for(const auto& arm : node.m_arms)
+    {
+        for(const auto& pat : arm.m_patterns)
+        {
+            has_move_pattern |= H::is_pattern_move(node.span(), builder, pat);
+            if( has_move_pattern )
+                break ;
+        }
+        if( has_move_pattern )
+            break ;
+    }
+    
     auto match_scope = builder.new_scope_split(node.span());
 
     // Map of arm index to ruleset
@@ -164,6 +275,11 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             // NOTE: Paused block resumed upon successful match
         }
         
+        if( has_move_pattern )
+        {
+            builder.moved_lvalue(node.span(), match_val);
+        }
+        
         // Condition
         // NOTE: Lack of drop due to early exit from this arm isn't an issue. All captures must be Copy
         // - The above is rustc E0008 "cannot bind by-move into a pattern guard"
@@ -174,6 +290,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             ac.cond_start = builder.new_bb_unlinked();
             builder.set_cur_block( ac.cond_start );
             
+            // TODO: Temp scope.
             conv.visit_node_ptr( arm.m_cond );
             ac.cond_lval = builder.get_result_in_lvalue(arm.m_cond->span(), ::HIR::TypeRef(::HIR::CoreType::Bool));
             ac.cond_end = builder.pause_cur_block();
@@ -206,7 +323,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             DEBUG("Arm result");
             // - Set result
             auto res = builder.get_result(arm.m_code->span());
-            builder.raise_variables( arm.m_code->span(), res );
+            //builder.raise_variables( arm.m_code->span(), res );
             builder.push_stmt_assign( arm.m_code->span(), result_val.clone(), mv$(res) );
             // - Drop all non-moved values from this scope
             builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );

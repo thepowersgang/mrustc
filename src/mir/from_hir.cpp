@@ -190,6 +190,7 @@ namespace {
                 {
                     destructure_from_ex(sp, e.leading[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), i}), allow_refutable);
                 }
+                // TODO: Is there a binding in the middle?
                 unsigned int ofs = e.total_size - e.trailing.size();
                 for(unsigned int i = 0; i < e.trailing.size(); i ++ )
                 {
@@ -230,28 +231,22 @@ namespace {
                 ),
             (EnumTuple,
                 const auto& enm = *e.binding_ptr;
-                if( enm.m_variants.size() > 1 )
+                ASSERT_BUG(sp, enm.m_variants.size() == 1 || allow_refutable, "Refutable pattern not expected - " << pat);
+                auto lval_var = ::MIR::LValue::make_Downcast({ box$(mv$(lval)), e.binding_idx });
+                for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
                 {
-                    ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
-                    auto lval_var = ::MIR::LValue::make_Downcast({ box$(mv$(lval)), e.binding_idx });
-                    for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
-                    {
-                        destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::make_Field({ box$( lval_var.clone() ), i}), allow_refutable);
-                    }
+                    destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::make_Field({ box$( lval_var.clone() ), i}), allow_refutable);
                 }
                 ),
             (EnumStruct,
-                ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
                 const auto& enm = *e.binding_ptr;
-                if( enm.m_variants.size() > 1 )
+                ASSERT_BUG(sp, enm.m_variants.size() == 1 || allow_refutable, "Refutable pattern not expected - " << pat);
+                const auto& fields = enm.m_variants[e.binding_idx].second.as_Struct();
+                auto lval_var = ::MIR::LValue::make_Downcast({ box$(mv$(lval)), e.binding_idx });
+                for(const auto& fld_pat : e.sub_patterns)
                 {
-                    const auto& fields = enm.m_variants[e.binding_idx].second.as_Struct();
-                    auto lval_var = ::MIR::LValue::make_Downcast({ box$(mv$(lval)), e.binding_idx });
-                    for(const auto& fld_pat : e.sub_patterns)
-                    {
-                        unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto&x){ return x.first == fld_pat.first; } ) - fields.begin();
-                        destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::make_Field({ box$( lval_var.clone() ), idx}), allow_refutable);
-                    }
+                    unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto&x){ return x.first == fld_pat.first; } ) - fields.begin();
+                    destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::make_Field({ box$( lval_var.clone() ), idx}), allow_refutable);
                 }
                 ),
             (Slice,

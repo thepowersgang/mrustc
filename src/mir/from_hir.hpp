@@ -57,6 +57,9 @@ struct SplitArm {
     bool    always_early_terminated = false;    // Populated on completion
     ::std::vector<bool> changed_var_states; // Indexed by binding bumber
     ::std::vector<VarState> var_states;
+    
+    ::std::vector<bool> changed_tmp_states;
+    ::std::vector<VarState> tmp_states;
 };
 
 TAGGED_UNION(ScopeType, Variables,
@@ -198,8 +201,8 @@ private:
     void complete_scope(ScopeDef& sd);
     
 public:
-    void with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::function<void(const ::HIR::TypeRef&)> cb);
-    bool lvalue_is_copy(const Span& sp, const ::MIR::LValue& lv);
+    void with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::function<void(const ::HIR::TypeRef&)> cb) const;
+    bool lvalue_is_copy(const Span& sp, const ::MIR::LValue& lv) const;
 };
 
 class MirConverter:
