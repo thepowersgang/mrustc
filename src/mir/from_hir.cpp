@@ -420,11 +420,17 @@ namespace {
             {
                 this->visit_node_ptr(node.m_value);
                 
-                if( m_builder.block_active() ) {
-                    this->destructure_from(node.span(), node.m_pattern, m_builder.get_result_in_lvalue(node.m_value->span(), node.m_type));
-                }
-                else {
+                if( ! m_builder.block_active() ) {
                     return ;
+                }
+            
+                if( node.m_pattern.m_binding.is_valid() && node.m_pattern.m_data.is_Any() && node.m_pattern.m_binding.m_type == ::HIR::PatternBinding::Type::Move )
+                {
+                    m_builder.push_stmt_assign( node.span(), ::MIR::LValue::make_Variable(node.m_pattern.m_binding.m_slot),  m_builder.get_result(node.span()) );
+                }
+                else
+                {
+                    this->destructure_from(node.span(), node.m_pattern, m_builder.get_result_in_lvalue(node.m_value->span(), node.m_type));
                 }
             }
             m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
