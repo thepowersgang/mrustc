@@ -346,7 +346,10 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 to_visit_blocks.push_back( ::std::make_pair(e.bb1, ::std::move(val_state)) );
                 ),
             (Switch,
-                // TODO: Push blocks
+                for(const auto& tgt : e.targets)
+                {
+                    to_visit_blocks.push_back( ::std::make_pair(tgt, val_state) );
+                }
                 ),
             (Call,
                 // TODO: Push blocks (with return valid only in one)
