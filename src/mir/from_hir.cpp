@@ -529,15 +529,29 @@ namespace {
             }
             else if( node.m_arms.size() == 1 && node.m_arms[0].m_patterns.size() == 1 && ! node.m_arms[0].m_cond ) {
                 // - Shortcut: Single-arm match
-                auto scope = m_builder.new_scope_var( node.span() );
-                this->define_vars_from(node.span(), node.m_arms[0].m_patterns[0]);
-                this->destructure_from(node.span(), node.m_arms[0].m_patterns[0], mv$(match_val));
-                this->visit_node_ptr(node.m_arms[0].m_code);
+                auto& arm = node.m_arms[0];
+                const auto& pat = arm.m_patterns[0];
+                
+                auto scope = m_builder.new_scope_var(arm.m_code->span());
+                auto tmp_scope = m_builder.new_scope_temp(arm.m_code->span());
+                this->define_vars_from(node.span(), pat);
+                // TODO: Do the same shortcut as _Let?
+                this->destructure_from(node.span(), pat, mv$(match_val));
+                
+                // Temp scope.
+                this->visit_node_ptr(arm.m_code);
+                
                 if( m_builder.block_active() ) {
+                    auto res = m_builder.get_result(arm.m_code->span());
+                    m_builder.raise_variables( arm.m_code->span(), res );
+                    m_builder.set_result(arm.m_code->span(), mv$(res));
+                    
+                    m_builder.terminate_scope( node.span(), mv$(tmp_scope) );
                     m_builder.terminate_scope( node.span(), mv$(scope) );
                 }
                 else {
-                    auto _ = mv$(scope);
+                    { auto _ = mv$(tmp_scope); }
+                    { auto _ = mv$(scope); }
                 }
             }
             else {
