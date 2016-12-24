@@ -341,9 +341,12 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val)
     TU_MATCH_DEF(::MIR::LValue, (val), (e),
     (
         ),
+    // TODO: This may not be correct, because it can change the drop points and ordering
+    // HACK: Working around cases where values are dropped while the result is not yet used.
     (Deref,
-        // TODO: This may not be correct, because it can change the drop points and ordering
-        // HACK: Working around cases where values are dropped while the result is not yet used.
+        raise_variables(sp, *e.val);
+        ),
+    (Field,
         raise_variables(sp, *e.val);
         ),
     // Actual value types

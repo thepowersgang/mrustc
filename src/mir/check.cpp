@@ -265,7 +265,9 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         val_state.ensure_valid(state, se.val);
                         ),
                     (Cast,
-                        val_state.move_val(state, se.val);
+                        // Well.. it's not exactly moved...
+                        val_state.ensure_valid(state, se.val);
+                        //val_state.move_val(state, se.val);
                         ),
                     (BinOp,
                         val_state.move_val(state, se.val_l);
@@ -342,17 +344,26 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 ),
             (If,
                 // Push blocks
+                val_state.ensure_valid( state, e.cond );
                 to_visit_blocks.push_back( ::std::make_pair(e.bb0, val_state) );
                 to_visit_blocks.push_back( ::std::make_pair(e.bb1, ::std::move(val_state)) );
                 ),
             (Switch,
+                val_state.ensure_valid( state, e.val );
                 for(const auto& tgt : e.targets)
                 {
                     to_visit_blocks.push_back( ::std::make_pair(tgt, val_state) );
                 }
                 ),
             (Call,
-                // TODO: Push blocks (with return valid only in one)
+                if( e.fcn.is_Value() )
+                    val_state.ensure_valid( state, e.fcn.as_Value() );
+                for(const auto& arg : e.args)
+                    val_state.ensure_valid( state, arg );
+                // Push blocks (with return valid only in one)
+                to_visit_blocks.push_back( ::std::make_pair(e.panic_block, val_state) );
+                val_state.mark_validity( state, e.ret_val, true );
+                to_visit_blocks.push_back( ::std::make_pair(e.ret_block, ::std::move(val_state)) );
                 )
             )
         }

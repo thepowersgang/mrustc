@@ -355,7 +355,7 @@ namespace {
                     }
                 }
                 
-                // - For the last node, don't bother with a statement scope
+                // For the last node, specially handle.
                 if( node.m_yields_final )
                 {
                     auto& subnode = node.m_nodes.back();
@@ -594,14 +594,17 @@ namespace {
             
             // 'true' branch
             {
+                auto stmt_scope = m_builder.new_scope_temp(node.m_true->span());
                 m_builder.set_cur_block(true_branch);
                 this->visit_node_ptr(node.m_true);
                 if( m_builder.block_active() || m_builder.has_result() ) {
                     m_builder.push_stmt_assign( node.span(), result_val.clone(), m_builder.get_result(node.m_true->span()) );
+                    m_builder.terminate_scope(node.span(), mv$(stmt_scope));
                     m_builder.end_split_arm(node.span(), scope, true);
                     m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
                 }
                 else {
+                    { auto _ = mv$(stmt_scope); }
                     m_builder.end_split_arm(node.span(), scope, false);
                 }
             }
@@ -610,14 +613,17 @@ namespace {
             m_builder.set_cur_block(false_branch);
             if( node.m_false )
             {
+                auto stmt_scope = m_builder.new_scope_temp(node.m_false->span());
                 this->visit_node_ptr(node.m_false);
                 if( m_builder.block_active() )
                 {
                     m_builder.push_stmt_assign( node.span(), result_val.clone(), m_builder.get_result(node.m_false->span()) );
+                    m_builder.terminate_scope(node.span(), mv$(stmt_scope));
                     m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
                     m_builder.end_split_arm(node.span(), scope, true);
                 }
                 else {
+                    { auto _ = mv$(stmt_scope); }
                     m_builder.end_split_arm(node.span(), scope, false);
                 }
             }

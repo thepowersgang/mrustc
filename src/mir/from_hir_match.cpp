@@ -251,6 +251,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         // - Define variables from the first pattern
         conv.define_vars_from(node.span(), arm.m_patterns.front());
         
+        auto pat_scope = builder.new_scope_split(node.span());
         for( unsigned int pat_idx = 0; pat_idx < arm.m_patterns.size(); pat_idx ++ )
         {
             const auto& pat = arm.m_patterns[pat_idx];
@@ -273,7 +274,9 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             conv.destructure_from( arm.m_code->span(), pat, match_val.clone(), true );
             builder.pause_cur_block();
             // NOTE: Paused block resumed upon successful match
+            builder.end_split_arm( arm.m_code->span(), pat_scope, true );
         }
+        builder.terminate_scope( arm.m_code->span(), mv$(pat_scope) );
         
         // TODO: If this pattern ignores fields with Drop impls, this will lead to leaks.
         // - Ideally, this would trigger a drop of whatever wasn't already taken by the pattern.
