@@ -51,14 +51,20 @@ namespace {
 }
 
 
-::FmtLambda Trans_Mangle(const ::HIR::GenericPath& path)
+::FmtLambda Trans_Mangle(const ::HIR::SimplePath& path)
 {
     return FMT_CB(ss,
-        ss << "_ZN" << path.m_path.m_crate_name.size() << path.m_path.m_crate_name;
-        for(const auto& comp : path.m_path.m_components) {
+        ss << "_ZN" << path.m_crate_name.size() << path.m_crate_name;
+        for(const auto& comp : path.m_components) {
             auto v = escape_str(comp);
             ss << v.size() << v;
         }
+        );
+}
+::FmtLambda Trans_Mangle(const ::HIR::GenericPath& path)
+{
+    return FMT_CB(ss,
+        ss << Trans_Mangle(path.m_path);
         ss << emit_params(path.m_params);
         );
 }

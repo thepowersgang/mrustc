@@ -287,6 +287,7 @@ namespace {
 // Enumerate types required for the enumerated items
 void Trans_Enumerate_Types(TransList& out, const ::HIR::Crate& crate)
 {
+    static Span sp;
     TypeVisitor tv { crate, out.m_types };
 
     unsigned int types_count = 0;
@@ -349,10 +350,18 @@ void Trans_Enumerate_Types(TransList& out, const ::HIR::Crate& crate)
                 if( markings_ptr->has_drop_impl )
                 {
                     // Add the Drop impl to the codegen list
-                    Trans_Enumerate_FillFrom_Path(out, crate,  ::HIR::Path( ty.clone(), crate.get_lang_item_path(Span(), "drop"), "drop"), {});
+                    Trans_Enumerate_FillFrom_Path(out, crate,  ::HIR::Path( ty.clone(), crate.get_lang_item_path(sp, "drop"), "drop"), {});
                     
                     constructors_added = true;
                 }
+            }
+            
+            if( const auto* ity = tv.m_resolve.is_type_owned_box(ty) )
+            {
+                // Reqire drop glue for inner type.
+                // - Should that already exist?
+                // Requires box_free lang item
+                Trans_Enumerate_FillFrom_Path(out, crate, ::HIR::GenericPath( crate.get_lang_item_path(sp, "box_free"), { ity->clone() } ), {});;
             }
         }
         types_count = out.m_types.size();

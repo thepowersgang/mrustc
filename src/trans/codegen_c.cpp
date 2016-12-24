@@ -134,6 +134,7 @@ namespace {
                     emit_ctype( monomorph(ty), inner );
                 }
                 };
+            m_of << "// struct " << p << "\n";
             m_of << "struct s_" << Trans_Mangle(p) << " {\n";
             TU_MATCHA( (item.m_data), (e),
             (Unit,
@@ -196,6 +197,18 @@ namespace {
             // If this type has an impl of Drop, call that impl
             if( item.m_markings.has_drop_impl ) {
                 m_of << "\t" << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(rv);\n";
+            }
+            else if( const auto* ity = m_resolve.is_type_owned_box(struct_ty) )
+            {
+                // Obtain inner pointer
+                // TODO: This is very specific to the structure of the official liballoc's Box.
+                ::HIR::TypeRef  inner_ptr = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Unique, ity->clone() );
+                m_of << "\t"; emit_ctype(inner_ptr, FMT_CB(ss, ss << "tmp0"; ));    m_of << " = rv->_0._0._0;\n";
+                // Call destructor of inner data
+                emit_destructor_call(::MIR::LValue::make_Temporary({0}), *ity, true);
+                // Emit a call to box_free for the type
+                ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
+                m_of << "\t" << Trans_Mangle(box_free) << "(tmp0);\n";
             }
             
             auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
