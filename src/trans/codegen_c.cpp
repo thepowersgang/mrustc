@@ -1097,6 +1097,14 @@ namespace {
                         else if( name == "atomic_cxchg_acqrel_failrelaxed" ) {
                             emit_atomic_cxchg(e, "memory_order_acq_rel", "memory_order_relaxed");
                         }
+                        // _rel = Release, Relaxed (not Release,Release)
+                        else if( name == "atomic_cxchg_rel" ) {
+                            emit_atomic_cxchg(e, "memory_order_release", "memory_order_relaxed");
+                        }
+                        // _acqrel = Release, Acquire (not AcqRel,AcqRel)
+                        else if( name == "atomic_cxchg_acqrel" ) {
+                            emit_atomic_cxchg(e, "memory_order_acq_rel", "memory_order_acquire");
+                        }
                         else if( name.compare(0, 7+6+4, "atomic_cxchg_fail") == 0 ) {
                             auto fail_ordering = H::get_atomic_ordering(mir_res, name, 7+6+4);
                             emit_atomic_cxchg(e, "memory_order_seq_cst", fail_ordering);
