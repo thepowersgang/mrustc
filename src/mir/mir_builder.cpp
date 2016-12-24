@@ -1223,6 +1223,7 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
                 break;
             case VarState::InnerMoved:
                 push_stmt_drop_shallow( sd.span, ::MIR::LValue::make_Variable(var_idx) );
+                set_variable_state(sd.span, var_idx, VarState::Dropped);
                 break;
             case VarState::MaybeMoved:
                 //TODO(sd.span, "Include drop flags");
