@@ -795,31 +795,49 @@ namespace {
         
         void visit(::HIR::ExprNode_CallValue& node) override
         {
+            const auto& fcn_ty = node.m_value->m_res_type;
+            DEBUG("_CallValue - " << fcn_ty);
             if( !m_closure_stack.empty() )
             {
                 TRACE_FUNCTION_F("_CallValue");
                 if( node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Unknown )
                 {
-                    if( node.m_res_type.m_data.is_Closure() )
+                    if( fcn_ty.m_data.is_Closure() )
                     {
-                        TODO(node.span(), "Determine how value in CallValue is used on a closure");
+                        const auto& cn = *fcn_ty.m_data.as_Closure().node;
+                        // Use the closure's class to determine if & or &mut should be taken (and which function to use)
+                        ::HIR::ValueUsage   vu = ::HIR::ValueUsage::Unknown;
+                        switch(cn.m_class)
+                        {
+                        case ::HIR::ExprNode_Closure::Class::Unknown:
+                        case ::HIR::ExprNode_Closure::Class::NoCapture:
+                        case ::HIR::ExprNode_Closure::Class::Shared:
+                            vu = ::HIR::ValueUsage::Borrow;
+                            break;
+                        case ::HIR::ExprNode_Closure::Class::Mut:
+                            vu = ::HIR::ValueUsage::Mutate;
+                            break;
+                        case ::HIR::ExprNode_Closure::Class::Once:
+                            vu = ::HIR::ValueUsage::Move;
+                            break;
+                        }
+                        node.m_value->m_usage = vu;
                     }
                     else
                     {
+                        // Must be a function pointer, leave it
                     }
                 }
                 else
                 {
                     // If the trait is known, then the &/&mut has been added
                 }
-                
-                node.m_value->visit(*this);
-                for(auto& arg : node.m_args)
-                    arg->visit(*this);
+                ::HIR::ExprVisitorDef::visit(node);
             }
-            else if( node.m_res_type.m_data.is_Closure() )
+            else if( fcn_ty.m_data.is_Closure() )
             {
-                TODO(node.span(), "Determine how value in CallValue is used on a closure");
+                //TODO(node.span(), "Determine how value in CallValue is used on a closure");
+                ::HIR::ExprVisitorDef::visit(node);
             }
             else
             {

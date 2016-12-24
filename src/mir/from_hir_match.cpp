@@ -275,6 +275,8 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             // NOTE: Paused block resumed upon successful match
         }
         
+        // TODO: If this pattern ignores fields with Drop impls, this will lead to leaks.
+        // - Ideally, this would trigger a drop of whatever wasn't already taken by the pattern.
         if( has_move_pattern )
         {
             builder.moved_lvalue(node.span(), match_val);

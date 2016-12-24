@@ -173,6 +173,11 @@ DEF_VISIT(ExprNode_Closure, node,
     {
         visit_node_ptr(node.m_code);
     }
+    else
+    {
+        for(auto& cap : node.m_captures)
+            visit_node_ptr(cap);
+    }
 )
 
 #undef DEF_VISIT
