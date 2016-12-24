@@ -678,7 +678,7 @@ namespace {
 
     private:
         RepeatLitStr indent() const {
-            return RepeatLitStr { "   ", static_cast<int>(m_indent_level) };
+            return RepeatLitStr { "    ", static_cast<int>(m_indent_level) };
         }
         void inc_indent() {
             m_indent_level ++;

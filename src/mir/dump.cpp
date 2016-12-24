@@ -165,7 +165,16 @@ namespace {
                         ),
                     (Drop,
                         DEBUG("- DROP " << e.slot);
-                        m_os << "drop(" << FMT_M(e.slot) << ");\n";
+                        m_os << "drop(" << FMT_M(e.slot);
+                        switch( e.kind )
+                        {
+                        case ::MIR::eDropKind::SHALLOW:
+                            m_os << " SHALLOW";
+                            break;
+                        case ::MIR::eDropKind::DEEP:
+                            break;
+                        }
+                        m_os << ");\n";
                         )
                     )
                 }
