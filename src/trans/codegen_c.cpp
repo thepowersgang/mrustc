@@ -50,6 +50,7 @@ namespace {
                 << "typedef struct { } tTYPEID;\n"
                 << "typedef struct { void* PTR; size_t META; } SLICE_PTR;\n"
                 << "typedef struct { void* PTR; void* META; } TRAITOBJ_PTR;\n"
+                << "typedef struct { size_t size; size_t align; } VTABLE_HDR;\n"
                 << "\n"
                 << "extern void _Unwind_Resume(void);\n"
                 << "\n"
@@ -136,6 +137,15 @@ namespace {
                 };
             m_of << "// struct " << p << "\n";
             m_of << "struct s_" << Trans_Mangle(p) << " {\n";
+            
+            // HACK: For vtables, insert the alignment and size at the start
+            {
+                const auto& lc = p.m_path.m_components.back();
+                if( lc.size() > 7 && ::std::strcmp(lc.c_str() + lc.size() - 7, "#vtable") == 0 ) {
+                    m_of << "\tVTABLE_HDR hdr;\n";
+                }
+            }
+            
             TU_MATCHA( (item.m_data), (e),
             (Unit,
                 ),
@@ -191,6 +201,12 @@ namespace {
             if( item.m_markings.has_drop_impl ) {
                 m_of << "tUNIT " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(struct s_" << Trans_Mangle(p) << "*rv);\n";
             }
+            else if( const auto* ity = m_resolve.is_type_owned_box(struct_ty) )
+            {
+                ::HIR::TypeRef  inner_ptr = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Unique, ity->clone() );
+                ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
+                m_of << "tUNIT " << Trans_Mangle(box_free) << "("; emit_ctype(inner_ptr, FMT_CB(ss, ss << "tmp0"; )); m_of << ");\n";
+            }
            
             m_of << "void " << Trans_Mangle(drop_glue_path) << "(struct s_" << Trans_Mangle(p) << "* rv) {\n";
             
@@ -205,7 +221,7 @@ namespace {
                 ::HIR::TypeRef  inner_ptr = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Unique, ity->clone() );
                 m_of << "\t"; emit_ctype(inner_ptr, FMT_CB(ss, ss << "tmp0"; ));    m_of << " = rv->_0._0._0;\n";
                 // Call destructor of inner data
-                emit_destructor_call(::MIR::LValue::make_Temporary({0}), *ity, true);
+                emit_destructor_call( ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Temporary({0})) }), *ity, true);
                 // Emit a call to box_free for the type
                 ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
                 m_of << "\t" << Trans_Mangle(box_free) << "(tmp0);\n";
@@ -519,11 +535,16 @@ namespace {
 
             auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &type, &trait_path.m_params, nullptr);
             
-            // TODO: Alignment and destructor
+            // Size, Alignment, and destructor
+            m_of << "{ ";
+            m_of << "sizeof("; emit_ctype(type); m_of << "),";
+            m_of << "__alignof__("; emit_ctype(type); m_of << "),";
+            // TODO: Drop glue
+            m_of << "}";    // No newline, added below
+            
             for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
             {
-                if( i != 0 )
-                    m_of << ",\n";
+                m_of << ",\n";
                 for(const auto& m : trait.m_value_indexes)
                 {
                     if( m.second.first != i )
@@ -598,7 +619,7 @@ namespace {
                 
                 if( code->blocks[i].statements.size() == 0 && code->blocks[i].terminator.is_Diverge() ) {
                     DEBUG("- Diverge only, omitting");
-                m_of << "bb" << i << ": _Unwind_Resume(); // Diverge\n";
+                    m_of << "bb" << i << ": _Unwind_Resume(); // Diverge\n";
                     continue ;
                 }
             
@@ -615,10 +636,26 @@ namespace {
                         ::HIR::TypeRef  tmp;
                         const auto& ty = mir_res.get_lvalue_type(tmp, e.slot);
                         
-                        if( e.kind == ::MIR::eDropKind::SHALLOW ) {
-                            // TODO: Shallow drops are only valid on owned_box
+                        switch( e.kind )
+                        {
+                        case ::MIR::eDropKind::SHALLOW:
+                            // Shallow drops are only valid on owned_box
+                            if( const auto* ity = m_resolve.is_type_owned_box(ty) )
+                            {
+                                // Emit a call to box_free for the type
+                                ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
+                                // TODO: This is specific to the official liballoc's owned_box
+                                m_of << "\t" << Trans_Mangle(box_free) << "("; emit_lvalue(e.slot); m_of << "._0._0._0);\n";
+                            }
+                            else
+                            {
+                                MIR_BUG(mir_res, "Shallow drop on non-Box - " << ty);
+                            }
+                            break;
+                        case ::MIR::eDropKind::DEEP:
+                            emit_destructor_call(e.slot, ty, false);
+                            break;
                         }
-                        emit_destructor_call(e.slot, ty, false);
                     }
                     else {
                         const auto& e = stmt.as_Assign();
@@ -972,11 +1009,13 @@ namespace {
                             case MetadataType::None:
                                 m_of << "sizeof("; emit_ctype(ty); m_of << ")";
                                 break;
-                            case MetadataType::Slice:
-                                MIR_TODO(mir_res, "size_of_val - " << ty);
-                                break;
+                            case MetadataType::Slice: {
+                                // TODO: Have a function that fetches the inner type for types like `Path` or `str`
+                                const auto& ity = *ty.m_data.as_Slice().inner;
+                                emit_lvalue(e.args.at(0)); m_of << ".META * sizeof("; emit_ctype(ity); m_of << ")";
+                                break; }
                             case MetadataType::TraitObject:
-                                MIR_TODO(mir_res, "size_of_val - " << ty);
+                                m_of << "((VTABLE_HDR*)"; emit_lvalue(e.args.at(0)); m_of << ".META)->size";
                                 break;
                             }
                         }
@@ -987,11 +1026,13 @@ namespace {
                             case MetadataType::None:
                                 m_of << "__alignof__("; emit_ctype(ty); m_of << ")";
                                 break;
-                            case MetadataType::Slice:
-                                MIR_TODO(mir_res, "min_align_of_val - " << ty);
-                                break;
+                            case MetadataType::Slice: {
+                                // TODO: Have a function that fetches the inner type for types like `Path` or `str`
+                                const auto& ity = *ty.m_data.as_Slice().inner;
+                                m_of << "__alignof__("; emit_ctype(ity); m_of << ")";
+                                break; }
                             case MetadataType::TraitObject:
-                                MIR_TODO(mir_res, "min_align_of_val - " << ty);
+                                m_of << "((VTABLE_HDR*)"; emit_lvalue(e.args.at(0)); m_of << ".META)->align";
                                 break;
                             }
                         }
