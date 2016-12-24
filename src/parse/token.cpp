@@ -303,11 +303,11 @@ struct EscapedString {
     case TOK_IDENT:     return m_data.as_String();
     case TOK_MACRO:     return m_data.as_String() + "!";
     case TOK_LIFETIME:  return "'" + m_data.as_String();
-    case TOK_INTEGER:   return FMT(m_data.as_Integer().m_intval);    // TODO: suffix for type
-    case TOK_CHAR:      return FMT("'\\u{"<< ::std::hex << m_data.as_Integer().m_intval << "}");
-    case TOK_FLOAT:     return FMT(m_data.as_Float().m_floatval);
-    case TOK_STRING:    return FMT("\"" << EscapedString(m_data.as_String()) << "\"");
-    case TOK_BYTESTRING:return FMT("b\"" << m_data.as_String() << "\"");
+    case TOK_INTEGER:   return format(m_data.as_Integer().m_intval);    // TODO: suffix for type
+    case TOK_CHAR:      return format("'\\u{", ::std::hex, m_data.as_Integer().m_intval, "}");
+    case TOK_FLOAT:     return format(m_data.as_Float().m_floatval);
+    case TOK_STRING:    return format("\"", EscapedString(m_data.as_String()), "\"");
+    case TOK_BYTESTRING:return format("b\"", m_data.as_String(), "\"");
     case TOK_CATTR_OPEN:return "#![";
     case TOK_ATTR_OPEN: return "#[";
     case TOK_UNDERSCORE:return "_";

@@ -446,7 +446,7 @@ Token Lexer::getTokenInt()
                         else if(suffix == "f32") num_type = CORETYPE_F32;
                         else if(suffix == "f64") num_type = CORETYPE_F64;
                         else
-                            throw ParseError::Generic( FMT("Unknown number suffix " << suffix) );
+                            throw ParseError::Generic( format("Unknown number suffix ", suffix) );
                     }
                     else
                     {
@@ -479,7 +479,7 @@ Token Lexer::getTokenInt()
                     else if(suffix == "f32") num_type = CORETYPE_F32;
                     else if(suffix == "f64") num_type = CORETYPE_F64;
                     else
-                        throw ParseError::Generic(*this, FMT("Unknown integer suffix '" << suffix << "'"));
+                        throw ParseError::Generic(*this, format("Unknown integer suffix '", suffix, "'"));
                     return Token(val, num_type);
                 }
                 else {
@@ -792,7 +792,7 @@ double Lexer::parseFloat(uint64_t whole)
             ch = this->getc_num();
         }
         if( !ch.isdigit() )
-            throw ParseError::Generic( FMT("Non-numeric '"<<ch<<"' in float exponent") );
+            throw ParseError::Generic( format("Non-numeric '", ch, "' in float exponent") );
         do {
             PUTC(ch);
             ch = this->getc_num();
@@ -814,11 +814,11 @@ uint32_t Lexer::parseEscape(char enclosing)
     case 'x': {
         ch = this->getc();
         if( !ch.isxdigit() )
-            throw ParseError::Generic(*this, FMT("Found invalid character '\\x" << ::std::hex << ch.v << "' in \\u sequence" ) );
+            throw ParseError::Generic(*this, format("Found invalid character '\\x", ::std::hex, ch.v, "' in \\u sequence" ) );
         char tmp[3] = {static_cast<char>(ch.v), 0, 0};
         ch = this->getc();
         if( !ch.isxdigit() )
-            throw ParseError::Generic(*this, FMT("Found invalid character '\\x" << ::std::hex << ch.v << "' in \\u sequence" ) );
+            throw ParseError::Generic(*this, format("Found invalid character '\\x", ::std::hex, ch.v, "' in \\u sequence" ) );
         tmp[1] = static_cast<char>(ch.v);
         return ::std::strtol(tmp, NULL, 16);
         } break;
@@ -832,7 +832,7 @@ uint32_t Lexer::parseEscape(char enclosing)
             ch = this->getc();
         }
         if( !ch.isxdigit() )
-            throw ParseError::Generic(*this, FMT("Found invalid character '\\x" << ::std::hex << ch.v << "' in \\u sequence" ) );
+            throw ParseError::Generic(*this, format("Found invalid character '\\x", ::std::hex, ch.v, "' in \\u sequence" ) );
         while( ch.isxdigit() )
         {
             char    tmp[2] = {static_cast<char>(ch.v), 0};
@@ -872,7 +872,7 @@ uint32_t Lexer::parseEscape(char enclosing)
         else
             return ch.v;
     default:
-        throw ParseError::Todo( FMT("Unknown escape sequence \\" << ch) );
+        throw ParseError::Todo( format("Unknown escape sequence \\", ch) );
     }
 }
 
@@ -1020,7 +1020,7 @@ bool Codepoint::isxdigit() const {
         s += (char)(0x80 | ((cp.v >>  0) & 0x3F));
     }
     else {
-        throw ::std::runtime_error( FMT("BUGCHECK: Bad unicode codepoint encountered - " << ::std::hex << cp.v) );
+        throw ::std::runtime_error( format("BUGCHECK: Bad unicode codepoint encountered - ", ::std::hex, cp.v) );
     }
     return s;
 }

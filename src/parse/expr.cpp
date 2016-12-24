@@ -917,7 +917,7 @@ ExprNodeP Parse_ExprFC(TokenStream& lex)
                 }
                 break; }
             case TOK_INTEGER:
-                val = NEWNODE( AST::ExprNode_Field, ::std::move(val), FMT(tok.intval()) );
+                val = NEWNODE( AST::ExprNode_Field, ::std::move(val), format(tok.intval()) );
                 break;
             default:
                 throw ParseError::Unexpected(lex, mv$(tok));

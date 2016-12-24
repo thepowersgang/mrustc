@@ -39,7 +39,7 @@ public:
         else if( tok.type() == close )
         {
             if(depth == 0)
-                throw ParseError::Generic(FMT("Unmatched " << Token(close) << " in macro pattern"));
+                throw ParseError::Generic(format("Unmatched ", Token(close), " in macro pattern"));
             depth --;
         }
 

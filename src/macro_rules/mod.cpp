@@ -202,7 +202,7 @@ void operator%(::Deserialiser& s, MacroPatEnt::Type& c) {
     _(PAT_IDENT);
     _(PAT_ITEM);
     else
-        throw ::std::runtime_error( FMT("No conversion for '" << n << "'") );
+        throw ::std::runtime_error( format("No conversion for '", n, "'") );
     #undef _
 }
 SERIALISE_TYPE_S(MacroPatEnt, {

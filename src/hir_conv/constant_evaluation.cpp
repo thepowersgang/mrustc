@@ -33,7 +33,7 @@ namespace {
 
         ::HIR::SimplePath new_static(::HIR::TypeRef type, ::HIR::Literal value)
         {
-            auto name = FMT(name_prefix << next_item_idx);
+            auto name = format(name_prefix, next_item_idx);
             next_item_idx ++;
             auto rv = (mod_path + name.c_str()).get_simple_path();
             newval_output.push_back( ::std::make_pair( mv$(name), ::HIR::Static {
@@ -1546,7 +1546,7 @@ namespace {
                     assert(e.size);
                     assert(*e.size);
                     const auto& expr_ptr = *e.size;
-                    auto nvs = NewvalState { m_new_values, *m_mod_path, FMT("ty_" << &ty << "$") };
+                    auto nvs = NewvalState { m_new_values, *m_mod_path, format("ty_", &ty, "$") };
                     auto val = evaluate_constant(expr_ptr->span(), m_crate, nvs, expr_ptr, ::HIR::CoreType::Usize);
                     if( !val.is_Integer() )
                         ERROR(expr_ptr->span(), E0000, "Array size isn't an integer");
@@ -1568,7 +1568,7 @@ namespace {
                 //else
                 //    return ;
 
-                auto nvs = NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$") };
+                auto nvs = NewvalState { m_new_values, *m_mod_path, format(p.get_name(), "$") };
                 item.m_value_res = evaluate_constant(item.m_value->span(), m_crate, nvs, item.m_value, item.m_type.clone(), {});
 
                 check_lit_type(item.m_value->span(), item.m_type, item.m_value_res);
@@ -1580,7 +1580,7 @@ namespace {
             for(auto& var : item.m_variants)
             {
                 TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-                    e.val = evaluate_constant(e.expr->span(), m_crate, NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$" << var.first << "$") }, e.expr, {});
+                    e.val = evaluate_constant(e.expr->span(), m_crate, NewvalState { m_new_values, *m_mod_path, format(p.get_name(), "$", var.first, "$") }, e.expr, {});
                     DEBUG("enum variant: " << p << "::" << var.first << " = " << e.val);
                 )
             }
@@ -1620,7 +1620,7 @@ namespace {
 
                 void visit(::HIR::ExprNode_ArraySized& node) override {
                     assert( node.m_size );
-                    NewvalState nvs { m_exp.m_new_values, *m_exp.m_mod_path, FMT("array_" << &node << "$") };
+                    NewvalState nvs { m_exp.m_new_values, *m_exp.m_mod_path, format("array_", &node, "$") };
                     auto val = evaluate_constant_hir(node.span(), m_exp.m_crate, mv$(nvs), *node.m_size, ::HIR::CoreType::Usize, {});
                     if( !val.is_Integer() )
                         ERROR(node.span(), E0000, "Array size isn't an integer");

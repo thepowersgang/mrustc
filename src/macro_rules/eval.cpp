@@ -589,7 +589,7 @@ public:
     MacroExpander(const MacroExpander& x) = delete;
 
     MacroExpander(const ::std::string& macro_name, const Ident::Hygiene& parent_hygiene, const ::std::vector<MacroExpansionEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
-        m_macro_filename( FMT("Macro:" << macro_name) ),
+        m_macro_filename( format("Macro:", macro_name) ),
         m_crate_name( mv$(crate_name) ),
         m_mappings( mv$(mappings) ),
         m_state( contents, m_mappings ),

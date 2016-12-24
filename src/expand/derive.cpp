@@ -336,7 +336,7 @@ public:
                         NEWNODE(UniOp, AST::ExprNode_UniOp::REF,
                             NEWNODE(Field,
                                 NEWNODE(NamedValue, AST::Path("self")),
-                                FMT(idx)
+                                format(idx)
                                 )
                             )
                         )
@@ -375,7 +375,7 @@ public:
 
                 for( unsigned int idx = 0; idx < e.m_sub_types.size(); idx ++ )
                 {
-                    auto name_a = FMT("a" << idx);
+                    auto name_a = format("a", idx);
                     pats_a.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF) );
                     //nodes.push_back( this->assert_is_eq(assert_method_path, NEWNODE(NamedValue, AST::Path(name_a))) );
                 }
@@ -395,7 +395,7 @@ public:
 
                 for( const auto& fld : e.m_fields )
                 {
-                    auto name_a = FMT("a" << fld.m_name);
+                    auto name_a = format("a", fld.m_name);
                     pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF)) );
                     //nodes.push_back( this->assert_is_eq(assert_method_path, NEWNODE(NamedValue, AST::Path(name_a))) );
                 }
@@ -479,7 +479,7 @@ public:
         (Tuple,
             for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
             {
-                auto fld_name = FMT(idx);
+                auto fld_name = format(idx);
                 nodes.push_back(this->compare_and_ret( sp, core_name,
                     NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), fld_name),
                     NEWNODE(Field, NEWNODE(NamedValue, AST::Path("v"   )), fld_name)
@@ -517,8 +517,8 @@ public:
 
                 for( unsigned int idx = 0; idx < e.m_sub_types.size(); idx ++ )
                 {
-                    auto name_a = FMT("a" << idx);
-                    auto name_b = FMT("b" << idx);
+                    auto name_a = format("a", idx);
+                    auto name_b = format("b", idx);
                     pats_a.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF) );
                     pats_b.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_b, ::AST::PatternBinding::Type::REF) );
                     nodes.push_back(this->compare_and_ret(sp, core_name,
@@ -539,8 +539,8 @@ public:
 
                 for( const auto& fld : e.m_fields )
                 {
-                    auto name_a = FMT("a" << fld.m_name);
-                    auto name_b = FMT("b" << fld.m_name);
+                    auto name_a = format("a", fld.m_name);
+                    auto name_b = format("b", fld.m_name);
                     pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF)) );
                     pats_b.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_b, ::AST::PatternBinding::Type::REF)) );
                         nodes.push_back(this->compare_and_ret(sp, core_name,
@@ -684,7 +684,7 @@ public:
         (Tuple,
             for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
             {
-                auto fld_name = FMT(idx);
+                auto fld_name = format(idx);
                 nodes.push_back(this->make_compare_and_ret( sp, core_name,
                     NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), fld_name),
                     NEWNODE(Field, NEWNODE(NamedValue, AST::Path("v"   )), fld_name)
@@ -722,8 +722,8 @@ public:
 
                 for( unsigned int idx = 0; idx < e.m_sub_types.size(); idx ++ )
                 {
-                    auto name_a = FMT("a" << idx);
-                    auto name_b = FMT("b" << idx);
+                    auto name_a = format("a", idx);
+                    auto name_b = format("b", idx);
                     pats_a.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF) );
                     pats_b.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_b, ::AST::PatternBinding::Type::REF) );
 
@@ -745,8 +745,8 @@ public:
 
                 for( const auto& fld : e.m_fields )
                 {
-                    auto name_a = FMT("a" << fld.m_name);
-                    auto name_b = FMT("b" << fld.m_name);
+                    auto name_a = format("a", fld.m_name);
+                    auto name_b = format("b", fld.m_name);
                     pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF)) );
                     pats_b.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_b, ::AST::PatternBinding::Type::REF)) );
 
@@ -892,7 +892,7 @@ public:
         (Tuple,
             for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
             {
-                nodes.push_back( this->assert_is_eq(assert_method_path, this->field(FMT(idx))) );
+                nodes.push_back( this->assert_is_eq(assert_method_path, this->field(format(idx))) );
             }
             )
         )
@@ -924,7 +924,7 @@ public:
 
                 for( unsigned int idx = 0; idx < e.m_sub_types.size(); idx ++ )
                 {
-                    auto name_a = FMT("a" << idx);
+                    auto name_a = format("a", idx);
                     pats_a.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF) );
                     nodes.push_back( this->assert_is_eq(assert_method_path, NEWNODE(NamedValue, AST::Path(name_a))) );
                 }
@@ -938,7 +938,7 @@ public:
 
                 for( const auto& fld : e.m_fields )
                 {
-                    auto name_a = FMT("a" << fld.m_name);
+                    auto name_a = format("a", fld.m_name);
                     pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF)) );
                     nodes.push_back( this->assert_is_eq(assert_method_path, NEWNODE(NamedValue, AST::Path(name_a))) );
                 }
@@ -1048,7 +1048,7 @@ public:
         (Tuple,
             for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
             {
-                auto fld_name = FMT(idx);
+                auto fld_name = format(idx);
                 nodes.push_back(this->make_compare_and_ret( sp, core_name,
                     NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), fld_name),
                     NEWNODE(Field, NEWNODE(NamedValue, AST::Path("v"   )), fld_name)
@@ -1086,8 +1086,8 @@ public:
 
                 for( unsigned int idx = 0; idx < e.m_sub_types.size(); idx ++ )
                 {
-                    auto name_a = FMT("a" << idx);
-                    auto name_b = FMT("b" << idx);
+                    auto name_a = format("a", idx);
+                    auto name_b = format("b", idx);
                     pats_a.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF) );
                     pats_b.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_b, ::AST::PatternBinding::Type::REF) );
 
@@ -1109,8 +1109,8 @@ public:
 
                 for( const auto& fld : e.m_fields )
                 {
-                    auto name_a = FMT("a" << fld.m_name);
-                    auto name_b = FMT("b" << fld.m_name);
+                    auto name_a = format("a", fld.m_name);
+                    auto name_b = format("b", fld.m_name);
                     pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF)) );
                     pats_b.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_b, ::AST::PatternBinding::Type::REF)) );
 
@@ -1270,7 +1270,7 @@ public:
                 ::std::vector<AST::ExprNodeP>   vals;
                 for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
                 {
-                    vals.push_back( this->clone_val_ref(core_name, this->field(FMT(idx))) );
+                    vals.push_back( this->clone_val_ref(core_name, this->field(format(idx))) );
                 }
                 nodes.push_back( NEWNODE(CallPath, AST::Path(ty_path), mv$(vals)) );
             }
@@ -1302,7 +1302,7 @@ public:
 
                 for( unsigned int idx = 0; idx < e.m_sub_types.size(); idx ++ )
                 {
-                    auto name_a = FMT("a" << idx);
+                    auto name_a = format("a", idx);
                     pats_a.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF) );
                     nodes.push_back( this->clone_val_direct(core_name, NEWNODE(NamedValue, AST::Path(name_a))) );
                 }
@@ -1316,7 +1316,7 @@ public:
 
                 for( const auto& fld : e.m_fields )
                 {
-                    auto name_a = FMT("a" << fld.m_name);
+                    auto name_a = format("a", fld.m_name);
                     pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF)) );
                     vals.push_back( ::std::make_pair( fld.m_name, this->clone_val_direct(core_name, NEWNODE(NamedValue, AST::Path(name_a))) ) );
                 }
@@ -1518,7 +1518,7 @@ public:
         (Tuple,
             for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
             {
-                nodes.push_back( this->hash_val_ref(core_name, this->field(FMT(idx))) );
+                nodes.push_back( this->hash_val_ref(core_name, this->field(format(idx))) );
             }
             )
         )
@@ -1552,7 +1552,7 @@ public:
 
                 for( unsigned int idx = 0; idx < e.m_sub_types.size(); idx ++ )
                 {
-                    auto name_a = FMT("a" << idx);
+                    auto name_a = format("a", idx);
                     pats_a.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF) );
                     nodes.push_back( this->hash_val_direct(core_name, NEWNODE(NamedValue, AST::Path(name_a))) );
                 }
@@ -1567,7 +1567,7 @@ public:
 
                 for( const auto& fld : e.m_fields )
                 {
-                    auto name_a = FMT("a" << fld.m_name);
+                    auto name_a = format("a", fld.m_name);
                     pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF)) );
                     nodes.push_back( this->hash_val_direct(core_name, NEWNODE(NamedValue, AST::Path(name_a))) );
                 }
@@ -1683,7 +1683,7 @@ public:
             {
                 nodes.push_back( NEWNODE(CallPath,
                     this->get_trait_path_Encoder() + "emit_tuple_struct_arg",
-                    vec$( NEWNODE(NamedValue, AST::Path("s")), NEWNODE(Integer, idx, CORETYPE_UINT), this->enc_closure( sp, this->enc_val_ref(this->field(FMT(idx))) ) )
+                    vec$( NEWNODE(NamedValue, AST::Path("s")), NEWNODE(Integer, idx, CORETYPE_UINT), this->enc_closure( sp, this->enc_val_ref(this->field(format(idx))) ) )
                     ) );
             }
             )
@@ -1742,7 +1742,7 @@ public:
 
                 for( unsigned int idx = 0; idx < e.m_sub_types.size(); idx ++ )
                 {
-                    auto name_a = FMT("a" << idx);
+                    auto name_a = format("a", idx);
                     pats_a.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF) );
                     nodes.push_back( NEWNODE(CallPath, this->get_trait_path_Encoder() + "emit_enum_variant_arg",
                         vec$(
@@ -1772,7 +1772,7 @@ public:
                 unsigned int idx = 0;
                 for( const auto& fld : e.m_fields )
                 {
-                    auto name_a = Ident( FMT("a" << fld.m_name) );
+                    auto name_a = Ident( format("a", fld.m_name) );
                     pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), Ident(name_a), ::AST::PatternBinding::Type::REF)) );
 
                     nodes.push_back( NEWNODE(CallPath, this->get_trait_path_Encoder() + "emit_enum_struct_variant_field",
@@ -1975,7 +1975,7 @@ public:
 
                 for( unsigned int idx = 0; idx < e.m_sub_types.size(); idx ++ )
                 {
-                    auto name_a = FMT("a" << idx);
+                    auto name_a = format("a", idx);
                     args.push_back( NEWNODE(UniOp, ::AST::ExprNode_UniOp::QMARK, NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_enum_variant_arg",
                         vec$(
                             NEWNODE(NamedValue, AST::Path("d")),
@@ -1992,7 +1992,7 @@ public:
                 unsigned int idx = 0;
                 for( const auto& fld : e.m_fields )
                 {
-                    auto name_a = FMT("a" << fld.m_name);
+                    auto name_a = format("a", fld.m_name);
 
                     vals.push_back(::std::make_pair(fld.m_name, NEWNODE(UniOp, ::AST::ExprNode_UniOp::QMARK, NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_enum_struct_variant_field",
                         vec$(

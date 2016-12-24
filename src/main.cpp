@@ -250,13 +250,13 @@ int main(int argc, char *argv[])
             switch( crate.m_crate_type )
             {
             case ::AST::Crate::Type::RustLib:
-                params.outfile = FMT(params.output_dir << "lib" << crate.m_crate_name << ".hir");
+                params.outfile = format(params.output_dir, "lib", crate.m_crate_name, ".hir");
                 break;
             case ::AST::Crate::Type::Executable:
-                params.outfile = FMT(params.output_dir << crate.m_crate_name);
+                params.outfile = format(params.output_dir, crate.m_crate_name);
                 break;
             default:
-                params.outfile = FMT(params.output_dir << crate.m_crate_name << ".o");
+                params.outfile = format(params.output_dir, crate.m_crate_name, ".o");
                 break;
             }
             DEBUG("params.outfile = " << params.outfile);
@@ -264,7 +264,7 @@ int main(int argc, char *argv[])
 
         // XXX: Dump crate before resolve
         CompilePhaseV("Temp output - Parsed", [&]() {
-            Dump_Rust( FMT(params.outfile << "_0a_exp.rs").c_str(), crate );
+            Dump_Rust(format(params.outfile, "_0a_exp.rs").c_str(), crate);
             });
 
         if( params.last_stage == ProgramParams::STAGE_EXPAND ) {
@@ -294,7 +294,7 @@ int main(int argc, char *argv[])
 
         // XXX: Dump crate before HIR
         CompilePhaseV("Temp output - Resolved", [&]() {
-            Dump_Rust( FMT(params.outfile << "_1_res.rs").c_str(), crate );
+            Dump_Rust(format(params.outfile, "_1_res.rs").c_str(), crate);
             });
 
         if( params.last_stage == ProgramParams::STAGE_RESOLVE ) {
@@ -331,7 +331,7 @@ int main(int argc, char *argv[])
             });
 
         CompilePhaseV("Dump HIR", [&]() {
-            ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
+            ::std::ofstream os (format(params.outfile, "_2_hir.rs"));
             HIR_Dump( os, *hir_crate );
             });
 
@@ -369,7 +369,7 @@ int main(int argc, char *argv[])
             HIR_Expand_ErasedType(*hir_crate);
             });
         CompilePhaseV("Dump HIR", [&]() {
-            ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
+            ::std::ofstream os (format(params.outfile, "_2_hir.rs"));
             HIR_Dump( os, *hir_crate );
             });
         // - Ensure that typeck worked (including Fn trait call insertion etc)
@@ -387,7 +387,7 @@ int main(int argc, char *argv[])
             });
 
         CompilePhaseV("Dump MIR", [&]() {
-            ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));
+            ::std::ofstream os (format(params.outfile, "_3_mir.rs"));
             MIR_Dump( os, *hir_crate );
             });
 
@@ -401,7 +401,7 @@ int main(int argc, char *argv[])
             ConvertHIR_ConstantEvaluateFull(*hir_crate);
             });
         CompilePhaseV("Dump HIR", [&]() {
-            ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
+            ::std::ofstream os (format(params.outfile, "_2_hir.rs"));
             HIR_Dump( os, *hir_crate );
             });
 
@@ -415,7 +415,7 @@ int main(int argc, char *argv[])
             });
 
         CompilePhaseV("Dump MIR", [&]() {
-            ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));
+            ::std::ofstream os (format(params.outfile, "_3_mir.rs"));
             MIR_Dump( os, *hir_crate );
             });
 

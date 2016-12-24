@@ -211,7 +211,7 @@ void Reader::read(void* buf, size_t len)
         m_buffer.populate( *m_inner );
         used = m_buffer.read(buf, len);
         if( used != len )
-            throw ::std::runtime_error( FMT("Reader::read - Requested " << len << " bytes from buffer, got " << used) );
+            throw ::std::runtime_error( format("Reader::read - Requested ", len, " bytes from buffer, got ", used) );
     }
 }
 

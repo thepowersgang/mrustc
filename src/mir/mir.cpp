@@ -37,7 +37,7 @@ namespace MIR {
                 if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
                     os << v;
                 else
-                    os << "\\u{" << FMT(::std::hex << (unsigned int)v) << "}";
+                    os << "\\u{" << format(::std::hex, (unsigned int)v), "}";
             }
             os << "\"";
             ),

@@ -3636,7 +3636,7 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
                 for( unsigned int i = 0; i < se.size(); i ++ )
                 {
                     // TODO: Privacy
-                    if( FMT(i) == name ) {
+                    if( format(i) == name ) {
                         field_ty = monomorphise_type_with(sp, se[i].ent, monomorph);
                         return true;
                     }
@@ -3688,7 +3688,7 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
     else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Tuple, e,
         for( unsigned int i = 0; i < e.size(); i ++ )
         {
-            if( FMT(i) == name ) {
+            if( format(i) == name ) {
                 field_ty = e[i].clone();
                 return true;
             }
