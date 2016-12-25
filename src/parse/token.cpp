@@ -38,7 +38,7 @@ Token::~Token()
     default:
         break;
     }
-    
+
 }
 
 Token::Token():
@@ -87,7 +87,7 @@ Token::Token(const InterpolatedFragment& frag)
         m_type = TOK_INTERPOLATED_STMT; if(0)
     case InterpolatedFragment::BLOCK:
         m_type = TOK_INTERPOLATED_BLOCK;
-        
+
         m_data = reinterpret_cast<const AST::ExprNode*>(frag.m_ptr)->clone().release();
         break;
     case InterpolatedFragment::META:
@@ -125,7 +125,7 @@ Token::Token(TagTakeIP, InterpolatedFragment frag)
         m_type = TOK_INTERPOLATED_STMT; if(0)
     case InterpolatedFragment::BLOCK:
         m_type = TOK_INTERPOLATED_BLOCK;
-        
+
         m_data = reinterpret_cast<AST::ExprNode*>(frag.m_ptr);
         frag.m_ptr = nullptr;
         break;
@@ -160,7 +160,7 @@ Token Token::clone() const
 {
     Token   rv(m_type);
     rv.m_pos = m_pos;
-    
+
     assert( m_data.tag() != Data::TAGDEAD );
     TU_MATCH(Data, (m_data), (e),
     (None,
@@ -254,7 +254,7 @@ enum eTokenType Token::typefromstr(const ::std::string& s)
 struct EscapedString {
     const ::std::string& s;
     EscapedString(const ::std::string& s): s(s) {}
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const EscapedString& x) {
         for(auto b : x.s) {
             switch(b)
@@ -284,7 +284,7 @@ struct EscapedString {
 {
     switch(m_type)
     {
-    case TOK_NULL:  return "/*null*/"; 
+    case TOK_NULL:  return "/*null*/";
     case TOK_EOF:   return "/*eof*/";
 
     case TOK_NEWLINE:    return "\n";

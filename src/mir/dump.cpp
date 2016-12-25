@@ -10,14 +10,14 @@
 #include "mir.hpp"
 
 namespace {
-    
+
     class TreeVisitor:
         public ::HIR::Visitor
     {
         ::std::ostream& m_os;
         unsigned int    m_indent_level;
         bool m_short_item_name = false;
-        
+
     public:
         TreeVisitor(::std::ostream& os):
             m_os(os),
@@ -28,7 +28,7 @@ namespace {
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
             m_short_item_name = true;
-            
+
             m_os << indent() << "impl" << impl.m_params.fmt_args() << " " << impl.m_type << "\n";
             if( ! impl.m_params.m_bounds.empty() )
             {
@@ -39,13 +39,13 @@ namespace {
             ::HIR::Visitor::visit_type_impl(impl);
             dec_indent();
             m_os << indent() << "}\n";
-            
+
             m_short_item_name = false;
         }
         virtual void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
         {
             m_short_item_name = true;
-            
+
             m_os << indent() << "impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << "\n";
             if( ! impl.m_params.m_bounds.empty() )
             {
@@ -56,28 +56,28 @@ namespace {
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
             dec_indent();
             m_os << indent() << "}\n";
-            
+
             m_short_item_name = false;
         }
         void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl) override
         {
             m_short_item_name = true;
-            
+
             m_os << indent() << "impl" << impl.m_params.fmt_args() << " " << (impl.is_positive ? "" : "!") << trait_path << impl.m_trait_args << " for " << impl.m_type << "\n";
             if( ! impl.m_params.m_bounds.empty() )
             {
                 m_os << indent() << " " << impl.m_params.fmt_bounds() << "\n";
             }
             m_os << indent() << "{ }\n";
-            
+
             m_short_item_name = false;
         }
-        
+
         // - Type Items
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
         {
             m_short_item_name = true;
-            
+
             m_os << indent() << "trait " << p << item.m_params.fmt_args() << "\n";
             if( ! item.m_params.m_bounds.empty() )
             {
@@ -88,7 +88,7 @@ namespace {
             ::HIR::Visitor::visit_trait(p, item);
             dec_indent();
             m_os << indent() << "}\n";
-            
+
             m_short_item_name = false;
         }
 
@@ -119,7 +119,7 @@ namespace {
             {
                 m_os << indent() << " " << item.m_params.fmt_bounds() << "\n";
             }
-            
+
             if( item.m_code )
             {
                 m_os << indent() << "{\n";
@@ -133,8 +133,8 @@ namespace {
                 m_os << indent() << "  ;\n";
             }
         }
-        
-        
+
+
         void dump_mir(const ::MIR::Function& fcn)
         {
             for(unsigned int i = 0; i < fcn.named_variables.size(); i ++)
@@ -145,19 +145,19 @@ namespace {
             {
                 m_os << indent() << "let tmp$" << i << ": " << fcn.temporaries[i] << ";\n";
             }
-            
+
             #define FMT_M(x)   FMT_CB(os, this->fmt_val(os,x);)
             for(unsigned int i = 0; i < fcn.blocks.size(); i ++)
             {
                 const auto& block = fcn.blocks[i];
                 DEBUG("BB" << i);
-                
+
                 m_os << indent() << "bb" << i << ": {\n";
                 inc_indent();
                 for(const auto& stmt : block.statements)
                 {
                     m_os << indent();
-                    
+
                     TU_MATCHA( (stmt), (e),
                     (Assign,
                         DEBUG("- Assign " << e.dst << " = " << e.src);
@@ -178,7 +178,7 @@ namespace {
                         )
                     )
                 }
-                
+
                 m_os << indent();
                 TU_MATCHA( (block.terminator), (e),
                 (Incomplete,
@@ -226,7 +226,7 @@ namespace {
                 )
                 dec_indent();
                 m_os << indent() << "}\n";
-                
+
                 m_os.flush();
             }
             #undef FMT
@@ -338,14 +338,14 @@ namespace {
                 case ::MIR::eBinOp::MUL_OV: os << "MUL_OV"; break;
                 case ::MIR::eBinOp::DIV_OV: os << "DIV_OV"; break;
                 //case ::MIR::eBinOp::MOD_OV: os << "MOD_OV"; break;
-                
+
                 case ::MIR::eBinOp::BIT_OR : os << "BIT_OR"; break;
                 case ::MIR::eBinOp::BIT_AND: os << "BIT_AND"; break;
                 case ::MIR::eBinOp::BIT_XOR: os << "BIT_XOR"; break;
-                
+
                 case ::MIR::eBinOp::BIT_SHR: os << "BIT_SHR"; break;
                 case ::MIR::eBinOp::BIT_SHL: os << "BIT_SHL"; break;
-                
+
                 case ::MIR::eBinOp::EQ: os << "EQ"; break;
                 case ::MIR::eBinOp::NE: os << "NE"; break;
                 case ::MIR::eBinOp::GT: os << "GT"; break;
@@ -433,7 +433,7 @@ namespace {
 void MIR_Dump(::std::ostream& sink, const ::HIR::Crate& crate)
 {
     TreeVisitor tv { sink };
-    
+
     tv.visit_crate( const_cast< ::HIR::Crate&>(crate) );
 }
 

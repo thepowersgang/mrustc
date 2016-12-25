@@ -56,7 +56,7 @@ public:
 		m_key(key),
 		m_sub_items(sub_items)
 	{}
-	
+
 	const ::std::string& key() const { return m_key; }
 	const ::std::string& string() const { assert(m_sub_items.size() == 0); return m_value; }
 };
@@ -70,7 +70,7 @@ public:
 	bool has(const ::std::string& name) const {
 		return this->has(name.c_str());
 	}
-	
+
 	const MetaItem* get_first_ptr(const char* name) const {
 		for(const auto& e : m_ents) {
 			if( e.key() == name)
@@ -83,7 +83,7 @@ public:
 		assert(p != 0);
 		return *p;
 	}
-	
+
 	void push_back(MetaItem a) {
 		m_ents.push_back( ::std::move(a) );
 	}
@@ -126,14 +126,14 @@ public:
 	{}
 	virtual ~Item() {
 	}
-	
+
 	void set_pub() {
 		m_is_pub = true;
 	}
 	void add_attrs(AttrList a) {
 		m_attrs.append( ::std::move(a) );
 	}
-	
+
 	const AttrList& attrs() const { return m_attrs; }
 };
 
@@ -149,7 +149,7 @@ class Module:
 	bool	m_is_extern;
 	::std::string	m_name;
 	ItemList	m_items;
-	
+
 	::std::vector<::std::string>	m_mod_path;
 	::std::string	m_filename, m_base_dir;
 public:
@@ -169,18 +169,18 @@ public:
 		m_items = ::std::move(x.m_items);
 		this->add_attrs( ::std::move(x.m_attrs) );
 	}
-	
+
 	bool is_external() const { return m_is_extern; }
 	const ::std::string& name() const { return m_name; }
 	const ::std::string& filename() const { return m_filename; }
 	const ::std::string& base_dir() const { return m_base_dir; }
 	const ::std::vector<::std::string>& mod_path() const { return m_mod_path; }
-	
+
 	void set_name(::std::string name) {
 		assert(m_name == "");
 		m_name = name;
 	}
-	
+
 	void set_mod_path(::std::vector<::std::string> mod_path) {
 		m_mod_path = ::std::move(mod_path);
 	}
@@ -188,7 +188,7 @@ public:
 		m_filename = filename;
 		m_base_dir = base_dir;
 	}
-	
+
 	ItemList& items() {
 		return m_items;
 	}

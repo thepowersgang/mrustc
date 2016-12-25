@@ -24,14 +24,14 @@ MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const 
     if( resolve.m_crate.m_lang_items.count("owned_box") > 0 ) {
         m_lang_Box = &resolve.m_crate.m_lang_items.at("owned_box");
     }
-    
+
     set_cur_block( new_bb_unlinked() );
     m_scopes.push_back( ScopeDef { sp } );
     m_scope_stack.push_back( 0 );
-    
+
     m_scopes.push_back( ScopeDef { sp, ScopeType::make_Temporaries({}) } );
     m_scope_stack.push_back( 1 );
-    
+
     m_variable_states.resize( output.named_variables.size(), VarState::Uninit );
 }
 MirBuilder::~MirBuilder()
@@ -57,12 +57,12 @@ const ::HIR::TypeRef* MirBuilder::is_type_owned_box(const ::HIR::TypeRef& ty) co
             return nullptr;
         }
         const auto& te = ty.m_data.as_Path();
-        
+
         if( ! te.path.m_data.is_Generic() ) {
             return nullptr;
         }
         const auto& pe = te.path.m_data.as_Generic();
-        
+
         if( pe.m_path != *m_lang_Box ) {
             return nullptr;
         }
@@ -101,11 +101,11 @@ void MirBuilder::define_variable(unsigned int idx)
 {
     unsigned int rv = m_output.temporaries.size();
     DEBUG("DEFINE tmp" << rv << ": " << ty);
-    
+
     m_output.temporaries.push_back( ty.clone() );
     m_temporary_states.push_back( VarState::Uninit );
     assert(m_output.temporaries.size() == m_temporary_states.size());
-    
+
     ScopeDef* top_scope = nullptr;
     for(unsigned int i = m_scope_stack.size(); i --; )
     {
@@ -179,7 +179,7 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
     ASSERT_BUG(sp, dst.tag() != ::MIR::LValue::TAGDEAD, "");
     ASSERT_BUG(sp, val.tag() != ::MIR::RValue::TAGDEAD, "");
-    
+
     TU_MATCHA( (val), (e),
     (Use,
         this->moved_lvalue(sp, e);
@@ -248,7 +248,7 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
             this->moved_lvalue(sp, val);
         )
     )
-    
+
     // Drop target if populated
     mark_value_assigned(sp, dst);
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Assign({ mv$(dst), mv$(val) }) );
@@ -257,12 +257,12 @@ void MirBuilder::push_stmt_drop(const Span& sp, ::MIR::LValue val)
 {
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
     ASSERT_BUG(sp, val.tag() != ::MIR::LValue::TAGDEAD, "");
-    
+
     if( lvalue_is_copy(sp, val) ) {
         // Don't emit a drop for Copy values
         return ;
     }
-    
+
     DEBUG("DROP " << val);
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::DEEP, mv$(val) }) );
 }
@@ -270,13 +270,13 @@ void MirBuilder::push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val)
 {
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
     ASSERT_BUG(sp, val.tag() != ::MIR::LValue::TAGDEAD, "");
-    
+
     // TODO: Ensure that the type is a Box
     //if( lvalue_is_copy(sp, val) ) {
     //    // Don't emit a drop for Copy values
     //    return ;
     //}
-    
+
     DEBUG("DROP shallow " << val);
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::SHALLOW, mv$(val) }) );
 }
@@ -361,7 +361,7 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val)
         while( scope_it != m_scope_stack.rend() )
         {
             auto& scope_def = m_scopes.at(*scope_it);
-            
+
             TU_IFLET( ScopeType, scope_def.data, Variables, e,
                 auto tmp_it = ::std::find( e.vars.begin(), e.vars.end(), idx );
                 if( tmp_it != e.vars.end() )
@@ -379,11 +379,11 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val)
             return ;
         }
         ++scope_it;
-        
+
         while( scope_it != m_scope_stack.rend() )
         {
             auto& scope_def = m_scopes.at(*scope_it);
-            
+
             TU_IFLET( ScopeType, scope_def.data, Variables, e,
                 e.vars.push_back( idx );
                 DEBUG("- to " << *scope_it);
@@ -391,7 +391,7 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val)
             )
             ++scope_it;
         }
-        
+
         DEBUG("- top");
         ),
     (Temporary,
@@ -400,7 +400,7 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val)
         while( scope_it != m_scope_stack.rend() )
         {
             auto& scope_def = m_scopes.at(*scope_it);
-            
+
             TU_IFLET( ScopeType, scope_def.data, Temporaries, e,
                 auto tmp_it = ::std::find( e.temporaries.begin(), e.temporaries.end(), idx );
                 if( tmp_it != e.temporaries.end() )
@@ -418,11 +418,11 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val)
             return ;
         }
         ++scope_it;
-        
+
         while( scope_it != m_scope_stack.rend() )
         {
             auto& scope_def = m_scopes.at(*scope_it);
-            
+
             TU_IFLET( ScopeType, scope_def.data, Temporaries, e,
                 e.temporaries.push_back( idx );
                 DEBUG("- to " << *scope_it);
@@ -430,7 +430,7 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val)
             )
             ++scope_it;
         }
-        
+
         DEBUG("- top");
         )
     )
@@ -579,42 +579,42 @@ void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope, bool emit_cl
             BUG(sp, "Terminating scope not on the stack - scope " << scope.idx);
         BUG(sp, "Terminating scope " << scope.idx << " when not at top of stack, " << (m_scope_stack.end() - it - 1) << " scopes in the way");
     }
-    
+
     auto& scope_def = m_scopes.at(scope.idx);
     ASSERT_BUG( sp, scope_def.complete == false, "Terminating scope which is already terminated" );
-    
+
     if( emit_cleanup )
     {
         // 2. Emit drops for all non-moved variables (share with below)
         drop_scope_values(scope_def);
     }
-    
+
     // 3. Pop scope (last because `drop_scope_values` uses the stack)
     m_scope_stack.pop_back();
-    
+
     complete_scope(scope_def);
 }
 void MirBuilder::terminate_scope_early(const Span& sp, const ScopeHandle& scope)
 {
     DEBUG("EARLY scope " << scope.idx);
-    
+
     // 1. Ensure that this block is in the stack
     auto it = ::std::find( m_scope_stack.begin(), m_scope_stack.end(), scope.idx );
     if( it == m_scope_stack.end() ) {
         BUG(sp, "Early-terminating scope not on the stack");
     }
     unsigned int slot = it - m_scope_stack.begin();
-    
+
     bool is_conditional = false;
     for(unsigned int i = m_scope_stack.size(); i-- > slot; )
     {
         auto idx = m_scope_stack[i];
         auto& scope_def = m_scopes.at( idx );
-        
+
         // If a conditional block is hit, prevent full termination of the rest
         if( scope_def.data.is_Split() || scope_def.data.is_Loop() )
             is_conditional = true;
-        
+
         if( !is_conditional ) {
             DEBUG("Complete scope " << idx);
             drop_scope_values(scope_def);
@@ -624,7 +624,7 @@ void MirBuilder::terminate_scope_early(const Span& sp, const ScopeHandle& scope)
         else {
             // Mark patial within this scope?
             DEBUG("Drop part of scope " << idx);
-            
+
             // Emit drops for dropped values within this scope
             drop_scope_values(scope_def);
             // Inform the scope that it's been early-exited
@@ -641,9 +641,9 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
     ASSERT_BUG(sp, sd.data.is_Split(), "");
     auto& sd_split = sd.data.as_Split();
     ASSERT_BUG(sp, !sd_split.arms.empty(), "");
-    
+
     sd_split.arms.back().always_early_terminated = /*sd_split.arms.back().has_early_terminated &&*/ !reachable;
-    
+
     // HACK: If this arm's end is reachable, convert InnerMoved (shallow drop) variable states to Moved
     // - I'm not 100% sure this is the correct place for calling drop.
     if( reachable )
@@ -659,7 +659,7 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
             }
         }
     }
-    
+
     sd_split.arms.push_back( {} );
 }
 void MirBuilder::end_split_arm_early(const Span& sp)
@@ -674,13 +674,13 @@ void MirBuilder::end_split_arm_early(const Span& sp)
         m_scope_stack.pop_back();
         complete_scope(scope_def);
     }
-    
+
     if( !m_scope_stack.empty() && m_scopes.at( m_scope_stack.back() ).data.is_Split() )
     {
         auto& sd = m_scopes[ m_scope_stack.back() ];
         auto& sd_split = sd.data.as_Split();
         sd_split.arms.back().has_early_terminated = true;
-        
+
         const auto& vss = sd_split.arms.back().var_states;
         for(unsigned int i = 0; i < vss.size(); i ++ )
         {
@@ -696,7 +696,7 @@ void MirBuilder::end_split_arm_early(const Span& sp)
 void MirBuilder::complete_scope(ScopeDef& sd)
 {
     sd.complete = true;
-    
+
     TU_MATCHA( (sd.data), (e),
     (Temporaries,
         DEBUG("Temporaries " << e.temporaries);
@@ -710,16 +710,16 @@ void MirBuilder::complete_scope(ScopeDef& sd)
     (Split,
         )
     )
-    
+
     // No macro for better debug output.
     if( sd.data.is_Split() )
     {
         auto& e = sd.data.as_Split();
-        
+
         assert( e.arms.size() > 1 );
         TRACE_FUNCTION_F("Split - " << (e.arms.size() - 1) << " arms");
         e.arms.pop_back();
-        
+
         // Merge all arms and apply upwards
         size_t var_count = 0;
         size_t tmp_count = 0;
@@ -728,18 +728,18 @@ void MirBuilder::complete_scope(ScopeDef& sd)
             var_count = ::std::max(var_count, arm.var_states.size());
             tmp_count = ::std::max(tmp_count, arm.tmp_states.size());
         }
-        
+
         struct StateMerger
         {
             ::std::vector<bool> m_changed;
             ::std::vector<VarState> m_new_states;
-            
+
             StateMerger(size_t var_count):
                 m_changed(var_count),
                 m_new_states(var_count)
             {
             }
-            
+
             void merge_arm_state(const Span& sp, unsigned int i, bool has_changed, VarState new_state)
             {
                 assert(i < this->m_new_states.size());
@@ -837,7 +837,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                 }
             }
         };
-        
+
         StateMerger   sm_var { var_count };
         StateMerger   sm_tmp { tmp_count };
         for(const auto& arm : e.arms)
@@ -850,7 +850,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
             {
                 sm_var.merge_arm_state(sd.span, i, arm.changed_var_states[i], arm.var_states[i]);
             }
-            
+
             DEBUG(">TMP<");
             assert( arm.changed_tmp_states.size() == arm.tmp_states.size() );
             for(unsigned int i = 0; i < arm.tmp_states.size(); i ++ )
@@ -858,7 +858,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                 sm_tmp.merge_arm_state(sd.span, i, arm.changed_tmp_states[i], arm.tmp_states[i]);
             }
         }
-        
+
         for(unsigned int i = 0; i < var_count; i ++ )
         {
             if( sm_var.m_changed[i] )
@@ -1092,7 +1092,7 @@ VarState MirBuilder::get_variable_state(const Span& sp, unsigned int idx) const
             )
         )
     }
-    
+
     ASSERT_BUG(sp, idx < m_variable_states.size(), "Variable " << idx << " out of range for state table");
     return m_variable_states[idx];
 }
@@ -1123,7 +1123,7 @@ void MirBuilder::set_variable_state(const Span& sp, unsigned int idx, VarState s
             )
         )
     }
-    
+
     ASSERT_BUG(sp, idx < m_variable_states.size(), "Variable " << idx << " out of range for state table");
     m_variable_states[idx] = state;
 }
@@ -1151,7 +1151,7 @@ VarState MirBuilder::get_temp_state(const Span& sp, unsigned int idx) const
             }
         }
     }
-    
+
     ASSERT_BUG(sp, idx < m_temporary_states.size(), "Temporary " << idx << " out of range for state table");
     return m_temporary_states[idx];
 }
@@ -1182,7 +1182,7 @@ void MirBuilder::set_temp_state(const Span& sp, unsigned int idx, VarState state
             return ;
         }
     }
-    
+
     ASSERT_BUG(sp, idx < m_temporary_states.size(), "Temporary " << idx << " out of range for state table");
     m_temporary_states[idx] = state;
 }

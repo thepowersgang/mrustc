@@ -42,7 +42,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
 
     Token   tok;
     tok = lex.getToken();
-    
+
     if( tok.type() == TOK_MACRO )
     {
         return AST::Pattern( AST::Pattern::TagMacro(), box$(Parse_MacroInvocation(ps, tok.str(), lex)));
@@ -51,7 +51,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     {
         return mv$(tok.frag_pattern());
     }
-   
+
     bool expect_bind = false;
     auto bind_type = AST::PatternBinding::Type::MOVE;
     bool is_mut = false;
@@ -80,7 +80,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     {
         // Fall through
     }
-    
+
     AST::PatternBinding binding;
     // If a 'ref' or 'mut' annotation was seen, the next name must be a binding name
     if( expect_bind )
@@ -94,7 +94,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
             return AST::Pattern(AST::Pattern::TagBind(), mv$(bind_name), bind_type, is_mut);
         }
         binding = AST::PatternBinding( mv$(bind_name), bind_type, is_mut );
-        
+
         // '@' consumed, move on to next token
         GET_TOK(tok, lex);
     }
@@ -138,7 +138,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     {
         // Otherwise, fall through
     }
-    
+
     PUTBACK(tok, lex);
     auto pat = Parse_PatternReal(lex, is_refutable);
     pat.binding() = mv$(binding);
@@ -159,13 +159,13 @@ AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable)
         if( !ret.data().is_Value() )
             throw ParseError::Generic(lex, "Using '...' with a non-value on left");
         auto& ret_v = ret.data().as_Value();
-        
+
         auto    right_pat = Parse_PatternReal1(lex, is_refutable);
         if( !right_pat.data().is_Value() )
             throw ParseError::Generic(lex, "Using '...' with a non-value on right");
         auto    rightval = mv$( right_pat.data().as_Value().start );
         ret_v.end = mv$(rightval);
-        
+
         return ret;
     }
     else
@@ -177,10 +177,10 @@ AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable)
 AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
 {
     TRACE_FUNCTION;
-    
+
     Token   tok;
     AST::Path   path;
-    
+
     switch( GET_TOK(tok, lex) )
     {
     case TOK_UNDERSCORE:
@@ -260,7 +260,7 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
             TODO(lex.getPosition(), "Convert :expr into a pattern value - " << *e);
         }
         } break;
-    
+
     case TOK_PAREN_OPEN:
         return AST::Pattern( AST::Pattern::TagTuple(), Parse_PatternTuple(lex, is_refutable) );
     case TOK_SQUARE_OPEN:
@@ -272,7 +272,7 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
 AST::Pattern Parse_PatternReal_Path(TokenStream& lex, AST::Path path, bool is_refutable)
 {
     Token   tok;
-    
+
     switch( GET_TOK(tok, lex) )
     {
     case TOK_PAREN_OPEN:
@@ -289,12 +289,12 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
 {
     auto sp = lex.start_span();
     Token   tok;
-    
+
     ::std::vector< ::AST::Pattern>  leading;
     ::std::vector< ::AST::Pattern>  trailing;
     ::AST::PatternBinding   inner_binding;
     bool is_split = false;
-    
+
     while(GET_TOK(tok, lex) != TOK_SQUARE_CLOSE)
     {
         bool has_binding = true;
@@ -316,11 +316,11 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
         else {
             has_binding = false;
         }
-        
+
         if( has_binding ) {
             if(is_split)
                 ERROR(lex.end_span(sp), E0000, "Multiple instances of .. in a slice pattern");
-            
+
             inner_binding = mv$(binding);
             is_split = true;
             GET_TOK(tok, lex);  // TOK_DOUBLE_DOT
@@ -334,12 +334,12 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
                 trailing.push_back( Parse_Pattern(lex, is_refutable) );
             }
         }
-        
+
         if( GET_TOK(tok, lex) != TOK_COMMA )
             break;
     }
     CHECK_TOK(tok, TOK_SQUARE_CLOSE);
-    
+
     if( is_split )
     {
         return ::AST::Pattern( ::AST::Pattern::Data::make_SplitSlice({ mv$(leading), mv$(inner_binding), mv$(trailing) }) );
@@ -357,34 +357,34 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
     TRACE_FUNCTION;
     auto sp = lex.start_span();
     Token tok;
-    
+
     ::std::vector<AST::Pattern> leading;
     while( LOOK_AHEAD(lex) != TOK_PAREN_CLOSE && LOOK_AHEAD(lex) != TOK_DOUBLE_DOT )
     {
         leading.push_back( Parse_Pattern(lex, is_refutable) );
-        
+
         if( GET_TOK(tok, lex) != TOK_COMMA ) {
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
             return AST::Pattern::TuplePat { mv$(leading), false, {} };
         }
     }
-    
+
     if( LOOK_AHEAD(lex) != TOK_DOUBLE_DOT )
     {
         GET_TOK(tok, lex);
-        
+
         CHECK_TOK(tok, TOK_PAREN_CLOSE);
         return AST::Pattern::TuplePat { mv$(leading), false, {} };
     }
     GET_CHECK_TOK(tok, lex, TOK_DOUBLE_DOT);
-    
+
     ::std::vector<AST::Pattern> trailing;
     if( GET_TOK(tok, lex) == TOK_COMMA )
     {
         while( LOOK_AHEAD(lex) != TOK_PAREN_CLOSE )
         {
             trailing.push_back( Parse_Pattern(lex, is_refutable) );
-            
+
             if( GET_TOK(tok, lex) != TOK_COMMA ) {
                 PUTBACK(tok, lex);
                 break;
@@ -392,7 +392,7 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
         }
         GET_TOK(tok, lex);
     }
-    
+
     CHECK_TOK(tok, TOK_PAREN_CLOSE);
     return ::AST::Pattern::TuplePat { mv$(leading), true, mv$(trailing) };
 }
@@ -401,7 +401,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
 {
     TRACE_FUNCTION;
     Token tok;
-    
+
     // #![feature(relaxed_adts)]
     if( LOOK_AHEAD(lex) == TOK_INTEGER )
     {
@@ -415,7 +415,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
             if( ! pats.insert( ::std::make_pair(ofs, mv$(val)) ).second ) {
                 ERROR(lex.getPosition(), E0000, "Duplicate index");
             }
-            
+
             if( GET_TOK(tok,lex) == TOK_BRACE_CLOSE )
                 break;
             CHECK_TOK(tok, TOK_COMMA);
@@ -425,7 +425,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
             GET_TOK(tok, lex);
         }
         CHECK_TOK(tok, TOK_BRACE_CLOSE);
-        
+
         bool has_split = false;
         ::std::vector<AST::Pattern> leading;
         ::std::vector<AST::Pattern> trailing;
@@ -447,10 +447,10 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
             }
             i ++;
         }
-        
+
         return AST::Pattern(AST::Pattern::TagNamedTuple(), mv$(path),  AST::Pattern::TuplePat { mv$(leading), has_split, mv$(trailing) });
     }
-    
+
     bool is_exhaustive = true;
     ::std::vector< ::std::pair< ::std::string, AST::Pattern> >  subpats;
     do {
@@ -463,7 +463,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
             GET_TOK(tok, lex);
             break;
         }
-        
+
         bool is_short_bind = false;
         bool is_box = false;
         auto bind_type = AST::PatternBinding::Type::MOVE;
@@ -489,12 +489,12 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
             is_short_bind = true;
             GET_TOK(tok, lex);
         }
-        
+
         CHECK_TOK(tok, TOK_IDENT);
         auto field_ident = lex.get_ident(mv$(tok));
         ::std::string field_name;
         GET_TOK(tok, lex);
-        
+
         AST::Pattern    pat;
         if( is_short_bind || tok.type() != TOK_COLON ) {
             PUTBACK(tok, lex);
@@ -511,11 +511,11 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
             field_name = mv$(field_ident.name);
             pat = Parse_Pattern(lex, is_refutable);
         }
-        
+
         subpats.push_back( ::std::make_pair(mv$(field_name), mv$(pat)) );
     } while( GET_TOK(tok, lex) == TOK_COMMA );
     CHECK_TOK(tok, TOK_BRACE_CLOSE);
-    
+
     return AST::Pattern(AST::Pattern::TagStruct(), ::std::move(path), ::std::move(subpats), is_exhaustive);
 }
 

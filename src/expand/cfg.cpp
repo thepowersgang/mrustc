@@ -31,7 +31,7 @@ void Cfg_SetValueCb(::std::string name, ::std::function<bool(const ::std::string
 }
 
 bool check_cfg(Span sp, const ::AST::MetaItem& mi) {
-    
+
     if( mi.has_sub_items() ) {
         // Must be `any`/`not`/`all`
         if( mi.name() == "any" || mi.name() == "cfg" ) {
@@ -66,14 +66,14 @@ bool check_cfg(Span sp, const ::AST::MetaItem& mi) {
             DEBUG(""<<mi.name()<<": '"<<it->second<<"' == '"<<mi.string()<<"'");
             return it->second == mi.string();
         }
-        
+
         auto it2 = g_cfg_value_fcns.find(mi.name());
         if(it2 != g_cfg_value_fcns.end() )
         {
             DEBUG(""<<mi.name()<<": ('"<<mi.string()<<"')?");
             return it2->second( mi.string() );
         }
-        
+
         WARNING(sp, W0000, "Unknown cfg() param '" << mi.name() << "'");
         return false;
     }
@@ -93,11 +93,11 @@ class CCfgExpander:
         if( ident != "" ) {
             ERROR(sp, E0000, "cfg! doesn't take an identifier");
         }
-        
+
         auto lex = TTStream(tt);
         auto attrs = Parse_MetaItem(lex);
         DEBUG("cfg!() - " << attrs);
-        
+
         if( check_cfg(sp, attrs) ) {
             return box$( TTStreamO(TokenTree({},TOK_RWORD_TRUE )) );
         }
@@ -112,8 +112,8 @@ class CCfgHandler:
     public ExpandDecorator
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
-    
-    
+
+
     void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
         DEBUG("#[cfg] crate - " << mi);
         // Ignore, as #[cfg] on a crate is handled in expand/mod.cpp
@@ -150,7 +150,7 @@ class CCfgHandler:
             impl.type() = ::TypeRef(sp);
         }
     }
-    
+
     void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::StructItem& si) const override {
         DEBUG("#[cfg] struct item - " << mi);
         if( !check_cfg(sp, mi) ) {

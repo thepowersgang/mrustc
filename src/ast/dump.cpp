@@ -1,7 +1,7 @@
 /*
  * MRustC - Mutabah's Rust Compiler
  * - By John Hodge (Mutabah/thePowersGang)
- * 
+ *
  * ast/dump.cpp
  * - Dumps the AST of a crate as rust code (annotated)
  */
@@ -30,7 +30,7 @@ public:
         m_indent_level(0),
         m_expr_root(false)
     {}
-    
+
     void handle_module(const AST::Module& mod);
     void handle_struct(const AST::Struct& s);
     void handle_enum(const AST::Enum& s);
@@ -170,7 +170,7 @@ public:
     virtual void visit(AST::ExprNode_Loop& n) override {
         bool expr_root = m_expr_root;
         m_expr_root = false;
-        
+
         switch(n.m_type)
         {
         case AST::ExprNode_Loop::LOOP:
@@ -193,7 +193,7 @@ public:
             AST::NodeVisitor::visit(n.m_cond);
             break;
         }
-        
+
         if( expr_root )
         {
             m_os << "\n";
@@ -211,7 +211,7 @@ public:
         m_expr_root = false;
         m_os << "match ";
         AST::NodeVisitor::visit(n.m_val);
-        
+
         if(expr_root)
         {
             m_os << "\n";
@@ -222,7 +222,7 @@ public:
             m_os << " {\n";
             inc_indent();
         }
-        
+
         for( auto& arm : n.m_arms )
         {
             m_os << indent();
@@ -245,7 +245,7 @@ public:
             dec_indent();
             m_os << ",\n";
         }
-        
+
         if(expr_root)
         {
             m_os << indent() << "}";
@@ -261,7 +261,7 @@ public:
         m_expr_root = false;
         m_os << "if ";
         AST::NodeVisitor::visit(n.m_cond);
-        
+
         visit_if_common(expr_root, n.m_true, n.m_false);
     }
     virtual void visit(AST::ExprNode_IfLet& n) override {
@@ -271,7 +271,7 @@ public:
         print_pattern(n.m_pattern, true);
         m_os << " = ";
         AST::NodeVisitor::visit(n.m_value);
-        
+
         visit_if_common(expr_root, n.m_true, n.m_false);
     }
     void visit_if_common(bool expr_root, const ::std::unique_ptr<AST::ExprNode>& tv, const ::std::unique_ptr<AST::ExprNode>& fv)
@@ -392,7 +392,7 @@ public:
         m_expr_root = false;
         m_os << "b\"" << n.m_value << "\"";
     }
-    
+
     virtual void visit(AST::ExprNode_StructLiteral& n) override {
         m_expr_root = false;
         m_os << n.m_path << " {\n";
@@ -533,7 +533,7 @@ public:
         case AST::ExprNode_UniOp::REFMUT: m_os << "&mut ";    break;
         case AST::ExprNode_UniOp::QMARK: break;
         }
-        
+
         if( IS(*n.m_value, AST::ExprNode_BinOp) )
             m_os << "(";
         AST::NodeVisitor::visit(n.m_value);
@@ -553,14 +553,14 @@ private:
         AST::NodeVisitor::visit(node);
         m_os << ")";
     }
-    
+
     void print_attrs(const AST::MetaItems& attrs);
     void print_params(const AST::GenericParams& params);
     void print_bounds(const AST::GenericParams& params);
     void print_pattern_tuple(const AST::Pattern::TuplePat& v, bool is_refutable);
     void print_pattern(const AST::Pattern& p, bool is_refutable);
     void print_type(const TypeRef& t);
-    
+
     void inc_indent();
     RepeatLitStr indent();
     void dec_indent();
@@ -584,7 +584,7 @@ void RustPrinter::print_attrs(const AST::MetaItems& attrs)
 void RustPrinter::handle_module(const AST::Module& mod)
 {
     bool need_nl = true;
-    
+
     for( const auto& i : mod.items() )
     {
         if( !i.data.is_Use() )  continue ;
@@ -608,12 +608,12 @@ void RustPrinter::handle_module(const AST::Module& mod)
         m_os << ";\n";
     }
     need_nl = true;
-    
+
     for( const auto& item : mod.items() )
     {
         if( !item.data.is_Module() )    continue ;
         const auto& e = item.data.as_Module();
-        
+
         m_os << "\n";
         m_os << indent() << (item.is_pub ? "pub " : "") << "mod " << item.name << "\n";
         m_os << indent() << "{\n";
@@ -623,12 +623,12 @@ void RustPrinter::handle_module(const AST::Module& mod)
         m_os << indent() << "}\n";
         m_os << "\n";
     }
-    
+
     for( const auto& item : mod.items() )
     {
         if( !item.data.is_Type() )    continue ;
         const auto& e = item.data.as_Type();
-        
+
         if(need_nl) {
             m_os << "\n";
             need_nl = false;
@@ -641,45 +641,45 @@ void RustPrinter::handle_module(const AST::Module& mod)
         m_os << ";\n";
     }
     need_nl = true;
-    
+
     for( const auto& item : mod.items() )
     {
         if( !item.data.is_Struct() )    continue ;
         const auto& e = item.data.as_Struct();
-        
+
         m_os << "\n";
         print_attrs(item.data.attrs);
         m_os << indent() << (item.is_pub ? "pub " : "") << "struct " << item.name;
         handle_struct(e);
     }
-    
+
     for( const auto& item : mod.items() )
     {
         if( !item.data.is_Enum() )    continue ;
         const auto& e = item.data.as_Enum();
-        
+
         m_os << "\n";
         print_attrs(item.data.attrs);
         m_os << indent() << (item.is_pub ? "pub " : "") << "enum " << item.name;
         handle_enum(e);
     }
-    
+
     for( const auto& item : mod.items() )
     {
         if( !item.data.is_Trait() )    continue ;
         const auto& e = item.data.as_Trait();
-        
+
         m_os << "\n";
         print_attrs(item.data.attrs);
         m_os << indent() << (item.is_pub ? "pub " : "") << "trait " << item.name;
         handle_trait(e);
     }
-    
+
     for( const auto& item : mod.items() )
     {
         if( !item.data.is_Static() )    continue ;
         const auto& e = item.data.as_Static();
-        
+
         if(need_nl) {
             m_os << "\n";
             need_nl = false;
@@ -696,12 +696,12 @@ void RustPrinter::handle_module(const AST::Module& mod)
         e.value().visit_nodes(*this);
         m_os << ";\n";
     }
-    
+
     for( const auto& item : mod.items() )
     {
         if( !item.data.is_Function() )    continue ;
         const auto& e = item.data.as_Function();
-        
+
         m_os << "\n";
         print_attrs(item.data.attrs);
         handle_function(item.is_pub, item.name, e);
@@ -711,7 +711,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
     {
         if( !item.data.is_Impl() )    continue ;
         const auto& i = item.data.as_Impl();
-        
+
         m_os << "\n";
         m_os << indent() << "impl";
         print_params(i.def().params());
@@ -720,7 +720,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
                 m_os << " " << i.def().trait().ent << " for";
         }
         m_os << " " << i.def().type() << "\n";
-        
+
         print_bounds(i.def().params());
         m_os << indent() << "{\n";
         inc_indent();
@@ -796,13 +796,13 @@ void RustPrinter::print_bounds(const AST::GenericParams& params)
         m_os << indent() << "where\n";
         inc_indent();
         bool is_first = true;
-        
+
         for( const auto& b : params.bounds() )
         {
             if( !is_first )
                 m_os << ",\n";
             is_first = false;
-            
+
             m_os << indent();
             TU_MATCH(AST::GenericBound, (b), (ent),
             (Lifetime,
@@ -829,7 +829,7 @@ void RustPrinter::print_bounds(const AST::GenericParams& params)
             )
         }
         m_os << "\n";
-    
+
         dec_indent();
     }
 }
@@ -934,7 +934,7 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
             m_os << v.leading;
             m_os << ", ";
         }
-        
+
         if(v.extra_bind.is_valid())
         {
             const auto& b = v.extra_bind;
@@ -955,7 +955,7 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
         }
         m_os << "..";
         needs_comma = true;
-        
+
         if(v.trailing.size()) {
             if( needs_comma ) {
                 m_os << ", ";
@@ -975,7 +975,7 @@ void RustPrinter::print_type(const TypeRef& t)
 void RustPrinter::handle_struct(const AST::Struct& s)
 {
     print_params(s.params());
-    
+
     TU_MATCH(AST::StructData, (s.m_data), (e),
     (Tuple,
         if( e.ents.size() == 0 )
@@ -997,7 +997,7 @@ void RustPrinter::handle_struct(const AST::Struct& s)
     (Struct,
         m_os << "\n";
         print_bounds(s.params());
-        
+
         m_os << indent() << "{\n";
         inc_indent();
         for( const auto& i : e.ents )
@@ -1060,7 +1060,7 @@ void RustPrinter::handle_trait(const AST::Trait& s)
 
     m_os << indent() << "{\n";
     inc_indent();
-    
+
     for( const auto& i : s.items() )
     {
         TU_MATCH_DEF(AST::Item, (i.data), (e),
@@ -1074,7 +1074,7 @@ void RustPrinter::handle_trait(const AST::Trait& s)
             )
         )
     }
-    
+
     dec_indent();
     m_os << indent() << "}\n";
     m_os << "\n";
@@ -1107,12 +1107,12 @@ void RustPrinter::handle_function(bool is_pub, const ::std::string& name, const 
     {
         m_os << " -> " << f.rettype().print_pretty();
     }
-    
+
     if( f.code().is_valid() )
     {
         m_os << "\n";
         print_bounds(f.params());
-        
+
         m_os << indent();
         f.code().visit_nodes(*this);
         m_os << "\n";

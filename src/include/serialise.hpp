@@ -19,7 +19,7 @@ class Deserialiser;
 #define SERIALISE_TYPE(method_prefix, tag_str, body, des_body) \
     const char* method_prefix serialise_tag() const { return tag_str; } \
     void method_prefix serialise(::Serialiser& s) const { body } \
-    void method_prefix deserialise(::Deserialiser& s) { des_body } 
+    void method_prefix deserialise(::Deserialiser& s) { des_body }
 #define SERIALISE_TYPE_A(method_prefix, tag_str, body)  SERIALISE_TYPE(method_prefix, tag_str, body, body)
 #define SERIALISE_TYPE_S(class_, body)  SERIALISE_TYPE(class_::, #class_, body, body)
 #define SERIALISE_TU(class_, tag_str, val_name, ...)  SERIALISE_TYPE(class_::, tag_str,\
@@ -74,7 +74,7 @@ protected:
 public:
     template<typename T>
     inline void item(T& v) { *this << v; }
-    
+
     virtual Serialiser& operator<<(bool val) = 0;
     virtual Serialiser& operator<<(uint64_t val) = 0;
     virtual Serialiser& operator<<(int64_t val) = 0;
@@ -149,7 +149,7 @@ public:
     virtual void start_object(const char *tag) = 0;
     virtual void end_object(const char *tag) = 0;
     ::std::string start_object();
- 
+
     void item(Serialisable& v);
     Deserialiser& operator>>(Serialisable& v) {
         this->item(v);
@@ -171,9 +171,9 @@ public:
     void item(::std::shared_ptr<T>& v)
     {
         bool present;
-        
+
         item(present);
-        
+
         if(present) {
             v.reset(new T);
             item(*v);
@@ -186,9 +186,9 @@ public:
     void item(::std::unique_ptr<T>& v)
     {
         bool present;
-        
+
         item(present);
-        
+
         if(present) {
             v.reset( T::from_deserialiser(*this).release() );
         }

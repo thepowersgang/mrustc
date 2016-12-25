@@ -1,8 +1,8 @@
 # MRustC - Rust Compiler
 # - By John Hodge (Mutabah/thePowersGang)
-# 
+#
 # Makefile
-# 
+#
 # - Compiles mrustc
 # - Downloads rustc source to test against
 # - Attempts to compile rust's libstd
@@ -42,7 +42,6 @@ CXXFLAGS += -Wno-misleading-indentation
 SHELL = bash
 
 ifeq ($(DBGTPL),)
-  
 else ifeq ($(DBGTPL),gdb)
   DBG := echo -e "r\nbt 12\nq" | gdb --args
 else ifeq ($(DBGTPL),valgrind)
@@ -112,7 +111,7 @@ clean:
 
 PIPECMD ?= 2>&1 | tee $@_dbg.txt | tail -n $(TAIL_COUNT) ; test $${PIPESTATUS[0]} -eq 0
 
-output/%.ast: samples/%.rs $(BIN) 
+output/%.ast: samples/%.rs $(BIN)
 	@mkdir -p output/
 	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 

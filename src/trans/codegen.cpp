@@ -18,7 +18,7 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
 {
     static Span sp;
     auto codegen = Trans_Codegen_GetGeneratorC(crate, outfile);
-    
+
     // 1. Emit structure/type definitions.
     // - Emit in the order they're needed.
     for(const auto& ty : list.m_types)
@@ -40,7 +40,7 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
         )
         codegen->emit_type(ty);
     }
-    
+
     // 2. Emit function prototypes
     for(const auto& ent : list.m_functions)
     {
@@ -59,7 +59,7 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
         DEBUG("STATIC " << ent.first);
         assert(ent.second->ptr);
         const auto& stat = *ent.second->ptr;
-        
+
         if( stat.m_value_res.is_Invalid() )
         {
             codegen->emit_static_ext(ent.first, stat, ent.second->pp);
@@ -69,17 +69,17 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
             codegen->emit_static_local(ent.first, stat, ent.second->pp);
         }
     }
-    
+
     for(const auto& ent : list.m_vtables)
     {
         const auto& trait = ent.first.m_data.as_UfcsKnown().trait;
         const auto& type = *ent.first.m_data.as_UfcsKnown().type;
         DEBUG("VTABLE " << trait << " for " << type);
-        
+
         codegen->emit_vtable(ent.first, crate.get_trait_by_path(Span(), trait.m_path));
     }
-    
-    
+
+
     // 4. Emit function code
     for(const auto& ent : list.m_functions)
     {
@@ -109,7 +109,7 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
             }
         }
     }
-    
+
     codegen->finalise();
 }
 

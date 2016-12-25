@@ -27,35 +27,35 @@ void Trans_Enumerate_FillFrom_Literal(TransList& out, const ::HIR::Crate& crate,
 TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
 {
     static Span sp;
-    
+
     TransList   rv;
-    
+
     // "start" language item
     // - Takes main, and argc/argv as arguments
     {
         auto start_path = crate.get_lang_item_path(sp, "start");
         const auto& fcn = crate.get_function_by_path(sp, start_path);
-        
+
         auto* ptr = rv.add_function(start_path);
         assert(ptr);
         Trans_Enumerate_FillFrom(rv, crate,  fcn, *ptr);
     }
-    
+
     // user entrypoint
     {
         auto main_path = ::HIR::SimplePath("", {"main"});
         const auto& fcn = crate.get_function_by_path(sp, main_path);
-        
+
         auto* ptr = rv.add_function(main_path);
         assert(ptr);
         Trans_Enumerate_FillFrom(rv, crate,  fcn, *ptr);
     }
-    
+
     // TODO: Search the trans list for external functions that refer to a named symbol, search for that defined elsewhere.
     // - Not needed yet, there's a slow hack elsewhere
 
     Trans_Enumerate_Types(rv, crate);
-    
+
     return rv;
 }
 
@@ -97,11 +97,11 @@ namespace {
 TransList Trans_Enumerate_Public(const ::HIR::Crate& crate)
 {
     TransList   rv;
-    
+
     Trans_Enumerate_Public_Mod(rv, crate, crate.m_root_module,  ::HIR::SimplePath("",{}));
-    
+
     Trans_Enumerate_Types(rv, crate);
-    
+
     return rv;
 }
 
@@ -111,22 +111,22 @@ namespace {
         template<typename T>
         bool operator()(const T* lhs, const T* rhs) const { return *lhs < *rhs; }
     };
-    
+
     struct TypeVisitor
     {
         const ::HIR::Crate& m_crate;
         ::StaticTraitResolve    m_resolve;
         ::std::vector< ::HIR::TypeRef>& out_list;
-        
+
         ::std::set< ::HIR::TypeRef> visited;
         ::std::set< const ::HIR::TypeRef*, PtrComp> active_set;
-        
+
         TypeVisitor(const ::HIR::Crate& crate, ::std::vector< ::HIR::TypeRef>& out_list):
             m_crate(crate),
             m_resolve(crate),
             out_list(out_list)
         {}
-        
+
         void visit_struct(const ::HIR::GenericPath& path, const ::HIR::Struct& item) {
             static Span sp;
             ::HIR::TypeRef  tmp;
@@ -188,19 +188,19 @@ namespace {
                 )
             }
         }
-        
+
         void visit_type(const ::HIR::TypeRef& ty)
         {
             // Already done
             if( visited.find(ty) != visited.end() )
                 return ;
-            
+
             if( active_set.find(&ty) != active_set.end() ) {
                 // TODO: Handle recursion
                 return ;
             }
             active_set.insert( &ty );
-            
+
             TU_MATCHA( (ty.m_data), (te),
             // Impossible
             (Infer,
@@ -236,7 +236,7 @@ namespace {
                 static Span sp;
                 // Ensure that the data trait's vtable is present
                 const auto& trait = *te.m_trait.m_trait_ptr;
-                
+
                 auto vtable_ty_spath = te.m_trait.m_path.m_path;
                 vtable_ty_spath.m_components.back() += "#vtable";
                 const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_ty_spath);
@@ -249,8 +249,8 @@ namespace {
                         vtable_params.m_types.resize(idx+1);
                     vtable_params.m_types[idx] = ty_b.second.clone();
                 }
-                
-                
+
+
                 visit_type( ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
                 ),
             (Array,
@@ -276,7 +276,7 @@ namespace {
                 )
             )
             active_set.erase( active_set.find(&ty) );
-            
+
             visited.insert( ty.clone() );
             out_list.push_back( ty.clone() );
             DEBUG("Add type " << ty);
@@ -300,11 +300,11 @@ void Trans_Enumerate_Types(TransList& out, const ::HIR::Crate& crate)
             assert(ent.second->ptr);
             const auto& fcn = *ent.second->ptr;
             const auto& pp = ent.second->pp;
-            
+
             tv.visit_type( pp.monomorph(crate, fcn.m_return) );
             for(const auto& arg : fcn.m_args)
                 tv.visit_type( pp.monomorph(crate, arg.second) );
-            
+
             if( fcn.m_code.m_mir )
             {
                 const auto& mir = *fcn.m_code.m_mir;
@@ -320,10 +320,10 @@ void Trans_Enumerate_Types(TransList& out, const ::HIR::Crate& crate)
             assert(ent.second->ptr);
             const auto& stat = *ent.second->ptr;
             const auto& pp = ent.second->pp;
-            
+
             tv.visit_type( pp.monomorph(crate, stat.m_type) );
         }
-        
+
         constructors_added = false;
         for(unsigned int i = types_count; i < out.m_types.size(); i ++ )
         {
@@ -346,16 +346,15 @@ void Trans_Enumerate_Types(TransList& out, const ::HIR::Crate& crate)
                     )
                 )
                 ASSERT_BUG(Span(), markings_ptr, "Path binding not set correctly - " << ty);
-                
+
                 if( markings_ptr->has_drop_impl )
                 {
                     // Add the Drop impl to the codegen list
                     Trans_Enumerate_FillFrom_Path(out, crate,  ::HIR::Path( ty.clone(), crate.get_lang_item_path(sp, "drop"), "drop"), {});
-                    
                     constructors_added = true;
                 }
             }
-            
+
             if( const auto* ity = tv.m_resolve.is_type_owned_box(ty) )
             {
                 // Reqire drop glue for inner type.
@@ -386,7 +385,7 @@ namespace {
         else {
             mod = &crate.m_root_module;
         }
-        
+
         for( unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
         {
             const auto& pc = path.m_components[i];
@@ -408,12 +407,12 @@ namespace {
                 )
             )
         }
-        
+
         auto it = mod->m_value_items.find( path.m_components.back() );
         if( it == mod->m_value_items.end() ) {
             return EntPtr {};
         }
-        
+
         TU_MATCH( ::HIR::ValueItem, (it->second->ent), (e),
         (Import,
             ),
@@ -439,7 +438,7 @@ namespace {
     {
         TRACE_FUNCTION_F(path);
         StaticTraitResolve  resolve { crate };
-        
+
         TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
         (Generic,
             return get_ent_simplepath(sp, crate, e.m_path);
@@ -472,13 +471,13 @@ namespace {
             ),
         (UfcsKnown,
             EntPtr rv;
-            
+
             // Obtain trait pointer (for default impl and to know what the item type is)
             const auto& trait_ref = crate.get_trait_by_path(sp, e.trait.m_path);
             auto trait_vi_it = trait_ref.m_values.find(e.item);
             ASSERT_BUG(sp, trait_vi_it != trait_ref.m_values.end(), "Couldn't find item " << e.item << " in trait " << e.trait.m_path);
             const auto& trait_vi = trait_vi_it->second;
-            
+
             bool is_dynamic = false;
             ::std::vector<::HIR::TypeRef>    best_impl_params;
             const ::HIR::TraitImpl* best_impl = nullptr;
@@ -494,7 +493,7 @@ namespace {
                 const auto& impl_ref_e = impl_ref.m_data.as_TraitImpl();
                 const auto& impl = *impl_ref_e.impl;
                 ASSERT_BUG(sp, impl.m_trait_args.m_types.size() == e.trait.m_params.m_types.size(), "Trait parameter count mismatch " << impl.m_trait_args << " vs " << e.trait.m_params);
-                
+
                 if( best_impl == nullptr || impl.more_specific_than(*best_impl) ) {
                     best_impl = &impl;
                     bool is_spec = false;
@@ -538,7 +537,7 @@ namespace {
             const auto& impl = *best_impl;
 
             impl_pp.m_types = mv$(best_impl_params);
-            
+
             TU_MATCHA( (trait_vi), (ve),
             (Constant, TODO(sp, "Associated constant"); ),
             (Static,
@@ -793,7 +792,7 @@ void Trans_Enumerate_FillFrom_VTable(TransList& out, const ::HIR::Crate& crate, 
     const auto& type = *vtable_path.m_data.as_UfcsKnown().type;
     const auto& trait_path = vtable_path.m_data.as_UfcsKnown().trait;
     const auto& tr = crate.get_trait_by_path(Span(), trait_path.m_path);
-    
+
     auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &type, &trait_path.m_params, nullptr);
     for(const auto& m : tr.m_value_indexes)
     {
@@ -841,7 +840,7 @@ namespace {
                 }
             )
         }
-        
+
         for(const auto& ti : mod.m_mod_items)
         {
             TU_IFLET( ::HIR::TypeItem, ti.second->ent, Module, i,
@@ -849,7 +848,7 @@ namespace {
                     return rv;
             )
         }
-        
+
         return nullptr;
     }
     ::HIR::Function* find_function_by_link_name(const ::HIR::Crate& crate, const char* name,  ::HIR::SimplePath& out_path)

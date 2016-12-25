@@ -206,7 +206,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
                 MIR_ASSERT(*this, e.variant_index < unm.m_variants.size(), "Variant index out of range");
                 const auto& variant = unm.m_variants[e.variant_index];
                 const auto& var_ty = variant.second.ent;
-                
+
                 if( monomorphise_type_needed(var_ty) ) {
                     tmp = monomorphise_type(sp, unm.m_params, te.path.m_data.as_Generic().m_params, variant.second.ent);
                     m_resolve.expand_associated_types(sp, tmp);

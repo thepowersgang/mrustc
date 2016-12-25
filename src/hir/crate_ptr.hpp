@@ -10,7 +10,7 @@ class Crate;
 class CratePtr
 {
     Crate*  m_ptr;
-    
+
 public:
     CratePtr();
     CratePtr(Crate c);
@@ -27,7 +27,7 @@ public:
         return *this;
     }
     ~CratePtr();
-    
+
           Crate& operator*()       { return *m_ptr; }
     const Crate& operator*() const { return *m_ptr; }
           Crate* operator->()       { return m_ptr; }

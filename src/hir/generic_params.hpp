@@ -44,13 +44,13 @@ class GenericParams
 public:
     ::std::vector<TypeParamDef>   m_types;
     ::std::vector< ::std::string>   m_lifetimes;
-    
+
     ::std::vector<GenericBound>    m_bounds;
-    
+
     //GenericParams() {}
-    
+
     GenericParams clone() const;
-    
+
     struct PrintArgs {
         const GenericParams& gp;
         PrintArgs(const GenericParams& gp): gp(gp) {}

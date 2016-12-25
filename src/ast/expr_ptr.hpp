@@ -24,7 +24,7 @@ public:
     ::std::shared_ptr<ExprNode> take_node() { assert(m_node.get()); return ::std::move(m_node); }
     void visit_nodes(NodeVisitor& v);
     void visit_nodes(NodeVisitor& v) const;
-    
+
     Expr clone() const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Expr& pat);

@@ -13,7 +13,7 @@ class Decorator_CrateType:
 {
 public:
     AttrStage stage() const override { return AttrStage::Pre; }
-    
+
     void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
         if( crate.m_crate_type != AST::Crate::Type::Unknown ) {
             //ERROR(sp, E0000, "Multiple #![crate_type] attributes");
@@ -40,7 +40,7 @@ class Decorator_CrateName:
 {
 public:
     AttrStage stage() const override { return AttrStage::Pre; }
-    
+
     void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
         if( crate.m_crate_name != "" ) {
             ERROR(sp, E0000, "Multiple #![crate_name] attributes");

@@ -12,21 +12,21 @@
 #define NODE_IS(valptr, tysuf) ( dynamic_cast<const ::HIR::ExprNode##tysuf*>(&*valptr) != nullptr )
 
 namespace {
-    
+
     class TreeVisitor:
         public ::HIR::Visitor,
         public ::HIR::ExprVisitor
     {
         ::std::ostream& m_os;
         unsigned int    m_indent_level;
-        
+
     public:
         TreeVisitor(::std::ostream& os):
             m_os(os),
             m_indent_level(0)
         {
         }
-        
+
         void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
         {
             if( p.get_name()[0] )
@@ -34,17 +34,17 @@ namespace {
                 m_os << indent() << "mod " << p.get_name() << " {\n";
                 inc_indent();
             }
-            
+
             // TODO: Print publicitiy.
             ::HIR::Visitor::visit_module(p, mod);
-            
+
             if( p.get_name()[0] )
             {
                 dec_indent();
                 m_os << indent() << "}\n";
             }
         }
-        
+
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
             m_os << indent() << "impl" << impl.m_params.fmt_args() << " " << impl.m_type << "\n";
@@ -80,7 +80,7 @@ namespace {
             }
             m_os << indent() << "{ }\n";
         }
-        
+
         // - Type Items
         void visit_type_alias(::HIR::ItemPath p, ::HIR::TypeAlias& item) override
         {
@@ -165,7 +165,7 @@ namespace {
                 (Unit,
                     ),
                 (Value,
-                    m_os << " = ?";// << 
+                    m_os << " = ?";// <<
                     ),
                 (Tuple,
                     m_os << "(";
@@ -189,7 +189,7 @@ namespace {
             dec_indent();
             m_os << indent() << "}\n";
         }
-        
+
         // - Value Items
         void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override
         {
@@ -210,7 +210,7 @@ namespace {
             {
                 m_os << indent() << " " << item.m_params.fmt_bounds() << "\n";
             }
-            
+
             if( item.m_code )
             {
                 m_os << indent();
@@ -221,9 +221,9 @@ namespace {
                     m_os << "{\n";
                     inc_indent();
                     m_os << indent();
-                    
+
                     item.m_code->visit( *this );
-                    
+
                     m_os << "\n";
                     dec_indent();
                     m_os << indent();
@@ -255,18 +255,18 @@ namespace {
         {
             m_os << indent() << "const " << p.get_name() << ": " << item.m_type << " = " << item.m_value_res << ";\n";
         }
-        
+
         // - Misc
         #if 0
         virtual void visit_params(::HIR::GenericParams& params);
         virtual void visit_pattern(::HIR::Pattern& pat);
         virtual void visit_pattern_val(::HIR::Pattern::Value& val);
         virtual void visit_type(::HIR::TypeRef& tr);
-        
+
         enum class PathContext {
             TYPE,
             TRAIT,
-            
+
             VALUE,
         };
         virtual void visit_trait_path(::HIR::TraitPath& p);
@@ -276,7 +276,7 @@ namespace {
 
         virtual void visit_expr(::HIR::ExprPtr& exp);
         #endif
-        
+
         bool node_is_leaf(const ::HIR::ExprNode& node) {
             if( NODE_IS(&node, _PathValue) )
                 return true;
@@ -290,7 +290,7 @@ namespace {
                 return true;
             return false;
         }
-        
+
         void visit(::HIR::ExprNode_Block& node) override
         {
             if( node.m_nodes.size() == 0 ) {
@@ -321,7 +321,7 @@ namespace {
                 m_os << indent() << "}";
             }
         }
-        
+
         void visit(::HIR::ExprNode_Return& node) override
         {
             m_os << "return";
@@ -366,7 +366,7 @@ namespace {
                 for(unsigned int i = 1; i < arm.m_patterns.size(); i ++ ) {
                     m_os << " | " << arm.m_patterns[i];
                 }
-                
+
                 if( arm.m_cond ) {
                     m_os << " if ";
                     this->visit_node_ptr(arm.m_cond);
@@ -473,7 +473,7 @@ namespace {
         void visit(::HIR::ExprNode_Deref& node) override
         {
             m_os << "*";
-            
+
             bool skip_parens = this->node_is_leaf(*node.m_value);
             if( !skip_parens )  m_os << "(";
             this->visit_node_ptr(node.m_value);
@@ -692,7 +692,7 @@ namespace {
 void HIR_Dump(::std::ostream& sink, const ::HIR::Crate& crate)
 {
     TreeVisitor tv { sink };
-    
+
     tv.visit_crate( const_cast< ::HIR::Crate&>(crate) );
 }
 

@@ -12,9 +12,9 @@
 {
     ::HIR::SimplePath ret(m_crate_name);
     ret.m_components = m_components;
-    
+
     ret.m_components.push_back( s );
-    
+
     return ret;
 }
 namespace HIR {
@@ -38,7 +38,7 @@ namespace HIR {
     ::std::ostream& operator<<(::std::ostream& os, const PathParams& x)
     {
         bool has_args = ( x.m_types.size() > 0 );
-        
+
         if(has_args) {
             os << "<";
         }
@@ -65,7 +65,7 @@ namespace HIR {
         }
         os << x.m_path.m_path;
         bool has_args = ( x.m_path.m_params.m_types.size() > 0 || x.m_type_bounds.size() > 0 );
-        
+
         if(has_args) {
             os << "<";
         }
@@ -160,10 +160,10 @@ bool ::HIR::GenericPath::operator==(const GenericPath& x) const
         {},
         m_trait_ptr
         };
-    
+
     for( const auto& assoc : m_type_bounds )
         rv.m_type_bounds.insert(::std::make_pair( assoc.first, assoc.second.clone() ));
-    
+
     return rv;
 }
 bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
@@ -172,10 +172,10 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
         return false;
     if( m_hrls != x.m_hrls )
         return false;
-    
+
     if( m_type_bounds.size() != x.m_type_bounds.size() )
         return false;
-    
+
     for(auto it_l = m_type_bounds.begin(), it_r = x.m_type_bounds.begin(); it_l != m_type_bounds.end(); it_l++, it_r++ ) {
         if( it_l->first != it_r->first )
             return false;
@@ -237,7 +237,7 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
 ::HIR::Compare HIR::PathParams::compare_with_placeholders(const Span& sp, const ::HIR::PathParams& x, ::HIR::t_cb_resolve_type resolve_placeholder) const
 {
     using ::HIR::Compare;
-    
+
     auto rv = Compare::Equal;
     if( this->m_types.size() > 0 || x.m_types.size() > 0 ) {
         if( this->m_types.size() != x.m_types.size() ) {
@@ -283,7 +283,7 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
         if( this->m_path.m_components[i] != x.m_path.m_components[i] )
             return Compare::Unequal;
     }
-    
+
     return this->m_params. compare_with_placeholders(sp, x.m_params, resolve_placeholder);
 }
 
@@ -319,9 +319,9 @@ namespace {
     auto rv = m_path .compare_with_placeholders(sp, x.m_path, resolve_placeholder);
     if( rv == Compare::Unequal )
         return rv;
-    
+
     // TODO: HRLs
-    
+
     auto it_l = m_type_bounds.begin();
     auto it_r = x.m_type_bounds.begin();
     while( it_l != m_type_bounds.end() && it_r != x.m_type_bounds.end() )
@@ -333,12 +333,12 @@ namespace {
         ++ it_l;
         ++ it_r;
     }
-    
+
     if( it_l != m_type_bounds.end() || it_r != x.m_type_bounds.end() )
     {
         return Compare::Unequal;
     }
-    
+
     return rv;
 }
 
@@ -353,7 +353,7 @@ namespace {
     (UfcsUnknown,
         if( ple.item != pre.item)
             return Compare::Unequal;
-        
+
         TODO(sp, "Path::compare_with_placeholders - UfcsUnknown");
         ),
     (UfcsInherent,
@@ -367,7 +367,7 @@ namespace {
     (UfcsKnown,
         if( ple.item != pre.item)
             return Compare::Unequal;
-        
+
         ::HIR::Compare  rv = ::HIR::Compare::Equal;
         CMP(rv, ple.type->compare_with_placeholders(sp, *pre.type, resolve_placeholder));
         CMP(rv, ::compare_with_placeholders(sp, ple.trait, pre.trait, resolve_placeholder));

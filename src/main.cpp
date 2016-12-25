@@ -36,22 +36,22 @@ void init_debug_list()
     g_debug_disable_map.insert( "Parse" );
     g_debug_disable_map.insert( "LoadCrates" );
     g_debug_disable_map.insert( "Expand" );
-    
+
     g_debug_disable_map.insert( "Resolve Use" );
     g_debug_disable_map.insert( "Resolve Index" );
     g_debug_disable_map.insert( "Resolve Absolute" );
-    
+
     g_debug_disable_map.insert( "HIR Lower" );
-    
+
     g_debug_disable_map.insert( "Resolve Type Aliases" );
     g_debug_disable_map.insert( "Resolve Bind" );
     g_debug_disable_map.insert( "Resolve UFCS paths" );
     g_debug_disable_map.insert( "Resolve HIR Markings" );
     g_debug_disable_map.insert( "Constant Evaluate" );
-    
+
     g_debug_disable_map.insert( "Typecheck Outer");
     g_debug_disable_map.insert( "Typecheck Expressions" );
-    
+
     g_debug_disable_map.insert( "Expand HIR Annotate" );
     g_debug_disable_map.insert( "Expand HIR Closures" );
     g_debug_disable_map.insert( "Expand HIR Calls" );
@@ -59,7 +59,7 @@ void init_debug_list()
     g_debug_disable_map.insert( "Expand HIR Reborrows" );
     g_debug_disable_map.insert( "Expand HIR ErasedType" );
     g_debug_disable_map.insert( "Typecheck Expressions (validate)" );
-    
+
     g_debug_disable_map.insert( "Dump HIR" );
     g_debug_disable_map.insert( "Lower MIR" );
     g_debug_disable_map.insert( "MIR Validate" );
@@ -67,11 +67,11 @@ void init_debug_list()
     g_debug_disable_map.insert( "Constant Evaluate Full" );
     g_debug_disable_map.insert( "MIR Cleanup" );
     g_debug_disable_map.insert( "MIR Optimise" );
-    
+
     g_debug_disable_map.insert( "HIR Serialise" );
     g_debug_disable_map.insert( "Trans Enumerate" );
     g_debug_disable_map.insert( "Trans Codegen" );
-    
+
     // Mutate this map using an environment variable
     const char* debug_string = ::std::getenv("MRUSTC_DEBUG");
     if( debug_string )
@@ -79,7 +79,7 @@ void init_debug_list()
         while( debug_string[0] )
         {
             const char* end = strchr(debug_string, ':');
-            
+
             if( end ) {
                 ::std::string   s { debug_string, end };
                 // TODO: Emit a warning when this name wasn't in the map?
@@ -126,11 +126,11 @@ struct ProgramParams
     ::std::string   outfile;
     ::std::string   output_dir = "";
     const char *crate_path = ".";
-    
+
     ::AST::Crate::Type  crate_type = ::AST::Crate::Type::Unknown;
-    
+
     ::std::set< ::std::string> features;
-    
+
     ProgramParams(int argc, char *argv[]);
 };
 
@@ -144,7 +144,7 @@ Rv CompilePhase(const char *name, Fcn f) {
     auto end = clock();
     g_cur_phase = "";
     g_debug_enabled = debug_enabled_update();
-    
+
     ::std::cout <<"(" << ::std::fixed << ::std::setprecision(2) << static_cast<double>(end - start) / static_cast<double>(CLOCKS_PER_SEC) << " s) ";
     ::std::cout << name << ": DONE";
     ::std::cout << ::std::endl;
@@ -160,7 +160,7 @@ int main(int argc, char *argv[])
 {
     init_debug_list();
     ProgramParams   params(argc, argv);
-    
+
     // Set up cfg values
     // TODO: Target spec
     Cfg_SetFlag("unix");
@@ -182,8 +182,8 @@ int main(int argc, char *argv[])
         return params.features.count(s) != 0;
         });
 
-    
-    
+
+
     try
     {
         // Parse the crate into AST
@@ -199,12 +199,12 @@ int main(int argc, char *argv[])
         CompilePhaseV("LoadCrates", [&]() {
             crate.load_externs();
             });
-    
+
         // Iterate all items in the AST, applying syntax extensions
         CompilePhaseV("Expand", [&]() {
             Expand(crate);
             });
-        
+
         // Extract the crate type and name from the crate attributes
         auto crate_type = params.crate_type;
         if( crate_type == ::AST::Crate::Type::Unknown ) {
@@ -225,7 +225,7 @@ int main(int argc, char *argv[])
             auto e = params.infile.find_first_of('.', s);
             if( e == ::std::string::npos )
                 e = params.infile.size() - s;
-            
+
             crate_name = ::std::string(params.infile.begin() + s, params.infile.begin() + e);
             for(auto& b : crate_name)
             {
@@ -245,7 +245,7 @@ int main(int argc, char *argv[])
             }
             crate.m_crate_name = crate_name;
         }
-        
+
         if( params.outfile == "" ) {
             switch( crate.m_crate_type )
             {
@@ -270,7 +270,7 @@ int main(int argc, char *argv[])
         if( params.last_stage == ProgramParams::STAGE_EXPAND ) {
             return 0;
         }
-        
+
         // Allocator and panic strategies
         if( crate.m_crate_type == ::AST::Crate::Type::Executable )
         {
@@ -278,7 +278,7 @@ int main(int argc, char *argv[])
             crate.load_extern_crate(Span(), "alloc_system");
             crate.load_extern_crate(Span(), "panic_abort");
         }
-        
+
         // Resolve names to be absolute names (include references to the relevant struct/global/function)
         // - This does name checking on types and free functions.
         // - Resolves all identifiers/paths to references
@@ -291,7 +291,7 @@ int main(int argc, char *argv[])
         CompilePhaseV("Resolve Absolute", [&]() {
             Resolve_Absolutise(crate);  // - Convert all paths to Absolute or UFCS, and resolve variables
             });
-        
+
         // XXX: Dump crate before HIR
         CompilePhaseV("Temp output - Resolved", [&]() {
             Dump_Rust( FMT(params.outfile << "_1_res.rs").c_str(), crate );
@@ -300,7 +300,7 @@ int main(int argc, char *argv[])
         if( params.last_stage == ProgramParams::STAGE_RESOLVE ) {
             return 0;
         }
-        
+
         // --------------------------------------
         // HIR Section
         // --------------------------------------
@@ -329,15 +329,15 @@ int main(int argc, char *argv[])
         CompilePhaseV("Constant Evaluate", [&]() {
             ConvertHIR_ConstantEvaluate(*hir_crate);
             });
-        
+
         CompilePhaseV("Dump HIR", [&]() {
             ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
             HIR_Dump( os, *hir_crate );
             });
-        
+
         // === Type checking ===
         // - This can recurse and call the MIR lower to evaluate constants
-        
+
         // Check outer items first (types of constants/functions/statics/impls/...)
         // - Doesn't do any expressions except those in types
         CompilePhaseV("Typecheck Outer", [&]() {
@@ -376,26 +376,26 @@ int main(int argc, char *argv[])
         CompilePhaseV("Typecheck Expressions (validate)", [&]() {
             Typecheck_Expressions_Validate(*hir_crate);
             });
-        
+
         if( params.last_stage == ProgramParams::STAGE_TYPECK ) {
             return 0;
         }
-        
+
         // Lower expressions into MIR
         CompilePhaseV("Lower MIR", [&]() {
             HIR_GenerateMIR(*hir_crate);
             });
-        
+
         CompilePhaseV("Dump MIR", [&]() {
             ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));
             MIR_Dump( os, *hir_crate );
             });
-        
+
         // Validate the MIR
         CompilePhaseV("MIR Validate", [&]() {
             MIR_CheckCrate(*hir_crate);
             });
-        
+
         // Second shot of constant evaluation (with full type information)
         CompilePhaseV("Constant Evaluate Full", [&]() {
             ConvertHIR_ConstantEvaluateFull(*hir_crate);
@@ -404,7 +404,7 @@ int main(int argc, char *argv[])
             ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
             HIR_Dump( os, *hir_crate );
             });
-        
+
         // - Expand constants in HIR and virtualise calls
         CompilePhaseV("MIR Cleanup", [&]() {
             MIR_CleanupCrate(*hir_crate);
@@ -413,7 +413,7 @@ int main(int argc, char *argv[])
         CompilePhaseV("MIR Optimise", [&]() {
             MIR_OptimiseCrate(*hir_crate);
             });
-        
+
         CompilePhaseV("Dump MIR", [&]() {
             ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));
             MIR_Dump( os, *hir_crate );
@@ -422,12 +422,12 @@ int main(int argc, char *argv[])
         if( params.last_stage == ProgramParams::STAGE_MIR ) {
             return 0;
         }
-        
+
         // TODO: Pass to mark items that are
         // - Signature Exportable (public)
         // - MIR Exportable (public generic, #[inline], or used by a either of those)
         // - Require codegen (public or used by an exported function)
-        
+
         // Generate code for non-generic public items (if requested)
         switch( crate_type )
         {
@@ -495,13 +495,13 @@ ProgramParams::ProgramParams(int argc, char *argv[])
     for( int i = 1; i < argc; i ++ )
     {
         const char* arg = argv[i];
-        
+
         if( arg[0] != '-' )
         {
             if( this->infile != "" )
                 ;
             this->infile = arg;
-            
+
             if( this->infile == "" )
                 ;
         }
@@ -551,7 +551,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     exit(1);
                 }
                 const char* type_str = argv[++i];
-                
+
                 if( strcmp(type_str, "rlib") == 0 ) {
                     this->crate_type = ::AST::Crate::Type::RustLib;
                 }
@@ -586,7 +586,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     ::std::cerr << "Flag --stop-after requires an argument" << ::std::endl;
                     exit(1);
                 }
-                
+
                 arg = argv[++i];
                 if( strcmp(arg, "parse") == 0 )
                     this->last_stage = STAGE_PARSE;

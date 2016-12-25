@@ -15,7 +15,7 @@ namespace {
     // Read a string out of the input stream
     ::std::string get_string(const Span& sp, const AST::Crate& crate, AST::Module& mod, const TokenTree& tt) {
         auto lex = TTStream(tt);
-        
+
         auto n = Parse_ExprVal(lex);
         ASSERT_BUG(sp, n, "No expression returned");
         if( lex.lookahead(0) != TOK_EOF ) {
@@ -39,7 +39,7 @@ class CExpanderEnv:
         if( ident != "" )
             ERROR(sp, E0000, "env! doesn't take an ident");
         ::std::string   varname = get_string(sp, crate, mod,  tt);
-        
+
         const char* var_val_cstr = getenv(varname.c_str());
         if( !var_val_cstr ) {
             ERROR(sp, E0000, "Environment variable '" << varname << "' not defined");
@@ -56,7 +56,7 @@ class CExpanderOptionEnv:
         if( ident != "" )
             ERROR(sp, E0000, "option_env! doesn't take an ident");
         ::std::string   varname = get_string(sp, crate, mod,  tt);
-        
+
         const char* var_val_cstr = getenv(varname.c_str());
         if( !var_val_cstr ) {
             ::std::vector< TokenTree>   rv;

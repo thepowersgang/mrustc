@@ -45,7 +45,7 @@ namespace HIR {
         )
         return os;
     }
-    
+
     bool operator==(const Literal& l, const Literal& r)
     {
         if( l.tag() != r.tag() )
@@ -96,7 +96,7 @@ const ::HIR::Enum::Variant* ::HIR::Enum::get_variant(const ::std::string& name) 
 
 namespace {
     bool matches_genericpath(const ::HIR::GenericParams& params, const ::HIR::GenericPath& left, const ::HIR::GenericPath& right, ::HIR::t_cb_resolve_type ty_res, bool expand_generic);
-    
+
     bool matches_type_int(const ::HIR::GenericParams& params, const ::HIR::TypeRef& left,  const ::HIR::TypeRef& right_in, ::HIR::t_cb_resolve_type ty_res, bool expand_generic)
     {
         assert(! left.m_data.is_Infer() );
@@ -105,9 +105,9 @@ namespace {
             expand_generic = false;
 
         //DEBUG("left = " << left << ", right = " << right);
-        
+
         // TODO: What indicates what out of ty_res?
-        
+
         if( right.m_data.is_Infer() ) {
             //DEBUG("left = " << left << ", right = " << right);
             switch(right.m_data.as_Infer().ty_class)
@@ -135,7 +135,7 @@ namespace {
             }
             throw "";
         }
-        
+
         // A local generic could match anything, leave that up to the caller
         if( left.m_data.is_Generic() ) {
             return true;
@@ -150,7 +150,7 @@ namespace {
         if( right.m_data.is_Generic() ) {
             return left.m_data.is_Generic();
         }
-        
+
         if( left.m_data.tag() != right.m_data.tag() ) {
             return false;
         }
@@ -247,7 +247,7 @@ namespace {
             if( left.m_path.m_components[i] != right.m_path.m_components[i] )
                 return false;
         }
-        
+
         if( left.m_params.m_types.size() > 0 || right.m_params.m_types.size() > 0 ) {
             if( left.m_params.m_types.size() != right.m_params.m_types.size() ) {
                 return true;
@@ -316,11 +316,11 @@ bool ::HIR::MarkerImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_res
 
 namespace {
     ::Ordering typelist_ord_specific(const Span& sp, const ::std::vector<::HIR::TypeRef>& left, const ::std::vector<::HIR::TypeRef>& right);
-    
+
     ::Ordering type_ord_specific(const Span& sp, const ::HIR::TypeRef& left, const ::HIR::TypeRef& right)
     {
         // TODO: What happens if you get `impl<T> Foo<T> for T` vs `impl<T,U> Foo<U> for T`
-        
+
         // A generic can't be more specific than any other type we can see
         // - It's equally as specific as another Generic, so still false
         if( left.m_data.is_Generic() ) {
@@ -330,7 +330,7 @@ namespace {
         if( right.m_data.is_Generic() ) {
             return ::OrdGreater;
         }
-        
+
         TU_MATCH(::HIR::TypeRef::Data, (left.m_data), (le),
         (Generic,
             throw "";
@@ -436,7 +436,7 @@ namespace {
         )
         throw "Fell off end of type_ord_specific";
     }
-    
+
     ::Ordering typelist_ord_specific(const Span& sp, const ::std::vector<::HIR::TypeRef>& le, const ::std::vector<::HIR::TypeRef>& re)
     {
         auto rv = ::OrdEqual;
@@ -459,7 +459,7 @@ namespace {
         assert( cur_trait.m_trait_ptr );
         const auto& tr = *cur_trait.m_trait_ptr;
         auto monomorph_cb = monomorphise_type_get_cb(sp, &type, &cur_trait.m_path.m_params, nullptr);
-        
+
         for(const auto& trait_path_raw : tr.m_parent_traits)
         {
             // 1. Monomorph
@@ -469,7 +469,7 @@ namespace {
             // 3. Add
             rv.push_back( ::HIR::GenericBound::make_TraitBound({ type.clone(), mv$(trait_path_mono) }) );
         }
-        
+
         // TODO: Add traits from `Self: Foo` bounds?
     }
     ::std::vector< ::HIR::GenericBound> flatten_bounds(const ::std::vector<::HIR::GenericBound>& bounds)
@@ -501,7 +501,7 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
 {
     static const Span   _sp;
     const Span& sp = _sp;
-    
+
     // >> https://github.com/rust-lang/rfcs/blob/master/text/1210-impl-specialization.md#defining-the-precedence-rules
     // 1. If this->m_type is less specific than other.m_type: return false
     if( type_ord_specific(sp, this->m_type, other.m_type) == ::OrdLess ) {
@@ -511,9 +511,9 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
     if( typelist_ord_specific(sp, this->m_trait_args.m_types, other.m_trait_args.m_types) == ::OrdLess ) {
         return false;
     }
-    
+
     //assert(m_params.m_types.size() == other.m_params.m_types.size());
-    
+
     if( other.m_params.m_bounds.size() == 0 ) {
         return m_params.m_bounds.size() > 0;
     }
@@ -523,13 +523,13 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
     auto bounds_o = flatten_bounds(other.m_params.m_bounds);
     ::std::sort(bounds_t.begin(), bounds_t.end(), [](const auto& a, const auto& b){ return ::ord(a,b) == OrdLess; });
     ::std::sort(bounds_o.begin(), bounds_o.end(), [](const auto& a, const auto& b){ return ::ord(a,b) == OrdLess; });
-    
+
     DEBUG("bounds_t = " << bounds_t);
     DEBUG("bounds_o = " << bounds_o);
-    
+
     if( bounds_t.size() < bounds_o.size() )
         return false;
-    
+
     auto it_t = bounds_t.begin();
     for(auto it_o = bounds_o.begin(); it_o != bounds_o.end(); ++it_o)
     {
@@ -569,7 +569,7 @@ const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path_opt(const char* name) 
 const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name) const
 {
     ASSERT_BUG(sp, path.m_components.size() > 0, "get_typeitem_by_path received invalid path - " << path);
-    
+
     const ::HIR::Module* mod;
     if( !ignore_crate_name && path.m_crate_name != "" ) {
         ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
@@ -596,14 +596,14 @@ const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const 
     if( it == mod->m_mod_items.end() ) {
         BUG(sp, "Could not find type name in " << path);
     }
-    
+
     return it->second->ent;
 }
 
 const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::SimplePath& path) const
 {
     if( path.m_components.size() == 0 )
-    { 
+    {
         if( path.m_crate_name != "" )
         {
             ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
@@ -622,7 +622,7 @@ const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::
         )
         else {
             BUG(sp, "Module path " << path << " didn't point to a module");
-        } 
+        }
     }
 }
 const ::HIR::Trait& ::HIR::Crate::get_trait_by_path(const Span& sp, const ::HIR::SimplePath& path) const
@@ -697,7 +697,7 @@ const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const 
     if( it == mod->m_value_items.end() ) {
         BUG(sp, "Could not find value name " << path);
     }
-    
+
     return it->second->ent;
 }
 const ::HIR::Function& ::HIR::Crate::get_function_by_path(const Span& sp, const ::HIR::SimplePath& path) const

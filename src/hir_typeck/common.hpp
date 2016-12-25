@@ -44,9 +44,9 @@ struct MonomorphState
     const ::HIR::TypeRef*   self_ty;
     const ::HIR::PathParams*    pp_impl;
     const ::HIR::PathParams*    pp_method;
-    
+
     t_cb_generic    get_cb(const Span& sp) const;
-    
+
     ::HIR::TypeRef  monomorph(const Span& sp, const ::HIR::TypeRef& ty, bool allow_infer=true) const {
         return monomorphise_type_with(sp, ty, this->get_cb(sp), allow_infer);
     }

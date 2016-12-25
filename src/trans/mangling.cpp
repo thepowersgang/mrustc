@@ -193,7 +193,7 @@ namespace {
         BUG(Span(), "Closure during trans - " << ty);
         )
     )
-    
+
     throw "";
 }
 

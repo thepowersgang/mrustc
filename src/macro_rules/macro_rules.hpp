@@ -51,13 +51,13 @@ struct MacroPatEnt:
     ::std::string   name;
     unsigned int    name_index = 0;
     Token   tok;
-    
+
     ::std::vector<MacroPatEnt>  subpats;
-    
+
     enum Type {
         PAT_TOKEN,  // A token
         PAT_LOOP,   // $() Enables use of subpats
-        
+
         PAT_TT, // :tt
         PAT_PAT,    // :pat
         PAT_IDENT,
@@ -80,7 +80,7 @@ struct MacroPatEnt:
         type(PAT_TOKEN)
     {
     }
-    
+
     MacroPatEnt(::std::string name, unsigned int name_index, Type type):
         name( mv$(name) ),
         name_index( name_index ),
@@ -88,7 +88,7 @@ struct MacroPatEnt:
         type(type)
     {
     }
-    
+
     MacroPatEnt(Token sep, bool need_once, ::std::vector<MacroPatEnt> ents):
         name( need_once ? "+" : "*" ),
         tok( mv$(sep) ),
@@ -99,7 +99,7 @@ struct MacroPatEnt:
 
     friend ::std::ostream& operator<<(::std::ostream& os, const MacroPatEnt& x);
     friend ::std::ostream& operator<<(::std::ostream& os, const MacroPatEnt::Type& x);
-    
+
     SERIALISABLE_PROTOTYPES();
 };
 
@@ -109,13 +109,13 @@ struct MacroRulesArm:
 {
     /// Names for the parameters
     ::std::vector< ::std::string>   m_param_names;
-    
+
     /// Patterns
     ::std::vector<MacroPatEnt>  m_pattern;
-    
+
     /// Rule contents
     ::std::vector<MacroExpansionEnt> m_contents;
-    
+
     MacroRulesArm()
     {}
     MacroRulesArm(::std::vector<MacroPatEnt> pattern, ::std::vector<MacroExpansionEnt> contents):
@@ -126,7 +126,7 @@ struct MacroRulesArm:
     MacroRulesArm& operator=(const MacroRulesArm&) = delete;
     MacroRulesArm(MacroRulesArm&&) = default;
     MacroRulesArm& operator=(MacroRulesArm&&) = default;
-    
+
     SERIALISABLE_PROTOTYPES();
 };
 
@@ -137,22 +137,22 @@ class MacroRules:
 public:
     /// Marks if this macro should be exported from the defining crate
     bool m_exported = false;
-    
+
     /// Crate that defined this macro
     /// - Populated on deserialise if not already set
     ::std::string   m_source_crate;
-    
+
     Ident::Hygiene  m_hygiene;
-    
+
     /// Expansion rules
     ::std::vector<MacroRulesArm>  m_rules;
-    
+
     MacroRules()
     {
     }
     virtual ~MacroRules();
     MacroRules(MacroRules&&) = default;
-    
+
     SERIALISABLE_PROTOTYPES();
 };
 

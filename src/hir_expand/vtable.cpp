@@ -25,11 +25,11 @@ namespace {
         {
             m_lang_Sized = crate.get_lang_item_path_opt("sized");
         }
-        
+
         void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
         {
             auto saved_nt = mv$(m_new_type);
-            
+
             ::std::vector< decltype(mod.m_mod_items)::value_type> new_types;
             m_new_type = [&](bool pub, auto name, auto s)->auto {
                 auto boxed = box$( (::HIR::VisEnt< ::HIR::TypeItem> { pub, ::HIR::TypeItem( mv$(s) ) }) );
@@ -37,19 +37,19 @@ namespace {
                 new_types.push_back( ::std::make_pair( mv$(name), mv$(boxed)) );
                 return ret;
                 };
-            
+
             ::HIR::Visitor::visit_module(p, mod);
             for(auto& i : new_types )
                 mod.m_mod_items.insert( mv$(i) );
-            
+
             m_new_type = mv$(saved_nt);
         }
-        
+
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& tr) override
         {
             static Span sp;
             TRACE_FUNCTION_F(p);
-            
+
             ::HIR::GenericPath  trait_path( p.get_simple_path() );
             {
                 unsigned int i = 0;
@@ -58,7 +58,7 @@ namespace {
                     i ++;
                 }
             }
-            
+
             ::std::unordered_map< ::std::string,unsigned int>  assoc_type_indexes;
             struct Foo {
                 ::HIR::Trait*   trait_ptr;
@@ -87,12 +87,12 @@ namespace {
             }
             visitor.add_types_from_trait(tr);
             auto args = mv$(visitor.params);
-            
+
             struct VtableConstruct {
                 const OuterVisitor* m_outer;
                 ::HIR::Trait*   trait_ptr;
                 ::HIR::t_struct_fields fields;
-                
+
                 bool add_ents_from_trait(const ::HIR::Trait& tr, const ::HIR::GenericPath& trait_path)
                 {
                     TRACE_FUNCTION_F(trait_path);
@@ -136,7 +136,7 @@ namespace {
                                 DEBUG("- '" << vi.first << "' NOT object safe (generic), not creating vtable");
                                 return false;
                             }
-                            
+
                             ::HIR::FunctionType ft;
                             ft.is_unsafe = ve.m_unsafe;
                             ft.m_abi = ve.m_abi;
@@ -147,14 +147,14 @@ namespace {
                                 ft.m_arg_types.push_back( clone_ty_with(sp, ve.m_args[i].second, clone_cb) );
                             // Clear the first argument (the receiver)
                             ::HIR::TypeRef  fcn_type( mv$(ft) );
-                            
+
                             // Detect use of `Self` and don't create the vtable if there is.
                             if( visit_ty_with(fcn_type, [&](const auto& t){ return (t == ::HIR::TypeRef("Self", 0xFFFF)); }) )
                             {
                                 DEBUG("- '" << vi.first << "' NOT object safe (Self), not creating vtable - " << fcn_type);
                                 return false;
                             }
-                            
+
                             trait_ptr->m_value_indexes.insert( ::std::make_pair(
                                 vi.first,
                                 ::std::make_pair(fields.size(), trait_path.clone())
@@ -186,7 +186,7 @@ namespace {
                     return true;
                 }
             };
-            
+
             VtableConstruct vtc { this, &tr, {} };
             if( ! vtc.add_ents_from_trait(tr, trait_path) )
             {
@@ -195,7 +195,7 @@ namespace {
                 return ;
             }
             auto fields = mv$(vtc.fields);
-            
+
             ::HIR::PathParams   params;
             {
                 unsigned int i = 0;
@@ -217,21 +217,21 @@ namespace {
                 });
             DEBUG("Vtable structure created - " << item_path);
             ::HIR::GenericPath  path( mv$(item_path), mv$(params) );
-            
+
             tr.m_values.insert( ::std::make_pair(
                 "#vtable",
                 ::HIR::TraitValueItem(::HIR::Static { ::HIR::Linkage(), false, ::HIR::TypeRef( mv$(path) ), {},{} })
                 ) );
         }
-        
+
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
         {
             static Span sp;
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
             //auto _ = this->m_resolve.set_impl_generics(impl.m_params);
-            
+
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
-            
+
             #if 0
             // Check if the trait has a vtable, and if it does emit an associated static for it.
             const auto& tr = m_crate.get_trait_by_path(sp, trait_path);
@@ -239,7 +239,7 @@ namespace {
             {
                 auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &impl.m_type, &impl.m_trait_args, nullptr);
                 auto trait_gpath = ::HIR::GenericPath(trait_path, impl.m_trait_args.clone());
-                
+
                 ::std::vector< ::HIR::Literal>  vals;
                 vals.resize( tr.m_value_indexes.size() );
                 for(const auto& m : tr.m_value_indexes)
@@ -249,7 +249,7 @@ namespace {
                     auto gpath = monomorphise_genericpath_with(sp, m.second.second, monomorph_cb_trait, false);
                     vals.at(m.second.first) = ::HIR::Literal::make_BorrowOf( ::HIR::Path(impl.m_type.clone(), mv$(gpath), m.first) );
                 }
-                
+
                 auto vtable_sp = trait_path;
                 vtable_sp.m_components.back() += "#vtable";
                 auto vtable_params = impl.m_trait_args.clone();
@@ -257,7 +257,7 @@ namespace {
                     ::HIR::Path path( impl.m_type.clone(), mv$(trait_gpath), ty.first );
                     vtable_params.m_types.push_back( ::HIR::TypeRef( mv$(path) ) );
                 }
-                
+
                 const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_sp);
                 impl.m_statics.insert(::std::make_pair( "#vtable", ::HIR::TraitImpl::ImplEnt<::HIR::Static> { true, ::HIR::Static {
                     ::HIR::Linkage(),

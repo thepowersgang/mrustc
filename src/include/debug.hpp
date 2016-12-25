@@ -30,7 +30,7 @@ struct RepeatLitStr
 {
     const char *s;
     int n;
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const RepeatLitStr& r) {
         for(int i = 0; i < r.n; i ++ )
             os << r.s;

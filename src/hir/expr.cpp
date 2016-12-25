@@ -91,10 +91,10 @@ DEF_VISIT(ExprNode_Emplace, node,
 
 DEF_VISIT(ExprNode_TupleVariant, node,
     visit_generic_path(::HIR::Visitor::PathContext::VALUE, node.m_path);
-    
+
     for(auto& ty : node.m_arg_types)
         visit_type(ty);
-    
+
     for(auto& arg : node.m_args)
         visit_node_ptr(arg);
 )
@@ -102,7 +102,7 @@ DEF_VISIT(ExprNode_CallPath, node,
     TRACE_FUNCTION_F("_CallPath: " << node.m_path);
     for(auto& ty : node.m_cache.m_arg_types)
         visit_type(ty);
-    
+
     visit_path(::HIR::Visitor::PathContext::VALUE, node.m_path);
     for(auto& arg : node.m_args)
         visit_node_ptr(arg);
@@ -111,7 +111,7 @@ DEF_VISIT(ExprNode_CallValue, node,
     TRACE_FUNCTION_F("_CallValue:");
     for(auto& ty : node.m_arg_types)
         visit_type(ty);
-    
+
     visit_node_ptr(node.m_value);
     for(auto& arg : node.m_args)
         visit_node_ptr(arg);
@@ -122,7 +122,7 @@ DEF_VISIT(ExprNode_CallMethod, node,
         visit_type(ty);
 
     visit_path(::HIR::Visitor::PathContext::VALUE, node.m_method_path);
-    
+
     visit_node_ptr(node.m_value);
     for(auto& arg : node.m_args)
         visit_node_ptr(arg);

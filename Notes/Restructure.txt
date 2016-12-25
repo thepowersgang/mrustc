@@ -1,10 +1,7 @@
-
-
 1. High-level AST (basically the code in AST form)
  - Elimination or otherwise disabling of #[cfg]-disabled items
  - Path resolution (leave UFCS unresolved for now)
   > Take all paths, turn into UFCS if a node points to a type
-  > 
  - Root-level UFCS resoluion
   > Recursion limit on searching through traits
  - Expression-level UFCS resolution
@@ -72,7 +69,7 @@ CONSTANT = INT
          | STATIC_STRING
          | ITEM<SUBSTS>                 // reference to an item or constant etc
          | <P0 as TRAIT<P1...Pn>>       // projection
-         | CONSTANT(CONSTANT...)        // 
+         | CONSTANT(CONSTANT...)        //
          | CAST(CONSTANT, TY)           // foo as bar
          | Struct { (f: CONSTANT)... }  // aggregates...
          | (CONSTANT...)                //

@@ -16,13 +16,13 @@ class Serialiser_TextTree:
     bool    m_array_was_empty;
 public:
     Serialiser_TextTree(::std::ostream& os);
-    
+
     virtual Serialiser& operator<<(bool val) override;
     virtual Serialiser& operator<<(uint64_t val) override;
     virtual Serialiser& operator<<(int64_t val) override;
     virtual Serialiser& operator<<(double val) override;
     virtual Serialiser& operator<<(const char* s) override;
-    
+
 protected:
     virtual void start_object(const char *tag) override;
     virtual void end_object(const char* tag) override;
@@ -39,15 +39,15 @@ class Deserialiser_TextTree:
     public Deserialiser
 {
     ::std::istream& m_is;
-    
+
     static bool is_ws(char c);
     char getc();
     char peekc();
     void eat_ws();
 public:
     Deserialiser_TextTree(::std::istream& is);
-   
-protected: 
+
+protected:
     virtual size_t start_array() override;
     virtual void end_array() override;
     virtual ::std::string read_tag() override;

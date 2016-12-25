@@ -14,12 +14,12 @@
 #include "serialise_lowlevel.hpp"
 
 namespace {
-    
+
     template<typename T>
     struct D
     {
     };
-    
+
     class HirDeserialiser
     {
         const ::std::string& m_crate_name;
@@ -29,10 +29,10 @@ namespace {
             m_crate_name( crate_name ),
             m_in(in)
         {}
-        
+
         ::std::string read_string() { return m_in.read_string(); }
         size_t deserialise_count() { return m_in.read_count(); }
-        
+
         template<typename V>
         ::std::map< ::std::string,V> deserialise_strmap()
         {
@@ -74,7 +74,7 @@ namespace {
             }
             return rv;
         }
-        
+
         template<typename T>
         ::std::vector<T> deserialise_vec()
         {
@@ -100,13 +100,13 @@ namespace {
         {
             return ::HIR::VisEnt<T> { m_in.read_bool(), D<T>::des(*this) };
         }
-        
+
         template<typename T>
         ::std::unique_ptr<T> deserialise_ptr() {
             return box$( D<T>::des(*this) );
         }
-        
-        
+
+
         ::HIR::TypeRef deserialise_type();
         ::HIR::SimplePath deserialise_simplepath();
         ::HIR::PathParams deserialise_pathparams();
@@ -117,18 +117,18 @@ namespace {
         ::HIR::GenericParams deserialise_genericparams();
         ::HIR::TypeParamDef deserialise_typaramdef();
         ::HIR::GenericBound deserialise_genericbound();
-        
+
         ::HIR::Crate deserialise_crate();
         ::HIR::Module deserialise_module();
-        
+
         ::HIR::TypeImpl deserialise_typeimpl()
         {
             ::HIR::TypeImpl rv;
             TRACE_FUNCTION_FR("", "impl" << rv.m_params.fmt_args() << " " << rv.m_type);
-            
+
             rv.m_params = deserialise_genericparams();
             rv.m_type = deserialise_type();
-            
+
             size_t method_count = m_in.read_count();
             for(size_t i = 0; i < method_count; i ++)
             {
@@ -152,12 +152,12 @@ namespace {
         {
             ::HIR::TraitImpl    rv;
             TRACE_FUNCTION_FR("", "impl" << rv.m_params.fmt_args() << " ?" << rv.m_trait_args << " for " << rv.m_type);
-            
+
             rv.m_params = deserialise_genericparams();
             rv.m_trait_args = deserialise_pathparams();
             rv.m_type = deserialise_type();
-            
-            
+
+
             size_t method_count = m_in.read_count();
             for(size_t i = 0; i < method_count; i ++)
             {
@@ -190,7 +190,7 @@ namespace {
                     m_in.read_bool(), deserialise_type()
                     } ) );
             }
-            
+
             // m_src_module doesn't matter after typeck
             return rv;
         }
@@ -203,7 +203,7 @@ namespace {
                 deserialise_type()
                 };
         }
-        
+
         ::MacroRulesPtr deserialise_macrorulesptr()
         {
             return ::MacroRulesPtr( new MacroRules(deserialise_macrorules()) );
@@ -284,7 +284,7 @@ namespace {
                 throw "";
             }
         }
-        
+
         ::Token deserialise_token() {
             ::Token tok;
             // HACK: Hand off to old serialiser code
@@ -298,7 +298,7 @@ namespace {
         }
 
         ::HIR::Literal deserialise_literal();
-        
+
         ::HIR::ExprPtr deserialise_exprptr()
         {
             ::HIR::ExprPtr  rv;
@@ -314,7 +314,7 @@ namespace {
         ::MIR::Statement deserialise_mir_statement();
         ::MIR::Terminator deserialise_mir_terminator();
         ::MIR::CallTarget deserialise_mir_calltarget();
-        
+
         ::MIR::LValue deserialise_mir_lvalue() {
             ::MIR::LValue   rv;
             TRACE_FUNCTION_FR("", rv);
@@ -352,7 +352,7 @@ namespace {
         ::MIR::RValue deserialise_mir_rvalue()
         {
             TRACE_FUNCTION;
-            
+
             switch( m_in.read_tag() )
             {
             #define _(x, ...)    case ::MIR::RValue::TAG_##x: return ::MIR::RValue::make_##x( __VA_ARGS__ );
@@ -414,7 +414,7 @@ namespace {
         ::MIR::Constant deserialise_mir_constant()
         {
             TRACE_FUNCTION;
-            
+
             switch( m_in.read_tag() )
             {
             #define _(x, ...)    case ::MIR::Constant::TAG_##x: DEBUG("- " #x); return ::MIR::Constant::make_##x( __VA_ARGS__ );
@@ -436,7 +436,7 @@ namespace {
                 throw "";
             }
         }
-        
+
         ::HIR::TypeItem deserialise_typeitem()
         {
             switch( m_in.read_tag() )
@@ -479,7 +479,7 @@ namespace {
                 throw "";
             }
         }
-        
+
         ::HIR::Linkage deserialise_linkage()
         {
             return ::HIR::Linkage {
@@ -487,12 +487,12 @@ namespace {
                 m_in.read_string(),
                 };
         }
-        
+
         // - Value items
         ::HIR::Function deserialise_function()
         {
             TRACE_FUNCTION;
-            
+
             ::HIR::Function rv {
                 deserialise_linkage(),
                 static_cast< ::HIR::Function::Receiver>( m_in.read_tag() ),
@@ -520,7 +520,7 @@ namespace {
         ::HIR::Constant deserialise_constant()
         {
             TRACE_FUNCTION;
-            
+
             return ::HIR::Constant {
                 deserialise_genericparams(),
                 deserialise_type(),
@@ -531,7 +531,7 @@ namespace {
         ::HIR::Static deserialise_static()
         {
             TRACE_FUNCTION;
-            
+
             return ::HIR::Static {
                 deserialise_linkage(),
                 m_in.read_bool(),
@@ -540,7 +540,7 @@ namespace {
                 deserialise_literal()
                 };
         }
-        
+
         // - Type items
         ::HIR::TypeAlias deserialise_typealias()
         {
@@ -565,14 +565,14 @@ namespace {
             // TODO: auto_impls
             return m;
         }
-        
+
         ::HIR::Enum deserialise_enum();
         ::HIR::Enum::Variant deserialise_enumvariant();
 
         ::HIR::Struct deserialise_struct();
         ::HIR::Union deserialise_union();
         ::HIR::Trait deserialise_trait();
-        
+
         ::HIR::TraitValueItem deserialise_traitvalueitem()
         {
             switch( m_in.read_tag() )
@@ -600,50 +600,50 @@ namespace {
 
     #define DEF_D(ty, ...) \
         struct D< ty > { static ty des(HirDeserialiser& d) { __VA_ARGS__ } };
-    
+
     template<>
     DEF_D( ::std::string,
         return d.read_string(); );
-    
+
     template<typename T>
     DEF_D( ::std::unique_ptr<T>,
         return d.deserialise_ptr<T>(); )
-    
+
     template<typename T, typename U>
     struct D< ::std::pair<T,U> > { static ::std::pair<T,U> des(HirDeserialiser& d) {
         auto a = D<T>::des(d);
         return ::std::make_pair( mv$(a), D<U>::des(d) );
         }};
-    
+
     template<typename T>
     DEF_D( ::HIR::VisEnt<T>,
         return d.deserialise_visent<T>(); )
-    
+
     template<> DEF_D( ::HIR::TypeRef, return d.deserialise_type(); )
     template<> DEF_D( ::HIR::SimplePath, return d.deserialise_simplepath(); )
     template<> DEF_D( ::HIR::GenericPath, return d.deserialise_genericpath(); )
     template<> DEF_D( ::HIR::TraitPath, return d.deserialise_traitpath(); )
-    
+
     template<> DEF_D( ::HIR::TypeParamDef, return d.deserialise_typaramdef(); )
     template<> DEF_D( ::HIR::GenericBound, return d.deserialise_genericbound(); )
-    
+
     template<> DEF_D( ::HIR::ValueItem, return d.deserialise_valueitem(); )
     template<> DEF_D( ::HIR::TypeItem, return d.deserialise_typeitem(); )
-    
+
     template<> DEF_D( ::HIR::Enum::Variant, return d.deserialise_enumvariant(); )
     template<> DEF_D( ::HIR::Literal, return d.deserialise_literal(); )
-    
+
     template<> DEF_D( ::HIR::AssociatedType, return d.deserialise_associatedtype(); )
     template<> DEF_D( ::HIR::TraitValueItem, return d.deserialise_traitvalueitem(); )
-    
+
     template<> DEF_D( ::MIR::LValue, return d.deserialise_mir_lvalue(); )
     template<> DEF_D( ::MIR::Statement, return d.deserialise_mir_statement(); )
     template<> DEF_D( ::MIR::BasicBlock, return d.deserialise_mir_basicblock(); )
-    
+
     template<> DEF_D( ::HIR::TypeImpl, return d.deserialise_typeimpl(); )
     template<> DEF_D( ::MacroRulesPtr, return d.deserialise_macrorulesptr(); )
     template<> DEF_D( unsigned int, return static_cast<unsigned int>(d.deserialise_count()); )
-    
+
     ::HIR::TypeRef HirDeserialiser::deserialise_type()
     {
         TRACE_FUNCTION;
@@ -704,7 +704,7 @@ namespace {
             throw ::std::runtime_error(FMT("Bad TypeRef tag - " << tag));
         }
     }
-    
+
     ::HIR::SimplePath HirDeserialiser::deserialise_simplepath()
     {
         TRACE_FUNCTION;
@@ -733,7 +733,7 @@ namespace {
             deserialise_pathparams()
             };
     }
-    
+
     ::HIR::TraitPath HirDeserialiser::deserialise_traitpath()
     {
         return ::HIR::TraitPath {
@@ -770,7 +770,7 @@ namespace {
             throw "";
         }
     }
-    
+
     ::HIR::GenericParams HirDeserialiser::deserialise_genericparams()
     {
         ::HIR::GenericParams    params;
@@ -810,7 +810,7 @@ namespace {
             throw "";
         }
     }
-    
+
     ::HIR::Enum HirDeserialiser::deserialise_enum()
     {
         TRACE_FUNCTION;
@@ -847,7 +847,7 @@ namespace {
         auto repr = static_cast< ::HIR::Union::Repr>( m_in.read_tag() );
         auto variants = deserialise_vec< ::std::pair< ::std::string, ::HIR::VisEnt< ::HIR::TypeRef> > >();
         auto markings = deserialise_markings();
-        
+
         return ::HIR::Union {
             mv$(params), repr, mv$(variants), mv$(markings)
             };
@@ -858,7 +858,7 @@ namespace {
         auto params = deserialise_genericparams();
         auto repr = static_cast< ::HIR::Struct::Repr>( m_in.read_tag() );
         DEBUG("params = " << params.fmt_args() << params.fmt_bounds());
-        
+
         switch( m_in.read_tag() )
         {
         case ::HIR::Struct::Data::TAG_Unit:
@@ -889,7 +889,7 @@ namespace {
     ::HIR::Trait HirDeserialiser::deserialise_trait()
     {
         TRACE_FUNCTION;
-        
+
         ::HIR::Trait rv {
             deserialise_genericparams(),
             "",  // TODO: Better type for lifetime
@@ -902,7 +902,7 @@ namespace {
         rv.m_type_indexes = deserialise_strumap< unsigned int>();
         return rv;
     }
-    
+
     ::HIR::Literal HirDeserialiser::deserialise_literal()
     {
         switch( m_in.read_tag() )
@@ -923,25 +923,25 @@ namespace {
             throw "";
         }
     }
-    
+
     ::MIR::FunctionPointer HirDeserialiser::deserialise_mir()
     {
         TRACE_FUNCTION;
-        
+
         ::MIR::Function rv;
-        
+
         rv.named_variables = deserialise_vec< ::HIR::TypeRef>( );
         DEBUG("named_variables = " << rv.named_variables);
         rv.temporaries = deserialise_vec< ::HIR::TypeRef>( );
         DEBUG("temporaries = " << rv.temporaries);
         rv.blocks = deserialise_vec< ::MIR::BasicBlock>( );
-        
+
         return ::MIR::FunctionPointer( new ::MIR::Function(mv$(rv)) );
     }
     ::MIR::BasicBlock HirDeserialiser::deserialise_mir_basicblock()
     {
         TRACE_FUNCTION;
-        
+
         return ::MIR::BasicBlock {
             deserialise_vec< ::MIR::Statement>(),
             deserialise_mir_terminator()
@@ -950,7 +950,7 @@ namespace {
     ::MIR::Statement HirDeserialiser::deserialise_mir_statement()
     {
         TRACE_FUNCTION;
-        
+
         switch( m_in.read_tag() )
         {
         case 0:
@@ -971,7 +971,7 @@ namespace {
     ::MIR::Terminator HirDeserialiser::deserialise_mir_terminator()
     {
         TRACE_FUNCTION;
-        
+
         switch( m_in.read_tag() )
         {
         #define _(x, ...)    case ::MIR::Terminator::TAG_##x: return ::MIR::Terminator::make_##x( __VA_ARGS__ );
@@ -1001,7 +1001,7 @@ namespace {
             throw "";
         }
     }
-    
+
     ::MIR::CallTarget HirDeserialiser::deserialise_mir_calltarget()
     {
         switch( m_in.read_tag() )
@@ -1018,27 +1018,27 @@ namespace {
             throw "";
         }
     }
-    
+
     ::HIR::Module HirDeserialiser::deserialise_module()
     {
         TRACE_FUNCTION;
-        
+
         ::HIR::Module   rv;
-        
+
         // m_traits doesn't need to be serialised
         rv.m_value_items = deserialise_strumap< ::std::unique_ptr< ::HIR::VisEnt< ::HIR::ValueItem> > >();
         rv.m_mod_items = deserialise_strumap< ::std::unique_ptr< ::HIR::VisEnt< ::HIR::TypeItem> > >();
-        
+
         return rv;
     }
     ::HIR::Crate HirDeserialiser::deserialise_crate()
     {
         ::HIR::Crate    rv;
-        
+
         rv.m_root_module = deserialise_module();
-        
+
         rv.m_type_impls = deserialise_vec< ::HIR::TypeImpl>();
-        
+
         {
             size_t n = m_in.read_count();
             for(size_t i = 0; i < n; i ++)
@@ -1055,10 +1055,10 @@ namespace {
                 rv.m_marker_impls.insert( ::std::make_pair( mv$(p), deserialise_markerimpl() ) );
             }
         }
-        
+
         rv.m_exported_macros = deserialise_strumap< ::MacroRulesPtr>();
         rv.m_lang_items = deserialise_strumap< ::HIR::SimplePath>();
-        
+
         {
             size_t n = m_in.read_count();
             for(size_t i = 0; i < n; i ++)
@@ -1067,7 +1067,7 @@ namespace {
                 rv.m_ext_crates.insert( ::std::make_pair(ext_crate_name, ::HIR::CratePtr{}) );
             }
         }
-        
+
         return rv;
     }
 }
@@ -1076,11 +1076,11 @@ namespace {
 {
     ::HIR::serialise::Reader    in { filename };
     HirDeserialiser  s { loaded_name, in };
-    
+
     try
     {
         ::HIR::Crate    rv = s.deserialise_crate();
-        
+
         return ::HIR::CratePtr( mv$(rv) );
     }
     catch(int)

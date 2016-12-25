@@ -26,14 +26,14 @@ struct PatternBinding
         Ref,
         MutRef,
     };
-    
+
     bool    m_mutable;
     Type    m_type;
     ::std::string   m_name;
     unsigned int    m_slot;
-    
+
     bool is_valid() const { return m_name != ""; }
-    
+
     PatternBinding():
         m_mutable(false),
         m_type(Type::Move),
@@ -67,7 +67,7 @@ struct Pattern
             })
         );
     friend ::std::ostream& operator<<(::std::ostream& os, const Pattern::Value& x);
-    
+
     enum class GlobPos {
         None,
         Start,
@@ -136,7 +136,7 @@ struct Pattern
 
     PatternBinding  m_binding;
     Data    m_data;
-    
+
     Pattern() {}
     Pattern(PatternBinding pb, Data d):
         m_binding( mv$(pb) ),
@@ -146,9 +146,9 @@ struct Pattern
     Pattern(Pattern&&) = default;
     Pattern& operator=(const Pattern&) = delete;
     Pattern& operator=(Pattern&&) = default;
-    
+
     Pattern clone() const;
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const Pattern& x);
 };
 

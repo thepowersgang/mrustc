@@ -19,7 +19,7 @@
 #define TU_FIRST(a, ...)    a
 
 // Argument iteration
-#define _DISP0(n)   
+#define _DISP0(n)
 #define _DISP1(n, _1)   n _1
 #define _DISP2(n, _1, _2)   n _1 n _2
 #define _DISP3(n, v, v2, v3)   n v n v2 n v3
@@ -37,7 +37,7 @@
 #define _DISP15(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4,c5)   _DISP5(n, a1,a2,a3,a4,a5) _DISP5(n, b1,b2,b3,b4,b5) _DISP5(n, c1,c2,c3,c4,c5)
 #define _DISP16(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4,c5, d1)   _DISP5(n, a1,a2,a3,a4,a5) _DISP5(n, b1,b2,b3,b4,b5) _DISP5(n, c1,c2,c3,c4,c5) _DISP1(n, d1)
 
-#define _DISPO0(n)   
+#define _DISPO0(n)
 #define _DISPO1(n, _1)   n(_1)
 #define _DISPO2(n, _1, _2)   n(_1) n(_2)
 #define _DISPO3(n, v, v2, v3)   n(v) n(v2) n(v3)

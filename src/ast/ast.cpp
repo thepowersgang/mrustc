@@ -100,7 +100,7 @@ Function Function::clone() const
     decltype(m_args)    new_args;
     for(const auto& arg : m_args)
         new_args.push_back( ::std::make_pair( arg.first.clone(), arg.second.clone() ) );
-    
+
     auto rv = Function( m_span, m_params.clone(), m_abi, m_is_unsafe, m_is_const, m_is_variadic, m_rettype.clone(), mv$(new_args) );
     if( m_code.is_valid() )
     {
@@ -280,9 +280,9 @@ ExternBlock ExternBlock::clone() const
     auto rv = ::std::shared_ptr<AST::Module>( new Module(m_my_path + FMT("#" << m_anon_modules.size())) );
     DEBUG("New anon " << rv->m_my_path);
     rv->m_file_info = m_file_info;
-    
+
     m_anon_modules.push_back( rv );
-    
+
     return rv;
 }
 
@@ -303,7 +303,7 @@ void Module::add_ext_crate(bool is_public, ::std::string ext_name, ::std::string
     this->add_item( is_public, imp_name, Item::make_Crate({mv$(ext_name)}), mv$(attrs) );
 }
 void Module::add_alias(bool is_public, UseStmt us, ::std::string name, MetaItems attrs) {
-    this->add_item( is_public, mv$(name), Item(mv$(us)), mv$(attrs) ); 
+    this->add_item( is_public, mv$(name), Item(mv$(us)), mv$(attrs) );
 }
 void Module::add_macro_invocation(MacroInvocation item) {
     this->add_item( false, "", Item( mv$(item) ), ::AST::MetaItems {} );
@@ -357,7 +357,7 @@ Item Item::clone() const
     (Trait,
         return AST::Item(e.clone());
         ),
-    
+
     (Function,
         return AST::Item(e.clone());
         ),

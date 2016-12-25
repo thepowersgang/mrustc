@@ -15,7 +15,7 @@
 void ::HIR::Visitor::visit_crate(::HIR::Crate& crate)
 {
     this->visit_module(::HIR::ItemPath(), crate.m_root_module );
-    
+
     for( auto& ty_impl : crate.m_type_impls )
     {
         this->visit_type_impl(ty_impl);
@@ -102,7 +102,7 @@ void ::HIR::Visitor::visit_type_impl(::HIR::TypeImpl& impl)
     TRACE_FUNCTION_F("impl.m_type=" << impl.m_type);
     this->visit_params(impl.m_params);
     this->visit_type(impl.m_type);
-    
+
     for(auto& method : impl.m_methods) {
         DEBUG("method " << method.first);
         this->visit_function(p + method.first, method.second.data);
@@ -124,7 +124,7 @@ void ::HIR::Visitor::visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR
         impl.m_trait_args = mv$(gp.m_params);
     }
     this->visit_type(impl.m_type);
-    
+
     for(auto& ent : impl.m_methods) {
         DEBUG("method " << ent.first);
         this->visit_function(p + ent.first, ent.second.data);
@@ -159,7 +159,7 @@ void ::HIR::Visitor::visit_trait(::HIR::ItemPath p, ::HIR::Trait& item)
     ::HIR::SimplePath trait_sp = p.get_simple_path();
     ItemPath    trait_ip(trait_sp);
     TRACE_FUNCTION;
-    
+
     this->visit_params(item.m_params);
     for(auto& par : item.m_parent_traits) {
         this->visit_trait_path(par);

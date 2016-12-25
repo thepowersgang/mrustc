@@ -19,7 +19,7 @@ extern FILE*	yyin;
 ::std::unique_ptr<Module> parse_module_file(::std::string filename, ::std::string base_path)
 {
 	::std::cout << "filename = " << filename << ", base_path = " << base_path << ";" << ::std::endl;
-	
+
 	if( filename != "-" ) {
 		yyin = fopen(filename.c_str(), "r");
 		if( !yyin ) {
@@ -30,7 +30,7 @@ extern FILE*	yyin;
 
 	ParserContext	context( ::std::move(filename) );
 	context.base_path = ::std::move(base_path);
-	
+
 	yylineno = 1;
 	int rv = yyparse(context);
 	if( yyin != stdin ) {
@@ -39,7 +39,7 @@ extern FILE*	yyin;
 	if( rv != 0 ) {
 		exit(1);
 	}
-	
+
 	assert( context.output_module.get() );
 	//context.output_module->set_paths( ::std::move(context.filename), ::std::move(context.base_path) );
 	return ::std::move(context.output_module);
@@ -48,14 +48,14 @@ extern FILE*	yyin;
 void post_process_module(Module& mod, const ::std::string& mod_filename, const ::std::string& mod_dir_path)
 {
 	::std::cout << "mod = ["<<mod.mod_path()<<"], mod_filename = " << mod_filename << ", mod_dir_path = " << mod_dir_path << ";" << ::std::endl;
-	
+
 	for(auto& item : mod.items())
 	{
 		Module* opt_submod = dynamic_cast<Module*>(item.get());
 		if( !opt_submod )	continue;
 		Module& submod = *opt_submod;
 		printf("- Module %s\n", submod.name().c_str());
-		
+
 		if( ! submod.is_external() ) {
 			// - inline modules can be ignored.. for now
 			if( mod_dir_path != "" ) {
@@ -91,23 +91,23 @@ void post_process_module(Module& mod, const ::std::string& mod_filename, const :
 					fclose(yyin);
 				}
 			}
-			
+
 			assert(filename.size() > 0);
 			submod = ::std::move( *parse_module_file(filename, base_path) );
 			submod.set_paths( filename, base_path );
 		}
-		
+
 		auto mp = mod.mod_path();
 		mp.push_back(submod.name());
 		submod.set_mod_path(::std::move(mp));
 	}
-	
+
 	for(auto& item : mod.items())
 	{
 		Module* opt_submod = dynamic_cast<Module*>(item.get());
 		if( !opt_submod )	continue;
 		Module& submod = *opt_submod;
-	
+
 		const ::std::string& submod_fname = submod.filename();
 		const ::std::string& submod_dir = submod.base_dir();
 		post_process_module(submod, submod_fname, submod_dir);
@@ -128,11 +128,11 @@ int main(int argc, char *argv[]) {
 	::std::string	base_path = (base_filename ==  "-" ? ::std::string("") : get_dir_path(base_filename));
 	auto mod = parse_module_file(base_filename, base_path);
 	printf("output module = %p\n", &*mod);
-	
+
 	post_process_module(*mod, base_filename, base_path);
-	
+
 	printf("Crate parsed\n");
-	
+
 	return 0;
 }
 void yyerror(ParserContext& context, const char *s) {

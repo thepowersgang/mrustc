@@ -1,7 +1,7 @@
 /*
  * MRustC - Mutabah's Rust Compiler
  * - By John Hodge (Mutabah/thePowersGang)
- * 
+ *
  * types.cpp
  * - Backing code for the TypeRef class
  *
@@ -87,7 +87,7 @@ Type_Function::Type_Function(const Type_Function& other):
 Ordering Type_Function::ord(const Type_Function& x) const
 {
     Ordering rv;
-    
+
     rv = ::ord(m_abi, x.m_abi);
     if(rv != OrdEqual)  return rv;
     rv = ::ord(m_arg_types, x.m_arg_types);
@@ -139,10 +139,10 @@ TypeRef TypeRef::clone() const
 Ordering TypeRef::ord(const TypeRef& x) const
 {
     Ordering    rv;
-    
+
     rv = ::ord( (unsigned)m_data.tag(), (unsigned)x.m_data.tag() );
     if(rv != OrdEqual)  return rv;
-    
+
     TU_MATCH(TypeData, (m_data, x.m_data), (ent, x_ent),
     (None, return OrdEqual;),
     (Macro, throw CompileError::BugCheck("TypeRef::ord - unexpanded macro");),

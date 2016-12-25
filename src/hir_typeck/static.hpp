@@ -15,11 +15,11 @@ class StaticTraitResolve
 {
 public:
     const ::HIR::Crate&   m_crate;
-    
+
     ::HIR::GenericParams*   m_impl_generics;
     ::HIR::GenericParams*   m_item_generics;
-    
-    
+
+
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
 
     ::HIR::SimplePath   m_lang_Copy;
@@ -31,7 +31,7 @@ public:
     ::HIR::SimplePath   m_lang_FnOnce;
     ::HIR::SimplePath   m_lang_Box;
     ::HIR::SimplePath   m_lang_PhantomData;
-    
+
 public:
     StaticTraitResolve(const ::HIR::Crate& crate):
         m_crate(crate),
@@ -52,7 +52,7 @@ public:
 
 private:
     void prep_indexes();
-    
+
 public:
     bool has_self() const {
         return m_impl_generics ? true : false;
@@ -65,7 +65,7 @@ public:
         static ::HIR::GenericParams empty;
         return m_item_generics ? *m_item_generics : empty;
     }
-    
+
     /// \brief State manipulation
     /// \{
     template<typename T>
@@ -94,11 +94,11 @@ public:
         return NullOnDrop< ::HIR::GenericParams>(m_item_generics);
     }
     /// \}
-    
+
     /// \brief Lookups
     /// \{
     typedef ::std::function<bool(ImplRef, bool is_fuzzed)> t_cb_find_impl;
-    
+
     bool find_impl(
         const Span& sp,
         const ::HIR::SimplePath& trait_path, const ::HIR::PathParams& trait_params,
@@ -115,7 +115,7 @@ public:
         t_cb_find_impl found_cb,
         bool dont_handoff_to_specialised = false
         ) const;
-    
+
 private:
     bool find_impl__check_bound(
         const Span& sp,
@@ -154,7 +154,7 @@ private:
 
 public:
     /// \}
-    
+
     /// Iterate over in-scope bounds (function then top)
     bool iterate_bounds( ::std::function<bool(const ::HIR::GenericBound&)> cb) const;
 
@@ -165,16 +165,16 @@ public:
             const ::HIR::TypeRef& self_type,
             ::std::function<void(const ::HIR::PathParams&, ::std::map< ::std::string, ::HIR::TypeRef>)> callback
             ) const;
-    /// 
+    ///
     bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
-    
-    
+
+
     // --------------
     // Common bounds
     // -------------
     bool type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const;
     bool type_is_sized(const Span& sp, const ::HIR::TypeRef& ty) const;
-    
+
     const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
     const ::HIR::TypeRef* is_type_phantom_data(const ::HIR::TypeRef& ty) const;
 };

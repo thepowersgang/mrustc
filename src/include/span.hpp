@@ -24,19 +24,19 @@ class Position;
 struct ProtoSpan
 {
     RcString   filename;
-    
+
     unsigned int start_line;
     unsigned int start_ofs;
 };
 struct Span
 {
     RcString    filename;
-    
+
     unsigned int start_line;
     unsigned int start_ofs;
     unsigned int end_line;
     unsigned int end_ofs;
-    
+
     Span(RcString filename, unsigned int start_line, unsigned int start_ofs,  unsigned int end_line, unsigned int end_ofs):
         filename( ::std::move(filename) ),
         start_line(start_line),
@@ -47,12 +47,12 @@ struct Span
     Span(const Span& x);
     Span(const Position& position);
     Span();
-    
+
     void bug(::std::function<void(::std::ostream&)> msg) const;
     void error(ErrorType tag, ::std::function<void(::std::ostream&)> msg) const;
     void warning(WarningType tag, ::std::function<void(::std::ostream&)> msg) const;
     void note(::std::function<void(::std::ostream&)> msg) const;
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const Span& sp);
 };
 

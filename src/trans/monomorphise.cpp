@@ -60,9 +60,9 @@ namespace {
 {
     static Span sp;
     TRACE_FUNCTION;
-    
+
     ::MIR::Function output;
-    
+
     // 1. Monomorphise locals and temporaries
     output.named_variables.reserve( tpl->named_variables.size() );
     for(const auto& var : tpl->named_variables)
@@ -76,13 +76,13 @@ namespace {
         DEBUG("- var" << output.temporaries.size());
         output.temporaries.push_back( params.monomorph(crate, ty) );
     }
-    
+
     // 2. Monomorphise all paths
     output.blocks.reserve( tpl->blocks.size() );
     for(const auto& block : tpl->blocks)
     {
         ::std::vector< ::MIR::Statement>    statements;
-        
+
         TRACE_FUNCTION_F("bb" << output.blocks.size());
         statements.reserve( block.statements.size() );
         for(const auto& stmt : block.statements)
@@ -101,7 +101,7 @@ namespace {
             {
                 const auto& e = stmt.as_Assign();
                 DEBUG("- " << e.dst << " = " << e.src);
-                
+
                 ::MIR::RValue   rval;
                 TU_MATCHA( (e.src), (se),
                 (Use,
@@ -213,16 +213,16 @@ namespace {
                         });
                     )
                 )
-                
+
                 statements.push_back( ::MIR::Statement::make_Assign({
                     monomorph_LValue(crate, params, e.dst),
                     mv$(rval)
                     }) );
             }
         }
-        
+
         ::MIR::Terminator   terminator;
-        
+
         DEBUG("> " << block.terminator);
         TU_MATCHA( (block.terminator), (e),
         (Incomplete,
@@ -278,9 +278,9 @@ namespace {
                 });
             )
         )
-        
+
         output.blocks.push_back( ::MIR::BasicBlock { mv$(statements), mv$(terminator) } );
     }
-    
+
     return ::MIR::FunctionPointer( box$(output).release() );
 }

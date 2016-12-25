@@ -26,9 +26,9 @@ public:
     Writer(const Writer&) = delete;
     Writer(Writer&&) = delete;
     ~Writer();
-    
+
     void write(const void* data, size_t count);
-    
+
     void write_u8(uint8_t v) {
         write(reinterpret_cast<const char*>(&v), 1);
     }
@@ -134,7 +134,7 @@ class ReadBuffer
     unsigned int    m_ofs;
 public:
     ReadBuffer(size_t size);
-    
+
     size_t capacity() const { return m_backing.capacity(); }
     size_t read(void* dst, size_t len);
     void populate(ReaderInner& is);
@@ -151,7 +151,7 @@ public:
     ~Reader();
 
     void read(void* dst, size_t count);
-    
+
     uint8_t read_u8() {
         uint8_t v;
         read(&v, sizeof v);
@@ -212,7 +212,7 @@ public:
         uint64_t va = read_u64c();
         bool sign = (va & 0x1) != 0;
         va >>= 1;
-        
+
         if( va == 0 && sign ) {
             return INT64_MIN;
         }

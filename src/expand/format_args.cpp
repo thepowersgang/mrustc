@@ -16,7 +16,7 @@
 #include <ast/expr.hpp>    // for ExprNode_*
 
 namespace {
-    
+
     /// Options for a formatting fragment
     struct FmtArgs
     {
@@ -31,20 +31,20 @@ namespace {
             Plus,
             Minus,
         };
-        
+
         Align   align = Align::Unspec;
         char    align_char = ' ';
-        
+
         Sign    sign = Sign::Unspec;
         bool    alternate = false;
         bool    zero_pad = false;
-        
+
         bool width_is_arg = false;
         unsigned int width = 0;
-        
+
         bool prec_is_arg = false;
         unsigned int prec = 0;
-        
+
         bool operator==(const FmtArgs& x) const { return ::std::memcmp(this, &x, sizeof(*this)) == 0; }
         bool operator!=(const FmtArgs& x) const {
             #define CMP(f)  if(f != x.f)    return true
@@ -83,25 +83,25 @@ namespace {
             return os;
         }
     };
-    
+
     /// A single formatting fragment
     struct FmtFrag
     {
         /// Literal text preceding the fragment
         ::std::string   leading_text;
-        
+
         /// Argument index used
         unsigned int    arg_index;
-        
+
         /// Trait to use for formatting
         const char* trait_name;
-        
+
         // TODO: Support case where this hasn't been edited (telling the formatter that it has nothing to apply)
         /// Options
         FmtArgs     args;
     };
 
-    
+
     class string_view {
         const char* s;
         const char* e;
@@ -109,16 +109,16 @@ namespace {
         string_view(const char* s, const char* e):
             s(s), e(e)
         {}
-        
+
         friend ::std::ostream& operator<<(::std::ostream& os, const string_view& x) {
             for(const char* p = x.s; p != x.e; p++)
                 os << *p;
             return os;
         }
     };
-    
+
     /// Parse a format string into a sequence of fragments.
-    /// 
+    ///
     /// Returns a list of fragments, and the remaining free text after the last format sequence
     ::std::tuple< ::std::vector<FmtFrag>, ::std::string> parse_format_string(
         const Span& sp,
@@ -129,10 +129,10 @@ namespace {
     {
         unsigned int n_named = named.size();
         unsigned int next_free = 0;
-        
+
         ::std::vector<FmtFrag>  frags;
         ::std::string   cur_literal;
-        
+
         const char* s = format_string.c_str();
         for( ; *s; s ++)
         {
@@ -155,17 +155,17 @@ namespace {
                     cur_literal += '{';
                     continue ;
                 }
-                
+
                 // Debugging: A view of the formatting fragment
                 const char* s2 = s;
                 while(*s2 && *s2 != '}')
                     s2 ++;
                 auto fmt_frag_str = string_view { s, s2 };
-                
+
                 unsigned int index = ~0u;
                 const char* trait_name;
                 FmtArgs args;
-                
+
                 // Formatting parameter
                 if( *s != ':' && *s != '}' ) {
                     // Parse either an integer or an identifer
@@ -197,11 +197,11 @@ namespace {
                     // - If index is ~0u at the end of this block, it's set to the next arg
                     // - This allows {:.*} to format correctly (taking <prec> then <arg>)
                 }
-                
+
                 // If next character is ':', parse extra information
                 if( *s == ':' ) {
                     s ++;   // eat ':'
-                    
+
                     // Alignment
                     if( s[0] != '\0' && (s[1] == '<' || s[1] == '^' || s[1] == '>') ) {
                         args.align_char = s[0];
@@ -222,7 +222,7 @@ namespace {
                     else {
                         //args.align = FmtArgs::Align::Unspec;
                     }
-                    
+
                     // Sign
                     if( *s == '+' ) {
                         args.sign = FmtArgs::Sign::Plus;
@@ -235,7 +235,7 @@ namespace {
                     else {
                         args.sign = FmtArgs::Sign::Unspec;
                     }
-                    
+
                     if( *s == '#' ) {
                         args.alternate = true;
                         s ++;
@@ -243,7 +243,7 @@ namespace {
                     else {
                         //args.alternate = false;
                     }
-                    
+
                     if( *s == '0' ) {
                         args.zero_pad = true;
                         s ++;
@@ -251,7 +251,7 @@ namespace {
                     else {
                         //args.zero_pad = false;
                     }
-                    
+
                     // Padded width
                     if( ::std::isdigit(*s) /*|| *s == '*'*/ ) {
                         unsigned int val = 0;
@@ -262,7 +262,7 @@ namespace {
                             s ++;
                         }
                         args.width = val;
-                        
+
                         if( *s == '$' ) {
                             args.width_is_arg = true;
                             s ++;
@@ -287,7 +287,7 @@ namespace {
                                 ERROR(sp, E0000, "Named argument '"<<ident<<"' not found");
                             args.width = n_free + it->second;
                             args.width_is_arg = true;
-                            
+
                             s ++;
                         }
                         else {
@@ -317,7 +317,7 @@ namespace {
                                 s ++;
                             }
                             args.prec = val;
-                            
+
                             if( *s == '$' ) {
                                 args.prec_is_arg = true;
                                 s ++;
@@ -330,13 +330,13 @@ namespace {
                             // Wut?
                         }
                     }
-                    
+
                     // Parse ident?
                     // - Lazy way is to just handle a single char and ensure that it is just a single char
                     if( s[0] != '}' && s[0] != '\0' && s[1] != '}' ) {
                         TODO(sp, "Parse formatting fragment at \"" << fmt_frag_str << "\" (long type)");
                     }
-                    
+
                     switch(s[0])
                     {
                     case '\0':
@@ -361,7 +361,7 @@ namespace {
                     // Otherwise, it's just a trivial Display call
                     trait_name = "Display";
                 }
-                
+
                 // Set index if unspecified
                 if( index == ~0u )
                 {
@@ -371,7 +371,7 @@ namespace {
                     index = next_free + n_named;
                     next_free ++;
                 }
-                
+
                 frags.push_back( FmtFrag {
                     mv$(cur_literal),
                     index, trait_name,
@@ -379,7 +379,7 @@ namespace {
                     });
             }
         }
-        
+
         return ::std::make_tuple( mv$(frags), mv$(cur_literal) );
     }
 }
@@ -414,11 +414,11 @@ class CFormatArgsExpander:
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
         Token   tok;
-        
+
         auto lex = TTStream(tt);
         if( ident != "" )
             ERROR(sp, E0000, "format_args! doesn't take an ident");
-        
+
         auto n = Parse_ExprVal(lex);
         ASSERT_BUG(sp, n, "No expression returned");
         Expand_BareExpr(crate, mod, n);
@@ -429,11 +429,11 @@ class CFormatArgsExpander:
         }
         const auto& format_string_sp = format_string_np->span();
         const auto& format_string = format_string_np->m_value;
-        
+
         ::std::map< ::std::string, unsigned int>   named_args_index;
         ::std::vector<TokenTree>    named_args;
         ::std::vector<TokenTree>    free_args;
-        
+
         // - Parse the arguments
         while( GET_TOK(tok, lex) == TOK_COMMA )
         {
@@ -441,17 +441,17 @@ class CFormatArgsExpander:
                 GET_TOK(tok, lex);
                 break;
             }
-            
+
             // - Named parameters
             if( lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_EQUAL )
             {
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 auto name = mv$(tok.str());
-                
+
                 GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-                
+
                 auto expr_tt = TokenTree(Token( InterpolatedFragment(InterpolatedFragment::EXPR, Parse_Expr0(lex).release()) ));
-                
+
                 auto ins_rv = named_args_index.insert( ::std::make_pair(mv$(name), named_args.size()) );
                 if( ins_rv.second == false ) {
                     ERROR(sp, E0000, "Duplicate definition of named argument `" << ins_rv.first->first << "`");
@@ -466,12 +466,12 @@ class CFormatArgsExpander:
             }
         }
         CHECK_TOK(tok, TOK_EOF);
-        
+
         // - Parse the format string
         ::std::vector< FmtFrag> fragments;
         ::std::string   tail;
         ::std::tie( fragments, tail ) = parse_format_string(format_string_sp, format_string,  named_args_index, free_args.size());
-        
+
         bool is_simple = true;
         for(unsigned int i = 0; i < fragments.size(); i ++)
         {
@@ -484,7 +484,7 @@ class CFormatArgsExpander:
                 is_simple = false;
             }
         }
-        
+
         ::std::vector<TokenTree> toks;
         // This should expand to a `match (a, b, c) { (ref _0, ref _1, ref _2) => ... }` to ensure that the values live long enough?
         // - Also avoids name collisions
@@ -513,7 +513,7 @@ class CFormatArgsExpander:
         toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
         toks.push_back( TokenTree(TOK_FATARROW) );
         toks.push_back( TokenTree(TOK_BRACE_OPEN) );
-        
+
         // Save fragments into a static
         // `static FRAGMENTS: [&'static str; N] = [...];`
         // - Contains N+1 entries, where N is the number of fragments
@@ -521,7 +521,7 @@ class CFormatArgsExpander:
             toks.push_back( TokenTree(TOK_RWORD_STATIC) );
             toks.push_back( Token(TOK_IDENT, "FRAGMENTS") );
             toks.push_back( TokenTree(TOK_COLON) );
-            
+
             toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
             toks.push_back( Token(TOK_AMP) );
             toks.push_back( Token(TOK_LIFETIME, "static") );
@@ -529,9 +529,9 @@ class CFormatArgsExpander:
             toks.push_back( Token(TOK_SEMICOLON) );
             toks.push_back( Token(fragments.size() + 1, CORETYPE_UINT) );
             toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
-            
+
             toks.push_back( Token(TOK_EQUAL) );
-            
+
             toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
             for(const auto& frag : fragments ) {
                 toks.push_back( Token(TOK_STRING, frag.leading_text) );
@@ -539,10 +539,10 @@ class CFormatArgsExpander:
             }
             toks.push_back( Token(TOK_STRING, tail) );
             toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
-            
+
             toks.push_back( Token(TOK_SEMICOLON) );
         }
-        
+
         if( is_simple )
         {
             // ::fmt::Arguments::new_v1
@@ -553,7 +553,7 @@ class CFormatArgsExpander:
                 toks.push_back( TokenTree(TOK_AMP) );
                 toks.push_back( Token(TOK_IDENT, "FRAGMENTS") );
                 toks.push_back( TokenTree(TOK_COMMA) );
-                
+
                 toks.push_back( TokenTree(TOK_AMP) );
                 toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
                 for(const auto& frag : fragments )
@@ -561,9 +561,9 @@ class CFormatArgsExpander:
                     push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
                     toks.push_back( Token(TOK_PAREN_OPEN) );
                     toks.push_back( Token(TOK_IDENT, FMT("a" << frag.arg_index)) );
-                    
+
                     toks.push_back( TokenTree(TOK_COMMA) );
-                    
+
                     push_path(toks, crate, {"fmt", frag.trait_name, "fmt"});
                     toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
                     toks.push_back( TokenTree(TOK_COMMA) );
@@ -585,9 +585,9 @@ class CFormatArgsExpander:
                 toks.push_back( TokenTree(TOK_AMP) );
                 toks.push_back( Token(TOK_IDENT, "FRAGMENTS") );
                 toks.push_back( TokenTree(TOK_COMMA) );
-                
+
                 // 1. Generate a set of arguments+formatters
-                
+
                 // TODO: Fragments to format
                 // - The format stored by mrustc doesn't quite work with how rustc (and fmt::rt::v1) works
                 toks.push_back( TokenTree(TOK_AMP) );
@@ -599,10 +599,10 @@ class CFormatArgsExpander:
             // )
             toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
         }   // if(is_simple) else
-        
+
         toks.push_back( TokenTree(TOK_BRACE_CLOSE) );
         toks.push_back( TokenTree(TOK_BRACE_CLOSE) );
-        
+
         return box$( TTStreamO(TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
     }
 };

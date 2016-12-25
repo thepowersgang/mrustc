@@ -66,14 +66,14 @@ enum class eBinOp
     MUL, MUL_OV,
     DIV, DIV_OV,
     MOD,// MOD_OV,
-    
+
     BIT_OR,
     BIT_AND,
     BIT_XOR,
-    
+
     BIT_SHR,
     BIT_SHL,
-    
+
     EQ, NE,
     GT, GE,
     LT, LE,
@@ -222,7 +222,7 @@ class Function
 public:
     ::std::vector< ::HIR::TypeRef>  named_variables;
     ::std::vector< ::HIR::TypeRef>  temporaries;
-    
+
     ::std::vector<BasicBlock>   blocks;
 };
 

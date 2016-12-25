@@ -30,7 +30,7 @@ public:
         x.ptr = nullptr;
     }
     ~ExprPtrInner();
-    
+
     ExprPtrInner& operator=(ExprPtrInner&& x)
     {
         this->~ExprPtrInner();
@@ -38,7 +38,7 @@ public:
         x.ptr = nullptr;
         return *this;
     }
-    
+
     ::std::unique_ptr< ::HIR::ExprNode> into_unique();
     operator bool () const { return ptr != nullptr; }
     ::HIR::ExprNode* get() const { return ptr; }
@@ -46,7 +46,7 @@ public:
         this->~ExprPtrInner();
         this->ptr = p;
     }
-    
+
           ::HIR::ExprNode& operator*()       { return *ptr; }
     const ::HIR::ExprNode& operator*() const { return *ptr; }
           ::HIR::ExprNode* operator->()       { return ptr; }
@@ -56,21 +56,21 @@ public:
 class ExprPtr
 {
     ::HIR::ExprPtrInner node;
-    
+
 public:
     ::std::vector< ::HIR::TypeRef>  m_bindings;
     ::std::vector< ::HIR::TypeRef>  m_erased_types;
     ::MIR::FunctionPointer  m_mir;
-    
+
 public:
     ExprPtr() {}
     ExprPtr(::std::unique_ptr< ::HIR::ExprNode> _);
-    
+
     ::std::unique_ptr< ::HIR::ExprNode> into_unique();
     operator bool () const { return node; }
     ::HIR::ExprNode* get() const { return node.get(); }
     void reset(::HIR::ExprNode* p) { node.reset(p); }
-    
+
           ::HIR::ExprNode& operator*()       { return *node; }
     const ::HIR::ExprNode& operator*() const { return *node; }
           ::HIR::ExprNode* operator->()       { return &*node; }

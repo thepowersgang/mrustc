@@ -143,7 +143,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
 ::HIR::PathParams clone_ty_with__path_params(const Span& sp, const ::HIR::PathParams& tpl, t_cb_clone_ty callback) {
     ::HIR::PathParams   rv;
     rv.m_types.reserve( tpl.m_types.size() );
-    for( const auto& ty : tpl.m_types) 
+    for( const auto& ty : tpl.m_types)
         rv.m_types.push_back( clone_ty_with(sp, ty, callback) );
     return rv;
 }
@@ -157,14 +157,14 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         {},
         tpl.m_trait_ptr
         };
-    
+
     for(const auto& assoc : tpl.m_type_bounds) {
         rv.m_type_bounds.insert(::std::make_pair(
             assoc.first,
             clone_ty_with(sp, assoc.second, callback)
             ));
     }
-    
+
     return rv;
 }
 ::HIR::Path clone_ty_with__path(const Span& sp, const ::HIR::Path& tpl, t_cb_clone_ty callback) {
@@ -201,12 +201,12 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
 ::HIR::TypeRef clone_ty_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_clone_ty callback)
 {
     ::HIR::TypeRef  rv;
-    
+
     if( callback(tpl, rv) ) {
         DEBUG(tpl << " => " << rv);
         return rv;
     }
-    
+
     TU_MATCH(::HIR::TypeRef::Data, (tpl.m_data), (e),
     (Infer,
         rv = ::HIR::TypeRef(e);
@@ -235,19 +235,19 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         to.m_trait = clone_ty_with__trait_path(sp, e.m_trait, callback);
         for(const auto& trait : e.m_markers)
         {
-            to.m_markers.push_back( clone_ty_with__generic_path(sp, trait, callback) ); 
+            to.m_markers.push_back( clone_ty_with__generic_path(sp, trait, callback) );
         }
         to.m_lifetime = e.m_lifetime;
         rv = ::HIR::TypeRef( mv$(to) );
         ),
     (ErasedType,
         auto origin = clone_ty_with__path(sp, e.m_origin, callback);
-        
+
         ::std::vector< ::HIR::TraitPath>    traits;
         traits.reserve( e.m_traits.size() );
         for(const auto& trait : e.m_traits)
             traits.push_back( clone_ty_with__trait_path(sp, trait, callback) );
-        
+
         rv = ::HIR::TypeRef( ::HIR::TypeRef::Data::Data_ErasedType {
             mv$(origin), e.m_index,
             mv$(traits),
@@ -306,12 +306,12 @@ namespace {
         return [&sp,&outer_tpl,callback,allow_infer](const auto& tpl, auto& rv) {
             if( tpl.m_data.is_Infer() && !allow_infer )
                BUG(sp, "_ type found in " << outer_tpl);
-            
+
             if( tpl.m_data.is_Generic() ) {
                 rv = callback(tpl).clone();
                 return true;
             }
-            
+
             return false;
             };
     }

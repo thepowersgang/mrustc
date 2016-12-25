@@ -52,7 +52,7 @@ const ::HIR::Function& HIR_Expand_ErasedType_GetFunction(const Span& sp, const S
         for(const auto& t : impl_params.m_types)
             if( t == ::HIR::TypeRef() )
                 TODO(sp, "Handle ErasedType where an impl parameter comes from a bound - " << origin_path);
-        
+
         monomorph_cb = monomorphise_type_get_cb(sp, &*pe.type, &impl_params, &pe.params);
         )
     )
@@ -61,19 +61,19 @@ const ::HIR::Function& HIR_Expand_ErasedType_GetFunction(const Span& sp, const S
 }
 
 namespace {
-    
-    
+
+
     class ExprVisitor_Extract:
         public ::HIR::ExprVisitorDef
     {
         const StaticTraitResolve& m_resolve;
-        
+
     public:
         ExprVisitor_Extract(const StaticTraitResolve& resolve):
             m_resolve(resolve)
         {
         }
-        
+
         void visit_root(::HIR::ExprPtr& root)
         {
             root->visit(*this);
@@ -83,31 +83,31 @@ namespace {
             for(auto& ty : root.m_erased_types)
                 visit_type(ty);
         }
-        
+
         void visit_node_ptr(::std::unique_ptr< ::HIR::ExprNode>& node_ptr) override {
             assert(node_ptr);
             node_ptr->visit(*this);
             visit_type(node_ptr->m_res_type);
         }
-        
+
         void visit_type(::HIR::TypeRef& ty) override
         {
             static Span sp;
-            
+
             if( ty.m_data.is_ErasedType() )
             {
                 TRACE_FUNCTION_FR(ty, ty);
-                
+
                 const auto& e = ty.m_data.as_ErasedType();
-                
+
                 ::HIR::PathParams   impl_params;    // cache.
                 t_cb_generic    monomorph_cb;
                 const auto& fcn = HIR_Expand_ErasedType_GetFunction(sp, m_resolve, e.m_origin, monomorph_cb, impl_params);
                 const auto& erased_types = fcn.m_code.m_erased_types;
-                
+
                 ASSERT_BUG(sp, e.m_index < erased_types.size(), "Erased type index out of range for " << e.m_origin << " - " << e.m_index << " >= " << erased_types.size());
                 const auto& tpl = erased_types[e.m_index];
-                
+
                 auto new_ty = monomorphise_type_with(sp, tpl, monomorph_cb);
                 DEBUG("> " << ty << " => " << new_ty);
                 ty = mv$(new_ty);
@@ -120,7 +120,7 @@ namespace {
             }
         }
     };
-    
+
     class OuterVisitor:
         public ::HIR::Visitor
     {
@@ -130,7 +130,7 @@ namespace {
         OuterVisitor(const ::HIR::Crate& crate):
             m_resolve(crate)
         {}
-        
+
         void visit_expr(::HIR::ExprPtr& exp) override
         {
             if( exp )
@@ -139,23 +139,23 @@ namespace {
                 ev.visit_root( exp );
             }
         }
-        
+
         void visit_function(::HIR::ItemPath p, ::HIR::Function& fcn) override
         {
             m_fcn_path = p;
             ::HIR::Visitor::visit_function(p, fcn);
             m_fcn_path = ::HIR::ItemPath();
         }
-        
+
         void visit_type(::HIR::TypeRef& ty) override
         {
             static const Span   sp;
             if( ty.m_data.is_ErasedType() )
             {
                 ASSERT_BUG(sp, m_fcn_path.get_name(), "");
-                
+
                 const auto& e = ty.m_data.as_ErasedType();
-                
+
                 TU_MATCHA( (e.m_origin.m_data), (pe),
                 (Generic,
                     if( m_fcn_path == pe.m_path ) {
@@ -176,17 +176,17 @@ namespace {
                     }
                     )
                 )
-                
+
                 TRACE_FUNCTION_FR(ty, ty);
-                
+
                 ::HIR::PathParams   impl_params;
                 t_cb_generic    monomorph_cb;
                 const auto& fcn = HIR_Expand_ErasedType_GetFunction(sp, m_resolve, e.m_origin, monomorph_cb, impl_params);
                 const auto& erased_types = fcn.m_code.m_erased_types;
-                
+
                 ASSERT_BUG(sp, e.m_index < erased_types.size(), "Erased type index out of range for " << e.m_origin << " - " << e.m_index << " >= " << erased_types.size());
                 const auto& tpl = erased_types[e.m_index];
-                
+
                 auto new_ty = monomorphise_type_with(sp, tpl, monomorph_cb);
                 DEBUG("> " << ty << " => " << new_ty);
                 ty = mv$(new_ty);

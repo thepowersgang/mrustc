@@ -33,11 +33,11 @@ public:
         m_lang_PhantomData( crate.get_lang_item_path_opt("phantom_data") )
     {
     }
-    
+
     void visit_struct(::HIR::ItemPath ip, ::HIR::Struct& str) override
     {
         ::HIR::Visitor::visit_struct(ip, str);
-        
+
         TU_MATCHA( (str.m_data), (se),
         (Unit,
             ),
@@ -48,7 +48,7 @@ public:
             // - If it is Sized, leave as-is (struct is marked as Sized)
             // - If it is known unsized, record the type
             // - If it is a ?Sized parameter, mark as possible and record index for MIR
-            
+
             // TODO: Ensure that only the last field is ?Sized
             if( se.size() > 0 )
             {
@@ -59,7 +59,7 @@ public:
                 if( last_field.m_data.is_Generic() )
                 {
                     const auto& te = last_field.m_data.as_Generic();
-                    
+
                     if( str.m_params.m_types.at(te.binding).m_is_sized == false )
                     {
                         str.m_markings.unsized_field = se.size() - 1;
@@ -86,9 +86,9 @@ public:
     void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
     {
         static Span sp;
-        
+
         ::HIR::Visitor::visit_trait_impl(trait_path, impl);
-        
+
         if( impl.m_type.m_data.is_Path() )
         {
             const auto& te = impl.m_type.m_data.as_Path();
@@ -115,7 +115,7 @@ public:
                 else if( trait_path == m_lang_CoerceUnsized ) {
                     if( markings_ptr->coerce_unsized_index != ~0u )
                         ERROR(sp, E0000, "CoerceUnsized can only be implemented once per struct");
-                    
+
                     DEBUG("Type " << impl.m_type << " can Coerce");
                     if( impl.m_trait_args.m_types.size() != 1 )
                         ERROR(sp, E0000, "Unexpected number of arguments for CoerceUnsized");
@@ -130,18 +130,18 @@ public:
                         ERROR(sp, E0000, "Cannot implement CoerceUnsized from non-structs");
                     if( dst_te.binding.as_Struct() != te.binding.as_Struct() )
                         ERROR(sp, E0000, "CoerceUnsized can only be implemented between variants of the same struct");
-                    
+
                     // NOTES: (from IRC: eddyb)
                     // < eddyb> they're required that T and U are the same struct definition (with different type parameters) and exactly one field differs in type between T and U (ignoring PhantomData)
                     // < eddyb> Mutabah: I forgot to mention that the field that differs in type must also impl CoerceUnsized
-                    
+
                     // Determine the difference in monomorphised variants.
                     unsigned int field = ~0u;
                     const auto& str = te.binding.as_Struct();
-                    
+
                     auto monomorph_cb_l = monomorphise_type_get_cb(sp, nullptr, &dst_te.path.m_data.as_Generic().m_params, nullptr);
                     auto monomorph_cb_r = monomorphise_type_get_cb(sp, nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
-                    
+
                     TU_MATCHA( (str->m_data), (se),
                     (Unit,
                         ),

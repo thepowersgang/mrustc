@@ -31,10 +31,10 @@ namespace HIR {
         case CoreType::I32: return os << "i32";
         case CoreType::U64: return os << "u64";
         case CoreType::I64: return os << "i64";
-        
+
         case CoreType::F32: return os << "f32";
         case CoreType::F64: return os << "f64";
-        
+
         case CoreType::Bool:    return os << "bool";
         case CoreType::Char:    return os << "char";
         case CoreType::Str:     return os << "str";
@@ -185,7 +185,7 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
 {
     if( m_data.tag() != x.m_data.tag() )
         return false;
-    
+
     TU_MATCH(::HIR::TypeRef::Data, (m_data, x.m_data), (te, xe),
     (Infer,
         // TODO: Should comparing inferrence vars be an error?
@@ -306,9 +306,9 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
 Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
 {
     Ordering    rv;
-    
+
     ORD( static_cast<unsigned int>(m_data.tag()), static_cast<unsigned int>(x.m_data.tag()) );
-    
+
     TU_MATCH(::HIR::TypeRef::Data, (m_data, x.m_data), (te, xe),
     (Infer,
         // TODO: Should comparing inferrence vars be an error?
@@ -454,7 +454,7 @@ namespace {
         if( t.m_types.size() != x.m_types.size() ) {
             return ::HIR::Compare::Unequal;
         }
-        
+
         auto rv = ::HIR::Compare::Equal;
         for(unsigned int i = 0; i < t.m_types.size(); i ++ )
         {
@@ -462,7 +462,7 @@ namespace {
             if( rv == ::HIR::Compare::Unequal )
                 return rv;
         }
-        
+
         return rv;
     }
 }
@@ -533,11 +533,11 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             break;
         }
     )
-    
+
     TU_IFLET(::HIR::TypeRef::Data, v.m_data, Infer, te,
         // TODO: Restrict this block with a flag so it panics if an ivar is seen when not expected
         ASSERT_BUG(sp, te.index != ~0u, "Encountered ivar for `this` - " << v);
-        
+
         switch(te.ty_class)
         {
         case ::HIR::InferClass::None:
@@ -576,7 +576,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             break;
         }
     )
-    
+
     if( v.m_data.tag() != x.m_data.tag() ) {
         // HACK: If the path is Opaque, return a fuzzy match.
         // - This works around an impl selection bug.
@@ -644,7 +644,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                 )
             )
         }
-        
+
         if( rv == ::HIR::Compare::Unequal ) {
             if( te.binding.is_Unbound() || xe.binding.is_Unbound() ) {
                 rv = ::HIR::Compare::Fuzzy;
@@ -668,7 +668,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         {
             cmp &= match_generics_pp(sp, te.m_markers[i].m_params, xe.m_markers[i].m_params, resolve_placeholder, callback);
         }
-        
+
         auto it_l = te.m_trait.m_type_bounds.begin();
         auto it_r = xe.m_trait.m_type_bounds.begin();
         while( it_l != te.m_trait.m_type_bounds.end() && it_r != xe.m_trait.m_type_bounds.end() )
@@ -680,7 +680,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             ++ it_l;
             ++ it_r;
         }
-        
+
         if( it_l != te.m_trait.m_type_bounds.end() || it_r != xe.m_trait.m_type_bounds.end() ) {
             return Compare::Unequal;
         }
@@ -859,12 +859,12 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     const auto& left = (m_data.is_Infer() || m_data.is_Generic() ? resolve_placeholder(*this) : *this);
     //const auto& left = *this;
     const auto& right = (x.m_data.is_Infer() ? resolve_placeholder(x) : (x.m_data.is_Generic() ? resolve_placeholder(x) : x));
-    
+
     // If the two types are the same ivar, return equal
     if( left.m_data.is_Infer() && left == right ) {
         return Compare::Equal;
     }
-    
+
     // If left is infer
     TU_IFLET(::HIR::TypeRef::Data, left.m_data, Infer, e,
         switch(e.ty_class)
@@ -934,7 +934,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         }
         throw "";
     )
-    
+
     // If righthand side is infer, it's a fuzzy match (or not a match)
     TU_IFLET(::HIR::TypeRef::Data, right.m_data, Infer, e,
         switch( e.ty_class )
@@ -982,10 +982,10 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         }
         throw "";
     )
-    
+
     // If righthand is a type parameter, it can only match another type parameter
     // - See `(Generic,` below
-    
+
     if( left.m_data.tag() != right.m_data.tag() ) {
         if( left.m_data.is_Path() && left.m_data.as_Path().binding.is_Unbound() ) {
             return Compare::Fuzzy;

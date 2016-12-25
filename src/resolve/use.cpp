@@ -89,22 +89,22 @@ void Resolve_Use(::AST::Crate& crate)
 void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path path, slice< const ::AST::Module* > parent_modules)
 {
     TRACE_FUNCTION_F("path = " << path);
-    
+
     for(auto& use_stmt : mod.items())
     {
         if( ! use_stmt.data.is_Use() )
             continue ;
         auto& use_stmt_data = use_stmt.data.as_Use();
-        
+
         const Span& span = use_stmt_data.sp;
         use_stmt_data.path = Resolve_Use_AbsolutisePath(span, path, mv$(use_stmt_data.path));
         if( !use_stmt_data.path.m_class.is_Absolute() )
             BUG(span, "Use path is not absolute after absolutisation");
-        
+
         // TODO: Have Resolve_Use_GetBinding return the actual path
         use_stmt_data.path.bind( Resolve_Use_GetBinding(span, crate, use_stmt_data.path, parent_modules) );
         DEBUG("'" << use_stmt.name << "' = " << use_stmt_data.path);
-        
+
         // - If doing a glob, ensure the item type is valid
         if( use_stmt.name == "" )
         {
@@ -158,18 +158,18 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     {
         const AST::Crate& crate;
         ::std::vector< const AST::Module* >   parent_modules;
-        
+
         NV(const AST::Crate& crate, const AST::Module& cur_module):
             crate(crate),
             parent_modules()
         {
             parent_modules.push_back( &cur_module );
         }
-        
+
         void visit(AST::ExprNode_Block& node) override {
             if( node.m_local_mod ) {
                 Resolve_Use_Mod(this->crate, *node.m_local_mod, node.m_local_mod->path(), this->parent_modules);
-                
+
                 parent_modules.push_back(&*node.m_local_mod);
             }
             AST::NodeVisitorDef::visit(node);
@@ -178,7 +178,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             }
         }
     } expr_iter(crate, mod);
-    
+
     // TODO: Check that all code blocks are covered by these
     // - NOTE: Handle anon modules by iterating code (allowing correct item mappings)
     for(auto& i : mod.items())
@@ -264,13 +264,13 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         assert( mod.anon_mods()[idx] );
         return ::AST::PathBinding::make_Module({&*mod.anon_mods()[idx]});
     }
-    
+
     // Seach for the name defined in the module.
     for( const auto& item : mod.items() )
     {
         if( item.data.is_None() )
             continue ;
-        
+
         if( item.name == des_item_name ) {
             //if( allow != Lookup::Any )
             //    DEBUG(mod.path() << " " << des_item_name << " " << item.data.tag_str());
@@ -305,7 +305,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 if( allow != Lookup::Value )
                     return ::AST::PathBinding::make_Trait({&e});
                 ),
-            
+
             (Function,
                 if( allow != Lookup::Type )
                     return ::AST::PathBinding::make_Function({&e});
@@ -335,7 +335,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             )
         }
     }
-    
+
     // Imports
     for( const auto& imp : mod.items() )
     {
@@ -406,7 +406,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             else {
                 //out_path = imp_data.path;
             }
-            
+
             TU_MATCH_DEF(::AST::PathBinding, (*binding), (e),
             (
                 BUG(sp2, "Wildcard import expanded to an invalid item class - " << binding->tag_str());
@@ -463,7 +463,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
 
 namespace {
     const ::HIR::Module* get_hir_mod_by_path(const Span& sp, const ::AST::Crate& crate, const ::HIR::SimplePath& path);
-    
+
     const void* get_hir_modenum_by_path(const Span& sp, const ::AST::Crate& crate, const ::HIR::SimplePath& path, bool& is_enum)
     {
         const auto* hmod = &crate.m_extern_crates.at( path.m_crate_name ).m_hir->m_root_module;
@@ -533,7 +533,7 @@ namespace {
                     ERROR(span, E0000, "Encountered enum at unexpected location in import");
                 }
                 const auto& name = nodes[i].name();
-                
+
                 auto it2 = ::std::find_if( enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x){ return x.first == name; } );
                 if( it2 == enm.m_variants.end() ) {
                     ERROR(span, E0000, "Unable to find variant " << path);
@@ -553,7 +553,7 @@ namespace {
                 ERROR(span, E0000, "Encountered enum at unexpected location in import");
             }
             const auto& name = nodes[i].name();
-            
+
             auto it2 = ::std::find_if( e.m_variants.begin(), e.m_variants.end(), [&](const auto& x){ return x.first == name; } );
             if( it2 == e.m_variants.end() ) {
                 ERROR(span, E0000, "Unable to find variant " << path);
@@ -648,7 +648,7 @@ namespace {
             )
         }
     }
-    
+
     return ::AST::PathBinding::make_Unbound({});
 }
 ::AST::PathBinding Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const AST::ExternCrate& ec, unsigned int start,  Lookup allow)
@@ -660,20 +660,20 @@ namespace {
 {
     TRACE_FUNCTION_F(path);
     //::AST::Path rv;
-    
+
     // If the path is directly referring to an external crate - call __ext
     if( path.m_class.is_Absolute() && path.m_class.as_Absolute().crate != "" ) {
         const auto& path_abs = path.m_class.as_Absolute();
-        
+
         return Resolve_Use_GetBinding__ext(span, crate, path,  crate.m_extern_crates.at( path_abs.crate ), 0, allow);
     }
-    
+
     const AST::Module* mod = &crate.m_root_module;
     const auto& nodes = path.nodes();
     for( unsigned int i = 0; i < nodes.size()-1; i ++ )
     {
         // TODO: If this came from an import, return the real path?
-        
+
         //rv = Resolve_Use_CanoniseAndBind_Mod(span, crate, *mod, mv$(rv), nodes[i].name(), parent_modules, Lookup::Type);
         //const auto& b = rv.binding();
         auto b = Resolve_Use_GetBinding_Mod(span, crate, *mod, nodes[i].name(), parent_modules, Lookup::Type);
@@ -691,7 +691,7 @@ namespace {
             if( i != nodes.size() - 1 ) {
                 ERROR(span, E0000, "Encountered enum at unexpected location in import");
             }
-            
+
             const auto& node2 = nodes[i];
              int    variant_index = -1;
             for( unsigned int j = 0; j < enum_.variants().size(); j ++ )
@@ -704,12 +704,12 @@ namespace {
             if( variant_index < 0 ) {
                 ERROR(span, E0000, "Unknown enum variant '" << node2.name() << "'");
             }
-            
+
             return ::AST::PathBinding::make_EnumVar({&enum_, static_cast<unsigned int>(variant_index)});
             ),
         (Module,
             ASSERT_BUG(span, e.module_ || e.hir, "nullptr module pointer in node " << i << " of " << path);
-            if( !e.module_ ) 
+            if( !e.module_ )
             {
                 assert(e.hir);
                 // TODO: Mangle the original path (or return a new path somehow)
@@ -719,7 +719,7 @@ namespace {
             )
         )
     }
-    
+
     assert(mod);
     return Resolve_Use_GetBinding_Mod(span, crate, *mod, nodes.back().name(), parent_modules, allow);
 }
