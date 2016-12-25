@@ -263,6 +263,7 @@ void MirBuilder::push_stmt_drop(const Span& sp, ::MIR::LValue val)
         return ;
     }
     
+    DEBUG("DROP " << val);
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::DEEP, mv$(val) }) );
 }
 void MirBuilder::push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val)
@@ -276,6 +277,7 @@ void MirBuilder::push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val)
     //    return ;
     //}
     
+    DEBUG("DROP shallow " << val);
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::SHALLOW, mv$(val) }) );
 }
 
@@ -347,6 +349,9 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val)
         raise_variables(sp, *e.val);
         ),
     (Field,
+        raise_variables(sp, *e.val);
+        ),
+    (Downcast,
         raise_variables(sp, *e.val);
         ),
     // Actual value types
@@ -824,6 +829,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                     DEBUG(i << " (_,"<<new_state<<")");
                     m_changed[i] = true;
                     m_new_states[i] = new_state;
+                    // TODO: Store the original state for comparison?
                 }
                 else
                 {

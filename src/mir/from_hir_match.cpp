@@ -272,9 +272,9 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             ac.destructures.push_back( builder.new_bb_unlinked() );
             builder.set_cur_block( ac.destructures.back() );
             conv.destructure_from( arm.m_code->span(), pat, match_val.clone(), true );
+            builder.end_split_arm( arm.m_code->span(), pat_scope, true );
             builder.pause_cur_block();
             // NOTE: Paused block resumed upon successful match
-            builder.end_split_arm( arm.m_code->span(), pat_scope, true );
         }
         builder.terminate_scope( arm.m_code->span(), mv$(pat_scope) );
         

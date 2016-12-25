@@ -1804,7 +1804,11 @@ namespace {
                 assert( !values_set[idx] );
                 values_set[idx] = true;
                 this->visit_node_ptr(valnode);
-                values.at(idx) = m_builder.lvalue_or_temp( valnode->span(), valnode->m_res_type, m_builder.get_result(valnode->span()) );
+                
+                // NOTE: Have to allocate a new temporary because ordering matters
+                auto tmp = m_builder.new_temporary(valnode->m_res_type);
+                m_builder.push_stmt_assign( valnode->span(), tmp.clone(), m_builder.get_result(valnode->span()) );
+                values.at(idx) = mv$(tmp);
             }
             for(unsigned int i = 0; i < values.size(); i ++)
             {
